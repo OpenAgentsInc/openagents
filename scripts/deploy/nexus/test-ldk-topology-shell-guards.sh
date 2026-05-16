@@ -8,6 +8,7 @@ INSTALL_SCRIPT="${SCRIPT_DIR}/23-install-ldk-server-host.sh"
 SMOKE_SCRIPT="${SCRIPT_DIR}/24-smoke-ldk-server-readonly.sh"
 BACKUP_SCRIPT="${SCRIPT_DIR}/25-backup-ldk-server-state.sh"
 RESTORE_SCRIPT="${SCRIPT_DIR}/26-restore-ldk-server-drill.sh"
+READINESS_SCRIPT="${SCRIPT_DIR}/27-smoke-ldk-production-readiness.sh"
 
 assert_contains() {
   local needle="$1"
@@ -27,7 +28,7 @@ assert_not_contains() {
   fi
 }
 
-bash -n "$TOPOLOGY_SCRIPT" "$INSTALL_SCRIPT" "$SMOKE_SCRIPT" "$BACKUP_SCRIPT" "$RESTORE_SCRIPT"
+bash -n "$TOPOLOGY_SCRIPT" "$INSTALL_SCRIPT" "$SMOKE_SCRIPT" "$BACKUP_SCRIPT" "$RESTORE_SCRIPT" "$READINESS_SCRIPT"
 
 COMMON_TEXT="$(cat "$COMMON_SCRIPT")"
 TOPOLOGY_TEXT="$(cat "$TOPOLOGY_SCRIPT")"
@@ -35,6 +36,7 @@ INSTALL_TEXT="$(cat "$INSTALL_SCRIPT")"
 SMOKE_TEXT="$(cat "$SMOKE_SCRIPT")"
 BACKUP_TEXT="$(cat "$BACKUP_SCRIPT")"
 RESTORE_TEXT="$(cat "$RESTORE_SCRIPT")"
+READINESS_TEXT="$(cat "$READINESS_SCRIPT")"
 
 assert_contains 'NEXUS_LDK_VM' "$COMMON_TEXT"
 assert_contains 'NEXUS_LDK_GRPC_PORT' "$COMMON_TEXT"
@@ -67,6 +69,13 @@ assert_contains 'contains_secret_material' "$BACKUP_TEXT"
 assert_contains 'mount -o ro' "$RESTORE_TEXT"
 assert_contains 'NEXUS_LDK_RESTORE_SNAPSHOT' "$RESTORE_TEXT"
 assert_contains 'ldk_node_data.sqlite' "$RESTORE_TEXT"
+
+assert_contains '/v1/treasury/status' "$READINESS_TEXT"
+assert_contains '/v1/treasury/funding-target' "$READINESS_TEXT"
+assert_contains '/v1/admin/treasury/operations' "$READINESS_TEXT"
+assert_contains 'treasury.listChannels' "$READINESS_TEXT"
+assert_contains 'treasury.openChannel' "$READINESS_TEXT"
+assert_not_contains 'spark_address' "$READINESS_TEXT"
 
 TOPOLOGY_OUTPUT="$(
   NEXUS_LDK_TOPOLOGY_DRY_RUN=true \

@@ -48,9 +48,26 @@ normal runtime path.
 `GET /v1/treasury/status` is the normal public treasury status surface. It
 includes active-provider fields such as `active_treasury_provider`,
 `active_treasury_rail`, `ldk_network`, `ldk_chain_backend`, and
-`ldk_server_configured`, plus aggregate policy, wallet, loop-health, payout,
-and continuity fields. It does not return payout-target identities, raw payout
-targets, recent payout rows, operation rows, or beneficiary debug rows.
+`ldk_server_configured`, plus `ldk_readiness`, aggregate policy, wallet,
+loop-health, payout, and continuity fields. It does not return payout-target
+identities, raw payout targets, recent payout rows, operation rows, or
+beneficiary debug rows.
+
+`ldk_readiness` is the compact production-readiness read model for the active
+Lightning rail:
+
+- `state`: `ready`, `attention`, `degraded`, `needs_funding`,
+  `needs_channels`, `needs_ldk_server`, or `misconfigured`.
+- `registered_payout_target_count`: Pylon v0.2 LDK-compatible payout targets.
+- `projected_channel_count`: channel-open operations known to Nexus.
+- `projected_inbound_capacity_sats`: projected open/splice-in capacity from
+  Nexus LDK admin operation rows.
+- `projected_outbound_capacity_sats`: current Nexus wallet balance available
+  for outbound payout dispatch.
+- `recent_failed_payment_count_24h`, `recent_no_route_count_24h`, and
+  `recent_insufficient_balance_count_24h`: recent failure counters derived from
+  LDK operation rows.
+- `operator_actions`: direct next steps when the state is not ready.
 
 Use `GET /v1/treasury/projections` with the treasury projection reader token
 when an operator needs hashed peer/operation projections for diagnostics.
@@ -168,8 +185,8 @@ returned, and when the operation row was written. The same timing fields are
 copied into the provider-neutral treasury operation metadata and funding
 receipt attributes so operator funding latency can be audited without logging
 raw invoices, payment ids, API keys, TLS material, seeds, or channel state.
-Standard LDK funding responses leave obsolete compatibility invoice fields
-empty. The payer-facing value is `bolt11_invoice`.
+Standard LDK funding responses do not create non-LDK invoices. The payer-facing
+value is `bolt11_invoice`.
 
 Current treasury-provider environment:
 
@@ -372,6 +389,31 @@ projection source for route failures, insufficient-balance failures, and admin
 channel operations. LDK-12 extends that into dedicated read-only projection
 endpoints for channel, payment, payout, peer, liquidity-band, and degraded-state
 visualization.
+
+## LDK Production Readiness Smoke
+
+Use the production readiness smoke after deploying the LDK Server topology,
+after configuring Nexus with the LDK client material, and before enabling real
+mainnet payout volume:
+
+```bash
+NEXUS_BASE_URL=https://nexus.openagents.com \
+NEXUS_CONTROL_ADMIN_BEARER_TOKEN="$NEXUS_CONTROL_ADMIN_BEARER_TOKEN" \
+scripts/deploy/nexus/27-smoke-ldk-production-readiness.sh
+```
+
+The script verifies:
+
+- status reports the LDK provider and an `ldk_readiness` snapshot;
+- funding-target creation returns a BOLT11 invoice and no non-LDK invoice;
+- admin read commands can list peers, channels, payments, and status;
+- optional write smoke can connect a peer, open a channel, or send a bounded
+  invoice/offer payment when the operator provides explicit environment
+  variables.
+
+Artifacts are written under `target/nexus-ldk-readiness/<timestamp>/`. They are
+safe for operator inspection but can still contain redacted hashes and invoice
+metadata, so do not paste them wholesale into public issue comments.
 
 ## Local LDK Proof Harness
 

@@ -5,7 +5,8 @@ Date: 2026-05-16
 This runbook implements the LDK-06 topology for Nexus v0.2 and Pylon v0.2:
 hosted `bitcoind` plus LDK Server on Google Cloud, with Nexus calling the LDK
 node over a private interface. LDK-07 cuts the standard Nexus funding-invoice
-path to LDK `Bolt11Receive`; payout traffic still belongs to LDK-09.
+path to LDK `Bolt11Receive`; LDK admin operations own peer, channel, and payout
+smoke.
 
 ## Architecture
 
@@ -193,6 +194,47 @@ The drill creates a temporary read-only restore VM/disk, mounts the restored
 disk read-only, verifies critical files, and leaves cleanup commands in the
 output.
 
+6. Run production readiness smoke:
+
+```bash
+NEXUS_BASE_URL=https://nexus.openagents.com \
+NEXUS_CONTROL_ADMIN_BEARER_TOKEN=<admin-token> \
+scripts/deploy/nexus/27-smoke-ldk-production-readiness.sh
+```
+
+The readiness smoke verifies the active Nexus API path:
+
+- `GET /v1/treasury/status` reports `active_treasury_provider=ldk`,
+  `active_treasury_rail=ldk`, and an `ldk_readiness` snapshot.
+- `POST /v1/treasury/funding-target` returns a BOLT11 invoice from the LDK
+  provider and no non-LDK invoice field.
+- `POST /v1/admin/treasury/operations` can read `treasury.status`,
+  `treasury.listPeers`, `treasury.listChannels`, and `treasury.listPayments`.
+- JSON artifacts are written under `target/nexus-ldk-readiness/<timestamp>/`.
+
+Optional write smoke is opt-in because it can connect peers, open channels, or
+send payments:
+
+```bash
+NEXUS_LDK_WRITE_SMOKE=true \
+NEXUS_LDK_SMOKE_PEER_NODE_ID=<peer-node-id> \
+NEXUS_LDK_SMOKE_PEER_ADDRESS=<host:port> \
+NEXUS_LDK_SMOKE_CHANNEL_AMOUNT_SATS=100000 \
+scripts/deploy/nexus/27-smoke-ldk-production-readiness.sh
+```
+
+For payment send smoke, set one of:
+
+```bash
+NEXUS_LDK_SMOKE_PAY_INVOICE=<bolt11-invoice>
+NEXUS_LDK_SMOKE_PAY_OFFER=<bolt12-offer>
+NEXUS_LDK_SMOKE_PAY_AMOUNT_SATS=<amount-for-zero-amount-targets>
+```
+
+Each write command requires an idempotency key and records a redacted
+`TreasuryOperationRecord`. Do not paste raw invoices, node secrets, API keys,
+TLS keys, or bearer tokens into issue comments or docs.
+
 ## Nexus Client Configuration
 
 After hosted LDK Server smoke passes, configure Nexus with disk paths that live
@@ -212,8 +254,33 @@ must load the key from disk and log only a TLS certificate fingerprint.
 
 After this configuration is active, `POST /v1/treasury/funding-target` should
 return a BOLT11 invoice plus `phase_timings`. The standard funding path must
-not create Spark invoices or block on Spark history/sync. Treat
-`spark_invoice` as a legacy final-drain-only field.
+not create any non-LDK invoice.
+
+## Production Readiness Gates
+
+Production LDK is ready only when every gate below is green:
+
+- `ldk_readiness.state` is `ready` on `/v1/treasury/status`, or the only
+  remaining state is a documented warning accepted by the operator for that
+  rollout.
+- `ldk_readiness.projected_outbound_capacity_sats` is above the active payout
+  reserve.
+- `ldk_readiness.projected_inbound_capacity_sats` is nonzero once Pylon payout
+  targets exist.
+- `ldk_readiness.recent_failed_payment_count_24h`,
+  `recent_no_route_count_24h`, and `recent_insufficient_balance_count_24h` are
+  below alert thresholds.
+- `treasury.listPeers` shows expected peers or a documented reason to run
+  without announced peers.
+- `treasury.listChannels` shows the channel set expected for the rollout.
+- `treasury.listPayments` and `treasury.reconcilePayments` agree on recent
+  payment state.
+- The latest LDK backup and restore drill succeeded after the active
+  `NEXUS_LDK_SERVER_REF` was installed.
+- A fresh LDK funding invoice was created and paid, and the wallet/status view
+  observed the receive.
+- A bounded payout smoke through `treasury.payInvoice` or `treasury.payOffer`
+  completed from the active production binary.
 
 ## Rollback Conditions
 
@@ -245,7 +312,8 @@ bash -n scripts/deploy/nexus/22-provision-ldk-topology.sh \
   scripts/deploy/nexus/23-install-ldk-server-host.sh \
   scripts/deploy/nexus/24-smoke-ldk-server-readonly.sh \
   scripts/deploy/nexus/25-backup-ldk-server-state.sh \
-  scripts/deploy/nexus/26-restore-ldk-server-drill.sh
+  scripts/deploy/nexus/26-restore-ldk-server-drill.sh \
+  scripts/deploy/nexus/27-smoke-ldk-production-readiness.sh
 
 scripts/deploy/nexus/test-ldk-topology-shell-guards.sh
 scripts/deploy/nexus/24-smoke-ldk-server-readonly.sh

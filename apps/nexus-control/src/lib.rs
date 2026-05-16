@@ -18503,10 +18503,6 @@ fn safe_treasury_operation_metadata(
         .collect()
 }
 
-fn operation_command(operation: &crate::treasury::TreasuryOperationRecord) -> Option<&str> {
-    operation.rail_metadata.get("command").map(String::as_str)
-}
-
 fn treasury_projection_limit(query: &TreasuryProjectionQuery) -> usize {
     query.limit.unwrap_or(100).clamp(1, 500)
 }
@@ -18570,7 +18566,7 @@ fn build_treasury_projection_response(
     }
 
     for operation in &status.recent_treasury_operations {
-        if operation.rail != "ldk" || operation_command(operation) != Some("treasury.connectPeer") {
+        if operation.rail != "ldk" || operation.command() != Some("treasury.connectPeer") {
             continue;
         }
         let peer_id = operation
@@ -18610,7 +18606,9 @@ fn build_treasury_projection_response(
         .iter()
         .filter(|operation| operation.rail == "ldk")
         .filter(|operation| {
-            operation_command(operation).is_some_and(|command| channel_commands.contains(&command))
+            operation
+                .command()
+                .is_some_and(|command| channel_commands.contains(&command))
         })
         .filter(|operation| treasury_projection_in_window(operation.updated_at_unix_ms, &query))
         .map(|operation| TreasuryProjectionChannel {
@@ -18625,7 +18623,8 @@ fn build_treasury_projection_response(
                 None
             },
             operation_id: operation.operation_id.clone(),
-            command: operation_command(operation)
+            command: operation
+                .command()
                 .unwrap_or("treasury.channelOperation")
                 .to_string(),
             status: treasury_operation_status_label(operation.status).to_string(),
@@ -18696,7 +18695,8 @@ fn build_treasury_projection_response(
             operation.kind == crate::treasury::TreasuryOperationKind::OutboundPayoutDispatch
                 || operation.target_kind.contains("invoice")
                 || operation.target_kind.contains("offer")
-                || operation_command(operation)
+                || operation
+                    .command()
                     .is_some_and(|command| payment_commands.contains(&command))
         })
         .filter(|operation| treasury_projection_in_window(operation.updated_at_unix_ms, &query))

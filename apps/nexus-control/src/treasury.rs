@@ -1173,6 +1173,8 @@ pub struct TreasuryStatusResponse {
     pub ldk_chain_backend: String,
     #[serde(default)]
     pub ldk_server_configured: bool,
+    #[serde(default)]
+    pub ldk_readiness: TreasuryLdkReadinessSnapshot,
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
@@ -1675,6 +1677,7 @@ pub struct TreasuryPublicStats {
     pub ldk_network: String,
     pub ldk_chain_backend: String,
     pub ldk_server_configured: bool,
+    pub ldk_readiness: TreasuryLdkReadinessSnapshot,
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
@@ -2307,6 +2310,55 @@ pub struct TreasuryOperationRecord {
     pub updated_at_unix_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_event_state: Option<String>,
+}
+
+impl TreasuryOperationRecord {
+    pub fn command(&self) -> Option<&str> {
+        self.rail_metadata.get("command").map(String::as_str)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryLdkReadinessSnapshot {
+    pub state: String,
+    pub registered_payout_target_count: u64,
+    pub projected_channel_count: u64,
+    pub projected_inbound_capacity_sats: u64,
+    pub projected_outbound_capacity_sats: u64,
+    pub recent_failed_payment_count_24h: u64,
+    pub recent_no_route_count_24h: u64,
+    pub recent_insufficient_balance_count_24h: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operator_actions: Vec<String>,
+}
+
+impl Default for TreasuryLdkReadinessSnapshot {
+    fn default() -> Self {
+        Self {
+            state: "unknown".to_string(),
+            registered_payout_target_count: 0,
+            projected_channel_count: 0,
+            projected_inbound_capacity_sats: 0,
+            projected_outbound_capacity_sats: 0,
+            recent_failed_payment_count_24h: 0,
+            recent_no_route_count_24h: 0,
+            recent_insufficient_balance_count_24h: 0,
+            operator_actions: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TreasuryLdkChannelReadiness {
+    projected_channel_count: u64,
+    projected_inbound_capacity_sats: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TreasuryLdkPaymentFailureReadiness {
+    recent_failed_payment_count_24h: u64,
+    recent_no_route_count_24h: u64,
+    recent_insufficient_balance_count_24h: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3028,6 +3080,140 @@ impl TreasuryState {
             .values()
             .filter(|target| target.requires_v0_2_registration())
             .count() as u64
+    }
+
+    fn ldk_channel_readiness(&self) -> TreasuryLdkChannelReadiness {
+        let mut projected_channel_count = 0u64;
+        let mut projected_inbound_capacity_msat = 0u64;
+
+        for operation in self.treasury_operations_by_id.values() {
+            if operation.rail != "ldk"
+                || operation.kind != TreasuryOperationKind::LightningAdminCommand
+                || operation.status == TreasuryOperationStatus::Failed
+            {
+                continue;
+            }
+
+            match operation.command() {
+                Some("treasury.openChannel") => {
+                    projected_channel_count = projected_channel_count.saturating_add(1);
+                    if let Some(amount_msat) = operation.amount_msat {
+                        projected_inbound_capacity_msat =
+                            projected_inbound_capacity_msat.saturating_add(amount_msat);
+                    }
+                }
+                Some("treasury.spliceIn") => {
+                    if let Some(amount_msat) = operation.amount_msat {
+                        projected_inbound_capacity_msat =
+                            projected_inbound_capacity_msat.saturating_add(amount_msat);
+                    }
+                }
+                Some("treasury.spliceOut") => {
+                    if let Some(amount_msat) = operation.amount_msat {
+                        projected_inbound_capacity_msat =
+                            projected_inbound_capacity_msat.saturating_sub(amount_msat);
+                    }
+                }
+                Some("treasury.closeChannel") => {
+                    projected_channel_count = projected_channel_count.saturating_sub(1);
+                }
+                _ => {}
+            }
+        }
+
+        TreasuryLdkChannelReadiness {
+            projected_channel_count,
+            projected_inbound_capacity_sats: projected_inbound_capacity_msat / 1_000,
+        }
+    }
+
+    fn ldk_payment_failure_readiness(
+        &self,
+        now_unix_ms: u64,
+    ) -> TreasuryLdkPaymentFailureReadiness {
+        let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
+        let mut readiness = TreasuryLdkPaymentFailureReadiness::default();
+
+        for operation in self.treasury_operations_by_id.values() {
+            if operation.rail != "ldk"
+                || operation.status != TreasuryOperationStatus::Failed
+                || operation.updated_at_unix_ms < window_started_at_unix_ms
+            {
+                continue;
+            }
+
+            readiness.recent_failed_payment_count_24h =
+                readiness.recent_failed_payment_count_24h.saturating_add(1);
+            let reason = operation.degraded_reason.as_deref().unwrap_or_default();
+            if treasury_reason_indicates_no_route(reason) {
+                readiness.recent_no_route_count_24h =
+                    readiness.recent_no_route_count_24h.saturating_add(1);
+            }
+            if treasury_reason_indicates_insufficient_balance(reason) {
+                readiness.recent_insufficient_balance_count_24h = readiness
+                    .recent_insufficient_balance_count_24h
+                    .saturating_add(1);
+            }
+        }
+
+        readiness
+    }
+
+    fn ldk_readiness_snapshot(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+        degraded_states: &[TreasuryDegradedState],
+    ) -> TreasuryLdkReadinessSnapshot {
+        let channel_readiness = self.ldk_channel_readiness();
+        let failure_readiness = self.ldk_payment_failure_readiness(now_unix_ms);
+        let registered_payout_target_count = self.ldk_payout_target_identity_count();
+        let mut operator_actions = Vec::new();
+
+        let state = if config.lightning_provider.provider != TreasuryLightningProviderKind::Ldk {
+            operator_actions.push("configure Nexus with NEXUS_TREASURY_PROVIDER=ldk".to_string());
+            "misconfigured"
+        } else if !ldk_server_configured(config) {
+            operator_actions
+                .push("configure NEXUS_LDK_SERVER_URL, NEXUS_LDK_API_KEY_PATH, and NEXUS_LDK_TLS_CERT_PATH".to_string());
+            "needs_ldk_server"
+        } else if self.wallet_balance_sats == 0 {
+            operator_actions
+                .push("create and pay a Nexus LDK funding invoice before payout smoke".to_string());
+            "needs_funding"
+        } else if registered_payout_target_count > 0
+            && channel_readiness.projected_inbound_capacity_sats == 0
+        {
+            operator_actions.push(
+                "open or splice into an LDK channel before enabling production payouts".to_string(),
+            );
+            "needs_channels"
+        } else if degraded_states
+            .iter()
+            .any(|state| state.severity == "critical")
+        {
+            operator_actions
+                .push("resolve critical LDK degraded states before payout smoke".to_string());
+            "degraded"
+        } else if !degraded_states.is_empty() {
+            operator_actions.push("review warning-level LDK degraded states".to_string());
+            "attention"
+        } else {
+            "ready"
+        };
+
+        TreasuryLdkReadinessSnapshot {
+            state: state.to_string(),
+            registered_payout_target_count,
+            projected_channel_count: channel_readiness.projected_channel_count,
+            projected_inbound_capacity_sats: channel_readiness.projected_inbound_capacity_sats,
+            projected_outbound_capacity_sats: self.wallet_balance_sats,
+            recent_failed_payment_count_24h: failure_readiness.recent_failed_payment_count_24h,
+            recent_no_route_count_24h: failure_readiness.recent_no_route_count_24h,
+            recent_insufficient_balance_count_24h: failure_readiness
+                .recent_insufficient_balance_count_24h,
+            operator_actions,
+        }
     }
 
     fn validated_recovery_report_balance(&self, now_unix_ms: u64, max_age_ms: u64) -> Option<u64> {
@@ -5023,25 +5209,10 @@ impl TreasuryState {
                 .values()
                 .filter(|target| target.is_ldk_compatible())
                 .count() as u64;
-            let channel_capacity_msat = self
-                .treasury_operations_by_id
-                .values()
-                .filter(|operation| {
-                    operation.rail == "ldk"
-                        && operation.kind == TreasuryOperationKind::LightningAdminCommand
-                        && operation
-                            .rail_metadata
-                            .get("command")
-                            .is_some_and(|command| {
-                                command == "treasury.openChannel" || command == "treasury.spliceIn"
-                            })
-                        && operation.status != TreasuryOperationStatus::Failed
-                })
-                .filter_map(|operation| operation.amount_msat)
-                .fold(0u64, u64::saturating_add);
+            let channel_readiness = self.ldk_channel_readiness();
             if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk
                 && ldk_target_count > 0
-                && channel_capacity_msat == 0
+                && channel_readiness.projected_inbound_capacity_sats == 0
             {
                 states.push(TreasuryDegradedState {
                     code: "low_inbound_liquidity".to_string(),
@@ -5053,7 +5224,7 @@ impl TreasuryState {
                     source: "ldk_channel_projection".to_string(),
                     observed_at_unix_ms: now_unix_ms,
                     started_at_unix_ms: self.last_wallet_sync_at_unix_ms,
-                    metric_value: Some(channel_capacity_msat / 1_000),
+                    metric_value: Some(channel_readiness.projected_inbound_capacity_sats),
                     threshold: Some(1),
                 });
             }
@@ -5095,17 +5266,9 @@ impl TreasuryState {
             }
         }
 
-        let failed_payment_count = self
-            .treasury_operations_by_id
-            .values()
-            .filter(|operation| operation.rail == "ldk")
-            .filter(|operation| operation.status == TreasuryOperationStatus::Failed)
-            .filter(|operation| {
-                operation.updated_at_unix_ms
-                    >= now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS)
-            })
-            .count() as u64;
-        if failed_payment_count >= TREASURY_FAILED_PAYMENT_ALERT_COUNT {
+        let failure_readiness = self.ldk_payment_failure_readiness(now_unix_ms);
+        if failure_readiness.recent_failed_payment_count_24h >= TREASURY_FAILED_PAYMENT_ALERT_COUNT
+        {
             states.push(TreasuryDegradedState {
                 code: "rising_failed_payment_count".to_string(),
                 severity: "warning".to_string(),
@@ -5115,7 +5278,7 @@ impl TreasuryState {
                 source: "payment_failure_threshold".to_string(),
                 observed_at_unix_ms: now_unix_ms,
                 started_at_unix_ms: None,
-                metric_value: Some(failed_payment_count),
+                metric_value: Some(failure_readiness.recent_failed_payment_count_24h),
                 threshold: Some(TREASURY_FAILED_PAYMENT_ALERT_COUNT),
             });
         }
@@ -5491,6 +5654,8 @@ impl TreasuryState {
         } else {
             snapshot.degraded_states.clone()
         };
+        let ldk_readiness =
+            self.ldk_readiness_snapshot(config, now_unix_ms, degraded_states.as_slice());
 
         TreasuryPublicStats {
             active_treasury_provider: config.lightning_provider.provider.as_str().to_string(),
@@ -5504,6 +5669,7 @@ impl TreasuryState {
                 .as_str()
                 .to_string(),
             ldk_server_configured: ldk_server_configured(config),
+            ldk_readiness,
             treasury_enabled: snapshot.treasury_enabled,
             payout_sats_per_window: snapshot.payout_sats_per_window,
             payout_interval_seconds: snapshot.payout_interval_seconds,
@@ -5892,6 +6058,7 @@ impl TreasuryState {
             ldk_network: stats.ldk_network,
             ldk_chain_backend: stats.ldk_chain_backend,
             ldk_server_configured: stats.ldk_server_configured,
+            ldk_readiness: stats.ldk_readiness,
             treasury_enabled: stats.treasury_enabled,
             payout_sats_per_window: stats.payout_sats_per_window,
             payout_interval_seconds: stats.payout_interval_seconds,
@@ -8870,6 +9037,19 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     let mut lines = vec![
         format!("treasury_enabled: {}", response.treasury_enabled),
         format!("wallet_balance_sats: {}", response.wallet_balance_sats),
+        format!("ldk_readiness: {}", response.ldk_readiness.state),
+        format!(
+            "ldk_projected_channel_count: {}",
+            response.ldk_readiness.projected_channel_count
+        ),
+        format!(
+            "ldk_projected_inbound_capacity_sats: {}",
+            response.ldk_readiness.projected_inbound_capacity_sats
+        ),
+        format!(
+            "ldk_projected_outbound_capacity_sats: {}",
+            response.ldk_readiness.projected_outbound_capacity_sats
+        ),
         format!(
             "wallet_storage_runtime_mode: {}",
             response.wallet_storage_runtime_mode
@@ -10409,6 +10589,105 @@ mod tests {
                 .get("phase_total_duration_ms")
                 .map(String::as_str),
             Some("10")
+        );
+    }
+
+    #[test]
+    fn ldk_readiness_reports_channel_capacity_and_payment_failures() {
+        let mut config = test_treasury_config();
+        config.lightning_provider.ldk.server_url = Some("https://ldk.internal:3536".to_string());
+        let now_unix_ms = 2_000_000u64;
+        let mut state = TreasuryState::default();
+        state.wallet_balance_sats = 50_000;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        state.payout_targets_by_identity.insert(
+            "pubkey-ldk".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-ldk".to_string(),
+                source_session_id: "session-ldk".to_string(),
+                payment_target_kind: "bolt12_offer".to_string(),
+                payment_target: "lno1validtesttarget".to_string(),
+                payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+                pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
+                spark_address: String::new(),
+                bitcoin_address: None,
+                registered_at_unix_ms: now_unix_ms,
+                last_verified_at_unix_ms: now_unix_ms,
+            },
+        );
+
+        let needs_channels = state.status_response(&config, now_unix_ms);
+        assert_eq!(needs_channels.ldk_readiness.state, "needs_channels");
+        assert_eq!(needs_channels.ldk_readiness.projected_channel_count, 0);
+        assert_eq!(
+            needs_channels.ldk_readiness.projected_inbound_capacity_sats,
+            0
+        );
+
+        let mut channel_metadata = BTreeMap::new();
+        channel_metadata.insert("command".to_string(), "treasury.openChannel".to_string());
+        state.treasury_operations_by_id.insert(
+            "op-open-channel".to_string(),
+            super::TreasuryOperationRecord {
+                operation_id: "op-open-channel".to_string(),
+                kind: TreasuryOperationKind::LightningAdminCommand,
+                request_id: Some("admin:treasury.openChannel:readiness".to_string()),
+                rail: "ldk".to_string(),
+                rail_metadata: channel_metadata,
+                amount_msat: Some(21_000_000),
+                target_kind: "channel_peer".to_string(),
+                target_hash: Some(super::treasury_hash("02peer")),
+                beneficiary: None,
+                status: TreasuryOperationStatus::Completed,
+                provider_payment_id: None,
+                receipt_refs: Vec::new(),
+                degraded_reason: None,
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                terminal_event_state: Some("channel_opened".to_string()),
+            },
+        );
+
+        let ready = state.status_response(&config, now_unix_ms);
+        assert_eq!(ready.ldk_readiness.state, "ready");
+        assert_eq!(ready.ldk_readiness.projected_channel_count, 1);
+        assert_eq!(ready.ldk_readiness.projected_inbound_capacity_sats, 21_000);
+        assert_eq!(ready.ldk_readiness.projected_outbound_capacity_sats, 50_000);
+
+        let mut pay_metadata = BTreeMap::new();
+        pay_metadata.insert("command".to_string(), "treasury.payInvoice".to_string());
+        state.treasury_operations_by_id.insert(
+            "op-pay-failed".to_string(),
+            super::TreasuryOperationRecord {
+                operation_id: "op-pay-failed".to_string(),
+                kind: TreasuryOperationKind::LightningAdminCommand,
+                request_id: Some("admin:treasury.payInvoice:readiness".to_string()),
+                rail: "ldk".to_string(),
+                rail_metadata: pay_metadata,
+                amount_msat: Some(5_000),
+                target_kind: "bolt11_invoice".to_string(),
+                target_hash: Some(super::treasury_hash("lnbcfailed")),
+                beneficiary: None,
+                status: TreasuryOperationStatus::Failed,
+                provider_payment_id: None,
+                receipt_refs: Vec::new(),
+                degraded_reason: Some(
+                    "no_route: insufficient channel balance for payment".to_string(),
+                ),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                terminal_event_state: Some("payment_failed".to_string()),
+            },
+        );
+
+        let degraded = state.status_response(&config, now_unix_ms);
+        assert_eq!(degraded.ldk_readiness.state, "degraded");
+        assert_eq!(degraded.ldk_readiness.recent_failed_payment_count_24h, 1);
+        assert_eq!(degraded.ldk_readiness.recent_no_route_count_24h, 1);
+        assert_eq!(
+            degraded.ldk_readiness.recent_insufficient_balance_count_24h,
+            1
         );
     }
 
