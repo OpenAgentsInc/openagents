@@ -1896,6 +1896,47 @@ Out of scope:
 
 - Do not delete historical receipt readers until LDK-16 says it is safe.
 
+Implementation status, 2026-05-16:
+
+- Nexus defaults new treasury work to `NEXUS_TREASURY_PROVIDER=ldk`.
+- `NEXUS_TREASURY_PROVIDER=spark` is rejected. The only Spark provider mode is
+  `spark_final_drain`, and config construction rejects it unless
+  `NEXUS_SPARK_FINAL_DRAIN_ENABLED=true`.
+- Normal treasury funding-target creation calls the LDK provider boundary and
+  leaves `spark_invoice` empty. Legacy Spark receive material can only be
+  created when both the provider config and final-drain environment gate are
+  explicitly enabled.
+- Normal payout dispatch calls the LDK provider boundary. Spark dispatch
+  returns a failed batch with a `legacy Spark payout dispatch is disabled`
+  reason unless explicit final-drain mode is enabled.
+- Nexus API registration rejects `spark_address` payout targets by default
+  before challenge verification or state mutation. Spark-only historical
+  targets remain readable but are not LDK-compatible and are ineligible for new
+  paid work.
+- Pylon no longer creates a Spark payout destination in the normal startup
+  path. The old write path is guarded by
+  `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true` for explicit recovery or
+  final-drain work only.
+- Remaining Spark references are allowed only in historical receipt migration,
+  disabled final-drain/recovery gates, the reusable legacy Spark crate,
+  deprecated Autopilot code, and tests proving the gates stay closed.
+
+Grep checklist, 2026-05-16:
+
+- `rg -n "NEXUS_TREASURY_PROVIDER=spark|spark_final_drain|SparkFinalDrain"
+  apps/nexus-control/src` shows only provider parsing, disabled final-drain
+  checks, operation/read-model projection, and tests.
+- `rg -n "create_invoice|create_bolt11_invoice|get_spark_address|send_spark"
+  apps/nexus-control/src/treasury.rs` shows direct Spark wallet calls only
+  below the explicit final-drain gate.
+- `rg -n "OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED|apply_default_payout_destination"
+  apps/pylon/src/lib.rs` shows Pylon Spark destination writes only below the
+  disabled-by-default legacy write gate.
+- `rg -n "spark_address" apps/nexus-control/src apps/pylon/src` still finds
+  historical readers, compatibility fields, negative tests, and final-drain
+  gates. Those references are expected until LDK-16 signs off the final Spark
+  migration report.
+
 #### LDK-16 — Write final Spark migration and drain report
 
 Target repo: `OpenAgentsInc/openagents`

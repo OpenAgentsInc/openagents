@@ -13109,7 +13109,14 @@ async fn register_provider_payout_target(
                 "unknown".to_string()
             }
         });
-    if requested_payment_target_kind == "spark_address" && !legacy_spark_final_drain_enabled() {
+    if requested_payment_target_kind == "spark_address"
+        && (!state
+            .config
+            .treasury
+            .lightning_provider
+            .spark_final_drain_enabled
+            || !legacy_spark_final_drain_enabled())
+    {
         return Err(ApiError {
             status: StatusCode::SERVICE_UNAVAILABLE,
             error: "service_unavailable",
@@ -35564,6 +35571,59 @@ mod tests {
                 .reconciliation_status,
             "clean"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_payout_target_registration_rejects_spark_by_default() -> Result<()> {
+        let app = build_router(test_config()?);
+        let rejected = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetRegistrationRequest {
+                            nostr_pubkey_hex:
+                                "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+                                    .to_string(),
+                            session_id: "session-a".to_string(),
+                            payment_target_kind: Some("spark_address".to_string()),
+                            payment_target: Some("spark:legacy-provider".to_string()),
+                            payment_target_capabilities: vec!["spark_address".to_string()],
+                            pylon_payment_target_version: Some(
+                                "pylon-payment-target/v0.1".to_string(),
+                            ),
+                            spark_address: "spark:legacy-provider".to_string(),
+                            bitcoin_address: None,
+                            challenge: "unused".to_string(),
+                            challenge_signature_hex: "unused".to_string(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(rejected.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let error: ErrorResponse = response_json(rejected).await?;
+        assert_eq!(error.error, "service_unavailable");
+        assert!(
+            error
+                .reason
+                .contains("legacy Spark payout target registration is disabled")
+        );
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_registered_payout_identities, 0);
+        assert_eq!(stats.receipt_count, 0);
         Ok(())
     }
 

@@ -171,6 +171,32 @@ Current treasury-provider environment:
 - `NEXUS_LDK_NETWORK=regtest|signet|bitcoin`, default `regtest`.
 - `NEXUS_LDK_CHAIN_BACKEND=bitcoind|electrum|esplora`, default `bitcoind`.
 
+## Spark Decommission Gate
+
+Spark is removed from normal new operations. Keep the old Spark code available
+only for historical receipt reads and a disabled-by-default final drain until
+the final migration report is signed off.
+
+Current normal behavior:
+
+- New treasury funding targets route through the LDK provider boundary.
+- New payouts route through the LDK provider boundary.
+- New Pylon registrations must provide an LDK-compatible payment target:
+  `bolt12_offer`, `bolt11_invoice`, `bip353_name`, or `lnurl_pay`.
+- Spark-only provider targets are stale and ineligible for new paid work.
+- Pylon startup does not create a Spark payout destination unless an operator
+  explicitly opts into the legacy recovery gate.
+
+Explicit legacy gates:
+
+- `NEXUS_TREASURY_PROVIDER=spark_final_drain`
+- `NEXUS_SPARK_FINAL_DRAIN_ENABLED=true`
+- `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`
+
+Do not set those variables for normal Nexus or Pylon operations. They exist
+only for an operator-reviewed final drain or historical recovery task. The
+normal provider value is `NEXUS_TREASURY_PROVIDER=ldk`.
+
 ## Treasury Operations and Receipts
 
 Nexus now persists a provider-neutral treasury operation log beside the
