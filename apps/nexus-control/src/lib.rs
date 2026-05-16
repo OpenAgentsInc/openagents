@@ -168,13 +168,14 @@ use crate::treasury::{
     ProviderPayoutTargetRegistrationResponse, TreasuryCanonicalPublicSnapshot, TreasuryConfig,
     TreasuryDispatchBatchResult, TreasuryDispatchOutcome, TreasuryDispatchPlan,
     TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryIntegrationExportResponse,
-    TreasuryIntegrationImportResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
-    TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
-    TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
-    TreasuryTrainingPayoutLedgerEntry, TreasuryTrainingPayoutLedgerSummary,
+    TreasuryIntegrationImportResponse, TreasuryOperationStatus, TreasuryPayoutClass,
+    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode,
+    TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState,
+    TreasuryStatusResponse, TreasuryTrainingPayoutLedgerEntry, TreasuryTrainingPayoutLedgerSummary,
     create_live_funding_target, dispatch_live_payouts, load_live_wallet_refresh_result_with_plan,
     parse_pylon_client_version,
 };
+use crate::treasury_provider::{LdkServerClient, LdkServerClientError, LdkServerClientErrorKind};
 
 pub use crate::treasury::{
     TreasuryCommand, parse_treasury_command, run_treasury_command, treasury_usage,
@@ -1175,6 +1176,25 @@ pub struct HealthResponse {
 struct ErrorResponse {
     error: String,
     reason: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TreasuryAdminOperationRequest {
+    operation: String,
+    #[serde(default)]
+    idempotency_key: Option<String>,
+    #[serde(default)]
+    params: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct TreasuryAdminOperationResponse {
+    operation: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    operation_id: Option<String>,
+    #[serde(default)]
+    idempotent_replay: bool,
+    result: Value,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -9290,6 +9310,14 @@ fn build_api_router_with_state(state: AppState) -> Router {
         .route("/v1/treasury/status", get(treasury_status))
         .route("/api/admin/treasury/refresh", post(refresh_treasury_status))
         .route("/v1/admin/treasury/refresh", post(refresh_treasury_status))
+        .route(
+            "/api/admin/treasury/operations",
+            post(run_treasury_admin_operation),
+        )
+        .route(
+            "/v1/admin/treasury/operations",
+            post(run_treasury_admin_operation),
+        )
         .route(
             "/v1/treasury/integration/export",
             get(treasury_integration_export),
@@ -17754,6 +17782,657 @@ async fn refresh_treasury_status(
     authenticate_admin_bearer_token(&state, &headers)?;
     force_treasury_wallet_refresh(&state, false).await?;
     treasury_status(State(state)).await
+}
+
+async fn run_treasury_admin_operation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<TreasuryAdminOperationRequest>,
+) -> Result<Json<TreasuryAdminOperationResponse>, ApiError> {
+    authenticate_admin_bearer_token(&state, &headers)?;
+    Ok(Json(
+        execute_treasury_admin_operation(&state, request).await?,
+    ))
+}
+
+async fn execute_treasury_admin_operation(
+    state: &AppState,
+    request: TreasuryAdminOperationRequest,
+) -> Result<TreasuryAdminOperationResponse, ApiError> {
+    let command = normalize_treasury_admin_operation(request.operation.as_str())?;
+    let write_command = treasury_admin_operation_requires_idempotency(command);
+    let idempotency_key = request
+        .idempotency_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    if write_command && idempotency_key.is_none() {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "treasury_admin_idempotency_key_required".to_string(),
+        });
+    }
+
+    if let Some(idempotency_key) = idempotency_key.as_deref() {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        if let Some(operation) = store
+            .treasury
+            .get_treasury_admin_operation(command, idempotency_key)
+        {
+            return Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: Some(operation.operation_id.clone()),
+                idempotent_replay: true,
+                result: json!({
+                    "status": "idempotent_replay",
+                    "operation": operation,
+                }),
+            });
+        }
+    }
+
+    let client =
+        LdkServerClient::from_provider_config(&state.config.treasury.lightning_provider.ldk)
+            .map_err(ldk_client_api_error)?;
+    let now = now_unix_ms();
+
+    match command {
+        "treasury.status" => {
+            let node = client.get_node_info().await.map_err(ldk_client_api_error)?;
+            let balances = client.get_balances().await.map_err(ldk_client_api_error)?;
+            let store = state.store.read().map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "session_store_poisoned".to_string(),
+            })?;
+            Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: None,
+                idempotent_replay: false,
+                result: json!({
+                    "provider": state.config.treasury.lightning_provider.provider.as_str(),
+                    "node": node,
+                    "balances": balances,
+                    "treasury": store.treasury.status_response(&state.config.treasury, now),
+                }),
+            })
+        }
+        "treasury.listPayments" => {
+            let payments = client.list_payments().await.map_err(ldk_client_api_error)?;
+            let store = state.store.read().map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "session_store_poisoned".to_string(),
+            })?;
+            let operation_payments = store
+                .treasury
+                .treasury_operations_by_id
+                .values()
+                .filter(|operation| operation.rail == "ldk")
+                .filter(|operation| {
+                    operation.target_kind.contains("invoice")
+                        || operation.target_kind.contains("offer")
+                        || operation.rail_metadata.get("command").is_some_and(|value| {
+                            value == "treasury.payInvoice" || value == "treasury.payOffer"
+                        })
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: None,
+                idempotent_replay: false,
+                result: json!({
+                    "provider_payments": payments,
+                    "operation_payments": operation_payments,
+                }),
+            })
+        }
+        "treasury.getPayment" => {
+            let payment_id =
+                treasury_admin_required_param(&request.params, &["payment_id", "paymentId"])?;
+            let payment = client
+                .get_payment(payment_id.as_str())
+                .await
+                .map_err(ldk_client_api_error)?;
+            Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: None,
+                idempotent_replay: false,
+                result: json!({ "payment": payment }),
+            })
+        }
+        "treasury.listChannels" => {
+            let channels = client.list_channels().await.map_err(ldk_client_api_error)?;
+            let operation_channels = treasury_admin_operation_rows_for_command_prefix(
+                state,
+                &[
+                    "treasury.openChannel",
+                    "treasury.closeChannel",
+                    "treasury.spliceIn",
+                    "treasury.spliceOut",
+                ],
+            )?;
+            Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: None,
+                idempotent_replay: false,
+                result: json!({
+                    "provider_channels": channels,
+                    "operation_channels": operation_channels,
+                }),
+            })
+        }
+        "treasury.listPeers" => {
+            let peers = client.list_peers().await.map_err(ldk_client_api_error)?;
+            let operation_peers =
+                treasury_admin_operation_rows_for_command_prefix(state, &["treasury.connectPeer"])?;
+            Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: None,
+                idempotent_replay: false,
+                result: json!({
+                    "provider_peers": peers,
+                    "operation_peers": operation_peers,
+                }),
+            })
+        }
+        "treasury.decodePaymentTarget" => {
+            let target = treasury_admin_required_param(
+                &request.params,
+                &["target", "payment_target", "paymentTarget"],
+            )?;
+            Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: None,
+                idempotent_replay: false,
+                result: json!({
+                    "target_kind": treasury_admin_payment_target_kind(target.as_str()),
+                    "target_hash": crate::treasury::treasury_hash(target.as_str()),
+                    "rail": treasury_admin_payment_target_rail(target.as_str()),
+                }),
+            })
+        }
+        "treasury.connectPeer" => {
+            let idempotency_key = idempotency_key.expect("write command idempotency checked");
+            let peer_node_id =
+                treasury_admin_required_param(&request.params, &["peer_node_id", "peerNodeId"])?;
+            let address = treasury_admin_optional_param(&request.params, &["address"]);
+            let receipt = client
+                .connect_peer(
+                    peer_node_id.as_str(),
+                    address.as_deref(),
+                    idempotency_key.as_str(),
+                )
+                .await
+                .map_err(ldk_client_api_error)?;
+            let mut metadata = treasury_admin_base_metadata(command, idempotency_key.as_str());
+            if let Some(address) = address.as_deref() {
+                metadata.insert(
+                    "address_hash".to_string(),
+                    crate::treasury::treasury_hash(address),
+                );
+            }
+            let operation = record_treasury_admin_command(
+                state,
+                command,
+                idempotency_key.as_str(),
+                metadata,
+                None,
+                "peer_node_id",
+                Some(crate::treasury::treasury_hash(peer_node_id.as_str())),
+                TreasuryOperationStatus::Completed,
+                None,
+                None,
+                Some("peer_connected".to_string()),
+                now,
+            )?;
+            Ok(treasury_admin_write_response(
+                command,
+                operation.operation_id,
+                receipt,
+            ))
+        }
+        "treasury.openChannel" => {
+            let idempotency_key = idempotency_key.expect("write command idempotency checked");
+            let peer_node_id =
+                treasury_admin_required_param(&request.params, &["peer_node_id", "peerNodeId"])?;
+            let amount_sats =
+                treasury_admin_required_u64_param(&request.params, &["amount_sats", "amountSats"])?;
+            let receipt = client
+                .open_channel(peer_node_id.as_str(), amount_sats, idempotency_key.as_str())
+                .await
+                .map_err(ldk_client_api_error)?;
+            let mut metadata = treasury_admin_base_metadata(command, idempotency_key.as_str());
+            if let Some(channel_id) = receipt.channel_id.as_deref() {
+                metadata.insert(
+                    "channel_id_hash".to_string(),
+                    crate::treasury::treasury_hash(channel_id),
+                );
+            }
+            let operation = record_treasury_admin_command(
+                state,
+                command,
+                idempotency_key.as_str(),
+                metadata,
+                amount_sats.checked_mul(1_000),
+                "channel_peer",
+                Some(crate::treasury::treasury_hash(peer_node_id.as_str())),
+                TreasuryOperationStatus::Pending,
+                None,
+                None,
+                Some("channel_open_requested".to_string()),
+                now,
+            )?;
+            Ok(treasury_admin_write_response(
+                command,
+                operation.operation_id,
+                receipt,
+            ))
+        }
+        "treasury.closeChannel" => {
+            let idempotency_key = idempotency_key.expect("write command idempotency checked");
+            let channel_id =
+                treasury_admin_required_param(&request.params, &["channel_id", "channelId"])?;
+            let force = treasury_admin_bool_param(&request.params, &["force"]).unwrap_or(false);
+            let receipt = client
+                .close_channel(channel_id.as_str(), force, idempotency_key.as_str())
+                .await
+                .map_err(ldk_client_api_error)?;
+            let mut metadata = treasury_admin_base_metadata(command, idempotency_key.as_str());
+            metadata.insert("force".to_string(), force.to_string());
+            let operation = record_treasury_admin_command(
+                state,
+                command,
+                idempotency_key.as_str(),
+                metadata,
+                None,
+                "channel",
+                Some(crate::treasury::treasury_hash(channel_id.as_str())),
+                TreasuryOperationStatus::Pending,
+                None,
+                None,
+                Some("channel_close_requested".to_string()),
+                now,
+            )?;
+            Ok(treasury_admin_write_response(
+                command,
+                operation.operation_id,
+                receipt,
+            ))
+        }
+        "treasury.spliceIn" | "treasury.spliceOut" => {
+            let idempotency_key = idempotency_key.expect("write command idempotency checked");
+            let channel_id =
+                treasury_admin_required_param(&request.params, &["channel_id", "channelId"])?;
+            let amount_sats =
+                treasury_admin_required_u64_param(&request.params, &["amount_sats", "amountSats"])?;
+            let ldk_command = if command == "treasury.spliceIn" {
+                "SpliceIn"
+            } else {
+                "SpliceOut"
+            };
+            let receipt = client
+                .splice_channel(
+                    ldk_command,
+                    channel_id.as_str(),
+                    amount_sats,
+                    idempotency_key.as_str(),
+                )
+                .await
+                .map_err(ldk_client_api_error)?;
+            let operation = record_treasury_admin_command(
+                state,
+                command,
+                idempotency_key.as_str(),
+                treasury_admin_base_metadata(command, idempotency_key.as_str()),
+                amount_sats.checked_mul(1_000),
+                "channel",
+                Some(crate::treasury::treasury_hash(channel_id.as_str())),
+                TreasuryOperationStatus::Pending,
+                None,
+                None,
+                Some("channel_splice_requested".to_string()),
+                now,
+            )?;
+            Ok(treasury_admin_write_response(
+                command,
+                operation.operation_id,
+                receipt,
+            ))
+        }
+        "treasury.payInvoice" | "treasury.payOffer" => {
+            let idempotency_key = idempotency_key.expect("write command idempotency checked");
+            let target_key = if command == "treasury.payInvoice" {
+                ["invoice", "payment_request", "paymentRequest"]
+            } else {
+                ["offer", "payment_request", "paymentRequest"]
+            };
+            let target = treasury_admin_required_param(&request.params, &target_key)?;
+            let amount_sats =
+                treasury_admin_optional_u64_param(&request.params, &["amount_sats", "amountSats"]);
+            let receipt = if command == "treasury.payInvoice" {
+                client
+                    .pay_invoice(target.as_str(), amount_sats, idempotency_key.as_str())
+                    .await
+            } else {
+                client
+                    .pay_offer(target.as_str(), amount_sats, idempotency_key.as_str())
+                    .await
+            }
+            .map_err(ldk_client_api_error)?;
+            let payment_id_hash = receipt
+                .payment_id
+                .as_deref()
+                .map(crate::treasury::treasury_hash);
+            let mut metadata = treasury_admin_base_metadata(command, idempotency_key.as_str());
+            metadata.insert(
+                "payment_target_kind".to_string(),
+                treasury_admin_payment_target_kind(target.as_str()).to_string(),
+            );
+            let operation = record_treasury_admin_command(
+                state,
+                command,
+                idempotency_key.as_str(),
+                metadata,
+                amount_sats.and_then(|amount| amount.checked_mul(1_000)),
+                treasury_admin_payment_target_kind(target.as_str()),
+                Some(crate::treasury::treasury_hash(target.as_str())),
+                TreasuryOperationStatus::Completed,
+                payment_id_hash,
+                None,
+                Some("payment_successful".to_string()),
+                now,
+            )?;
+            Ok(treasury_admin_write_response(
+                command,
+                operation.operation_id,
+                receipt,
+            ))
+        }
+        "treasury.reconcilePayments" => {
+            let idempotency_key = idempotency_key.expect("write command idempotency checked");
+            let payments = client.list_payments().await.map_err(ldk_client_api_error)?;
+            let mut metadata = treasury_admin_base_metadata(command, idempotency_key.as_str());
+            metadata.insert(
+                "provider_payment_count".to_string(),
+                payments.len().to_string(),
+            );
+            let operation = record_treasury_admin_command(
+                state,
+                command,
+                idempotency_key.as_str(),
+                metadata,
+                None,
+                "treasury_state",
+                None,
+                TreasuryOperationStatus::Completed,
+                None,
+                None,
+                Some("payments_reconciled".to_string()),
+                now,
+            )?;
+            Ok(TreasuryAdminOperationResponse {
+                operation: command.to_string(),
+                operation_id: Some(operation.operation_id),
+                idempotent_replay: false,
+                result: json!({
+                    "status": "completed",
+                    "provider_payment_count": payments.len(),
+                    "provider_payments": payments,
+                }),
+            })
+        }
+        _ => unreachable!("operation normalized"),
+    }
+}
+
+fn normalize_treasury_admin_operation(operation: &str) -> Result<&'static str, ApiError> {
+    match operation.trim() {
+        "treasury.status" => Ok("treasury.status"),
+        "treasury.listPayments" => Ok("treasury.listPayments"),
+        "treasury.getPayment" => Ok("treasury.getPayment"),
+        "treasury.listChannels" => Ok("treasury.listChannels"),
+        "treasury.openChannel" => Ok("treasury.openChannel"),
+        "treasury.closeChannel" => Ok("treasury.closeChannel"),
+        "treasury.spliceIn" => Ok("treasury.spliceIn"),
+        "treasury.spliceOut" => Ok("treasury.spliceOut"),
+        "treasury.listPeers" => Ok("treasury.listPeers"),
+        "treasury.connectPeer" => Ok("treasury.connectPeer"),
+        "treasury.payInvoice" => Ok("treasury.payInvoice"),
+        "treasury.payOffer" => Ok("treasury.payOffer"),
+        "treasury.decodePaymentTarget" => Ok("treasury.decodePaymentTarget"),
+        "treasury.reconcilePayments" => Ok("treasury.reconcilePayments"),
+        _ => Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "treasury_admin_operation_unknown".to_string(),
+        }),
+    }
+}
+
+fn treasury_admin_operation_requires_idempotency(operation: &str) -> bool {
+    matches!(
+        operation,
+        "treasury.openChannel"
+            | "treasury.closeChannel"
+            | "treasury.spliceIn"
+            | "treasury.spliceOut"
+            | "treasury.connectPeer"
+            | "treasury.payInvoice"
+            | "treasury.payOffer"
+            | "treasury.reconcilePayments"
+    )
+}
+
+fn treasury_admin_base_metadata(command: &str, idempotency_key: &str) -> BTreeMap<String, String> {
+    let mut metadata = BTreeMap::new();
+    metadata.insert("command".to_string(), command.to_string());
+    metadata.insert("provider".to_string(), "ldk".to_string());
+    metadata.insert(
+        "idempotency_key_hash".to_string(),
+        crate::treasury::treasury_hash(idempotency_key),
+    );
+    metadata
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_treasury_admin_command(
+    state: &AppState,
+    command: &str,
+    idempotency_key: &str,
+    rail_metadata: BTreeMap<String, String>,
+    amount_msat: Option<u64>,
+    target_kind: &str,
+    target_hash: Option<String>,
+    status: TreasuryOperationStatus,
+    provider_payment_id: Option<String>,
+    degraded_reason: Option<String>,
+    terminal_event_state: Option<String>,
+    now_unix_ms: u64,
+) -> Result<crate::treasury::TreasuryOperationRecord, ApiError> {
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let operation = store.treasury.record_treasury_admin_operation(
+        command,
+        idempotency_key,
+        rail_metadata,
+        amount_msat,
+        target_kind,
+        target_hash,
+        status,
+        provider_payment_id,
+        degraded_reason,
+        terminal_event_state,
+        now_unix_ms,
+    );
+    drop(store);
+    let _ = force_refresh_treasury_status_cache(state, now_unix_ms);
+    Ok(operation)
+}
+
+fn treasury_admin_write_response(
+    command: &str,
+    operation_id: String,
+    receipt: crate::treasury_provider::LdkServerAdminReceipt,
+) -> TreasuryAdminOperationResponse {
+    TreasuryAdminOperationResponse {
+        operation: command.to_string(),
+        operation_id: Some(operation_id),
+        idempotent_replay: false,
+        result: json!({
+            "status": receipt.status,
+            "receipt": receipt,
+        }),
+    }
+}
+
+fn treasury_admin_operation_rows_for_command_prefix(
+    state: &AppState,
+    commands: &[&str],
+) -> Result<Vec<crate::treasury::TreasuryOperationRecord>, ApiError> {
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(store
+        .treasury
+        .treasury_operations_by_id
+        .values()
+        .filter(|operation| {
+            operation
+                .rail_metadata
+                .get("command")
+                .is_some_and(|command| commands.iter().any(|expected| command == expected))
+        })
+        .cloned()
+        .collect())
+}
+
+fn treasury_admin_optional_param(params: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        params
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn treasury_admin_required_param(params: &Value, keys: &[&str]) -> Result<String, ApiError> {
+    treasury_admin_optional_param(params, keys).ok_or_else(|| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        error: "invalid_request",
+        reason: format!(
+            "treasury_admin_param_missing:{}",
+            keys.first().copied().unwrap_or("unknown")
+        ),
+    })
+}
+
+fn treasury_admin_optional_u64_param(params: &Value, keys: &[&str]) -> Option<u64> {
+    keys.iter().find_map(|key| {
+        params.get(*key).and_then(|value| {
+            value.as_u64().or_else(|| {
+                value
+                    .as_str()
+                    .and_then(|text| text.trim().parse::<u64>().ok())
+            })
+        })
+    })
+}
+
+fn treasury_admin_required_u64_param(params: &Value, keys: &[&str]) -> Result<u64, ApiError> {
+    treasury_admin_optional_u64_param(params, keys)
+        .filter(|value| *value > 0)
+        .ok_or_else(|| ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: format!(
+                "treasury_admin_u64_param_missing:{}",
+                keys.first().copied().unwrap_or("unknown")
+            ),
+        })
+}
+
+fn treasury_admin_bool_param(params: &Value, keys: &[&str]) -> Option<bool> {
+    keys.iter().find_map(|key| {
+        params.get(*key).and_then(|value| {
+            value.as_bool().or_else(|| {
+                value
+                    .as_str()
+                    .and_then(|text| match text.trim().to_ascii_lowercase().as_str() {
+                        "true" | "1" | "yes" => Some(true),
+                        "false" | "0" | "no" => Some(false),
+                        _ => None,
+                    })
+            })
+        })
+    })
+}
+
+fn treasury_admin_payment_target_kind(target: &str) -> &'static str {
+    let lowered = target.trim().to_ascii_lowercase();
+    if lowered.starts_with("lno") {
+        "bolt12_offer"
+    } else if lowered.starts_with("lnurl") {
+        "lnurl_pay"
+    } else if lowered.starts_with("lnbc")
+        || lowered.starts_with("lntb")
+        || lowered.starts_with("lnbcrt")
+        || lowered.starts_with("lntbs")
+    {
+        "bolt11_invoice"
+    } else if lowered.contains('@') {
+        "bip353_name"
+    } else {
+        "unknown"
+    }
+}
+
+fn treasury_admin_payment_target_rail(target: &str) -> &'static str {
+    match treasury_admin_payment_target_kind(target) {
+        "unknown" => "unknown",
+        _ => "ldk",
+    }
+}
+
+fn ldk_client_api_error(error: LdkServerClientError) -> ApiError {
+    let status = match error.kind {
+        LdkServerClientErrorKind::InvalidConfig => StatusCode::SERVICE_UNAVAILABLE,
+        LdkServerClientErrorKind::InvalidRequest => StatusCode::BAD_REQUEST,
+        LdkServerClientErrorKind::Auth => StatusCode::BAD_GATEWAY,
+        LdkServerClientErrorKind::Unavailable => StatusCode::BAD_GATEWAY,
+        LdkServerClientErrorKind::NoRoute => StatusCode::BAD_GATEWAY,
+        LdkServerClientErrorKind::InsufficientBalance => StatusCode::CONFLICT,
+        LdkServerClientErrorKind::StaleEventStream => StatusCode::CONFLICT,
+        LdkServerClientErrorKind::MalformedResponse => StatusCode::BAD_GATEWAY,
+        LdkServerClientErrorKind::PaymentFailed => StatusCode::BAD_GATEWAY,
+        LdkServerClientErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    ApiError {
+        status,
+        error: if status == StatusCode::BAD_REQUEST {
+            "invalid_request"
+        } else if status == StatusCode::CONFLICT {
+            "conflict"
+        } else {
+            "bad_gateway"
+        },
+        reason: error.normalized_reason(),
+    }
 }
 
 async fn treasury_integration_export(
@@ -28271,10 +28950,11 @@ mod tests {
         RegisteredPayoutTarget, TreasuryCanonicalPublicSnapshot, TreasuryFundingMaterial,
         TreasuryFundingTargetPhaseTimings, TreasuryFundingTargetRequest,
         TreasuryFundingTargetResponse, TreasuryIntegrationExportResponse,
-        TreasuryIntegrationImportResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
-        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryState, TreasuryStatusResponse,
-        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
-        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+        TreasuryIntegrationImportResponse, TreasuryOperationKind, TreasuryPayoutClass,
+        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
+        TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
+        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
+        treasury_test_hook_lock,
     };
 
     use super::{
@@ -28298,8 +28978,9 @@ mod tests {
         StarterDemandHeartbeatRequest, StarterDemandHeartbeatResponse, StarterDemandPollRequest,
         StarterDemandPollResponse, SyncTokenResponse, TrainingArtifactSignedUrlConfig,
         TrainingAssignmentState, TrainingVisualizationResponse, TrainingWindowContributionInput,
-        TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
-        build_api_router_with_state, build_app_state, build_router, build_router_with_state,
+        TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest,
+        TreasuryAdminOperationResponse, TreasuryConfig, build_api_router_with_state,
+        build_app_state, build_router, build_router_with_state,
         homework_launch_effective_payout_amount_sats, now_unix_ms, random_token,
         run_cs336_homework_auto_dispatch_cycle, run_treasury_dispatch_cycle,
         run_treasury_wallet_refresh_cycle, training_kernel_mutation_context,
@@ -35389,6 +36070,158 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let error: ErrorResponse = response_json(response).await?;
         assert_eq!(error.reason, "missing_admin_bearer_token");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_treasury_operations_require_admin_bearer_token() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("treasury-admin".to_string());
+        let app = build_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/treasury/operations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&json!({
+                        "operation": "treasury.status",
+                        "params": {}
+                    }))?))?,
+            )
+            .await?;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let error: ErrorResponse = response_json(response).await?;
+        assert_eq!(error.reason, "missing_admin_bearer_token");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_treasury_write_operations_require_idempotency_keys() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("treasury-admin".to_string());
+        let app = build_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/treasury/operations")
+                    .header("authorization", "Bearer treasury-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&json!({
+                        "operation": "treasury.connectPeer",
+                        "params": {
+                            "peer_node_id": "02peer"
+                        }
+                    }))?))?,
+            )
+            .await?;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let error: ErrorResponse = response_json(response).await?;
+        assert_eq!(error.reason, "treasury_admin_idempotency_key_required");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_treasury_connect_peer_records_idempotent_operation() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("treasury-admin".to_string());
+        let state = build_app_state(config);
+        let app = build_router_with_state(state.clone());
+        let request_body = json!({
+            "operation": "treasury.connectPeer",
+            "idempotency_key": "connect-peer-001",
+            "params": {
+                "peer_node_id": "02abcdef",
+                "address": "127.0.0.1:9735"
+            }
+        });
+
+        let first_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/treasury/operations")
+                    .header("authorization", "Bearer treasury-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body)?))?,
+            )
+            .await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        let first: TreasuryAdminOperationResponse = response_json(first_response).await?;
+        assert_eq!(first.operation, "treasury.connectPeer");
+        assert!(!first.idempotent_replay);
+        let operation_id = first.operation_id.clone().expect("operation id");
+
+        let second_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/treasury/operations")
+                    .header("authorization", "Bearer treasury-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request_body)?))?,
+            )
+            .await?;
+        assert_eq!(second_response.status(), StatusCode::OK);
+        let second: TreasuryAdminOperationResponse = response_json(second_response).await?;
+        assert_eq!(second.operation_id.as_deref(), Some(operation_id.as_str()));
+        assert!(second.idempotent_replay);
+
+        let store = state.store.read().expect("store read");
+        let admin_operations = store
+            .treasury
+            .treasury_operations_by_id
+            .values()
+            .filter(|operation| operation.kind == TreasuryOperationKind::LightningAdminCommand)
+            .collect::<Vec<_>>();
+        assert_eq!(admin_operations.len(), 1);
+        assert_eq!(admin_operations[0].rail, "ldk");
+        assert_eq!(admin_operations[0].target_kind, "peer_node_id");
+        assert!(
+            admin_operations[0]
+                .target_hash
+                .as_deref()
+                .is_some_and(|hash| hash.starts_with("sha256:"))
+        );
+        let serialized = serde_json::to_string(admin_operations[0])?;
+        assert!(!serialized.contains("127.0.0.1:9735"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_treasury_operations_list_ldk_state() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("treasury-admin".to_string());
+        let app = build_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/treasury/operations")
+                    .header("authorization", "Bearer treasury-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&json!({
+                        "operation": "treasury.listChannels",
+                        "params": {}
+                    }))?))?,
+            )
+            .await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: TreasuryAdminOperationResponse = response_json(response).await?;
+        assert_eq!(body.operation, "treasury.listChannels");
+        assert!(body.result.get("provider_channels").is_some());
 
         Ok(())
     }

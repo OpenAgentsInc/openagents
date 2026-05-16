@@ -1625,6 +1625,20 @@ Out of scope:
 
 - Do not build the React Three Fiber visualization here.
 
+Implementation note, 2026-05-16:
+
+- Nexus now exposes `POST /v1/admin/treasury/operations` and
+  `/api/admin/treasury/operations` for the LDK admin command set above.
+- All commands require the Nexus admin bearer token.
+- Write commands require an idempotency key and persist a
+  `lightning_admin_command` treasury operation row.
+- The local LDK harness returns deterministic shaped responses for peer,
+  channel, payment, decode, status, and reconciliation commands while hosted
+  LDK Server gRPC remains the deployment target.
+- Operation rows store hashed payment targets, peer addresses, channel ids,
+  idempotency keys, and provider payment ids; they do not store raw invoices,
+  API keys, seeds, or private channel state.
+
 #### LDK-11 — Add liquidity alerts and degraded states
 
 Target repo: `OpenAgentsInc/openagents`

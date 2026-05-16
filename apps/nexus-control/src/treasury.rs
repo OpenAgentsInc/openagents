@@ -2228,6 +2228,7 @@ pub enum TreasuryOperationKind {
     EventProjection,
     ReconciliationPass,
     FinalDrainOperation,
+    LightningAdminCommand,
 }
 
 impl TreasuryOperationKind {
@@ -2239,6 +2240,7 @@ impl TreasuryOperationKind {
             Self::EventProjection => "event_projection",
             Self::ReconciliationPass => "reconciliation_pass",
             Self::FinalDrainOperation => "final_drain_operation",
+            Self::LightningAdminCommand => "lightning_admin_command",
         }
     }
 }
@@ -2453,6 +2455,17 @@ fn treasury_operation_id(kind: TreasuryOperationKind, request_id: &str) -> Strin
         "treasury-op-{}-{}",
         kind.as_str(),
         treasury_short_hash(request_id)
+    )
+}
+
+pub fn treasury_admin_operation_request_id(command: &str, idempotency_key: &str) -> String {
+    format!("admin:{}:{}", command.trim(), idempotency_key.trim())
+}
+
+pub fn treasury_admin_operation_id(command: &str, idempotency_key: &str) -> String {
+    treasury_operation_id(
+        TreasuryOperationKind::LightningAdminCommand,
+        treasury_admin_operation_request_id(command, idempotency_key).as_str(),
     )
 }
 
@@ -3368,6 +3381,57 @@ impl TreasuryState {
             terminal_event_state: Some("projection_checked".to_string()),
         };
         self.upsert_treasury_operation(operation)
+    }
+
+    pub fn get_treasury_admin_operation(
+        &self,
+        command: &str,
+        idempotency_key: &str,
+    ) -> Option<&TreasuryOperationRecord> {
+        let operation_id = treasury_admin_operation_id(command, idempotency_key);
+        self.treasury_operations_by_id.get(operation_id.as_str())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_treasury_admin_operation(
+        &mut self,
+        command: &str,
+        idempotency_key: &str,
+        rail_metadata: BTreeMap<String, String>,
+        amount_msat: Option<u64>,
+        target_kind: &str,
+        target_hash: Option<String>,
+        status: TreasuryOperationStatus,
+        provider_payment_id: Option<String>,
+        degraded_reason: Option<String>,
+        terminal_event_state: Option<String>,
+        now_unix_ms: u64,
+    ) -> TreasuryOperationRecord {
+        let request_id = treasury_admin_operation_request_id(command, idempotency_key);
+        let operation = TreasuryOperationRecord {
+            operation_id: treasury_operation_id(
+                TreasuryOperationKind::LightningAdminCommand,
+                request_id.as_str(),
+            ),
+            kind: TreasuryOperationKind::LightningAdminCommand,
+            request_id: Some(request_id),
+            rail: "ldk".to_string(),
+            rail_metadata,
+            amount_msat,
+            target_kind: target_kind.to_string(),
+            target_hash,
+            beneficiary: None,
+            status,
+            provider_payment_id,
+            receipt_refs: Vec::new(),
+            degraded_reason,
+            created_at_unix_ms: now_unix_ms,
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state,
+        };
+        let _ = self.upsert_treasury_operation(operation.clone());
+        self.persist();
+        operation
     }
 
     fn record_payment_status_lookup_operation(

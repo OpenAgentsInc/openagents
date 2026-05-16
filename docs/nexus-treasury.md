@@ -27,6 +27,7 @@ HTTP:
 
 - `GET /v1/treasury/status`
 - `POST /v1/admin/treasury/refresh`
+- `POST /v1/admin/treasury/operations`
 - `POST /v1/treasury/funding-target`
 - `GET /v1/treasury/integration/export`
 - `POST /v1/treasury/integration/public-snapshot`
@@ -44,6 +45,49 @@ It requires the normal Nexus admin bearer token, runs one forced wallet refresh
 without creating a wallet implicitly, and returns the same status payload as
 `GET /v1/treasury/status`. Use it when payout confirmation visibility matters
 now and waiting for the background refresh loop is not acceptable.
+
+`POST /v1/admin/treasury/operations` is the LDK admin command surface. It
+requires the normal Nexus admin bearer token for all commands. Read commands
+return shaped, redacted LDK/Nexus state. Write commands require an
+`idempotency_key` and create a durable `lightning_admin_command` operation row
+before returning an operator-readable result. The route accepts:
+
+- `treasury.status`
+- `treasury.listPayments`
+- `treasury.getPayment`
+- `treasury.listChannels`
+- `treasury.openChannel`
+- `treasury.closeChannel`
+- `treasury.spliceIn`
+- `treasury.spliceOut`
+- `treasury.listPeers`
+- `treasury.connectPeer`
+- `treasury.payInvoice`
+- `treasury.payOffer`
+- `treasury.decodePaymentTarget`
+- `treasury.reconcilePayments`
+
+Example:
+
+```bash
+curl -fsS -X POST "https://nexus.openagents.com/v1/admin/treasury/operations" \
+  -H "Authorization: Bearer $NEXUS_ADMIN_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "operation": "treasury.connectPeer",
+    "idempotency_key": "connect-peer-2026-05-16-001",
+    "params": {
+      "peer_node_id": "02...",
+      "address": "host:9735"
+    }
+  }' | jq
+```
+
+The local LDK proof mode returns deterministic safe command receipts for admin
+testing. Hosted LDK Server transport can replace those local fixtures without
+changing the Nexus API contract. Nexus stores hashes of payment targets,
+addresses, idempotency keys, channel ids, and payment ids in operation rows; it
+does not store raw invoices, API keys, seeds, or private channel state there.
 
 To create live operator funding material, call:
 
@@ -110,6 +154,7 @@ Operation rows cover:
 - receipt/event projection
 - reconciliation pass
 - explicit final-drain operation, if an operator later needs one
+- LDK admin commands such as peer, channel, payment, and reconciliation writes
 
 Each operation stores only audit-safe metadata: operation id, kind, request id,
 rail (`ldk`, `spark`, or `receipt_ledger`), provider/class metadata, amount

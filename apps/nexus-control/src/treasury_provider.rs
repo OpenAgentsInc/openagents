@@ -401,6 +401,35 @@ pub struct LdkServerPayment {
     pub status: LdkServerPaymentStatus,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LdkServerPeer {
+    pub node_id: String,
+    pub address_hash: Option<String>,
+    pub connected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LdkServerChannel {
+    pub channel_id: String,
+    pub peer_node_id: String,
+    pub status: String,
+    pub outbound_capacity_sats: u64,
+    pub inbound_capacity_sats: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LdkServerAdminReceipt {
+    pub command: String,
+    pub operation_ref: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peer_node_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LdkServerEventKind {
@@ -451,6 +480,8 @@ pub struct LdkServerClient {
     tls_pin: Option<LdkTlsCertificatePin>,
     api_key: Option<Vec<u8>>,
     local_state: Arc<Mutex<BTreeMap<String, LdkServerPayment>>>,
+    local_peers: Arc<Mutex<BTreeMap<String, LdkServerPeer>>>,
+    local_channels: Arc<Mutex<BTreeMap<String, LdkServerChannel>>>,
 }
 
 impl fmt::Debug for LdkServerClient {
@@ -514,6 +545,8 @@ impl LdkServerClient {
             tls_pin,
             api_key,
             local_state: Arc::new(Mutex::new(BTreeMap::new())),
+            local_peers: Arc::new(Mutex::new(BTreeMap::new())),
+            local_channels: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
 
@@ -635,6 +668,231 @@ impl LdkServerClient {
             })
     }
 
+    pub async fn list_channels(&self) -> LdkServerClientResult<Vec<LdkServerChannel>> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            return Err(self.remote_transport_error("ListChannels"));
+        }
+        Ok(self.local_channels()?.values().cloned().collect())
+    }
+
+    pub async fn list_peers(&self) -> LdkServerClientResult<Vec<LdkServerPeer>> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            return Err(self.remote_transport_error("ListPeers"));
+        }
+        Ok(self.local_peers()?.values().cloned().collect())
+    }
+
+    pub async fn connect_peer(
+        &self,
+        node_id: &str,
+        address: Option<&str>,
+        idempotency_key: &str,
+    ) -> LdkServerClientResult<LdkServerAdminReceipt> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            return Err(self.remote_transport_error("ConnectPeer"));
+        }
+        let node_id = normalize_required_ldk_field(node_id, "peer_node_id_missing")?;
+        let operation_ref = local_admin_operation_ref("connect_peer", idempotency_key);
+        self.local_peers()?.insert(
+            node_id.clone(),
+            LdkServerPeer {
+                node_id: node_id.clone(),
+                address_hash: address
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(short_hash),
+                connected: true,
+            },
+        );
+        Ok(LdkServerAdminReceipt {
+            command: "treasury.connectPeer".to_string(),
+            operation_ref,
+            status: "completed".to_string(),
+            payment_id: None,
+            channel_id: None,
+            peer_node_id: Some(node_id),
+        })
+    }
+
+    pub async fn open_channel(
+        &self,
+        peer_node_id: &str,
+        amount_sats: u64,
+        idempotency_key: &str,
+    ) -> LdkServerClientResult<LdkServerAdminReceipt> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            return Err(self.remote_transport_error("OpenChannel"));
+        }
+        let peer_node_id = normalize_required_ldk_field(peer_node_id, "peer_node_id_missing")?;
+        if amount_sats == 0 {
+            return Err(LdkServerClientError::new(
+                LdkServerClientErrorKind::InvalidRequest,
+                "open_channel_amount_sats_must_be_greater_than_zero",
+            ));
+        }
+        let digest = short_hash(&format!("{peer_node_id}:{amount_sats}:{idempotency_key}"));
+        let channel_id = format!("ldk-local-channel-{digest}");
+        self.local_channels()?.insert(
+            channel_id.clone(),
+            LdkServerChannel {
+                channel_id: channel_id.clone(),
+                peer_node_id: peer_node_id.clone(),
+                status: "pending_open".to_string(),
+                outbound_capacity_sats: amount_sats,
+                inbound_capacity_sats: 0,
+            },
+        );
+        Ok(LdkServerAdminReceipt {
+            command: "treasury.openChannel".to_string(),
+            operation_ref: local_admin_operation_ref("open_channel", idempotency_key),
+            status: "pending".to_string(),
+            payment_id: None,
+            channel_id: Some(channel_id),
+            peer_node_id: Some(peer_node_id),
+        })
+    }
+
+    pub async fn close_channel(
+        &self,
+        channel_id: &str,
+        force: bool,
+        idempotency_key: &str,
+    ) -> LdkServerClientResult<LdkServerAdminReceipt> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            return Err(self.remote_transport_error("CloseChannel"));
+        }
+        let channel_id = normalize_required_ldk_field(channel_id, "channel_id_missing")?;
+        let mut channels = self.local_channels()?;
+        let channel = channels
+            .entry(channel_id.clone())
+            .or_insert_with(|| LdkServerChannel {
+                channel_id: channel_id.clone(),
+                peer_node_id: "unknown-peer".to_string(),
+                status: "unknown".to_string(),
+                outbound_capacity_sats: 0,
+                inbound_capacity_sats: 0,
+            });
+        channel.status = if force { "force_closing" } else { "closing" }.to_string();
+        Ok(LdkServerAdminReceipt {
+            command: "treasury.closeChannel".to_string(),
+            operation_ref: local_admin_operation_ref("close_channel", idempotency_key),
+            status: "pending".to_string(),
+            payment_id: None,
+            channel_id: Some(channel_id),
+            peer_node_id: None,
+        })
+    }
+
+    pub async fn splice_channel(
+        &self,
+        command: &str,
+        channel_id: &str,
+        amount_sats: u64,
+        idempotency_key: &str,
+    ) -> LdkServerClientResult<LdkServerAdminReceipt> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            return Err(self.remote_transport_error(command));
+        }
+        let channel_id = normalize_required_ldk_field(channel_id, "channel_id_missing")?;
+        if amount_sats == 0 {
+            return Err(LdkServerClientError::new(
+                LdkServerClientErrorKind::InvalidRequest,
+                "splice_amount_sats_must_be_greater_than_zero",
+            ));
+        }
+        let mut channels = self.local_channels()?;
+        let channel = channels
+            .entry(channel_id.clone())
+            .or_insert_with(|| LdkServerChannel {
+                channel_id: channel_id.clone(),
+                peer_node_id: "unknown-peer".to_string(),
+                status: "open".to_string(),
+                outbound_capacity_sats: 0,
+                inbound_capacity_sats: 0,
+            });
+        if command == "SpliceIn" {
+            channel.outbound_capacity_sats =
+                channel.outbound_capacity_sats.saturating_add(amount_sats);
+        } else {
+            channel.outbound_capacity_sats =
+                channel.outbound_capacity_sats.saturating_sub(amount_sats);
+        }
+        Ok(LdkServerAdminReceipt {
+            command: if command == "SpliceIn" {
+                "treasury.spliceIn"
+            } else {
+                "treasury.spliceOut"
+            }
+            .to_string(),
+            operation_ref: local_admin_operation_ref(command, idempotency_key),
+            status: "pending".to_string(),
+            payment_id: None,
+            channel_id: Some(channel_id),
+            peer_node_id: None,
+        })
+    }
+
+    pub async fn pay_invoice(
+        &self,
+        invoice: &str,
+        amount_sats: Option<u64>,
+        idempotency_key: &str,
+    ) -> LdkServerClientResult<LdkServerAdminReceipt> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            return Err(self.remote_transport_error("PayInvoice"));
+        }
+        let invoice = normalize_required_ldk_field(invoice, "invoice_missing")?;
+        let lowered = invoice.to_ascii_lowercase();
+        if lowered.contains("noroute") {
+            return Err(LdkServerClientError::new(
+                LdkServerClientErrorKind::NoRoute,
+                "local_harness_no_route_fixture",
+            ));
+        }
+        if lowered.contains("insufficient") {
+            return Err(LdkServerClientError::new(
+                LdkServerClientErrorKind::InsufficientBalance,
+                "local_harness_insufficient_balance_fixture",
+            ));
+        }
+        let digest = short_hash(&format!("{invoice}:{amount_sats:?}:{idempotency_key}"));
+        let payment_id = format!("ldk-local-payment-{digest}");
+        let payment_hash = format!("ldk-local-payhash-{digest}");
+        self.local_payments()?.insert(
+            payment_id.clone(),
+            LdkServerPayment {
+                payment_id: payment_id.clone(),
+                payment_hash,
+                amount_msat: amount_sats.map(|amount| amount.saturating_mul(1_000)),
+                status: LdkServerPaymentStatus::Succeeded,
+            },
+        );
+        Ok(LdkServerAdminReceipt {
+            command: "treasury.payInvoice".to_string(),
+            operation_ref: local_admin_operation_ref("pay_invoice", idempotency_key),
+            status: "completed".to_string(),
+            payment_id: Some(payment_id),
+            channel_id: None,
+            peer_node_id: None,
+        })
+    }
+
+    pub async fn pay_offer(
+        &self,
+        offer: &str,
+        amount_sats: Option<u64>,
+        idempotency_key: &str,
+    ) -> LdkServerClientResult<LdkServerAdminReceipt> {
+        let receipt = self
+            .pay_invoice(offer, amount_sats, idempotency_key)
+            .await?;
+        Ok(LdkServerAdminReceipt {
+            command: "treasury.payOffer".to_string(),
+            operation_ref: local_admin_operation_ref("pay_offer", idempotency_key),
+            ..receipt
+        })
+    }
+
     pub async fn subscribe_events(
         &self,
         after_sequence: u64,
@@ -694,6 +952,28 @@ impl LdkServerClient {
         })
     }
 
+    fn local_peers(
+        &self,
+    ) -> LdkServerClientResult<std::sync::MutexGuard<'_, BTreeMap<String, LdkServerPeer>>> {
+        self.local_peers.lock().map_err(|_| {
+            LdkServerClientError::new(
+                LdkServerClientErrorKind::Internal,
+                "local_harness_peer_lock_poisoned",
+            )
+        })
+    }
+
+    fn local_channels(
+        &self,
+    ) -> LdkServerClientResult<std::sync::MutexGuard<'_, BTreeMap<String, LdkServerChannel>>> {
+        self.local_channels.lock().map_err(|_| {
+            LdkServerClientError::new(
+                LdkServerClientErrorKind::Internal,
+                "local_harness_channel_lock_poisoned",
+            )
+        })
+    }
+
     fn ensure_local_or_remote_ready(&self, endpoint: &str) -> LdkServerClientResult<()> {
         if self.mode == LdkServerClientMode::RemoteGrpc {
             return Err(self.remote_transport_error(endpoint));
@@ -711,6 +991,24 @@ impl LdkServerClient {
             ),
         )
     }
+}
+
+fn normalize_required_ldk_field(value: &str, reason: &str) -> LdkServerClientResult<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(LdkServerClientError::new(
+            LdkServerClientErrorKind::InvalidRequest,
+            reason,
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn local_admin_operation_ref(command: &str, idempotency_key: &str) -> String {
+    format!(
+        "ldk-local-admin-{}",
+        short_hash(&format!("{command}:{idempotency_key}"))
+    )
 }
 
 pub fn project_ldk_event_to_operation(event: &LdkServerEvent) -> LdkServerProjectedOperation {
