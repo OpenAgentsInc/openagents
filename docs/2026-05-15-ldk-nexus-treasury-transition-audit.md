@@ -1086,6 +1086,23 @@ Out of scope:
 - Do not move mainnet funds.
 - Do not deploy LDK Server.
 
+Implementation status, 2026-05-16:
+
+- `apps/nexus-control/src/treasury_provider.rs` now defines the
+  `TreasuryLightningProvider` boundary, provider config types, normalized
+  provider errors, and a deterministic `LdkTreasuryProvider` local scaffold.
+- `TreasuryConfig` now parses the LDK provider shape:
+  `NEXUS_TREASURY_PROVIDER`, `NEXUS_SPARK_FINAL_DRAIN_ENABLED`,
+  `NEXUS_LDK_SERVER_URL`, `NEXUS_LDK_API_KEY_PATH`,
+  `NEXUS_LDK_TLS_CERT_PATH`, `NEXUS_LDK_STORAGE_DIR`,
+  `NEXUS_LDK_NETWORK`, and `NEXUS_LDK_CHAIN_BACKEND`.
+- The default provider is LDK. The legacy Spark funding and payout paths can
+  run only when the provider is explicitly `spark_final_drain` and the final
+  drain flag is enabled.
+- The LDK scaffold returns stable local funding targets and payout ids keyed
+  by idempotency values, so later `ldk-server` or direct `ldk-node` calls can
+  replace the scaffold behind the same Nexus boundary.
+
 #### LDK-03 — Add treasury operation and receipt store updates
 
 Target repo: `OpenAgentsInc/openagents`

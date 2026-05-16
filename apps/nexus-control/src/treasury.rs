@@ -24,6 +24,11 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::economy::AuthorityReceiptContext;
+use crate::treasury_provider::{
+    LdkChainBackend, LdkNetwork, LdkTreasuryProvider, LdkTreasuryProviderConfig,
+    TreasuryLightningProvider, TreasuryLightningProviderConfig, TreasuryLightningProviderKind,
+    TreasuryProviderFundingRequest, TreasuryProviderFundingTarget, TreasuryProviderPayoutRequest,
+};
 
 // TODO(ldk-v0.2): Spark treasury writes are legacy-only. Keep this module's
 // Spark paths for historical receipt reads and explicit final-drain/recovery
@@ -80,7 +85,16 @@ const ENV_TREASURY_POLICY_CHANGE_REASON: &str = "NEXUS_CONTROL_TREASURY_POLICY_C
 const ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS";
 const ENV_TREASURY_INTEGRATION_TOKEN: &str = "NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN";
-const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED: &str = "NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED";
+const ENV_TREASURY_PROVIDER: &str = "NEXUS_TREASURY_PROVIDER";
+const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED: &str = "NEXUS_SPARK_FINAL_DRAIN_ENABLED";
+const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY: &str =
+    "NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED";
+const ENV_TREASURY_LDK_SERVER_URL: &str = "NEXUS_LDK_SERVER_URL";
+const ENV_TREASURY_LDK_API_KEY_PATH: &str = "NEXUS_LDK_API_KEY_PATH";
+const ENV_TREASURY_LDK_TLS_CERT_PATH: &str = "NEXUS_LDK_TLS_CERT_PATH";
+const ENV_TREASURY_LDK_STORAGE_DIR: &str = "NEXUS_LDK_STORAGE_DIR";
+const ENV_TREASURY_LDK_NETWORK: &str = "NEXUS_LDK_NETWORK";
+const ENV_TREASURY_LDK_CHAIN_BACKEND: &str = "NEXUS_LDK_CHAIN_BACKEND";
 
 const DEFAULT_TREASURY_STATE_PATH: &str = "var/nexus-control/treasury-state.json";
 const DEFAULT_TREASURY_ENABLED: bool = false;
@@ -101,6 +115,7 @@ const DEFAULT_TREASURY_FUNDING_TARGET_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 120_000;
 const DEFAULT_TREASURY_WALLET_RECOVERY_PARALLEL_INSPECTIONS: bool = false;
 const DEFAULT_TREASURY_WALLET_RECOVERY_SCAN_PAYMENTS: bool = false;
+const DEFAULT_TREASURY_LDK_STORAGE_DIR: &str = "var/nexus-control/ldk";
 const DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED: bool = false;
 const DEFAULT_TREASURY_SIMULATED_WALLET_BALANCE_SATS: u64 = 1_000_000;
 const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
@@ -253,6 +268,7 @@ pub struct TreasuryConfig {
     pub apply_env_policy: bool,
     pub allow_destructive_env_policy_change: bool,
     pub policy_change_reason: Option<String>,
+    pub lightning_provider: TreasuryLightningProviderConfig,
     pub state_path: PathBuf,
     pub wallet_mnemonic_path: PathBuf,
     pub wallet_storage_dir: PathBuf,
@@ -399,6 +415,30 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS,
         )?
         .max(1);
+        let spark_final_drain_enabled = parse_bool_env_alias(
+            ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED,
+            ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY,
+            false,
+        )?;
+        let lightning_provider = TreasuryLightningProviderConfig::new(
+            TreasuryLightningProviderKind::parse(
+                read_env_nonempty(ENV_TREASURY_PROVIDER).as_deref(),
+            )?,
+            spark_final_drain_enabled,
+            LdkTreasuryProviderConfig {
+                server_url: read_env_nonempty(ENV_TREASURY_LDK_SERVER_URL),
+                api_key_path: read_env_nonempty(ENV_TREASURY_LDK_API_KEY_PATH).map(PathBuf::from),
+                tls_cert_path: read_env_nonempty(ENV_TREASURY_LDK_TLS_CERT_PATH).map(PathBuf::from),
+                storage_dir: read_path_env(
+                    ENV_TREASURY_LDK_STORAGE_DIR,
+                    DEFAULT_TREASURY_LDK_STORAGE_DIR,
+                ),
+                network: LdkNetwork::parse(read_env_nonempty(ENV_TREASURY_LDK_NETWORK).as_deref())?,
+                chain_backend: LdkChainBackend::parse(
+                    read_env_nonempty(ENV_TREASURY_LDK_CHAIN_BACKEND).as_deref(),
+                )?,
+            },
+        )?;
 
         Ok(Self {
             enabled,
@@ -420,6 +460,7 @@ impl TreasuryConfig {
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
+            lightning_provider,
             state_path: read_path_env(ENV_TREASURY_STATE_PATH, DEFAULT_TREASURY_STATE_PATH),
             wallet_mnemonic_path: read_path_env(
                 ENV_TREASURY_WALLET_MNEMONIC_PATH,
@@ -6163,6 +6204,123 @@ fn dispatch_with_simulated_wallet(
     }
 }
 
+fn funding_idempotency_key(request: &TreasuryFundingTargetRequest) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"nexus:ldk-funding-target:v1");
+    hasher.update(request.amount_sats.unwrap_or_default().to_be_bytes());
+    hasher.update(
+        request
+            .description
+            .as_deref()
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    hasher.update(request.expiry_seconds.unwrap_or_default().to_be_bytes());
+    format!("funding:{}", hex::encode(&hasher.finalize()[..16]))
+}
+
+fn ldk_wallet_snapshot(
+    config: &TreasuryConfig,
+    balance_sats: u64,
+    payments: Vec<PaymentSummary>,
+) -> TreasuryWalletSnapshot {
+    TreasuryWalletSnapshot {
+        runtime_status: "connected".to_string(),
+        runtime_detail: Some(format!(
+            "ldk_provider:{}:{}",
+            config.lightning_provider.ldk.network.as_str(),
+            config.lightning_provider.ldk.chain_backend.as_str()
+        )),
+        wallet_hydration_mode: Some("ldk_provider_scaffold".to_string()),
+        wallet_payment_scan_mode: Some("ldk_provider_boundary".to_string()),
+        balance_sats,
+        payments,
+    }
+}
+
+fn funding_material_from_provider_target(
+    config: &TreasuryConfig,
+    target: TreasuryProviderFundingTarget,
+) -> TreasuryFundingMaterial {
+    TreasuryFundingMaterial {
+        spark_address: target.provider_target,
+        bitcoin_address: target.bitcoin_address,
+        spark_invoice: target.provider_invoice,
+        bolt11_invoice: target.bolt11_invoice,
+        wallet_snapshot: ldk_wallet_snapshot(config, target.balance_sats, Vec::new()),
+    }
+}
+
+async fn create_ldk_provider_funding_target(
+    config: &TreasuryConfig,
+    request: TreasuryFundingTargetRequest,
+) -> Result<TreasuryFundingMaterial> {
+    let provider = LdkTreasuryProvider::new(config.lightning_provider.ldk.clone());
+    let idempotency_key = funding_idempotency_key(&request);
+    let target = provider
+        .create_funding_target(TreasuryProviderFundingRequest {
+            amount_sats: request.amount_sats,
+            description: request.description,
+            expiry_seconds: request.expiry_seconds,
+            idempotency_key,
+        })
+        .await
+        .map_err(|error| anyhow!(error.normalized_reason()))?;
+    Ok(funding_material_from_provider_target(config, target))
+}
+
+async fn dispatch_with_ldk_provider(
+    config: &TreasuryConfig,
+    plans: &[TreasuryDispatchPlan],
+) -> TreasuryDispatchBatchResult {
+    let provider = LdkTreasuryProvider::new(config.lightning_provider.ldk.clone());
+    let mut outcomes = Vec::with_capacity(plans.len());
+    let mut payments = Vec::new();
+    for plan in plans {
+        match provider
+            .dispatch_payout(TreasuryProviderPayoutRequest {
+                payout_key: plan.payout_key.clone(),
+                payment_request: plan.payment_request.clone(),
+                amount_sats: plan.amount_sats,
+                idempotency_key: plan.payout_key.clone(),
+            })
+            .await
+        {
+            Ok(receipt) => {
+                payments.push(PaymentSummary {
+                    id: receipt.payment_id.clone(),
+                    direction: "send".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: plan.amount_sats,
+                    fees_sats: 0,
+                    timestamp: 0,
+                    method: "ldk".to_string(),
+                    description: None,
+                    invoice: Some(plan.payment_request.clone()),
+                    destination_pubkey: None,
+                    payment_hash: None,
+                    htlc_status: None,
+                    htlc_expiry_epoch_seconds: None,
+                    status_detail: None,
+                });
+                outcomes.push(TreasuryDispatchOutcome::Dispatched {
+                    payout_key: plan.payout_key.clone(),
+                    payment_id: receipt.payment_id,
+                });
+            }
+            Err(error) => outcomes.push(TreasuryDispatchOutcome::Failed {
+                payout_key: plan.payout_key.clone(),
+                reason: error.normalized_reason(),
+            }),
+        }
+    }
+    TreasuryDispatchBatchResult {
+        outcomes,
+        wallet_snapshot: Some(ldk_wallet_snapshot(config, 0, payments)),
+        wallet_error: None,
+    }
+}
+
 pub async fn create_live_funding_target(
     config: &TreasuryConfig,
     request: TreasuryFundingTargetRequest,
@@ -6170,7 +6328,10 @@ pub async fn create_live_funding_target(
     if config.simulated_wallet_enabled {
         return Ok(simulated_funding_target(config, request));
     }
-    if !legacy_spark_final_drain_enabled() {
+    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
+        return create_ldk_provider_funding_target(config, request).await;
+    }
+    if !config.lightning_provider.spark_final_drain_enabled || !legacy_spark_final_drain_enabled() {
         bail!(
             "legacy Spark funding target creation is disabled; use the LDK treasury provider path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
         );
@@ -6269,6 +6430,12 @@ pub async fn load_live_wallet_refresh_result_with_plan(
             progress: TreasuryWalletRefreshProgress::default(),
         });
     }
+    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
+        return Ok(TreasuryWalletRefreshResult {
+            snapshot: ldk_wallet_snapshot(config, 0, Vec::new()),
+            progress: TreasuryWalletRefreshProgress::default(),
+        });
+    }
 
     #[cfg(test)]
     if let Some(hook) = test_wallet_snapshot_hook()
@@ -6313,6 +6480,25 @@ pub async fn dispatch_live_payouts(
 
     if config.simulated_wallet_enabled {
         return dispatch_with_simulated_wallet(config, plans);
+    }
+    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
+        return dispatch_with_ldk_provider(config, plans).await;
+    }
+    if !config.lightning_provider.spark_final_drain_enabled || !legacy_spark_final_drain_enabled() {
+        let reason = format!(
+            "legacy Spark payout dispatch is disabled; use the LDK treasury provider path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
+        );
+        return TreasuryDispatchBatchResult {
+            outcomes: plans
+                .iter()
+                .map(|plan| TreasuryDispatchOutcome::Failed {
+                    payout_key: plan.payout_key.clone(),
+                    reason: reason.clone(),
+                })
+                .collect(),
+            wallet_snapshot: None,
+            wallet_error: Some(reason),
+        };
     }
 
     #[cfg(test)]
@@ -8865,11 +9051,19 @@ fn parse_bool_env(name: &str, default: bool) -> Result<bool, String> {
     }
 }
 
+fn parse_bool_env_alias(primary: &str, fallback: &str, default: bool) -> Result<bool, String> {
+    if std::env::var(primary).is_ok() {
+        return parse_bool_env(primary, default);
+    }
+    parse_bool_env(fallback, default)
+}
+
 fn legacy_spark_final_drain_enabled() -> bool {
     cfg!(test)
         || legacy_spark_final_drain_enabled_from_value(
             std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED)
                 .ok()
+                .or_else(|| std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY).ok())
                 .as_deref(),
         )
 }
@@ -9144,7 +9338,8 @@ mod tests {
         TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
         TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
-        TreasuryFundingTargetRequest, TreasuryPayoutClass, TreasuryPayoutClassification,
+        TreasuryFundingTargetRequest, TreasuryLightningProviderConfig,
+        TreasuryLightningProviderKind, TreasuryPayoutClass, TreasuryPayoutClassification,
         TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
         TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
@@ -9158,6 +9353,7 @@ mod tests {
         verify_payout_target_registration_signature, wallet_refresh_page_offsets,
         wallet_refresh_payment_page_budget, write_json_file,
     };
+    use crate::treasury_provider::{LdkChainBackend, LdkNetwork, LdkTreasuryProviderConfig};
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
     use std::collections::BTreeSet;
@@ -9183,6 +9379,19 @@ mod tests {
             apply_env_policy: false,
             allow_destructive_env_policy_change: false,
             policy_change_reason: None,
+            lightning_provider: TreasuryLightningProviderConfig::new(
+                TreasuryLightningProviderKind::Ldk,
+                false,
+                LdkTreasuryProviderConfig {
+                    server_url: None,
+                    api_key_path: None,
+                    tls_cert_path: None,
+                    storage_dir: PathBuf::from("/tmp/test-nexus-treasury-ldk"),
+                    network: LdkNetwork::Regtest,
+                    chain_backend: LdkChainBackend::Bitcoind,
+                },
+            )
+            .expect("ldk provider config"),
             state_path: PathBuf::from("/tmp/test-nexus-treasury-state.json"),
             wallet_mnemonic_path: PathBuf::from("/tmp/test-nexus-treasury.mnemonic"),
             wallet_storage_dir: PathBuf::from("/tmp/test-nexus-treasury-wallet"),
@@ -9220,6 +9429,97 @@ mod tests {
         assert!(super::legacy_spark_final_drain_enabled_from_value(Some(
             "1"
         )));
+    }
+
+    #[test]
+    fn treasury_config_defaults_to_ldk_provider() {
+        let config = test_treasury_config();
+        assert_eq!(
+            config.lightning_provider.provider,
+            TreasuryLightningProviderKind::Ldk
+        );
+        assert!(!config.lightning_provider.spark_final_drain_enabled);
+        assert_eq!(config.lightning_provider.ldk.network, LdkNetwork::Regtest);
+    }
+
+    #[tokio::test]
+    async fn default_ldk_provider_creates_local_funding_target_without_spark() {
+        let funding = create_live_funding_target(
+            &test_treasury_config(),
+            TreasuryFundingTargetRequest {
+                amount_sats: Some(210),
+                description: Some("fund treasury".to_string()),
+                expiry_seconds: Some(60),
+            },
+        )
+        .await
+        .expect("ldk funding target should build");
+        assert!(funding.spark_address.starts_with("ldk://nexus/regtest/"));
+        assert_eq!(funding.spark_invoice, None);
+        assert!(
+            funding
+                .bolt11_invoice
+                .as_deref()
+                .is_some_and(|invoice| { invoice.starts_with("lnbcrt210") })
+        );
+        assert_eq!(
+            funding.wallet_snapshot.wallet_hydration_mode.as_deref(),
+            Some("ldk_provider_scaffold")
+        );
+    }
+
+    #[tokio::test]
+    async fn spark_final_drain_provider_is_disabled_without_explicit_flag() {
+        let mut config = test_treasury_config();
+        config.lightning_provider.provider = TreasuryLightningProviderKind::SparkFinalDrain;
+        config.lightning_provider.spark_final_drain_enabled = false;
+
+        let error = create_live_funding_target(
+            &config,
+            TreasuryFundingTargetRequest {
+                amount_sats: Some(210),
+                description: Some("fund treasury".to_string()),
+                expiry_seconds: Some(60),
+            },
+        )
+        .await
+        .expect_err("spark drain disabled");
+        assert!(error.to_string().contains("legacy Spark funding target"));
+
+        let batch = dispatch_live_payouts(
+            &config,
+            &[super::TreasuryDispatchPlan {
+                payout_key: "window-a:pubkey-a".to_string(),
+                payment_request: "spark:alice".to_string(),
+                amount_sats: 120,
+                classification: TreasuryPayoutClassification::default(),
+            }],
+        )
+        .await;
+        assert!(matches!(
+            batch.outcomes.first(),
+            Some(TreasuryDispatchOutcome::Failed { reason, .. })
+                if reason.contains("legacy Spark payout dispatch")
+        ));
+    }
+
+    #[tokio::test]
+    async fn default_ldk_provider_dispatches_with_stable_idempotency_key() {
+        let config = test_treasury_config();
+        let plans = [super::TreasuryDispatchPlan {
+            payout_key: "window-a:pubkey-a".to_string(),
+            payment_request: "lnbcrt120receiver".to_string(),
+            amount_sats: 120,
+            classification: TreasuryPayoutClassification::default(),
+        }];
+        let first = dispatch_live_payouts(&config, &plans).await;
+        let second = dispatch_live_payouts(&config, &plans).await;
+        assert_eq!(first.outcomes, second.outcomes);
+        assert!(matches!(
+            first.outcomes.first(),
+            Some(TreasuryDispatchOutcome::Dispatched { payment_id, .. })
+                if payment_id.starts_with("ldk-local-payment-")
+        ));
     }
 
     fn test_online_identity(nostr_pubkey_hex: &str) -> OnlinePylonIdentity {
@@ -14098,6 +14398,9 @@ mod tests {
     #[tokio::test]
     async fn funding_and_dispatch_hooks_cover_happy_path() {
         let _lock = treasury_test_hook_lock().lock().expect("guard");
+        let mut config = test_treasury_config();
+        config.lightning_provider.provider = TreasuryLightningProviderKind::SparkFinalDrain;
+        config.lightning_provider.spark_final_drain_enabled = true;
 
         set_test_wallet_funding_hook(Some(Arc::new(|request| {
             Box::pin(async move {
@@ -14119,7 +14422,7 @@ mod tests {
             })
         })));
         let funding = create_live_funding_target(
-            &test_treasury_config(),
+            &config,
             TreasuryFundingTargetRequest {
                 amount_sats: Some(210),
                 description: Some("fund treasury".to_string()),
@@ -14164,7 +14467,7 @@ mod tests {
         })));
 
         let batch = dispatch_live_payouts(
-            &test_treasury_config(),
+            &config,
             &[super::TreasuryDispatchPlan {
                 payout_key: "window-a:pubkey-a".to_string(),
                 payment_request: "spark:alice".to_string(),

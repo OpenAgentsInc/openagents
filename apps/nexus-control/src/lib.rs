@@ -17,6 +17,7 @@ mod health_verification;
 mod kernel;
 mod training_trn_mapping;
 mod treasury;
+mod treasury_provider;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::convert::Infallible;
@@ -208,7 +209,9 @@ const ENV_TRAINING_TRN_IDENTITY_PATH: &str = "NEXUS_CONTROL_TRAINING_TRN_IDENTIT
 const ENV_TRAINING_TRN_RELAY_URLS: &str = "NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS";
 const ENV_RECEIPT_LOG_PATH: &str = "NEXUS_CONTROL_RECEIPT_LOG_PATH";
 const ENV_KERNEL_STATE_PATH: &str = "NEXUS_CONTROL_KERNEL_STATE_PATH";
-const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED: &str = "NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED";
+const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED: &str = "NEXUS_SPARK_FINAL_DRAIN_ENABLED";
+const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY: &str =
+    "NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED";
 const ENV_COMPUTE_ENABLE_FORWARD_PHYSICAL: &str = "NEXUS_CONTROL_COMPUTE_ENABLE_FORWARD_PHYSICAL";
 const ENV_COMPUTE_ENABLE_FUTURE_CASH: &str = "NEXUS_CONTROL_COMPUTE_ENABLE_FUTURE_CASH";
 const ENV_COMPUTE_ENABLE_STRUCTURED_PRODUCTS: &str =
@@ -27866,6 +27869,7 @@ fn legacy_spark_final_drain_enabled() -> bool {
         || legacy_spark_final_drain_enabled_from_value(
             std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED)
                 .ok()
+                .or_else(|| std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY).ok())
                 .as_deref(),
         )
 }
@@ -28289,6 +28293,19 @@ mod tests {
                 apply_env_policy: false,
                 allow_destructive_env_policy_change: false,
                 policy_change_reason: None,
+                lightning_provider: crate::treasury_provider::TreasuryLightningProviderConfig::new(
+                    crate::treasury_provider::TreasuryLightningProviderKind::Ldk,
+                    false,
+                    crate::treasury_provider::LdkTreasuryProviderConfig {
+                        server_url: None,
+                        api_key_path: None,
+                        tls_cert_path: None,
+                        storage_dir: PathBuf::from(format!("/tmp/test-nexus-control-ldk-{unique}")),
+                        network: crate::treasury_provider::LdkNetwork::Regtest,
+                        chain_backend: crate::treasury_provider::LdkChainBackend::Bitcoind,
+                    },
+                )
+                .expect("ldk provider config"),
                 state_path: PathBuf::from(format!(
                     "/tmp/test-nexus-control-treasury-state-{unique}.json"
                 )),

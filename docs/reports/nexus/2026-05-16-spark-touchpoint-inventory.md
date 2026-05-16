@@ -60,9 +60,13 @@ The normal code path is now default-off for new Spark write material:
 - Pylon no longer auto-creates a Spark payout destination unless
   `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`.
 - Nexus no longer accepts Spark payout-target registration unless
-  `NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED=true`.
+  `NEXUS_SPARK_FINAL_DRAIN_ENABLED=true` is set. The older
+  `NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED=true` alias is still accepted only
+  for migration compatibility.
 - Nexus no longer creates live Spark-backed funding targets unless
-  `NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED=true`.
+  `NEXUS_TREASURY_PROVIDER=spark_final_drain` and
+  `NEXUS_SPARK_FINAL_DRAIN_ENABLED=true` are set. The normal provider is
+  `NEXUS_TREASURY_PROVIDER=ldk`.
 - Simulated/local proof treasury remains available for tests and proof
   fixtures.
 

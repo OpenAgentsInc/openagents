@@ -6,9 +6,10 @@ Lightning provider. See
 [`2026-05-15-ldk-nexus-treasury-transition-audit.md`](2026-05-15-ldk-nexus-treasury-transition-audit.md)
 for the separate LDK audit, target architecture, and immediate roadmap.
 
-`nexus-control` now owns a hosted Spark treasury wallet beside the existing
-provider-presence and receipt infrastructure. Operators can inspect wallet state
-and generate fresh funding targets without touching wallet storage directly.
+`nexus-control` now owns the treasury-provider boundary beside the existing
+provider-presence and receipt infrastructure. The default provider is the
+LDK-first scaffold (`NEXUS_TREASURY_PROVIDER=ldk`). Legacy Spark wallet code is
+kept only for historical inspection and explicit final-drain/recovery work.
 
 ## Operator Surfaces
 
@@ -31,14 +32,12 @@ HTTP:
 - `POST /v1/treasury/integration/public-snapshot`
 - `POST /v1/admin/homework/cs336-a1/dispatch`
 
-`treasury funding-target` uses the repo-owned Spark integration and returns the
-current treasury Spark receive address, Bitcoin receive address, and optional
-amount-specific Spark and Bolt11 invoices when an amount is requested. Hosted
-Nexus pays Pylons to Spark addresses, so the Spark invoice or Spark address is
-the preferred funding target for payout liquidity. The Bolt11 invoice remains a
-compatibility target for Lightning payers, but Lightning invoice payment alone
-is not proof that the wallet has Spark leaves available for Spark-address
-payouts.
+`treasury funding-target` now routes through the configured treasury provider.
+With the default `NEXUS_TREASURY_PROVIDER=ldk`, Nexus returns deterministic
+LDK-local scaffolding in tests and is structured for the `ldk-server` client to
+replace that scaffold without changing treasury business logic. Legacy Spark
+funding target creation is disabled unless `NEXUS_SPARK_FINAL_DRAIN_ENABLED` is
+explicitly true.
 
 `POST /v1/admin/treasury/refresh` is the operator-safe manual refresh surface.
 It requires the normal Nexus admin bearer token, runs one forced wallet refresh
@@ -60,13 +59,22 @@ curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
 ```
 
 Only a positive `amount_sats` produces amount-specific invoices. A no-amount
-request is useful for receive addresses, not for invoice payment. For Nexus
-payout liquidity, prefer `spark_invoice` or `spark_address`. Use
-`bolt11_invoice` only when the payer cannot send Spark yet. The returned invoice
-is the payment request to give the operator. It is not proof of payment.
-Hosted Nexus should create the Spark invoice before attempting the compatibility
-Bolt11 invoice; if Bolt11 creation fails, operators should still receive the
-Spark invoice rather than losing the direct payout-liquidity path.
+request is useful for receive targets, not for invoice payment. During LDK-02,
+the default LDK scaffold returns an LDK provider target and a BOLT11-shaped
+local invoice for tests; production LDK Server invoice creation lands in the
+LDK-05/LDK-07 phases. The returned invoice is the payment request to give the
+operator. It is not proof of payment.
+
+Current treasury-provider environment:
+
+- `NEXUS_TREASURY_PROVIDER=ldk` by default.
+- `NEXUS_SPARK_FINAL_DRAIN_ENABLED=false` by default.
+- `NEXUS_LDK_SERVER_URL` for the future private `ldk-server` endpoint.
+- `NEXUS_LDK_API_KEY_PATH` for future LDK Server HMAC credentials.
+- `NEXUS_LDK_TLS_CERT_PATH` for future LDK Server TLS trust material.
+- `NEXUS_LDK_STORAGE_DIR=var/nexus-control/ldk` by default.
+- `NEXUS_LDK_NETWORK=regtest|signet|bitcoin`, default `regtest`.
+- `NEXUS_LDK_CHAIN_BACKEND=bitcoind|electrum|esplora`, default `bitcoind`.
 
 After the payer sends funds, verify the result with `/v1/treasury/status`.
 Treat the invoice as paid only after the status surface shows the receive in
