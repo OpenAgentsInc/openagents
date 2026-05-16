@@ -1694,7 +1694,8 @@ Implementation note:
 - The first projection source is Nexus treasury state and operation rows:
   wallet balance/freshness, registered LDK-compatible payout targets, LDK admin
   channel-operation rows, and recent failed LDK payment/admin operations.
-  LDK-12 is the follow-on for dedicated read-only projection endpoints.
+  Dedicated read-only projection endpoints now expose that data for web and
+  operator surfaces without raw LDK access.
 - No raw invoices, provider API keys, seeds, private channel state, or raw
   payment ids are emitted in degraded-state payloads.
 
@@ -1746,6 +1747,23 @@ Verification:
 Out of scope:
 
 - Do not build the Three.js/React Three Fiber canvas in this issue.
+
+Implementation status, 2026-05-16:
+
+- `nexus-control` exposes `GET /v1/treasury/projections` and
+  `GET /api/treasury/projections`.
+- The endpoint accepts either the Nexus admin bearer token or the treasury
+  integration token and performs no writes, refreshes, payments, or channel
+  changes.
+- Query parameters are `limit` and `since_unix_ms`.
+- The response version is `nexus-treasury-projections/v1` and includes peers,
+  channels, liquidity bands, payment attempts, payment terminal states, payout
+  receipts, Pylon earning events, and degraded Lightning states.
+- Sensitive values are redacted or hashed: raw payment targets, invoices,
+  provider payment ids, seeds, API keys, and private channel state are not
+  emitted.
+- Added focused auth/redaction coverage:
+  `cargo test -p nexus-control treasury_projection --lib`.
 
 #### LDK-13 — Build React Three Fiber Lightning/Pylon visualization
 

@@ -1197,6 +1197,141 @@ struct TreasuryAdminOperationResponse {
     result: Value,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+struct TreasuryProjectionQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    since_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct TreasuryProjectionResponse {
+    version: String,
+    generated_at_unix_ms: u64,
+    source: String,
+    access: String,
+    redaction: TreasuryProjectionRedaction,
+    pagination: TreasuryProjectionPagination,
+    peers: Vec<TreasuryProjectionPeer>,
+    channels: Vec<TreasuryProjectionChannel>,
+    liquidity_bands: Vec<TreasuryProjectionLiquidityBand>,
+    payment_attempts: Vec<TreasuryProjectionPaymentAttempt>,
+    payment_terminal_states: Vec<TreasuryProjectionPaymentTerminalState>,
+    payout_receipts: Vec<TreasuryProjectionPayoutReceipt>,
+    pylon_earning_events: Vec<TreasuryProjectionPylonEarningEvent>,
+    degraded_states: Vec<crate::treasury::TreasuryDegradedState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionRedaction {
+    policy: String,
+    omitted_fields: Vec<String>,
+    exposed_identifiers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionPagination {
+    limit: usize,
+    since_unix_ms: Option<u64>,
+    time_field: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionPeer {
+    peer_id: String,
+    source: String,
+    role: String,
+    identity_hash: Option<String>,
+    session_id_hash: Option<String>,
+    payment_target_kind: Option<String>,
+    payment_target_hash: Option<String>,
+    ldk_compatible: bool,
+    capabilities: Vec<String>,
+    operation_id: Option<String>,
+    status: Option<String>,
+    registered_at_unix_ms: Option<u64>,
+    last_verified_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionChannel {
+    channel_id_hash: Option<String>,
+    peer_id_hash: Option<String>,
+    operation_id: String,
+    command: String,
+    status: String,
+    amount_sats: Option<u64>,
+    terminal_event_state: Option<String>,
+    updated_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionLiquidityBand {
+    band: String,
+    direction: String,
+    source: String,
+    amount_sats: u64,
+    threshold_sats: Option<u64>,
+    status: String,
+    observed_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionPaymentAttempt {
+    operation_id: String,
+    kind: String,
+    rail: String,
+    status: String,
+    amount_msat: Option<u64>,
+    target_kind: String,
+    target_hash: Option<String>,
+    provider_payment_id_hash: Option<String>,
+    terminal_event_state: Option<String>,
+    degraded_reason: Option<String>,
+    created_at_unix_ms: u64,
+    updated_at_unix_ms: u64,
+    safe_metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionPaymentTerminalState {
+    operation_id: String,
+    rail: String,
+    status: String,
+    terminal_event_state: Option<String>,
+    degraded_reason: Option<String>,
+    updated_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionPayoutReceipt {
+    payout_key: String,
+    identity_hash: String,
+    payout_target_hash: String,
+    payment_id_hash: Option<String>,
+    amount_sats: u64,
+    status: String,
+    reconciliation_status: String,
+    reason: Option<String>,
+    classification: crate::treasury::TreasuryPayoutClassification,
+    window_started_at_unix_ms: u64,
+    window_ends_at_unix_ms: u64,
+    updated_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryProjectionPylonEarningEvent {
+    event_id: String,
+    identity_hash: String,
+    amount_sats: u64,
+    status: String,
+    payout_class: String,
+    sellable_at_window_open: bool,
+    window_started_at_unix_ms: u64,
+    updated_at_unix_ms: u64,
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HomeworkAssignmentMode {
@@ -9308,6 +9443,8 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(complete_starter_demand_offer),
         )
         .route("/v1/treasury/status", get(treasury_status))
+        .route("/v1/treasury/projections", get(treasury_projections))
+        .route("/api/treasury/projections", get(treasury_projections))
         .route("/api/admin/treasury/refresh", post(refresh_treasury_status))
         .route("/v1/admin/treasury/refresh", post(refresh_treasury_status))
         .route(
@@ -17775,6 +17912,24 @@ async fn treasury_status(
     Ok(Json(status))
 }
 
+async fn treasury_projections(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<TreasuryProjectionQuery>,
+) -> Result<Json<TreasuryProjectionResponse>, ApiError> {
+    let access = authenticate_treasury_projection_reader(&state, &headers)?;
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let status = store.treasury.status_response(&state.config.treasury, now);
+    Ok(Json(build_treasury_projection_response(
+        &status, access, query, now,
+    )))
+}
+
 async fn refresh_treasury_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -18294,6 +18449,378 @@ fn treasury_admin_write_response(
             "status": receipt.status,
             "receipt": receipt,
         }),
+    }
+}
+
+fn treasury_operation_kind_label(kind: crate::treasury::TreasuryOperationKind) -> &'static str {
+    match kind {
+        crate::treasury::TreasuryOperationKind::FundingInvoiceCreation => {
+            "funding_invoice_creation"
+        }
+        crate::treasury::TreasuryOperationKind::OutboundPayoutDispatch => {
+            "outbound_payout_dispatch"
+        }
+        crate::treasury::TreasuryOperationKind::PaymentStatusLookup => "payment_status_lookup",
+        crate::treasury::TreasuryOperationKind::EventProjection => "event_projection",
+        crate::treasury::TreasuryOperationKind::ReconciliationPass => "reconciliation_pass",
+        crate::treasury::TreasuryOperationKind::FinalDrainOperation => "final_drain_operation",
+        crate::treasury::TreasuryOperationKind::LightningAdminCommand => "lightning_admin_command",
+    }
+}
+
+fn treasury_operation_status_label(status: TreasuryOperationStatus) -> &'static str {
+    match status {
+        TreasuryOperationStatus::Pending => "pending",
+        TreasuryOperationStatus::Completed => "completed",
+        TreasuryOperationStatus::Failed => "failed",
+        TreasuryOperationStatus::Degraded => "degraded",
+    }
+}
+
+fn safe_treasury_operation_metadata(
+    metadata: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    metadata
+        .iter()
+        .filter(|(key, _)| {
+            key.ends_with("_hash")
+                || matches!(
+                    key.as_str(),
+                    "command"
+                        | "provider"
+                        | "payment_target_kind"
+                        | "payment_direction"
+                        | "payment_method"
+                        | "event_kind"
+                        | "event_sequence"
+                        | "provider_payment_count"
+                        | "phase_request_received_at_unix_ms"
+                        | "phase_operation_row_created_at_unix_ms"
+                        | "phase_ldk_rpc_started_at_unix_ms"
+                        | "phase_ldk_rpc_completed_at_unix_ms"
+                        | "phase_invoice_returned_at_unix_ms"
+                        | "phase_ldk_rpc_duration_ms"
+                        | "phase_total_duration_ms"
+                )
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn operation_command(operation: &crate::treasury::TreasuryOperationRecord) -> Option<&str> {
+    operation.rail_metadata.get("command").map(String::as_str)
+}
+
+fn treasury_projection_limit(query: &TreasuryProjectionQuery) -> usize {
+    query.limit.unwrap_or(100).clamp(1, 500)
+}
+
+fn treasury_projection_in_window(updated_at_unix_ms: u64, query: &TreasuryProjectionQuery) -> bool {
+    query
+        .since_unix_ms
+        .is_none_or(|since| updated_at_unix_ms >= since)
+}
+
+fn liquidity_band_status(amount_sats: u64, threshold_sats: Option<u64>) -> String {
+    threshold_sats.map_or_else(
+        || "observed".to_string(),
+        |threshold| {
+            if amount_sats < threshold {
+                "low".to_string()
+            } else {
+                "ok".to_string()
+            }
+        },
+    )
+}
+
+fn build_treasury_projection_response(
+    status: &TreasuryStatusResponse,
+    access: &'static str,
+    query: TreasuryProjectionQuery,
+    generated_at_unix_ms: u64,
+) -> TreasuryProjectionResponse {
+    let limit = treasury_projection_limit(&query);
+    let mut peers = Vec::new();
+    let mut seen_peer_ids = BTreeSet::<String>::new();
+
+    for identity in &status.payout_target_identities {
+        let identity_hash = crate::treasury::treasury_hash(identity.nostr_pubkey_hex.as_str());
+        let peer_id = format!("pylon:{identity_hash}");
+        seen_peer_ids.insert(peer_id.clone());
+        peers.push(TreasuryProjectionPeer {
+            peer_id,
+            source: "pylon_payout_target".to_string(),
+            role: "pylon".to_string(),
+            identity_hash: Some(identity_hash),
+            session_id_hash: Some(crate::treasury::treasury_hash(
+                identity.source_session_id.as_str(),
+            )),
+            payment_target_kind: Some(identity.payment_target_kind.clone()),
+            payment_target_hash: if identity.payment_target.trim().is_empty() {
+                None
+            } else {
+                Some(crate::treasury::treasury_hash(
+                    identity.payment_target.as_str(),
+                ))
+            },
+            ldk_compatible: identity.ldk_compatible,
+            capabilities: identity.payment_target_capabilities.clone(),
+            operation_id: None,
+            status: Some("registered".to_string()),
+            registered_at_unix_ms: Some(identity.registered_at_unix_ms),
+            last_verified_at_unix_ms: Some(identity.last_verified_at_unix_ms),
+        });
+    }
+
+    for operation in &status.recent_treasury_operations {
+        if operation.rail != "ldk" || operation_command(operation) != Some("treasury.connectPeer") {
+            continue;
+        }
+        let peer_id = operation
+            .target_hash
+            .as_ref()
+            .map(|hash| format!("ldk-peer:{hash}"))
+            .unwrap_or_else(|| format!("ldk-peer-operation:{}", operation.operation_id));
+        if !seen_peer_ids.insert(peer_id.clone()) {
+            continue;
+        }
+        peers.push(TreasuryProjectionPeer {
+            peer_id,
+            source: "ldk_admin_operation".to_string(),
+            role: "lightning_peer".to_string(),
+            identity_hash: operation.target_hash.clone(),
+            session_id_hash: None,
+            payment_target_kind: None,
+            payment_target_hash: None,
+            ldk_compatible: true,
+            capabilities: Vec::new(),
+            operation_id: Some(operation.operation_id.clone()),
+            status: Some(treasury_operation_status_label(operation.status).to_string()),
+            registered_at_unix_ms: Some(operation.created_at_unix_ms),
+            last_verified_at_unix_ms: Some(operation.updated_at_unix_ms),
+        });
+    }
+    peers.truncate(limit);
+
+    let channel_commands = [
+        "treasury.openChannel",
+        "treasury.closeChannel",
+        "treasury.spliceIn",
+        "treasury.spliceOut",
+    ];
+    let mut channels = status
+        .recent_treasury_operations
+        .iter()
+        .filter(|operation| operation.rail == "ldk")
+        .filter(|operation| {
+            operation_command(operation).is_some_and(|command| channel_commands.contains(&command))
+        })
+        .filter(|operation| treasury_projection_in_window(operation.updated_at_unix_ms, &query))
+        .map(|operation| TreasuryProjectionChannel {
+            channel_id_hash: operation
+                .rail_metadata
+                .get("channel_id_hash")
+                .cloned()
+                .or_else(|| operation.target_hash.clone()),
+            peer_id_hash: if operation.target_kind == "channel_peer" {
+                operation.target_hash.clone()
+            } else {
+                None
+            },
+            operation_id: operation.operation_id.clone(),
+            command: operation_command(operation)
+                .unwrap_or("treasury.channelOperation")
+                .to_string(),
+            status: treasury_operation_status_label(operation.status).to_string(),
+            amount_sats: operation.amount_msat.map(|amount| amount / 1_000),
+            terminal_event_state: operation.terminal_event_state.clone(),
+            updated_at_unix_ms: operation.updated_at_unix_ms,
+        })
+        .collect::<Vec<_>>();
+    channels.truncate(limit);
+
+    let projected_channel_capacity_sats = channels
+        .iter()
+        .filter(|channel| {
+            matches!(
+                channel.command.as_str(),
+                "treasury.openChannel" | "treasury.spliceIn"
+            ) && channel.status != "failed"
+        })
+        .filter_map(|channel| channel.amount_sats)
+        .fold(0u64, u64::saturating_add);
+
+    let outbound_threshold_sats = status
+        .accepted_work_policy
+        .default_payout_sats
+        .max(status.availability_policy.payout_sats_per_window)
+        .checked_mul(3)
+        .map(|value| value.max(1_000));
+    let liquidity_bands = vec![
+        TreasuryProjectionLiquidityBand {
+            band: "wallet_outbound".to_string(),
+            direction: "outbound".to_string(),
+            source: "treasury_wallet_balance".to_string(),
+            amount_sats: status.wallet_balance_sats,
+            threshold_sats: outbound_threshold_sats,
+            status: liquidity_band_status(status.wallet_balance_sats, outbound_threshold_sats),
+            observed_at_unix_ms: generated_at_unix_ms,
+        },
+        TreasuryProjectionLiquidityBand {
+            band: "projected_channel_capacity".to_string(),
+            direction: "inbound".to_string(),
+            source: "ldk_channel_projection".to_string(),
+            amount_sats: projected_channel_capacity_sats,
+            threshold_sats: Some(1),
+            status: liquidity_band_status(projected_channel_capacity_sats, Some(1)),
+            observed_at_unix_ms: generated_at_unix_ms,
+        },
+        TreasuryProjectionLiquidityBand {
+            band: "payouts_in_flight".to_string(),
+            direction: "outbound".to_string(),
+            source: "payout_ledger".to_string(),
+            amount_sats: status.payout_sats_in_flight_total,
+            threshold_sats: None,
+            status: "observed".to_string(),
+            observed_at_unix_ms: generated_at_unix_ms,
+        },
+    ];
+
+    let payment_commands = [
+        "treasury.payInvoice",
+        "treasury.payOffer",
+        "treasury.reconcilePayments",
+    ];
+    let mut payment_attempts = status
+        .recent_treasury_operations
+        .iter()
+        .filter(|operation| operation.rail == "ldk")
+        .filter(|operation| {
+            operation.kind == crate::treasury::TreasuryOperationKind::OutboundPayoutDispatch
+                || operation.target_kind.contains("invoice")
+                || operation.target_kind.contains("offer")
+                || operation_command(operation)
+                    .is_some_and(|command| payment_commands.contains(&command))
+        })
+        .filter(|operation| treasury_projection_in_window(operation.updated_at_unix_ms, &query))
+        .map(|operation| TreasuryProjectionPaymentAttempt {
+            operation_id: operation.operation_id.clone(),
+            kind: treasury_operation_kind_label(operation.kind).to_string(),
+            rail: operation.rail.clone(),
+            status: treasury_operation_status_label(operation.status).to_string(),
+            amount_msat: operation.amount_msat,
+            target_kind: operation.target_kind.clone(),
+            target_hash: operation.target_hash.clone(),
+            provider_payment_id_hash: operation.provider_payment_id.clone(),
+            terminal_event_state: operation.terminal_event_state.clone(),
+            degraded_reason: operation.degraded_reason.clone(),
+            created_at_unix_ms: operation.created_at_unix_ms,
+            updated_at_unix_ms: operation.updated_at_unix_ms,
+            safe_metadata: safe_treasury_operation_metadata(&operation.rail_metadata),
+        })
+        .collect::<Vec<_>>();
+    payment_attempts.truncate(limit);
+
+    let mut payment_terminal_states = payment_attempts
+        .iter()
+        .filter(|attempt| {
+            attempt.terminal_event_state.is_some() || attempt.degraded_reason.is_some()
+        })
+        .map(|attempt| TreasuryProjectionPaymentTerminalState {
+            operation_id: attempt.operation_id.clone(),
+            rail: attempt.rail.clone(),
+            status: attempt.status.clone(),
+            terminal_event_state: attempt.terminal_event_state.clone(),
+            degraded_reason: attempt.degraded_reason.clone(),
+            updated_at_unix_ms: attempt.updated_at_unix_ms,
+        })
+        .collect::<Vec<_>>();
+    payment_terminal_states.truncate(limit);
+
+    let mut payout_receipts = status
+        .recent_training_payouts
+        .iter()
+        .filter(|payout| treasury_projection_in_window(payout.updated_at_unix_ms, &query))
+        .map(|payout| TreasuryProjectionPayoutReceipt {
+            payout_key: payout.payout_key.clone(),
+            identity_hash: crate::treasury::treasury_hash(payout.nostr_pubkey_hex.as_str()),
+            payout_target_hash: crate::treasury::treasury_hash(payout.payout_target.as_str()),
+            payment_id_hash: payout
+                .payment_id
+                .as_deref()
+                .map(crate::treasury::treasury_hash),
+            amount_sats: payout.amount_sats,
+            status: payout.status.clone(),
+            reconciliation_status: payout.reconciliation_status.clone(),
+            reason: payout.reason.clone(),
+            classification: payout.classification.clone(),
+            window_started_at_unix_ms: payout.window_started_at_unix_ms,
+            window_ends_at_unix_ms: payout.window_ends_at_unix_ms,
+            updated_at_unix_ms: payout.updated_at_unix_ms,
+        })
+        .collect::<Vec<_>>();
+    payout_receipts.truncate(limit);
+
+    let mut pylon_earning_events = status
+        .recent_training_payouts
+        .iter()
+        .filter(|payout| treasury_projection_in_window(payout.updated_at_unix_ms, &query))
+        .map(|payout| TreasuryProjectionPylonEarningEvent {
+            event_id: format!("earning:{}", payout.payout_key),
+            identity_hash: crate::treasury::treasury_hash(payout.nostr_pubkey_hex.as_str()),
+            amount_sats: payout.amount_sats,
+            status: payout.status.clone(),
+            payout_class: payout.classification.payout_class.label().to_string(),
+            sellable_at_window_open: payout.sellable_at_window_open,
+            window_started_at_unix_ms: payout.window_started_at_unix_ms,
+            updated_at_unix_ms: payout.updated_at_unix_ms,
+        })
+        .collect::<Vec<_>>();
+    pylon_earning_events.truncate(limit);
+
+    TreasuryProjectionResponse {
+        version: "nexus-treasury-projections/v1".to_string(),
+        generated_at_unix_ms,
+        source: "nexus-control".to_string(),
+        access: access.to_string(),
+        redaction: TreasuryProjectionRedaction {
+            policy: "hash-sensitive-identifiers".to_string(),
+            omitted_fields: vec![
+                "seed_material".to_string(),
+                "api_keys".to_string(),
+                "raw_payment_targets".to_string(),
+                "raw_invoices".to_string(),
+                "raw_payment_ids".to_string(),
+                "private_channel_state".to_string(),
+            ],
+            exposed_identifiers: vec![
+                "nostr_identity_hash".to_string(),
+                "payment_target_hash".to_string(),
+                "provider_payment_id_hash".to_string(),
+                "channel_id_hash".to_string(),
+                "peer_node_id_hash".to_string(),
+            ],
+        },
+        pagination: TreasuryProjectionPagination {
+            limit,
+            since_unix_ms: query.since_unix_ms,
+            time_field: "updated_at_unix_ms".to_string(),
+        },
+        peers,
+        channels,
+        liquidity_bands,
+        payment_attempts,
+        payment_terminal_states,
+        payout_receipts,
+        pylon_earning_events,
+        degraded_states: status
+            .degraded_states
+            .iter()
+            .filter(|state| treasury_projection_in_window(state.observed_at_unix_ms, &query))
+            .take(limit)
+            .cloned()
+            .collect(),
     }
 }
 
@@ -28609,6 +29136,37 @@ fn authenticate_treasury_integration(
     Ok(())
 }
 
+fn authenticate_treasury_projection_reader(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<&'static str, ApiError> {
+    let token = bearer_token_from_headers(headers)?;
+    if state
+        .config
+        .admin_bearer_token
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .is_some_and(|configured| token == configured)
+    {
+        return Ok("admin");
+    }
+    if state
+        .config
+        .treasury
+        .integration_token
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .is_some_and(|configured| token == configured)
+    {
+        return Ok("integration");
+    }
+    Err(ApiError {
+        status: StatusCode::UNAUTHORIZED,
+        error: "unauthorized",
+        reason: "invalid_treasury_projection_token".to_string(),
+    })
+}
+
 fn parse_bool_env(key: &str, default: bool) -> Result<bool, String> {
     std::env::var(key)
         .ok()
@@ -28950,11 +29508,11 @@ mod tests {
         RegisteredPayoutTarget, TreasuryCanonicalPublicSnapshot, TreasuryFundingMaterial,
         TreasuryFundingTargetPhaseTimings, TreasuryFundingTargetRequest,
         TreasuryFundingTargetResponse, TreasuryIntegrationExportResponse,
-        TreasuryIntegrationImportResponse, TreasuryOperationKind, TreasuryPayoutClass,
-        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
-        TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
-        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock,
+        TreasuryIntegrationImportResponse, TreasuryOperationKind, TreasuryOperationStatus,
+        TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPayoutRecord,
+        TreasuryPlaceholderPayoutMode, TreasuryState, TreasuryStatusResponse,
+        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
+        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
     };
 
     use super::{
@@ -28979,8 +29537,8 @@ mod tests {
         StarterDemandPollResponse, SyncTokenResponse, TrainingArtifactSignedUrlConfig,
         TrainingAssignmentState, TrainingVisualizationResponse, TrainingWindowContributionInput,
         TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest,
-        TreasuryAdminOperationResponse, TreasuryConfig, build_api_router_with_state,
-        build_app_state, build_router, build_router_with_state,
+        TreasuryAdminOperationResponse, TreasuryConfig, TreasuryProjectionResponse,
+        build_api_router_with_state, build_app_state, build_router, build_router_with_state,
         homework_launch_effective_payout_amount_sats, now_unix_ms, random_token,
         run_cs336_homework_auto_dispatch_cycle, run_treasury_dispatch_cycle,
         run_treasury_wallet_refresh_cycle, training_kernel_mutation_context,
@@ -29441,6 +29999,11 @@ mod tests {
     async fn response_json<T: serde::de::DeserializeOwned>(response: Response) -> Result<T> {
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
         Ok(serde_json::from_slice(bytes.as_ref())?)
+    }
+
+    async fn response_text(response: Response) -> Result<String> {
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        Ok(String::from_utf8(bytes.to_vec())?)
     }
 
     fn drain_broadcast_events<T: Clone>(
@@ -35470,6 +36033,185 @@ mod tests {
             nostr_pubkey_hex
         );
         assert!(export.online_identities[0].sellable);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_projection_endpoint_requires_reader_token_and_redacts_sensitive_material()
+    -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("treasury-admin".to_string());
+        config.treasury.enabled = true;
+        config.treasury.accepted_work_default_payout_sats = 250;
+        config.treasury.integration_token = Some("integration-secret".to_string());
+        let state = build_app_state(config);
+        let app = build_router_with_state(state.clone());
+        let now = now_unix_ms();
+
+        {
+            let mut store = state
+                .store
+                .write()
+                .expect("store write for projection seed");
+            store.treasury.wallet_balance_sats = 10_000;
+            store.treasury.payout_records_by_key.insert(
+                "window-projection:pubkey-projection".to_string(),
+                TreasuryPayoutRecord {
+                    payout_key: "window-projection:pubkey-projection".to_string(),
+                    nostr_pubkey_hex: "pubkey-projection".to_string(),
+                    payout_target: "lno1projection-secret-offer".to_string(),
+                    amount_sats: 750,
+                    status: "confirmed".to_string(),
+                    reason: None,
+                    payment_id: Some("provider-payment-secret".to_string()),
+                    window_started_at_unix_ms: now.saturating_sub(10_000),
+                    window_ends_at_unix_ms: now.saturating_sub(5_000),
+                    created_at_unix_ms: now.saturating_sub(10_000),
+                    updated_at_unix_ms: now.saturating_sub(500),
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: true,
+                    confirm_receipt_recorded: true,
+                    fail_receipt_recorded: false,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: true,
+                    classification: TreasuryPayoutClassification {
+                        payout_class: TreasuryPayoutClass::AcceptedWork,
+                        ..TreasuryPayoutClassification::default()
+                    },
+                },
+            );
+            store.treasury.payout_targets_by_identity.insert(
+                "pubkey-projection".to_string(),
+                RegisteredPayoutTarget {
+                    nostr_pubkey_hex: "pubkey-projection".to_string(),
+                    source_session_id: "session-projection-secret".to_string(),
+                    payment_target_kind: "bolt12_offer".to_string(),
+                    payment_target: "lno1projection-secret-offer".to_string(),
+                    payment_target_capabilities: vec![
+                        "ldk_payment_target_v0_2".to_string(),
+                        "bolt12_offer".to_string(),
+                    ],
+                    pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
+                    spark_address: String::new(),
+                    bitcoin_address: Some("bc1projection-secret".to_string()),
+                    registered_at_unix_ms: now.saturating_sub(9_000),
+                    last_verified_at_unix_ms: now.saturating_sub(1_000),
+                },
+            );
+
+            let mut channel_metadata = std::collections::BTreeMap::new();
+            channel_metadata.insert("command".to_string(), "treasury.openChannel".to_string());
+            channel_metadata.insert("provider".to_string(), "ldk".to_string());
+            channel_metadata.insert("channel_id_hash".to_string(), "hash-channel".to_string());
+            store.treasury.record_treasury_admin_operation(
+                "treasury.openChannel",
+                "idem-open",
+                channel_metadata,
+                Some(50_000_000),
+                "channel_peer",
+                Some("hash-peer".to_string()),
+                TreasuryOperationStatus::Completed,
+                None,
+                None,
+                Some("channel_open_confirmed".to_string()),
+                now.saturating_sub(400),
+            );
+
+            let mut payment_metadata = std::collections::BTreeMap::new();
+            payment_metadata.insert("command".to_string(), "treasury.payInvoice".to_string());
+            payment_metadata.insert("provider".to_string(), "ldk".to_string());
+            payment_metadata.insert(
+                "payment_target_kind".to_string(),
+                "bolt11_invoice".to_string(),
+            );
+            payment_metadata.insert(
+                "unsafe_raw_invoice".to_string(),
+                "lnbc-projection-secret".to_string(),
+            );
+            payment_metadata.insert(
+                "provider_payment_id".to_string(),
+                "provider-payment-secret".to_string(),
+            );
+            payment_metadata.insert(
+                "provider_payment_id_hash".to_string(),
+                "hash-provider-payment".to_string(),
+            );
+            store.treasury.record_treasury_admin_operation(
+                "treasury.payInvoice",
+                "idem-pay",
+                payment_metadata,
+                Some(750_000),
+                "bolt11_invoice",
+                Some("hash-invoice-target".to_string()),
+                TreasuryOperationStatus::Completed,
+                Some("hash-provider-payment".to_string()),
+                None,
+                Some("payment_succeeded".to_string()),
+                now.saturating_sub(300),
+            );
+        }
+
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/projections")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/projections?limit=20")
+                    .header("authorization", "Bearer integration-secret")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_text(response).await?;
+        assert!(!body.contains("lno1projection-secret-offer"));
+        assert!(!body.contains("lnbc-projection-secret"));
+        assert!(!body.contains("provider-payment-secret"));
+        assert!(!body.contains("bc1projection-secret"));
+        assert!(!body.contains("session-projection-secret"));
+        assert!(body.contains("payment_target_hash"));
+        assert!(body.contains("liquidity_bands"));
+        assert!(body.contains("payment_attempts"));
+        assert!(body.contains("pylon_earning_events"));
+
+        let projection: TreasuryProjectionResponse = serde_json::from_str(body.as_str())?;
+        assert_eq!(projection.access, "integration");
+        assert_eq!(projection.redaction.policy, "hash-sensitive-identifiers");
+        assert!(!projection.peers.is_empty());
+        assert!(!projection.channels.is_empty());
+        assert!(!projection.payment_attempts.is_empty());
+        assert!(!projection.payment_terminal_states.is_empty());
+        assert!(!projection.payout_receipts.is_empty());
+        assert!(!projection.pylon_earning_events.is_empty());
+        assert!(projection.payment_attempts.iter().all(|attempt| {
+            !attempt.safe_metadata.contains_key("unsafe_raw_invoice")
+                && !attempt.safe_metadata.contains_key("provider_payment_id")
+        }));
+
+        let admin_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/treasury/projections?limit=5")
+                    .header("authorization", "Bearer treasury-admin")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(admin_response.status(), StatusCode::OK);
+        let admin_projection: TreasuryProjectionResponse = response_json(admin_response).await?;
+        assert_eq!(admin_projection.access, "admin");
+        assert_eq!(admin_projection.pagination.limit, 5);
+
         Ok(())
     }
 

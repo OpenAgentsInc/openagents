@@ -28,6 +28,7 @@ HTTP:
 - `GET /v1/treasury/status`
 - `POST /v1/admin/treasury/refresh`
 - `POST /v1/admin/treasury/operations`
+- `GET /v1/treasury/projections`
 - `POST /v1/treasury/funding-target`
 - `GET /v1/treasury/integration/export`
 - `POST /v1/treasury/integration/public-snapshot`
@@ -88,6 +89,38 @@ testing. Hosted LDK Server transport can replace those local fixtures without
 changing the Nexus API contract. Nexus stores hashes of payment targets,
 addresses, idempotency keys, channel ids, and payment ids in operation rows; it
 does not store raw invoices, API keys, seeds, or private channel state there.
+
+`GET /v1/treasury/projections` and `GET /api/treasury/projections` expose the
+read-only LDK/Pylon projection surface for Autopilot 3 visualization and future
+operator views. They accept the normal Nexus admin bearer token or the treasury
+integration token and never initiate payments, channel changes, peer changes, or
+wallet refreshes. Optional query parameters are:
+
+- `limit`: bounded row limit, clamped to `1..500`, default `100`.
+- `since_unix_ms`: filters rows whose projection timestamp is older than the
+  supplied millisecond timestamp.
+
+The response shape is `nexus-treasury-projections/v1` and includes:
+
+- `peers`: registered Pylon payment-target identities and LDK peer operations,
+  with Nostr/session/payment-target identifiers hashed.
+- `channels`: LDK channel admin operations, hashed peer/channel ids, amount,
+  command, status, terminal state, and update time.
+- `liquidity_bands`: wallet outbound balance, projected channel capacity, and
+  payout-in-flight bands.
+- `payment_attempts`: payout/payment/admin payment operations with safe
+  metadata only.
+- `payment_terminal_states`: terminal or degraded payment operation states.
+- `payout_receipts`: Pylon payout ledger rows with payout target and payment id
+  hashed.
+- `pylon_earning_events`: Pylon earning events derived from payout ledger rows.
+- `degraded_states`: the same operator-safe degraded Lightning states exposed
+  in treasury status.
+
+Redaction is part of the contract. Projection responses omit seed material, API
+keys, raw payment targets, raw invoices, raw provider payment ids, and private
+channel state. Exposed identifiers are hashes intended for stable joins across
+read models, not for custody or payment execution.
 
 To create live operator funding material, call:
 
