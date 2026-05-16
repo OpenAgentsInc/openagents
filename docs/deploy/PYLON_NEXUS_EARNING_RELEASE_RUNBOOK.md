@@ -440,9 +440,10 @@ gates.
 ## Treasury Funding Invoices
 
 When the production treasury wallet is underfunded, generate a fresh Lightning
-invoice through the hosted funding-target path. Do not inspect or copy the
+invoice through the hosted LDK funding-target path. Do not inspect or copy the
 treasury mnemonic, do not manually edit wallet files, and do not infer payment
-from invoice creation.
+from invoice creation. Spark funding targets are legacy final-drain-only
+material and are not the normal path for new Pylon/Nexus payment operations.
 
 The detailed funding-invoice runbook is
 `docs/deploy/NEXUS_TREASURY_FUNDING_INVOICE_RUNBOOK.md`.
@@ -458,18 +459,19 @@ curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
     "description": "OpenAgents Nexus treasury funding",
     "expiry_seconds": 3600
   }' |
-  jq -r '.bolt11_invoice // empty'
+  jq '{bolt11_invoice, provider_payment_id_hash, phase_timings}'
 ```
 
-The returned `bolt11_invoice` is safe to hand to the payer. It is not a secret,
-but it should still be handled as a live payment request rather than checked
-into docs, commits, or issue comments after use.
+The returned `bolt11_invoice` is the live payment request to hand to the payer.
+It is not a secret, but it should still be handled as live payment material
+rather than checked into docs, commits, or issue comments after use.
 
 Important operational details:
 
-- Include a positive `amount_sats` when the payer needs a Bolt11 invoice.
-  Calling the endpoint without an amount can return Spark and Bitcoin receive
-  addresses without a Lightning invoice.
+- Include a positive `amount_sats` when the payer needs a BOLT11 invoice.
+  Calling the endpoint without an amount is not a passing funding-invoice
+  smoke. Standard LDK responses should include `bolt11_invoice`,
+  `provider_payment_id_hash`, and `phase_timings`.
 - A `504` from this endpoint means the bounded funding-target wallet operation
   timed out, often because the service just restarted or the wallet is busy. It
   is not proof that the wallet is unusable and it is not proof the invoice was

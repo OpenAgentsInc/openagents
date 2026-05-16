@@ -2139,6 +2139,17 @@ Out of scope:
 
 - Do not use docs as a substitute for implementation proof.
 
+Implementation status, 2026-05-16:
+
+- Operator runbooks and phase proof links were closed out in
+  `docs/reports/nexus/2026-05-16-ldk-operator-docs-closeout.md`.
+- The closeout maps each shipped LDK phase to its runbook, records command
+  checks, expected fields, failure states, rollback conditions, proof artifact
+  requirements, and secret-handling rules.
+- The Pylon release runbook and Nexus treasury docs now describe
+  positive-amount BOLT11 funding responses as LDK-first and Spark as
+  legacy/final-drain-only.
+
 Repository ownership notes:
 
 - `openagents` owns the current Nexus/Pylon implementation work, deployment

@@ -4,7 +4,9 @@
 direction is to move Nexus treasury and Pylon settlement to an LDK-backed
 Lightning provider. See
 [`2026-05-15-ldk-nexus-treasury-transition-audit.md`](2026-05-15-ldk-nexus-treasury-transition-audit.md)
-for the separate LDK audit, target architecture, and immediate roadmap.
+for the separate LDK audit, target architecture, and immediate roadmap. The
+operator-documentation closeout for the shipped LDK phases is
+[`reports/nexus/2026-05-16-ldk-operator-docs-closeout.md`](reports/nexus/2026-05-16-ldk-operator-docs-closeout.md).
 
 `nexus-control` now owns the treasury-provider boundary beside the existing
 provider-presence and receipt infrastructure. The default provider is the
@@ -132,7 +134,7 @@ curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
     "description": "OpenAgents Nexus treasury funding",
     "expiry_seconds": 3600
   }' |
-  jq '{spark_invoice, spark_address, bolt11_invoice, bitcoin_address}'
+  jq '{bolt11_invoice, provider_payment_id_hash, phase_timings}'
 ```
 
 Only a positive `amount_sats` produces amount-specific invoices. A no-amount
