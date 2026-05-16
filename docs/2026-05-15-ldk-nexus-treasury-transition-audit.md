@@ -1222,6 +1222,30 @@ Out of scope:
 - Do not deploy production LDK Server.
 - Do not add public routes.
 
+Implementation status, 2026-05-16:
+
+- `scripts/nexus/ldk-local-proof-harness.sh` is the one-command local proof
+  path for this phase.
+- The script runs `cargo run -p nexus-control --bin ldk-local-proof-harness`
+  with `--check` and writes artifacts under `target/ldk-local-proof/latest/`
+  by default.
+- The harness models two local LDK nodes against a regtest bitcoind backend,
+  creates a BOLT11 invoice, pays it, emits `PaymentReceived` and
+  `PaymentSuccessful`, exercises restart during a pending invoice and after a
+  received payment, disconnects the event stream, and reconciles through a
+  `ListPayments` event.
+- The machine-checkable artifacts are:
+  - `summary.json`
+  - `events.jsonl`
+  - `operation_rows.json`
+  - `run.log`
+- `operation_rows.json` uses Nexus-shaped provider-neutral treasury operation
+  rows for funding invoice creation, event projection, outbound payout
+  dispatch, and payment status lookup. Raw invoices and raw payment ids are
+  hashed in the operation rows.
+- This is the local deterministic proof surface for LDK-05. Production
+  `ldk-server` gRPC/TLS/HMAC calls remain out of scope for LDK-04.
+
 #### LDK-05 — Wire LDK Server client into Nexus
 
 Target repo: `OpenAgentsInc/openagents`

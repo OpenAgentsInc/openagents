@@ -116,6 +116,42 @@ so old records remain queryable for audit without making new LDK logic depend
 on Spark-specific fields. Spark remains disabled for new funding/payout writes
 unless an operator explicitly enables final-drain/recovery mode.
 
+## Local LDK Proof Harness
+
+Before live LDK Server wiring or mainnet funds, use the local proof harness as
+the primary debugger for LDK invoice, payment, event, restart, and
+reconciliation behavior:
+
+```bash
+scripts/nexus/ldk-local-proof-harness.sh
+```
+
+The command writes artifacts under `target/ldk-local-proof/latest/` by default:
+
+- `summary.json` records the two-node local LDK proof topology, regtest
+  bitcoind backend, BOLT11 invoice, payment id hash inputs, restart checks, and
+  reconciliation checks.
+- `events.jsonl` records the local event stream, including invoice creation,
+  `PaymentReceived`, `PaymentSuccessful`, restart markers, event-stream
+  disconnect, and `ListPayments` reconciliation.
+- `operation_rows.json` records Nexus-shaped treasury operation rows for
+  funding invoice creation, event projection, payout dispatch, and payment
+  status lookup.
+- `run.log` is a compact text receipt for command-line smoke output.
+
+Override defaults with:
+
+```bash
+OPENAGENTS_LDK_PROOF_NETWORK=signet \
+OPENAGENTS_LDK_PROOF_AMOUNT_SATS=5000 \
+OPENAGENTS_LDK_PROOF_ARTIFACTS_DIR=target/ldk-local-proof/signet-smoke \
+scripts/nexus/ldk-local-proof-harness.sh
+```
+
+The harness is deterministic and does not require mainnet funds. Production LDK
+Server gRPC/TLS/HMAC calls land in the LDK-05 phase; this harness is the
+machine-checkable local proof surface that those client tests will target.
+
 After the payer sends funds, verify the result with `/v1/treasury/status`.
 Treat the invoice as paid only after the status surface shows the receive in
 wallet state and subsequent accepted-work payout dispatch/confirmation. Do not
