@@ -25207,6 +25207,10 @@ fn runtime_snapshot(
         nexus_wallet_last_error: treasury_runtime.wallet_last_error.clone(),
         nexus_wallet_storage_runtime_mode: treasury_runtime.wallet_storage_runtime_mode.clone(),
         nexus_wallet_balance_sats: treasury_runtime.wallet_balance_sats,
+        nexus_wallet_total_onchain_balance_sats: treasury_runtime.wallet_total_onchain_balance_sats,
+        nexus_wallet_spendable_onchain_balance_sats: treasury_runtime
+            .wallet_spendable_onchain_balance_sats,
+        nexus_wallet_lightning_balance_sats: treasury_runtime.wallet_lightning_balance_sats,
         nexus_wallet_balance_updated_at_unix_ms: treasury_runtime.wallet_balance_updated_at_unix_ms,
         nexus_treasury_snapshot_generated_at_unix_ms: treasury_runtime
             .public_snapshot_generated_at_unix_ms,
@@ -35623,6 +35627,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 500,
+                total_onchain_balance_sats: 500,
+                spendable_onchain_balance_sats: 500,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));
@@ -35659,6 +35666,9 @@ mod tests {
                         wallet_hydration_mode: None,
                         wallet_payment_scan_mode: None,
                         balance_sats: 710,
+                        total_onchain_balance_sats: 710,
+                        spendable_onchain_balance_sats: 710,
+                        lightning_balance_sats: 0,
                         payments: Vec::new(),
                     },
                 })
@@ -35812,6 +35822,9 @@ mod tests {
                     wallet_hydration_mode: None,
                     wallet_payment_scan_mode: None,
                     balance_sats: 710,
+                    total_onchain_balance_sats: 710,
+                    spendable_onchain_balance_sats: 710,
+                    lightning_balance_sats: 0,
                     payments: Vec::new(),
                 },
                 now,
@@ -35837,6 +35850,9 @@ mod tests {
                         wallet_hydration_mode: None,
                         wallet_payment_scan_mode: None,
                         balance_sats: 710,
+                        total_onchain_balance_sats: 710,
+                        spendable_onchain_balance_sats: 710,
+                        lightning_balance_sats: 0,
                         payments: Vec::new(),
                     },
                 })
@@ -35911,6 +35927,9 @@ mod tests {
                         wallet_hydration_mode: None,
                         wallet_payment_scan_mode: None,
                         balance_sats: 710,
+                        total_onchain_balance_sats: 710,
+                        spendable_onchain_balance_sats: 710,
+                        lightning_balance_sats: 0,
                         payments: Vec::new(),
                     },
                 })
@@ -36449,6 +36468,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 500,
+                total_onchain_balance_sats: 500,
+                spendable_onchain_balance_sats: 500,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));
@@ -36540,6 +36562,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 500,
+                total_onchain_balance_sats: 500,
+                spendable_onchain_balance_sats: 500,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));
@@ -37041,6 +37066,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
+                total_onchain_balance_sats: if call_index == 0 { 500 } else { 710 },
+                spendable_onchain_balance_sats: if call_index == 0 { 500 } else { 710 },
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));
@@ -37159,6 +37187,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 500,
+                total_onchain_balance_sats: 500,
+                spendable_onchain_balance_sats: 500,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));
@@ -37206,6 +37237,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
+                total_onchain_balance_sats: if call_index == 0 { 500 } else { 710 },
+                spendable_onchain_balance_sats: if call_index == 0 { 500 } else { 710 },
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));
@@ -37297,6 +37331,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
+                total_onchain_balance_sats: if call_index == 0 { 500 } else { 710 },
+                spendable_onchain_balance_sats: if call_index == 0 { 500 } else { 710 },
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));
@@ -37409,6 +37446,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 500,
+                total_onchain_balance_sats: 500,
+                spendable_onchain_balance_sats: 500,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             })
         })));

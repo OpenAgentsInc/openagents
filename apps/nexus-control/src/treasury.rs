@@ -24,9 +24,10 @@ use sha2::{Digest, Sha256};
 
 use crate::economy::AuthorityReceiptContext;
 use crate::treasury_provider::{
-    LdkChainBackend, LdkNetwork, LdkTreasuryProvider, LdkTreasuryProviderConfig,
-    TreasuryLightningProvider, TreasuryLightningProviderConfig, TreasuryLightningProviderKind,
-    TreasuryProviderFundingRequest, TreasuryProviderFundingTarget, TreasuryProviderPayoutRequest,
+    LdkChainBackend, LdkNetwork, LdkServerBalances, LdkServerClient, LdkTreasuryProvider,
+    LdkTreasuryProviderConfig, TreasuryLightningProvider, TreasuryLightningProviderConfig,
+    TreasuryLightningProviderKind, TreasuryProviderFundingRequest, TreasuryProviderFundingTarget,
+    TreasuryProviderPayoutRequest,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1205,6 +1206,12 @@ pub struct TreasuryStatusResponse {
     #[serde(default)]
     pub pylon_v0_2_registration_required_identities: u64,
     pub wallet_balance_sats: u64,
+    #[serde(default)]
+    pub wallet_total_onchain_balance_sats: u64,
+    #[serde(default)]
+    pub wallet_spendable_onchain_balance_sats: u64,
+    #[serde(default)]
+    pub wallet_lightning_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1524,6 +1531,12 @@ pub struct TreasuryPublicSnapshot {
     #[serde(default)]
     pub pylon_v0_2_registration_required_identities: u64,
     pub wallet_balance_sats: u64,
+    #[serde(default)]
+    pub wallet_total_onchain_balance_sats: u64,
+    #[serde(default)]
+    pub wallet_spendable_onchain_balance_sats: u64,
+    #[serde(default)]
+    pub wallet_lightning_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1701,6 +1714,9 @@ pub struct TreasuryPublicStats {
     pub ldk_payout_target_identities: u64,
     pub pylon_v0_2_registration_required_identities: u64,
     pub wallet_balance_sats: u64,
+    pub wallet_total_onchain_balance_sats: u64,
+    pub wallet_spendable_onchain_balance_sats: u64,
+    pub wallet_lightning_balance_sats: u64,
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     pub last_wallet_sync_at_unix_ms: Option<u64>,
     pub last_wallet_refresh_attempt_at_unix_ms: Option<u64>,
@@ -2421,6 +2437,12 @@ pub struct TreasuryState {
     pub last_wallet_recovery_report: Option<TreasuryWalletRecoveryReportSummary>,
     #[serde(default)]
     pub wallet_balance_sats: u64,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub wallet_total_onchain_balance_sats: u64,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub wallet_spendable_onchain_balance_sats: u64,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub wallet_lightning_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2840,6 +2862,9 @@ pub struct TreasuryWalletSnapshot {
     pub wallet_hydration_mode: Option<String>,
     pub wallet_payment_scan_mode: Option<String>,
     pub balance_sats: u64,
+    pub total_onchain_balance_sats: u64,
+    pub spendable_onchain_balance_sats: u64,
+    pub lightning_balance_sats: u64,
     pub payments: Vec<PaymentSummary>,
 }
 
@@ -2922,6 +2947,10 @@ fn json_value_to_u64(value: Option<&serde_json::Value>) -> Option<u64> {
 }
 
 fn is_zero_usize(value: &usize) -> bool {
+    *value == 0
+}
+
+fn is_zero_u64(value: &u64) -> bool {
     *value == 0
 }
 
@@ -5462,6 +5491,9 @@ impl TreasuryState {
             pylon_v0_2_registration_required_identities: self
                 .pylon_v0_2_registration_required_identity_count(),
             wallet_balance_sats: self.wallet_balance_sats,
+            wallet_total_onchain_balance_sats: self.wallet_total_onchain_balance_sats,
+            wallet_spendable_onchain_balance_sats: self.wallet_spendable_onchain_balance_sats,
+            wallet_lightning_balance_sats: self.wallet_lightning_balance_sats,
             wallet_balance_updated_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
             last_wallet_sync_at_unix_ms: self.last_wallet_sync_at_unix_ms,
             last_wallet_refresh_attempt_at_unix_ms: self.last_wallet_refresh_attempt_at_unix_ms,
@@ -5692,6 +5724,9 @@ impl TreasuryState {
             pylon_v0_2_registration_required_identities: snapshot
                 .pylon_v0_2_registration_required_identities,
             wallet_balance_sats: snapshot.wallet_balance_sats,
+            wallet_total_onchain_balance_sats: snapshot.wallet_total_onchain_balance_sats,
+            wallet_spendable_onchain_balance_sats: snapshot.wallet_spendable_onchain_balance_sats,
+            wallet_lightning_balance_sats: snapshot.wallet_lightning_balance_sats,
             wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
             last_wallet_sync_at_unix_ms: snapshot.last_wallet_sync_at_unix_ms,
             last_wallet_refresh_attempt_at_unix_ms: snapshot.last_wallet_refresh_attempt_at_unix_ms,
@@ -6081,6 +6116,9 @@ impl TreasuryState {
             pylon_v0_2_registration_required_identities: stats
                 .pylon_v0_2_registration_required_identities,
             wallet_balance_sats: stats.wallet_balance_sats,
+            wallet_total_onchain_balance_sats: stats.wallet_total_onchain_balance_sats,
+            wallet_spendable_onchain_balance_sats: stats.wallet_spendable_onchain_balance_sats,
+            wallet_lightning_balance_sats: stats.wallet_lightning_balance_sats,
             wallet_balance_updated_at_unix_ms: stats.wallet_balance_updated_at_unix_ms,
             last_wallet_sync_at_unix_ms: stats.last_wallet_sync_at_unix_ms,
             last_wallet_refresh_attempt_at_unix_ms: stats.last_wallet_refresh_attempt_at_unix_ms,
@@ -7189,6 +7227,9 @@ impl TreasuryState {
             || self.wallet_hydration_mode != next_wallet_hydration_mode
             || self.wallet_payment_scan_mode != next_wallet_payment_scan_mode
             || self.wallet_balance_sats != snapshot.balance_sats
+            || self.wallet_total_onchain_balance_sats != snapshot.total_onchain_balance_sats
+            || self.wallet_spendable_onchain_balance_sats != snapshot.spendable_onchain_balance_sats
+            || self.wallet_lightning_balance_sats != snapshot.lightning_balance_sats
             || self.wallet_balance_updated_at_unix_ms != next_wallet_balance_updated_at_unix_ms
             || self.last_wallet_sync_at_unix_ms != next_last_wallet_sync_at_unix_ms
             || self.last_wallet_refresh_attempt_at_unix_ms
@@ -7201,6 +7242,9 @@ impl TreasuryState {
         self.wallet_hydration_mode = next_wallet_hydration_mode;
         self.wallet_payment_scan_mode = next_wallet_payment_scan_mode;
         self.wallet_balance_sats = snapshot.balance_sats;
+        self.wallet_total_onchain_balance_sats = snapshot.total_onchain_balance_sats;
+        self.wallet_spendable_onchain_balance_sats = snapshot.spendable_onchain_balance_sats;
+        self.wallet_lightning_balance_sats = snapshot.lightning_balance_sats;
         self.wallet_balance_updated_at_unix_ms = next_wallet_balance_updated_at_unix_ms;
         self.last_wallet_sync_at_unix_ms = next_last_wallet_sync_at_unix_ms;
         self.last_wallet_refresh_attempt_at_unix_ms = next_last_wallet_refresh_attempt_at_unix_ms;
@@ -7786,6 +7830,9 @@ fn simulated_wallet_snapshot(
         wallet_hydration_mode: Some("simulated_proof_wallet".to_string()),
         wallet_payment_scan_mode: Some("simulated".to_string()),
         balance_sats: config.simulated_wallet_balance_sats,
+        total_onchain_balance_sats: config.simulated_wallet_balance_sats,
+        spendable_onchain_balance_sats: config.simulated_wallet_balance_sats,
+        lightning_balance_sats: config.simulated_wallet_balance_sats,
         payments,
     }
 }
@@ -7877,7 +7924,7 @@ fn funding_idempotency_key(request: &TreasuryFundingTargetRequest) -> String {
 
 fn ldk_wallet_snapshot(
     config: &TreasuryConfig,
-    balance_sats: u64,
+    balances: LdkServerBalances,
     payments: Vec<PaymentSummary>,
 ) -> TreasuryWalletSnapshot {
     TreasuryWalletSnapshot {
@@ -7889,9 +7936,21 @@ fn ldk_wallet_snapshot(
         )),
         wallet_hydration_mode: Some("ldk_provider_scaffold".to_string()),
         wallet_payment_scan_mode: Some("ldk_provider_boundary".to_string()),
-        balance_sats,
+        balance_sats: balances.usable_sats,
+        total_onchain_balance_sats: balances.total_onchain_sats,
+        spendable_onchain_balance_sats: balances.spendable_onchain_sats,
+        lightning_balance_sats: balances.lightning_sats,
         payments,
     }
+}
+
+async fn load_ldk_server_balances(config: &TreasuryConfig) -> Result<LdkServerBalances> {
+    let client = LdkServerClient::from_provider_config(&config.lightning_provider.ldk)
+        .map_err(|error| anyhow!("ldk_wallet_snapshot_client_failed:{error}"))?;
+    client
+        .get_balances()
+        .await
+        .map_err(|error| anyhow!("ldk_wallet_snapshot_balance_failed:{error}"))
 }
 
 fn funding_material_from_provider_target(
@@ -7906,7 +7965,16 @@ fn funding_material_from_provider_target(
         bolt11_invoice: target.bolt11_invoice,
         provider_payment_id: target.provider_invoice,
         phase_timings,
-        wallet_snapshot: ldk_wallet_snapshot(config, target.balance_sats, Vec::new()),
+        wallet_snapshot: ldk_wallet_snapshot(
+            config,
+            LdkServerBalances {
+                total_onchain_sats: target.balance_sats,
+                spendable_onchain_sats: target.balance_sats,
+                lightning_sats: 0,
+                usable_sats: target.balance_sats,
+            },
+            Vec::new(),
+        ),
     }
 }
 
@@ -7993,10 +8061,14 @@ async fn dispatch_with_ldk_provider(
             }),
         }
     }
+    let (wallet_snapshot, wallet_error) = match load_ldk_server_balances(config).await {
+        Ok(balances) => (Some(ldk_wallet_snapshot(config, balances, payments)), None),
+        Err(error) => (None, Some(error.to_string())),
+    };
     TreasuryDispatchBatchResult {
         outcomes,
-        wallet_snapshot: Some(ldk_wallet_snapshot(config, 0, payments)),
-        wallet_error: None,
+        wallet_snapshot,
+        wallet_error,
     }
 }
 
@@ -8058,8 +8130,10 @@ pub async fn load_live_wallet_refresh_result_with_plan(
         });
     }
 
+    let balances = load_ldk_server_balances(config).await?;
+
     Ok(TreasuryWalletRefreshResult {
-        snapshot: ldk_wallet_snapshot(config, 0, Vec::new()),
+        snapshot: ldk_wallet_snapshot(config, balances, Vec::new()),
         progress: TreasuryWalletRefreshProgress::default(),
     })
 }
@@ -10550,6 +10624,9 @@ mod tests {
                 wallet_hydration_mode: Some("ldk_provider_scaffold".to_string()),
                 wallet_payment_scan_mode: Some("ldk_provider_boundary".to_string()),
                 balance_sats: 100,
+                total_onchain_balance_sats: 100,
+                spendable_onchain_balance_sats: 100,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             },
         };
@@ -11551,6 +11628,9 @@ mod tests {
                 wallet_hydration_mode: Some("sync_wallet_then_cached_balance".to_string()),
                 wallet_payment_scan_mode: Some("recent_only".to_string()),
                 balance_sats: 321,
+                total_onchain_balance_sats: 321,
+                spendable_onchain_balance_sats: 321,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             },
             now_unix_ms,
@@ -12922,6 +13002,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 880,
+                total_onchain_balance_sats: 880,
+                spendable_onchain_balance_sats: 880,
+                lightning_balance_sats: 0,
                 payments: vec![
                     PaymentSummary {
                         id: "payment-receive-001".to_string(),
@@ -13017,6 +13100,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 830,
+                total_onchain_balance_sats: 830,
+                spendable_onchain_balance_sats: 830,
+                lightning_balance_sats: 0,
                 payments: vec![PaymentSummary {
                     id: "payment-send-recovered".to_string(),
                     direction: "send".to_string(),
@@ -13111,6 +13197,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 830,
+                total_onchain_balance_sats: 830,
+                spendable_onchain_balance_sats: 830,
+                lightning_balance_sats: 0,
                 payments: vec![PaymentSummary {
                     id: "payment-send-unmatched".to_string(),
                     direction: "send".to_string(),
@@ -13632,6 +13721,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 500,
+                total_onchain_balance_sats: 500,
+                spendable_onchain_balance_sats: 500,
+                lightning_balance_sats: 0,
                 payments: Vec::new(),
             },
             now_unix_ms,
@@ -15891,6 +15983,9 @@ mod tests {
                         wallet_hydration_mode: None,
                         wallet_payment_scan_mode: None,
                         balance_sats: 500,
+                        total_onchain_balance_sats: 500,
+                        spendable_onchain_balance_sats: 500,
+                        lightning_balance_sats: 0,
                         payments: Vec::new(),
                     },
                 })
@@ -15922,6 +16017,9 @@ mod tests {
                 wallet_hydration_mode: None,
                 wallet_payment_scan_mode: None,
                 balance_sats: 380,
+                total_onchain_balance_sats: 380,
+                spendable_onchain_balance_sats: 380,
+                lightning_balance_sats: 0,
                 payments: vec![PaymentSummary {
                     id: "payment-send-001".to_string(),
                     direction: "send".to_string(),

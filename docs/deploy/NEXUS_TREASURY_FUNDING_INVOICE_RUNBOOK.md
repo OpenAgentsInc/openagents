@@ -67,6 +67,9 @@ curl -fsS -H "Authorization: Bearer ${token}" \
     ldk_chain_backend,
     ldk_server_configured,
     wallet_balance_sats,
+    wallet_total_onchain_balance_sats,
+    wallet_spendable_onchain_balance_sats,
+    wallet_lightning_balance_sats,
     wallet_runtime_status,
     wallet_balance_updated_at_unix_ms,
     accepted_pending: .training_payout_ledger_summary.accepted_work_pending_payout_count,
@@ -82,6 +85,10 @@ curl -fsS -H "Authorization: Bearer ${token}" \
 Acceptable funding proof is one of:
 
 - The LDK provider reports a settled receive or updated spendable balance.
+- `wallet_spendable_onchain_balance_sats` and/or usable
+  `wallet_balance_sats` increases after confirmation. A higher
+  `wallet_total_onchain_balance_sats` alone means the server sees funds, not
+  that they are spendable.
 - Accepted-work payouts move from `queued` or `dispatching` to `confirmed`
   with `reconciliation_status=settled`.
 - An operator payment lookup confirms the provider payment id for the receive.

@@ -53,6 +53,21 @@ loop-health, payout, and continuity fields. It does not return payout-target
 identities, raw payout targets, recent payout rows, operation rows, or
 beneficiary debug rows.
 
+For LDK, read the wallet balances precisely:
+
+- `wallet_balance_sats` is usable payout liquidity: spendable on-chain sats
+  plus currently spendable Lightning outbound capacity.
+- `wallet_total_onchain_balance_sats` includes pending on-chain deposits that
+  may not be spendable yet.
+- `wallet_spendable_onchain_balance_sats` is confirmed LDK on-chain balance
+  the server reports as spendable.
+- `wallet_lightning_balance_sats` is total Lightning channel balance reported
+  by LDK. Capacity and route readiness still need `ldk_readiness`.
+
+Do not treat `wallet_total_onchain_balance_sats` as payout-ready. Production
+readiness depends on spendable balance, channel capacity, registered Pylon
+payout targets, and a successful payout smoke.
+
 `ldk_readiness` is the compact production-readiness read model for the active
 Lightning rail:
 
@@ -62,8 +77,8 @@ Lightning rail:
 - `projected_channel_count`: channel-open operations known to Nexus.
 - `projected_inbound_capacity_sats`: projected open/splice-in capacity from
   Nexus LDK admin operation rows.
-- `projected_outbound_capacity_sats`: current Nexus wallet balance available
-  for outbound payout dispatch.
+- `projected_outbound_capacity_sats`: current usable Nexus wallet balance
+  available for outbound payout dispatch.
 - `recent_failed_payment_count_24h`, `recent_no_route_count_24h`, and
   `recent_insufficient_balance_count_24h`: recent failure counters derived from
   LDK operation rows.
@@ -1134,6 +1149,9 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 - `nexus_wallet_last_error`
 - `nexus_wallet_storage_runtime_mode`
 - `nexus_wallet_balance_sats`
+- `nexus_wallet_total_onchain_balance_sats`
+- `nexus_wallet_spendable_onchain_balance_sats`
+- `nexus_wallet_lightning_balance_sats`
 - `nexus_wallet_balance_updated_at_unix_ms`
 - `nexus_treasury_snapshot_generated_at_unix_ms`
 - `nexus_treasury_snapshot_age_ms`

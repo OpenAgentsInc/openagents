@@ -249,6 +249,11 @@ The readiness smoke verifies the active Nexus API path:
 
 - `GET /v1/treasury/status` reports `active_treasury_provider=ldk`,
   `active_treasury_rail=ldk`, and an `ldk_readiness` snapshot.
+- The status payload separates `wallet_total_onchain_balance_sats`,
+  `wallet_spendable_onchain_balance_sats`, `wallet_lightning_balance_sats`,
+  and `wallet_balance_sats`. Treat `wallet_balance_sats` as usable payout
+  liquidity; total on-chain sats may still be pending and are not enough for
+  production readiness.
 - `POST /v1/treasury/funding-target` returns a BOLT11 invoice from the LDK
   provider and no non-LDK invoice field.
 - `POST /v1/admin/treasury/operations` can read `treasury.status`,
@@ -312,6 +317,8 @@ Production LDK is ready only when every gate below is green:
 - `ldk_readiness.state` is `ready` on `/v1/treasury/status`, or the only
   remaining state is a documented warning accepted by the operator for that
   rollout.
+- `wallet_spendable_onchain_balance_sats` and/or Lightning spendable outbound
+  capacity have moved above zero after funding confirms.
 - `ldk_readiness.projected_outbound_capacity_sats` is above the active payout
   reserve.
 - `ldk_readiness.projected_inbound_capacity_sats` is nonzero once Pylon payout

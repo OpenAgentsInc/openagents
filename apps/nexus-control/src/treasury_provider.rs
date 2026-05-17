@@ -384,7 +384,8 @@ pub struct LdkServerNodeInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LdkServerBalances {
-    pub onchain_sats: u64,
+    pub total_onchain_sats: u64,
+    pub spendable_onchain_sats: u64,
     pub lightning_sats: u64,
     pub usable_sats: u64,
 }
@@ -671,17 +672,20 @@ impl LdkServerClient {
                 .map(|channel| channel.outbound_capacity_msat / 1_000)
                 .fold(0u64, u64::saturating_add);
             return Ok(LdkServerBalances {
-                onchain_sats: response.total_onchain_balance_sats,
+                total_onchain_sats: response.total_onchain_balance_sats,
+                spendable_onchain_sats: response.spendable_onchain_balance_sats,
                 lightning_sats: response.total_lightning_balance_sats,
                 usable_sats: response
                     .spendable_onchain_balance_sats
                     .saturating_add(lightning_spendable_sats),
             });
         }
+        let total_sats = self.local_total_sats()?;
         Ok(LdkServerBalances {
-            onchain_sats: 0,
-            lightning_sats: self.local_total_sats()?,
-            usable_sats: self.local_total_sats()?,
+            total_onchain_sats: total_sats,
+            spendable_onchain_sats: total_sats,
+            lightning_sats: total_sats,
+            usable_sats: total_sats,
         })
     }
 
