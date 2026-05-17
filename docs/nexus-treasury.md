@@ -430,6 +430,12 @@ The script verifies:
   invoice/offer payment when the operator provides explicit environment
   variables.
 
+When write smoke opens a channel, `NEXUS_LDK_SMOKE_CHANNEL_AMOUNT_SATS` must be
+at least `NEXUS_LDK_SMOKE_MIN_CHANNEL_SATS` (default `20000`). Do not use tiny
+probe channels as production-readiness evidence; peers may reject them below
+their channel minimum and Nexus will reconcile the disappeared pending request
+as failed.
+
 Artifacts are written under `target/nexus-ldk-readiness/<timestamp>/`. They are
 safe for operator inspection but can still contain redacted hashes and invoice
 metadata, so do not paste them wholesale into public issue comments.

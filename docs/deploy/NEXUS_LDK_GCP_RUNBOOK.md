@@ -271,6 +271,12 @@ NEXUS_LDK_SMOKE_CHANNEL_AMOUNT_SATS=100000 \
 scripts/deploy/nexus/27-smoke-ldk-production-readiness.sh
 ```
 
+`NEXUS_LDK_SMOKE_CHANNEL_AMOUNT_SATS` must be at least
+`NEXUS_LDK_SMOKE_MIN_CHANNEL_SATS`, which defaults to `20000`. This keeps the
+write smoke from creating tiny channel probes that counterparties reject below
+their policy minimum. A rejected pending open is reconciled back to a failed
+operation and does not count as readiness capacity.
+
 For payment send smoke, set one of:
 
 ```bash

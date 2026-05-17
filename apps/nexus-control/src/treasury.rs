@@ -24,10 +24,10 @@ use sha2::{Digest, Sha256};
 
 use crate::economy::AuthorityReceiptContext;
 use crate::treasury_provider::{
-    LdkChainBackend, LdkNetwork, LdkServerBalances, LdkServerClient, LdkTreasuryProvider,
-    LdkTreasuryProviderConfig, TreasuryLightningProvider, TreasuryLightningProviderConfig,
-    TreasuryLightningProviderKind, TreasuryProviderFundingRequest, TreasuryProviderFundingTarget,
-    TreasuryProviderPayoutRequest,
+    LdkChainBackend, LdkNetwork, LdkServerBalances, LdkServerChannel, LdkServerClient,
+    LdkTreasuryProvider, LdkTreasuryProviderConfig, TreasuryLightningProvider,
+    TreasuryLightningProviderConfig, TreasuryLightningProviderKind, TreasuryProviderFundingRequest,
+    TreasuryProviderFundingTarget, TreasuryProviderPayoutRequest,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,6 +139,7 @@ const TREASURY_POLICY_SCHEMA_VERSION: u32 = 3;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 180_000;
 const TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS: u64 = 60_000;
+const TREASURY_LDK_CHANNEL_OPEN_RECONCILE_GRACE_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
 const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT: usize = 1_024;
@@ -3116,6 +3117,84 @@ impl TreasuryState {
             .count() as u64
     }
 
+    pub fn reconcile_ldk_channel_operations(
+        &mut self,
+        provider_channels: &[LdkServerChannel],
+        now_unix_ms: u64,
+    ) -> bool {
+        let channel_status_by_hash = provider_channels
+            .iter()
+            .map(|channel| {
+                (
+                    treasury_hash(channel.channel_id.as_str()),
+                    channel.status.as_str(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut changed = false;
+
+        for operation in self.treasury_operations_by_id.values_mut() {
+            if operation.rail != "ldk"
+                || operation.kind != TreasuryOperationKind::LightningAdminCommand
+                || operation.status != TreasuryOperationStatus::Pending
+            {
+                continue;
+            }
+
+            let Some(command) = operation.command() else {
+                continue;
+            };
+            match command {
+                "treasury.openChannel" => {
+                    let age_ms = now_unix_ms.saturating_sub(operation.updated_at_unix_ms);
+                    let Some(channel_id_hash) = operation.rail_metadata.get("channel_id_hash")
+                    else {
+                        continue;
+                    };
+                    match channel_status_by_hash.get(channel_id_hash).copied() {
+                        Some("ready" | "usable") => {
+                            operation.status = TreasuryOperationStatus::Completed;
+                            operation.terminal_event_state = Some("channel_opened".to_string());
+                            operation.updated_at_unix_ms = now_unix_ms;
+                            changed = true;
+                        }
+                        Some(_) => {}
+                        None if age_ms >= TREASURY_LDK_CHANNEL_OPEN_RECONCILE_GRACE_MS => {
+                            operation.status = TreasuryOperationStatus::Failed;
+                            operation.degraded_reason =
+                                Some("ldk_channel_not_found_after_open_request".to_string());
+                            operation.terminal_event_state =
+                                Some("channel_open_failed".to_string());
+                            operation.updated_at_unix_ms = now_unix_ms;
+                            changed = true;
+                        }
+                        None => {}
+                    }
+                }
+                "treasury.closeChannel" => {
+                    let age_ms = now_unix_ms.saturating_sub(operation.updated_at_unix_ms);
+                    let Some(channel_id_hash) = operation.target_hash.as_ref() else {
+                        continue;
+                    };
+                    if age_ms >= TREASURY_LDK_CHANNEL_OPEN_RECONCILE_GRACE_MS
+                        && !channel_status_by_hash.contains_key(channel_id_hash)
+                    {
+                        operation.status = TreasuryOperationStatus::Completed;
+                        operation.terminal_event_state = Some("channel_closed".to_string());
+                        operation.updated_at_unix_ms = now_unix_ms;
+                        changed = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if changed {
+            self.persist();
+        }
+        changed
+    }
+
     fn ldk_channel_readiness(&self) -> TreasuryLdkChannelReadiness {
         let mut projected_channel_count = 0u64;
         let mut projected_inbound_capacity_msat = 0u64;
@@ -3123,7 +3202,7 @@ impl TreasuryState {
         for operation in self.treasury_operations_by_id.values() {
             if operation.rail != "ldk"
                 || operation.kind != TreasuryOperationKind::LightningAdminCommand
-                || operation.status == TreasuryOperationStatus::Failed
+                || operation.status != TreasuryOperationStatus::Completed
             {
                 continue;
             }
@@ -10735,27 +10814,40 @@ mod tests {
 
         let mut channel_metadata = BTreeMap::new();
         channel_metadata.insert("command".to_string(), "treasury.openChannel".to_string());
-        state.treasury_operations_by_id.insert(
-            "op-open-channel".to_string(),
-            super::TreasuryOperationRecord {
-                operation_id: "op-open-channel".to_string(),
-                kind: TreasuryOperationKind::LightningAdminCommand,
-                request_id: Some("admin:treasury.openChannel:readiness".to_string()),
-                rail: "ldk".to_string(),
-                rail_metadata: channel_metadata,
-                amount_msat: Some(21_000_000),
-                target_kind: "channel_peer".to_string(),
-                target_hash: Some(super::treasury_hash("02peer")),
-                beneficiary: None,
-                status: TreasuryOperationStatus::Completed,
-                provider_payment_id: None,
-                receipt_refs: Vec::new(),
-                degraded_reason: None,
-                created_at_unix_ms: now_unix_ms,
-                updated_at_unix_ms: now_unix_ms,
-                terminal_event_state: Some("channel_opened".to_string()),
-            },
+        let mut open_operation = super::TreasuryOperationRecord {
+            operation_id: "op-open-channel".to_string(),
+            kind: TreasuryOperationKind::LightningAdminCommand,
+            request_id: Some("admin:treasury.openChannel:readiness".to_string()),
+            rail: "ldk".to_string(),
+            rail_metadata: channel_metadata,
+            amount_msat: Some(21_000_000),
+            target_kind: "channel_peer".to_string(),
+            target_hash: Some(super::treasury_hash("02peer")),
+            beneficiary: None,
+            status: TreasuryOperationStatus::Pending,
+            provider_payment_id: None,
+            receipt_refs: Vec::new(),
+            degraded_reason: None,
+            created_at_unix_ms: now_unix_ms,
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state: Some("channel_open_requested".to_string()),
+        };
+        state
+            .treasury_operations_by_id
+            .insert("op-open-channel".to_string(), open_operation.clone());
+
+        let still_needs_channels = state.status_response(&config, now_unix_ms);
+        assert_eq!(still_needs_channels.ldk_readiness.state, "needs_channels");
+        assert_eq!(
+            still_needs_channels.ldk_readiness.projected_channel_count,
+            0
         );
+
+        open_operation.status = TreasuryOperationStatus::Completed;
+        open_operation.terminal_event_state = Some("channel_opened".to_string());
+        state
+            .treasury_operations_by_id
+            .insert("op-open-channel".to_string(), open_operation);
 
         let ready = state.status_response(&config, now_unix_ms);
         assert_eq!(ready.ldk_readiness.state, "ready");
@@ -10797,6 +10889,58 @@ mod tests {
             degraded.ldk_readiness.recent_insufficient_balance_count_24h,
             1
         );
+    }
+
+    #[test]
+    fn ldk_channel_reconciliation_fails_disappeared_pending_open() {
+        let now_unix_ms = 2_000_000u64;
+        let mut state = TreasuryState::default();
+        let channel_id = "ldk-channel-rejected";
+        state.treasury_operations_by_id.insert(
+            "op-open-channel".to_string(),
+            super::TreasuryOperationRecord {
+                operation_id: "op-open-channel".to_string(),
+                kind: TreasuryOperationKind::LightningAdminCommand,
+                request_id: Some("admin:treasury.openChannel:rejected".to_string()),
+                rail: "ldk".to_string(),
+                rail_metadata: BTreeMap::from([
+                    ("command".to_string(), "treasury.openChannel".to_string()),
+                    (
+                        "channel_id_hash".to_string(),
+                        super::treasury_hash(channel_id),
+                    ),
+                ]),
+                amount_msat: Some(3_000_000),
+                target_kind: "channel_peer".to_string(),
+                target_hash: Some(super::treasury_hash("02peer")),
+                beneficiary: None,
+                status: TreasuryOperationStatus::Pending,
+                provider_payment_id: None,
+                receipt_refs: Vec::new(),
+                degraded_reason: None,
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                terminal_event_state: Some("channel_open_requested".to_string()),
+            },
+        );
+
+        assert!(state.reconcile_ldk_channel_operations(
+            &[],
+            now_unix_ms + super::TREASURY_LDK_CHANNEL_OPEN_RECONCILE_GRACE_MS + 1
+        ));
+
+        let operation = state
+            .treasury_operations_by_id
+            .get("op-open-channel")
+            .expect("operation should remain");
+        assert_eq!(operation.status, TreasuryOperationStatus::Failed);
+        assert_eq!(
+            operation.degraded_reason.as_deref(),
+            Some("ldk_channel_not_found_after_open_request")
+        );
+        let readiness = state.ldk_channel_readiness();
+        assert_eq!(readiness.projected_channel_count, 0);
+        assert_eq!(readiness.projected_inbound_capacity_sats, 0);
     }
 
     #[test]

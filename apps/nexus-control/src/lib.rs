@@ -175,7 +175,9 @@ use crate::treasury::{
     create_live_funding_target, dispatch_live_payouts, load_live_wallet_refresh_result_with_plan,
     parse_pylon_client_version,
 };
-use crate::treasury_provider::{LdkServerClient, LdkServerClientError, LdkServerClientErrorKind};
+use crate::treasury_provider::{
+    LdkServerChannel, LdkServerClient, LdkServerClientError, LdkServerClientErrorKind,
+};
 
 pub use crate::treasury::{
     TreasuryCommand, parse_treasury_command, run_treasury_command, treasury_usage,
@@ -17998,6 +18000,8 @@ async fn execute_treasury_admin_operation(
         "treasury.status" => {
             let node = client.get_node_info().await.map_err(ldk_client_api_error)?;
             let balances = client.get_balances().await.map_err(ldk_client_api_error)?;
+            let channels = client.list_channels().await.map_err(ldk_client_api_error)?;
+            reconcile_treasury_admin_channel_operations(state, &channels, now)?;
             let store = state.store.read().map_err(|_| ApiError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 error: "internal_error",
@@ -18011,6 +18015,7 @@ async fn execute_treasury_admin_operation(
                     "provider": state.config.treasury.lightning_provider.provider.as_str(),
                     "node": node,
                     "balances": balances,
+                    "channels": channels,
                     "treasury": store.treasury.status_response(&state.config.treasury, now),
                 }),
             })
@@ -18062,6 +18067,7 @@ async fn execute_treasury_admin_operation(
         }
         "treasury.listChannels" => {
             let channels = client.list_channels().await.map_err(ldk_client_api_error)?;
+            reconcile_treasury_admin_channel_operations(state, &channels, now)?;
             let operation_channels = treasury_admin_operation_rows_for_command_prefix(
                 state,
                 &[
@@ -18662,7 +18668,7 @@ fn build_treasury_projection_response(
             matches!(
                 channel.command.as_str(),
                 "treasury.openChannel" | "treasury.spliceIn"
-            ) && channel.status != "failed"
+            ) && channel.status == "completed"
         })
         .filter_map(|channel| channel.amount_sats)
         .fold(0u64, u64::saturating_add);
@@ -18839,6 +18845,37 @@ fn build_treasury_projection_response(
             .cloned()
             .collect(),
     }
+}
+
+fn reconcile_treasury_admin_channel_operations(
+    state: &AppState,
+    provider_channels: &[LdkServerChannel],
+    now_unix_ms: u64,
+) -> Result<(), ApiError> {
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    if store
+        .treasury
+        .reconcile_ldk_channel_operations(provider_channels, now_unix_ms)
+    {
+        let receipt_events = store
+            .treasury
+            .sync_continuity_alerts(&state.config.treasury, now_unix_ms);
+        store
+            .treasury
+            .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms);
+        record_treasury_receipt_events(&mut store, receipt_events, now_unix_ms);
+        replace_treasury_status_cache(
+            state,
+            store
+                .treasury
+                .status_response(&state.config.treasury, now_unix_ms),
+        );
+    }
+    Ok(())
 }
 
 fn treasury_admin_operation_rows_for_command_prefix(
