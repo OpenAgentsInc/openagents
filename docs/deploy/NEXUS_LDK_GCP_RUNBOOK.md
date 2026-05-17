@@ -122,7 +122,11 @@ messages.
 ## Pylon v0.2 Registration
 
 Pylon v0.2 nodes must register an LDK-compatible Lightning payout target before
-Nexus treats them as eligible for new paid work. Configure one of:
+Nexus treats them as eligible for new paid work. This treasury registration is
+the source of truth for paid-work eligibility; stale settlement fields on node
+heartbeats are ignored. A worker without a registered LDK target is blocked
+before hosted starter auto-launch, manual homework launch, and default CS336
+lease claim admission. Configure one of:
 
 - a BOLT12 offer, preferred for durable registration;
 - a BIP353 name;
@@ -138,7 +142,10 @@ payout_destination = "lno..."
 Normal Pylon startup no longer creates Spark payout destinations. The only
 Pylon registration path is Lightning-only. Spark-only workers remain visible to
 Nexus for audit, but new paid-work eligibility should show
-`payout_target_requires_ldk_v0_2`.
+`payout_target_requires_ldk_v0_2`,
+`homework_worker_payout_target_requires_ldk_v0_2`,
+`homework_launch_target_payout_target_requires_ldk_v0_2`, or
+`training_scheduler_payout_target_requires_ldk_v0_2`.
 
 3. Run read-only smoke:
 

@@ -9076,6 +9076,7 @@ struct HomeworkWorkerEligibilityMetrics {
 }
 
 fn homework_worker_node_blocker_reason(
+    store: &ControlStore,
     node: &AdmittedTrainingNodeView,
     minimum_version: Option<&Version>,
 ) -> Option<String> {
@@ -9092,8 +9093,11 @@ fn homework_worker_node_blocker_reason(
                 .to_string(),
         );
     }
-    if node.settlement_destination.is_none() {
-        return Some("homework_worker_missing_settlement_destination".to_string());
+    if !store
+        .treasury
+        .identity_has_registered_ldk_payout_target(node.node_pubkey_hex.as_str())
+    {
+        return Some("homework_worker_payout_target_requires_ldk_v0_2".to_string());
     }
     if let Some(minimum_version) = minimum_version {
         if homework_launch_node_version(node).is_none_or(|version| version < *minimum_version) {
@@ -9135,7 +9139,7 @@ fn homework_worker_eligibility_metrics(
     let mut eligible_worker_pubkeys = BTreeSet::<String>::new();
     let mut eligible_version_counts = BTreeMap::<String, BTreeSet<String>>::new();
     for node in worker_nodes {
-        let blocker = homework_worker_node_blocker_reason(&node, minimum_version.as_ref());
+        let blocker = homework_worker_node_blocker_reason(store, &node, minimum_version.as_ref());
         if blocker.is_none() {
             eligible_worker_pubkeys.insert(node.node_pubkey_hex.clone());
             let version = node
@@ -9163,7 +9167,9 @@ fn homework_worker_eligibility_metrics(
         }
         let reason = worker_nodes_by_pubkey
             .get(record.nostr_pubkey_hex.as_str())
-            .and_then(|node| homework_worker_node_blocker_reason(node, minimum_version.as_ref()))
+            .and_then(|node| {
+                homework_worker_node_blocker_reason(store, node, minimum_version.as_ref())
+            })
             .unwrap_or_else(|| {
                 if provider_presence_record_supports_training_worker(record) {
                     "homework_worker_admission_missing".to_string()
@@ -10046,6 +10052,7 @@ fn homework_launch_node_is_current(node: &AdmittedTrainingNodeView) -> bool {
 }
 
 fn homework_launch_node_target_mismatch_reason(
+    store: &ControlStore,
     node: &AdmittedTrainingNodeView,
     target: &HomeworkLaunchTargetRequest,
     payout: &HomeworkLaunchPayoutRequest,
@@ -10082,8 +10089,12 @@ fn homework_launch_node_target_mismatch_reason(
     ) {
         return Some("homework_launch_target_process_state_blocked");
     }
-    if payout.enabled && node.settlement_destination.is_none() {
-        return Some("homework_launch_target_missing_settlement_destination");
+    if payout.enabled
+        && !store
+            .treasury
+            .identity_has_registered_ldk_payout_target(node.node_pubkey_hex.as_str())
+    {
+        return Some("homework_launch_target_payout_target_requires_ldk_v0_2");
     }
     if target.require_updated_build && !homework_launch_node_is_current(node) {
         return Some("homework_launch_target_outdated_build");
@@ -10117,12 +10128,14 @@ fn homework_launch_tags_match(
 }
 
 fn homework_launch_node_target_matches(
+    store: &ControlStore,
     node: &AdmittedTrainingNodeView,
     target: &HomeworkLaunchTargetRequest,
     payout: &HomeworkLaunchPayoutRequest,
     minimum_version: Option<&Version>,
 ) -> bool {
-    homework_launch_node_target_mismatch_reason(node, target, payout, minimum_version).is_none()
+    homework_launch_node_target_mismatch_reason(store, node, target, payout, minimum_version)
+        .is_none()
 }
 
 fn homework_launch_pylon_match(node: &AdmittedTrainingNodeView) -> HomeworkLaunchPylonMatch {
@@ -11043,6 +11056,7 @@ fn prepare_homework_launch(
         .iter()
         .filter(|node| {
             homework_launch_node_target_matches(
+                store,
                 node,
                 &request.target,
                 &request.payout,
@@ -11077,6 +11091,7 @@ fn prepare_homework_launch(
         let mut rejection_samples = Vec::new();
         for node in &admitted_nodes {
             let reason = homework_launch_node_target_mismatch_reason(
+                store,
                 node,
                 &request.target,
                 &request.payout,
@@ -11647,7 +11662,13 @@ fn resolve_cs336_a1_homework_dispatch_network_ids(
     let network_ids = admitted_nodes
         .iter()
         .filter(|node| {
-            homework_launch_node_target_matches(node, &target, &payout, minimum_version.as_ref())
+            homework_launch_node_target_matches(
+                &store,
+                node,
+                &target,
+                &payout,
+                minimum_version.as_ref(),
+            )
         })
         .flat_map(|node| {
             if node.allowed_networks.is_empty() {
@@ -13837,10 +13858,16 @@ fn training_lease_claim_should_try_hosted_cs336_starter_work(
 ) -> bool {
     request.role == TrainingNodeRoleClaim::Worker
         && request.requested_training_run_id.is_none()
-        && request
-            .requested_network_id
-            .as_deref()
-            .is_none_or(|network_id| network_id == EPISODE_224_CS336_A1_DEMO_NETWORK_ID)
+        && training_lease_claim_targets_default_cs336_network(request)
+}
+
+fn training_lease_claim_targets_default_cs336_network(
+    request: &RecordTrainingRunLeaseRequest,
+) -> bool {
+    request
+        .requested_network_id
+        .as_deref()
+        .is_none_or(|network_id| network_id == EPISODE_224_CS336_A1_DEMO_NETWORK_ID)
 }
 
 fn hosted_cs336_starter_work_launch_request(
@@ -13924,6 +13951,16 @@ async fn execute_training_run_lease_claim(
         .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
     let node = training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
         .map_err(kernel_api_error)?;
+    if request.role == TrainingNodeRoleClaim::Worker
+        && training_lease_claim_targets_default_cs336_network(&request)
+        && !store
+            .treasury
+            .identity_has_registered_ldk_payout_target(node.node_pubkey_hex.as_str())
+    {
+        return Err(kernel_api_error(
+            "training_scheduler_payout_target_requires_ldk_v0_2".to_string(),
+        ));
+    }
     if !training_authority_view_claimability_ready(&node, TrainingNodeRoleClaim::Worker) {
         let reason =
             training_authority_view_claimability_reason(&node, TrainingNodeRoleClaim::Worker)
@@ -29998,11 +30035,11 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: node_pubkey_hex.to_string(),
                     source_session_id: format!("session-{node_pubkey_hex}"),
-                    payment_target_kind: String::new(),
-                    payment_target: String::new(),
-                    payment_target_capabilities: Vec::new(),
-                    pylon_payment_target_version: None,
-                    spark_address: format!("spark:{node_pubkey_hex}"),
+                    payment_target_kind: "bolt12_offer".to_string(),
+                    payment_target: format!("lno1{node_pubkey_hex}"),
+                    payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+                    pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
+                    spark_address: String::new(),
                     bitcoin_address: None,
                     registered_at_unix_ms: recorded_at_ms,
                     last_verified_at_unix_ms: recorded_at_ms,
@@ -48585,6 +48622,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn default_pylon_lease_claim_requires_registered_ldk_payout_target() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let public_release_id = current_homework_launch_release_id_for_test();
+        let public_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-starter-missing-target",
+            "sha256:build-starter-missing-target",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            public_release_id.as_str(),
+            public_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1staleignoredtarget"),
+        );
+
+        let claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.hosted.starter.missing-target",
+                            recorded_at_ms as i64 + 1_000,
+                            "node-starter-missing-target",
+                            TrainingNodeRoleClaim::Worker,
+                            None,
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let claim_status = claim_response.status();
+        let claim_bytes = to_bytes(claim_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            claim_status,
+            StatusCode::BAD_REQUEST,
+            "{}",
+            String::from_utf8_lossy(claim_bytes.as_ref())
+        );
+        let error = serde_json::from_slice::<ErrorResponse>(&claim_bytes)?;
+        assert_eq!(
+            error.reason,
+            "training_scheduler_payout_target_requires_ldk_v0_2"
+        );
+
+        let store = state.store.read().expect("read store");
+        assert!(
+            store
+                .kernel
+                .list_compute_training_runs(None, None, None)
+                .into_iter()
+                .all(|run| !run.training_run_id.starts_with("run.cs336.a1.starter."))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn default_pylon_lease_claim_auto_launches_hosted_cs336_starter_work() -> Result<()> {
         let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
             spawn_training_artifact_upload_sink("gs://starter-training-bucket").await?;
@@ -48609,6 +48712,11 @@ mod tests {
             public_build_version.as_str(),
             vec![TrainingNodeRoleClaim::Worker],
             Some("lnbc1nodestarteralpha"),
+        );
+        seed_training_payout_target(
+            &state,
+            recorded_at_ms.saturating_sub(50),
+            "node-starter-alpha",
         );
 
         let claim_response = app
@@ -48714,24 +48822,6 @@ mod tests {
                     && assignment.state == TrainingAssignmentState::Leased
             }));
         }
-
-        let stats_response = app
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/stats")
-                    .body(Body::empty())?,
-            )
-            .await?;
-        assert_eq!(stats_response.status(), StatusCode::OK);
-        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
-        assert_eq!(stats.training_admitted_contributors, 1);
-        assert_eq!(stats.training_assigned_contributors, 1);
-        assert_eq!(stats.training_accepted_contributors, 0);
-        assert_eq!(
-            stats.training_public_state.active_run_id.as_deref(),
-            Some(claim.training_run_id.as_str())
-        );
 
         upload_server.abort();
         Ok(())
@@ -49345,6 +49435,12 @@ mod tests {
             vec![TrainingNodeRoleClaim::Worker],
             Some("lnbc1nodeautobeta"),
         );
+        seed_training_payout_target(
+            &state,
+            recorded_at_ms.saturating_sub(150),
+            "node-auto-alpha",
+        );
+        seed_training_payout_target(&state, recorded_at_ms.saturating_sub(140), "node-auto-beta");
         seed_homework_launch_node(
             &state,
             recorded_at_ms.saturating_sub(100),

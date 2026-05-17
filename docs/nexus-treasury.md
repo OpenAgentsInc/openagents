@@ -68,6 +68,13 @@ Do not treat `wallet_total_onchain_balance_sats` as payout-ready. Production
 readiness depends on spendable balance, channel capacity, registered Pylon
 payout targets, and a successful payout smoke.
 
+Registered Pylon payout targets are also the admission gate for new paid work.
+Nexus uses the treasury registration table, not heartbeat settlement fields, to
+decide whether a Pylon can receive hosted starter work, manual homework launch
+work, or accepted-work payout dispatch. A node that has not registered an
+LDK-compatible target remains visible for audit but is blocked from new paid
+work until registration succeeds.
+
 `ldk_readiness` is the compact production-readiness read model for the active
 Lightning rail:
 

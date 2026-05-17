@@ -29,6 +29,26 @@ reconcile, closeout, or payout-proof work, the primary development loop is
 still the local proof runtime from Issue #4385. Production Nexus is final proof,
 not the debugger for ordinary scheduler, artifact, validator, or payout bugs.
 
+## LDK Payout Target Gate
+
+Nexus must not admit, auto-launch, or dispatch new paid starter/homework work
+for a Pylon unless treasury has a registered LDK v0.2-compatible payout target
+for that Pylon identity. The registered treasury target is the source of truth.
+Do not treat older node heartbeat settlement fields as sufficient eligibility;
+those fields can be stale and must not create paid-work pressure.
+
+The expected blocker reasons are:
+
+- `training_scheduler_payout_target_requires_ldk_v0_2` for default hosted
+  CS336 lease claims.
+- `homework_worker_payout_target_requires_ldk_v0_2` in homework worker
+  eligibility metrics.
+- `homework_launch_target_payout_target_requires_ldk_v0_2` in manual launch
+  target rejection samples.
+
+When these blockers appear, fix the Pylon registration path first. Do not work
+around them by enabling a fallback payout rail.
+
 ## Non-Negotiable Completion Rule
 
 An issue is not complete because a temporary worktree has code, a feature branch

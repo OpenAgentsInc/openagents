@@ -3110,6 +3110,14 @@ impl TreasuryState {
             .count() as u64
     }
 
+    pub fn identity_has_registered_ldk_payout_target(&self, nostr_pubkey_hex: &str) -> bool {
+        self.payout_targets_by_identity
+            .get(nostr_pubkey_hex)
+            .is_some_and(|target| {
+                !target.normalized_payment_target().is_empty() && target.is_ldk_compatible()
+            })
+    }
+
     fn pylon_v0_2_registration_required_identity_count(&self) -> u64 {
         self.payout_targets_by_identity
             .values()
