@@ -139,15 +139,53 @@ Example config intent:
 payout_destination = "lno..."
 ```
 
-Normal Pylon startup no longer creates Spark payout destinations. The only
-Pylon registration path is Lightning-only. Spark-only workers remain visible to
-Nexus for audit, but new paid-work eligibility should show
+Normal Pylon startup does not create or accept non-LDK payout destinations. The
+only Pylon registration path is Lightning-only. Workers without registered LDK
+payout targets remain visible for operator diagnostics, but new paid-work
+eligibility should show
 `payout_target_requires_ldk_v0_2`,
 `homework_worker_payout_target_requires_ldk_v0_2`,
 `homework_launch_target_payout_target_requires_ldk_v0_2`, or
 `training_scheduler_payout_target_requires_ldk_v0_2`.
 
-3. Run read-only smoke:
+## Hosted Pylon Runtime Install
+
+Hosted Pylons must have the Psionic runtime surface installed before they can
+honestly advertise training support. Installing only `/usr/local/bin/pylon` is
+not enough for the retained training lane. Package the minimal Psionic runtime
+from a reviewed Psionic commit, then install it on the Pylon hosts:
+
+```bash
+NEXUS_PYLON_RUNTIME_ARCHIVE=/tmp/psionic-runtime-<psionic-sha>.tar.gz \
+scripts/deploy/nexus/29-install-pylon-psionic-runtime.sh
+```
+
+The script installs the archive into `/var/lib/pylon/psionic`, writes a
+systemd drop-in with:
+
+```text
+OPENAGENTS_PSIONIC_REPO=/var/lib/pylon/psionic
+```
+
+and restarts `pylon.service`. Verify each host with:
+
+```bash
+sudo -u pylon /usr/local/bin/pylon training status --json
+```
+
+The minimum proof is:
+
+- `runtime_surface_detected: true`
+- `psionic_repo_root: "/var/lib/pylon/psionic"`
+- `psionic_repo_source: "env_override"`
+
+That proves runtime packaging only. Paid-work eligibility still requires a
+real LDK payout target registered for the Pylon identity and usable Lightning
+liquidity on the Nexus LDK node.
+
+## Production Readiness Checks
+
+Run read-only smoke:
 
 ```bash
 # Local proof smoke, no hosted VM required.
@@ -166,7 +204,7 @@ Hosted smoke checks:
 - `ldk-server-cli get-balances` works;
 - `GET /metrics` responds on the private gRPC port.
 
-4. Sync LDK client material to Nexus:
+Sync LDK client material to Nexus:
 
 ```bash
 scripts/deploy/nexus/28-sync-ldk-client-material.sh
@@ -186,7 +224,7 @@ an operator receipt; the deploy script still writes the canonical runtime env.
 The API key is owned by UID `60000`, matching the non-root `nexus` user inside
 the `nexus-relay` image.
 
-5. Deploy Nexus against LDK:
+Deploy Nexus against LDK:
 
 ```bash
 DEPLOY_IMAGE=<registry-image> \

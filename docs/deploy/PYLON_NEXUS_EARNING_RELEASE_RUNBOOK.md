@@ -49,6 +49,33 @@ The expected blocker reasons are:
 When these blockers appear, fix the Pylon registration path first. Do not work
 around them by enabling a fallback payout rail.
 
+## Hosted Psionic Runtime Gate
+
+A hosted Pylon that is expected to accept retained training work must have the
+packaged Psionic runtime surface installed. A standalone `/usr/local/bin/pylon`
+binary is not enough. Use the hosted install script after building a reviewed
+runtime archive:
+
+```bash
+NEXUS_PYLON_RUNTIME_ARCHIVE=/tmp/psionic-runtime-<psionic-sha>.tar.gz \
+scripts/deploy/nexus/29-install-pylon-psionic-runtime.sh
+```
+
+Then verify at least these fields on every host:
+
+```bash
+sudo -u pylon /usr/local/bin/pylon training status --json
+```
+
+- `runtime_surface_detected: true`
+- `psionic_repo_root: "/var/lib/pylon/psionic"`
+- `psionic_repo_source: "env_override"`
+
+This gate fixes runtime discovery only. If `homework_worker_eligible_pylons`
+is still zero and the blocker reason is
+`homework_worker_payout_target_requires_ldk_v0_2`, the remaining problem is
+the LDK payout target, not the Psionic runtime.
+
 ## Non-Negotiable Completion Rule
 
 An issue is not complete because a temporary worktree has code, a feature branch

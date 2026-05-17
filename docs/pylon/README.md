@@ -973,6 +973,7 @@ For packaged training-capable Pylons, runtime discovery now checks these paths
 in order before you need to set `OPENAGENTS_PSIONIC_REPO`:
 
 - the explicit `OPENAGENTS_PSIONIC_REPO` override when you set it
+- `/var/lib/pylon/psionic`, the hosted-fleet runtime install path
 - the source-tree sibling path used by local dev checkouts
 - a sibling `psionic` checkout found by walking up from the current working
   directory or executable path
@@ -984,6 +985,18 @@ If your Psionic checkout lives somewhere else, set
 `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic`. `pylon training status`
 and `pylon doctor` now expose the resolved path and source, or the exact
 runtime-detection failure when none of those paths work.
+
+For the hosted GCP Pylon fleet, install the packaged runtime with:
+
+```bash
+NEXUS_PYLON_RUNTIME_ARCHIVE=/tmp/psionic-runtime-<psionic-sha>.tar.gz \
+scripts/deploy/nexus/29-install-pylon-psionic-runtime.sh
+```
+
+That script installs `/var/lib/pylon/psionic`, writes a `pylon.service`
+drop-in that sets `OPENAGENTS_PSIONIC_REPO=/var/lib/pylon/psionic`, and
+restarts the service. This step only proves the runtime surface is present.
+Paid work still requires a registered LDK payout target for the Pylon identity.
 
 If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
 
