@@ -54,12 +54,9 @@ gcloud compute scp "$tmp_dir/tls.crt" "$NEXUS_VM:/tmp/nexus-ldk-tls.crt" \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" >/dev/null
 
-ldk_private_ip="$(gcloud compute instances describe "$NEXUS_LDK_VM" \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  --format='get(networkInterfaces[0].networkIP)')"
-[[ -n "$ldk_private_ip" ]] || die "Could not resolve private IP for ${NEXUS_LDK_VM}"
-ldk_server_url="${ldk_private_ip}:${NEXUS_LDK_GRPC_PORT}"
+# ldk-server's generated TLS certificate is valid for the VM hostname, not the
+# private IP. GCE internal DNS resolves this name from the Nexus VM.
+ldk_server_url="${NEXUS_LDK_VM}:${NEXUS_LDK_GRPC_PORT}"
 
 gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \

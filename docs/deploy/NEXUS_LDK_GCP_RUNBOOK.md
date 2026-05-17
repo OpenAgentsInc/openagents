@@ -194,9 +194,11 @@ NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON="cut production Nexus treasury provi
 scripts/deploy/nexus/03-configure-and-start.sh
 ```
 
-`NEXUS_LDK_SERVER_URL=auto` resolves the private IP of
-`nexus-ldk-mainnet-1` and writes `<private-ip>:3536` into the Nexus runtime
-env. Production deploys refuse to proceed unless `NEXUS_TREASURY_PROVIDER` is
+`NEXUS_LDK_SERVER_URL=auto` resolves to
+`nexus-ldk-mainnet-1:3536`, not the private IP. The LDK Server TLS certificate
+is valid for the VM hostname, and GCE internal DNS resolves that hostname from
+the Nexus VM. Production deploys refuse to proceed unless
+`NEXUS_TREASURY_PROVIDER` is
 `ldk`, `NEXUS_LDK_NETWORK` is `bitcoin`/`mainnet`, and the LDK client paths are
 set.
 
@@ -283,7 +285,7 @@ on the Nexus host and contain copied, pinned client material:
 
 ```bash
 NEXUS_TREASURY_PROVIDER=ldk
-NEXUS_LDK_SERVER_URL=<private-ldk-ip-or-hostname>:3536
+NEXUS_LDK_SERVER_URL=nexus-ldk-mainnet-1:3536
 NEXUS_LDK_API_KEY_PATH=/etc/nexus-relay/ldk-server/api_key
 NEXUS_LDK_TLS_CERT_PATH=/etc/nexus-relay/ldk-server/tls.crt
 NEXUS_LDK_NETWORK=bitcoin

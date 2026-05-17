@@ -1414,7 +1414,10 @@ fn load_ldk_api_key(path: &Path) -> LdkServerClientResult<Vec<u8>> {
             "api_key_empty",
         ));
     }
-    Ok(trimmed)
+    if trimmed.len() == 64 && trimmed.iter().all(u8::is_ascii_hexdigit) {
+        return Ok(trimmed.to_ascii_lowercase());
+    }
+    Ok(hex::encode(bytes).into_bytes())
 }
 
 fn validate_remote_server_url(server_url: &str) -> LdkServerClientResult<()> {
@@ -2055,7 +2058,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let key_path = temp_dir.path().join("api.key");
         let cert_path = temp_dir.path().join("tls.crt");
-        fs::write(&key_path, "test-api-key\n").expect("write key");
+        fs::write(&key_path, b"test-api-key").expect("write key");
         fs::write(
             &cert_path,
             b"-----BEGIN CERTIFICATE-----\nMIIBlocaltest\n-----END CERTIFICATE-----\n",
@@ -2076,12 +2079,41 @@ mod tests {
             client
                 .current_hmac_metadata_for_test(1_700_000_000)
                 .expect("metadata"),
-            Some(
-                "HMAC 1700000000:022744bacd67d07dcc15b8887d48df1d5184d33b18d9447257ed2bf8ed61b937"
-                    .to_string()
-            )
+            Some(ldk_hmac_auth_metadata(
+                hex::encode(b"test-api-key").as_bytes(),
+                1_700_000_000
+            ))
         );
         assert!(!format!("{client:?}").contains("test-api-key"));
+    }
+
+    #[test]
+    fn ldk_server_api_key_loader_hex_encodes_raw_server_key() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let key_path = temp_dir.path().join("api.key");
+        fs::write(&key_path, [0xde, 0xad, 0xbe, 0xef]).expect("write key");
+
+        let loaded = load_ldk_api_key(&key_path).expect("load key");
+
+        assert_eq!(loaded, b"deadbeef");
+    }
+
+    #[test]
+    fn ldk_server_api_key_loader_accepts_existing_hex_key() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let key_path = temp_dir.path().join("api.key");
+        fs::write(
+            &key_path,
+            "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789\n",
+        )
+        .expect("write key");
+
+        let loaded = load_ldk_api_key(&key_path).expect("load key");
+
+        assert_eq!(
+            loaded,
+            b"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        );
     }
 
     #[tokio::test]

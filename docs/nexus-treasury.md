@@ -192,7 +192,9 @@ Current treasury-provider environment:
 
 - `NEXUS_TREASURY_PROVIDER=ldk` by default.
 - `NEXUS_LDK_SERVER_URL` for the private `ldk-server` endpoint, in
-  `host:port` form with no scheme.
+  `host:port` form with no scheme. Production should use the GCE internal
+  hostname, currently `nexus-ldk-mainnet-1:3536`, because the LDK Server TLS
+  certificate is valid for the hostname and not for the private IP.
 - `NEXUS_LDK_API_KEY_PATH` for LDK Server HMAC credentials. Nexus loads the
   key from disk and must never log the raw value.
 - `NEXUS_LDK_TLS_CERT_PATH` for LDK Server TLS trust material. Nexus loads the

@@ -82,14 +82,10 @@ resolve_ldk_server_url() {
     return 0
   fi
 
-  local ldk_ip
   instance_exists "$NEXUS_LDK_VM" || die "Cannot resolve NEXUS_LDK_SERVER_URL=auto because LDK VM does not exist: ${NEXUS_LDK_VM}"
-  ldk_ip="$(gcloud compute instances describe "$NEXUS_LDK_VM" \
-    --project "$GCP_PROJECT" \
-    --zone "$GCP_ZONE" \
-    --format='get(networkInterfaces[0].networkIP)')"
-  [[ -n "$ldk_ip" ]] || die "Could not resolve private IP for ${NEXUS_LDK_VM}"
-  NEXUS_LDK_SERVER_URL="${ldk_ip}:${NEXUS_LDK_GRPC_PORT}"
+  # ldk-server's generated TLS certificate is valid for the VM hostname, not
+  # the private IP. GCE internal DNS resolves this name on the Nexus VM.
+  NEXUS_LDK_SERVER_URL="${NEXUS_LDK_VM}:${NEXUS_LDK_GRPC_PORT}"
 }
 
 upload_file_via_ssh() {
