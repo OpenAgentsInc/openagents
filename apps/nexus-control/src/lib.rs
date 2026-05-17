@@ -18459,7 +18459,6 @@ fn treasury_operation_kind_label(kind: crate::treasury::TreasuryOperationKind) -
         crate::treasury::TreasuryOperationKind::PaymentStatusLookup => "payment_status_lookup",
         crate::treasury::TreasuryOperationKind::EventProjection => "event_projection",
         crate::treasury::TreasuryOperationKind::ReconciliationPass => "reconciliation_pass",
-        crate::treasury::TreasuryOperationKind::FinalDrainOperation => "final_drain_operation",
         crate::treasury::TreasuryOperationKind::LightningAdminCommand => "lightning_admin_command",
     }
 }

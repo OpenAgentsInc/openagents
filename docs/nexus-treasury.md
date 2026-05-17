@@ -204,14 +204,14 @@ Current treasury-provider environment:
 ## Removed Spark Runtime
 
 Spark is not part of the active Nexus or Pylon runtime. Do not add Spark
-provider values, final-drain flags, Spark wallet hydration, or Spark payout
+provider values, Spark drain flags, Spark wallet hydration, or Spark payout
 registration back into normal code paths. Historical reports may still mention
 Spark because they describe the incident path that produced the migration, but
 those reports are not operator instructions for the active system.
 
 The final migration/drain report for LDK-16 is checked in at
-[`reports/nexus/2026-05-16-spark-migration-final-drain-report.md`](reports/nexus/2026-05-16-spark-migration-final-drain-report.md).
-It records that no Spark final drain was performed during closeout and that
+[`reports/nexus/2026-05-16-spark-removal-closeout.md`](reports/nexus/2026-05-16-spark-removal-closeout.md).
+It records that no Spark drain path remains in active runtime and that
 Spark-only worker targets are stale/ineligible for new paid work.
 
 Current normal behavior:
@@ -265,7 +265,7 @@ Old payout records from the pre-LDK runtime are imported as retired legacy
 operation rows on treasury-state load. The migration hashes old payout targets
 and payment ids so historical receipts remain queryable for audit without
 making LDK logic depend on old target fields. There is no Spark provider,
-final-drain mode, or Spark funding/payout write path in the active runtime.
+Spark drain mode, or Spark funding/payout write path in the active runtime.
 
 ## Pylon v0.2 Payment-Target Registration
 
@@ -1130,7 +1130,7 @@ node, Bitcoin backend, backup, restore, and reconciliation procedures.
 
 For historical Spark forensics, work in an isolated, copied workspace outside
 the production deploy path. Do not add Spark recovery binaries, wallet sync, or
-final-drain code back into the normal Nexus image.
+Spark drain code back into the normal Nexus image.
 
 ## Public Stats
 

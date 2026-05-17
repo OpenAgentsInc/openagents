@@ -92,7 +92,7 @@ Hosting rules:
 flowchart TD
   a["Freeze Spark writes\nNo new Spark fields or payout targets"]
   b["Inventory Spark touchpoints\nroutes, configs, receipts, tests, runbooks"]
-  c["Add LDK-first Nexus provider boundary\nSpark only historical-read/final-drain"]
+  c["Add LDK-only Nexus provider boundary\nold Spark records read-only"]
   d["Prove LDK locally and on signet\nBOLT11 receive, send, events, restart"]
   e["Deploy LDK Server beside Nexus\nprivate GCP interface"]
   f["Cut operator funding invoices to LDK\nremove Spark from standard admin flow"]
@@ -100,7 +100,7 @@ flowchart TD
   h["Cut payout dispatch to LDK\nSpark-only workers ineligible for new paid work"]
   i["Publish read-only projections\nchannels, liquidity, payments, Pylon payouts"]
   j["Build web visualization\nReact Three Fiber over redacted projections"]
-  k["Run migration report\nhistorical reads and final drain only"]
+  k["Run migration report\nno active Spark drain"]
   l["Delete Spark primary-path code\nkeep old receipt readers only if needed"]
 
   a --> b --> c --> d --> e --> f --> g --> h --> i --> j --> k --> l
@@ -153,8 +153,7 @@ This transition should be treated as the defining payment-rail change for
   with BOLT12 offers as the durable default and BOLT11 as a per-payment
   compatibility path.
 - Spark should not remain as an active compatibility rail. Existing Spark
-  records should remain readable only long enough to audit, migrate, or perform
-  a bounded final drain if one is unavoidable.
+  records should remain readable only long enough to audit or migrate.
 
 The fastest responsible path is:
 
@@ -168,9 +167,8 @@ The fastest responsible path is:
 4. Use BOLT11 invoices for immediate operator funding workflows.
 5. Move durable Pylon payout targets toward BOLT12 offers, with BOLT11 as a
    per-payment compatibility path.
-6. Freeze Spark writes, migrate historical Spark records, perform any strictly
-   necessary final drain as an explicitly named operator action, and remove
-   Spark from normal funding, payout, and worker-registration paths.
+6. Freeze Spark writes, migrate historical Spark records, and remove Spark from
+   normal funding, payout, and worker-registration paths.
 
 This is not just a payment-provider preference. Spark has repeatedly put slow
 wallet sync, stale history, and leaf spendability on the operational critical
@@ -393,7 +391,7 @@ Nexus API / admin tools
        -> LDK provider, new default
             -> LDK Server gRPC, phase 1
             -> ldk-node direct daemon/library, fallback or phase 2
-       -> Spark historical reader / final drain, disabled by default
+       -> old Spark receipt reader, read-only
 ```
 
 The provider boundary must own:
@@ -520,8 +518,7 @@ invoice request flow. The LDK-first target should be BOLT12.
 
 The migration should be explicit. Do not interpret "move to LDK" as a
 concurrent operating model. Spark and LDK should not coexist as active funding
-or payout choices. Spark exists only to read or migrate old state and to perform
-a tightly bounded final drain if one is unavoidable.
+or payout choices. Spark exists only to read or migrate old state.
 
 Current state:
 
@@ -549,14 +546,13 @@ Migration order:
    - List every Nexus route, admin command, Pylon config field, payout record,
      receipt field, test, and runbook that creates, stores, reads, or sends to
      Spark material.
-   - Add a migration note beside each touchpoint: `legacy-read`,
-     `final-drain-only`, `ldk-replace`, or `delete-after-cutover`.
+   - Add a migration note beside each touchpoint: `legacy-read`, `ldk-replace`,
+     or `delete-after-cutover`.
    - Stop adding new Spark-specific fields to public or internal APIs.
 
 2. Add the Nexus provider boundary before moving funds.
    - Introduce `TreasuryLightningProvider`.
-   - Put existing Spark calls behind `SparkTreasuryProvider` only long enough
-     to inventory, quarantine, and delete them.
+   - Keep old Spark-specific calls out of the active provider boundary.
    - Add `LdkTreasuryProvider` behind the same interface.
    - Do not expose Spark versus LDK as a product or operator rail choice.
    - Store treasury operations with LDK-first fields that still preserve
@@ -578,8 +574,6 @@ Migration order:
    - Switch admin funding invoice creation to LDK when
      `NEXUS_TREASURY_PROVIDER=ldk`.
    - Remove Spark funding from the standard admin flow.
-   - If Spark funds must be swept, use a separate final-drain operator command,
-     not a fallback route.
    - Record timing around invoice creation and event reconciliation. This is
      the first production proof that funding no longer depends on Spark sync or
      Spark wallet history hydration.
@@ -622,12 +616,12 @@ Migration order:
      audit is complete.
 
 9. Decommission Spark writes.
-   - Block new Spark sends except for an explicitly approved final drain.
+   - Block new Spark sends.
    - Produce a report of any remaining active workers or receipts that still
      depend on Spark.
    - Remove Spark from standard runbooks, admin tools, and chat/API defaults.
 
-10. Delete Spark primary-path code after the drain is complete.
+10. Delete Spark primary-path code after migration closeout.
     - Keep only historical readers if needed for old receipts.
     - Remove Spark leaf-selection backpressure, Spark sync timing workarounds,
       and Spark funding-target retries from the primary Nexus path.
@@ -637,8 +631,8 @@ Cutover rule:
 - Do not make LDK the production default until local/signet proof is green.
 - Do not require Pylon v0.2 workers to use LDK until Nexus has production LDK
   receive and send receipts.
-- Do not keep Spark active after cutover. Keep only historical readers and one
-  explicitly named final-drain path until the migration report is complete.
+- Do not keep Spark active after cutover. Keep only historical readers until the
+  migration report is complete.
 
 ## Pylon v0.2 Changes Required
 
@@ -687,7 +681,6 @@ v0.2 and Pylon v0.2.
 - Add `LdkTreasuryProvider` with a fake/local implementation first.
 - Add config:
   - `NEXUS_TREASURY_PROVIDER=ldk`
-  - `NEXUS_SPARK_FINAL_DRAIN_ENABLED=false`
   - `NEXUS_LDK_SERVER_URL`
   - `NEXUS_LDK_API_KEY_PATH`
   - `NEXUS_LDK_TLS_CERT_PATH`
@@ -892,7 +885,7 @@ Add or update runbooks for:
 - BOLT12 Pylon payout target smoke.
 - Payment event subscriber restart.
 - Missed event reconciliation.
-- Spark historical-read and final-drain procedure.
+- Spark historical-read quarantine.
 - Spark decommission.
 
 Each runbook should include exact commands, expected output fields, failure
@@ -972,13 +965,13 @@ The issue IDs below are planning labels, not existing GitHub issue numbers.
 
 | ID | Repo | Phase | Issue | Deliverables | Depends On | Proof |
 | --- | --- | --- | --- | --- | --- | --- |
-| LDK-01 | `openagents` | 0 | Freeze and inventory Spark touchpoints | Code and runbook inventory of every Spark route, config field, payout record, test, admin command, and Pylon registration path; each marked `legacy-read`, `final-drain-only`, `ldk-replace`, or `delete-after-cutover`; no new Spark write path accepted | none | Inventory doc, grep checklist, CI/test note showing no new Spark target creation in the normal path |
-| LDK-02 | `openagents` | 0 | Add LDK-first Nexus treasury provider boundary | `TreasuryLightningProvider` interface; `LdkTreasuryProvider` scaffold; Spark quarantined behind historical-reader/final-drain adapter only; config shape for LDK Server URL, TLS, API key, storage, network, chain backend | LDK-01 | Unit tests for config parsing, idempotency keys, provider selection, and Spark-disabled default |
+| LDK-01 | `openagents` | 0 | Freeze and inventory Spark touchpoints | Code and runbook inventory of every Spark route, config field, payout record, test, admin command, and Pylon registration path; each marked `legacy-read`, `ldk-replace`, or `delete-after-cutover`; no new Spark write path accepted | none | Inventory doc, grep checklist, CI/test note showing no new Spark target creation in the normal path |
+| LDK-02 | `openagents` | 0 | Add LDK-only Nexus treasury provider boundary | `TreasuryLightningProvider` interface; `LdkTreasuryProvider` scaffold; no Spark adapter in the active provider boundary; config shape for LDK Server URL, TLS, API key, storage, network, chain backend | LDK-01 | Unit tests for config parsing, idempotency keys, provider selection, and rejected Spark provider values |
 | LDK-03 | `openagents` | 0 | Add treasury operation and receipt store updates | Durable operation rows for funding invoice, payout, payment status, event projection, rail metadata, target hash, beneficiary, terminal state, and degraded reason; migration path for old Spark receipts | LDK-02 | Migration test, replay test, receipt projection test |
 | LDK-04 | `openagents` | 0 | Build local LDK regtest/signet harness | Two-node LDK harness with bitcoind backend; BOLT11 invoice creation; payment send; restart safety; missed-event reconciliation through `ListPayments` | LDK-02 | Scripted smoke run with invoice creation, payment, event projection, restart, and reconciliation logs |
 | LDK-05 | `openagents` | 0 | Wire LDK Server client into Nexus | gRPC/TLS/HMAC client for `GetNodeInfo`, `GetBalances`, `Bolt11Receive`, `ListPayments`, `GetPayment`, and `SubscribeEvents`; error normalization from gRPC codes into Nexus degraded states | LDK-04 | Integration tests against harness; typed error fixtures |
 | LDK-06 | `openagents` | 1 | Deploy LDK Server and bitcoind topology on Google Cloud | GCP runbooks and scripts for `bitcoind`, LDK Server, systemd, private interface binding, Prometheus metrics, logrotate, backup, restore drill, and operator access | LDK-04, LDK-05 | Non-public signet or dry-run host with read-only node info, balances, and metrics verified |
-| LDK-07 | `openagents` | 1 | Cut Nexus operator funding invoices to LDK | Standard funding endpoint uses LDK `Bolt11Receive`; Spark funding removed from normal admin/API/chat path; final-drain command is separate and disabled by default | LDK-05, LDK-06 | Funding invoice p95 under 2 seconds; paid invoice appears as `PaymentReceived`; `ListPayments` reconciliation agrees |
+| LDK-07 | `openagents` | 1 | Cut Nexus operator funding invoices to LDK | Standard funding endpoint uses LDK `Bolt11Receive`; Spark funding removed from normal admin/API/chat path | LDK-05, LDK-06 | Funding invoice p95 under 2 seconds; paid invoice appears as `PaymentReceived`; `ListPayments` reconciliation agrees |
 | LDK-08 | `openagents` | 2 | Add Pylon v0.2 payment-target registration | Pylon advertises `bolt12_offer`, `bolt11_invoice`, `bip353_name`, and optional `lnurl_pay`; no new Spark destination creation; Spark config read only to flag upgrade-required workers | LDK-02 | Pylon registration smoke showing BOLT12 target and capability marker; Spark-only worker marked ineligible |
 | LDK-09 | `openagents` | 2 | Cut accepted-work payout dispatch to LDK | Nexus pays upgraded Pylons through BOLT12 or per-payment BOLT11; accepted-work receipts store payment id, target, rail, terminal event state, and degraded reason | LDK-05, LDK-08 | Bounded payout smoke to controlled target; receipt projection shows LDK payment id and terminal event |
 | LDK-10 | `openagents` | 3 | Add liquidity and channel admin operations | Admin APIs/chat tools for node info, balances, channels, peers, connect peer, open/close channel, splice in/out, payment status, pay invoice, pay offer, and reconcile payments | LDK-05, LDK-07 | Admin smoke against signet/dry-run node; write commands require admin auth and idempotency keys |
@@ -986,8 +979,8 @@ The issue IDs below are planning labels, not existing GitHub issue numbers.
 | LDK-12 | `openagents` | 3.5 | Publish read-only Nexus projection endpoints | Projection APIs for peers, channels, liquidity bands, payment attempts, terminal states, payout receipts, Pylon earning events, and degraded Lightning states; redaction rules | LDK-09, LDK-11 | Read-only endpoint smoke; redaction tests prove no seed, API key, private channel secret, or custody material leaks |
 | LDK-13 | `autopilot3` | 3.5 | Build React Three Fiber Lightning/Pylon visualization | Web surface consuming Nexus read-only projections; graph nodes for Nexus, LDK channels, peers, Pylons, payments, liquidity, and degraded states; side panes for selected objects | LDK-12 | Local and deployed visual smoke; no write operations exposed from visualization |
 | LDK-14 | `autopilot3` | 3.5 | Add thin Autopilot 3 Nexus API/admin facades | WorkOS/API-token gated routes for treasury status and approved admin operations; all writes proxy to Nexus with idempotency and audit receipts; no custody material in Worker state | LDK-10, LDK-12 | API smoke with admin token; unauthorized user cannot access write tools; route logs show Nexus operation ids |
-| LDK-15 | `openagents` | 4 | Decommission Spark from new operations | Remove Spark from normal funding, payout, worker-registration, admin, API, and chat paths; keep only historical readers and disabled final-drain path until report closes | LDK-07, LDK-09 | Grep checklist, tests proving no normal path creates or sends Spark material, migration report |
-| LDK-16 | `openagents` | 4 | Write final Spark migration and drain report | Report active workers, old receipts, remaining Spark funds, drain status, deleted code paths, retained historical readers, and rollback limits | LDK-15 | Checked-in report; operator signoff criteria documented |
+| LDK-15 | `openagents` | 4 | Decommission Spark from new operations | Remove Spark from normal funding, payout, worker-registration, admin, API, and chat paths; keep only historical readers until report closes | LDK-07, LDK-09 | Grep checklist, tests proving no normal path creates or sends Spark material, migration report |
+| LDK-16 | `openagents` | 4 | Write final Spark removal report | Report active workers, old receipts, deleted code paths, retained historical readers, and rollback limits | LDK-15 | Checked-in report; operator signoff criteria documented |
 | LDK-17 | `treasury` | 0-2 | Decide and implement long-term custody ownership split | If hosted payment authority moves out of Nexus, implement the LDK provider and operation store in `treasury`; if Nexus remains owner for v0.2, record that decision and keep `treasury` as a later extraction target | LDK-02 | Decision record plus either `treasury` implementation plan or explicit v0.2 non-goal |
 | LDK-18 | `openagents.com` | 3.5 | Add public/brand links to read-only compute and Lightning status where appropriate | Link or embed approved read-only status surfaces from the public website without exposing admin controls or custody data | LDK-12, LDK-13 | Public page smoke; unauthenticated view only sees approved redacted data |
 | LDK-19 | `openagents` | all | Update runbooks and operator docs after each phase | Exact commands, expected output fields, failure states, rollback conditions, backup/restore steps, and production smoke procedure for every shipped phase | each phase | `git diff --check`; runbook command syntax checks where scripts exist |
@@ -1014,11 +1007,11 @@ Scope:
 - Find every Nexus route, admin command, worker registration path, Pylon config
   field, payout target, payout receipt, migration, test, script, and runbook
   that creates, stores, reads, or sends Spark material.
-- Mark each touchpoint as one of `legacy-read`, `final-drain-only`,
-  `ldk-replace`, or `delete-after-cutover`.
+- Mark each touchpoint as one of `legacy-read`, `ldk-replace`, or
+  `delete-after-cutover`.
 - Add a checked-in inventory document under `docs/` or `docs/reports/`.
 - Add a code comment or TODO marker beside any code path that must survive only
-  temporarily for historical reads or the final drain.
+  temporarily for historical reads.
 - Confirm the normal code path cannot create new Spark payout destinations or
   new Spark funding targets.
 
@@ -1030,7 +1023,7 @@ Acceptance criteria:
   are documented as moving to LDK-only.
 - No new public or internal API fields are added that make Spark a durable
   active rail.
-- Any final-drain path is explicitly named and disabled by default.
+- No Spark write or drain path is added to active runtime.
 
 Verification:
 
@@ -1055,9 +1048,8 @@ Depends on: LDK-01
 
 Body:
 
-Introduce the internal Nexus boundary that lets normal treasury behavior become
-LDK-first while quarantining Spark as historical-read/final-drain-only code.
-This boundary should prevent Nexus business logic from depending on
+Introduce the internal Nexus boundary that makes normal treasury behavior
+LDK-only. This boundary should prevent Nexus business logic from depending on
 Spark-specific fields.
 
 Scope:
@@ -1065,11 +1057,9 @@ Scope:
 - Add a `TreasuryLightningProvider` trait or equivalent internal interface.
 - Add an `LdkTreasuryProvider` scaffold with fake/local behavior sufficient for
   tests.
-- Move existing Spark calls behind a quarantined adapter only long enough to
-  support historical reads and disabled final-drain operations.
+- Do not add a Spark adapter to the active provider boundary.
 - Add config for:
   - `NEXUS_TREASURY_PROVIDER=ldk`
-  - `NEXUS_SPARK_FINAL_DRAIN_ENABLED=false`
   - `NEXUS_LDK_SERVER_URL`
   - `NEXUS_LDK_API_KEY_PATH`
   - `NEXUS_LDK_TLS_CERT_PATH`
@@ -1081,8 +1071,8 @@ Scope:
 Acceptance criteria:
 
 - New treasury logic calls the provider boundary, not direct Spark code.
-- The default config is LDK-first.
-- Spark final drain cannot run unless the explicit final-drain flag is enabled.
+- The config is LDK-only.
+- Spark provider values are rejected.
 - Provider errors normalize into typed Nexus errors.
 - The implementation is structured so `ldk-server` can later be swapped for a
   direct `ldk-node` daemon/library without changing Nexus business logic.
@@ -1090,7 +1080,7 @@ Acceptance criteria:
 Verification:
 
 - Unit tests for config parsing, provider selection, idempotency key handling,
-  disabled Spark final drain, and provider error normalization.
+  rejected Spark provider values, and provider error normalization.
 - Run the relevant Rust test target.
 - Run `git diff --check`.
 
@@ -1105,13 +1095,12 @@ Implementation status, 2026-05-16:
   `TreasuryLightningProvider` boundary, provider config types, normalized
   provider errors, and a deterministic `LdkTreasuryProvider` local scaffold.
 - `TreasuryConfig` now parses the LDK provider shape:
-  `NEXUS_TREASURY_PROVIDER`, `NEXUS_SPARK_FINAL_DRAIN_ENABLED`,
-  `NEXUS_LDK_SERVER_URL`, `NEXUS_LDK_API_KEY_PATH`,
-  `NEXUS_LDK_TLS_CERT_PATH`, `NEXUS_LDK_STORAGE_DIR`,
-  `NEXUS_LDK_NETWORK`, and `NEXUS_LDK_CHAIN_BACKEND`.
-- The default provider is LDK. The legacy Spark funding and payout paths can
-  run only when the provider is explicitly `spark_final_drain` and the final
-  drain flag is enabled.
+  `NEXUS_TREASURY_PROVIDER`, `NEXUS_LDK_SERVER_URL`,
+  `NEXUS_LDK_API_KEY_PATH`, `NEXUS_LDK_TLS_CERT_PATH`,
+  `NEXUS_LDK_STORAGE_DIR`, `NEXUS_LDK_NETWORK`, and
+  `NEXUS_LDK_CHAIN_BACKEND`.
+- The provider is LDK-only. Spark provider values are rejected by config
+  parsing.
 - The LDK scaffold returns stable local funding targets and payout ids keyed
   by idempotency values, so later `ldk-server` or direct `ldk-node` calls can
   replace the scaffold behind the same Nexus boundary.
@@ -1138,7 +1127,6 @@ Scope:
   - payment status lookup
   - event projection
   - reconciliation pass
-  - final-drain operation if needed
 - Store operation id, rail metadata, amount msat, target kind, target hash,
   beneficiary, status, provider payment id, receipt references, degraded
   reason, created/updated timestamps, and terminal event state.
@@ -1168,8 +1156,7 @@ Implementation status, 2026-05-16:
   amount msat, hashed target, beneficiary, status, hashed provider payment id,
   receipt refs, degraded reason, timestamps, and terminal state.
 - New operation kinds cover funding invoice creation, outbound payout dispatch,
-  payment-status lookup, event projection, reconciliation pass, and a reserved
-  explicit final-drain operation.
+  payment-status lookup, event projection, and reconciliation pass.
 - Funding target creation records a `funding_invoice_creation` operation and a
   `treasury.funding_invoice.created` receipt without storing raw invoices or
   provider targets in the operation/receipt payload.
@@ -1442,8 +1429,7 @@ Status after implementation:
 
 - Standard Nexus funding invoice creation now routes through the LDK provider
   boundary by default and calls LDK `Bolt11Receive`.
-- Legacy Spark funding target creation remains disabled by default and is only
-  reachable through explicit final-drain/recovery configuration.
+- Legacy Spark funding target creation is not part of the active provider path.
 - LDK funding responses expose `phase_timings` and a hashed
   `provider_payment_id_hash`; operation rows and funding receipts also record
   request, operation-row, LDK RPC, invoice-return, and total-duration timing
@@ -1873,8 +1859,7 @@ Scope:
 - Remove standard Spark payout dispatch.
 - Remove new Spark payout destination creation in Pylon.
 - Remove Spark from admin/chat/API defaults.
-- Keep only historical read models and a disabled-by-default final-drain path
-  until the migration report closes.
+- Keep only historical read models until the migration report closes.
 - Delete Spark leaf-selection backpressure and Spark sync timing workarounds
   from primary paths.
 
@@ -1888,7 +1873,7 @@ Acceptance criteria:
 Verification:
 
 - Grep checklist for Spark creation/send paths.
-- Tests proving Spark final drain is disabled by default.
+- Tests proving Spark provider values are rejected.
 - Run relevant test suites.
 - Run `git diff --check`.
 
@@ -1899,16 +1884,10 @@ Out of scope:
 Implementation status, 2026-05-16:
 
 - Nexus defaults new treasury work to `NEXUS_TREASURY_PROVIDER=ldk`.
-- `NEXUS_TREASURY_PROVIDER=spark` is rejected. The only Spark provider mode is
-  `spark_final_drain`, and config construction rejects it unless
-  `NEXUS_SPARK_FINAL_DRAIN_ENABLED=true`.
+- `NEXUS_TREASURY_PROVIDER=spark` is rejected.
 - Normal treasury funding-target creation calls the LDK provider boundary and
-  leaves `spark_invoice` empty. Legacy Spark receive material can only be
-  created when both the provider config and final-drain environment gate are
-  explicitly enabled.
-- Normal payout dispatch calls the LDK provider boundary. Spark dispatch
-  returns a failed batch with a `legacy Spark payout dispatch is disabled`
-  reason unless explicit final-drain mode is enabled.
+  does not create non-LDK invoices.
+- Normal payout dispatch calls the LDK provider boundary.
 - Nexus API registration rejects `spark_address` payout targets in the active
   API before challenge verification or state mutation. Spark-only historical
   targets remain readable but are not LDK-compatible and are ineligible for new
@@ -1916,23 +1895,20 @@ Implementation status, 2026-05-16:
 - Pylon no longer creates a Spark payout destination in the normal startup
   path, and the active registration API carries no Spark fields.
 - Remaining Spark references are allowed only in historical receipt migration,
-  disabled Nexus final-drain/recovery gates, the reusable legacy Spark crate,
-  deprecated Autopilot code, and tests proving the gates stay closed.
+  historical reports, the excluded legacy Spark crate, deprecated Autopilot
+  code, and tests proving Spark targets are rejected.
 
 Grep checklist, 2026-05-16:
 
-- `rg -n "NEXUS_TREASURY_PROVIDER=spark|spark_final_drain|SparkFinalDrain"
-  apps/nexus-control/src` shows only provider parsing, disabled final-drain
-  checks, operation/read-model projection, and tests.
+- `rg -n "NEXUS_TREASURY_PROVIDER=spark|Spark.*Drain"
+  apps/nexus-control/src` returns no active provider implementation.
 - `rg -n "create_invoice|create_bolt11_invoice|get_spark_address|send_spark"
-  apps/nexus-control/src/treasury.rs` shows direct Spark wallet calls only
-  below the explicit final-drain gate.
+  apps/nexus-control/src/treasury.rs` returns no active Spark wallet calls.
 - `rg -n "apply_default_payout_destination" apps/pylon/src/lib.rs` returns no
   hits.
 - `rg -n "spark_address" apps/nexus-control/src apps/pylon/src` still finds
-  historical readers, compatibility fields, negative tests, and final-drain
-  gates. Those references are expected until LDK-16 signs off the final Spark
-  migration report.
+  historical readers, compatibility fields, and negative tests. Those
+  references must not create new Spark payout material.
 
 #### LDK-16 — Write final Spark migration and drain report
 
@@ -1945,13 +1921,14 @@ Depends on: LDK-15
 Body:
 
 Write the final migration report that proves Spark is gone from new operations
-and documents any retained historical readers or completed final-drain action.
+and documents any retained historical readers.
 
 Scope:
 
 - Report active workers that still advertised Spark targets at cutover.
 - Report old Spark receipts and their retained read path.
-- Report remaining Spark funds, final-drain status, and operator signoff.
+- Report whether remaining Spark funds are recoverable through the active
+  runtime, and record operator signoff.
 - List deleted Spark primary-path code.
 - List retained historical readers and their deletion condition.
 - Document rollback limits after the LDK cutover.
@@ -1960,7 +1937,7 @@ Scope:
 Acceptance criteria:
 
 - The report is checked in.
-- It states whether any Spark final drain was performed.
+- It states that no active Spark drain path remains.
 - It proves no active runbook, admin tool, API, or chat flow requires Spark for
   a new operation.
 - It records explicit operator signoff criteria.
@@ -1977,9 +1954,10 @@ Out of scope:
 
 Implementation status, 2026-05-16:
 
-- Final migration/drain report checked in:
-  `docs/reports/nexus/2026-05-16-spark-migration-final-drain-report.md`.
-- No Spark final drain was performed during this closeout.
+- Final Spark removal report checked in:
+  `docs/reports/nexus/2026-05-16-spark-removal-closeout.md`.
+- No Spark drain was performed during this closeout because Spark is no longer
+  an active Nexus provider path.
 - Public Nexus was returning Cloudflare `530` / `1033` before the report.
   Serial logs showed the VM guest network could not reach metadata, DNS, or
   Cloudflare edge. A `nexus-mainnet-1` reset restored public `/healthz`, VM
@@ -1989,7 +1967,7 @@ Implementation status, 2026-05-16:
   as stale/historical records, with no LDK-compatible sampled active payout
   targets. Those targets are ineligible for new paid work until Pylons register
   v0.2 LDK-compatible targets.
-- Legacy Spark runbooks were marked as legacy/final-drain-only. Normal operator
+- Legacy Spark runbooks were marked as historical-only. Normal operator
   docs now point to `docs/nexus-treasury.md` and
   `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md`.
 - Rollback limits and explicit operator signoff criteria are recorded in the
@@ -2018,7 +1996,6 @@ Scope:
   - payment event subscriber
   - payout dispatch
   - backup/restore authority
-  - final-drain procedure
 - If `treasury` owns any of these, create the implementation plan and interface
   contract with Nexus.
 - If Nexus owns v0.2, record `treasury` extraction as a later target and define
@@ -2112,7 +2089,7 @@ Scope:
   - BOLT12 Pylon payout smoke
   - payment event subscriber restart
   - missed-event reconciliation
-  - Spark historical-read and final-drain procedure
+  - Spark historical-read quarantine
   - Spark decommission
 - Include exact commands, expected output fields, failure states, rollback
   conditions, and proof artifacts.
@@ -2144,8 +2121,8 @@ Implementation status, 2026-05-16:
   checks, expected fields, failure states, rollback conditions, proof artifact
   requirements, and secret-handling rules.
 - The Pylon release runbook and Nexus treasury docs now describe
-  positive-amount BOLT11 funding responses as LDK-first and Spark as
-  legacy/final-drain-only.
+  positive-amount BOLT11 funding responses as LDK-only and Spark as historical
+  context only.
 
 Repository ownership notes:
 

@@ -2245,7 +2245,6 @@ pub enum TreasuryOperationKind {
     PaymentStatusLookup,
     EventProjection,
     ReconciliationPass,
-    FinalDrainOperation,
     LightningAdminCommand,
 }
 
@@ -2257,7 +2256,6 @@ impl TreasuryOperationKind {
             Self::PaymentStatusLookup => "payment_status_lookup",
             Self::EventProjection => "event_projection",
             Self::ReconciliationPass => "reconciliation_pass",
-            Self::FinalDrainOperation => "final_drain_operation",
             Self::LightningAdminCommand => "lightning_admin_command",
         }
     }

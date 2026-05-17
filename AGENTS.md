@@ -128,14 +128,13 @@ Default to:
 ## Nexus Release Process
 
 - There is one production Nexus release path.
-- Nexus and treasury wallet code must use the upstream Breez Spark SDK from
-  `https://github.com/breez/spark-sdk` at the newest stable upstream tag.
-  Do not pin `openagents-spark`, `nexus-control`, or treasury payout code to
-  `AtlantisPleb/spark-sdk` or any other fork unless the user explicitly
-  approves a temporary emergency fork in writing. Before any Nexus payout
-  deploy, verify the current upstream tag with `git ls-remote
-  https://github.com/breez/spark-sdk.git 'refs/tags/*'` or the GitHub tags API
-  and keep `crates/spark/Cargo.toml` aligned with that tag.
+- Nexus and Pylon production payment work is LDK-only. Do not add Spark,
+  Spark drain, or Spark SDK dependencies to the normal Nexus deploy, treasury
+  provider, payout, funding, Pylon registration, API, or chat/admin path.
+- The normal deployable Nexus image must not copy, compile, or link
+  `crates/spark`, `openagents-spark`, `breez-sdk-spark`, `spark-wallet`, or
+  `spark-sdk`. If those appear in a staged Nexus build context, remove the
+  caller or artifact instead of adding a runtime flag.
 - Use a clean `openagents` checkout or temporary worktree at the exact commit
   being shipped.
 - Build and push the registry image with:
@@ -177,33 +176,9 @@ Default to:
   `NEXUS_TREASURY_RECOVERY_ACTION=cutover NEXUS_TREASURY_RECOVERY_REPORT_PATH=...`.
   Record the report/deploy receipts and keep `#4368` open until a fresh live
   completed payout send and accepted-work receipt are proven.
-- Treasury recovery inspections run serially by default. Do not enable
-  parallel recovery inspections on production unless the local proof path and
-  upstream Spark health justify the additional remote sync load.
-- Treasury recovery must also pause the public and treasury watchdog timers and
-  apply a runtime `Restart=no` systemd drop-in for `nexus-relay` while wallet
-  storage is being inspected. Do not remove those guards; otherwise watchdogs
-  or `Restart=always` can restart the relay and create two Spark wallet
-  runtimes against the same storage.
-- Treasury recovery skips Spark payment-history and unclaimed-deposit scans by
-  default (`NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=false`) because those scans
-  can hang during wallet-store incidents. Use balance comparison for bounded
-  recovery; enable payment scans only for deliberate non-incident forensics.
-- Do not run two treasury recovery wrappers in parallel. The wrapper takes a
-  VM-local lock and runtime-masks `nexus-relay` during wallet inspection; if
-  you find overlapping recovery containers, stop the stale recovery containers
-  and restart/verify `nexus-relay` before generating another report.
-- Do not arm the recovery cleanup trap before VM metadata, registry-login, or
-  other setup-time command substitutions; pull the image first, then stop
-  `nexus-relay` and arm cleanup immediately before the isolated inspection.
-- Do not wrap the long-running recovery report/cutover command in
-  `REPORT_JSON=$(...)`, pipelines, or other subshell-producing capture while
-  cleanup is armed. Write command stdout to a normal temp file and read that
-  file after the command exits so `nexus-relay` cannot be unmasked/restarted
-  from a subshell while inspection is still running.
-- Before using the recovery wrapper after any shell edit, run
-  `bash scripts/deploy/nexus/test-recover-treasury-wallet-shell-guards.sh`
-  along with `bash -n scripts/deploy/nexus/09-recover-treasury-wallet.sh`.
+- Active treasury recovery is LDK Server backup/restore plus Nexus operation
+  reconciliation. Do not restore Spark wallet inspection or Spark drain
+  recovery into the normal Nexus deploy path.
 - Do not bypass this path with VM-local `docker build`, VM-local image tags,
   manual systemd drop-ins, or ad hoc `docker run` replacements on
   `nexus-mainnet-1`.

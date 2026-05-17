@@ -6,14 +6,14 @@ Issue: OpenAgentsInc/openagents#4494
 
 This closeout records the operator documentation state for the Nexus/Pylon
 v0.2 LDK transition. It is the index future operators should use before
-touching funding, payout, channel, backup, restore, Spark final-drain, or
+touching funding, payout, channel, backup, restore, Spark historical records, or
 public recovery-proxy paths.
 
 ## Phase-To-Runbook Map
 
 | Phase | Shipped documentation |
 | --- | --- |
-| LDK-01 Spark touchpoint freeze | `docs/reports/nexus/2026-05-16-spark-migration-final-drain-report.md`, `docs/nexus-treasury.md` |
+| LDK-01 Spark touchpoint freeze | `docs/reports/nexus/2026-05-16-spark-removal-closeout.md`, `docs/nexus-treasury.md` |
 | LDK-02 provider boundary | `docs/nexus-treasury.md`, `docs/2026-05-15-ldk-nexus-treasury-transition-audit.md` |
 | LDK-03 operation and receipt store | `docs/nexus-treasury.md` |
 | LDK-04 local proof harness | `docs/nexus-treasury.md`, `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md` |
@@ -25,8 +25,8 @@ public recovery-proxy paths.
 | LDK-10 admin operations | `docs/nexus-treasury.md`, `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md` |
 | LDK-11 degraded states and alerts | `docs/nexus-treasury.md`, `docs/deploy/NEXUS_GCP_RUNBOOK.md` |
 | LDK-12 read-only projections | `docs/nexus-treasury.md` |
-| LDK-15 Spark decommission | `docs/reports/nexus/2026-05-16-spark-migration-final-drain-report.md`, `docs/deploy/NEXUS_GCP_RUNBOOK.md` |
-| LDK-16 final Spark report | `docs/reports/nexus/2026-05-16-spark-migration-final-drain-report.md` |
+| LDK-15 Spark decommission | `docs/reports/nexus/2026-05-16-spark-removal-closeout.md`, `docs/deploy/NEXUS_GCP_RUNBOOK.md` |
+| LDK-16 final Spark report | `docs/reports/nexus/2026-05-16-spark-removal-closeout.md` |
 | LDK-19 operator docs | this closeout |
 
 The roadmap source remains
@@ -182,8 +182,8 @@ Treat these as blocking or degraded states until explained:
 
 ## Rollback Conditions
 
-There is no Spark/LDK dual-rail product mode. Spark remains only for historical
-read and explicitly gated final-drain/recovery work.
+There is no Spark/LDK dual-rail product mode. Spark remains only as historical
+read context outside the production payment path.
 
 Roll back or pause a phase when:
 
@@ -195,10 +195,9 @@ Roll back or pause a phase when:
   events.
 - Any script or operator flow requires printing raw custody material.
 
-Rollback means restoring or redeploying the previous known-good Nexus image,
-pausing payout dispatch, keeping Spark final-drain disabled unless explicitly
-approved, and restoring from LDK backup only through the documented restore
-drill.
+Rollback means restoring or redeploying the previous known-good LDK-capable
+Nexus image, pausing payout dispatch, and restoring from LDK backup only through
+the documented restore drill.
 
 ## Proof Artifacts
 
