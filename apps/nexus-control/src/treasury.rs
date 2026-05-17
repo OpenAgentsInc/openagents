@@ -726,9 +726,16 @@ pub struct TreasuryFundingTargetResponse {
     pub wallet_payment_scan_mode: Option<String>,
     pub wallet_balance_sats: u64,
     pub wallet_balance_updated_at_unix_ms: u64,
+    #[serde(rename = "provider_target", alias = "spark_address")]
     pub spark_address: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub bitcoin_address: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "provider_invoice",
+        alias = "spark_invoice",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub spark_invoice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bolt11_invoice: Option<String>,
@@ -9404,11 +9411,13 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
     let mut lines = vec![
         format!("wallet_runtime_status: {}", response.wallet_runtime_status),
         format!("wallet_balance_sats: {}", response.wallet_balance_sats),
-        format!("spark_address: {}", response.spark_address),
-        format!("bitcoin_address: {}", response.bitcoin_address),
+        format!("provider_target: {}", response.spark_address),
     ];
+    if !response.bitcoin_address.trim().is_empty() {
+        lines.push(format!("bitcoin_address: {}", response.bitcoin_address));
+    }
     if let Some(invoice) = response.spark_invoice.as_deref() {
-        lines.push(format!("spark_invoice: {invoice}"));
+        lines.push(format!("provider_invoice: {invoice}"));
     }
     if let Some(invoice) = response.bolt11_invoice.as_deref() {
         lines.push(format!("bolt11_invoice: {invoice}"));

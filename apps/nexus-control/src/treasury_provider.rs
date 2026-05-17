@@ -1788,12 +1788,7 @@ impl TreasuryLightningProvider for LdkTreasuryProvider {
                     self.config.chain_backend.as_str(),
                     digest
                 ),
-                bitcoin_address: format!(
-                    "ldk-receive-{}-{}-{}",
-                    self.config.network.as_str(),
-                    self.config.chain_backend.as_str(),
-                    digest
-                ),
+                bitcoin_address: String::new(),
                 bolt11_invoice: Some(receive.invoice),
                 provider_invoice: Some(receive.payment_id),
                 balance_sats: 0,
@@ -1928,11 +1923,7 @@ mod tests {
                 .provider_target
                 .starts_with("ldk://server/regtest/bitcoind/")
         );
-        assert!(
-            first
-                .bitcoin_address
-                .starts_with("ldk-receive-regtest-bitcoind-")
-        );
+        assert_eq!(first.bitcoin_address, "");
         assert!(
             first
                 .bolt11_invoice

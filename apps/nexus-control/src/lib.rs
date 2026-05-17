@@ -35737,7 +35737,14 @@ mod tests {
             )
             .await?;
         assert_eq!(funding_response.status(), StatusCode::OK);
-        let funding: TreasuryFundingTargetResponse = response_json(funding_response).await?;
+        let funding_text = response_text(funding_response).await?;
+        let funding_value: serde_json::Value = serde_json::from_str(&funding_text)?;
+        assert!(funding_value.get("provider_target").is_some());
+        assert!(funding_value.get("provider_invoice").is_none());
+        assert!(funding_value.get("spark_address").is_none());
+        assert!(funding_value.get("spark_invoice").is_none());
+        assert!(funding_value.get("bitcoin_address").is_none());
+        let funding: TreasuryFundingTargetResponse = serde_json::from_str(&funding_text)?;
         assert_eq!(funding.spark_invoice, None);
         assert!(
             funding
