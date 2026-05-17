@@ -159,7 +159,48 @@ Hosted smoke checks:
 - `ldk-server-cli get-balances` works;
 - `GET /metrics` responds on the private gRPC port.
 
-4. Back up LDK state:
+4. Sync LDK client material to Nexus:
+
+```bash
+scripts/deploy/nexus/28-sync-ldk-client-material.sh
+```
+
+This script copies only the client API key and TLS certificate needed by the
+Nexus process from `nexus-ldk-mainnet-1` to `nexus-mainnet-1`. It does not
+print secret bytes. It installs:
+
+- `/etc/nexus-relay/ldk-server/api_key`
+- `/etc/nexus-relay/ldk-server/tls.crt`
+- `/etc/nexus-relay/ldk-server/client.env`
+
+The Nexus Docker service mounts `/etc/nexus-relay` read-only, so these files
+are visible to the container at the same paths. The generated `client.env` is
+an operator receipt; the deploy script still writes the canonical runtime env.
+The API key is owned by UID `60000`, matching the non-root `nexus` user inside
+the `nexus-relay` image.
+
+5. Deploy Nexus against LDK:
+
+```bash
+DEPLOY_IMAGE=<registry-image> \
+NEXUS_TREASURY_PROVIDER=ldk \
+NEXUS_LDK_SERVER_URL=auto \
+NEXUS_LDK_API_KEY_PATH=/etc/nexus-relay/ldk-server/api_key \
+NEXUS_LDK_TLS_CERT_PATH=/etc/nexus-relay/ldk-server/tls.crt \
+NEXUS_LDK_NETWORK=bitcoin \
+NEXUS_LDK_CHAIN_BACKEND=bitcoind \
+NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV=true \
+NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON="cut production Nexus treasury provider to LDK Server" \
+scripts/deploy/nexus/03-configure-and-start.sh
+```
+
+`NEXUS_LDK_SERVER_URL=auto` resolves the private IP of
+`nexus-ldk-mainnet-1` and writes `<private-ip>:3536` into the Nexus runtime
+env. Production deploys refuse to proceed unless `NEXUS_TREASURY_PROVIDER` is
+`ldk`, `NEXUS_LDK_NETWORK` is `bitcoin`/`mainnet`, and the LDK client paths are
+set.
+
+6. Back up LDK state:
 
 ```bash
 NEXUS_LDK_BACKUP_DRY_RUN=true \
@@ -179,7 +220,7 @@ The backup script creates:
 The archive contains custody material. Store it only in the restricted backup
 bucket and do not copy it into the repo.
 
-5. Run a restore drill:
+7. Run a restore drill:
 
 ```bash
 NEXUS_LDK_RESTORE_DRY_RUN=true \
@@ -194,7 +235,7 @@ The drill creates a temporary read-only restore VM/disk, mounts the restored
 disk read-only, verifies critical files, and leaves cleanup commands in the
 output.
 
-6. Run production readiness smoke:
+8. Run production readiness smoke:
 
 ```bash
 NEXUS_BASE_URL=https://nexus.openagents.com \
@@ -251,6 +292,12 @@ NEXUS_LDK_CHAIN_BACKEND=bitcoind
 
 Copy the API key and TLS cert through a secure operator path. The Nexus process
 must load the key from disk and log only a TLS certificate fingerprint.
+
+The supported operator path is:
+
+```bash
+scripts/deploy/nexus/28-sync-ldk-client-material.sh
+```
 
 After this configuration is active, `POST /v1/treasury/funding-target` should
 return a BOLT11 invoice plus `phase_timings`. The standard funding path must
@@ -313,7 +360,8 @@ bash -n scripts/deploy/nexus/22-provision-ldk-topology.sh \
   scripts/deploy/nexus/24-smoke-ldk-server-readonly.sh \
   scripts/deploy/nexus/25-backup-ldk-server-state.sh \
   scripts/deploy/nexus/26-restore-ldk-server-drill.sh \
-  scripts/deploy/nexus/27-smoke-ldk-production-readiness.sh
+  scripts/deploy/nexus/27-smoke-ldk-production-readiness.sh \
+  scripts/deploy/nexus/28-sync-ldk-client-material.sh
 
 scripts/deploy/nexus/test-ldk-topology-shell-guards.sh
 scripts/deploy/nexus/24-smoke-ldk-server-readonly.sh

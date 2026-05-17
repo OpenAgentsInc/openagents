@@ -49,6 +49,13 @@ TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV
   NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE
   NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON
+  NEXUS_TREASURY_PROVIDER
+  NEXUS_LDK_SERVER_URL
+  NEXUS_LDK_API_KEY_PATH
+  NEXUS_LDK_TLS_CERT_PATH
+  NEXUS_LDK_STORAGE_DIR
+  NEXUS_LDK_NETWORK
+  NEXUS_LDK_CHAIN_BACKEND
 )
 EXPLICIT_TREASURY_ENV_VARS=""
 for var in "${TREASURY_ENV_VARS[@]}"; do
@@ -69,6 +76,21 @@ require_cmd jq
 require_cmd base64
 
 ensure_gcloud_context
+
+resolve_ldk_server_url() {
+  if [[ "$NEXUS_LDK_SERVER_URL" != "auto" ]]; then
+    return 0
+  fi
+
+  local ldk_ip
+  instance_exists "$NEXUS_LDK_VM" || die "Cannot resolve NEXUS_LDK_SERVER_URL=auto because LDK VM does not exist: ${NEXUS_LDK_VM}"
+  ldk_ip="$(gcloud compute instances describe "$NEXUS_LDK_VM" \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --format='get(networkInterfaces[0].networkIP)')"
+  [[ -n "$ldk_ip" ]] || die "Could not resolve private IP for ${NEXUS_LDK_VM}"
+  NEXUS_LDK_SERVER_URL="${ldk_ip}:${NEXUS_LDK_GRPC_PORT}"
+}
 
 upload_file_via_ssh() {
   local local_path="$1"
@@ -127,6 +149,21 @@ preserve_remote_treasury_env() {
             continue
             ;;
         esac
+        value="${value%$'\r'}"
+        [[ -n "$value" ]] || continue
+        if treasury_env_is_explicit "$key"; then
+          continue
+        fi
+        export "${key}=${value}"
+        log "Preserving live treasury env ${key}=${value}"
+        ;;
+      NEXUS_TREASURY_PROVIDER|\
+      NEXUS_LDK_SERVER_URL|\
+      NEXUS_LDK_API_KEY_PATH|\
+      NEXUS_LDK_TLS_CERT_PATH|\
+      NEXUS_LDK_STORAGE_DIR|\
+      NEXUS_LDK_NETWORK|\
+      NEXUS_LDK_CHAIN_BACKEND)
         value="${value%$'\r'}"
         [[ -n "$value" ]] || continue
         if treasury_env_is_explicit "$key"; then
@@ -207,6 +244,12 @@ require_production_runtime_env() {
     NEXUS_CONTROL_ADMIN_BEARER_TOKEN
     NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI
     NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH
+    NEXUS_TREASURY_PROVIDER
+    NEXUS_LDK_SERVER_URL
+    NEXUS_LDK_API_KEY_PATH
+    NEXUS_LDK_TLS_CERT_PATH
+    NEXUS_LDK_NETWORK
+    NEXUS_LDK_CHAIN_BACKEND
   )
   local var_name
 
@@ -217,6 +260,11 @@ require_production_runtime_env() {
       die "Refusing to deploy ${NEXUS_VM} without ${var_name}. Export it explicitly or preserve it from the live host first."
     fi
   done
+
+  [[ "$NEXUS_TREASURY_PROVIDER" == "ldk" ]] \
+    || die "Refusing to deploy ${NEXUS_VM} with NEXUS_TREASURY_PROVIDER=${NEXUS_TREASURY_PROVIDER}; production Nexus is LDK-only."
+  [[ "$NEXUS_LDK_NETWORK" == "bitcoin" || "$NEXUS_LDK_NETWORK" == "mainnet" ]] \
+    || die "Refusing to deploy ${NEXUS_VM} with NEXUS_LDK_NETWORK=${NEXUS_LDK_NETWORK}; production must use bitcoin/mainnet."
 }
 
 load_remote_treasury_policy() {
@@ -514,6 +562,13 @@ preserve_remote_runtime_env
 : "${NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS:=true}"
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION:=}"
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS:=}"
+: "${NEXUS_TREASURY_PROVIDER:=ldk}"
+: "${NEXUS_LDK_SERVER_URL:=auto}"
+: "${NEXUS_LDK_API_KEY_PATH:=/etc/nexus-relay/ldk-server/api_key}"
+: "${NEXUS_LDK_TLS_CERT_PATH:=/etc/nexus-relay/ldk-server/tls.crt}"
+: "${NEXUS_LDK_STORAGE_DIR:=/var/lib/nexus-relay/ldk}"
+: "${NEXUS_LDK_NETWORK:=bitcoin}"
+: "${NEXUS_LDK_CHAIN_BACKEND:=bitcoind}"
 : "${TOKIO_WORKER_THREADS:=16}"
 : "${RUST_LOG:=warn,nexus_relay=info,nexus_control=info}"
 : "${NEXUS_RELAY_MAX_WEBSOCKETS:=512}"
@@ -521,6 +576,7 @@ preserve_remote_runtime_env
 : "${NEXUS_RELAY_AUTHORITY_TOKIO_WORKER_THREADS:=4}"
 
 set_default_runtime_env
+resolve_ldk_server_url
 preserve_or_validate_persisted_treasury_policy
 require_production_runtime_env
 
@@ -592,6 +648,13 @@ NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS=${NEXUS_CONTROL_TREASU
 NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV=${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV}
 NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE=${NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE}
 NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON=${NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON}
+NEXUS_TREASURY_PROVIDER=${NEXUS_TREASURY_PROVIDER}
+NEXUS_LDK_SERVER_URL=${NEXUS_LDK_SERVER_URL}
+NEXUS_LDK_API_KEY_PATH=${NEXUS_LDK_API_KEY_PATH}
+NEXUS_LDK_TLS_CERT_PATH=${NEXUS_LDK_TLS_CERT_PATH}
+NEXUS_LDK_STORAGE_DIR=${NEXUS_LDK_STORAGE_DIR}
+NEXUS_LDK_NETWORK=${NEXUS_LDK_NETWORK}
+NEXUS_LDK_CHAIN_BACKEND=${NEXUS_LDK_CHAIN_BACKEND}
 ENV
 
 cat >"$TMP_REMOTE_SCRIPT" <<'REMOTE'
@@ -646,6 +709,28 @@ sudo chmod 640 /etc/nexus-relay/nexus-relay.env
 sudo chmod 644 /etc/nexus-relay/upstream-config.toml
 sudo chown root:root /etc/nexus-relay/nexus-relay.env
 sudo chown root:root /etc/nexus-relay/upstream-config.toml
+
+if grep -qx 'NEXUS_TREASURY_PROVIDER=ldk' /etc/nexus-relay/nexus-relay.env; then
+  ldk_api_key_path="$(awk -F= '/^NEXUS_LDK_API_KEY_PATH=/{print substr($0, index($0, "=") + 1)}' /etc/nexus-relay/nexus-relay.env)"
+  ldk_tls_cert_path="$(awk -F= '/^NEXUS_LDK_TLS_CERT_PATH=/{print substr($0, index($0, "=") + 1)}' /etc/nexus-relay/nexus-relay.env)"
+  if [[ -z "$ldk_api_key_path" || -z "$ldk_tls_cert_path" ]]; then
+    echo "LDK treasury provider selected but client material paths are missing from runtime env" >&2
+    exit 1
+  fi
+  sudo test -r "$ldk_api_key_path" || {
+    echo "LDK API key is not readable on Nexus host: ${ldk_api_key_path}. Run scripts/deploy/nexus/28-sync-ldk-client-material.sh first." >&2
+    exit 1
+  }
+  sudo test -r "$ldk_tls_cert_path" || {
+    echo "LDK TLS certificate is not readable on Nexus host: ${ldk_tls_cert_path}. Run scripts/deploy/nexus/28-sync-ldk-client-material.sh first." >&2
+    exit 1
+  }
+  ldk_api_key_owner="$(stat -c '%u' "$ldk_api_key_path")"
+  if [[ "$ldk_api_key_owner" != "60000" ]]; then
+    echo "LDK API key must be owned by uid 60000 for the Nexus container: ${ldk_api_key_path}" >&2
+    exit 1
+  fi
+fi
 
 sudo mkdir -p "$NEXUS_DATA_DIR"
 sudo chown -R 60000:60000 "$NEXUS_DATA_DIR"

@@ -153,6 +153,8 @@ CONFIG
 
 chown root:ldk-server "$NEXUS_LDK_CONFIG_PATH"
 chmod 0640 "$NEXUS_LDK_CONFIG_PATH"
+chown root:ldk-server "$NEXUS_LDK_CONFIG_DIR"
+chmod 0750 "$NEXUS_LDK_CONFIG_DIR"
 
 cat >/etc/systemd/system/ldk-server.service <<UNIT
 [Unit]

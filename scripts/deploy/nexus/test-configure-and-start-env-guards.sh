@@ -35,5 +35,12 @@ assert_contains 'Preserving live runtime env ${key}=[redacted]' "$SCRIPT_TEXT"
 assert_contains 'Refusing to deploy ${NEXUS_VM} without ${var_name}.' "$SCRIPT_TEXT"
 assert_contains 'NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED' "$SCRIPT_TEXT"
 assert_contains 'NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED=${NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED}' "$ENV_BLOCK"
+assert_contains 'NEXUS_TREASURY_PROVIDER' "$SCRIPT_TEXT"
+assert_contains 'NEXUS_TREASURY_PROVIDER=${NEXUS_TREASURY_PROVIDER}' "$ENV_BLOCK"
+assert_contains 'NEXUS_LDK_SERVER_URL=${NEXUS_LDK_SERVER_URL}' "$ENV_BLOCK"
+assert_contains 'NEXUS_LDK_API_KEY_PATH=${NEXUS_LDK_API_KEY_PATH}' "$ENV_BLOCK"
+assert_contains 'NEXUS_LDK_TLS_CERT_PATH=${NEXUS_LDK_TLS_CERT_PATH}' "$ENV_BLOCK"
+assert_contains 'resolve_ldk_server_url' "$SCRIPT_TEXT"
+assert_contains 'NEXUS_LDK_SERVER_URL:=auto' "$SCRIPT_TEXT"
 
 printf 'ok: nexus configure-and-start preserves runtime env guards\n'
