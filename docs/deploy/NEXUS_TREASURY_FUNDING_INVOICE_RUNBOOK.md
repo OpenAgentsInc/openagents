@@ -43,9 +43,16 @@ curl -fsS -X POST https://nexus.openagents.com/v1/treasury/funding-target \
 ```
 
 Use the `bolt11_invoice` field as the payable invoice. The active provider
-also returns provider metadata such as `provider_payment_id` and an internal
-`ldk://...` provider target for receipts and diagnostics; those fields are not
-payment instructions for the payer.
+also returns provider metadata such as `provider_payment_id_hash` and an
+internal `ldk://...` provider target for receipts and diagnostics; those fields
+are not payment instructions for the payer.
+
+The response wallet balance fields must be live LDK Server balances collected
+after the invoice is created. They are not derived from the invoice target. If
+`wallet_balance_sats`, `wallet_total_onchain_balance_sats`, or
+`wallet_spendable_onchain_balance_sats` drops unexpectedly after creating an
+invoice, treat that as a release blocker and verify direct LDK Server balances
+before continuing.
 
 The durable relay shell proxies this request into embedded Nexus-control. Keep
 `NEXUS_RELAY_AUTHORITY_HTTP_TIMEOUT_MS` longer than

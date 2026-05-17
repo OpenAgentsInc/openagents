@@ -7923,17 +7923,13 @@ fn funding_idempotency_key(request: &TreasuryFundingTargetRequest) -> String {
 }
 
 fn ldk_wallet_snapshot(
-    config: &TreasuryConfig,
+    _config: &TreasuryConfig,
     balances: LdkServerBalances,
     payments: Vec<PaymentSummary>,
 ) -> TreasuryWalletSnapshot {
     TreasuryWalletSnapshot {
         runtime_status: "connected".to_string(),
-        runtime_detail: Some(format!(
-            "ldk_provider:{}:{}",
-            config.lightning_provider.ldk.network.as_str(),
-            config.lightning_provider.ldk.chain_backend.as_str()
-        )),
+        runtime_detail: None,
         wallet_hydration_mode: Some("ldk_provider_scaffold".to_string()),
         wallet_payment_scan_mode: Some("ldk_provider_boundary".to_string()),
         balance_sats: balances.usable_sats,
@@ -7956,6 +7952,7 @@ async fn load_ldk_server_balances(config: &TreasuryConfig) -> Result<LdkServerBa
 fn funding_material_from_provider_target(
     config: &TreasuryConfig,
     target: TreasuryProviderFundingTarget,
+    balances: LdkServerBalances,
     phase_timings: TreasuryFundingTargetPhaseTimings,
 ) -> TreasuryFundingMaterial {
     TreasuryFundingMaterial {
@@ -7965,16 +7962,7 @@ fn funding_material_from_provider_target(
         bolt11_invoice: target.bolt11_invoice,
         provider_payment_id: target.provider_invoice,
         phase_timings,
-        wallet_snapshot: ldk_wallet_snapshot(
-            config,
-            LdkServerBalances {
-                total_onchain_sats: target.balance_sats,
-                spendable_onchain_sats: target.balance_sats,
-                lightning_sats: 0,
-                usable_sats: target.balance_sats,
-            },
-            Vec::new(),
-        ),
+        wallet_snapshot: ldk_wallet_snapshot(config, balances, Vec::new()),
     }
 }
 
@@ -7996,10 +7984,12 @@ async fn create_ldk_provider_funding_target(
         .await
         .map_err(|error| anyhow!(error.normalized_reason()))?;
     let ldk_rpc_completed_at_unix_ms = now_unix_ms();
+    let balances = load_ldk_server_balances(config).await?;
     let invoice_returned_at_unix_ms = now_unix_ms();
     Ok(funding_material_from_provider_target(
         config,
         target,
+        balances,
         TreasuryFundingTargetPhaseTimings {
             request_received_at_unix_ms,
             ldk_rpc_started_at_unix_ms: Some(ldk_rpc_started_at_unix_ms),
@@ -10307,7 +10297,10 @@ mod tests {
         track_wallet_refresh_payment, treasury_test_hook_lock, validate_wallet_hydration_balance,
         wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
     };
-    use crate::treasury_provider::{LdkChainBackend, LdkNetwork, LdkTreasuryProviderConfig};
+    use crate::treasury_provider::{
+        LdkChainBackend, LdkNetwork, LdkServerBalances, LdkTreasuryProviderConfig,
+        TreasuryProviderFundingTarget,
+    };
     use openagents_provider_substrate::{
         ProviderPaymentTargetRegistration, sign_provider_payment_target_registration,
         verify_provider_payment_target_registration_signature,
@@ -10410,6 +10403,37 @@ mod tests {
             funding.wallet_snapshot.wallet_hydration_mode.as_deref(),
             Some("ldk_provider_scaffold")
         );
+    }
+
+    #[test]
+    fn ldk_funding_material_uses_live_balances_not_invoice_target_balance() {
+        let config = test_treasury_config();
+        let material = super::funding_material_from_provider_target(
+            &config,
+            TreasuryProviderFundingTarget {
+                provider_target: "ldk://server/regtest/bitcoind/test".to_string(),
+                bitcoin_address: String::new(),
+                bolt11_invoice: Some("lnbcrt210test".to_string()),
+                provider_invoice: Some("ldk-payment-id".to_string()),
+                balance_sats: 0,
+            },
+            LdkServerBalances {
+                total_onchain_sats: 5_000,
+                spendable_onchain_sats: 4_000,
+                lightning_sats: 1_000,
+                usable_sats: 4_750,
+            },
+            TreasuryFundingTargetPhaseTimings::default(),
+        );
+
+        assert_eq!(material.wallet_snapshot.balance_sats, 4_750);
+        assert_eq!(material.wallet_snapshot.total_onchain_balance_sats, 5_000);
+        assert_eq!(
+            material.wallet_snapshot.spendable_onchain_balance_sats,
+            4_000
+        );
+        assert_eq!(material.wallet_snapshot.lightning_balance_sats, 1_000);
+        assert_eq!(material.wallet_snapshot.runtime_detail, None);
     }
 
     #[tokio::test]
