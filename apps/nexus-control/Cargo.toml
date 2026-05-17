@@ -16,6 +16,7 @@ chrono = { version = "0.4", default-features = true, features = ["clock"] }
 futures = "0.3"
 hex.workspace = true
 http = "1"
+ldk-server-client = { git = "https://github.com/lightningdevkit/ldk-server.git", rev = "47b8468bd13065114b10ec961b9feb257563bb9f", package = "ldk-server-client" }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }

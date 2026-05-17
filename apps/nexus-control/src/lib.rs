@@ -18155,13 +18155,25 @@ async fn execute_treasury_admin_operation(
             let idempotency_key = idempotency_key.expect("write command idempotency checked");
             let peer_node_id =
                 treasury_admin_required_param(&request.params, &["peer_node_id", "peerNodeId"])?;
+            let address = treasury_admin_optional_param(&request.params, &["address"]);
             let amount_sats =
                 treasury_admin_required_u64_param(&request.params, &["amount_sats", "amountSats"])?;
             let receipt = client
-                .open_channel(peer_node_id.as_str(), amount_sats, idempotency_key.as_str())
+                .open_channel(
+                    peer_node_id.as_str(),
+                    address.as_deref(),
+                    amount_sats,
+                    idempotency_key.as_str(),
+                )
                 .await
                 .map_err(ldk_client_api_error)?;
             let mut metadata = treasury_admin_base_metadata(command, idempotency_key.as_str());
+            if let Some(address) = address.as_deref() {
+                metadata.insert(
+                    "address_hash".to_string(),
+                    crate::treasury::treasury_hash(address),
+                );
+            }
             if let Some(channel_id) = receipt.channel_id.as_deref() {
                 metadata.insert(
                     "channel_id_hash".to_string(),
@@ -18192,9 +18204,16 @@ async fn execute_treasury_admin_operation(
             let idempotency_key = idempotency_key.expect("write command idempotency checked");
             let channel_id =
                 treasury_admin_required_param(&request.params, &["channel_id", "channelId"])?;
+            let peer_node_id =
+                treasury_admin_optional_param(&request.params, &["peer_node_id", "peerNodeId"]);
             let force = treasury_admin_bool_param(&request.params, &["force"]).unwrap_or(false);
             let receipt = client
-                .close_channel(channel_id.as_str(), force, idempotency_key.as_str())
+                .close_channel(
+                    channel_id.as_str(),
+                    peer_node_id.as_deref(),
+                    force,
+                    idempotency_key.as_str(),
+                )
                 .await
                 .map_err(ldk_client_api_error)?;
             let mut metadata = treasury_admin_base_metadata(command, idempotency_key.as_str());
@@ -18223,6 +18242,8 @@ async fn execute_treasury_admin_operation(
             let idempotency_key = idempotency_key.expect("write command idempotency checked");
             let channel_id =
                 treasury_admin_required_param(&request.params, &["channel_id", "channelId"])?;
+            let peer_node_id =
+                treasury_admin_optional_param(&request.params, &["peer_node_id", "peerNodeId"]);
             let amount_sats =
                 treasury_admin_required_u64_param(&request.params, &["amount_sats", "amountSats"])?;
             let ldk_command = if command == "treasury.spliceIn" {
@@ -18234,6 +18255,7 @@ async fn execute_treasury_admin_operation(
                 .splice_channel(
                     ldk_command,
                     channel_id.as_str(),
+                    peer_node_id.as_deref(),
                     amount_sats,
                     idempotency_key.as_str(),
                 )

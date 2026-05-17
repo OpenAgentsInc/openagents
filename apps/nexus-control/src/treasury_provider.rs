@@ -6,6 +6,27 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::future::BoxFuture;
+use ldk_server_client::client::LdkServerClient as RemoteLdkServerClient;
+use ldk_server_client::error::{LdkServerError as RemoteLdkServerError, LdkServerErrorCode};
+use ldk_server_client::ldk_server_grpc::api::{
+    Bolt11ReceiveRequest as RemoteBolt11ReceiveRequest,
+    Bolt11SendRequest as RemoteBolt11SendRequest, Bolt12SendRequest as RemoteBolt12SendRequest,
+    CloseChannelRequest as RemoteCloseChannelRequest,
+    ConnectPeerRequest as RemoteConnectPeerRequest,
+    ForceCloseChannelRequest as RemoteForceCloseChannelRequest,
+    GetBalancesRequest as RemoteGetBalancesRequest, GetNodeInfoRequest as RemoteGetNodeInfoRequest,
+    GetPaymentDetailsRequest as RemoteGetPaymentDetailsRequest,
+    ListChannelsRequest as RemoteListChannelsRequest,
+    ListPaymentsRequest as RemoteListPaymentsRequest, ListPeersRequest as RemoteListPeersRequest,
+    OpenChannelRequest as RemoteOpenChannelRequest, SpliceInRequest as RemoteSpliceInRequest,
+    SpliceOutRequest as RemoteSpliceOutRequest,
+};
+use ldk_server_client::ldk_server_grpc::types::{
+    Bolt11InvoiceDescription as RemoteBolt11InvoiceDescription, Channel as RemoteChannel,
+    Network as RemoteNetwork, Payment as RemotePayment, PaymentStatus as RemotePaymentStatus,
+    Peer as RemotePeer, bolt11_invoice_description as remote_bolt11_invoice_description,
+    payment_kind as remote_payment_kind,
+};
 use ring::hmac;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -556,8 +577,68 @@ impl LdkServerClient {
             .map(|api_key| ldk_hmac_auth_metadata(api_key, unix_timestamp_seconds)))
     }
 
+    fn remote_client(&self) -> LdkServerClientResult<RemoteLdkServerClient> {
+        let server_url = self.config.server_url.as_deref().ok_or_else(|| {
+            LdkServerClientError::new(
+                LdkServerClientErrorKind::InvalidConfig,
+                "ldk_server_url_required_for_remote_grpc",
+            )
+        })?;
+        let api_key = self.api_key.as_ref().ok_or_else(|| {
+            LdkServerClientError::new(
+                LdkServerClientErrorKind::InvalidConfig,
+                "ldk_api_key_required_for_remote_grpc",
+            )
+        })?;
+        let api_key = std::str::from_utf8(api_key).map_err(|error| {
+            LdkServerClientError::new(
+                LdkServerClientErrorKind::InvalidConfig,
+                format!("api_key_utf8_invalid:{error}"),
+            )
+        })?;
+        let tls_cert_path = self.config.tls_cert_path.as_deref().ok_or_else(|| {
+            LdkServerClientError::new(
+                LdkServerClientErrorKind::InvalidConfig,
+                "ldk_tls_cert_path_required_for_remote_grpc",
+            )
+        })?;
+        let tls_cert = fs::read(tls_cert_path).map_err(|error| {
+            LdkServerClientError::new(
+                LdkServerClientErrorKind::InvalidConfig,
+                format!("tls_certificate_read_failed:{error}"),
+            )
+        })?;
+
+        RemoteLdkServerClient::new(server_url.to_string(), api_key.to_string(), &tls_cert).map_err(
+            |error| {
+                LdkServerClientError::new(
+                    LdkServerClientErrorKind::InvalidConfig,
+                    format!(
+                        "remote_grpc_client_build_failed:{}",
+                        sanitize_error_reason(&error)
+                    ),
+                )
+            },
+        )
+    }
+
     pub async fn get_node_info(&self) -> LdkServerClientResult<LdkServerNodeInfo> {
-        self.ensure_local_or_remote_ready("GetNodeInfo")?;
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let response = self
+                .remote_client()?
+                .get_node_info(RemoteGetNodeInfoRequest {})
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return Ok(LdkServerNodeInfo {
+                node_id: response.node_id,
+                network: map_remote_network(response.network, self.config.network),
+                chain_backend: self.config.chain_backend,
+                current_best_block_height: response
+                    .current_best_block
+                    .map(|block| block.height)
+                    .unwrap_or_default(),
+            });
+        }
         Ok(LdkServerNodeInfo {
             node_id: format!(
                 "02{}",
@@ -574,7 +655,29 @@ impl LdkServerClient {
     }
 
     pub async fn get_balances(&self) -> LdkServerClientResult<LdkServerBalances> {
-        self.ensure_local_or_remote_ready("GetBalances")?;
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let remote = self.remote_client()?;
+            let response = remote
+                .get_balances(RemoteGetBalancesRequest {})
+                .await
+                .map_err(map_remote_ldk_error)?;
+            let channels = remote
+                .list_channels(RemoteListChannelsRequest {})
+                .await
+                .map(|response| response.channels)
+                .unwrap_or_default();
+            let lightning_spendable_sats = channels
+                .iter()
+                .map(|channel| channel.outbound_capacity_msat / 1_000)
+                .fold(0u64, u64::saturating_add);
+            return Ok(LdkServerBalances {
+                onchain_sats: response.total_onchain_balance_sats,
+                lightning_sats: response.total_lightning_balance_sats,
+                usable_sats: response
+                    .spendable_onchain_balance_sats
+                    .saturating_add(lightning_spendable_sats),
+            });
+        }
         Ok(LdkServerBalances {
             onchain_sats: 0,
             lightning_sats: self.local_total_sats()?,
@@ -586,9 +689,6 @@ impl LdkServerClient {
         &self,
         request: LdkServerBolt11ReceiveRequest,
     ) -> LdkServerClientResult<LdkServerBolt11ReceiveResponse> {
-        if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("Bolt11Receive"));
-        }
         if matches!(request.amount_sats, Some(0)) {
             return Err(LdkServerClientError::new(
                 LdkServerClientErrorKind::InvalidRequest,
@@ -600,6 +700,40 @@ impl LdkServerClient {
                 LdkServerClientErrorKind::InvalidRequest,
                 "bolt11_receive_idempotency_key_missing",
             ));
+        }
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let expiry_seconds = request.expiry_seconds.unwrap_or(86_400);
+            let response = self
+                .remote_client()?
+                .bolt11_receive(RemoteBolt11ReceiveRequest {
+                    amount_msat: request
+                        .amount_sats
+                        .map(|amount| amount.saturating_mul(1_000)),
+                    description: Some(RemoteBolt11InvoiceDescription {
+                        kind: Some(remote_bolt11_invoice_description::Kind::Direct(
+                            request.description,
+                        )),
+                    }),
+                    expiry_secs: expiry_seconds,
+                })
+                .await
+                .map_err(map_remote_ldk_error)?;
+            let payment_id = if response.payment_hash.trim().is_empty() {
+                format!("ldk-bolt11-{}", short_hash(response.invoice.as_str()))
+            } else {
+                format!("ldk-bolt11-{}", response.payment_hash)
+            };
+            return Ok(LdkServerBolt11ReceiveResponse {
+                invoice: response.invoice,
+                payment_hash: response.payment_hash,
+                payment_id,
+                amount_msat: request
+                    .amount_sats
+                    .map(|amount| amount.saturating_mul(1_000)),
+                expires_at_unix_seconds: Some(
+                    now_unix_seconds().saturating_add(u64::from(expiry_seconds)),
+                ),
+            });
         }
         let amount_sats = request.amount_sats.unwrap_or(0);
         let digest = short_hash(&format!(
@@ -640,14 +774,44 @@ impl LdkServerClient {
 
     pub async fn list_payments(&self) -> LdkServerClientResult<Vec<LdkServerPayment>> {
         if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("ListPayments"));
+            let remote = self.remote_client()?;
+            let mut payments = Vec::new();
+            let mut page_token = None;
+            for _ in 0..25 {
+                let response = remote
+                    .list_payments(RemoteListPaymentsRequest { page_token })
+                    .await
+                    .map_err(map_remote_ldk_error)?;
+                payments.extend(response.payments.iter().map(map_remote_payment));
+                page_token = response.next_page_token;
+                if page_token.is_none() {
+                    break;
+                }
+            }
+            return Ok(payments);
         }
         Ok(self.local_payments()?.values().cloned().collect())
     }
 
     pub async fn get_payment(&self, payment_id: &str) -> LdkServerClientResult<LdkServerPayment> {
         if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("GetPayment"));
+            let response = self
+                .remote_client()?
+                .get_payment_details(RemoteGetPaymentDetailsRequest {
+                    payment_id: payment_id.to_string(),
+                })
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return response
+                .payment
+                .as_ref()
+                .map(map_remote_payment)
+                .ok_or_else(|| {
+                    LdkServerClientError::new(
+                        LdkServerClientErrorKind::InvalidRequest,
+                        "payment_not_found",
+                    )
+                });
         }
         self.local_payments()?
             .get(payment_id)
@@ -662,14 +826,24 @@ impl LdkServerClient {
 
     pub async fn list_channels(&self) -> LdkServerClientResult<Vec<LdkServerChannel>> {
         if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("ListChannels"));
+            let response = self
+                .remote_client()?
+                .list_channels(RemoteListChannelsRequest {})
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return Ok(response.channels.iter().map(map_remote_channel).collect());
         }
         Ok(self.local_channels()?.values().cloned().collect())
     }
 
     pub async fn list_peers(&self) -> LdkServerClientResult<Vec<LdkServerPeer>> {
         if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("ListPeers"));
+            let response = self
+                .remote_client()?
+                .list_peers(RemoteListPeersRequest {})
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return Ok(response.peers.iter().map(map_remote_peer).collect());
         }
         Ok(self.local_peers()?.values().cloned().collect())
     }
@@ -680,10 +854,29 @@ impl LdkServerClient {
         address: Option<&str>,
         idempotency_key: &str,
     ) -> LdkServerClientResult<LdkServerAdminReceipt> {
-        if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("ConnectPeer"));
-        }
         let node_id = normalize_required_ldk_field(node_id, "peer_node_id_missing")?;
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let address = normalize_required_ldk_field(
+                address.unwrap_or_default(),
+                "peer_address_missing_for_remote_connect",
+            )?;
+            self.remote_client()?
+                .connect_peer(RemoteConnectPeerRequest {
+                    node_pubkey: node_id.clone(),
+                    address,
+                    persist: true,
+                })
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return Ok(LdkServerAdminReceipt {
+                command: "treasury.connectPeer".to_string(),
+                operation_ref: local_admin_operation_ref("connect_peer", idempotency_key),
+                status: "completed".to_string(),
+                payment_id: None,
+                channel_id: None,
+                peer_node_id: Some(node_id),
+            });
+        }
         let operation_ref = local_admin_operation_ref("connect_peer", idempotency_key);
         self.local_peers()?.insert(
             node_id.clone(),
@@ -709,18 +902,43 @@ impl LdkServerClient {
     pub async fn open_channel(
         &self,
         peer_node_id: &str,
+        address: Option<&str>,
         amount_sats: u64,
         idempotency_key: &str,
     ) -> LdkServerClientResult<LdkServerAdminReceipt> {
-        if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("OpenChannel"));
-        }
         let peer_node_id = normalize_required_ldk_field(peer_node_id, "peer_node_id_missing")?;
         if amount_sats == 0 {
             return Err(LdkServerClientError::new(
                 LdkServerClientErrorKind::InvalidRequest,
                 "open_channel_amount_sats_must_be_greater_than_zero",
             ));
+        }
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let address = normalize_required_ldk_field(
+                address.unwrap_or_default(),
+                "peer_address_missing_for_remote_open_channel",
+            )?;
+            let response = self
+                .remote_client()?
+                .open_channel(RemoteOpenChannelRequest {
+                    node_pubkey: peer_node_id.clone(),
+                    address,
+                    channel_amount_sats: amount_sats,
+                    push_to_counterparty_msat: None,
+                    channel_config: None,
+                    announce_channel: false,
+                    disable_counterparty_reserve: false,
+                })
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return Ok(LdkServerAdminReceipt {
+                command: "treasury.openChannel".to_string(),
+                operation_ref: local_admin_operation_ref("open_channel", idempotency_key),
+                status: "pending".to_string(),
+                payment_id: None,
+                channel_id: Some(response.user_channel_id),
+                peer_node_id: Some(peer_node_id),
+            });
         }
         let digest = short_hash(&format!("{peer_node_id}:{amount_sats}:{idempotency_key}"));
         let channel_id = format!("ldk-local-channel-{digest}");
@@ -747,13 +965,59 @@ impl LdkServerClient {
     pub async fn close_channel(
         &self,
         channel_id: &str,
+        peer_node_id: Option<&str>,
         force: bool,
         idempotency_key: &str,
     ) -> LdkServerClientResult<LdkServerAdminReceipt> {
-        if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("CloseChannel"));
-        }
         let channel_id = normalize_required_ldk_field(channel_id, "channel_id_missing")?;
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let remote = self.remote_client()?;
+            let peer_node_id = match peer_node_id {
+                Some(peer_node_id) if !peer_node_id.trim().is_empty() => peer_node_id.to_string(),
+                _ => remote
+                    .list_channels(RemoteListChannelsRequest {})
+                    .await
+                    .map_err(map_remote_ldk_error)?
+                    .channels
+                    .into_iter()
+                    .find(|channel| {
+                        channel.user_channel_id == channel_id || channel.channel_id == channel_id
+                    })
+                    .map(|channel| channel.counterparty_node_id)
+                    .ok_or_else(|| {
+                        LdkServerClientError::new(
+                            LdkServerClientErrorKind::InvalidRequest,
+                            "counterparty_node_id_not_found_for_channel",
+                        )
+                    })?,
+            };
+            if force {
+                remote
+                    .force_close_channel(RemoteForceCloseChannelRequest {
+                        user_channel_id: channel_id.clone(),
+                        counterparty_node_id: peer_node_id,
+                        force_close_reason: Some("operator_requested_force_close".to_string()),
+                    })
+                    .await
+                    .map_err(map_remote_ldk_error)?;
+            } else {
+                remote
+                    .close_channel(RemoteCloseChannelRequest {
+                        user_channel_id: channel_id.clone(),
+                        counterparty_node_id: peer_node_id,
+                    })
+                    .await
+                    .map_err(map_remote_ldk_error)?;
+            }
+            return Ok(LdkServerAdminReceipt {
+                command: "treasury.closeChannel".to_string(),
+                operation_ref: local_admin_operation_ref("close_channel", idempotency_key),
+                status: "pending".to_string(),
+                payment_id: None,
+                channel_id: Some(channel_id),
+                peer_node_id: None,
+            });
+        }
         let mut channels = self.local_channels()?;
         let channel = channels
             .entry(channel_id.clone())
@@ -779,18 +1043,72 @@ impl LdkServerClient {
         &self,
         command: &str,
         channel_id: &str,
+        peer_node_id: Option<&str>,
         amount_sats: u64,
         idempotency_key: &str,
     ) -> LdkServerClientResult<LdkServerAdminReceipt> {
-        if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error(command));
-        }
         let channel_id = normalize_required_ldk_field(channel_id, "channel_id_missing")?;
         if amount_sats == 0 {
             return Err(LdkServerClientError::new(
                 LdkServerClientErrorKind::InvalidRequest,
                 "splice_amount_sats_must_be_greater_than_zero",
             ));
+        }
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let remote = self.remote_client()?;
+            let peer_node_id = match peer_node_id {
+                Some(peer_node_id) if !peer_node_id.trim().is_empty() => peer_node_id.to_string(),
+                _ => remote
+                    .list_channels(RemoteListChannelsRequest {})
+                    .await
+                    .map_err(map_remote_ldk_error)?
+                    .channels
+                    .into_iter()
+                    .find(|channel| {
+                        channel.user_channel_id == channel_id || channel.channel_id == channel_id
+                    })
+                    .map(|channel| channel.counterparty_node_id)
+                    .ok_or_else(|| {
+                        LdkServerClientError::new(
+                            LdkServerClientErrorKind::InvalidRequest,
+                            "counterparty_node_id_not_found_for_channel",
+                        )
+                    })?,
+            };
+            let status = if command == "SpliceIn" {
+                remote
+                    .splice_in(RemoteSpliceInRequest {
+                        user_channel_id: channel_id.clone(),
+                        counterparty_node_id: peer_node_id.clone(),
+                        splice_amount_sats: amount_sats,
+                    })
+                    .await
+                    .map(|_| "pending".to_string())
+            } else {
+                remote
+                    .splice_out(RemoteSpliceOutRequest {
+                        user_channel_id: channel_id.clone(),
+                        counterparty_node_id: peer_node_id.clone(),
+                        address: None,
+                        splice_amount_sats: amount_sats,
+                    })
+                    .await
+                    .map(|_| "pending".to_string())
+            }
+            .map_err(map_remote_ldk_error)?;
+            return Ok(LdkServerAdminReceipt {
+                command: if command == "SpliceIn" {
+                    "treasury.spliceIn"
+                } else {
+                    "treasury.spliceOut"
+                }
+                .to_string(),
+                operation_ref: local_admin_operation_ref(command, idempotency_key),
+                status,
+                payment_id: None,
+                channel_id: Some(channel_id),
+                peer_node_id: Some(peer_node_id),
+            });
         }
         let mut channels = self.local_channels()?;
         let channel = channels
@@ -830,10 +1148,26 @@ impl LdkServerClient {
         amount_sats: Option<u64>,
         idempotency_key: &str,
     ) -> LdkServerClientResult<LdkServerAdminReceipt> {
-        if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("PayInvoice"));
-        }
         let invoice = normalize_required_ldk_field(invoice, "invoice_missing")?;
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let response = self
+                .remote_client()?
+                .bolt11_send(RemoteBolt11SendRequest {
+                    invoice,
+                    amount_msat: amount_sats.map(|amount| amount.saturating_mul(1_000)),
+                    route_parameters: None,
+                })
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return Ok(LdkServerAdminReceipt {
+                command: "treasury.payInvoice".to_string(),
+                operation_ref: local_admin_operation_ref("pay_invoice", idempotency_key),
+                status: "completed".to_string(),
+                payment_id: Some(response.payment_id),
+                channel_id: None,
+                peer_node_id: None,
+            });
+        }
         let lowered = invoice.to_ascii_lowercase();
         if lowered.contains("noroute") {
             return Err(LdkServerClientError::new(
@@ -875,6 +1209,28 @@ impl LdkServerClient {
         amount_sats: Option<u64>,
         idempotency_key: &str,
     ) -> LdkServerClientResult<LdkServerAdminReceipt> {
+        if self.mode == LdkServerClientMode::RemoteGrpc {
+            let offer = normalize_required_ldk_field(offer, "offer_missing")?;
+            let response = self
+                .remote_client()?
+                .bolt12_send(RemoteBolt12SendRequest {
+                    offer,
+                    amount_msat: amount_sats.map(|amount| amount.saturating_mul(1_000)),
+                    quantity: None,
+                    payer_note: None,
+                    route_parameters: None,
+                })
+                .await
+                .map_err(map_remote_ldk_error)?;
+            return Ok(LdkServerAdminReceipt {
+                command: "treasury.payOffer".to_string(),
+                operation_ref: local_admin_operation_ref("pay_offer", idempotency_key),
+                status: "completed".to_string(),
+                payment_id: Some(response.payment_id),
+                channel_id: None,
+                peer_node_id: None,
+            });
+        }
         let receipt = self
             .pay_invoice(offer, amount_sats, idempotency_key)
             .await?;
@@ -890,7 +1246,8 @@ impl LdkServerClient {
         after_sequence: u64,
     ) -> LdkServerClientResult<Vec<LdkServerEvent>> {
         if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error("SubscribeEvents"));
+            let payments = self.list_payments().await?;
+            return Ok(reconcile_ldk_payments_to_events(&payments, after_sequence));
         }
         if after_sequence > 10_000 {
             return Err(LdkServerClientError::new(
@@ -964,24 +1321,6 @@ impl LdkServerClient {
                 "local_harness_channel_lock_poisoned",
             )
         })
-    }
-
-    fn ensure_local_or_remote_ready(&self, endpoint: &str) -> LdkServerClientResult<()> {
-        if self.mode == LdkServerClientMode::RemoteGrpc {
-            return Err(self.remote_transport_error(endpoint));
-        }
-        Ok(())
-    }
-
-    fn remote_transport_error(&self, endpoint: &str) -> LdkServerClientError {
-        LdkServerClientError::new(
-            LdkServerClientErrorKind::Unavailable,
-            format!(
-                "{}_remote_grpc_transport_pending_deployment_with_tls_hmac:{}",
-                endpoint,
-                self.mode.as_str()
-            ),
-        )
     }
 }
 
@@ -1093,6 +1432,106 @@ fn validate_remote_server_url(server_url: &str) -> LdkServerClientResult<()> {
         ));
     }
     Ok(())
+}
+
+fn map_remote_ldk_error(error: RemoteLdkServerError) -> LdkServerClientError {
+    let reason = sanitize_error_reason(error.message.as_str());
+    let kind = match error.error_code {
+        LdkServerErrorCode::InvalidRequestError => LdkServerClientErrorKind::InvalidRequest,
+        LdkServerErrorCode::AuthError => LdkServerClientErrorKind::Auth,
+        LdkServerErrorCode::LightningError => classify_remote_lightning_error(reason.as_str()),
+        LdkServerErrorCode::InternalServerError => LdkServerClientErrorKind::Internal,
+        LdkServerErrorCode::InternalError => LdkServerClientErrorKind::Unavailable,
+    };
+    LdkServerClientError::new(kind, reason)
+}
+
+fn classify_remote_lightning_error(reason: &str) -> LdkServerClientErrorKind {
+    let lowered = reason.to_ascii_lowercase();
+    if lowered.contains("no_route") || lowered.contains("route_not_found") {
+        LdkServerClientErrorKind::NoRoute
+    } else if lowered.contains("insufficient") || lowered.contains("not_enough") {
+        LdkServerClientErrorKind::InsufficientBalance
+    } else {
+        LdkServerClientErrorKind::PaymentFailed
+    }
+}
+
+fn map_remote_network(remote_network: i32, fallback: LdkNetwork) -> LdkNetwork {
+    match remote_network {
+        value if value == RemoteNetwork::Bitcoin as i32 => LdkNetwork::Bitcoin,
+        value if value == RemoteNetwork::Signet as i32 => LdkNetwork::Signet,
+        value if value == RemoteNetwork::Regtest as i32 => LdkNetwork::Regtest,
+        _ => fallback,
+    }
+}
+
+fn map_remote_payment(payment: &RemotePayment) -> LdkServerPayment {
+    LdkServerPayment {
+        payment_id: payment.id.clone(),
+        payment_hash: remote_payment_hash(payment),
+        amount_msat: payment.amount_msat,
+        status: map_remote_payment_status(payment.status),
+    }
+}
+
+fn remote_payment_hash(payment: &RemotePayment) -> String {
+    let Some(kind) = payment.kind.as_ref().and_then(|kind| kind.kind.as_ref()) else {
+        return String::new();
+    };
+    match kind {
+        remote_payment_kind::Kind::Bolt11(payment) => payment.hash.clone(),
+        remote_payment_kind::Kind::Bolt11Jit(payment) => payment.hash.clone(),
+        remote_payment_kind::Kind::Bolt12Offer(payment) => payment.hash.clone().unwrap_or_default(),
+        remote_payment_kind::Kind::Bolt12Refund(payment) => {
+            payment.hash.clone().unwrap_or_default()
+        }
+        _ => String::new(),
+    }
+}
+
+fn map_remote_payment_status(status: i32) -> LdkServerPaymentStatus {
+    match status {
+        value if value == RemotePaymentStatus::Pending as i32 => LdkServerPaymentStatus::Pending,
+        value if value == RemotePaymentStatus::Succeeded as i32 => {
+            LdkServerPaymentStatus::Succeeded
+        }
+        value if value == RemotePaymentStatus::Failed as i32 => LdkServerPaymentStatus::Failed,
+        _ => LdkServerPaymentStatus::Unknown,
+    }
+}
+
+fn map_remote_channel(channel: &RemoteChannel) -> LdkServerChannel {
+    LdkServerChannel {
+        channel_id: if channel.user_channel_id.is_empty() {
+            channel.channel_id.clone()
+        } else {
+            channel.user_channel_id.clone()
+        },
+        peer_node_id: channel.counterparty_node_id.clone(),
+        status: if channel.is_usable {
+            "usable"
+        } else if channel.is_channel_ready {
+            "ready"
+        } else {
+            "pending"
+        }
+        .to_string(),
+        outbound_capacity_sats: channel.outbound_capacity_msat / 1_000,
+        inbound_capacity_sats: channel.inbound_capacity_msat / 1_000,
+    }
+}
+
+fn map_remote_peer(peer: &RemotePeer) -> LdkServerPeer {
+    LdkServerPeer {
+        node_id: peer.node_id.clone(),
+        address_hash: if peer.address.trim().is_empty() {
+            None
+        } else {
+            Some(short_hash(peer.address.as_str()))
+        },
+        connected: peer.is_connected,
+    }
 }
 
 fn sanitize_error_reason(reason: &str) -> String {
