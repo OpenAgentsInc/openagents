@@ -3507,6 +3507,7 @@ impl TreasuryState {
             changed = true;
         }
         changed |= loaded.normalize_legacy_payout_classes();
+        changed |= loaded.retire_unpayable_pending_payout_records(now_unix_ms());
         changed |= loaded.backfill_classified_payout_totals();
         loaded.public_snapshot = None;
         changed |= loaded.trim_policy_change_history();
@@ -4097,6 +4098,62 @@ impl TreasuryState {
         let mut changed = false;
         for record in self.payout_records_by_key.values_mut() {
             changed |= record.classification.normalize_legacy_payout_class();
+        }
+        changed
+    }
+
+    fn retire_unpayable_pending_payout_records(&mut self, now_unix_ms: u64) -> bool {
+        let reason = "retired_unpayable_non_ldk_payout_record".to_string();
+        let payout_keys = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| matches!(record.status.as_str(), "dispatching" | "dispatched"))
+            .filter(|record| {
+                payout_rail_for_payment_request(record.payout_target.as_str()) != "ldk"
+            })
+            .map(|record| record.payout_key.clone())
+            .collect::<Vec<_>>();
+        let mut changed = false;
+        for payout_key in payout_keys {
+            let provider_payment_id = {
+                let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
+                    continue;
+                };
+                let mut record_changed = false;
+                let provider_payment_id = record
+                    .payment_id
+                    .as_deref()
+                    .map(treasury_hash);
+                if record.status != "failed" {
+                    record.status = "failed".to_string();
+                    record_changed = true;
+                }
+                if record.reason.as_deref() != Some(reason.as_str()) {
+                    record.reason = Some(reason.clone());
+                    record_changed = true;
+                }
+                if !record.fail_receipt_recorded {
+                    record.fail_receipt_recorded = true;
+                    record_changed = true;
+                }
+                if record.counted_in_paid_total {
+                    record.counted_in_paid_total = false;
+                    record_changed = true;
+                }
+                if record_changed {
+                    record.updated_at_unix_ms = now_unix_ms;
+                }
+                changed |= record_changed;
+                provider_payment_id
+            };
+            changed |= self.update_payout_operation_status(
+                payout_key.as_str(),
+                TreasuryOperationStatus::Failed,
+                provider_payment_id,
+                Some(reason.clone()),
+                Some("failed".to_string()),
+                now_unix_ms,
+            );
         }
         changed
     }
@@ -6898,6 +6955,7 @@ impl TreasuryState {
         now_unix_ms: u64,
     ) -> TreasuryPayoutPreparation {
         let mut changed = self.normalize_legacy_payout_classes();
+        changed |= self.retire_unpayable_pending_payout_records(now_unix_ms);
         changed |= self.trim_retention(now_unix_ms);
         let (mut receipt_events, stale_changed) = self.expire_stale_dispatches(config, now_unix_ms);
         changed |= stale_changed;
@@ -10603,6 +10661,59 @@ mod tests {
             counted_in_paid_total: status == "confirmed",
             classification: TreasuryPayoutClassification::default(),
         }
+    }
+
+    #[test]
+    fn state_load_retires_non_ldk_dispatched_records() {
+        let path = unique_treasury_state_path("retire-non-ldk-dispatched");
+        let mut state = TreasuryState::default();
+        state.state_path = Some(path.clone());
+        let now = super::now_unix_ms();
+        let stale_key = "accepted_work:stale-non-ldk:pubkey-a";
+        let ldk_key = "accepted_work:ldk-target:pubkey-a";
+        let mut stale = test_payout_record(stale_key, "dispatched");
+        stale.payout_target = String::new();
+        stale.counted_in_paid_total = true;
+        stale.window_started_at_unix_ms = now.saturating_sub(60_000);
+        stale.window_ends_at_unix_ms = now.saturating_add(60_000);
+        stale.created_at_unix_ms = now.saturating_sub(30_000);
+        stale.updated_at_unix_ms = now.saturating_sub(10_000);
+        let mut ldk = test_payout_record(ldk_key, "dispatched");
+        ldk.payout_target = "lno1pylonalice".to_string();
+        ldk.window_started_at_unix_ms = now.saturating_sub(60_000);
+        ldk.window_ends_at_unix_ms = now.saturating_add(60_000);
+        ldk.created_at_unix_ms = now.saturating_sub(30_000);
+        ldk.updated_at_unix_ms = now.saturating_sub(10_000);
+        state
+            .payout_records_by_key
+            .insert(stale_key.to_string(), stale);
+        state
+            .payout_records_by_key
+            .insert(ldk_key.to_string(), ldk);
+        state.persist();
+
+        let loaded = TreasuryState::new(path.clone());
+        let retired = loaded
+            .payout_records_by_key
+            .get(stale_key)
+            .expect("retired stale payout");
+        assert_eq!(retired.status, "failed");
+        assert_eq!(
+            retired.reason.as_deref(),
+            Some("retired_unpayable_non_ldk_payout_record")
+        );
+        assert!(!retired.counted_in_paid_total);
+        assert!(retired.fail_receipt_recorded);
+        assert_eq!(
+            loaded
+                .payout_records_by_key
+                .get(ldk_key)
+                .expect("ldk payout remains pending")
+                .status,
+            "dispatched"
+        );
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
