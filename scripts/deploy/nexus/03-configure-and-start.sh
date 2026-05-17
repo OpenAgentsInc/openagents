@@ -710,9 +710,9 @@ sudo chmod 644 /etc/nexus-relay/upstream-config.toml
 sudo chown root:root /etc/nexus-relay/nexus-relay.env
 sudo chown root:root /etc/nexus-relay/upstream-config.toml
 
-if grep -qx 'NEXUS_TREASURY_PROVIDER=ldk' /etc/nexus-relay/nexus-relay.env; then
-  ldk_api_key_path="$(awk -F= '/^NEXUS_LDK_API_KEY_PATH=/{print substr($0, index($0, "=") + 1)}' /etc/nexus-relay/nexus-relay.env)"
-  ldk_tls_cert_path="$(awk -F= '/^NEXUS_LDK_TLS_CERT_PATH=/{print substr($0, index($0, "=") + 1)}' /etc/nexus-relay/nexus-relay.env)"
+if sudo grep -qx 'NEXUS_TREASURY_PROVIDER=ldk' /etc/nexus-relay/nexus-relay.env; then
+  ldk_api_key_path="$(sudo awk -F= '/^NEXUS_LDK_API_KEY_PATH=/{print substr($0, index($0, "=") + 1)}' /etc/nexus-relay/nexus-relay.env)"
+  ldk_tls_cert_path="$(sudo awk -F= '/^NEXUS_LDK_TLS_CERT_PATH=/{print substr($0, index($0, "=") + 1)}' /etc/nexus-relay/nexus-relay.env)"
   if [[ -z "$ldk_api_key_path" || -z "$ldk_tls_cert_path" ]]; then
     echo "LDK treasury provider selected but client material paths are missing from runtime env" >&2
     exit 1
@@ -725,7 +725,7 @@ if grep -qx 'NEXUS_TREASURY_PROVIDER=ldk' /etc/nexus-relay/nexus-relay.env; then
     echo "LDK TLS certificate is not readable on Nexus host: ${ldk_tls_cert_path}. Run scripts/deploy/nexus/28-sync-ldk-client-material.sh first." >&2
     exit 1
   }
-  ldk_api_key_owner="$(stat -c '%u' "$ldk_api_key_path")"
+  ldk_api_key_owner="$(sudo stat -c '%u' "$ldk_api_key_path")"
   if [[ "$ldk_api_key_owner" != "60000" ]]; then
     echo "LDK API key must be owned by uid 60000 for the Nexus container: ${ldk_api_key_path}" >&2
     exit 1
