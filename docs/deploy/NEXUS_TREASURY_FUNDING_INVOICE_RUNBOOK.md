@@ -1,8 +1,8 @@
 # Nexus LDK Treasury Funding Invoice Runbook
 
-Normal Nexus funding is LDK-only. Do not use Spark, Spark final-drain flags,
-or Spark wallet files for production funding, payout dispatch, Pylon
-registration, API, or chat operations.
+Normal Nexus funding is LDK-only. Do not use Spark, Spark drain flags, or Spark
+wallet files for production funding, payout dispatch, Pylon registration, API,
+or chat operations.
 
 This runbook creates a Lightning invoice through the active Nexus treasury
 provider boundary. The deployable Nexus image excludes the Spark crate and
@@ -95,13 +95,10 @@ Before a Nexus release candidate, verify that the staged deploy context does
 not contain Spark packages:
 
 ```bash
-tmp_context="$(mktemp -d /tmp/openagents-nexus-build-context.XXXXXX)"
-scripts/deploy/nexus/stage-build-context.sh "$tmp_context" >/dev/null
-rg -n 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"|breez/spark-sdk' "$tmp_context" -S
+scripts/deploy/nexus/test-ldk-deploy-invariants.sh
 ```
 
-The search should return no rows. The root workspace may still exclude a
-non-deployed `crates/spark` directory while old non-Nexus packages exist, but
-that directory must not be copied into the staged Nexus build plan or lockfile.
-If package rows appear, stop and remove the caller or artifact rather than
-adding another runtime flag.
+The guard stages the Nexus build context and fails if Spark runtime/provider
+symbols or Spark SDK packages appear in normal Nexus/Pylon production paths. If
+it fails, stop and remove the caller or artifact rather than adding another
+runtime flag.

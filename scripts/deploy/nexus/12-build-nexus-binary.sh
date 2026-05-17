@@ -6,6 +6,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 BUILD_CONTEXT_SCRIPT="${SCRIPT_DIR}/stage-build-context.sh"
 REMOTE_BUILD_HELPER="${SCRIPT_DIR}/remote-build-nexus-binary.sh"
+LDK_DEPLOY_INVARIANTS_SCRIPT="${SCRIPT_DIR}/test-ldk-deploy-invariants.sh"
 REPORT_DIR="${ROOT_DIR}/docs/reports/nexus"
 NEXUS_BUILDER_CLEAR_CACHES="${NEXUS_BUILDER_CLEAR_CACHES:-false}"
 
@@ -16,8 +17,10 @@ require_cmd tar
 
 [[ -f "$BUILD_CONTEXT_SCRIPT" ]] || die "Missing build context helper: ${BUILD_CONTEXT_SCRIPT}"
 [[ -f "$REMOTE_BUILD_HELPER" ]] || die "Missing remote build helper: ${REMOTE_BUILD_HELPER}"
+[[ -f "$LDK_DEPLOY_INVARIANTS_SCRIPT" ]] || die "Missing LDK deploy invariant guard: ${LDK_DEPLOY_INVARIANTS_SCRIPT}"
 
 ensure_gcloud_context
+bash "$LDK_DEPLOY_INVARIANTS_SCRIPT" >/dev/null
 
 if ! instance_exists "$NEXUS_BUILDER_VM"; then
   die "Warm builder VM does not exist: ${NEXUS_BUILDER_VM}. Run 11-provision-warm-builder.sh first."

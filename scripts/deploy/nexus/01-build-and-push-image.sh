@@ -4,11 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 BUILD_CONTEXT_SCRIPT="${SCRIPT_DIR}/stage-build-context.sh"
+LDK_DEPLOY_INVARIANTS_SCRIPT="${SCRIPT_DIR}/test-ldk-deploy-invariants.sh"
 
 require_cmd git
 require_cmd gcloud
 require_cmd python3
 require_cmd jq
+
+[[ -f "$LDK_DEPLOY_INVARIANTS_SCRIPT" ]] || die "Missing LDK deploy invariant guard: ${LDK_DEPLOY_INVARIANTS_SCRIPT}"
+bash "$LDK_DEPLOY_INVARIANTS_SCRIPT" >/dev/null
 
 if [[ "${NEXUS_IMAGE_TAG}" == "latest" ]]; then
   NEXUS_IMAGE_TAG="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD)"

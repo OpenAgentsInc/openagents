@@ -226,6 +226,8 @@ Current normal behavior:
 - Normal deploy checks must keep `crates/spark`, `openagents-spark`,
   `breez-sdk-spark`, `spark-wallet`, and `spark-sdk` out of the staged Nexus
   build context.
+- `scripts/deploy/nexus/test-ldk-deploy-invariants.sh` enforces the LDK-only
+  source and build-context guard in the standard build and verify scripts.
 
 ## Treasury Operations and Receipts
 
@@ -578,20 +580,18 @@ The current conclusion is that Nexus must stop putting old-runtime wallet sync,
 invoice creation, and spendability proof on the critical path of an
 interactive HTTP request. Keep the current longer proxy budget for safety, but
 build toward async funding-target operations with idempotency keys, phase-level
-timing, and typed degraded states such as `spark_wallet_sync_slow` or
-`spark_leaf_selection_blocked`.
+timing, and typed LDK degraded states such as node-unavailable,
+channel-liquidity-low, or payment-reconciliation-lagging.
 
 Do not retry production funding-target calls as a debugging loop; reproduce the
 wallet/funding behavior locally or in the private treasury runner first, then
 use hosted Nexus only as the live confirmation surface.
 
-The periodic wallet refresh loop has a separate sync timeout budget from the
-funding-target path. Current Nexus should derive that sync budget from
-`wallet_status_refresh_seconds` instead of hard-coding `20000` ms, because the
-hosted treasury wallet can accumulate enough history that a full Spark sync
-takes materially longer than a short funding-target read. If the live wallet
-history grows and refresh starts timing out, raise the configured wallet refresh
-interval/timeout budget before treating the wallet as permanently degraded.
+The periodic wallet refresh loop has a separate timeout budget from the
+funding-target path. Current Nexus should derive that budget from
+`wallet_status_refresh_seconds` instead of hard-coding `20000` ms. If live LDK
+status projection starts timing out, raise the configured wallet refresh
+interval/timeout budget before treating the node as permanently degraded.
 
 ## Paced Homework Dispatch
 
@@ -897,8 +897,8 @@ This matters in production because too-low concurrency can hold the
 wallet-operation lock long enough that a nominal `20s` payout interval
 stretches into `40-60s` effective receive spacing once many Pylons are eligible
 at the same time. The hosted production Nexus should currently pin this lower
-than the default to avoid wedging entire send batches behind a Spark-side
-stall.
+than the default until LDK payment dispatch and reconciliation have production
+proof under load.
 
 `NEXUS_CONTROL_TREASURY_AVAILABILITY_MAX_CONCURRENT_SENDS` now lets the
 availability lane run with a different ceiling without changing accepted-work
@@ -906,10 +906,10 @@ closeout behavior. If unset, it inherits the global send ceiling.
 
 Accepted-work sends now have an additional hard cap inside `nexus-control`:
 even if `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` is higher, accepted-work
-closeouts will only dispatch up to `4` Spark sends concurrently per payout
-cycle. Placeholder and bonus lanes still follow the configured global cap. The
-goal is to keep real worker payouts from tripping Spark transport or leaf
-selection failures when several windows reconcile together.
+closeouts dispatch through a bounded LDK provider worker pool. Placeholder and
+bonus lanes still follow the configured global cap. The goal is to keep real
+worker payouts from wedging all live payout slots when several windows
+reconcile together.
 
 For the hosted production Nexus, the current safe reference treasury policy is
 homework-only:
@@ -1009,25 +1009,12 @@ earlier. Without the explicit destructive override, the deploy script now fails
 closed.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
-`nexus-control` refreshes wallet-backed treasury stats every 3 seconds by
-default. Treasury snapshots are treated as stale only after two missed refresh
-windows, with a minimum 15 second stale budget, and the background refresh now
-forces an explicit Spark `sync_wallet` hydration before reading cached wallet
-balance plus bounded recent payment history. The refresh loop now refuses to
-accept a `0 sats` post-sync balance when treasury state already proves large
-completed funding receives beyond the paid-out total; that case is treated as a
-wallet hydration error instead of silently feeding dispatch. The refresh loop
-tracks unresolved payout payment IDs and caps each cycle to a small page budget
-so the paid-total counter keeps moving even after the wallet has accumulated
-tens of thousands of payouts. `/api/stats` and
-`GET /v1/treasury/status` no longer trigger wallet refresh inline.
-
-Hosted treasury sets
-`NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED=false` by default. This
-keeps the Spark API key available for mainnet wallet operations while avoiding
-the Breez real-time data-sync subscription as a production dependency for
-treasury payout continuity. Re-enable it only after a targeted recovery report
-proves the real-time sync path is healthy for the production wallet.
+`nexus-control` refreshes treasury stats every 3 seconds by default. Treasury
+snapshots are treated as stale only after two missed refresh windows, with a
+minimum 15 second stale budget. The active provider projection must be bounded,
+receipt-backed, and independent from interactive `/api/stats` or
+`GET /v1/treasury/status` reads. Those endpoints no longer trigger payment-node
+refresh inline.
 
 If treasury state JSON ever deserializes badly on restart, `nexus-control` now
 tries to recover from cached/derived fields first and, as a last resort,
@@ -1113,12 +1100,12 @@ cargo check -p pylon --lib
 tmp_context="$(mktemp -d /tmp/openagents-nexus-lock-verify.XXXXXX)"
 scripts/deploy/nexus/stage-build-context.sh "$tmp_context" >/dev/null
 (cd "$tmp_context" && cargo fetch --locked)
-rg -n 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"|breez/spark-sdk' "$tmp_context" -S
+scripts/deploy/nexus/test-ldk-deploy-invariants.sh
 ```
 
-The final `rg` command must return no rows. If Spark packages appear in the
-staged context, remove the caller or artifact. Do not add runtime flags to hide
-the dependency.
+The LDK deploy invariant guard must pass. If Spark packages or runtime provider
+symbols appear in normal production paths, remove the caller or artifact. Do
+not add runtime flags to hide the dependency.
 
 ## Wallet Recovery Workflow
 
@@ -1327,10 +1314,10 @@ Continuity alerts:
   `/v1/treasury/status` and `/api/stats`.
 - wallet refresh now treats tracked payout ids as first-class reconciliation
   targets. If the bounded paged history scan misses a tracked `payment_id`,
-  Nexus follows up with a direct Spark payment lookup for that exact id before
-  leaving the payout unresolved. A single missing history page should not hold
-  `confirmations_stalled` open for hours while newer payouts are already
-  confirming.
+  Nexus follows up with provider-specific receipt lookup for that exact id
+  before leaving the payout unresolved. A single missing history page should
+  not hold `confirmations_stalled` open for hours while newer payouts are
+  already confirming.
 - availability stipend dispatch is now suppressed while confirmation
   continuity is already broken. If a continuity-relevant dispatched payout is
   older than the stall threshold, or the pending-confirmation backlog reaches
@@ -1344,14 +1331,11 @@ Continuity alerts:
   beneficiary until the older one settles or fails. Other beneficiaries remain
   eligible. This prevents one slow-settling payout target from accumulating a
   large pile of real sends while the rest of the fleet is waiting.
-- Spark leaf-selection failures now count as a first-class treasury
-  spendability block. If a payout send fails with
-  `wallet_send_retryable:leaf_selection:...`, Nexus marks the wallet runtime as
-  unhealthy for dispatch, forces the wallet refresh loop immediately instead of
-  waiting for the normal refresh interval, and suppresses all new payout
-  dispatch until a successful wallet snapshot clears the block. This prevents
-  the service from continuing to mint real payout attempts while Spark has a
-  positive nominal balance but no currently selectable spendable leaves.
+- provider spendability failures now count as first-class treasury blocks. If a
+  payout send fails because the payment node cannot spend through current
+  liquidity, Nexus marks the runtime unhealthy for dispatch, forces an
+  immediate refresh instead of waiting for the normal interval, and suppresses
+  new payout dispatch until a successful provider snapshot clears the block.
 - very old legacy identity-scoped stipend rows are now quarantined into a
   separate operator-attention bucket once they outlive the normal
   reconciliation horizon. Nexus keeps those historical real-send rows visible

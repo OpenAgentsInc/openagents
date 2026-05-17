@@ -3,12 +3,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
+LDK_DEPLOY_INVARIANTS_SCRIPT="${SCRIPT_DIR}/test-ldk-deploy-invariants.sh"
 
 require_cmd gcloud
 require_cmd jq
 require_cmd base64
 require_cmd python3
 require_cmd curl
+
+[[ -f "$LDK_DEPLOY_INVARIANTS_SCRIPT" ]] || die "Missing LDK deploy invariant guard: ${LDK_DEPLOY_INVARIANTS_SCRIPT}"
+bash "$LDK_DEPLOY_INVARIANTS_SCRIPT" >/dev/null
 
 ensure_gcloud_context
 

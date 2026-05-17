@@ -65,6 +65,30 @@ The normal code path has no Spark write material:
 
 Do not add a Spark product mode, fallback, recovery flag, or drain flag.
 
+## LDK-Only Deploy Guard
+
+`scripts/deploy/nexus/test-ldk-deploy-invariants.sh` is the canonical guard
+for normal Nexus/Pylon production paths. It runs in the standard Nexus image
+build, warm-builder build, and deploy verification scripts.
+
+The guard fails if:
+
+- the staged Nexus build context includes Spark SDK/package dependencies;
+- active Nexus/Pylon source reintroduces a Spark drain/provider symbol;
+- active Nexus/Pylon scripts expose a Spark provider selector.
+
+Allowed Spark references are limited to:
+
+- historical reports and audits under `docs/reports/`;
+- the excluded `crates/spark` source while deprecated non-Nexus surfaces still
+  need old-state inspection;
+- old receipt migration tests and stale fixtures that prove Spark targets are
+  rejected or remain read-only;
+- deprecated desktop wallet panes until that shell is removed or quarantined.
+
+Those allowed references are not runtime compatibility paths. Do not expand
+the allowlist; delete callers instead.
+
 ## Classification Markers
 
 - `legacy-read`: keep only so old state, receipts, and operator docs remain
@@ -80,10 +104,10 @@ Do not add a Spark product mode, fallback, recovery flag, or drain flag.
 | Spark wallet wrapper crate | `crates/spark/Cargo.toml`, `crates/spark/src/lib.rs`, `crates/spark/src/wallet.rs`, `crates/spark/src/signer.rs`, `crates/spark/src/error.rs`, `crates/spark/tests/tree_node_status.rs` | Excluded legacy crate. Must not be copied into Nexus deploy staging. | `legacy-read` and `delete-after-cutover` | Delete after old Spark receipt/state inspection has a replacement archive path and deprecated desktop surfaces no longer require it. |
 | Pylon wallet runtime | `apps/pylon/src/wallet_runtime.rs`, `apps/pylon/src/ledger.rs` | Opens local Spark wallet, creates Spark/Bitcoin receive addresses, creates Bolt11 invoices, pays invoices, records wallet ledger fields. | `ldk-replace`; ledger fields are `legacy-read` | Replace with LDK payment target and local wallet/account view. Keep old ledger fields only while old Pylon state must be inspected. |
 | Pylon default online earning loop | `apps/pylon/src/lib.rs` | Previously auto-created a local Spark payout destination when a Pylon went online without a configured settlement destination. | `ldk-replace` | Replaced with LDK payment-target registration. There is no active Spark auto-create fallback. |
-| Nexus treasury state and dispatch | `apps/nexus-control/src/treasury.rs` | Stores payout targets, payout records, receive records, Spark wallet state, dispatch plans, Spark payment ids, and wallet error/degraded states. | `ldk-replace`; old records are `legacy-read` | Replace active operation rows and dispatch calls with LDK operation/receipt storage. Keep old rows read-only until final migration/drain report is complete. |
+| Nexus treasury state and dispatch | `apps/nexus-control/src/treasury.rs` | Stores payout targets, payout records, receive records, historical wallet state, dispatch plans, old provider payment ids, and wallet error/degraded states. | `ldk-replace`; old records are `legacy-read` | Replace active operation rows and dispatch calls with LDK operation/receipt storage. Keep old rows read-only only where archived receipts still need inspection. |
 | Nexus payout-target registration API | `apps/nexus-control/src/lib.rs`, `apps/nexus-control/src/treasury.rs`, `crates/openagents-provider-substrate/src/payout_target.rs` | Issues payout-target challenges and registers provider payment targets signed by provider identity. | `ldk-replace` | Replaced with Pylon v0.2 LDK payment-target registration. Spark registration is rejected in the active API. |
 | Nexus funding-target API and CLI | `apps/nexus-control/src/lib.rs`, `apps/nexus-control/src/treasury.rs` | Creates LDK funding invoices through the provider boundary. | `ldk-replace` | Keep Spark creation out of the active API and deploy image. |
-| Nexus deploy image and build context | `apps/nexus-relay/Dockerfile`, `scripts/deploy/nexus/stage-build-context.sh`, `apps/nexus-relay/deploy/Cargo.nexus.lock` | Builds and ships `openagents-spark` into the Nexus relay/control image. | `delete-after-cutover` | Remove after Nexus no longer links Spark for active behavior. |
+| Nexus deploy image and build context | `apps/nexus-relay/Dockerfile`, `scripts/deploy/nexus/stage-build-context.sh`, `apps/nexus-relay/deploy/Cargo.nexus.lock` | Previously shipped `openagents-spark`; current staged builds are guarded to reject it. | `delete-after-cutover` | Remove any returning caller immediately; the active build context must stay LDK-only. |
 | Nexus recovery/watchdog scripts | `scripts/deploy/nexus/09-recover-treasury-wallet.sh`, `scripts/deploy/nexus/10-install-treasury-watchdog.sh`, `scripts/deploy/nexus/test-recover-treasury-wallet-shell-guards.sh` | Historical Spark-era recovery scripts. | `delete-after-cutover` | Replace with LDK node recovery/backup/watchdog paths and remove Spark wallet inspection from the normal operator path. |
 | Nexus public stats/homepage projection | `apps/nexus-relay/src/homepage_template.html`, `apps/nexus-relay/src/durable.rs`, `apps/nexus-control/src/lib.rs`, `apps/nexus-control/src/economy.rs` | Projects treasury and payout totals, including Spark-backed payout and wallet degraded state fields. | `ldk-replace`; totals are `legacy-read` | Replace field descriptions and data source with LDK operation/receipt projection. Preserve historical totals in archived reports. |
 | Pylon release/bootstrap/docs | `packages/pylon-bootstrap/**`, `docs/deploy/PYLON_NEXUS_EARNING_RELEASE_RUNBOOK.md`, `docs/2026-04-21-run-pylon-get-paid-for-training.md`, `docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md` | Documents and releases Spark-backed Pylon earning setup. | `ldk-replace` | Update after Pylon v0.2 LDK target registration ships. |

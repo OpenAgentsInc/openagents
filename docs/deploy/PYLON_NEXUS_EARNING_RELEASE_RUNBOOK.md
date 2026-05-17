@@ -2,7 +2,7 @@
 
 2026-05-16 LDK v0.2 notice: Pylon v0.2 registration must use an LDK-compatible
 target (`bolt12_offer`, `bolt11_invoice`, `bip353_name`, or `lnurl_pay`). Do not
-add Spark destination creation or final-drain modes back into public Pylon or
+add Spark destination creation or Spark drain modes back into public Pylon or
 Nexus release paths.
 
 This runbook captures the practical release and proof lessons from the April
@@ -240,8 +240,8 @@ scripts/deploy/nexus/stage-build-context.sh "$verify_context"
 ```
 
 The staged context must stay LDK-only. If
-`rg 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"' "$verify_context"` returns rows, remove the caller or artifact instead of adding another
-runtime flag.
+`scripts/deploy/nexus/test-ldk-deploy-invariants.sh` fails, remove the caller
+or artifact instead of adding another runtime flag.
 
 Do not run a fresh resolver pass against the full repo-root workspace as the
 first repair. The deploy lock must reflect the staged Nexus image, not every
@@ -443,7 +443,7 @@ gates.
 When the production treasury wallet is underfunded, generate a fresh Lightning
 invoice through the hosted LDK funding-target path. Do not inspect or copy the
 treasury mnemonic, do not manually edit wallet files, and do not infer payment
-from invoice creation. Spark funding targets are not part of new Pylon/Nexus
+from invoice creation. Non-LDK funding targets are not part of new Pylon/Nexus
 payment operations.
 
 The detailed funding-invoice runbook is

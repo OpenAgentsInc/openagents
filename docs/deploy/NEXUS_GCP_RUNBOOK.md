@@ -41,7 +41,7 @@ The LDK v0.2 treasury topology is separate from this hotfix lane and is
 documented in:
 
 - `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md`
-- `docs/reports/nexus/2026-05-16-spark-migration-final-drain-report.md`
+- `docs/reports/nexus/2026-05-16-spark-removal-closeout.md`
 
 Do not treat the LDK Server VM as part of the public Nexus binary deploy path.
 It is a private Lightning/Bitcoin authority host with its own backup and
@@ -146,8 +146,8 @@ scripts/deploy/nexus/stage-build-context.sh "$verify_context"
 ```
 
 Review the resulting deploy-lock diff before committing it. The staged context
-must not contain Spark packages; if `rg 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"' "$verify_context"` returns rows, remove the caller
-or artifact instead of adding a runtime flag.
+must pass `scripts/deploy/nexus/test-ldk-deploy-invariants.sh`; if the guard
+fails, remove the caller or artifact instead of adding a runtime flag.
 
 For Pylon releases, publish the CLI release and npm bootstrap before using a
 production Nexus image as final proof. The end-to-end closeout path depends on
@@ -253,15 +253,14 @@ tunnel path first. If the guest network stack itself is broken and the VM
 cannot reach metadata or the public internet, reset the VM immediately instead
 of waiting for the condition to clear on its own.
 
-For treasury funding-target failures, split public routing failures from Spark
-wallet latency. The 2026-05-15 incident looked like Nexus was down because the
+For treasury funding-target failures, split public routing failures from wallet
+or node latency. The 2026-05-15 incident looked like Nexus was down because the
 public recovery proxy returned a 502, but the VM-local relay could complete the
 same operation and the proxy simply had a stale 12s upstream timeout. Keep
 `NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS` in the same budget class
-as the relay and Nexus-control wallet timeouts. Then inspect wallet-specific
-timing separately; historical receipts show Spark sync and leaf-selection
-paths can take tens or hundreds of seconds and should be moved behind async
-operation records rather than fixed by ever-longer interactive HTTP timeouts.
+as the relay and Nexus-control wallet timeouts. Then inspect provider-specific
+timing separately; slow payment-node operations should move behind async
+operation records rather than ever-longer interactive HTTP timeouts.
 
 ### 3.1.1) Redacted health snapshot command
 
@@ -528,7 +527,7 @@ serves stale cached `/api/stats` and `/api/training/summary` when the local
 shell is slow, and rejects public WebSocket upgrades so a relay reconnect storm
 does not take operator HTTP surfaces down. The recovery proxy upstream timeout
 defaults to `180` seconds because treasury funding-target invoice creation can
-legitimately spend longer than a normal HTTP read in the Spark wallet path; set
+legitimately spend longer than a normal HTTP read in the payment-node path; set
 `NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS` only for a bounded
 operator override. If
 `NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED=false`, the same repeated edge
@@ -617,8 +616,9 @@ It used image
 `us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:33ee54cf6c51`
 and two npm-installed `pylon-v0.1.11` processes. Nexus created two consecutive
 `run.cs336.a1.auto_10m_*` runs, both windows reconciled, both closeouts were
-rewarded, accepted-work payout stats advanced by 50 sats, and the proof worker
-wallet received two completed 25-sat Spark payments. If a future proof sees
+rewarded, and accepted-work payout stats advanced by 50 sats. That proof used
+the old payment provider and is historical only; new production proofs must use
+LDK payout receipts. If a future proof sees
 temporary `queued_retry` / `trn_publish_retry` on contribution artifacts, keep
 the Pylon process alive or rerun `pylon training publish --json`; those retries
 are idempotent and recovered in the proof above.
@@ -910,11 +910,12 @@ The baseline bind is `0.0.0.0:8080` on the VM. Public DNS/TLS exposure is a late
 Treasury deployment note:
 
 - do not rely on the repo-relative treasury defaults in production
-- the supported Breez Spark SDK source for treasury is the upstream
-  `https://github.com/breez/spark-sdk` repo at the newest stable upstream tag
-- do not redeploy or roll back production Nexus onto old Spark pins or the
-  `AtlantisPleb/spark-sdk` fork; old pins can report `0 sats` after backend
-  enum/state drift even when the wallet still has funds
+- production treasury work is LDK-only
+- normal Nexus build, deploy, verify, funding, payout, and Pylon registration
+  paths must not copy, compile, link, or configure Spark wallet code
+- `scripts/deploy/nexus/test-ldk-deploy-invariants.sh` is the canonical static
+  guard and is run by the normal image build, warm-builder build, and verify
+  scripts
 - `scripts/deploy/nexus/03-configure-and-start.sh` now writes
   `NEXUS_CONTROL_TREASURY_STATE_PATH`,
   `NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH`, and
@@ -951,11 +952,10 @@ export NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4
 
 Accepted-work payout note:
 
-- `nexus-control` now hard-caps accepted-work payout sends to `4` concurrent
-  Spark sends per cycle even if `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS`
-  is set higher
-- keep the env at `4` for production unless there is proof that the upstream
-  Spark path can tolerate more without `Cancelled` / leaf-selection failures
+- `nexus-control` routes accepted-work payouts through the LDK provider
+  boundary.
+- keep `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` conservative until LDK
+  payout dispatch and reconciliation have production proof under load.
 
 Why the extra two envs matter:
 
@@ -963,7 +963,7 @@ Why the extra two envs matter:
   refresh loop on a lighter background cadence in production; treasury stale
   detection now tracks that configured refresh budget and the stats refresh
   path uses cached wallet balance plus bounded recent payment history instead
-  of forcing a full Spark sync or full wallet-history walk every cycle
+  of forcing a full wallet-history walk every cycle
 - if `${NEXUS_CONTROL_TREASURY_STATE_PATH}` picks up a malformed cached
   snapshot during a restart, the runtime now attempts to recover from the
   remaining state and at minimum preserves the persisted payout total rather
@@ -971,9 +971,8 @@ Why the extra two envs matter:
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25` and
   `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600` are the current
   production-safe reference values for the hosted Nexus treasury. That policy
-  reduces Spark transfer pressure to `0.4` sends/second even if the eligible
-  set reaches `240` providers, while keeping the daily ceiling under
-  `864000 sats` at that scale.
+  keeps the daily ceiling under `864000 sats` if the eligible set reaches
+  `240` providers.
 - `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=presence_only` keeps the
   current production placeholder lane aligned with raw online presence. This is
   the current operator default because the live earning flow must continue
@@ -983,9 +982,8 @@ Why the extra two envs matter:
   placeholder payouts when several clients appear to be the same underlying
   machine. This is only for placeholder/readiness accrual; accepted-work
   payouts remain tied to accepted contribution records.
-- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4` caps the per-cycle Spark
-  fan-out so one stalled upstream batch cannot occupy all live payout slots at
-  once.
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4` caps per-cycle payout fan-out
+  so one stalled upstream batch cannot occupy all live payout slots at once.
 - `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION` plus
   `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS` let Nexus stop
   awarding fresh payout windows to old `0.0.1-rc*` clients without stranding
@@ -1071,13 +1069,9 @@ What the wrapper does:
   `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS`; the wrapper
   defaults to `120000` ms when unset and the binary clamps it to 30 minutes for
   each balance, payment-list, and unclaimed-deposit read
-- passes `NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false` by default so
-  the current and rebuilt storage inspections run serially and avoid doubling
-  Spark upstream sync pressure during production recovery
-- passes `NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=false` by default so recovery
-  does not depend on Spark payment-history or unclaimed-deposit scans during a
-  wallet-store incident; enable scans only for deliberate forensics after
-  Nexus is already stable
+- active production recovery is LDK Server backup/restore plus Nexus operation
+  reconciliation; do not use this path to reintroduce Spark wallet inspection
+  into the production Nexus deploy image
 - defaults `RUST_LOG` to `warn` for quieter recovery report output
 - retries recovery report generation up to `NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS`
   times and removes the partial work dir between failed attempts
