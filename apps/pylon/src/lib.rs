@@ -23114,7 +23114,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         wallet_network: default_wallet_network(),
         wallet_api_key_env: default_wallet_api_key_env(),
         buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
-        wallet_storage_dir: base_dir.join("spark"),
+        wallet_storage_dir: base_dir.join("wallet"),
         local_gemma_base_url: "http://127.0.0.1:11434".to_string(),
         local_gemma_preferred_model: None,
         apple_fm_base_url: None,
@@ -25635,17 +25635,27 @@ pub async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> 
     } else {
         None
     };
-    let wallet_credit_summary = match load_wallet_credit_summary_report(config_path).await {
-        Ok(report) => Some(report.credits),
-        Err(_) if ledger.wallet.credits.last_full_sync_at_ms.is_some() => {
-            Some(ledger.wallet.credits.clone())
+    let provider_source_nonempty = !provider_earnings_are_empty(earnings.as_ref());
+    let provider_ledger_present = ledger.jobs.iter().any(|job| job.direction == "provider")
+        || ledger
+            .settlements
+            .iter()
+            .any(|settlement| settlement.direction == "provider");
+    let wallet_credit_summary = if provider_ledger_present {
+        None
+    } else {
+        match load_wallet_credit_summary_report(config_path).await {
+            Ok(report) => Some(report.credits),
+            Err(_) if ledger.wallet.credits.last_full_sync_at_ms.is_some() => {
+                Some(ledger.wallet.credits.clone())
+            }
+            Err(_) => None,
         }
-        Err(_) => None,
     };
     let earnings =
         merge_ledger_earnings(earnings, &ledger, &status, wallet_credit_summary.as_ref());
     let wallet_credits = summarize_wallet_credits(&ledger);
-    let source = if !provider_earnings_are_empty(earnings.as_ref()) {
+    let source = if provider_source_nonempty || provider_ledger_present {
         "provider_earnings".to_string()
     } else if !wallet_credits.is_empty() {
         "wallet_credits".to_string()
@@ -25920,8 +25930,14 @@ fn merge_ledger_earnings(
         .iter()
         .filter(|settlement| settlement.direction == "provider" && settlement.status == "settled")
         .collect::<Vec<_>>();
+    let wallet_credit_summary_has_credits = wallet_credit_summary.is_some_and(|credits| {
+        credits.credited_lifetime_sats > 0
+            || credits.credited_today_sats > 0
+            || credits.credited_today_count > 0
+            || credits.last_credit_at_ms.is_some()
+    });
     if use_wallet_credit_fallback {
-        if let Some(credits) = wallet_credit_summary {
+        if let Some(credits) = wallet_credit_summary.filter(|_| wallet_credit_summary_has_credits) {
             earnings.lifetime_sats = credits.credited_lifetime_sats;
             earnings.sats_today = credits.credited_today_sats;
             earnings.jobs_today = credits.credited_today_count;
@@ -34255,15 +34271,15 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     #[test]
     fn config_set_updates_wallet_fields() -> Result<(), Box<dyn std::error::Error>> {
         let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
-        apply_config_set(&mut config, "wallet_network", "regtest")?;
-        apply_config_set(&mut config, "wallet_api_key_env", "PYLON_SPARK_KEY")?;
+        apply_config_set(&mut config, "wallet_network", "ldk-external")?;
+        apply_config_set(&mut config, "wallet_api_key_env", "PYLON_LDK_TARGET_KEY")?;
         apply_config_set(&mut config, "wallet_storage_dir", "/tmp/pylon-wallet")?;
         ensure(
-            config.wallet_network == "regtest",
+            config.wallet_network == "ldk-external",
             "config set should update wallet_network",
         )?;
         ensure(
-            config.wallet_api_key_env.as_deref() == Some("PYLON_SPARK_KEY"),
+            config.wallet_api_key_env.as_deref() == Some("PYLON_LDK_TARGET_KEY"),
             "config set should update wallet_api_key_env",
         )?;
         ensure(
@@ -47968,7 +47984,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )?;
         let config = super::load_config(config_path.as_path())?;
         ensure(
-            config.wallet_storage_dir.ends_with("spark"),
+            config.wallet_storage_dir.ends_with("wallet"),
             "missing wallet storage should hydrate from the default config",
         )?;
         ensure(
@@ -48001,7 +48017,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
   "identity_path": "/tmp/pylon-test/identity.mnemonic",
   "admin_db_path": "/tmp/pylon-test/provider-admin.sqlite",
   "admin_listen_addr": "127.0.0.1:9468",
-  "wallet_storage_dir": "/tmp/pylon-test/spark",
+  "wallet_storage_dir": "/tmp/pylon-test/wallet",
   "legacy_runtime_base_url": "http://127.0.0.1:11435",
   "inventory_controls": {
     "gpt_oss_inference_enabled": false,
@@ -48302,7 +48318,6 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && requests[1].1["payment_target_kind"] == "bolt12_offer"
                 && requests[1].1["payment_target"] == "lno1pylonalice"
                 && requests[1].1["pylon_payment_target_version"] == "pylon-payment-target/v0.2"
-                && requests[1].1.get("spark_address").is_none()
                 && requests[1].1.get("bitcoin_address").is_none(),
             "registered payout target should include only the LDK identity, session, and payment target",
         )?;
@@ -51658,7 +51673,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 },
                 post_balance: super::WalletBalanceSnapshot {
                     total_sats: 144,
-                    spark_sats: 144,
+                    credited_sats: 144,
                     lightning_sats: 144,
                     onchain_sats: 0,
                 },
@@ -54404,7 +54419,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     status: "completed".to_string(),
                     amount_sats: 21,
                     fees_sats: 0,
-                    method: "spark".to_string(),
+                    method: "lightning".to_string(),
                     description: None,
                     invoice: None,
                     created_at_ms: current_day_start + 1_000,
@@ -54416,7 +54431,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     status: "completed".to_string(),
                     amount_sats: 34,
                     fees_sats: 0,
-                    method: "spark".to_string(),
+                    method: "lightning".to_string(),
                     description: None,
                     invoice: None,
                     created_at_ms: current_day_start.saturating_sub(86_400_000) + 2_000,
@@ -54433,7 +54448,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && report.wallet_credits.lifetime_sats == 55
                 && report.wallet_credits.count_today == 1
                 && report.wallet_credits.last_credit_label.as_deref()
-                    == Some("completed 21 sats via spark"),
+                    == Some("completed 21 sats via lightning"),
             "earnings report should fall back to wallet credits using payment event timestamps",
         )?;
 
@@ -54443,7 +54458,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && rendered.contains("credited_today: 21")
                 && rendered.contains("credited_lifetime: 55")
                 && rendered.contains("receives_today: 1")
-                && rendered.contains("last_credit: completed 21 sats via spark"),
+                && rendered.contains("last_credit: completed 21 sats via lightning"),
             "human earnings render should show wallet credit stats when provider earnings are empty",
         )
     }

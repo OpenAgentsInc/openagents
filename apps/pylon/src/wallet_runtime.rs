@@ -8,8 +8,7 @@ use crate::{
     ensure_local_setup, load_ledger, mutate_ledger, now_epoch_ms,
 };
 
-const LDK_EXTERNAL_WALLET_DETAIL: &str =
-    "Pylon no longer opens a local Spark wallet. Configure an LDK payout destination for earnings.";
+const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon uses an external LDK-compatible payout destination. Configure payout_destination for earnings.";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WalletSubcommand {
@@ -50,7 +49,7 @@ pub struct WalletRuntimeSurface {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct WalletBalanceSnapshot {
-    pub spark_sats: u64,
+    pub credited_sats: u64,
     pub lightning_sats: u64,
     pub onchain_sats: u64,
     pub total_sats: u64,
@@ -68,7 +67,7 @@ pub struct WalletStatusReport {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct WalletAddressReport {
     pub runtime: WalletRuntimeSurface,
-    pub spark_address: String,
+    pub payout_destination: Option<String>,
     pub bitcoin_address: String,
 }
 
@@ -347,7 +346,6 @@ async fn load_wallet_status_report_internal(
         report.runtime_detail.clone(),
         Some(&report.balance),
         None,
-        None,
         report.recent_payments.as_slice(),
     )?;
     Ok(report)
@@ -432,7 +430,7 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
         format!("api_key_source: {}", report.runtime.api_key_source),
         format!("identity_path: {}", report.runtime.identity_path),
         format!("storage_dir: {}", report.runtime.storage_dir),
-        format!("spark_sats: {}", report.balance.spark_sats),
+        format!("credited_sats: {}", report.balance.credited_sats),
         format!("lightning_sats: {}", report.balance.lightning_sats),
         format!("onchain_sats: {}", report.balance.onchain_sats),
         format!("total_sats: {}", report.balance.total_sats),
@@ -467,7 +465,7 @@ pub fn render_wallet_balance_report(report: &WalletStatusReport) -> String {
     let mut lines = vec![
         format!("network: {}", report.runtime.network),
         format!("runtime_status: {}", report.runtime_status),
-        format!("spark_sats: {}", report.balance.spark_sats),
+        format!("credited_sats: {}", report.balance.credited_sats),
         format!("lightning_sats: {}", report.balance.lightning_sats),
         format!("onchain_sats: {}", report.balance.onchain_sats),
         format!("total_sats: {}", report.balance.total_sats),
@@ -479,9 +477,13 @@ pub fn render_wallet_balance_report(report: &WalletStatusReport) -> String {
 }
 
 pub fn render_wallet_address_report(report: &WalletAddressReport) -> String {
+    let payout_destination = report
+        .payout_destination
+        .as_deref()
+        .unwrap_or("not_configured");
     [
         format!("network: {}", report.runtime.network),
-        format!("spark_address: {}", report.spark_address),
+        format!("payout_destination: {payout_destination}"),
         format!("bitcoin_address: {}", report.bitcoin_address),
     ]
     .join("\n")
@@ -619,7 +621,6 @@ fn sync_wallet_status(
     runtime_status: &str,
     runtime_detail: Option<String>,
     balance: Option<&WalletBalanceSnapshot>,
-    spark_address: Option<&str>,
     bitcoin_address: Option<&str>,
     payments: &[PylonWalletPaymentRecord],
 ) -> Result<()> {
@@ -630,9 +631,6 @@ fn sync_wallet_status(
         if let Some(balance) = balance {
             ledger.wallet.last_balance_sats = Some(balance.total_sats);
             ledger.wallet.last_balance_at_ms = Some(now_epoch_ms() as u64);
-        }
-        if let Some(spark_address) = spark_address {
-            ledger.wallet.spark_address = Some(spark_address.to_string());
         }
         if let Some(bitcoin_address) = bitcoin_address {
             ledger.wallet.bitcoin_address = Some(bitcoin_address.to_string());
@@ -669,9 +667,7 @@ fn sync_wallet_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        WalletSubcommand, compute_wallet_credit_summary, parse_wallet_command,
-    };
+    use super::{WalletSubcommand, compute_wallet_credit_summary, parse_wallet_command};
     use crate::PylonWalletPaymentRecord;
 
     #[test]

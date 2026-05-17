@@ -244,7 +244,6 @@ pub struct PylonWalletLedger {
     pub network: Option<String>,
     pub last_balance_sats: Option<u64>,
     pub last_balance_at_ms: Option<u64>,
-    pub spark_address: Option<String>,
     pub bitcoin_address: Option<String>,
     #[serde(default)]
     pub credits: PylonWalletCreditSummary,
@@ -260,7 +259,6 @@ impl Default for PylonWalletLedger {
             network: None,
             last_balance_sats: None,
             last_balance_at_ms: None,
-            spark_address: None,
             bitcoin_address: None,
             credits: PylonWalletCreditSummary::default(),
             invoices: Vec::new(),
