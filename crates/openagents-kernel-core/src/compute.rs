@@ -4035,6 +4035,7 @@ pub enum ComputeValidatorChallengeFailureCode {
     FreivaldsMismatch,
     LeaseExpired,
     RetryBudgetExhausted,
+    StaleRetainedBacklog,
 }
 
 impl ComputeValidatorChallengeFailureCode {
@@ -4047,6 +4048,7 @@ impl ComputeValidatorChallengeFailureCode {
             Self::FreivaldsMismatch => "freivalds_mismatch",
             Self::LeaseExpired => "lease_expired",
             Self::RetryBudgetExhausted => "retry_budget_exhausted",
+            Self::StaleRetainedBacklog => "stale_retained_backlog",
         }
     }
 }

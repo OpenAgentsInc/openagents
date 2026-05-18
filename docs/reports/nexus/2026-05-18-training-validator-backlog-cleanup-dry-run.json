@@ -1,0 +1,26 @@
+{
+  "generated_at_unix_ms": 1779132172281,
+  "retention_cutoff_unix_ms": 1779045772281,
+  "applied": false,
+  "changed": false,
+  "before": {
+    "active_runs": 0,
+    "active_windows": 0,
+    "pending_validation_windows": 0,
+    "validator_challenges_open": 0,
+    "validator_challenges_queued": 0,
+    "protected_active_runs_with_accepted_outcomes": 0
+  },
+  "after": {
+    "active_runs": 0,
+    "active_windows": 0,
+    "pending_validation_windows": 0,
+    "validator_challenges_open": 0,
+    "validator_challenges_queued": 0,
+    "protected_active_runs_with_accepted_outcomes": 0
+  },
+  "retired_runs": [],
+  "retired_windows": [],
+  "retired_challenges": [],
+  "protected_runs": []
+}

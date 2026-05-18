@@ -54,6 +54,21 @@ async fn async_main(worker_threads: usize) -> Result<()> {
         return Ok(());
     }
 
+    if matches!(args.get(1).map(String::as_str), Some("training")) {
+        let config = nexus_control::ServiceConfig::from_env()
+            .map_err(|error| anyhow::anyhow!("failed to load nexus-control config: {error}"))?;
+        let command = nexus_control::parse_training_command(&args).map_err(|error| {
+            anyhow::anyhow!(
+                "failed to parse training command: {error}\nusage: nexus-control {}",
+                nexus_control::training_usage()
+            )
+        })?;
+        let output = nexus_control::run_training_command(&config, &command)
+            .map_err(|error| anyhow::anyhow!("failed to run training command: {error}"))?;
+        println!("{output}");
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

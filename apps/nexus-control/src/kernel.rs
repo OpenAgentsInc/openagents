@@ -103,9 +103,10 @@ use openagents_provider_substrate::{
     ProviderTrainingCapabilityEnvelopeV2, ProviderTrainingCapabilityTierProfile,
 };
 use openagents_validator_service::{
-    ValidatorChallengeLease, ValidatorChallengeRequest, ValidatorChallengeResult,
-    ValidatorChallengeService, ValidatorChallengeSnapshot, ValidatorChallengeStatus,
-    ValidatorChallengeVerdict, ValidatorServiceError,
+    ValidatorChallengeFailureCode as ServiceValidatorChallengeFailureCode, ValidatorChallengeLease,
+    ValidatorChallengeRequest, ValidatorChallengeResult, ValidatorChallengeService,
+    ValidatorChallengeSnapshot, ValidatorChallengeStatus, ValidatorChallengeVerdict,
+    ValidatorServiceError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -424,6 +425,60 @@ pub struct KernelState {
     persistence_path: Option<PathBuf>,
     last_persistence_error: Option<String>,
     compute_runtime_policy: ComputeRuntimePolicy,
+}
+
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingBacklogRetainedCounts {
+    pub active_runs: u64,
+    pub active_windows: u64,
+    pub pending_validation_windows: u64,
+    pub validator_challenges_open: u64,
+    pub validator_challenges_queued: u64,
+    pub protected_active_runs_with_accepted_outcomes: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RetiredTrainingRun {
+    pub training_run_id: String,
+    pub previous_status: ComputeTrainingRunStatus,
+    pub created_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RetiredTrainingWindow {
+    pub window_id: String,
+    pub training_run_id: String,
+    pub previous_status: ComputeAdapterWindowStatus,
+    pub recorded_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RetiredValidatorChallenge {
+    pub challenge_id: String,
+    pub previous_status: ValidatorChallengeStatus,
+    pub training_run_id: Option<String>,
+    pub window_id: Option<String>,
+    pub created_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingBacklogCleanupReport {
+    pub generated_at_unix_ms: u64,
+    pub retention_cutoff_unix_ms: u64,
+    pub applied: bool,
+    pub changed: bool,
+    pub before: TrainingBacklogRetainedCounts,
+    pub after: TrainingBacklogRetainedCounts,
+    #[serde(default)]
+    pub retired_runs: Vec<RetiredTrainingRun>,
+    #[serde(default)]
+    pub retired_windows: Vec<RetiredTrainingWindow>,
+    #[serde(default)]
+    pub retired_challenges: Vec<RetiredValidatorChallenge>,
+    #[serde(default)]
+    pub protected_runs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -3893,6 +3948,336 @@ impl KernelState {
         self.training_validator_challenge_receipts
             .get(challenge_id)
             .and_then(|record| record.finalization_receipt_id.clone())
+    }
+
+    pub fn retained_training_backlog_counts(
+        &self,
+        retention_cutoff_unix_ms: u64,
+    ) -> TrainingBacklogRetainedCounts {
+        self.retained_training_backlog_counts_inner(retention_cutoff_unix_ms)
+    }
+
+    fn accepted_training_run_ids(&self) -> BTreeSet<String> {
+        self.compute_accepted_outcomes
+            .values()
+            .filter(|record| record.outcome.outcome_kind == ComputeAcceptedOutcomeKind::TrainingRun)
+            .map(|record| record.outcome.source_run_id.clone())
+            .collect()
+    }
+
+    fn accepted_training_window_ids(&self) -> BTreeSet<String> {
+        let mut accepted_window_ids = self
+            .compute_adapter_training_windows
+            .values()
+            .filter(|record| record.window.accepted_outcome_id.is_some())
+            .map(|record| record.window.window_id.clone())
+            .collect::<BTreeSet<_>>();
+
+        for outcome in self.compute_accepted_outcomes.values() {
+            if outcome.outcome.outcome_kind != ComputeAcceptedOutcomeKind::TrainingRun {
+                continue;
+            }
+            if let Some(window_id) = outcome
+                .outcome
+                .metadata
+                .get("window_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                accepted_window_ids.insert(window_id.to_string());
+            }
+        }
+
+        accepted_window_ids
+    }
+
+    fn retained_training_backlog_counts_inner(
+        &self,
+        retention_cutoff_unix_ms: u64,
+    ) -> TrainingBacklogRetainedCounts {
+        let cutoff_i64 = i64::try_from(retention_cutoff_unix_ms).unwrap_or(i64::MAX);
+        let accepted_run_ids = self.accepted_training_run_ids();
+        let active_runs = self
+            .compute_training_runs
+            .values()
+            .filter(|record| {
+                training_run_counts_as_active(record.training_run.status)
+                    && record.training_run.created_at_ms < cutoff_i64
+            })
+            .count() as u64;
+        let protected_active_runs_with_accepted_outcomes = self
+            .compute_training_runs
+            .values()
+            .filter(|record| {
+                training_run_counts_as_active(record.training_run.status)
+                    && record.training_run.created_at_ms < cutoff_i64
+                    && accepted_run_ids.contains(record.training_run.training_run_id.as_str())
+            })
+            .count() as u64;
+        let active_windows = self
+            .compute_adapter_training_windows
+            .values()
+            .filter(|record| {
+                record.window.status != ComputeAdapterWindowStatus::Reconciled
+                    && record.window.recorded_at_ms < cutoff_i64
+            })
+            .count() as u64;
+        let pending_validation_windows = self
+            .compute_adapter_training_windows
+            .values()
+            .filter(|record| {
+                matches!(
+                    record.window.status,
+                    ComputeAdapterWindowStatus::Sealed | ComputeAdapterWindowStatus::Scored
+                ) && record.window.recorded_at_ms < cutoff_i64
+            })
+            .count() as u64;
+        let mut validator_challenges_open = 0u64;
+        let mut validator_challenges_queued = 0u64;
+        for challenge in self.validator_challenges.list() {
+            if !validator_challenge_status_open(challenge.status)
+                || challenge.request.context.created_at_ms >= retention_cutoff_unix_ms
+            {
+                continue;
+            }
+            validator_challenges_open = validator_challenges_open.saturating_add(1);
+            if challenge.status == ValidatorChallengeStatus::Queued {
+                validator_challenges_queued = validator_challenges_queued.saturating_add(1);
+            }
+        }
+
+        TrainingBacklogRetainedCounts {
+            active_runs,
+            active_windows,
+            pending_validation_windows,
+            validator_challenges_open,
+            validator_challenges_queued,
+            protected_active_runs_with_accepted_outcomes,
+        }
+    }
+
+    pub fn cleanup_retained_training_backlog(
+        &mut self,
+        context: &KernelMutationContext,
+        retention_cutoff_unix_ms: u64,
+        apply: bool,
+    ) -> Result<TrainingBacklogCleanupReport, String> {
+        let before = self.retained_training_backlog_counts_inner(retention_cutoff_unix_ms);
+        let accepted_run_ids = self.accepted_training_run_ids();
+        let accepted_window_ids = self.accepted_training_window_ids();
+        let mut report = TrainingBacklogCleanupReport {
+            generated_at_unix_ms: context.now_unix_ms as u64,
+            retention_cutoff_unix_ms,
+            applied: apply,
+            changed: false,
+            before,
+            after: TrainingBacklogRetainedCounts::default(),
+            retired_runs: Vec::new(),
+            retired_windows: Vec::new(),
+            retired_challenges: Vec::new(),
+            protected_runs: Vec::new(),
+            receipt_id: None,
+        };
+
+        let cutoff_i64 = i64::try_from(retention_cutoff_unix_ms).unwrap_or(i64::MAX);
+        let now_i64 = i64::try_from(context.now_unix_ms).unwrap_or(i64::MAX);
+        let mut run_ids = self
+            .compute_training_runs
+            .iter()
+            .filter_map(|(training_run_id, record)| {
+                (training_run_counts_as_active(record.training_run.status)
+                    && record.training_run.created_at_ms < cutoff_i64)
+                    .then(|| training_run_id.clone())
+            })
+            .collect::<Vec<_>>();
+        run_ids.sort();
+        for training_run_id in run_ids {
+            let Some(record) = self.compute_training_runs.get_mut(training_run_id.as_str()) else {
+                continue;
+            };
+            if accepted_run_ids.contains(training_run_id.as_str()) {
+                report.protected_runs.push(training_run_id);
+                continue;
+            }
+            let previous_status = record.training_run.status;
+            report.retired_runs.push(RetiredTrainingRun {
+                training_run_id: training_run_id.clone(),
+                previous_status,
+                created_at_ms: record.training_run.created_at_ms,
+            });
+            if apply {
+                record.training_run.status = ComputeTrainingRunStatus::Cancelled;
+                record.training_run.finalized_at_ms = Some(now_i64);
+                attach_retention_cleanup_metadata(
+                    &mut record.training_run.metadata,
+                    now_i64,
+                    retention_cutoff_unix_ms,
+                    previous_status.label(),
+                );
+            }
+        }
+
+        let mut window_ids = self
+            .compute_adapter_training_windows
+            .iter()
+            .filter_map(|(window_id, record)| {
+                (record.window.status != ComputeAdapterWindowStatus::Reconciled
+                    && record.window.recorded_at_ms < cutoff_i64)
+                    .then(|| window_id.clone())
+            })
+            .collect::<Vec<_>>();
+        window_ids.sort();
+        for window_id in window_ids {
+            let Some(record) = self
+                .compute_adapter_training_windows
+                .get_mut(window_id.as_str())
+            else {
+                continue;
+            };
+            if accepted_window_ids.contains(window_id.as_str()) {
+                continue;
+            }
+            let previous_status = record.window.status;
+            report.retired_windows.push(RetiredTrainingWindow {
+                window_id: window_id.clone(),
+                training_run_id: record.window.training_run_id.clone(),
+                previous_status,
+                recorded_at_ms: record.window.recorded_at_ms,
+            });
+            if apply {
+                record.window.status = ComputeAdapterWindowStatus::Reconciled;
+                attach_retention_cleanup_metadata(
+                    &mut record.window.metadata,
+                    now_i64,
+                    retention_cutoff_unix_ms,
+                    previous_status.label(),
+                );
+            }
+        }
+
+        let mut challenge_snapshots = self.validator_challenges.list();
+        challenge_snapshots.sort_by(|lhs, rhs| {
+            lhs.request
+                .context
+                .challenge_id
+                .cmp(&rhs.request.context.challenge_id)
+        });
+        for snapshot in challenge_snapshots {
+            if !validator_challenge_status_open(snapshot.status)
+                || snapshot.request.context.created_at_ms >= retention_cutoff_unix_ms
+            {
+                continue;
+            }
+            let challenge_id = snapshot.request.context.challenge_id.clone();
+            let (training_run_id, window_id) =
+                training_ids_from_validator_challenge_id(challenge_id.as_str());
+            report.retired_challenges.push(RetiredValidatorChallenge {
+                challenge_id: challenge_id.clone(),
+                previous_status: snapshot.status,
+                training_run_id: training_run_id.clone(),
+                window_id: window_id.clone(),
+                created_at_ms: snapshot.request.context.created_at_ms,
+            });
+            if apply {
+                let result = self
+                    .validator_challenges
+                    .force_timeout(
+                        challenge_id.as_str(),
+                        context.now_unix_ms as u64,
+                        ServiceValidatorChallengeFailureCode::StaleRetainedBacklog,
+                        "validator challenge retired from historical retained backlog",
+                    )
+                    .map_err(|error| validator_service_reason(&error).to_string())?;
+                self.training_validator_challenge_receipts.insert(
+                    challenge_id,
+                    TrainingValidatorChallengeReceiptRecord {
+                        finalization_receipt_id: None,
+                        node_pubkey_hex: None,
+                        finalized_at_ms: Some(now_i64),
+                        status: Some(result.status),
+                        verdict: Some(result.verdict),
+                    },
+                );
+            }
+        }
+
+        report.retired_runs.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
+        });
+        report.retired_windows.sort_by(|lhs, rhs| {
+            lhs.recorded_at_ms
+                .cmp(&rhs.recorded_at_ms)
+                .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+        });
+        report.retired_challenges.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.challenge_id.cmp(&rhs.challenge_id))
+        });
+        report.protected_runs.sort();
+        report.changed = !report.retired_runs.is_empty()
+            || !report.retired_windows.is_empty()
+            || !report.retired_challenges.is_empty();
+
+        if apply && report.changed {
+            let idempotency_key = format!(
+                "idemp.training.backlog.cleanup.{}.{}",
+                retention_cutoff_unix_ms, context.now_unix_ms
+            );
+            let receipt = build_receipt(
+                context,
+                idempotency_key.as_str(),
+                KernelReceiptSpec {
+                    action: "kernel.training.backlog.cleanup".to_string(),
+                    created_at_ms: now_i64,
+                    trace: normalized_trace(TraceContext::default(), context, None, None),
+                    policy: normalized_policy(PolicyContext::default(), context),
+                    inputs_payload: json!({
+                        "retention_cutoff_unix_ms": retention_cutoff_unix_ms,
+                        "applied": true,
+                    }),
+                    outputs_payload: serde_json::to_value(&report).map_err(|error| {
+                        format!("training_backlog_cleanup_report_encode_failed: {error}")
+                    })?,
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )?;
+            let request_hash = request_hash(&json!({
+                "retention_cutoff_unix_ms": retention_cutoff_unix_ms,
+                "generated_at_unix_ms": context.now_unix_ms,
+                "retired_runs": &report.retired_runs,
+                "retired_windows": &report.retired_windows,
+                "retired_challenges": &report.retired_challenges,
+            }))?;
+            let put_result = self
+                .receipt_store
+                .put_receipt(
+                    "kernel.training.backlog.cleanup",
+                    context.caller_id.as_str(),
+                    idempotency_key.as_str(),
+                    request_hash.as_str(),
+                    receipt,
+                )
+                .map_err(|error| receipt_store_reason(&error).to_string())?;
+            let receipt_id = put_result.receipt.receipt_id.clone();
+            for challenge in &report.retired_challenges {
+                if let Some(record) = self
+                    .training_validator_challenge_receipts
+                    .get_mut(challenge.challenge_id.as_str())
+                {
+                    record.finalization_receipt_id = Some(receipt_id.clone());
+                }
+            }
+            report.receipt_id = Some(receipt_id);
+            let _ = self.refresh_snapshot_for(now_i64)?;
+        }
+
+        report.after = self.retained_training_backlog_counts_inner(retention_cutoff_unix_ms);
+        Ok(report)
     }
 
     pub fn list_training_validator_challenge_finalization_sources(
@@ -15164,6 +15549,71 @@ fn normalized_policy(mut policy: PolicyContext, context: &KernelMutationContext)
         policy.approved_by.clone_from(&context.caller_id);
     }
     policy
+}
+
+fn training_run_counts_as_active(status: ComputeTrainingRunStatus) -> bool {
+    matches!(
+        status,
+        ComputeTrainingRunStatus::Queued
+            | ComputeTrainingRunStatus::Preparing
+            | ComputeTrainingRunStatus::Running
+            | ComputeTrainingRunStatus::Finalizing
+    )
+}
+
+fn validator_challenge_status_open(status: ValidatorChallengeStatus) -> bool {
+    matches!(
+        status,
+        ValidatorChallengeStatus::Queued
+            | ValidatorChallengeStatus::Leased
+            | ValidatorChallengeStatus::Retrying
+    )
+}
+
+fn attach_retention_cleanup_metadata(
+    metadata: &mut Value,
+    retired_at_ms: i64,
+    retention_cutoff_unix_ms: u64,
+    previous_status: &str,
+) {
+    let mut object = metadata.as_object().cloned().unwrap_or_default();
+    object.insert(
+        "retention_cleanup".to_string(),
+        json!({
+            "retired_at_ms": retired_at_ms,
+            "retention_cutoff_unix_ms": retention_cutoff_unix_ms,
+            "previous_status": previous_status,
+            "reason": "stale_retained_backlog",
+        }),
+    );
+    *metadata = Value::Object(object);
+}
+
+fn training_ids_from_validator_challenge_id(
+    challenge_id: &str,
+) -> (Option<String>, Option<String>) {
+    let Some(rest) = challenge_id.strip_prefix("challenge.training.") else {
+        return (None, None);
+    };
+    let Some(window_marker_index) = rest.find(".window.") else {
+        return (None, None);
+    };
+    let training_run_id = rest[..window_marker_index].to_string();
+    let after_marker = &rest[window_marker_index + 1..];
+    let mut parts = after_marker.split('.');
+    let Some(window_prefix) = parts.next() else {
+        return (Some(training_run_id), None);
+    };
+    let Some(window_number) = parts.next() else {
+        return (Some(training_run_id), None);
+    };
+    if window_prefix != "window" {
+        return (Some(training_run_id), None);
+    }
+    (
+        Some(training_run_id),
+        Some(format!("window.{window_number}")),
+    )
 }
 
 fn risk_policy_outputs(

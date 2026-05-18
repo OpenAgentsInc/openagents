@@ -166,6 +166,53 @@ Nexus lease admission must evaluate hard gates for the requested role, not the
 worker role unconditionally. Otherwise validator-only or validator-first hosts
 can never clear sealed windows.
 
+## Retained Training Backlog Cleanup
+
+Normal launch health must distinguish fresh work from historical retained
+training state. Old active runs, unreconciled adapter windows, and queued or
+leased validator challenges can remain useful as audit evidence, but they must
+not keep `/api/stats` in `overall_status: bad` after the live worker path has
+recovered.
+
+Nexus exposes an explicit cleanup command:
+
+```bash
+nexus-control training backlog-cleanup \
+  --retention-hours 24 \
+  --report-path /var/lib/nexus-relay/reports/training-backlog-cleanup-dry-run.json
+```
+
+After reviewing the dry-run report:
+
+```bash
+nexus-control training backlog-cleanup \
+  --apply \
+  --retention-hours 24 \
+  --report-path /var/lib/nexus-relay/reports/training-backlog-cleanup-applied.json
+```
+
+The command:
+
+- cancels stale active training runs that do not have accepted outcomes;
+- reconciles stale adapter windows that do not have accepted outcomes;
+- terminalizes stale validator challenges with
+  `stale_retained_backlog`;
+- writes a `kernel.training.backlog.cleanup` receipt when it changes state;
+- removes retired run IDs from scheduler indexes;
+- leaves accepted-work payout evidence intact.
+
+Public launch-health output includes fresh and retained counters for active
+runs, pending validation windows, open validator challenges, and queued
+validator challenges. Fresh counters drive `run_backlog` and
+`validator_backlog` severity. Retained counters only emit the warning alert
+`retained_training_backlog`.
+
+The implementation proof and local dry-run report are documented in:
+
+```text
+docs/reports/nexus/2026-05-18-training-validator-backlog-cleanup.md
+```
+
 ## Historical Payout Ledger Cleanup
 
 The active payout rail is LDK-only, but older treasury state can still contain

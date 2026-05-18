@@ -80,6 +80,8 @@ pub enum ValidatorChallengeFailureCode {
     LeaseExpired,
     /// The service exhausted the retry budget after repeated interruptions.
     RetryBudgetExhausted,
+    /// The challenge was retired from historical retained backlog state.
+    StaleRetainedBacklog,
 }
 
 /// Supported validator challenge protocols.
@@ -872,6 +874,45 @@ impl ValidatorChallengeService {
         expired
     }
 
+    /// Terminalizes one historical retained challenge without requiring a live lease.
+    pub fn force_timeout(
+        &mut self,
+        challenge_id: &str,
+        finalized_at_ms: u64,
+        reason_code: ValidatorChallengeFailureCode,
+        detail: impl Into<String>,
+    ) -> Result<ValidatorChallengeResult, ValidatorServiceError> {
+        let record = self
+            .records
+            .get_mut(challenge_id)
+            .ok_or_else(|| ValidatorServiceError::UnknownChallenge(challenge_id.to_string()))?;
+        if let Some(existing) = record.final_result.as_ref() {
+            return Ok(existing.clone());
+        }
+        self.queue.retain(|queued_id| queued_id != challenge_id);
+        let attempt = record
+            .active_lease
+            .as_ref()
+            .map(|lease| lease.attempt)
+            .unwrap_or_else(|| record.attempts_used.saturating_add(1).max(1));
+        record.attempts_used = attempt;
+        record.active_lease = None;
+        let result = ValidatorChallengeResult::new(
+            &record.request.context,
+            record.request.protocol,
+            attempt,
+            ValidatorChallengeStatus::TimedOut,
+            ValidatorChallengeVerdict::TimedOut,
+            Some(reason_code),
+            detail,
+            finalized_at_ms,
+            None,
+            None,
+        );
+        record.final_result = Some(result.clone());
+        Ok(result)
+    }
+
     /// Returns the final result for one challenge when available.
     #[must_use]
     pub fn result(&self, challenge_id: &str) -> Option<&ValidatorChallengeResult> {
@@ -1247,6 +1288,44 @@ mod tests {
         assert_eq!(
             expired[0].reason_code,
             Some(ValidatorChallengeFailureCode::LeaseExpired)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn force_timeout_terminalizes_retained_challenge_without_lease()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let witness = GpuFreivaldsMerkleWitness::from_matrices(
+            &[vec![1, 2], vec![3, 4]],
+            &[vec![5, 6], vec![7, 8]],
+            &[vec![19, 22], vec![43, 50]],
+        )?;
+        let request = ValidatorChallengeRequest::new(sample_context("challenge-retained"), witness);
+        let mut service = ValidatorChallengeService::default();
+        service.enqueue(request)?;
+
+        let result = service.force_timeout(
+            "challenge-retained",
+            120,
+            ValidatorChallengeFailureCode::StaleRetainedBacklog,
+            "retained training backlog cleanup",
+        )?;
+
+        assert_eq!(result.status, ValidatorChallengeStatus::TimedOut);
+        assert_eq!(result.verdict, ValidatorChallengeVerdict::TimedOut);
+        assert_eq!(
+            result.reason_code,
+            Some(ValidatorChallengeFailureCode::StaleRetainedBacklog)
+        );
+        let snapshot = service
+            .snapshot("challenge-retained")
+            .ok_or("expected retained challenge snapshot")?;
+        assert_eq!(snapshot.status, ValidatorChallengeStatus::TimedOut);
+        assert!(snapshot.active_lease.is_none());
+        assert_eq!(service.result("challenge-retained"), Some(&result));
+        assert!(
+            service.lease_next("validator-after-cleanup", 130).is_none(),
+            "retired challenges must be removed from the lease queue"
         );
         Ok(())
     }

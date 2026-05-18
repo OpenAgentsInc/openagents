@@ -171,13 +171,29 @@ pub struct PublicTrainingLaunchHealthSnapshot {
     #[serde(default)]
     pub active_runs: u64,
     #[serde(default)]
+    pub fresh_active_runs: u64,
+    #[serde(default)]
+    pub retained_active_runs: u64,
+    #[serde(default)]
     pub run_backlog_slots: u64,
     #[serde(default)]
     pub pending_validation_windows: u64,
     #[serde(default)]
+    pub fresh_pending_validation_windows: u64,
+    #[serde(default)]
+    pub retained_pending_validation_windows: u64,
+    #[serde(default)]
     pub validator_challenges_open: u64,
     #[serde(default)]
+    pub fresh_validator_challenges_open: u64,
+    #[serde(default)]
+    pub retained_validator_challenges_open: u64,
+    #[serde(default)]
     pub validator_challenges_queued: u64,
+    #[serde(default)]
+    pub fresh_validator_challenges_queued: u64,
+    #[serde(default)]
+    pub retained_validator_challenges_queued: u64,
     #[serde(default)]
     pub accepted_work_pending_payout_count: u64,
     #[serde(default)]

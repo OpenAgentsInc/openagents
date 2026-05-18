@@ -157,9 +157,10 @@ use crate::kernel::{
     RecordTrainingNodeAdmissionResponse, RecordTrainingNodeHeartbeatRequest,
     RecordTrainingNodeHeartbeatResponse, RetryValidatorChallengeRequest,
     ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, SnapshotProjectionEvent,
-    TrainingCoordinatorAck, TrainingNodeQuery, TrainingNodeRoleClaim,
-    TrainingNodeSchedulerAvailabilityDimension, TrainingNodeSchedulerAvailabilityProjection,
-    TrainingTrnPublicationPointer, TrainingTrnPublicationRecord, TrainingTrnPublicationTemplate,
+    TrainingBacklogCleanupReport, TrainingBacklogRetainedCounts, TrainingCoordinatorAck,
+    TrainingNodeQuery, TrainingNodeRoleClaim, TrainingNodeSchedulerAvailabilityDimension,
+    TrainingNodeSchedulerAvailabilityProjection, TrainingTrnPublicationPointer,
+    TrainingTrnPublicationRecord, TrainingTrnPublicationTemplate,
     TrainingTrnRelayPublicationOutcome, TrainingValidatorChallengeFinalizationSource,
 };
 use crate::treasury::{
@@ -201,6 +202,196 @@ pub use health_verification::{
     parse_nexus_health_verification_pack_command, run_nexus_health_verification_pack,
     run_nexus_health_verification_pack_command,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrainingCommand {
+    BacklogCleanup {
+        apply: bool,
+        retention_hours: u64,
+        report_path: Option<PathBuf>,
+        json: bool,
+    },
+}
+
+pub fn training_usage() -> &'static str {
+    "training backlog-cleanup [--apply] [--retention-hours <hours>] [--report-path <path>] [--json]"
+}
+
+pub fn parse_training_command(args: &[String]) -> Result<TrainingCommand, String> {
+    match args.get(2).map(String::as_str) {
+        Some("backlog-cleanup") => {
+            let mut apply = false;
+            let mut retention_hours = TRAINING_BACKLOG_CLEANUP_DEFAULT_RETENTION_HOURS;
+            let mut report_path = None;
+            let mut json = false;
+            let mut index = 3usize;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--apply" => {
+                        apply = true;
+                        index += 1;
+                    }
+                    "--retention-hours" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| "missing value for --retention-hours".to_string())?;
+                        retention_hours = raw
+                            .parse::<u64>()
+                            .map_err(|error| format!("invalid retention hours `{raw}`: {error}"))?;
+                        if retention_hours == 0 {
+                            return Err("retention hours must be greater than zero".to_string());
+                        }
+                        index += 1;
+                    }
+                    "--report-path" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| "missing value for --report-path".to_string())?;
+                        report_path = Some(PathBuf::from(raw));
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => {
+                        return Err(format!("unknown training backlog-cleanup flag `{other}`"));
+                    }
+                }
+            }
+            Ok(TrainingCommand::BacklogCleanup {
+                apply,
+                retention_hours,
+                report_path,
+                json,
+            })
+        }
+        Some(other) => Err(format!("unknown training command `{other}`")),
+        None => Err("missing training command".to_string()),
+    }
+}
+
+pub fn run_training_command(
+    config: &ServiceConfig,
+    command: &TrainingCommand,
+) -> Result<String, String> {
+    match command {
+        TrainingCommand::BacklogCleanup {
+            apply,
+            retention_hours,
+            report_path,
+            json,
+        } => {
+            let state = build_app_state(config.clone());
+            let now_unix_ms = now_unix_ms();
+            let retention_cutoff_unix_ms =
+                now_unix_ms.saturating_sub(retention_hours.saturating_mul(3_600_000));
+            let context =
+                training_kernel_mutation_context("operator.training.backlog_cleanup", now_unix_ms);
+            let mut store = state
+                .store
+                .write()
+                .map_err(|_| "control_store_poisoned".to_string())?;
+            let report = store.kernel.cleanup_retained_training_backlog(
+                &context,
+                retention_cutoff_unix_ms,
+                *apply,
+            )?;
+            if *apply && report.changed {
+                remove_retired_training_backlog_from_scheduler(&mut store, &report);
+                store.persist_training_scheduler_state()?;
+            }
+            drop(store);
+
+            if let Some(report_path) = report_path {
+                if let Some(parent) = report_path.parent() {
+                    fs::create_dir_all(parent).map_err(|error| {
+                        format!(
+                            "training_backlog_report_parent_create_failed:{}:{error}",
+                            parent.display()
+                        )
+                    })?;
+                }
+                let payload = serde_json::to_string_pretty(&report)
+                    .map_err(|error| format!("training_backlog_report_encode_failed:{error}"))?;
+                fs::write(report_path, payload).map_err(|error| {
+                    format!(
+                        "training_backlog_report_write_failed:{}:{error}",
+                        report_path.display()
+                    )
+                })?;
+            }
+
+            if *json {
+                return serde_json::to_string_pretty(&report)
+                    .map_err(|error| format!("training_backlog_report_encode_failed:{error}"));
+            }
+            Ok(render_training_backlog_cleanup_report(&report))
+        }
+    }
+}
+
+fn remove_retired_training_backlog_from_scheduler(
+    store: &mut ControlStore,
+    report: &TrainingBacklogCleanupReport,
+) {
+    let retired_run_ids = report
+        .retired_runs
+        .iter()
+        .map(|run| run.training_run_id.as_str())
+        .chain(
+            report
+                .retired_windows
+                .iter()
+                .map(|window| window.training_run_id.as_str()),
+        )
+        .collect::<BTreeSet<_>>();
+    if retired_run_ids.is_empty() {
+        return;
+    }
+    store
+        .training_scheduler
+        .runs_by_training_run_id
+        .retain(|training_run_id, _| !retired_run_ids.contains(training_run_id.as_str()));
+    store
+        .training_scheduler
+        .launch_coordinators_by_training_run_id
+        .retain(|training_run_id, _| !retired_run_ids.contains(training_run_id.as_str()));
+    store
+        .training_scheduler
+        .lease_idempotency
+        .retain(|_, record| !retired_run_ids.contains(record.response.training_run_id.as_str()));
+}
+
+fn render_training_backlog_cleanup_report(report: &TrainingBacklogCleanupReport) -> String {
+    let applied = if report.applied { "applied" } else { "dry_run" };
+    format!(
+        "training backlog cleanup {applied}\ncutoff_unix_ms: {}\nchanged: {}\nreceipt_id: {}\nbefore: {}\nafter: {}\nretired_runs: {}\nretired_windows: {}\nretired_validator_challenges: {}\nprotected_runs: {}",
+        report.retention_cutoff_unix_ms,
+        report.changed,
+        report.receipt_id.as_deref().unwrap_or("none"),
+        render_training_backlog_counts(&report.before),
+        render_training_backlog_counts(&report.after),
+        report.retired_runs.len(),
+        report.retired_windows.len(),
+        report.retired_challenges.len(),
+        report.protected_runs.len()
+    )
+}
+
+fn render_training_backlog_counts(counts: &TrainingBacklogRetainedCounts) -> String {
+    format!(
+        "active_runs={} active_windows={} pending_validation_windows={} validator_challenges_open={} validator_challenges_queued={} protected_active_runs_with_accepted_outcomes={}",
+        counts.active_runs,
+        counts.active_windows,
+        counts.pending_validation_windows,
+        counts.validator_challenges_open,
+        counts.validator_challenges_queued,
+        counts.protected_active_runs_with_accepted_outcomes
+    )
+}
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";
 const ENV_SESSION_TTL_SECONDS: &str = "NEXUS_CONTROL_SESSION_TTL_SECONDS";
@@ -1648,6 +1839,8 @@ const fn homework_launch_pay_only_on_accept_default() -> bool {
 
 const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 300_000;
+const TRAINING_RETAINED_BACKLOG_HEALTH_WINDOW_MS: u64 = 86_400_000;
+const TRAINING_BACKLOG_CLEANUP_DEFAULT_RETENTION_HOURS: u64 = 24;
 const TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_LIVE: &str = "live";
 const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_FRESH: &str = "cache_fresh";
@@ -3358,10 +3551,20 @@ struct TrainingOperatorSummaryResponse {
     model_progress_contributors: u64,
     admitted_nodes_online: u64,
     active_runs: u64,
+    #[serde(default)]
+    retained_active_runs: u64,
     active_windows: u64,
+    #[serde(default)]
+    retained_active_windows: u64,
     pending_validation_windows: u64,
+    #[serde(default)]
+    retained_pending_validation_windows: u64,
     validator_challenges_open: u64,
+    #[serde(default)]
+    retained_validator_challenges_open: u64,
     validator_challenges_queued: u64,
+    #[serde(default)]
+    retained_validator_challenges_queued: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     checkpoint_max_age_ms: Option<u64>,
     artifact_failures_open: u64,
@@ -20337,6 +20540,9 @@ fn canonical_challenge_failure_code(
         openagents_validator_service::ValidatorChallengeFailureCode::RetryBudgetExhausted => {
             ComputeValidatorChallengeFailureCode::RetryBudgetExhausted
         }
+        openagents_validator_service::ValidatorChallengeFailureCode::StaleRetainedBacklog => {
+            ComputeValidatorChallengeFailureCode::StaleRetainedBacklog
+        }
     }
 }
 
@@ -20364,6 +20570,9 @@ fn service_challenge_failure_code(
         }
         ComputeValidatorChallengeFailureCode::RetryBudgetExhausted => {
             validator_service::ValidatorChallengeFailureCode::RetryBudgetExhausted
+        }
+        ComputeValidatorChallengeFailureCode::StaleRetainedBacklog => {
+            validator_service::ValidatorChallengeFailureCode::StaleRetainedBacklog
         }
     }
 }
@@ -25790,6 +25999,11 @@ fn training_operator_summary_snapshot_with_run_limit(
         .kernel
         .list_compute_adapter_contribution_outcomes(None, None, None);
     let validator_challenges = store.kernel.list_validator_challenges(None);
+    let retained_backlog_cutoff_unix_ms =
+        now_unix_ms.saturating_sub(TRAINING_RETAINED_BACKLOG_HEALTH_WINDOW_MS);
+    let retained_backlog = store
+        .kernel
+        .retained_training_backlog_counts(retained_backlog_cutoff_unix_ms);
     let accepted_outcomes_by_id = accepted_outcomes
         .iter()
         .map(|outcome| (outcome.outcome_id.as_str(), outcome))
@@ -26431,10 +26645,15 @@ fn training_operator_summary_snapshot_with_run_limit(
         model_progress_contributors: metrics.model_progress_contributors,
         admitted_nodes_online: metrics.admitted_nodes_online,
         active_runs: metrics.active_runs,
+        retained_active_runs: retained_backlog.active_runs,
         active_windows: metrics.active_windows,
+        retained_active_windows: retained_backlog.active_windows,
         pending_validation_windows: metrics.pending_validation_windows,
+        retained_pending_validation_windows: retained_backlog.pending_validation_windows,
         validator_challenges_open: metrics.validator_challenges_open,
+        retained_validator_challenges_open: retained_backlog.validator_challenges_open,
         validator_challenges_queued: metrics.validator_challenges_queued,
+        retained_validator_challenges_queued: retained_backlog.validator_challenges_queued,
         checkpoint_max_age_ms: metrics.checkpoint_max_age_ms,
         artifact_failures_open: metrics.artifact_failures_open,
         accepted_closeouts: metrics.accepted_closeouts,
@@ -27159,10 +27378,26 @@ fn build_training_launch_health_snapshot(
         public_stats_age_ms: 0,
         public_state_drift_from_kernel_ms: 0,
         active_runs: summary.active_runs,
+        fresh_active_runs: summary
+            .active_runs
+            .saturating_sub(summary.retained_active_runs),
+        retained_active_runs: summary.retained_active_runs,
         run_backlog_slots,
         pending_validation_windows: summary.pending_validation_windows,
+        fresh_pending_validation_windows: summary
+            .pending_validation_windows
+            .saturating_sub(summary.retained_pending_validation_windows),
+        retained_pending_validation_windows: summary.retained_pending_validation_windows,
         validator_challenges_open: summary.validator_challenges_open,
+        fresh_validator_challenges_open: summary
+            .validator_challenges_open
+            .saturating_sub(summary.retained_validator_challenges_open),
+        retained_validator_challenges_open: summary.retained_validator_challenges_open,
         validator_challenges_queued: summary.validator_challenges_queued,
+        fresh_validator_challenges_queued: summary
+            .validator_challenges_queued
+            .saturating_sub(summary.retained_validator_challenges_queued),
+        retained_validator_challenges_queued: summary.retained_validator_challenges_queued,
         accepted_work_pending_payout_count: training_payout_ledger_summary
             .accepted_work_pending_payout_count,
         accepted_work_attention_payout_count: training_payout_ledger_summary
@@ -28821,7 +29056,7 @@ fn training_launch_live_metrics_snapshot(state: &AppState) -> TrainingLaunchLive
 fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSnapshot) {
     let mut alerts = Vec::<PublicTrainingLaunchAlert>::new();
 
-    if health.active_runs > 0 && health.run_backlog_slots > 0 {
+    if health.fresh_active_runs > 0 && health.run_backlog_slots > 0 {
         let severity = if health.run_backlog_slots >= health.active_runs {
             "critical"
         } else {
@@ -28838,9 +29073,9 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
         });
     }
 
-    if health.pending_validation_windows > 0 || health.validator_challenges_queued > 0 {
-        let severity = if health.pending_validation_windows > 0
-            && health.validator_challenges_queued >= health.validator_challenges_open
+    if health.fresh_pending_validation_windows > 0 || health.fresh_validator_challenges_queued > 0 {
+        let severity = if health.fresh_pending_validation_windows > 0
+            && health.fresh_validator_challenges_queued >= health.fresh_validator_challenges_open
         {
             "critical"
         } else {
@@ -28851,10 +29086,27 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
             severity: severity.to_string(),
             title: "Validator backlog".to_string(),
             detail: format!(
-                "{} pending window(s) // {} open challenge(s) // {} queued challenge(s).",
-                health.pending_validation_windows,
-                health.validator_challenges_open,
-                health.validator_challenges_queued
+                "{} fresh pending window(s) // {} fresh open challenge(s) // {} fresh queued challenge(s).",
+                health.fresh_pending_validation_windows,
+                health.fresh_validator_challenges_open,
+                health.fresh_validator_challenges_queued
+            ),
+        });
+    }
+
+    if health.retained_active_runs > 0
+        || health.retained_pending_validation_windows > 0
+        || health.retained_validator_challenges_open > 0
+    {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "retained_training_backlog".to_string(),
+            severity: "warning".to_string(),
+            title: "Retained training backlog".to_string(),
+            detail: format!(
+                "{} retained active run(s) // {} retained pending window(s) // {} retained open challenge(s).",
+                health.retained_active_runs,
+                health.retained_pending_validation_windows,
+                health.retained_validator_challenges_open
             ),
         });
     }
@@ -36886,6 +37138,45 @@ mod tests {
         assert!(health.alerts.iter().any(|alert| {
             alert.alert_id == "payout_recent_failures" && alert.severity == "warning"
         }));
+    }
+
+    #[test]
+    fn launch_health_keeps_retained_training_backlog_out_of_critical_path() {
+        let mut health = crate::economy::PublicTrainingLaunchHealthSnapshot {
+            active_runs: 12,
+            retained_active_runs: 12,
+            run_backlog_slots: 12,
+            pending_validation_windows: 7,
+            retained_pending_validation_windows: 7,
+            validator_challenges_open: 9,
+            retained_validator_challenges_open: 9,
+            validator_challenges_queued: 9,
+            retained_validator_challenges_queued: 9,
+            ..crate::economy::PublicTrainingLaunchHealthSnapshot::default()
+        };
+
+        super::sync_training_launch_health_alerts(&mut health);
+
+        assert_eq!(health.overall_status, "warn");
+        assert_eq!(health.critical_alert_count, 0);
+        assert!(
+            health.alerts.iter().any(|alert| {
+                alert.alert_id == "retained_training_backlog" && alert.severity == "warning"
+            }),
+            "retained backlog should be visible without marking launch health bad"
+        );
+        assert!(
+            !health
+                .alerts
+                .iter()
+                .any(|alert| alert.alert_id == "run_backlog")
+        );
+        assert!(
+            !health
+                .alerts
+                .iter()
+                .any(|alert| alert.alert_id == "validator_backlog")
+        );
     }
 
     #[tokio::test]

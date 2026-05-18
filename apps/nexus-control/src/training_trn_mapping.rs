@@ -878,6 +878,7 @@ fn failure_code_label(code: ValidatorChallengeFailureCode) -> &'static str {
         ValidatorChallengeFailureCode::FreivaldsMismatch => "freivalds_mismatch",
         ValidatorChallengeFailureCode::LeaseExpired => "lease_expired",
         ValidatorChallengeFailureCode::RetryBudgetExhausted => "retry_budget_exhausted",
+        ValidatorChallengeFailureCode::StaleRetainedBacklog => "stale_retained_backlog",
     }
 }
 
