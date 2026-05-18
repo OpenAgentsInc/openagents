@@ -7545,7 +7545,9 @@ fn training_validator_challenge_claim_error_is_nonfatal(error: &str) -> bool {
 
 fn training_validator_materialization_error_is_terminalizable(error: &anyhow::Error) -> bool {
     let normalized = format!("{error:#}").to_ascii_lowercase();
-    normalized.contains("artifact_incomplete") || normalized.contains("artifact_digest_mismatch")
+    normalized.contains("artifact_incomplete")
+        || normalized.contains("artifact_digest_mismatch")
+        || normalized.contains("missing checkpoint_surface after retained artifact recovery")
 }
 
 fn training_validator_materialization_finalized_error_is_nonfatal(error: &str) -> bool {
@@ -12406,8 +12408,8 @@ fn supported_training_role_claims(
         })
         .collect::<Vec<_>>();
     roles.sort_by_key(|role| match role {
-        PylonTrainingRoleClaim::Validator => 0,
-        PylonTrainingRoleClaim::Worker => 1,
+        PylonTrainingRoleClaim::Worker => 0,
+        PylonTrainingRoleClaim::Validator => 1,
         PylonTrainingRoleClaim::RecoverySource => 2,
     });
     roles.dedup();
@@ -31966,7 +31968,8 @@ mod tests {
         training_runs_root, training_runtime_manifest_path_for_run, training_runtime_state_path,
         training_settlement_destination, training_supervisor_pid_is_running,
         training_validator_challenge_path_segment, training_validator_challenge_root,
-        watch_buyer_jobs, write_training_json_value,
+        training_validator_materialization_error_is_terminalizable, watch_buyer_jobs,
+        write_training_json_value,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -34288,7 +34291,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
-    fn supported_training_role_claims_prioritize_validator_backlog()
+    fn supported_training_role_claims_prioritize_paid_worker_leases()
     -> Result<(), Box<dyn std::error::Error>> {
         let config = default_config(std::path::Path::new("/tmp/pylon-test"));
         let availability = ProviderAdapterTrainingContributorAvailability {
@@ -34311,10 +34314,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             supported_training_role_claims(&config, &availability, &capability_tier)
                 == vec![
-                    PylonTrainingRoleClaim::Validator,
                     PylonTrainingRoleClaim::Worker,
+                    PylonTrainingRoleClaim::Validator,
                 ],
-            "training intake should clear validator challenges before requesting paid worker leases",
+            "training intake should request paid worker leases before clearing validator backlog",
         )
     }
 
@@ -34338,6 +34341,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 r#"{"error":"kernel_error","reason":"training_scheduler_payout_target_requires_ldk_v0_2"}"#,
             ),
             "missing worker payout targets should not stop validator-capable pylons from clearing validation backlog",
+        )
+    }
+
+    #[test]
+    fn validator_materialization_missing_checkpoint_surface_is_terminalizable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let error = anyhow::anyhow!(
+            "validator bridge bundle is missing checkpoint_surface after retained artifact recovery"
+        );
+        ensure(
+            training_validator_materialization_error_is_terminalizable(&error),
+            "stale retained validator challenges with unrecoverable checkpoint surfaces should not abort fresh paid worker intake",
         )
     }
 
