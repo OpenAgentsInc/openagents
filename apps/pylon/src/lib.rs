@@ -22703,6 +22703,7 @@ async fn start_training_supervisor(
     let mut child = TokioCommand::new(&command.program)
         .args(&command.args)
         .current_dir(&command.current_dir)
+        .env(ENV_PSIONIC_REPO, &command.current_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
