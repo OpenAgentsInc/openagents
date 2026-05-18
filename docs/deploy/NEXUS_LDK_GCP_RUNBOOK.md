@@ -420,6 +420,42 @@ Production LDK is ready only when every gate below is green:
   validator claim, acceptance, LDK dispatch, and payment receipt from the
   active production binaries. Old payout rows are not evidence for this gate.
 
+### Current Production Accepted-Work Proof
+
+The current production proof is recorded in
+`docs/reports/nexus/2026-05-18-ldk-accepted-work-production-proof.md`.
+
+Verified on 2026-05-18:
+
+- OpenAgents hosted Pylon binary commit: `ad27f320b`
+- Pylon binary SHA-256:
+  `e839dd7857f2e8f7ddaaabb32a17c7415c3d5b773107282047b381cb0f6e0e16`
+- Psionic runtime revision: `55e4b66f`
+- Psionic runtime archive SHA-256:
+  `2444877f67ed8f1d396b6a999dcb21272d99d2735bd7f65eda465e72f517108f`
+- Hosted `psionic-train` SHA-256:
+  `76c60acaf0dc9837c5679d92e9b404339d59a6cbd47b9bc5c9d2c19a60d29b67`
+- Proof run:
+  `run.cs336.a1.ldk-proof-20260518151532`
+- Accepted window:
+  `window.cs336.a1.ldk-proof-20260518151532.0001`
+- Worker:
+  `pylon-gcp-1`
+- Validator:
+  `pylon-gcp-3`
+- Contribution id:
+  `cf7c70416d7265f948fa78ee1e2f94b7bf03ef5975449e8eb89d244816b300d0`
+- Payout:
+  `25 sats`, `accepted_work`, `confirmed`, `settled`
+
+The prior failure on `run.cs336.a1.ldk-proof-20260518094050` was not an LDK
+payment failure. It was a hosted Pylon runtime packaging failure: the Pylon
+binary had been updated, but `/var/lib/pylon/psionic` still contained a stale
+runtime at revision `09b71872b24a934228f61c28e65e3aa544025f54`. Validators
+therefore failed to resolve runtime identity. Future Pylon deploys that touch
+training must update and verify both `/usr/local/bin/pylon` and the packaged
+Psionic runtime.
+
 ## Rollback Conditions
 
 Stop before LDK-07 if any of these are true:

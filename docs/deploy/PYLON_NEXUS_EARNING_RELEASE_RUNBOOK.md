@@ -83,6 +83,23 @@ is still zero and the blocker reason is
 `homework_worker_payout_target_requires_ldk_v0_2`, the remaining problem is
 the LDK payout target, not the Psionic runtime.
 
+The 2026-05-18 LDK proof demonstrates why this gate is mandatory. Updating the
+Pylon binary to `ad27f320b` without updating `/var/lib/pylon/psionic` left
+validators on stale Psionic revision `09b71872b24a934228f61c28e65e3aa544025f54`
+and caused validator replay to fail with:
+
+```text
+failed to resolve machine runtime identity:
+failed to resolve psionic repo root: No such file or directory
+```
+
+The passing proof installed Psionic revision `55e4b66f` from
+`psionic-runtime-55e4b66f.tar.gz` across all hosted Pylons. The final accepted
+run was `run.cs336.a1.ldk-proof-20260518151532`; it reconciled
+`window.cs336.a1.ldk-proof-20260518151532.0001` as rewarded and settled a
+25-sat `accepted_work` payout through LDK. The full report is
+`docs/reports/nexus/2026-05-18-ldk-accepted-work-production-proof.md`.
+
 ## Non-Negotiable Completion Rule
 
 An issue is not complete because a temporary worktree has code, a feature branch

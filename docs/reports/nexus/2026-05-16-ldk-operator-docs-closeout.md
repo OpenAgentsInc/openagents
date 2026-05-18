@@ -215,6 +215,28 @@ For each close comment, include:
 Do not include raw API keys, bearer tokens, seeds, TLS private keys, or live
 invoices after use.
 
+## 2026-05-18 Production Proof Addendum
+
+The LDK accepted-work path is now proven end to end for a fresh production
+training run. See
+`docs/reports/nexus/2026-05-18-ldk-accepted-work-production-proof.md`.
+
+The proof run `run.cs336.a1.ldk-proof-20260518151532` used the hosted Pylon
+binary from OpenAgents commit `ad27f320b` plus packaged Psionic runtime
+revision `55e4b66f`. `pylon-gcp-1` completed worker work,
+`pylon-gcp-3` validated it, Nexus reconciled
+`window.cs336.a1.ldk-proof-20260518151532.0001` as rewarded, and Treasury
+settled the 25-sat `accepted_work` payout over the LDK rail.
+
+The preceding failure was a stale-hosted-runtime issue, not a Spark dependency
+or LDK send failure. Future deploys must update and verify both:
+
+- `/usr/local/bin/pylon`
+- `/var/lib/pylon/psionic`
+
+The minimum proof remains a fresh accepted-work closeout plus an LDK payout
+record with `status: confirmed` and `reconciliation_status: settled`.
+
 ## Closeout Verification
 
 This closeout was prepared after the LDK-16 Spark final migration report and

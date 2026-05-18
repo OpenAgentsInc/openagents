@@ -175,6 +175,45 @@ wallet sync, stale history, and leaf spendability on the operational critical
 path. LDK gives us a standard Lightning node model with explicit event streams,
 channel state, durable node identity, and standard receive/payment contracts.
 
+## 2026-05-18 Production Proof Update
+
+The LDK v0.2 production proof is now complete. A fresh production CS336 A1
+training run moved through worker claim, packaged Psionic runtime execution,
+validator claim, rewarded closeout, and a settled LDK `accepted_work` payout.
+
+Proof record:
+
+- Report:
+  `docs/reports/nexus/2026-05-18-ldk-accepted-work-production-proof.md`
+- Training run:
+  `run.cs336.a1.ldk-proof-20260518151532`
+- Accepted window:
+  `window.cs336.a1.ldk-proof-20260518151532.0001`
+- Worker:
+  `pylon-gcp-1`
+- Validator:
+  `pylon-gcp-3`
+- Payout:
+  `25 sats`, `accepted_work`, `confirmed`, `settled`
+- Treasury status:
+  `active_treasury_provider=ldk`, `active_treasury_rail=ldk`,
+  `ldk_readiness.state=ready`
+
+The earlier failed proof was not an LDK or payment-rail failure. It was a stale
+hosted Pylon runtime package: `/usr/local/bin/pylon` had been updated, but
+`/var/lib/pylon/psionic` still pointed at an old Psionic revision. Hosted Pylon
+training deploys now require proving both the Pylon binary and packaged
+Psionic runtime revision before a payout proof counts.
+
+This changes the remaining work from "prove LDK can pay accepted work" to
+"scale and harden the LDK-only path":
+
+- register more Pylon v0.2 LDK payout targets;
+- reconcile or retire historical non-LDK payout-target records;
+- keep Spark out of new funding, payout, worker-registration, admin, chat, API,
+  and deploy paths;
+- keep runtime package verification in the hosted Pylon release gate.
+
 ## Current Spark Failure Pattern
 
 The existing Nexus treasury path is Spark-first:
@@ -2162,23 +2201,20 @@ Repository ownership notes:
 
 ## Recommended Next Work
 
-1. Create the internal provider boundary and LDK config shape in Nexus.
-2. Add a local regtest LDK harness and keep it in CI or a reproducible smoke
-   script.
-3. Wire the first `ldk-server` client for `GetNodeInfo`, `GetBalances`,
-   `Bolt11Receive`, `ListPayments`, and `SubscribeEvents`.
-4. Deploy LDK Server on signet or a private mainnet dry-run host with no public
-   gRPC exposure.
-5. Cut operator funding invoice creation over to LDK.
-6. Add BOLT12 payout target support to Pylon v0.2.
-7. Move accepted-work payouts to LDK for upgraded workers.
-8. Add the read-only Nexus projection APIs needed for peer, channel, liquidity,
-   payment, payout, and degraded-state visualization.
-9. Build the Autopilot 3 React Three Fiber Lightning/Pylon graph as the first
-   web-facing LDK surface.
-10. Add Autopilot 3 web/API facades for Nexus treasury status and admin
-    operations without storing LDK custody material in the web app.
-11. Decommission Spark from new treasury and payout operations.
+1. Register additional hosted and user Pylons with v0.2 LDK payout targets.
+2. Keep the accepted-work proof smoke reproducible from a fresh targeted run,
+   including Pylon binary revision, packaged Psionic runtime revision, validator
+   closeout, and settled LDK payout.
+3. Reconcile or retire historical non-LDK payout-target records so operator
+   status pages no longer surface stale Spark-era attention once they are no
+   longer useful for audit.
+4. Keep the local LDK harness and hosted LDK smoke in CI/operator runbooks.
+5. Expand liquidity and channel operations from proof capacity to production
+   capacity.
+6. Continue the read-only Nexus projection and Autopilot 3 React Three Fiber
+   visualization work without putting custody material in Cloudflare.
+7. Maintain grep/test guards so Spark cannot re-enter normal funding, payout,
+   worker-registration, admin, chat, API, or deploy paths.
 
 ## Bottom Line
 
@@ -2187,9 +2223,10 @@ Lightning substrate with explicit node state, payment events, channel
 operations, BOLT11 compatibility, and BOLT12 reusable receive targets. Spark
 has already forced too many slow sync, stale history, and leaf spendability
 workarounds into Nexus. Nexus v0.2 and Pylon v0.2 should be the releases that
-make LDK the primary payment rail. The transition should begin with an internal
-provider boundary and a local LDK harness, then move operator funding invoices,
-then move Pylon payout targets. The first web product slice should be a
-read-only React Three Fiber visualization of Pylons, channels, liquidity, and
-payment flows. Browser wallet custody remains later R&D. Spark should be
-removed from new operations only after LDK receive and payout paths are proven.
+make LDK the only payment rail for new operations. The transition has now
+passed the critical production proof: LDK receive works, Pylon v0.2 target
+registration works, and a fresh accepted-work payout settled over LDK. The
+first web product slice remains a read-only React Three Fiber visualization of
+Pylons, channels, liquidity, and payment flows. Browser wallet custody remains
+later R&D. Spark is not a fallback rail; remaining Spark-era material is
+historical audit data only.
