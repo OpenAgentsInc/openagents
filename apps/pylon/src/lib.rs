@@ -11228,26 +11228,47 @@ fn prune_unrequested_pending_training_leases(
     config: &PylonConfig,
     state: &mut PylonTrainingRuntimeState,
 ) -> bool {
+    let now_ms = now_epoch_ms();
+    let active_lease_id = state
+        .active_runtime
+        .as_ref()
+        .map(|active| active.lease_id.clone());
     let mut removed = Vec::new();
     state.lease_cache.retain(|lease_id, lease| {
-        if training_lease_state_is_terminal(lease.state.as_str())
-            || training_cached_lease_matches_allowed_networks(config, lease)
+        if training_lease_state_is_terminal(lease.state.as_str()) {
+            return true;
+        }
+        if active_lease_id.as_deref() != Some(lease_id.as_str())
+            && lease
+                .expires_at_ms
+                .is_some_and(|expires_at_ms| expires_at_ms <= now_ms)
         {
+            removed.push((
+                lease_id.clone(),
+                lease.network_id.clone(),
+                lease.state.clone(),
+                "expired",
+            ));
+            return false;
+        }
+        if training_cached_lease_matches_allowed_networks(config, lease) {
             return true;
         }
         removed.push((
             lease_id.clone(),
             lease.network_id.clone(),
             lease.state.clone(),
+            "outside_allowed_networks",
         ));
         false
     });
-    for (lease_id, network_id, lease_state) in &removed {
+    for (lease_id, network_id, lease_state, reason) in &removed {
         training_trace(&format!(
-            "dropping retained lease {} state={} network={} because it is outside the allowed training networks",
+            "dropping retained lease {} state={} network={} reason={}",
             lease_id,
             lease_state,
             network_id.as_deref().unwrap_or("missing"),
+            reason,
         ));
     }
     !removed.is_empty()
@@ -31942,12 +31963,12 @@ mod tests {
         merge_ledger_recent_jobs, mutate_ledger, newest_pending_training_work_offer, now_epoch_ms,
         parse_args, planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_auto_run_interval, provider_control_plane_runtime_error, provider_presence_client,
-        provider_presence_heartbeat_interval, psionic_gemma_benchmark_command_args,
-        psionic_repo_root_candidates_with_inputs, psionic_train_release_binary_path,
-        psionic_train_supervisor_command_for_surface, publish_announcement_report,
-        publish_training_trn_state, refresh_relay_report, remove_configured_relay,
-        render_earnings_report, render_human_status, render_jobs_report, render_public_config_json,
-        render_sandbox_report, render_training_status_report,
+        provider_presence_heartbeat_interval, prune_unrequested_pending_training_leases,
+        psionic_gemma_benchmark_command_args, psionic_repo_root_candidates_with_inputs,
+        psionic_train_release_binary_path, psionic_train_supervisor_command_for_surface,
+        publish_announcement_report, publish_training_trn_state, refresh_relay_report,
+        remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
+        render_public_config_json, render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         resolve_psionic_train_admission_identity, restart_training_supervisor,
@@ -34670,6 +34691,106 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && !state.window_cache.contains_key("window.0001")
                 && newest_pending_training_work_offer(&state).is_none(),
             "stale retained assignment retirement should clear active runtime, cached lease, and cached window so fresh intake can claim new work",
+        )
+    }
+
+    #[test]
+    fn expired_inactive_training_lease_is_not_reused_for_intake()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        let mut state = PylonTrainingRuntimeState::default();
+        state.lease_cache.insert(
+            "lease.validator.expired".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.validator.expired".to_string(),
+                assignment_id: "assign.validator.expired".to_string(),
+                training_run_id: "run.expired".to_string(),
+                window_id: "window.expired.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Validator,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-expired".to_string()),
+                checkpoint_ref: Some("checkpoint://run.expired/0001".to_string()),
+                expires_at_ms: Some(1),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: Some("challenge.expired".to_string()),
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: Some(ComputeTrainingWorkClass::ValidationReplay),
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some("/tmp/run.expired/manifest.json".to_string()),
+                runtime_manifest_digest: Some("sha256:runtime-manifest".to_string()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("validate_contribution".to_string()),
+                runtime_work_class: Some("validation_replay".to_string()),
+                updated_at_ms: 1,
+            },
+        );
+
+        ensure(
+            prune_unrequested_pending_training_leases(&config, &mut state),
+            "expired inactive validator lease should be pruned before intake reuses it",
+        )?;
+        ensure(
+            state.lease_cache.is_empty() && newest_pending_training_work_offer(&state).is_none(),
+            "expired inactive leases must not block fresh validator challenge claims",
+        )
+    }
+
+    #[test]
+    fn expired_active_training_lease_is_retained_for_supervisor_heartbeat()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        let mut active = training_active_runtime_fixture();
+        active.lease_id = "lease.worker.active-expired".to_string();
+        active.assignment_id = "assign.worker.active-expired".to_string();
+        active.training_run_id = "run.active-expired".to_string();
+        active.window_id = "window.active-expired.0001".to_string();
+        active.role = PylonTrainingRoleClaim::Worker;
+
+        let mut state = PylonTrainingRuntimeState {
+            active_runtime: Some(active.clone()),
+            ..PylonTrainingRuntimeState::default()
+        };
+        state.lease_cache.insert(
+            active.lease_id.clone(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: active.lease_id.clone(),
+                assignment_id: active.assignment_id.clone(),
+                training_run_id: active.training_run_id.clone(),
+                window_id: active.window_id.clone(),
+                membership_revision: active.membership_revision.clone(),
+                role: active.role,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-active".to_string()),
+                checkpoint_ref: Some("checkpoint://run.active-expired/0001".to_string()),
+                expires_at_ms: Some(1),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(active.manifest_path.clone()),
+                runtime_manifest_digest: Some("sha256:runtime-manifest".to_string()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("small_model_local_training".to_string()),
+                updated_at_ms: 1,
+            },
+        );
+
+        ensure(
+            !prune_unrequested_pending_training_leases(&config, &mut state),
+            "the active supervisor lease should be retained so heartbeat/readmission can decide its fate",
+        )?;
+        ensure(
+            state.lease_cache.contains_key(active.lease_id.as_str()),
+            "active expired leases should not be silently dropped while the supervisor is running",
         )
     }
 
