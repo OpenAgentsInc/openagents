@@ -4277,6 +4277,9 @@ impl KernelState {
         }
 
         report.after = self.retained_training_backlog_counts_inner(retention_cutoff_unix_ms);
+        if apply && report.changed {
+            self.persist_compute_authority_state()?;
+        }
         Ok(report)
     }
 
@@ -18079,6 +18082,121 @@ mod tests {
             .expect("publication record reloaded");
         assert_eq!(record.fingerprint, "sha256:template-compaction");
         assert!(record.template.is_none());
+
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn retained_training_backlog_cleanup_persists_terminal_state() {
+        let path = temp_kernel_state_path();
+        let stale_created_at_ms = 1_762_000_111_000i64;
+        let cleanup_now_ms = 1_762_200_111_000u64;
+        let cutoff_ms = cleanup_now_ms.saturating_sub(24 * 3_600_000);
+
+        {
+            let mut kernel = KernelState::new_with_persistence(Some(path.clone()));
+            let context = fixture_context(stale_created_at_ms as u64);
+            kernel
+                .register_compute_environment_package(
+                    &context,
+                    environment_package_request(
+                        "env.openagents.math.basic",
+                        "2026.03.13",
+                        stale_created_at_ms,
+                    ),
+                )
+                .expect("register environment package");
+            kernel
+                .register_compute_checkpoint_family_policy(
+                    &context,
+                    checkpoint_family_policy_request(stale_created_at_ms),
+                )
+                .expect("register checkpoint policy");
+            kernel
+                .register_compute_validator_policy(
+                    &context,
+                    validator_policy_request(stale_created_at_ms),
+                )
+                .expect("register validator policy");
+            kernel
+                .register_compute_benchmark_package(
+                    &context,
+                    benchmark_package_request(stale_created_at_ms),
+                )
+                .expect("register benchmark package");
+            kernel
+                .register_compute_training_policy(
+                    &context,
+                    training_policy_request(stale_created_at_ms),
+                )
+                .expect("register training policy");
+            let mut training_run = training_run_request(stale_created_at_ms);
+            training_run.training_run.status = ComputeTrainingRunStatus::Running;
+            training_run.training_run.product_id = None;
+            training_run.training_run.capacity_lot_id = None;
+            training_run.training_run.instrument_id = None;
+            training_run.training_run.delivery_proof_id = None;
+            training_run
+                .training_run
+                .rollout_verification_eval_run_ids
+                .clear();
+            kernel
+                .create_compute_training_run(&context, training_run)
+                .expect("create stale training run");
+
+            let mut window = adapter_window_request(stale_created_at_ms + 1_000);
+            window.window.status = ComputeAdapterWindowStatus::Scored;
+            kernel
+                .record_compute_adapter_window(&context, window)
+                .expect("record stale training window");
+
+            let cleanup_context = fixture_context(cleanup_now_ms);
+            let report = kernel
+                .cleanup_retained_training_backlog(&cleanup_context, cutoff_ms, true)
+                .expect("cleanup retained backlog");
+            assert_eq!(report.before.active_runs, 1);
+            assert_eq!(report.before.active_windows, 1);
+            assert_eq!(report.after.active_runs, 0);
+            assert_eq!(report.after.active_windows, 0);
+            assert!(report.receipt_id.is_some());
+        }
+
+        let reloaded = KernelState::new_with_persistence(Some(path.clone()));
+        let run = reloaded
+            .get_compute_training_run("train.math.basic.alpha")
+            .expect("training run reloaded");
+        assert_eq!(run.status, ComputeTrainingRunStatus::Cancelled);
+        assert_eq!(run.finalized_at_ms, Some(cleanup_now_ms as i64));
+        assert!(
+            run.metadata.to_string().contains("retention_cleanup"),
+            "cleanup metadata should persist on the training run"
+        );
+
+        let window = reloaded
+            .get_compute_adapter_training_window("adapter.window.alpha")
+            .expect("training window reloaded");
+        assert_eq!(window.status, ComputeAdapterWindowStatus::Reconciled);
+        assert!(
+            window.metadata.to_string().contains("retention_cleanup"),
+            "cleanup metadata should persist on the training window"
+        );
+        assert_eq!(
+            reloaded
+                .retained_training_backlog_counts(cutoff_ms)
+                .active_runs,
+            0
+        );
+        assert_eq!(
+            reloaded
+                .retained_training_backlog_counts(cutoff_ms)
+                .active_windows,
+            0
+        );
+
+        let persisted_payload =
+            std::fs::read_to_string(path.as_path()).expect("read persisted kernel state");
+        assert!(persisted_payload.contains("kernel.training.backlog.cleanup"));
+        assert!(persisted_payload.contains("stale_retained_backlog"));
 
         let _ = std::fs::remove_file(path.as_path());
     }
