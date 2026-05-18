@@ -162,6 +162,7 @@ pub const ENV_TRAINING_NEXUS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_NEX
 pub const ENV_TRAINING_GCS_ENDPOINT: &str = "OPENAGENTS_PYLON_TRAINING_GCS_ENDPOINT";
 pub const ENV_TRAINING_GCS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN";
 pub const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
+const PSIONIC_RUNTIME_REVISION_FILE: &str = ".openagents-psionic-revision";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 10_000;
 const DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS: u64 = 600;
@@ -240,6 +241,7 @@ static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetr
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PsionicTrainRuntimeSurface {
     repo_root: PathBuf,
+    packaged_revision: Option<String>,
     supports_apple_windowed_training: bool,
     supports_cs336_a1_demo: bool,
 }
@@ -5172,6 +5174,7 @@ fn inspect_psionic_train_runtime_surface_at(
     }
     let train_runtime_source = std::fs::read_to_string(train_runtime_path.as_path())
         .with_context(|| format!("failed to read {}", train_runtime_path.display()))?;
+    let packaged_revision = read_psionic_packaged_revision(repo_root)?;
     if find_usable_psionic_train_release_binary(repo_root).is_none()
         && !command_available_on_path("cargo")
     {
@@ -5182,6 +5185,7 @@ fn inspect_psionic_train_runtime_surface_at(
     }
     Ok(PsionicTrainRuntimeSurface {
         repo_root: repo_root.to_path_buf(),
+        packaged_revision,
         supports_apple_windowed_training: train_runtime_source
             .contains("PSION_APPLE_WINDOWED_TRAINING_LANE_ID")
             && train_runtime_source
@@ -5278,6 +5282,30 @@ fn git_output(repo_root: &Path, args: &[&str]) -> Result<String> {
     String::from_utf8(output.stdout)
         .map(|value| value.trim().to_string())
         .context("Psionic git output was not valid UTF-8")
+}
+
+fn psionic_packaged_revision_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(PSIONIC_RUNTIME_REVISION_FILE)
+}
+
+fn read_psionic_packaged_revision(repo_root: &Path) -> Result<Option<String>> {
+    let revision_path = psionic_packaged_revision_path(repo_root);
+    if !revision_path.exists() {
+        return Ok(None);
+    }
+    let revision = std::fs::read_to_string(revision_path.as_path())
+        .with_context(|| format!("failed to read {}", revision_path.display()))?
+        .trim()
+        .to_string();
+    ensure!(!revision.is_empty(), "{} is empty", revision_path.display());
+    ensure!(
+        revision
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()),
+        "{} must contain a hexadecimal Git revision",
+        revision_path.display()
+    );
+    Ok(Some(revision))
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -8048,13 +8076,36 @@ fn resolve_psionic_train_admission_identity(
     runtime_surface: &PsionicTrainRuntimeSurface,
     lane_id: &str,
 ) -> Result<(PsionicTrainAdmissionIdentity, bool, String)> {
-    let selected_git_ref = String::from("HEAD");
-    let git_commit_sha = git_output(
-        runtime_surface.repo_root.as_path(),
-        &["rev-parse", selected_git_ref.as_str()],
-    )?;
-    let (allow_dirty_tree, dirty_tree_admission, workspace_status_sha256) =
-        psionic_dirty_tree_admission(runtime_surface.repo_root.as_path())?;
+    let (
+        selected_git_ref,
+        git_commit_sha,
+        allow_dirty_tree,
+        dirty_tree_admission,
+        workspace_status_sha256,
+    ) = if let Some(packaged_revision) = runtime_surface.packaged_revision.as_deref() {
+        (
+            String::from("packaged-runtime"),
+            packaged_revision.to_string(),
+            false,
+            String::from("packaged_clean_release"),
+            None,
+        )
+    } else {
+        let selected_git_ref = String::from("HEAD");
+        let git_commit_sha = git_output(
+            runtime_surface.repo_root.as_path(),
+            &["rev-parse", selected_git_ref.as_str()],
+        )?;
+        let (allow_dirty_tree, dirty_tree_admission, workspace_status_sha256) =
+            psionic_dirty_tree_admission(runtime_surface.repo_root.as_path())?;
+        (
+            selected_git_ref,
+            git_commit_sha,
+            allow_dirty_tree,
+            dirty_tree_admission,
+            workspace_status_sha256,
+        )
+    };
     let release_id =
         admitted_release_id_for_lane(lane_id).map_err(|error| anyhow!(error.to_string()))?;
     let environment_ref =
@@ -31833,17 +31884,18 @@ mod tests {
         GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
         GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
         JobsReport, LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage,
-        PSION_CS336_A1_DEMO_LANE_ID, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
-        PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
-        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_ENVIRONMENT_REF,
-        PYLON_TRAINING_VALIDATOR_POLICY_REF, PsionicRepoRootCandidate, PsionicTrainRuntimeSurface,
-        PylonConfig, PylonLedger, PylonLedgerJob, PylonSettlementRecord,
-        PylonTrainingActiveRuntimeState, PylonTrainingArtifactStoreClient,
-        PylonTrainingAssignmentAckRequest, PylonTrainingCheckpointPublicationRequest,
-        PylonTrainingCloseoutCacheEntry, PylonTrainingContributionOutcomeCacheEntry,
-        PylonTrainingCoordinatorAck, PylonTrainingCoordinatorClient,
-        PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
-        PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
+        PSION_CS336_A1_DEMO_LANE_ID, PSIONIC_RUNTIME_REVISION_FILE, PYLON_TRAINING_ADAPTER_FAMILY,
+        PYLON_TRAINING_ADAPTER_FORMAT, PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+        PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+        PYLON_TRAINING_ENVIRONMENT_REF, PYLON_TRAINING_VALIDATOR_POLICY_REF,
+        PsionicRepoRootCandidate, PsionicTrainRuntimeSurface, PylonConfig, PylonLedger,
+        PylonLedgerJob, PylonSettlementRecord, PylonTrainingActiveRuntimeState,
+        PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
+        PylonTrainingCheckpointPublicationRequest, PylonTrainingCloseoutCacheEntry,
+        PylonTrainingContributionOutcomeCacheEntry, PylonTrainingCoordinatorAck,
+        PylonTrainingCoordinatorClient, PylonTrainingDrainNoticeRequest,
+        PylonTrainingFailureNoticeRequest, PylonTrainingFailureReceipt,
+        PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
         PylonTrainingPublicationPointer, PylonTrainingPublicationRecord,
         PylonTrainingPublicationTemplate, PylonTrainingReputationLabelCacheEntry,
@@ -31887,9 +31939,10 @@ mod tests {
         render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
-        restart_training_supervisor, retire_failed_active_training_runtime_lease,
-        retire_stale_retained_training_assignment, run_cli, run_gemma_diagnostic_command,
-        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
+        resolve_psionic_train_admission_identity, restart_training_supervisor,
+        retire_failed_active_training_runtime_lease, retire_stale_retained_training_assignment,
+        run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
+        run_local_gemma_chat_stream, run_provider_requests,
         run_training_assignment_intake_once_with_context, save_config,
         save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
         snapshot_training_retained_artifact_binding, snapshot_training_status_report,
@@ -32315,6 +32368,7 @@ mod tests {
             .clone();
         PsionicTrainRuntimeSurface {
             repo_root,
+            packaged_revision: None,
             supports_apple_windowed_training: true,
             supports_cs336_a1_demo: true,
         }
@@ -33782,6 +33836,30 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && surface.supports_apple_windowed_training
                 && surface.supports_cs336_a1_demo,
             "training surface probe should accept the minimal machine runtime layout and detect the packaged Apple and CS336 A1 lanes when present",
+        )
+    }
+
+    #[test]
+    fn packaged_psionic_runtime_identity_does_not_require_git_worktree()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        write_minimal_psionic_train_runtime_layout(temp_dir.path())?;
+        std::fs::write(
+            temp_dir.path().join(PSIONIC_RUNTIME_REVISION_FILE),
+            "0123456789abcdef0123456789abcdef01234567\n",
+        )?;
+
+        let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
+        let (identity, allow_dirty_tree, selected_git_ref) =
+            resolve_psionic_train_admission_identity(&surface, PSION_CS336_A1_DEMO_LANE_ID)?;
+
+        ensure(
+            surface.packaged_revision.as_deref()
+                == Some("0123456789abcdef0123456789abcdef01234567")
+                && !allow_dirty_tree
+                && selected_git_ref == "packaged-runtime"
+                && !identity.build_digest.is_empty(),
+            "packaged Psionic runtimes should use the release revision marker instead of requiring a Git checkout on hosted Pylons",
         )
     }
 

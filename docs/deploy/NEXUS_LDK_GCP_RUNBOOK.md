@@ -178,6 +178,11 @@ The minimum proof is:
 - `runtime_surface_detected: true`
 - `psionic_repo_root: "/var/lib/pylon/psionic"`
 - `psionic_repo_source: "env_override"`
+- `/var/lib/pylon/psionic/.openagents-psionic-revision` exists and contains
+  the clean Psionic Git revision used for training admission identity.
+- `/var/lib/pylon/psionic/fixtures/training/cs336_a1_reference_tiny_corpus.txt`
+  exists. The bounded CS336 A1 paid-work smoke lane reads this packaged fixture
+  from the runtime root; it must not resolve through a developer checkout path.
 
 That proves runtime packaging only. Paid-work eligibility still requires a
 real LDK payout target registered for the Pylon identity and usable Lightning
@@ -376,7 +381,9 @@ Production LDK is ready only when every gate below is green:
 - `ldk_readiness.projected_outbound_capacity_sats` is above the active payout
   reserve.
 - `ldk_readiness.projected_inbound_capacity_sats` is nonzero once Pylon payout
-  targets exist.
+  targets exist. Despite the historical field name, this readiness check is
+  sourced from the live LDK provider channel list and represents usable payout
+  capacity from Nexus toward registered Pylons.
 - `ldk_readiness.recent_failed_payment_count_24h`,
   `recent_no_route_count_24h`, and `recent_insufficient_balance_count_24h` are
   below alert thresholds.

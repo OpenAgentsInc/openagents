@@ -2376,6 +2376,16 @@ struct TreasuryLdkChannelReadiness {
     projected_inbound_capacity_sats: u64,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TreasuryLdkProviderChannelSnapshot {
+    pub channel_id_hash: String,
+    pub peer_node_id_hash: String,
+    pub status: String,
+    pub outbound_capacity_sats: u64,
+    pub inbound_capacity_sats: u64,
+    pub observed_at_unix_ms: u64,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct TreasuryLdkPaymentFailureReadiness {
     recent_failed_payment_count_24h: u64,
@@ -2418,6 +2428,8 @@ pub struct TreasuryState {
     pub funding_receives_by_payment_id: BTreeMap<String, TreasuryFundingReceive>,
     #[serde(default)]
     pub treasury_operations_by_id: BTreeMap<String, TreasuryOperationRecord>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ldk_provider_channels_by_id_hash: BTreeMap<String, TreasuryLdkProviderChannelSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3203,7 +3215,61 @@ impl TreasuryState {
         changed
     }
 
+    pub fn reconcile_ldk_provider_channels(
+        &mut self,
+        provider_channels: &[LdkServerChannel],
+        now_unix_ms: u64,
+    ) -> bool {
+        let next_channels = provider_channels
+            .iter()
+            .map(|channel| {
+                let channel_id_hash = treasury_hash(channel.channel_id.as_str());
+                (
+                    channel_id_hash.clone(),
+                    TreasuryLdkProviderChannelSnapshot {
+                        channel_id_hash,
+                        peer_node_id_hash: treasury_hash(channel.peer_node_id.as_str()),
+                        status: channel.status.clone(),
+                        outbound_capacity_sats: channel.outbound_capacity_sats,
+                        inbound_capacity_sats: channel.inbound_capacity_sats,
+                        observed_at_unix_ms: now_unix_ms,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        if self.ldk_provider_channels_by_id_hash == next_channels {
+            return false;
+        }
+
+        self.ldk_provider_channels_by_id_hash = next_channels;
+        self.persist();
+        true
+    }
+
     fn ldk_channel_readiness(&self) -> TreasuryLdkChannelReadiness {
+        if !self.ldk_provider_channels_by_id_hash.is_empty() {
+            let mut projected_channel_count = 0u64;
+            let mut projected_outbound_capacity_sats = 0u64;
+
+            for channel in self.ldk_provider_channels_by_id_hash.values() {
+                if !matches!(channel.status.as_str(), "ready" | "usable") {
+                    continue;
+                }
+                if channel.outbound_capacity_sats == 0 {
+                    continue;
+                }
+                projected_channel_count = projected_channel_count.saturating_add(1);
+                projected_outbound_capacity_sats =
+                    projected_outbound_capacity_sats.saturating_add(channel.outbound_capacity_sats);
+            }
+
+            return TreasuryLdkChannelReadiness {
+                projected_channel_count,
+                projected_inbound_capacity_sats: projected_outbound_capacity_sats,
+            };
+        }
+
         let mut projected_channel_count = 0u64;
         let mut projected_inbound_capacity_msat = 0u64;
 
@@ -3312,7 +3378,8 @@ impl TreasuryState {
             && channel_readiness.projected_inbound_capacity_sats == 0
         {
             operator_actions.push(
-                "open or splice into an LDK channel before enabling production payouts".to_string(),
+                "open or rebalance an LDK channel with usable outbound capacity to registered Pylons"
+                    .to_string(),
             );
             "needs_channels"
         } else if degraded_states
@@ -5398,11 +5465,11 @@ impl TreasuryState {
                 states.push(TreasuryDegradedState {
                     code: "low_inbound_liquidity".to_string(),
                     severity: "warning".to_string(),
-                    public_reason: "no LDK channel capacity has been projected for registered payout targets"
+                    public_reason: "no live LDK payout channel capacity is available for registered payout targets"
                         .to_string(),
-                    operator_action: "open or splice into an LDK channel and verify receive capacity"
+                    operator_action: "open or rebalance an LDK channel and verify usable outbound capacity to registered Pylons"
                         .to_string(),
-                    source: "ldk_channel_projection".to_string(),
+                    source: "ldk_provider_channel_snapshot".to_string(),
                     observed_at_unix_ms: now_unix_ms,
                     started_at_unix_ms: self.last_wallet_sync_at_unix_ms,
                     metric_value: Some(channel_readiness.projected_inbound_capacity_sats),
@@ -10446,8 +10513,8 @@ mod tests {
         wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
     };
     use crate::treasury_provider::{
-        LdkChainBackend, LdkNetwork, LdkServerBalances, LdkTreasuryProviderConfig,
-        TreasuryProviderFundingTarget,
+        LdkChainBackend, LdkNetwork, LdkServerBalances, LdkServerChannel,
+        LdkTreasuryProviderConfig, TreasuryProviderFundingTarget,
     };
     use openagents_provider_substrate::{
         ProviderPaymentTargetRegistration, sign_provider_payment_target_registration,
@@ -11025,6 +11092,81 @@ mod tests {
         assert_eq!(
             degraded.ldk_readiness.recent_insufficient_balance_count_24h,
             1
+        );
+    }
+
+    #[test]
+    fn ldk_readiness_uses_live_provider_channels_before_operation_history() {
+        let mut config = test_treasury_config();
+        config.lightning_provider.ldk.server_url = Some("https://ldk.internal:3536".to_string());
+        let now_unix_ms = 2_000_000u64;
+        let mut state = TreasuryState::default();
+        state.wallet_balance_sats = 50_000;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        state.payout_targets_by_identity.insert(
+            "pubkey-ldk".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-ldk".to_string(),
+                source_session_id: "session-ldk".to_string(),
+                payment_target_kind: "bolt12_offer".to_string(),
+                payment_target: "lno1validtesttarget".to_string(),
+                payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+                pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
+                spark_address: String::new(),
+                bitcoin_address: None,
+                registered_at_unix_ms: now_unix_ms,
+                last_verified_at_unix_ms: now_unix_ms,
+            },
+        );
+        state.treasury_operations_by_id.insert(
+            "op-open-channel-failed".to_string(),
+            super::TreasuryOperationRecord {
+                operation_id: "op-open-channel-failed".to_string(),
+                kind: TreasuryOperationKind::LightningAdminCommand,
+                request_id: Some("admin:treasury.openChannel:old".to_string()),
+                rail: "ldk".to_string(),
+                rail_metadata: BTreeMap::from([
+                    ("command".to_string(), "treasury.openChannel".to_string()),
+                    (
+                        "channel_id_hash".to_string(),
+                        super::treasury_hash("old-channel-id"),
+                    ),
+                ]),
+                amount_msat: Some(99_000_000),
+                target_kind: "channel_peer".to_string(),
+                target_hash: Some(super::treasury_hash("02oldpeer")),
+                beneficiary: None,
+                status: TreasuryOperationStatus::Failed,
+                provider_payment_id: None,
+                receipt_refs: Vec::new(),
+                degraded_reason: Some("ldk_channel_not_found_after_open_request".to_string()),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                terminal_event_state: Some("channel_open_failed".to_string()),
+            },
+        );
+
+        assert!(state.reconcile_ldk_provider_channels(
+            &[LdkServerChannel {
+                channel_id: "live-channel-id".to_string(),
+                peer_node_id: "02pylonpeer".to_string(),
+                status: "usable".to_string(),
+                outbound_capacity_sats: 2_000,
+                inbound_capacity_sats: 0,
+            }],
+            now_unix_ms
+        ));
+
+        let status = state.status_response(&config, now_unix_ms);
+        assert_eq!(status.ldk_readiness.state, "ready");
+        assert_eq!(status.ldk_readiness.projected_channel_count, 1);
+        assert_eq!(status.ldk_readiness.projected_inbound_capacity_sats, 2_000);
+        assert!(
+            !status
+                .degraded_states
+                .iter()
+                .any(|state| state.code == "low_inbound_liquidity")
         );
     }
 

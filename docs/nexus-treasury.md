@@ -82,9 +82,12 @@ Lightning rail:
   `needs_payout_targets`, `needs_channels`, `needs_ldk_server`, or
   `misconfigured`.
 - `registered_payout_target_count`: Pylon v0.2 LDK-compatible payout targets.
-- `projected_channel_count`: channel-open operations known to Nexus.
-- `projected_inbound_capacity_sats`: projected open/splice-in capacity from
-  Nexus LDK admin operation rows.
+- `projected_channel_count`: usable or ready live LDK provider channels known
+  to Nexus after the most recent provider channel sync.
+- `projected_inbound_capacity_sats`: payout-capable live LDK channel capacity
+  from Nexus to registered payout targets. The field name is retained for API
+  stability, but readiness is now derived from the provider channel list before
+  falling back to unsynced admin operation projections.
 - `projected_outbound_capacity_sats`: current usable Nexus wallet balance
   available for outbound payout dispatch.
 - `recent_failed_payment_count_24h`, `recent_no_route_count_24h`, and
@@ -384,7 +387,9 @@ The current degraded-state codes are:
 - `low_outbound_liquidity`: wallet balance is below the active payout reserve
   threshold while there is payout or availability work that may need funds.
 - `low_inbound_liquidity`: LDK-compatible Pylon payout targets exist, but Nexus
-  has no projected open or splice-in channel capacity for those targets.
+  has no synced ready or usable LDK channel capacity for those targets. For
+  payout readiness this means Nexus has no live outbound channel capacity to
+  the registered Pylon side.
 - `stale_wallet_sync`: the last wallet activity/sync timestamp exceeds the
   configured wallet snapshot freshness threshold, or the wallet has not synced
   yet.

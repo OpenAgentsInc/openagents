@@ -163,12 +163,15 @@ psionic_train_binary_name() {
 install_psionic_train_runtime_surface() {
   local source_binary="${PSIONIC_REPO}/target/release/$(psionic_train_binary_name)"
   local runtime_root="${STAGE_DIR}/psionic"
+  local psionic_revision
 
   [[ -x "$source_binary" ]] || die "Missing built psionic-train binary at ${source_binary}"
+  psionic_revision="$(git -C "$PSIONIC_REPO" rev-parse HEAD)"
 
   mkdir -p \
     "${runtime_root}/target/release" \
-    "${runtime_root}/crates/psionic-train/src"
+    "${runtime_root}/crates/psionic-train/src" \
+    "${runtime_root}/fixtures/training"
 
   install -m 0755 "$source_binary" "${runtime_root}/target/release/$(psionic_train_binary_name)"
   cp -p "${PSIONIC_REPO}/Cargo.toml" "${runtime_root}/Cargo.toml"
@@ -177,6 +180,9 @@ install_psionic_train_runtime_surface() {
   cp -p "${PSIONIC_REPO}/crates/psionic-train/Cargo.toml" "${runtime_root}/crates/psionic-train/Cargo.toml"
   cp -p "${PSIONIC_REPO}/crates/psionic-train/src/main.rs" "${runtime_root}/crates/psionic-train/src/main.rs"
   cp -p "${PSIONIC_REPO}/crates/psionic-train/src/train_runtime.rs" "${runtime_root}/crates/psionic-train/src/train_runtime.rs"
+  cp -p "${PSIONIC_REPO}/fixtures/training/cs336_a1_reference_tiny_corpus.txt" \
+    "${runtime_root}/fixtures/training/cs336_a1_reference_tiny_corpus.txt"
+  printf '%s\n' "$psionic_revision" >"${runtime_root}/.openagents-psionic-revision"
   chmod 0755 "${runtime_root}/TRAIN"
 }
 
@@ -298,6 +304,12 @@ Notes:
   \`./psionic\`, including \`psionic/target/release/$(psionic_train_binary_name)\`, so the
   default homework worker can advertise training capability without a separate
   sibling checkout.
+- The packaged Psionic runtime includes \`psionic/.openagents-psionic-revision\`
+  so hosted workers derive training admission identity without requiring a Git
+  checkout on the Pylon machine.
+- The packaged runtime includes the CS336 A1 tiny corpus fixture consumed by
+  the bounded paid-work smoke lane, so hosted workers never resolve fixture
+  paths through a developer machine checkout.
 - Bare interactive \`$(binary_name pylon)\` opens the minimal homework dashboard and supervises the worker.
 - Noninteractive \`$(binary_name pylon)\` remains the direct worker/service path for automation.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.

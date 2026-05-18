@@ -70,6 +70,13 @@ sudo -u pylon /usr/local/bin/pylon training status --json
 - `runtime_surface_detected: true`
 - `psionic_repo_root: "/var/lib/pylon/psionic"`
 - `psionic_repo_source: "env_override"`
+- `/var/lib/pylon/psionic/.openagents-psionic-revision` exists and contains
+  the clean Psionic Git revision used for admission identity. Hosted runtime
+  archives are not Git worktrees; Pylon must use this marker instead of calling
+  `git rev-parse HEAD` during training assignment intake.
+- `/var/lib/pylon/psionic/fixtures/training/cs336_a1_reference_tiny_corpus.txt`
+  exists. The bounded CS336 A1 paid-work smoke lane reads this tiny corpus from
+  the packaged runtime root, never from a developer machine checkout path.
 
 This gate fixes runtime discovery only. If `homework_worker_eligible_pylons`
 is still zero and the blocker reason is

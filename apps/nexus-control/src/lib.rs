@@ -18894,10 +18894,13 @@ fn reconcile_treasury_admin_channel_operations(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    if store
+    let provider_channels_changed = store
         .treasury
-        .reconcile_ldk_channel_operations(provider_channels, now_unix_ms)
-    {
+        .reconcile_ldk_provider_channels(provider_channels, now_unix_ms);
+    let channel_operations_changed = store
+        .treasury
+        .reconcile_ldk_channel_operations(provider_channels, now_unix_ms);
+    if provider_channels_changed || channel_operations_changed {
         let receipt_events = store
             .treasury
             .sync_continuity_alerts(&state.config.treasury, now_unix_ms);

@@ -67,6 +67,8 @@ mkdir -p "$(dirname "$NEXUS_PYLON_RUNTIME_DIR")"
 tar -C "$(dirname "$NEXUS_PYLON_RUNTIME_DIR")" -xzf "$REMOTE_ARCHIVE"
 test -x "$NEXUS_PYLON_RUNTIME_DIR/TRAIN"
 test -x "$NEXUS_PYLON_RUNTIME_DIR/target/release/psionic-train"
+test -s "$NEXUS_PYLON_RUNTIME_DIR/.openagents-psionic-revision"
+test -s "$NEXUS_PYLON_RUNTIME_DIR/fixtures/training/cs336_a1_reference_tiny_corpus.txt"
 chown -R pylon:pylon "$NEXUS_PYLON_RUNTIME_DIR"
 
 mkdir -p "/etc/systemd/system/${NEXUS_PYLON_SERVICE}.d"
