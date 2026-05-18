@@ -226,7 +226,7 @@ struct WalletSurfaceState {
     network: Option<String>,
     balance: Option<pylon::WalletBalanceSnapshot>,
     balance_live: bool,
-    spark_address: Option<String>,
+    payout_destination: Option<String>,
     bitcoin_address: Option<String>,
     latest_invoice: Option<pylon::PylonWalletInvoiceRecord>,
     recent_payments: Vec<pylon::PylonWalletPaymentRecord>,
@@ -2126,8 +2126,8 @@ impl AppShell {
                 format_sats(balance.total_sats)
             ));
             lines.push(format!(
-                "Balance mix: {} Spark, {} Lightning, {} on-chain",
-                format_sats(balance.spark_sats),
+                "Balance mix: {} credited, {} Lightning, {} on-chain",
+                format_sats(balance.credited_sats),
                 format_sats(balance.lightning_sats),
                 format_sats(balance.onchain_sats)
             ));
@@ -2241,7 +2241,7 @@ impl AppShell {
         if remainder.is_empty() || remainder == "show" {
             let mut lines = vec![
                 "Recovery phrase is hidden by default.".to_string(),
-                "It controls both this Spark wallet and this node identity.".to_string(),
+                "It controls both the payout identity and this node identity.".to_string(),
                 "Run /wallet recovery reveal only in a private place you trust.".to_string(),
             ];
             if let Some(path) = self.wallet_surface.identity_path.as_ref() {
@@ -3470,8 +3470,8 @@ impl AppShell {
             .as_ref()
             .map(|balance| {
                 format!(
-                    "{} Spark, {} Lightning, {} on-chain",
-                    format_sats(balance.spark_sats),
+                    "{} credited, {} Lightning, {} on-chain",
+                    format_sats(balance.credited_sats),
                     format_sats(balance.lightning_sats),
                     format_sats(balance.onchain_sats)
                 )
@@ -3521,10 +3521,10 @@ impl AppShell {
             .as_ref()
             .map(|balance| format_sats(balance.total_sats))
             .unwrap_or_else(|| "unavailable".to_string());
-        let receive_hint = if self.wallet_surface.spark_address.is_some()
+        let receive_hint = if self.wallet_surface.payout_destination.is_some()
             || self.wallet_surface.bitcoin_address.is_some()
         {
-            "Spark + Bitcoin ready".to_string()
+            "LDK payout + Bitcoin ready".to_string()
         } else {
             "/wallet receive".to_string()
         };
@@ -3553,12 +3553,12 @@ impl AppShell {
     }
 
     fn wallet_receive_lines(&self) -> Vec<Line<'static>> {
-        let spark_address = self
+        let payout_destination = self
             .wallet_surface
-            .spark_address
+            .payout_destination
             .as_deref()
             .map(abbreviate_wallet_value)
-            .unwrap_or_else(|| "Run /wallet receive to refresh addresses".to_string());
+            .unwrap_or_else(|| "Set payout_destination to an LDK-compatible target".to_string());
         let bitcoin_address = self
             .wallet_surface
             .bitcoin_address
@@ -3572,7 +3572,10 @@ impl AppShell {
             .map(|invoice| format!("{} ready", format_sats(invoice.amount_sats)))
             .unwrap_or_else(|| "Run /wallet invoice <sats> for a Lightning invoice".to_string());
         vec![
-            Line::from(vec![key_label("Spark address"), Span::raw(spark_address)]),
+            Line::from(vec![
+                key_label("Payout destination"),
+                Span::raw(payout_destination),
+            ]),
             Line::from(vec![
                 key_label("Bitcoin address"),
                 Span::raw(bitcoin_address),
@@ -4938,7 +4941,7 @@ fn build_wallet_surface(
                     })
             }),
         balance_live: wallet_status.is_some(),
-        spark_address: ledger.wallet.spark_address.clone(),
+        payout_destination: config.payout_destination.clone(),
         bitcoin_address: ledger.wallet.bitcoin_address.clone(),
         latest_invoice: ledger.wallet.invoices.first().cloned(),
         recent_payments: if let Some(report) = wallet_status {
@@ -5182,8 +5185,8 @@ fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
         format!("Network: {}", report.runtime.network),
         format!("Total balance: {}", format_sats(report.balance.total_sats)),
         format!(
-            "Balance mix: {} Spark, {} Lightning, {} on-chain",
-            format_sats(report.balance.spark_sats),
+            "Balance mix: {} credited, {} Lightning, {} on-chain",
+            format_sats(report.balance.credited_sats),
             format_sats(report.balance.lightning_sats),
             format_sats(report.balance.onchain_sats)
         ),
@@ -5210,8 +5213,11 @@ fn render_wallet_receive_output(report: &pylon::WalletAddressReport) -> String {
     [
         format!("Network: {}", report.runtime.network),
         String::new(),
-        "Receive on Spark:".to_string(),
-        report.spark_address.clone(),
+        "LDK payout destination:".to_string(),
+        report
+            .payout_destination
+            .clone()
+            .unwrap_or_else(|| "not_configured".to_string()),
         String::new(),
         "Receive on Bitcoin:".to_string(),
         report.bitcoin_address.clone(),
@@ -5294,7 +5300,8 @@ fn reveal_wallet_recovery_phrase(config_path: &Path) -> Result<String> {
     }
     Ok([
         "Recovery phrase".to_string(),
-        "Handle with care. This unlocks both your Spark wallet and your node identity.".to_string(),
+        "Handle with care. This unlocks both your payout identity and your node identity."
+            .to_string(),
         format!("Stored at: {}", config.identity_path.display()),
         String::new(),
         mnemonic,
@@ -6141,7 +6148,7 @@ mod tests {
             provider_presence_online: true,
             wallet_runtime_status: Some("connected".to_string()),
             wallet_balance: Some(pylon::WalletBalanceSnapshot {
-                spark_sats: 21,
+                credited_sats: 21,
                 lightning_sats: 34,
                 onchain_sats: 55,
                 total_sats: 110,
@@ -6340,7 +6347,7 @@ mod tests {
             runtime_status: "connected".to_string(),
             runtime_detail: Some("wallet synced after withdrawal".to_string()),
             balance: pylon::WalletBalanceSnapshot {
-                spark_sats: 8,
+                credited_sats: 8,
                 lightning_sats: 0,
                 onchain_sats: 0,
                 total_sats: 8,
@@ -6652,12 +6659,12 @@ mod tests {
             runtime_status: Some("connected".to_string()),
             network: Some("mainnet".to_string()),
             balance: Some(pylon::WalletBalanceSnapshot {
-                spark_sats: 664,
+                credited_sats: 664,
                 total_sats: 664,
                 ..pylon::WalletBalanceSnapshot::default()
             }),
-            spark_address: Some(
-                "spark1pgss97gxzmrydeh2ypjkeu9jqeve8rfy9nzy2apkks836apnwyreqrlyrtjzcu".to_string(),
+            payout_destination: Some(
+                "lno1pgss97gxzmrydeh2ypjkeu9jqeve8rfy9nzy2apkks836apnwyreqrlyrtjzcu".to_string(),
             ),
             bitcoin_address: Some(
                 "bc1psxsk8uzdmcg4jq03p7hf0a99r469te0ew40w32yersvlzlr697nqh94nge".to_string(),
@@ -6681,8 +6688,8 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(receive.contains("Spark address:"));
-        assert!(receive.contains("spark1pgss97gx"));
+        assert!(receive.contains("Payout destination:"));
+        assert!(receive.contains("lno1pgss97gx"));
         assert!(receive.contains("Bitcoin address:"));
 
         let recovery = app
@@ -6704,7 +6711,7 @@ mod tests {
                 total_sats: 664,
                 ..pylon::WalletBalanceSnapshot::default()
             }),
-            spark_address: Some("spark1example".to_string()),
+            payout_destination: Some("lno1example".to_string()),
             bitcoin_address: Some("bc1example".to_string()),
             recent_payments: vec![
                 pylon::PylonWalletPaymentRecord {
@@ -6743,7 +6750,7 @@ mod tests {
             .join("\n");
         assert!(card.contains("Status:"));
         assert!(card.contains("Total balance: 664 sats"));
-        assert!(card.contains("Receive: Spark + Bitcoin ready"));
+        assert!(card.contains("Receive: LDK payout + Bitcoin ready"));
         assert!(card.contains("Withdraw: /wallet withdraw <lightning_invoice>"));
         assert!(card.contains("Last paid: 34 sats"));
     }
@@ -6940,7 +6947,7 @@ mod tests {
                 status: "completed".to_string(),
                 amount_sats: 4,
                 fees_sats: 0,
-                method: "spark".to_string(),
+                method: "ldk".to_string(),
                 description: None,
                 invoice: None,
                 created_at_ms: now_ms - 800,
@@ -7036,7 +7043,7 @@ mod tests {
                 status: "completed".to_string(),
                 amount_sats: 295,
                 fees_sats: 0,
-                method: "spark".to_string(),
+                method: "ldk".to_string(),
                 description: Some("availability stipend".to_string()),
                 invoice: None,
                 created_at_ms: now_ms - 800,
@@ -7344,7 +7351,7 @@ mod tests {
 
         app.push_system_message(
             "Wallet Error",
-            "failed to send spark payment: invoice may already be paid",
+            "failed to send payment: invoice may already be paid",
         );
 
         assert!(app.transcript_max_scroll_y > previous_max);

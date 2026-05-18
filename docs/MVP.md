@@ -96,7 +96,7 @@ When the user opens the app for the first time, they should immediately understa
 2. It is straightforward to try.
 3. You can flip **Go Online** and start earning.
 
-The first-run flow must get the user into a “ready to earn” state quickly, but without violating the basic safety requirements of keys and payments. The user needs a wallet identity (Spark), a network identity (for Nostr participation), and an authenticated session for sync/control tokens. The UI should treat this like booting a new character in a game: you’re setting up your “rig,” not filling out a form.
+The first-run flow must get the user into a “ready to earn” state quickly, but without violating the basic safety requirements of keys and payments. The user needs an LDK-compatible payout identity, a network identity (for Nostr participation), and an authenticated session for sync/control tokens. The UI should treat this like booting a new character in a game: you’re setting up your “rig,” not filling out a form.
 
 The onboarding copy and structure should be centered around capability, not infrastructure. The user is not “creating a seed phrase,” they are “unlocking custody of your sats.” They are not “configuring relays,” they are “choosing how you connect to the open network.”
 
@@ -130,7 +130,7 @@ The MVP loop is intentionally narrow and absolute:
 2. The user sees Autopilot and their wallet balance.
 3. The user clicks **Go Online**.
 4. The network sends the user at least one job they can execute.
-5. The job completes and triggers a Lightning payment into their Spark wallet.
+5. The job completes and triggers a Lightning payment to their LDK-compatible payout target.
 6. The user watches the wallet balance increase.
 7. The user withdraws by paying a Lightning invoice (or otherwise demonstrating “I can move this value out”).
 
@@ -173,8 +173,8 @@ However, the MVP must not paint us into a corner. Even if we don’t ship plugin
 The MVP must encode a simple, defensible payment story that results in real earnings:
 
 * Jobs have a price (in msats/sats) that the provider can understand and the buyer can pay.
-* The provider uses the built-in Spark wallet to request or receive payment.
-* All provider earnings settle into the built-in Spark wallet first. MVP does not support configuring an external receive invoice for provider payouts.
+* The provider registers an LDK-compatible payout target to receive payment.
+* Provider earnings settle through LDK-compatible Lightning targets. MVP must not require a legacy intermediate wallet.
 * Wallet updates are reflected in UI as authoritative, not inferred.
 
 Because the killer failure is “user earns nothing,” the MVP must include a practical answer to: “Where do the first jobs come from?”
@@ -262,7 +262,7 @@ For `race` jobs, silent no-pay is not the target behavior. When the OpenAgents b
 
 As a buyer, the app should be able to submit a job out to the network from within the Autopilot experience. This enables both real usage (“ask the network for something”) and internal testing (“does the network loop work end-to-end?”).
 
-### 9.4 Spark wallet: the money is the product
+### 9.4 LDK payout wallet: the money is the product
 
 The wallet panel is not a “nice to have.” It is the proof that the product works.
 
@@ -275,9 +275,9 @@ The MVP wallet must:
 * Show transaction history that is deterministic and replays correctly after restart
 * Never display success unless the underlying wallet operation succeeded
 
-Provider earnings should always appear here first. If the user wants funds in another wallet, the supported path is to withdraw from Spark by paying a Lightning invoice.
+Provider earnings should always appear here first. If the user wants funds in another wallet, the supported path is an LDK Lightning payout/withdrawal path.
 
-Withdrawal should remain available while the provider is online. MVP should not require the user to go offline before paying out from the built-in Spark wallet.
+Withdrawal should remain available while the provider is online. MVP should not require the user to go offline before paying out through the LDK-compatible wallet path.
 
 The withdraw experience must be one of the most polished moments in the MVP, because it’s the user’s proof that the sats are real.
 
@@ -410,7 +410,7 @@ For MVP, every user-facing feature must be reachable by one command-palette comm
 | Active Job | Active Job | `pane.active_job` | In-flight job lifecycle (`received -> running -> delivered -> paid`) |
 | Job History | Job History | `pane.job_history` | Deterministic job history and failure reasons |
 | Earnings Scoreboard | Earnings Scoreboard | `pane.earnings_scoreboard` | sats/day, lifetime sats, jobs/day, last result |
-| Spark Lightning Wallet | Spark Wallet | `pane.wallet` | Balance, connectivity, addresses, payment history |
+| LDK Lightning Wallet | Wallet | `pane.wallet` | Balance, connectivity, payout targets, payment history |
 | Pay Lightning Invoice | Pay Lightning Invoice | `pane.pay_invoice` | Withdraw/prove custody by paying invoices |
 | Create Lightning Invoice | Create Lightning Invoice | `pane.create_invoice` | Receive/invoice generation flow |
 | Nostr Keys (NIP-06) | Identity Keys | `pane.identity_keys` | Identity generation, reveal/copy, key custody |
@@ -446,7 +446,7 @@ The default OpenAgents-hosted server-authority stack is the Nexus role: an open-
 
 `apps/autopilot-deprecated` currently contains the embedded OpenAgents Runtime for MVP execution boundaries, provider lifecycle, and any sync-facing projection publishing the desktop needs.
 
-Core crates remain as previously enumerated (wgpui, autopilot_ui/app/core, client-core, codex control, spacetime client, provider runtime, spark wallet integration, nostr client/core, proto/protocol). The key requirement is that these crates expose outcomes in a way that the UI can render as legible state transitions, not just logs.
+Core crates remain as previously enumerated (wgpui, autopilot_ui/app/core, client-core, codex control, spacetime client, provider runtime, LDK payment integration, nostr client/core, proto/protocol). The key requirement is that these crates expose outcomes in a way that the UI can render as legible state transitions, not just logs.
 
 ---
 

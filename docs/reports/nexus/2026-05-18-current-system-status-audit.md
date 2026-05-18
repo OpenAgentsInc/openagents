@@ -8,9 +8,9 @@ closed LDK tracker issues, and the runbooks/reports updated during the
 
 This audit is intentionally direct about what is proven and what is still
 dirty. The current LDK accepted-work path is proven. The historical training
-and payout backlog is not clean. Spark is not an active production rail, but
-historical Spark code and receipt material still exist outside the normal Nexus
-deployment path.
+and payout backlog is not clean. Spark is not an active Nexus/Pylon production
+rail, and the active Nexus/Pylon source plus staged Nexus deploy context are
+guarded as LDK-only.
 
 ## Evidence Sources
 
@@ -83,12 +83,44 @@ Relevant issue state:
   - `38` failed payouts in the latest 24h stats snapshot
 - Only one LDK payout-target identity is registered; `2421` identities still
   require Pylon v0.2 LDK registration.
-- The repo still contains historical Spark code and Cargo lock entries outside
-  the normal deploy context.
+- The repo still contains historical desktop wallet code and root Cargo lock
+  entries outside the normal Nexus/Pylon deploy context. They are not copied,
+  compiled, linked, or configured by the standard Nexus image.
 
 The system is ready for the narrow claim "new accepted work can be paid through
 LDK." It is not ready for the broader claim "the training/payout ledger is
 fully clean at scale."
+
+## 2026-05-18 Active Source Cleanup Update
+
+Issue `#4505` removed the remaining active Nexus/Pylon source references to the
+old payment rail from:
+
+- `apps/nexus-control/src`
+- `apps/pylon/src`
+- `crates/openagents-provider-substrate/src`
+- `scripts/deploy/nexus`
+
+The active API now rejects unsupported legacy provider-target registrations with
+provider-neutral wording, funding responses expose `provider_target` and
+`provider_invoice` instead of legacy rail-specific field names, and treasury
+migration tests classify old payout records as `retired_payout_record` rather
+than preserving a live rail.
+
+Verification for this cleanup:
+
+```bash
+rg -n 'spark|Spark|SPARK|breez-sdk-spark|spark-wallet|openagents-spark' \
+  apps/nexus-control apps/pylon crates/openagents-provider-substrate \
+  scripts/deploy/nexus apps/nexus-relay/deploy/Cargo.nexus.lock
+
+bash scripts/deploy/nexus/test-ldk-deploy-invariants.sh
+cargo check -p openagents-provider-substrate -p pylon -p nexus-control
+```
+
+Expected result: the `rg` command returns no active-path rows, the deploy
+invariant reports the Nexus/Pylon paths are LDK-only, and the targeted Cargo
+check completes.
 
 ## Current Pylon and Training Status
 

@@ -76,7 +76,7 @@ assert_contains '/v1/admin/treasury/operations' "$READINESS_TEXT"
 assert_contains 'treasury.listChannels' "$READINESS_TEXT"
 assert_contains 'treasury.openChannel' "$READINESS_TEXT"
 assert_contains 'NEXUS_LDK_SMOKE_MIN_CHANNEL_SATS' "$READINESS_TEXT"
-assert_not_contains 'spark_address' "$READINESS_TEXT"
+assert_not_contains 'provider_target' "$READINESS_TEXT"
 
 TOPOLOGY_OUTPUT="$(
   NEXUS_LDK_TOPOLOGY_DRY_RUN=true \

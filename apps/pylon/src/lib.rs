@@ -34394,7 +34394,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "bip353_name"
         );
         assert_eq!(infer_ldk_payment_target_kind("lnurlp:alice")?, "lnurl_pay");
-        assert!(infer_ldk_payment_target_kind("spark:alice").is_err());
+        assert!(infer_ldk_payment_target_kind("provider:alice").is_err());
 
         let capabilities = ldk_payment_target_capabilities("bolt12_offer")?;
         ensure(

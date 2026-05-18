@@ -623,9 +623,9 @@ Migration order:
    - Pylon v0.2 should prefer BOLT12 when available.
    - Pylon should advertise a capability/version marker so Nexus can choose
      LDK-compatible payout behavior without guessing.
-   - Spark target registration must be rejected in the active API. Old
-     `spark_address` rows are read-only audit state that identify workers that
-     must upgrade before they can receive new payouts.
+- Unsupported legacy provider-target registration must be rejected in the
+  active API. Old rail-specific rows are read-only audit state that identify
+  workers that must upgrade before they can receive new payouts.
    - Pylon should continue to show local payout state, but it must not become a
      broad wallet shell.
 
@@ -705,8 +705,12 @@ Current implementation status:
   `lnurl_pay` target kinds and projects them in treasury status.
 - Normal Pylon startup does not create Spark destinations. The active
   registration path is Lightning-only and has no Spark write fallback.
-- Spark-only providers are retained for audit but are not eligible for new paid
-  work; Nexus reports `payout_target_requires_ldk_v0_2`.
+- Legacy-provider-only identities are retained for audit but are not eligible
+  for new paid work; Nexus reports `payout_target_requires_ldk_v0_2`.
+- Active Nexus/Pylon source uses provider-neutral funding and payout fields.
+  The standard Nexus staged build context is checked by
+  `scripts/deploy/nexus/test-ldk-deploy-invariants.sh` and must contain no
+  retired payment SDK/package/provider symbols.
 
 ## Immediate Roadmap
 

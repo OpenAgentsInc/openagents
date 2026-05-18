@@ -99,8 +99,6 @@ pub fn infer_ldk_payment_target_kind(value: &str) -> Result<String, String> {
         || normalized.starts_with("ln")
     {
         Ok("bolt11_invoice".to_string())
-    } else if normalized.starts_with("spark") {
-        Err("unsupported_payment_target_kind:spark_address".to_string())
     } else if normalized.contains('@') {
         Ok("bip353_name".to_string())
     } else {
@@ -220,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn ldk_payment_target_rules_reject_spark_targets() {
+    fn ldk_payment_target_rules_reject_unsupported_provider_targets() {
         assert_eq!(
             infer_ldk_payment_target_kind("lno1pylonalice").expect("bolt12 should infer"),
             "bolt12_offer"
@@ -238,8 +236,9 @@ mod tests {
             "lnurl_pay"
         );
         assert_eq!(
-            infer_ldk_payment_target_kind("spark:alice").expect_err("Spark is retired"),
-            "unsupported_payment_target_kind:spark_address"
+            infer_ldk_payment_target_kind("provider:alice")
+                .expect_err("unsupported payment target is rejected"),
+            "unsupported_payment_target_kind:unknown"
         );
         let capabilities =
             ldk_payment_target_capabilities("bolt12_offer").expect("capabilities should build");

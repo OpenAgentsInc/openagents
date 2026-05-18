@@ -728,17 +728,16 @@ pub struct TreasuryFundingTargetResponse {
     pub wallet_payment_scan_mode: Option<String>,
     pub wallet_balance_sats: u64,
     pub wallet_balance_updated_at_unix_ms: u64,
-    #[serde(rename = "provider_target", alias = "spark_address")]
-    pub spark_address: String,
+    #[serde(rename = "provider_target")]
+    pub provider_target: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub bitcoin_address: String,
     #[serde(
         default,
         rename = "provider_invoice",
-        alias = "spark_invoice",
         skip_serializing_if = "Option::is_none"
     )]
-    pub spark_invoice: Option<String>,
+    pub provider_invoice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bolt11_invoice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1422,7 +1421,7 @@ pub struct TreasuryPayoutTargetIdentityStatus {
     pub pylon_payment_target_version: Option<String>,
     #[serde(default)]
     pub ldk_compatible: bool,
-    pub spark_address: String,
+    pub provider_target: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitcoin_address: Option<String>,
     pub registered_at_unix_ms: u64,
@@ -2102,7 +2101,7 @@ pub struct RegisteredPayoutTarget {
     pub payment_target_capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pylon_payment_target_version: Option<String>,
-    pub spark_address: String,
+    pub provider_target: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitcoin_address: Option<String>,
     pub registered_at_unix_ms: u64,
@@ -2115,8 +2114,8 @@ impl RegisteredPayoutTarget {
         if !kind.is_empty() {
             return kind;
         }
-        if !self.spark_address.trim().is_empty() {
-            return "spark_address";
+        if !self.provider_target.trim().is_empty() {
+            return "provider_target";
         }
         "unknown"
     }
@@ -2126,7 +2125,7 @@ impl RegisteredPayoutTarget {
         if !target.is_empty() {
             return target;
         }
-        self.spark_address.trim()
+        self.provider_target.trim()
     }
 
     fn is_ldk_compatible(&self) -> bool {
@@ -2160,8 +2159,8 @@ fn normalized_registration_target_kind(
     };
     if is_ldk_payment_target_kind(kind.as_str()) {
         Ok(kind)
-    } else if kind == "spark_address" {
-        bail!("unsupported_payment_target_kind:spark_address")
+    } else if kind == "provider_target" {
+        bail!("unsupported_payment_target_kind:provider_target")
     } else {
         bail!("unsupported_payment_target_kind:{kind}")
     }
@@ -2936,9 +2935,9 @@ pub struct TreasuryWalletRefreshResult {
 
 #[derive(Debug, Clone)]
 pub struct TreasuryFundingMaterial {
-    pub spark_address: String,
+    pub provider_target: String,
     pub bitcoin_address: String,
-    pub spark_invoice: Option<String>,
+    pub provider_invoice: Option<String>,
     pub bolt11_invoice: Option<String>,
     pub provider_payment_id: Option<String>,
     pub phase_timings: TreasuryFundingTargetPhaseTimings,
@@ -3704,7 +3703,7 @@ impl TreasuryState {
         let target = material
             .bolt11_invoice
             .as_deref()
-            .unwrap_or(material.spark_address.as_str());
+            .unwrap_or(material.provider_target.as_str());
         let target_kind = if material.bolt11_invoice.is_some() {
             "bolt11_invoice"
         } else {
@@ -3755,7 +3754,7 @@ impl TreasuryState {
                 .map(|payment_id| treasury_hash(payment_id.as_str()))
                 .or_else(|| {
                     material
-                        .spark_invoice
+                        .provider_invoice
                         .as_ref()
                         .map(|invoice| treasury_hash(invoice.as_str()))
                 })
@@ -6100,7 +6099,7 @@ impl TreasuryState {
                     payment_target_capabilities: target.payment_target_capabilities.clone(),
                     pylon_payment_target_version: target.pylon_payment_target_version.clone(),
                     ldk_compatible: target.is_ldk_compatible(),
-                    spark_address: target.spark_address.clone(),
+                    provider_target: target.provider_target.clone(),
                     bitcoin_address: target.bitcoin_address.clone(),
                     registered_at_unix_ms: target.registered_at_unix_ms,
                     last_verified_at_unix_ms: target.last_verified_at_unix_ms,
@@ -6806,7 +6805,7 @@ impl TreasuryState {
                     && existing.normalized_payment_target() == target_value
                     && existing.payment_target_capabilities == capabilities
                     && existing.pylon_payment_target_version.as_deref() == Some(version.as_str())
-                    && existing.spark_address.trim().is_empty()
+                    && existing.provider_target.trim().is_empty()
                     && existing.bitcoin_address.is_none()
             })
         {
@@ -6834,7 +6833,7 @@ impl TreasuryState {
             payment_target: target_value.clone(),
             payment_target_capabilities: capabilities.clone(),
             pylon_payment_target_version: Some(version.clone()),
-            spark_address: String::new(),
+            provider_target: String::new(),
             bitcoin_address: None,
             registered_at_unix_ms: now_unix_ms,
             last_verified_at_unix_ms: now_unix_ms,
@@ -7537,7 +7536,7 @@ impl TreasuryState {
                     payout_key = payout_key.as_str(),
                     payment_status = payment.status.as_str(),
                     amount_sats = payment.amount_sats,
-                    "treasury recovered orphan Spark send payment from wallet history",
+                    "treasury recovered orphan provider payment from wallet history",
                 );
             }
             let Some(record) = self.payout_records_by_key.get_mut(&payout_key) else {
@@ -8086,9 +8085,10 @@ fn simulated_funding_target(
     let amount = request.amount_sats.unwrap_or_default();
     let now = now_unix_ms();
     TreasuryFundingMaterial {
-        spark_address: "spark:simulated-treasury-proof-wallet".to_string(),
+        provider_target: "provider:simulated-treasury-proof-wallet".to_string(),
         bitcoin_address: "bcrt1qsimulatedtreasuryproofwallet".to_string(),
-        spark_invoice: (amount > 0).then(|| format!("sparkinvoice{amount}simulatedproofwallet")),
+        provider_invoice: (amount > 0)
+            .then(|| format!("providerinvoice{amount}simulatedproofwallet")),
         bolt11_invoice: (amount > 0).then(|| format!("lnbc{amount}simulatedproofwallet")),
         provider_payment_id: None,
         phase_timings: TreasuryFundingTargetPhaseTimings {
@@ -8171,9 +8171,9 @@ fn funding_material_from_provider_target(
     phase_timings: TreasuryFundingTargetPhaseTimings,
 ) -> TreasuryFundingMaterial {
     TreasuryFundingMaterial {
-        spark_address: target.provider_target,
+        provider_target: target.provider_target,
         bitcoin_address: target.bitcoin_address,
-        spark_invoice: None,
+        provider_invoice: None,
         bolt11_invoice: target.bolt11_invoice,
         provider_payment_id: target.provider_invoice,
         phase_timings,
@@ -8615,9 +8615,9 @@ pub async fn run_treasury_command(
                 wallet_payment_scan_mode: material.wallet_snapshot.wallet_payment_scan_mode,
                 wallet_balance_sats: material.wallet_snapshot.balance_sats,
                 wallet_balance_updated_at_unix_ms: now_unix_ms,
-                spark_address: material.spark_address,
+                provider_target: material.provider_target,
                 bitcoin_address: material.bitcoin_address,
-                spark_invoice: material.spark_invoice,
+                provider_invoice: material.provider_invoice,
                 bolt11_invoice: material.bolt11_invoice,
                 provider_payment_id_hash: material
                     .provider_payment_id
@@ -8899,9 +8899,10 @@ async fn inspect_treasury_wallet_storage(
         inspected_storage_dir: storage_dir.display().to_string(),
         runtime_status: Some("unsupported".to_string()),
         runtime_detail: Some(
-            "Spark wallet storage inspection is not part of the LDK-only Nexus runtime".to_string(),
+            "Legacy wallet storage inspection is not part of the LDK-only Nexus runtime"
+                .to_string(),
         ),
-        error: Some("spark_wallet_inspection_removed_from_active_runtime".to_string()),
+        error: Some("legacy_wallet_inspection_removed_from_active_runtime".to_string()),
         ..TreasuryWalletInspection::default()
     }
 }
@@ -9690,12 +9691,12 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
     let mut lines = vec![
         format!("wallet_runtime_status: {}", response.wallet_runtime_status),
         format!("wallet_balance_sats: {}", response.wallet_balance_sats),
-        format!("provider_target: {}", response.spark_address),
+        format!("provider_target: {}", response.provider_target),
     ];
     if !response.bitcoin_address.trim().is_empty() {
         lines.push(format!("bitcoin_address: {}", response.bitcoin_address));
     }
-    if let Some(invoice) = response.spark_invoice.as_deref() {
+    if let Some(invoice) = response.provider_invoice.as_deref() {
         lines.push(format!("provider_invoice: {invoice}"));
     }
     if let Some(invoice) = response.bolt11_invoice.as_deref() {
@@ -10585,7 +10586,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn default_ldk_provider_creates_local_funding_target_without_spark() {
+    async fn default_ldk_provider_creates_local_funding_target_without_retired_provider() {
         let funding = create_live_funding_target(
             &test_treasury_config(),
             TreasuryFundingTargetRequest {
@@ -10598,10 +10599,10 @@ mod tests {
         .expect("ldk funding target should build");
         assert!(
             funding
-                .spark_address
+                .provider_target
                 .starts_with("ldk://server/regtest/bitcoind/")
         );
-        assert_eq!(funding.spark_invoice, None);
+        assert_eq!(funding.provider_invoice, None);
         assert!(funding.provider_payment_id.is_some());
         assert!(
             funding
@@ -10714,7 +10715,7 @@ mod tests {
         TreasuryPayoutRecord {
             payout_key: payout_key.to_string(),
             nostr_pubkey_hex: "pubkey-a".to_string(),
-            payout_target: "spark:alice-secret-target".to_string(),
+            payout_target: "provider:alice-secret-target".to_string(),
             amount_sats: 120,
             status: status.to_string(),
             reason: None,
@@ -10836,8 +10837,8 @@ mod tests {
     }
 
     #[test]
-    fn legacy_spark_payout_records_migrate_to_operation_rows() {
-        let path = unique_treasury_state_path("legacy-spark-operations");
+    fn legacy_provider_payout_records_migrate_to_operation_rows() {
+        let path = unique_treasury_state_path("legacy-provider-operations");
         let payout_key = "window.legacy:pubkey-a";
         let mut seed = TreasuryState::default();
         seed.payout_records_by_key.insert(
@@ -10856,9 +10857,9 @@ mod tests {
         let operation = state
             .treasury_operations_by_id
             .get(operation_id.as_str())
-            .expect("migrated legacy spark operation");
+            .expect("migrated legacy provider operation");
 
-        assert_eq!(operation.rail, "spark");
+        assert_eq!(operation.rail, "retired_payout_record");
         assert_eq!(operation.status, TreasuryOperationStatus::Completed);
         assert_eq!(
             operation
@@ -10880,7 +10881,7 @@ mod tests {
                 .is_some_and(|hash| hash.starts_with("sha256:"))
         );
         let serialized = serde_json::to_string(operation).expect("serialize operation");
-        assert!(!serialized.contains("spark:alice-secret-target"));
+        assert!(!serialized.contains("provider:alice-secret-target"));
         assert!(!serialized.contains("legacy-payment-secret"));
 
         let _ = std::fs::remove_file(path);
@@ -10896,9 +10897,9 @@ mod tests {
             expiry_seconds: Some(300),
         };
         let material = TreasuryFundingMaterial {
-            spark_address: "ldk:provider-target-secret".to_string(),
+            provider_target: "ldk:provider-target-secret".to_string(),
             bitcoin_address: "bcrt1qfundingtarget".to_string(),
-            spark_invoice: Some("provider-invoice-secret".to_string()),
+            provider_invoice: Some("provider-invoice-secret".to_string()),
             bolt11_invoice: Some("lnbc21secretinvoice".to_string()),
             provider_payment_id: Some("ldk-payment-id-secret".to_string()),
             phase_timings: TreasuryFundingTargetPhaseTimings {
@@ -11001,7 +11002,7 @@ mod tests {
                 payment_target: "lno1validtesttarget".to_string(),
                 payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
                 pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-                spark_address: String::new(),
+                provider_target: String::new(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms,
                 last_verified_at_unix_ms: now_unix_ms,
@@ -11113,7 +11114,7 @@ mod tests {
                 payment_target: "lno1validtesttarget".to_string(),
                 payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
                 pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-                spark_address: String::new(),
+                provider_target: String::new(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms,
                 last_verified_at_unix_ms: now_unix_ms,
@@ -11318,15 +11319,15 @@ mod tests {
     }
 
     #[test]
-    fn spark_only_targets_are_not_ldk_compatible() {
-        let spark_only = super::RegisteredPayoutTarget {
+    fn retired_provider_targets_are_not_ldk_compatible() {
+        let retired_provider = super::RegisteredPayoutTarget {
             nostr_pubkey_hex: "pubkey-a".to_string(),
             source_session_id: "session-a".to_string(),
-            payment_target_kind: "spark_address".to_string(),
-            payment_target: "spark:alice".to_string(),
+            payment_target_kind: "provider_target".to_string(),
+            payment_target: "provider:alice".to_string(),
             payment_target_capabilities: Vec::new(),
             pylon_payment_target_version: None,
-            spark_address: "spark:alice".to_string(),
+            provider_target: "provider:alice".to_string(),
             bitcoin_address: None,
             registered_at_unix_ms: 1,
             last_verified_at_unix_ms: 1,
@@ -11338,13 +11339,13 @@ mod tests {
             payment_target: "lno1pylonbob".to_string(),
             payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
             pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-            spark_address: String::new(),
+            provider_target: String::new(),
             bitcoin_address: None,
             registered_at_unix_ms: 1,
             last_verified_at_unix_ms: 1,
         };
 
-        assert!(!spark_only.is_ldk_compatible());
+        assert!(!retired_provider.is_ldk_compatible());
         assert!(ldk_target.is_ldk_compatible());
     }
 
@@ -11396,7 +11397,7 @@ mod tests {
                     "ldk_payment_target_v0_2".to_string(),
                 ],
                 pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-                spark_address: String::new(),
+                provider_target: String::new(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 500,
                 last_verified_at_unix_ms: 500,
@@ -11642,7 +11643,7 @@ mod tests {
                 payment_target: "lnbcrt1test-target".to_string(),
                 payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
                 pylon_payment_target_version: Some("pylon-v0.2.0".to_string()),
-                spark_address: String::new(),
+                provider_target: String::new(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 1_000,
                 last_verified_at_unix_ms: 1_000,
@@ -11914,7 +11915,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -11952,7 +11953,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -12006,7 +12007,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "queued".to_string(),
                 reason: None,
@@ -12128,7 +12129,7 @@ mod tests {
                 TreasuryPayoutRecord {
                     payout_key,
                     nostr_pubkey_hex: format!("pubkey-{index:04}"),
-                    payout_target: format!("spark:{index:04}"),
+                    payout_target: format!("provider:{index:04}"),
                     amount_sats: 1,
                     status: "confirmed".to_string(),
                     reason: None,
@@ -12152,7 +12153,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "homework.accepted:pubkey-homework".to_string(),
                 nostr_pubkey_hex: "pubkey-homework".to_string(),
-                payout_target: "spark:homework".to_string(),
+                payout_target: "provider:homework".to_string(),
                 amount_sats: 25,
                 status: "confirmed".to_string(),
                 reason: None,
@@ -12210,7 +12211,7 @@ mod tests {
                 TreasuryPayoutRecord {
                     payout_key,
                     nostr_pubkey_hex: format!("pubkey-{index:08}"),
-                    payout_target: format!("spark:{index:08}"),
+                    payout_target: format!("provider:{index:08}"),
                     amount_sats: 1,
                     status: "confirmed".to_string(),
                     reason: None,
@@ -12264,7 +12265,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "confirmed".to_string(),
                 reason: None,
@@ -12348,7 +12349,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -12360,7 +12361,7 @@ mod tests {
         let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
             now_unix_ms,
             payout_interval_ms,
-            "payout_target:spark:alice",
+            "payout_target:provider:alice",
         );
         config.min_new_accrual_started_at_unix_ms = Some(current_window_started_at_unix_ms);
         state.last_payout_reconciliation_at_unix_ms =
@@ -12382,9 +12383,9 @@ mod tests {
                 payout_window_started_at_for_identity(
                     current_window_started_at_unix_ms.saturating_sub(payout_interval_ms),
                     payout_interval_ms,
-                    "payout_target:spark:alice",
+                    "payout_target:provider:alice",
                 ),
-                availability_beneficiary_scope_key("payout_target:spark:alice").as_str()
+                availability_beneficiary_scope_key("payout_target:provider:alice").as_str()
             )
         );
 
@@ -12393,7 +12394,7 @@ mod tests {
             .get(
                 payout_window_key(
                     current_window_started_at_unix_ms,
-                    availability_beneficiary_scope_key("payout_target:spark:alice").as_str(),
+                    availability_beneficiary_scope_key("payout_target:provider:alice").as_str(),
                 )
                 .as_str(),
             )
@@ -12419,7 +12420,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -12430,7 +12431,7 @@ mod tests {
         config.min_new_accrual_started_at_unix_ms = Some(payout_window_started_at_for_identity(
             now_unix_ms,
             config.payout_interval_ms(),
-            "payout_target:spark:alice",
+            "payout_target:provider:alice",
         ));
         state.observe_payout_eligibility(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
 
@@ -12498,7 +12499,7 @@ mod tests {
                         "bolt12_offer".to_string(),
                     ],
                     pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-                    spark_address: String::new(),
+                    provider_target: String::new(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -12629,7 +12630,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -12684,7 +12685,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -12734,7 +12735,7 @@ mod tests {
         let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms.saturating_add(1));
         assert_eq!(prepared.dispatch_plans.len(), 1);
         assert_eq!(prepared.dispatch_plans[0].amount_sats, 25);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:alice");
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "provider:alice");
         let accepted_work = state
             .payout_records_by_key
             .get("accepted-work:cs336-a1:pubkey-a")
@@ -12760,7 +12761,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -12773,7 +12774,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:already-confirmed".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 10,
                 status: "confirmed".to_string(),
                 reason: None,
@@ -12800,7 +12801,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "placeholder:already-dispatched".to_string(),
                 nostr_pubkey_hex: "pubkey-placeholder".to_string(),
-                payout_target: "spark:placeholder".to_string(),
+                payout_target: "provider:placeholder".to_string(),
                 amount_sats: 48,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -12844,7 +12845,7 @@ mod tests {
             "accepted-work:new-one-sat"
         );
         assert_eq!(prepared.dispatch_plans[0].amount_sats, 1);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:alice");
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "provider:alice");
         assert_eq!(
             state
                 .payout_records_by_key
@@ -12874,7 +12875,7 @@ mod tests {
                         "ldk_payment_target_v0_2".to_string(),
                     ],
                     pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-                    spark_address: String::new(),
+                    provider_target: String::new(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -12926,7 +12927,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_spark_payout_targets_require_pylon_v0_2_registration() {
+    fn legacy_provider_payout_targets_require_pylon_v0_2_registration() {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
         state.payout_targets_by_identity.insert(
@@ -12938,7 +12939,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -12990,7 +12991,7 @@ mod tests {
                         "ldk_payment_target_v0_2".to_string(),
                     ],
                     pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-                    spark_address: String::new(),
+                    provider_target: String::new(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -13054,7 +13055,7 @@ mod tests {
                         "ldk_payment_target_v0_2".to_string(),
                     ],
                     pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
-                    spark_address: String::new(),
+                    provider_target: String::new(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -13101,7 +13102,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -13143,8 +13144,8 @@ mod tests {
     #[test]
     fn payout_windows_are_staggered_per_beneficiary() {
         let interval_ms = test_treasury_config().payout_interval_ms();
-        let beneficiary_a = "payout_target:spark:alice";
-        let beneficiary_b = "payout_target:spark:bob";
+        let beneficiary_a = "payout_target:provider:alice";
+        let beneficiary_b = "payout_target:provider:bob";
         let phase_a = payout_phase_offset_ms(beneficiary_a, interval_ms);
         let phase_b = payout_phase_offset_ms(beneficiary_b, interval_ms);
 
@@ -13165,8 +13166,8 @@ mod tests {
     fn payout_preparation_uses_beneficiary_phased_windows() {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
-        for (nostr_pubkey_hex, spark_address) in
-            [("pubkey-a", "spark:alice"), ("pubkey-b", "spark:bob")]
+        for (nostr_pubkey_hex, provider_target) in
+            [("pubkey-a", "provider:alice"), ("pubkey-b", "provider:bob")]
         {
             state.payout_targets_by_identity.insert(
                 nostr_pubkey_hex.to_string(),
@@ -13177,7 +13178,7 @@ mod tests {
                     payment_target: String::new(),
                     payment_target_capabilities: Vec::new(),
                     pylon_payment_target_version: None,
-                    spark_address: spark_address.to_string(),
+                    provider_target: provider_target.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -13202,25 +13203,25 @@ mod tests {
         let expected_window_a = payout_window_started_at_for_identity(
             now_unix_ms,
             config.payout_interval_ms(),
-            "payout_target:spark:alice",
+            "payout_target:provider:alice",
         );
         let expected_window_b = payout_window_started_at_for_identity(
             now_unix_ms,
             config.payout_interval_ms(),
-            "payout_target:spark:bob",
+            "payout_target:provider:bob",
         );
         assert!(prepared.dispatch_plans.iter().any(|plan| {
             plan.payout_key
                 == payout_window_key(
                     expected_window_a,
-                    availability_beneficiary_scope_key("payout_target:spark:alice").as_str(),
+                    availability_beneficiary_scope_key("payout_target:provider:alice").as_str(),
                 )
         }));
         assert!(prepared.dispatch_plans.iter().any(|plan| {
             plan.payout_key
                 == payout_window_key(
                     expected_window_b,
-                    availability_beneficiary_scope_key("payout_target:spark:bob").as_str(),
+                    availability_beneficiary_scope_key("payout_target:provider:bob").as_str(),
                 )
         }));
     }
@@ -13238,7 +13239,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -13270,7 +13271,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -13306,7 +13307,7 @@ mod tests {
                     payment_target: String::new(),
                     payment_target_capabilities: Vec::new(),
                     pylon_payment_target_version: None,
-                    spark_address: format!("spark:{target_index:03}"),
+                    provider_target: format!("provider:{target_index:03}"),
                     bitcoin_address: None,
                     registered_at_unix_ms: 1_000u64.saturating_sub(target_index),
                     last_verified_at_unix_ms: 10_000u64.saturating_sub(target_index),
@@ -13320,7 +13321,7 @@ mod tests {
                     TreasuryPayoutRecord {
                         payout_key,
                         nostr_pubkey_hex: pubkey.clone(),
-                        payout_target: format!("spark:{target_index:03}"),
+                        payout_target: format!("provider:{target_index:03}"),
                         amount_sats: 10 + record_index,
                         status: if record_index % 2 == 0 {
                             "confirmed".to_string()
@@ -13375,7 +13376,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "unregistered-record".to_string(),
                 nostr_pubkey_hex: "pubkey-unregistered".to_string(),
-                payout_target: "spark:unregistered".to_string(),
+                payout_target: "provider:unregistered".to_string(),
                 amount_sats: 999,
                 status: "confirmed".to_string(),
                 reason: None,
@@ -13423,7 +13424,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 120,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -13460,7 +13461,7 @@ mod tests {
                         amount_sats: 500,
                         fees_sats: 0,
                         timestamp: now_unix_ms.saturating_div(1_000).saturating_sub(1),
-                        method: "spark".to_string(),
+                        method: "provider".to_string(),
                         description: Some("fund".to_string()),
                         invoice: None,
                         destination_pubkey: None,
@@ -13476,9 +13477,9 @@ mod tests {
                         amount_sats: 120,
                         fees_sats: 1,
                         timestamp: now_unix_ms.saturating_div(1_000),
-                        method: "spark".to_string(),
+                        method: "provider".to_string(),
                         description: None,
-                        invoice: Some("spark:alice".to_string()),
+                        invoice: Some("provider:alice".to_string()),
                         destination_pubkey: None,
                         payment_hash: None,
                         htlc_status: None,
@@ -13512,7 +13513,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 50,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_timeout:60000".to_string()),
@@ -13557,7 +13558,7 @@ mod tests {
                     amount_sats: 50,
                     fees_sats: 0,
                     timestamp: payment_timestamp,
-                    method: "spark".to_string(),
+                    method: "provider".to_string(),
                     description: None,
                     invoice: None,
                     destination_pubkey: None,
@@ -13608,7 +13609,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 50,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_timeout:60000".to_string()),
@@ -13654,7 +13655,7 @@ mod tests {
                     amount_sats: 50,
                     fees_sats: 0,
                     timestamp: payment_timestamp,
-                    method: "spark".to_string(),
+                    method: "provider".to_string(),
                     description: None,
                     invoice: None,
                     destination_pubkey: None,
@@ -13691,7 +13692,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key,
                 nostr_pubkey_hex: "pubkey-b".to_string(),
-                payout_target: "spark:bob".to_string(),
+                payout_target: "provider:bob".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -13736,7 +13737,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:replay".to_string(),
+                provider_target: "provider:replay".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
                 last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -13775,7 +13776,10 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms.saturating_add(1));
         assert_eq!(prepared.dispatch_plans.len(), 1);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:replay");
+        assert_eq!(
+            prepared.dispatch_plans[0].payment_request,
+            "provider:replay"
+        );
         assert_eq!(prepared.dispatch_plans[0].amount_sats, 120);
         assert_eq!(
             state
@@ -13867,7 +13871,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:homework".to_string(),
+                provider_target: "provider:homework".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
                 last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -13906,7 +13910,10 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms.saturating_add(1));
         assert_eq!(prepared.dispatch_plans.len(), 1);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:homework");
+        assert_eq!(
+            prepared.dispatch_plans[0].payment_request,
+            "provider:homework"
+        );
         assert_eq!(prepared.dispatch_plans[0].amount_sats, 55);
         assert_eq!(
             state
@@ -13933,7 +13940,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "placeholder:already-paid".to_string(),
                 nostr_pubkey_hex: "pubkey-placeholder".to_string(),
-                payout_target: "spark:placeholder".to_string(),
+                payout_target: "provider:placeholder".to_string(),
                 amount_sats: 25,
                 status: "confirmed".to_string(),
                 reason: None,
@@ -13964,7 +13971,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:homework".to_string(),
+                provider_target: "provider:homework".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
                 last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -14007,7 +14014,10 @@ mod tests {
             prepared.dispatch_plans[0].payout_key,
             "accepted_work:closeout-003:contrib-003:pubkey-homework"
         );
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:homework");
+        assert_eq!(
+            prepared.dispatch_plans[0].payment_request,
+            "provider:homework"
+        );
         assert_eq!(prepared.dispatch_plans[0].amount_sats, 55);
     }
 
@@ -14021,7 +14031,7 @@ mod tests {
                 payment_id: "payment-receive-001".to_string(),
                 status: "completed".to_string(),
                 amount_sats: 100_000,
-                method: "spark".to_string(),
+                method: "provider".to_string(),
                 description: Some("fund treasury".to_string()),
                 recorded_at_unix_ms: 100,
                 updated_at_unix_ms: 100,
@@ -14189,7 +14199,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key,
                 nostr_pubkey_hex: "pubkey-balance-blocked".to_string(),
-                payout_target: "spark:balance-blocked".to_string(),
+                payout_target: "provider:balance-blocked".to_string(),
                 amount_sats: 25,
                 status: "queued".to_string(),
                 reason: Some("wallet_balance_insufficient".to_string()),
@@ -14252,7 +14262,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-balance-blocked".to_string(),
-                payout_target: "spark:balance-blocked".to_string(),
+                payout_target: "provider:balance-blocked".to_string(),
                 amount_sats: 25,
                 status: "queued".to_string(),
                 reason: Some("wallet_balance_insufficient".to_string()),
@@ -14308,7 +14318,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:leaf-selection".to_string(),
                 nostr_pubkey_hex: "pubkey-leaf-selection".to_string(),
-                payout_target: "spark:leaf-selection".to_string(),
+                payout_target: "provider:leaf-selection".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some(
@@ -14357,7 +14367,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-queued".to_string(),
-                payout_target: "spark:queued".to_string(),
+                payout_target: "provider:queued".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some(
@@ -14415,7 +14425,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-dispatch-fail".to_string(),
-                payout_target: "spark:dispatch-fail".to_string(),
+                payout_target: "provider:dispatch-fail".to_string(),
                 amount_sats: 25,
                 status: "dispatching".to_string(),
                 reason: None,
@@ -14502,7 +14512,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "window-a:pubkey-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatching".to_string(),
                 reason: None,
@@ -14690,9 +14700,9 @@ mod tests {
             .saturating_sub(1);
 
         for (pubkey, target) in [
-            ("pubkey-one", "spark:one"),
-            ("pubkey-old", "spark:old"),
-            ("pubkey-placeholder", "spark:placeholder"),
+            ("pubkey-one", "provider:one"),
+            ("pubkey-old", "provider:old"),
+            ("pubkey-placeholder", "provider:placeholder"),
         ] {
             state.payout_targets_by_identity.insert(
                 pubkey.to_string(),
@@ -14703,7 +14713,7 @@ mod tests {
                     payment_target: String::new(),
                     payment_target_capabilities: Vec::new(),
                     pylon_payment_target_version: None,
-                    spark_address: target.to_string(),
+                    provider_target: target.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -14716,7 +14726,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:one".to_string(),
                 nostr_pubkey_hex: "pubkey-one".to_string(),
-                payout_target: "spark:one".to_string(),
+                payout_target: "provider:one".to_string(),
                 amount_sats: 1,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_timeout:60000".to_string()),
@@ -14743,7 +14753,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:old".to_string(),
                 nostr_pubkey_hex: "pubkey-old".to_string(),
-                payout_target: "spark:old".to_string(),
+                payout_target: "provider:old".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some("insufficient_funds".to_string()),
@@ -14770,7 +14780,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:balance-recovered".to_string(),
                 nostr_pubkey_hex: "pubkey-one".to_string(),
-                payout_target: "spark:one".to_string(),
+                payout_target: "provider:one".to_string(),
                 amount_sats: 1,
                 status: "failed".to_string(),
                 reason: Some("wallet_balance_insufficient".to_string()),
@@ -14797,7 +14807,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "placeholder:old".to_string(),
                 nostr_pubkey_hex: "pubkey-placeholder".to_string(),
-                payout_target: "spark:placeholder".to_string(),
+                payout_target: "provider:placeholder".to_string(),
                 amount_sats: 1,
                 status: "queued".to_string(),
                 reason: None,
@@ -14841,7 +14851,7 @@ mod tests {
             prepared
                 .dispatch_plans
                 .iter()
-                .all(|plan| plan.amount_sats == 1 && plan.payment_request == "spark:one")
+                .all(|plan| plan.amount_sats == 1 && plan.payment_request == "provider:one")
         );
         assert_eq!(
             state
@@ -14881,7 +14891,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:retryable".to_string(),
                 nostr_pubkey_hex: "pubkey-retryable".to_string(),
-                payout_target: "spark:retryable".to_string(),
+                payout_target: "provider:retryable".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_timeout:60000".to_string()),
@@ -14920,7 +14930,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "availability:retryable".to_string(),
                 nostr_pubkey_hex: "pubkey-retryable".to_string(),
-                payout_target: "spark:retryable".to_string(),
+                payout_target: "provider:retryable".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some(
@@ -14979,7 +14989,7 @@ mod tests {
                     payment_target: String::new(),
                     payment_target_capabilities: Vec::new(),
                     pylon_payment_target_version: None,
-                    spark_address: format!("spark:target-{index}"),
+                    provider_target: format!("provider:target-{index}"),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -14990,7 +15000,7 @@ mod tests {
                 TreasuryPayoutRecord {
                     payout_key: format!("availability:retryable:{index}"),
                     nostr_pubkey_hex: pubkey,
-                    payout_target: format!("spark:target-{index}"),
+                    payout_target: format!("provider:target-{index}"),
                     amount_sats: 25,
                     status: "failed".to_string(),
                     reason: Some("wallet_send_timeout:60000".to_string()),
@@ -15039,7 +15049,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "skip-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 120,
                 status: "skipped".to_string(),
                 reason: Some("daily_budget_cap_reached".to_string()),
@@ -15085,7 +15095,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "fail-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 120,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_failed".to_string()),
@@ -15135,7 +15145,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "pending-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatching".to_string(),
                 reason: None,
@@ -15197,7 +15207,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "pending-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatching".to_string(),
                 reason: None,
@@ -15253,7 +15263,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "dispatch-backlog".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatching".to_string(),
                 reason: None,
@@ -15278,7 +15288,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "confirmation-backlog".to_string(),
                 nostr_pubkey_hex: "pubkey-b".to_string(),
-                payout_target: "spark:bob".to_string(),
+                payout_target: "provider:bob".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15336,7 +15346,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "legacy-placeholder-dispatched".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15374,7 +15384,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "normal-slow-dispatched".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15408,7 +15418,7 @@ mod tests {
                 .active_continuity_alerts
                 .iter()
                 .all(|alert| alert.alert_id != "confirmations_stalled"),
-            "freshly dispatched payments should not degrade Nexus while Spark confirmations are still within the normal window"
+            "freshly dispatched payments should not degrade Nexus while wallet confirmations are still within the normal window"
         );
     }
 
@@ -15424,7 +15434,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "accepted-work-dispatched".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15476,7 +15486,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "1770000:legacy-identity-pubkey".to_string(),
                 nostr_pubkey_hex: "legacy-identity-pubkey".to_string(),
-                payout_target: "spark:legacy".to_string(),
+                payout_target: "provider:legacy".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15503,7 +15513,7 @@ mod tests {
                 payout_key: "1770001:availability-beneficiary:host:sha256:newer-stipend"
                     .to_string(),
                 nostr_pubkey_hex: "newer-presence-pubkey".to_string(),
-                payout_target: "spark:newer-presence".to_string(),
+                payout_target: "provider:newer-presence".to_string(),
                 amount_sats: 25,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15548,7 +15558,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "1770000:availability-beneficiary:host:sha256:stale".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15605,7 +15615,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "accepted-work-stale".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15648,7 +15658,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -15659,7 +15669,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: "stale-budget-skip".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "skipped".to_string(),
                 reason: Some("daily_budget_cap_reached".to_string()),
@@ -15734,7 +15744,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:one".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "queued".to_string(),
                 reason: None,
@@ -15802,7 +15812,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
                 last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -15813,7 +15823,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "1770000:availability-beneficiary:host:sha256:stalled".to_string(),
                 nostr_pubkey_hex: "pubkey-stalled".to_string(),
-                payout_target: "spark:stalled".to_string(),
+                payout_target: "provider:stalled".to_string(),
                 amount_sats: 25,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15863,7 +15873,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "1770000:pubkey-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15918,8 +15928,8 @@ mod tests {
         let config = test_treasury_config();
         let now_unix_ms = 1_800_000u64;
         let payout_interval_ms = config.payout_interval_ms();
-        for (nostr_pubkey_hex, spark_address) in
-            [("pubkey-a", "spark:alice"), ("pubkey-b", "spark:bob")]
+        for (nostr_pubkey_hex, provider_target) in
+            [("pubkey-a", "provider:alice"), ("pubkey-b", "provider:bob")]
         {
             state.payout_targets_by_identity.insert(
                 nostr_pubkey_hex.to_string(),
@@ -15930,7 +15940,7 @@ mod tests {
                     payment_target: String::new(),
                     payment_target_capabilities: Vec::new(),
                     pylon_payment_target_version: None,
-                    spark_address: spark_address.to_string(),
+                    provider_target: provider_target.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -15956,7 +15966,7 @@ mod tests {
                     availability_beneficiary_scope_key(beneficiary_key_a).as_str(),
                 ),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -15993,7 +16003,7 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
         assert_eq!(prepared.dispatch_plans.len(), 1);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:bob");
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "provider:bob");
 
         let status = state.status_response(&config, now_unix_ms);
         let row_a = status
@@ -16032,7 +16042,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -16057,7 +16067,7 @@ mod tests {
                     availability_beneficiary_scope_key(beneficiary_key_a).as_str(),
                 ),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "confirmed".to_string(),
                 reason: None,
@@ -16090,7 +16100,7 @@ mod tests {
         );
 
         assert_eq!(prepared.dispatch_plans.len(), 1);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:alice");
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "provider:alice");
     }
 
     #[test]
@@ -16330,7 +16340,7 @@ mod tests {
                 payment_target: String::new(),
                 payment_target_capabilities: Vec::new(),
                 pylon_payment_target_version: None,
-                spark_address: "spark:alice".to_string(),
+                provider_target: "provider:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
                 last_verified_at_unix_ms: 10,
@@ -16350,7 +16360,7 @@ mod tests {
             super::TreasuryPayoutRecord {
                 payout_key: stale_payout_key.clone(),
                 nostr_pubkey_hex: "pubkey-stale".to_string(),
-                payout_target: "spark:stale".to_string(),
+                payout_target: "provider:stale".to_string(),
                 amount_sats: config.payout_sats_per_window,
                 status: "dispatching".to_string(),
                 reason: None,
@@ -16418,9 +16428,9 @@ mod tests {
             Box::pin(async move {
                 assert_eq!(request.amount_sats, Some(210));
                 Ok(TreasuryFundingMaterial {
-                    spark_address: "ldk://server/regtest/bitcoind/test".to_string(),
+                    provider_target: "ldk://server/regtest/bitcoind/test".to_string(),
                     bitcoin_address: String::new(),
-                    spark_invoice: None,
+                    provider_invoice: None,
                     bolt11_invoice: Some("lnbc210fund".to_string()),
                     provider_payment_id: Some("ldk-funding-target-test".to_string()),
                     phase_timings: TreasuryFundingTargetPhaseTimings::default(),
@@ -16448,7 +16458,10 @@ mod tests {
         )
         .await
         .expect("funding target should build");
-        assert_eq!(funding.spark_address, "ldk://server/regtest/bitcoind/test");
+        assert_eq!(
+            funding.provider_target,
+            "ldk://server/regtest/bitcoind/test"
+        );
         assert_eq!(funding.bolt11_invoice.as_deref(), Some("lnbc210fund"));
         set_test_wallet_funding_hook(None);
 
@@ -16527,8 +16540,8 @@ mod tests {
         .await
         .expect("simulated funding target");
         assert_eq!(
-            funding.spark_address,
-            "spark:simulated-treasury-proof-wallet"
+            funding.provider_target,
+            "provider:simulated-treasury-proof-wallet"
         );
         assert_eq!(
             funding.bolt11_invoice.as_deref(),
@@ -16541,7 +16554,7 @@ mod tests {
             &config,
             &[super::TreasuryDispatchPlan {
                 payout_key: "window-a:pubkey-a".to_string(),
-                payment_request: "spark:alice".to_string(),
+                payment_request: "provider:alice".to_string(),
                 amount_sats: 120,
                 classification: TreasuryPayoutClassification::default(),
             }],
@@ -16569,7 +16582,7 @@ mod tests {
         let outcome = super::dispatch_outcome_from_send_future(
             super::TreasuryDispatchPlan {
                 payout_key: "window-a:pubkey-a".to_string(),
-                payment_request: "spark:alice".to_string(),
+                payment_request: "provider:alice".to_string(),
                 amount_sats: 120,
                 classification: TreasuryPayoutClassification::default(),
             },
@@ -16622,9 +16635,9 @@ mod tests {
     fn wallet_send_failure_classification_marks_retryable_transport_failures() {
         assert_eq!(
             super::classify_wallet_send_failure(
-                "SparkSdkError: Service error: service connection error: Connection error: status: Cancelled, message: \"operation was canceled\""
+                "ProviderSdkError: Service error: service connection error: Connection error: status: Cancelled, message: \"operation was canceled\""
             ),
-            "wallet_send_retryable:cancelled_transport:SparkSdkError: Service error: service connection error: Connection error: status: Cancelled, message: \"operation was canceled\""
+            "wallet_send_retryable:cancelled_transport:ProviderSdkError: Service error: service connection error: Connection error: status: Cancelled, message: \"operation was canceled\""
         );
         assert_eq!(
             super::classify_wallet_send_failure("TreeServiceError(InsufficientFunds)"),
@@ -16644,7 +16657,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "retryable".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_retryable:transport:boom".to_string()),
@@ -16667,7 +16680,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "non-retryable".to_string(),
                 nostr_pubkey_hex: "pubkey-b".to_string(),
-                payout_target: "spark:bob".to_string(),
+                payout_target: "provider:bob".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_failed:unknown:nope".to_string()),
@@ -16699,7 +16712,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "window-a:pubkey-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -16722,7 +16735,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "window-b:pubkey-b".to_string(),
                 nostr_pubkey_hex: "pubkey-b".to_string(),
-                payout_target: "spark:bob".to_string(),
+                payout_target: "provider:bob".to_string(),
                 amount_sats: 2,
                 status: "confirmed".to_string(),
                 reason: None,
@@ -16745,7 +16758,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "window-c:pubkey-c".to_string(),
                 nostr_pubkey_hex: "pubkey-c".to_string(),
-                payout_target: "spark:carol".to_string(),
+                payout_target: "provider:carol".to_string(),
                 amount_sats: 2,
                 status: "dispatching".to_string(),
                 reason: None,
@@ -16853,7 +16866,7 @@ mod tests {
                 payment_id: "receive-001".to_string(),
                 status: "completed".to_string(),
                 amount_sats: TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS + 1_500,
-                method: "spark".to_string(),
+                method: "provider".to_string(),
                 description: Some("fund treasury".to_string()),
                 recorded_at_unix_ms: 10,
                 updated_at_unix_ms: 10,
@@ -16897,7 +16910,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "window-a:pubkey-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,
@@ -16955,7 +16968,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "window-a:pubkey-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "spark:alice".to_string(),
+                payout_target: "provider:alice".to_string(),
                 amount_sats: 2,
                 status: "dispatched".to_string(),
                 reason: None,

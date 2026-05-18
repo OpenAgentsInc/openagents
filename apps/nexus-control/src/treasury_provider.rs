@@ -1880,8 +1880,8 @@ mod tests {
             TreasuryLightningProviderKind::Ldk
         );
         assert!(
-            TreasuryLightningProviderKind::parse(Some("spark"))
-                .expect_err("plain spark forbidden")
+            TreasuryLightningProviderKind::parse(Some("legacy-provider"))
+                .expect_err("plain legacy provider forbidden")
                 .contains("supported: ldk")
         );
     }

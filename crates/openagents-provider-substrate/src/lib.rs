@@ -106,7 +106,7 @@ impl ProviderBlocker {
     pub const fn detail(self) -> &'static str {
         match self {
             Self::IdentityMissing => "Nostr identity is not ready",
-            Self::WalletError => "Spark wallet reports an error",
+            Self::WalletError => "Lightning wallet reports an error",
             Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
             Self::CreditLaneUnavailable => "AC credit lane is not available",
             Self::GptOssUnavailable => "Local Gemma runtime is unavailable",

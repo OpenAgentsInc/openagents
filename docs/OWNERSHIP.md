@@ -45,7 +45,7 @@ Owns:
 
 - App wiring and product behavior.
 - Pane orchestration, app-level event routing, and UX flows.
-- Composition of reusable crates (`wgpui`, `nostr`, `spark`, `openagents-provider-substrate`).
+- Composition of reusable crates (`wgpui`, `nostr`, `openagents-provider-substrate`).
 - App-owned execution snapshots, payout UX, inventory presentation, and provider orchestration.
 - App-owned coding-shell behavior: chat/thread/workspace/project state,
   operator controls, remote supervision, and product-specific tool projection
@@ -115,18 +115,27 @@ Owns:
 Must not own:
 
 - App UI logic.
-- Spark wallet logic.
+- Wallet/payout logic.
 
-## `crates/spark`
+## Retired payment-provider wallet code
 
 Owns:
 
-- Reusable Spark wallet primitives and API wrappers.
+- Nothing in the active Nexus/Pylon production path.
 
 Must not own:
 
+- New payment, funding, payout, registration, recovery, release, or operator
+  behavior.
+- Any normal Nexus/Pylon deploy dependency or build artifact.
 - App UI logic.
 - Nostr pane/product orchestration logic.
+
+Notes:
+
+- Nexus and Pylon payment work is LDK-only. Historical retired-provider
+  references are audit material or old desktop code awaiting deletion outside
+  the production Nexus/Pylon build graph.
 
 ## `crates/openagents-provider-substrate`
 

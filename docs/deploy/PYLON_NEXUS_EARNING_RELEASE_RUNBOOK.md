@@ -314,6 +314,11 @@ The staged context must stay LDK-only. If
 `scripts/deploy/nexus/test-ldk-deploy-invariants.sh` fails, remove the caller
 or artifact instead of adding another runtime flag.
 
+The active Nexus/Pylon source also must remain provider-neutral. Use
+`provider_target` and `provider_invoice` for generic funding/registration
+projection fields, and do not add rail-specific receive-material fields to the
+active API.
+
 Do not run a fresh resolver pass against the full repo-root workspace as the
 first repair. The deploy lock must reflect the staged Nexus image, not every
 repo-root workspace member. If the deploy-lock diff rewrites large dependency

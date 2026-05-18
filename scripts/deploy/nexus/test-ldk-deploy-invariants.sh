@@ -19,7 +19,7 @@ FORBIDDEN_DRAIN_PATTERN='S[p]arkFinal[D]rain|s[p]ark_final_[d]rain|NEXUS_S[P]ARK
 FORBIDDEN_PROVIDER_PATTERN='NEXUS_TREASURY_PROVIDER=s[p]ark|provider=s[p]ark'
 
 if rg -n "$FORBIDDEN_PACKAGE_PATTERN" "$TMP_CONTEXT_DIR" -S; then
-  die "Spark package dependency found in staged Nexus build context"
+  die "retired payment package dependency found in staged Nexus build context"
 fi
 
 ACTIVE_PATHS=(
@@ -35,14 +35,14 @@ if rg -n "$FORBIDDEN_DRAIN_PATTERN" \
   "${ACTIVE_PATHS[@]/#/${ROOT_DIR}/}" \
   --glob '!**/test-ldk-deploy-invariants.sh' \
   -S; then
-  die "Spark drain/runtime provider symbol found in active Nexus/Pylon paths"
+  die "retired payment drain/runtime provider symbol found in active Nexus/Pylon paths"
 fi
 
 if rg -n "$FORBIDDEN_PROVIDER_PATTERN" \
   "${ACTIVE_PATHS[@]/#/${ROOT_DIR}/}" \
   --glob '!**/test-ldk-deploy-invariants.sh' \
   -S; then
-  die "Spark provider selector found in active Nexus/Pylon paths"
+  die "retired payment provider selector found in active Nexus/Pylon paths"
 fi
 
-printf 'Nexus/Pylon active paths are LDK-only; no Spark runtime/deploy dependency found.\n'
+printf 'Nexus/Pylon active paths are LDK-only; no retired payment runtime/deploy dependency found.\n'
