@@ -334,11 +334,13 @@ identity count and the cutover health counters:
 
 The payout-target gate applies to paid worker admission, not to validator
 challenge claims. Validator-capable Pylons must be able to clear sealed work
-windows even if they are not eligible to accept new paid worker jobs. Pylon
-intake therefore prioritizes validator claims before worker claims, and Nexus
-evaluates hard gates against the requested role. A
+windows even if they are not eligible to accept new paid worker jobs. The
+normal Pylon intake order is paid worker first, then validator backlog. This
+prevents registered LDK workers from being starved behind stale retained
+validator artifacts while still allowing validator-only hosts to claim
+validation work. Nexus evaluates hard gates against the requested role, and a
 `training_scheduler_payout_target_requires_ldk_v0_2` response is nonfatal for
-the intake pass so a host can continue on to validator work.
+the intake pass so a host can continue on to other eligible work.
 
 ## LDK Accepted-Work Payout Dispatch
 

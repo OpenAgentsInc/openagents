@@ -150,15 +150,17 @@ eligibility should show
 
 Validator claims are different from paid worker claims. A Pylon that can
 validate a sealed window may claim validator challenges even when it does not
-have a worker payout target. Pylon intake must try validator claims before
-worker claims, and a worker payout-target gate must be treated as nonfatal
-during the intake pass. The production failure mode this prevents is:
+have a worker payout target. Pylon intake now tries paid worker claims before
+validator backlog so a registered LDK worker is not starved behind old
+retained validator artifacts. Validator materialization failures from stale
+retained bundles, including missing `checkpoint_surface`, must be terminalized
+or treated as nonfatal and must not abort fresh worker intake.
 
 - a worker Pylon with an LDK target seals a starter window;
-- validator-capable Pylons without worker payout targets ask for worker leases
-  first;
-- the worker payout-target gate aborts the whole intake pass;
-- the sealed window remains stuck at `await_validator_claim`.
+- stale validator backlog has unrecoverable retained artifacts;
+- the validator materialization error aborts the whole intake pass;
+- fresh LDK paid worker leases are never claimed;
+- accepted-work payout proof never reaches the LDK dispatch rail.
 
 Nexus lease admission must evaluate hard gates for the requested role, not the
 worker role unconditionally. Otherwise validator-only or validator-first hosts
