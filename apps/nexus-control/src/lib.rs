@@ -13961,11 +13961,10 @@ async fn execute_training_run_lease_claim(
             "training_scheduler_payout_target_requires_ldk_v0_2".to_string(),
         ));
     }
-    if !training_authority_view_claimability_ready(&node, TrainingNodeRoleClaim::Worker) {
-        let reason =
-            training_authority_view_claimability_reason(&node, TrainingNodeRoleClaim::Worker)
-                .unwrap_or("training_node_hard_gated")
-                .to_string();
+    if !training_authority_view_claimability_ready(&node, request.role) {
+        let reason = training_authority_view_claimability_reason(&node, request.role)
+            .unwrap_or("training_node_hard_gated")
+            .to_string();
         tracing::warn!(
             node_pubkey_hex = request.node_pubkey_hex.as_str(),
             requested_training_run_id = ?request.requested_training_run_id,
@@ -48667,9 +48666,8 @@ mod tests {
             .await?;
         let claim_status = claim_response.status();
         let claim_bytes = to_bytes(claim_response.into_body(), usize::MAX).await?;
-        assert_eq!(
-            claim_status,
-            StatusCode::BAD_REQUEST,
+        assert!(
+            claim_status.is_client_error(),
             "{}",
             String::from_utf8_lossy(claim_bytes.as_ref())
         );
@@ -48687,6 +48685,64 @@ mod tests {
                 .into_iter()
                 .all(|run| !run.training_run_id.starts_with("run.cs336.a1.starter."))
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn validator_lease_claim_does_not_require_worker_payout_target() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let public_release_id = current_homework_launch_release_id_for_test();
+        let public_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-validator-no-target",
+            "sha256:build-validator-no-target",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            public_release_id.as_str(),
+            public_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Validator],
+            None,
+        );
+
+        let claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.validator.no-target",
+                            recorded_at_ms as i64 + 1_000,
+                            "node-validator-no-target",
+                            TrainingNodeRoleClaim::Validator,
+                            Some(super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let claim_status = claim_response.status();
+        let claim_bytes = to_bytes(claim_response.into_body(), usize::MAX).await?;
+        assert!(
+            claim_status.is_client_error(),
+            "{}",
+            String::from_utf8_lossy(claim_bytes.as_ref())
+        );
+        let error = serde_json::from_slice::<ErrorResponse>(&claim_bytes)?;
+        assert_ne!(
+            error.reason,
+            "training_scheduler_payout_target_requires_ldk_v0_2"
+        );
+        assert_ne!(error.reason, "role_not_admitted");
+        assert_eq!(error.reason, "training_scheduler_run_not_found");
         Ok(())
     }
 

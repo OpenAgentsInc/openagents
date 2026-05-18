@@ -148,6 +148,22 @@ eligibility should show
 `homework_launch_target_payout_target_requires_ldk_v0_2`, or
 `training_scheduler_payout_target_requires_ldk_v0_2`.
 
+Validator claims are different from paid worker claims. A Pylon that can
+validate a sealed window may claim validator challenges even when it does not
+have a worker payout target. Pylon intake must try validator claims before
+worker claims, and a worker payout-target gate must be treated as nonfatal
+during the intake pass. The production failure mode this prevents is:
+
+- a worker Pylon with an LDK target seals a starter window;
+- validator-capable Pylons without worker payout targets ask for worker leases
+  first;
+- the worker payout-target gate aborts the whole intake pass;
+- the sealed window remains stuck at `await_validator_claim`.
+
+Nexus lease admission must evaluate hard gates for the requested role, not the
+worker role unconditionally. Otherwise validator-only or validator-first hosts
+can never clear sealed windows.
+
 ## Hosted Pylon Runtime Install
 
 Hosted Pylons must have the Psionic runtime surface installed before they can
@@ -398,6 +414,9 @@ Production LDK is ready only when every gate below is green:
   observed the receive.
 - A bounded payout smoke through `treasury.payInvoice` or `treasury.payOffer`
   completed from the active production binary.
+- A fresh accepted-work closeout from a Pylon v0.2 worker moved through
+  validator claim, acceptance, LDK dispatch, and payment receipt from the
+  active production binaries. Old payout rows are not evidence for this gate.
 
 ## Rollback Conditions
 

@@ -12391,7 +12391,7 @@ fn supported_training_role_claims(
     availability: &ProviderAdapterTrainingContributorAvailability,
     capability_tier: &ProviderTrainingCapabilityTierProfile,
 ) -> Vec<PylonTrainingRoleClaim> {
-    config
+    let mut roles = config
         .training
         .role_claims
         .iter()
@@ -12404,7 +12404,14 @@ fn supported_training_role_claims(
             }
             PylonTrainingRoleClaim::RecoverySource => availability.authority_receipt_supported,
         })
-        .collect()
+        .collect::<Vec<_>>();
+    roles.sort_by_key(|role| match role {
+        PylonTrainingRoleClaim::Validator => 0,
+        PylonTrainingRoleClaim::Worker => 1,
+        PylonTrainingRoleClaim::RecoverySource => 2,
+    });
+    roles.dedup();
+    roles
 }
 
 fn training_heartbeat_error_requires_readmission(error: &str) -> bool {
@@ -12430,6 +12437,7 @@ fn training_retained_assignment_authority_error_is_stale(error: &str) -> bool {
 fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
     error.contains("training_scheduler_assignment_unavailable")
         || error.contains("training_scheduler_starter_work_unavailable")
+        || error.contains("training_scheduler_payout_target_requires_ldk_v0_2")
         || error.contains("training_scheduler_run_not_schedulable")
         || error.contains("training_scheduler_run_not_found")
         || error.contains("training_node_not_eligible")
@@ -31949,15 +31957,16 @@ mod tests {
         stabilize_training_retained_psionic_worker_contract,
         stable_training_contribution_receipt_digest, start_training_checkpoint_server,
         start_training_supervisor, strip_startup_thread_limit_args, submit_buyer_job,
-        sync_live_announcement, sync_provider_payout_target, sync_training_authority_state,
-        sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
-        training_artifact_resolved_cache_key, training_assignment_intake_interval,
-        training_download_cache_root, training_lease_claim_error_is_nonfatal,
-        training_raw_sha256_hex, training_retained_assignment_authority_error_is_stale,
-        training_run_root_for_id, training_runs_root, training_runtime_manifest_path_for_run,
-        training_runtime_state_path, training_settlement_destination,
-        training_supervisor_pid_is_running, training_validator_challenge_path_segment,
-        training_validator_challenge_root, watch_buyer_jobs, write_training_json_value,
+        supported_training_role_claims, sync_live_announcement, sync_provider_payout_target,
+        sync_training_authority_state, sync_training_terminal_runtime_once,
+        training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
+        training_assignment_intake_interval, training_download_cache_root,
+        training_lease_claim_error_is_nonfatal, training_raw_sha256_hex,
+        training_retained_assignment_authority_error_is_stale, training_run_root_for_id,
+        training_runs_root, training_runtime_manifest_path_for_run, training_runtime_state_path,
+        training_settlement_destination, training_supervisor_pid_is_running,
+        training_validator_challenge_path_segment, training_validator_challenge_root,
+        watch_buyer_jobs, write_training_json_value,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -34270,11 +34279,42 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     PylonTrainingRoleClaim::Worker,
                     PylonTrainingRoleClaim::Validator,
                 ],
-            "bare pylon should try paid worker training before clearing validator backlog",
+            "bare pylon config should admit both paid worker and validator jobs",
         )?;
         ensure(
             config.training.validator_enabled,
             "bare pylon should be online for validator work by default",
+        )
+    }
+
+    #[test]
+    fn supported_training_role_claims_prioritize_validator_backlog()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        let availability = ProviderAdapterTrainingContributorAvailability {
+            contributor_supported: true,
+            coordinator_match_supported: true,
+            authority_receipt_supported: true,
+            available_memory_gb: Some(16),
+            minimum_memory_gb: Some(16),
+            ..Default::default()
+        };
+        let capability_tier = ProviderTrainingCapabilityTierProfile {
+            tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+            backend_families: vec!["cpu".to_string()],
+            memory_floor_gb: Some(16),
+            available_memory_gb: Some(16),
+            throughput_band: ProviderTrainingThroughputBand::Low,
+            replay_capability: ProviderTrainingReplayCapability::FullWindow,
+            ..Default::default()
+        };
+        ensure(
+            supported_training_role_claims(&config, &availability, &capability_tier)
+                == vec![
+                    PylonTrainingRoleClaim::Validator,
+                    PylonTrainingRoleClaim::Worker,
+                ],
+            "training intake should clear validator challenges before requesting paid worker leases",
         )
     }
 
@@ -34292,6 +34332,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 r#"{"error":"kernel_error","reason":"training_scheduler_run_not_schedulable"}"#,
             ),
             "stale or sealed scheduler runs should not abort the whole training intake pass",
+        )?;
+        ensure(
+            training_lease_claim_error_is_nonfatal(
+                r#"{"error":"kernel_error","reason":"training_scheduler_payout_target_requires_ldk_v0_2"}"#,
+            ),
+            "missing worker payout targets should not stop validator-capable pylons from clearing validation backlog",
         )
     }
 

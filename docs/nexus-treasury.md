@@ -332,6 +332,14 @@ identity count and the cutover health counters:
 - `ldk_payout_target_identities`
 - `pylon_v0_2_registration_required_identities`
 
+The payout-target gate applies to paid worker admission, not to validator
+challenge claims. Validator-capable Pylons must be able to clear sealed work
+windows even if they are not eligible to accept new paid worker jobs. Pylon
+intake therefore prioritizes validator claims before worker claims, and Nexus
+evaluates hard gates against the requested role. A
+`training_scheduler_payout_target_requires_ldk_v0_2` response is nonfatal for
+the intake pass so a host can continue on to validator work.
+
 ## LDK Accepted-Work Payout Dispatch
 
 Accepted-work payout dispatch now uses the LDK treasury provider for upgraded
@@ -340,6 +348,11 @@ Nexus assigns new paid work. Valid target kinds are `bolt12_offer`,
 `bolt11_invoice`, `bip353_name`, and `lnurl_pay`; BOLT12 remains the preferred
 durable target and BOLT11 should be treated as a per-payment compatibility
 target.
+
+The full production proof is a fresh accepted-work closeout from a current
+Pylon binary: worker lease, window seal, validator challenge claim, acceptance,
+LDK payout dispatch, and payment receipt. Historical payout rows and direct
+operator payment smokes do not prove the accepted-work path by themselves.
 
 Old non-LDK registrations are retained only for historical audit. They are stale
 targets for accepted-work dispatch. Nexus does not spend to `spark_address`
