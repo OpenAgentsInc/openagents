@@ -370,6 +370,9 @@ Production LDK is ready only when every gate below is green:
   rollout.
 - `wallet_spendable_onchain_balance_sats` and/or Lightning spendable outbound
   capacity have moved above zero after funding confirms.
+- `ldk_readiness.registered_payout_target_count` is nonzero. A funded Nexus
+  wallet with no Pylon v0.2 LDK payout target reports `needs_payout_targets`,
+  not `ready`.
 - `ldk_readiness.projected_outbound_capacity_sats` is above the active payout
   reserve.
 - `ldk_readiness.projected_inbound_capacity_sats` is nonzero once Pylon payout

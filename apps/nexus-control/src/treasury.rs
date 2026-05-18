@@ -3302,6 +3302,12 @@ impl TreasuryState {
             operator_actions
                 .push("create and pay a Nexus LDK funding invoice before payout smoke".to_string());
             "needs_funding"
+        } else if registered_payout_target_count == 0 {
+            operator_actions.push(
+                "register at least one Pylon v0.2 LDK payout target before payout smoke"
+                    .to_string(),
+            );
+            "needs_payout_targets"
         } else if registered_payout_target_count > 0
             && channel_readiness.projected_inbound_capacity_sats == 0
         {
@@ -4120,10 +4126,7 @@ impl TreasuryState {
                     continue;
                 };
                 let mut record_changed = false;
-                let provider_payment_id = record
-                    .payment_id
-                    .as_deref()
-                    .map(treasury_hash);
+                let provider_payment_id = record.payment_id.as_deref().map(treasury_hash);
                 if record.status != "failed" {
                     record.status = "failed".to_string();
                     record_changed = true;
@@ -10687,9 +10690,7 @@ mod tests {
         state
             .payout_records_by_key
             .insert(stale_key.to_string(), stale);
-        state
-            .payout_records_by_key
-            .insert(ldk_key.to_string(), ldk);
+        state.payout_records_by_key.insert(ldk_key.to_string(), ldk);
         state.persist();
 
         let loaded = TreasuryState::new(path.clone());
@@ -10907,6 +10908,23 @@ mod tests {
         state.wallet_balance_sats = 50_000;
         state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
         state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+
+        let needs_payout_targets = state.status_response(&config, now_unix_ms);
+        assert_eq!(
+            needs_payout_targets.ldk_readiness.state,
+            "needs_payout_targets"
+        );
+        assert_eq!(
+            needs_payout_targets
+                .ldk_readiness
+                .registered_payout_target_count,
+            0
+        );
+        assert_eq!(
+            needs_payout_targets.ldk_readiness.projected_channel_count,
+            0
+        );
+
         state.payout_targets_by_identity.insert(
             "pubkey-ldk".to_string(),
             super::RegisteredPayoutTarget {

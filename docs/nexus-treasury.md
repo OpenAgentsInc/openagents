@@ -79,7 +79,8 @@ work until registration succeeds.
 Lightning rail:
 
 - `state`: `ready`, `attention`, `degraded`, `needs_funding`,
-  `needs_channels`, `needs_ldk_server`, or `misconfigured`.
+  `needs_payout_targets`, `needs_channels`, `needs_ldk_server`, or
+  `misconfigured`.
 - `registered_payout_target_count`: Pylon v0.2 LDK-compatible payout targets.
 - `projected_channel_count`: channel-open operations known to Nexus.
 - `projected_inbound_capacity_sats`: projected open/splice-in capacity from
