@@ -133,6 +133,9 @@ const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
 const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
 const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
+const TREASURY_RETIRED_UNPAYABLE_PAYOUT_REASON: &str = "retired_unpayable_non_ldk_payout_record";
+const TREASURY_UNSUPPORTED_LDK_PAYMENT_TARGET_KIND_REASON: &str =
+    "unsupported_ldk_payment_target_kind";
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
 const TREASURY_POLICY_SCHEMA_VERSION: u32 = 3;
@@ -1477,6 +1480,16 @@ pub struct TreasuryTrainingPayoutLedgerSummary {
     pub failed_payout_count: u64,
     pub skipped_payout_count: u64,
     pub attention_payout_count: u64,
+    #[serde(default)]
+    pub current_ldk_failed_payout_count: u64,
+    #[serde(default)]
+    pub current_ldk_attention_payout_count: u64,
+    #[serde(default)]
+    pub retired_historical_payout_count: u64,
+    #[serde(default)]
+    pub retired_historical_accepted_work_payout_count: u64,
+    #[serde(default)]
+    pub retired_historical_payout_sats: u64,
     pub missing_payout_target_count: u64,
     pub accepted_work_pending_payout_count: u64,
     pub accepted_work_confirmed_payout_count: u64,
@@ -1493,12 +1506,49 @@ impl Default for TreasuryTrainingPayoutLedgerSummary {
             failed_payout_count: 0,
             skipped_payout_count: 0,
             attention_payout_count: 0,
+            current_ldk_failed_payout_count: 0,
+            current_ldk_attention_payout_count: 0,
+            retired_historical_payout_count: 0,
+            retired_historical_accepted_work_payout_count: 0,
+            retired_historical_payout_sats: 0,
             missing_payout_target_count: 0,
             accepted_work_pending_payout_count: 0,
             accepted_work_confirmed_payout_count: 0,
             accepted_work_attention_payout_count: 0,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryPayoutLedgerCleanupReport {
+    pub authority: String,
+    pub generated_at_unix_ms: u64,
+    pub state_path: String,
+    pub applied: bool,
+    pub changed: bool,
+    pub before_summary: TreasuryTrainingPayoutLedgerSummary,
+    pub after_summary: TreasuryTrainingPayoutLedgerSummary,
+    #[serde(default)]
+    pub before_disposition_counts: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub after_disposition_counts: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub before_reason_counts: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub after_reason_counts: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub records_retired: Vec<TreasuryPayoutLedgerCleanupRetiredRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryPayoutLedgerCleanupRetiredRecord {
+    pub payout_key: String,
+    pub previous_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_reason: Option<String>,
+    pub payout_rail: String,
+    pub payout_class: String,
+    pub amount_sats: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1677,6 +1727,11 @@ pub enum TreasuryCommand {
         amount_sats: Option<u64>,
         description: Option<String>,
         expiry_seconds: Option<u32>,
+        json: bool,
+    },
+    PayoutLedgerCleanup {
+        apply: bool,
+        report_path: Option<PathBuf>,
         json: bool,
     },
     RecoveryReport {
@@ -2617,6 +2672,53 @@ fn payout_rail_for_payment_request(payment_request: &str) -> &'static str {
     }
 }
 
+fn payout_record_has_ldk_target(record: &TreasuryPayoutRecord) -> bool {
+    payout_rail_for_payment_request(record.payout_target.as_str()) == "ldk"
+}
+
+fn payout_record_reason_contains(record: &TreasuryPayoutRecord, needle: &str) -> bool {
+    record
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains(needle))
+}
+
+fn payout_record_is_retired_historical(record: &TreasuryPayoutRecord) -> bool {
+    record.status == "failed"
+        && (record.reason.as_deref() == Some(TREASURY_RETIRED_UNPAYABLE_PAYOUT_REASON)
+            || (!payout_record_has_ldk_target(record)
+                && payout_record_reason_contains(
+                    record,
+                    TREASURY_UNSUPPORTED_LDK_PAYMENT_TARGET_KIND_REASON,
+                )))
+}
+
+fn payout_record_should_be_retired_as_historical(record: &TreasuryPayoutRecord) -> bool {
+    matches!(
+        record.status.as_str(),
+        "queued" | "dispatching" | "dispatched" | "failed"
+    ) && !payout_record_has_ldk_target(record)
+}
+
+fn payout_record_cleanup_disposition(record: &TreasuryPayoutRecord) -> &'static str {
+    match record.status.as_str() {
+        "confirmed" => "settled",
+        "queued" | "dispatching" | "dispatched" if payout_record_has_ldk_target(record) => {
+            "current_ldk_pending"
+        }
+        "queued" | "dispatching" | "dispatched" => "retire_unpayable_non_ldk",
+        "failed" if payout_record_is_retired_historical(record) => "retired_historical",
+        "failed" if failed_payout_is_retryable_pending(record) => "current_ldk_retryable",
+        "failed" if payout_record_has_ldk_target(record) => "current_ldk_attention",
+        "failed" => "retire_unpayable_non_ldk",
+        "skipped" if record.reason.as_deref() == Some("missing_payout_target") => {
+            "missing_payout_target"
+        }
+        "skipped" => "skipped",
+        _ => "unknown",
+    }
+}
+
 fn degraded_severity_rank(severity: &str) -> u8 {
     match severity {
         "critical" => 3,
@@ -3038,6 +3140,7 @@ fn retryable_failed_payout_is_due(record: &TreasuryPayoutRecord, now_unix_ms: u6
     record.status == "failed"
         && record.payment_id.is_none()
         && !record.payout_target.trim().is_empty()
+        && payout_record_has_ldk_target(record)
         && record
             .reason
             .as_deref()
@@ -3061,6 +3164,7 @@ fn failed_payout_is_retryable_pending(record: &TreasuryPayoutRecord) -> bool {
     record.status == "failed"
         && record.payment_id.is_none()
         && !record.payout_target.trim().is_empty()
+        && payout_record_has_ldk_target(record)
         && record
             .reason
             .as_deref()
@@ -4175,21 +4279,55 @@ impl TreasuryState {
     }
 
     fn retire_unpayable_pending_payout_records(&mut self, now_unix_ms: u64) -> bool {
-        let reason = "retired_unpayable_non_ldk_payout_record".to_string();
         let payout_keys = self
             .payout_records_by_key
             .values()
             .filter(|record| matches!(record.status.as_str(), "dispatching" | "dispatched"))
-            .filter(|record| {
-                payout_rail_for_payment_request(record.payout_target.as_str()) != "ldk"
-            })
+            .filter(|record| !payout_record_has_ldk_target(record))
             .map(|record| record.payout_key.clone())
             .collect::<Vec<_>>();
+        self.retire_unpayable_payout_keys(payout_keys, now_unix_ms)
+            .0
+    }
+
+    fn retire_unpayable_historical_payout_records(
+        &mut self,
+        now_unix_ms: u64,
+    ) -> (bool, Vec<TreasuryPayoutLedgerCleanupRetiredRecord>) {
+        let payout_keys = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| payout_record_should_be_retired_as_historical(record))
+            .map(|record| record.payout_key.clone())
+            .collect::<Vec<_>>();
+        self.retire_unpayable_payout_keys(payout_keys, now_unix_ms)
+    }
+
+    fn retire_unpayable_payout_keys(
+        &mut self,
+        payout_keys: Vec<String>,
+        now_unix_ms: u64,
+    ) -> (bool, Vec<TreasuryPayoutLedgerCleanupRetiredRecord>) {
+        let reason = TREASURY_RETIRED_UNPAYABLE_PAYOUT_REASON.to_string();
         let mut changed = false;
+        let mut retired_records = Vec::new();
         for payout_key in payout_keys {
-            let provider_payment_id = {
+            let (provider_payment_id, retired_record) = {
                 let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
                     continue;
+                };
+                let retired_record = TreasuryPayoutLedgerCleanupRetiredRecord {
+                    payout_key: record.payout_key.clone(),
+                    previous_status: record.status.clone(),
+                    previous_reason: record.reason.clone(),
+                    payout_rail: payout_rail_for_payment_request(record.payout_target.as_str())
+                        .to_string(),
+                    payout_class: record
+                        .classification
+                        .effective_payout_class()
+                        .label()
+                        .to_string(),
+                    amount_sats: record.amount_sats,
                 };
                 let mut record_changed = false;
                 let provider_payment_id = record.payment_id.as_deref().map(treasury_hash);
@@ -4213,8 +4351,9 @@ impl TreasuryState {
                     record.updated_at_unix_ms = now_unix_ms;
                 }
                 changed |= record_changed;
-                provider_payment_id
+                (provider_payment_id, retired_record)
             };
+            retired_records.push(retired_record);
             changed |= self.update_payout_operation_status(
                 payout_key.as_str(),
                 TreasuryOperationStatus::Failed,
@@ -4224,7 +4363,7 @@ impl TreasuryState {
                 now_unix_ms,
             );
         }
-        changed
+        (changed, retired_records)
     }
 
     fn cumulative_payout_totals(&self) -> TreasuryPayoutTotals {
@@ -5202,6 +5341,7 @@ impl TreasuryState {
             }
             if record.payment_id.is_none()
                 && !record.payout_target.trim().is_empty()
+                && payout_record_has_ldk_target(record)
                 && (record.status == "dispatching"
                     || (record.status == "failed"
                         && record
@@ -6163,10 +6303,27 @@ impl TreasuryState {
                             summary.accepted_work_pending_payout_count =
                                 summary.accepted_work_pending_payout_count.saturating_add(1);
                         }
+                    } else if payout_record_is_retired_historical(record) {
+                        summary.retired_historical_payout_count =
+                            summary.retired_historical_payout_count.saturating_add(1);
+                        summary.retired_historical_payout_sats = summary
+                            .retired_historical_payout_sats
+                            .saturating_add(record.amount_sats);
+                        if record.classification.accepted_work() {
+                            summary.retired_historical_accepted_work_payout_count = summary
+                                .retired_historical_accepted_work_payout_count
+                                .saturating_add(1);
+                        }
                     } else {
                         summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
                         summary.attention_payout_count =
                             summary.attention_payout_count.saturating_add(1);
+                        if payout_record_has_ldk_target(record) {
+                            summary.current_ldk_failed_payout_count =
+                                summary.current_ldk_failed_payout_count.saturating_add(1);
+                            summary.current_ldk_attention_payout_count =
+                                summary.current_ldk_attention_payout_count.saturating_add(1);
+                        }
                         if record.classification.accepted_work() {
                             summary.accepted_work_attention_payout_count = summary
                                 .accepted_work_attention_payout_count
@@ -6201,6 +6358,85 @@ impl TreasuryState {
         };
 
         summary
+    }
+
+    fn payout_ledger_cleanup_disposition_counts(&self) -> BTreeMap<String, u64> {
+        let mut counts = BTreeMap::new();
+        for record in self.payout_records_by_key.values() {
+            let disposition = payout_record_cleanup_disposition(record).to_string();
+            *counts.entry(disposition).or_insert(0) += 1;
+        }
+        counts
+    }
+
+    fn payout_ledger_cleanup_reason_counts(&self) -> BTreeMap<String, u64> {
+        let mut counts = BTreeMap::new();
+        for record in self.payout_records_by_key.values() {
+            let reason = record.reason.clone().unwrap_or_else(|| "none".to_string());
+            *counts.entry(reason).or_insert(0) += 1;
+        }
+        counts
+    }
+
+    fn payout_ledger_cleanup_report(
+        &mut self,
+        apply: bool,
+        now_unix_ms: u64,
+    ) -> TreasuryPayoutLedgerCleanupReport {
+        let before_summary = self.training_payout_ledger_summary();
+        let before_disposition_counts = self.payout_ledger_cleanup_disposition_counts();
+        let before_reason_counts = self.payout_ledger_cleanup_reason_counts();
+
+        let (changed, records_retired) = if apply {
+            self.retire_unpayable_historical_payout_records(now_unix_ms)
+        } else {
+            let records = self
+                .payout_records_by_key
+                .values()
+                .filter(|record| payout_record_should_be_retired_as_historical(record))
+                .map(|record| TreasuryPayoutLedgerCleanupRetiredRecord {
+                    payout_key: record.payout_key.clone(),
+                    previous_status: record.status.clone(),
+                    previous_reason: record.reason.clone(),
+                    payout_rail: payout_rail_for_payment_request(record.payout_target.as_str())
+                        .to_string(),
+                    payout_class: record
+                        .classification
+                        .effective_payout_class()
+                        .label()
+                        .to_string(),
+                    amount_sats: record.amount_sats,
+                })
+                .collect::<Vec<_>>();
+            (false, records)
+        };
+
+        if apply && changed {
+            self.persist();
+        }
+
+        let after_summary = self.training_payout_ledger_summary();
+        let after_disposition_counts = self.payout_ledger_cleanup_disposition_counts();
+        let after_reason_counts = self.payout_ledger_cleanup_reason_counts();
+
+        TreasuryPayoutLedgerCleanupReport {
+            authority: "openagents-hosted-nexus".to_string(),
+            generated_at_unix_ms: now_unix_ms,
+            state_path: self
+                .state_path
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "<memory>".to_string()),
+            applied: apply,
+            changed,
+            before_summary,
+            after_summary,
+            before_disposition_counts,
+            after_disposition_counts,
+            before_reason_counts,
+            after_reason_counts,
+            records_retired,
+        }
     }
 
     fn recent_training_payouts(&self) -> Vec<TreasuryTrainingPayoutLedgerEntry> {
@@ -8501,6 +8737,40 @@ pub fn parse_treasury_command(args: &[String]) -> Result<TreasuryCommand> {
                 json,
             })
         }
+        Some("payout-ledger-cleanup") => {
+            let mut apply = false;
+            let mut report_path = None;
+            let mut json = false;
+            let mut index = 3usize;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--apply" => {
+                        apply = true;
+                        index += 1;
+                    }
+                    "--report-path" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --report-path"))?;
+                        report_path = Some(PathBuf::from(raw));
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => {
+                        bail!("unexpected argument for treasury payout-ledger-cleanup: {other}")
+                    }
+                }
+            }
+            Ok(TreasuryCommand::PayoutLedgerCleanup {
+                apply,
+                report_path,
+                json,
+            })
+        }
         Some("recovery-report") => {
             let mut work_dir = None;
             let mut report_path = None;
@@ -8629,6 +8899,22 @@ pub async fn run_treasury_command(
                 return Ok(serde_json::to_string_pretty(&response)?);
             }
             Ok(render_treasury_funding_target_response(&response))
+        }
+        TreasuryCommand::PayoutLedgerCleanup {
+            apply,
+            report_path,
+            json,
+        } => {
+            let mut state = TreasuryState::new(config.state_path.clone());
+            let now_unix_ms = now_unix_ms();
+            let report = state.payout_ledger_cleanup_report(*apply, now_unix_ms);
+            if let Some(report_path) = report_path {
+                write_json_file(report_path.as_path(), &report)?;
+            }
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_treasury_payout_ledger_cleanup_report(&report))
         }
         TreasuryCommand::RecoveryReport {
             work_dir,
@@ -9282,7 +9568,7 @@ fn treasury_policy_change_blocked_receipt(
 }
 
 pub const fn treasury_usage() -> &'static str {
-    "treasury [status [--json] | funding-target [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json] | recovery-report [--work-dir <path>] [--report-path <path>] [--json] | recovery-cutover --report-path <path> [--json]]"
+    "treasury [status [--json] | funding-target [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json] | payout-ledger-cleanup [--apply] [--report-path <path>] [--json] | recovery-report [--work-dir <path>] [--report-path <path>] [--json] | recovery-cutover --report-path <path> [--json]]"
 }
 
 fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<bool> {
@@ -9306,6 +9592,7 @@ fn treasury_payout_reconciliation_status(record: &TreasuryPayoutRecord) -> &'sta
         "queued" => "pending_dispatch",
         "dispatching" | "dispatched" => "pending_confirmation",
         "failed" if failed_payout_is_retryable_pending(record) => "pending_retry",
+        "failed" if payout_record_is_retired_historical(record) => "retired_historical",
         "failed" => "attention_required",
         "skipped" => {
             if record.reason.as_deref() == Some("missing_payout_target") {
@@ -9483,6 +9770,18 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             response
                 .training_payout_ledger_summary
                 .attention_payout_count
+        ),
+        format!(
+            "current_ldk_attention_payout_count: {}",
+            response
+                .training_payout_ledger_summary
+                .current_ldk_attention_payout_count
+        ),
+        format!(
+            "retired_historical_payout_count: {}",
+            response
+                .training_payout_ledger_summary
+                .retired_historical_payout_count
         ),
         format!(
             "accepted_work_pending_payout_count: {}",
@@ -9719,6 +10018,58 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
     }
     if let Some(mode) = response.wallet_payment_scan_mode.as_deref() {
         lines.push(format!("wallet_payment_scan_mode: {mode}"));
+    }
+    lines.join("\n")
+}
+
+fn render_treasury_payout_ledger_cleanup_report(
+    report: &TreasuryPayoutLedgerCleanupReport,
+) -> String {
+    let mut lines = vec![
+        format!("state_path: {}", report.state_path),
+        format!("applied: {}", report.applied),
+        format!("changed: {}", report.changed),
+        format!(
+            "before_reconciliation_status: {}",
+            report.before_summary.reconciliation_status
+        ),
+        format!(
+            "after_reconciliation_status: {}",
+            report.after_summary.reconciliation_status
+        ),
+        format!(
+            "before_accepted_work_pending_payout_count: {}",
+            report.before_summary.accepted_work_pending_payout_count
+        ),
+        format!(
+            "after_accepted_work_pending_payout_count: {}",
+            report.after_summary.accepted_work_pending_payout_count
+        ),
+        format!(
+            "before_accepted_work_attention_payout_count: {}",
+            report.before_summary.accepted_work_attention_payout_count
+        ),
+        format!(
+            "after_accepted_work_attention_payout_count: {}",
+            report.after_summary.accepted_work_attention_payout_count
+        ),
+        format!(
+            "retired_historical_payout_count: {}",
+            report.after_summary.retired_historical_payout_count
+        ),
+        format!(
+            "retired_historical_accepted_work_payout_count: {}",
+            report
+                .after_summary
+                .retired_historical_accepted_work_payout_count
+        ),
+        format!("records_retired: {}", report.records_retired.len()),
+    ];
+    if !report.after_disposition_counts.is_empty() {
+        lines.push("after_disposition_counts:".to_string());
+        for (disposition, count) in &report.after_disposition_counts {
+            lines.push(format!("  {disposition}: {count}"));
+        }
     }
     lines.join("\n")
 }
@@ -10508,7 +10859,7 @@ mod tests {
         TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
         build_treasury_wallet_recovery_comparison, create_live_funding_target,
         dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
-        payout_window_started_at, payout_window_started_at_for_identity,
+        payout_window_started_at, payout_window_started_at_for_identity, run_treasury_command,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
         track_wallet_refresh_payment, treasury_test_hook_lock, validate_wallet_hydration_balance,
         wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
@@ -10783,6 +11134,127 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn failed_non_ldk_records_are_historical_cleanup_not_current_ldk_attention() {
+        let mut state = TreasuryState::default();
+        let payout_key = "accepted_work:legacy-unsupported-target:pubkey-a";
+        let mut record = test_payout_record(payout_key, "failed");
+        record.payout_target = "provider:old-target".to_string();
+        record.payment_id = None;
+        record.reason = Some("insufficient_funds".to_string());
+        record.classification = TreasuryPayoutClassification {
+            payout_class: TreasuryPayoutClass::AcceptedWork,
+            payout_basis: Some("validator_verdict".to_string()),
+            ..TreasuryPayoutClassification::default()
+        };
+        state
+            .payout_records_by_key
+            .insert(payout_key.to_string(), record);
+
+        let before = state.training_payout_ledger_summary();
+        assert_eq!(before.accepted_work_pending_payout_count, 0);
+        assert_eq!(before.current_ldk_attention_payout_count, 0);
+        assert_eq!(before.accepted_work_attention_payout_count, 1);
+
+        let report = state.payout_ledger_cleanup_report(true, 1_800_000);
+
+        assert!(report.changed);
+        assert_eq!(report.records_retired.len(), 1);
+        assert_eq!(report.after_summary.reconciliation_status.as_str(), "clean");
+        assert_eq!(report.after_summary.accepted_work_pending_payout_count, 0);
+        assert_eq!(report.after_summary.accepted_work_attention_payout_count, 0);
+        assert_eq!(report.after_summary.retired_historical_payout_count, 1);
+        assert_eq!(
+            report
+                .after_summary
+                .retired_historical_accepted_work_payout_count,
+            1
+        );
+
+        let retired = state
+            .payout_records_by_key
+            .get(payout_key)
+            .expect("retired payout");
+        assert_eq!(
+            retired.reason.as_deref(),
+            Some("retired_unpayable_non_ldk_payout_record")
+        );
+        assert_eq!(
+            super::treasury_payout_reconciliation_status(retired),
+            "retired_historical"
+        );
+    }
+
+    #[tokio::test]
+    async fn payout_ledger_cleanup_command_writes_before_after_report() {
+        let path = unique_treasury_state_path("payout-ledger-cleanup-state");
+        let report_path = unique_treasury_state_path("payout-ledger-cleanup-report");
+        let mut config = test_treasury_config();
+        config.state_path = path.clone();
+
+        let payout_key = "accepted_work:cleanup-command:pubkey-a";
+        let now = super::now_unix_ms();
+        let mut state = TreasuryState::default();
+        state.state_path = Some(path.clone());
+        let mut record = test_payout_record(payout_key, "failed");
+        record.payout_target = "provider:cleanup-command".to_string();
+        record.payment_id = None;
+        record.reason = Some("insufficient_funds".to_string());
+        record.window_started_at_unix_ms = now.saturating_sub(60_000);
+        record.window_ends_at_unix_ms = now.saturating_add(60_000);
+        record.created_at_unix_ms = now.saturating_sub(30_000);
+        record.updated_at_unix_ms = now.saturating_sub(10_000);
+        record.classification = TreasuryPayoutClassification {
+            payout_class: TreasuryPayoutClass::AcceptedWork,
+            payout_basis: Some("validator_verdict".to_string()),
+            ..TreasuryPayoutClassification::default()
+        };
+        state
+            .payout_records_by_key
+            .insert(payout_key.to_string(), record);
+        state.persist();
+
+        let command = parse_treasury_command(&[
+            "nexus-control".to_string(),
+            "treasury".to_string(),
+            "payout-ledger-cleanup".to_string(),
+            "--apply".to_string(),
+            "--report-path".to_string(),
+            report_path.display().to_string(),
+            "--json".to_string(),
+        ])
+        .expect("parse cleanup");
+        let output = run_treasury_command(&config, &command)
+            .await
+            .expect("cleanup command");
+        let report: super::TreasuryPayoutLedgerCleanupReport =
+            serde_json::from_str(output.as_str()).expect("json report");
+
+        assert!(report.applied);
+        assert!(report.changed);
+        assert_eq!(report.records_retired.len(), 1);
+        assert_eq!(
+            report.before_summary.accepted_work_attention_payout_count,
+            1
+        );
+        assert_eq!(report.after_summary.accepted_work_attention_payout_count, 0);
+        assert_eq!(report.after_summary.retired_historical_payout_count, 1);
+        assert!(report_path.exists());
+
+        let loaded = TreasuryState::new(path.clone());
+        let retired = loaded
+            .payout_records_by_key
+            .get(payout_key)
+            .expect("retired payout");
+        assert_eq!(
+            retired.reason.as_deref(),
+            Some("retired_unpayable_non_ldk_payout_record")
+        );
+
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(report_path);
     }
 
     #[test]
@@ -14688,7 +15160,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_accepted_work_retry_claim_respects_wallet_balance_and_placeholder_disable() {
+    fn failed_accepted_work_retry_claim_requires_ldk_target_and_placeholder_disable() {
         let mut config = test_treasury_config();
         config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
         config.daily_budget_cap_sats = 1_000_000;
@@ -14699,21 +15171,29 @@ mod tests {
             .saturating_sub(super::TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS)
             .saturating_sub(1);
 
-        for (pubkey, target) in [
-            ("pubkey-one", "provider:one"),
-            ("pubkey-old", "provider:old"),
-            ("pubkey-placeholder", "provider:placeholder"),
+        for (pubkey, target_kind, target) in [
+            ("pubkey-one", "bolt12_offer", "lno1pylonone"),
+            ("pubkey-old", "", "provider:old"),
+            ("pubkey-placeholder", "", "provider:placeholder"),
         ] {
             state.payout_targets_by_identity.insert(
                 pubkey.to_string(),
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: pubkey.to_string(),
                     source_session_id: format!("session-{pubkey}"),
-                    payment_target_kind: String::new(),
-                    payment_target: String::new(),
+                    payment_target_kind: target_kind.to_string(),
+                    payment_target: if target_kind == "bolt12_offer" {
+                        target.to_string()
+                    } else {
+                        String::new()
+                    },
                     payment_target_capabilities: Vec::new(),
                     pylon_payment_target_version: None,
-                    provider_target: target.to_string(),
+                    provider_target: if target_kind == "bolt12_offer" {
+                        String::new()
+                    } else {
+                        target.to_string()
+                    },
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -14726,7 +15206,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:one".to_string(),
                 nostr_pubkey_hex: "pubkey-one".to_string(),
-                payout_target: "provider:one".to_string(),
+                payout_target: "lno1pylonone".to_string(),
                 amount_sats: 1,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_timeout:60000".to_string()),
@@ -14780,7 +15260,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:balance-recovered".to_string(),
                 nostr_pubkey_hex: "pubkey-one".to_string(),
-                payout_target: "provider:one".to_string(),
+                payout_target: "lno1pylonone".to_string(),
                 amount_sats: 1,
                 status: "failed".to_string(),
                 reason: Some("wallet_balance_insufficient".to_string()),
@@ -14851,7 +15331,7 @@ mod tests {
             prepared
                 .dispatch_plans
                 .iter()
-                .all(|plan| plan.amount_sats == 1 && plan.payment_request == "provider:one")
+                .all(|plan| plan.amount_sats == 1 && plan.payment_request == "lno1pylonone")
         );
         assert_eq!(
             state
@@ -14872,7 +15352,7 @@ mod tests {
                 .payout_records_by_key
                 .get("accepted-work:old")
                 .map(|record| (record.status.as_str(), record.reason.as_deref())),
-            Some(("failed", Some("wallet_balance_insufficient")))
+            Some(("failed", Some("insufficient_funds")))
         );
         assert_eq!(
             state
@@ -14891,7 +15371,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "accepted-work:retryable".to_string(),
                 nostr_pubkey_hex: "pubkey-retryable".to_string(),
-                payout_target: "provider:retryable".to_string(),
+                payout_target: "lno1pylonretryable".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_timeout:60000".to_string()),
@@ -14930,7 +15410,7 @@ mod tests {
             TreasuryPayoutRecord {
                 payout_key: "availability:retryable".to_string(),
                 nostr_pubkey_hex: "pubkey-retryable".to_string(),
-                payout_target: "provider:retryable".to_string(),
+                payout_target: "lno1pylonretryable".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some(
@@ -14985,11 +15465,11 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: pubkey.clone(),
                     source_session_id: format!("session-{index}"),
-                    payment_target_kind: String::new(),
-                    payment_target: String::new(),
+                    payment_target_kind: "bolt12_offer".to_string(),
+                    payment_target: format!("lno1pylontarget{index}"),
                     payment_target_capabilities: Vec::new(),
                     pylon_payment_target_version: None,
-                    provider_target: format!("provider:target-{index}"),
+                    provider_target: String::new(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -15000,7 +15480,7 @@ mod tests {
                 TreasuryPayoutRecord {
                     payout_key: format!("availability:retryable:{index}"),
                     nostr_pubkey_hex: pubkey,
-                    payout_target: format!("provider:target-{index}"),
+                    payout_target: format!("lno1pylontarget{index}"),
                     amount_sats: 25,
                     status: "failed".to_string(),
                     reason: Some("wallet_send_timeout:60000".to_string()),
@@ -16650,14 +17130,14 @@ mod tests {
     }
 
     #[test]
-    fn retryable_failed_backlog_counts_exclude_non_retryable_failures() {
+    fn retryable_failed_backlog_counts_exclude_non_retryable_and_non_ldk_failures() {
         let mut state = TreasuryState::default();
         state.payout_records_by_key.insert(
             "retryable".to_string(),
             TreasuryPayoutRecord {
                 payout_key: "retryable".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                payout_target: "provider:alice".to_string(),
+                payout_target: "lno1pylonalice".to_string(),
                 amount_sats: 25,
                 status: "failed".to_string(),
                 reason: Some("wallet_send_retryable:transport:boom".to_string()),
@@ -16698,9 +17178,32 @@ mod tests {
                 classification: TreasuryPayoutClassification::default(),
             },
         );
+        state.payout_records_by_key.insert(
+            "historical-non-ldk".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "historical-non-ldk".to_string(),
+                nostr_pubkey_hex: "pubkey-c".to_string(),
+                payout_target: "provider:carol".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some("wallet_send_retryable:transport:historical".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                created_at_unix_ms: 1_000,
+                updated_at_unix_ms: 1_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
 
         let (backlog_total, backlog_retryable) = state.backlog_counts();
-        assert_eq!(backlog_total, 2);
+        assert_eq!(backlog_total, 3);
         assert_eq!(backlog_retryable, 1);
     }
 

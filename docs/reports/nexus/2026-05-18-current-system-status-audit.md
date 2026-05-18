@@ -122,6 +122,38 @@ Expected result: the `rg` command returns no active-path rows, the deploy
 invariant reports the Nexus/Pylon paths are LDK-only, and the targeted Cargo
 check completes.
 
+## 2026-05-18 Payout Ledger Cleanup Update
+
+Issue `#4506` added an explicit treasury cleanup/reporting command for the
+historical payout ledger:
+
+```bash
+nexus-control treasury payout-ledger-cleanup \
+  --report-path /var/lib/nexus-relay/payout-ledger-cleanup-dry-run.json \
+  --json
+
+nexus-control treasury payout-ledger-cleanup \
+  --apply \
+  --report-path /var/lib/nexus-relay/payout-ledger-cleanup-apply.json \
+  --json
+```
+
+The cleanup separates current LDK payout health from retained historical rows.
+Failed rows with old provider-style or unknown targets are not retryable and
+are reported under `retired_historical_*` counters. Failed rows with
+LDK-compatible targets remain current LDK attention or retryable pending state.
+
+The new status fields to watch are:
+
+- `current_ldk_failed_payout_count`
+- `current_ldk_attention_payout_count`
+- `retired_historical_payout_count`
+- `retired_historical_accepted_work_payout_count`
+- `retired_historical_payout_sats`
+
+The detailed before/after report is
+`docs/reports/nexus/2026-05-18-payout-ledger-cleanup-before-after.md`.
+
 ## Current Pylon and Training Status
 
 Live public stats reported:

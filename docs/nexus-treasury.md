@@ -1415,6 +1415,14 @@ Canonical training payout ledger:
 - `training_payout_ledger_summary` gives operators the current reconciliation
   state for the payout ledger, including pending, attention-required, and
   accepted-work-specific counts
+- the summary separates current LDK payout health from retired historical rows:
+  `current_ldk_*` counters describe active LDK failures, while
+  `retired_historical_*` counters describe retained audit rows that are no
+  longer retryable payout work
+- use `nexus-control treasury payout-ledger-cleanup --report-path <path>
+  --json` for dry-run ledger classification, and add `--apply` only after the
+  report confirms that the rows being retired are stale non-LDK/unknown-target
+  records
 - public treasury status intentionally does not include raw payout-target
   identities or recent payout rows. Operator diagnostics that need row-level
   visibility should use the authenticated treasury projection or integration

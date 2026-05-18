@@ -166,6 +166,47 @@ Nexus lease admission must evaluate hard gates for the requested role, not the
 worker role unconditionally. Otherwise validator-only or validator-first hosts
 can never clear sealed windows.
 
+## Historical Payout Ledger Cleanup
+
+The active payout rail is LDK-only, but older treasury state can still contain
+failed provider-style or unknown-target rows. Those rows are historical audit
+records, not current LDK payout failures, and must not be retried through the
+LDK provider.
+
+Run a dry-run report before any cleanup:
+
+```bash
+nexus-control treasury payout-ledger-cleanup \
+  --report-path /var/lib/nexus-relay/payout-ledger-cleanup-dry-run.json \
+  --json
+```
+
+If the report shows only stale non-LDK or unknown-target rows being retired,
+apply it:
+
+```bash
+nexus-control treasury payout-ledger-cleanup \
+  --apply \
+  --report-path /var/lib/nexus-relay/payout-ledger-cleanup-apply.json \
+  --json
+```
+
+After applying, inspect the summary:
+
+```bash
+nexus-control treasury status --json | jq '.training_payout_ledger_summary | {
+  accepted_work_pending_payout_count,
+  current_ldk_attention_payout_count,
+  retired_historical_payout_count,
+  retired_historical_accepted_work_payout_count,
+  retired_historical_payout_sats
+}'
+```
+
+`accepted_work_pending_payout_count` should remain zero unless fresh accepted
+work is waiting. `current_ldk_attention_payout_count` is the live LDK problem
+counter; `retired_historical_payout_count` is retained audit state.
+
 ## Hosted Pylon Runtime Install
 
 Hosted Pylons must have the Psionic runtime surface installed before they can
