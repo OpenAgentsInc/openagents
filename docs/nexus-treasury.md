@@ -473,6 +473,56 @@ Artifacts are written under `target/nexus-ldk-readiness/<timestamp>/`. They are
 safe for operator inspection but can still contain redacted hashes and invoice
 metadata, so do not paste them wholesale into public issue comments.
 
+## Recurring Accepted-Work LDK Proof Smoke
+
+The accepted-work proof smoke is the recurring end-to-end proof that fresh
+Pylon work can move through worker claim, validator closeout, rewarded window,
+LDK payout dispatch, confirmation, and reconciliation from the active
+production binaries:
+
+```bash
+NEXUS_BASE_URL=https://nexus.openagents.com \
+NEXUS_CONTROL_ADMIN_BEARER_TOKEN="$NEXUS_CONTROL_ADMIN_BEARER_TOKEN" \
+scripts/deploy/nexus/31-smoke-ldk-accepted-work-proof.sh
+```
+
+The command launches one uniquely named CS336 A1 run by default, waits for the
+run detail to report a reconciled rewarded window, requires at least one
+accepted contribution, and requires at least one payout with
+`status=confirmed` and `reconciliation_status=settled`.
+
+Receipts are written under:
+
+```text
+docs/reports/nexus/ldk-accepted-work-smoke-<utc-timestamp>/receipt.json
+```
+
+The receipt includes the run id, window id, contribution id, payout key, amount,
+payout status, payout reconciliation status, dispatch response, and a redacted
+treasury summary. The smoke-created runs are labeled by
+`NEXUS_LDK_ACCEPTED_WORK_RUN_SLUG_PREFIX` and
+`NEXUS_LDK_ACCEPTED_WORK_DISPLAY_PREFIX` so they can be distinguished from user
+or operator runs.
+
+The script refuses to launch work unless `/v1/treasury/status` reports
+`active_treasury_provider=ldk`, `active_treasury_rail=ldk`, and
+`ldk_readiness.state=ready`. This is intentional. A proof generated while Nexus
+is in `needs_channels` or another readiness state would only create clutter and
+would not prove the production payout path.
+
+To verify an existing run without launching another one:
+
+```bash
+NEXUS_LDK_ACCEPTED_WORK_MODE=verify-existing \
+NEXUS_LDK_ACCEPTED_WORK_RUN_ID=run.cs336.a1.ldk-proof-20260518151532 \
+NEXUS_BASE_URL=https://nexus.openagents.com \
+scripts/deploy/nexus/31-smoke-ldk-accepted-work-proof.sh
+```
+
+`verify-existing` mode uses the same acceptance and payout checks. It is useful
+for incident review, but recurring readiness should use a fresh launch once the
+LDK channel-liquidity floor is green.
+
 ## Local LDK Proof Harness
 
 Before live LDK Server wiring or mainnet funds, use the local proof harness as

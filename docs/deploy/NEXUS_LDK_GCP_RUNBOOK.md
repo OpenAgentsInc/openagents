@@ -508,6 +508,36 @@ Each write command requires an idempotency key and records a redacted
 `TreasuryOperationRecord`. Do not paste raw invoices, node secrets, API keys,
 TLS keys, or bearer tokens into issue comments or docs.
 
+9. Run accepted-work proof smoke:
+
+```bash
+NEXUS_BASE_URL=https://nexus.openagents.com \
+NEXUS_CONTROL_ADMIN_BEARER_TOKEN=<admin-token> \
+scripts/deploy/nexus/31-smoke-ldk-accepted-work-proof.sh
+```
+
+This smoke is the recurring proof that a fresh targeted CS336 A1 run can move
+through worker claim, validator closeout, rewarded window, confirmed LDK payout,
+and settled reconciliation. It writes a receipt under
+`docs/reports/nexus/ldk-accepted-work-smoke-<utc-timestamp>/receipt.json` with
+the run id, window id, contribution id, payout key, payout amount, payout
+status, reconciliation status, dispatch response, and redacted treasury
+summary.
+
+The script checks `/v1/treasury/status` before dispatching. If
+`ldk_readiness.state` is not `ready`, it writes a failed receipt with
+`reason=ldk_readiness_not_ready` and exits without launching a run. Fix channel
+liquidity first instead of bypassing that gate.
+
+To verify an existing proof run without launching work:
+
+```bash
+NEXUS_LDK_ACCEPTED_WORK_MODE=verify-existing \
+NEXUS_LDK_ACCEPTED_WORK_RUN_ID=run.cs336.a1.ldk-proof-20260518151532 \
+NEXUS_BASE_URL=https://nexus.openagents.com \
+scripts/deploy/nexus/31-smoke-ldk-accepted-work-proof.sh
+```
+
 ## Nexus Client Configuration
 
 After hosted LDK Server smoke passes, configure Nexus with disk paths that live
