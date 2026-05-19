@@ -12,6 +12,14 @@ leased validator challenges are now counted separately from fresh work. The
 public launch-health path can warn about retained backlog without reporting
 `overall_status: bad` solely because old retained records still exist.
 
+Production cleanup was completed on 2026-05-19 after four integrated changes:
+
+- `95b11e5c4` added the live admin cleanup endpoint.
+- `b14bafa66` kept accepted-work evidence out of retained backlog health.
+- `4f6a3c398` stopped terminal accepted-progress rows from counting active.
+- `cc86037ad` limited no-open-work first-window standby accounting to the
+  first 10 minutes after run creation.
+
 It also adds an explicit operator command for retiring historical backlog with
 receipts:
 
@@ -154,16 +162,189 @@ bash scripts/deploy/nexus/test-ldk-deploy-invariants.sh
 git diff --check
 ```
 
-## Production Operator Steps
+## Production Execution
 
-1. Deploy the commit containing this command through the normal Nexus deploy
-   path.
-2. Run a dry run inside the Nexus environment against the production kernel
-   state path.
-3. Review the report and confirm `protected_runs` covers accepted-work rows.
-4. Run with `--apply`.
-5. Archive the applied JSON report under `docs/reports/nexus/` or the
-   production reports bucket.
-6. Confirm `/api/stats` launch health is not `bad` solely due retained backlog.
-7. Run one fresh targeted training proof to confirm fresh worker/validator
-   paths remain separate from retained state.
+The production image deployed for the final accounting fix was:
+
+```text
+us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:cc86037ad518
+```
+
+Deployment used the normal registry-backed path:
+
+```bash
+DEPLOY_IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:cc86037ad518 \
+  bash scripts/deploy/nexus/03-configure-and-start.sh
+
+DEPLOY_IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:cc86037ad518 \
+  bash scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Receipts:
+
+```text
+docs/reports/nexus/20260519-052054-cloudbuild-image-cc86037ad518.json
+docs/reports/nexus/20260519-053217-deploy-receipt.json
+```
+
+The live cleanup was run through the authenticated Nexus admin endpoint:
+
+```bash
+POST https://nexus.openagents.com/v1/admin/training/backlog-cleanup
+```
+
+Use the endpoint for live production cleanup. Running `docker exec
+nexus-control training backlog-cleanup` against mounted state from a running
+relay is unsafe as the steady operator path because the live relay may rewrite
+the same kernel state while the process-local command is reading and writing.
+The admin endpoint executes inside the running authority process and writes the
+cleanup receipt through the same state owner.
+
+Production apply summary:
+
+```json
+{
+  "applied": true,
+  "changed": true,
+  "before": {
+    "active_runs": 1,
+    "active_windows": 1,
+    "pending_validation_windows": 1,
+    "validator_challenges_open": 2,
+    "validator_challenges_queued": 2,
+    "protected_active_runs_with_accepted_outcomes": 537
+  },
+  "after": {
+    "active_runs": 0,
+    "active_windows": 0,
+    "pending_validation_windows": 0,
+    "validator_challenges_open": 0,
+    "validator_challenges_queued": 0,
+    "protected_active_runs_with_accepted_outcomes": 537
+  },
+  "retired_runs": 1,
+  "retired_windows": 1,
+  "retired_challenges": 2,
+  "protected_runs": 537,
+  "receipt_id": "receipt.kernel.training.backlog.cleanup:sha256:1a3edeb71243bf5fd44e5a9311730a2deb544637a358ffc84b58f6ddd8e613c9"
+}
+```
+
+Production no-op replay summary:
+
+```json
+{
+  "applied": true,
+  "changed": false,
+  "before": {
+    "active_runs": 0,
+    "active_windows": 0,
+    "pending_validation_windows": 0,
+    "validator_challenges_open": 0,
+    "validator_challenges_queued": 0,
+    "protected_active_runs_with_accepted_outcomes": 537
+  },
+  "after": {
+    "active_runs": 0,
+    "active_windows": 0,
+    "pending_validation_windows": 0,
+    "validator_challenges_open": 0,
+    "validator_challenges_queued": 0,
+    "protected_active_runs_with_accepted_outcomes": 537
+  },
+  "retired_runs": 0,
+  "retired_windows": 0,
+  "retired_challenges": 0,
+  "protected_runs": 537,
+  "receipt_id": null
+}
+```
+
+Cleanup reports:
+
+```text
+docs/reports/nexus/20260519-standby-accounting-backlog-cleanup-apply.json
+docs/reports/nexus/20260519-standby-accounting-backlog-cleanup-noop.json
+```
+
+## Production Verification
+
+Public health:
+
+```bash
+curl -fsS https://nexus.openagents.com/healthz
+```
+
+Result:
+
+```json
+{
+  "ok": true,
+  "service": "nexus-relay",
+  "relay_backend": "durable-upstream",
+  "authority_mode": "in-process",
+  "managed_groups_mode": "recovery-proxy",
+  "recovery_proxy": true
+}
+```
+
+Public stats after the final deploy and cleanup:
+
+```json
+{
+  "training_runs_active": 1,
+  "training_windows_active": 1,
+  "training_windows_pending_validation": 0,
+  "training_validator_challenges_open": 0,
+  "training_validator_challenges_queued": 0,
+  "nexus_treasury_provider": "ldk",
+  "nexus_wallet_balance_sats": 3843,
+  "launch_health": {
+    "overall_status": "good",
+    "active_runs": 1,
+    "fresh_active_runs": 1,
+    "retained_active_runs": 0,
+    "run_backlog_slots": 0,
+    "pending_validation_windows": 0,
+    "fresh_pending_validation_windows": 0,
+    "retained_pending_validation_windows": 0,
+    "validator_challenges_open": 0,
+    "fresh_validator_challenges_open": 0,
+    "retained_validator_challenges_open": 0,
+    "validator_challenges_queued": 0,
+    "fresh_validator_challenges_queued": 0,
+    "retained_validator_challenges_queued": 0,
+    "accepted_work_pending_payout_count": 0,
+    "accepted_work_attention_payout_count": 0,
+    "active_alert_count": 0,
+    "critical_alert_count": 0
+  }
+}
+```
+
+The remaining single active run is a fresh hosted starter run created after
+cleanup by the normal lease-claim path. It is not retained backlog. It has one
+fresh active window and no open or queued validator challenges.
+
+The treasury status is LDK-backed and not degraded:
+
+```json
+{
+  "wallet_balance_sats": 3843,
+  "degraded_reason": null
+}
+```
+
+Additional focused verification for the final accounting fix:
+
+```bash
+cargo fmt
+cargo fmt --check
+cargo test -p nexus-control training_summary_does_not_count_stale_first_window_standby_run_as_active --lib
+cargo test -p nexus-control training_operator_summary_and_stats_surface_live_run_state --lib
+cargo test -p nexus-control training_backlog --lib
+git diff --check
+```
+
+All focused tests passed. Existing Rust dead-code warnings remain unrelated to
+this cleanup.
