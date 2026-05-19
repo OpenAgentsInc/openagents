@@ -282,28 +282,12 @@ pub fn run_training_command(
             json,
         } => {
             let state = build_app_state(config.clone());
-            let now_unix_ms = now_unix_ms();
-            let retention_cutoff_unix_ms = if *retention_hours == 0 {
-                now_unix_ms
-            } else {
-                now_unix_ms.saturating_sub(retention_hours.saturating_mul(3_600_000))
-            };
-            let context =
-                training_kernel_mutation_context("operator.training.backlog_cleanup", now_unix_ms);
-            let mut store = state
-                .store
-                .write()
-                .map_err(|_| "control_store_poisoned".to_string())?;
-            let report = store.kernel.cleanup_retained_training_backlog(
-                &context,
-                retention_cutoff_unix_ms,
+            let report = execute_training_backlog_cleanup(
+                &state,
                 *apply,
+                *retention_hours,
+                "operator.training.backlog_cleanup",
             )?;
-            if *apply && report.changed {
-                remove_retired_training_backlog_from_scheduler(&mut store, &report);
-                store.persist_training_scheduler_state()?;
-            }
-            drop(store);
 
             if let Some(report_path) = report_path {
                 if let Some(parent) = report_path.parent() {
@@ -331,6 +315,41 @@ pub fn run_training_command(
             Ok(render_training_backlog_cleanup_report(&report))
         }
     }
+}
+
+fn execute_training_backlog_cleanup(
+    state: &AppState,
+    apply: bool,
+    retention_hours: u64,
+    caller_id: &str,
+) -> Result<TrainingBacklogCleanupReport, String> {
+    let now_unix_ms = now_unix_ms();
+    let retention_cutoff_unix_ms = if retention_hours == 0 {
+        now_unix_ms
+    } else {
+        now_unix_ms.saturating_sub(retention_hours.saturating_mul(3_600_000))
+    };
+    let context = training_kernel_mutation_context(caller_id, now_unix_ms);
+    let report = {
+        let mut store = state
+            .store
+            .write()
+            .map_err(|_| "control_store_poisoned".to_string())?;
+        let report = store.kernel.cleanup_retained_training_backlog(
+            &context,
+            retention_cutoff_unix_ms,
+            apply,
+        )?;
+        if apply && report.changed {
+            remove_retired_training_backlog_from_scheduler(&mut store, &report);
+            store.persist_training_scheduler_state()?;
+        }
+        report
+    };
+    if apply && report.changed {
+        let _ = force_refresh_public_stats_cache(state, now_unix_ms);
+    }
+    Ok(report)
 }
 
 fn remove_retired_training_backlog_from_scheduler(
@@ -1375,6 +1394,14 @@ struct TreasuryAdminOperationRequest {
     idempotency_key: Option<String>,
     #[serde(default)]
     params: Value,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct TrainingBacklogCleanupAdminRequest {
+    #[serde(default)]
+    apply: bool,
+    #[serde(default)]
+    retention_hours: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -9624,6 +9651,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/v1/admin/training/demo-runs/cs336-a1/launch",
             post(launch_cs336_a1_demo_run),
         )
+        .route(
+            "/v1/admin/training/backlog-cleanup",
+            post(cleanup_training_backlog_admin),
+        )
         .route("/api/training/visualization", get(training_visualization))
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
@@ -12101,6 +12132,25 @@ async fn launch_cs336_a1_demo_run(
         worker_target_count: u32::try_from(response.assigned_pylons.len()).unwrap_or(u32::MAX),
         run_detail: response.run_detail,
     }))
+}
+
+async fn cleanup_training_backlog_admin(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<TrainingBacklogCleanupAdminRequest>,
+) -> Result<Json<TrainingBacklogCleanupReport>, ApiError> {
+    authenticate_admin_bearer_token(&state, &headers)?;
+    let retention_hours = request
+        .retention_hours
+        .unwrap_or(TRAINING_BACKLOG_CLEANUP_DEFAULT_RETENTION_HOURS);
+    let report = execute_training_backlog_cleanup(
+        &state,
+        request.apply,
+        retention_hours,
+        "admin.training.backlog_cleanup",
+    )
+    .map_err(kernel_api_error)?;
+    Ok(Json(report))
 }
 
 fn authenticate_admin_bearer_token(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
@@ -48708,6 +48758,72 @@ mod tests {
         assert_eq!(
             body.get("reason").and_then(serde_json::Value::as_str),
             Some("missing_admin_bearer_token")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_training_backlog_cleanup_route_requires_admin_bearer_token() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("training-admin".to_string());
+        let app = build_api_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/training/backlog-cleanup")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&json!({
+                        "apply": false,
+                        "retention_hours": 0
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("missing_admin_bearer_token")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_training_backlog_cleanup_route_uses_live_store() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("training-admin".to_string());
+        let app = build_api_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/training/backlog-cleanup")
+                    .header("authorization", "Bearer training-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&json!({
+                        "apply": false,
+                        "retention_hours": 0
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("applied").and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            body.get("changed").and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            body.pointer("/before/active_runs")
+                .and_then(serde_json::Value::as_u64),
+            Some(0)
         );
 
         Ok(())
