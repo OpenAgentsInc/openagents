@@ -100,7 +100,7 @@ gcloud builds submit "$TMP_BUILD_CONTEXT" \
   --timeout "${NEXUS_BUILD_TIMEOUT}" \
   --format='value(id)' \
   --config "${ROOT_DIR}/apps/nexus-relay/deploy/cloudbuild.yaml" \
-  --substitutions "_IMAGE=${NEXUS_IMAGE},_CACHE_IMAGE=${NEXUS_BUILD_CACHE_IMAGE},_BUILD_PROFILE=${NEXUS_BUILD_PROFILE},_SCCACHE_BUCKET=${SCCACHE_BUCKET_SUBSTITUTION},_SCCACHE_KEY_PREFIX=${SCCACHE_KEY_PREFIX_SUBSTITUTION}" \
+  --substitutions "_IMAGE=${NEXUS_IMAGE},_CACHE_IMAGE=${NEXUS_BUILD_CACHE_IMAGE},_BUILD_PROFILE=${NEXUS_BUILD_PROFILE},_SOURCE_REV=$(git -C "$ROOT_DIR" rev-parse HEAD),_SCCACHE_BUCKET=${SCCACHE_BUCKET_SUBSTITUTION},_SCCACHE_KEY_PREFIX=${SCCACHE_KEY_PREFIX_SUBSTITUTION}" \
   2>&1
 )"
 
@@ -125,6 +125,7 @@ receipt = {
     "kind": "nexus_cloudbuild_image",
     "git_sha": "$(git -C "$ROOT_DIR" rev-parse HEAD)",
     "git_short_sha": "${GIT_SHORT_SHA}",
+    "source_rev_build_arg": "$(git -C "$ROOT_DIR" rev-parse HEAD)",
     "image": "${NEXUS_IMAGE}",
     "cache_image": "${NEXUS_BUILD_CACHE_IMAGE}",
     "build_profile": "${NEXUS_BUILD_PROFILE}",

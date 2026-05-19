@@ -13,6 +13,7 @@ steps:
           --builder nexus-cloudbuilder \
           --platform linux/amd64 \
           --build-arg BUILD_PROFILE=${_BUILD_PROFILE} \
+          --build-arg SOURCE_REV=${_SOURCE_REV} \
           --build-arg SCCACHE_GCS_BUCKET=${_SCCACHE_BUCKET} \
           --build-arg SCCACHE_GCS_KEY_PREFIX=${_SCCACHE_KEY_PREFIX} \
           --cache-from type=registry,ref=${_CACHE_IMAGE} \

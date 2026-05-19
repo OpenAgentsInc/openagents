@@ -55,6 +55,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM deps AS builder
 
 ARG BUILD_PROFILE=fast-release
+ARG SOURCE_REV=unknown
 ARG SCCACHE_GCS_BUCKET=""
 ARG SCCACHE_GCS_KEY_PREFIX="nexus-relay"
 
@@ -85,6 +86,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
+    printf '%s\n' "${SOURCE_REV}" > /work/.nexus-source-rev; \
     if [ -n "${SCCACHE_GCS_BUCKET}" ]; then export RUSTC_WRAPPER=/usr/local/bin/sccache; fi; \
     cargo build --locked --profile "${BUILD_PROFILE}" -p nexus-relay -p nexus-control; \
     if [ -n "${SCCACHE_GCS_BUCKET}" ]; then sccache --show-stats || true; fi
