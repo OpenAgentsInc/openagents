@@ -741,6 +741,10 @@ impl TreasuryFundingTargetPhaseTimings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryFundingTargetResponse {
     pub authority: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_status_url: Option<String>,
     pub wallet_runtime_status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_runtime_detail: Option<String>,
@@ -1411,6 +1415,8 @@ pub struct TreasuryStatusResponse {
     pub recent_training_payouts: Vec<TreasuryTrainingPayoutLedgerEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_treasury_operations: Vec<TreasuryOperationRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub treasury_operation_latency_metrics: Vec<TreasuryOperationLatencyMetric>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2411,6 +2417,20 @@ impl TreasuryOperationRecord {
     pub fn command(&self) -> Option<&str> {
         self.rail_metadata.get("command").map(String::as_str)
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryOperationLatencyMetric {
+    pub operation_kind: String,
+    pub operation_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p50_total_duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p95_total_duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p50_provider_duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p95_provider_duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -3941,6 +3961,130 @@ impl TreasuryState {
                 ..AuthorityReceiptContext::default()
             },
         }]
+    }
+
+    pub fn record_funding_invoice_pending_operation(
+        &mut self,
+        config: &TreasuryConfig,
+        request: &TreasuryFundingTargetRequest,
+        mut phase_timings: TreasuryFundingTargetPhaseTimings,
+        now_unix_ms: u64,
+    ) -> TreasuryOperationRecord {
+        let request_id = funding_idempotency_key(request);
+        let operation_id =
+            treasury_operation_id(TreasuryOperationKind::FundingInvoiceCreation, &request_id);
+        if let Some(existing) = self.treasury_operations_by_id.get(operation_id.as_str()) {
+            if matches!(existing.status, TreasuryOperationStatus::Completed) {
+                return existing.clone();
+            }
+        }
+
+        phase_timings
+            .operation_row_created_at_unix_ms
+            .get_or_insert(now_unix_ms);
+        let mut rail_metadata = BTreeMap::new();
+        rail_metadata.insert(
+            "provider".to_string(),
+            config.lightning_provider.provider.as_str().to_string(),
+        );
+        rail_metadata.insert(
+            "ldk_network".to_string(),
+            config.lightning_provider.ldk.network.as_str().to_string(),
+        );
+        rail_metadata.insert(
+            "ldk_chain_backend".to_string(),
+            config
+                .lightning_provider
+                .ldk
+                .chain_backend
+                .as_str()
+                .to_string(),
+        );
+        rail_metadata.insert("operation_mode".to_string(), "durable_pending".to_string());
+        phase_timings.insert_rail_metadata(&mut rail_metadata);
+
+        let operation = TreasuryOperationRecord {
+            operation_id,
+            kind: TreasuryOperationKind::FundingInvoiceCreation,
+            request_id: Some(request_id),
+            rail: operation_rail_for_provider(config.lightning_provider.provider).to_string(),
+            rail_metadata,
+            amount_msat: request.amount_sats.and_then(operation_amount_msat),
+            target_kind: "funding_target".to_string(),
+            target_hash: None,
+            beneficiary: None,
+            status: TreasuryOperationStatus::Pending,
+            provider_payment_id: None,
+            receipt_refs: Vec::new(),
+            degraded_reason: None,
+            created_at_unix_ms: now_unix_ms,
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state: Some("invoice_creation_started".to_string()),
+        };
+        let _ = self.upsert_treasury_operation(operation.clone());
+        self.persist();
+        operation
+    }
+
+    pub fn record_funding_invoice_failed_operation(
+        &mut self,
+        config: &TreasuryConfig,
+        request: &TreasuryFundingTargetRequest,
+        mut phase_timings: TreasuryFundingTargetPhaseTimings,
+        reason: &str,
+        now_unix_ms: u64,
+    ) -> TreasuryOperationRecord {
+        let request_id = funding_idempotency_key(request);
+        let operation_id =
+            treasury_operation_id(TreasuryOperationKind::FundingInvoiceCreation, &request_id);
+        phase_timings
+            .operation_row_created_at_unix_ms
+            .get_or_insert(now_unix_ms);
+        phase_timings
+            .invoice_returned_at_unix_ms
+            .get_or_insert(now_unix_ms);
+        let mut rail_metadata = BTreeMap::new();
+        rail_metadata.insert(
+            "provider".to_string(),
+            config.lightning_provider.provider.as_str().to_string(),
+        );
+        rail_metadata.insert(
+            "ldk_network".to_string(),
+            config.lightning_provider.ldk.network.as_str().to_string(),
+        );
+        rail_metadata.insert(
+            "ldk_chain_backend".to_string(),
+            config
+                .lightning_provider
+                .ldk
+                .chain_backend
+                .as_str()
+                .to_string(),
+        );
+        rail_metadata.insert("operation_mode".to_string(), "durable_failed".to_string());
+        phase_timings.insert_rail_metadata(&mut rail_metadata);
+
+        let operation = TreasuryOperationRecord {
+            operation_id,
+            kind: TreasuryOperationKind::FundingInvoiceCreation,
+            request_id: Some(request_id),
+            rail: operation_rail_for_provider(config.lightning_provider.provider).to_string(),
+            rail_metadata,
+            amount_msat: request.amount_sats.and_then(operation_amount_msat),
+            target_kind: "funding_target".to_string(),
+            target_hash: None,
+            beneficiary: None,
+            status: TreasuryOperationStatus::Failed,
+            provider_payment_id: None,
+            receipt_refs: Vec::new(),
+            degraded_reason: Some(reason.to_string()),
+            created_at_unix_ms: now_unix_ms,
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state: Some("invoice_creation_failed".to_string()),
+        };
+        let _ = self.upsert_treasury_operation(operation.clone());
+        self.persist();
+        operation
     }
 
     fn record_reconciliation_operation(
@@ -6560,6 +6704,65 @@ impl TreasuryState {
         operations
     }
 
+    fn treasury_operation_latency_metrics(&self) -> Vec<TreasuryOperationLatencyMetric> {
+        fn parse_duration(metadata: &BTreeMap<String, String>, key: &str) -> Option<u64> {
+            metadata
+                .get(key)
+                .and_then(|value| value.parse::<u64>().ok())
+        }
+
+        fn percentile(values: &mut [u64], percentile: usize) -> Option<u64> {
+            if values.is_empty() {
+                return None;
+            }
+            values.sort_unstable();
+            let index = values.len().saturating_sub(1).saturating_mul(percentile) / 100;
+            values.get(index).copied()
+        }
+
+        let mut grouped = BTreeMap::<String, (Vec<u64>, Vec<u64>, u64)>::new();
+        for operation in self.treasury_operations_by_id.values() {
+            let total_duration =
+                parse_duration(&operation.rail_metadata, "phase_total_duration_ms");
+            let provider_duration =
+                parse_duration(&operation.rail_metadata, "phase_ldk_rpc_duration_ms");
+            if total_duration.is_none() && provider_duration.is_none() {
+                continue;
+            }
+            let entry = grouped
+                .entry(operation.kind.as_str().to_string())
+                .or_default();
+            if let Some(duration) = total_duration {
+                entry.0.push(duration);
+            }
+            if let Some(duration) = provider_duration {
+                entry.1.push(duration);
+            }
+            entry.2 = entry.2.saturating_add(1);
+        }
+
+        grouped
+            .into_iter()
+            .map(
+                |(
+                    operation_kind,
+                    (mut total_durations, mut provider_durations, operation_count),
+                )| {
+                    let mut total_for_p95 = total_durations.clone();
+                    let mut provider_for_p95 = provider_durations.clone();
+                    TreasuryOperationLatencyMetric {
+                        operation_kind,
+                        operation_count,
+                        p50_total_duration_ms: percentile(&mut total_durations, 50),
+                        p95_total_duration_ms: percentile(&mut total_for_p95, 95),
+                        p50_provider_duration_ms: percentile(&mut provider_durations, 50),
+                        p95_provider_duration_ms: percentile(&mut provider_for_p95, 95),
+                    }
+                },
+            )
+            .collect()
+    }
+
     pub fn status_response(
         &self,
         config: &TreasuryConfig,
@@ -6571,6 +6774,7 @@ impl TreasuryState {
         let payout_target_identities = self.payout_target_identity_rows();
         let recent_training_payouts = self.recent_training_payouts();
         let recent_treasury_operations = self.recent_treasury_operations();
+        let treasury_operation_latency_metrics = self.treasury_operation_latency_metrics();
         let legacy_availability_confirmation_attention_rows =
             self.legacy_availability_confirmation_attention_rows(config, now_unix_ms);
         TreasuryStatusResponse {
@@ -6723,6 +6927,7 @@ impl TreasuryState {
             payout_target_identities,
             recent_training_payouts,
             recent_treasury_operations,
+            treasury_operation_latency_metrics,
             availability_beneficiary_debug_rows: self.availability_beneficiary_debug_rows.clone(),
             legacy_availability_confirmation_attention_rows,
         }
@@ -8406,6 +8611,13 @@ fn funding_idempotency_key(request: &TreasuryFundingTargetRequest) -> String {
     format!("funding:{}", hex::encode(&hasher.finalize()[..16]))
 }
 
+pub fn treasury_funding_invoice_operation_id(request: &TreasuryFundingTargetRequest) -> String {
+    treasury_operation_id(
+        TreasuryOperationKind::FundingInvoiceCreation,
+        funding_idempotency_key(request).as_str(),
+    )
+}
+
 fn ldk_wallet_snapshot(
     _config: &TreasuryConfig,
     balances: LdkServerBalances,
@@ -8912,6 +9124,8 @@ pub async fn run_treasury_command(
                 .get_or_insert(now_unix_ms);
             let response = TreasuryFundingTargetResponse {
                 authority: "openagents-hosted-nexus".to_string(),
+                operation_id: None,
+                operation_status_url: None,
                 wallet_runtime_status: material.wallet_snapshot.runtime_status,
                 wallet_runtime_detail: material.wallet_snapshot.runtime_detail,
                 wallet_hydration_mode: material.wallet_snapshot.wallet_hydration_mode,

@@ -47,6 +47,26 @@ also returns provider metadata such as `provider_payment_id_hash` and an
 internal `ldk://...` provider target for receipts and diagnostics; those fields
 are not payment instructions for the payer.
 
+The response also includes a durable `operation_id` and
+`operation_status_url`. Nexus writes a pending funding-invoice operation before
+calling the LDK provider, then updates that operation to `completed` or
+`failed`. If the funding-target request times out or returns an upstream
+provider error, use the operation status URL instead of guessing from the HTTP
+status:
+
+```bash
+operation_id="<operation-id-from-response-or-idempotency-debug>"
+
+curl -fsS -H "Authorization: Bearer ${token}" \
+  "https://nexus.openagents.com/v1/treasury/operations/${operation_id}" |
+  jq '{operation_id, kind, rail, status, terminal_event_state, degraded_reason, safe_metadata}'
+```
+
+The operation status payload is redacted. It can expose phase timings,
+provider name, network, chain backend, terminal status, and hashes, but it must
+not expose raw invoices, provider payment ids, API keys, TLS material, seed
+material, or private channel state.
+
 The response wallet balance fields must be live LDK Server balances collected
 after the invoice is created. They are not derived from the invoice target. If
 `wallet_balance_sats`, `wallet_total_onchain_balance_sats`, or
@@ -59,6 +79,11 @@ The durable relay shell proxies this request into embedded Nexus-control. Keep
 `NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS`; the current default relay
 budget is `180000` ms. That timeout is a protective ceiling, not an acceptable
 product-latency target.
+
+`/v1/treasury/status` exposes aggregate
+`treasury_operation_latency_metrics` for operation kinds that record timing
+metadata. Use those metrics to separate provider latency from proxy/relay
+latency before changing timeout budgets.
 
 ## Confirm Payment
 

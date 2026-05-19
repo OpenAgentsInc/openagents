@@ -168,13 +168,14 @@ use crate::treasury::{
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
     ProviderPayoutTargetRegistrationResponse, TreasuryCanonicalPublicSnapshot, TreasuryConfig,
     TreasuryDispatchBatchResult, TreasuryDispatchOutcome, TreasuryDispatchPlan,
-    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryIntegrationExportResponse,
-    TreasuryIntegrationImportResponse, TreasuryOperationStatus, TreasuryPayoutClass,
-    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode,
-    TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState,
-    TreasuryStatusResponse, TreasuryTrainingPayoutLedgerEntry, TreasuryTrainingPayoutLedgerSummary,
-    create_live_funding_target, dispatch_live_payouts, load_live_wallet_refresh_result_with_plan,
-    parse_pylon_client_version,
+    TreasuryFundingTargetPhaseTimings, TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
+    TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryOperationStatus,
+    TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPayoutPreparation,
+    TreasuryPlaceholderPayoutMode, TreasuryPublicStats, TreasuryQueuedPayoutRequest,
+    TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse, TreasuryTrainingPayoutLedgerEntry,
+    TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
+    load_live_wallet_refresh_result_with_plan, parse_pylon_client_version,
+    treasury_funding_invoice_operation_id,
 };
 use crate::treasury_provider::{
     LdkServerChannel, LdkServerClient, LdkServerClientError, LdkServerClientErrorKind,
@@ -1412,6 +1413,29 @@ struct TreasuryAdminOperationResponse {
     #[serde(default)]
     idempotent_replay: bool,
     result: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryOperationStatusResponse {
+    operation_id: String,
+    kind: String,
+    rail: String,
+    status: String,
+    target_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    target_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    amount_msat: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider_payment_id_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    terminal_event_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    degraded_reason: Option<String>,
+    created_at_unix_ms: u64,
+    updated_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    safe_metadata: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -9684,6 +9708,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(complete_starter_demand_offer),
         )
         .route("/v1/treasury/status", get(treasury_status))
+        .route(
+            "/v1/treasury/operations/{operation_id}",
+            get(treasury_operation_status),
+        )
         .route("/v1/treasury/projections", get(treasury_projections))
         .route("/api/treasury/projections", get(treasury_projections))
         .route("/api/admin/treasury/refresh", post(refresh_treasury_status))
@@ -18201,6 +18229,40 @@ async fn treasury_status(
     Ok(Json(status.public_api_view()))
 }
 
+async fn treasury_operation_status(
+    State(state): State<AppState>,
+    Path(operation_id): Path<String>,
+) -> Result<Json<TreasuryOperationStatusResponse>, ApiError> {
+    let operation_id = normalize_required_field(operation_id.as_str(), "operation_id_missing")?;
+    let store = try_read_store(&state, "treasury_operation_status_live_store_busy")?;
+    let Some(operation) = store
+        .treasury
+        .treasury_operations_by_id
+        .get(operation_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "treasury_operation_not_found".to_string(),
+        });
+    };
+    Ok(Json(TreasuryOperationStatusResponse {
+        operation_id: operation.operation_id.clone(),
+        kind: treasury_operation_kind_label(operation.kind).to_string(),
+        rail: operation.rail.clone(),
+        status: treasury_operation_status_label(operation.status).to_string(),
+        target_kind: operation.target_kind.clone(),
+        target_hash: operation.target_hash.clone(),
+        amount_msat: operation.amount_msat,
+        provider_payment_id_hash: operation.provider_payment_id.clone(),
+        terminal_event_state: operation.terminal_event_state.clone(),
+        degraded_reason: operation.degraded_reason.clone(),
+        created_at_unix_ms: operation.created_at_unix_ms,
+        updated_at_unix_ms: operation.updated_at_unix_ms,
+        safe_metadata: safe_treasury_operation_metadata(&operation.rail_metadata),
+    }))
+}
+
 async fn treasury_projections(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -18802,6 +18864,9 @@ fn safe_treasury_operation_metadata(
                     key.as_str(),
                     "command"
                         | "provider"
+                        | "operation_mode"
+                        | "ldk_network"
+                        | "ldk_chain_backend"
                         | "payment_target_kind"
                         | "payment_direction"
                         | "payment_method"
@@ -19366,6 +19431,35 @@ async fn create_treasury_funding_target(
         description: normalize_optional_field(request.description.as_deref()),
         expiry_seconds: request.expiry_seconds.filter(|value| *value > 0),
     };
+    let request_received_at_unix_ms = now_unix_ms();
+    let operation_id = treasury_funding_invoice_operation_id(&normalized_request);
+    let operation_status_url = format!("/v1/treasury/operations/{operation_id}");
+    match state.store.try_write() {
+        Ok(mut store) => {
+            let _operation = store.treasury.record_funding_invoice_pending_operation(
+                &state.config.treasury,
+                &normalized_request,
+                TreasuryFundingTargetPhaseTimings {
+                    request_received_at_unix_ms,
+                    ..TreasuryFundingTargetPhaseTimings::default()
+                },
+                request_received_at_unix_ms,
+            );
+        }
+        Err(TryLockError::WouldBlock) => {
+            tracing::warn!(
+                operation_id,
+                "treasury funding target pending operation row skipped: store busy"
+            );
+        }
+        Err(TryLockError::Poisoned(_)) => {
+            return Err(ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "session_store_poisoned".to_string(),
+            });
+        }
+    }
     let timeout_ms = state.config.treasury.funding_target_timeout_ms;
     let mut material = match tokio::time::timeout(
         Duration::from_millis(timeout_ms),
@@ -19375,6 +19469,22 @@ async fn create_treasury_funding_target(
     {
         Ok(Ok(material)) => material,
         Ok(Err(error)) => {
+            let now = now_unix_ms();
+            if let Ok(mut store) = state.store.try_write() {
+                let reason = error.to_string();
+                let _operation = store.treasury.record_funding_invoice_failed_operation(
+                    &state.config.treasury,
+                    &normalized_request,
+                    TreasuryFundingTargetPhaseTimings {
+                        request_received_at_unix_ms,
+                        invoice_returned_at_unix_ms: Some(now),
+                        ..TreasuryFundingTargetPhaseTimings::default()
+                    },
+                    reason.as_str(),
+                    now,
+                );
+            }
+            let _ = force_refresh_treasury_status_cache(&state, now);
             return Err(ApiError {
                 status: StatusCode::BAD_GATEWAY,
                 error: "bad_gateway",
@@ -19382,8 +19492,23 @@ async fn create_treasury_funding_target(
             });
         }
         Err(_) => {
+            let now = now_unix_ms();
             let timeout_reason = format!("treasury_funding_target_timeout:{timeout_ms}");
             tracing::error!("treasury funding target timed out: {timeout_reason}");
+            if let Ok(mut store) = state.store.try_write() {
+                let _operation = store.treasury.record_funding_invoice_failed_operation(
+                    &state.config.treasury,
+                    &normalized_request,
+                    TreasuryFundingTargetPhaseTimings {
+                        request_received_at_unix_ms,
+                        invoice_returned_at_unix_ms: Some(now),
+                        ..TreasuryFundingTargetPhaseTimings::default()
+                    },
+                    timeout_reason.as_str(),
+                    now,
+                );
+            }
+            let _ = force_refresh_treasury_status_cache(&state, now);
             return Err(ApiError {
                 status: StatusCode::GATEWAY_TIMEOUT,
                 error: "gateway_timeout",
@@ -19392,6 +19517,9 @@ async fn create_treasury_funding_target(
         }
     };
     let now = now_unix_ms();
+    if material.phase_timings.request_received_at_unix_ms == 0 {
+        material.phase_timings.request_received_at_unix_ms = request_received_at_unix_ms;
+    }
     material.phase_timings.operation_row_created_at_unix_ms = Some(now);
     material
         .phase_timings
@@ -19416,6 +19544,8 @@ async fn create_treasury_funding_target(
     let _ = force_refresh_public_stats_cache(&state, now);
     Ok(Json(TreasuryFundingTargetResponse {
         authority: "openagents-hosted-nexus".to_string(),
+        operation_id: Some(operation_id),
+        operation_status_url: Some(operation_status_url),
         wallet_runtime_status: material.wallet_snapshot.runtime_status,
         wallet_runtime_detail: material.wallet_snapshot.runtime_detail,
         wallet_hydration_mode: material.wallet_snapshot.wallet_hydration_mode,
@@ -29745,12 +29875,13 @@ mod tests {
         TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
         TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
-        annotate_treasury_availability_stipend_eligibility, training_contributor_tier_projection,
-        training_fleet_abuse_snapshot, training_scheduler_metadata_from_run,
-        training_window_base_record, training_window_closeout_outcome,
-        training_window_closeout_status, training_window_closeout_treasury_payout_requests,
-        training_window_metadata_from_value, training_window_metadata_value,
-        training_work_class_counts_as_model_progress_participant, validator_service,
+        TreasuryOperationStatusResponse, annotate_treasury_availability_stipend_eligibility,
+        training_contributor_tier_projection, training_fleet_abuse_snapshot,
+        training_scheduler_metadata_from_run, training_window_base_record,
+        training_window_closeout_outcome, training_window_closeout_status,
+        training_window_closeout_treasury_payout_requests, training_window_metadata_from_value,
+        training_window_metadata_value, training_work_class_counts_as_model_progress_participant,
+        treasury_funding_invoice_operation_id, validator_service,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -36139,6 +36270,7 @@ mod tests {
         let app = build_router_with_state(state.clone());
 
         let funding_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -36160,6 +36292,12 @@ mod tests {
         assert!(funding_value.get("provider_invoice").is_none());
         assert!(funding_value.get("bitcoin_address").is_none());
         let funding: TreasuryFundingTargetResponse = serde_json::from_str(&funding_text)?;
+        let operation_id = funding.operation_id.clone().expect("operation id");
+        let expected_operation_status_url = format!("/v1/treasury/operations/{operation_id}");
+        assert_eq!(
+            funding.operation_status_url.as_deref(),
+            Some(expected_operation_status_url.as_str())
+        );
         assert_eq!(funding.provider_invoice, None);
         assert!(
             funding
@@ -36205,6 +36343,45 @@ mod tests {
                 .rail_metadata
                 .contains_key("phase_operation_row_created_at_unix_ms")
         );
+
+        let operation_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/treasury/operations/{operation_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(operation_response.status(), StatusCode::OK);
+        let operation_status: TreasuryOperationStatusResponse =
+            response_json(operation_response).await?;
+        assert_eq!(operation_status.operation_id, operation_id);
+        assert_eq!(operation_status.kind, "funding_invoice_creation");
+        assert_eq!(operation_status.status, "completed");
+        assert!(
+            operation_status
+                .safe_metadata
+                .contains_key("phase_ldk_rpc_duration_ms")
+        );
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(status_response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(status_response).await?;
+        let funding_latency = status
+            .treasury_operation_latency_metrics
+            .iter()
+            .find(|metric| metric.operation_kind == "funding_invoice_creation")
+            .expect("funding latency metric");
+        assert_eq!(funding_latency.operation_count, 1);
+        assert!(funding_latency.p50_provider_duration_ms.is_some());
         Ok(())
     }
 
@@ -36289,6 +36466,7 @@ mod tests {
         );
 
         let status_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -36301,6 +36479,30 @@ mod tests {
         assert_eq!(status.wallet_runtime_status.as_deref(), Some("connected"));
         assert_eq!(status.wallet_last_error, None);
         assert_eq!(status.wallet_balance_sats, 710);
+
+        let store = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/treasury/operations/{}",
+                        treasury_funding_invoice_operation_id(&TreasuryFundingTargetRequest {
+                            amount_sats: Some(210),
+                            description: Some("fund treasury".to_string()),
+                            expiry_seconds: Some(60),
+                        })
+                    ))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(store.status(), StatusCode::OK);
+        let operation_status: TreasuryOperationStatusResponse = response_json(store).await?;
+        assert_eq!(operation_status.status, "failed");
+        assert_eq!(
+            operation_status.degraded_reason.as_deref(),
+            Some("treasury_funding_target_timeout:5")
+        );
 
         set_test_wallet_funding_hook(None);
         Ok(())

@@ -210,14 +210,32 @@ topology lands. The returned invoice is the payment request to give the
 operator. It is not proof of payment.
 
 LDK funding responses now include `phase_timings` plus a hashed
-`provider_payment_id_hash`. The timing object records when Nexus received the
+`provider_payment_id_hash`, an `operation_id`, and an
+`operation_status_url`. The timing object records when Nexus received the
 request, when the LDK receive RPC started and completed, when the invoice was
-returned, and when the operation row was written. The same timing fields are
-copied into the provider-neutral treasury operation metadata and funding
-receipt attributes so operator funding latency can be audited without logging
-raw invoices, payment ids, API keys, TLS material, seeds, or channel state.
-Standard LDK funding responses do not create non-LDK invoices. The payer-facing
-value is `bolt11_invoice`.
+returned, and when the operation row was written. Nexus writes a durable
+pending `FundingInvoiceCreation` operation before the provider call and updates
+the same operation to `completed` or `failed` when the provider returns or the
+interactive timeout fires. The same timing fields are copied into the
+provider-neutral treasury operation metadata and funding receipt attributes so
+operator funding latency can be audited without logging raw invoices, payment
+ids, API keys, TLS material, seeds, or channel state. Standard LDK funding
+responses do not create non-LDK invoices. The payer-facing value is
+`bolt11_invoice`.
+
+The single-operation status endpoint is:
+
+```bash
+curl -fsS \
+  "https://nexus.openagents.com/v1/treasury/operations/<operation-id>" |
+  jq '{operation_id, kind, rail, status, target_kind, terminal_event_state, degraded_reason, safe_metadata}'
+```
+
+The endpoint returns only redacted metadata. It is intended for debugging
+funding-target and provider-operation latency without exposing raw payment
+material. `/v1/treasury/status` also exposes
+`treasury_operation_latency_metrics`, grouped by operation kind, with p50/p95
+total and provider durations when phase timing metadata is present.
 
 Current treasury-provider environment:
 
@@ -685,9 +703,13 @@ Spark wallet operations timing out at materially larger budgets:
 The current conclusion is that Nexus must stop putting old-runtime wallet sync,
 invoice creation, and spendability proof on the critical path of an
 interactive HTTP request. Keep the current longer proxy budget for safety, but
-build toward async funding-target operations with idempotency keys, phase-level
-timing, and typed LDK degraded states such as node-unavailable,
-channel-liquidity-low, or payment-reconciliation-lagging.
+do not treat that budget as normal latency. Current LDK funding-target calls
+write durable operation status before provider execution, return a stable
+operation id, preserve failed/timeout status rows, and publish p50/p95
+operation latency metrics. The next production step is to move any remaining
+provider operations that can exceed the tight interactive budget behind the
+same idempotent status-polling contract, with typed LDK degraded states such as
+node-unavailable, channel-liquidity-low, or payment-reconciliation-lagging.
 
 Do not retry production funding-target calls as a debugging loop; reproduce the
 wallet/funding behavior locally or in the private treasury runner first, then

@@ -474,7 +474,14 @@ The readiness smoke verifies the active Nexus API path:
   liquidity; total on-chain sats may still be pending and are not enough for
   production readiness.
 - `POST /v1/treasury/funding-target` returns a BOLT11 invoice from the LDK
-  provider and no non-LDK invoice field.
+  provider, no non-LDK invoice field, and a durable `operation_id` plus
+  `operation_status_url`.
+- `GET /v1/treasury/operations/<operation-id>` returns the redacted
+  funding-invoice operation status. A timeout or provider error must leave a
+  failed operation row instead of disappearing into a generic proxy failure.
+- `GET /v1/treasury/status` exposes redacted
+  `treasury_operation_latency_metrics` so p50/p95 provider latency can be
+  separated from relay/proxy latency.
 - `POST /v1/admin/treasury/operations` can read `treasury.status`,
   `treasury.listPeers`, `treasury.listChannels`, and `treasury.listPayments`.
 - JSON artifacts are written under `target/nexus-ldk-readiness/<timestamp>/`.
@@ -562,8 +569,11 @@ scripts/deploy/nexus/28-sync-ldk-client-material.sh
 ```
 
 After this configuration is active, `POST /v1/treasury/funding-target` should
-return a BOLT11 invoice plus `phase_timings`. The standard funding path must
-not create any non-LDK invoice.
+return a BOLT11 invoice, `phase_timings`, `operation_id`, and
+`operation_status_url`. The standard funding path must not create any non-LDK
+invoice. The funding target HTTP timeout is a tight operator-facing budget; the
+durable operation row is the source of truth for pending, completed, and failed
+provider execution.
 
 ## Production Readiness Gates
 
