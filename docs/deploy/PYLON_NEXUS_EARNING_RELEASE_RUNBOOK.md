@@ -83,6 +83,20 @@ is still zero and the blocker reason is
 `homework_worker_payout_target_requires_ldk_v0_2`, the remaining problem is
 the LDK payout target, not the Psionic runtime.
 
+For OpenAgents-hosted Pylons, configure the LDK target with:
+
+```bash
+scripts/deploy/nexus/30-register-hosted-pylon-ldk-targets.sh
+```
+
+This generates a unique BOLT12 offer from the Nexus LDK server for each hosted
+Pylon that is missing a target, writes it with `pylon config set`, restarts the
+host, and waits until Nexus observes the registered LDK identities. The script
+redacts payout targets from logs; operators should use short target hashes for
+comparison, not raw offers. Use `NEXUS_PYLON_HOSTS` to scope the fleet and
+`NEXUS_PYLON_REPLACE_PAYOUT_TARGETS=true` only when replacing an existing hosted
+target intentionally.
+
 The 2026-05-18 LDK proof demonstrates why this gate is mandatory. Updating the
 Pylon binary to `ad27f320b` without updating `/var/lib/pylon/psionic` left
 validators on stale Psionic revision `09b71872b24a934228f61c28e65e3aa544025f54`

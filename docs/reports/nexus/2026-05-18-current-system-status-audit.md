@@ -544,11 +544,18 @@ Operational response:
 
 ### 3. Thin LDK Capacity
 
-There is one usable channel and one registered LDK payout-target identity.
+The 2026-05-19 hosted Pylon rollout moved the GCP proof fleet from one
+registered LDK payout-target identity to seven registered LDK payout-target
+identities. Each hosted Pylon now has a unique BOLT12 payout destination
+configured through `scripts/deploy/nexus/30-register-hosted-pylon-ldk-targets.sh`.
+
+That improves admission coverage, but it does not solve Lightning liquidity.
+The active LDK readiness state still requires channels/rebalancing before this
+can support broad paid-work volume.
 
 Operational response:
 
-- Register more Pylon v0.2 payout targets.
+- Keep hosted Pylon v0.2 target registration at seven or higher.
 - Add channel/liquidity capacity before broader paid-work rollout.
 - Keep watch on no-route and insufficient-balance counters.
 
@@ -578,21 +585,20 @@ Operational response:
 
 ## Recommended Next Work
 
-1. Register additional hosted Pylon v0.2 LDK payout targets.
-2. Add or run a ledger cleanup report for the `90` failed payout records and
+1. Add or run a ledger cleanup report for the `90` failed payout records and
    `86` accepted-work attention records.
-3. Drain or retire the retained training backlog so normal launch health can
+2. Drain or retire the retained training backlog so normal launch health can
    move out of `bad`.
-4. Expand LDK channel capacity beyond proof scale.
-5. Keep a recurring proof smoke:
+3. Expand LDK channel capacity beyond proof scale.
+4. Keep a recurring proof smoke:
    - fresh targeted training run;
    - worker claim;
    - validator closeout;
    - rewarded window;
    - confirmed and settled LDK payout.
-6. Remove dormant Spark repo artifacts once old receipt inspection and
+5. Remove dormant Spark repo artifacts once old receipt inspection and
    deprecated desktop surfaces no longer require them.
-7. Keep Cloudflare/web surfaces as read-only or admin facades only. LDK node,
+6. Keep Cloudflare/web surfaces as read-only or admin facades only. LDK node,
    `bitcoind`, custody, payment events, and backups stay on server
    infrastructure.
 

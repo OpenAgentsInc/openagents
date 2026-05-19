@@ -139,6 +139,63 @@ Example config intent:
 payout_destination = "lno..."
 ```
 
+For the OpenAgents-hosted Pylon proof fleet, use the idempotent rollout script
+instead of hand-editing host config:
+
+```bash
+scripts/deploy/nexus/30-register-hosted-pylon-ldk-targets.sh
+```
+
+The script:
+
+- connects to the configured hosted Pylon VMs through GCP IAP;
+- skips existing LDK-compatible targets unless
+  `NEXUS_PYLON_REPLACE_PAYOUT_TARGETS=true`;
+- generates one unique BOLT12 offer per missing hosted Pylon from the Nexus LDK
+  server;
+- sets `payout_destination` through `pylon config set`;
+- restarts `pylon.service`;
+- logs only target kind, length, and short hash, never the raw payout target;
+- waits for `/api/stats` to show the expected
+  `nexus_ldk_payout_target_identities` count.
+
+Useful controls:
+
+```bash
+# Limit rollout to a subset.
+NEXUS_PYLON_HOSTS="pylon-gcp-1 pylon-gcp-2" \
+scripts/deploy/nexus/30-register-hosted-pylon-ldk-targets.sh
+
+# Replace an older hosted target with a fresh BOLT12 offer.
+NEXUS_PYLON_HOSTS="pylon-gcp-1" \
+NEXUS_PYLON_REPLACE_PAYOUT_TARGETS=true \
+scripts/deploy/nexus/30-register-hosted-pylon-ldk-targets.sh
+
+# Verify without changing Pylon hosts. This still asks LDK server to mint
+# offers for hosts that would need a target, so use it as a rollout rehearsal,
+# not as a no-contact unit test.
+NEXUS_PYLON_REGISTER_DRY_RUN=true \
+NEXUS_PYLON_WAIT_FOR_REGISTRATION=false \
+scripts/deploy/nexus/30-register-hosted-pylon-ldk-targets.sh
+```
+
+Verification:
+
+```bash
+curl -fsS https://nexus.openagents.com/api/stats | jq '{
+  nexus_ldk_payout_target_identities,
+  homework_worker_eligible_pylons_online_now,
+  nexus_missing_payout_target_blocked_beneficiaries_now,
+  nexus_readiness_blocked_beneficiaries_now
+}'
+```
+
+As of the 2026-05-19 rollout, all seven GCP-hosted Pylons had BOLT12 payout
+destinations configured and Nexus reported seven LDK payout target identities.
+Some non-hosted or old-version Pylons may still show
+`homework_worker_payout_target_requires_ldk_v0_2`; that is expected until those
+separate provider nodes are upgraded and configured.
+
 Normal Pylon startup does not create or accept non-LDK payout destinations. The
 only Pylon registration path is Lightning-only. Workers without registered LDK
 payout targets remain visible for operator diagnostics, but new paid-work
