@@ -26228,12 +26228,36 @@ fn training_operator_summary_snapshot_with_run_limit(
                 weak_device_assigned_contributor_ids
                     .extend(run_assigned_contributor_ids.iter().cloned());
             }
+            let run_outcomes = accepted_outcomes_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let accepted_terminal_outcomes = run_outcomes
+                .iter()
+                .copied()
+                .filter(|outcome| training_outcome_counts_as_accepted_closeout(outcome))
+                .collect::<Vec<_>>();
+            let accepted_progress_outcomes = run_outcomes
+                .iter()
+                .copied()
+                .filter(|outcome| training_outcome_counts_as_accepted_progress(outcome))
+                .collect::<Vec<_>>();
+            let accepted_terminal_window_ids = accepted_terminal_outcomes
+                .iter()
+                .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
+                .collect::<HashSet<_>>();
+            let accepted_progress_window_ids = accepted_progress_outcomes
+                .iter()
+                .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
+                .collect::<HashSet<_>>();
             let active_window_count = run_windows
                 .iter()
+                .filter(|window| !accepted_terminal_window_ids.contains(window.window_id.as_str()))
                 .filter(|window| window.status != ComputeAdapterWindowStatus::Reconciled)
                 .count() as u64;
             let pending_validation_window_count = run_windows
                 .iter()
+                .filter(|window| !accepted_terminal_window_ids.contains(window.window_id.as_str()))
                 .filter(|window| {
                     matches!(
                         window.status,
@@ -26274,28 +26298,6 @@ fn training_operator_summary_snapshot_with_run_limit(
                 })
                 .count() as u64;
 
-            let run_outcomes = accepted_outcomes_by_run_id
-                .get(run.training_run_id.as_str())
-                .map(Vec::as_slice)
-                .unwrap_or(&[]);
-            let accepted_terminal_outcomes = run_outcomes
-                .iter()
-                .copied()
-                .filter(|outcome| training_outcome_counts_as_accepted_closeout(outcome))
-                .collect::<Vec<_>>();
-            let accepted_progress_outcomes = run_outcomes
-                .iter()
-                .copied()
-                .filter(|outcome| training_outcome_counts_as_accepted_progress(outcome))
-                .collect::<Vec<_>>();
-            let accepted_terminal_window_ids = accepted_terminal_outcomes
-                .iter()
-                .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
-                .collect::<HashSet<_>>();
-            let accepted_progress_window_ids = accepted_progress_outcomes
-                .iter()
-                .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
-                .collect::<HashSet<_>>();
             let accepted_contributors = run_contributions
                 .iter()
                 .copied()
@@ -26569,16 +26571,8 @@ fn training_operator_summary_snapshot_with_run_limit(
         })
         .collect::<Vec<_>>();
     run_summaries.sort_by(|lhs, rhs| {
-        let lhs_active = training_run_state_counts_as_active(
-            lhs.run_status.as_str(),
-            lhs.active_window_count,
-            lhs.pending_validation_window_count,
-        );
-        let rhs_active = training_run_state_counts_as_active(
-            rhs.run_status.as_str(),
-            rhs.active_window_count,
-            rhs.pending_validation_window_count,
-        );
+        let lhs_active = training_operator_run_counts_as_active(lhs);
+        let rhs_active = training_operator_run_counts_as_active(rhs);
         rhs_active
             .cmp(&lhs_active)
             .then_with(|| {
@@ -26601,17 +26595,9 @@ fn training_operator_summary_snapshot_with_run_limit(
         weak_device_accepted_contributors: weak_device_accepted_contributor_ids.len() as u64,
         model_progress_contributors: progress_contributor_ids.len() as u64,
         admitted_nodes_online: admitted_nodes.iter().filter(|node| node.online).count() as u64,
-        active_runs: training_runs
+        active_runs: run_summaries
             .iter()
-            .filter(|run| {
-                matches!(
-                    run.status,
-                    ComputeTrainingRunStatus::Queued
-                        | ComputeTrainingRunStatus::Preparing
-                        | ComputeTrainingRunStatus::Running
-                        | ComputeTrainingRunStatus::Finalizing
-                )
-            })
+            .filter(|run| training_operator_run_counts_as_active(run))
             .count() as u64,
         active_windows: run_summaries
             .iter()
@@ -26758,6 +26744,23 @@ fn training_run_state_counts_as_active(
     training_run_state_preferred_as_default(run_status)
         || active_window_count > 0
         || pending_validation_window_count > 0
+}
+
+fn training_operator_run_counts_as_active(run: &TrainingOperatorRunSummary) -> bool {
+    let has_terminal_settlement = run.settlement.accepted_closeouts > 0;
+    let has_open_work = run.active_window_count > 0
+        || run.pending_validation_window_count > 0
+        || run.open_validator_challenges > 0
+        || run.queued_validator_challenges > 0;
+    if has_terminal_settlement && !has_open_work {
+        return false;
+    }
+
+    training_run_state_counts_as_active(
+        run.run_status.as_str(),
+        run.active_window_count,
+        run.pending_validation_window_count,
+    )
 }
 
 fn training_default_run<'a>(
@@ -27242,13 +27245,10 @@ fn training_public_stats_snapshot(
     let visualization =
         training_visualization_snapshot_with_summary(store, now_unix_ms, summary.clone());
     let default_run = training_default_run(summary.runs.as_slice());
-    let active_run = summary.runs.iter().find(|run| {
-        training_run_state_counts_as_active(
-            run.run_status.as_str(),
-            run.active_window_count,
-            run.pending_validation_window_count,
-        )
-    });
+    let active_run = summary
+        .runs
+        .iter()
+        .find(|run| training_operator_run_counts_as_active(run));
     let default_run_id = default_run.map(|run| run.training_run_id.clone());
     let default_network_id = default_run.map(|run| run.network_id.clone());
     let active_run_id = active_run
@@ -27274,11 +27274,7 @@ fn training_public_stats_snapshot(
 
     let mut active_run_counts = BTreeMap::<String, u64>::new();
     for run in &summary.runs {
-        if training_run_state_counts_as_active(
-            run.run_status.as_str(),
-            run.active_window_count,
-            run.pending_validation_window_count,
-        ) {
+        if training_operator_run_counts_as_active(run) {
             *active_run_counts
                 .entry(run.settlement.work_class.clone())
                 .or_default() += 1;
@@ -27307,20 +27303,16 @@ fn training_public_stats_snapshot(
     let mut runs = visualization
         .runs
         .iter()
-        .filter(|run| {
-            training_run_state_counts_as_active(
-                run.run_status.as_str(),
-                run.active_window_count,
-                run.pending_validation_window_count,
-            ) || default_run_id.as_deref() == Some(run.training_run_id.as_str())
-        })
-        .map(|run| {
+        .filter_map(|run| {
             let summary_run = summary_runs_by_id
                 .get(run.training_run_id.as_str())
                 .copied();
-            summary_run.map(|summary_run| training_public_run_state(summary_run, run))
+            summary_run.and_then(|summary_run| {
+                (training_operator_run_counts_as_active(summary_run)
+                    || default_run_id.as_deref() == Some(run.training_run_id.as_str()))
+                .then(|| training_public_run_state(summary_run, run))
+            })
         })
-        .flatten()
         .collect::<Vec<_>>();
     runs.sort_by(|lhs, rhs| {
         let lhs_default = default_run_id.as_deref() == Some(lhs.training_run_id.as_str());
@@ -27412,13 +27404,7 @@ fn build_training_launch_health_snapshot(
     let run_backlog_slots = summary
         .runs
         .iter()
-        .filter(|run| {
-            training_run_state_counts_as_active(
-                run.run_status.as_str(),
-                run.active_window_count,
-                run.pending_validation_window_count,
-            )
-        })
+        .filter(|run| training_operator_run_counts_as_active(run))
         .map(|run| u64::from(run.worker_target_count).saturating_sub(run.assigned_contributors))
         .sum();
     let mut health = PublicTrainingLaunchHealthSnapshot {
@@ -48169,7 +48155,7 @@ mod tests {
         assert_eq!(final_stats.training_weak_device_accepted_contributors, 1);
         assert_eq!(final_stats.training_nodes_online, 2);
         assert_eq!(final_stats.training_admitted_nodes_online, 2);
-        assert_eq!(final_stats.training_runs_active, 1);
+        assert_eq!(final_stats.training_runs_active, 0);
         assert_eq!(final_stats.training_windows_active, 0);
         assert_eq!(final_stats.training_windows_pending_validation, 0);
         assert_eq!(final_stats.training_validator_challenges_open, 0);
@@ -48193,7 +48179,7 @@ mod tests {
                 .training_public_state
                 .active_window_id
                 .as_deref(),
-            Some("window.0002")
+            Some("window.0001")
         );
         assert_eq!(
             final_stats
@@ -48222,7 +48208,7 @@ mod tests {
                 .queue_pressure
                 .state
                 .as_str(),
-            "standing_by"
+            "none"
         );
         assert_eq!(final_stats.training_public_state.work_classes.len(), 1);
         assert_eq!(final_stats.training_public_state.runs.len(), 1);
@@ -48232,14 +48218,14 @@ mod tests {
                 .training_public_state
                 .launch_health
                 .overall_status,
-            "warn"
+            "good"
         );
         assert_eq!(
             final_stats
                 .training_public_state
                 .launch_health
                 .active_alert_count,
-            2
+            0
         );
         assert_eq!(
             final_stats
@@ -48275,7 +48261,7 @@ mod tests {
         assert_eq!(final_summary.progress.accepted_contributors, 1);
         assert_eq!(final_summary.progress.weak_device_accepted_contributors, 1);
         assert_eq!(final_summary.progress.model_progress_contributors, 1);
-        assert_eq!(final_summary.active_runs, 1);
+        assert_eq!(final_summary.active_runs, 0);
         assert_eq!(final_summary.active_windows, 0);
         assert_eq!(final_summary.pending_validation_windows, 0);
         assert_eq!(final_summary.validator_challenges_open, 0);
@@ -48339,7 +48325,7 @@ mod tests {
         assert!(run_summary.latest_checkpoint_age_ms.is_some());
 
         let visualization = fetch_training_visualization(&app).await?;
-        assert_eq!(visualization.participation.active_runs, 1);
+        assert_eq!(visualization.participation.active_runs, 0);
         assert_eq!(visualization.progress.accepted_closeouts, 1);
         assert_eq!(visualization.settlement.accepted_closeouts, 1);
         assert_eq!(visualization.validators.open, 0);
