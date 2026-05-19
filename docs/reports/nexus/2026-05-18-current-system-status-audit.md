@@ -585,6 +585,25 @@ That improves admission coverage, but it does not solve Lightning liquidity.
 The active LDK readiness state still requires channels/rebalancing before this
 can support broad paid-work volume.
 
+Latest 2026-05-19 check:
+
+| Field | Value |
+| --- | ---: |
+| active treasury provider | `ldk` |
+| active treasury rail | `ldk` |
+| LDK readiness | `needs_channels` |
+| projected channel count | `1` |
+| minimum ready channel count | `2` |
+| projected outbound capacity | `2,000 sats` |
+| minimum ready outbound capacity | `20,000 sats` |
+| wallet balance | `3,843 sats` |
+
+The guarded production readiness smoke still exits before funding-target or
+write operations. The recurring accepted-work proof smoke writes a failed
+receipt with `reason=ldk_readiness_not_ready` and does not launch fresh work.
+This is the correct behavior while the active node is below the channel and
+outbound-capacity floor.
+
 Operational response:
 
 - Keep hosted Pylon v0.2 target registration at seven or higher.
