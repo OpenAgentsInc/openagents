@@ -104,6 +104,9 @@ const ENV_TREASURY_LDK_TLS_CERT_PATH: &str = "NEXUS_LDK_TLS_CERT_PATH";
 const ENV_TREASURY_LDK_STORAGE_DIR: &str = "NEXUS_LDK_STORAGE_DIR";
 const ENV_TREASURY_LDK_NETWORK: &str = "NEXUS_LDK_NETWORK";
 const ENV_TREASURY_LDK_CHAIN_BACKEND: &str = "NEXUS_LDK_CHAIN_BACKEND";
+const ENV_TREASURY_LDK_MIN_READY_CHANNEL_COUNT: &str = "NEXUS_LDK_MIN_READY_CHANNEL_COUNT";
+const ENV_TREASURY_LDK_MIN_READY_OUTBOUND_CAPACITY_SATS: &str =
+    "NEXUS_LDK_MIN_READY_OUTBOUND_CAPACITY_SATS";
 
 const DEFAULT_TREASURY_STATE_PATH: &str = "var/nexus-control/treasury-state.json";
 const DEFAULT_TREASURY_ENABLED: bool = false;
@@ -125,6 +128,8 @@ const DEFAULT_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 120_000;
 const DEFAULT_TREASURY_WALLET_RECOVERY_PARALLEL_INSPECTIONS: bool = false;
 const DEFAULT_TREASURY_WALLET_RECOVERY_SCAN_PAYMENTS: bool = false;
 const DEFAULT_TREASURY_LDK_STORAGE_DIR: &str = "var/nexus-control/ldk";
+const DEFAULT_TREASURY_LDK_MIN_READY_CHANNEL_COUNT: u64 = 2;
+const DEFAULT_TREASURY_LDK_MIN_READY_OUTBOUND_CAPACITY_SATS: u64 = 20_000;
 const DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED: bool = false;
 const DEFAULT_TREASURY_SIMULATED_WALLET_BALANCE_SATS: u64 = 1_000_000;
 const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
@@ -299,6 +304,8 @@ pub struct TreasuryConfig {
     pub wallet_recovery_inspection_timeout_ms: u64,
     pub wallet_recovery_parallel_inspections: bool,
     pub wallet_recovery_scan_payments: bool,
+    pub ldk_min_ready_channel_count: u64,
+    pub ldk_min_ready_outbound_capacity_sats: u64,
     pub simulated_wallet_enabled: bool,
     pub simulated_wallet_balance_sats: u64,
     pub max_concurrent_sends: usize,
@@ -395,6 +402,16 @@ impl TreasuryConfig {
             ENV_TREASURY_WALLET_RECOVERY_SCAN_PAYMENTS,
             DEFAULT_TREASURY_WALLET_RECOVERY_SCAN_PAYMENTS,
         )?;
+        let ldk_min_ready_channel_count = parse_u64_env(
+            ENV_TREASURY_LDK_MIN_READY_CHANNEL_COUNT,
+            DEFAULT_TREASURY_LDK_MIN_READY_CHANNEL_COUNT,
+        )?
+        .max(1);
+        let ldk_min_ready_outbound_capacity_sats = parse_u64_env(
+            ENV_TREASURY_LDK_MIN_READY_OUTBOUND_CAPACITY_SATS,
+            DEFAULT_TREASURY_LDK_MIN_READY_OUTBOUND_CAPACITY_SATS,
+        )?
+        .max(1);
         let simulated_wallet_enabled = parse_bool_env(
             ENV_TREASURY_SIMULATED_WALLET_ENABLED,
             DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED,
@@ -498,6 +515,8 @@ impl TreasuryConfig {
             wallet_recovery_inspection_timeout_ms,
             wallet_recovery_parallel_inspections,
             wallet_recovery_scan_payments,
+            ldk_min_ready_channel_count,
+            ldk_min_ready_outbound_capacity_sats,
             simulated_wallet_enabled,
             simulated_wallet_balance_sats,
             max_concurrent_sends,
@@ -2401,6 +2420,10 @@ pub struct TreasuryLdkReadinessSnapshot {
     pub projected_channel_count: u64,
     pub projected_inbound_capacity_sats: u64,
     pub projected_outbound_capacity_sats: u64,
+    #[serde(default)]
+    pub min_ready_channel_count: u64,
+    #[serde(default)]
+    pub min_ready_outbound_capacity_sats: u64,
     pub recent_failed_payment_count_24h: u64,
     pub recent_no_route_count_24h: u64,
     pub recent_insufficient_balance_count_24h: u64,
@@ -2416,6 +2439,8 @@ impl Default for TreasuryLdkReadinessSnapshot {
             projected_channel_count: 0,
             projected_inbound_capacity_sats: 0,
             projected_outbound_capacity_sats: 0,
+            min_ready_channel_count: DEFAULT_TREASURY_LDK_MIN_READY_CHANNEL_COUNT,
+            min_ready_outbound_capacity_sats: DEFAULT_TREASURY_LDK_MIN_READY_OUTBOUND_CAPACITY_SATS,
             recent_failed_payment_count_24h: 0,
             recent_no_route_count_24h: 0,
             recent_insufficient_balance_count_24h: 0,
@@ -2428,6 +2453,7 @@ impl Default for TreasuryLdkReadinessSnapshot {
 struct TreasuryLdkChannelReadiness {
     projected_channel_count: u64,
     projected_inbound_capacity_sats: u64,
+    projected_outbound_capacity_sats: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -3370,6 +3396,7 @@ impl TreasuryState {
             return TreasuryLdkChannelReadiness {
                 projected_channel_count,
                 projected_inbound_capacity_sats: projected_outbound_capacity_sats,
+                projected_outbound_capacity_sats,
             };
         }
 
@@ -3414,6 +3441,7 @@ impl TreasuryState {
         TreasuryLdkChannelReadiness {
             projected_channel_count,
             projected_inbound_capacity_sats: projected_inbound_capacity_msat / 1_000,
+            projected_outbound_capacity_sats: projected_inbound_capacity_msat / 1_000,
         }
     }
 
@@ -3478,12 +3506,15 @@ impl TreasuryState {
             );
             "needs_payout_targets"
         } else if registered_payout_target_count > 0
-            && channel_readiness.projected_inbound_capacity_sats == 0
+            && (channel_readiness.projected_channel_count < config.ldk_min_ready_channel_count
+                || channel_readiness.projected_outbound_capacity_sats
+                    < config.ldk_min_ready_outbound_capacity_sats)
         {
-            operator_actions.push(
-                "open or rebalance an LDK channel with usable outbound capacity to registered Pylons"
-                    .to_string(),
-            );
+            operator_actions.push(format!(
+                "open or rebalance LDK channels until at least {} usable channel(s) and {} sats outbound capacity are available",
+                config.ldk_min_ready_channel_count,
+                config.ldk_min_ready_outbound_capacity_sats
+            ));
             "needs_channels"
         } else if degraded_states
             .iter()
@@ -3504,7 +3535,9 @@ impl TreasuryState {
             registered_payout_target_count,
             projected_channel_count: channel_readiness.projected_channel_count,
             projected_inbound_capacity_sats: channel_readiness.projected_inbound_capacity_sats,
-            projected_outbound_capacity_sats: self.wallet_balance_sats,
+            projected_outbound_capacity_sats: channel_readiness.projected_outbound_capacity_sats,
+            min_ready_channel_count: config.ldk_min_ready_channel_count,
+            min_ready_outbound_capacity_sats: config.ldk_min_ready_outbound_capacity_sats,
             recent_failed_payment_count_24h: failure_readiness.recent_failed_payment_count_24h,
             recent_no_route_count_24h: failure_readiness.recent_no_route_count_24h,
             recent_insufficient_balance_count_24h: failure_readiness
@@ -10918,6 +10951,8 @@ mod tests {
             wallet_recovery_inspection_timeout_ms: 120_000,
             wallet_recovery_parallel_inspections: false,
             wallet_recovery_scan_payments: false,
+            ldk_min_ready_channel_count: 2,
+            ldk_min_ready_outbound_capacity_sats: 20_000,
             simulated_wallet_enabled: false,
             simulated_wallet_balance_sats: 1_000_000,
             max_concurrent_sends: 16,
@@ -11526,11 +11561,45 @@ mod tests {
             .treasury_operations_by_id
             .insert("op-open-channel".to_string(), open_operation);
 
+        let one_channel = state.status_response(&config, now_unix_ms);
+        assert_eq!(one_channel.ldk_readiness.state, "needs_channels");
+        assert_eq!(one_channel.ldk_readiness.projected_channel_count, 1);
+        assert_eq!(
+            one_channel.ldk_readiness.projected_outbound_capacity_sats,
+            21_000
+        );
+
+        let mut second_metadata = BTreeMap::new();
+        second_metadata.insert("command".to_string(), "treasury.openChannel".to_string());
+        state.treasury_operations_by_id.insert(
+            "op-open-channel-2".to_string(),
+            super::TreasuryOperationRecord {
+                operation_id: "op-open-channel-2".to_string(),
+                kind: TreasuryOperationKind::LightningAdminCommand,
+                request_id: Some("admin:treasury.openChannel:readiness-2".to_string()),
+                rail: "ldk".to_string(),
+                rail_metadata: second_metadata,
+                amount_msat: Some(21_000_000),
+                target_kind: "channel_peer".to_string(),
+                target_hash: Some(super::treasury_hash("02peer2")),
+                beneficiary: None,
+                status: TreasuryOperationStatus::Completed,
+                provider_payment_id: None,
+                receipt_refs: Vec::new(),
+                degraded_reason: None,
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                terminal_event_state: Some("channel_opened".to_string()),
+            },
+        );
+
         let ready = state.status_response(&config, now_unix_ms);
         assert_eq!(ready.ldk_readiness.state, "ready");
-        assert_eq!(ready.ldk_readiness.projected_channel_count, 1);
-        assert_eq!(ready.ldk_readiness.projected_inbound_capacity_sats, 21_000);
-        assert_eq!(ready.ldk_readiness.projected_outbound_capacity_sats, 50_000);
+        assert_eq!(ready.ldk_readiness.projected_channel_count, 2);
+        assert_eq!(ready.ldk_readiness.projected_inbound_capacity_sats, 42_000);
+        assert_eq!(ready.ldk_readiness.projected_outbound_capacity_sats, 42_000);
+        assert_eq!(ready.ldk_readiness.min_ready_channel_count, 2);
+        assert_eq!(ready.ldk_readiness.min_ready_outbound_capacity_sats, 20_000);
 
         let mut pay_metadata = BTreeMap::new();
         pay_metadata.insert("command".to_string(), "treasury.payInvoice".to_string());
@@ -11632,9 +11701,10 @@ mod tests {
         ));
 
         let status = state.status_response(&config, now_unix_ms);
-        assert_eq!(status.ldk_readiness.state, "ready");
+        assert_eq!(status.ldk_readiness.state, "needs_channels");
         assert_eq!(status.ldk_readiness.projected_channel_count, 1);
         assert_eq!(status.ldk_readiness.projected_inbound_capacity_sats, 2_000);
+        assert_eq!(status.ldk_readiness.projected_outbound_capacity_sats, 2_000);
         assert!(
             !status
                 .degraded_states

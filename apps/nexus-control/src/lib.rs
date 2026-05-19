@@ -30050,6 +30050,8 @@ mod tests {
                 wallet_recovery_inspection_timeout_ms: 120_000,
                 wallet_recovery_parallel_inspections: false,
                 wallet_recovery_scan_payments: false,
+                ldk_min_ready_channel_count: 2,
+                ldk_min_ready_outbound_capacity_sats: 20_000,
                 simulated_wallet_enabled: false,
                 simulated_wallet_balance_sats: 1_000_000,
                 max_concurrent_sends: 16,

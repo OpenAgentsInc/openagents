@@ -536,13 +536,22 @@ Production LDK is ready only when every gate below is green:
 - `ldk_readiness.state` is `ready` on `/v1/treasury/status`, or the only
   remaining state is a documented warning accepted by the operator for that
   rollout.
+- `ldk_readiness.min_ready_channel_count` is at least `2` and
+  `ldk_readiness.projected_channel_count` meets or exceeds it. A single
+  proof-scale channel is not production-ready even if small payments happen to
+  settle.
+- `ldk_readiness.min_ready_outbound_capacity_sats` is at least `20000` and
+  `ldk_readiness.projected_outbound_capacity_sats` meets or exceeds it. The
+  default initial target is deliberately small but must cover more than a
+  one-off 25-sat proof payment.
 - `wallet_spendable_onchain_balance_sats` and/or Lightning spendable outbound
   capacity have moved above zero after funding confirms.
 - `ldk_readiness.registered_payout_target_count` is nonzero. A funded Nexus
   wallet with no Pylon v0.2 LDK payout target reports `needs_payout_targets`,
   not `ready`.
-- `ldk_readiness.projected_outbound_capacity_sats` is above the active payout
-  reserve.
+- `ldk_readiness.projected_outbound_capacity_sats` is sourced from live usable
+  LDK channel outbound capacity, not from wallet balance alone, and is above
+  the active payout reserve.
 - `ldk_readiness.projected_inbound_capacity_sats` is nonzero once Pylon payout
   targets exist. Despite the historical field name, this readiness check is
   sourced from the live LDK provider channel list and represents usable payout

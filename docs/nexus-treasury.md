@@ -88,8 +88,13 @@ Lightning rail:
   from Nexus to registered payout targets. The field name is retained for API
   stability, but readiness is now derived from the provider channel list before
   falling back to unsynced admin operation projections.
-- `projected_outbound_capacity_sats`: current usable Nexus wallet balance
-  available for outbound payout dispatch.
+- `projected_outbound_capacity_sats`: payout-capable live LDK channel capacity
+  from Nexus to registered payout targets. Do not use wallet balance as a
+  substitute for channel capacity.
+- `min_ready_channel_count` and `min_ready_outbound_capacity_sats`: current
+  production floor. The default gate is two usable channels and at least 20,000
+  sats outbound capacity; proof-scale one-channel liquidity reports
+  `needs_channels`.
 - `recent_failed_payment_count_24h`, `recent_no_route_count_24h`, and
   `recent_insufficient_balance_count_24h`: recent failure counters derived from
   LDK operation rows.

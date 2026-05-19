@@ -15,6 +15,8 @@ NEXUS_LDK_READINESS_FUNDING_SATS="${NEXUS_LDK_READINESS_FUNDING_SATS:-1000}"
 NEXUS_LDK_READINESS_DESCRIPTION="${NEXUS_LDK_READINESS_DESCRIPTION:-OpenAgents Nexus LDK readiness smoke}"
 NEXUS_LDK_WRITE_SMOKE="${NEXUS_LDK_WRITE_SMOKE:-false}"
 NEXUS_LDK_SMOKE_MIN_CHANNEL_SATS="${NEXUS_LDK_SMOKE_MIN_CHANNEL_SATS:-20000}"
+NEXUS_LDK_READINESS_MIN_CHANNEL_COUNT="${NEXUS_LDK_READINESS_MIN_CHANNEL_COUNT:-2}"
+NEXUS_LDK_READINESS_MIN_OUTBOUND_CAPACITY_SATS="${NEXUS_LDK_READINESS_MIN_OUTBOUND_CAPACITY_SATS:-20000}"
 NEXUS_ADMIN_TOKEN="${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-${NEXUS_ADMIN_BEARER_TOKEN:-}}"
 
 mkdir -p "$NEXUS_LDK_READINESS_ARTIFACT_DIR"
@@ -74,7 +76,13 @@ admin_write_operation() {
 status_json="${NEXUS_LDK_READINESS_ARTIFACT_DIR}/treasury-status.json"
 curl_json GET /v1/treasury/status "" "$status_json"
 jq -e '.active_treasury_provider == "ldk" and .active_treasury_rail == "ldk"' "$status_json" >/dev/null
-jq -e '.ldk_readiness.state | type == "string" and length > 0' "$status_json" >/dev/null
+jq -e \
+  --argjson min_channels "$NEXUS_LDK_READINESS_MIN_CHANNEL_COUNT" \
+  --argjson min_outbound "$NEXUS_LDK_READINESS_MIN_OUTBOUND_CAPACITY_SATS" \
+  '.ldk_readiness.state == "ready"
+    and .ldk_readiness.projected_channel_count >= $min_channels
+    and .ldk_readiness.projected_outbound_capacity_sats >= $min_outbound' \
+  "$status_json" >/dev/null
 
 funding_json="${NEXUS_LDK_READINESS_ARTIFACT_DIR}/funding-target.json"
 curl_json POST /v1/treasury/funding-target \
