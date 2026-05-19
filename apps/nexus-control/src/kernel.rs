@@ -3998,12 +3998,14 @@ impl KernelState {
     ) -> TrainingBacklogRetainedCounts {
         let cutoff_i64 = i64::try_from(retention_cutoff_unix_ms).unwrap_or(i64::MAX);
         let accepted_run_ids = self.accepted_training_run_ids();
+        let accepted_window_ids = self.accepted_training_window_ids();
         let active_runs = self
             .compute_training_runs
             .values()
             .filter(|record| {
                 training_run_counts_as_active(record.training_run.status)
                     && record.training_run.created_at_ms < cutoff_i64
+                    && !accepted_run_ids.contains(record.training_run.training_run_id.as_str())
             })
             .count() as u64;
         let protected_active_runs_with_accepted_outcomes = self
@@ -4021,6 +4023,7 @@ impl KernelState {
             .filter(|record| {
                 record.window.status != ComputeAdapterWindowStatus::Reconciled
                     && record.window.recorded_at_ms < cutoff_i64
+                    && !accepted_window_ids.contains(record.window.window_id.as_str())
             })
             .count() as u64;
         let pending_validation_windows = self
@@ -4031,6 +4034,7 @@ impl KernelState {
                     record.window.status,
                     ComputeAdapterWindowStatus::Sealed | ComputeAdapterWindowStatus::Scored
                 ) && record.window.recorded_at_ms < cutoff_i64
+                    && !accepted_window_ids.contains(record.window.window_id.as_str())
             })
             .count() as u64;
         let mut validator_challenges_open = 0u64;
@@ -18199,6 +18203,87 @@ mod tests {
         assert!(persisted_payload.contains("stale_retained_backlog"));
 
         let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn retained_training_backlog_counts_exclude_accepted_training_evidence() {
+        let stale_created_at_ms = 1_762_000_112_000u64;
+        let cleanup_now_ms = 1_762_200_112_000u64;
+        let cutoff_ms = cleanup_now_ms.saturating_sub(24 * 3_600_000);
+        let mut kernel = KernelState::default();
+
+        kernel
+            .register_compute_environment_package(
+                &fixture_context(stale_created_at_ms),
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    stale_created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+        kernel
+            .register_compute_checkpoint_family_policy(
+                &fixture_context(stale_created_at_ms + 100),
+                checkpoint_family_policy_request(stale_created_at_ms as i64 + 100),
+            )
+            .expect("register checkpoint policy");
+        kernel
+            .register_compute_validator_policy(
+                &fixture_context(stale_created_at_ms + 200),
+                validator_policy_request(stale_created_at_ms as i64 + 200),
+            )
+            .expect("register validator policy");
+        kernel
+            .register_compute_benchmark_package(
+                &fixture_context(stale_created_at_ms + 300),
+                benchmark_package_request(stale_created_at_ms as i64 + 300),
+            )
+            .expect("register benchmark package");
+        kernel
+            .register_compute_training_policy(
+                &fixture_context(stale_created_at_ms + 400),
+                training_policy_request(stale_created_at_ms as i64 + 400),
+            )
+            .expect("register training policy");
+        kernel
+            .create_compute_training_run(
+                &fixture_context(stale_created_at_ms + 500),
+                training_run_request(stale_created_at_ms as i64 + 500),
+            )
+            .expect("create training run");
+        let mut window = adapter_window_request(stale_created_at_ms as i64 + 600);
+        window.window.status = ComputeAdapterWindowStatus::Scored;
+        kernel
+            .record_compute_adapter_window(&fixture_context(stale_created_at_ms + 600), window)
+            .expect("record stale adapter window");
+        kernel
+            .accept_compute_outcome(
+                &fixture_context(stale_created_at_ms + 700),
+                accept_training_window_closeout_request(
+                    stale_created_at_ms as i64 + 700,
+                    "rewarded",
+                    true,
+                ),
+            )
+            .expect("accept stale training window closeout");
+
+        let counts = kernel.retained_training_backlog_counts(cutoff_ms);
+        assert_eq!(counts.active_runs, 0);
+        assert_eq!(counts.active_windows, 0);
+        assert_eq!(counts.pending_validation_windows, 0);
+        assert_eq!(counts.protected_active_runs_with_accepted_outcomes, 1);
+
+        let report = kernel
+            .cleanup_retained_training_backlog(&fixture_context(cleanup_now_ms), cutoff_ms, false)
+            .expect("dry-run retained backlog cleanup");
+        assert!(!report.changed);
+        assert!(report.retired_runs.is_empty());
+        assert!(report.retired_windows.is_empty());
+        assert_eq!(
+            report.protected_runs,
+            vec!["train.math.basic.alpha".to_string()]
+        );
     }
 
     #[test]

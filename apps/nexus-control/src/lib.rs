@@ -346,7 +346,7 @@ fn execute_training_backlog_cleanup(
         }
         report
     };
-    if apply && report.changed {
+    if apply {
         let _ = force_refresh_public_stats_cache(state, now_unix_ms);
     }
     Ok(report)
