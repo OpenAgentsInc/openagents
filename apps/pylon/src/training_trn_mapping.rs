@@ -116,6 +116,12 @@ pub(super) fn node_record_event(
     for replica_type in capability_envelope_v2.eligible_replica_type_labels() {
         capabilities.push(TrnCapability::new("training_replica_type", replica_type));
     }
+    for capability_label in &capability_envelope_v2.capability_labels {
+        capabilities.push(TrnCapability::new(
+            "training_capability_label",
+            capability_label.clone(),
+        ));
+    }
     for accelerator in &capability_tier.accelerator_inventory {
         capabilities.push(TrnCapability::new(
             "training_accelerator",
@@ -213,6 +219,12 @@ pub(super) fn node_record_event(
     }
     for replica_type in capability_envelope_v2.eligible_replica_type_labels() {
         extra_tags.push(vec!["training_replica_type".to_string(), replica_type]);
+    }
+    for capability_label in &capability_envelope_v2.capability_labels {
+        extra_tags.push(vec![
+            "training_capability_label".to_string(),
+            capability_label.clone(),
+        ]);
     }
     Ok((
         status.to_string(),
@@ -680,6 +692,10 @@ mod tests {
                     minimum_memory_gb: None,
                 },
             ],
+            capability_labels: vec![
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY
+                    .to_string(),
+            ],
         }
     }
 
@@ -747,6 +763,20 @@ mod tests {
                     "validation_replay"
                 ))
         );
+        assert!(
+            node_record
+                .capabilities
+                .contains(&nostr::TrnCapability::new(
+                    "training_capability_label",
+                    openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY
+                ))
+        );
+        assert!(node_record.extra_tags.iter().any(|tag| tag
+            == &vec![
+                "training_capability_label".to_string(),
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY
+                    .to_string(),
+            ]));
         Ok(())
     }
 

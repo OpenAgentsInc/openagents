@@ -29,6 +29,25 @@ reconcile, closeout, or payout-proof work, the primary development loop is
 still the local proof runtime from Issue #4385. Production Nexus is final proof,
 not the debugger for ordinary scheduler, artifact, validator, or payout bugs.
 
+## Active Training Objective
+
+Nexus now defaults the active training objective to:
+
+```bash
+NEXUS_CONTROL_ACTIVE_TRAINING_OBJECTIVE_ID=harvey_legal_qwen_finetune_v1
+```
+
+That objective retargets Pylon v0.2 work from CS336 foreground demos to Harvey
+legal benchmark support and Qwen adapter fine-tuning. CS336 remains a reference
+proof lane for scheduling, accepted-work closeout, and LDK payout behavior; it
+is not the model-quality hillclimb target. Legal support/eval/integrity work can
+be paid on weaker admitted Pylons when they publish the relevant labels, but
+Qwen legal adapter training must only be assigned to trainer-tier CUDA Pylons
+that advertise `qwen_legal_adapter_training`.
+
+See `docs/pylon/HARVEY_LEGAL_QWEN_TRAINING_OBJECTIVE.md` for the canonical
+objective id, lane id, environment ref, and capability-label contract.
+
 ## LDK Payout Target Gate
 
 Nexus must not admit, auto-launch, or dispatch new paid starter/homework work

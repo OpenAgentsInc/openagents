@@ -91,9 +91,10 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF, PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
     PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE,
-    PYLON_TRAINING_SEAL_GRACE_PERIOD_MS, PYLON_TRAINING_WINDOW_MAX_DURATION_MS,
-    PylonTrainingAggregateResolution, PylonTrainingArtifactGcsLayoutPolicy,
-    PylonTrainingArtifactKind, PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
+    PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
+    PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
+    PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactKind,
+    PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
     PylonTrainingArtifactSignedAccessMode, PylonTrainingArtifactSignedAccessRequest,
     PylonTrainingArtifactSignedAccessResponse, PylonTrainingArtifacts,
     PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
@@ -113,6 +114,14 @@ use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use openagents_kernel_proto::openagents::data::v1 as proto_data;
 use openagents_provider_substrate::{
+    PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_DATASET_EXTRACT,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_EVAL_CASE,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_JUDGE_CALIBRATION,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY,
+    PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL,
+    PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING,
+    PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_CHECKPOINT_VALIDATION,
     ProviderAdapterTrainingSettlementTrigger, ProviderDiagnosticSummary,
     ProviderHostingTelemetrySnapshot, ProviderTrainingCapabilityEnvelopeV2,
     ProviderTrainingCapabilityTier, ProviderTrainingReplayCapability,
@@ -122,7 +131,8 @@ use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use psionic_train_contract::{
     PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID, PSION_ACTUAL_PRETRAINING_LANE_ID,
-    PSION_APPLE_WINDOWED_TRAINING_LANE_ID, PSION_CS336_A1_DEMO_LANE_ID, PsionicTrainLaneContract,
+    PSION_APPLE_WINDOWED_TRAINING_LANE_ID, PSION_CS336_A1_DEMO_LANE_ID,
+    PSION_QWEN_LEGAL_ADAPTER_SFT_LANE_ID, PsionicTrainLaneContract,
 };
 use reqwest::Url;
 use ring::rand::SystemRandom;
@@ -142,11 +152,11 @@ use crate::economy::{
     AuthorityReceiptContext, PublicHomeworkWorkerPresenceOnlyBlockerCount,
     PublicPylonClientVersionCount, PublicRecentPylon, PublicRecentPylonDiagnostic,
     PublicRuntimeSnapshot, PublicStatsSnapshot, PublicTrainingLaunchAlert,
-    PublicTrainingLaunchHealthSnapshot, PublicTrainingLaunchState, PublicTrainingQueuePressure,
-    PublicTrainingRunCaveat, PublicTrainingRunContributionRow, PublicTrainingRunDetailSnapshot,
-    PublicTrainingRunNodeRow, PublicTrainingRunPayoutRow, PublicTrainingRunState,
-    PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot, PublicTrainingWindowState,
-    PublicTrainingWorkClassState, ReceiptLedger,
+    PublicTrainingLaunchHealthSnapshot, PublicTrainingLaunchState, PublicTrainingObjectiveState,
+    PublicTrainingQueuePressure, PublicTrainingRunCaveat, PublicTrainingRunContributionRow,
+    PublicTrainingRunDetailSnapshot, PublicTrainingRunNodeRow, PublicTrainingRunPayoutRow,
+    PublicTrainingRunState, PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot,
+    PublicTrainingWindowState, PublicTrainingWorkClassState, ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -444,6 +454,7 @@ const ENV_STARTER_DEMAND_START_CONFIRM_SECONDS: &str =
 const ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS";
 const ENV_PROVIDER_PRESENCE_STALE_AFTER_MS: &str = "NEXUS_CONTROL_PROVIDER_PRESENCE_STALE_AFTER_MS";
+const ENV_ACTIVE_TRAINING_OBJECTIVE_ID: &str = "NEXUS_CONTROL_ACTIVE_TRAINING_OBJECTIVE_ID";
 const ENV_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED: &str =
     "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED";
 const ENV_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED: &str =
@@ -489,6 +500,7 @@ const DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS: u64 = 15;
 const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 120_000;
+const DEFAULT_ACTIVE_TRAINING_OBJECTIVE_ID: &str = HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID;
 const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED: bool = false;
 const DEFAULT_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED: bool = false;
 const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS: u64 = 600;
@@ -569,6 +581,22 @@ pub const A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_WEIGHT_BASIS_REF: &str =
 pub const A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF: &str =
     "base://a1_minimal_distributed_lm/step-000000";
 const A1_MINIMAL_DISTRIBUTED_LM_PARTICIPANT_RECORD_TARGET: u64 = 201;
+pub const HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID: &str = "harvey_legal_qwen_finetune_v1";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_POLICY_REF: &str =
+    "policy://training/legal/harvey-qwen-smoke/v1";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_VALIDATOR_POLICY_REF: &str =
+    "policy://validator/legal/harvey-qwen-smoke/v1";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_CHECKPOINT_FAMILY: &str =
+    "psionic.qwen35_4b.legal_adapter_sft";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_RUN_DEFINITION_REF: &str =
+    "rundef.harvey_legal_qwen_finetune.v1";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_DATASET_REF: &str =
+    "dataset://openagents/legal-benchmark/harvey-smoke@v1";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_EVAL_PACKAGE_REF: &str =
+    "benchmark://harvey/legal-benchmark/smoke-eval-v1";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_BASE_MODEL_REF: &str = "model://qwen/Qwen3.5-4B";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_SERIOUS_MODEL_REF: &str = "model://qwen/Qwen3.6-35B-A3B";
+pub const HARVEY_LEGAL_QWEN_FINETUNE_BUDGET_CAP_SATS: u64 = 25_000;
 const TRAINING_PARTICIPANT_CLAIM_GATE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone)]
@@ -635,6 +663,7 @@ pub struct ServiceConfig {
     pub cs336_homework_auto_dispatch_min_pylon_version: Option<String>,
     pub cs336_homework_auto_dispatch_require_updated_build: bool,
     pub cs336_homework_auto_dispatch_window_duration_seconds: u64,
+    pub active_training_objective_id: String,
     pub training_artifact_signed_url: Option<TrainingArtifactSignedUrlConfig>,
     pub treasury: TreasuryConfig,
 }
@@ -769,6 +798,16 @@ impl ServiceConfig {
             ENV_PROVIDER_PRESENCE_STALE_AFTER_MS,
             DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         )?;
+        let active_training_objective_id = std::env::var(ENV_ACTIVE_TRAINING_OBJECTIVE_ID)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_ACTIVE_TRAINING_OBJECTIVE_ID.to_string());
+        if training_objective_record(active_training_objective_id.as_str()).is_none() {
+            return Err(format!(
+                "{ENV_ACTIVE_TRAINING_OBJECTIVE_ID} must name a canonical training objective"
+            ));
+        }
         let cs336_homework_auto_dispatch_enabled = parse_bool_env(
             ENV_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED,
             DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED,
@@ -918,6 +957,7 @@ impl ServiceConfig {
             cs336_homework_auto_dispatch_min_pylon_version,
             cs336_homework_auto_dispatch_require_updated_build,
             cs336_homework_auto_dispatch_window_duration_seconds,
+            active_training_objective_id,
             training_artifact_signed_url,
             treasury,
         })
@@ -2723,6 +2763,139 @@ struct TrainingSchedulerRunMetadata {
     initial_window_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     checkpoint_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingObjectiveRecord {
+    objective_id: String,
+    objective_class: String,
+    display_name: String,
+    policy_ref: String,
+    validator_policy_ref: String,
+    dataset_artifact_refs: Vec<String>,
+    eval_artifact_refs: Vec<String>,
+    base_model_target: String,
+    serious_model_target: Option<String>,
+    supported_pylon_roles: Vec<String>,
+    required_capability_labels: Vec<String>,
+    minimum_pylon_version: Option<String>,
+    payout_basis: String,
+    budget_cap_sats: Option<u64>,
+    lane_id: Option<String>,
+    lane_release_id: Option<String>,
+    environment_ref: Option<String>,
+}
+
+fn training_objective_record(objective_id: &str) -> Option<TrainingObjectiveRecord> {
+    canonical_training_objective_registry()
+        .into_iter()
+        .find(|objective| objective.objective_id == objective_id)
+}
+
+fn canonical_training_objective_registry() -> Vec<TrainingObjectiveRecord> {
+    let cs336_contract = PsionicTrainLaneContract::for_lane(PSION_CS336_A1_DEMO_LANE_ID).ok();
+    let a1_contract =
+        PsionicTrainLaneContract::for_lane(PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID).ok();
+    let legal_contract =
+        PsionicTrainLaneContract::for_lane(PSION_QWEN_LEGAL_ADAPTER_SFT_LANE_ID).ok();
+    vec![
+        TrainingObjectiveRecord {
+            objective_id: "stanford_cs336_assignment1_demo".to_string(),
+            objective_class: "cs336_reference_demo".to_string(),
+            display_name: "CS336 A1 reference/demo work".to_string(),
+            policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+            dataset_artifact_refs: vec![EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string()],
+            eval_artifact_refs: Vec::new(),
+            base_model_target: "model://psion/cs336-assignment1-demo".to_string(),
+            serious_model_target: None,
+            supported_pylon_roles: vec!["worker".to_string(), "validator".to_string()],
+            required_capability_labels: vec![
+                PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY.to_string(),
+            ],
+            minimum_pylon_version: Some(MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string()),
+            payout_basis: "accepted_work_ldk".to_string(),
+            budget_cap_sats: None,
+            lane_id: cs336_contract
+                .as_ref()
+                .map(|contract| contract.lane_id.clone()),
+            lane_release_id: cs336_contract
+                .as_ref()
+                .map(|contract| contract.release_id.clone()),
+            environment_ref: cs336_contract
+                .as_ref()
+                .map(|contract| contract.environment_ref.clone()),
+        },
+        TrainingObjectiveRecord {
+            objective_id: "tiny_transformer_next_token_prediction".to_string(),
+            objective_class: "model_progress_reference".to_string(),
+            display_name: "A1 minimal distributed LM".to_string(),
+            policy_ref: A1_MINIMAL_DISTRIBUTED_LM_TRAINING_POLICY_REF.to_string(),
+            validator_policy_ref: A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string(),
+            dataset_artifact_refs: vec![A1_MINIMAL_DISTRIBUTED_LM_DATASET_REF.to_string()],
+            eval_artifact_refs: vec![A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF.to_string()],
+            base_model_target: A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string(),
+            serious_model_target: None,
+            supported_pylon_roles: vec![
+                "worker".to_string(),
+                "validator".to_string(),
+                "recovery_source".to_string(),
+            ],
+            required_capability_labels: vec![
+                PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY.to_string(),
+            ],
+            minimum_pylon_version: Some(MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string()),
+            payout_basis: "accepted_window_ldk".to_string(),
+            budget_cap_sats: None,
+            lane_id: a1_contract
+                .as_ref()
+                .map(|contract| contract.lane_id.clone()),
+            lane_release_id: a1_contract
+                .as_ref()
+                .map(|contract| contract.release_id.clone()),
+            environment_ref: a1_contract
+                .as_ref()
+                .map(|contract| contract.environment_ref.clone()),
+        },
+        TrainingObjectiveRecord {
+            objective_id: HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID.to_string(),
+            objective_class: "legal_qwen_smoke".to_string(),
+            display_name: "Harvey legal Qwen fine-tune smoke".to_string(),
+            policy_ref: HARVEY_LEGAL_QWEN_FINETUNE_POLICY_REF.to_string(),
+            validator_policy_ref: HARVEY_LEGAL_QWEN_FINETUNE_VALIDATOR_POLICY_REF.to_string(),
+            dataset_artifact_refs: vec![HARVEY_LEGAL_QWEN_FINETUNE_DATASET_REF.to_string()],
+            eval_artifact_refs: vec![HARVEY_LEGAL_QWEN_FINETUNE_EVAL_PACKAGE_REF.to_string()],
+            base_model_target: HARVEY_LEGAL_QWEN_FINETUNE_BASE_MODEL_REF.to_string(),
+            serious_model_target: Some(HARVEY_LEGAL_QWEN_FINETUNE_SERIOUS_MODEL_REF.to_string()),
+            supported_pylon_roles: vec![
+                "worker".to_string(),
+                "validator".to_string(),
+                "recovery_source".to_string(),
+            ],
+            required_capability_labels: vec![
+                PROVIDER_TRAINING_CAPABILITY_LEGAL_DATASET_EXTRACT.to_string(),
+                PROVIDER_TRAINING_CAPABILITY_LEGAL_EVAL_CASE.to_string(),
+                PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY.to_string(),
+                PROVIDER_TRAINING_CAPABILITY_LEGAL_JUDGE_CALIBRATION.to_string(),
+                PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING.to_string(),
+                PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL.to_string(),
+                PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_CHECKPOINT_VALIDATION.to_string(),
+                PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY.to_string(),
+            ],
+            minimum_pylon_version: Some(MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string()),
+            payout_basis: "accepted_legal_support_or_model_progress_ldk".to_string(),
+            budget_cap_sats: Some(HARVEY_LEGAL_QWEN_FINETUNE_BUDGET_CAP_SATS),
+            lane_id: legal_contract
+                .as_ref()
+                .map(|contract| contract.lane_id.clone()),
+            lane_release_id: legal_contract
+                .as_ref()
+                .map(|contract| contract.release_id.clone()),
+            environment_ref: legal_contract
+                .as_ref()
+                .map(|contract| contract.environment_ref.clone()),
+        },
+    ]
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -5392,6 +5565,39 @@ fn training_scheduler_run_definition_requires_benchmark_lane(
         || run_definition.benchmark_package_set_ref.is_some()
 }
 
+fn training_objective_required_capability_label(
+    objective_id: &str,
+    role: TrainingNodeRoleClaim,
+    work_class: ComputeTrainingWorkClass,
+) -> Option<&'static str> {
+    if objective_id != HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID {
+        return None;
+    }
+    match (role, work_class) {
+        (TrainingNodeRoleClaim::Worker, ComputeTrainingWorkClass::AdapterTraining) => {
+            Some(PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING)
+        }
+        (TrainingNodeRoleClaim::Worker, ComputeTrainingWorkClass::Evaluation) => {
+            Some(PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL)
+        }
+        (TrainingNodeRoleClaim::Worker, ComputeTrainingWorkClass::ValidationReplay)
+        | (TrainingNodeRoleClaim::Validator, _)
+        | (TrainingNodeRoleClaim::RecoverySource, _) => {
+            Some(PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY)
+        }
+        (TrainingNodeRoleClaim::Worker, ComputeTrainingWorkClass::CheckpointPromotion) => {
+            Some(PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_CHECKPOINT_VALIDATION)
+        }
+        (TrainingNodeRoleClaim::Worker, ComputeTrainingWorkClass::SmallModelLocalTraining)
+        | (TrainingNodeRoleClaim::Worker, ComputeTrainingWorkClass::GroupedReplicaStageExecution)
+        | (
+            TrainingNodeRoleClaim::Worker,
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+        )
+        | (TrainingNodeRoleClaim::Worker, ComputeTrainingWorkClass::Aggregation) => None,
+    }
+}
+
 const fn training_rollout_gate_enabled_default() -> bool {
     true
 }
@@ -5658,6 +5864,16 @@ fn training_node_scheduler_run_mismatch_reason_with_definition(
     {
         return Some("training_scheduler_benchmark_lane_unavailable");
     }
+    if let Some(required_label) = training_objective_required_capability_label(
+        run_definition.objective.as_str(),
+        role,
+        effective_work_class,
+    ) && !node
+        .capability_envelope_v2
+        .supports_capability_label(required_label)
+    {
+        return Some("training_scheduler_training_objective_capability_missing");
+    }
     if !work_class_eligibility
         .replica_types
         .contains(&effective_replica_type)
@@ -5836,6 +6052,9 @@ fn training_psionic_backend_family_for_environment_ref(
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => PSION_CS336_A1_DEMO_LANE_ID,
         PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF => {
             PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID
+        }
+        PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF => {
+            PSION_QWEN_LEGAL_ADAPTER_SFT_LANE_ID
         }
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF => PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
         _ => return None,
@@ -25881,8 +26100,12 @@ fn build_public_stats_snapshot(
     let treasury_runtime = store.treasury.public_stats(&config.treasury, now_unix_ms);
     let training_payout_ledger_summary = store.treasury.training_payout_ledger_summary();
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
-    let mut training_public_state =
-        training_public_stats_snapshot(store, now_unix_ms, &training_summary);
+    let mut training_public_state = training_public_stats_snapshot(
+        store,
+        now_unix_ms,
+        &training_summary,
+        config.active_training_objective_id.as_str(),
+    );
     training_public_state.launch_health = build_training_launch_health_snapshot(
         &training_summary,
         &treasury_runtime,
@@ -27393,10 +27616,96 @@ fn training_run_detail_context(
     }
 }
 
+fn training_objective_id_for_summary_run(
+    store: &ControlStore,
+    run: &TrainingOperatorRunSummary,
+) -> Option<String> {
+    let kernel_run = store
+        .kernel
+        .get_compute_training_run(run.training_run_id.as_str())?;
+    store
+        .kernel
+        .get_compute_training_run_definition(kernel_run.training_policy_ref.as_str(), None)
+        .ok()
+        .map(|definition| definition.objective)
+        .or_else(|| {
+            kernel_run
+                .metadata
+                .get("objective_id")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+}
+
+fn training_public_objective_states(
+    store: &ControlStore,
+    summary: &TrainingOperatorSummaryResponse,
+    active_objective_id: &str,
+) -> Vec<PublicTrainingObjectiveState> {
+    let mut states = canonical_training_objective_registry()
+        .into_iter()
+        .map(|objective| {
+            (
+                objective.objective_id.clone(),
+                PublicTrainingObjectiveState {
+                    objective_id: objective.objective_id,
+                    objective_class: objective.objective_class,
+                    display_name: objective.display_name,
+                    policy_ref: objective.policy_ref,
+                    validator_policy_ref: objective.validator_policy_ref,
+                    base_model_target: Some(objective.base_model_target),
+                    serious_model_target: objective.serious_model_target,
+                    required_capability_labels: objective.required_capability_labels,
+                    minimum_pylon_version: objective.minimum_pylon_version,
+                    payout_basis: Some(objective.payout_basis),
+                    budget_cap_sats: objective.budget_cap_sats,
+                    ..PublicTrainingObjectiveState::default()
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    for run in &summary.runs {
+        let Some(objective_id) = training_objective_id_for_summary_run(store, run) else {
+            continue;
+        };
+        let entry =
+            states
+                .entry(objective_id.clone())
+                .or_insert_with(|| PublicTrainingObjectiveState {
+                    objective_id,
+                    objective_class: "external_or_legacy".to_string(),
+                    display_name: "External or legacy objective".to_string(),
+                    ..PublicTrainingObjectiveState::default()
+                });
+        entry.run_count = entry.run_count.saturating_add(1);
+        if training_operator_run_counts_as_active(run) {
+            entry.active_run_count = entry.active_run_count.saturating_add(1);
+        }
+        entry.accepted_paid_work_count = entry
+            .accepted_paid_work_count
+            .saturating_add(run.settlement.payout_eligible_closeouts);
+        if run.model_progress_contributors > 0
+            || run.progress.windows_advanced_checkpoint_lineage > 0
+        {
+            entry.model_progress_run_count = entry.model_progress_run_count.saturating_add(1);
+        }
+    }
+    let mut values = states.into_values().collect::<Vec<_>>();
+    values.sort_by(|lhs, rhs| {
+        let lhs_active = lhs.objective_id == active_objective_id;
+        let rhs_active = rhs.objective_id == active_objective_id;
+        rhs_active
+            .cmp(&lhs_active)
+            .then_with(|| lhs.objective_id.cmp(&rhs.objective_id))
+    });
+    values
+}
+
 fn training_public_stats_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
     summary: &TrainingOperatorSummaryResponse,
+    active_objective_id: &str,
 ) -> PublicTrainingStatsSnapshot {
     const PUBLIC_TRAINING_RUN_LIMIT: usize = 8;
     const PUBLIC_TRAINING_WINDOW_LIMIT: usize = 12;
@@ -27526,6 +27835,7 @@ fn training_public_stats_snapshot(
 
     PublicTrainingStatsSnapshot {
         generated_at_unix_ms: now_unix_ms,
+        active_objective_id: Some(active_objective_id.to_string()),
         default_run_id,
         default_network_id,
         active_run_id,
@@ -27547,6 +27857,7 @@ fn training_public_stats_snapshot(
             .and_then(|run| run.latest_closeout_status.clone()),
         queue_pressure: training_queue_pressure_snapshot(summary),
         launch_health: PublicTrainingLaunchHealthSnapshot::default(),
+        objectives: training_public_objective_states(store, summary, active_objective_id),
         work_classes,
         runs,
         windows,
@@ -30150,6 +30461,7 @@ mod tests {
                 super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD,
             cs336_homework_auto_dispatch_window_duration_seconds:
                 super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS,
+            active_training_objective_id: super::DEFAULT_ACTIVE_TRAINING_OBJECTIVE_ID.to_string(),
             training_artifact_signed_url: None,
             treasury: TreasuryConfig {
                 enabled: false,
@@ -30824,6 +31136,14 @@ mod tests {
                 required_backend_families: vec!["cuda".to_string()],
                 minimum_memory_gb: Some(16),
             }],
+            capability_labels: vec![
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY
+                    .to_string(),
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING
+                    .to_string(),
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY
+                    .to_string(),
+            ],
         };
         ProviderPresenceHeartbeatRequest {
             nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
@@ -31145,6 +31465,87 @@ mod tests {
     }
 
     #[test]
+    fn training_backend_family_maps_qwen_legal_adapter_environment_to_cuda() {
+        assert_eq!(
+            super::training_backend_family_for_environment_ref(
+                openagents_kernel_core::pylon_training::PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF,
+            ),
+            Some("cuda")
+        );
+    }
+
+    #[test]
+    fn canonical_training_objectives_include_harvey_legal_qwen_smoke() {
+        let objective =
+            super::training_objective_record(super::HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID)
+                .expect("harvey legal qwen objective");
+
+        assert_eq!(
+            objective.objective_id,
+            super::HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID
+        );
+        assert_eq!(objective.objective_class, "legal_qwen_smoke");
+        assert_eq!(
+            objective.policy_ref,
+            super::HARVEY_LEGAL_QWEN_FINETUNE_POLICY_REF
+        );
+        assert_eq!(
+            objective.environment_ref.as_deref(),
+            Some(openagents_kernel_core::pylon_training::PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF)
+        );
+        assert_eq!(
+            objective.lane_id.as_deref(),
+            Some(psionic_train_contract::PSION_QWEN_LEGAL_ADAPTER_SFT_LANE_ID)
+        );
+        assert_eq!(objective.budget_cap_sats, Some(25_000));
+        for required_label in [
+            openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY,
+            openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING,
+            openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL,
+            openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_CHECKPOINT_VALIDATION,
+            openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY,
+        ] {
+            assert!(
+                objective
+                    .required_capability_labels
+                    .iter()
+                    .any(|label| label == required_label),
+                "missing required label {required_label}"
+            );
+        }
+    }
+
+    #[test]
+    fn harvey_legal_objective_requires_qwen_adapter_capability_for_training() {
+        assert_eq!(
+            super::training_objective_required_capability_label(
+                super::HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID,
+                TrainingNodeRoleClaim::Worker,
+                ComputeTrainingWorkClass::AdapterTraining,
+            ),
+            Some(openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING)
+        );
+        assert_eq!(
+            super::training_objective_required_capability_label(
+                super::HARVEY_LEGAL_QWEN_FINETUNE_OBJECTIVE_ID,
+                TrainingNodeRoleClaim::Worker,
+                ComputeTrainingWorkClass::ValidationReplay,
+            ),
+            Some(
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY
+            )
+        );
+        assert_eq!(
+            super::training_objective_required_capability_label(
+                "tiny_transformer_next_token_prediction",
+                TrainingNodeRoleClaim::Worker,
+                ComputeTrainingWorkClass::AdapterTraining,
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn a1_minimal_work_units_map_to_public_progress_and_scheduler_tiers() {
         for work_unit in A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS {
             let work_class = work_unit.work_class();
@@ -31462,6 +31863,10 @@ mod tests {
             benchmark_lane_available,
             eligible_work_classes,
             eligible_replica_types,
+            capability_labels: vec![
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY
+                    .to_string(),
+            ],
         }
     }
 

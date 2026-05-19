@@ -57,6 +57,7 @@ use openagents_kernel_core::{
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
         PYLON_TRAINING_CUDA_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
         PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE,
+        PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF,
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
@@ -72,6 +73,14 @@ use openagents_kernel_core::{
     },
 };
 use openagents_provider_substrate::{
+    PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_DATASET_EXTRACT,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_EVAL_CASE,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_JUDGE_CALIBRATION,
+    PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY,
+    PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL,
+    PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING,
+    PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_CHECKPOINT_VALIDATION,
     PYLON_PAYMENT_TARGET_VERSION_V0_2, ProviderAdapterTrainingContributorAvailability,
     ProviderAdapterTrainingExecutionBackend, ProviderAdapterTrainingSettlementTrigger,
     ProviderAdminConfig, ProviderAdminRuntime, ProviderAdminUpdate, ProviderAdvertisedProduct,
@@ -104,9 +113,9 @@ use psionic_train::{
     PsionicTrainContributionArtifactManifest, PsionicTrainContributionReceipt,
     PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainLaneContract,
     PsionicTrainMinimumMachineClass, PsionicTrainOperation, PsionicTrainRole,
-    PsionicTrainWorkClass, admitted_environment_ref_for_lane, admitted_release_id_for_lane,
-    build_psionic_train_artifact_binding_from_path, psionic_train_local_artifact_id,
-    runtime_build_digest,
+    PsionicTrainWorkClass, QWEN_LEGAL_ADAPTER_SFT_LANE_ID, admitted_environment_ref_for_lane,
+    admitted_release_id_for_lane, build_psionic_train_artifact_binding_from_path,
+    psionic_train_local_artifact_id, runtime_build_digest,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -187,6 +196,8 @@ const PYLON_TRAINING_ENVIRONMENT_REF: &str = SHARED_PYLON_TRAINING_CUDA_ENVIRONM
 const PYLON_TRAINING_APPLE_ENVIRONMENT_REF: &str = SHARED_PYLON_TRAINING_APPLE_ENVIRONMENT_REF;
 const PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF: &str =
     SHARED_PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF;
+const PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str =
+    SHARED_PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF;
 const PYLON_TRAINING_ADMITTED_CUDA_GPU_MODEL_FAMILY: &str = "h100";
 const PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB: u32 = 80;
 const PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB: u32 = 32;
@@ -244,6 +255,7 @@ struct PsionicTrainRuntimeSurface {
     packaged_revision: Option<String>,
     supports_apple_windowed_training: bool,
     supports_cs336_a1_demo: bool,
+    supports_qwen_legal_adapter_sft: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5192,6 +5204,10 @@ fn inspect_psionic_train_runtime_surface_at(
                 .contains("PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF"),
         supports_cs336_a1_demo: train_runtime_source.contains("PSION_CS336_A1_DEMO_LANE_ID")
             && train_runtime_source.contains("PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF"),
+        supports_qwen_legal_adapter_sft: train_runtime_source
+            .contains("QWEN_LEGAL_ADAPTER_SFT_LANE_ID")
+            && train_runtime_source
+                .contains("PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF"),
     })
 }
 
@@ -8067,6 +8083,15 @@ fn training_psionic_lane_id_for_environment_ref(
                 );
             }
             Ok(PSION_APPLE_WINDOWED_TRAINING_LANE_ID)
+        }
+        PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF => {
+            if !runtime_surface.supports_qwen_legal_adapter_sft {
+                bail!(
+                    "Psionic checkout at {} does not advertise the Qwen legal adapter SFT lane",
+                    runtime_surface.repo_root.display()
+                );
+            }
+            Ok(QWEN_LEGAL_ADAPTER_SFT_LANE_ID)
         }
         other => bail!(
             "training environment_ref `{other}` is not mapped to a machine-admitted psionic-train lane"
@@ -30942,7 +30967,12 @@ fn derive_adapter_training_contributor_availability(
     let admitted_apple_backend = admitted_apple_training_host(host, runtime_surface);
     let has_cs336_a1_demo_backend = runtime_surface.supports_cs336_a1_demo
         && host_matches_training_lane_machine_class(host, PSION_CS336_A1_DEMO_LANE_ID);
-    let available_memory_gb = if admitted_cuda_backend {
+    let has_qwen_legal_adapter_backend = runtime_surface.supports_qwen_legal_adapter_sft
+        && host_matches_training_lane_machine_class(host, QWEN_LEGAL_ADAPTER_SFT_LANE_ID);
+    let has_qwen_legal_adapter_backend = has_qwen_legal_adapter_backend
+        && host_max_cuda_training_memory_gb(host)
+            .is_some_and(|memory_gb| memory_gb >= PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB);
+    let available_memory_gb = if admitted_cuda_backend || has_qwen_legal_adapter_backend {
         host_max_cuda_training_memory_gb(host)
     } else if admitted_apple_backend {
         host_apple_training_memory_gb(host)
@@ -30951,10 +30981,12 @@ fn derive_adapter_training_contributor_availability(
     } else {
         host_max_cuda_training_memory_gb(host).or_else(|| host_apple_training_memory_gb(host))
     };
-    let contributor_supported =
-        (admitted_cuda_backend || admitted_apple_backend || has_cs336_a1_demo_backend)
-            && coordinator_match_supported
-            && authority_receipt_supported;
+    let contributor_supported = (admitted_cuda_backend
+        || admitted_apple_backend
+        || has_cs336_a1_demo_backend
+        || has_qwen_legal_adapter_backend)
+        && coordinator_match_supported
+        && authority_receipt_supported;
     let mut environment_refs = Vec::new();
     if admitted_cuda_backend {
         environment_refs.push(PYLON_TRAINING_ENVIRONMENT_REF.to_string());
@@ -30962,10 +30994,13 @@ fn derive_adapter_training_contributor_availability(
     if has_cs336_a1_demo_backend {
         environment_refs.push(PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string());
     }
+    if has_qwen_legal_adapter_backend {
+        environment_refs.push(PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF.to_string());
+    }
     if admitted_apple_backend {
         environment_refs.push(PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string());
     }
-    let minimum_memory_gb = if admitted_cuda_backend {
+    let minimum_memory_gb = if admitted_cuda_backend || has_qwen_legal_adapter_backend {
         Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
     } else if admitted_apple_backend {
         Some(PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
@@ -30977,7 +31012,10 @@ fn derive_adapter_training_contributor_availability(
         contributor_supported,
         coordinator_match_supported,
         authority_receipt_supported,
-        execution_backends: (has_cuda_backend || has_apple_backend || has_cs336_a1_demo_backend)
+        execution_backends: (has_cuda_backend
+            || has_apple_backend
+            || has_cs336_a1_demo_backend
+            || has_qwen_legal_adapter_backend)
             .then_some(ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend)
             .into_iter()
             .collect(),
@@ -31385,6 +31423,55 @@ fn training_capability_eligible_replica_types(
     replica_types
 }
 
+fn training_capability_legal_labels(
+    capability_tier: &ProviderTrainingCapabilityTierProfile,
+    contributor_availability: &ProviderAdapterTrainingContributorAvailability,
+    runtime_surface_detected: bool,
+    eligible_work_classes: &[ProviderTrainingWorkClassEligibility],
+) -> Vec<String> {
+    let mut labels = BTreeSet::<String>::new();
+    if runtime_surface_detected {
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY.to_string());
+    }
+    if eligible_work_classes
+        .iter()
+        .any(|entry| entry.work_class == ComputeTrainingWorkClass::ValidationReplay)
+    {
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY.to_string());
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_LEGAL_DATASET_EXTRACT.to_string());
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY.to_string());
+    }
+    if eligible_work_classes
+        .iter()
+        .any(|entry| entry.work_class == ComputeTrainingWorkClass::Evaluation)
+    {
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_LEGAL_EVAL_CASE.to_string());
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_LEGAL_JUDGE_CALIBRATION.to_string());
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL.to_string());
+    }
+    let qwen_adapter_trainable = contributor_availability
+        .environment_refs
+        .iter()
+        .any(|value| value == PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF)
+        && capability_tier
+            .available_memory_gb
+            .is_some_and(|memory_gb| memory_gb >= PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB);
+    let trainer_capable = qwen_adapter_trainable
+        && contributor_availability.contributor_supported
+        && capability_tier
+            .tier
+            .meets(ProviderTrainingCapabilityTier::Tier2Trainer)
+        && eligible_work_classes
+            .iter()
+            .any(|entry| entry.work_class == ComputeTrainingWorkClass::AdapterTraining);
+    if trainer_capable {
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING.to_string());
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL.to_string());
+        labels.insert(PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_CHECKPOINT_VALIDATION.to_string());
+    }
+    labels.into_iter().collect()
+}
+
 fn derive_training_capability_envelope_v2(
     capability_tier: &ProviderTrainingCapabilityTierProfile,
     contributor_availability: &ProviderAdapterTrainingContributorAvailability,
@@ -31415,6 +31502,12 @@ fn derive_training_capability_envelope_v2(
     .collect::<Vec<_>>();
     let eligible_replica_types =
         training_capability_eligible_replica_types(capability_tier, &eligible_work_classes);
+    let capability_labels = training_capability_legal_labels(
+        capability_tier,
+        contributor_availability,
+        runtime_surface_detected,
+        &eligible_work_classes,
+    );
     ProviderTrainingCapabilityEnvelopeV2 {
         schema_version:
             openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ENVELOPE_V2_SCHEMA_VERSION
@@ -31425,6 +31518,7 @@ fn derive_training_capability_envelope_v2(
         benchmark_lane_available,
         eligible_work_classes,
         eligible_replica_types,
+        capability_labels,
     }
 }
 
@@ -31568,6 +31662,7 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
             PSION_ACTUAL_PRETRAINING_LANE_ID
         }
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => PSION_CS336_A1_DEMO_LANE_ID,
+        PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF => QWEN_LEGAL_ADAPTER_SFT_LANE_ID,
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF => PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
         _ => return None,
     };
@@ -31919,7 +32014,8 @@ mod tests {
         PSION_CS336_A1_DEMO_LANE_ID, PSIONIC_RUNTIME_REVISION_FILE, PYLON_TRAINING_ADAPTER_FAMILY,
         PYLON_TRAINING_ADAPTER_FORMAT, PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
         PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
-        PYLON_TRAINING_ENVIRONMENT_REF, PYLON_TRAINING_VALIDATOR_POLICY_REF,
+        PYLON_TRAINING_ENVIRONMENT_REF, PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB,
+        PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF, PYLON_TRAINING_VALIDATOR_POLICY_REF,
         PsionicRepoRootCandidate, PsionicTrainRuntimeSurface, PylonConfig, PylonLedger,
         PylonLedgerJob, PylonSettlementRecord, PylonTrainingActiveRuntimeState,
         PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
@@ -32405,6 +32501,7 @@ mod tests {
             packaged_revision: None,
             supports_apple_windowed_training: true,
             supports_cs336_a1_demo: true,
+            supports_qwen_legal_adapter_sft: true,
         }
     }
 
@@ -32419,11 +32516,15 @@ mod tests {
         )?;
         std::fs::write(
             root.join("crates/psionic-train/src/train_runtime.rs"),
-            "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n\
+            concat!(
+                "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n\
 pub const PSION_APPLE_WINDOWED_TRAINING_LANE_ID: &str = \"psion_apple_windowed_training_v1\";\n\
 pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1\";\n\
 pub const PSION_CS336_A1_DEMO_LANE_ID: &str = \"psion_cs336_a1_demo_v1\";\n\
 pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1\";\n",
+                "pub const QWEN_LEGAL_ADAPTER_SFT_LANE_ID: &str = \"qwen_legal_adapter_sft_v1\";\n\
+pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic.environment.qwen_legal_adapter_sft.cuda.operator@v1\";\n",
+            ),
         )?;
         Ok(())
     }
@@ -33509,15 +33610,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && availability.checkpoint_families
                     == vec![PYLON_TRAINING_CHECKPOINT_FAMILY.to_string()]
                 && availability.environment_refs
-                    == vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()],
+                    == vec![
+                        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                        PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF.to_string(),
+                    ],
             "runtime detection should project the frozen Pylon training contract ids",
         )?;
         ensure(
-            availability.minimum_memory_gb.is_none()
-                && availability.available_memory_gb == Some(32)
+            availability.minimum_memory_gb == Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
+                && availability.available_memory_gb == Some(80)
                 && availability.settlement_trigger
                     == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow),
-            "fallback CS336 A1 detection should drop the H100 floor and use the host-CPU memory posture for sealed-window settlement",
+            "non-H100 CUDA hosts with enough memory should also advertise the Qwen legal adapter floor for sealed-window settlement",
         )
     }
 
@@ -33540,8 +33644,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 == vec![
                     PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
                     PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                    PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF.to_string(),
                 ],
-            "admitted H100 hosts should advertise both the canonical CUDA lane and the bounded CS336 A1 host-CPU lane",
+            "admitted H100 hosts should advertise the canonical CUDA lane, bounded CS336 A1 host-CPU lane, and Qwen legal adapter lane",
         )
     }
 
@@ -33762,8 +33867,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             contributor_supported: true,
             coordinator_match_supported: true,
             authority_receipt_supported: true,
-            minimum_memory_gb: Some(16),
-            available_memory_gb: Some(32),
+            minimum_memory_gb: Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB),
+            available_memory_gb: Some(80),
+            environment_refs: vec![
+                PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF.to_string(),
+            ],
             ..Default::default()
         };
         let weak_profile = ProviderTrainingCapabilityTierProfile {
@@ -33845,6 +33953,65 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
+    fn legal_qwen_capability_labels_keep_adapter_training_to_trainer_pylons()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let contributor = ProviderAdapterTrainingContributorAvailability {
+            contributor_supported: true,
+            coordinator_match_supported: true,
+            authority_receipt_supported: true,
+            minimum_memory_gb: Some(16),
+            available_memory_gb: Some(32),
+            environment_refs: vec![
+                PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF.to_string(),
+            ],
+            ..Default::default()
+        };
+        let weak_profile = ProviderTrainingCapabilityTierProfile {
+            tier: ProviderTrainingCapabilityTier::Tier1Validation,
+            backend_families: vec!["cuda".to_string()],
+            available_memory_gb: Some(16),
+            replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+            ..Default::default()
+        };
+        let trainer_profile = ProviderTrainingCapabilityTierProfile {
+            tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+            backend_families: vec!["cuda".to_string()],
+            memory_floor_gb: Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB),
+            available_memory_gb: Some(80),
+            replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+            ..Default::default()
+        };
+
+        let weak_envelope =
+            derive_training_capability_envelope_v2(&weak_profile, &contributor, true);
+        let trainer_envelope =
+            derive_training_capability_envelope_v2(&trainer_profile, &contributor, true);
+
+        ensure(
+            weak_envelope.supports_capability_label(
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY,
+            ) && weak_envelope.supports_capability_label(
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_LEGAL_EVAL_CASE,
+            ) && weak_envelope.supports_capability_label(
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY,
+            ),
+            "Tier1 Pylons should advertise legal support, eval, and artifact integrity labels",
+        )?;
+        ensure(
+            !weak_envelope.supports_capability_label(
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING,
+            ),
+            "Tier1 Pylons must not advertise Qwen legal adapter training",
+        )?;
+        ensure(
+            trainer_envelope.supports_capability_label(
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING,
+            ) && trainer_envelope.supports_work_class(ComputeTrainingWorkClass::AdapterTraining),
+            "trainer Pylons should advertise Qwen legal adapter training only when the adapter work class is supported",
+        )
+    }
+
+    #[test]
     fn inspect_psionic_train_runtime_surface_requires_machine_training_entrypoint()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
@@ -33868,7 +34035,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             surface.repo_root == temp_dir.path()
                 && surface.supports_apple_windowed_training
-                && surface.supports_cs336_a1_demo,
+                && surface.supports_cs336_a1_demo
+                && surface.supports_qwen_legal_adapter_sft,
             "training surface probe should accept the minimal machine runtime layout and detect the packaged Apple and CS336 A1 lanes when present",
         )
     }

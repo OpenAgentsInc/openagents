@@ -45,6 +45,8 @@ pub const PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF: &str =
     "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1";
 pub const PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF: &str =
     "psionic.environment.a1_minimal_distributed_lm.tiny_lm.operator@v1";
+pub const PYLON_TRAINING_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str =
+    "psionic.environment.qwen_legal_adapter_sft.cuda.operator@v1";
 
 pub const PYLON_TRAINING_HEARTBEAT_INTERVAL_MS: u64 = 15_000;
 pub const PYLON_TRAINING_HEARTBEAT_EXPIRY_MS: u64 = 60_000;

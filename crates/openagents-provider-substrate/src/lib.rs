@@ -678,6 +678,16 @@ impl ProviderTrainingArtifactUploadLatencyClass {
 
 pub const PROVIDER_TRAINING_CAPABILITY_ENVELOPE_V2_SCHEMA_VERSION: &str =
     "provider.training_capability_envelope.v2";
+pub const PROVIDER_TRAINING_CAPABILITY_LEGAL_DATASET_EXTRACT: &str = "legal_dataset_extract";
+pub const PROVIDER_TRAINING_CAPABILITY_LEGAL_EVAL_CASE: &str = "legal_eval_case";
+pub const PROVIDER_TRAINING_CAPABILITY_LEGAL_VALIDATION_REPLAY: &str = "legal_validation_replay";
+pub const PROVIDER_TRAINING_CAPABILITY_LEGAL_JUDGE_CALIBRATION: &str = "legal_judge_calibration";
+pub const PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_TRAINING: &str =
+    "qwen_legal_adapter_training";
+pub const PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_ADAPTER_EVAL: &str = "qwen_legal_adapter_eval";
+pub const PROVIDER_TRAINING_CAPABILITY_QWEN_LEGAL_CHECKPOINT_VALIDATION: &str =
+    "qwen_legal_checkpoint_validation";
+pub const PROVIDER_TRAINING_CAPABILITY_ARTIFACT_INTEGRITY: &str = "artifact_integrity";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderTrainingAcceleratorInventoryEntry {
@@ -757,6 +767,8 @@ pub struct ProviderTrainingCapabilityEnvelopeV2 {
     pub eligible_work_classes: Vec<ProviderTrainingWorkClassEligibility>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub eligible_replica_types: Vec<ProviderTrainingReplicaTypeEligibility>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capability_labels: Vec<String>,
 }
 
 impl Default for ProviderTrainingCapabilityEnvelopeV2 {
@@ -769,6 +781,7 @@ impl Default for ProviderTrainingCapabilityEnvelopeV2 {
             benchmark_lane_available: false,
             eligible_work_classes: Vec::new(),
             eligible_replica_types: Vec::new(),
+            capability_labels: Vec::new(),
         }
     }
 }
@@ -798,6 +811,10 @@ impl ProviderTrainingCapabilityEnvelopeV2 {
             .iter()
             .map(|entry| entry.replica_type.label().to_string())
             .collect()
+    }
+
+    pub fn supports_capability_label(&self, label: &str) -> bool {
+        self.capability_labels.iter().any(|value| value == label)
     }
 }
 

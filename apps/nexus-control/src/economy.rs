@@ -241,6 +241,40 @@ pub struct PublicTrainingWorkClassState {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingObjectiveState {
+    #[serde(default)]
+    pub objective_id: String,
+    #[serde(default)]
+    pub objective_class: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub policy_ref: String,
+    #[serde(default)]
+    pub validator_policy_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_model_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serious_model_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_capability_labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_pylon_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_cap_sats: Option<u64>,
+    #[serde(default)]
+    pub run_count: u64,
+    #[serde(default)]
+    pub active_run_count: u64,
+    #[serde(default)]
+    pub accepted_paid_work_count: u64,
+    #[serde(default)]
+    pub model_progress_run_count: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicTrainingRunState {
     #[serde(default)]
     pub training_run_id: String,
@@ -367,6 +401,8 @@ pub struct PublicTrainingStatsSnapshot {
     #[serde(default)]
     pub generated_at_unix_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_objective_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_network_id: Option<String>,
@@ -396,6 +432,8 @@ pub struct PublicTrainingStatsSnapshot {
     pub queue_pressure: PublicTrainingQueuePressure,
     #[serde(default)]
     pub launch_health: PublicTrainingLaunchHealthSnapshot,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub objectives: Vec<PublicTrainingObjectiveState>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub work_classes: Vec<PublicTrainingWorkClassState>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

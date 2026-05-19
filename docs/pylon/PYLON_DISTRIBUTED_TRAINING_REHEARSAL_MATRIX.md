@@ -68,6 +68,29 @@ publication, and restart seams. That is a better MVP release block than
 pretending there is already one external multi-machine soak harness that proves
 more than the current code can actually prove.
 
+## Current Foreground Objective
+
+The current foreground ML objective is now the Harvey legal Qwen smoke:
+
+```text
+harvey_legal_qwen_finetune_v1
+```
+
+Set or confirm:
+
+```bash
+NEXUS_CONTROL_ACTIVE_TRAINING_OBJECTIVE_ID=harvey_legal_qwen_finetune_v1
+```
+
+The bounded CS336 A1 and A1 minimal lanes remain release proofs and reference
+work. They are not the target to hill climb. For the legal objective, Pylons
+advertise explicit legal/Qwen capability labels and Nexus refuses adapter
+training leases unless the node advertises `qwen_legal_adapter_training`.
+Support, eval, validation replay, and artifact integrity work can still be
+paid through the LDK path on weaker admitted nodes when the corresponding legal
+support labels are present. See
+`docs/pylon/HARVEY_LEGAL_QWEN_TRAINING_OBJECTIVE.md`.
+
 ## First Proving Slice
 
 The proving slice is the first mandatory release gate inside the broader
