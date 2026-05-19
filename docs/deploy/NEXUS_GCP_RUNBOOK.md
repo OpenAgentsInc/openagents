@@ -472,6 +472,17 @@ Use the normal production-optimized profile explicitly when you want it:
 NEXUS_BUILD_PROFILE=release scripts/deploy/nexus/01-build-and-push-image.sh
 ```
 
+If the active deploy identity is a narrowed service account and the required
+Google APIs are already enabled, skip the project-wide service enablement step:
+
+```bash
+NEXUS_SKIP_ENABLE_SERVICES=true scripts/deploy/nexus/01-build-and-push-image.sh
+```
+
+Do not use this on a new project bootstrap; the initial owner/admin bootstrap
+still needs to enable Compute, Artifact Registry, Cloud Build, IAM, Cloud Run,
+Cloud Scheduler, Secret Manager, Logging, and Monitoring.
+
 For isolated validation lanes, publish a unique image tag without moving
 `latest`:
 

@@ -338,6 +338,11 @@ ensure_gcloud_context() {
 }
 
 ensure_services() {
+  if [[ "${NEXUS_SKIP_ENABLE_SERVICES:-false}" == "true" ]]; then
+    log "Skipping gcloud services enable because NEXUS_SKIP_ENABLE_SERVICES=true"
+    return 0
+  fi
+
   gcloud services enable \
     compute.googleapis.com \
     artifactregistry.googleapis.com \
