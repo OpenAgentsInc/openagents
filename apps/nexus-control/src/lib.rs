@@ -1867,6 +1867,7 @@ const fn homework_launch_pay_only_on_accept_default() -> bool {
 const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 300_000;
 const TRAINING_RETAINED_BACKLOG_HEALTH_WINDOW_MS: u64 = 86_400_000;
+const TRAINING_FIRST_WINDOW_STANDBY_ACTIVE_WINDOW_MS: u64 = 600_000;
 const TRAINING_BACKLOG_CLEANUP_DEFAULT_RETENTION_HOURS: u64 = 24;
 const TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_LIVE: &str = "live";
@@ -4043,6 +4044,7 @@ struct TrainingOperatorRunSummary {
     training_run_id: String,
     network_id: String,
     run_status: String,
+    created_at_ms: i64,
     scheduler_window_state: String,
     current_window_id: String,
     participation: TrainingOperatorRunParticipationSummary,
@@ -26510,6 +26512,7 @@ fn training_operator_summary_snapshot_with_run_limit(
                 training_run_id: run.training_run_id.clone(),
                 network_id,
                 run_status: run.status.label().to_string(),
+                created_at_ms: run.created_at_ms,
                 scheduler_window_state: scheduler_state
                     .map(|value| value.window_state.label().to_string())
                     .or_else(|| latest_window.map(|value| value.status.label().to_string()))
@@ -26748,11 +26751,23 @@ fn training_run_state_counts_as_active(
 
 fn training_operator_run_counts_as_active(run: &TrainingOperatorRunSummary) -> bool {
     let has_terminal_settlement = run.settlement.accepted_closeouts > 0;
+    let has_accepted_progress = run.progress.accepted_closeouts > 0 || run.accepted_closeouts > 0;
     let has_open_work = run.active_window_count > 0
         || run.pending_validation_window_count > 0
         || run.open_validator_challenges > 0
         || run.queued_validator_challenges > 0;
-    if has_terminal_settlement && !has_open_work {
+    if !has_open_work {
+        if has_terminal_settlement || has_accepted_progress {
+            return false;
+        }
+        let Some(created_at_ms) = u64::try_from(run.created_at_ms).ok() else {
+            return false;
+        };
+        return training_run_state_preferred_as_default(run.run_status.as_str())
+            && created_at_ms.saturating_add(TRAINING_FIRST_WINDOW_STANDBY_ACTIVE_WINDOW_MS)
+                >= now_unix_ms();
+    }
+    if has_terminal_settlement {
         return false;
     }
 
@@ -48400,6 +48415,69 @@ mod tests {
         assert_eq!(
             visualization.closeouts[0].payout_basis.as_deref(),
             Some("aggregation_weight")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_summary_does_not_count_stale_first_window_standby_run_as_active() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms()
+            .saturating_sub(super::TRAINING_FIRST_WINDOW_STANDBY_ACTIVE_WINDOW_MS)
+            .saturating_sub(60_000);
+        let training_run_id = "run.summary.stale_standby";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+        super::force_refresh_public_stats_cache(&state, super::now_unix_ms());
+
+        let summary = fetch_training_summary(&app).await?;
+        assert_eq!(summary.runs.len(), 1);
+        assert_eq!(summary.runs[0].training_run_id, training_run_id);
+        assert_eq!(summary.runs[0].run_status, "running");
+        assert_eq!(summary.runs[0].active_window_count, 0);
+        assert_eq!(summary.runs[0].pending_validation_window_count, 0);
+        assert_eq!(summary.active_runs, 0);
+        assert_eq!(summary.active_windows, 0);
+        assert_eq!(summary.pending_validation_windows, 0);
+        assert_eq!(summary.validator_challenges_open, 0);
+        assert_eq!(summary.validator_challenges_queued, 0);
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.training_runs_active, 0);
+        assert_eq!(
+            stats.training_public_state.queue_pressure.state.as_str(),
+            "none"
+        );
+        assert_eq!(
+            stats.training_public_state.launch_health.run_backlog_slots,
+            0
+        );
+        assert!(
+            !stats
+                .training_public_state
+                .launch_health
+                .alerts
+                .iter()
+                .any(|alert| alert.alert_id == "run_backlog")
         );
 
         Ok(())
