@@ -80,6 +80,7 @@ TMP_BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/openagents-nexus-build-context.X
 BUILD_RESULT_JSON_PATH="$(mktemp "${TMPDIR:-/tmp}/openagents-nexus-build-result.XXXXXX")"
 trap 'rm -rf "$TMP_BUILD_CONTEXT" "$BUILD_RESULT_JSON_PATH"' EXIT
 bash "$BUILD_CONTEXT_SCRIPT" "$TMP_BUILD_CONTEXT" >/dev/null
+git -C "$ROOT_DIR" rev-parse HEAD > "${TMP_BUILD_CONTEXT}/.nexus-source-rev"
 
 if command -v xattr >/dev/null 2>&1; then
   xattr -rc "$TMP_BUILD_CONTEXT" 2>/dev/null || true
