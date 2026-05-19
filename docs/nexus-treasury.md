@@ -15,6 +15,14 @@ provider-presence and receipt infrastructure. The normal provider is LDK
 surfaces describe the active LDK rail and do not expose obsolete payment-target
 details.
 
+The Cloudflare/web boundary is explicit: Cloudflare can host UI, auth,
+read-only projections, visualizations, and thin admin facades, but Nexus and
+the LDK host remain the server-side payment authority. Cloudflare Workers must
+not store LDK seeds, node keys, API keys, TLS keys, private channel material,
+bitcoind credentials, or treasury spend authority. See
+[`deploy/NEXUS_CLOUDFLARE_BOUNDARY.md`](deploy/NEXUS_CLOUDFLARE_BOUNDARY.md)
+for the route review and facade rules.
+
 ## Operator Surfaces
 
 CLI:

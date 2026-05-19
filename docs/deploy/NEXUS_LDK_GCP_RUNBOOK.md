@@ -46,6 +46,8 @@ Hosting decision:
   read-only projections, and React/Three visualizations.
 - Cloudflare Workers must not host the LDK node or Nexus treasury spend
   authority.
+- The detailed Cloudflare boundary, route review, and facade rules live in
+  [`NEXUS_CLOUDFLARE_BOUNDARY.md`](NEXUS_CLOUDFLARE_BOUNDARY.md).
 
 ## Scripts
 
