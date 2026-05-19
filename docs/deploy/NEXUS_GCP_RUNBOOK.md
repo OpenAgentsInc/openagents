@@ -483,6 +483,35 @@ Do not use this on a new project bootstrap; the initial owner/admin bootstrap
 still needs to enable Compute, Artifact Registry, Cloud Build, IAM, Cloud Run,
 Cloud Scheduler, Secret Manager, Logging, and Monitoring.
 
+Skipping service enablement does not make a narrow runtime service account a
+deploy identity. A noninteractive Nexus deploy identity still needs enough
+project access to either use the image lane or the binary hotfix lane:
+
+- image lane: create Cloud Build builds, use the Cloud Build source bucket, and
+  push/tag Artifact Registry images
+- binary hotfix lane: `compute.instances.get` plus IAP SSH/SCP access to
+  `nexus-mainnet-1` and `nexus-builder-1`
+- both lanes: read the relevant VM metadata and write deploy receipts without
+  leaking bearer tokens or wallet material
+
+Observed failure modes when the identity is too narrow:
+
+- `gcloud services enable ... PERMISSION_DENIED`
+- `gcloud builds submit ... forbidden from accessing the bucket
+  openagentsgemini_cloudbuild`
+- `gcloud compute ssh nexus-mainnet-1 ... Required compute.instances.get`
+
+If the human `gcloud` account has expired and the narrowed service account is
+active, either reauthenticate the human deploy account:
+
+```bash
+gcloud config set account chris@openagents.com
+gcloud auth login
+```
+
+or grant a dedicated deploy service account the above image-lane or binary-lane
+permissions before attempting production closeout.
+
 For isolated validation lanes, publish a unique image tag without moving
 `latest`:
 

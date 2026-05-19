@@ -516,6 +516,15 @@ Important recent deployment/runtime facts:
 - The proof documentation was committed and pushed as `18e0b5656`.
 - The temporary Psionic runtime build worktree used to package
   `55e4b66f` was removed after the proof.
+- 2026-05-19 deploy access check: the current local human `gcloud` account
+  requires interactive reauthentication, while the active
+  `nexus-mainnet@openagentsgemini.iam.gserviceaccount.com` account is a runtime
+  identity, not a deploy identity. It can mint access tokens, but it cannot
+  enable project services, submit Cloud Build jobs through the
+  `openagentsgemini_cloudbuild` bucket, list Cloud Build jobs, read project IAM,
+  or use IAP SSH against `nexus-mainnet-1`. Until the human deploy account is
+  reauthenticated or a dedicated deploy service account has image-lane or
+  binary-lane permissions, production Nexus code deployment is blocked.
 - Old untracked JSON deploy/build receipts remain in
   `docs/reports/nexus/`. They were not staged as part of the proof closeout
   because they are noisy historical artifacts, not the current audit.
