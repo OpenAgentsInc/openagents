@@ -92,8 +92,8 @@ BUILD_CONTEXT_SIZE="$(du -sh "$TMP_BUILD_CONTEXT" | awk '{print $1}')"
 log "Building and pushing image: ${NEXUS_IMAGE}"
 log "Submitting Nexus-only build context: files=${BUILD_CONTEXT_FILE_COUNT} size=${BUILD_CONTEXT_SIZE} profile=${NEXUS_BUILD_PROFILE} timeout=${NEXUS_BUILD_TIMEOUT} machine_type=${NEXUS_BUILD_MACHINE_TYPE} disk_gb=${NEXUS_BUILD_DISK_SIZE_GB} sccache=${NEXUS_BUILD_SCCACHE_ENABLED}"
 BUILD_STARTED_MS="$(timestamp_unix_ms)"
-SUBMIT_OUTPUT="$(
-gcloud builds submit "$TMP_BUILD_CONTEXT" \
+set +e
+SUBMIT_OUTPUT="$(gcloud builds submit "$TMP_BUILD_CONTEXT" \
   --project "$GCP_PROJECT" \
   --async \
   --machine-type "${NEXUS_BUILD_MACHINE_TYPE}" \
@@ -102,8 +102,13 @@ gcloud builds submit "$TMP_BUILD_CONTEXT" \
   --format='value(id)' \
   --config "${ROOT_DIR}/apps/nexus-relay/deploy/cloudbuild.yaml" \
   --substitutions "_IMAGE=${NEXUS_IMAGE},_CACHE_IMAGE=${NEXUS_BUILD_CACHE_IMAGE},_BUILD_PROFILE=${NEXUS_BUILD_PROFILE},_SOURCE_REV=$(git -C "$ROOT_DIR" rev-parse HEAD),_SCCACHE_BUCKET=${SCCACHE_BUCKET_SUBSTITUTION},_SCCACHE_KEY_PREFIX=${SCCACHE_KEY_PREFIX_SUBSTITUTION}" \
-  2>&1
-)"
+  2>&1)"
+SUBMIT_STATUS=$?
+set -e
+if [[ "$SUBMIT_STATUS" -ne 0 ]]; then
+  printf '%s\n' "$SUBMIT_OUTPUT" >&2
+  die "Cloud Build submit failed"
+fi
 
 BUILD_ID="$(printf '%s\n' "$SUBMIT_OUTPUT" | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -n 1)"
 
