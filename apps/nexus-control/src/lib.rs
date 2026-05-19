@@ -239,9 +239,6 @@ pub fn parse_training_command(args: &[String]) -> Result<TrainingCommand, String
                         retention_hours = raw
                             .parse::<u64>()
                             .map_err(|error| format!("invalid retention hours `{raw}`: {error}"))?;
-                        if retention_hours == 0 {
-                            return Err("retention hours must be greater than zero".to_string());
-                        }
                         index += 1;
                     }
                     "--report-path" => {
@@ -286,8 +283,11 @@ pub fn run_training_command(
         } => {
             let state = build_app_state(config.clone());
             let now_unix_ms = now_unix_ms();
-            let retention_cutoff_unix_ms =
-                now_unix_ms.saturating_sub(retention_hours.saturating_mul(3_600_000));
+            let retention_cutoff_unix_ms = if *retention_hours == 0 {
+                now_unix_ms
+            } else {
+                now_unix_ms.saturating_sub(retention_hours.saturating_mul(3_600_000))
+            };
             let context =
                 training_kernel_mutation_context("operator.training.backlog_cleanup", now_unix_ms);
             let mut store = state
@@ -29883,6 +29883,27 @@ mod tests {
         run_treasury_wallet_refresh_cycle, training_kernel_mutation_context,
         training_scheduler_minimum_tier_for_work_class, training_work_progress_class,
     };
+
+    #[test]
+    fn training_backlog_cleanup_allows_zero_retention_for_operator_drain() {
+        let args = [
+            "nexus-control",
+            "training",
+            "backlog-cleanup",
+            "--retention-hours",
+            "0",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect::<Vec<_>>();
+
+        let command = super::parse_training_command(&args).expect("parse cleanup command");
+        match command {
+            super::TrainingCommand::BacklogCleanup {
+                retention_hours, ..
+            } => assert_eq!(retention_hours, 0),
+        }
+    }
 
     fn test_config() -> Result<ServiceConfig> {
         let unique = random_token();
