@@ -143,6 +143,11 @@ ensure_firewall_rule "$NEXUS_BITCOIND_RPC_FIREWALL_RULE" \
   --target-tags "$NEXUS_BITCOIND_TAG" \
   --source-tags "$NEXUS_LDK_TAG"
 
+ensure_firewall_rule "$NEXUS_LDK_PRIVATE_P2P_FIREWALL_RULE" \
+  --allow "tcp:${NEXUS_LDK_P2P_PORT}" \
+  --target-tags "$NEXUS_LDK_TAG" \
+  --source-tags "$NEXUS_LDK_PRIVATE_P2P_SOURCE_TAGS"
+
 if [[ "${NEXUS_LDK_ALLOW_PUBLIC_P2P}" == "true" ]]; then
   ensure_firewall_rule "$NEXUS_LDK_P2P_FIREWALL_RULE" \
     --allow "tcp:${NEXUS_LDK_P2P_PORT}" \
@@ -154,3 +159,4 @@ fi
 
 log "LDK topology provisioning path complete"
 log "gRPC is private: only source tag ${NEXUS_TAG} can reach target tag ${NEXUS_LDK_TAG} on tcp:${NEXUS_LDK_GRPC_PORT}."
+log "Lightning P2P is private by default: source tag(s) ${NEXUS_LDK_PRIVATE_P2P_SOURCE_TAGS} can reach target tag ${NEXUS_LDK_TAG} on tcp:${NEXUS_LDK_P2P_PORT}."

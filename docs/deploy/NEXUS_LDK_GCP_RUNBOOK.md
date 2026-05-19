@@ -69,9 +69,12 @@ The provisioning script creates or updates:
 - private LDK gRPC ingress on `tcp:3536` only from the Nexus host tag.
 - private `bitcoind` RPC ingress only from the LDK host tag.
 
-It does not expose the LDK gRPC port publicly. Public Lightning P2P is skipped
-by default. Set `NEXUS_LDK_ALLOW_PUBLIC_P2P=true` only after the node is ready
-to announce and the operator has reviewed channel/liquidity policy.
+It does not expose the LDK gRPC port publicly. Lightning P2P is private by
+default: `NEXUS_LDK_PRIVATE_P2P_SOURCE_TAGS` defaults to `oa-lnd`, allowing the
+existing non-Spark funding node to reach the LDK host on `NEXUS_LDK_P2P_PORT`
+without opening the node to the internet. Public Lightning P2P is skipped by
+default. Set `NEXUS_LDK_ALLOW_PUBLIC_P2P=true` only after the node is ready to
+announce and the operator has reviewed channel/liquidity policy.
 
 2. Install and pin LDK Server:
 
@@ -99,6 +102,9 @@ The installer:
   `NEXUS_LDK_SERVER_REF`;
 - writes `/etc/ldk-server/ldk-server.toml`;
 - binds LDK gRPC/metrics to `0.0.0.0:3536`, protected by private VPC firewall;
+- binds Lightning P2P to `0.0.0.0:9735`; private P2P is allowed only from
+  `NEXUS_LDK_PRIVATE_P2P_SOURCE_TAGS`, and public P2P remains firewalled off by
+  default;
 - enables Prometheus metrics on the same port;
 - installs `ldk-server.service` with `Restart=always`;
 - installs `/etc/logrotate.d/ldk-server`;

@@ -42,10 +42,13 @@ assert_contains 'NEXUS_LDK_VM' "$COMMON_TEXT"
 assert_contains 'NEXUS_LDK_GRPC_PORT' "$COMMON_TEXT"
 assert_contains 'NEXUS_LDK_REMOTE_SMOKE' "$COMMON_TEXT"
 assert_contains 'NEXUS_BITCOIND_RPC_FIREWALL_RULE' "$COMMON_TEXT"
+assert_contains 'NEXUS_LDK_PRIVATE_P2P_FIREWALL_RULE' "$COMMON_TEXT"
+assert_contains 'NEXUS_LDK_PRIVATE_P2P_SOURCE_TAGS' "$COMMON_TEXT"
 
 assert_contains 'no-address' "$TOPOLOGY_TEXT"
 assert_contains '--source-tags "$NEXUS_TAG"' "$TOPOLOGY_TEXT"
 assert_contains '--source-tags "$NEXUS_LDK_TAG"' "$TOPOLOGY_TEXT"
+assert_contains '--source-tags "$NEXUS_LDK_PRIVATE_P2P_SOURCE_TAGS"' "$TOPOLOGY_TEXT"
 assert_contains 'NEXUS_LDK_ALLOW_PUBLIC_P2P' "$TOPOLOGY_TEXT"
 
 assert_contains 'ldk-server.service' "$INSTALL_TEXT"
@@ -85,7 +88,9 @@ TOPOLOGY_OUTPUT="$(
 assert_contains 'gcloud compute instances create' "$TOPOLOGY_OUTPUT"
 assert_contains 'no-address' "$TOPOLOGY_OUTPUT"
 assert_contains 'oa-allow-nexus-ldk-host-grpc-private' "$TOPOLOGY_OUTPUT"
+assert_contains 'oa-allow-nexus-ldk-host-p2p-private' "$TOPOLOGY_OUTPUT"
 assert_contains '--source-tags nexus-host' "$TOPOLOGY_OUTPUT"
+assert_contains '--source-tags oa-lnd' "$TOPOLOGY_OUTPUT"
 assert_contains 'Skipping public Lightning P2P firewall' "$TOPOLOGY_OUTPUT"
 assert_not_contains '--source-ranges 0.0.0.0/0' "$TOPOLOGY_OUTPUT"
 
