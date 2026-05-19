@@ -583,11 +583,15 @@ NEXUS_HEALTH_RUNNER_SCHEDULER_OIDC_AUDIENCE="${SERVICE_URL}" \
 scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 
-The same deploy script now installs the default hosted homework auto-dispatcher
-runtime. Production defaults are:
+The same deploy script installs the hosted homework dispatch runtime, but the
+normal production default is no implicit paid-work creation. Operators should
+launch bounded proof work through the admin dispatch endpoint or an explicit
+smoke runner, then verify accepted-work payout receipts. Production defaults
+are:
 
 ```text
-NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED=true
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED=false
+NEXUS_CONTROL_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED=false
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS=600
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS=25
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS=256
@@ -597,11 +601,19 @@ NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD=false
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS=1800
 ```
 
+`NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED=true` enables the timer that
+creates fresh CS336 A1 homework runs. `NEXUS_CONTROL_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED=true`
+enables the older lease-claim fallback that creates hosted starter work when a
+default-network worker asks for work and no scheduled run exists. Keep both
+disabled for normal production. Enabling either one is an explicit operator
+choice for a bounded test window; disable it again before treating the system
+as idle.
+
 The automatic dispatcher runs one cycle immediately after `nexus-relay` starts,
-then every 600 seconds. It creates a fresh CS336 A1 homework run, targets online
-eligible Pylons on the default demo training network, and pays only accepted
-homework closeouts. The manual admin endpoint remains available for bounded
-proofs and temporary pacing overrides.
+then every configured interval. It targets online eligible Pylons on the
+default demo training network and pays only accepted homework closeouts. The
+manual admin endpoint remains the preferred surface for bounded proofs and
+temporary pacing overrides.
 
 The validator selection path must treat automatic homework as the freshest paid
 work class. Current ordering is `homework_auto_dispatch`, then manual

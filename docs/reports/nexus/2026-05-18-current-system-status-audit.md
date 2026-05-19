@@ -122,6 +122,29 @@ Expected result: the `rg` command returns no active-path rows, the deploy
 invariant reports the Nexus/Pylon paths are LDK-only, and the targeted Cargo
 check completes.
 
+## 2026-05-19 Public Status and Work-Materialization Guard Update
+
+Follow-up stabilization moved the normal public treasury read path to the
+redacted cached treasury snapshot. `GET /v1/treasury/status` should now return
+the latest public status projection without rebuilding full internal payout
+rows, payout-target rows, operation rows, or beneficiary debug rows inline.
+Operator refreshes and background wallet refresh update that cache; row-level
+diagnostics belong on authenticated projection/export surfaces.
+
+The same update also changed hosted CS336 work creation to be opt-in. Standard
+deploys now default both of these environment variables to `false`:
+
+```text
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED=false
+NEXUS_CONTROL_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED=false
+```
+
+The first flag controls timer-driven homework dispatch. The second controls
+the older worker lease-claim fallback that created hosted starter work when no
+scheduled default-network run existed. Operators should use explicit admin
+dispatches or named smoke runners for LDK payout proofs, then leave both
+automatic paths disabled during normal production idle.
+
 ## 2026-05-18 Payout Ledger Cleanup Update
 
 Issue `#4506` added an explicit treasury cleanup/reporting command for the

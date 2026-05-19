@@ -446,6 +446,8 @@ const ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: &str =
 const ENV_PROVIDER_PRESENCE_STALE_AFTER_MS: &str = "NEXUS_CONTROL_PROVIDER_PRESENCE_STALE_AFTER_MS";
 const ENV_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED: &str =
     "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED";
+const ENV_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED";
 const ENV_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS: &str =
     "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS";
 const ENV_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS: &str =
@@ -488,6 +490,7 @@ const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 120_000;
 const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED: bool = false;
+const DEFAULT_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED: bool = false;
 const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS: u64 = 600;
 const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS: u64 = 25;
 const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS: u32 = 256;
@@ -624,6 +627,7 @@ pub struct ServiceConfig {
     pub starter_demand_heartbeat_timeout_seconds: u64,
     pub provider_presence_stale_after_ms: u64,
     pub cs336_homework_auto_dispatch_enabled: bool,
+    pub cs336_homework_lease_auto_launch_enabled: bool,
     pub cs336_homework_auto_dispatch_interval_seconds: u64,
     pub cs336_homework_auto_dispatch_amount_sats: u64,
     pub cs336_homework_auto_dispatch_max_contributors_per_run: u32,
@@ -769,6 +773,10 @@ impl ServiceConfig {
             ENV_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED,
             DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED,
         )?;
+        let cs336_homework_lease_auto_launch_enabled = parse_bool_env(
+            ENV_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED,
+            DEFAULT_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED,
+        )?;
         let cs336_homework_auto_dispatch_interval_seconds = parse_u64_env(
             ENV_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS,
             DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS,
@@ -902,6 +910,7 @@ impl ServiceConfig {
             starter_demand_heartbeat_timeout_seconds,
             provider_presence_stale_after_ms,
             cs336_homework_auto_dispatch_enabled,
+            cs336_homework_lease_auto_launch_enabled,
             cs336_homework_auto_dispatch_interval_seconds,
             cs336_homework_auto_dispatch_amount_sats,
             cs336_homework_auto_dispatch_max_contributors_per_run,
@@ -9551,7 +9560,10 @@ fn build_app_state(config: ServiceConfig) -> AppState {
     let initial_public_stats_json =
         public_stats_json_response_body(&initial_public_stats, now, "cached");
     let initial_rollout_policy = training_rollout_policy_snapshot(&store, now);
-    let initial_treasury_status = store.treasury.status_response(&config.treasury, now);
+    let initial_treasury_status = store
+        .treasury
+        .status_response(&config.treasury, now)
+        .public_api_view();
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
     AppState {
@@ -14113,7 +14125,10 @@ async fn claim_training_run_lease(
         Err(error)
             if training_lease_claim_error_should_auto_launch_hosted_starter(
                 error.reason.as_str(),
-            ) && training_lease_claim_should_try_hosted_cs336_starter_work(&request) =>
+            ) && training_lease_claim_should_try_hosted_cs336_starter_work(
+                &state.config,
+                &request,
+            ) =>
         {
             let starter =
                 ensure_hosted_cs336_starter_work_for_lease_claim(&state, &request).await?;
@@ -14137,9 +14152,11 @@ fn training_lease_claim_error_should_auto_launch_hosted_starter(reason: &str) ->
 }
 
 fn training_lease_claim_should_try_hosted_cs336_starter_work(
+    config: &ServiceConfig,
     request: &RecordTrainingRunLeaseRequest,
 ) -> bool {
-    request.role == TrainingNodeRoleClaim::Worker
+    config.cs336_homework_lease_auto_launch_enabled
+        && request.role == TrainingNodeRoleClaim::Worker
         && request.requested_training_run_id.is_none()
         && training_lease_claim_targets_default_cs336_network(request)
 }
@@ -18213,15 +18230,12 @@ async fn treasury_status(
     State(state): State<AppState>,
 ) -> Result<Json<TreasuryStatusResponse>, ApiError> {
     let now = now_unix_ms();
-    let cached_status = try_cached_treasury_status_snapshot(&state)?;
+    if let Some(status) = try_cached_treasury_status_snapshot(&state)? {
+        return Ok(Json(status.public_api_view()));
+    }
     let store = match try_read_store(&state, "treasury_status_live_store_busy") {
         Ok(store) => store,
-        Err(error) => {
-            if let Some(status) = cached_status {
-                return Ok(Json(status.public_api_view()));
-            }
-            return Err(error);
-        }
+        Err(error) => return Err(error),
     };
     let status = store.treasury.status_response(&state.config.treasury, now);
     drop(store);
@@ -29109,7 +29123,7 @@ fn replace_training_rollout_policy_cache(
 
 fn replace_treasury_status_cache(state: &AppState, snapshot: TreasuryStatusResponse) {
     if let Ok(mut cache) = state.treasury_status_cache.try_write() {
-        *cache = Some(snapshot);
+        *cache = Some(snapshot.public_api_view());
     }
 }
 
@@ -30120,6 +30134,8 @@ mod tests {
             starter_demand_heartbeat_timeout_seconds: 5,
             provider_presence_stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
             cs336_homework_auto_dispatch_enabled: false,
+            cs336_homework_lease_auto_launch_enabled:
+                super::DEFAULT_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED,
             cs336_homework_auto_dispatch_interval_seconds:
                 super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS,
             cs336_homework_auto_dispatch_amount_sats:
@@ -49446,6 +49462,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn default_pylon_lease_claim_does_not_auto_launch_starter_work_by_default() -> Result<()>
+    {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let public_release_id = current_homework_launch_release_id_for_test();
+        let public_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-starter-disabled",
+            "sha256:build-starter-disabled",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            public_release_id.as_str(),
+            public_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodestarterdisabled"),
+        );
+        seed_training_payout_target(
+            &state,
+            recorded_at_ms.saturating_sub(50),
+            "node-starter-disabled",
+        );
+
+        let claim_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.hosted.starter.disabled",
+                            recorded_at_ms as i64 + 1_000,
+                            "node-starter-disabled",
+                            TrainingNodeRoleClaim::Worker,
+                            None,
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let claim_status = claim_response.status();
+        let claim_bytes = to_bytes(claim_response.into_body(), usize::MAX).await?;
+        assert!(
+            claim_status.is_client_error(),
+            "{}",
+            String::from_utf8_lossy(claim_bytes.as_ref())
+        );
+        let error = serde_json::from_slice::<ErrorResponse>(&claim_bytes)?;
+        assert_eq!(error.reason, "training_scheduler_run_not_found");
+
+        let store = state.store.read().expect("read store");
+        assert!(
+            store
+                .kernel
+                .list_compute_training_runs(None, None, None)
+                .into_iter()
+                .all(|run| !run.training_run_id.starts_with("run.cs336.a1.starter."))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn default_pylon_lease_claim_auto_launches_hosted_cs336_starter_work() -> Result<()> {
         let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
             spawn_training_artifact_upload_sink("gs://starter-training-bucket").await?;
@@ -49454,6 +49538,7 @@ mod tests {
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 120;
         config.treasury.accepted_work_default_payout_sats = 120;
+        config.cs336_homework_lease_auto_launch_enabled = true;
         let state = build_app_state(config);
         let app = build_api_router_with_state(state.clone());
         let public_release_id = current_homework_launch_release_id_for_test();
@@ -49594,6 +49679,7 @@ mod tests {
         config.training_artifact_signed_url = Some(training_artifact_signed_url);
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 120;
+        config.cs336_homework_lease_auto_launch_enabled = true;
         let state = build_app_state(config);
         let app = build_api_router_with_state(state.clone());
         let public_release_id = "openagents.pylon@0.1.99";
@@ -49621,6 +49707,16 @@ mod tests {
             public_build_version,
             vec![TrainingNodeRoleClaim::Worker],
             Some("lnbc1nodestarterrefreshbeta"),
+        );
+        seed_training_payout_target(
+            &state,
+            recorded_at_ms.saturating_sub(90),
+            "node-starter-refresh-alpha",
+        );
+        seed_training_payout_target(
+            &state,
+            recorded_at_ms.saturating_sub(80),
+            "node-starter-refresh-beta",
         );
 
         let alpha_response = app
@@ -50318,6 +50414,11 @@ mod tests {
             public_build_version,
             vec![TrainingNodeRoleClaim::Worker],
             Some("lnbc1nodedispatchpriority"),
+        );
+        seed_training_payout_target(
+            &state,
+            recorded_at_ms.saturating_sub(90),
+            "node-dispatch-priority",
         );
 
         let dispatch_response = app

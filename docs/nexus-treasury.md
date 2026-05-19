@@ -61,6 +61,14 @@ loop-health, payout, and continuity fields. It does not return payout-target
 identities, raw payout targets, recent payout rows, operation rows, or
 beneficiary debug rows.
 
+The public route is cache-first. It returns the latest redacted public snapshot
+from the treasury status cache and does not rebuild the full internal treasury
+status model on every request. Background wallet refreshes and authenticated
+operator refreshes update that cache. This keeps `/v1/treasury/status` and the
+public proxy responsive even when payout dispatch, wallet reconciliation, or
+LDK provider calls are busy. Authenticated operator exports and projections are
+the right surfaces for row-level diagnostics.
+
 For LDK, read the wallet balances precisely:
 
 - `wallet_balance_sats` is usable payout liquidity: spendable on-chain sats
@@ -773,6 +781,14 @@ each homework run with `pay_only_on_accept=true`; payouts are queued only after
 homework contributions are accepted during window reconciliation and are then
 drained by the existing treasury dispatch loop. Do not use placeholder,
 liveness, or every-four-hours payments as evidence for this lane.
+
+Automatic paid-work creation is disabled by default. The deploy default is
+`NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED=false`; the lease-claim
+hosted-starter fallback is separately gated by
+`NEXUS_CONTROL_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED=false`. Use explicit
+admin dispatches or a named smoke runner for proof work. If either automatic
+path is enabled for a bounded test, disable it afterward so idle production
+does not keep materializing work or payout pressure in the background.
 
 ## Private Treasury Integration
 
