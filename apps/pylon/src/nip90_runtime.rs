@@ -660,6 +660,12 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
     run_provider_request_collection(config_path, collected, None).await
 }
 
+struct PendingDrop {
+    entry: ProviderIntakeEntry,
+    status: &'static str,
+    error_detail: Option<String>,
+}
+
 async fn run_provider_request_collection(
     config_path: &Path,
     collected: ProviderRequestCollection,
@@ -687,6 +693,7 @@ async fn run_provider_request_collection(
     let mut completed_count = 0usize;
     let mut failed_count = 0usize;
     let mut dropped_count = 0usize;
+    let mut pending_drops: Vec<PendingDrop> = Vec::new();
 
     for observed in collected.observed {
         let request_event_id = observed.entry.request_event_id.clone();
@@ -720,18 +727,11 @@ async fn run_provider_request_collection(
 
         if observed.entry.decision != "match" {
             dropped_count += 1;
-            persist_provider_run_state(
-                config_path,
-                collected.provider_pubkey.as_str(),
-                &observed.entry,
-                "observed_drop",
-                observed.entry.drop_reason.as_deref(),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )?;
+            pending_drops.push(PendingDrop {
+                entry: observed.entry.clone(),
+                status: "observed_drop",
+                error_detail: observed.entry.drop_reason.clone(),
+            });
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -754,18 +754,11 @@ async fn run_provider_request_collection(
 
         if collected.desired_mode != openagents_provider_substrate::ProviderDesiredMode::Online {
             dropped_count += 1;
-            persist_provider_run_state(
-                config_path,
-                collected.provider_pubkey.as_str(),
-                &observed.entry,
-                "rejected_policy",
-                Some("provider_not_online"),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )?;
+            pending_drops.push(PendingDrop {
+                entry: observed.entry.clone(),
+                status: "rejected_policy",
+                error_detail: Some("provider_not_online".to_string()),
+            });
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -788,18 +781,11 @@ async fn run_provider_request_collection(
 
         let Some(target) = local_target.clone() else {
             dropped_count += 1;
-            persist_provider_run_state(
-                config_path,
-                collected.provider_pubkey.as_str(),
-                &observed.entry,
-                "rejected_supply",
-                Some("no_local_supply"),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )?;
+            pending_drops.push(PendingDrop {
+                entry: observed.entry.clone(),
+                status: "rejected_supply",
+                error_detail: Some("no_local_supply".to_string()),
+            });
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -824,18 +810,11 @@ async fn run_provider_request_collection(
             Ok(request) => request,
             Err(_) => {
                 dropped_count += 1;
-                persist_provider_run_state(
-                    config_path,
-                    collected.provider_pubkey.as_str(),
-                    &observed.entry,
-                    "rejected_input",
-                    Some("invalid_request"),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                )?;
+                pending_drops.push(PendingDrop {
+                    entry: observed.entry.clone(),
+                    status: "rejected_input",
+                    error_detail: Some("invalid_request".to_string()),
+                });
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
                     requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -859,18 +838,11 @@ async fn run_provider_request_collection(
 
         if !request_model_matches_target(observed.entry.model.as_deref(), target.model.as_str()) {
             dropped_count += 1;
-            persist_provider_run_state(
-                config_path,
-                collected.provider_pubkey.as_str(),
-                &observed.entry,
-                "rejected_model",
-                Some("model_unavailable"),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )?;
+            pending_drops.push(PendingDrop {
+                entry: observed.entry.clone(),
+                status: "rejected_model",
+                error_detail: Some("model_unavailable".to_string()),
+            });
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -893,18 +865,11 @@ async fn run_provider_request_collection(
 
         let Some(prompt) = request_prompt(&request) else {
             dropped_count += 1;
-            persist_provider_run_state(
-                config_path,
-                collected.provider_pubkey.as_str(),
-                &observed.entry,
-                "rejected_input",
-                Some("missing_text_input"),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )?;
+            pending_drops.push(PendingDrop {
+                entry: observed.entry.clone(),
+                status: "rejected_input",
+                error_detail: Some("missing_text_input".to_string()),
+            });
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -1276,18 +1241,6 @@ async fn run_provider_request_collection(
         match result {
             Ok(_) => {
                 let result_preview = preview_text(output.as_str(), 280);
-                persist_provider_run_state(
-                    config_path,
-                    collected.provider_pubkey.as_str(),
-                    &observed.entry,
-                    "completed_local",
-                    None,
-                    Some(result_preview.as_str()),
-                    Some(processing_event.id.as_str()),
-                    None,
-                    None,
-                    None,
-                )?;
                 let result_event = match publish_job_result(
                     pool,
                     &signer_key,
@@ -1456,6 +1409,25 @@ async fn run_provider_request_collection(
                 }
             }
         }
+    }
+    if !pending_drops.is_empty() {
+        mutate_ledger(config_path, |ledger| {
+            for drop in &pending_drops {
+                apply_provider_run_state(
+                    ledger,
+                    collected.provider_pubkey.as_str(),
+                    &drop.entry,
+                    drop.status,
+                    drop.error_detail.as_deref(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+            }
+            Ok(())
+        })?;
     }
 
     Ok(ProviderRunReport {
@@ -2770,6 +2742,136 @@ fn remember_processed_provider_request(
     Ok(())
 }
 
+fn apply_provider_run_state(
+    ledger: &mut crate::ledger::PylonLedger,
+    provider_pubkey: &str,
+    entry: &ProviderIntakeEntry,
+    status: &str,
+    error_detail: Option<&str>,
+    result_preview: Option<&str>,
+    feedback_event_id: Option<&str>,
+    result_event_id: Option<&str>,
+    amount_msats: Option<u64>,
+    bolt11: Option<&str>,
+) {
+    let mut job = ledger
+        .jobs
+        .iter()
+        .find(|job| job.id == entry.request_event_id)
+        .cloned()
+        .unwrap_or_else(|| {
+            PylonLedgerJob::new(
+                entry.request_event_id.clone(),
+                "provider",
+                ANNOUNCEMENT_KIND_TEXT_GENERATION,
+                status,
+            )
+        });
+    job.request_event_id = Some(entry.request_event_id.clone());
+    job.customer_pubkey = Some(entry.requester_pubkey.clone());
+    job.provider_pubkey = Some(provider_pubkey.to_string());
+    job.relay_url.clone_from(&entry.relay_url);
+    job.prompt.clone_from(&entry.prompt_preview);
+    job.model.clone_from(&entry.model);
+    job.bid_msats = entry.bid_msats;
+    if let Some(amount_msats) = amount_msats {
+        job.amount_msats = Some(amount_msats);
+    }
+    if let Some(bolt11) = bolt11 {
+        job.bolt11 = Some(bolt11.to_string());
+    }
+    job.status = status.to_string();
+    job.error_detail = error_detail.map(ToString::to_string);
+    if let Some(result_preview) = result_preview {
+        job.result_preview = Some(result_preview.to_string());
+    }
+    if let Some(feedback_event_id) = feedback_event_id
+        && !job
+            .feedback_event_ids
+            .iter()
+            .any(|existing| existing == feedback_event_id)
+    {
+        job.feedback_event_ids.push(feedback_event_id.to_string());
+    }
+    if let Some(result_event_id) = result_event_id {
+        job.result_event_id = Some(result_event_id.to_string());
+    }
+    ledger.upsert_job(job);
+    ledger.push_relay_activity(PylonRelayActivity {
+        at_ms: crate::now_epoch_ms() as u64,
+        url: entry.relay_url.clone(),
+        kind: match status {
+            "accepted_local" => "nip90.job_accepted",
+            "processing_local" => "nip90.job_processing",
+            "completed_local" => "nip90.job_completed",
+            "failed_local" => "nip90.job_failed",
+            "payment_required" => "nip90.job_payment_required",
+            "invoice_failed" => "nip90.job_invoice_failed",
+            "rejected_policy" | "rejected_supply" | "rejected_model" | "rejected_input" => {
+                "nip90.job_rejected"
+            }
+            "observed_drop" => "nip90.request_dropped",
+            _ => "nip90.job_updated",
+        }
+        .to_string(),
+        detail: match status {
+            "accepted_local" => format!("accepted request {}", entry.request_event_id),
+            "processing_local" => format!("processing request {}", entry.request_event_id),
+            "completed_local" => format!("completed request {}", entry.request_event_id),
+            "failed_local" => format!(
+                "failed request {} ({})",
+                entry.request_event_id,
+                error_detail.unwrap_or("unknown")
+            ),
+            "payment_required" => format!(
+                "payment required for request {} ({})",
+                entry.request_event_id,
+                bolt11.unwrap_or("missing_invoice")
+            ),
+            "invoice_failed" => format!(
+                "invoice failed for request {} ({})",
+                entry.request_event_id,
+                error_detail.unwrap_or("unknown")
+            ),
+            "rejected_policy" | "rejected_supply" | "rejected_model" | "rejected_input" => {
+                format!(
+                    "rejected request {} ({})",
+                    entry.request_event_id,
+                    error_detail.unwrap_or("unknown")
+                )
+            }
+            "observed_drop" => format!(
+                "dropped request {} ({})",
+                entry.request_event_id,
+                error_detail.unwrap_or("unknown")
+            ),
+            _ => format!("updated request {}", entry.request_event_id),
+        },
+    });
+    if let Some(feedback_event_id) = feedback_event_id {
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: crate::now_epoch_ms() as u64,
+            url: entry.relay_url.clone(),
+            kind: "nip90.feedback_published".to_string(),
+            detail: format!(
+                "published feedback {} for request {}",
+                feedback_event_id, entry.request_event_id
+            ),
+        });
+    }
+    if let Some(result_event_id) = result_event_id {
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: crate::now_epoch_ms() as u64,
+            url: entry.relay_url.clone(),
+            kind: "nip90.result_published".to_string(),
+            detail: format!(
+                "published result {} for request {}",
+                result_event_id, entry.request_event_id
+            ),
+        });
+    }
+}
+
 fn persist_provider_run_state(
     config_path: &Path,
     provider_pubkey: &str,
@@ -2783,123 +2885,18 @@ fn persist_provider_run_state(
     bolt11: Option<&str>,
 ) -> Result<()> {
     mutate_ledger(config_path, |ledger| {
-        let mut job = ledger
-            .jobs
-            .iter()
-            .find(|job| job.id == entry.request_event_id)
-            .cloned()
-            .unwrap_or_else(|| {
-                PylonLedgerJob::new(
-                    entry.request_event_id.clone(),
-                    "provider",
-                    ANNOUNCEMENT_KIND_TEXT_GENERATION,
-                    status,
-                )
-            });
-        job.request_event_id = Some(entry.request_event_id.clone());
-        job.customer_pubkey = Some(entry.requester_pubkey.clone());
-        job.provider_pubkey = Some(provider_pubkey.to_string());
-        job.relay_url = entry.relay_url.clone();
-        job.prompt = entry.prompt_preview.clone();
-        job.model = entry.model.clone();
-        job.bid_msats = entry.bid_msats;
-        if let Some(amount_msats) = amount_msats {
-            job.amount_msats = Some(amount_msats);
-        }
-        if let Some(bolt11) = bolt11 {
-            job.bolt11 = Some(bolt11.to_string());
-        }
-        job.status = status.to_string();
-        job.error_detail = error_detail.map(ToString::to_string);
-        if let Some(result_preview) = result_preview {
-            job.result_preview = Some(result_preview.to_string());
-        }
-        if let Some(feedback_event_id) = feedback_event_id {
-            if !job
-                .feedback_event_ids
-                .iter()
-                .any(|existing| existing == feedback_event_id)
-            {
-                job.feedback_event_ids.push(feedback_event_id.to_string());
-            }
-        }
-        if let Some(result_event_id) = result_event_id {
-            job.result_event_id = Some(result_event_id.to_string());
-        }
-        ledger.upsert_job(job);
-        ledger.push_relay_activity(PylonRelayActivity {
-            at_ms: crate::now_epoch_ms() as u64,
-            url: entry.relay_url.clone(),
-            kind: match status {
-                "accepted_local" => "nip90.job_accepted",
-                "processing_local" => "nip90.job_processing",
-                "completed_local" => "nip90.job_completed",
-                "failed_local" => "nip90.job_failed",
-                "payment_required" => "nip90.job_payment_required",
-                "invoice_failed" => "nip90.job_invoice_failed",
-                "rejected_policy" | "rejected_supply" | "rejected_model" | "rejected_input" => {
-                    "nip90.job_rejected"
-                }
-                "observed_drop" => "nip90.request_dropped",
-                _ => "nip90.job_updated",
-            }
-            .to_string(),
-            detail: match status {
-                "accepted_local" => format!("accepted request {}", entry.request_event_id),
-                "processing_local" => format!("processing request {}", entry.request_event_id),
-                "completed_local" => format!("completed request {}", entry.request_event_id),
-                "failed_local" => format!(
-                    "failed request {} ({})",
-                    entry.request_event_id,
-                    error_detail.unwrap_or("unknown")
-                ),
-                "payment_required" => format!(
-                    "payment required for request {} ({})",
-                    entry.request_event_id,
-                    bolt11.unwrap_or("missing_invoice")
-                ),
-                "invoice_failed" => format!(
-                    "invoice failed for request {} ({})",
-                    entry.request_event_id,
-                    error_detail.unwrap_or("unknown")
-                ),
-                "rejected_policy" | "rejected_supply" | "rejected_model" | "rejected_input" => {
-                    format!(
-                        "rejected request {} ({})",
-                        entry.request_event_id,
-                        error_detail.unwrap_or("unknown")
-                    )
-                }
-                "observed_drop" => format!(
-                    "dropped request {} ({})",
-                    entry.request_event_id,
-                    error_detail.unwrap_or("unknown")
-                ),
-                _ => format!("updated request {}", entry.request_event_id),
-            },
-        });
-        if let Some(feedback_event_id) = feedback_event_id {
-            ledger.push_relay_activity(PylonRelayActivity {
-                at_ms: crate::now_epoch_ms() as u64,
-                url: entry.relay_url.clone(),
-                kind: "nip90.feedback_published".to_string(),
-                detail: format!(
-                    "published feedback {} for request {}",
-                    feedback_event_id, entry.request_event_id
-                ),
-            });
-        }
-        if let Some(result_event_id) = result_event_id {
-            ledger.push_relay_activity(PylonRelayActivity {
-                at_ms: crate::now_epoch_ms() as u64,
-                url: entry.relay_url.clone(),
-                kind: "nip90.result_published".to_string(),
-                detail: format!(
-                    "published result {} for request {}",
-                    result_event_id, entry.request_event_id
-                ),
-            });
-        }
+        apply_provider_run_state(
+            ledger,
+            provider_pubkey,
+            entry,
+            status,
+            error_detail,
+            result_preview,
+            feedback_event_id,
+            result_event_id,
+            amount_msats,
+            bolt11,
+        );
         Ok(())
     })?;
     remember_processed_provider_request(config_path, entry.request_event_id.as_str(), status)?;

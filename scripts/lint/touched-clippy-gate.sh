@@ -113,7 +113,9 @@ clippy_command=(
 while IFS= read -r package_name; do
     clippy_command+=(-p "$package_name")
 done <"$packages_tmp"
-clippy_command+=(-- -W clippy::all)
+# Existing package-wide denied lint debt must not prevent the touched-file
+# parser below from enforcing warnings on the files in this diff.
+clippy_command+=(-- -W clippy::all --cap-lints warn)
 
 "${clippy_command[@]}" >"$clippy_tmp"
 

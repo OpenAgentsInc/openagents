@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -35,15 +36,18 @@ pub struct PylonProcessedProviderRequestRecord {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonProcessedProviderRequestStore {
     pub schema_version: u32,
-    #[serde(default)]
-    pub requests: Vec<PylonProcessedProviderRequestRecord>,
+    #[serde(
+        serialize_with = "serialize_requests_as_vec",
+        deserialize_with = "deserialize_requests_from_vec"
+    )]
+    pub requests: HashMap<String, PylonProcessedProviderRequestRecord>,
 }
 
 impl Default for PylonProcessedProviderRequestStore {
     fn default() -> Self {
         Self {
             schema_version: PROCESSED_PROVIDER_REQUESTS_SCHEMA_VERSION,
-            requests: Vec::new(),
+            requests: HashMap::new(),
         }
     }
 }
@@ -53,30 +57,55 @@ impl PylonProcessedProviderRequestStore {
         let request_event_id = request_event_id.into();
         let status = status.into();
         let updated_at_ms = now_epoch_ms();
-        if let Some(existing) = self
+        let entry = self
             .requests
-            .iter_mut()
-            .find(|existing| existing.request_event_id == request_event_id)
+            .entry(request_event_id.clone())
+            .or_insert_with(|| PylonProcessedProviderRequestRecord {
+                request_event_id,
+                status: String::new(),
+                updated_at_ms,
+            });
+        entry.status = status;
+        entry.updated_at_ms = updated_at_ms;
+        if self.requests.len() > MAX_PROCESSED_PROVIDER_REQUESTS
+            && let Some(oldest_key) = self
+                .requests
+                .iter()
+                .min_by_key(|(_, v)| v.updated_at_ms)
+                .map(|(k, _)| k.clone())
         {
-            existing.status = status;
-            existing.updated_at_ms = updated_at_ms;
-            return;
+            self.requests.remove(&oldest_key);
         }
-        self.requests.push(PylonProcessedProviderRequestRecord {
-            request_event_id,
-            status,
-            updated_at_ms,
-        });
-        self.requests
-            .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
-        trim_tail(&mut self.requests, MAX_PROCESSED_PROVIDER_REQUESTS);
     }
 
     pub fn contains(&self, request_event_id: &str) -> bool {
-        self.requests
-            .iter()
-            .any(|existing| existing.request_event_id == request_event_id)
+        self.requests.contains_key(request_event_id)
     }
+}
+
+fn serialize_requests_as_vec<S>(
+    map: &HashMap<String, PylonProcessedProviderRequestRecord>,
+    s: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let mut vec: Vec<&PylonProcessedProviderRequestRecord> = map.values().collect();
+    vec.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+    vec.serialize(s)
+}
+
+fn deserialize_requests_from_vec<'de, D>(
+    d: D,
+) -> std::result::Result<HashMap<String, PylonProcessedProviderRequestRecord>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let vec = Vec::<PylonProcessedProviderRequestRecord>::deserialize(d)?;
+    Ok(vec
+        .into_iter()
+        .map(|r| (r.request_event_id.clone(), r))
+        .collect())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -581,7 +610,6 @@ pub fn mutate_ledger<T, F>(config_path: &Path, mutator: F) -> Result<T>
 where
     F: FnOnce(&mut PylonLedger) -> Result<T>,
 {
-    let _ = ensure_local_ledger(config_path)?;
     let mut ledger = load_ledger(config_path)?;
     let value = mutator(&mut ledger)?;
     save_ledger(config_path, &ledger)?;
@@ -788,8 +816,7 @@ mod tests {
         assert_eq!(
             store
                 .requests
-                .iter()
-                .find(|entry| entry.request_event_id == "request-001")
+                .get("request-001")
                 .expect("request-001")
                 .status,
             "settled"
