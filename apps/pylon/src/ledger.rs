@@ -67,15 +67,14 @@ impl PylonProcessedProviderRequestStore {
             });
         entry.status = status;
         entry.updated_at_ms = updated_at_ms;
-        if self.requests.len() > MAX_PROCESSED_PROVIDER_REQUESTS {
-            if let Some(oldest_key) = self
+        if self.requests.len() > MAX_PROCESSED_PROVIDER_REQUESTS
+            && let Some(oldest_key) = self
                 .requests
                 .iter()
                 .min_by_key(|(_, v)| v.updated_at_ms)
                 .map(|(k, _)| k.clone())
-            {
-                self.requests.remove(&oldest_key);
-            }
+        {
+            self.requests.remove(&oldest_key);
         }
     }
 

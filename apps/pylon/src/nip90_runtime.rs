@@ -2770,9 +2770,9 @@ fn apply_provider_run_state(
     job.request_event_id = Some(entry.request_event_id.clone());
     job.customer_pubkey = Some(entry.requester_pubkey.clone());
     job.provider_pubkey = Some(provider_pubkey.to_string());
-    job.relay_url = entry.relay_url.clone();
-    job.prompt = entry.prompt_preview.clone();
-    job.model = entry.model.clone();
+    job.relay_url.clone_from(&entry.relay_url);
+    job.prompt.clone_from(&entry.prompt_preview);
+    job.model.clone_from(&entry.model);
     job.bid_msats = entry.bid_msats;
     if let Some(amount_msats) = amount_msats {
         job.amount_msats = Some(amount_msats);
@@ -2785,14 +2785,13 @@ fn apply_provider_run_state(
     if let Some(result_preview) = result_preview {
         job.result_preview = Some(result_preview.to_string());
     }
-    if let Some(feedback_event_id) = feedback_event_id {
-        if !job
+    if let Some(feedback_event_id) = feedback_event_id
+        && !job
             .feedback_event_ids
             .iter()
             .any(|existing| existing == feedback_event_id)
-        {
-            job.feedback_event_ids.push(feedback_event_id.to_string());
-        }
+    {
+        job.feedback_event_ids.push(feedback_event_id.to_string());
     }
     if let Some(result_event_id) = result_event_id {
         job.result_event_id = Some(result_event_id.to_string());
