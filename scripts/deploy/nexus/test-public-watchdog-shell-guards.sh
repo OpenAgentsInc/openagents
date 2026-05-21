@@ -35,8 +35,10 @@ assert_contains 'NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ORIGIN_URL' "$SCRIPT_TEXT"
 assert_contains 'EDGE_FAILURE_COUNT_PATH="${STATE_DIR}/edge-failure-count"' "$CHECK_SCRIPT_TEXT"
 assert_contains 'recover_public_edge_failure()' "$CHECK_SCRIPT_TEXT"
 assert_contains 'activate_recovery_proxy_for_public_edge_failure()' "$CHECK_SCRIPT_TEXT"
+assert_contains 'restore_normal_origin_after_recovery()' "$CHECK_SCRIPT_TEXT"
 assert_contains 'recovery_proxy_public_origin_active()' "$CHECK_SCRIPT_TEXT"
 assert_contains 'effective_local_health_url="${RECOVERY_PROXY_ORIGIN_URL%/}/healthz"' "$CHECK_SCRIPT_TEXT"
+assert_contains 'restore_normal_origin:${TUNNEL_SERVICE_NAME}' "$CHECK_SCRIPT_TEXT"
 assert_contains 'public_edge_still_down_after_tunnel_restart' "$CHECK_SCRIPT_TEXT"
 assert_contains 'public_edge_recovered_after_tunnel_restart' "$CHECK_SCRIPT_TEXT"
 assert_contains 'systemctl reboot' "$CHECK_SCRIPT_TEXT"
@@ -94,17 +96,46 @@ chmod +x "${MOCK_BIN}/systemctl"
 cat >"${MOCK_BIN}/curl" <<'MOCK'
 #!/usr/bin/env bash
 body_path=""
+url=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o)
       body_path="$2"
       shift 2
       ;;
+    --max-time|-w)
+      shift 2
+      ;;
+    -sS)
+      shift
+      ;;
     *)
+      url="$1"
       shift
       ;;
   esac
 done
+if [[ "$url" == http://127.0.0.1:8080/* || "$url" == http://127.0.0.1:8081/* ]]; then
+  if [[ "${MOCK_LOCAL_FAIL:-false}" == "true" ]]; then
+    if [[ -n "$body_path" ]]; then
+      printf 'local origin unavailable\n' >"$body_path"
+    fi
+    printf '530'
+    exit 0
+  fi
+  if [[ -n "$body_path" ]]; then
+    printf '{}\n' >"$body_path"
+  fi
+  printf '200'
+  exit 0
+fi
+if [[ "${MOCK_PUBLIC_OK:-false}" == "true" ]]; then
+  if [[ -n "$body_path" ]]; then
+    printf '{}\n' >"$body_path"
+  fi
+  printf '200'
+  exit 0
+fi
 if [[ -n "$body_path" ]]; then
   printf 'error code: 1033\n' >"$body_path"
 fi
@@ -150,4 +181,43 @@ assert_contains 'dry_run vm_reset reason=public_edge_530_during_startup_grace' "
 assert_contains '"action":"vm_reset"' "$(cat "${STATE_DIR}/last-event.json")"
 assert_contains '"consecutive_edge_failures":"2"' "$(cat "${STATE_DIR}/last-event.json")"
 
-printf 'ok: public watchdog treats Cloudflare 1033 during startup grace as recovery, not healthy\n'
+LOCAL_FAIL_STATE_DIR="${TMP_ROOT}/local-fail-state"
+mkdir -p "$LOCAL_FAIL_STATE_DIR"
+printf '1\n' >"${LOCAL_FAIL_STATE_DIR}/edge-failure-count"
+local_fail_output="$(
+  PATH="${MOCK_BIN}:$PATH" \
+  WATCHDOG_ACTION_LOG="$WATCHDOG_ACTION_LOG" \
+  NEXUS_PUBLIC_WATCHDOG_STATE_DIR="$LOCAL_FAIL_STATE_DIR" \
+  NEXUS_PUBLIC_WATCHDOG_DRY_RUN=true \
+  NEXUS_PUBLIC_WATCHDOG_STARTUP_GRACE_SECONDS=180 \
+  NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES=2 \
+  MOCK_LOCAL_FAIL=true \
+  "$CHECK_SCRIPT_PATH" || true
+)"
+
+assert_contains 'dry_run vm_reset reason=public_edge_530_during_startup_grace' "$local_fail_output"
+assert_contains '"action":"vm_reset"' "$(cat "${LOCAL_FAIL_STATE_DIR}/last-event.json")"
+if grep -Fq '"action":"activate_recovery_proxy:nexus-http-recovery-proxy"' "${LOCAL_FAIL_STATE_DIR}/last-event.json"; then
+  printf 'unexpected recovery-proxy activation for unhealthy local origin\n' >&2
+  exit 1
+fi
+
+RESTORE_STATE_DIR="${TMP_ROOT}/restore-state"
+RESTORE_ENV_PATH="${TMP_ROOT}/cloudflared.env"
+mkdir -p "$RESTORE_STATE_DIR"
+printf 'TUNNEL_ORIGIN_URL=http://127.0.0.1:8081\n' >"$RESTORE_ENV_PATH"
+restore_output="$(
+  PATH="${MOCK_BIN}:$PATH" \
+  WATCHDOG_ACTION_LOG="$WATCHDOG_ACTION_LOG" \
+  NEXUS_PUBLIC_WATCHDOG_STATE_DIR="$RESTORE_STATE_DIR" \
+  NEXUS_PUBLIC_WATCHDOG_CLOUDFLARED_ENV_PATH="$RESTORE_ENV_PATH" \
+  NEXUS_PUBLIC_WATCHDOG_DRY_RUN=true \
+  NEXUS_PUBLIC_WATCHDOG_STARTUP_GRACE_SECONDS=0 \
+  MOCK_PUBLIC_OK=true \
+  "$CHECK_SCRIPT_PATH" || true
+)"
+
+assert_contains 'dry_run restore_normal_origin service=nexus-cloudflared origin_url=http://127.0.0.1:8080 reason=recovery_proxy_exit' "$restore_output"
+assert_contains '"action":"restore_normal_origin:nexus-cloudflared"' "$(cat "${RESTORE_STATE_DIR}/last-event.json")"
+
+printf 'ok: public watchdog treats Cloudflare 1033 as recoverable, reboots dead origins, and exits recovery proxy\n'

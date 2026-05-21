@@ -137,8 +137,12 @@ restart_service_with_limit() {
   local recent_restarts
   recent_restarts="$(wc -l <"$log_path" | tr -d ' ')"
   if (( recent_restarts >= MAX_RESTARTS_PER_HOUR )); then
-    emit_event "escalation_required" "$reason" "vm_reset_required" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
     log "restart_suppressed service=${service_name} reason=${reason} recent_restarts=${recent_restarts} max_restarts_per_hour=${MAX_RESTARTS_PER_HOUR}"
+    if [[ "$EDGE_REBOOT_ENABLED" == "true" ]]; then
+      reboot_vm_for_public_edge_failure "restart_suppressed_${reason}" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+    else
+      emit_event "escalation_required" "$reason" "vm_reset_required" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+    fi
     exit 1
   fi
 
@@ -210,6 +214,25 @@ activate_recovery_proxy_for_public_edge_failure() {
   systemctl restart "$TUNNEL_SERVICE_NAME"
 }
 
+restore_normal_origin_after_recovery() {
+  local reason="$1"
+  local local_code="$2"
+  local public_code="$3"
+  local relay_uptime="$4"
+  local tunnel_uptime="$5"
+
+  emit_event "recovering" "$reason" "restore_normal_origin:${TUNNEL_SERVICE_NAME}" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "0"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "dry_run restore_normal_origin service=${TUNNEL_SERVICE_NAME} origin_url=${NORMAL_ORIGIN_URL} reason=${reason}"
+    return
+  fi
+
+  log "restore_normal_origin service=${TUNNEL_SERVICE_NAME} origin_url=${NORMAL_ORIGIN_URL} reason=${reason}"
+  set_cloudflared_origin_url "$NORMAL_ORIGIN_URL"
+  systemctl restart "$TUNNEL_SERVICE_NAME"
+}
+
 recover_public_edge_failure() {
   local reason="$1"
   local local_code="$2"
@@ -219,7 +242,7 @@ recover_public_edge_failure() {
   local edge_failure_count
   edge_failure_count="$(record_edge_failure_count)"
 
-  if [[ "$RECOVERY_PROXY_ENABLED" == "true" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
+  if [[ "$RECOVERY_PROXY_ENABLED" == "true" ]] && [[ "$local_code" == "200" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
     activate_recovery_proxy_for_public_edge_failure "$reason" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
     exit 1
   fi
@@ -256,7 +279,7 @@ recover_public_edge_failure() {
 
   if public_edge_failure "$retry_public_health_code" "$retry_public_health_body" || public_edge_failure "$retry_public_stats_code" "$retry_public_stats_body"; then
     edge_failure_count="$(record_edge_failure_count)"
-    if [[ "$RECOVERY_PROXY_ENABLED" == "true" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
+    if [[ "$RECOVERY_PROXY_ENABLED" == "true" ]] && [[ "$local_code" == "200" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
       activate_recovery_proxy_for_public_edge_failure "${reason}_after_tunnel_restart" "$local_code" "$retry_public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
       exit 1
     fi
@@ -347,6 +370,8 @@ fi
 relay_uptime_seconds="$(service_uptime_seconds "$RELAY_SERVICE_NAME")"
 tunnel_uptime_seconds="$(service_uptime_seconds "$TUNNEL_SERVICE_NAME")"
 if (( relay_uptime_seconds < STARTUP_GRACE_SECONDS || tunnel_uptime_seconds < STARTUP_GRACE_SECONDS )); then
+  startup_local_probe="$(http_probe "$LOCAL_HEALTH_URL")"
+  startup_local_code="$(printf '%s\n' "$startup_local_probe" | probe_http_code)"
   startup_public_health_probe="$(http_probe "$PUBLIC_HEALTH_URL")"
   startup_public_health_code="$(printf '%s\n' "$startup_public_health_probe" | probe_http_code)"
   startup_public_health_body="$(printf '%s\n' "$startup_public_health_probe" | probe_http_body)"
@@ -355,12 +380,16 @@ if (( relay_uptime_seconds < STARTUP_GRACE_SECONDS || tunnel_uptime_seconds < ST
   startup_public_stats_body="$(printf '%s\n' "$startup_public_stats_probe" | probe_http_body)"
   startup_public_code="$(public_code_for_event "$startup_public_health_code" "$startup_public_stats_code")"
   if public_edge_failure "$startup_public_health_code" "$startup_public_health_body" || public_edge_failure "$startup_public_stats_code" "$startup_public_stats_body"; then
-    recover_public_edge_failure "public_edge_${startup_public_code}_during_startup_grace" "skipped" "$startup_public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
+    recover_public_edge_failure "public_edge_${startup_public_code}_during_startup_grace" "$startup_local_code" "$startup_public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
+    exit 0
+  fi
+  if recovery_proxy_public_origin_active && [[ "$startup_local_code" == "200" ]] && [[ "$startup_public_health_code" == "200" && "$startup_public_stats_code" == "200" ]]; then
+    restore_normal_origin_after_recovery "startup_grace_recovery_proxy_exit" "$startup_local_code" "$startup_public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
     exit 0
   fi
   reset_edge_failure_count
-  emit_event "healthy" "startup_grace" "none" "skipped" "$startup_public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
-  log "healthy startup_grace relay_uptime_seconds=${relay_uptime_seconds} tunnel_uptime_seconds=${tunnel_uptime_seconds} startup_grace_seconds=${STARTUP_GRACE_SECONDS} public_health=${startup_public_health_code} public_stats=${startup_public_stats_code}"
+  emit_event "healthy" "startup_grace" "none" "$startup_local_code" "$startup_public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
+  log "healthy startup_grace relay_uptime_seconds=${relay_uptime_seconds} tunnel_uptime_seconds=${tunnel_uptime_seconds} startup_grace_seconds=${STARTUP_GRACE_SECONDS} local_health=${startup_local_code} public_health=${startup_public_health_code} public_stats=${startup_public_stats_code}"
   exit 0
 fi
 
@@ -387,6 +416,17 @@ public_stats_body="$(printf '%s\n' "$public_probe" | probe_http_body)"
 public_code="$(public_code_for_event "$public_health_code" "$public_stats_code")"
 
 if [[ "$public_health_code" == "200" && "$public_stats_code" == "200" ]]; then
+  if recovery_proxy_public_origin_active; then
+    normal_origin_probe="$(http_probe "${NORMAL_ORIGIN_URL%/}/healthz")"
+    normal_origin_code="$(printf '%s\n' "$normal_origin_probe" | probe_http_code)"
+    if [[ "$normal_origin_code" == "200" ]]; then
+      restore_normal_origin_after_recovery "recovery_proxy_exit" "$normal_origin_code" "$public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
+      exit 0
+    fi
+    emit_event "degraded" "recovery_proxy_active_normal_origin_${normal_origin_code}" "none" "$normal_origin_code" "$public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
+    log "degraded recovery_proxy_active normal_origin_health=${normal_origin_code} public_health=${public_health_code} public_stats=${public_stats_code}"
+    exit 1
+  fi
   reset_edge_failure_count
   emit_event "healthy" "public_edge_ok" "none" "$local_code" "$public_code" "$relay_uptime_seconds" "$tunnel_uptime_seconds"
   log "healthy local_health=${local_code} public_health=${public_health_code} public_stats=${public_stats_code}"

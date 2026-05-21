@@ -569,12 +569,18 @@ does not take operator HTTP surfaces down. The recovery proxy upstream timeout
 defaults to `180` seconds because treasury funding-target invoice creation can
 legitimately spend longer than a normal HTTP read in the payment-node path; set
 `NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS` only for a bounded
-operator override. If
-`NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED=false`, the same repeated edge
-failure can trigger the VM reboot escalation without waiting for a later
-systemd timer tick. The watchdog probes the public edge even during startup
-grace; Cloudflare `530` / `1033` is never treated as healthy just because a
-systemd service recently restarted.
+operator override. The watchdog only enters recovery-proxy mode when the
+normal local origin is healthy. If the public edge is down and the local origin
+is also unhealthy, it skips the proxy and reboots the VM after the configured
+edge-failure threshold, because pointing Cloudflare at a dead origin just
+preserves the outage. When the recovery proxy is active and the normal local
+origin recovers, the watchdog rewrites `nexus-cloudflared` back to
+`http://127.0.0.1:8080` and restarts the tunnel. If
+`NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED=false`, repeated edge failure
+can trigger the VM reboot escalation without waiting for a later systemd timer
+tick. The watchdog probes the public edge even during startup grace;
+Cloudflare `530` / `1033` is never treated as healthy just because a systemd
+service recently restarted.
 
 It writes structured receipts under
 `/var/lib/nexus-relay/watchdog/public/events.jsonl` and
@@ -590,6 +596,22 @@ proxy unit with:
 
 ```bash
 scripts/deploy/nexus/16-install-public-watchdog.sh
+```
+
+The deploy path also installs a guest-network watchdog. It runs every
+`NEXUS_GUEST_NETWORK_WATCHDOG_INTERVAL_SECONDS` seconds (`60` by default) and
+checks Google metadata, DNS resolution for the Cloudflare tunnel edge, the VM
+route to a Cloudflare edge IP, and recent `nexus-cloudflared` logs for
+`network is unreachable` / DNS-refresh failures. If metadata is unreachable
+and one of DNS, route lookup, or recent cloudflared network logs also indicates
+a guest-network wedge for
+`NEXUS_GUEST_NETWORK_WATCHDOG_FAILURE_THRESHOLD` consecutive checks (`3` by
+default), it emits action `vm_reboot` and calls `systemctl reboot`. This covers
+the failure mode where the VM guest networking is wedged hard enough that IAP
+and normal operator SSH are also unavailable. Refresh only that watchdog with:
+
+```bash
+scripts/deploy/nexus/32-install-guest-network-watchdog.sh
 ```
 
 The hosted `nexus-health-agent` Cloud Run runtime is separate from the VM-local

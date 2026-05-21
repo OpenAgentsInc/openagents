@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/10-install-treasury-watchdog.sh"
 PUBLIC_WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/16-install-public-watchdog.sh"
+GUEST_NETWORK_WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/32-install-guest-network-watchdog.sh"
 RUNTIME_ENV_VARS=(
   NEXUS_CONTROL_KERNEL_STATE_PATH
   NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH
@@ -743,15 +744,27 @@ if image_uses_remote_registry "$DEPLOY_IMAGE"; then
 #!/usr/bin/env bash
 set -euo pipefail
 AR_HOST="${AR_HOST}"
-ACCESS_TOKEN="\$(curl -fsS -H 'Metadata-Flavor: Google' \
-  'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token')"
+ACCESS_TOKEN="\$(curl -fsS --max-time 8 -H 'Metadata-Flavor: Google' \
+  'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token' || true)"
+if [[ -z "\${ACCESS_TOKEN}" || "\${ACCESS_TOKEN}" == "null" ]]; then
+  echo "nexus-registry-login: metadata token unavailable; using cached image if present" >&2
+  exit 0
+fi
 printf '%s' "\${ACCESS_TOKEN}" | /usr/bin/docker login -u oauth2accesstoken --password-stdin "https://\${AR_HOST}"
 SCRIPT
 
   sudo tee /usr/local/bin/nexus-prepare-image.sh >/dev/null <<SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
-/usr/bin/docker pull "${DEPLOY_IMAGE}"
+if /usr/bin/docker pull "${DEPLOY_IMAGE}"; then
+  exit 0
+fi
+if /usr/bin/docker image inspect "${DEPLOY_IMAGE}" >/dev/null 2>&1; then
+  echo "nexus-prepare-image: registry pull failed; starting cached image ${DEPLOY_IMAGE}" >&2
+  exit 0
+fi
+echo "nexus-prepare-image: registry pull failed and cached image is unavailable: ${DEPLOY_IMAGE}" >&2
+exit 1
 SCRIPT
 
   sudo chmod 755 /usr/local/bin/nexus-registry-login.sh /usr/local/bin/nexus-prepare-image.sh
@@ -825,6 +838,10 @@ fi
 
 if [[ -x "$PUBLIC_WATCHDOG_INSTALL_SCRIPT" ]]; then
   bash "$PUBLIC_WATCHDOG_INSTALL_SCRIPT"
+fi
+
+if [[ -x "$GUEST_NETWORK_WATCHDOG_INSTALL_SCRIPT" ]]; then
+  bash "$GUEST_NETWORK_WATCHDOG_INSTALL_SCRIPT"
 fi
 
 perform_post_restart_smoke_check "$DEPLOY_IMAGE" "$PREVIOUS_DEPLOY_IMAGE"
