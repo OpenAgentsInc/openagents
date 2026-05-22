@@ -134,7 +134,9 @@ This plan is additive to the current repo direction, not a reversal of it.
 - `apps/autopilot-deprecated` continues to own mission control, onboarding, provider UX, payout UX, and buyer-facing product workflows.
 - `apps/nexus-control` continues to own authority-side compute-market state and projections.
 - `crates/openagents-kernel-core` and `crates/openagents-kernel-proto` continue to own reusable compute types, contracts, and generated wire shapes.
-- `crates/nostr/*` and `crates/spark` continue to own transport and wallet primitives.
+- `crates/nostr/*` continues to own transport and protocol primitives.
+- Historical `crates/spark` wallet code is retained for audit and migration
+  context only. It is not the normal Pylon v0.2 payment path.
 
 ### Pylon path during and immediately after `#3116`
 
@@ -146,6 +148,12 @@ This plan is additive to the current repo direction, not a reversal of it.
 
 Pylon v0.2 is the provider-side half of the Spark-to-LDK cutover documented in
 `docs/2026-05-15-ldk-nexus-treasury-transition-audit.md`.
+
+Current v0.2 is an external-target compatibility release, not the final
+built-in wallet release. Operators register an external LDK-compatible
+Lightning payout target through `payout_destination`; local wallet invoice
+creation and local sends are planned follow-up work tracked from
+`OpenAgentsInc/openagents#4520`.
 
 The required sequence is:
 
@@ -178,8 +186,10 @@ Current implementation status:
   targets and records the exact rail, target hash, idempotency key, payment id,
   and terminal event state in the payout receipt.
 
-Pylon must remain a provider connector. It should not own Nexus treasury keys,
-run the hosted treasury LDK node, or become a browser wallet/runtime bridge.
+Pylon must remain a provider connector and local contributor wallet. It should
+not own Nexus treasury keys, run the hosted treasury LDK node, or become a
+browser wallet/runtime bridge. The planned built-in LDK wallet belongs on the
+contributor side and must stay separate from Nexus/Treasury payer custody.
 
 This means the right sequence is **canonize first, extract second, package third**, with extraction work starting during the current issue slate rather than being deferred indefinitely.
 
@@ -550,7 +560,7 @@ The shared runtime should become the source of truth for:
 | `crates/openagents-kernel-core` | reusable compute types, authority client contracts, validation helpers, receipt helpers |
 | `crates/openagents-kernel-proto` | generated compute-market wire contracts |
 | `crates/nostr/*` | transport and protocol primitives |
-| `crates/spark` | wallet primitives |
+| `crates/spark` | historical retired wallet code retained for audit and migration context only |
 
 ### Target topology once extraction is justified
 

@@ -594,11 +594,17 @@ the CLI forwarding and bounded update-polling tests plus npm publication.
 
 Current source for Pylon v0.2 changes the paid-work registration path: normal
 startup no longer creates a Spark payout destination. Operators must configure
-`payout_destination` to a Lightning target before the node is eligible for new
-paid work. Supported v0.2 targets are BOLT12 offers, BIP353 names, LNURL-pay
-targets, and per-payment BOLT11 invoices. Spark destination creation is no
-longer part of normal Pylon startup or registration, and Spark-only nodes are
-not eligible for new paid work after cutover.
+`payout_destination` to an external LDK-compatible Lightning target before the
+node is eligible for new paid work. Supported v0.2 targets are BOLT12 offers,
+BIP353 names, LNURL-pay targets, and per-payment BOLT11 invoices. Spark
+destination creation is no longer part of normal Pylon startup or registration,
+and Spark-only nodes are not eligible for new paid work after cutover.
+
+This is a temporary compatibility path, not the final wallet product. The
+planned built-in LDK wallet work is tracked from
+`OpenAgentsInc/openagents#4520`; until those issues land, Pylon does not create
+wallet-owned Lightning invoices or send withdrawals from a local LDK wallet in
+the normal v0.2 release path.
 
 The prior `0.1.15` release receipt is
 `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the
@@ -996,7 +1002,8 @@ scripts/deploy/nexus/29-install-pylon-psionic-runtime.sh
 That script installs `/var/lib/pylon/psionic`, writes a `pylon.service`
 drop-in that sets `OPENAGENTS_PSIONIC_REPO=/var/lib/pylon/psionic`, and
 restarts the service. This step only proves the runtime surface is present.
-Paid work still requires a registered LDK payout target for the Pylon identity.
+Paid work still requires a registered external LDK-compatible payout target for
+the Pylon identity.
 
 If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
 
@@ -1112,9 +1119,14 @@ The retained provider intake controls also exist in both places:
 The current retained execution scope is narrow and honest. Pylon subscribes to retained inbound `kind:5050` requests on the configured relays, filters targeted jobs, and only accepts work when the provider is online and a local Gemma text-generation path is actually ready. The default bare `pylon` loop performs short automatic provider-intake passes so the node actually processes eligible work without requiring a separate manual `provider run`. `scan` still records intake decisions without executing, and `run` remains the explicit one-shot operator path for debugging, manual replay, or forcing the next pass immediately. `run` has two honest paths:
 
 - for unpriced local work, it publishes a `kind:7000` processing update, executes accepted jobs locally, publishes the retained `kind:6050` result, and links those published event IDs back into the local ledger
-- for explicit paid requests, it stops at `payment-required`, creates a local Bolt11 invoice through the retained Spark wallet path, publishes that invoice in a `kind:7000` feedback event, and persists the amount plus Bolt11 string in the local ledger
+- for explicit paid requests, the current v0.2 paid-work path depends on the
+  Nexus-dispatched accepted-work payout flow and the registered external
+  LDK-compatible payout target. The old retained Spark invoice path is not part
+  of the normal v0.2 paid-work eligibility path.
 
-When that invoice is later marked paid in the local wallet, the next `provider run` picks the same job back up, records the settled payment, executes the work, publishes the retained result, and persists the settlement outcome. The retained `jobs`, `earnings`, `receipts`, and `activity` views now project that local NIP-90 provider settlement state directly from the Pylon ledger instead of forcing the operator to reconstruct it from relay logs.
+When payout settlement is observed, the retained `jobs`, `earnings`, `receipts`,
+and `activity` views project that local provider settlement state from the Pylon
+ledger instead of forcing the operator to reconstruct it from relay logs.
 
 Repeated `provider run` passes now also keep durable replay protection in
 `processed-provider-requests.json` beside the rolling `ledger.json` window.
@@ -1125,19 +1137,20 @@ if at least one relay connects and subscribes, Pylon keeps the pass alive and
 dedupes against the durable processed-request set instead of only the bounded
 recent-job window.
 
-If the local wallet cannot create an invoice, the provider path fails honestly instead of pretending the request is payable.
+If the current runtime cannot create or pay with a local wallet, the provider
+path fails honestly instead of pretending the request is payable.
 
-The retained wallet controls now also exist in both places:
+The retained wallet controls now also exist in both places, but in the current
+v0.2 external-target release they should be treated as status, retained ledger,
+and compatibility surfaces. Real local LDK receive/send behavior is planned in
+`OpenAgentsInc/openagents#4520`.
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
 
 For operator accounting, the bounded retained `ledger.wallet.payments` list is
-no longer treated as the source of truth for credited totals. When `earnings`
-needs a local wallet fallback, Pylon now performs a full Spark payment-history
-sync, caches a compact credit summary under `ledger.wallet.credits`, and uses
-the original payment `created_at_ms` to decide what counts toward "today". That
-avoids both lifetime undercounting from the rolling 256-entry window and false
-"today" credits caused by later status refreshes rewriting `updated_at_ms`.
+not the final source of truth for built-in LDK wallet balances. Current v0.2
+status and earnings projections should be read as retained ledger/accounting
+state until the local LDK wallet runtime and payment-history sync land.
 
 The TUI operator sidebar now also treats wallet balance bring-up more honestly.
 Its refresh path loads network status plus balance first instead of waiting on
@@ -1156,7 +1169,10 @@ The retained provider payout controls now also exist in both places:
 - TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11> [--amount-sats <n>]`
 - headless: `cargo pylon-headless payout [--limit <n>]`, `cargo pylon-headless payout withdraw <bolt11> [--amount-sats <n>]`
 
-That path projects retained provider earnings, current wallet balance, and prior withdrawal outcomes from the same local ledger. `payout withdraw` uses the retained wallet send path, persists the resulting withdrawal record locally, and appends a matching relay-activity fact so later transcript views can replay it honestly.
+That path projects retained provider earnings, current retained wallet/accounting
+state, and prior withdrawal outcomes from the same local ledger. In the current
+external-target v0.2 path, real local wallet withdrawal remains planned LDK
+wallet work rather than a guarantee of the release binary.
 
 The retained transcript observability commands now also exist in the shell:
 - TUI: `/jobs [--limit <n>]`, `/earnings`, `/receipts [--limit <n>]`, `/activity [--limit <n>]`
@@ -1238,7 +1254,7 @@ cargo pylon-headless receipts
 cargo pylon-headless activity
 ```
 
-Inspect or operate the standalone Spark wallet:
+Inspect the retained wallet status and ledger surfaces:
 
 ```bash
 cargo pylon-headless wallet status
@@ -1250,6 +1266,10 @@ cargo pylon-headless wallet history --limit 10
 cargo pylon-headless payout --limit 10
 cargo pylon-headless payout withdraw <bolt11> --amount-sats 21
 ```
+
+In the current v0.2 external-target release, address, invoice, pay, and payout
+withdrawal commands may report that the local wallet runtime is unavailable.
+That refusal is expected until the built-in LDK wallet tracker lands.
 
 Move the node through explicit lifecycle controls:
 
@@ -1385,4 +1405,10 @@ Those materials cover:
 - Autopilot parity checks
 - rollout and launch-truth gates
 
-The retained NIP-90 and wallet verification lane is local and explicit. `scripts/pylon/verify_nip90_wallet.sh` sets a fresh standalone Pylon home to `wallet_network=regtest`, checks the retained headless report commands, and then runs the focused local websocket-relay and wallet-hook tests that cover provider intake, buyer submit/watch/pay, payout persistence, and retained activity replay. It does not claim a live funded external Spark regtest backend.
+The retained NIP-90 and wallet verification lane is local and explicit.
+`scripts/pylon/verify_nip90_wallet.sh` sets a fresh standalone Pylon home to
+`wallet_network=regtest`, checks the retained headless report commands, and then
+runs the focused local websocket-relay and wallet-hook tests that cover provider
+intake, buyer submit/watch/pay, payout persistence, and retained activity replay.
+It does not claim a live funded Spark regtest backend or a production-ready
+built-in LDK wallet.

@@ -266,6 +266,13 @@ As a buyer, the app should be able to submit a job out to the network from withi
 
 The wallet panel is not a “nice to have.” It is the proof that the product works.
 
+Current Pylon v0.2 does not yet ship the built-in LDK wallet described in this
+MVP target state. The current production path registers an external
+LDK-compatible Lightning payout target through `payout_destination`, and the
+checked-in wallet commands expose retained ledger/accounting surfaces while real
+wallet receive/send operations remain planned work. Until the built-in wallet
+runtime lands, user-facing docs and onboarding must call that out directly.
+
 The MVP wallet must:
 
 * Load from explicit signer/mnemonic context (no magical hidden keys)
