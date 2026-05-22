@@ -42,6 +42,7 @@ If any release note, marketing text, or operator doc violates one of those state
 | Regtest config surface | `cargo run -p pylon -- config set wallet_network regtest` then `config show` | persists `regtest` as the retained wallet network without changing unrelated local state |
 | Wallet runtime selection | `cargo run -p pylon -- config set wallet_runtime_kind mock` then `cargo run -p pylon -- wallet status --json` | reports `runtime.runtime_kind=mock`; `external_target` remains the default compatibility runtime and `ldk_node` reports unavailable until integration lands |
 | Wallet entropy derivation | `cargo run -p pylon -- wallet entropy status --json` | reports redacted one-phrase HKDF derivation metadata and a node entropy digest without printing the mnemonic or raw 64-byte entropy |
+| Wallet storage lock | `cargo run -p pylon -- wallet lock status --json` after startup; run a second lock acquisition in tests | creates the private `wallet/ldk/` layout, reports lock owner/stale state, refuses a second active writer, and only clears stale locks explicitly |
 | Online transition | `cargo run -p pylon -- online` | desired mode becomes `online`; unhealthy supply becomes `degraded`, not falsely healthy |
 | Pause/resume | `cargo run -p pylon -- pause` then `resume` | transitions are explicit and truthful |
 | Offline transition | `cargo run -p pylon -- offline` | desired mode becomes `offline` |

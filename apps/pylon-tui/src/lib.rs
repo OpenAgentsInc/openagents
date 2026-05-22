@@ -5196,6 +5196,14 @@ async fn render_wallet_command_output(
             let report = pylon::import_wallet_entropy_report(config_path, path.as_path()).await?;
             Ok(pylon::render_wallet_entropy_report(&report))
         }
+        pylon::WalletSubcommand::LockStatus { .. } => {
+            let report = pylon::inspect_wallet_lock_report(config_path).await?;
+            Ok(pylon::render_wallet_lock_report(&report))
+        }
+        pylon::WalletSubcommand::LockClear { .. } => {
+            let report = pylon::clear_wallet_lock_report(config_path).await?;
+            Ok(pylon::render_wallet_lock_report(&report))
+        }
     }
 }
 
@@ -5966,6 +5974,8 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
         pylon::WalletSubcommand::EntropyStatus { .. } => "Wallet Entropy",
         pylon::WalletSubcommand::EntropyExport { .. } => "Wallet Entropy Export",
         pylon::WalletSubcommand::EntropyImport { .. } => "Wallet Entropy Import",
+        pylon::WalletSubcommand::LockStatus { .. } => "Wallet Lock",
+        pylon::WalletSubcommand::LockClear { .. } => "Wallet Lock Clear",
     }
     .to_string()
 }

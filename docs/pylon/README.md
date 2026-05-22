@@ -1145,7 +1145,7 @@ v0.2 external-target release they should be treated as status, retained ledger,
 and compatibility surfaces. Real local LDK receive/send behavior is planned in
 `OpenAgentsInc/openagents#4520`.
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
-- headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
+- headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=external_target`
 is the default compatibility runtime and keeps `payout_destination` as the
@@ -1165,6 +1165,27 @@ wallet entropy import|export <path>` for explicit entropy files, but that is an
 escape hatch rather than the normal setup path. Directly sharing the mnemonic
 bytes without HKDF domain separation is compatibility-only and should not be the
 default.
+
+Pylon also prepares the built-in LDK wallet storage root before the real node
+runtime owns funds. The default layout is:
+
+```text
+~/.openagents/pylon/wallet/ldk/
+  node/
+  sqlite/
+  backup-staging/
+  wallet-lock
+  backup-manifest.json
+  last-registration.json
+```
+
+The directories are private (`0700` on Unix) and wallet metadata files are
+private (`0600` on Unix). Startup refuses world-readable recovery material,
+including the identity mnemonic and any explicit entropy override file. The
+single-writer guard lives at `wallet-lock`; inspect it with `pylon wallet lock
+status [--json]` and clear it with `pylon wallet lock clear [--json]` only
+after the report says the owning process is stale. An active lock means another
+Pylon process is using the wallet state and must be stopped first.
 
 For operator accounting, the bounded retained `ledger.wallet.payments` list is
 not the final source of truth for built-in LDK wallet balances. Current v0.2

@@ -1,4 +1,6 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
@@ -20,6 +22,7 @@ const LDK_NODE_UNAVAILABLE_DETAIL: &str =
 const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1";
 const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
 const WALLET_NODE_ENTROPY_HKDF_SALT: &[u8] = b"openagents-pylon/ldk-node/node-entropy";
+const WALLET_STORAGE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -92,6 +95,12 @@ pub enum WalletSubcommand {
     },
     EntropyImport {
         path: PathBuf,
+        json: bool,
+    },
+    LockStatus {
+        json: bool,
+    },
+    LockClear {
         json: bool,
     },
 }
@@ -196,6 +205,60 @@ pub struct WalletEntropyReport {
     pub path: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WalletStorageLayoutReport {
+    pub schema_version: u32,
+    pub root_dir: String,
+    pub ldk_dir: String,
+    pub node_dir: String,
+    pub sqlite_dir: String,
+    pub backup_staging_dir: String,
+    pub lock_path: String,
+    pub backup_manifest_path: String,
+    pub last_registration_path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WalletLockOwner {
+    pub pid: u32,
+    pub machine_id: String,
+    pub created_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WalletLockReport {
+    pub runtime: WalletRuntimeSurface,
+    pub lock_path: String,
+    pub locked: bool,
+    pub stale: bool,
+    pub cleared: bool,
+    pub owner: Option<WalletLockOwner>,
+    pub detail: String,
+}
+
+#[derive(Clone, Debug)]
+struct WalletStorageLayout {
+    root_dir: PathBuf,
+    ldk_dir: PathBuf,
+    node_dir: PathBuf,
+    sqlite_dir: PathBuf,
+    backup_staging_dir: PathBuf,
+    lock_path: PathBuf,
+    backup_manifest_path: PathBuf,
+    last_registration_path: PathBuf,
+}
+
+#[derive(Debug)]
+struct PylonWalletStorageLock {
+    path: PathBuf,
+}
+
+impl Drop for PylonWalletStorageLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.path.as_path());
+    }
+}
+
 #[derive(Clone, Debug)]
 struct WalletRuntimeContext {
     runtime: SelectedPylonWalletRuntime,
@@ -256,6 +319,7 @@ struct MockPylonWalletRuntime {
 #[derive(Clone, Debug)]
 struct LdkNodeWalletRuntime {
     surface: WalletRuntimeSurface,
+    lock: Arc<Mutex<Option<PylonWalletStorageLock>>>,
 }
 
 impl PylonWalletRuntime for SelectedPylonWalletRuntime {
@@ -623,10 +687,32 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
     }
 
     fn start(&self) -> Result<()> {
+        let layout = ensure_wallet_storage_layout_for_root(PathBuf::from(
+            self.surface.storage_dir.as_str(),
+        ))?;
+        ensure_private_file_permissions(
+            Path::new(self.surface.identity_path.as_str()),
+            "identity mnemonic",
+        )?;
+        if let Some(path) = self.surface.node_entropy.override_path.as_deref() {
+            ensure_private_file_permissions(Path::new(path), "wallet entropy override")?;
+        }
+        let mut lock = self
+            .lock
+            .lock()
+            .map_err(|_| anyhow!("wallet storage lock state is poisoned"))?;
+        if lock.is_none() {
+            *lock = Some(acquire_wallet_storage_lock(&layout)?);
+        }
         Ok(())
     }
 
     fn stop(&self) -> Result<()> {
+        let mut lock = self
+            .lock
+            .lock()
+            .map_err(|_| anyhow!("wallet storage lock state is poisoned"))?;
+        let _ = lock.take();
         Ok(())
     }
 
@@ -795,6 +881,20 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
             }
             Ok(render_wallet_entropy_report(&report))
         }
+        WalletSubcommand::LockStatus { json } => {
+            let report = inspect_wallet_lock_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_lock_report(&report))
+        }
+        WalletSubcommand::LockClear { json } => {
+            let report = clear_wallet_lock_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_lock_report(&report))
+        }
     }
 }
 
@@ -938,6 +1038,7 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
             Ok(WalletSubcommand::History { limit, json })
         }
         "entropy" => parse_wallet_entropy_command(args, start_index + 2),
+        "lock" => parse_wallet_lock_command(args, start_index + 2),
         other => bail!("unsupported wallet subcommand '{other}'"),
     }
 }
@@ -969,6 +1070,21 @@ fn parse_wallet_entropy_command(args: &[String], start_index: usize) -> Result<W
             })
         }
         other => bail!("unsupported wallet entropy action '{other}'"),
+    }
+}
+
+fn parse_wallet_lock_command(args: &[String], start_index: usize) -> Result<WalletSubcommand> {
+    let action = args
+        .get(start_index)
+        .ok_or_else(|| anyhow!("missing wallet lock action"))?;
+    match action.as_str() {
+        "status" => Ok(WalletSubcommand::LockStatus {
+            json: parse_json_only(args, start_index + 1, "wallet lock status")?,
+        }),
+        "clear" => Ok(WalletSubcommand::LockClear {
+            json: parse_json_only(args, start_index + 1, "wallet lock clear")?,
+        }),
+        other => bail!("unsupported wallet lock action '{other}'"),
     }
 }
 
@@ -1131,6 +1247,43 @@ pub async fn import_wallet_entropy_report(
         metadata: context.runtime.surface().node_entropy.clone(),
         path: Some(import_path.display().to_string()),
     })
+}
+
+pub async fn inspect_wallet_lock_report(config_path: &Path) -> Result<WalletLockReport> {
+    let context = prepare_wallet_context(config_path)?;
+    let layout = ensure_wallet_storage_layout_for_config_path(config_path)?;
+    Ok(wallet_lock_report(
+        context.runtime.surface().clone(),
+        &layout,
+        false,
+    ))
+}
+
+pub async fn clear_wallet_lock_report(config_path: &Path) -> Result<WalletLockReport> {
+    let context = prepare_wallet_context(config_path)?;
+    let layout = ensure_wallet_storage_layout_for_config_path(config_path)?;
+    let before = wallet_lock_report(context.runtime.surface().clone(), &layout, false);
+    if before.locked && !before.stale {
+        bail!(
+            "wallet lock is active for pid {}; stop the other Pylon process before clearing {}",
+            before
+                .owner
+                .as_ref()
+                .map(|owner| owner.pid)
+                .unwrap_or_default(),
+            layout.lock_path.display()
+        );
+    }
+    if before.locked {
+        std::fs::remove_file(layout.lock_path.as_path()).with_context(|| {
+            format!("failed to clear wallet lock {}", layout.lock_path.display())
+        })?;
+    }
+    Ok(wallet_lock_report(
+        context.runtime.surface().clone(),
+        &layout,
+        before.locked,
+    ))
 }
 
 pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
@@ -1300,6 +1453,23 @@ pub fn render_wallet_entropy_report(report: &WalletEntropyReport) -> String {
     lines.join("\n")
 }
 
+pub fn render_wallet_lock_report(report: &WalletLockReport) -> String {
+    let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("lock_path: {}", report.lock_path),
+        format!("locked: {}", report.locked),
+        format!("stale: {}", report.stale),
+        format!("cleared: {}", report.cleared),
+        format!("detail: {}", report.detail),
+    ];
+    if let Some(owner) = report.owner.as_ref() {
+        lines.push(format!("owner_pid: {}", owner.pid));
+        lines.push(format!("owner_machine_id: {}", owner.machine_id));
+        lines.push(format!("owner_created_at_ms: {}", owner.created_at_ms));
+    }
+    lines.join("\n")
+}
+
 fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<bool> {
     let mut json = false;
     let mut index = start_index;
@@ -1445,8 +1615,256 @@ fn write_explicit_wallet_entropy(path: &Path, bytes: &[u8; 64]) -> Result<()> {
     Ok(())
 }
 
+fn ensure_wallet_storage_layout_for_config_path(config_path: &Path) -> Result<WalletStorageLayout> {
+    let config = ensure_local_setup(config_path)?;
+    ensure_wallet_storage_layout(&config)
+}
+
+fn ensure_wallet_storage_layout(config: &crate::PylonConfig) -> Result<WalletStorageLayout> {
+    ensure_wallet_storage_layout_for_root(config.wallet_storage_dir.clone())
+}
+
+fn ensure_wallet_storage_layout_for_root(root_dir: PathBuf) -> Result<WalletStorageLayout> {
+    let layout = wallet_storage_layout_from_root(root_dir);
+    create_private_dir(layout.root_dir.as_path(), "wallet root")?;
+    create_private_dir(layout.ldk_dir.as_path(), "wallet ldk root")?;
+    create_private_dir(layout.node_dir.as_path(), "wallet node state")?;
+    create_private_dir(layout.sqlite_dir.as_path(), "wallet sqlite state")?;
+    create_private_dir(layout.backup_staging_dir.as_path(), "wallet backup staging")?;
+    write_private_file_if_missing(
+        layout.backup_manifest_path.as_path(),
+        format!(
+            "{{\"schema_version\":{WALLET_STORAGE_SCHEMA_VERSION},\"kind\":\"pylon.wallet.backup_manifest\"}}\n"
+        )
+        .as_bytes(),
+    )?;
+    write_private_file_if_missing(
+        layout.last_registration_path.as_path(),
+        b"{\"schema_version\":1,\"kind\":\"pylon.wallet.last_registration\",\"status\":\"none\"}\n",
+    )?;
+    Ok(layout)
+}
+
+fn wallet_storage_layout_from_root(root_dir: PathBuf) -> WalletStorageLayout {
+    let ldk_dir = root_dir.join("ldk");
+    WalletStorageLayout {
+        root_dir,
+        node_dir: ldk_dir.join("node"),
+        sqlite_dir: ldk_dir.join("sqlite"),
+        backup_staging_dir: ldk_dir.join("backup-staging"),
+        lock_path: ldk_dir.join("wallet-lock"),
+        backup_manifest_path: ldk_dir.join("backup-manifest.json"),
+        last_registration_path: ldk_dir.join("last-registration.json"),
+        ldk_dir,
+    }
+}
+
+#[cfg(test)]
+fn wallet_storage_layout_report(layout: &WalletStorageLayout) -> WalletStorageLayoutReport {
+    WalletStorageLayoutReport {
+        schema_version: WALLET_STORAGE_SCHEMA_VERSION,
+        root_dir: layout.root_dir.display().to_string(),
+        ldk_dir: layout.ldk_dir.display().to_string(),
+        node_dir: layout.node_dir.display().to_string(),
+        sqlite_dir: layout.sqlite_dir.display().to_string(),
+        backup_staging_dir: layout.backup_staging_dir.display().to_string(),
+        lock_path: layout.lock_path.display().to_string(),
+        backup_manifest_path: layout.backup_manifest_path.display().to_string(),
+        last_registration_path: layout.last_registration_path.display().to_string(),
+    }
+}
+
+fn acquire_wallet_storage_lock(layout: &WalletStorageLayout) -> Result<PylonWalletStorageLock> {
+    let owner = current_wallet_lock_owner();
+    let payload = serde_json::to_string(&owner)?;
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(layout.lock_path.as_path())
+    {
+        Ok(mut file) => {
+            file.write_all(payload.as_bytes()).with_context(|| {
+                format!("failed to write wallet lock {}", layout.lock_path.display())
+            })?;
+            file.write_all(b"\n").with_context(|| {
+                format!(
+                    "failed to finalize wallet lock {}",
+                    layout.lock_path.display()
+                )
+            })?;
+            set_private_file_permissions(layout.lock_path.as_path(), "wallet lock")?;
+            Ok(PylonWalletStorageLock {
+                path: layout.lock_path.clone(),
+            })
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let report = wallet_lock_report(WalletRuntimeSurface::default(), layout, false);
+            let detail = if report.stale {
+                format!(
+                    "stale wallet lock at {}; inspect with `pylon wallet lock status` and clear with `pylon wallet lock clear`",
+                    layout.lock_path.display()
+                )
+            } else {
+                format!(
+                    "wallet storage is locked by another active Pylon process at {}; stop that process before starting this wallet",
+                    layout.lock_path.display()
+                )
+            };
+            bail!("{detail}")
+        }
+        Err(error) => Err(error).with_context(|| {
+            format!(
+                "failed to create wallet lock {}",
+                layout.lock_path.display()
+            )
+        }),
+    }
+}
+
+fn wallet_lock_report(
+    runtime: WalletRuntimeSurface,
+    layout: &WalletStorageLayout,
+    cleared: bool,
+) -> WalletLockReport {
+    let locked = layout.lock_path.exists();
+    let owner = read_wallet_lock_owner(layout.lock_path.as_path())
+        .ok()
+        .flatten();
+    let stale = locked
+        && owner
+            .as_ref()
+            .map_or(true, |owner| !wallet_lock_owner_is_active(owner));
+    let detail = if cleared {
+        "stale wallet lock cleared".to_string()
+    } else if !locked {
+        "wallet storage is unlocked".to_string()
+    } else if stale {
+        "wallet lock is stale and can be cleared explicitly".to_string()
+    } else {
+        "wallet storage is locked by an active process".to_string()
+    };
+    WalletLockReport {
+        runtime,
+        lock_path: layout.lock_path.display().to_string(),
+        locked,
+        stale,
+        cleared,
+        owner,
+        detail,
+    }
+}
+
+fn read_wallet_lock_owner(path: &Path) -> Result<Option<WalletLockOwner>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let payload = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read wallet lock {}", path.display()))?;
+    let owner = serde_json::from_str::<WalletLockOwner>(payload.as_str())
+        .with_context(|| format!("failed to parse wallet lock {}", path.display()))?;
+    Ok(Some(owner))
+}
+
+fn current_wallet_lock_owner() -> WalletLockOwner {
+    WalletLockOwner {
+        pid: std::process::id(),
+        machine_id: local_machine_id(),
+        created_at_ms: now_epoch_ms() as u64,
+    }
+}
+
+fn local_machine_id() -> String {
+    std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn wallet_lock_owner_is_active(owner: &WalletLockOwner) -> bool {
+    if owner.machine_id != local_machine_id() {
+        return true;
+    }
+    process_is_active(owner.pid)
+}
+
+#[cfg(unix)]
+fn process_is_active(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    let result = unsafe { libc::kill(pid as i32, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(not(unix))]
+fn process_is_active(pid: u32) -> bool {
+    pid == std::process::id()
+}
+
+fn create_private_dir(path: &Path, label: &str) -> Result<()> {
+    std::fs::create_dir_all(path)
+        .with_context(|| format!("failed to create {label} {}", path.display()))?;
+    set_private_dir_permissions(path, label)
+}
+
+fn write_private_file_if_missing(path: &Path, contents: &[u8]) -> Result<()> {
+    if path.exists() {
+        ensure_private_file_permissions(path, "wallet metadata")?;
+        return Ok(());
+    }
+    std::fs::write(path, contents)
+        .with_context(|| format!("failed to write wallet metadata {}", path.display()))?;
+    set_private_file_permissions(path, "wallet metadata")
+}
+
+#[cfg(unix)]
+fn set_private_dir_permissions(path: &Path, label: &str) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("failed to set {label} permissions {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn set_private_dir_permissions(_path: &Path, _label: &str) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_private_file_permissions(path: &Path, label: &str) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("failed to set {label} permissions {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn set_private_file_permissions(_path: &Path, _label: &str) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn ensure_private_file_permissions(path: &Path, label: &str) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(path)
+        .with_context(|| format!("failed to read {label} permissions {}", path.display()))?
+        .permissions()
+        .mode()
+        & 0o777;
+    if mode & 0o077 != 0 {
+        bail!(
+            "{label} {} must not be readable or writable by group/other; chmod 600 and retry",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_private_file_permissions(_path: &Path, _label: &str) -> Result<()> {
+    Ok(())
+}
+
 fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
     let config = ensure_local_setup(config_path)?;
+    let _layout = ensure_wallet_storage_layout(&config)?;
     let runtime_kind = config.wallet_runtime_kind;
     let node_entropy = load_wallet_node_entropy_material(&config)?;
     let surface = WalletRuntimeSurface {
@@ -1474,7 +1892,10 @@ fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
             payout_destination: config.payout_destination.clone(),
         }),
         PylonWalletRuntimeKind::LdkNode => {
-            SelectedPylonWalletRuntime::LdkNode(LdkNodeWalletRuntime { surface })
+            SelectedPylonWalletRuntime::LdkNode(LdkNodeWalletRuntime {
+                surface,
+                lock: Arc::new(Mutex::new(None)),
+            })
         }
     };
     Ok(WalletRuntimeContext { runtime })
@@ -1585,11 +2006,11 @@ mod tests {
     use bip39::{Language, Mnemonic};
 
     use super::{
-        PylonWalletRuntimeKind, WalletSubcommand, compute_wallet_credit_summary,
-        create_wallet_address_report, create_wallet_invoice_report, load_wallet_history_report,
-        load_wallet_node_entropy_material, load_wallet_status_report, parse_wallet_command,
-        pay_wallet_invoice_report, render_wallet_entropy_report, render_wallet_status_report,
-        run_wallet_command, wallet_node_entropy_domain_label,
+        PylonWalletRuntime, PylonWalletRuntimeKind, WalletLockOwner, WalletSubcommand,
+        compute_wallet_credit_summary, create_wallet_address_report, create_wallet_invoice_report,
+        load_wallet_history_report, load_wallet_node_entropy_material, load_wallet_status_report,
+        parse_wallet_command, pay_wallet_invoice_report, render_wallet_entropy_report,
+        render_wallet_status_report, run_wallet_command, wallet_node_entropy_domain_label,
     };
     use crate::PylonWalletPaymentRecord;
 
@@ -1907,6 +2328,152 @@ mod tests {
             saved.wallet_entropy_override_path.as_deref(),
             Some(export_path.as_path())
         );
+    }
+
+    #[test]
+    fn wallet_storage_layout_creates_private_ldk_paths() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config = crate::default_config(temp_dir.path());
+        let layout = super::ensure_wallet_storage_layout(&config).expect("storage layout");
+        let report = super::wallet_storage_layout_report(&layout);
+
+        assert!(layout.ldk_dir.ends_with("ldk"));
+        assert!(layout.node_dir.exists());
+        assert!(layout.sqlite_dir.exists());
+        assert!(layout.backup_staging_dir.exists());
+        assert!(layout.backup_manifest_path.exists());
+        assert!(layout.last_registration_path.exists());
+        assert_eq!(report.schema_version, 1);
+        assert!(report.lock_path.ends_with("wallet-lock"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir_mode = std::fs::metadata(layout.ldk_dir.as_path())
+                .expect("ldk dir metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            let file_mode = std::fs::metadata(layout.backup_manifest_path.as_path())
+                .expect("manifest metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(dir_mode, 0o700);
+            assert_eq!(file_mode, 0o600);
+        }
+    }
+
+    #[test]
+    fn wallet_storage_lock_rejects_second_writer_and_releases_on_drop() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config = crate::default_config(temp_dir.path());
+        let layout = super::ensure_wallet_storage_layout(&config).expect("storage layout");
+
+        let lock = super::acquire_wallet_storage_lock(&layout).expect("first lock");
+        let second = super::acquire_wallet_storage_lock(&layout)
+            .expect_err("second active writer should fail");
+        assert!(second.to_string().contains("wallet storage is locked"));
+
+        drop(lock);
+        super::acquire_wallet_storage_lock(&layout).expect("lock should release on drop");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ldk_node_runtime_holds_lock_until_stop() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(
+            config.identity_path.as_path(),
+            "legal winner thank year wave sausage worth useful legal winner thank yellow\n",
+        )
+        .expect("write identity phrase");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                config.identity_path.as_path(),
+                std::fs::Permissions::from_mode(0o600),
+            )
+            .expect("set identity permissions");
+        }
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let first = super::prepare_wallet_context(config_path.as_path()).expect("first context");
+        first.runtime.start().expect("first runtime start");
+        let second = super::prepare_wallet_context(config_path.as_path()).expect("second context");
+        let error = second
+            .runtime
+            .start()
+            .expect_err("second active runtime should fail");
+        assert!(error.to_string().contains("wallet storage is locked"));
+
+        first.runtime.stop().expect("first runtime stop");
+        second
+            .runtime
+            .start()
+            .expect("second runtime should start after stop");
+        second.runtime.stop().expect("second runtime stop");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_wallet_lock_can_be_inspected_and_cleared_explicitly() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let config = crate::default_config(temp_dir.path());
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+        let layout = super::ensure_wallet_storage_layout(&config).expect("storage layout");
+        let stale_owner = WalletLockOwner {
+            pid: 0,
+            machine_id: super::local_machine_id(),
+            created_at_ms: 1,
+        };
+        std::fs::write(
+            layout.lock_path.as_path(),
+            serde_json::to_string(&stale_owner).expect("serialize stale owner"),
+        )
+        .expect("write stale lock");
+
+        let status = super::inspect_wallet_lock_report(config_path.as_path())
+            .await
+            .expect("inspect lock");
+        assert!(status.locked);
+        assert!(status.stale);
+
+        let cleared = super::clear_wallet_lock_report(config_path.as_path())
+            .await
+            .expect("clear stale lock");
+        assert!(cleared.cleared);
+        assert!(!layout.lock_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "current_thread")]
+    async fn ldk_node_runtime_refuses_world_readable_recovery_material() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(
+            config.identity_path.as_path(),
+            "legal winner thank year wave sausage worth useful legal winner thank yellow\n",
+        )
+        .expect("write identity phrase");
+        std::fs::set_permissions(
+            config.identity_path.as_path(),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .expect("set world-readable identity permissions");
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let error = load_wallet_status_report(config_path.as_path())
+            .await
+            .expect_err("world-readable identity should fail");
+        assert!(error.to_string().contains("must not be readable"));
     }
 
     #[tokio::test(flavor = "current_thread")]
