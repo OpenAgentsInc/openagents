@@ -27,6 +27,10 @@ use crate::{
 };
 
 const ANNOUNCEMENT_KIND_TEXT_GENERATION: u16 = nostr::nip90::KIND_JOB_TEXT_GENERATION;
+const DEFAULT_PROVIDER_MAX_INFLIGHT: usize = 1;
+const DEFAULT_PROVIDER_PER_BUYER_MAX_INFLIGHT: usize = 1;
+const DEFAULT_PROVIDER_REQUEST_TTL_SECONDS: u64 = 365 * 24 * 60 * 60;
+const DEFAULT_PROVIDER_ADMISSION_LEASE_TTL_MS: u64 = 15 * 60 * 1000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AnnouncementAction {
@@ -666,6 +670,149 @@ struct PendingDrop {
     error_detail: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderAdmissionDecision {
+    Admit,
+    Drop(&'static str),
+    Defer(&'static str),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProviderAdmissionPolicy {
+    price_msats: Option<u64>,
+    max_inflight: usize,
+    per_buyer_max_inflight: usize,
+    request_ttl_seconds: u64,
+}
+
+impl ProviderAdmissionPolicy {
+    fn from_price(price_msats: Option<u64>) -> Self {
+        Self {
+            price_msats,
+            max_inflight: DEFAULT_PROVIDER_MAX_INFLIGHT,
+            per_buyer_max_inflight: DEFAULT_PROVIDER_PER_BUYER_MAX_INFLIGHT,
+            request_ttl_seconds: DEFAULT_PROVIDER_REQUEST_TTL_SECONDS,
+        }
+    }
+}
+
+fn provider_job_blocks_admission_capacity(status: &str) -> bool {
+    matches!(status, "accepted_local" | "processing_local")
+}
+
+fn provider_active_job_counts(
+    known_jobs: &BTreeMap<String, PylonLedgerJob>,
+    requester_pubkey: &str,
+) -> (usize, usize) {
+    known_jobs
+        .values()
+        .filter(|job| {
+            job.direction == "provider"
+                && provider_job_blocks_admission_capacity(job.status.as_str())
+        })
+        .fold((0usize, 0usize), |(total, buyer), job| {
+            let buyer = if job.customer_pubkey.as_deref() == Some(requester_pubkey) {
+                buyer + 1
+            } else {
+                buyer
+            };
+            (total + 1, buyer)
+        })
+}
+
+fn provider_active_lease_counts(
+    known_jobs: &BTreeMap<String, PylonLedgerJob>,
+    processed_request_store: &crate::ledger::PylonProcessedProviderRequestStore,
+    requester_pubkey: &str,
+    now_ms: u64,
+) -> (usize, usize) {
+    processed_request_store
+        .admission_leases
+        .values()
+        .filter(|lease| {
+            lease.expires_at_ms > now_ms
+                && !known_jobs.contains_key(lease.request_event_id.as_str())
+        })
+        .fold((0usize, 0usize), |(total, buyer), lease| {
+            let buyer = if lease.requester_pubkey == requester_pubkey {
+                buyer + 1
+            } else {
+                buyer
+            };
+            (total + 1, buyer)
+        })
+}
+
+fn evaluate_provider_admission(
+    entry: &ProviderIntakeEntry,
+    event_created_at_seconds: u64,
+    policy: &ProviderAdmissionPolicy,
+    known_jobs: &BTreeMap<String, PylonLedgerJob>,
+    processed_request_store: &crate::ledger::PylonProcessedProviderRequestStore,
+    now_ms: u64,
+) -> ProviderAdmissionDecision {
+    let now_seconds = now_ms / 1000;
+    if event_created_at_seconds == 0
+        || now_seconds.saturating_sub(event_created_at_seconds) > policy.request_ttl_seconds
+    {
+        return ProviderAdmissionDecision::Drop("stale_request");
+    }
+
+    if let Some(price_msats) = policy.price_msats.filter(|value| *value > 0) {
+        let Some(bid_msats) = entry.bid_msats else {
+            return ProviderAdmissionDecision::Drop("missing_bid");
+        };
+        if bid_msats < price_msats {
+            return ProviderAdmissionDecision::Drop("bid_below_price_floor");
+        }
+    }
+
+    let (active_jobs, active_buyer_jobs) =
+        provider_active_job_counts(known_jobs, entry.requester_pubkey.as_str());
+    let (active_leases, active_buyer_leases) = provider_active_lease_counts(
+        known_jobs,
+        processed_request_store,
+        entry.requester_pubkey.as_str(),
+        now_ms,
+    );
+
+    if active_jobs + active_leases >= policy.max_inflight.max(1) {
+        return ProviderAdmissionDecision::Defer("max_inflight");
+    }
+    if active_buyer_jobs + active_buyer_leases >= policy.per_buyer_max_inflight.max(1) {
+        return ProviderAdmissionDecision::Defer("buyer_limit");
+    }
+
+    ProviderAdmissionDecision::Admit
+}
+
+fn report_entry_for_admission_rejection(
+    observed: &ObservedProviderRequest,
+    status: &'static str,
+    reason: &'static str,
+    prompt: &str,
+    target_model: &str,
+    amount_msats: Option<u64>,
+) -> ProviderRunEntry {
+    ProviderRunEntry {
+        request_event_id: observed.entry.request_event_id.clone(),
+        requester_pubkey: observed.entry.requester_pubkey.clone(),
+        relay_url: observed.entry.relay_url.clone(),
+        status: status.to_string(),
+        prompt_preview: Some(preview_text(prompt, 72)),
+        model: Some(target_model.to_string()),
+        bid_msats: observed.entry.bid_msats,
+        amount_msats,
+        bolt11: None,
+        payment_id: None,
+        settlement_id: None,
+        result_preview: None,
+        error_detail: Some(reason.to_string()),
+        feedback_event_ids: Vec::new(),
+        result_event_id: None,
+    }
+}
+
 async fn run_provider_request_collection(
     config_path: &Path,
     collected: ProviderRequestCollection,
@@ -683,8 +830,10 @@ async fn run_provider_request_collection(
         .into_iter()
         .map(|job| (job.id.clone(), job))
         .collect::<BTreeMap<_, _>>();
-    let processed_request_store =
+    let mut processed_request_store =
         crate::ledger::load_processed_provider_request_store(config_path)?;
+    let run_started_at_ms = now_epoch_ms() as u64;
+    processed_request_store.prune_expired_admission_leases(run_started_at_ms);
     let mut wallet_payments: Option<Vec<PylonWalletPaymentRecord>> = None;
     let mut report_entries = Vec::new();
     let mut accepted_count = 0usize;
@@ -702,6 +851,9 @@ async fn run_provider_request_collection(
             .as_ref()
             .is_some_and(|job| provider_job_blocks_reintake(job.status.as_str()))
             || processed_request_store.contains(request_event_id.as_str())
+            || (existing_job.is_none()
+                && processed_request_store
+                    .has_active_admission_lease(request_event_id.as_str(), run_started_at_ms))
         {
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
@@ -890,6 +1042,127 @@ async fn run_provider_request_collection(
             continue;
         };
 
+        let should_evaluate_admission = !existing_job
+            .as_ref()
+            .is_some_and(|job| job.status == "payment_required");
+        if should_evaluate_admission {
+            let admission_policy = ProviderAdmissionPolicy::from_price(price_msats);
+            match evaluate_provider_admission(
+                &observed.entry,
+                observed.event.created_at,
+                &admission_policy,
+                &known_jobs,
+                &processed_request_store,
+                run_started_at_ms,
+            ) {
+                ProviderAdmissionDecision::Admit => {
+                    let expires_at_ms = run_started_at_ms + DEFAULT_PROVIDER_ADMISSION_LEASE_TTL_MS;
+                    let mut claim_decision = ProviderAdmissionDecision::Admit;
+                    crate::ledger::mutate_processed_provider_request_store(
+                        config_path,
+                        |store: &mut crate::ledger::PylonProcessedProviderRequestStore| {
+                            store.prune_expired_admission_leases(run_started_at_ms);
+                            claim_decision = evaluate_provider_admission(
+                                &observed.entry,
+                                observed.event.created_at,
+                                &admission_policy,
+                                &known_jobs,
+                                store,
+                                run_started_at_ms,
+                            );
+                            if claim_decision == ProviderAdmissionDecision::Admit {
+                                store.remember_admission_lease(
+                                    observed.entry.request_event_id.clone(),
+                                    observed.entry.requester_pubkey.clone(),
+                                    "admitted",
+                                    expires_at_ms,
+                                );
+                            }
+                            Ok(())
+                        },
+                    )?;
+                    match claim_decision {
+                        ProviderAdmissionDecision::Admit => {
+                            processed_request_store.remember_admission_lease(
+                                observed.entry.request_event_id.clone(),
+                                observed.entry.requester_pubkey.clone(),
+                                "admitted",
+                                expires_at_ms,
+                            );
+                        }
+                        ProviderAdmissionDecision::Drop(reason) => {
+                            dropped_count += 1;
+                            pending_drops.push(PendingDrop {
+                                entry: observed.entry.clone(),
+                                status: "rejected_policy",
+                                error_detail: Some(reason.to_string()),
+                            });
+                            report_entries.push(report_entry_for_admission_rejection(
+                                &observed,
+                                "dropped",
+                                reason,
+                                prompt.as_str(),
+                                target.model.as_str(),
+                                price_msats,
+                            ));
+                            continue;
+                        }
+                        ProviderAdmissionDecision::Defer(reason) => {
+                            dropped_count += 1;
+                            pending_drops.push(PendingDrop {
+                                entry: observed.entry.clone(),
+                                status: "deferred_policy",
+                                error_detail: Some(reason.to_string()),
+                            });
+                            report_entries.push(report_entry_for_admission_rejection(
+                                &observed,
+                                "deferred",
+                                reason,
+                                prompt.as_str(),
+                                target.model.as_str(),
+                                price_msats,
+                            ));
+                            continue;
+                        }
+                    }
+                }
+                ProviderAdmissionDecision::Drop(reason) => {
+                    dropped_count += 1;
+                    pending_drops.push(PendingDrop {
+                        entry: observed.entry.clone(),
+                        status: "rejected_policy",
+                        error_detail: Some(reason.to_string()),
+                    });
+                    report_entries.push(report_entry_for_admission_rejection(
+                        &observed,
+                        "dropped",
+                        reason,
+                        prompt.as_str(),
+                        target.model.as_str(),
+                        price_msats,
+                    ));
+                    continue;
+                }
+                ProviderAdmissionDecision::Defer(reason) => {
+                    dropped_count += 1;
+                    pending_drops.push(PendingDrop {
+                        entry: observed.entry.clone(),
+                        status: "deferred_policy",
+                        error_detail: Some(reason.to_string()),
+                    });
+                    report_entries.push(report_entry_for_admission_rejection(
+                        &observed,
+                        "deferred",
+                        reason,
+                        prompt.as_str(),
+                        target.model.as_str(),
+                        price_msats,
+                    ));
+                    continue;
+                }
+            }
+        }
+
         let mut settled_payment = None::<PylonWalletPaymentRecord>;
         let mut settlement_id = None::<String>;
 
@@ -975,44 +1248,6 @@ async fn run_provider_request_collection(
                     continue;
                 }
             } else {
-                if observed
-                    .entry
-                    .bid_msats
-                    .is_some_and(|bid_msats| bid_msats < price_msats)
-                {
-                    dropped_count += 1;
-                    persist_provider_run_state(
-                        config_path,
-                        collected.provider_pubkey.as_str(),
-                        &observed.entry,
-                        "rejected_policy",
-                        Some("bid_below_price_floor"),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                    )?;
-                    report_entries.push(ProviderRunEntry {
-                        request_event_id: observed.entry.request_event_id.clone(),
-                        requester_pubkey: observed.entry.requester_pubkey.clone(),
-                        relay_url: observed.entry.relay_url.clone(),
-                        status: "dropped".to_string(),
-                        prompt_preview: Some(preview_text(prompt.as_str(), 72)),
-                        model: Some(target.model.clone()),
-                        bid_msats: observed.entry.bid_msats,
-                        amount_msats: Some(price_msats),
-                        bolt11: None,
-                        payment_id: None,
-                        settlement_id: None,
-                        result_preview: None,
-                        error_detail: Some("bid_below_price_floor".to_string()),
-                        feedback_event_ids: Vec::new(),
-                        result_event_id: None,
-                    });
-                    continue;
-                }
-
                 accepted_count += 1;
                 let payment_requirement = match create_provider_payment_requirement(
                     config_path,
@@ -3637,4 +3872,147 @@ fn buyer_job_matches_activity(job: &PylonLedgerJob, activity: &PylonRelayActivit
 
 fn msats_to_sats_rounded_up(amount_msats: u64) -> u64 {
     amount_msats.saturating_add(999) / 1000
+}
+
+#[cfg(test)]
+mod provider_admission_tests {
+    use super::*;
+
+    fn admission_entry(
+        request_event_id: &str,
+        requester_pubkey: &str,
+        bid_msats: Option<u64>,
+    ) -> ProviderIntakeEntry {
+        ProviderIntakeEntry {
+            request_event_id: request_event_id.to_string(),
+            requester_pubkey: requester_pubkey.to_string(),
+            relay_url: Some("ws://relay.test".to_string()),
+            targeted: true,
+            decision: "match".to_string(),
+            drop_reason: None,
+            prompt_preview: Some("hello".to_string()),
+            model: Some("gemma4:e4b".to_string()),
+            bid_msats,
+        }
+    }
+
+    fn admission_policy() -> ProviderAdmissionPolicy {
+        ProviderAdmissionPolicy::from_price(Some(21_000))
+    }
+
+    #[test]
+    fn provider_admission_drops_priced_no_bid() {
+        let entry = admission_entry("request-no-bid", "buyer-001", None);
+        let store = crate::ledger::PylonProcessedProviderRequestStore::default();
+        let decision = evaluate_provider_admission(
+            &entry,
+            1_760_000_000,
+            &admission_policy(),
+            &BTreeMap::new(),
+            &store,
+            1_760_000_100_000,
+        );
+        assert_eq!(decision, ProviderAdmissionDecision::Drop("missing_bid"));
+    }
+
+    #[test]
+    fn provider_admission_drops_underbid() {
+        let entry = admission_entry("request-underbid", "buyer-001", Some(20_999));
+        let store = crate::ledger::PylonProcessedProviderRequestStore::default();
+        let decision = evaluate_provider_admission(
+            &entry,
+            1_760_000_000,
+            &admission_policy(),
+            &BTreeMap::new(),
+            &store,
+            1_760_000_100_000,
+        );
+        assert_eq!(
+            decision,
+            ProviderAdmissionDecision::Drop("bid_below_price_floor")
+        );
+    }
+
+    #[test]
+    fn provider_admission_drops_stale_request() {
+        let entry = admission_entry("request-stale", "buyer-001", Some(21_000));
+        let store = crate::ledger::PylonProcessedProviderRequestStore::default();
+        let decision = evaluate_provider_admission(
+            &entry,
+            0,
+            &admission_policy(),
+            &BTreeMap::new(),
+            &store,
+            1_760_000_100_000,
+        );
+        assert_eq!(decision, ProviderAdmissionDecision::Drop("stale_request"));
+    }
+
+    #[test]
+    fn provider_admission_defers_when_default_max_inflight_is_full() {
+        let entry = admission_entry("request-capacity", "buyer-002", Some(21_000));
+        let mut active_job = PylonLedgerJob::new(
+            "active-request",
+            "provider",
+            ANNOUNCEMENT_KIND_TEXT_GENERATION,
+            "processing_local",
+        );
+        active_job.customer_pubkey = Some("buyer-001".to_string());
+        let known_jobs = BTreeMap::from([(active_job.id.clone(), active_job)]);
+        let store = crate::ledger::PylonProcessedProviderRequestStore::default();
+        let decision = evaluate_provider_admission(
+            &entry,
+            1_760_000_000,
+            &admission_policy(),
+            &known_jobs,
+            &store,
+            1_760_000_100_000,
+        );
+        assert_eq!(decision, ProviderAdmissionDecision::Defer("max_inflight"));
+    }
+
+    #[test]
+    fn provider_admission_defers_when_buyer_limit_is_full() {
+        let entry = admission_entry("request-buyer-limit", "buyer-001", Some(21_000));
+        let mut store = crate::ledger::PylonProcessedProviderRequestStore::default();
+        store.remember_admission_lease(
+            "leased-request",
+            "buyer-001",
+            "admitted",
+            1_760_000_200_000,
+        );
+        let policy = ProviderAdmissionPolicy {
+            max_inflight: 2,
+            ..admission_policy()
+        };
+        let decision = evaluate_provider_admission(
+            &entry,
+            1_760_000_000,
+            &policy,
+            &BTreeMap::new(),
+            &store,
+            1_760_000_100_000,
+        );
+        assert_eq!(decision, ProviderAdmissionDecision::Defer("buyer_limit"));
+    }
+
+    #[test]
+    fn provider_admission_lease_survives_reload_and_blocks_duplicate_accept() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config_path = dir.path().join("config.json");
+        crate::ledger::mutate_processed_provider_request_store(config_path.as_path(), |store| {
+            store.remember_admission_lease(
+                "request-lease",
+                "buyer-001",
+                "admitted",
+                1_760_000_200_000,
+            );
+            Ok(())
+        })
+        .expect("write admission lease");
+
+        let store = crate::ledger::load_processed_provider_request_store(config_path.as_path())
+            .expect("load admission lease");
+        assert!(store.has_active_admission_lease("request-lease", 1_760_000_100_000));
+    }
 }
