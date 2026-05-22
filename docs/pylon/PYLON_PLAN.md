@@ -193,6 +193,10 @@ Current implementation status:
 - Pylon local withdrawal now sends from the contributor's built-in wallet for
   BOLT11, BOLT12, BIP21, and direct on-chain targets. BIP353 remains an explicit
   unavailable state until the selected LDK runtime exposes name resolution.
+- Pylon wallet history now projects LDK Node payment records into the local
+  ledger, carries payment hashes, txids, Nexus operation IDs, local receipt IDs,
+  and typed failure codes where known, and keeps repeated sync/history runs
+  idempotent.
 
 Pylon must remain a provider connector and local contributor wallet. It should
 not own Nexus treasury keys, run the hosted treasury LDK node, or become a

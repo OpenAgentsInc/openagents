@@ -136,8 +136,8 @@ pub use ledger::{
     PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerPayout, PylonLedgerSummary,
     PylonRelayActivity, PylonRelayConfigSnapshot, PylonRelayState, PylonSettlementRecord,
     PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletLedger,
-    PylonWalletPaymentRecord, default_ledger_path, ensure_local_ledger, load_ledger,
-    load_ledger_summary, mutate_ledger, save_ledger,
+    PylonWalletPaymentRecord, PylonWalletReceiptRecord, default_ledger_path, ensure_local_ledger,
+    load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
     AnnouncementAction, AnnouncementReport, BuyerJobHistoryReport, BuyerJobPaymentReport,
@@ -27819,6 +27819,8 @@ async fn sync_provider_payout_target(
         },
     )
     .map_err(anyhow::Error::msg)?;
+    let registration_receipt =
+        wallet_registration_receipt(session_id, &challenge.challenge, &registration_target);
     let _: Value = post_nexus_json(
         client,
         config,
@@ -27843,7 +27845,47 @@ async fn sync_provider_payout_target(
         "payout-target register",
     )
     .await?;
+    mutate_ledger(config_path, |ledger| {
+        ledger.upsert_wallet_receipt(registration_receipt);
+        Ok(())
+    })?;
     Ok(())
+}
+
+fn wallet_registration_receipt(
+    session_id: &str,
+    challenge: &str,
+    target: &ProviderWalletRegistrationTarget,
+) -> PylonWalletReceiptRecord {
+    let now_ms = now_epoch_ms() as u64;
+    PylonWalletReceiptRecord {
+        receipt_id: format!(
+            "wallet:registration:{session_id}:{}:{}",
+            target.wallet_runtime_kind, target.payment_target_kind
+        ),
+        receipt_type: "wallet.registration.v1".to_string(),
+        status: "registered".to_string(),
+        direction: None,
+        method: Some(target.payment_target_kind.clone()),
+        amount_sats: None,
+        fees_sats: None,
+        payment_id: None,
+        payment_hash: None,
+        txid: None,
+        operation_id: Some(session_id.to_string()),
+        settlement_id: None,
+        failure_code: None,
+        detail: Some(format!(
+            "{} {} target registered for {} on {} via challenge {}",
+            target.wallet_registration_mode,
+            target.payment_target_kind,
+            target.wallet_runtime_kind,
+            target.wallet_network,
+            challenge
+        )),
+        created_at_ms: now_ms,
+        updated_at_ms: now_ms,
+    }
 }
 
 fn parse_positive_env_u64(name: &str) -> Option<u64> {
@@ -49165,6 +49207,19 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 .as_str()
                 .is_some_and(|value| !value.is_empty()),
             "registered payout target should include a signed challenge proof",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        ensure(
+            ledger.wallet.receipts.iter().any(|receipt| {
+                receipt.receipt_type == "wallet.registration.v1"
+                    && receipt.status == "registered"
+                    && receipt.operation_id.as_deref() == Some("session-payout")
+                    && receipt.method.as_deref() == requests[1].1["payment_target_kind"].as_str()
+                    && receipt.payment_hash.is_none()
+                    && receipt.txid.is_none()
+            }),
+            "wallet registration should persist a local receipt without payment secrets",
         )
     }
 
@@ -52268,6 +52323,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     method: "lightning".to_string(),
                     description: Some("buyer invoice approval".to_string()),
                     invoice: Some(bolt11.to_string()),
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: 1_762_100_000_000,
                     updated_at_ms: 1_762_100_000_000,
                 },
@@ -52400,6 +52460,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     method: "lightning".to_string(),
                     description: Some("buyer auto pay".to_string()),
                     invoice: Some(bolt11.to_string()),
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: 1_762_100_100_000,
                     updated_at_ms: 1_762_100_100_000,
                 },
@@ -52637,6 +52702,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     method: "lightning".to_string(),
                     description: Some("provider withdrawal".to_string()),
                     invoice: Some(bolt11.to_string()),
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: 1_762_200_000_000,
                     updated_at_ms: 1_762_200_000_000,
                 },
@@ -53646,6 +53716,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 method: "lightning".to_string(),
                 description: Some("pylon nip90 run-job-pay-002".to_string()),
                 invoice: Some("lnbc21000n1pyloninvoice".to_string()),
+                payment_hash: None,
+                txid: None,
+                operation_id: None,
+                receipt_id: None,
+                failure_code: None,
                 created_at_ms: 1_762_000_120_000,
                 updated_at_ms: 1_762_000_120_000,
             }])
@@ -55357,6 +55432,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     method: "lightning".to_string(),
                     description: None,
                     invoice: None,
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: current_day_start + 1_000,
                     updated_at_ms: current_day_start + 80_000,
                 },
@@ -55369,6 +55449,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     method: "lightning".to_string(),
                     description: None,
                     invoice: None,
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: current_day_start.saturating_sub(86_400_000) + 2_000,
                     updated_at_ms: current_day_start + 90_000,
                 },

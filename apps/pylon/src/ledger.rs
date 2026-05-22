@@ -11,6 +11,7 @@ const MAX_ANNOUNCEMENTS: usize = 32;
 const MAX_JOBS: usize = 256;
 const MAX_INVOICES: usize = 128;
 const MAX_PAYMENTS: usize = 256;
+const MAX_WALLET_RECEIPTS: usize = 512;
 const MAX_PAYOUTS: usize = 128;
 const MAX_SETTLEMENTS: usize = 256;
 const MAX_PROCESSED_PROVIDER_REQUESTS: usize = 16_384;
@@ -23,6 +24,7 @@ pub struct PylonLedgerSummary {
     pub job_count: usize,
     pub invoice_count: usize,
     pub payment_count: usize,
+    pub wallet_receipt_count: usize,
     pub settlement_count: usize,
 }
 
@@ -288,6 +290,36 @@ pub struct PylonWalletPaymentRecord {
     pub method: String,
     pub description: Option<String>,
     pub invoice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub txid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonWalletReceiptRecord {
+    pub receipt_id: String,
+    pub receipt_type: String,
+    pub status: String,
+    pub direction: Option<String>,
+    pub method: Option<String>,
+    pub amount_sats: Option<u64>,
+    pub fees_sats: Option<u64>,
+    pub payment_id: Option<String>,
+    pub payment_hash: Option<String>,
+    pub txid: Option<String>,
+    pub operation_id: Option<String>,
+    pub settlement_id: Option<String>,
+    pub failure_code: Option<String>,
+    pub detail: Option<String>,
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
 }
@@ -331,6 +363,8 @@ pub struct PylonWalletLedger {
     pub credits: PylonWalletCreditSummary,
     pub invoices: Vec<PylonWalletInvoiceRecord>,
     pub payments: Vec<PylonWalletPaymentRecord>,
+    #[serde(default)]
+    pub receipts: Vec<PylonWalletReceiptRecord>,
 }
 
 impl Default for PylonWalletLedger {
@@ -349,6 +383,7 @@ impl Default for PylonWalletLedger {
             credits: PylonWalletCreditSummary::default(),
             invoices: Vec::new(),
             payments: Vec::new(),
+            receipts: Vec::new(),
         }
     }
 }
@@ -412,6 +447,7 @@ impl PylonLedger {
             job_count: self.jobs.len(),
             invoice_count: self.wallet.invoices.len(),
             payment_count: self.wallet.payments.len(),
+            wallet_receipt_count: self.wallet.receipts.len(),
             settlement_count: self.settlements.len(),
         }
     }
@@ -503,6 +539,7 @@ impl PylonLedger {
     }
 
     pub fn upsert_wallet_payment(&mut self, mut payment: PylonWalletPaymentRecord) {
+        hydrate_wallet_payment_reconciliation_fields(&mut payment);
         payment.updated_at_ms = now_epoch_ms();
         if let Some(existing) = self
             .wallet
@@ -511,18 +548,44 @@ impl PylonLedger {
             .find(|existing| existing.payment_id == payment.payment_id)
         {
             let created_at_ms = existing.created_at_ms;
+            preserve_wallet_payment_metadata(existing, &mut payment);
+            let receipt = wallet_receipt_from_payment(&payment);
             *existing = payment;
             existing.created_at_ms = created_at_ms;
+            self.upsert_wallet_receipt(receipt);
             return;
         }
+        let receipt = wallet_receipt_from_payment(&payment);
         self.wallet.payments.push(payment);
         self.wallet
             .payments
             .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
         trim_tail(&mut self.wallet.payments, MAX_PAYMENTS);
+        self.upsert_wallet_receipt(receipt);
+    }
+
+    pub fn upsert_wallet_receipt(&mut self, mut receipt: PylonWalletReceiptRecord) {
+        receipt.updated_at_ms = now_epoch_ms();
+        if let Some(existing) = self
+            .wallet
+            .receipts
+            .iter_mut()
+            .find(|existing| existing.receipt_id == receipt.receipt_id)
+        {
+            let created_at_ms = existing.created_at_ms;
+            *existing = receipt;
+            existing.created_at_ms = created_at_ms;
+            return;
+        }
+        self.wallet.receipts.push(receipt);
+        self.wallet
+            .receipts
+            .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
+        trim_tail(&mut self.wallet.receipts, MAX_WALLET_RECEIPTS);
     }
 
     pub fn upsert_settlement(&mut self, mut settlement: PylonSettlementRecord) {
+        let receipt = wallet_receipt_from_settlement(&settlement);
         settlement.updated_at_ms = now_epoch_ms();
         if let Some(existing) = self
             .settlements
@@ -532,12 +595,14 @@ impl PylonLedger {
             let created_at_ms = existing.created_at_ms;
             *existing = settlement;
             existing.created_at_ms = created_at_ms;
+            self.upsert_wallet_receipt(receipt);
             return;
         }
         self.settlements.push(settlement);
         self.settlements
             .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
         trim_tail(&mut self.settlements, MAX_SETTLEMENTS);
+        self.upsert_wallet_receipt(receipt);
     }
 
     pub fn upsert_payout(&mut self, mut payout: PylonLedgerPayout) {
@@ -683,6 +748,151 @@ where
     Ok(value)
 }
 
+fn hydrate_wallet_payment_reconciliation_fields(payment: &mut PylonWalletPaymentRecord) {
+    if payment.receipt_id.is_none() {
+        payment.receipt_id = Some(wallet_payment_receipt_id(payment));
+    }
+    if payment.failure_code.is_none() && wallet_payment_is_failed(payment) {
+        payment.failure_code = wallet_failure_code(payment);
+    }
+}
+
+fn preserve_wallet_payment_metadata(
+    existing: &PylonWalletPaymentRecord,
+    incoming: &mut PylonWalletPaymentRecord,
+) {
+    if incoming.description.is_none() {
+        incoming.description = existing.description.clone();
+    }
+    if incoming.invoice.is_none() {
+        incoming.invoice = existing.invoice.clone();
+    }
+    if incoming.payment_hash.is_none() {
+        incoming.payment_hash = existing.payment_hash.clone();
+    }
+    if incoming.txid.is_none() {
+        incoming.txid = existing.txid.clone();
+    }
+    if incoming.operation_id.is_none() {
+        incoming.operation_id = existing.operation_id.clone();
+    }
+    if incoming.receipt_id.is_none() {
+        incoming.receipt_id = existing.receipt_id.clone();
+    }
+    if incoming.failure_code.is_none() {
+        incoming.failure_code = existing.failure_code.clone();
+    }
+}
+
+fn wallet_receipt_from_payment(payment: &PylonWalletPaymentRecord) -> PylonWalletReceiptRecord {
+    let now = now_epoch_ms();
+    PylonWalletReceiptRecord {
+        receipt_id: payment
+            .receipt_id
+            .clone()
+            .unwrap_or_else(|| wallet_payment_receipt_id(payment)),
+        receipt_type: wallet_payment_receipt_type(payment),
+        status: payment.status.clone(),
+        direction: Some(payment.direction.clone()),
+        method: Some(payment.method.clone()),
+        amount_sats: Some(payment.amount_sats),
+        fees_sats: Some(payment.fees_sats),
+        payment_id: Some(payment.payment_id.clone()),
+        payment_hash: payment.payment_hash.clone(),
+        txid: payment.txid.clone(),
+        operation_id: payment.operation_id.clone(),
+        settlement_id: None,
+        failure_code: payment
+            .failure_code
+            .clone()
+            .or_else(|| wallet_failure_code(payment)),
+        detail: payment.description.clone(),
+        created_at_ms: payment.created_at_ms,
+        updated_at_ms: now,
+    }
+}
+
+fn wallet_receipt_from_settlement(settlement: &PylonSettlementRecord) -> PylonWalletReceiptRecord {
+    PylonWalletReceiptRecord {
+        receipt_id: format!("wallet:settlement:{}", settlement.settlement_id),
+        receipt_type: "wallet.settlement.accepted_work.v1".to_string(),
+        status: settlement.status.clone(),
+        direction: Some(settlement.direction.clone()),
+        method: Some("settlement".to_string()),
+        amount_sats: Some(settlement.amount_msats / 1_000),
+        fees_sats: None,
+        payment_id: settlement.payment_reference.clone(),
+        payment_hash: None,
+        txid: None,
+        operation_id: Some(settlement.job_id.clone()),
+        settlement_id: Some(settlement.settlement_id.clone()),
+        failure_code: wallet_settlement_failure_code(settlement),
+        detail: settlement.receipt_detail.clone(),
+        created_at_ms: settlement.created_at_ms,
+        updated_at_ms: settlement.updated_at_ms,
+    }
+}
+
+fn wallet_payment_receipt_id(payment: &PylonWalletPaymentRecord) -> String {
+    format!(
+        "wallet:{}:{}",
+        wallet_payment_receipt_type(payment),
+        payment.payment_id
+    )
+}
+
+fn wallet_payment_receipt_type(payment: &PylonWalletPaymentRecord) -> String {
+    if wallet_payment_is_failed(payment) {
+        return "wallet.payment.failed.v1".to_string();
+    }
+    if payment.direction.eq_ignore_ascii_case("receive") {
+        return "wallet.payment.receive.v1".to_string();
+    }
+    if payment.method.eq_ignore_ascii_case("onchain") {
+        return "wallet.payment.withdrawal.v1".to_string();
+    }
+    "wallet.payment.send.v1".to_string()
+}
+
+fn wallet_payment_is_failed(payment: &PylonWalletPaymentRecord) -> bool {
+    matches!(
+        payment.status.to_ascii_lowercase().as_str(),
+        "failed" | "failure" | "error" | "rejected"
+    )
+}
+
+fn wallet_failure_code(payment: &PylonWalletPaymentRecord) -> Option<String> {
+    if !wallet_payment_is_failed(payment) {
+        return None;
+    }
+    payment
+        .description
+        .as_deref()
+        .and_then(first_failure_code)
+        .or_else(|| Some("wallet_payment_failed".to_string()))
+}
+
+fn wallet_settlement_failure_code(settlement: &PylonSettlementRecord) -> Option<String> {
+    if !matches!(
+        settlement.status.to_ascii_lowercase().as_str(),
+        "failed" | "failure" | "error" | "rejected"
+    ) {
+        return None;
+    }
+    settlement
+        .receipt_detail
+        .as_deref()
+        .and_then(first_failure_code)
+        .or_else(|| Some("wallet_settlement_failed".to_string()))
+}
+
+fn first_failure_code(value: &str) -> Option<String> {
+    let code = value
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .find(|part| !part.is_empty())?;
+    Some(code.to_ascii_lowercase())
+}
+
 fn trim_tail<T>(entries: &mut Vec<T>, limit: usize) {
     if entries.len() > limit {
         entries.truncate(limit);
@@ -809,6 +1019,11 @@ mod tests {
                 method: String::from("lightning"),
                 description: Some(String::from("test")),
                 invoice: Some(String::from("lnbc1example")),
+                payment_hash: None,
+                txid: None,
+                operation_id: None,
+                receipt_id: None,
+                failure_code: None,
                 created_at_ms: 4,
                 updated_at_ms: 4,
             });
@@ -840,6 +1055,7 @@ mod tests {
         assert_eq!(ledger.jobs.len(), 1);
         assert_eq!(ledger.wallet.invoices.len(), 1);
         assert_eq!(ledger.wallet.payments.len(), 1);
+        assert_eq!(ledger.wallet.receipts.len(), 2);
         assert_eq!(ledger.settlements.len(), 1);
 
         let summary = load_ledger_summary(config_path.as_path()).expect("ledger summary");
@@ -849,6 +1065,7 @@ mod tests {
         assert_eq!(summary.job_count, 1);
         assert_eq!(summary.invoice_count, 1);
         assert_eq!(summary.payment_count, 1);
+        assert_eq!(summary.wallet_receipt_count, 2);
         assert_eq!(summary.settlement_count, 1);
     }
 
@@ -881,6 +1098,96 @@ mod tests {
                 .status,
             "settled"
         );
+    }
+
+    #[test]
+    fn wallet_payment_and_settlement_receipts_are_idempotent_and_typed() {
+        let mut ledger = PylonLedger::default();
+        ledger.upsert_wallet_payment(PylonWalletPaymentRecord {
+            payment_id: "payment-hash-001".to_string(),
+            direction: "receive".to_string(),
+            status: "pending".to_string(),
+            amount_sats: 21,
+            fees_sats: 0,
+            method: "bolt11".to_string(),
+            description: Some("ldk_node BOLT11 payment".to_string()),
+            invoice: None,
+            payment_hash: Some("hash001".to_string()),
+            txid: None,
+            operation_id: Some("nexus-op-001".to_string()),
+            receipt_id: None,
+            failure_code: None,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        });
+        ledger.upsert_wallet_payment(PylonWalletPaymentRecord {
+            payment_id: "payment-hash-001".to_string(),
+            direction: "receive".to_string(),
+            status: "succeeded".to_string(),
+            amount_sats: 21,
+            fees_sats: 0,
+            method: "bolt11".to_string(),
+            description: None,
+            invoice: None,
+            payment_hash: Some("hash001".to_string()),
+            txid: None,
+            operation_id: Some("nexus-op-001".to_string()),
+            receipt_id: None,
+            failure_code: None,
+            created_at_ms: 2,
+            updated_at_ms: 2,
+        });
+        assert_eq!(ledger.wallet.payments.len(), 1);
+        assert_eq!(ledger.wallet.receipts.len(), 1);
+        let receipt = ledger.wallet.receipts.first().expect("wallet receipt");
+        assert_eq!(receipt.receipt_type, "wallet.payment.receive.v1");
+        assert_eq!(receipt.status, "succeeded");
+        assert_eq!(receipt.payment_hash.as_deref(), Some("hash001"));
+        assert_eq!(receipt.operation_id.as_deref(), Some("nexus-op-001"));
+        assert_eq!(
+            ledger.wallet.payments[0].description.as_deref(),
+            Some("ldk_node BOLT11 payment")
+        );
+
+        ledger.upsert_wallet_payment(PylonWalletPaymentRecord {
+            payment_id: "failed-001".to_string(),
+            direction: "send".to_string(),
+            status: "failed".to_string(),
+            amount_sats: 34,
+            fees_sats: 0,
+            method: "bolt12".to_string(),
+            description: Some("ldk_wallet_send_failed: route not found".to_string()),
+            invoice: None,
+            payment_hash: None,
+            txid: None,
+            operation_id: None,
+            receipt_id: None,
+            failure_code: None,
+            created_at_ms: 3,
+            updated_at_ms: 3,
+        });
+        assert!(ledger.wallet.receipts.iter().any(|receipt| {
+            receipt.receipt_type == "wallet.payment.failed.v1"
+                && receipt.failure_code.as_deref() == Some("ldk_wallet_send_failed")
+        }));
+
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: "settlement-001".to_string(),
+            job_id: "nexus-op-001".to_string(),
+            direction: "provider".to_string(),
+            status: "payment_received".to_string(),
+            amount_msats: 21_000,
+            payment_reference: Some("payment-hash-001".to_string()),
+            receipt_detail: Some("invoice completed in local wallet".to_string()),
+            created_at_ms: 4,
+            updated_at_ms: 4,
+        });
+        assert!(ledger.wallet.receipts.iter().any(|receipt| {
+            receipt.receipt_type == "wallet.settlement.accepted_work.v1"
+                && receipt.operation_id.as_deref() == Some("nexus-op-001")
+                && receipt.payment_id.as_deref() == Some("payment-hash-001")
+                && receipt.settlement_id.as_deref() == Some("settlement-001")
+        }));
     }
 
     #[test]

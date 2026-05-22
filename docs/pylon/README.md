@@ -1160,6 +1160,12 @@ protected. The external-target runtime is retained only as an explicit
 migration override; in that mode address, invoice, pay, and withdraw commands
 still fail honestly because Pylon is only tracking an externally supplied
 payment target.
+`wallet history --json` opens the LDK payment store, projects inbound,
+outbound, pending, succeeded, failed, Lightning, and on-chain records into the
+local ledger, and returns the matching wallet receipt rows. Re-running history
+or sync is idempotent: the same LDK `payment_id`, payment hash, txid, Nexus
+operation ID, and local receipt ID update the existing row instead of creating
+duplicates.
 - TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|lock`
 
@@ -1358,7 +1364,9 @@ require an amount from `--amount-sats` or a BIP21 `amount=` field and are refuse
 before broadcast when the request would exceed spendable on-chain balance after
 retaining anchor reserve. BIP353 names are rejected with an explicit
 `bip353_send_unavailable` error until the selected LDK runtime exposes native
-name resolution.
+name resolution. `wallet history --json` includes both projected payments and
+wallet receipts, with no preimages, mnemonic words, raw node entropy, or private
+channel state.
 In the explicit `external_target` migration override, local address, invoice,
 pay, and payout withdrawal commands may report that the local wallet runtime is
 unavailable.
@@ -1501,6 +1509,6 @@ The retained NIP-90 and wallet verification lane is local and explicit.
 `scripts/pylon/verify_nip90_wallet.sh` sets a fresh standalone Pylon home to
 `wallet_network=regtest`, checks the retained headless report commands, and then
 runs the focused local websocket-relay and wallet-hook tests that cover provider
-intake, buyer submit/watch/pay, wallet send guards, failed-send receipts, payout
-persistence, and retained activity replay. It does not claim a live funded
-Spark regtest backend.
+intake, buyer submit/watch/pay, wallet send guards, payment projection,
+failed-send receipts, payout persistence, and retained activity replay. It does
+not claim a live funded Spark regtest backend.

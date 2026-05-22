@@ -11,12 +11,16 @@ use ldk_node::bitcoin::{Address as LdkBitcoinAddress, Network as LdkBitcoinNetwo
 use ldk_node::lightning::ln::channelmanager::PaymentId as LdkPaymentId;
 use ldk_node::lightning::offers::offer::{Amount as LdkOfferAmount, Offer as LdkOffer};
 use ldk_node::lightning_invoice::{Bolt11Invoice, Bolt11InvoiceDescription, Description};
+use ldk_node::payment::{
+    PaymentDetails as LdkPaymentDetails, PaymentDirection as LdkPaymentDirection,
+    PaymentKind as LdkPaymentKind, PaymentStatus as LdkPaymentStatus,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
     PylonLedger, PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
-    ensure_local_setup, load_ledger, mutate_ledger, now_epoch_ms,
+    PylonWalletReceiptRecord, ensure_local_setup, load_ledger, mutate_ledger, now_epoch_ms,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -233,6 +237,7 @@ pub struct WalletPayReport {
 pub struct WalletHistoryReport {
     pub runtime: WalletRuntimeSurface,
     pub payments: Vec<PylonWalletPaymentRecord>,
+    pub receipts: Vec<PylonWalletReceiptRecord>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -730,6 +735,11 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
             method: "lightning".to_string(),
             description: Some("mock wallet payment".to_string()),
             invoice: Some(payment_request.to_string()),
+            payment_hash: None,
+            txid: None,
+            operation_id: None,
+            receipt_id: None,
+            failure_code: None,
             created_at_ms: now,
             updated_at_ms: now,
         };
@@ -771,6 +781,11 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
             method: "lightning".to_string(),
             description: Some("mock wallet receive".to_string()),
             invoice: Some("lnbc1000mockpyloninvoice".to_string()),
+            payment_hash: None,
+            txid: None,
+            operation_id: None,
+            receipt_id: None,
+            failure_code: None,
             created_at_ms: now,
             updated_at_ms: now,
         }])
@@ -899,7 +914,7 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
             runtime_detail,
             ldk_node: Some(ldk_node),
             balance: self.balance(ledger)?,
-            recent_payments: ledger_payments(ledger, include_recent_payments.then_some(10)),
+            recent_payments: self.list_payments(ledger, include_recent_payments.then_some(10))?,
         })
     }
 
@@ -1061,7 +1076,19 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
         ledger: &PylonLedger,
         limit: Option<u32>,
     ) -> Result<Vec<PylonWalletPaymentRecord>> {
-        Ok(ledger_payments(ledger, limit.map(|value| value as usize)))
+        let ldk_payments = self
+            .with_node(|node| {
+                node.list_payments()
+                    .into_iter()
+                    .map(ldk_payment_details_to_wallet_record)
+                    .collect::<Vec<_>>()
+            })?
+            .unwrap_or_default();
+        Ok(merge_wallet_payment_records(
+            ledger_payments(ledger, None),
+            ldk_payments,
+            limit.map(|value| value as usize),
+        ))
     }
 
     fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
@@ -1351,6 +1378,9 @@ impl LdkNodeWalletRuntime {
     ) -> Result<WalletPayReport> {
         let now = now_epoch_ms() as u64;
         let post_balance = self.node_balance_snapshot().unwrap_or_default();
+        let txid = method
+            .eq_ignore_ascii_case("onchain")
+            .then(|| payment_id.clone());
         let payment = PylonWalletPaymentRecord {
             payment_id: payment_id.clone(),
             direction: "send".to_string(),
@@ -1360,6 +1390,11 @@ impl LdkNodeWalletRuntime {
             method: method.to_string(),
             description,
             invoice,
+            payment_hash: None,
+            txid,
+            operation_id: None,
+            receipt_id: None,
+            failure_code: None,
             created_at_ms: now,
             updated_at_ms: now,
         };
@@ -1521,6 +1556,120 @@ fn ledger_payments(ledger: &PylonLedger, limit: Option<usize>) -> Vec<PylonWalle
         .collect()
 }
 
+fn merge_wallet_payment_records(
+    mut ledger_payments: Vec<PylonWalletPaymentRecord>,
+    runtime_payments: Vec<PylonWalletPaymentRecord>,
+    limit: Option<usize>,
+) -> Vec<PylonWalletPaymentRecord> {
+    for runtime_payment in runtime_payments {
+        if let Some(existing) = ledger_payments
+            .iter_mut()
+            .find(|payment| payment.payment_id == runtime_payment.payment_id)
+        {
+            let created_at_ms = existing.created_at_ms;
+            let mut merged = runtime_payment;
+            if merged.description.is_none() {
+                merged.description = existing.description.clone();
+            }
+            if merged.invoice.is_none() {
+                merged.invoice = existing.invoice.clone();
+            }
+            if merged.operation_id.is_none() {
+                merged.operation_id = existing.operation_id.clone();
+            }
+            if merged.receipt_id.is_none() {
+                merged.receipt_id = existing.receipt_id.clone();
+            }
+            *existing = merged;
+            existing.created_at_ms = created_at_ms;
+        } else {
+            ledger_payments.push(runtime_payment);
+        }
+    }
+    ledger_payments.sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
+    if let Some(limit) = limit {
+        ledger_payments.truncate(limit);
+    }
+    ledger_payments
+}
+
+fn ldk_payment_details_to_wallet_record(details: LdkPaymentDetails) -> PylonWalletPaymentRecord {
+    let (method, payment_hash, txid, detail) = ldk_payment_kind_metadata(&details.kind);
+    let status = match details.status {
+        LdkPaymentStatus::Pending => "pending",
+        LdkPaymentStatus::Succeeded => "succeeded",
+        LdkPaymentStatus::Failed => "failed",
+    };
+    let direction = match details.direction {
+        LdkPaymentDirection::Inbound => "receive",
+        LdkPaymentDirection::Outbound => "send",
+    };
+    let updated_at_ms = details.latest_update_timestamp.saturating_mul(1_000);
+    let payment_id = payment_id_to_string(details.id);
+    let receipt_id = Some(format!("wallet:ldk_node:{method}:{payment_id}"));
+    PylonWalletPaymentRecord {
+        payment_id,
+        direction: direction.to_string(),
+        status: status.to_string(),
+        amount_sats: details.amount_msat.map(msat_to_sats).unwrap_or_default(),
+        fees_sats: details.fee_paid_msat.map(msat_to_sats).unwrap_or_default(),
+        method,
+        description: detail,
+        invoice: None,
+        payment_hash,
+        txid,
+        operation_id: None,
+        receipt_id,
+        failure_code: matches!(details.status, LdkPaymentStatus::Failed)
+            .then(|| "ldk_payment_failed".to_string()),
+        created_at_ms: updated_at_ms,
+        updated_at_ms,
+    }
+}
+
+fn ldk_payment_kind_metadata(
+    kind: &LdkPaymentKind,
+) -> (String, Option<String>, Option<String>, Option<String>) {
+    match kind {
+        LdkPaymentKind::Onchain { txid, .. } => (
+            "onchain".to_string(),
+            None,
+            Some(txid.to_string()),
+            Some("ldk_node on-chain payment".to_string()),
+        ),
+        LdkPaymentKind::Bolt11 { hash, .. } => (
+            "bolt11".to_string(),
+            Some(hex::encode(hash.0)),
+            None,
+            Some("ldk_node BOLT11 payment".to_string()),
+        ),
+        LdkPaymentKind::Bolt11Jit { hash, .. } => (
+            "bolt11_jit".to_string(),
+            Some(hex::encode(hash.0)),
+            None,
+            Some("ldk_node BOLT11 JIT payment".to_string()),
+        ),
+        LdkPaymentKind::Bolt12Offer { hash, offer_id, .. } => (
+            "bolt12".to_string(),
+            hash.as_ref().map(|hash| hex::encode(hash.0)),
+            None,
+            Some(format!("ldk_node BOLT12 offer payment {offer_id}")),
+        ),
+        LdkPaymentKind::Bolt12Refund { hash, .. } => (
+            "bolt12_refund".to_string(),
+            hash.as_ref().map(|hash| hex::encode(hash.0)),
+            None,
+            Some("ldk_node BOLT12 refund payment".to_string()),
+        ),
+        LdkPaymentKind::Spontaneous { hash, .. } => (
+            "keysend".to_string(),
+            Some(hex::encode(hash.0)),
+            None,
+            Some("ldk_node spontaneous payment".to_string()),
+        ),
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct BitcoinUriParts {
     address: String,
@@ -1677,6 +1826,13 @@ fn infer_payment_request_amount_sats(payment_request: &str) -> Option<u64> {
     None
 }
 
+fn first_failure_code(error: &str) -> Option<String> {
+    let code = error
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .find(|part| !part.is_empty())?;
+    Some(code.to_ascii_lowercase())
+}
+
 fn failed_wallet_payment_record(
     payment_request: &str,
     amount_sats: Option<u64>,
@@ -1698,6 +1854,44 @@ fn failed_wallet_payment_record(
         method: infer_wallet_payment_method(payment_request),
         description: Some(error.to_string()),
         invoice: Some(payment_request.to_string()),
+        payment_hash: None,
+        txid: None,
+        operation_id: None,
+        receipt_id: None,
+        failure_code: first_failure_code(error).or_else(|| Some("wallet_send_failed".to_string())),
+        created_at_ms: now,
+        updated_at_ms: now,
+    }
+}
+
+fn wallet_status_receipt(
+    runtime: &WalletRuntimeSurface,
+    runtime_status: &str,
+    detail: Option<&str>,
+) -> PylonWalletReceiptRecord {
+    let now = now_epoch_ms() as u64;
+    PylonWalletReceiptRecord {
+        receipt_id: format!(
+            "wallet:status:{}:{}",
+            runtime.runtime_kind.id(),
+            runtime.network
+        ),
+        receipt_type: "wallet.status.v1".to_string(),
+        status: runtime_status.to_string(),
+        direction: None,
+        method: Some(runtime.runtime_kind.id().to_string()),
+        amount_sats: None,
+        fees_sats: None,
+        payment_id: None,
+        payment_hash: None,
+        txid: None,
+        operation_id: Some(runtime.node_entropy.derivation_version.clone()),
+        settlement_id: None,
+        failure_code: runtime_status
+            .eq_ignore_ascii_case("error")
+            .then(|| detail.and_then(first_failure_code))
+            .flatten(),
+        detail: detail.map(ToString::to_string),
         created_at_ms: now,
         updated_at_ms: now,
     }
@@ -2247,11 +2441,20 @@ pub async fn load_wallet_history_report(
     limit: Option<u32>,
 ) -> Result<WalletHistoryReport> {
     let context = prepare_wallet_context(config_path)?;
+    context.runtime.start()?;
     let ledger = load_ledger(config_path)?;
     let records = context.runtime.list_payments(&ledger, limit)?;
+    mutate_ledger(config_path, |ledger| {
+        for record in &records {
+            ledger.upsert_wallet_payment(record.clone());
+        }
+        Ok(())
+    })?;
+    let receipts = load_ledger(config_path)?.wallet.receipts;
     Ok(WalletHistoryReport {
         runtime: context.runtime.surface().clone(),
         payments: records,
+        receipts,
     })
 }
 
@@ -2556,6 +2759,7 @@ pub fn render_wallet_history_report(report: &WalletHistoryReport) -> String {
         format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
         format!("payments: {}", report.payments.len()),
+        format!("receipts: {}", report.receipts.len()),
     ];
     if report.payments.is_empty() {
         lines.push(String::new());
@@ -2570,6 +2774,15 @@ pub fn render_wallet_history_report(report: &WalletHistoryReport) -> String {
         lines.push(format!("amount_sats: {}", payment.amount_sats));
         lines.push(format!("fees_sats: {}", payment.fees_sats));
         lines.push(format!("method: {}", payment.method));
+        if let Some(receipt_id) = payment.receipt_id.as_deref() {
+            lines.push(format!("receipt_id: {receipt_id}"));
+        }
+        if let Some(operation_id) = payment.operation_id.as_deref() {
+            lines.push(format!("operation_id: {operation_id}"));
+        }
+        if let Some(failure_code) = payment.failure_code.as_deref() {
+            lines.push(format!("failure_code: {failure_code}"));
+        }
         if let Some(description) = payment.description.as_deref() {
             lines.push(format!("description: {description}"));
         }
@@ -3107,6 +3320,7 @@ fn sync_wallet_status(
     payments: &[PylonWalletPaymentRecord],
 ) -> Result<()> {
     mutate_ledger(config_path, |ledger| {
+        let detail_for_receipt = runtime_detail.clone();
         ledger.wallet.runtime_status = Some(runtime_status.to_string());
         ledger.wallet.last_error = runtime_detail;
         ledger.wallet.network = Some(runtime.network.clone());
@@ -3125,6 +3339,11 @@ fn sync_wallet_status(
         for payment in payments {
             ledger.upsert_wallet_payment(payment.clone());
         }
+        ledger.upsert_wallet_receipt(wallet_status_receipt(
+            runtime,
+            runtime_status,
+            detail_for_receipt.as_deref(),
+        ));
         Ok(())
     })
 }
@@ -3318,6 +3537,11 @@ mod tests {
                     method: "lightning".to_string(),
                     description: None,
                     invoice: None,
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: today_created_at_ms,
                     updated_at_ms: yesterday_created_at_ms,
                 },
@@ -3330,6 +3554,11 @@ mod tests {
                     method: "lightning".to_string(),
                     description: None,
                     invoice: None,
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: yesterday_created_at_ms,
                     updated_at_ms: now_ms,
                 },
@@ -3342,6 +3571,11 @@ mod tests {
                     method: "lightning".to_string(),
                     description: None,
                     invoice: None,
+                    payment_hash: None,
+                    txid: None,
+                    operation_id: None,
+                    receipt_id: None,
+                    failure_code: None,
                     created_at_ms: today_created_at_ms,
                     updated_at_ms: today_created_at_ms,
                 },
@@ -3974,6 +4208,56 @@ mod tests {
             payment.invoice.as_deref(),
             Some(invoice.invoice.payment_request.as_str())
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ldk_node_wallet_history_projects_ldk_payments_idempotently() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        config.wallet_network = "regtest".to_string();
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let invoice = create_wallet_invoice_report(config_path.as_path(), 21, None, None)
+            .await
+            .expect("wallet invoice");
+        let payment_hash = invoice
+            .invoice
+            .payment_hash
+            .clone()
+            .expect("invoice payment hash");
+
+        let first_history = load_wallet_history_report(config_path.as_path(), None)
+            .await
+            .expect("first history");
+        let projected = first_history
+            .payments
+            .iter()
+            .find(|payment| payment.payment_hash.as_deref() == Some(payment_hash.as_str()))
+            .expect("ldk payment projection");
+        assert_eq!(projected.direction, "receive");
+        assert_eq!(projected.method, "bolt11");
+        assert_eq!(projected.status, "pending");
+        assert_eq!(projected.amount_sats, 21);
+        assert!(projected.receipt_id.is_some());
+
+        let ledger_after_first =
+            crate::load_ledger(config_path.as_path()).expect("ledger after first history");
+        let payment_count = ledger_after_first.wallet.payments.len();
+        let receipt_count = ledger_after_first.wallet.receipts.len();
+        assert!(ledger_after_first.wallet.receipts.iter().any(|receipt| {
+            receipt.payment_hash.as_deref() == Some(payment_hash.as_str())
+                && receipt.receipt_type == "wallet.payment.receive.v1"
+        }));
+
+        let _second_history = load_wallet_history_report(config_path.as_path(), None)
+            .await
+            .expect("second history");
+        let ledger_after_second =
+            crate::load_ledger(config_path.as_path()).expect("ledger after second history");
+        assert_eq!(ledger_after_second.wallet.payments.len(), payment_count);
+        assert_eq!(ledger_after_second.wallet.receipts.len(), receipt_count);
     }
 
     #[tokio::test(flavor = "current_thread")]
