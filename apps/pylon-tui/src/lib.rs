@@ -5203,6 +5203,25 @@ async fn render_wallet_command_output(
             let report = pylon::load_wallet_history_report(config_path, *limit).await?;
             Ok(render_wallet_history_output(&report))
         }
+        pylon::WalletSubcommand::BackupExport {
+            path,
+            passphrase_env,
+            include_identity_mnemonic,
+            ..
+        } => {
+            let report = pylon::export_wallet_backup_report(
+                config_path,
+                path.as_path(),
+                passphrase_env.as_deref(),
+                *include_identity_mnemonic,
+            )
+            .await?;
+            Ok(pylon::render_wallet_backup_export_report(&report))
+        }
+        pylon::WalletSubcommand::BackupInspect { path, .. } => {
+            let report = pylon::inspect_wallet_backup_report(path.as_path())?;
+            Ok(pylon::render_wallet_backup_inspect_report(&report))
+        }
         pylon::WalletSubcommand::EntropyStatus { .. } => {
             let report = pylon::load_wallet_entropy_status_report(config_path).await?;
             Ok(pylon::render_wallet_entropy_report(&report))
@@ -5999,6 +6018,8 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
         pylon::WalletSubcommand::Offer { .. } => "Wallet Offer",
         pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
         pylon::WalletSubcommand::History { .. } => "Wallet History",
+        pylon::WalletSubcommand::BackupExport { .. } => "Wallet Backup Export",
+        pylon::WalletSubcommand::BackupInspect { .. } => "Wallet Backup Inspect",
         pylon::WalletSubcommand::EntropyStatus { .. } => "Wallet Entropy",
         pylon::WalletSubcommand::EntropyExport { .. } => "Wallet Entropy Export",
         pylon::WalletSubcommand::EntropyImport { .. } => "Wallet Entropy Import",

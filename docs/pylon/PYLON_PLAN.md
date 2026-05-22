@@ -197,6 +197,10 @@ Current implementation status:
   ledger, carries payment hashes, txids, Nexus operation IDs, local receipt IDs,
   and typed failure codes where known, and keeps repeated sync/history runs
   idempotent.
+- Pylon can now export a single encrypted LDK wallet backup file with a redacted
+  public manifest, scrypt/XChaCha20-Poly1305 encryption, optional all-in-one
+  identity mnemonic inclusion, local backup receipts, and status states for
+  missing, stale, and current backups.
 
 Pylon must remain a provider connector and local contributor wallet. It should
 not own Nexus treasury keys, run the hosted treasury LDK node, or become a

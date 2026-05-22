@@ -1166,8 +1166,18 @@ local ledger, and returns the matching wallet receipt rows. Re-running history
 or sync is idempotent: the same LDK `payment_id`, payment hash, txid, Nexus
 operation ID, and local receipt ID update the existing row instead of creating
 duplicates.
+`wallet backup export <path> --passphrase-env <ENV>` creates one encrypted
+Pylon backup file for the LDK wallet state that the recovery phrase alone cannot
+recreate: LDK node storage, SQLite payment state, backup-staging artifacts,
+registration metadata, network, derivation metadata, and a backup timestamp.
+The encrypted file uses scrypt plus XChaCha20-Poly1305 and only exposes a
+redacted public manifest for inspection. Add `--include-identity-mnemonic` only
+when deliberately creating an all-in-one encrypted backup; the default keeps the
+Pylon recovery phrase out of the file. `wallet backup inspect <path> --json`
+validates the public envelope without a passphrase and without decrypting wallet
+state.
 - TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
-- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|lock`
+- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|backup|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=ldk_node` is the
 default runtime and builds a local self-custodial LDK Node from the one-phrase
@@ -1182,10 +1192,14 @@ is opened, but live chain sync is not started. To start the live node, set
 `wallet_chain_source_kind=electrum` with `wallet_electrum_url`. Optional RGS
 sync is configured with `wallet_rgs_url`. `pylon wallet status --json` reports
 the selected kind as `runtime.runtime_kind` and includes `ldk_node` details such
-as node ID, storage path, redacted storage generation, backup status, chain
-source, running state, sync timestamps, and the last startup/sync error. `pylon
-wallet sync --json` returns the same redacted status payload after asking the
-LDK node to sync when it is running.
+as node ID, storage path, redacted storage generation, backup status, last
+encrypted backup digest, stale-backup warning state, chain source, running
+state, sync timestamps, and the last startup/sync error. `backup_missing` means
+no encrypted backup has been exported yet; `backup_stale` means the last export
+is older than the retained stale window; `backup_current` means a recent export
+is recorded in `backup-manifest.json`. `pylon wallet sync --json` returns the
+same redacted status payload after asking the LDK node to sync when it is
+running.
 
 The default wallet recovery model is one phrase, not two. Pylon derives the
 future LDK Node 64-byte node entropy from the existing Pylon identity mnemonic
@@ -1223,8 +1237,8 @@ Pylon process is using the wallet state and must be stopped first.
 For operator accounting, the bounded retained `ledger.wallet.payments` list is
 not the final source of truth for built-in LDK wallet balances. Current v0.2
 status includes real LDK Node on-chain and Lightning balance totals when the
-local node runtime is selected, but retained earnings still come from the local
-ledger/accounting state until payment-history sync lands.
+local node runtime is selected, and `wallet history --json` projects LDK payment
+records into retained wallet ledger rows and receipts for local accounting.
 
 BOLT11 receive invoices created by the built-in LDK wallet are retained in the
 local ledger with the public payment request, payment hash, runtime kind,
@@ -1348,6 +1362,8 @@ cargo pylon-headless wallet invoice 21 --description "pylon receive"
 cargo pylon-headless wallet offer --amount-sats 21 --description "pylon offer"
 cargo pylon-headless wallet pay <bolt11-or-bolt12> --amount-sats 21 --yes
 cargo pylon-headless wallet history --limit 10
+cargo pylon-headless wallet backup export ./pylon-wallet-backup.json --passphrase-env PYLON_WALLET_BACKUP_PASSPHRASE
+cargo pylon-headless wallet backup inspect ./pylon-wallet-backup.json
 cargo pylon-headless payout --limit 10
 cargo pylon-headless payout withdraw <bolt11-or-bolt12-or-address> --amount-sats 21 --yes
 ```
@@ -1366,7 +1382,10 @@ retaining anchor reserve. BIP353 names are rejected with an explicit
 `bip353_send_unavailable` error until the selected LDK runtime exposes native
 name resolution. `wallet history --json` includes both projected payments and
 wallet receipts, with no preimages, mnemonic words, raw node entropy, or private
-channel state.
+channel state. `wallet backup export` requires a passphrase supplied by
+`--passphrase-env` or `PYLON_WALLET_BACKUP_PASSPHRASE`, writes the encrypted
+artifact with private file permissions, updates redacted backup status, and
+persists a `wallet.backup.export.v1` receipt.
 In the explicit `external_target` migration override, local address, invoice,
 pay, and payout withdrawal commands may report that the local wallet runtime is
 unavailable.

@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -5,6 +6,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use hmac::{Hmac, Mac};
 use ldk_node::Builder as LdkNodeBuilder;
 use ldk_node::bitcoin::{Address as LdkBitcoinAddress, Network as LdkBitcoinNetwork};
@@ -15,6 +18,7 @@ use ldk_node::payment::{
     PaymentDetails as LdkPaymentDetails, PaymentDirection as LdkPaymentDirection,
     PaymentKind as LdkPaymentKind, PaymentStatus as LdkPaymentStatus,
 };
+use scrypt::{Params as ScryptParams, scrypt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -31,6 +35,16 @@ const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1"
 const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
 const WALLET_NODE_ENTROPY_HKDF_SALT: &[u8] = b"openagents-pylon/ldk-node/node-entropy";
 const WALLET_STORAGE_SCHEMA_VERSION: u32 = 1;
+const WALLET_BACKUP_SCHEMA_VERSION: u32 = 1;
+const WALLET_BACKUP_KIND: &str = "pylon.wallet.backup.encrypted.v1";
+const WALLET_BACKUP_PLAINTEXT_KIND: &str = "pylon.wallet.backup.plaintext.v1";
+const WALLET_BACKUP_MANIFEST_KIND: &str = "pylon.wallet.backup_manifest";
+const WALLET_BACKUP_DEFAULT_PASSPHRASE_ENV: &str = "PYLON_WALLET_BACKUP_PASSPHRASE";
+const WALLET_BACKUP_STALE_AFTER_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+const WALLET_BACKUP_SCRYPT_LOG_N: u8 = 15;
+const WALLET_BACKUP_SCRYPT_R: u32 = 8;
+const WALLET_BACKUP_SCRYPT_P: u32 = 1;
+const WALLET_BACKUP_KEY_LEN: usize = 32;
 const DEFAULT_BOLT11_EXPIRY_SECONDS: u32 = 3_600;
 const DEFAULT_RECEIVE_DESCRIPTION: &str = "OpenAgents Pylon receive";
 const SATS_PER_BTC: u64 = 100_000_000;
@@ -107,6 +121,16 @@ pub enum WalletSubcommand {
         limit: Option<u32>,
         json: bool,
     },
+    BackupExport {
+        path: PathBuf,
+        passphrase_env: Option<String>,
+        include_identity_mnemonic: bool,
+        json: bool,
+    },
+    BackupInspect {
+        path: PathBuf,
+        json: bool,
+    },
     EntropyStatus {
         json: bool,
     },
@@ -137,7 +161,7 @@ pub struct WalletRuntimeSurface {
     pub node_entropy: WalletNodeEntropyMetadata,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WalletNodeEntropyMetadata {
     pub source: String,
     pub derivation_version: String,
@@ -195,6 +219,10 @@ pub struct WalletLdkNodeStatus {
     pub backup_status: String,
     pub backup_manifest_present: bool,
     pub backup_artifact_count: usize,
+    pub backup_stale: bool,
+    pub backup_stale_after_ms: u64,
+    pub last_backup_exported_at_ms: Option<u64>,
+    pub last_backup_file_digest: Option<String>,
     pub is_running: bool,
     pub latest_lightning_wallet_sync_timestamp: Option<u64>,
     pub latest_onchain_wallet_sync_timestamp: Option<u64>,
@@ -253,6 +281,112 @@ pub struct WalletEntropyReport {
     pub metadata: WalletNodeEntropyMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WalletBackupExportReport {
+    pub runtime: WalletRuntimeSurface,
+    pub operation: String,
+    pub path: String,
+    pub file_digest: String,
+    pub exported_at_ms: u64,
+    pub backup_status: String,
+    pub manifest: WalletBackupPublicManifest,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WalletBackupInspectReport {
+    pub path: String,
+    pub file_digest: String,
+    pub valid: bool,
+    pub manifest: WalletBackupPublicManifest,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WalletBackupPublicManifest {
+    pub schema_version: u32,
+    pub kind: String,
+    pub exported_at_ms: u64,
+    pub runtime_kind: String,
+    pub network: String,
+    pub wallet_derivation_version: String,
+    pub node_entropy_digest: String,
+    pub storage_generation: String,
+    pub encryption_algorithm: String,
+    pub kdf: String,
+    pub plaintext_manifest_digest: String,
+    pub plaintext_component_count: usize,
+    pub plaintext_total_bytes: u64,
+    pub snapshot_kinds: Vec<String>,
+    pub identity_mnemonic_included: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct WalletBackupEncryptedFile {
+    schema_version: u32,
+    kind: String,
+    public_manifest: WalletBackupPublicManifest,
+    encryption: WalletBackupEncryptionMetadata,
+    ciphertext_hex: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct WalletBackupEncryptionMetadata {
+    algorithm: String,
+    kdf: String,
+    salt_hex: String,
+    nonce_hex: String,
+    scrypt_log_n: u8,
+    scrypt_r: u32,
+    scrypt_p: u32,
+    key_len: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct WalletBackupPlaintextManifest {
+    schema_version: u32,
+    kind: String,
+    exported_at_ms: u64,
+    runtime_kind: String,
+    network: String,
+    wallet_derivation: WalletNodeEntropyMetadata,
+    storage_generation: String,
+    identity_mnemonic_included: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    identity_mnemonic: Option<String>,
+    ldk_storage_snapshot: Vec<WalletBackupSnapshotFile>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct WalletBackupSnapshotFile {
+    relative_path: String,
+    kind: String,
+    size_bytes: u64,
+    sha256: String,
+    content_hex: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct WalletBackupStatusManifest {
+    schema_version: u32,
+    kind: String,
+    status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_exported_at_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_export_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_export_file_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_plaintext_manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_component_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_total_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    encryption_algorithm: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kdf: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1440,8 +1574,7 @@ impl LdkNodeWalletRuntime {
     fn ldk_node_status(&self) -> Result<WalletLdkNodeStatus> {
         let layout =
             wallet_storage_layout_from_root(PathBuf::from(self.surface.storage_dir.as_str()));
-        let backup_manifest_present = layout.backup_manifest_path.is_file();
-        let backup_artifact_count = wallet_backup_artifact_count(&layout)?;
+        let backup_summary = load_wallet_backup_status_summary(&layout)?;
         let status = self.with_node(|node| (node.node_id().to_string(), node.status()))?;
         let (node_id, node_status) = match status {
             Some((node_id, status)) => (Some(node_id), Some(status)),
@@ -1456,9 +1589,13 @@ impl LdkNodeWalletRuntime {
             chain_source_kind: self.settings.chain_source_kind.clone(),
             chain_source_url: self.configured_chain_source_url(),
             rgs_url: self.settings.rgs_url.clone(),
-            backup_status: wallet_backup_status(backup_manifest_present, backup_artifact_count),
-            backup_manifest_present,
-            backup_artifact_count,
+            backup_status: backup_summary.status,
+            backup_manifest_present: backup_summary.manifest_present,
+            backup_artifact_count: backup_summary.artifact_count,
+            backup_stale: backup_summary.stale,
+            backup_stale_after_ms: WALLET_BACKUP_STALE_AFTER_MS,
+            last_backup_exported_at_ms: backup_summary.last_exported_at_ms,
+            last_backup_file_digest: backup_summary.last_file_digest,
             is_running: node_status
                 .as_ref()
                 .map(|status| status.is_running)
@@ -1529,14 +1666,104 @@ fn wallet_backup_artifact_count(layout: &WalletStorageLayout) -> Result<usize> {
     Ok(count)
 }
 
-fn wallet_backup_status(manifest_present: bool, artifact_count: usize) -> String {
-    if artifact_count > 0 {
-        "backup_artifacts_present".to_string()
-    } else if manifest_present {
-        "manifest_ready".to_string()
-    } else {
-        "missing_manifest".to_string()
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct WalletBackupStatusSummary {
+    status: String,
+    manifest_present: bool,
+    artifact_count: usize,
+    stale: bool,
+    last_exported_at_ms: Option<u64>,
+    last_file_digest: Option<String>,
+}
+
+fn load_wallet_backup_status_summary(
+    layout: &WalletStorageLayout,
+) -> Result<WalletBackupStatusSummary> {
+    let manifest_present = layout.backup_manifest_path.is_file();
+    let artifact_count = wallet_backup_artifact_count(layout)?;
+    if !manifest_present {
+        return Ok(WalletBackupStatusSummary {
+            status: "backup_missing_manifest".to_string(),
+            manifest_present,
+            artifact_count,
+            stale: true,
+            last_exported_at_ms: None,
+            last_file_digest: None,
+        });
     }
+    let manifest = read_wallet_backup_status_manifest(layout)?;
+    let now_ms = now_epoch_ms() as u64;
+    let stale = manifest
+        .last_exported_at_ms
+        .map(|exported_at_ms| now_ms.saturating_sub(exported_at_ms) > WALLET_BACKUP_STALE_AFTER_MS)
+        .unwrap_or(true);
+    let status = match (manifest.last_exported_at_ms, stale) {
+        (None, _) => "backup_missing",
+        (Some(_), true) => "backup_stale",
+        (Some(_), false) => "backup_current",
+    }
+    .to_string();
+    Ok(WalletBackupStatusSummary {
+        status,
+        manifest_present,
+        artifact_count,
+        stale,
+        last_exported_at_ms: manifest.last_exported_at_ms,
+        last_file_digest: manifest.last_export_file_digest,
+    })
+}
+
+fn read_wallet_backup_status_manifest(
+    layout: &WalletStorageLayout,
+) -> Result<WalletBackupStatusManifest> {
+    let raw =
+        std::fs::read_to_string(layout.backup_manifest_path.as_path()).with_context(|| {
+            format!(
+                "failed to read wallet backup manifest {}",
+                layout.backup_manifest_path.display()
+            )
+        })?;
+    let mut manifest: WalletBackupStatusManifest = serde_json::from_str(raw.as_str())
+        .with_context(|| {
+            format!(
+                "failed to parse wallet backup manifest {}",
+                layout.backup_manifest_path.display()
+            )
+        })?;
+    if manifest.schema_version == 0 {
+        manifest.schema_version = WALLET_BACKUP_SCHEMA_VERSION;
+    }
+    if manifest.kind.is_empty() {
+        manifest.kind = WALLET_BACKUP_MANIFEST_KIND.to_string();
+    }
+    if manifest.status.is_empty() {
+        manifest.status = "none".to_string();
+    }
+    Ok(manifest)
+}
+
+fn write_wallet_backup_status_manifest(
+    layout: &WalletStorageLayout,
+    report: &WalletBackupExportReport,
+) -> Result<()> {
+    let manifest = WalletBackupStatusManifest {
+        schema_version: WALLET_BACKUP_SCHEMA_VERSION,
+        kind: WALLET_BACKUP_MANIFEST_KIND.to_string(),
+        status: "exported".to_string(),
+        last_exported_at_ms: Some(report.exported_at_ms),
+        last_export_path: Some(report.path.clone()),
+        last_export_file_digest: Some(report.file_digest.clone()),
+        last_plaintext_manifest_digest: Some(report.manifest.plaintext_manifest_digest.clone()),
+        last_component_count: Some(report.manifest.plaintext_component_count),
+        last_total_bytes: Some(report.manifest.plaintext_total_bytes),
+        encryption_algorithm: Some(report.manifest.encryption_algorithm.clone()),
+        kdf: Some(report.manifest.kdf.clone()),
+    };
+    write_private_json(
+        layout.backup_manifest_path.as_path(),
+        &manifest,
+        "wallet backup manifest",
+    )
 }
 
 fn ledger_balance(ledger: &PylonLedger) -> WalletBalanceSnapshot {
@@ -2010,6 +2237,31 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
             }
             Ok(render_wallet_history_report(&report))
         }
+        WalletSubcommand::BackupExport {
+            path,
+            passphrase_env,
+            include_identity_mnemonic,
+            json,
+        } => {
+            let report = export_wallet_backup_report(
+                config_path,
+                path.as_path(),
+                passphrase_env.as_deref(),
+                *include_identity_mnemonic,
+            )
+            .await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_backup_export_report(&report))
+        }
+        WalletSubcommand::BackupInspect { path, json } => {
+            let report = inspect_wallet_backup_report(path.as_path())?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_backup_inspect_report(&report))
+        }
         WalletSubcommand::EntropyStatus { json } => {
             let report = load_wallet_entropy_status_report(config_path).await?;
             if *json {
@@ -2257,9 +2509,67 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
             }
             Ok(WalletSubcommand::History { limit, json })
         }
+        "backup" => parse_wallet_backup_command(args, start_index + 2),
         "entropy" => parse_wallet_entropy_command(args, start_index + 2),
         "lock" => parse_wallet_lock_command(args, start_index + 2),
         other => bail!("unsupported wallet subcommand '{other}'"),
+    }
+}
+
+fn parse_wallet_backup_command(args: &[String], start_index: usize) -> Result<WalletSubcommand> {
+    let action = args
+        .get(start_index)
+        .ok_or_else(|| anyhow!("missing wallet backup action"))?;
+    match action.as_str() {
+        "export" => {
+            let path = args
+                .get(start_index + 1)
+                .ok_or_else(|| anyhow!("missing <path> for wallet backup export"))?;
+            let mut passphrase_env = None;
+            let mut include_identity_mnemonic = false;
+            let mut json = false;
+            let mut index = start_index + 2;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--passphrase-env" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --passphrase-env"))?;
+                        if value.trim().is_empty() {
+                            bail!("--passphrase-env cannot be empty");
+                        }
+                        passphrase_env = Some(value.trim().to_string());
+                        index += 1;
+                    }
+                    "--include-identity-mnemonic" => {
+                        include_identity_mnemonic = true;
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for wallet backup export: {other}"),
+                }
+            }
+            Ok(WalletSubcommand::BackupExport {
+                path: PathBuf::from(path),
+                passphrase_env,
+                include_identity_mnemonic,
+                json,
+            })
+        }
+        "inspect" => {
+            let path = args
+                .get(start_index + 1)
+                .ok_or_else(|| anyhow!("missing <path> for wallet backup inspect"))?;
+            Ok(WalletSubcommand::BackupInspect {
+                path: PathBuf::from(path),
+                json: parse_json_only(args, start_index + 2, "wallet backup inspect")?,
+            })
+        }
+        other => bail!("unsupported wallet backup action '{other}'"),
     }
 }
 
@@ -2514,6 +2824,92 @@ pub async fn import_wallet_entropy_report(
     })
 }
 
+pub async fn export_wallet_backup_report(
+    config_path: &Path,
+    export_path: &Path,
+    passphrase_env: Option<&str>,
+    include_identity_mnemonic: bool,
+) -> Result<WalletBackupExportReport> {
+    let config = ensure_local_setup(config_path)?;
+    if config.wallet_runtime_kind != PylonWalletRuntimeKind::LdkNode {
+        bail!("wallet backup export requires wallet_runtime_kind=ldk_node");
+    }
+    ensure_private_file_permissions(config.identity_path.as_path(), "identity mnemonic")?;
+    if let Some(path) = config.wallet_entropy_override_path.as_ref() {
+        ensure_private_file_permissions(path.as_path(), "wallet entropy override")?;
+    }
+    let context = prepare_wallet_context(config_path)?;
+    let layout = ensure_wallet_storage_layout(&config)?;
+    let _lock = acquire_wallet_storage_lock(&layout)?;
+    let passphrase = wallet_backup_passphrase(passphrase_env)?;
+    let exported_at_ms = now_epoch_ms() as u64;
+    let storage_generation = wallet_storage_generation_id(&layout, context.runtime.surface());
+    let plaintext = build_wallet_backup_plaintext_manifest(
+        &config,
+        &layout,
+        context.runtime.surface(),
+        storage_generation.as_str(),
+        exported_at_ms,
+        include_identity_mnemonic,
+        export_path,
+    )?;
+    let encrypted = encrypt_wallet_backup_plaintext(&plaintext, &passphrase)?;
+    write_encrypted_wallet_backup(export_path, &encrypted)?;
+    let file_digest = sha256_file_digest(export_path)?;
+    let report = WalletBackupExportReport {
+        runtime: context.runtime.surface().clone(),
+        operation: "export".to_string(),
+        path: export_path.display().to_string(),
+        file_digest,
+        exported_at_ms,
+        backup_status: "backup_current".to_string(),
+        manifest: encrypted.public_manifest,
+    };
+    write_wallet_backup_status_manifest(&layout, &report)?;
+    mutate_ledger(config_path, |ledger| {
+        ledger.upsert_wallet_receipt(PylonWalletReceiptRecord {
+            receipt_id: format!(
+                "wallet:backup:{}",
+                report.manifest.plaintext_manifest_digest
+            ),
+            receipt_type: "wallet.backup.export.v1".to_string(),
+            status: report.backup_status.clone(),
+            direction: None,
+            method: Some("encrypted_backup".to_string()),
+            amount_sats: None,
+            fees_sats: None,
+            payment_id: None,
+            payment_hash: None,
+            txid: None,
+            operation_id: Some(report.file_digest.clone()),
+            settlement_id: None,
+            failure_code: None,
+            detail: Some(format!(
+                "encrypted wallet backup exported with {} components",
+                report.manifest.plaintext_component_count
+            )),
+            created_at_ms: report.exported_at_ms,
+            updated_at_ms: report.exported_at_ms,
+        });
+        Ok(())
+    })?;
+    Ok(report)
+}
+
+pub fn inspect_wallet_backup_report(path: &Path) -> Result<WalletBackupInspectReport> {
+    let encrypted = read_encrypted_wallet_backup(path)?;
+    let file_digest = sha256_file_digest(path)?;
+    Ok(WalletBackupInspectReport {
+        path: path.display().to_string(),
+        file_digest,
+        valid: encrypted.schema_version == WALLET_BACKUP_SCHEMA_VERSION
+            && encrypted.kind == WALLET_BACKUP_KIND
+            && encrypted.public_manifest.schema_version == WALLET_BACKUP_SCHEMA_VERSION
+            && encrypted.public_manifest.kind == WALLET_BACKUP_KIND,
+        manifest: encrypted.public_manifest,
+    })
+}
+
 pub async fn inspect_wallet_lock_report(config_path: &Path) -> Result<WalletLockReport> {
     let context = prepare_wallet_context(config_path)?;
     let layout = ensure_wallet_storage_layout_for_config_path(config_path)?;
@@ -2618,6 +3014,17 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
             "ldk_backup_artifact_count: {}",
             ldk_node.backup_artifact_count
         ));
+        lines.push(format!("ldk_backup_stale: {}", ldk_node.backup_stale));
+        lines.push(format!(
+            "ldk_backup_stale_after_ms: {}",
+            ldk_node.backup_stale_after_ms
+        ));
+        if let Some(value) = ldk_node.last_backup_exported_at_ms {
+            lines.push(format!("ldk_last_backup_exported_at_ms: {value}"));
+        }
+        if let Some(value) = ldk_node.last_backup_file_digest.as_deref() {
+            lines.push(format!("ldk_last_backup_file_digest: {value}"));
+        }
         lines.push(format!("ldk_is_running: {}", ldk_node.is_running));
         if let Some(value) = ldk_node.latest_lightning_wallet_sync_timestamp {
             lines.push(format!(
@@ -2815,6 +3222,50 @@ pub fn render_wallet_entropy_report(report: &WalletEntropyReport) -> String {
     lines.join("\n")
 }
 
+pub fn render_wallet_backup_export_report(report: &WalletBackupExportReport) -> String {
+    [
+        format!("operation: {}", report.operation),
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("network: {}", report.runtime.network),
+        format!("path: {}", report.path),
+        format!("file_digest: {}", report.file_digest),
+        format!("backup_status: {}", report.backup_status),
+        format!(
+            "plaintext_manifest_digest: {}",
+            report.manifest.plaintext_manifest_digest
+        ),
+        format!("components: {}", report.manifest.plaintext_component_count),
+        format!("total_bytes: {}", report.manifest.plaintext_total_bytes),
+        format!(
+            "identity_mnemonic_included: {}",
+            report.manifest.identity_mnemonic_included
+        ),
+    ]
+    .join("\n")
+}
+
+pub fn render_wallet_backup_inspect_report(report: &WalletBackupInspectReport) -> String {
+    [
+        format!("path: {}", report.path),
+        format!("file_digest: {}", report.file_digest),
+        format!("valid: {}", report.valid),
+        format!("kind: {}", report.manifest.kind),
+        format!("runtime_kind: {}", report.manifest.runtime_kind),
+        format!("network: {}", report.manifest.network),
+        format!(
+            "plaintext_manifest_digest: {}",
+            report.manifest.plaintext_manifest_digest
+        ),
+        format!("components: {}", report.manifest.plaintext_component_count),
+        format!("total_bytes: {}", report.manifest.plaintext_total_bytes),
+        format!(
+            "identity_mnemonic_included: {}",
+            report.manifest.identity_mnemonic_included
+        ),
+    ]
+    .join("\n")
+}
+
 pub fn render_wallet_lock_report(report: &WalletLockReport) -> String {
     let mut lines = vec![
         format!("runtime_kind: {}", report.runtime.runtime_kind),
@@ -2904,8 +3355,8 @@ fn wallet_node_entropy_domain_label(network: &str) -> String {
 }
 
 fn hkdf_sha256_64(input_key_material: &[u8], info: &[u8]) -> [u8; 64] {
-    let mut extract =
-        HmacSha256::new_from_slice(WALLET_NODE_ENTROPY_HKDF_SALT).expect("HKDF salt is valid");
+    let mut extract = <HmacSha256 as Mac>::new_from_slice(WALLET_NODE_ENTROPY_HKDF_SALT)
+        .expect("HKDF salt is valid");
     extract.update(input_key_material);
     let pseudorandom_key = extract.finalize().into_bytes();
 
@@ -2913,7 +3364,7 @@ fn hkdf_sha256_64(input_key_material: &[u8], info: &[u8]) -> [u8; 64] {
     let mut previous = Vec::<u8>::new();
     let mut written = 0usize;
     for counter in 1u8..=2 {
-        let mut expand = HmacSha256::new_from_slice(pseudorandom_key.as_slice())
+        let mut expand = <HmacSha256 as Mac>::new_from_slice(pseudorandom_key.as_slice())
             .expect("HKDF pseudorandom key is valid");
         expand.update(previous.as_slice());
         expand.update(info);
@@ -2977,6 +3428,294 @@ fn write_explicit_wallet_entropy(path: &Path, bytes: &[u8; 64]) -> Result<()> {
     Ok(())
 }
 
+fn wallet_backup_passphrase(passphrase_env: Option<&str>) -> Result<String> {
+    let env_name = passphrase_env.unwrap_or(WALLET_BACKUP_DEFAULT_PASSPHRASE_ENV);
+    let passphrase = std::env::var(env_name)
+        .with_context(|| format!("missing wallet backup passphrase env {env_name}"))?;
+    if passphrase.len() < 12 {
+        bail!("wallet backup passphrase from {env_name} must be at least 12 bytes");
+    }
+    Ok(passphrase)
+}
+
+fn build_wallet_backup_plaintext_manifest(
+    config: &crate::PylonConfig,
+    layout: &WalletStorageLayout,
+    surface: &WalletRuntimeSurface,
+    storage_generation: &str,
+    exported_at_ms: u64,
+    include_identity_mnemonic: bool,
+    export_path: &Path,
+) -> Result<WalletBackupPlaintextManifest> {
+    if export_path.starts_with(layout.ldk_dir.as_path()) {
+        bail!(
+            "wallet backup export path {} must be outside the wallet storage directory {}",
+            export_path.display(),
+            layout.ldk_dir.display()
+        );
+    }
+    let identity_mnemonic = if include_identity_mnemonic {
+        ensure_private_file_permissions(config.identity_path.as_path(), "identity mnemonic")?;
+        Some(
+            std::fs::read_to_string(config.identity_path.as_path())
+                .with_context(|| {
+                    format!(
+                        "failed to read identity mnemonic {}",
+                        config.identity_path.display()
+                    )
+                })?
+                .trim()
+                .to_string(),
+        )
+    } else {
+        None
+    };
+    let snapshot = collect_wallet_backup_snapshot(layout, export_path)?;
+    Ok(WalletBackupPlaintextManifest {
+        schema_version: WALLET_BACKUP_SCHEMA_VERSION,
+        kind: WALLET_BACKUP_PLAINTEXT_KIND.to_string(),
+        exported_at_ms,
+        runtime_kind: surface.runtime_kind.to_string(),
+        network: surface.network.clone(),
+        wallet_derivation: surface.node_entropy.clone(),
+        storage_generation: storage_generation.to_string(),
+        identity_mnemonic_included: identity_mnemonic.is_some(),
+        identity_mnemonic,
+        ldk_storage_snapshot: snapshot,
+    })
+}
+
+fn collect_wallet_backup_snapshot(
+    layout: &WalletStorageLayout,
+    export_path: &Path,
+) -> Result<Vec<WalletBackupSnapshotFile>> {
+    let mut files = Vec::new();
+    collect_wallet_backup_snapshot_dir(layout.ldk_dir.as_path(), layout, export_path, &mut files)?;
+    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(files)
+}
+
+fn collect_wallet_backup_snapshot_dir(
+    dir: &Path,
+    layout: &WalletStorageLayout,
+    export_path: &Path,
+    files: &mut Vec<WalletBackupSnapshotFile>,
+) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let mut entries = std::fs::read_dir(dir)
+        .with_context(|| format!("failed to read wallet backup source dir {}", dir.display()))?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .with_context(|| {
+            format!(
+                "failed to inspect wallet backup source dir {}",
+                dir.display()
+            )
+        })?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        if path == layout.lock_path || path == export_path {
+            continue;
+        }
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("failed to inspect wallet path {}", path.display()))?;
+        if file_type.is_dir() {
+            collect_wallet_backup_snapshot_dir(path.as_path(), layout, export_path, files)?;
+        } else if file_type.is_file() {
+            let relative_path = wallet_backup_relative_path(layout.ldk_dir.as_path(), &path)?;
+            let contents = std::fs::read(path.as_path())
+                .with_context(|| format!("failed to read wallet backup file {}", path.display()))?;
+            files.push(WalletBackupSnapshotFile {
+                kind: wallet_backup_component_kind(relative_path.as_str()).to_string(),
+                relative_path,
+                size_bytes: contents.len() as u64,
+                sha256: sha256_digest(contents.as_slice()),
+                content_hex: hex::encode(contents),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn wallet_backup_relative_path(root: &Path, path: &Path) -> Result<String> {
+    let relative = path.strip_prefix(root).with_context(|| {
+        format!(
+            "wallet backup path {} is outside root {}",
+            path.display(),
+            root.display()
+        )
+    })?;
+    Ok(relative
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join("/"))
+}
+
+fn wallet_backup_component_kind(relative_path: &str) -> &'static str {
+    if relative_path == "backup-manifest.json" {
+        "backup_manifest"
+    } else if relative_path == "last-registration.json" {
+        "registration_metadata"
+    } else if relative_path.starts_with("node/") {
+        "ldk_node_state"
+    } else if relative_path.starts_with("sqlite/") {
+        "ldk_sqlite_state"
+    } else if relative_path.starts_with("backup-staging/") {
+        "ldk_backup_staging"
+    } else {
+        "ldk_metadata"
+    }
+}
+
+fn encrypt_wallet_backup_plaintext(
+    plaintext: &WalletBackupPlaintextManifest,
+    passphrase: &str,
+) -> Result<WalletBackupEncryptedFile> {
+    let plaintext_bytes = serde_json::to_vec(plaintext)?;
+    let plaintext_manifest_digest = sha256_digest(plaintext_bytes.as_slice());
+    let salt: [u8; 16] = rand::random();
+    let nonce: [u8; 24] = rand::random();
+    let mut key = [0u8; WALLET_BACKUP_KEY_LEN];
+    let params = ScryptParams::new(
+        WALLET_BACKUP_SCRYPT_LOG_N,
+        WALLET_BACKUP_SCRYPT_R,
+        WALLET_BACKUP_SCRYPT_P,
+        WALLET_BACKUP_KEY_LEN,
+    )
+    .context("failed to configure wallet backup scrypt params")?;
+    scrypt(passphrase.as_bytes(), &salt, &params, &mut key)
+        .context("failed to derive wallet backup encryption key")?;
+    let cipher = XChaCha20Poly1305::new_from_slice(&key)
+        .map_err(|_| anyhow!("failed to initialize wallet backup cipher"))?;
+    let ciphertext = cipher
+        .encrypt(XNonce::from_slice(&nonce), plaintext_bytes.as_slice())
+        .map_err(|_| anyhow!("failed to encrypt wallet backup"))?;
+    let mut kinds = plaintext
+        .ldk_storage_snapshot
+        .iter()
+        .map(|file| file.kind.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    kinds.sort();
+    Ok(WalletBackupEncryptedFile {
+        schema_version: WALLET_BACKUP_SCHEMA_VERSION,
+        kind: WALLET_BACKUP_KIND.to_string(),
+        public_manifest: WalletBackupPublicManifest {
+            schema_version: WALLET_BACKUP_SCHEMA_VERSION,
+            kind: WALLET_BACKUP_KIND.to_string(),
+            exported_at_ms: plaintext.exported_at_ms,
+            runtime_kind: plaintext.runtime_kind.clone(),
+            network: plaintext.network.clone(),
+            wallet_derivation_version: plaintext.wallet_derivation.derivation_version.clone(),
+            node_entropy_digest: plaintext.wallet_derivation.digest.clone(),
+            storage_generation: plaintext.storage_generation.clone(),
+            encryption_algorithm: "XChaCha20Poly1305".to_string(),
+            kdf: "scrypt".to_string(),
+            plaintext_manifest_digest,
+            plaintext_component_count: plaintext.ldk_storage_snapshot.len(),
+            plaintext_total_bytes: plaintext
+                .ldk_storage_snapshot
+                .iter()
+                .map(|file| file.size_bytes)
+                .sum(),
+            snapshot_kinds: kinds,
+            identity_mnemonic_included: plaintext.identity_mnemonic_included,
+        },
+        encryption: WalletBackupEncryptionMetadata {
+            algorithm: "XChaCha20Poly1305".to_string(),
+            kdf: "scrypt".to_string(),
+            salt_hex: hex::encode(salt),
+            nonce_hex: hex::encode(nonce),
+            scrypt_log_n: WALLET_BACKUP_SCRYPT_LOG_N,
+            scrypt_r: WALLET_BACKUP_SCRYPT_R,
+            scrypt_p: WALLET_BACKUP_SCRYPT_P,
+            key_len: WALLET_BACKUP_KEY_LEN,
+        },
+        ciphertext_hex: hex::encode(ciphertext),
+    })
+}
+
+#[cfg(test)]
+fn decrypt_wallet_backup_plaintext(
+    encrypted: &WalletBackupEncryptedFile,
+    passphrase: &str,
+) -> Result<WalletBackupPlaintextManifest> {
+    if encrypted.schema_version != WALLET_BACKUP_SCHEMA_VERSION
+        || encrypted.kind != WALLET_BACKUP_KIND
+    {
+        bail!("unsupported wallet backup file kind or schema version");
+    }
+    let salt = hex::decode(encrypted.encryption.salt_hex.as_str())
+        .context("wallet backup salt is not hex")?;
+    let nonce = hex::decode(encrypted.encryption.nonce_hex.as_str())
+        .context("wallet backup nonce is not hex")?;
+    if nonce.len() != 24 {
+        bail!("wallet backup nonce must be 24 bytes");
+    }
+    let ciphertext = hex::decode(encrypted.ciphertext_hex.as_str())
+        .context("wallet backup ciphertext is not hex")?;
+    let mut key = vec![0u8; encrypted.encryption.key_len];
+    let params = ScryptParams::new(
+        encrypted.encryption.scrypt_log_n,
+        encrypted.encryption.scrypt_r,
+        encrypted.encryption.scrypt_p,
+        encrypted.encryption.key_len,
+    )
+    .context("failed to configure wallet backup scrypt params")?;
+    scrypt(
+        passphrase.as_bytes(),
+        salt.as_slice(),
+        &params,
+        key.as_mut_slice(),
+    )
+    .context("failed to derive wallet backup decryption key")?;
+    let cipher = XChaCha20Poly1305::new_from_slice(key.as_slice())
+        .map_err(|_| anyhow!("failed to initialize wallet backup cipher"))?;
+    let plaintext = cipher
+        .decrypt(XNonce::from_slice(nonce.as_slice()), ciphertext.as_slice())
+        .map_err(|_| anyhow!("failed to decrypt wallet backup; passphrase or file is wrong"))?;
+    let digest = sha256_digest(plaintext.as_slice());
+    if digest != encrypted.public_manifest.plaintext_manifest_digest {
+        bail!("wallet backup plaintext digest mismatch");
+    }
+    serde_json::from_slice(plaintext.as_slice()).context("failed to parse wallet backup plaintext")
+}
+
+fn write_encrypted_wallet_backup(path: &Path, encrypted: &WalletBackupEncryptedFile) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create wallet backup dir {}", parent.display()))?;
+    }
+    std::fs::write(
+        path,
+        format!("{}\n", serde_json::to_string_pretty(encrypted)?),
+    )
+    .with_context(|| format!("failed to write wallet backup {}", path.display()))?;
+    set_private_file_permissions(path, "wallet backup")
+}
+
+fn read_encrypted_wallet_backup(path: &Path) -> Result<WalletBackupEncryptedFile> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read wallet backup {}", path.display()))?;
+    serde_json::from_str(raw.as_str())
+        .with_context(|| format!("failed to parse wallet backup {}", path.display()))
+}
+
+fn sha256_file_digest(path: &Path) -> Result<String> {
+    let contents = std::fs::read(path)
+        .with_context(|| format!("failed to read wallet backup {}", path.display()))?;
+    Ok(sha256_digest(contents.as_slice()))
+}
+
+fn sha256_digest(contents: &[u8]) -> String {
+    format!("sha256:{}", hex::encode(Sha256::digest(contents)))
+}
+
 fn ensure_wallet_storage_layout_for_config_path(config_path: &Path) -> Result<WalletStorageLayout> {
     let config = ensure_local_setup(config_path)?;
     ensure_wallet_storage_layout(&config)
@@ -2996,9 +3735,9 @@ fn ensure_wallet_storage_layout_for_root(root_dir: PathBuf) -> Result<WalletStor
     write_private_file_if_missing(
         layout.backup_manifest_path.as_path(),
         format!(
-            "{{\"schema_version\":{WALLET_STORAGE_SCHEMA_VERSION},\"kind\":\"pylon.wallet.backup_manifest\"}}\n"
+            "{{\"schema_version\":{WALLET_BACKUP_SCHEMA_VERSION},\"kind\":\"{WALLET_BACKUP_MANIFEST_KIND}\",\"status\":\"none\"}}\n"
         )
-        .as_bytes(),
+            .as_bytes(),
     )?;
     write_private_file_if_missing(
         layout.last_registration_path.as_path(),
@@ -3176,6 +3915,16 @@ fn write_private_file_if_missing(path: &Path, contents: &[u8]) -> Result<()> {
     std::fs::write(path, contents)
         .with_context(|| format!("failed to write wallet metadata {}", path.display()))?;
     set_private_file_permissions(path, "wallet metadata")
+}
+
+fn write_private_json<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        create_private_dir(parent, label)?;
+    }
+    let contents = format!("{}\n", serde_json::to_string_pretty(value)?);
+    std::fs::write(path, contents)
+        .with_context(|| format!("failed to write {label} {}", path.display()))?;
+    set_private_file_permissions(path, label)
 }
 
 #[cfg(unix)]
@@ -3432,6 +4181,45 @@ mod tests {
             WalletSubcommand::History {
                 limit: Some(5),
                 json: false,
+            }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("backup"),
+                    String::from("export"),
+                    String::from("/tmp/pylon-wallet-backup.json"),
+                    String::from("--passphrase-env"),
+                    String::from("PYLON_TEST_BACKUP_PASSPHRASE"),
+                    String::from("--include-identity-mnemonic"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet backup export should parse"),
+            WalletSubcommand::BackupExport {
+                path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                passphrase_env: Some("PYLON_TEST_BACKUP_PASSPHRASE".to_string()),
+                include_identity_mnemonic: true,
+                json: true,
+            }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("backup"),
+                    String::from("inspect"),
+                    String::from("/tmp/pylon-wallet-backup.json"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet backup inspect should parse"),
+            WalletSubcommand::BackupInspect {
+                path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                json: true,
             }
         );
         assert_eq!(
@@ -3771,6 +4559,121 @@ mod tests {
         );
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn wallet_backup_export_encrypts_snapshot_and_updates_status() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let backup_path = temp_dir.path().join("pylon-wallet-backup.json");
+        let phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let passphrase = "correct horse battery backup";
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_network = "regtest".to_string();
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(config.identity_path.as_path(), format!("{phrase}\n"))
+            .expect("write identity phrase");
+        super::set_private_file_permissions(config.identity_path.as_path(), "identity mnemonic")
+            .expect("set identity permissions");
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let layout = super::ensure_wallet_storage_layout(&config).expect("storage layout");
+        std::fs::write(
+            layout.node_dir.join("channel_manager"),
+            b"channel-secret-state",
+        )
+        .expect("write node state");
+        std::fs::write(
+            layout.sqlite_dir.join("payments.sqlite"),
+            b"payment-secret-state",
+        )
+        .expect("write sqlite state");
+        std::fs::write(
+            layout.backup_staging_dir.join("monitor-1"),
+            b"monitor-secret-state",
+        )
+        .expect("write monitor state");
+
+        unsafe {
+            std::env::set_var("PYLON_TEST_BACKUP_PASSPHRASE", passphrase);
+        }
+        let report = super::export_wallet_backup_report(
+            config_path.as_path(),
+            backup_path.as_path(),
+            Some("PYLON_TEST_BACKUP_PASSPHRASE"),
+            true,
+        )
+        .await
+        .expect("export backup");
+        assert_eq!(report.backup_status, "backup_current");
+        assert!(report.manifest.identity_mnemonic_included);
+        assert!(
+            report
+                .manifest
+                .snapshot_kinds
+                .contains(&"ldk_node_state".to_string())
+        );
+        assert!(
+            report
+                .manifest
+                .snapshot_kinds
+                .contains(&"ldk_sqlite_state".to_string())
+        );
+        assert!(
+            report
+                .manifest
+                .snapshot_kinds
+                .contains(&"ldk_backup_staging".to_string())
+        );
+
+        let backup_file = std::fs::read_to_string(backup_path.as_path()).expect("read backup");
+        assert!(!backup_file.contains(phrase));
+        assert!(!backup_file.contains("channel-secret-state"));
+        assert!(!backup_file.contains("payment-secret-state"));
+        assert!(!backup_file.contains("monitor-secret-state"));
+
+        let inspect =
+            super::inspect_wallet_backup_report(backup_path.as_path()).expect("inspect backup");
+        assert!(inspect.valid);
+        assert_eq!(
+            inspect.manifest.plaintext_manifest_digest,
+            report.manifest.plaintext_manifest_digest
+        );
+
+        let encrypted =
+            super::read_encrypted_wallet_backup(backup_path.as_path()).expect("read encrypted");
+        let plaintext =
+            super::decrypt_wallet_backup_plaintext(&encrypted, passphrase).expect("decrypt backup");
+        assert_eq!(plaintext.identity_mnemonic.as_deref(), Some(phrase));
+        assert!(plaintext.ldk_storage_snapshot.iter().any(|file| {
+            file.relative_path == "node/channel_manager"
+                && hex::decode(file.content_hex.as_str())
+                    .expect("content hex")
+                    .as_slice()
+                    == b"channel-secret-state"
+        }));
+        assert!(
+            super::decrypt_wallet_backup_plaintext(&encrypted, "wrong horse battery backup")
+                .is_err()
+        );
+
+        let mut corrupted = encrypted.clone();
+        corrupted.ciphertext_hex.push_str("00");
+        assert!(super::decrypt_wallet_backup_plaintext(&corrupted, passphrase).is_err());
+
+        let status = load_wallet_status_report(config_path.as_path())
+            .await
+            .expect("status");
+        let ldk_status = status.ldk_node.as_ref().expect("ldk status");
+        assert_eq!(ldk_status.backup_status, "backup_current");
+        assert!(!ldk_status.backup_stale);
+        assert_eq!(
+            ldk_status.last_backup_file_digest.as_deref(),
+            Some(report.file_digest.as_str())
+        );
+        unsafe {
+            std::env::remove_var("PYLON_TEST_BACKUP_PASSPHRASE");
+        }
+    }
+
     #[test]
     fn wallet_storage_layout_creates_private_ldk_paths() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
@@ -4018,9 +4921,11 @@ mod tests {
             Some("none")
         );
         let node_status = status.ldk_node.as_ref().expect("ldk node status");
-        assert_eq!(node_status.backup_status, "manifest_ready");
+        assert_eq!(node_status.backup_status, "backup_missing");
         assert!(node_status.backup_manifest_present);
         assert_eq!(node_status.backup_artifact_count, 0);
+        assert!(node_status.backup_stale);
+        assert!(node_status.last_backup_exported_at_ms.is_none());
         assert_eq!(node_status.storage_schema_version, 1);
         assert!(node_status.storage_generation.starts_with("sha256:"));
         assert_eq!(status.balance.onchain_sats, 0);
@@ -4054,7 +4959,7 @@ mod tests {
         .await
         .expect("status json");
         assert!(status_json.contains("\"runtime_kind\": \"ldk_node\""));
-        assert!(status_json.contains("\"backup_status\": \"manifest_ready\""));
+        assert!(status_json.contains("\"backup_status\": \"backup_missing\""));
         assert!(status_json.contains("\"storage_generation\": \"sha256:"));
         assert!(!status_json.contains("legal winner thank"));
 

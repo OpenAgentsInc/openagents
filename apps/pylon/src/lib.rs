@@ -154,18 +154,21 @@ pub use nip90_runtime::{
 };
 pub use wallet_runtime::{
     PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
+    WalletBackupExportReport, WalletBackupInspectReport, WalletBackupPublicManifest,
     WalletBalanceSnapshot, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
     WalletInvoiceReport, WalletLdkNodeStatus, WalletLockOwner, WalletLockReport,
     WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRuntimeSurface,
     WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand, clear_wallet_lock_report,
     create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
-    export_wallet_entropy_report, import_wallet_entropy_report, inspect_wallet_lock_report,
-    load_wallet_balance_status_report, load_wallet_credit_summary_report,
-    load_wallet_entropy_status_report, load_wallet_history_report, load_wallet_status_report,
-    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
-    render_wallet_balance_report, render_wallet_entropy_report, render_wallet_history_report,
-    render_wallet_invoice_report, render_wallet_lock_report, render_wallet_offer_report,
-    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
+    export_wallet_backup_report, export_wallet_entropy_report, import_wallet_entropy_report,
+    inspect_wallet_backup_report, inspect_wallet_lock_report, load_wallet_balance_status_report,
+    load_wallet_credit_summary_report, load_wallet_entropy_status_report,
+    load_wallet_history_report, load_wallet_status_report, parse_wallet_command,
+    pay_wallet_invoice_report, render_wallet_address_report, render_wallet_backup_export_report,
+    render_wallet_backup_inspect_report, render_wallet_balance_report,
+    render_wallet_entropy_report, render_wallet_history_report, render_wallet_invoice_report,
+    render_wallet_lock_report, render_wallet_offer_report, render_wallet_pay_report,
+    render_wallet_status_report, run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -9582,6 +9585,8 @@ Commands:\n\
   wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet pay <payment_request> [--amount-sats <n>] [--yes] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
+  wallet backup export <path> [--passphrase-env <ENV>] [--include-identity-mnemonic] [--json]\n\
+  wallet backup inspect <path> [--json]\n\
   wallet entropy status|export <path>|import <path> [--json]\n\
   wallet lock status|clear [--json]\n\
   training status [--json]\n\
@@ -51351,6 +51356,44 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     },
                 },
             "wallet history should parse with a limit",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "backup".to_string(),
+                "export".to_string(),
+                "/tmp/pylon-wallet-backup.json".to_string(),
+                "--passphrase-env".to_string(),
+                "PYLON_TEST_BACKUP_PASSPHRASE".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::BackupExport {
+                        path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                        passphrase_env: Some("PYLON_TEST_BACKUP_PASSPHRASE".to_string()),
+                        include_identity_mnemonic: false,
+                        json: true,
+                    },
+                },
+            "wallet backup export should parse with passphrase env and json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "backup".to_string(),
+                "inspect".to_string(),
+                "/tmp/pylon-wallet-backup.json".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::BackupInspect {
+                        path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                        json: true,
+                    },
+                },
+            "wallet backup inspect should parse with json",
         )?;
         ensure(
             parse_args(vec![
