@@ -132,6 +132,81 @@ fn panel(title: &str, body: Text<'static>) -> Paragraph<'static> {
         .wrap(Wrap { trim: false })
 }
 
+/// Rows one logical line occupies after a `Wrap { trim: false }` paragraph
+/// greedily word-wraps it to `width` columns. A word longer than the row is
+/// broken across rows. Used to size panels for their wrapped height so long
+/// values (CPU/GPU strings on a narrow column) are not clipped.
+fn wrapped_rows(text: &str, width: u16) -> u16 {
+    let width = usize::from(width.max(1));
+    let mut rows: usize = 1;
+    let mut col: usize = 0;
+    for word in text.split(' ') {
+        let word_len = word.chars().count();
+        if col > 0 {
+            if col + 1 + word_len <= width {
+                col += 1 + word_len;
+                continue;
+            }
+            // The word does not fit; it starts a fresh row, set just below.
+            rows += 1;
+        }
+        if word_len <= width {
+            col = word_len;
+        } else {
+            rows += (word_len - 1) / width;
+            col = (word_len - 1) % width + 1;
+        }
+    }
+    u16::try_from(rows).unwrap_or(u16::MAX)
+}
+
+/// Total terminal rows `lines` occupy once word-wrapped to `inner_width`
+/// columns — the wrap-aware body height a panel needs to show every line.
+fn wrapped_line_total(lines: &[Line<'_>], inner_width: u16) -> u16 {
+    lines
+        .iter()
+        .map(|line| {
+            let text: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+            wrapped_rows(&text, inner_width)
+        })
+        .sum()
+}
+
+#[cfg(test)]
+mod wrapped_rows_tests {
+    use super::*;
+
+    #[test]
+    fn wrapped_rows_counts_word_wrapped_and_broken_lines() {
+        assert_eq!(wrapped_rows("", 10), 1);
+        assert_eq!(wrapped_rows("short value", 20), 1);
+        // A word longer than the row is char-broken: 10 chars / width 4 -> 3.
+        assert_eq!(wrapped_rows("aaaaaaaaaa", 4), 3);
+        // A realistic GPU line wraps on a narrow column.
+        assert!(wrapped_rows("GPU: NVIDIA GeForce RTX 3060 Ti", 16) >= 2);
+        // Zero width must not panic and is treated as one column.
+        assert_eq!(wrapped_rows("anything", 0), wrapped_rows("anything", 1));
+    }
+
+    #[test]
+    fn wrapped_line_total_sums_each_lines_wrapped_height() {
+        let lines = vec![
+            Line::from("Health: healthy"),
+            Line::from(vec![
+                Span::raw("CPU: "),
+                Span::raw("12th Gen Intel(R) Core(TM) i7-1260P, 8% usage"),
+            ]),
+        ];
+        // Line 1 fits one row; the long CPU line wraps at width 20.
+        let total = wrapped_line_total(&lines, 20);
+        assert!(total >= 4, "expected the long CPU line to wrap, got {total}");
+    }
+}
+
 fn shell_title() -> Line<'static> {
     Line::from(vec![
         Span::styled(" Pylon ", shell_accent()),
@@ -2830,11 +2905,18 @@ impl AppShell {
             ])
             .split(columns[1])
         } else {
+            // The Node panel body word-wraps, so size it for the wrapped
+            // height -- a long CPU/GPU line on this narrow column would
+            // otherwise be clipped. Body width is the column width minus the
+            // 2 border and 2 padding columns.
+            let node_body_width = columns[1].width.saturating_sub(4);
             Layout::vertical([
                 Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
                 Constraint::Length((self.payment_feed_lines().len() as u16 + 2).clamp(6, 9)),
                 Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
-                Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
+                Constraint::Length(
+                    (wrapped_line_total(&self.summary_lines(), node_body_width) + 2).clamp(5, 12),
+                ),
                 Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
             ])
             .split(columns[1])
