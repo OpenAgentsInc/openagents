@@ -154,7 +154,9 @@ Normal paid-work registration now generates a wallet-owned LDK receive target
 inside Pylon, prefers BOLT12 offers, and falls back to a wallet-owned BOLT11
 invoice request when BOLT12 is unavailable. `payout_destination` remains only an
 explicit advanced external-target override during migration. Local wallet sends
-are still follow-up work tracked from `OpenAgentsInc/openagents#4520`.
+now dispatch BOLT11 invoices, BOLT12 offers, and on-chain withdrawals through
+the built-in LDK wallet path, with failed-send receipts retained when LDK or
+local reserve checks refuse the operation.
 
 The required sequence is:
 
@@ -188,10 +190,13 @@ Current implementation status:
 - Nexus accepted-work payout dispatch now uses LDK-compatible Pylon v0.2
   targets and records the exact rail, target hash, idempotency key, payment id,
   and terminal event state in the payout receipt.
+- Pylon local withdrawal now sends from the contributor's built-in wallet for
+  BOLT11, BOLT12, BIP21, and direct on-chain targets. BIP353 remains an explicit
+  unavailable state until the selected LDK runtime exposes name resolution.
 
 Pylon must remain a provider connector and local contributor wallet. It should
 not own Nexus treasury keys, run the hosted treasury LDK node, or become a
-browser wallet/runtime bridge. The planned built-in LDK wallet belongs on the
+browser wallet/runtime bridge. The built-in LDK wallet belongs on the
 contributor side and must stay separate from Nexus/Treasury payer custody.
 
 This means the right sequence is **canonize first, extract second, package third**, with extraction work starting during the current issue slate rather than being deferred indefinitely.

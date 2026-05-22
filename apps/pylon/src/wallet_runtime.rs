@@ -1,13 +1,16 @@
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use hmac::{Hmac, Mac};
 use ldk_node::Builder as LdkNodeBuilder;
-use ldk_node::bitcoin::Network as LdkBitcoinNetwork;
-use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description};
+use ldk_node::bitcoin::{Address as LdkBitcoinAddress, Network as LdkBitcoinNetwork};
+use ldk_node::lightning::ln::channelmanager::PaymentId as LdkPaymentId;
+use ldk_node::lightning::offers::offer::{Amount as LdkOfferAmount, Offer as LdkOffer};
+use ldk_node::lightning_invoice::{Bolt11Invoice, Bolt11InvoiceDescription, Description};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -20,13 +23,13 @@ type HmacSha256 = Hmac<Sha256>;
 
 const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon uses an external LDK-compatible payout destination. Configure payout_destination for earnings.";
 const MOCK_WALLET_DETAIL: &str = "Pylon is using the deterministic mock wallet runtime for tests.";
-const LDK_NODE_UNAVAILABLE_DETAIL: &str = "Pylon ldk_node payment APIs are not wired yet; this issue only initializes the local node runtime.";
 const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1";
 const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
 const WALLET_NODE_ENTROPY_HKDF_SALT: &[u8] = b"openagents-pylon/ldk-node/node-entropy";
 const WALLET_STORAGE_SCHEMA_VERSION: u32 = 1;
 const DEFAULT_BOLT11_EXPIRY_SECONDS: u32 = 3_600;
 const DEFAULT_RECEIVE_DESCRIPTION: &str = "OpenAgents Pylon receive";
+const SATS_PER_BTC: u64 = 100_000_000;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +96,7 @@ pub enum WalletSubcommand {
     Pay {
         payment_request: String,
         amount_sats: Option<u64>,
+        yes: bool,
         json: bool,
     },
     History {
@@ -1015,11 +1019,40 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
     }
 
     fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
-        let _ = (payment_request, amount_sats);
-        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+        let payment_request = payment_request.trim();
+        if payment_request.is_empty() {
+            bail!("wallet pay requires a payment request");
+        }
+        if let Ok(invoice) = Bolt11Invoice::from_str(payment_request) {
+            return self.send_bolt11(invoice, payment_request, amount_sats);
+        }
+        if let Ok(offer) = LdkOffer::from_str(payment_request) {
+            return self.send_bolt12_offer(offer, payment_request, amount_sats);
+        }
+        if is_bitcoin_uri(payment_request) {
+            return self.send_bitcoin_uri_or_onchain(payment_request, amount_sats);
+        }
+        if looks_like_bitcoin_address(payment_request) {
+            return self.send_onchain_address(payment_request, amount_sats);
+        }
+        if looks_like_bip353(payment_request) {
+            bail!(
+                "bip353_send_unavailable: ldk_node 0.7 does not expose BIP353 name resolution in this build; resolve `{payment_request}` to a BOLT12 offer, BOLT11 invoice, BIP21 URI, or on-chain address first"
+            );
+        }
+        bail!(
+            "unsupported_payment_request: expected BOLT11 invoice, BOLT12 offer, BIP21 bitcoin URI, BIP353 name, or on-chain address"
+        )
     }
 
     fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        let payment_request = payment_request.trim();
+        if is_bitcoin_uri(payment_request) {
+            return self.send_bitcoin_uri_or_onchain(payment_request, amount_sats);
+        }
+        if looks_like_bitcoin_address(payment_request) {
+            return self.send_onchain_address(payment_request, amount_sats);
+        }
         self.pay(payment_request, amount_sats)
     }
 
@@ -1094,6 +1127,262 @@ impl LdkNodeWalletRuntime {
             .lock()
             .map_err(|_| anyhow!("ldk node state is poisoned"))?;
         Ok(node.as_ref().map(operation))
+    }
+
+    fn require_node<T>(&self, operation: impl FnOnce(&ldk_node::Node) -> T) -> Result<T> {
+        self.with_node(operation)?
+            .ok_or_else(|| anyhow!("ldk_node is not initialized; run wallet status first"))
+    }
+
+    fn send_bolt11(
+        &self,
+        invoice: Bolt11Invoice,
+        payment_request: &str,
+        amount_sats: Option<u64>,
+    ) -> Result<WalletPayReport> {
+        let invoice_amount_msat = invoice.amount_milli_satoshis();
+        let explicit_amount_msat = amount_sats.map(sats_to_msat).transpose()?;
+        let amount_msat = explicit_amount_msat.or(invoice_amount_msat);
+        if amount_msat.is_none() {
+            bail!("ambiguous_amount: BOLT11 invoice has no amount; pass --amount-sats");
+        }
+        let payment_id_result = self.require_node(|node| {
+            let payment = node.bolt11_payment();
+            if let Some(explicit_amount_msat) = explicit_amount_msat {
+                payment.send_using_amount(&invoice, explicit_amount_msat, None)
+            } else {
+                payment.send(&invoice, None)
+            }
+        })?;
+        let payment_id = payment_id_result.map_err(|error| {
+            anyhow!("ldk_wallet_send_failed: BOLT11 payment send failed: {error}")
+        })?;
+        let amount_sats = msat_to_sats(amount_msat.unwrap_or_default());
+        self.outbound_payment_report(
+            payment_id_to_string(payment_id),
+            "pending",
+            amount_sats,
+            0,
+            "bolt11",
+            Some("ldk_node BOLT11 payment submitted".to_string()),
+            Some(payment_request.to_string()),
+        )
+    }
+
+    fn send_bolt12_offer(
+        &self,
+        offer: LdkOffer,
+        payment_request: &str,
+        amount_sats: Option<u64>,
+    ) -> Result<WalletPayReport> {
+        let offer_amount_msat = match offer.amount() {
+            Some(LdkOfferAmount::Bitcoin { amount_msats }) => Some(amount_msats),
+            Some(_) => bail!("unsupported_currency: BOLT12 offer is not denominated in bitcoin"),
+            None => None,
+        };
+        let explicit_amount_msat = amount_sats.map(sats_to_msat).transpose()?;
+        let amount_msat = explicit_amount_msat.or(offer_amount_msat);
+        if amount_msat.is_none() {
+            bail!("ambiguous_amount: BOLT12 offer has no amount; pass --amount-sats");
+        }
+        let payment_id_result = self.require_node(|node| {
+            let payment = node.bolt12_payment();
+            if let Some(explicit_amount_msat) = explicit_amount_msat {
+                payment.send_using_amount(&offer, explicit_amount_msat, None, None, None)
+            } else {
+                payment.send(&offer, None, None, None)
+            }
+        })?;
+        let payment_id = payment_id_result.map_err(|error| {
+            anyhow!("ldk_wallet_send_failed: BOLT12 offer payment send failed: {error}")
+        })?;
+        let amount_sats = msat_to_sats(amount_msat.unwrap_or_default());
+        self.outbound_payment_report(
+            payment_id_to_string(payment_id),
+            "pending",
+            amount_sats,
+            0,
+            "bolt12",
+            Some("ldk_node BOLT12 offer payment submitted".to_string()),
+            Some(payment_request.to_string()),
+        )
+    }
+
+    fn send_bitcoin_uri_or_onchain(
+        &self,
+        payment_request: &str,
+        amount_sats: Option<u64>,
+    ) -> Result<WalletPayReport> {
+        let uri = parse_bitcoin_uri(payment_request)?;
+        let effective_amount_sats = match (amount_sats, uri.amount_sats) {
+            (Some(explicit), Some(embedded)) if explicit != embedded => bail!(
+                "amount_mismatch: --amount-sats {explicit} does not match BIP21 amount {embedded}"
+            ),
+            (Some(explicit), _) => Some(explicit),
+            (None, embedded) => embedded,
+        };
+        let has_lightning = uri.has_lightning_offer || uri.has_lightning_invoice;
+        if has_lightning {
+            if amount_sats.is_some() && uri.amount_sats.is_none() {
+                bail!(
+                    "unified_qr_amount_override_unavailable: BIP21 lightning sends require an embedded amount; use a direct BOLT11/BOLT12 request with --amount-sats or include amount= in the URI"
+                );
+            }
+            return self.send_unified_qr(payment_request, effective_amount_sats);
+        }
+        self.send_onchain_parts(uri.address.as_str(), effective_amount_sats, payment_request)
+    }
+
+    fn send_unified_qr(
+        &self,
+        payment_request: &str,
+        amount_sats: Option<u64>,
+    ) -> Result<WalletPayReport> {
+        let result = self
+            .require_node(|node| node.unified_qr_payment().send(payment_request, None))?
+            .map_err(|error| {
+                anyhow!("ldk_wallet_send_failed: BIP21 unified payment send failed: {error}")
+            })?;
+        match result {
+            ldk_node::payment::QrPaymentResult::Bolt11 { payment_id } => self
+                .outbound_payment_report(
+                    payment_id_to_string(payment_id),
+                    "pending",
+                    amount_sats.unwrap_or_default(),
+                    0,
+                    "bolt11",
+                    Some("ldk_node BIP21 BOLT11 payment submitted".to_string()),
+                    Some(payment_request.to_string()),
+                ),
+            ldk_node::payment::QrPaymentResult::Bolt12 { payment_id } => self
+                .outbound_payment_report(
+                    payment_id_to_string(payment_id),
+                    "pending",
+                    amount_sats.unwrap_or_default(),
+                    0,
+                    "bolt12",
+                    Some("ldk_node BIP21 BOLT12 payment submitted".to_string()),
+                    Some(payment_request.to_string()),
+                ),
+            ldk_node::payment::QrPaymentResult::Onchain { txid } => self.outbound_payment_report(
+                txid.to_string(),
+                "pending",
+                amount_sats.unwrap_or_default(),
+                0,
+                "onchain",
+                Some("ldk_node BIP21 on-chain withdrawal submitted".to_string()),
+                Some(payment_request.to_string()),
+            ),
+        }
+    }
+
+    fn send_onchain_address(
+        &self,
+        address: &str,
+        amount_sats: Option<u64>,
+    ) -> Result<WalletPayReport> {
+        self.send_onchain_parts(address, amount_sats, address)
+    }
+
+    fn send_onchain_parts(
+        &self,
+        address: &str,
+        amount_sats: Option<u64>,
+        original_request: &str,
+    ) -> Result<WalletPayReport> {
+        let amount_sats = amount_sats.ok_or_else(|| {
+            anyhow!(
+                "ambiguous_amount: on-chain withdrawal requires --amount-sats or a BIP21 amount"
+            )
+        })?;
+        if amount_sats == 0 {
+            bail!("invalid_amount: on-chain withdrawal amount must be greater than 0");
+        }
+        let address = self.parse_onchain_address(address)?;
+        let balance = self.node_balance_snapshot()?;
+        if amount_sats > balance.spendable_onchain_sats {
+            bail!(
+                "insufficient_spendable_onchain_balance: requested {amount_sats} sats but only {} sats are spendable after retaining {} sats of anchor channel reserve",
+                balance.spendable_onchain_sats,
+                balance.anchor_reserve_sats
+            );
+        }
+        let txid = self
+            .require_node(|node| {
+                node.onchain_payment()
+                    .send_to_address(&address, amount_sats, None)
+            })?
+            .map_err(|error| {
+                anyhow!("ldk_wallet_send_failed: on-chain withdrawal send failed: {error}")
+            })?;
+        self.outbound_payment_report(
+            txid.to_string(),
+            "pending",
+            amount_sats,
+            0,
+            "onchain",
+            Some("ldk_node on-chain withdrawal submitted".to_string()),
+            Some(original_request.to_string()),
+        )
+    }
+
+    fn parse_onchain_address(&self, address: &str) -> Result<LdkBitcoinAddress> {
+        let network = parse_ldk_bitcoin_network(self.surface.network.as_str())?;
+        LdkBitcoinAddress::from_str(address.trim())
+            .with_context(|| "invalid on-chain address")?
+            .require_network(network)
+            .with_context(|| {
+                format!(
+                    "on-chain address is not valid for wallet_network {}",
+                    self.surface.network
+                )
+            })
+    }
+
+    fn outbound_payment_report(
+        &self,
+        payment_id: String,
+        status: &str,
+        amount_sats: u64,
+        fees_sats: u64,
+        method: &str,
+        description: Option<String>,
+        invoice: Option<String>,
+    ) -> Result<WalletPayReport> {
+        let now = now_epoch_ms() as u64;
+        let post_balance = self.node_balance_snapshot().unwrap_or_default();
+        let payment = PylonWalletPaymentRecord {
+            payment_id: payment_id.clone(),
+            direction: "send".to_string(),
+            status: status.to_string(),
+            amount_sats,
+            fees_sats,
+            method: method.to_string(),
+            description,
+            invoice,
+            created_at_ms: now,
+            updated_at_ms: now,
+        };
+        Ok(WalletPayReport {
+            runtime: self.surface.clone(),
+            payment_id,
+            payment,
+            post_balance,
+        })
+    }
+
+    fn node_balance_snapshot(&self) -> Result<WalletBalanceSnapshot> {
+        let balance = self.require_node(|node| node.list_balances())?;
+        Ok(WalletBalanceSnapshot {
+            credited_sats: 0,
+            lightning_sats: balance.total_lightning_balance_sats,
+            onchain_sats: balance.total_onchain_balance_sats,
+            spendable_onchain_sats: balance.spendable_onchain_balance_sats,
+            anchor_reserve_sats: balance.total_anchor_channels_reserve_sats,
+            total_sats: balance
+                .total_lightning_balance_sats
+                .saturating_add(balance.total_onchain_balance_sats),
+        })
     }
 
     fn set_last_error(&self, error: Option<String>) -> Result<()> {
@@ -1232,6 +1521,213 @@ fn ledger_payments(ledger: &PylonLedger, limit: Option<usize>) -> Vec<PylonWalle
         .collect()
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct BitcoinUriParts {
+    address: String,
+    amount_sats: Option<u64>,
+    has_lightning_invoice: bool,
+    has_lightning_offer: bool,
+}
+
+fn payment_id_to_string(payment_id: LdkPaymentId) -> String {
+    hex::encode(payment_id.0)
+}
+
+fn sats_to_msat(amount_sats: u64) -> Result<u64> {
+    amount_sats
+        .checked_mul(1_000)
+        .ok_or_else(|| anyhow!("payment amount is too large"))
+}
+
+fn msat_to_sats(amount_msat: u64) -> u64 {
+    amount_msat.saturating_add(999) / 1_000
+}
+
+fn is_bitcoin_uri(value: &str) -> bool {
+    value
+        .get(..8)
+        .map(|prefix| prefix.eq_ignore_ascii_case("bitcoin:"))
+        .unwrap_or(false)
+}
+
+fn parse_bitcoin_uri(value: &str) -> Result<BitcoinUriParts> {
+    if !is_bitcoin_uri(value) {
+        bail!("invalid BIP21 bitcoin URI");
+    }
+    let body = value
+        .get(8..)
+        .ok_or_else(|| anyhow!("invalid BIP21 bitcoin URI"))?;
+    let (address, query) = match body.split_once('?') {
+        Some((address, query)) => (address.trim(), Some(query)),
+        None => (body.trim(), None),
+    };
+    if address.is_empty() {
+        bail!("invalid BIP21 bitcoin URI: missing address");
+    }
+    let mut parts = BitcoinUriParts {
+        address: address.to_string(),
+        ..BitcoinUriParts::default()
+    };
+    if let Some(query) = query {
+        for pair in query.split('&') {
+            let Some((key, value)) = pair.split_once('=') else {
+                continue;
+            };
+            match key.to_ascii_lowercase().as_str() {
+                "amount" => parts.amount_sats = Some(parse_bip21_amount_sats(value)?),
+                "lightning" => parts.has_lightning_invoice = true,
+                "lno" => parts.has_lightning_offer = true,
+                _ => {}
+            }
+        }
+    }
+    Ok(parts)
+}
+
+fn parse_bip21_amount_sats(value: &str) -> Result<u64> {
+    let value = value.trim();
+    if value.is_empty() || value.starts_with('-') {
+        bail!("invalid BIP21 amount");
+    }
+    let (whole, fractional) = value.split_once('.').unwrap_or((value, ""));
+    if whole.is_empty() || !whole.chars().all(|character| character.is_ascii_digit()) {
+        bail!("invalid BIP21 amount");
+    }
+    if !fractional
+        .chars()
+        .all(|character| character.is_ascii_digit())
+        || fractional.len() > 8
+    {
+        bail!("invalid BIP21 amount precision");
+    }
+    let whole_sats = whole
+        .parse::<u64>()
+        .with_context(|| "invalid BIP21 amount")?
+        .checked_mul(SATS_PER_BTC)
+        .ok_or_else(|| anyhow!("BIP21 amount is too large"))?;
+    let mut fractional_text = fractional.to_string();
+    while fractional_text.len() < 8 {
+        fractional_text.push('0');
+    }
+    let fractional_sats = if fractional_text.is_empty() {
+        0
+    } else {
+        fractional_text
+            .parse::<u64>()
+            .with_context(|| "invalid BIP21 amount")?
+    };
+    whole_sats
+        .checked_add(fractional_sats)
+        .ok_or_else(|| anyhow!("BIP21 amount is too large"))
+}
+
+fn looks_like_bip353(value: &str) -> bool {
+    let value = value.trim();
+    let Some((name, domain)) = value.split_once('@') else {
+        return false;
+    };
+    !name.is_empty()
+        && domain.contains('.')
+        && domain
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '.'))
+}
+
+fn looks_like_bitcoin_address(value: &str) -> bool {
+    value
+        .trim()
+        .parse::<ldk_node::bitcoin::Address<ldk_node::bitcoin::address::NetworkUnchecked>>()
+        .is_ok()
+}
+
+fn infer_wallet_payment_method(payment_request: &str) -> String {
+    let payment_request = payment_request.trim();
+    let lower = payment_request.to_ascii_lowercase();
+    if lower.starts_with("ln") && !lower.starts_with("lno") {
+        "bolt11".to_string()
+    } else if lower.starts_with("lno") {
+        "bolt12".to_string()
+    } else if lower.starts_with("bitcoin:") {
+        "bip21".to_string()
+    } else if looks_like_bip353(payment_request) {
+        "bip353".to_string()
+    } else if looks_like_bitcoin_address(payment_request) {
+        "onchain".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+fn infer_payment_request_amount_sats(payment_request: &str) -> Option<u64> {
+    let payment_request = payment_request.trim();
+    if let Ok(invoice) = Bolt11Invoice::from_str(payment_request) {
+        return invoice.amount_milli_satoshis().map(msat_to_sats);
+    }
+    if let Ok(offer) = LdkOffer::from_str(payment_request) {
+        return match offer.amount() {
+            Some(LdkOfferAmount::Bitcoin { amount_msats }) => Some(msat_to_sats(amount_msats)),
+            _ => None,
+        };
+    }
+    if is_bitcoin_uri(payment_request) {
+        return parse_bitcoin_uri(payment_request)
+            .ok()
+            .and_then(|uri| uri.amount_sats);
+    }
+    None
+}
+
+fn failed_wallet_payment_record(
+    payment_request: &str,
+    amount_sats: Option<u64>,
+    error: &str,
+) -> PylonWalletPaymentRecord {
+    let now = now_epoch_ms() as u64;
+    let mut hasher = Sha256::new();
+    hasher.update(payment_request.as_bytes());
+    hasher.update(now.to_be_bytes());
+    let digest = hex::encode(hasher.finalize());
+    PylonWalletPaymentRecord {
+        payment_id: format!("wallet-send-failed:{}", &digest[..16]),
+        direction: "send".to_string(),
+        status: "failed".to_string(),
+        amount_sats: amount_sats
+            .or_else(|| infer_payment_request_amount_sats(payment_request))
+            .unwrap_or_default(),
+        fees_sats: 0,
+        method: infer_wallet_payment_method(payment_request),
+        description: Some(error.to_string()),
+        invoice: Some(payment_request.to_string()),
+        created_at_ms: now,
+        updated_at_ms: now,
+    }
+}
+
+pub(crate) fn require_explicit_send_confirmation(
+    command: &str,
+    json: bool,
+    yes: bool,
+) -> Result<()> {
+    if json || yes {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        bail!("{command} submits funds from the local Pylon wallet; rerun with --yes or --json")
+    }
+    eprint!("{command} submits funds from the local Pylon wallet. Type YES to continue: ");
+    std::io::stderr()
+        .flush()
+        .with_context(|| "failed to flush confirmation prompt")?;
+    let mut response = String::new();
+    std::io::stdin()
+        .read_line(&mut response)
+        .with_context(|| "failed to read confirmation response")?;
+    if response.trim() == "YES" {
+        return Ok(());
+    }
+    bail!("{command} cancelled: confirmation did not match YES")
+}
+
 pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) -> Result<String> {
     match command {
         WalletSubcommand::Status { json } => {
@@ -1301,8 +1797,10 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
         WalletSubcommand::Pay {
             payment_request,
             amount_sats,
+            yes,
             json,
         } => {
+            require_explicit_send_confirmation("wallet pay", *json, *yes)?;
             let report =
                 pay_wallet_invoice_report(config_path, payment_request.as_str(), *amount_sats)
                     .await?;
@@ -1499,6 +1997,7 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
                 bail!("payment request cannot be empty");
             }
             let mut amount_sats = None;
+            let mut yes = false;
             let mut json = false;
             let mut index = start_index + 3;
             while index < args.len() {
@@ -1517,6 +2016,10 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
                         amount_sats = Some(value);
                         index += 1;
                     }
+                    "--yes" => {
+                        yes = true;
+                        index += 1;
+                    }
                     "--json" => {
                         json = true;
                         index += 1;
@@ -1527,6 +2030,7 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
             Ok(WalletSubcommand::Pay {
                 payment_request,
                 amount_sats,
+                yes,
                 json,
             })
         }
@@ -1713,6 +2217,7 @@ pub async fn pay_wallet_invoice_report(
     amount_sats: Option<u64>,
 ) -> Result<WalletPayReport> {
     let context = prepare_wallet_context(config_path)?;
+    context.runtime.start()?;
     match context.runtime.pay(payment_request, amount_sats) {
         Ok(report) => {
             mutate_ledger(config_path, |ledger| {
@@ -1724,7 +2229,14 @@ pub async fn pay_wallet_invoice_report(
             Ok(report)
         }
         Err(error) => {
-            sync_wallet_error(config_path, context.runtime.surface(), error.to_string())?;
+            let error_string = error.to_string();
+            let failed_payment =
+                failed_wallet_payment_record(payment_request, amount_sats, error_string.as_str());
+            mutate_ledger(config_path, |ledger| {
+                ledger.upsert_wallet_payment(failed_payment);
+                Ok(())
+            })?;
+            sync_wallet_error(config_path, context.runtime.surface(), error_string)?;
             Err(error)
         }
     }
@@ -2774,6 +3286,7 @@ mod tests {
                     String::from("lnbc1example"),
                     String::from("--amount-sats"),
                     String::from("8"),
+                    String::from("--yes"),
                     String::from("--json"),
                 ],
                 0,
@@ -2782,6 +3295,7 @@ mod tests {
             WalletSubcommand::Pay {
                 payment_request: String::from("lnbc1example"),
                 amount_sats: Some(8),
+                yes: true,
                 json: true,
             }
         );
@@ -3204,6 +3718,31 @@ mod tests {
         assert_eq!(payment.payment_id, "mock-payment-21");
         assert_eq!(payment.post_balance.total_sats, 979);
 
+        let json_payment = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Pay {
+                payment_request: "lnbc1mockjsonpay".to_string(),
+                amount_sats: Some(8),
+                yes: false,
+                json: true,
+            },
+        )
+        .await
+        .expect("mock json pay");
+        assert!(json_payment.contains("\"payment_id\": \"mock-payment-8\""));
+        let interactive_error = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Pay {
+                payment_request: "lnbc1mockinteractive".to_string(),
+                amount_sats: Some(8),
+                yes: false,
+                json: false,
+            },
+        )
+        .await
+        .expect_err("interactive pay should require confirmation");
+        assert!(interactive_error.to_string().contains("--yes or --json"));
+
         let history = load_wallet_history_report(config_path.as_path(), Some(10))
             .await
             .expect("mock history");
@@ -3392,5 +3931,82 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ldk_node_failed_bolt11_send_records_wallet_receipt() {
+        let receiver_dir = tempfile::tempdir().expect("receiver tempdir");
+        let receiver_config_path = receiver_dir.path().join("config.json");
+        let mut receiver_config = crate::default_config(receiver_dir.path());
+        receiver_config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        receiver_config.wallet_network = "regtest".to_string();
+        crate::save_config(receiver_config_path.as_path(), &receiver_config).expect("save config");
+        let invoice = create_wallet_invoice_report(receiver_config_path.as_path(), 21, None, None)
+            .await
+            .expect("receiver invoice");
+
+        let payer_dir = tempfile::tempdir().expect("payer tempdir");
+        let payer_config_path = payer_dir.path().join("config.json");
+        let mut payer_config = crate::default_config(payer_dir.path());
+        payer_config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        payer_config.wallet_network = "regtest".to_string();
+        crate::save_config(payer_config_path.as_path(), &payer_config).expect("save config");
+
+        let error = pay_wallet_invoice_report(
+            payer_config_path.as_path(),
+            invoice.invoice.payment_request.as_str(),
+            None,
+        )
+        .await
+        .expect_err("send should fail without a running chain source");
+        assert!(error.to_string().contains("ldk_wallet_send_failed"));
+
+        let ledger = crate::load_ledger(payer_config_path.as_path()).expect("payer ledger");
+        let payment = ledger
+            .wallet
+            .payments
+            .iter()
+            .find(|payment| payment.status == "failed")
+            .expect("failed payment receipt");
+        assert_eq!(payment.method, "bolt11");
+        assert_eq!(payment.amount_sats, 21);
+        assert_eq!(
+            payment.invoice.as_deref(),
+            Some(invoice.invoice.payment_request.as_str())
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ldk_node_onchain_withdrawal_checks_spendable_balance_and_records_wallet_receipt() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        config.wallet_network = "regtest".to_string();
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+        let address = create_wallet_address_report(config_path.as_path())
+            .await
+            .expect("wallet address")
+            .bitcoin_address;
+
+        let error = pay_wallet_invoice_report(config_path.as_path(), address.as_str(), Some(21))
+            .await
+            .expect_err("withdrawal should fail without spendable funds");
+        assert!(
+            error
+                .to_string()
+                .contains("insufficient_spendable_onchain_balance")
+        );
+
+        let ledger = crate::load_ledger(config_path.as_path()).expect("ledger");
+        let payment = ledger
+            .wallet
+            .payments
+            .iter()
+            .find(|payment| payment.status == "failed")
+            .expect("failed payment receipt");
+        assert_eq!(payment.method, "onchain");
+        assert_eq!(payment.amount_sats, 21);
+        assert_eq!(payment.fees_sats, 0);
     }
 }

@@ -2386,6 +2386,7 @@ pub enum Command {
     PayoutWithdraw {
         payment_request: String,
         amount_sats: Option<u64>,
+        yes: bool,
         json: bool,
     },
     Wallet {
@@ -9343,8 +9344,10 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         Command::PayoutWithdraw {
             payment_request,
             amount_sats,
+            yes,
             json,
         } => {
+            wallet_runtime::require_explicit_send_confirmation("payout withdraw", json, yes)?;
             let report = run_payout_withdrawal(
                 cli.config_path.as_path(),
                 payment_request.as_str(),
@@ -9570,14 +9573,14 @@ Commands:\n\
   job deny <request_event_id> [--json]\n\
   job policy [show|auto|manual] [--json]\n\
   payout [--limit <n>] [--json]\n\
-  payout withdraw <payment_request> [--amount-sats <n>] [--json]\n\
+  payout withdraw <payment_request> [--amount-sats <n>] [--yes] [--json]\n\
   wallet status [--json]\n\
   wallet sync [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json]\n\
-  wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
+  wallet pay <payment_request> [--amount-sats <n>] [--yes] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
   wallet entropy status|export <path>|import <path> [--json]\n\
   wallet lock status|clear [--json]\n\
@@ -9837,11 +9840,12 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
                 Ok(Command::Payout { limit, json })
             }
             Some("withdraw") => {
-                let (payment_request, amount_sats, json) =
+                let (payment_request, amount_sats, yes, json) =
                     parse_payout_withdraw_command(args, start_index + 2)?;
                 Ok(Command::PayoutWithdraw {
                     payment_request,
                     amount_sats,
+                    yes,
                     json,
                 })
             }
@@ -10773,13 +10777,14 @@ fn parse_payout_flags(
 fn parse_payout_withdraw_command(
     args: &[String],
     mut index: usize,
-) -> Result<(String, Option<u64>, bool)> {
+) -> Result<(String, Option<u64>, bool, bool)> {
     let payment_request = args
         .get(index)
         .ok_or_else(|| anyhow!("missing <payment_request> for payout withdraw"))?
         .clone();
     index += 1;
     let mut amount_sats = None;
+    let mut yes = false;
     let mut json = false;
     while index < args.len() {
         match args[index].as_str() {
@@ -10787,21 +10792,28 @@ fn parse_payout_withdraw_command(
                 json = true;
                 index += 1;
             }
+            "--yes" => {
+                yes = true;
+                index += 1;
+            }
             "--amount-sats" => {
                 index += 1;
                 let value = args
                     .get(index)
                     .ok_or_else(|| anyhow!("missing value for --amount-sats"))?;
-                amount_sats =
-                    Some(value.parse::<u64>().with_context(|| {
-                        format!("invalid payout withdraw amount_sats: {value}")
-                    })?);
+                let parsed = value
+                    .parse::<u64>()
+                    .with_context(|| format!("invalid payout withdraw amount_sats: {value}"))?;
+                if parsed == 0 {
+                    bail!("payout withdraw amount_sats must be greater than 0");
+                }
+                amount_sats = Some(parsed);
                 index += 1;
             }
             other => bail!("unexpected argument for payout withdraw: {other}"),
         }
     }
-    Ok((payment_request, amount_sats, json))
+    Ok((payment_request, amount_sats, yes, json))
 }
 
 fn parse_provider_scan_flags(
@@ -51222,12 +51234,14 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 "lnbc21payout".to_string(),
                 "--amount-sats".to_string(),
                 "21".to_string(),
+                "--yes".to_string(),
                 "--json".to_string(),
             ])?
             .command
                 == Command::PayoutWithdraw {
                     payment_request: "lnbc21payout".to_string(),
                     amount_sats: Some(21),
+                    yes: true,
                     json: true,
                 },
             "payout withdraw should parse invoice, amount, and json flag",

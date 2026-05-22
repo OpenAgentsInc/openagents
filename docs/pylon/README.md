@@ -606,9 +606,11 @@ The built-in LDK wallet work is tracked from `OpenAgentsInc/openagents#4520`.
 Current source can open the local LDK Node, create wallet-owned receive
 artifacts, and sign Nexus registration payloads with wallet node ID, runtime
 kind, network, target kind, capabilities, derivation version, backup status, and
-registration mode. Local Lightning send and withdrawal flows remain dedicated
-wallet tracker work and must not be claimed as available until those issues
-close.
+registration mode. It can now submit outbound BOLT11 and BOLT12 sends through
+the local LDK Node, submit on-chain withdrawals from the built-in wallet while
+retaining anchor-channel reserve, and persist failed send receipts when LDK or
+local balance checks refuse a payment. BIP353 names still require an external
+resolution step until the selected LDK runtime exposes native name resolution.
 
 The prior `0.1.15` release receipt is
 `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the
@@ -1149,12 +1151,16 @@ The retained wallet controls now also exist in both places. The default
 `wallet_runtime_kind=ldk_node` path opens the built-in LDK Node and can report
 status, sync, balance buckets, and real wallet-owned Bitcoin receive addresses.
 It also creates real BOLT11 receive invoices and, where the runtime exposes a
-supported BOLT12 path, BOLT12 offers. The external-target runtime is retained
-only as an explicit migration override; in that mode address, invoice, pay, and
-withdraw commands still fail honestly because Pylon is only tracking an
-externally supplied payment target. Lightning pay and withdraw flows remain
-staged behind later wallet tracker issues.
-- TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
+supported BOLT12 path, BOLT12 offers. Outbound `wallet pay` now submits BOLT11
+invoices and BOLT12 offers through LDK Node and records typed failed-send
+receipts when parsing, node state, routing, or balance checks refuse the send.
+On-chain withdrawal targets are sent from the local wallet and preflighted
+against `spendable_onchain_balance_sats`, so anchor-channel reserve remains
+protected. The external-target runtime is retained only as an explicit
+migration override; in that mode address, invoice, pay, and withdraw commands
+still fail honestly because Pylon is only tracking an externally supplied
+payment target.
+- TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=ldk_node` is the
@@ -1236,13 +1242,14 @@ truth and surfaces that control-plane error instead of continuing to claim a
 healthy online state.
 
 The retained provider payout controls now also exist in both places:
-- TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11> [--amount-sats <n>]`
-- headless: `cargo pylon-headless payout [--limit <n>]`, `cargo pylon-headless payout withdraw <bolt11> [--amount-sats <n>]`
+- TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`
+- headless: `cargo pylon-headless payout [--limit <n>]`, `cargo pylon-headless payout withdraw <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>] [--yes] [--json]`
 
 That path projects retained provider earnings, current retained wallet/accounting
-state, and prior withdrawal outcomes from the same local ledger. Real local
-wallet withdrawal remains planned LDK wallet work rather than a guarantee of the
-release binary.
+state, and prior withdrawal outcomes from the same local ledger. The default
+LDK runtime submits withdrawals from the built-in wallet, persists successful
+payment records, and also persists failed payout rows and failed wallet-send
+receipts when an LDK error or local reserve/balance check refuses the send.
 
 The retained transcript observability commands now also exist in the shell:
 - TUI: `/jobs [--limit <n>]`, `/earnings`, `/receipts [--limit <n>]`, `/activity [--limit <n>]`
@@ -1333,20 +1340,28 @@ cargo pylon-headless wallet balance
 cargo pylon-headless wallet address
 cargo pylon-headless wallet invoice 21 --description "pylon receive"
 cargo pylon-headless wallet offer --amount-sats 21 --description "pylon offer"
-cargo pylon-headless wallet pay <bolt11> --amount-sats 21
+cargo pylon-headless wallet pay <bolt11-or-bolt12> --amount-sats 21 --yes
 cargo pylon-headless wallet history --limit 10
 cargo pylon-headless payout --limit 10
-cargo pylon-headless payout withdraw <bolt11> --amount-sats 21
+cargo pylon-headless payout withdraw <bolt11-or-bolt12-or-address> --amount-sats 21 --yes
 ```
 
 In the default `wallet_runtime_kind=ldk_node` runtime, `wallet address` returns
 a real on-chain address from the built-in LDK wallet, `wallet invoice <sats> --json`
 returns a real BOLT11 receive invoice with a payment hash, and `wallet offer --json`
 returns a BOLT12 offer when the linked LDK runtime supports that receive path.
+`wallet pay ... --json` is the non-interactive automation path; otherwise use
+`--yes` for scripted headless sends or answer the interactive confirmation
+prompt. `payout withdraw` accepts BOLT11 invoices, BOLT12 offers, BIP21 Bitcoin
+URIs, or direct on-chain addresses. On-chain withdrawals
+require an amount from `--amount-sats` or a BIP21 `amount=` field and are refused
+before broadcast when the request would exceed spendable on-chain balance after
+retaining anchor reserve. BIP353 names are rejected with an explicit
+`bip353_send_unavailable` error until the selected LDK runtime exposes native
+name resolution.
 In the explicit `external_target` migration override, local address, invoice,
 pay, and payout withdrawal commands may report that the local wallet runtime is
-unavailable. Lightning pay and withdrawal commands still refuse until their
-dedicated LDK wallet issues land.
+unavailable.
 
 Move the node through explicit lifecycle controls:
 
@@ -1486,6 +1501,6 @@ The retained NIP-90 and wallet verification lane is local and explicit.
 `scripts/pylon/verify_nip90_wallet.sh` sets a fresh standalone Pylon home to
 `wallet_network=regtest`, checks the retained headless report commands, and then
 runs the focused local websocket-relay and wallet-hook tests that cover provider
-intake, buyer submit/watch/pay, payout persistence, and retained activity replay.
-It does not claim a live funded Spark regtest backend or a production-ready
-built-in LDK wallet.
+intake, buyer submit/watch/pay, wallet send guards, failed-send receipts, payout
+persistence, and retained activity replay. It does not claim a live funded
+Spark regtest backend.
