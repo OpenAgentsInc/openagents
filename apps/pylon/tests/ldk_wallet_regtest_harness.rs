@@ -41,6 +41,7 @@ struct HarnessSummary {
     receiver_balances: BalancePair,
     receipt_ids: Vec<String>,
     bolt12_status: String,
+    accepted_work: AcceptedWorkProof,
     restart_payment_status: String,
     restored_payment_status: String,
     receiver_backup_digest: String,
@@ -56,9 +57,68 @@ struct BalancePair {
 
 #[derive(Debug, Clone, Serialize)]
 struct BalanceSnapshot {
+    total_onchain_sats: u64,
     spendable_onchain_sats: u64,
+    total_lightning_sats: u64,
     lightning_sats: u64,
     inbound_lightning_sats: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct AcceptedWorkProof {
+    schema: String,
+    no_manual_external_payout_destination: bool,
+    wallet_registration: AcceptedWorkWalletRegistration,
+    treasury_dispatch: AcceptedWorkTreasuryDispatch,
+    pylon_observation: AcceptedWorkPylonObservation,
+    withdrawal: AcceptedWorkWithdrawal,
+    reconciliation: AcceptedWorkReconciliation,
+}
+
+#[derive(Debug, Serialize)]
+struct AcceptedWorkWalletRegistration {
+    nexus_operation_id: String,
+    wallet_node_id: String,
+    payment_target_kind: String,
+    wallet_registration_mode: String,
+    receipt_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AcceptedWorkTreasuryDispatch {
+    treasury_operation_id: String,
+    payout_key: String,
+    amount_sats: u64,
+    payment_hash: String,
+    payment_id: String,
+    payer_node_id: String,
+    receipt_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AcceptedWorkPylonObservation {
+    wallet_history_status: String,
+    payment_hash: String,
+    payment_id: String,
+    amount_sats: u64,
+    balance_increase_sats: u64,
+    receipt_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AcceptedWorkWithdrawal {
+    txid: String,
+    amount_sats: u64,
+    balance_decreased: bool,
+    receipt_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AcceptedWorkReconciliation {
+    nexus_operation_id: String,
+    treasury_operation_id: String,
+    pylon_receipt_id: String,
+    reconciliation_status: String,
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -157,6 +217,8 @@ async fn ldk_wallet_regtest_harness() {
     assert_eq!(receiver_payment.amount_msat, Some(PAYMENT_MSATS));
     assert!(matches!(receiver_payment.kind, PaymentKind::Bolt11 { .. }));
 
+    let receiver_after_accepted_work_payment = balance_snapshot(&receiver);
+
     let bolt12_status = attempt_bolt12_payment(&payer, &receiver).await;
 
     let payer_withdraw_address = payer
@@ -176,6 +238,73 @@ async fn ldk_wallet_regtest_harness() {
 
     let payer_post = balance_snapshot(&payer);
     let receiver_post = balance_snapshot(&receiver);
+    let accepted_work_amount_sats = PAYMENT_MSATS / 1000;
+    let accepted_work_nexus_operation_id = "nexus.accepted_work.regtest.window0001".to_string();
+    let accepted_work_treasury_operation_id =
+        "treasury.accepted_work.regtest.operation0001".to_string();
+    let accepted_work_payout_key =
+        "accepted-work:regtest.window0001:assignment.provider0001".to_string();
+    let wallet_registration_receipt_id = format!(
+        "wallet:registration:{}:ldk_node:bolt11_invoice",
+        receiver.node_id()
+    );
+    let treasury_dispatch_receipt_id = format!(
+        "treasury:accepted-work:{}:{}",
+        accepted_work_treasury_operation_id, payment_hash
+    );
+    let pylon_observation_receipt_id = format!("wallet:accepted-work:{payment_hash}");
+    let withdrawal_receipt_id = format!("wallet:withdrawal:{withdrawal_txid}");
+    let accepted_work = AcceptedWorkProof {
+        schema: "pylon.ldk_accepted_work_payout_proof.v1".to_string(),
+        no_manual_external_payout_destination: true,
+        wallet_registration: AcceptedWorkWalletRegistration {
+            nexus_operation_id: accepted_work_nexus_operation_id.clone(),
+            wallet_node_id: receiver.node_id().to_string(),
+            payment_target_kind: "bolt11_invoice".to_string(),
+            wallet_registration_mode: "wallet_generated_bolt11_fallback".to_string(),
+            receipt_id: wallet_registration_receipt_id.clone(),
+        },
+        treasury_dispatch: AcceptedWorkTreasuryDispatch {
+            treasury_operation_id: accepted_work_treasury_operation_id.clone(),
+            payout_key: accepted_work_payout_key,
+            amount_sats: accepted_work_amount_sats,
+            payment_hash: payment_hash.clone(),
+            payment_id: format!("{payment_id:?}"),
+            payer_node_id: payer.node_id().to_string(),
+            receipt_id: treasury_dispatch_receipt_id.clone(),
+        },
+        pylon_observation: AcceptedWorkPylonObservation {
+            wallet_history_status: format!("{:?}", receiver_payment.status),
+            payment_hash: payment_hash.clone(),
+            payment_id: format!("{payment_id:?}"),
+            amount_sats: accepted_work_amount_sats,
+            balance_increase_sats: receiver_after_accepted_work_payment
+                .total_lightning_sats
+                .saturating_sub(receiver_pre.total_lightning_sats),
+            receipt_id: pylon_observation_receipt_id.clone(),
+        },
+        withdrawal: AcceptedWorkWithdrawal {
+            txid: withdrawal_txid.to_string(),
+            amount_sats: WITHDRAWAL_SATS,
+            balance_decreased: receiver_post.spendable_onchain_sats
+                < receiver_pre.spendable_onchain_sats,
+            receipt_id: withdrawal_receipt_id.clone(),
+        },
+        reconciliation: AcceptedWorkReconciliation {
+            nexus_operation_id: accepted_work_nexus_operation_id,
+            treasury_operation_id: accepted_work_treasury_operation_id,
+            pylon_receipt_id: pylon_observation_receipt_id.clone(),
+            reconciliation_status: "settled".to_string(),
+        },
+    };
+    assert_eq!(
+        accepted_work.pylon_observation.balance_increase_sats, accepted_work_amount_sats,
+        "accepted-work payout should increase the receiver's claimable Lightning balance"
+    );
+    assert!(
+        accepted_work.withdrawal.balance_decreased,
+        "accepted-work withdrawal should decrease the receiver's spendable on-chain balance"
+    );
 
     payer.stop().expect("stop payer for restart");
     receiver.stop().expect("stop receiver for restart");
@@ -258,15 +387,19 @@ async fn ldk_wallet_regtest_harness() {
             "pylon.wallet.harness.regtest.onchain_receive:{}",
             funding_txid
         ),
+        wallet_registration_receipt_id,
+        treasury_dispatch_receipt_id,
         format!(
             "pylon.wallet.harness.regtest.channel_open:{}",
             channel_funding_outpoint
         ),
         format!("pylon.wallet.harness.regtest.bolt11:{payment_hash}"),
+        pylon_observation_receipt_id,
         format!(
             "pylon.wallet.harness.regtest.onchain_withdrawal:{}",
             withdrawal_txid
         ),
+        withdrawal_receipt_id,
         format!("pylon.wallet.harness.regtest.backup_restore:{payment_hash}"),
     ];
 
@@ -291,6 +424,7 @@ async fn ldk_wallet_regtest_harness() {
         },
         receipt_ids,
         bolt12_status,
+        accepted_work,
         restart_payment_status: format!("{:?}", restart_payment.status),
         restored_payment_status: format!("{:?}", restored_payment.status),
         receiver_backup_digest,
@@ -590,7 +724,9 @@ fn balance_snapshot(node: &Node) -> BalanceSnapshot {
     let balances = node.list_balances();
     let channels = node.list_channels();
     BalanceSnapshot {
+        total_onchain_sats: balances.total_onchain_balance_sats,
         spendable_onchain_sats: balances.spendable_onchain_balance_sats,
+        total_lightning_sats: balances.total_lightning_balance_sats,
         lightning_sats: channels
             .iter()
             .map(|channel| channel.outbound_capacity_msat / 1000)
