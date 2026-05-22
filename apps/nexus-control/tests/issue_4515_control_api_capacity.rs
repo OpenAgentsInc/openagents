@@ -10,10 +10,12 @@
 //! O(accumulated state), and because the lock is a blocking `std::sync::RwLock`
 //! on a 4-worker runtime, concurrent mutations fully serialize.
 //!
-//! This test drives admissions through the real `nexus-control` router and
-//! prints two measurements:
+//! This test drives requests through the real `nexus-control` router and
+//! prints three measurements:
 //!   Phase A — per-admission latency as kernel state accumulates,
-//!   Phase B — throughput under 4-way concurrency vs. sequential.
+//!   Phase B — admission throughput under 4-way concurrency vs. sequential,
+//!   Phase C — validator-challenge claim latency, idle vs. under admission
+//!             load (the validator backlog drains through the same lock).
 //!
 //! It is `#[ignore]`d because it is a measurement reproduction, not a fast
 //! pass/fail unit test. Run it explicitly:
@@ -91,6 +93,33 @@ async fn admit(app: &Router, tag: &str, idx: usize) -> TestResult<(StatusCode, D
     let status = response.status();
     to_bytes(response.into_body(), usize::MAX).await?;
     Ok((status, elapsed))
+}
+
+/// Send one validator-challenge claim; return its status, body, and latency.
+///
+/// The claim targets a node that was never admitted, so the handler acquires
+/// the global `store` write lock, finds no such node, and returns a client
+/// error. Claim/finalize are `store.write()` mutations like admission, so the
+/// claim's latency is dominated by the time spent waiting to *acquire* that
+/// lock — which is what Phase C measures under contention.
+async fn claim(app: &Router, idx: usize) -> TestResult<(StatusCode, String, Duration)> {
+    let body = serde_json::json!({
+        "idempotency_key": format!("issue4515-claim-{idx:06}"),
+        "requested_at_ms": now_unix_ms(),
+        "node_pubkey_hex": format!("issue4515-validator-{idx:06}"),
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/training/validator-challenges/claim")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body)?))?;
+    let started = Instant::now();
+    let response = app.clone().oneshot(request).await?;
+    let elapsed = started.elapsed();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+    let body = String::from_utf8_lossy(&bytes).into_owned();
+    Ok((status, body, elapsed))
 }
 
 fn avg(samples: &[Duration]) -> Duration {
@@ -195,6 +224,68 @@ async fn issue_4515_control_api_mutation_latency_scales_with_state() -> TestResu
     println!("  concurrency speedup        : {speedup:.2}x (1.0x == fully serialized)");
     println!("  concurrent latency p50/p99 : {p50:?} / {p99:?}");
     println!();
+
+    // ---- Phase C: validator-challenge requests stall on the same lock ----
+    // Validator claim/retry/finalize are `store.write()` mutations too. A claim
+    // for a never-admitted node still acquires the global write lock before it
+    // fails, so its latency measures time waiting for that lock. Measured idle
+    // and then under a concurrent admission flood.
+    println!("Phase C — validator-challenge claim latency, idle vs under admission load:");
+    let claim_count = 60usize;
+
+    let mut idle_claims = Vec::with_capacity(claim_count);
+    let mut claim_status = StatusCode::OK;
+    let mut claim_body = String::new();
+    for idx in 0..claim_count {
+        let (status, body, elapsed) = claim(&app, idx).await?;
+        claim_status = status;
+        claim_body = body;
+        idle_claims.push(elapsed);
+    }
+
+    let flood = burst * 3;
+    let mut flood_handles = Vec::with_capacity(flood);
+    for idx in 0..flood {
+        let app = app.clone();
+        flood_handles.push(tokio::spawn(
+            async move { admit(&app, "floodC", idx).await },
+        ));
+    }
+    let mut loaded_claims = Vec::with_capacity(claim_count);
+    for idx in 0..claim_count {
+        let (_status, _body, elapsed) = claim(&app, claim_count + idx).await?;
+        loaded_claims.push(elapsed);
+    }
+    for handle in flood_handles {
+        let (status, _) = handle.await??;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    idle_claims.sort_unstable();
+    loaded_claims.sort_unstable();
+    let idle_claim_avg = avg(&idle_claims);
+    let loaded_claim_avg = avg(&loaded_claims);
+    let idle_p99 = idle_claims
+        .get((idle_claims.len() * 99 / 100).min(idle_claims.len().saturating_sub(1)))
+        .copied()
+        .unwrap_or_default();
+    let loaded_p99 = loaded_claims
+        .get((loaded_claims.len() * 99 / 100).min(loaded_claims.len().saturating_sub(1)))
+        .copied()
+        .unwrap_or_default();
+    let claim_slowdown =
+        loaded_claim_avg.as_secs_f64() / idle_claim_avg.as_secs_f64().max(f64::MIN_POSITIVE);
+    let claim_reached = if claim_body.contains("training_node_not_found") {
+        "reached handler (training_node_not_found)"
+    } else {
+        "UNEXPECTED body"
+    };
+    println!("  claim handler:              HTTP {claim_status} — {claim_reached}");
+    println!("  idle       claim avg/p99 :  {idle_claim_avg:?} / {idle_p99:?}");
+    println!("  under-load claim avg/p99 :  {loaded_claim_avg:?} / {loaded_p99:?}");
+    println!("  claim slowdown under load:  {claim_slowdown:.0}x");
+    println!();
+
     println!("Conclusion:");
     println!("  Per-admission latency grew {growth:.1}x across this run because every");
     println!("  mutation persists the full kernel state (clone + JSON + fsync) under one");
@@ -205,6 +296,9 @@ async fn issue_4515_control_api_mutation_latency_scales_with_state() -> TestResu
     println!("  ceiling drives the relay's in-flight count to its 256-permit limit -> 503");
     println!("  'embedded Nexus control API capacity exhausted'. The relay semaphore is");
     println!("  the symptom, not the cause.");
+    println!("  Validator claim/finalize are the same store.write() mutations: under");
+    println!("  admission load, validator claim latency rose {claim_slowdown:.0}x here, so the");
+    println!("  validator backlog cannot drain while the control plane is saturated.");
     println!();
 
     assert!(
@@ -217,6 +311,19 @@ async fn issue_4515_control_api_mutation_latency_scales_with_state() -> TestResu
         "expected ~serialized throughput (speedup near 1x); got {speedup:.2}x"
     );
     assert!(state_bytes > 0, "kernel state was not persisted to disk");
+    assert!(
+        claim_body.contains("training_node_not_found"),
+        "validator claim did not reach the handler; body: {claim_body}"
+    );
+    assert!(
+        claim_status.is_client_error(),
+        "expected a client error from the unadmitted-node claim; got {claim_status}"
+    );
+    assert!(
+        loaded_claim_avg > idle_claim_avg * 2,
+        "expected validator claims to stall under admission load \
+         (idle avg {idle_claim_avg:?}, under-load avg {loaded_claim_avg:?})"
+    );
 
     Ok(())
 }

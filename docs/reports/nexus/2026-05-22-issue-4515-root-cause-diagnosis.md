@@ -148,6 +148,28 @@ a throughput ceiling of ~128 mutations/sec at this depth, and falling as state
 grows. Each mutation also holds a relay authority-slot permit for its full
 ~31 ms.
 
+### Phase C — validator-challenge requests stall on the same lock (depth 800)
+
+Validator challenge claim/retry/finalize are `store.write()` mutations too, so
+the validator backlog drains through the same global lock. Phase C times a
+validator-challenge `claim` for an unadmitted node — it acquires the write
+lock, fails the node lookup, and returns, so its latency is essentially the
+time spent acquiring the lock:
+
+| condition                            | claim latency avg / p99 |
+| -------------------------------------- | ----------------------- |
+| idle control plane                     | 5.6 µs / 62 µs |
+| under a concurrent admission flood     | 7.9 ms / 36 ms |
+
+Idle, a claim is microseconds. Under admission load it rises by three orders of
+magnitude — every validator mutation queues behind the same serialized
+O(total-state) persists. The idle baseline being microseconds inflates the raw
+ratio; the figure that matters is the absolute under-load latency, and on
+production scale (far more accumulated state, sustained real fleet load) it is
+correspondingly worse. This is the mechanism behind a validator backlog that
+does not drain: the work to clear it cannot get through the saturated control
+API.
+
 ## Why relay-side changes do not fix this
 
 The relay's semaphore is downstream of the bottleneck. Specifically:
