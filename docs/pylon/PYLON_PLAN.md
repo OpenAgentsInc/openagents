@@ -201,6 +201,11 @@ Current implementation status:
   public manifest, scrypt/XChaCha20-Poly1305 encryption, optional all-in-one
   identity mnemonic inclusion, local backup receipts, and status states for
   missing, stale, and current backups.
+- Pylon can now restore either from the one recovery phrase or from a full
+  encrypted backup. Phrase-only restore recreates identity and deterministic LDK
+  entropy while warning that Lightning state is not restored; full-backup
+  restore validates network/derivation/passphrase, refuses active wallet locks,
+  restores the encrypted LDK state snapshot, and records restore receipts.
 
 Pylon must remain a provider connector and local contributor wallet. It should
 not own Nexus treasury keys, run the hosted treasury LDK node, or become a

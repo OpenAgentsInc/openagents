@@ -131,6 +131,19 @@ pub enum WalletSubcommand {
         path: PathBuf,
         json: bool,
     },
+    RestorePhrase {
+        mnemonic_env: Option<String>,
+        mnemonic_file: Option<PathBuf>,
+        wallet_network: Option<String>,
+        yes: bool,
+        json: bool,
+    },
+    RestoreBackup {
+        path: PathBuf,
+        passphrase_env: Option<String>,
+        yes: bool,
+        json: bool,
+    },
     EntropyStatus {
         json: bool,
     },
@@ -300,6 +313,21 @@ pub struct WalletBackupInspectReport {
     pub file_digest: String,
     pub valid: bool,
     pub manifest: WalletBackupPublicManifest,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WalletRestoreReport {
+    pub runtime: WalletRuntimeSurface,
+    pub operation: String,
+    pub mode: String,
+    pub status: String,
+    pub network: String,
+    pub restored_component_count: usize,
+    pub backup_file_digest: Option<String>,
+    pub plaintext_manifest_digest: Option<String>,
+    pub identity_mnemonic_restored: bool,
+    pub recovery_mode: String,
+    pub limitations: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -2149,6 +2177,27 @@ pub(crate) fn require_explicit_send_confirmation(
     bail!("{command} cancelled: confirmation did not match YES")
 }
 
+fn require_explicit_restore_confirmation(command: &str, yes: bool) -> Result<()> {
+    if yes {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        bail!("{command} overwrites local wallet recovery state; rerun with --yes")
+    }
+    eprint!("{command} overwrites local wallet recovery state. Type YES to continue: ");
+    std::io::stderr()
+        .flush()
+        .with_context(|| "failed to flush confirmation prompt")?;
+    let mut response = String::new();
+    std::io::stdin()
+        .read_line(&mut response)
+        .with_context(|| "failed to read confirmation response")?;
+    if response.trim() == "YES" {
+        return Ok(());
+    }
+    bail!("{command} cancelled: confirmation did not match YES")
+}
+
 pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) -> Result<String> {
     match command {
         WalletSubcommand::Status { json } => {
@@ -2261,6 +2310,44 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
                 return Ok(serde_json::to_string_pretty(&report)?);
             }
             Ok(render_wallet_backup_inspect_report(&report))
+        }
+        WalletSubcommand::RestorePhrase {
+            mnemonic_env,
+            mnemonic_file,
+            wallet_network,
+            yes,
+            json,
+        } => {
+            require_explicit_restore_confirmation("wallet restore phrase", *yes)?;
+            let report = restore_wallet_phrase_report(
+                config_path,
+                mnemonic_env.as_deref(),
+                mnemonic_file.as_deref(),
+                wallet_network.as_deref(),
+            )
+            .await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_restore_report(&report))
+        }
+        WalletSubcommand::RestoreBackup {
+            path,
+            passphrase_env,
+            yes,
+            json,
+        } => {
+            require_explicit_restore_confirmation("wallet restore backup", *yes)?;
+            let report = restore_wallet_backup_report(
+                config_path,
+                path.as_path(),
+                passphrase_env.as_deref(),
+            )
+            .await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_restore_report(&report))
         }
         WalletSubcommand::EntropyStatus { json } => {
             let report = load_wallet_entropy_status_report(config_path).await?;
@@ -2510,6 +2597,7 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
             Ok(WalletSubcommand::History { limit, json })
         }
         "backup" => parse_wallet_backup_command(args, start_index + 2),
+        "restore" => parse_wallet_restore_command(args, start_index + 2),
         "entropy" => parse_wallet_entropy_command(args, start_index + 2),
         "lock" => parse_wallet_lock_command(args, start_index + 2),
         other => bail!("unsupported wallet subcommand '{other}'"),
@@ -2570,6 +2658,117 @@ fn parse_wallet_backup_command(args: &[String], start_index: usize) -> Result<Wa
             })
         }
         other => bail!("unsupported wallet backup action '{other}'"),
+    }
+}
+
+fn parse_wallet_restore_command(args: &[String], start_index: usize) -> Result<WalletSubcommand> {
+    let action = args
+        .get(start_index)
+        .ok_or_else(|| anyhow!("missing wallet restore action"))?;
+    match action.as_str() {
+        "phrase" => {
+            let mut mnemonic_env = None;
+            let mut mnemonic_file = None;
+            let mut wallet_network = None;
+            let mut yes = false;
+            let mut json = false;
+            let mut index = start_index + 1;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--mnemonic-env" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --mnemonic-env"))?;
+                        if value.trim().is_empty() {
+                            bail!("--mnemonic-env cannot be empty");
+                        }
+                        mnemonic_env = Some(value.trim().to_string());
+                        index += 1;
+                    }
+                    "--mnemonic-file" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --mnemonic-file"))?;
+                        mnemonic_file = Some(PathBuf::from(value));
+                        index += 1;
+                    }
+                    "--wallet-network" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --wallet-network"))?;
+                        if value.trim().is_empty() {
+                            bail!("--wallet-network cannot be empty");
+                        }
+                        wallet_network = Some(value.trim().to_string());
+                        index += 1;
+                    }
+                    "--yes" => {
+                        yes = true;
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for wallet restore phrase: {other}"),
+                }
+            }
+            if mnemonic_env.is_some() == mnemonic_file.is_some() {
+                bail!(
+                    "wallet restore phrase requires exactly one of --mnemonic-env or --mnemonic-file"
+                );
+            }
+            Ok(WalletSubcommand::RestorePhrase {
+                mnemonic_env,
+                mnemonic_file,
+                wallet_network,
+                yes,
+                json,
+            })
+        }
+        "backup" => {
+            let path = args
+                .get(start_index + 1)
+                .ok_or_else(|| anyhow!("missing <path> for wallet restore backup"))?;
+            let mut passphrase_env = None;
+            let mut yes = false;
+            let mut json = false;
+            let mut index = start_index + 2;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--passphrase-env" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --passphrase-env"))?;
+                        if value.trim().is_empty() {
+                            bail!("--passphrase-env cannot be empty");
+                        }
+                        passphrase_env = Some(value.trim().to_string());
+                        index += 1;
+                    }
+                    "--yes" => {
+                        yes = true;
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for wallet restore backup: {other}"),
+                }
+            }
+            Ok(WalletSubcommand::RestoreBackup {
+                path: PathBuf::from(path),
+                passphrase_env,
+                yes,
+                json,
+            })
+        }
+        other => bail!("unsupported wallet restore action '{other}'"),
     }
 }
 
@@ -2908,6 +3107,121 @@ pub fn inspect_wallet_backup_report(path: &Path) -> Result<WalletBackupInspectRe
             && encrypted.public_manifest.kind == WALLET_BACKUP_KIND,
         manifest: encrypted.public_manifest,
     })
+}
+
+pub async fn restore_wallet_phrase_report(
+    config_path: &Path,
+    mnemonic_env: Option<&str>,
+    mnemonic_file: Option<&Path>,
+    wallet_network: Option<&str>,
+) -> Result<WalletRestoreReport> {
+    let mut config = ensure_local_setup(config_path)?;
+    let mnemonic = read_wallet_restore_mnemonic(mnemonic_env, mnemonic_file)?;
+    let parsed = Mnemonic::parse_in_normalized(Language::English, mnemonic.as_str())
+        .context("wallet restore phrase is not a valid BIP39 English mnemonic")?;
+    let normalized_mnemonic = parsed.to_string();
+    if let Some(network) = wallet_network {
+        parse_ldk_bitcoin_network(network)?;
+        config.wallet_network = network.to_string();
+    }
+    config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+    config.wallet_entropy_override_path = None;
+    let layout = ensure_wallet_storage_layout(&config)?;
+    refuse_active_wallet_restore(&layout)?;
+    reset_wallet_storage_for_restore(&layout)?;
+    write_wallet_identity_mnemonic(config.identity_path.as_path(), normalized_mnemonic.as_str())?;
+    crate::save_config(config_path, &config)?;
+    let context = prepare_wallet_context(config_path)?;
+    let report = WalletRestoreReport {
+        runtime: context.runtime.surface().clone(),
+        operation: "restore".to_string(),
+        mode: "phrase_only".to_string(),
+        status: "restored".to_string(),
+        network: config.wallet_network.clone(),
+        restored_component_count: 0,
+        backup_file_digest: None,
+        plaintext_manifest_digest: None,
+        identity_mnemonic_restored: true,
+        recovery_mode: "phrase_only_onchain_rescan_required".to_string(),
+        limitations: vec![
+            "Restores OpenAgents identity and deterministic LDK node entropy.".to_string(),
+            "Does not restore Lightning channel monitors, channel manager, or payment continuity; use wallet restore backup for full Lightning state.".to_string(),
+        ],
+    };
+    sync_wallet_restore_receipt(config_path, &report)?;
+    Ok(report)
+}
+
+pub async fn restore_wallet_backup_report(
+    config_path: &Path,
+    backup_path: &Path,
+    passphrase_env: Option<&str>,
+) -> Result<WalletRestoreReport> {
+    let mut config = ensure_local_setup(config_path)?;
+    let encrypted = read_encrypted_wallet_backup(backup_path)?;
+    let backup_file_digest = sha256_file_digest(backup_path)?;
+    let passphrase = wallet_backup_passphrase(passphrase_env)?;
+    let plaintext = decrypt_wallet_backup_plaintext(&encrypted, passphrase.as_str())?;
+    validate_wallet_backup_plaintext_for_restore(&encrypted, &plaintext)?;
+    if config.wallet_network != plaintext.network {
+        bail!(
+            "wallet backup network mismatch: config wallet_network={} backup network={}; set wallet_network before restore or use phrase restore with --wallet-network",
+            config.wallet_network,
+            plaintext.network
+        );
+    }
+    config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+    config.wallet_entropy_override_path = None;
+    let layout = ensure_wallet_storage_layout(&config)?;
+    refuse_active_wallet_restore(&layout)?;
+    let identity_mnemonic_restored = if let Some(mnemonic) = plaintext.identity_mnemonic.as_deref()
+    {
+        write_wallet_identity_mnemonic(config.identity_path.as_path(), mnemonic)?;
+        true
+    } else {
+        false
+    };
+    let material = load_wallet_node_entropy_material(&config)?;
+    if material.metadata.derivation_version != plaintext.wallet_derivation.derivation_version {
+        bail!(
+            "wallet backup derivation version mismatch: local={} backup={}",
+            material.metadata.derivation_version,
+            plaintext.wallet_derivation.derivation_version
+        );
+    }
+    if material.metadata.digest != plaintext.wallet_derivation.digest {
+        bail!(
+            "wallet backup entropy digest mismatch; restore the matching Pylon recovery phrase first or use an all-in-one encrypted backup"
+        );
+    }
+    reset_wallet_storage_for_restore(&layout)?;
+    restore_wallet_backup_snapshot(&layout, plaintext.ldk_storage_snapshot.as_slice())?;
+    write_restored_wallet_backup_status_manifest(
+        &layout,
+        &encrypted,
+        &plaintext,
+        backup_path,
+        backup_file_digest.as_str(),
+    )?;
+    crate::save_config(config_path, &config)?;
+    let context = prepare_wallet_context(config_path)?;
+    let report = WalletRestoreReport {
+        runtime: context.runtime.surface().clone(),
+        operation: "restore".to_string(),
+        mode: "full_backup".to_string(),
+        status: "restored".to_string(),
+        network: plaintext.network,
+        restored_component_count: plaintext.ldk_storage_snapshot.len(),
+        backup_file_digest: Some(backup_file_digest),
+        plaintext_manifest_digest: Some(encrypted.public_manifest.plaintext_manifest_digest),
+        identity_mnemonic_restored,
+        recovery_mode: "full_backup_ldk_state_restored".to_string(),
+        limitations: vec![
+            "Restores the encrypted local LDK state snapshot; chain sync may still need to rescan or update after first start.".to_string(),
+        ],
+    };
+    sync_wallet_restore_receipt(config_path, &report)?;
+    Ok(report)
 }
 
 pub async fn inspect_wallet_lock_report(config_path: &Path) -> Result<WalletLockReport> {
@@ -3264,6 +3578,35 @@ pub fn render_wallet_backup_inspect_report(report: &WalletBackupInspectReport) -
         ),
     ]
     .join("\n")
+}
+
+pub fn render_wallet_restore_report(report: &WalletRestoreReport) -> String {
+    let mut lines = vec![
+        format!("operation: {}", report.operation),
+        format!("mode: {}", report.mode),
+        format!("status: {}", report.status),
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("network: {}", report.network),
+        format!(
+            "restored_component_count: {}",
+            report.restored_component_count
+        ),
+        format!("recovery_mode: {}", report.recovery_mode),
+        format!(
+            "identity_mnemonic_restored: {}",
+            report.identity_mnemonic_restored
+        ),
+    ];
+    if let Some(value) = report.backup_file_digest.as_deref() {
+        lines.push(format!("backup_file_digest: {value}"));
+    }
+    if let Some(value) = report.plaintext_manifest_digest.as_deref() {
+        lines.push(format!("plaintext_manifest_digest: {value}"));
+    }
+    for limitation in &report.limitations {
+        lines.push(format!("limitation: {limitation}"));
+    }
+    lines.join("\n")
 }
 
 pub fn render_wallet_lock_report(report: &WalletLockReport) -> String {
@@ -3640,7 +3983,6 @@ fn encrypt_wallet_backup_plaintext(
     })
 }
 
-#[cfg(test)]
 fn decrypt_wallet_backup_plaintext(
     encrypted: &WalletBackupEncryptedFile,
     passphrase: &str,
@@ -3714,6 +4056,291 @@ fn sha256_file_digest(path: &Path) -> Result<String> {
 
 fn sha256_digest(contents: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(contents)))
+}
+
+fn read_wallet_restore_mnemonic(
+    mnemonic_env: Option<&str>,
+    mnemonic_file: Option<&Path>,
+) -> Result<String> {
+    match (mnemonic_env, mnemonic_file) {
+        (Some(env_name), None) => {
+            let value = std::env::var(env_name)
+                .with_context(|| format!("missing wallet restore mnemonic env {env_name}"))?;
+            normalize_wallet_restore_mnemonic(value.as_str())
+        }
+        (None, Some(path)) => {
+            ensure_private_file_permissions(path, "wallet restore mnemonic file")?;
+            let value = std::fs::read_to_string(path).with_context(|| {
+                format!(
+                    "failed to read wallet restore mnemonic file {}",
+                    path.display()
+                )
+            })?;
+            normalize_wallet_restore_mnemonic(value.as_str())
+        }
+        _ => bail!("wallet restore phrase requires exactly one mnemonic source"),
+    }
+}
+
+fn normalize_wallet_restore_mnemonic(value: &str) -> Result<String> {
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        bail!("wallet restore mnemonic is empty");
+    }
+    Ok(normalized)
+}
+
+fn write_wallet_identity_mnemonic(path: &Path, mnemonic: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create identity dir {}", parent.display()))?;
+    }
+    std::fs::write(path, format!("{mnemonic}\n"))
+        .with_context(|| format!("failed to write identity mnemonic {}", path.display()))?;
+    set_private_file_permissions(path, "identity mnemonic")
+}
+
+fn refuse_active_wallet_restore(layout: &WalletStorageLayout) -> Result<()> {
+    let report = wallet_lock_report(
+        WalletRuntimeSurface {
+            runtime_kind: PylonWalletRuntimeKind::LdkNode,
+            network: String::new(),
+            identity_path: String::new(),
+            storage_dir: layout.root_dir.display().to_string(),
+            api_key_env: None,
+            api_key_source: String::new(),
+            node_entropy: WalletNodeEntropyMetadata::default(),
+        },
+        layout,
+        false,
+    );
+    if report.locked && !report.stale {
+        bail!(
+            "wallet restore refused because {} is locked by active pid {}; stop the live wallet first",
+            layout.lock_path.display(),
+            report
+                .owner
+                .as_ref()
+                .map(|owner| owner.pid)
+                .unwrap_or_default()
+        );
+    }
+    if report.locked {
+        std::fs::remove_file(layout.lock_path.as_path()).with_context(|| {
+            format!(
+                "failed to clear stale wallet lock before restore {}",
+                layout.lock_path.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn reset_wallet_storage_for_restore(layout: &WalletStorageLayout) -> Result<()> {
+    for path in [
+        layout.node_dir.as_path(),
+        layout.sqlite_dir.as_path(),
+        layout.backup_staging_dir.as_path(),
+    ] {
+        if path.exists() {
+            std::fs::remove_dir_all(path).with_context(|| {
+                format!("failed to reset wallet restore path {}", path.display())
+            })?;
+        }
+    }
+    for path in [
+        layout.backup_manifest_path.as_path(),
+        layout.last_registration_path.as_path(),
+        layout.lock_path.as_path(),
+    ] {
+        if path.exists() {
+            std::fs::remove_file(path).with_context(|| {
+                format!("failed to reset wallet restore file {}", path.display())
+            })?;
+        }
+    }
+    create_private_dir(layout.node_dir.as_path(), "wallet node state")?;
+    create_private_dir(layout.sqlite_dir.as_path(), "wallet sqlite state")?;
+    create_private_dir(layout.backup_staging_dir.as_path(), "wallet backup staging")?;
+    write_private_file_if_missing(
+        layout.backup_manifest_path.as_path(),
+        format!(
+            "{{\"schema_version\":{WALLET_BACKUP_SCHEMA_VERSION},\"kind\":\"{WALLET_BACKUP_MANIFEST_KIND}\",\"status\":\"none\"}}\n"
+        )
+        .as_bytes(),
+    )?;
+    write_private_file_if_missing(
+        layout.last_registration_path.as_path(),
+        b"{\"schema_version\":1,\"kind\":\"pylon.wallet.last_registration\",\"status\":\"none\"}\n",
+    )?;
+    Ok(())
+}
+
+fn validate_wallet_backup_plaintext_for_restore(
+    encrypted: &WalletBackupEncryptedFile,
+    plaintext: &WalletBackupPlaintextManifest,
+) -> Result<()> {
+    if encrypted.public_manifest.runtime_kind != PylonWalletRuntimeKind::LdkNode.to_string()
+        || plaintext.runtime_kind != PylonWalletRuntimeKind::LdkNode.to_string()
+    {
+        bail!("wallet backup restore requires an ldk_node backup");
+    }
+    if plaintext.wallet_derivation.derivation_version != WALLET_NODE_ENTROPY_DERIVATION_VERSION {
+        bail!(
+            "unsupported wallet backup derivation version {}",
+            plaintext.wallet_derivation.derivation_version
+        );
+    }
+    if plaintext.kind != WALLET_BACKUP_PLAINTEXT_KIND {
+        bail!(
+            "unsupported wallet backup plaintext kind {}",
+            plaintext.kind
+        );
+    }
+    if plaintext.schema_version != WALLET_BACKUP_SCHEMA_VERSION {
+        bail!(
+            "unsupported wallet backup plaintext schema {}",
+            plaintext.schema_version
+        );
+    }
+    if encrypted.public_manifest.exported_at_ms != plaintext.exported_at_ms
+        || encrypted.public_manifest.network != plaintext.network
+        || encrypted.public_manifest.runtime_kind != plaintext.runtime_kind
+        || encrypted.public_manifest.wallet_derivation_version
+            != plaintext.wallet_derivation.derivation_version
+        || encrypted.public_manifest.node_entropy_digest != plaintext.wallet_derivation.digest
+        || encrypted.public_manifest.storage_generation != plaintext.storage_generation
+        || encrypted.public_manifest.identity_mnemonic_included
+            != plaintext.identity_mnemonic_included
+        || encrypted.public_manifest.plaintext_component_count
+            != plaintext.ldk_storage_snapshot.len()
+        || encrypted.public_manifest.plaintext_total_bytes
+            != plaintext
+                .ldk_storage_snapshot
+                .iter()
+                .map(|file| file.size_bytes)
+                .sum::<u64>()
+    {
+        bail!("wallet backup public manifest does not match encrypted plaintext");
+    }
+    Ok(())
+}
+
+fn restore_wallet_backup_snapshot(
+    layout: &WalletStorageLayout,
+    files: &[WalletBackupSnapshotFile],
+) -> Result<()> {
+    for file in files {
+        let relative = safe_wallet_backup_relative_path(file.relative_path.as_str())?;
+        let path = layout.ldk_dir.join(relative);
+        if let Some(parent) = path.parent() {
+            create_private_dir(parent, "wallet restore parent")?;
+        }
+        let contents = hex::decode(file.content_hex.as_str()).with_context(|| {
+            format!(
+                "wallet backup component {} is not valid hex",
+                file.relative_path
+            )
+        })?;
+        if contents.len() as u64 != file.size_bytes {
+            bail!(
+                "wallet backup component {} size mismatch",
+                file.relative_path
+            );
+        }
+        if sha256_digest(contents.as_slice()) != file.sha256 {
+            bail!(
+                "wallet backup component {} digest mismatch",
+                file.relative_path
+            );
+        }
+        std::fs::write(path.as_path(), contents)
+            .with_context(|| format!("failed to restore wallet file {}", path.display()))?;
+        set_private_file_permissions(path.as_path(), "wallet restored file")?;
+    }
+    Ok(())
+}
+
+fn safe_wallet_backup_relative_path(relative_path: &str) -> Result<PathBuf> {
+    let path = Path::new(relative_path);
+    if path.is_absolute() {
+        bail!("wallet backup component path must be relative");
+    }
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(value) => clean.push(value),
+            _ => bail!(
+                "wallet backup component path contains unsafe segment: {}",
+                relative_path
+            ),
+        }
+    }
+    if clean.as_os_str().is_empty() {
+        bail!("wallet backup component path cannot be empty");
+    }
+    Ok(clean)
+}
+
+fn write_restored_wallet_backup_status_manifest(
+    layout: &WalletStorageLayout,
+    encrypted: &WalletBackupEncryptedFile,
+    plaintext: &WalletBackupPlaintextManifest,
+    backup_path: &Path,
+    backup_file_digest: &str,
+) -> Result<()> {
+    let manifest = WalletBackupStatusManifest {
+        schema_version: WALLET_BACKUP_SCHEMA_VERSION,
+        kind: WALLET_BACKUP_MANIFEST_KIND.to_string(),
+        status: "restored".to_string(),
+        last_exported_at_ms: Some(plaintext.exported_at_ms),
+        last_export_path: Some(backup_path.display().to_string()),
+        last_export_file_digest: Some(backup_file_digest.to_string()),
+        last_plaintext_manifest_digest: Some(
+            encrypted.public_manifest.plaintext_manifest_digest.clone(),
+        ),
+        last_component_count: Some(encrypted.public_manifest.plaintext_component_count),
+        last_total_bytes: Some(encrypted.public_manifest.plaintext_total_bytes),
+        encryption_algorithm: Some(encrypted.public_manifest.encryption_algorithm.clone()),
+        kdf: Some(encrypted.public_manifest.kdf.clone()),
+    };
+    write_private_json(
+        layout.backup_manifest_path.as_path(),
+        &manifest,
+        "wallet backup manifest",
+    )
+}
+
+fn sync_wallet_restore_receipt(config_path: &Path, report: &WalletRestoreReport) -> Result<()> {
+    mutate_ledger(config_path, |ledger| {
+        ledger.upsert_wallet_receipt(PylonWalletReceiptRecord {
+            receipt_id: format!(
+                "wallet:restore:{}:{}",
+                report.mode,
+                report
+                    .plaintext_manifest_digest
+                    .as_deref()
+                    .or(report.backup_file_digest.as_deref())
+                    .unwrap_or(report.runtime.node_entropy.digest.as_str())
+            ),
+            receipt_type: format!("wallet.restore.{}.v1", report.mode),
+            status: report.status.clone(),
+            direction: None,
+            method: Some(report.mode.clone()),
+            amount_sats: None,
+            fees_sats: None,
+            payment_id: None,
+            payment_hash: None,
+            txid: None,
+            operation_id: report.backup_file_digest.clone(),
+            settlement_id: None,
+            failure_code: None,
+            detail: Some(report.recovery_mode.clone()),
+            created_at_ms: now_epoch_ms() as u64,
+            updated_at_ms: now_epoch_ms() as u64,
+        });
+        Ok(())
+    })
 }
 
 fn ensure_wallet_storage_layout_for_config_path(config_path: &Path) -> Result<WalletStorageLayout> {
@@ -4226,6 +4853,52 @@ mod tests {
             parse_wallet_command(
                 &[
                     String::from("wallet"),
+                    String::from("restore"),
+                    String::from("phrase"),
+                    String::from("--mnemonic-env"),
+                    String::from("PYLON_TEST_RESTORE_MNEMONIC"),
+                    String::from("--wallet-network"),
+                    String::from("regtest"),
+                    String::from("--yes"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet restore phrase should parse"),
+            WalletSubcommand::RestorePhrase {
+                mnemonic_env: Some("PYLON_TEST_RESTORE_MNEMONIC".to_string()),
+                mnemonic_file: None,
+                wallet_network: Some("regtest".to_string()),
+                yes: true,
+                json: true,
+            }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("restore"),
+                    String::from("backup"),
+                    String::from("/tmp/pylon-wallet-backup.json"),
+                    String::from("--passphrase-env"),
+                    String::from("PYLON_TEST_BACKUP_PASSPHRASE"),
+                    String::from("--yes"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet restore backup should parse"),
+            WalletSubcommand::RestoreBackup {
+                path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                passphrase_env: Some("PYLON_TEST_BACKUP_PASSPHRASE".to_string()),
+                yes: true,
+                json: true,
+            }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
                     String::from("entropy"),
                     String::from("export"),
                     String::from("/tmp/pylon-entropy.hex"),
@@ -4671,6 +5344,306 @@ mod tests {
         );
         unsafe {
             std::env::remove_var("PYLON_TEST_BACKUP_PASSPHRASE");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn wallet_phrase_restore_recreates_identity_entropy_and_warns_about_limits() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_network = "mainnet".to_string();
+        std::fs::write(config.identity_path.as_path(), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\n")
+            .expect("write old identity");
+        super::set_private_file_permissions(config.identity_path.as_path(), "identity mnemonic")
+            .expect("set identity permissions");
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        unsafe {
+            std::env::set_var("PYLON_TEST_RESTORE_MNEMONIC", phrase);
+        }
+        let refused = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::RestorePhrase {
+                mnemonic_env: Some("PYLON_TEST_RESTORE_MNEMONIC".to_string()),
+                mnemonic_file: None,
+                wallet_network: Some("regtest".to_string()),
+                yes: false,
+                json: true,
+            },
+        )
+        .await
+        .expect_err("restore without --yes should fail");
+        assert!(refused.to_string().contains("--yes"));
+        let report = super::restore_wallet_phrase_report(
+            config_path.as_path(),
+            Some("PYLON_TEST_RESTORE_MNEMONIC"),
+            None,
+            Some("regtest"),
+        )
+        .await
+        .expect("restore phrase");
+        assert_eq!(report.mode, "phrase_only");
+        assert_eq!(report.network, "regtest");
+        assert!(report.identity_mnemonic_restored);
+        assert!(report.recovery_mode.contains("onchain_rescan"));
+        assert!(
+            report
+                .limitations
+                .iter()
+                .any(|value| value.contains("Does not restore Lightning channel monitors"))
+        );
+        assert_eq!(
+            std::fs::read_to_string(config.identity_path.as_path())
+                .expect("read identity")
+                .trim(),
+            phrase
+        );
+        let saved = crate::load_config(config_path.as_path()).expect("load config");
+        assert_eq!(saved.wallet_network, "regtest");
+        assert_eq!(saved.wallet_runtime_kind, PylonWalletRuntimeKind::LdkNode);
+        let material = load_wallet_node_entropy_material(&saved).expect("derive entropy");
+        assert_eq!(
+            material.metadata.digest,
+            "sha256:c68d883864e25cd51b513586b985900041d6631d82114bce7d0802848779a601"
+        );
+        let rendered = super::render_wallet_restore_report(&report);
+        let json = serde_json::to_string_pretty(&report).expect("serialize report");
+        assert!(!rendered.contains(phrase));
+        assert!(!json.contains(phrase));
+        unsafe {
+            std::env::remove_var("PYLON_TEST_RESTORE_MNEMONIC");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn wallet_backup_restore_validates_network_passphrase_and_lock() {
+        let source_dir = tempfile::tempdir().expect("source tempdir");
+        let source_config_path = source_dir.path().join("config.json");
+        let backup_path = source_dir.path().join("pylon-wallet-backup.json");
+        let phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let passphrase = "correct horse battery backup";
+        let mut source_config = crate::default_config(source_dir.path());
+        source_config.wallet_network = "regtest".to_string();
+        source_config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(source_config.identity_path.as_path(), format!("{phrase}\n"))
+            .expect("write source identity");
+        super::set_private_file_permissions(
+            source_config.identity_path.as_path(),
+            "identity mnemonic",
+        )
+        .expect("set source identity permissions");
+        crate::save_config(source_config_path.as_path(), &source_config).expect("save source");
+        let source_layout =
+            super::ensure_wallet_storage_layout(&source_config).expect("source layout");
+        std::fs::write(
+            source_layout.node_dir.join("channel_manager"),
+            b"channel-secret-state",
+        )
+        .expect("write source node state");
+        std::fs::write(
+            source_layout.sqlite_dir.join("payments.sqlite"),
+            b"payment-secret-state",
+        )
+        .expect("write source sqlite state");
+        std::fs::write(
+            source_layout.last_registration_path.as_path(),
+            b"{\"schema_version\":1,\"kind\":\"pylon.wallet.last_registration\",\"status\":\"registered\"}\n",
+        )
+        .expect("write source registration");
+        unsafe {
+            std::env::set_var("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE", passphrase);
+        }
+        super::export_wallet_backup_report(
+            source_config_path.as_path(),
+            backup_path.as_path(),
+            Some("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE"),
+            true,
+        )
+        .await
+        .expect("export source backup");
+
+        let wrong_network_dir = tempfile::tempdir().expect("wrong network tempdir");
+        let wrong_network_config_path = wrong_network_dir.path().join("config.json");
+        let mut wrong_network_config = crate::default_config(wrong_network_dir.path());
+        wrong_network_config.wallet_network = "bitcoin".to_string();
+        wrong_network_config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(
+            wrong_network_config.identity_path.as_path(),
+            format!("{phrase}\n"),
+        )
+        .expect("write wrong-network identity");
+        super::set_private_file_permissions(
+            wrong_network_config.identity_path.as_path(),
+            "identity mnemonic",
+        )
+        .expect("set wrong-network identity permissions");
+        crate::save_config(wrong_network_config_path.as_path(), &wrong_network_config)
+            .expect("save wrong-network config");
+        assert!(
+            super::restore_wallet_backup_report(
+                wrong_network_config_path.as_path(),
+                backup_path.as_path(),
+                Some("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE"),
+            )
+            .await
+            .expect_err("wrong network should fail")
+            .to_string()
+            .contains("network mismatch")
+        );
+
+        unsafe {
+            std::env::set_var(
+                "PYLON_TEST_BACKUP_PASSPHRASE_RESTORE",
+                "wrong horse battery backup",
+            );
+        }
+        let wrong_pass_dir = tempfile::tempdir().expect("wrong pass tempdir");
+        let wrong_pass_config_path = wrong_pass_dir.path().join("config.json");
+        let mut wrong_pass_config = crate::default_config(wrong_pass_dir.path());
+        wrong_pass_config.wallet_network = "regtest".to_string();
+        wrong_pass_config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(
+            wrong_pass_config.identity_path.as_path(),
+            format!("{phrase}\n"),
+        )
+        .expect("write wrong-pass identity");
+        super::set_private_file_permissions(
+            wrong_pass_config.identity_path.as_path(),
+            "identity mnemonic",
+        )
+        .expect("set wrong-pass identity permissions");
+        crate::save_config(wrong_pass_config_path.as_path(), &wrong_pass_config)
+            .expect("save wrong-pass config");
+        assert!(
+            super::restore_wallet_backup_report(
+                wrong_pass_config_path.as_path(),
+                backup_path.as_path(),
+                Some("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE"),
+            )
+            .await
+            .expect_err("wrong passphrase should fail")
+            .to_string()
+            .contains("decrypt")
+        );
+
+        unsafe {
+            std::env::set_var("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE", passphrase);
+        }
+        let restore_dir = tempfile::tempdir().expect("restore tempdir");
+        let restore_config_path = restore_dir.path().join("config.json");
+        let mut restore_config = crate::default_config(restore_dir.path());
+        restore_config.wallet_network = "regtest".to_string();
+        restore_config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(
+            restore_config.identity_path.as_path(),
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\n",
+        )
+        .expect("write restore identity");
+        super::set_private_file_permissions(
+            restore_config.identity_path.as_path(),
+            "identity mnemonic",
+        )
+        .expect("set restore identity permissions");
+        crate::save_config(restore_config_path.as_path(), &restore_config).expect("save restore");
+        let restore_layout =
+            super::ensure_wallet_storage_layout(&restore_config).expect("restore layout");
+        let lock = super::acquire_wallet_storage_lock(&restore_layout).expect("active lock");
+        assert!(
+            super::restore_wallet_backup_report(
+                restore_config_path.as_path(),
+                backup_path.as_path(),
+                Some("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE"),
+            )
+            .await
+            .expect_err("active lock should fail")
+            .to_string()
+            .contains("locked by active pid")
+        );
+        drop(lock);
+
+        let report = super::restore_wallet_backup_report(
+            restore_config_path.as_path(),
+            backup_path.as_path(),
+            Some("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE"),
+        )
+        .await
+        .expect("restore backup");
+        assert_eq!(report.mode, "full_backup");
+        assert!(report.identity_mnemonic_restored);
+        assert!(report.restored_component_count >= 3);
+        assert_eq!(
+            std::fs::read_to_string(restore_config.identity_path.as_path())
+                .expect("read restored identity")
+                .trim(),
+            phrase
+        );
+        assert_eq!(
+            std::fs::read(restore_layout.node_dir.join("channel_manager"))
+                .expect("read restored node"),
+            b"channel-secret-state"
+        );
+        assert_eq!(
+            std::fs::read(restore_layout.sqlite_dir.join("payments.sqlite"))
+                .expect("read restored sqlite"),
+            b"payment-secret-state"
+        );
+        assert!(
+            std::fs::read_to_string(restore_layout.last_registration_path.as_path())
+                .expect("read restored registration")
+                .contains("\"registered\"")
+        );
+        let status = load_wallet_status_report(restore_config_path.as_path())
+            .await
+            .expect("status after restore");
+        let ldk_status = status.ldk_node.as_ref().expect("ldk status");
+        assert_eq!(ldk_status.backup_status, "backup_current");
+        assert!(!ldk_status.backup_stale);
+
+        let stale_backup_path = source_dir.path().join("pylon-wallet-stale-backup.json");
+        let current_backup =
+            super::read_encrypted_wallet_backup(backup_path.as_path()).expect("read backup");
+        let mut stale_plaintext =
+            super::decrypt_wallet_backup_plaintext(&current_backup, passphrase)
+                .expect("decrypt current backup");
+        stale_plaintext.exported_at_ms = 1;
+        let stale_backup = super::encrypt_wallet_backup_plaintext(&stale_plaintext, passphrase)
+            .expect("encrypt stale backup");
+        super::write_encrypted_wallet_backup(stale_backup_path.as_path(), &stale_backup)
+            .expect("write stale backup");
+        let stale_restore_dir = tempfile::tempdir().expect("stale restore tempdir");
+        let stale_restore_config_path = stale_restore_dir.path().join("config.json");
+        let mut stale_restore_config = crate::default_config(stale_restore_dir.path());
+        stale_restore_config.wallet_network = "regtest".to_string();
+        stale_restore_config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        std::fs::write(
+            stale_restore_config.identity_path.as_path(),
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\n",
+        )
+        .expect("write stale restore identity");
+        super::set_private_file_permissions(
+            stale_restore_config.identity_path.as_path(),
+            "identity mnemonic",
+        )
+        .expect("set stale restore identity permissions");
+        crate::save_config(stale_restore_config_path.as_path(), &stale_restore_config)
+            .expect("save stale restore");
+        super::restore_wallet_backup_report(
+            stale_restore_config_path.as_path(),
+            stale_backup_path.as_path(),
+            Some("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE"),
+        )
+        .await
+        .expect("restore stale backup");
+        let stale_status = load_wallet_status_report(stale_restore_config_path.as_path())
+            .await
+            .expect("stale status after restore");
+        let stale_ldk_status = stale_status.ldk_node.as_ref().expect("stale ldk status");
+        assert_eq!(stale_ldk_status.backup_status, "backup_stale");
+        assert!(stale_ldk_status.backup_stale);
+        unsafe {
+            std::env::remove_var("PYLON_TEST_BACKUP_PASSPHRASE_RESTORE");
         }
     }
 

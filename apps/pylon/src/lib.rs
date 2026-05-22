@@ -157,18 +157,19 @@ pub use wallet_runtime::{
     WalletBackupExportReport, WalletBackupInspectReport, WalletBackupPublicManifest,
     WalletBalanceSnapshot, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
     WalletInvoiceReport, WalletLdkNodeStatus, WalletLockOwner, WalletLockReport,
-    WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRuntimeSurface,
-    WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand, clear_wallet_lock_report,
-    create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
-    export_wallet_backup_report, export_wallet_entropy_report, import_wallet_entropy_report,
-    inspect_wallet_backup_report, inspect_wallet_lock_report, load_wallet_balance_status_report,
-    load_wallet_credit_summary_report, load_wallet_entropy_status_report,
-    load_wallet_history_report, load_wallet_status_report, parse_wallet_command,
-    pay_wallet_invoice_report, render_wallet_address_report, render_wallet_backup_export_report,
-    render_wallet_backup_inspect_report, render_wallet_balance_report,
-    render_wallet_entropy_report, render_wallet_history_report, render_wallet_invoice_report,
-    render_wallet_lock_report, render_wallet_offer_report, render_wallet_pay_report,
-    render_wallet_status_report, run_wallet_command,
+    WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRestoreReport,
+    WalletRuntimeSurface, WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand,
+    clear_wallet_lock_report, create_wallet_address_report, create_wallet_invoice_report,
+    create_wallet_offer_report, export_wallet_backup_report, export_wallet_entropy_report,
+    import_wallet_entropy_report, inspect_wallet_backup_report, inspect_wallet_lock_report,
+    load_wallet_balance_status_report, load_wallet_credit_summary_report,
+    load_wallet_entropy_status_report, load_wallet_history_report, load_wallet_status_report,
+    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
+    render_wallet_backup_export_report, render_wallet_backup_inspect_report,
+    render_wallet_balance_report, render_wallet_entropy_report, render_wallet_history_report,
+    render_wallet_invoice_report, render_wallet_lock_report, render_wallet_offer_report,
+    render_wallet_pay_report, render_wallet_restore_report, render_wallet_status_report,
+    restore_wallet_backup_report, restore_wallet_phrase_report, run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -9587,6 +9588,8 @@ Commands:\n\
   wallet history [--limit <n>] [--json]\n\
   wallet backup export <path> [--passphrase-env <ENV>] [--include-identity-mnemonic] [--json]\n\
   wallet backup inspect <path> [--json]\n\
+  wallet restore phrase (--mnemonic-env <ENV>|--mnemonic-file <path>) [--wallet-network <network>] [--yes] [--json]\n\
+  wallet restore backup <path> [--passphrase-env <ENV>] [--yes] [--json]\n\
   wallet entropy status|export <path>|import <path> [--json]\n\
   wallet lock status|clear [--json]\n\
   training status [--json]\n\
@@ -51394,6 +51397,52 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     },
                 },
             "wallet backup inspect should parse with json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "restore".to_string(),
+                "phrase".to_string(),
+                "--mnemonic-env".to_string(),
+                "PYLON_TEST_RESTORE_MNEMONIC".to_string(),
+                "--wallet-network".to_string(),
+                "regtest".to_string(),
+                "--yes".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::RestorePhrase {
+                        mnemonic_env: Some("PYLON_TEST_RESTORE_MNEMONIC".to_string()),
+                        mnemonic_file: None,
+                        wallet_network: Some("regtest".to_string()),
+                        yes: true,
+                        json: true,
+                    },
+                },
+            "wallet restore phrase should parse with mnemonic env, network, yes, and json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "restore".to_string(),
+                "backup".to_string(),
+                "/tmp/pylon-wallet-backup.json".to_string(),
+                "--passphrase-env".to_string(),
+                "PYLON_TEST_BACKUP_PASSPHRASE".to_string(),
+                "--yes".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::RestoreBackup {
+                        path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                        passphrase_env: Some("PYLON_TEST_BACKUP_PASSPHRASE".to_string()),
+                        yes: true,
+                        json: true,
+                    },
+                },
+            "wallet restore backup should parse with passphrase env, yes, and json",
         )?;
         ensure(
             parse_args(vec![

@@ -5222,6 +5222,42 @@ async fn render_wallet_command_output(
             let report = pylon::inspect_wallet_backup_report(path.as_path())?;
             Ok(pylon::render_wallet_backup_inspect_report(&report))
         }
+        pylon::WalletSubcommand::RestorePhrase {
+            mnemonic_env,
+            mnemonic_file,
+            wallet_network,
+            yes,
+            ..
+        } => {
+            if !*yes {
+                bail!("wallet restore phrase requires --yes in the TUI command surface");
+            }
+            let report = pylon::restore_wallet_phrase_report(
+                config_path,
+                mnemonic_env.as_deref(),
+                mnemonic_file.as_deref(),
+                wallet_network.as_deref(),
+            )
+            .await?;
+            Ok(pylon::render_wallet_restore_report(&report))
+        }
+        pylon::WalletSubcommand::RestoreBackup {
+            path,
+            passphrase_env,
+            yes,
+            ..
+        } => {
+            if !*yes {
+                bail!("wallet restore backup requires --yes in the TUI command surface");
+            }
+            let report = pylon::restore_wallet_backup_report(
+                config_path,
+                path.as_path(),
+                passphrase_env.as_deref(),
+            )
+            .await?;
+            Ok(pylon::render_wallet_restore_report(&report))
+        }
         pylon::WalletSubcommand::EntropyStatus { .. } => {
             let report = pylon::load_wallet_entropy_status_report(config_path).await?;
             Ok(pylon::render_wallet_entropy_report(&report))
@@ -6020,6 +6056,8 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
         pylon::WalletSubcommand::History { .. } => "Wallet History",
         pylon::WalletSubcommand::BackupExport { .. } => "Wallet Backup Export",
         pylon::WalletSubcommand::BackupInspect { .. } => "Wallet Backup Inspect",
+        pylon::WalletSubcommand::RestorePhrase { .. } => "Wallet Restore Phrase",
+        pylon::WalletSubcommand::RestoreBackup { .. } => "Wallet Restore Backup",
         pylon::WalletSubcommand::EntropyStatus { .. } => "Wallet Entropy",
         pylon::WalletSubcommand::EntropyExport { .. } => "Wallet Entropy Export",
         pylon::WalletSubcommand::EntropyImport { .. } => "Wallet Entropy Import",

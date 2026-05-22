@@ -1176,8 +1176,15 @@ when deliberately creating an all-in-one encrypted backup; the default keeps the
 Pylon recovery phrase out of the file. `wallet backup inspect <path> --json`
 validates the public envelope without a passphrase and without decrypting wallet
 state.
+`wallet restore phrase --mnemonic-env <ENV> --wallet-network <network> --yes`
+restores OpenAgents identity plus deterministic LDK node entropy only. It is the
+right recovery path for on-chain rescan, but it cannot recreate Lightning
+channel monitors, channel manager state, or payment continuity. `wallet restore
+backup <path> --passphrase-env <ENV> --yes` decrypts a Pylon backup, validates
+network and derivation metadata, restores the LDK storage snapshot, and refuses
+to run while another live Pylon wallet process holds the wallet lock.
 - TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
-- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|backup|lock`
+- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|backup|restore|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=ldk_node` is the
 default runtime and builds a local self-custodial LDK Node from the one-phrase
@@ -1364,6 +1371,8 @@ cargo pylon-headless wallet pay <bolt11-or-bolt12> --amount-sats 21 --yes
 cargo pylon-headless wallet history --limit 10
 cargo pylon-headless wallet backup export ./pylon-wallet-backup.json --passphrase-env PYLON_WALLET_BACKUP_PASSPHRASE
 cargo pylon-headless wallet backup inspect ./pylon-wallet-backup.json
+cargo pylon-headless wallet restore phrase --mnemonic-env PYLON_RECOVERY_PHRASE --wallet-network regtest --yes
+cargo pylon-headless wallet restore backup ./pylon-wallet-backup.json --passphrase-env PYLON_WALLET_BACKUP_PASSPHRASE --yes
 cargo pylon-headless payout --limit 10
 cargo pylon-headless payout withdraw <bolt11-or-bolt12-or-address> --amount-sats 21 --yes
 ```
@@ -1385,7 +1394,10 @@ wallet receipts, with no preimages, mnemonic words, raw node entropy, or private
 channel state. `wallet backup export` requires a passphrase supplied by
 `--passphrase-env` or `PYLON_WALLET_BACKUP_PASSPHRASE`, writes the encrypted
 artifact with private file permissions, updates redacted backup status, and
-persists a `wallet.backup.export.v1` receipt.
+persists a `wallet.backup.export.v1` receipt. Restore commands are destructive
+and require `--yes`; phrase-only restore records
+`phrase_only_onchain_rescan_required`, while full-backup restore records
+`full_backup_ldk_state_restored`.
 In the explicit `external_target` migration override, local address, invoice,
 pay, and payout withdrawal commands may report that the local wallet runtime is
 unavailable.
