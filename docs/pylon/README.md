@@ -600,11 +600,13 @@ BIP353 names, LNURL-pay targets, and per-payment BOLT11 invoices. Spark
 destination creation is no longer part of normal Pylon startup or registration,
 and Spark-only nodes are not eligible for new paid work after cutover.
 
-This is a temporary compatibility path, not the final wallet product. The
-planned built-in LDK wallet work is tracked from
-`OpenAgentsInc/openagents#4520`; until those issues land, Pylon does not create
-wallet-owned Lightning invoices or send withdrawals from a local LDK wallet in
-the normal v0.2 release path.
+This is a temporary compatibility path for paid-work registration, not the full
+wallet product. The built-in LDK wallet work is tracked from
+`OpenAgentsInc/openagents#4520`. Current source can open the local LDK Node and
+create wallet-owned receive artifacts, including BOLT11 invoices and BOLT12
+offers when the selected LDK runtime supports them. Local Lightning send and
+withdrawal flows remain dedicated wallet tracker work and must not be claimed as
+available until those issues close.
 
 The prior `0.1.15` release receipt is
 `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the
@@ -1145,10 +1147,11 @@ external-target runtime, address, invoice, pay, and withdraw commands still
 fail honestly because Pylon is only tracking an externally supplied payment
 target. In `wallet_runtime_kind=ldk_node`, Pylon now opens the built-in LDK Node
 and can report status, sync, balance buckets, and real wallet-owned Bitcoin
-receive addresses. Lightning invoice/pay/withdraw flows remain staged behind
-the later wallet tracker issues.
-- TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
-- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|pay|history|lock`
+receive addresses. It also creates real BOLT11 receive invoices and, where the
+runtime exposes a supported BOLT12 path, BOLT12 offers. Lightning pay and
+withdraw flows remain staged behind later wallet tracker issues.
+- TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
+- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=external_target`
 is the default compatibility runtime and keeps `payout_destination` as the
@@ -1206,6 +1209,14 @@ not the final source of truth for built-in LDK wallet balances. Current v0.2
 status includes real LDK Node on-chain and Lightning balance totals when the
 local node runtime is selected, but retained earnings still come from the local
 ledger/accounting state until payment-history sync lands.
+
+BOLT11 receive invoices created by the built-in LDK wallet are retained in the
+local ledger with the public payment request, payment hash, runtime kind,
+creation timestamp, and expiry timestamp. Pylon does not store or print
+preimages, mnemonic words, or raw LDK node entropy in those records. BOLT12
+offer creation returns a typed actionable error when the configured LDK runtime
+cannot produce an offer, and the required fallback is an explicit BOLT11 invoice
+for the requested amount.
 
 The TUI operator sidebar now also treats wallet balance bring-up more honestly.
 Its refresh path loads network status plus balance first instead of waiting on
@@ -1317,6 +1328,7 @@ cargo pylon-headless wallet sync
 cargo pylon-headless wallet balance
 cargo pylon-headless wallet address
 cargo pylon-headless wallet invoice 21 --description "pylon receive"
+cargo pylon-headless wallet offer --amount-sats 21 --description "pylon offer"
 cargo pylon-headless wallet pay <bolt11> --amount-sats 21
 cargo pylon-headless wallet history --limit 10
 cargo pylon-headless payout --limit 10
@@ -1326,8 +1338,11 @@ cargo pylon-headless payout withdraw <bolt11> --amount-sats 21
 In the default external-target runtime, address, invoice, pay, and payout
 withdrawal commands may report that the local wallet runtime is unavailable.
 With `wallet_runtime_kind=ldk_node`, `wallet address` returns a real on-chain
-address from the built-in BDK wallet. Lightning invoice/pay and withdrawal
-commands still refuse until their dedicated LDK wallet issues land.
+address from the built-in LDK wallet, `wallet invoice <sats> --json` returns a
+real BOLT11 receive invoice with a payment hash, and `wallet offer --json`
+returns a BOLT12 offer when the linked LDK runtime supports that receive path.
+Lightning pay and withdrawal commands still refuse until their dedicated LDK
+wallet issues land.
 
 Move the node through explicit lifecycle controls:
 

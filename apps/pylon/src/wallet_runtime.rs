@@ -7,6 +7,7 @@ use bip39::{Language, Mnemonic};
 use hmac::{Hmac, Mac};
 use ldk_node::Builder as LdkNodeBuilder;
 use ldk_node::bitcoin::Network as LdkBitcoinNetwork;
+use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -24,6 +25,8 @@ const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1"
 const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
 const WALLET_NODE_ENTROPY_HKDF_SALT: &[u8] = b"openagents-pylon/ldk-node/node-entropy";
 const WALLET_STORAGE_SCHEMA_VERSION: u32 = 1;
+const DEFAULT_BOLT11_EXPIRY_SECONDS: u32 = 3_600;
+const DEFAULT_RECEIVE_DESCRIPTION: &str = "OpenAgents Pylon receive";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -77,6 +80,12 @@ pub enum WalletSubcommand {
     },
     Invoice {
         amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+        json: bool,
+    },
+    Offer {
+        amount_sats: Option<u64>,
         description: Option<String>,
         expiry_seconds: Option<u32>,
         json: bool,
@@ -202,6 +211,10 @@ pub struct WalletInvoiceReport {
 pub struct WalletOfferReport {
     pub runtime: WalletRuntimeSurface,
     pub offer: String,
+    pub amount_sats: Option<u64>,
+    pub description: Option<String>,
+    pub created_at_ms: u64,
+    pub expires_at_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -314,7 +327,12 @@ pub trait PylonWalletRuntime {
         description: Option<String>,
         expiry_seconds: Option<u32>,
     ) -> Result<WalletInvoiceReport>;
-    fn offer(&self) -> Result<WalletOfferReport>;
+    fn offer(
+        &self,
+        amount_sats: Option<u64>,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletOfferReport>;
     fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport>;
     fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport>;
     fn list_payments(
@@ -451,11 +469,18 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
         }
     }
 
-    fn offer(&self) -> Result<WalletOfferReport> {
+    fn offer(
+        &self,
+        amount_sats: Option<u64>,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletOfferReport> {
         match self {
-            Self::ExternalTarget(runtime) => runtime.offer(),
-            Self::Mock(runtime) => runtime.offer(),
-            Self::LdkNode(runtime) => runtime.offer(),
+            Self::ExternalTarget(runtime) => {
+                runtime.offer(amount_sats, description, expiry_seconds)
+            }
+            Self::Mock(runtime) => runtime.offer(amount_sats, description, expiry_seconds),
+            Self::LdkNode(runtime) => runtime.offer(amount_sats, description, expiry_seconds),
         }
     }
 
@@ -551,7 +576,13 @@ impl PylonWalletRuntime for ExternalTargetWalletRuntime {
         bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
     }
 
-    fn offer(&self) -> Result<WalletOfferReport> {
+    fn offer(
+        &self,
+        amount_sats: Option<u64>,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletOfferReport> {
+        let _ = (amount_sats, description, expiry_seconds);
         bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
     }
 
@@ -655,16 +686,31 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
                 status: "open".to_string(),
                 payment_request: format!("lnbc{amount_sats}mockpyloninvoice"),
                 description,
+                payment_hash: None,
+                runtime_kind: Some(self.surface.runtime_kind.to_string()),
+                expires_at_ms: expiry_seconds
+                    .map(|seconds| now.saturating_add(u64::from(seconds).saturating_mul(1000))),
                 created_at_ms: now,
                 updated_at_ms: now,
             },
         })
     }
 
-    fn offer(&self) -> Result<WalletOfferReport> {
+    fn offer(
+        &self,
+        amount_sats: Option<u64>,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletOfferReport> {
+        let now = now_epoch_ms() as u64;
         Ok(WalletOfferReport {
             runtime: self.surface.clone(),
             offer: "lno1mockpylonoffer".to_string(),
+            amount_sats,
+            description,
+            created_at_ms: now,
+            expires_at_ms: expiry_seconds
+                .map(|seconds| now.saturating_add(u64::from(seconds).saturating_mul(1000))),
         })
     }
 
@@ -888,12 +934,84 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
         description: Option<String>,
         expiry_seconds: Option<u32>,
     ) -> Result<WalletInvoiceReport> {
-        let _ = (amount_sats, description, expiry_seconds);
-        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+        let amount_msat = amount_sats
+            .checked_mul(1_000)
+            .ok_or_else(|| anyhow!("wallet invoice amount is too large"))?;
+        let description_text = description
+            .clone()
+            .unwrap_or_else(|| DEFAULT_RECEIVE_DESCRIPTION.to_string());
+        let invoice_description = Bolt11InvoiceDescription::Direct(
+            Description::new(description_text.clone())
+                .map_err(|error| anyhow!("invalid wallet invoice description: {error}"))?,
+        );
+        let expiry_seconds = expiry_seconds.unwrap_or(DEFAULT_BOLT11_EXPIRY_SECONDS);
+        let invoice = self
+            .with_node(|node| {
+                node.bolt11_payment()
+                    .receive(amount_msat, &invoice_description, expiry_seconds)
+            })?
+            .ok_or_else(|| anyhow!("ldk_node is not initialized; run wallet status first"))?
+            .map_err(|error| anyhow!("failed to create ldk_node BOLT11 invoice: {error}"))?;
+        let now = now_epoch_ms() as u64;
+        let payment_hash = invoice.payment_hash().to_string();
+        Ok(WalletInvoiceReport {
+            runtime: self.surface.clone(),
+            invoice: PylonWalletInvoiceRecord {
+                invoice_id: format!("bolt11-{payment_hash}"),
+                amount_sats,
+                status: "open".to_string(),
+                payment_request: invoice.to_string(),
+                description: Some(description_text),
+                payment_hash: Some(payment_hash),
+                runtime_kind: Some(self.surface.runtime_kind.to_string()),
+                expires_at_ms: Some(now.saturating_add(u64::from(expiry_seconds) * 1000)),
+                created_at_ms: now,
+                updated_at_ms: now,
+            },
+        })
     }
 
-    fn offer(&self) -> Result<WalletOfferReport> {
-        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+    fn offer(
+        &self,
+        amount_sats: Option<u64>,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletOfferReport> {
+        let description_text = description
+            .clone()
+            .unwrap_or_else(|| DEFAULT_RECEIVE_DESCRIPTION.to_string());
+        let amount_msat = amount_sats
+            .map(|amount_sats| {
+                amount_sats
+                    .checked_mul(1_000)
+                    .ok_or_else(|| anyhow!("wallet offer amount is too large"))
+            })
+            .transpose()?;
+        let offer = self
+            .with_node(|node| {
+                let payment = node.bolt12_payment();
+                if let Some(amount_msat) = amount_msat {
+                    payment.receive(amount_msat, description_text.as_str(), expiry_seconds, None)
+                } else {
+                    payment.receive_variable_amount(description_text.as_str(), expiry_seconds)
+                }
+            })?
+            .ok_or_else(|| anyhow!("ldk_node is not initialized; run wallet status first"))?
+            .map_err(|error| {
+                anyhow!(
+                    "bolt12_offer_unavailable: failed to create ldk_node BOLT12 offer: {error}; use `wallet invoice <amount_sats>` as the required BOLT11 fallback"
+                )
+            })?;
+        let now = now_epoch_ms() as u64;
+        Ok(WalletOfferReport {
+            runtime: self.surface.clone(),
+            offer: offer.to_string(),
+            amount_sats,
+            description: Some(description_text),
+            created_at_ms: now,
+            expires_at_ms: expiry_seconds
+                .map(|seconds| now.saturating_add(u64::from(seconds).saturating_mul(1000))),
+        })
     }
 
     fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
@@ -1162,6 +1280,24 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
             }
             Ok(render_wallet_invoice_report(&report))
         }
+        WalletSubcommand::Offer {
+            amount_sats,
+            description,
+            expiry_seconds,
+            json,
+        } => {
+            let report = create_wallet_offer_report(
+                config_path,
+                *amount_sats,
+                description.clone(),
+                *expiry_seconds,
+            )
+            .await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_offer_report(&report))
+        }
         WalletSubcommand::Pay {
             payment_request,
             amount_sats,
@@ -1286,6 +1422,67 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
                 }
             }
             Ok(WalletSubcommand::Invoice {
+                amount_sats,
+                description,
+                expiry_seconds,
+                json,
+            })
+        }
+        "offer" => {
+            let mut amount_sats = None;
+            let mut description = None;
+            let mut expiry_seconds = None;
+            let mut json = false;
+            let mut index = start_index + 2;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--amount-sats" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --amount-sats"))?;
+                        let value = raw
+                            .parse::<u64>()
+                            .map_err(|error| anyhow!("invalid --amount-sats '{}': {error}", raw))?;
+                        if value == 0 {
+                            bail!("--amount-sats must be greater than 0");
+                        }
+                        amount_sats = Some(value);
+                        index += 1;
+                    }
+                    "--description" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --description"))?;
+                        if value.trim().is_empty() {
+                            bail!("--description cannot be empty");
+                        }
+                        description = Some(value.trim().to_string());
+                        index += 1;
+                    }
+                    "--expiry-seconds" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --expiry-seconds"))?;
+                        let value = raw.parse::<u32>().map_err(|error| {
+                            anyhow!("invalid --expiry-seconds '{}': {error}", raw)
+                        })?;
+                        if value == 0 {
+                            bail!("--expiry-seconds must be greater than 0");
+                        }
+                        expiry_seconds = Some(value);
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for wallet offer: {other}"),
+                }
+            }
+            Ok(WalletSubcommand::Offer {
                 amount_sats,
                 description,
                 expiry_seconds,
@@ -1471,9 +1668,36 @@ pub async fn create_wallet_invoice_report(
     expiry_seconds: Option<u32>,
 ) -> Result<WalletInvoiceReport> {
     let context = prepare_wallet_context(config_path)?;
+    context.runtime.start()?;
     match context
         .runtime
         .invoice(amount_sats, description, expiry_seconds)
+    {
+        Ok(report) => {
+            mutate_ledger(config_path, |ledger| {
+                ledger.upsert_wallet_invoice(report.invoice.clone());
+                Ok(())
+            })?;
+            Ok(report)
+        }
+        Err(error) => {
+            sync_wallet_error(config_path, context.runtime.surface(), error.to_string())?;
+            Err(error)
+        }
+    }
+}
+
+pub async fn create_wallet_offer_report(
+    config_path: &Path,
+    amount_sats: Option<u64>,
+    description: Option<String>,
+    expiry_seconds: Option<u32>,
+) -> Result<WalletOfferReport> {
+    let context = prepare_wallet_context(config_path)?;
+    context.runtime.start()?;
+    match context
+        .runtime
+        .offer(amount_sats, description, expiry_seconds)
     {
         Ok(report) => Ok(report),
         Err(error) => {
@@ -1765,8 +1989,33 @@ pub fn render_wallet_invoice_report(report: &WalletInvoiceReport) -> String {
         format!("status: {}", report.invoice.status),
         format!("payment_request: {}", report.invoice.payment_request),
     ];
+    if let Some(payment_hash) = report.invoice.payment_hash.as_deref() {
+        lines.push(format!("payment_hash: {payment_hash}"));
+    }
     if let Some(description) = report.invoice.description.as_deref() {
         lines.push(format!("description: {description}"));
+    }
+    if let Some(expires_at_ms) = report.invoice.expires_at_ms {
+        lines.push(format!("expires_at_ms: {expires_at_ms}"));
+    }
+    lines.join("\n")
+}
+
+pub fn render_wallet_offer_report(report: &WalletOfferReport) -> String {
+    let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("network: {}", report.runtime.network),
+        "offer:".to_string(),
+        report.offer.clone(),
+    ];
+    if let Some(amount_sats) = report.amount_sats {
+        lines.push(format!("amount_sats: {amount_sats}"));
+    }
+    if let Some(description) = report.description.as_deref() {
+        lines.push(format!("description: {description}"));
+    }
+    if let Some(expires_at_ms) = report.expires_at_ms {
+        lines.push(format!("expires_at_ms: {expires_at_ms}"));
     }
     lines.join("\n")
 }
@@ -2405,9 +2654,10 @@ mod tests {
     use super::{
         PylonWalletRuntime, PylonWalletRuntimeKind, WalletLockOwner, WalletSubcommand,
         compute_wallet_credit_summary, create_wallet_address_report, create_wallet_invoice_report,
-        load_wallet_history_report, load_wallet_node_entropy_material, load_wallet_status_report,
-        parse_wallet_command, pay_wallet_invoice_report, render_wallet_entropy_report,
-        render_wallet_status_report, run_wallet_command, wallet_node_entropy_domain_label,
+        create_wallet_offer_report, load_wallet_history_report, load_wallet_node_entropy_material,
+        load_wallet_status_report, parse_wallet_command, pay_wallet_invoice_report,
+        render_wallet_entropy_report, render_wallet_status_report, run_wallet_command,
+        wallet_node_entropy_domain_label,
     };
     use crate::PylonWalletPaymentRecord;
 
@@ -2491,6 +2741,29 @@ mod tests {
                 description: Some(String::from("earn")),
                 expiry_seconds: None,
                 json: false,
+            }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("offer"),
+                    String::from("--amount-sats"),
+                    String::from("21"),
+                    String::from("--description"),
+                    String::from("earn"),
+                    String::from("--expiry-seconds"),
+                    String::from("60"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet offer should parse"),
+            WalletSubcommand::Offer {
+                amount_sats: Some(21),
+                description: Some(String::from("earn")),
+                expiry_seconds: Some(60),
+                json: true,
             }
         );
         assert_eq!(
@@ -3034,5 +3307,79 @@ mod tests {
             .parse::<ldk_node::bitcoin::Address<ldk_node::bitcoin::address::NetworkUnchecked>>()
             .expect("parse json address");
         assert!(parsed_json_address.is_valid_for_network(ldk_node::bitcoin::Network::Regtest));
+
+        let invoice = create_wallet_invoice_report(
+            config_path.as_path(),
+            42,
+            Some("pylon receive".to_string()),
+            Some(120),
+        )
+        .await
+        .expect("ldk_node BOLT11 invoice");
+        assert_eq!(invoice.invoice.amount_sats, 42);
+        assert_eq!(invoice.invoice.runtime_kind.as_deref(), Some("ldk_node"));
+        assert_eq!(
+            invoice.invoice.description.as_deref(),
+            Some("pylon receive")
+        );
+        assert!(invoice.invoice.payment_hash.is_some());
+        assert!(invoice.invoice.expires_at_ms.is_some());
+        let parsed_invoice = invoice
+            .invoice
+            .payment_request
+            .parse::<ldk_node::lightning_invoice::Bolt11Invoice>()
+            .expect("parse bolt11 invoice");
+        assert_eq!(
+            parsed_invoice.currency(),
+            ldk_node::lightning_invoice::Currency::Regtest
+        );
+        assert_eq!(parsed_invoice.amount_milli_satoshis(), Some(42_000));
+        let parsed_payment_hash = parsed_invoice.payment_hash().to_string();
+        assert_eq!(
+            invoice.invoice.payment_hash.as_deref(),
+            Some(parsed_payment_hash.as_str())
+        );
+        let ledger = crate::load_ledger(config_path.as_path()).expect("ledger");
+        assert!(ledger.wallet.invoices.iter().any(|entry| {
+            entry.payment_hash == invoice.invoice.payment_hash
+                && entry.runtime_kind.as_deref() == Some("ldk_node")
+        }));
+
+        let invoice_json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Invoice {
+                amount_sats: 21,
+                description: Some("json receive".to_string()),
+                expiry_seconds: Some(60),
+                json: true,
+            },
+        )
+        .await
+        .expect("invoice json");
+        assert!(invoice_json.contains("\"payment_hash\":"));
+        assert!(invoice_json.contains("\"runtime_kind\": \"ldk_node\""));
+        assert!(!invoice_json.contains("preimage"));
+
+        match create_wallet_offer_report(
+            config_path.as_path(),
+            Some(42),
+            Some("pylon offer".to_string()),
+            Some(120),
+        )
+        .await
+        {
+            Ok(offer) => {
+                assert!(offer.offer.starts_with("lno"));
+                assert_eq!(offer.amount_sats, Some(42));
+                assert_eq!(offer.description.as_deref(), Some("pylon offer"));
+            }
+            Err(error) => {
+                let detail = error.to_string();
+                assert!(
+                    detail.contains("bolt12_offer_unavailable")
+                        || detail.contains("Failed to create offer")
+                );
+            }
+        }
     }
 }

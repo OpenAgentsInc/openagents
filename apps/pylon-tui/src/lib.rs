@@ -5171,6 +5171,21 @@ async fn render_wallet_command_output(
             .await?;
             Ok(render_wallet_invoice_output(&report))
         }
+        pylon::WalletSubcommand::Offer {
+            amount_sats,
+            description,
+            expiry_seconds,
+            ..
+        } => {
+            let report = pylon::create_wallet_offer_report(
+                config_path,
+                *amount_sats,
+                description.clone(),
+                *expiry_seconds,
+            )
+            .await?;
+            Ok(pylon::render_wallet_offer_report(&report))
+        }
         pylon::WalletSubcommand::Pay {
             payment_request,
             amount_sats,
@@ -5981,6 +5996,7 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
         pylon::WalletSubcommand::Balance { .. } => "Wallet Balance",
         pylon::WalletSubcommand::Address { .. } => "Wallet Address",
         pylon::WalletSubcommand::Invoice { .. } => "Wallet Invoice",
+        pylon::WalletSubcommand::Offer { .. } => "Wallet Offer",
         pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
         pylon::WalletSubcommand::History { .. } => "Wallet History",
         pylon::WalletSubcommand::EntropyStatus { .. } => "Wallet Entropy",

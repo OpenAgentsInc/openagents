@@ -158,14 +158,14 @@ pub use wallet_runtime::{
     WalletInvoiceReport, WalletLdkNodeStatus, WalletLockOwner, WalletLockReport,
     WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRuntimeSurface,
     WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand, clear_wallet_lock_report,
-    create_wallet_address_report, create_wallet_invoice_report, export_wallet_entropy_report,
-    import_wallet_entropy_report, inspect_wallet_lock_report, load_wallet_balance_status_report,
-    load_wallet_credit_summary_report, load_wallet_entropy_status_report,
-    load_wallet_history_report, load_wallet_status_report, parse_wallet_command,
-    pay_wallet_invoice_report, render_wallet_address_report, render_wallet_balance_report,
-    render_wallet_entropy_report, render_wallet_history_report, render_wallet_invoice_report,
-    render_wallet_lock_report, render_wallet_pay_report, render_wallet_status_report,
-    run_wallet_command,
+    create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
+    export_wallet_entropy_report, import_wallet_entropy_report, inspect_wallet_lock_report,
+    load_wallet_balance_status_report, load_wallet_credit_summary_report,
+    load_wallet_entropy_status_report, load_wallet_history_report, load_wallet_status_report,
+    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
+    render_wallet_balance_report, render_wallet_entropy_report, render_wallet_history_report,
+    render_wallet_invoice_report, render_wallet_lock_report, render_wallet_offer_report,
+    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -9576,6 +9576,7 @@ Commands:\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
+  wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
   wallet entropy status|export <path>|import <path> [--json]\n\
@@ -52962,6 +52963,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                         status: "created".to_string(),
                         payment_request: "lnbc3000n1pyloninvoice".to_string(),
                         description,
+                        payment_hash: None,
+                        runtime_kind: None,
+                        expires_at_ms: None,
                         created_at_ms: 1_762_000_000_000,
                         updated_at_ms: 1_762_000_000_000,
                     },
@@ -53149,6 +53153,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                         status: "created".to_string(),
                         payment_request: "lnbc21000n1pyloninvoice".to_string(),
                         description,
+                        payment_hash: None,
+                        runtime_kind: None,
+                        expires_at_ms: None,
                         created_at_ms: 1_762_000_100_000,
                         updated_at_ms: 1_762_000_100_000,
                     },
