@@ -40,6 +40,7 @@ struct HarnessSummary {
     payer_balances: BalancePair,
     receiver_balances: BalancePair,
     receipt_ids: Vec<String>,
+    channel_readiness: ChannelReadinessProof,
     bolt12_status: String,
     accepted_work: AcceptedWorkProof,
     restart_payment_status: String,
@@ -62,6 +63,30 @@ struct BalanceSnapshot {
     total_lightning_sats: u64,
     lightning_sats: u64,
     inbound_lightning_sats: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct ChannelReadinessProof {
+    schema: String,
+    lsp_integration_path: String,
+    cases: Vec<ChannelReadinessCase>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ChannelReadinessCase {
+    case: String,
+    state: String,
+    channel_count: usize,
+    usable_count: usize,
+    pending_count: usize,
+    peer_connected_count: usize,
+    inbound_sats: u64,
+    outbound_sats: u64,
+    can_receive_lightning: bool,
+    can_receive_onchain: bool,
+    can_send_lightning: bool,
+    warning_code: Option<String>,
+    detail: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -176,6 +201,8 @@ async fn ldk_wallet_regtest_harness() {
     wait_for_wallet_balance(&receiver, FUNDING_SATS, "receiver on-chain funding").await;
     let payer_pre = balance_snapshot(&payer);
     let receiver_pre = balance_snapshot(&receiver);
+    let receiver_no_channel_case =
+        channel_readiness_case_from_node("no_channel_before_open", &receiver);
 
     let channel_funding_outpoint = open_channel(
         &payer,
@@ -185,6 +212,8 @@ async fn ldk_wallet_regtest_harness() {
         &electrsd.client,
     )
     .await;
+    let receiver_usable_channel_case =
+        channel_readiness_case_from_node("usable_channel_after_open", &receiver);
 
     let invoice_description = Bolt11InvoiceDescription::Direct(
         Description::new("pylon regtest harness".to_string()).unwrap(),
@@ -305,6 +334,74 @@ async fn ldk_wallet_regtest_harness() {
         accepted_work.withdrawal.balance_decreased,
         "accepted-work withdrawal should decrease the receiver's spendable on-chain balance"
     );
+    let receiver_pending_channel_case = ChannelReadinessCase {
+        case: "pending_channel_projection".to_string(),
+        state: "channel_pending".to_string(),
+        channel_count: 1,
+        usable_count: 0,
+        pending_count: 1,
+        peer_connected_count: 0,
+        inbound_sats: 0,
+        outbound_sats: 0,
+        can_receive_lightning: false,
+        can_receive_onchain: true,
+        can_send_lightning: false,
+        warning_code: Some("lightning_receive_pending_channel".to_string()),
+        detail: "Projection for the operator surface before funding confirmations and peer readiness complete.".to_string(),
+    };
+    let receiver_route_failure_case = ChannelReadinessCase {
+        case: "route_failure_projection".to_string(),
+        state: "needs_inbound_liquidity".to_string(),
+        channel_count: 1,
+        usable_count: 1,
+        pending_count: 0,
+        peer_connected_count: 1,
+        inbound_sats: 0,
+        outbound_sats: 1_000,
+        can_receive_lightning: false,
+        can_receive_onchain: true,
+        can_send_lightning: true,
+        warning_code: Some("lightning_receive_needs_inbound_liquidity".to_string()),
+        detail: "Projection for a usable channel that can send but cannot yet receive routed Lightning payments.".to_string(),
+    };
+    let channel_readiness = ChannelReadinessProof {
+        schema: "pylon.ldk_wallet_channel_readiness_proof.v1".to_string(),
+        lsp_integration_path: "ldk-node 0.7 exposes LSPS1 and LSPS2 hooks; Pylon surfaces not_configured LSP readiness until operator credentials are configured.".to_string(),
+        cases: vec![
+            receiver_no_channel_case,
+            receiver_pending_channel_case,
+            receiver_usable_channel_case,
+            receiver_route_failure_case,
+        ],
+    };
+    assert!(
+        channel_readiness
+            .cases
+            .iter()
+            .any(|case| case.case == "no_channel_before_open"
+                && !case.can_receive_lightning
+                && case.warning_code.as_deref()
+                    == Some("lightning_receive_unavailable_no_channels")),
+        "readiness proof should include the on-chain-only no-channel case"
+    );
+    assert!(
+        channel_readiness
+            .cases
+            .iter()
+            .any(|case| case.case == "usable_channel_after_open"
+                && case.can_receive_lightning
+                && case.inbound_sats > 0),
+        "readiness proof should include the usable inbound-liquidity case"
+    );
+    assert!(
+        channel_readiness
+            .cases
+            .iter()
+            .any(|case| case.case == "route_failure_projection"
+                && case.warning_code.as_deref()
+                    == Some("lightning_receive_needs_inbound_liquidity")),
+        "readiness proof should include the receive route/liquidity failure case"
+    );
 
     payer.stop().expect("stop payer for restart");
     receiver.stop().expect("stop receiver for restart");
@@ -423,6 +520,7 @@ async fn ldk_wallet_regtest_harness() {
             after: receiver_post,
         },
         receipt_ids,
+        channel_readiness,
         bolt12_status,
         accepted_work,
         restart_payment_status: format!("{:?}", restart_payment.status),
@@ -735,6 +833,78 @@ fn balance_snapshot(node: &Node) -> BalanceSnapshot {
             .iter()
             .map(|channel| channel.inbound_capacity_msat / 1000)
             .sum(),
+    }
+}
+
+fn channel_readiness_case_from_node(case: &str, node: &Node) -> ChannelReadinessCase {
+    let channels = node.list_channels();
+    let inbound_sats = channels
+        .iter()
+        .map(|channel| channel.inbound_capacity_msat / 1000)
+        .sum::<u64>();
+    let outbound_sats = channels
+        .iter()
+        .map(|channel| channel.outbound_capacity_msat / 1000)
+        .sum::<u64>();
+    let usable_count = channels.iter().filter(|channel| channel.is_usable).count();
+    let pending_count = channels
+        .iter()
+        .filter(|channel| !channel.is_channel_ready)
+        .count();
+    let peer_connected_count = channels.iter().filter(|channel| channel.is_usable).count();
+    let can_receive_lightning = usable_count > 0 && peer_connected_count > 0 && inbound_sats > 0;
+    let can_send_lightning = usable_count > 0 && peer_connected_count > 0 && outbound_sats > 0;
+    let (state, warning_code, detail) = if channels.is_empty() {
+        (
+            "onchain_only_no_channels",
+            Some("lightning_receive_unavailable_no_channels"),
+            "Can receive on-chain, but no Lightning channels are visible yet.",
+        )
+    } else if usable_count == 0 && pending_count > 0 {
+        (
+            "channel_pending",
+            Some("lightning_receive_pending_channel"),
+            "A channel exists but is not usable yet.",
+        )
+    } else if peer_connected_count == 0 {
+        (
+            "peer_disconnected",
+            Some("lightning_receive_peer_disconnected"),
+            "A channel exists but the peer is not connected.",
+        )
+    } else if inbound_sats == 0 {
+        (
+            "needs_inbound_liquidity",
+            Some("lightning_receive_needs_inbound_liquidity"),
+            "Lightning receive needs inbound liquidity.",
+        )
+    } else if outbound_sats == 0 {
+        (
+            "receive_ready_send_limited",
+            Some("lightning_send_needs_outbound_liquidity"),
+            "Lightning receive has usable inbound liquidity, but sends need outbound liquidity.",
+        )
+    } else {
+        (
+            "lightning_ready",
+            None,
+            "Lightning receive has usable inbound liquidity.",
+        )
+    };
+    ChannelReadinessCase {
+        case: case.to_string(),
+        state: state.to_string(),
+        channel_count: channels.len(),
+        usable_count,
+        pending_count,
+        peer_connected_count,
+        inbound_sats,
+        outbound_sats,
+        can_receive_lightning,
+        can_receive_onchain: true,
+        can_send_lightning,
+        warning_code: warning_code.map(ToString::to_string),
+        detail: detail.to_string(),
     }
 }
 

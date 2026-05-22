@@ -40,5 +40,27 @@ fi
 
 cargo test -p pylon --test ldk_wallet_regtest_harness -- --ignored --nocapture
 
+if command -v jq >/dev/null 2>&1; then
+  jq -e '
+    .channel_readiness.cases[]
+    | select(.case == "no_channel_before_open"
+      and .can_receive_lightning == false
+      and .warning_code == "lightning_receive_unavailable_no_channels")
+  ' "${ARTIFACTS_DIR}/harness-summary.json" >/dev/null
+  jq -e '
+    .channel_readiness.cases[]
+    | select(.case == "usable_channel_after_open"
+      and .can_receive_lightning == true
+      and .inbound_sats > 0)
+  ' "${ARTIFACTS_DIR}/harness-summary.json" >/dev/null
+  jq -e '
+    .channel_readiness.cases[]
+    | select(.case == "route_failure_projection"
+      and .warning_code == "lightning_receive_needs_inbound_liquidity")
+  ' "${ARTIFACTS_DIR}/harness-summary.json" >/dev/null
+else
+  echo "jq not found; Rust harness assertions already checked channel readiness cases." >&2
+fi
+
 echo "Pylon LDK wallet regtest harness complete."
 echo "Summary: ${ARTIFACTS_DIR}/harness-summary.json"

@@ -62,6 +62,8 @@ The harness performs the following evidence-producing steps:
 - starts payer and receiver `ldk-node` wallets with persisted storage;
 - mines funds into both wallets and records on-chain balances;
 - opens and confirms a channel from payer to receiver;
+- records channel-readiness cases for no channel, pending channel, usable
+  channel, and a projected receive route/liquidity failure;
 - creates a receiver BOLT11 invoice and pays it from payer;
 - attempts BOLT12 receive/send and records whether the current LDK build can
   complete it;
@@ -85,6 +87,8 @@ It records:
 - channel funding outpoint;
 - BOLT11 payment ID and payment hash;
 - payer and receiver balances before and after;
+- channel readiness proof cases, including inbound/outbound liquidity and
+  typed Lightning receive warning codes;
 - harness receipt IDs for funding, channel open, BOLT11 payment, withdrawal,
   and backup restore;
 - BOLT12 attempt status;
@@ -111,3 +115,8 @@ cargo test -p pylon pylon_ldk_wallet_harness_plan_covers_required_evidence --lib
 
 The full real-payment harness must be run explicitly with the ignored test or
 the wrapper script above.
+
+When `jq` is installed, the wrapper also asserts the machine-readable
+`channel_readiness` section of `harness-summary.json` after the Rust harness
+completes. The Rust test contains the same assertions, so the proof does not
+depend on shell tooling alone.

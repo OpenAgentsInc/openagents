@@ -21,6 +21,7 @@ The telemetry payload includes:
 - on-chain, spendable on-chain, Lightning, anchor reserve, and total balances
 - channel counts by usable, ready, pending, and inactive state
 - inbound/outbound liquidity totals and buckets
+- Lightning receive/send readiness and LSP configuration state
 - backup status, stale state, artifact count, and last encrypted backup digest
 - typed warning and error codes for operator action
 - redaction policy metadata
@@ -48,3 +49,6 @@ https://[redacted]@example/rgs?[redacted]
 
 The focused wallet-runtime tests cover both the structured telemetry payload and
 the string redaction helpers.
+
+The matching channel-first operator surface is
+`docs/pylon/LDK_WALLET_CHANNEL_LIQUIDITY.md`.

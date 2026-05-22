@@ -96,6 +96,9 @@ pub enum WalletSubcommand {
     Balance {
         json: bool,
     },
+    Channels {
+        json: bool,
+    },
     Address {
         json: bool,
     },
@@ -197,8 +200,18 @@ struct WalletNodeEntropyMaterial {
 pub struct PylonWalletChannelRecord {
     pub channel_id: String,
     pub status: String,
+    pub counterparty_node_id: Option<String>,
+    pub funding_txo: Option<String>,
+    pub channel_value_sats: u64,
     pub inbound_sats: u64,
     pub outbound_sats: u64,
+    pub inbound_htlc_maximum_sats: Option<u64>,
+    pub next_outbound_htlc_limit_sats: u64,
+    pub confirmations: Option<u32>,
+    pub confirmations_required: Option<u32>,
+    pub is_outbound: bool,
+    pub is_public: bool,
+    pub peer_connected: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -219,6 +232,8 @@ pub struct WalletStatusReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ldk_node: Option<WalletLdkNodeStatus>,
     pub balance: WalletBalanceSnapshot,
+    pub channels: Vec<PylonWalletChannelRecord>,
+    pub lightning_readiness: WalletLightningReadiness,
     pub recent_payments: Vec<PylonWalletPaymentRecord>,
 }
 
@@ -280,8 +295,19 @@ pub struct WalletPayReport {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct WalletHistoryReport {
     pub runtime: WalletRuntimeSurface,
+    pub channels: Vec<PylonWalletChannelRecord>,
+    pub lightning_readiness: WalletLightningReadiness,
     pub payments: Vec<PylonWalletPaymentRecord>,
     pub receipts: Vec<PylonWalletReceiptRecord>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletChannelsReport {
+    pub runtime: WalletRuntimeSurface,
+    pub channels: Vec<PylonWalletChannelRecord>,
+    pub liquidity: WalletTelemetryLiquidity,
+    pub channel_summary: WalletTelemetryChannels,
+    pub lightning_readiness: WalletLightningReadiness,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -305,6 +331,7 @@ pub struct WalletTelemetryReport {
     pub balances: WalletBalanceSnapshot,
     pub channels: WalletTelemetryChannels,
     pub liquidity: WalletTelemetryLiquidity,
+    pub lsp: WalletLspReadiness,
     pub backup: WalletTelemetryBackup,
     pub warnings: Vec<WalletTelemetrySignal>,
     pub errors: Vec<WalletTelemetrySignal>,
@@ -353,6 +380,31 @@ pub struct WalletTelemetryLiquidity {
     pub outbound_sats: u64,
     pub inbound_bucket: String,
     pub outbound_bucket: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletLightningReadiness {
+    pub state: String,
+    pub can_receive_lightning: bool,
+    pub can_receive_onchain: bool,
+    pub can_send_lightning: bool,
+    pub inbound_liquidity_sats: u64,
+    pub outbound_liquidity_sats: u64,
+    pub usable_channel_count: usize,
+    pub pending_channel_count: usize,
+    pub peer_connected_count: usize,
+    pub warning_code: Option<String>,
+    pub warning: Option<String>,
+    pub remediation: Vec<String>,
+    pub lsp: WalletLspReadiness,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletLspReadiness {
+    pub supported_protocols: Vec<String>,
+    pub configured: bool,
+    pub state: String,
+    pub detail: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -812,12 +864,17 @@ impl PylonWalletRuntime for ExternalTargetWalletRuntime {
         ledger: &PylonLedger,
         include_recent_payments: bool,
     ) -> Result<WalletStatusReport> {
+        let channels = self.list_channels()?;
+        let lightning_readiness =
+            wallet_lightning_readiness(self.surface.runtime_kind, channels.as_slice(), true);
         Ok(WalletStatusReport {
             runtime: self.surface.clone(),
             runtime_status: "external_target".to_string(),
             runtime_detail: Some(LDK_EXTERNAL_WALLET_DETAIL.to_string()),
             ldk_node: None,
             balance: self.balance(ledger)?,
+            channels,
+            lightning_readiness,
             recent_payments: ledger_payments(ledger, include_recent_payments.then_some(10)),
         })
     }
@@ -899,12 +956,17 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
         ledger: &PylonLedger,
         include_recent_payments: bool,
     ) -> Result<WalletStatusReport> {
+        let channels = self.list_channels()?;
+        let lightning_readiness =
+            wallet_lightning_readiness(self.surface.runtime_kind, channels.as_slice(), true);
         Ok(WalletStatusReport {
             runtime: self.surface.clone(),
             runtime_status: "connected".to_string(),
             runtime_detail: Some(MOCK_WALLET_DETAIL.to_string()),
             ldk_node: None,
             balance: self.balance(ledger)?,
+            channels,
+            lightning_readiness,
             recent_payments: self.list_payments(ledger, include_recent_payments.then_some(10))?,
         })
     }
@@ -1050,9 +1112,19 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
     fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
         Ok(vec![PylonWalletChannelRecord {
             channel_id: "mock-channel-1".to_string(),
-            status: "ready".to_string(),
+            status: "usable".to_string(),
+            counterparty_node_id: Some("02mockcounterparty".to_string()),
+            funding_txo: Some("mock-txid:0".to_string()),
+            channel_value_sats: 1_000,
             inbound_sats: 500,
             outbound_sats: 500,
+            inbound_htlc_maximum_sats: Some(500),
+            next_outbound_htlc_limit_sats: 500,
+            confirmations: Some(6),
+            confirmations_required: Some(1),
+            is_outbound: true,
+            is_public: false,
+            peer_connected: true,
         }])
     }
 }
@@ -1164,12 +1236,17 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
         } else {
             Some("ldk_node runtime initialized".to_string())
         };
+        let channels = self.list_channels()?;
+        let lightning_readiness =
+            wallet_lightning_readiness(self.surface.runtime_kind, channels.as_slice(), true);
         Ok(WalletStatusReport {
             runtime: self.surface.clone(),
             runtime_status: runtime_status.to_string(),
             runtime_detail,
             ldk_node: Some(ldk_node),
             balance: self.balance(ledger)?,
+            channels,
+            lightning_readiness,
             recent_payments: self.list_payments(ledger, include_recent_payments.then_some(10))?,
         })
     }
@@ -1361,8 +1438,18 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
                 } else {
                     "pending".to_string()
                 },
+                counterparty_node_id: Some(channel.counterparty_node_id.to_string()),
+                funding_txo: channel.funding_txo.map(|outpoint| outpoint.to_string()),
+                channel_value_sats: channel.channel_value_sats,
                 inbound_sats: channel.inbound_capacity_msat / 1000,
                 outbound_sats: channel.outbound_capacity_msat / 1000,
+                inbound_htlc_maximum_sats: channel.inbound_htlc_maximum_msat.map(msat_to_sats),
+                next_outbound_htlc_limit_sats: msat_to_sats(channel.next_outbound_htlc_limit_msat),
+                confirmations: channel.confirmations,
+                confirmations_required: channel.confirmations_required,
+                is_outbound: channel.is_outbound,
+                is_public: channel.is_announced,
+                peer_connected: channel.is_usable,
             })
             .collect())
     }
@@ -2197,15 +2284,8 @@ fn wallet_telemetry_from_status(
 ) -> WalletTelemetryReport {
     let ldk_node = status.ldk_node.as_ref();
     let node_id = ldk_node.and_then(|node| node.node_id.clone());
-    let inbound_sats = channels
-        .iter()
-        .map(|channel| channel.inbound_sats)
-        .sum::<u64>();
-    let outbound_sats = channels
-        .iter()
-        .map(|channel| channel.outbound_sats)
-        .sum::<u64>();
     let channel_summary = wallet_telemetry_channel_summary(channels);
+    let liquidity = wallet_telemetry_liquidity(channels);
     let backup = wallet_telemetry_backup(status);
     let sync = wallet_telemetry_sync(status);
     let errors = wallet_telemetry_errors(status, channel_error);
@@ -2217,8 +2297,9 @@ fn wallet_telemetry_from_status(
             detail: channel_error.to_string(),
         });
     }
-    let receive_ready = inbound_sats > 0;
-    let send_ready = outbound_sats > 0 || status.balance.spendable_onchain_sats > 0;
+    let receive_ready = status.lightning_readiness.can_receive_lightning;
+    let send_ready =
+        status.lightning_readiness.can_send_lightning || status.balance.spendable_onchain_sats > 0;
     let backup_ready = backup.status == "backup_current";
     let has_error = !errors.is_empty() || status.runtime_status.eq_ignore_ascii_case("error");
     let payable = status.runtime.runtime_kind == PylonWalletRuntimeKind::LdkNode
@@ -2270,12 +2351,8 @@ fn wallet_telemetry_from_status(
         sync,
         balances: status.balance.clone(),
         channels: channel_summary,
-        liquidity: WalletTelemetryLiquidity {
-            inbound_sats,
-            outbound_sats,
-            inbound_bucket: wallet_liquidity_bucket(inbound_sats),
-            outbound_bucket: wallet_liquidity_bucket(outbound_sats),
-        },
+        liquidity,
+        lsp: status.lightning_readiness.lsp.clone(),
         backup,
         warnings,
         errors,
@@ -2312,6 +2389,161 @@ fn wallet_telemetry_channel_summary(
         }
     }
     summary
+}
+
+fn wallet_channels_report_from_channels(
+    runtime: &WalletRuntimeSurface,
+    channels: Vec<PylonWalletChannelRecord>,
+) -> WalletChannelsReport {
+    WalletChannelsReport {
+        runtime: runtime.clone(),
+        channel_summary: wallet_telemetry_channel_summary(channels.as_slice()),
+        liquidity: wallet_telemetry_liquidity(channels.as_slice()),
+        lightning_readiness: wallet_lightning_readiness(
+            runtime.runtime_kind,
+            channels.as_slice(),
+            true,
+        ),
+        channels,
+    }
+}
+
+fn wallet_telemetry_liquidity(channels: &[PylonWalletChannelRecord]) -> WalletTelemetryLiquidity {
+    let inbound_sats = channels
+        .iter()
+        .map(|channel| channel.inbound_sats)
+        .sum::<u64>();
+    let outbound_sats = channels
+        .iter()
+        .map(|channel| channel.outbound_sats)
+        .sum::<u64>();
+    WalletTelemetryLiquidity {
+        inbound_sats,
+        outbound_sats,
+        inbound_bucket: wallet_liquidity_bucket(inbound_sats),
+        outbound_bucket: wallet_liquidity_bucket(outbound_sats),
+    }
+}
+
+fn wallet_lightning_readiness(
+    runtime_kind: PylonWalletRuntimeKind,
+    channels: &[PylonWalletChannelRecord],
+    can_receive_onchain: bool,
+) -> WalletLightningReadiness {
+    let channel_summary = wallet_telemetry_channel_summary(channels);
+    let liquidity = wallet_telemetry_liquidity(channels);
+    let peer_connected_count = channels
+        .iter()
+        .filter(|channel| channel.peer_connected)
+        .count();
+    let lsp = wallet_lsp_readiness(runtime_kind);
+    let can_receive_lightning =
+        channel_summary.usable_count > 0 && liquidity.inbound_sats > 0 && peer_connected_count > 0;
+    let can_send_lightning =
+        channel_summary.usable_count > 0 && liquidity.outbound_sats > 0 && peer_connected_count > 0;
+    let (state, warning_code, warning, remediation) = if runtime_kind
+        == PylonWalletRuntimeKind::ExternalTarget
+    {
+        (
+            "external_target".to_string(),
+            None,
+            None,
+            vec![
+                "Select wallet_runtime_kind=ldk_node to inspect built-in Lightning channels."
+                    .to_string(),
+            ],
+        )
+    } else if channel_summary.total_count == 0 {
+        (
+            "onchain_only_no_channels".to_string(),
+            Some("lightning_receive_unavailable_no_channels".to_string()),
+            Some(
+                "Can receive on-chain, but Lightning receive is not viable yet because no channels are visible."
+                    .to_string(),
+            ),
+            vec![
+                "Fund the on-chain wallet, then open a channel or configure an LSPS1/LSPS2-capable LSP."
+                    .to_string(),
+                "Use wallet address for on-chain funding while Lightning inbound liquidity is unavailable."
+                    .to_string(),
+            ],
+        )
+    } else if channel_summary.usable_count == 0 && channel_summary.pending_count > 0 {
+        (
+            "channel_pending".to_string(),
+            Some("lightning_receive_pending_channel".to_string()),
+            Some("Can receive on-chain, but Lightning receive is waiting for the pending channel to become usable.".to_string()),
+            vec![
+                "Wait for funding confirmations and peer reconnection, then rerun wallet channels."
+                    .to_string(),
+            ],
+        )
+    } else if peer_connected_count == 0 {
+        (
+            "peer_disconnected".to_string(),
+            Some("lightning_receive_peer_disconnected".to_string()),
+            Some("A channel exists, but no channel peer is currently connected.".to_string()),
+            vec![
+                "Start the wallet with a live chain source and reconnect to the channel peer."
+                    .to_string(),
+            ],
+        )
+    } else if liquidity.inbound_sats == 0 {
+        (
+            "needs_inbound_liquidity".to_string(),
+            Some("lightning_receive_needs_inbound_liquidity".to_string()),
+            Some("Can receive on-chain, but Lightning receive needs inbound liquidity.".to_string()),
+            vec![
+                "Ask a peer/LSP to open inbound capacity, rebalance, or use an LSPS2 JIT receive path when configured."
+                    .to_string(),
+            ],
+        )
+    } else if liquidity.outbound_sats == 0 {
+        (
+            "receive_ready_send_limited".to_string(),
+            Some("lightning_send_needs_outbound_liquidity".to_string()),
+            Some("Lightning receive is viable, but Lightning sends need outbound liquidity.".to_string()),
+            vec![
+                "Add local channel balance or receive payments that move capacity outbound before sending."
+                    .to_string(),
+            ],
+        )
+    } else {
+        ("lightning_ready".to_string(), None, None, Vec::new())
+    };
+    WalletLightningReadiness {
+        state,
+        can_receive_lightning,
+        can_receive_onchain,
+        can_send_lightning,
+        inbound_liquidity_sats: liquidity.inbound_sats,
+        outbound_liquidity_sats: liquidity.outbound_sats,
+        usable_channel_count: channel_summary.usable_count,
+        pending_channel_count: channel_summary.pending_count,
+        peer_connected_count,
+        warning_code,
+        warning,
+        remediation,
+        lsp,
+    }
+}
+
+fn wallet_lsp_readiness(runtime_kind: PylonWalletRuntimeKind) -> WalletLspReadiness {
+    if runtime_kind != PylonWalletRuntimeKind::LdkNode {
+        return WalletLspReadiness {
+            supported_protocols: Vec::new(),
+            configured: false,
+            state: "not_applicable".to_string(),
+            detail: "External wallet targets do not expose built-in Pylon LSP readiness."
+                .to_string(),
+        };
+    }
+    WalletLspReadiness {
+        supported_protocols: vec!["lsps1".to_string(), "lsps2".to_string()],
+        configured: false,
+        state: "not_configured".to_string(),
+        detail: "The linked ldk-node build exposes LSPS1 and LSPS2 hooks, including LSPS2 just-in-time inbound liquidity; Pylon surfaces readiness now and needs operator LSP credentials before enabling an LSP client.".to_string(),
+    }
 }
 
 fn wallet_telemetry_backup(status: &WalletStatusReport) -> WalletTelemetryBackup {
@@ -2401,6 +2633,15 @@ fn wallet_telemetry_warnings(
 ) -> Vec<WalletTelemetrySignal> {
     let mut warnings = Vec::new();
     if let Some(node) = status.ldk_node.as_ref() {
+        if let (Some(code), Some(detail)) = (
+            status.lightning_readiness.warning_code.as_ref(),
+            status.lightning_readiness.warning.as_ref(),
+        ) {
+            warnings.push(WalletTelemetrySignal {
+                code: code.clone(),
+                detail: detail.clone(),
+            });
+        }
         if node.chain_source_kind == "none" {
             warnings.push(WalletTelemetrySignal {
                 code: "wallet_chain_source_not_configured".to_string(),
@@ -2648,6 +2889,13 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
             }
             Ok(render_wallet_balance_report(&report))
         }
+        WalletSubcommand::Channels { json } => {
+            let report = load_wallet_channels_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_channels_report(&report))
+        }
         WalletSubcommand::Address { json } => {
             let report = create_wallet_address_report(config_path).await?;
             if *json {
@@ -2834,6 +3082,9 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
         }),
         "balance" => Ok(WalletSubcommand::Balance {
             json: parse_json_only(args, start_index + 2, "wallet balance")?,
+        }),
+        "channels" => Ok(WalletSubcommand::Channels {
+            json: parse_json_only(args, start_index + 2, "wallet channels")?,
         }),
         "telemetry" => Ok(WalletSubcommand::Telemetry {
             json: parse_json_only(args, start_index + 2, "wallet telemetry")?,
@@ -3390,6 +3641,12 @@ pub async fn load_wallet_history_report(
     context.runtime.start()?;
     let ledger = load_ledger(config_path)?;
     let records = context.runtime.list_payments(&ledger, limit)?;
+    let channels = context.runtime.list_channels()?;
+    let lightning_readiness = wallet_lightning_readiness(
+        context.runtime.surface().runtime_kind,
+        channels.as_slice(),
+        true,
+    );
     mutate_ledger(config_path, |ledger| {
         for record in &records {
             ledger.upsert_wallet_payment(record.clone());
@@ -3399,9 +3656,21 @@ pub async fn load_wallet_history_report(
     let receipts = load_ledger(config_path)?.wallet.receipts;
     Ok(WalletHistoryReport {
         runtime: context.runtime.surface().clone(),
+        channels,
+        lightning_readiness,
         payments: records,
         receipts,
     })
+}
+
+pub async fn load_wallet_channels_report(config_path: &Path) -> Result<WalletChannelsReport> {
+    let context = prepare_wallet_context(config_path)?;
+    context.runtime.start()?;
+    let channels = context.runtime.list_channels()?;
+    Ok(wallet_channels_report_from_channels(
+        context.runtime.surface(),
+        channels,
+    ))
 }
 
 pub async fn load_wallet_credit_summary_report(
@@ -3760,7 +4029,39 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
             report.balance.anchor_reserve_sats
         ),
         format!("total_sats: {}", report.balance.total_sats),
+        format!(
+            "lightning_receive_state: {}",
+            report.lightning_readiness.state
+        ),
+        format!(
+            "can_receive_lightning: {}",
+            report.lightning_readiness.can_receive_lightning
+        ),
+        format!(
+            "can_receive_onchain: {}",
+            report.lightning_readiness.can_receive_onchain
+        ),
+        format!(
+            "can_send_lightning: {}",
+            report.lightning_readiness.can_send_lightning
+        ),
+        format!("channels_total: {}", report.channels.len()),
+        format!(
+            "usable_channels: {}",
+            report.lightning_readiness.usable_channel_count
+        ),
+        format!(
+            "inbound_liquidity_sats: {}",
+            report.lightning_readiness.inbound_liquidity_sats
+        ),
+        format!(
+            "outbound_liquidity_sats: {}",
+            report.lightning_readiness.outbound_liquidity_sats
+        ),
     ];
+    if let Some(warning) = report.lightning_readiness.warning.as_deref() {
+        lines.push(format!("lightning_receive_warning: {warning}"));
+    }
     if let Some(detail) = report.runtime_detail.as_deref() {
         lines.push(format!("runtime_detail: {detail}"));
     }
@@ -3821,6 +4122,20 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
             lines.push(format!("ldk_last_error: {error}"));
         }
     }
+    for channel in &report.channels {
+        lines.push(String::new());
+        lines.push(format!("channel_id: {}", channel.channel_id));
+        lines.push(format!("channel_status: {}", channel.status));
+        lines.push(format!(
+            "channel_peer_connected: {}",
+            channel.peer_connected
+        ));
+        lines.push(format!("channel_inbound_sats: {}", channel.inbound_sats));
+        lines.push(format!("channel_outbound_sats: {}", channel.outbound_sats));
+        if let Some(peer) = channel.counterparty_node_id.as_deref() {
+            lines.push(format!("channel_counterparty_node_id: {peer}"));
+        }
+    }
     if report.recent_payments.is_empty() {
         lines.push(String::new());
         lines.push("recent_payments: none".to_string());
@@ -3864,6 +4179,71 @@ pub fn render_wallet_balance_report(report: &WalletStatusReport) -> String {
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
         lines.push(format!("runtime_detail: {detail}"));
+    }
+    lines.join("\n")
+}
+
+pub fn render_wallet_channels_report(report: &WalletChannelsReport) -> String {
+    let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("network: {}", report.runtime.network),
+        format!(
+            "lightning_receive_state: {}",
+            report.lightning_readiness.state
+        ),
+        format!(
+            "can_receive_lightning: {}",
+            report.lightning_readiness.can_receive_lightning
+        ),
+        format!(
+            "can_receive_onchain: {}",
+            report.lightning_readiness.can_receive_onchain
+        ),
+        format!(
+            "can_send_lightning: {}",
+            report.lightning_readiness.can_send_lightning
+        ),
+        format!("channels_total: {}", report.channel_summary.total_count),
+        format!("channels_usable: {}", report.channel_summary.usable_count),
+        format!("channels_pending: {}", report.channel_summary.pending_count),
+        format!("inbound_liquidity_sats: {}", report.liquidity.inbound_sats),
+        format!(
+            "outbound_liquidity_sats: {}",
+            report.liquidity.outbound_sats
+        ),
+        format!("lsp_state: {}", report.lightning_readiness.lsp.state),
+    ];
+    if let Some(warning) = report.lightning_readiness.warning.as_deref() {
+        lines.push(format!("warning: {warning}"));
+    }
+    for remediation in &report.lightning_readiness.remediation {
+        lines.push(format!("remediation: {remediation}"));
+    }
+    if report.channels.is_empty() {
+        lines.push(String::new());
+        lines.push("channels: none".to_string());
+        return lines.join("\n");
+    }
+    for channel in &report.channels {
+        lines.push(String::new());
+        lines.push(format!("channel_id: {}", channel.channel_id));
+        lines.push(format!("status: {}", channel.status));
+        lines.push(format!("peer_connected: {}", channel.peer_connected));
+        lines.push(format!("inbound_sats: {}", channel.inbound_sats));
+        lines.push(format!("outbound_sats: {}", channel.outbound_sats));
+        lines.push(format!(
+            "channel_value_sats: {}",
+            channel.channel_value_sats
+        ));
+        if let Some(peer) = channel.counterparty_node_id.as_deref() {
+            lines.push(format!("counterparty_node_id: {peer}"));
+        }
+        if let Some(confirmations) = channel.confirmations {
+            lines.push(format!("confirmations: {confirmations}"));
+        }
+        if let Some(required) = channel.confirmations_required {
+            lines.push(format!("confirmations_required: {required}"));
+        }
     }
     lines.join("\n")
 }
@@ -3977,6 +4357,8 @@ pub fn render_wallet_telemetry_report(report: &WalletTelemetryReport) -> String 
         ),
         format!("backup_status: {}", report.backup.status),
         format!("backup_stale: {}", report.backup.stale),
+        format!("lsp_state: {}", report.lsp.state),
+        format!("lsp_configured: {}", report.lsp.configured),
         format!("warnings: {}", report.warnings.len()),
         format!("errors: {}", report.errors.len()),
         format!("redaction_policy: {}", report.redaction.policy),
@@ -4008,6 +4390,11 @@ pub fn render_wallet_history_report(report: &WalletHistoryReport) -> String {
     let mut lines = vec![
         format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
+        format!(
+            "lightning_receive_state: {}",
+            report.lightning_readiness.state
+        ),
+        format!("channels: {}", report.channels.len()),
         format!("payments: {}", report.payments.len()),
         format!("receipts: {}", report.receipts.len()),
     ];
@@ -5290,13 +5677,14 @@ mod tests {
     use bip39::{Language, Mnemonic};
 
     use super::{
-        PylonWalletRuntime, PylonWalletRuntimeKind, WalletLockOwner, WalletSubcommand,
-        compute_wallet_credit_summary, create_wallet_address_report, create_wallet_invoice_report,
-        create_wallet_offer_report, load_wallet_history_report, load_wallet_node_entropy_material,
-        load_wallet_status_report, load_wallet_telemetry_report, parse_wallet_command,
-        pay_wallet_invoice_report, redact_wallet_secret_text, redact_wallet_telemetry_endpoint,
+        PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletLockOwner,
+        WalletSubcommand, compute_wallet_credit_summary, create_wallet_address_report,
+        create_wallet_invoice_report, create_wallet_offer_report, load_wallet_channels_report,
+        load_wallet_history_report, load_wallet_node_entropy_material, load_wallet_status_report,
+        load_wallet_telemetry_report, parse_wallet_command, pay_wallet_invoice_report,
+        redact_wallet_secret_text, redact_wallet_telemetry_endpoint, render_wallet_channels_report,
         render_wallet_entropy_report, render_wallet_status_report, render_wallet_telemetry_report,
-        run_wallet_command, wallet_node_entropy_domain_label,
+        run_wallet_command, wallet_lightning_readiness, wallet_node_entropy_domain_label,
     };
     use crate::PylonWalletPaymentRecord;
 
@@ -5325,6 +5713,18 @@ mod tests {
             )
             .expect("wallet sync should parse"),
             WalletSubcommand::Sync { json: true }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("channels"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet channels should parse"),
+            WalletSubcommand::Channels { json: true }
         );
         assert_eq!(
             parse_wallet_command(
@@ -5821,6 +6221,104 @@ mod tests {
         assert!(detail.contains("preimage=[redacted]"));
         assert!(detail.contains("mnemonic=[redacted]"));
         assert!(detail.contains("Bearer [redacted]"));
+    }
+
+    #[test]
+    fn wallet_lightning_readiness_projects_channel_states() {
+        let no_channels = wallet_lightning_readiness(PylonWalletRuntimeKind::LdkNode, &[], true);
+        assert_eq!(no_channels.state, "onchain_only_no_channels");
+        assert!(!no_channels.can_receive_lightning);
+        assert!(no_channels.can_receive_onchain);
+        assert_eq!(
+            no_channels.warning_code.as_deref(),
+            Some("lightning_receive_unavailable_no_channels")
+        );
+
+        let pending = wallet_lightning_readiness(
+            PylonWalletRuntimeKind::LdkNode,
+            &[test_channel("pending", 0, 0, false)],
+            true,
+        );
+        assert_eq!(pending.state, "channel_pending");
+        assert_eq!(
+            pending.warning_code.as_deref(),
+            Some("lightning_receive_pending_channel")
+        );
+
+        let usable = wallet_lightning_readiness(
+            PylonWalletRuntimeKind::LdkNode,
+            &[test_channel("usable", 4_000, 6_000, true)],
+            true,
+        );
+        assert_eq!(usable.state, "lightning_ready");
+        assert!(usable.can_receive_lightning);
+        assert!(usable.can_send_lightning);
+        assert_eq!(usable.peer_connected_count, 1);
+        assert_eq!(usable.inbound_liquidity_sats, 4_000);
+        assert_eq!(usable.outbound_liquidity_sats, 6_000);
+
+        let route_limited = wallet_lightning_readiness(
+            PylonWalletRuntimeKind::LdkNode,
+            &[test_channel("usable", 0, 6_000, true)],
+            true,
+        );
+        assert_eq!(route_limited.state, "needs_inbound_liquidity");
+        assert_eq!(
+            route_limited.warning_code.as_deref(),
+            Some("lightning_receive_needs_inbound_liquidity")
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn wallet_channels_command_reports_mock_liquidity_readiness() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::Mock;
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let report = load_wallet_channels_report(config_path.as_path())
+            .await
+            .expect("channels report");
+        assert_eq!(report.channel_summary.usable_count, 1);
+        assert!(report.lightning_readiness.can_receive_lightning);
+        assert!(report.lightning_readiness.can_send_lightning);
+        assert_eq!(report.liquidity.inbound_sats, 500);
+        assert_eq!(report.liquidity.outbound_sats, 500);
+
+        let rendered = render_wallet_channels_report(&report);
+        let json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Channels { json: true },
+        )
+        .await
+        .expect("channels json");
+        assert!(rendered.contains("lightning_receive_state: lightning_ready"));
+        assert!(json.contains("\"peer_connected\": true"));
+    }
+
+    fn test_channel(
+        status: &str,
+        inbound_sats: u64,
+        outbound_sats: u64,
+        peer_connected: bool,
+    ) -> PylonWalletChannelRecord {
+        PylonWalletChannelRecord {
+            channel_id: format!("test-channel-{status}"),
+            status: status.to_string(),
+            counterparty_node_id: Some("02testpeer".to_string()),
+            funding_txo: Some("test-txid:0".to_string()),
+            channel_value_sats: inbound_sats.saturating_add(outbound_sats),
+            inbound_sats,
+            outbound_sats,
+            inbound_htlc_maximum_sats: Some(inbound_sats),
+            next_outbound_htlc_limit_sats: outbound_sats,
+            confirmations: Some(6),
+            confirmations_required: Some(1),
+            is_outbound: true,
+            is_public: false,
+            peer_connected,
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

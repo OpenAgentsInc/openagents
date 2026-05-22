@@ -22,6 +22,12 @@ proof-flow visualization lives in:
 - `docs/pylon/autopilot-proof-contract.md`
 - `docs/pylon/autopilot-test-matrix.md`
 
+The v0.2 built-in LDK wallet operator docs live in:
+
+- `docs/pylon/LDK_WALLET_CHANNEL_LIQUIDITY.md`
+- `docs/pylon/LDK_WALLET_REGTEST_HARNESS.md`
+- `docs/pylon/LDK_WALLET_TELEMETRY.md`
+
 Use those docs for different questions:
 
 - roadmap and phase tracker: what the admitted-node MVP implementation closed

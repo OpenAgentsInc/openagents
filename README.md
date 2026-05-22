@@ -235,8 +235,21 @@ pylon --version
 pylon status --json
 pylon training status --json
 pylon wallet balance --json
+pylon wallet channels --json
 pylon wallet history --limit 20 --json
 ```
+
+The v0.2 built-in wallet path is LDK-backed and user-owned. `wallet status`,
+`wallet channels`, `wallet history`, and `wallet telemetry` distinguish
+on-chain funds, spendable on-chain funds, Lightning channel balance, inbound
+liquidity, outbound liquidity, and the anchor reserve that must stay available
+for channel safety. A wallet can be able to receive on-chain Bitcoin while still
+not being ready to receive Lightning payments; in that case the channel
+readiness state surfaces the typed reason, usually no channels, a pending
+channel, disconnected peers, or missing inbound liquidity. LSP support is
+reported separately: the linked LDK Node stack exposes LSPS1/LSPS2 integration
+hooks, but Pylon reports `lsp_state=not_configured` until operator LSP
+credentials and policy are configured.
 
 For noninteractive operator proof, do not let the npm bootstrap launch an
 interactive UI. Bootstrap with `--no-launch`, then run the installed `pylon`
