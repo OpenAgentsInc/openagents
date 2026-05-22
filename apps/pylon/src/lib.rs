@@ -454,6 +454,7 @@ struct PylonPublicInventoryControls {
     sandbox_python_exec_enabled: bool,
     sandbox_node_exec_enabled: bool,
     sandbox_posix_exec_enabled: bool,
+    adapter_training_contributor_enabled: bool,
 }
 
 impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
@@ -465,6 +466,7 @@ impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
             sandbox_python_exec_enabled: value.sandbox_python_exec_enabled,
             sandbox_node_exec_enabled: value.sandbox_node_exec_enabled,
             sandbox_posix_exec_enabled: value.sandbox_posix_exec_enabled,
+            adapter_training_contributor_enabled: value.adapter_training_contributor_enabled,
         }
     }
 }
@@ -19573,7 +19575,7 @@ async fn maybe_reconcile_training_terminal_window(
             && let Some(closeout_hints) =
                 load_training_terminal_closeout_hints(run_root, run_status, window_status)?
         {
-            changed |= maybe_reconcile_training_scored_window(
+            let replayed = maybe_reconcile_training_scored_window(
                 state,
                 active,
                 client,
@@ -19581,6 +19583,49 @@ async fn maybe_reconcile_training_terminal_window(
                 contribution_outcomes.clone(),
             )
             .await?;
+            changed |= replayed;
+            if replayed
+                && let Some(accepted_outcome_id) = window.accepted_outcome_id.as_deref()
+                && let Ok(updated_outcomes) = client
+                    .list_accepted_outcomes(
+                        Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                        Some(context.manifest.environment_ref.as_str()),
+                    )
+                    .await
+                && let Some(updated_outcome) = updated_outcomes
+                    .into_iter()
+                    .find(|outcome| outcome.outcome_id == accepted_outcome_id)
+            {
+                let checkpoint_ref = updated_outcome
+                    .training_summary
+                    .as_ref()
+                    .and_then(|summary| summary.accepted_checkpoint_ref.clone());
+                let acceptance_state = training_closeout_status_from_metadata(&updated_outcome);
+                let payout_eligible = training_closeout_payout_eligible(&updated_outcome);
+                for outcome in &contribution_outcomes {
+                    changed |= record_training_closeout_progress_stage(
+                        state,
+                        outcome.assignment_id.as_str(),
+                        outcome.training_run_id.as_str(),
+                        outcome.window_id.as_str(),
+                        active.role,
+                        PylonTrainingCloseoutStage::Accepted,
+                        None,
+                        checkpoint_ref.clone(),
+                        Some(acceptance_state.clone()),
+                        payout_eligible.then_some("pending".to_string()),
+                        None,
+                        None,
+                    );
+                    changed |= update_training_closeout_public_settlement_metadata(
+                        state,
+                        outcome.assignment_id.as_str(),
+                        None,
+                        Some(accepted_outcome_id),
+                        None,
+                    );
+                }
+            }
         }
         for outcome in &contribution_outcomes {
             changed |= record_training_closeout_progress_stage(
@@ -20138,10 +20183,16 @@ async fn report_training_terminal_runtime_to_authority(
         );
     }
 
+    let window_already_reconciled = state
+        .window_cache
+        .get(active.window_id.as_str())
+        .is_some_and(|entry| entry.state == "reconciled");
+
     if run_succeeded
         && checkpoint_published
         && active.role == PylonTrainingRoleClaim::Worker
         && retained_contribution.is_some()
+        && !window_already_reconciled
     {
         let retained = retained_contribution
             .as_ref()
@@ -32614,6 +32665,10 @@ mod tests {
         }
     }
 
+    fn test_future_training_lease_expires_at_ms() -> i64 {
+        now_epoch_ms() + 600_000
+    }
+
     #[test]
     fn relative_training_run_root_materializes_absolute_runtime_paths()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -37065,7 +37120,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "acked".to_string(),
                 manifest_digest: Some("sha256:manifest-expected".to_string()),
                 checkpoint_ref: None,
-                expires_at_ms: Some(1_762_500_000_100),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.expected".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -37094,7 +37149,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "acked".to_string(),
                 manifest_digest: Some("sha256:manifest-other".to_string()),
                 checkpoint_ref: None,
-                expires_at_ms: Some(1_762_500_000_200),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.other".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -37123,7 +37178,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "leased".to_string(),
                 manifest_digest: Some("sha256:manifest-missing".to_string()),
                 checkpoint_ref: None,
-                expires_at_ms: Some(1_762_500_000_300),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: None,
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -37362,7 +37417,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     "assignment_id": "assign.node01.window0001",
                     "role": "worker",
                     "issued_at_ms": 1_762_491_200_600_i64,
-                    "expires_at_ms": 1_762_491_260_600_i64,
+                    "expires_at_ms": test_future_training_lease_expires_at_ms(),
                     "manifest_digest": "sha256:manifest-alpha",
                     "checkpoint_ref": "checkpoint://run.alpha/0001"
                 }),
@@ -37771,7 +37826,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     "assignment_id": "assign.node01.window0001",
                     "role": "worker",
                     "issued_at_ms": 1_762_491_200_600_i64,
-                    "expires_at_ms": 1_762_491_260_600_i64,
+                    "expires_at_ms": test_future_training_lease_expires_at_ms(),
                     "manifest_digest": "sha256:manifest-alpha",
                     "checkpoint_ref": "checkpoint://run.alpha/0001",
                     "membership_revision": "members.rev2",
@@ -38224,7 +38279,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "leased".to_string(),
                 manifest_digest: Some("sha256:manifest-alpha".to_string()),
                 checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
-                expires_at_ms: Some(1_762_491_260_600),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.alpha".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -38509,7 +38564,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "leased".to_string(),
                 manifest_digest: Some("sha256:manifest-alpha".to_string()),
                 checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
-                expires_at_ms: Some(1_762_491_260_600),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.alpha".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -39013,7 +39068,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                                 attempt: 1,
                                 validator_id: validator_public_key.clone(),
                                 leased_at_ms: 1_762_491_210_700,
-                                expires_at_ms: 1_762_491_270_700,
+                                expires_at_ms: test_future_training_lease_expires_at_ms() as u64,
                             }),
                             final_result: None,
                         },
@@ -39022,7 +39077,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                             attempt: 1,
                             validator_id: validator_public_key.clone(),
                             leased_at_ms: 1_762_491_210_700,
-                            expires_at_ms: 1_762_491_270_700,
+                            expires_at_ms: test_future_training_lease_expires_at_ms() as u64,
                         }),
                         result: None,
                         window: Some(training_adapter_window_fixture(
@@ -39253,7 +39308,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 attempt: 1,
                 validator_id: identity.public_key_hex.clone(),
                 leased_at_ms: 1_762_491_210_700,
-                expires_at_ms: 1_762_491_270_700,
+                expires_at_ms: test_future_training_lease_expires_at_ms() as u64,
             },
         );
         let lease = state
@@ -43370,6 +43425,8 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.training.run_root = temp_dir.path().join("training");
         config.relay_auth_enabled = false;
+        config.relay_urls = vec!["ws://127.0.0.1:9".to_string()];
+        config.training.relay_urls = vec!["ws://127.0.0.1:9".to_string()];
         save_config(config_path.as_path(), &config)?;
 
         let local_run_root = config.training.run_root.join("runs").join("run.alpha");
@@ -43399,18 +43456,21 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ]);
 
         let queued_report = publish_training_trn_state(config_path.as_path(), None).await?;
+        let queued_entries = queued_report
+            .node_records
+            .iter()
+            .chain(queued_report.receipts.iter())
+            .chain(queued_report.artifact_locators.iter())
+            .collect::<Vec<_>>();
         ensure(
-            queued_report
-                .node_records
-                .iter()
-                .chain(queued_report.receipts.iter())
-                .chain(queued_report.artifact_locators.iter())
-                .all(|entry| {
-                    entry.publication_state == "queued_retry"
-                        && entry.pending_retry
-                        && entry.event_id.is_empty()
-                }),
-            "relay outages should queue every training TRN publication instead of failing or pretending publish succeeded",
+            queued_entries.iter().all(|entry| {
+                entry.publication_state == "queued_retry"
+                    && entry.pending_retry
+                    && entry.event_id.is_empty()
+            }),
+            &format!(
+                "relay outages should queue every training TRN publication instead of failing or pretending publish succeeded: {queued_entries:#?}",
+            ),
         )?;
 
         let queued_state = load_or_create_training_runtime_state(&config)?;
@@ -43454,6 +43514,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
         std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        config.relay_urls = vec![relay.url.clone()];
+        config.training.relay_urls = vec![relay.url.clone()];
+        save_config(config_path.as_path(), &config)?;
 
         let recovered_report = publish_training_trn_state(config_path.as_path(), None).await?;
         ensure(
@@ -46373,7 +46436,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     entry.stage == super::PylonTrainingCloseoutStage::Accepted
                         && entry.acceptance_state.as_deref() == Some("rewarded")
                 }),
-            "replayed closeout should advance the retained worker entry from refused to rewarded",
+            &format!(
+                "replayed closeout should advance the retained worker entry from refused to rewarded: {:#?}",
+                state.closeout_progress.get("assign.node01.window0001")
+            ),
         )?;
         ensure(
             state.authority_receipt_records.values().any(|record| {
@@ -50975,6 +51041,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        config
+            .inventory_controls
+            .adapter_training_contributor_enabled = false;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
@@ -55179,6 +55248,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        config
+            .inventory_controls
+            .adapter_training_contributor_enabled = false;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
@@ -55361,6 +55433,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        config
+            .inventory_controls
+            .adapter_training_contributor_enabled = false;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
