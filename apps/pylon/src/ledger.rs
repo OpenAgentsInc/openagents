@@ -268,6 +268,12 @@ pub struct PylonWalletInvoiceRecord {
     pub status: String,
     pub payment_request: String,
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at_ms: Option<u64>,
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
 }
@@ -788,6 +794,9 @@ mod tests {
                 status: String::from("open"),
                 payment_request: String::from("lnbc1example"),
                 description: Some(String::from("test")),
+                payment_hash: None,
+                runtime_kind: None,
+                expires_at_ms: None,
                 created_at_ms: 3,
                 updated_at_ms: 3,
             });

@@ -155,15 +155,17 @@ pub use nip90_runtime::{
 pub use wallet_runtime::{
     PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
     WalletBalanceSnapshot, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
-    WalletInvoiceReport, WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport,
-    WalletRuntimeSurface, WalletStatusReport, WalletSubcommand, create_wallet_address_report,
-    create_wallet_invoice_report, export_wallet_entropy_report, import_wallet_entropy_report,
+    WalletInvoiceReport, WalletLdkNodeStatus, WalletLockOwner, WalletLockReport,
+    WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRuntimeSurface,
+    WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand, clear_wallet_lock_report,
+    create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
+    export_wallet_entropy_report, import_wallet_entropy_report, inspect_wallet_lock_report,
     load_wallet_balance_status_report, load_wallet_credit_summary_report,
     load_wallet_entropy_status_report, load_wallet_history_report, load_wallet_status_report,
     parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
     render_wallet_balance_report, render_wallet_entropy_report, render_wallet_history_report,
-    render_wallet_invoice_report, render_wallet_pay_report, render_wallet_status_report,
-    run_wallet_command,
+    render_wallet_invoice_report, render_wallet_lock_report, render_wallet_offer_report,
+    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -398,6 +400,14 @@ pub struct PylonConfig {
     pub wallet_api_key_env: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_entropy_override_path: Option<PathBuf>,
+    #[serde(default = "default_wallet_chain_source_kind")]
+    pub wallet_chain_source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_esplora_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_electrum_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_rgs_url: Option<String>,
     #[serde(default = "default_buyer_auto_pay_enabled")]
     pub buyer_auto_pay_enabled: bool,
     pub wallet_storage_dir: PathBuf,
@@ -459,6 +469,10 @@ struct PylonPublicConfig {
     wallet_runtime_kind: PylonWalletRuntimeKind,
     wallet_api_key_env: Option<String>,
     wallet_entropy_override_path: Option<PathBuf>,
+    wallet_chain_source_kind: String,
+    wallet_esplora_url: Option<String>,
+    wallet_electrum_url: Option<String>,
+    wallet_rgs_url: Option<String>,
     buyer_auto_pay_enabled: bool,
     wallet_storage_dir: PathBuf,
     local_gemma_base_url: String,
@@ -487,6 +501,10 @@ impl From<&PylonConfig> for PylonPublicConfig {
             wallet_runtime_kind: value.wallet_runtime_kind,
             wallet_api_key_env: value.wallet_api_key_env.clone(),
             wallet_entropy_override_path: value.wallet_entropy_override_path.clone(),
+            wallet_chain_source_kind: value.wallet_chain_source_kind.clone(),
+            wallet_esplora_url: value.wallet_esplora_url.clone(),
+            wallet_electrum_url: value.wallet_electrum_url.clone(),
+            wallet_rgs_url: value.wallet_rgs_url.clone(),
             buyer_auto_pay_enabled: value.buyer_auto_pay_enabled,
             wallet_storage_dir: value.wallet_storage_dir.clone(),
             local_gemma_base_url: value.local_gemma_base_url.clone(),
@@ -2368,6 +2386,7 @@ pub enum Command {
     PayoutWithdraw {
         payment_request: String,
         amount_sats: Option<u64>,
+        yes: bool,
         json: bool,
     },
     Wallet {
@@ -9325,8 +9344,10 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         Command::PayoutWithdraw {
             payment_request,
             amount_sats,
+            yes,
             json,
         } => {
+            wallet_runtime::require_explicit_send_confirmation("payout withdraw", json, yes)?;
             let report = run_payout_withdrawal(
                 cli.config_path.as_path(),
                 payment_request.as_str(),
@@ -9552,14 +9573,17 @@ Commands:\n\
   job deny <request_event_id> [--json]\n\
   job policy [show|auto|manual] [--json]\n\
   payout [--limit <n>] [--json]\n\
-  payout withdraw <payment_request> [--amount-sats <n>] [--json]\n\
+  payout withdraw <payment_request> [--amount-sats <n>] [--yes] [--json]\n\
   wallet status [--json]\n\
+  wallet sync [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
-  wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
+  wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json]\n\
+  wallet pay <payment_request> [--amount-sats <n>] [--yes] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
   wallet entropy status|export <path>|import <path> [--json]\n\
+  wallet lock status|clear [--json]\n\
   training status [--json]\n\
   training artifacts inspect [--json]\n\
   training artifacts gc [--json]\n\
@@ -9816,11 +9840,12 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
                 Ok(Command::Payout { limit, json })
             }
             Some("withdraw") => {
-                let (payment_request, amount_sats, json) =
+                let (payment_request, amount_sats, yes, json) =
                     parse_payout_withdraw_command(args, start_index + 2)?;
                 Ok(Command::PayoutWithdraw {
                     payment_request,
                     amount_sats,
+                    yes,
                     json,
                 })
             }
@@ -10752,13 +10777,14 @@ fn parse_payout_flags(
 fn parse_payout_withdraw_command(
     args: &[String],
     mut index: usize,
-) -> Result<(String, Option<u64>, bool)> {
+) -> Result<(String, Option<u64>, bool, bool)> {
     let payment_request = args
         .get(index)
         .ok_or_else(|| anyhow!("missing <payment_request> for payout withdraw"))?
         .clone();
     index += 1;
     let mut amount_sats = None;
+    let mut yes = false;
     let mut json = false;
     while index < args.len() {
         match args[index].as_str() {
@@ -10766,21 +10792,28 @@ fn parse_payout_withdraw_command(
                 json = true;
                 index += 1;
             }
+            "--yes" => {
+                yes = true;
+                index += 1;
+            }
             "--amount-sats" => {
                 index += 1;
                 let value = args
                     .get(index)
                     .ok_or_else(|| anyhow!("missing value for --amount-sats"))?;
-                amount_sats =
-                    Some(value.parse::<u64>().with_context(|| {
-                        format!("invalid payout withdraw amount_sats: {value}")
-                    })?);
+                let parsed = value
+                    .parse::<u64>()
+                    .with_context(|| format!("invalid payout withdraw amount_sats: {value}"))?;
+                if parsed == 0 {
+                    bail!("payout withdraw amount_sats must be greater than 0");
+                }
+                amount_sats = Some(parsed);
                 index += 1;
             }
             other => bail!("unexpected argument for payout withdraw: {other}"),
         }
     }
-    Ok((payment_request, amount_sats, json))
+    Ok((payment_request, amount_sats, yes, json))
 }
 
 fn parse_provider_scan_flags(
@@ -10839,9 +10872,11 @@ pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
 
 async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
     let config = ensure_local_setup(config_path)?;
-    if training_settlement_destination(&config).is_none() {
+    if training_settlement_destination(&config).is_none()
+        && config.wallet_runtime_kind != PylonWalletRuntimeKind::LdkNode
+    {
         eprintln!(
-            "pylon: no LDK payout destination configured; paid-work eligibility is disabled until payout_destination is set"
+            "pylon: no wallet-owned registration target is available; paid-work eligibility requires wallet_runtime_kind=ldk_node or an explicit payout_destination override"
         );
     }
     let status = apply_control_locally(&config, ProviderControlAction::Online).await?;
@@ -10901,8 +10936,44 @@ fn render_public_config_json(config: &PylonConfig) -> Result<String> {
 }
 
 fn validate_pylon_config(config: &PylonConfig) -> Result<()> {
+    validate_wallet_chain_source_config(config)?;
     validate_pylon_probe_config(&config.probe)?;
     validate_pylon_training_config(&config.training)
+}
+
+fn validate_wallet_chain_source_config(config: &PylonConfig) -> Result<()> {
+    match config.wallet_chain_source_kind.as_str() {
+        "none" => Ok(()),
+        "esplora" => {
+            if config.wallet_runtime_kind == PylonWalletRuntimeKind::LdkNode
+                && config
+                    .wallet_esplora_url
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .is_empty()
+            {
+                bail!("wallet_esplora_url must be set when wallet_chain_source_kind=esplora");
+            }
+            Ok(())
+        }
+        "electrum" => {
+            if config.wallet_runtime_kind == PylonWalletRuntimeKind::LdkNode
+                && config
+                    .wallet_electrum_url
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .is_empty()
+            {
+                bail!("wallet_electrum_url must be set when wallet_chain_source_kind=electrum");
+            }
+            Ok(())
+        }
+        other => bail!(
+            "unsupported wallet_chain_source_kind '{other}'; expected none, esplora, or electrum"
+        ),
+    }
 }
 
 fn validate_pylon_probe_config(config: &PylonProbeConfig) -> Result<()> {
@@ -23235,6 +23306,10 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         wallet_runtime_kind: default_wallet_runtime_kind(),
         wallet_api_key_env: default_wallet_api_key_env(),
         wallet_entropy_override_path: None,
+        wallet_chain_source_kind: default_wallet_chain_source_kind(),
+        wallet_esplora_url: None,
+        wallet_electrum_url: None,
+        wallet_rgs_url: None,
         buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
         wallet_storage_dir: base_dir.join("wallet"),
         local_gemma_base_url: "http://127.0.0.1:11434".to_string(),
@@ -23370,15 +23445,19 @@ const fn default_relay_auth_enabled() -> bool {
 }
 
 fn default_wallet_network() -> String {
-    "ldk-external".to_string()
+    "bitcoin".to_string()
 }
 
 const fn default_wallet_runtime_kind() -> PylonWalletRuntimeKind {
-    PylonWalletRuntimeKind::ExternalTarget
+    PylonWalletRuntimeKind::LdkNode
 }
 
 fn default_wallet_api_key_env() -> Option<String> {
     None
+}
+
+fn default_wallet_chain_source_kind() -> String {
+    "none".to_string()
 }
 
 const fn default_buyer_auto_pay_enabled() -> bool {
@@ -26948,8 +27027,31 @@ struct NexusProviderPayoutTargetRegistrationRequest {
     payment_target: String,
     payment_target_capabilities: Vec<String>,
     pylon_payment_target_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wallet_node_id: Option<String>,
+    wallet_runtime_kind: String,
+    wallet_network: String,
+    wallet_target_kind: String,
+    wallet_derivation_version: String,
+    wallet_backup_status: String,
+    wallet_registration_mode: String,
     challenge: String,
     challenge_signature_hex: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProviderWalletRegistrationTarget {
+    payment_target_kind: String,
+    payment_target: String,
+    payment_target_capabilities: Vec<String>,
+    pylon_payment_target_version: String,
+    wallet_node_id: Option<String>,
+    wallet_runtime_kind: String,
+    wallet_network: String,
+    wallet_target_kind: String,
+    wallet_derivation_version: String,
+    wallet_backup_status: String,
+    wallet_registration_mode: String,
 }
 
 async fn report_provider_presence_heartbeat(
@@ -27490,27 +27592,202 @@ fn provider_payout_target_sync_interval() -> Duration {
     Duration::from_millis(DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS)
 }
 
+const PYLON_WALLET_REGISTRATION_DESCRIPTION: &str = "OpenAgents Pylon payout registration";
+const PYLON_WALLET_REGISTRATION_FALLBACK_AMOUNT_SATS: u64 = 1;
+const PYLON_WALLET_REGISTRATION_FALLBACK_EXPIRY_SECONDS: u32 = 3_600;
+
+async fn build_provider_wallet_registration_target(
+    config_path: &Path,
+    config: &PylonConfig,
+) -> Result<ProviderWalletRegistrationTarget> {
+    build_provider_wallet_registration_target_with_options(config_path, config, false).await
+}
+
+async fn build_provider_wallet_registration_target_with_options(
+    config_path: &Path,
+    config: &PylonConfig,
+    force_bolt11_fallback: bool,
+) -> Result<ProviderWalletRegistrationTarget> {
+    if let Some(payment_target) = training_settlement_destination(config) {
+        let payment_target_kind = infer_ldk_payment_target_kind(payment_target.as_str())
+            .map_err(|error| anyhow!("unsupported LDK payout target: {error}"))?;
+        let payment_target_capabilities =
+            ldk_payment_target_capabilities(payment_target_kind.as_str())
+                .map_err(|error| anyhow!("unsupported LDK payout target: {error}"))?;
+        return Ok(ProviderWalletRegistrationTarget {
+            wallet_node_id: None,
+            wallet_runtime_kind: config.wallet_runtime_kind.to_string(),
+            wallet_network: config.wallet_network.clone(),
+            wallet_target_kind: payment_target_kind.clone(),
+            wallet_derivation_version: "external-target-override".to_string(),
+            wallet_backup_status: "external_target_not_managed_by_pylon".to_string(),
+            wallet_registration_mode: "external_override".to_string(),
+            payment_target_kind,
+            payment_target,
+            payment_target_capabilities,
+            pylon_payment_target_version: PYLON_PAYMENT_TARGET_VERSION_V0_2.to_string(),
+        });
+    }
+
+    let status = load_wallet_status_report(config_path).await?;
+    if status.runtime.runtime_kind != PylonWalletRuntimeKind::LdkNode {
+        bail!(
+            "wallet-generated payout-target registration requires wallet_runtime_kind=ldk_node or an explicit payout_destination override"
+        );
+    }
+    let ldk_node = status.ldk_node.as_ref().ok_or_else(|| {
+        anyhow!("wallet-generated payout-target registration requires ldk_node status")
+    })?;
+    if !force_bolt11_fallback {
+        match create_wallet_offer_report(
+            config_path,
+            None,
+            Some(PYLON_WALLET_REGISTRATION_DESCRIPTION.to_string()),
+            None,
+        )
+        .await
+        {
+            Ok(report) => {
+                let target = provider_wallet_registration_target_from_parts(
+                    report.offer,
+                    "bolt12_offer",
+                    &report.runtime,
+                    ldk_node,
+                    "wallet_generated",
+                )?;
+                persist_wallet_last_registration(config, &target)?;
+                return Ok(target);
+            }
+            Err(error) => {
+                let detail = error.to_string();
+                if !detail.contains("bolt12_offer_unavailable") {
+                    return Err(error).with_context(
+                        || "failed to create wallet-owned BOLT12 registration target",
+                    );
+                }
+            }
+        }
+    }
+
+    let report = create_wallet_invoice_report(
+        config_path,
+        PYLON_WALLET_REGISTRATION_FALLBACK_AMOUNT_SATS,
+        Some(PYLON_WALLET_REGISTRATION_DESCRIPTION.to_string()),
+        Some(PYLON_WALLET_REGISTRATION_FALLBACK_EXPIRY_SECONDS),
+    )
+    .await?;
+    let target = provider_wallet_registration_target_from_parts(
+        report.invoice.payment_request,
+        "bolt11_invoice",
+        &report.runtime,
+        ldk_node,
+        "wallet_generated_bolt11_fallback",
+    )?;
+    persist_wallet_last_registration(config, &target)?;
+    Ok(target)
+}
+
+fn provider_wallet_registration_target_from_parts(
+    payment_target: String,
+    expected_kind: &str,
+    runtime: &WalletRuntimeSurface,
+    ldk_node: &WalletLdkNodeStatus,
+    registration_mode: &str,
+) -> Result<ProviderWalletRegistrationTarget> {
+    let payment_target_kind = infer_ldk_payment_target_kind(payment_target.as_str())
+        .map_err(|error| anyhow!("unsupported wallet-generated payment target: {error}"))?;
+    if payment_target_kind != expected_kind {
+        bail!(
+            "wallet-generated payment target kind mismatch: expected {expected_kind}, got {payment_target_kind}"
+        );
+    }
+    let payment_target_capabilities = ldk_payment_target_capabilities(payment_target_kind.as_str())
+        .map_err(|error| anyhow!("unsupported wallet-generated payment target: {error}"))?;
+    Ok(ProviderWalletRegistrationTarget {
+        payment_target_kind: payment_target_kind.clone(),
+        payment_target,
+        payment_target_capabilities,
+        pylon_payment_target_version: PYLON_PAYMENT_TARGET_VERSION_V0_2.to_string(),
+        wallet_node_id: ldk_node.node_id.clone(),
+        wallet_runtime_kind: runtime.runtime_kind.to_string(),
+        wallet_network: runtime.network.clone(),
+        wallet_target_kind: payment_target_kind,
+        wallet_derivation_version: runtime.node_entropy.derivation_version.clone(),
+        wallet_backup_status: ldk_node.backup_status.clone(),
+        wallet_registration_mode: registration_mode.to_string(),
+    })
+}
+
+fn persist_wallet_last_registration(
+    config: &PylonConfig,
+    target: &ProviderWalletRegistrationTarget,
+) -> Result<()> {
+    let path = config
+        .wallet_storage_dir
+        .join("ldk")
+        .join("last-registration.json");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create wallet registration metadata dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    let payload = json!({
+        "schema_version": 1,
+        "kind": "pylon.wallet.last_registration",
+        "status": "ready",
+        "registered_at_ms": now_epoch_ms(),
+        "payment_target_kind": target.payment_target_kind,
+        "payment_target_capabilities": target.payment_target_capabilities,
+        "pylon_payment_target_version": target.pylon_payment_target_version,
+        "wallet_node_id": target.wallet_node_id,
+        "wallet_runtime_kind": target.wallet_runtime_kind,
+        "wallet_network": target.wallet_network,
+        "wallet_target_kind": target.wallet_target_kind,
+        "wallet_derivation_version": target.wallet_derivation_version,
+        "wallet_backup_status": target.wallet_backup_status,
+        "wallet_registration_mode": target.wallet_registration_mode,
+    });
+    std::fs::write(
+        path.as_path(),
+        format!("{}\n", serde_json::to_string_pretty(&payload)?),
+    )
+    .with_context(|| {
+        format!(
+            "failed to write wallet registration metadata {}",
+            path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path.as_path(), std::fs::Permissions::from_mode(0o600))
+            .with_context(|| {
+                format!(
+                    "failed to set wallet registration metadata permissions {}",
+                    path.display()
+                )
+            })?;
+    }
+    Ok(())
+}
+
 async fn sync_provider_payout_target(
     client: &reqwest::Client,
-    _config_path: &Path,
+    config_path: &Path,
     config: &PylonConfig,
     identity: &NostrIdentity,
     session_id: &str,
 ) -> Result<()> {
-    let Some(payment_target) = training_settlement_destination(config) else {
-        bail!(
-            "missing LDK payment target; set payout_destination to a BOLT12 offer, BIP353 name, LNURL-pay target, or per-payment BOLT11 invoice"
-        );
-    };
-    let payment_target_kind = infer_ldk_payment_target_kind(payment_target.as_str())
-        .map_err(|error| anyhow!("unsupported LDK payout target: {error}"))?;
-    let payment_target_capabilities = ldk_payment_target_capabilities(payment_target_kind.as_str())
-        .map_err(|error| anyhow!("unsupported LDK payout target: {error}"))?;
-    let capability_refs = payment_target_capabilities
+    let registration_target =
+        build_provider_wallet_registration_target(config_path, config).await?;
+    let capability_refs = registration_target
+        .payment_target_capabilities
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let pylon_payment_target_version = PYLON_PAYMENT_TARGET_VERSION_V0_2.to_string();
     let challenge = post_nexus_json::<_, NexusProviderPayoutTargetChallengeResponse>(
         client,
         config,
@@ -27528,10 +27805,17 @@ async fn sync_provider_payout_target(
         session_id,
         challenge.challenge.as_str(),
         ProviderPaymentTargetRegistration {
-            target_kind: payment_target_kind.as_str(),
-            target_value: payment_target.as_str(),
+            target_kind: registration_target.payment_target_kind.as_str(),
+            target_value: registration_target.payment_target.as_str(),
             capabilities: capability_refs.as_slice(),
-            version: pylon_payment_target_version.as_str(),
+            version: registration_target.pylon_payment_target_version.as_str(),
+            wallet_node_id: registration_target.wallet_node_id.as_deref(),
+            wallet_runtime_kind: Some(registration_target.wallet_runtime_kind.as_str()),
+            wallet_network: Some(registration_target.wallet_network.as_str()),
+            wallet_target_kind: Some(registration_target.wallet_target_kind.as_str()),
+            wallet_derivation_version: Some(registration_target.wallet_derivation_version.as_str()),
+            wallet_backup_status: Some(registration_target.wallet_backup_status.as_str()),
+            wallet_registration_mode: Some(registration_target.wallet_registration_mode.as_str()),
         },
     )
     .map_err(anyhow::Error::msg)?;
@@ -27542,10 +27826,17 @@ async fn sync_provider_payout_target(
         &NexusProviderPayoutTargetRegistrationRequest {
             nostr_pubkey_hex: identity.public_key_hex.clone(),
             session_id: session_id.to_string(),
-            payment_target_kind,
-            payment_target,
-            payment_target_capabilities,
-            pylon_payment_target_version,
+            payment_target_kind: registration_target.payment_target_kind,
+            payment_target: registration_target.payment_target,
+            payment_target_capabilities: registration_target.payment_target_capabilities,
+            pylon_payment_target_version: registration_target.pylon_payment_target_version,
+            wallet_node_id: registration_target.wallet_node_id,
+            wallet_runtime_kind: registration_target.wallet_runtime_kind,
+            wallet_network: registration_target.wallet_network,
+            wallet_target_kind: registration_target.wallet_target_kind,
+            wallet_derivation_version: registration_target.wallet_derivation_version,
+            wallet_backup_status: registration_target.wallet_backup_status,
+            wallet_registration_mode: registration_target.wallet_registration_mode,
             challenge: challenge.challenge,
             challenge_signature_hex,
         },
@@ -31853,6 +32144,30 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
                 Some(PathBuf::from(value.trim()))
             };
         }
+        "wallet_chain_source_kind" => {
+            next.wallet_chain_source_kind = value.trim().to_ascii_lowercase();
+        }
+        "wallet_esplora_url" => {
+            next.wallet_esplora_url = if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.trim().to_string())
+            };
+        }
+        "wallet_electrum_url" => {
+            next.wallet_electrum_url = if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.trim().to_string())
+            };
+        }
+        "wallet_rgs_url" => {
+            next.wallet_rgs_url = if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.trim().to_string())
+            };
+        }
         "buyer_auto_pay_enabled" => {
             next.buyer_auto_pay_enabled = parse_bool(value)?;
         }
@@ -34591,6 +34906,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         );
         assert_eq!(infer_ldk_payment_target_kind("lnurlp:alice")?, "lnurl_pay");
         assert!(infer_ldk_payment_target_kind("provider:alice").is_err());
+        assert_eq!(
+            infer_ldk_payment_target_kind("sp1retiredspark").unwrap_err(),
+            "unsupported_payment_target_kind:spark"
+        );
 
         let capabilities = ldk_payment_target_capabilities("bolt12_offer")?;
         ensure(
@@ -34636,6 +34955,13 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "wallet_entropy_override_path",
             "/tmp/pylon-wallet-entropy.hex",
         )?;
+        apply_config_set(&mut config, "wallet_chain_source_kind", "esplora")?;
+        apply_config_set(
+            &mut config,
+            "wallet_esplora_url",
+            "http://127.0.0.1:3002/api",
+        )?;
+        apply_config_set(&mut config, "wallet_rgs_url", "http://127.0.0.1:3003/rgs")?;
         apply_config_set(&mut config, "wallet_storage_dir", "/tmp/pylon-wallet")?;
         ensure(
             config.wallet_network == "ldk-external",
@@ -34653,6 +34979,18 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             config.wallet_entropy_override_path.as_deref()
                 == Some(std::path::Path::new("/tmp/pylon-wallet-entropy.hex")),
             "config set should update wallet_entropy_override_path",
+        )?;
+        ensure(
+            config.wallet_chain_source_kind == "esplora",
+            "config set should update wallet_chain_source_kind",
+        )?;
+        ensure(
+            config.wallet_esplora_url.as_deref() == Some("http://127.0.0.1:3002/api"),
+            "config set should update wallet_esplora_url",
+        )?;
+        ensure(
+            config.wallet_rgs_url.as_deref() == Some("http://127.0.0.1:3003/rgs"),
+            "config set should update wallet_rgs_url",
         )?;
         ensure(
             config.wallet_storage_dir == std::path::Path::new("/tmp/pylon-wallet"),
@@ -48460,8 +48798,8 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "missing wallet storage should hydrate from the default config",
         )?;
         ensure(
-            config.wallet_runtime_kind == PylonWalletRuntimeKind::ExternalTarget,
-            "missing wallet runtime kind should hydrate to external_target",
+            config.wallet_runtime_kind == PylonWalletRuntimeKind::LdkNode,
+            "missing wallet runtime kind should hydrate to the built-in ldk_node wallet",
         )?;
         ensure(
             config.local_gemma_base_url == "http://127.0.0.1:11434",
@@ -48725,7 +49063,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn provider_payout_target_registration_uses_signed_wallet_targets()
+    async fn provider_payout_target_registration_uses_wallet_generated_target_by_default()
     -> Result<(), Box<dyn std::error::Error>> {
         let recorded_requests = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
         let recorded_requests_for_server = Arc::clone(&recorded_requests);
@@ -48759,7 +49097,8 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let config_path = temp_dir.path().join("config.json");
         let mut config = default_config(temp_dir.path());
         config.nexus_control_base_url = nexus_base_url;
-        config.payout_destination = Some("lno1pylonalice".to_string());
+        config.wallet_network = "regtest".to_string();
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
         save_config(config_path.as_path(), &config)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
         let client = provider_presence_client()?;
@@ -48791,19 +49130,33 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ensure(
             requests[1].1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
                 && requests[1].1["session_id"] == "session-payout"
-                && requests[1].1["payment_target_kind"] == "bolt12_offer"
-                && requests[1].1["payment_target"] == "lno1pylonalice"
                 && requests[1].1["pylon_payment_target_version"] == "pylon-payment-target/v0.2"
+                && requests[1].1["wallet_runtime_kind"] == "ldk_node"
+                && requests[1].1["wallet_network"] == "regtest"
+                && requests[1].1["wallet_target_kind"] == requests[1].1["payment_target_kind"]
+                && requests[1].1["wallet_derivation_version"] == "pylon-ldk-node-entropy-v1"
+                && requests[1].1["wallet_backup_status"]
+                    .as_str()
+                    .is_some_and(|value| !value.trim().is_empty())
+                && requests[1].1["wallet_registration_mode"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("wallet_generated"))
+                && requests[1].1["wallet_node_id"]
+                    .as_str()
+                    .is_some_and(|value| !value.trim().is_empty())
+                && requests[1].1["payment_target"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("lno") || value.starts_with("lnbcrt"))
                 && requests[1].1.get("bitcoin_address").is_none(),
-            "registered payout target should include only the LDK identity, session, and payment target",
+            "registered payout target should include signed wallet ownership metadata",
         )?;
         ensure(
             requests[1].1["payment_target_capabilities"]
                 .as_array()
                 .is_some_and(|capabilities| {
                     capabilities.contains(&json!("ldk_payment_target_v0_2"))
-                        && capabilities.contains(&json!("bolt12_offer"))
-                        && capabilities.contains(&json!("bolt11_invoice_request"))
+                        && (capabilities.contains(&json!("bolt12_offer"))
+                            || capabilities.contains(&json!("bolt11_invoice")))
                 }),
             "registered payout target should advertise LDK-compatible capabilities",
         )?;
@@ -48812,6 +49165,114 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 .as_str()
                 .is_some_and(|value| !value.is_empty()),
             "registered payout target should include a signed challenge proof",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_wallet_registration_bolt11_fallback_uses_wallet_invoice()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = default_config(temp_dir.path());
+        config.wallet_network = "regtest".to_string();
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        save_config(config_path.as_path(), &config)?;
+
+        let target = super::build_provider_wallet_registration_target_with_options(
+            config_path.as_path(),
+            &config,
+            true,
+        )
+        .await?;
+        ensure(
+            target.payment_target_kind == "bolt11_invoice"
+                && target.payment_target.starts_with("lnbcrt")
+                && target.wallet_registration_mode == "wallet_generated_bolt11_fallback"
+                && target.wallet_runtime_kind == "ldk_node"
+                && target.wallet_network == "regtest"
+                && target.wallet_target_kind == "bolt11_invoice",
+            "forced fallback should register a wallet-owned BOLT11 invoice target",
+        )?;
+        ensure(
+            target
+                .payment_target_capabilities
+                .contains(&"per_payment_invoice".to_string()),
+            "BOLT11 fallback registration should advertise per-payment invoice capability",
+        )?;
+        let ledger = load_ledger(config_path.as_path())?;
+        ensure(
+            ledger.wallet.invoices.iter().any(|invoice| {
+                invoice.payment_request == target.payment_target
+                    && invoice.payment_hash.is_some()
+                    && invoice.runtime_kind.as_deref() == Some("ldk_node")
+            }),
+            "BOLT11 fallback target should be retained as a wallet invoice record",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_payout_target_registration_keeps_external_override_explicit()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let nexus_base_url = start_mock_http_server(move |method, path, body| {
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            recorded_requests_for_server
+                .lock()
+                .expect("payout target request log")
+                .push((format!("{method} {path}"), payload.clone()));
+            if path == "/api/provider-payout-target/challenge" {
+                return (
+                    200,
+                    "application/json",
+                    json!({
+                        "authority": "openagents-hosted-nexus",
+                        "nostr_pubkey_hex": payload["nostr_pubkey_hex"],
+                        "session_id": payload["session_id"],
+                        "challenge": "challenge-payout-external-001",
+                        "issued_at_unix_ms": 1,
+                        "expires_at_unix_ms": 2
+                    })
+                    .to_string(),
+                );
+            }
+            (200, "application/json", "{\"ok\":true}".to_string())
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = default_config(temp_dir.path());
+        config.nexus_control_base_url = nexus_base_url;
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::ExternalTarget;
+        config.wallet_network = "ldk-external".to_string();
+        config.payout_destination = Some("lno1pylonalice".to_string());
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let client = provider_presence_client()?;
+        sync_provider_payout_target(
+            &client,
+            config_path.as_path(),
+            &config,
+            &identity,
+            "session-external",
+        )
+        .await?;
+
+        let requests = recorded_requests
+            .lock()
+            .expect("payout target request log")
+            .clone();
+        ensure(
+            requests.len() == 2
+                && requests[1].1["payment_target_kind"] == "bolt12_offer"
+                && requests[1].1["payment_target"] == "lno1pylonalice"
+                && requests[1].1["wallet_runtime_kind"] == "external_target"
+                && requests[1].1["wallet_network"] == "ldk-external"
+                && requests[1].1["wallet_registration_mode"] == "external_override"
+                && requests[1].1.get("wallet_node_id").is_none(),
+            "external payout_destination registration should remain explicit and visibly non-default",
         )
     }
 
@@ -50773,12 +51234,14 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 "lnbc21payout".to_string(),
                 "--amount-sats".to_string(),
                 "21".to_string(),
+                "--yes".to_string(),
                 "--json".to_string(),
             ])?
             .command
                 == Command::PayoutWithdraw {
                     payment_request: "lnbc21payout".to_string(),
                     amount_sats: Some(21),
+                    yes: true,
                     json: true,
                 },
             "payout withdraw should parse invoice, amount, and json flag",
@@ -50850,6 +51313,19 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     },
                 },
             "wallet entropy export should parse with path and json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "lock".to_string(),
+                "clear".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::LockClear { json: true },
+                },
+            "wallet lock clear should parse with json",
         )
     }
 
@@ -52169,6 +52645,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     credited_sats: 144,
                     lightning_sats: 144,
                     onchain_sats: 0,
+                    ..super::WalletBalanceSnapshot::default()
                 },
             })
         })));
@@ -52800,6 +53277,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                         status: "created".to_string(),
                         payment_request: "lnbc3000n1pyloninvoice".to_string(),
                         description,
+                        payment_hash: None,
+                        runtime_kind: None,
+                        expires_at_ms: None,
                         created_at_ms: 1_762_000_000_000,
                         updated_at_ms: 1_762_000_000_000,
                     },
@@ -52987,6 +53467,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                         status: "created".to_string(),
                         payment_request: "lnbc21000n1pyloninvoice".to_string(),
                         description,
+                        payment_hash: None,
+                        runtime_kind: None,
+                        expires_at_ms: None,
                         created_at_ms: 1_762_000_100_000,
                         updated_at_ms: 1_762_000_100_000,
                     },

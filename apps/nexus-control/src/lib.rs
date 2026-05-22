@@ -13672,6 +13672,22 @@ async fn register_provider_payout_target(
         pylon_payment_target_version: normalize_optional_field(
             request.pylon_payment_target_version.as_deref(),
         ),
+        wallet_node_id: normalize_optional_field(request.wallet_node_id.as_deref()),
+        wallet_runtime_kind: normalize_optional_field(request.wallet_runtime_kind.as_deref())
+            .map(|value| value.to_ascii_lowercase()),
+        wallet_network: normalize_optional_field(request.wallet_network.as_deref())
+            .map(|value| value.to_ascii_lowercase()),
+        wallet_target_kind: normalize_optional_field(request.wallet_target_kind.as_deref())
+            .map(|value| value.to_ascii_lowercase()),
+        wallet_derivation_version: normalize_optional_field(
+            request.wallet_derivation_version.as_deref(),
+        ),
+        wallet_backup_status: normalize_optional_field(request.wallet_backup_status.as_deref())
+            .map(|value| value.to_ascii_lowercase()),
+        wallet_registration_mode: normalize_optional_field(
+            request.wallet_registration_mode.as_deref(),
+        )
+        .map(|value| value.to_ascii_lowercase()),
         challenge: normalize_required_field(request.challenge.as_str(), "challenge_missing")?,
         challenge_signature_hex: normalize_required_field(
             request.challenge_signature_hex.as_str(),
@@ -36427,6 +36443,13 @@ mod tests {
                     "durable_payout_target",
                 ],
                 version: pylon_payment_target_version,
+                wallet_node_id: None,
+                wallet_runtime_kind: None,
+                wallet_network: None,
+                wallet_target_kind: None,
+                wallet_derivation_version: None,
+                wallet_backup_status: None,
+                wallet_registration_mode: None,
             },
         )
         .map_err(anyhow::Error::msg)?;
@@ -36447,6 +36470,13 @@ mod tests {
                             pylon_payment_target_version: Some(
                                 pylon_payment_target_version.to_string(),
                             ),
+                            wallet_node_id: None,
+                            wallet_runtime_kind: None,
+                            wallet_network: None,
+                            wallet_target_kind: None,
+                            wallet_derivation_version: None,
+                            wallet_backup_status: None,
+                            wallet_registration_mode: None,
                             challenge: challenge.challenge,
                             challenge_signature_hex: signature,
                         },
@@ -36539,6 +36569,13 @@ mod tests {
                             pylon_payment_target_version: Some(
                                 "pylon-payment-target/v0.1".to_string(),
                             ),
+                            wallet_node_id: None,
+                            wallet_runtime_kind: None,
+                            wallet_network: None,
+                            wallet_target_kind: None,
+                            wallet_derivation_version: None,
+                            wallet_backup_status: None,
+                            wallet_registration_mode: None,
                             challenge: "unused".to_string(),
                             challenge_signature_hex: "unused".to_string(),
                         },
@@ -37077,6 +37114,13 @@ mod tests {
                     "durable_payout_target",
                 ],
                 version: pylon_payment_target_version,
+                wallet_node_id: None,
+                wallet_runtime_kind: None,
+                wallet_network: None,
+                wallet_target_kind: None,
+                wallet_derivation_version: None,
+                wallet_backup_status: None,
+                wallet_registration_mode: None,
             },
         )
         .map_err(anyhow::Error::msg)?;
@@ -37097,6 +37141,13 @@ mod tests {
                             pylon_payment_target_version: Some(
                                 pylon_payment_target_version.to_string(),
                             ),
+                            wallet_node_id: None,
+                            wallet_runtime_kind: None,
+                            wallet_network: None,
+                            wallet_target_kind: None,
+                            wallet_derivation_version: None,
+                            wallet_backup_status: None,
+                            wallet_registration_mode: None,
                             challenge: challenge.challenge,
                             challenge_signature_hex: signature,
                         },

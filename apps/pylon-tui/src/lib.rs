@@ -5144,6 +5144,10 @@ async fn render_wallet_command_output(
             let report = pylon::load_wallet_status_report(config_path).await?;
             Ok(render_wallet_status_output(&report))
         }
+        pylon::WalletSubcommand::Sync { .. } => {
+            let report = pylon::load_wallet_status_report(config_path).await?;
+            Ok(render_wallet_status_output(&report))
+        }
         pylon::WalletSubcommand::Balance { .. } => {
             let report = pylon::load_wallet_status_report(config_path).await?;
             Ok(render_wallet_status_output(&report))
@@ -5166,6 +5170,21 @@ async fn render_wallet_command_output(
             )
             .await?;
             Ok(render_wallet_invoice_output(&report))
+        }
+        pylon::WalletSubcommand::Offer {
+            amount_sats,
+            description,
+            expiry_seconds,
+            ..
+        } => {
+            let report = pylon::create_wallet_offer_report(
+                config_path,
+                *amount_sats,
+                description.clone(),
+                *expiry_seconds,
+            )
+            .await?;
+            Ok(pylon::render_wallet_offer_report(&report))
         }
         pylon::WalletSubcommand::Pay {
             payment_request,
@@ -5196,6 +5215,14 @@ async fn render_wallet_command_output(
             let report = pylon::import_wallet_entropy_report(config_path, path.as_path()).await?;
             Ok(pylon::render_wallet_entropy_report(&report))
         }
+        pylon::WalletSubcommand::LockStatus { .. } => {
+            let report = pylon::inspect_wallet_lock_report(config_path).await?;
+            Ok(pylon::render_wallet_lock_report(&report))
+        }
+        pylon::WalletSubcommand::LockClear { .. } => {
+            let report = pylon::clear_wallet_lock_report(config_path).await?;
+            Ok(pylon::render_wallet_lock_report(&report))
+        }
     }
 }
 
@@ -5212,6 +5239,10 @@ fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
             format_sats(report.balance.credited_sats),
             format_sats(report.balance.lightning_sats),
             format_sats(report.balance.onchain_sats)
+        ),
+        format!(
+            "Spendable on-chain: {}",
+            format_sats(report.balance.spendable_onchain_sats)
         ),
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
@@ -5233,21 +5264,24 @@ fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
 }
 
 fn render_wallet_receive_output(report: &pylon::WalletAddressReport) -> String {
-    [
+    let mut lines = vec![
         format!("Network: {}", report.runtime.network),
-        String::new(),
-        "External LDK payout destination:".to_string(),
-        report
-            .payout_destination
-            .clone()
-            .unwrap_or_else(|| "not_configured".to_string()),
         String::new(),
         "Receive on Bitcoin:".to_string(),
         report.bitcoin_address.clone(),
+    ];
+    if let Some(destination) = report.payout_destination.as_deref() {
+        lines.extend([
+            String::new(),
+            "External LDK payout destination:".to_string(),
+            destination.to_string(),
+        ]);
+    }
+    lines.extend([
         String::new(),
         "Next: local invoice creation lands with built-in LDK wallet work.".to_string(),
-    ]
-    .join("\n")
+    ]);
+    lines.join("\n")
 }
 
 fn render_wallet_invoice_output(report: &pylon::WalletInvoiceReport) -> String {
@@ -5958,14 +5992,18 @@ fn relay_report_lines(report: &pylon::RelayReport) -> Vec<String> {
 fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
     match command {
         pylon::WalletSubcommand::Status { .. } => "Wallet Status",
+        pylon::WalletSubcommand::Sync { .. } => "Wallet Sync",
         pylon::WalletSubcommand::Balance { .. } => "Wallet Balance",
         pylon::WalletSubcommand::Address { .. } => "Wallet Address",
         pylon::WalletSubcommand::Invoice { .. } => "Wallet Invoice",
+        pylon::WalletSubcommand::Offer { .. } => "Wallet Offer",
         pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
         pylon::WalletSubcommand::History { .. } => "Wallet History",
         pylon::WalletSubcommand::EntropyStatus { .. } => "Wallet Entropy",
         pylon::WalletSubcommand::EntropyExport { .. } => "Wallet Entropy Export",
         pylon::WalletSubcommand::EntropyImport { .. } => "Wallet Entropy Import",
+        pylon::WalletSubcommand::LockStatus { .. } => "Wallet Lock",
+        pylon::WalletSubcommand::LockClear { .. } => "Wallet Lock Clear",
     }
     .to_string()
 }
@@ -6178,6 +6216,7 @@ mod tests {
                 lightning_sats: 34,
                 onchain_sats: 55,
                 total_sats: 110,
+                ..pylon::WalletBalanceSnapshot::default()
             }),
             wallet_balance_live: true,
             jobs_found_24h: 8,
@@ -6328,6 +6367,7 @@ mod tests {
             runtime: pylon::WalletRuntimeSurface::default(),
             runtime_status: "disconnected".to_string(),
             runtime_detail: Some("syncing".to_string()),
+            ldk_node: None,
             balance: pylon::WalletBalanceSnapshot::default(),
             recent_payments: Vec::new(),
         };
@@ -6372,11 +6412,13 @@ mod tests {
             runtime: pylon::WalletRuntimeSurface::default(),
             runtime_status: "connected".to_string(),
             runtime_detail: Some("wallet synced after withdrawal".to_string()),
+            ldk_node: None,
             balance: pylon::WalletBalanceSnapshot {
                 credited_sats: 8,
                 lightning_sats: 0,
                 onchain_sats: 0,
                 total_sats: 8,
+                ..pylon::WalletBalanceSnapshot::default()
             },
             recent_payments: Vec::new(),
         };

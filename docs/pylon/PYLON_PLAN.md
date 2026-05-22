@@ -149,11 +149,14 @@ This plan is additive to the current repo direction, not a reversal of it.
 Pylon v0.2 is the provider-side half of the Spark-to-LDK cutover documented in
 `docs/2026-05-15-ldk-nexus-treasury-transition-audit.md`.
 
-Current v0.2 is an external-target compatibility release, not the final
-built-in wallet release. Operators register an external LDK-compatible
-Lightning payout target through `payout_destination`; local wallet invoice
-creation and local sends are planned follow-up work tracked from
-`OpenAgentsInc/openagents#4520`.
+Current v0.2 source has moved past the external-target-only compatibility path.
+Normal paid-work registration now generates a wallet-owned LDK receive target
+inside Pylon, prefers BOLT12 offers, and falls back to a wallet-owned BOLT11
+invoice request when BOLT12 is unavailable. `payout_destination` remains only an
+explicit advanced external-target override during migration. Local wallet sends
+now dispatch BOLT11 invoices, BOLT12 offers, and on-chain withdrawals through
+the built-in LDK wallet path, with failed-send receipts retained when LDK or
+local reserve checks refuse the operation.
 
 The required sequence is:
 
@@ -174,21 +177,26 @@ The required sequence is:
 Current implementation status:
 
 - Pylon v0.2 registration signs and submits a provider payment-target record
-  with `payment_target_kind`, `payment_target`, advertised capabilities, and
-  `pylon-payment-target/v0.2`.
+  with `payment_target_kind`, `payment_target`, advertised capabilities,
+  `pylon-payment-target/v0.2`, wallet node ID, runtime kind, network, target
+  kind, derivation version, backup status, and registration mode.
 - Supported target kinds are `bolt12_offer`, `bolt11_invoice`, `bip353_name`,
   and `lnurl_pay`; BOLT12 is the preferred durable target.
 - Normal Pylon startup no longer creates local Spark payout destinations. The
-  active registration path is Lightning-only and has no Spark write fallback.
+  active registration path is wallet-owned Lightning by default and has no Spark
+  write fallback.
 - Nexus records old Spark-only targets for audit, but marks them ineligible for
   new paid work with `payout_target_requires_ldk_v0_2`.
 - Nexus accepted-work payout dispatch now uses LDK-compatible Pylon v0.2
   targets and records the exact rail, target hash, idempotency key, payment id,
   and terminal event state in the payout receipt.
+- Pylon local withdrawal now sends from the contributor's built-in wallet for
+  BOLT11, BOLT12, BIP21, and direct on-chain targets. BIP353 remains an explicit
+  unavailable state until the selected LDK runtime exposes name resolution.
 
 Pylon must remain a provider connector and local contributor wallet. It should
 not own Nexus treasury keys, run the hosted treasury LDK node, or become a
-browser wallet/runtime bridge. The planned built-in LDK wallet belongs on the
+browser wallet/runtime bridge. The built-in LDK wallet belongs on the
 contributor side and must stay separate from Nexus/Treasury payer custody.
 
 This means the right sequence is **canonize first, extract second, package third**, with extraction work starting during the current issue slate rather than being deferred indefinitely.
