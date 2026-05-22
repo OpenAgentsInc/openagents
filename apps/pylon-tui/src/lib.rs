@@ -4584,8 +4584,21 @@ async fn run_pylon_tui_with_config(config: TuiLaunchConfig) -> Result<()> {
     let mut app = AppShell::new(config.config_path);
     app.attach_managed_worker_launch(managed_worker_launch);
     let result = run_loop(&mut terminal, &mut app).await;
-    app.report_provider_presence_offline().await;
+    // Restore the terminal immediately on exit, before any best-effort
+    // shutdown work, so Ctrl+C is instant and clean: raw mode, the alternate
+    // screen, and mouse capture are torn down at once. Doing this first means
+    // a slow Nexus call below cannot freeze the screen or leave mouse-motion
+    // reports leaking to the shell prompt.
     let cleanup_result = restore_terminal(&mut terminal);
+    // Best-effort "going offline" notice to Nexus, tightly bounded: when Nexus
+    // is unreachable this call would otherwise block exit for the full HTTP
+    // timeout (tens of seconds). A skipped notice is harmless -- missed
+    // heartbeats convey the same thing.
+    let _ = tokio::time::timeout(
+        Duration::from_secs(2),
+        app.report_provider_presence_offline(),
+    )
+    .await;
 
     result.and(cleanup_result)
 }
