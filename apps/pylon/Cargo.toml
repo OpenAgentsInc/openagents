@@ -37,6 +37,8 @@ sysinfo.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+electrsd = { version = "0.36.1", features = ["electrs_0_10_6", "corepc-node_27_2"], default-features = false }
+electrum-client = { version = "0.24.0", features = ["proxy", "use-rustls-ring"], default-features = false }
 futures-util = "0.3"
 tempfile = "3"
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }

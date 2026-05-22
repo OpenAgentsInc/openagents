@@ -2,6 +2,7 @@ mod ledger;
 mod nip90_runtime;
 mod proof;
 mod training_trn_mapping;
+mod wallet_harness;
 mod wallet_runtime;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -151,6 +152,11 @@ pub use nip90_runtime::{
     render_buyer_payment_policy_report, render_provider_intake_report, render_provider_run_report,
     run_provider_online_intake_once, run_provider_requests, scan_provider_requests,
     start_provider_online_intake, submit_buyer_job, watch_buyer_jobs,
+};
+pub use wallet_harness::{
+    PYLON_LDK_WALLET_HARNESS_SCHEMA, PYLON_LDK_WALLET_HARNESS_SCRIPT,
+    PYLON_LDK_WALLET_HARNESS_TEST, PylonLdkWalletHarnessPlan, PylonLdkWalletHarnessStep,
+    pylon_ldk_wallet_harness_plan,
 };
 pub use wallet_runtime::{
     PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
