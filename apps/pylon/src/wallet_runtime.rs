@@ -1,14 +1,53 @@
 use std::path::Path;
 
 use anyhow::{Result, anyhow, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+    PylonLedger, PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
     ensure_local_setup, load_ledger, mutate_ledger, now_epoch_ms,
 };
 
 const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon uses an external LDK-compatible payout destination. Configure payout_destination for earnings.";
+const MOCK_WALLET_DETAIL: &str = "Pylon is using the deterministic mock wallet runtime for tests.";
+const LDK_NODE_UNAVAILABLE_DETAIL: &str =
+    "Pylon ldk_node wallet runtime is unavailable until the LDK node integration lands.";
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonWalletRuntimeKind {
+    #[default]
+    ExternalTarget,
+    Mock,
+    LdkNode,
+}
+
+impl PylonWalletRuntimeKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::ExternalTarget => "external_target",
+            Self::Mock => "mock",
+            Self::LdkNode => "ldk_node",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+            "external_target" | "external" | "ldk_external" => Ok(Self::ExternalTarget),
+            "mock" => Ok(Self::Mock),
+            "ldk_node" | "ldknode" => Ok(Self::LdkNode),
+            other => bail!(
+                "unsupported wallet_runtime_kind '{other}'; expected external_target, mock, or ldk_node"
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for PylonWalletRuntimeKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.id())
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WalletSubcommand {
@@ -40,11 +79,20 @@ pub enum WalletSubcommand {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct WalletRuntimeSurface {
+    pub runtime_kind: PylonWalletRuntimeKind,
     pub network: String,
     pub identity_path: String,
     pub storage_dir: String,
     pub api_key_env: Option<String>,
     pub api_key_source: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct PylonWalletChannelRecord {
+    pub channel_id: String,
+    pub status: String,
+    pub inbound_sats: u64,
+    pub outbound_sats: u64,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -78,6 +126,12 @@ pub struct WalletInvoiceReport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WalletOfferReport {
+    pub runtime: WalletRuntimeSurface,
+    pub offer: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct WalletPayReport {
     pub runtime: WalletRuntimeSurface,
     pub payment_id: String,
@@ -99,7 +153,519 @@ pub struct WalletCreditSummaryReport {
 
 #[derive(Clone, Debug)]
 struct WalletRuntimeContext {
-    runtime: WalletRuntimeSurface,
+    runtime: SelectedPylonWalletRuntime,
+}
+
+pub trait PylonWalletRuntime {
+    fn surface(&self) -> &WalletRuntimeSurface;
+    fn start(&self) -> Result<()>;
+    fn stop(&self) -> Result<()>;
+    fn sync(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport>;
+    fn status(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport>;
+    fn balance(&self, ledger: &PylonLedger) -> Result<WalletBalanceSnapshot>;
+    fn address(&self) -> Result<WalletAddressReport>;
+    fn invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletInvoiceReport>;
+    fn offer(&self) -> Result<WalletOfferReport>;
+    fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport>;
+    fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport>;
+    fn list_payments(
+        &self,
+        ledger: &PylonLedger,
+        limit: Option<u32>,
+    ) -> Result<Vec<PylonWalletPaymentRecord>>;
+    fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>>;
+}
+
+#[derive(Clone, Debug)]
+enum SelectedPylonWalletRuntime {
+    ExternalTarget(ExternalTargetWalletRuntime),
+    Mock(MockPylonWalletRuntime),
+    LdkNode(LdkNodeWalletRuntime),
+}
+
+#[derive(Clone, Debug)]
+struct ExternalTargetWalletRuntime {
+    surface: WalletRuntimeSurface,
+    payout_destination: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct MockPylonWalletRuntime {
+    surface: WalletRuntimeSurface,
+    payout_destination: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct LdkNodeWalletRuntime {
+    surface: WalletRuntimeSurface,
+}
+
+impl PylonWalletRuntime for SelectedPylonWalletRuntime {
+    fn surface(&self) -> &WalletRuntimeSurface {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.surface(),
+            Self::Mock(runtime) => runtime.surface(),
+            Self::LdkNode(runtime) => runtime.surface(),
+        }
+    }
+
+    fn start(&self) -> Result<()> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.start(),
+            Self::Mock(runtime) => runtime.start(),
+            Self::LdkNode(runtime) => runtime.start(),
+        }
+    }
+
+    fn stop(&self) -> Result<()> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.stop(),
+            Self::Mock(runtime) => runtime.stop(),
+            Self::LdkNode(runtime) => runtime.stop(),
+        }
+    }
+
+    fn sync(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.sync(ledger, include_recent_payments),
+            Self::Mock(runtime) => runtime.sync(ledger, include_recent_payments),
+            Self::LdkNode(runtime) => runtime.sync(ledger, include_recent_payments),
+        }
+    }
+
+    fn status(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.status(ledger, include_recent_payments),
+            Self::Mock(runtime) => runtime.status(ledger, include_recent_payments),
+            Self::LdkNode(runtime) => runtime.status(ledger, include_recent_payments),
+        }
+    }
+
+    fn balance(&self, ledger: &PylonLedger) -> Result<WalletBalanceSnapshot> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.balance(ledger),
+            Self::Mock(runtime) => runtime.balance(ledger),
+            Self::LdkNode(runtime) => runtime.balance(ledger),
+        }
+    }
+
+    fn address(&self) -> Result<WalletAddressReport> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.address(),
+            Self::Mock(runtime) => runtime.address(),
+            Self::LdkNode(runtime) => runtime.address(),
+        }
+    }
+
+    fn invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletInvoiceReport> {
+        match self {
+            Self::ExternalTarget(runtime) => {
+                runtime.invoice(amount_sats, description, expiry_seconds)
+            }
+            Self::Mock(runtime) => runtime.invoice(amount_sats, description, expiry_seconds),
+            Self::LdkNode(runtime) => runtime.invoice(amount_sats, description, expiry_seconds),
+        }
+    }
+
+    fn offer(&self) -> Result<WalletOfferReport> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.offer(),
+            Self::Mock(runtime) => runtime.offer(),
+            Self::LdkNode(runtime) => runtime.offer(),
+        }
+    }
+
+    fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.pay(payment_request, amount_sats),
+            Self::Mock(runtime) => runtime.pay(payment_request, amount_sats),
+            Self::LdkNode(runtime) => runtime.pay(payment_request, amount_sats),
+        }
+    }
+
+    fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.withdraw(payment_request, amount_sats),
+            Self::Mock(runtime) => runtime.withdraw(payment_request, amount_sats),
+            Self::LdkNode(runtime) => runtime.withdraw(payment_request, amount_sats),
+        }
+    }
+
+    fn list_payments(
+        &self,
+        ledger: &PylonLedger,
+        limit: Option<u32>,
+    ) -> Result<Vec<PylonWalletPaymentRecord>> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.list_payments(ledger, limit),
+            Self::Mock(runtime) => runtime.list_payments(ledger, limit),
+            Self::LdkNode(runtime) => runtime.list_payments(ledger, limit),
+        }
+    }
+
+    fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
+        match self {
+            Self::ExternalTarget(runtime) => runtime.list_channels(),
+            Self::Mock(runtime) => runtime.list_channels(),
+            Self::LdkNode(runtime) => runtime.list_channels(),
+        }
+    }
+}
+
+impl PylonWalletRuntime for ExternalTargetWalletRuntime {
+    fn surface(&self) -> &WalletRuntimeSurface {
+        &self.surface
+    }
+
+    fn start(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn stop(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn sync(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        self.status(ledger, include_recent_payments)
+    }
+
+    fn status(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        Ok(WalletStatusReport {
+            runtime: self.surface.clone(),
+            runtime_status: "external_target".to_string(),
+            runtime_detail: Some(LDK_EXTERNAL_WALLET_DETAIL.to_string()),
+            balance: self.balance(ledger)?,
+            recent_payments: ledger_payments(ledger, include_recent_payments.then_some(10)),
+        })
+    }
+
+    fn balance(&self, ledger: &PylonLedger) -> Result<WalletBalanceSnapshot> {
+        Ok(ledger_balance(ledger))
+    }
+
+    fn address(&self) -> Result<WalletAddressReport> {
+        let _ = self.payout_destination.as_deref();
+        bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
+    }
+
+    fn invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletInvoiceReport> {
+        let _ = (amount_sats, description, expiry_seconds);
+        bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
+    }
+
+    fn offer(&self) -> Result<WalletOfferReport> {
+        bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
+    }
+
+    fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        let _ = (payment_request, amount_sats);
+        bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
+    }
+
+    fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        self.pay(payment_request, amount_sats)
+    }
+
+    fn list_payments(
+        &self,
+        ledger: &PylonLedger,
+        limit: Option<u32>,
+    ) -> Result<Vec<PylonWalletPaymentRecord>> {
+        Ok(ledger_payments(ledger, limit.map(|value| value as usize)))
+    }
+
+    fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
+        Ok(Vec::new())
+    }
+}
+
+impl PylonWalletRuntime for MockPylonWalletRuntime {
+    fn surface(&self) -> &WalletRuntimeSurface {
+        &self.surface
+    }
+
+    fn start(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn stop(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn sync(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        self.status(ledger, include_recent_payments)
+    }
+
+    fn status(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        Ok(WalletStatusReport {
+            runtime: self.surface.clone(),
+            runtime_status: "connected".to_string(),
+            runtime_detail: Some(MOCK_WALLET_DETAIL.to_string()),
+            balance: self.balance(ledger)?,
+            recent_payments: self.list_payments(ledger, include_recent_payments.then_some(10))?,
+        })
+    }
+
+    fn balance(&self, ledger: &PylonLedger) -> Result<WalletBalanceSnapshot> {
+        let ledger_balance = ledger_balance(ledger);
+        if ledger_balance.total_sats > 0 {
+            return Ok(ledger_balance);
+        }
+        Ok(WalletBalanceSnapshot {
+            credited_sats: 1_000,
+            lightning_sats: 1_000,
+            onchain_sats: 0,
+            total_sats: 1_000,
+        })
+    }
+
+    fn address(&self) -> Result<WalletAddressReport> {
+        Ok(WalletAddressReport {
+            runtime: self.surface.clone(),
+            payout_destination: self
+                .payout_destination
+                .clone()
+                .or_else(|| Some("lno1mockpylonwallet".to_string())),
+            bitcoin_address: "bcrt1pmockpylonwalletaddress0000000000000000000000".to_string(),
+        })
+    }
+
+    fn invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletInvoiceReport> {
+        let _ = expiry_seconds;
+        let now = now_epoch_ms() as u64;
+        Ok(WalletInvoiceReport {
+            runtime: self.surface.clone(),
+            invoice: PylonWalletInvoiceRecord {
+                invoice_id: format!("mock-invoice-{amount_sats}"),
+                amount_sats,
+                status: "open".to_string(),
+                payment_request: format!("lnbc{amount_sats}mockpyloninvoice"),
+                description,
+                created_at_ms: now,
+                updated_at_ms: now,
+            },
+        })
+    }
+
+    fn offer(&self) -> Result<WalletOfferReport> {
+        Ok(WalletOfferReport {
+            runtime: self.surface.clone(),
+            offer: "lno1mockpylonoffer".to_string(),
+        })
+    }
+
+    fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        let now = now_epoch_ms() as u64;
+        let amount_sats = amount_sats.unwrap_or(21);
+        let payment = PylonWalletPaymentRecord {
+            payment_id: format!("mock-payment-{amount_sats}"),
+            direction: "send".to_string(),
+            status: "completed".to_string(),
+            amount_sats,
+            fees_sats: 1,
+            method: "lightning".to_string(),
+            description: Some("mock wallet payment".to_string()),
+            invoice: Some(payment_request.to_string()),
+            created_at_ms: now,
+            updated_at_ms: now,
+        };
+        Ok(WalletPayReport {
+            runtime: self.surface.clone(),
+            payment_id: payment.payment_id.clone(),
+            payment,
+            post_balance: WalletBalanceSnapshot {
+                credited_sats: 1_000u64.saturating_sub(amount_sats),
+                lightning_sats: 1_000u64.saturating_sub(amount_sats),
+                onchain_sats: 0,
+                total_sats: 1_000u64.saturating_sub(amount_sats),
+            },
+        })
+    }
+
+    fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        self.pay(payment_request, amount_sats)
+    }
+
+    fn list_payments(
+        &self,
+        ledger: &PylonLedger,
+        limit: Option<u32>,
+    ) -> Result<Vec<PylonWalletPaymentRecord>> {
+        let payments = ledger_payments(ledger, limit.map(|value| value as usize));
+        if !payments.is_empty() {
+            return Ok(payments);
+        }
+        let now = now_epoch_ms() as u64;
+        Ok(vec![PylonWalletPaymentRecord {
+            payment_id: "mock-receive-1".to_string(),
+            direction: "receive".to_string(),
+            status: "completed".to_string(),
+            amount_sats: 1_000,
+            fees_sats: 0,
+            method: "lightning".to_string(),
+            description: Some("mock wallet receive".to_string()),
+            invoice: Some("lnbc1000mockpyloninvoice".to_string()),
+            created_at_ms: now,
+            updated_at_ms: now,
+        }])
+    }
+
+    fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
+        Ok(vec![PylonWalletChannelRecord {
+            channel_id: "mock-channel-1".to_string(),
+            status: "ready".to_string(),
+            inbound_sats: 500,
+            outbound_sats: 500,
+        }])
+    }
+}
+
+impl PylonWalletRuntime for LdkNodeWalletRuntime {
+    fn surface(&self) -> &WalletRuntimeSurface {
+        &self.surface
+    }
+
+    fn start(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn stop(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn sync(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        self.status(ledger, include_recent_payments)
+    }
+
+    fn status(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        Ok(WalletStatusReport {
+            runtime: self.surface.clone(),
+            runtime_status: "unavailable".to_string(),
+            runtime_detail: Some(LDK_NODE_UNAVAILABLE_DETAIL.to_string()),
+            balance: self.balance(ledger)?,
+            recent_payments: ledger_payments(ledger, include_recent_payments.then_some(10)),
+        })
+    }
+
+    fn balance(&self, ledger: &PylonLedger) -> Result<WalletBalanceSnapshot> {
+        Ok(ledger_balance(ledger))
+    }
+
+    fn address(&self) -> Result<WalletAddressReport> {
+        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+    }
+
+    fn invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletInvoiceReport> {
+        let _ = (amount_sats, description, expiry_seconds);
+        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+    }
+
+    fn offer(&self) -> Result<WalletOfferReport> {
+        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+    }
+
+    fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        let _ = (payment_request, amount_sats);
+        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+    }
+
+    fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        self.pay(payment_request, amount_sats)
+    }
+
+    fn list_payments(
+        &self,
+        ledger: &PylonLedger,
+        limit: Option<u32>,
+    ) -> Result<Vec<PylonWalletPaymentRecord>> {
+        Ok(ledger_payments(ledger, limit.map(|value| value as usize)))
+    }
+
+    fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
+        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+    }
+}
+
+fn ledger_balance(ledger: &PylonLedger) -> WalletBalanceSnapshot {
+    WalletBalanceSnapshot {
+        total_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
+        ..WalletBalanceSnapshot::default()
+    }
+}
+
+fn ledger_payments(ledger: &PylonLedger, limit: Option<usize>) -> Vec<PylonWalletPaymentRecord> {
+    ledger
+        .wallet
+        .payments
+        .iter()
+        .take(limit.unwrap_or(usize::MAX))
+        .cloned()
+        .collect()
 }
 
 pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) -> Result<String> {
@@ -323,22 +889,8 @@ async fn load_wallet_status_report_internal(
 ) -> Result<WalletStatusReport> {
     let context = prepare_wallet_context(config_path)?;
     let ledger = load_ledger(config_path)?;
-    let balance = WalletBalanceSnapshot {
-        total_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
-        ..WalletBalanceSnapshot::default()
-    };
-    let recent_payments = if include_recent_payments {
-        ledger.wallet.payments.iter().take(10).cloned().collect()
-    } else {
-        Vec::new()
-    };
-    let report = WalletStatusReport {
-        runtime: context.runtime.clone(),
-        runtime_status: "external_ldk_target".to_string(),
-        runtime_detail: Some(LDK_EXTERNAL_WALLET_DETAIL.to_string()),
-        balance,
-        recent_payments,
-    };
+    context.runtime.start()?;
+    let report = context.runtime.sync(&ledger, include_recent_payments)?;
     sync_wallet_status(
         config_path,
         &report.runtime,
@@ -353,12 +905,24 @@ async fn load_wallet_status_report_internal(
 
 pub async fn create_wallet_address_report(config_path: &Path) -> Result<WalletAddressReport> {
     let context = prepare_wallet_context(config_path)?;
-    sync_wallet_error(
-        config_path,
-        &context.runtime,
-        LDK_EXTERNAL_WALLET_DETAIL.to_string(),
-    )?;
-    bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
+    match context.runtime.address() {
+        Ok(report) => {
+            sync_wallet_status(
+                config_path,
+                &report.runtime,
+                "address_ready",
+                None,
+                None,
+                Some(report.bitcoin_address.as_str()),
+                &[],
+            )?;
+            Ok(report)
+        }
+        Err(error) => {
+            sync_wallet_error(config_path, context.runtime.surface(), error.to_string())?;
+            Err(error)
+        }
+    }
 }
 
 pub async fn create_wallet_invoice_report(
@@ -368,13 +932,16 @@ pub async fn create_wallet_invoice_report(
     expiry_seconds: Option<u32>,
 ) -> Result<WalletInvoiceReport> {
     let context = prepare_wallet_context(config_path)?;
-    let _ = (amount_sats, description, expiry_seconds);
-    sync_wallet_error(
-        config_path,
-        &context.runtime,
-        LDK_EXTERNAL_WALLET_DETAIL.to_string(),
-    )?;
-    bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
+    match context
+        .runtime
+        .invoice(amount_sats, description, expiry_seconds)
+    {
+        Ok(report) => Ok(report),
+        Err(error) => {
+            sync_wallet_error(config_path, context.runtime.surface(), error.to_string())?;
+            Err(error)
+        }
+    }
 }
 
 pub async fn pay_wallet_invoice_report(
@@ -383,13 +950,21 @@ pub async fn pay_wallet_invoice_report(
     amount_sats: Option<u64>,
 ) -> Result<WalletPayReport> {
     let context = prepare_wallet_context(config_path)?;
-    let _ = (payment_request, amount_sats);
-    sync_wallet_error(
-        config_path,
-        &context.runtime,
-        LDK_EXTERNAL_WALLET_DETAIL.to_string(),
-    )?;
-    bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
+    match context.runtime.pay(payment_request, amount_sats) {
+        Ok(report) => {
+            mutate_ledger(config_path, |ledger| {
+                ledger.wallet.last_balance_sats = Some(report.post_balance.total_sats);
+                ledger.wallet.last_balance_at_ms = Some(now_epoch_ms() as u64);
+                ledger.upsert_wallet_payment(report.payment.clone());
+                Ok(())
+            })?;
+            Ok(report)
+        }
+        Err(error) => {
+            sync_wallet_error(config_path, context.runtime.surface(), error.to_string())?;
+            Err(error)
+        }
+    }
 }
 
 pub async fn load_wallet_history_report(
@@ -397,15 +972,10 @@ pub async fn load_wallet_history_report(
     limit: Option<u32>,
 ) -> Result<WalletHistoryReport> {
     let context = prepare_wallet_context(config_path)?;
-    let limit = limit.unwrap_or(20) as usize;
-    let records = load_ledger(config_path)?
-        .wallet
-        .payments
-        .into_iter()
-        .take(limit)
-        .collect::<Vec<_>>();
+    let ledger = load_ledger(config_path)?;
+    let records = context.runtime.list_payments(&ledger, limit)?;
     Ok(WalletHistoryReport {
-        runtime: context.runtime,
+        runtime: context.runtime.surface().clone(),
         payments: records,
     })
 }
@@ -418,13 +988,14 @@ pub async fn load_wallet_credit_summary_report(
     let credits = compute_wallet_credit_summary(records.as_slice(), now_epoch_ms() as u64);
     sync_wallet_credit_summary(config_path, &credits)?;
     Ok(WalletCreditSummaryReport {
-        runtime: context.runtime,
+        runtime: context.runtime.surface().clone(),
         credits,
     })
 }
 
 pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
     let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("runtime_status: {}", report.runtime_status),
         format!("network: {}", report.runtime.network),
         format!("api_key_source: {}", report.runtime.api_key_source),
@@ -463,6 +1034,7 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
 
 pub fn render_wallet_balance_report(report: &WalletStatusReport) -> String {
     let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
         format!("runtime_status: {}", report.runtime_status),
         format!("credited_sats: {}", report.balance.credited_sats),
@@ -482,6 +1054,7 @@ pub fn render_wallet_address_report(report: &WalletAddressReport) -> String {
         .as_deref()
         .unwrap_or("not_configured");
     [
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
         format!("payout_destination: {payout_destination}"),
         format!("bitcoin_address: {}", report.bitcoin_address),
@@ -491,6 +1064,7 @@ pub fn render_wallet_address_report(report: &WalletAddressReport) -> String {
 
 pub fn render_wallet_invoice_report(report: &WalletInvoiceReport) -> String {
     let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
         format!("invoice_id: {}", report.invoice.invoice_id),
         format!("amount_sats: {}", report.invoice.amount_sats),
@@ -505,6 +1079,7 @@ pub fn render_wallet_invoice_report(report: &WalletInvoiceReport) -> String {
 
 pub fn render_wallet_pay_report(report: &WalletPayReport) -> String {
     let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
         format!("payment_id: {}", report.payment_id),
         format!("status: {}", report.payment.status),
@@ -523,6 +1098,7 @@ pub fn render_wallet_pay_report(report: &WalletPayReport) -> String {
 
 pub fn render_wallet_history_report(report: &WalletHistoryReport) -> String {
     let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
         format!("payments: {}", report.payments.len()),
     ];
@@ -566,15 +1142,35 @@ fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<b
 
 fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
     let config = ensure_local_setup(config_path)?;
-    Ok(WalletRuntimeContext {
-        runtime: WalletRuntimeSurface {
-            network: "ldk-external".to_string(),
-            identity_path: config.identity_path.display().to_string(),
-            storage_dir: config.wallet_storage_dir.display().to_string(),
-            api_key_env: config.wallet_api_key_env.clone(),
-            api_key_source: "none:ldk-external".to_string(),
-        },
-    })
+    let runtime_kind = config.wallet_runtime_kind;
+    let surface = WalletRuntimeSurface {
+        runtime_kind,
+        network: config.wallet_network.clone(),
+        identity_path: config.identity_path.display().to_string(),
+        storage_dir: config.wallet_storage_dir.display().to_string(),
+        api_key_env: config.wallet_api_key_env.clone(),
+        api_key_source: config
+            .wallet_api_key_env
+            .as_deref()
+            .map(|name| format!("env:{name}"))
+            .unwrap_or_else(|| format!("none:{}", runtime_kind.id())),
+    };
+    let runtime = match runtime_kind {
+        PylonWalletRuntimeKind::ExternalTarget => {
+            SelectedPylonWalletRuntime::ExternalTarget(ExternalTargetWalletRuntime {
+                surface,
+                payout_destination: config.payout_destination.clone(),
+            })
+        }
+        PylonWalletRuntimeKind::Mock => SelectedPylonWalletRuntime::Mock(MockPylonWalletRuntime {
+            surface,
+            payout_destination: config.payout_destination.clone(),
+        }),
+        PylonWalletRuntimeKind::LdkNode => {
+            SelectedPylonWalletRuntime::LdkNode(LdkNodeWalletRuntime { surface })
+        }
+    };
+    Ok(WalletRuntimeContext { runtime })
 }
 
 fn compute_wallet_credit_summary(
@@ -667,7 +1263,12 @@ fn sync_wallet_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{WalletSubcommand, compute_wallet_credit_summary, parse_wallet_command};
+    use super::{
+        PylonWalletRuntimeKind, WalletSubcommand, compute_wallet_credit_summary,
+        create_wallet_address_report, create_wallet_invoice_report, load_wallet_history_report,
+        load_wallet_status_report, parse_wallet_command, pay_wallet_invoice_report,
+        run_wallet_command,
+    };
     use crate::PylonWalletPaymentRecord;
 
     #[test]
@@ -797,5 +1398,100 @@ mod tests {
         assert_eq!(credits.credited_today_count, 1);
         assert_eq!(credits.last_credit_at_ms, Some(today_created_at_ms));
         assert_eq!(credits.last_full_sync_at_ms, Some(now_ms));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn external_target_runtime_selection_reports_runtime_kind() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.payout_destination = Some("lno1externaltarget".to_string());
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let report = load_wallet_status_report(config_path.as_path())
+            .await
+            .expect("status report");
+        assert_eq!(
+            report.runtime.runtime_kind,
+            PylonWalletRuntimeKind::ExternalTarget
+        );
+        assert_eq!(report.runtime_status, "external_target");
+
+        let json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Status { json: true },
+        )
+        .await
+        .expect("status json");
+        assert!(json.contains("\"runtime_kind\": \"external_target\""));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mock_runtime_returns_deterministic_wallet_reports() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::Mock;
+        config.wallet_network = "regtest".to_string();
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let status = load_wallet_status_report(config_path.as_path())
+            .await
+            .expect("mock status");
+        assert_eq!(status.runtime.runtime_kind, PylonWalletRuntimeKind::Mock);
+        assert_eq!(status.runtime_status, "connected");
+        assert_eq!(status.balance.total_sats, 1_000);
+
+        let address = create_wallet_address_report(config_path.as_path())
+            .await
+            .expect("mock address");
+        assert_eq!(address.runtime.runtime_kind, PylonWalletRuntimeKind::Mock);
+        assert!(address.bitcoin_address.starts_with("bcrt1pmock"));
+
+        let invoice =
+            create_wallet_invoice_report(config_path.as_path(), 42, Some("test".to_string()), None)
+                .await
+                .expect("mock invoice");
+        assert_eq!(invoice.invoice.payment_request, "lnbc42mockpyloninvoice");
+
+        let payment = pay_wallet_invoice_report(config_path.as_path(), "lnbc1mockpay", Some(21))
+            .await
+            .expect("mock payment");
+        assert_eq!(payment.payment_id, "mock-payment-21");
+        assert_eq!(payment.post_balance.total_sats, 979);
+
+        let history = load_wallet_history_report(config_path.as_path(), Some(10))
+            .await
+            .expect("mock history");
+        assert_eq!(history.runtime.runtime_kind, PylonWalletRuntimeKind::Mock);
+        assert!(!history.payments.is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ldk_node_runtime_reports_unavailable_until_integration_lands() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        config.wallet_network = "regtest".to_string();
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let status = load_wallet_status_report(config_path.as_path())
+            .await
+            .expect("ldk_node status");
+        assert_eq!(status.runtime.runtime_kind, PylonWalletRuntimeKind::LdkNode);
+        assert_eq!(status.runtime_status, "unavailable");
+        assert!(
+            status
+                .runtime_detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("unavailable")
+        );
+
+        let error = create_wallet_address_report(config_path.as_path())
+            .await
+            .expect_err("ldk_node address should be unavailable");
+        assert!(error.to_string().contains("unavailable"));
     }
 }

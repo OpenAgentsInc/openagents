@@ -40,6 +40,7 @@ If any release note, marketing text, or operator doc violates one of those state
 | Receipts | `cargo run -p pylon -- receipts` | shows receipt summaries or an empty truthful list, including sandbox profile/termination/failure detail when present |
 | Activity | `cargo run -p pylon -- activity` | shows retained relay and settlement activity, or an explicit none-state |
 | Regtest config surface | `cargo run -p pylon -- config set wallet_network regtest` then `config show` | persists `regtest` as the retained wallet network without changing unrelated local state |
+| Wallet runtime selection | `cargo run -p pylon -- config set wallet_runtime_kind mock` then `cargo run -p pylon -- wallet status --json` | reports `runtime.runtime_kind=mock`; `external_target` remains the default compatibility runtime and `ldk_node` reports unavailable until integration lands |
 | Online transition | `cargo run -p pylon -- online` | desired mode becomes `online`; unhealthy supply becomes `degraded`, not falsely healthy |
 | Pause/resume | `cargo run -p pylon -- pause` then `resume` | transitions are explicit and truthful |
 | Offline transition | `cargo run -p pylon -- offline` | desired mode becomes `offline` |

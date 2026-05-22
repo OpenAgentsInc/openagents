@@ -153,14 +153,14 @@ pub use nip90_runtime::{
     start_provider_online_intake, submit_buyer_job, watch_buyer_jobs,
 };
 pub use wallet_runtime::{
-    WalletAddressReport, WalletBalanceSnapshot, WalletCreditSummaryReport, WalletHistoryReport,
-    WalletInvoiceReport, WalletPayReport, WalletRuntimeSurface, WalletStatusReport,
-    WalletSubcommand, create_wallet_address_report, create_wallet_invoice_report,
-    load_wallet_balance_status_report, load_wallet_credit_summary_report,
-    load_wallet_history_report, load_wallet_status_report, parse_wallet_command,
-    pay_wallet_invoice_report, render_wallet_address_report, render_wallet_balance_report,
-    render_wallet_history_report, render_wallet_invoice_report, render_wallet_pay_report,
-    render_wallet_status_report, run_wallet_command,
+    PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
+    WalletBalanceSnapshot, WalletCreditSummaryReport, WalletHistoryReport, WalletInvoiceReport,
+    WalletOfferReport, WalletPayReport, WalletRuntimeSurface, WalletStatusReport, WalletSubcommand,
+    create_wallet_address_report, create_wallet_invoice_report, load_wallet_balance_status_report,
+    load_wallet_credit_summary_report, load_wallet_history_report, load_wallet_status_report,
+    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
+    render_wallet_balance_report, render_wallet_history_report, render_wallet_invoice_report,
+    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -389,6 +389,8 @@ pub struct PylonConfig {
     pub relay_auth_enabled: bool,
     #[serde(default = "default_wallet_network")]
     pub wallet_network: String,
+    #[serde(default = "default_wallet_runtime_kind")]
+    pub wallet_runtime_kind: PylonWalletRuntimeKind,
     #[serde(default = "default_wallet_api_key_env")]
     pub wallet_api_key_env: Option<String>,
     #[serde(default = "default_buyer_auto_pay_enabled")]
@@ -449,6 +451,7 @@ struct PylonPublicConfig {
     relay_connect_timeout_seconds: u64,
     relay_auth_enabled: bool,
     wallet_network: String,
+    wallet_runtime_kind: PylonWalletRuntimeKind,
     wallet_api_key_env: Option<String>,
     buyer_auto_pay_enabled: bool,
     wallet_storage_dir: PathBuf,
@@ -475,6 +478,7 @@ impl From<&PylonConfig> for PylonPublicConfig {
             relay_connect_timeout_seconds: value.relay_connect_timeout_seconds,
             relay_auth_enabled: value.relay_auth_enabled,
             wallet_network: value.wallet_network.clone(),
+            wallet_runtime_kind: value.wallet_runtime_kind,
             wallet_api_key_env: value.wallet_api_key_env.clone(),
             buyer_auto_pay_enabled: value.buyer_auto_pay_enabled,
             wallet_storage_dir: value.wallet_storage_dir.clone(),
@@ -23220,6 +23224,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         relay_connect_timeout_seconds: default_relay_connect_timeout_seconds(),
         relay_auth_enabled: default_relay_auth_enabled(),
         wallet_network: default_wallet_network(),
+        wallet_runtime_kind: default_wallet_runtime_kind(),
         wallet_api_key_env: default_wallet_api_key_env(),
         buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
         wallet_storage_dir: base_dir.join("wallet"),
@@ -23357,6 +23362,10 @@ const fn default_relay_auth_enabled() -> bool {
 
 fn default_wallet_network() -> String {
     "ldk-external".to_string()
+}
+
+const fn default_wallet_runtime_kind() -> PylonWalletRuntimeKind {
+    PylonWalletRuntimeKind::ExternalTarget
 }
 
 fn default_wallet_api_key_env() -> Option<String> {
@@ -31818,6 +31827,9 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
             next.relay_auth_enabled = parse_bool(value)?;
         }
         "wallet_network" => next.wallet_network = value.trim().to_string(),
+        "wallet_runtime_kind" => {
+            next.wallet_runtime_kind = PylonWalletRuntimeKind::parse(value)?;
+        }
         "wallet_api_key_env" => {
             next.wallet_api_key_env = if value.trim().is_empty() {
                 None
@@ -32032,9 +32044,9 @@ mod tests {
         PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
         PylonTrainingValidatorChallengeCoordinatorResponse, PylonTrainingWindowCacheEntry,
         PylonTrainingWindowProgressRequest, PylonWalletCreditSummary, PylonWalletInvoiceRecord,
-        PylonWalletPaymentRecord, ReportContext, TRN_TRAINING_NODE_RECORD_KIND,
-        TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand, TrainingCommand,
-        TrainingManifestInspectionContext, TrainingOperatorStatusReport,
+        PylonWalletPaymentRecord, PylonWalletRuntimeKind, ReportContext,
+        TRN_TRAINING_NODE_RECORD_KIND, TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand,
+        TrainingCommand, TrainingManifestInspectionContext, TrainingOperatorStatusReport,
         TrainingTrnPublicationReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
         add_configured_relay, apply_config_set, apply_control_command,
         apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
@@ -34601,11 +34613,16 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
     fn config_set_updates_wallet_fields() -> Result<(), Box<dyn std::error::Error>> {
         let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
         apply_config_set(&mut config, "wallet_network", "ldk-external")?;
+        apply_config_set(&mut config, "wallet_runtime_kind", "mock")?;
         apply_config_set(&mut config, "wallet_api_key_env", "PYLON_LDK_TARGET_KEY")?;
         apply_config_set(&mut config, "wallet_storage_dir", "/tmp/pylon-wallet")?;
         ensure(
             config.wallet_network == "ldk-external",
             "config set should update wallet_network",
+        )?;
+        ensure(
+            config.wallet_runtime_kind == PylonWalletRuntimeKind::Mock,
+            "config set should update wallet_runtime_kind",
         )?;
         ensure(
             config.wallet_api_key_env.as_deref() == Some("PYLON_LDK_TARGET_KEY"),
@@ -48415,6 +48432,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ensure(
             config.wallet_storage_dir.ends_with("wallet"),
             "missing wallet storage should hydrate from the default config",
+        )?;
+        ensure(
+            config.wallet_runtime_kind == PylonWalletRuntimeKind::ExternalTarget,
+            "missing wallet runtime kind should hydrate to external_target",
         )?;
         ensure(
             config.local_gemma_base_url == "http://127.0.0.1:11434",

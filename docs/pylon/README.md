@@ -1147,6 +1147,13 @@ and compatibility surfaces. Real local LDK receive/send behavior is planned in
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
 
+Wallet runtime selection is now explicit. `wallet_runtime_kind=external_target`
+is the default compatibility runtime and keeps `payout_destination` as the
+paid-work settlement target. `wallet_runtime_kind=mock` exists for deterministic
+tests. `wallet_runtime_kind=ldk_node` is a placeholder that reports
+`unavailable` until the real LDK node runtime lands. `pylon wallet status
+--json` reports the selected kind as `runtime.runtime_kind`.
+
 For operator accounting, the bounded retained `ledger.wallet.payments` list is
 not the final source of truth for built-in LDK wallet balances. Current v0.2
 status and earnings projections should be read as retained ledger/accounting
