@@ -170,6 +170,29 @@ correspondingly worse. This is the mechanism behind a validator backlog that
 does not drain: the work to clear it cannot get through the saturated control
 API.
 
+### Phase D — artifact resolver and signed-access stall on the same lock (depth 800)
+
+The artifact resolver (`get_kernel_compute_training_artifact_resolver`) and
+signed-access (`post_kernel_compute_training_artifact_signed_access`) endpoints
+are read paths: each takes `store.read()` before fast work (an in-memory
+lookup; for signed-access a local GCS v4 signing step with no network call).
+Phase D probes both for a missing artifact — the handler acquires the read
+lock, fails the lookup, and returns — idle and then under a concurrent
+admission flood:
+
+| endpoint          | idle  | under admission load (avg / p99) |
+| ------------------ | ----- | -------------------------------- |
+| artifact resolver  | ~8 µs | 4.5 ms / 87 ms |
+| signed-access      | ~7 µs | 13.2 ms / 57 ms |
+
+Idle, both are microseconds. Under admission write-load they stall to
+milliseconds with a long p99 tail — `store.read()` cannot be acquired while
+writers hold the lock for O(total-state) persists. This is the mechanism behind
+the production "Artifact resolver latency" and "Signed access latency" health
+alerts (each p95 ~4.5 s). As in the other phases, the raw idle→load ratio is
+inflated by the microsecond baseline; the figure that matters is the absolute
+under-load latency, and production scale is worse.
+
 ## Why relay-side changes do not fix this
 
 The relay's semaphore is downstream of the bottleneck. Specifically:

@@ -11,11 +11,13 @@
 //! on a 4-worker runtime, concurrent mutations fully serialize.
 //!
 //! This test drives requests through the real `nexus-control` router and
-//! prints three measurements:
+//! prints four measurements:
 //!   Phase A — per-admission latency as kernel state accumulates,
 //!   Phase B — admission throughput under 4-way concurrency vs. sequential,
 //!   Phase C — validator-challenge claim latency, idle vs. under admission
-//!             load (the validator backlog drains through the same lock).
+//!             load (the validator backlog drains through the same lock),
+//!   Phase D — artifact-resolver and signed-access read-handler latency,
+//!             idle vs. under admission load.
 //!
 //! It is `#[ignore]`d because it is a measurement reproduction, not a fast
 //! pass/fail unit test. Run it explicitly:
@@ -122,11 +124,62 @@ async fn claim(app: &Router, idx: usize) -> TestResult<(StatusCode, String, Dura
     Ok((status, body, elapsed))
 }
 
+/// Probe the artifact resolver for a missing artifact. The handler acquires
+/// `store.read()`, fails the lookup, and returns — so the latency is the time
+/// spent acquiring that read lock. (Read path: `get_kernel_compute_training_
+/// artifact_resolver`.)
+async fn resolve_probe(app: &Router, idx: usize) -> TestResult<(StatusCode, String, Duration)> {
+    let uri = format!("/v1/kernel/compute/training/artifacts/issue4515-missing-{idx:06}");
+    let request = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .body(Body::empty())?;
+    let started = Instant::now();
+    let response = app.clone().oneshot(request).await?;
+    let elapsed = started.elapsed();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+    Ok((status, String::from_utf8_lossy(&bytes).into_owned(), elapsed))
+}
+
+/// Probe signed-access for a missing artifact. The handler acquires
+/// `store.read()` and resolves the artifact *before* it reaches signed-URL
+/// signing, so a missing artifact fails right after the read lock — the
+/// latency is again the read-lock acquire. (Read path:
+/// `post_kernel_compute_training_artifact_signed_access`.)
+async fn signed_access_probe(
+    app: &Router,
+    idx: usize,
+) -> TestResult<(StatusCode, String, Duration)> {
+    let uri = format!(
+        "/v1/kernel/compute/training/artifacts/issue4515-missing-{idx:06}/signed-access"
+    );
+    let body = serde_json::json!({ "mode": "read" });
+    let request = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body)?))?;
+    let started = Instant::now();
+    let response = app.clone().oneshot(request).await?;
+    let elapsed = started.elapsed();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+    Ok((status, String::from_utf8_lossy(&bytes).into_owned(), elapsed))
+}
+
 fn avg(samples: &[Duration]) -> Duration {
     if samples.is_empty() {
         return Duration::ZERO;
     }
     samples.iter().sum::<Duration>() / samples.len() as u32
+}
+
+fn pctl99(sorted: &[Duration]) -> Duration {
+    sorted
+        .get((sorted.len() * 99 / 100).min(sorted.len().saturating_sub(1)))
+        .copied()
+        .unwrap_or_default()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -286,6 +339,79 @@ async fn issue_4515_control_api_mutation_latency_scales_with_state() -> TestResu
     println!("  claim slowdown under load:  {claim_slowdown:.0}x");
     println!();
 
+    // ---- Phase D: read handlers (artifact resolver, signed access) ----
+    // The resolver and signed-access endpoints are read paths: each takes
+    // state.store.read() before its (fast) work. A request for a missing
+    // artifact still acquires that read lock, so its latency measures how long
+    // a reader waits while writers hold the lock. These map to the production
+    // "Artifact resolver latency" and "Signed access latency" health metrics.
+    println!("Phase D — read-handler latency, idle vs under admission load:");
+    let probe_count = 30usize;
+
+    let mut resolver_idle = Vec::with_capacity(probe_count);
+    let mut signed_idle = Vec::with_capacity(probe_count);
+    let mut resolver_status = StatusCode::OK;
+    let mut signed_status = StatusCode::OK;
+    let mut resolver_body = String::new();
+    let mut signed_body = String::new();
+    for idx in 0..probe_count {
+        let (rs, rb, rl) = resolve_probe(&app, idx).await?;
+        resolver_status = rs;
+        resolver_body = rb;
+        resolver_idle.push(rl);
+        let (ss, sb, sl) = signed_access_probe(&app, idx).await?;
+        signed_status = ss;
+        signed_body = sb;
+        signed_idle.push(sl);
+    }
+
+    let read_flood = burst * 2;
+    let mut read_flood_handles = Vec::with_capacity(read_flood);
+    for idx in 0..read_flood {
+        let app = app.clone();
+        read_flood_handles.push(tokio::spawn(
+            async move { admit(&app, "floodD", idx).await },
+        ));
+    }
+    let mut resolver_loaded = Vec::with_capacity(probe_count);
+    let mut signed_loaded = Vec::with_capacity(probe_count);
+    for idx in 0..probe_count {
+        let (.., rl) = resolve_probe(&app, probe_count + idx).await?;
+        resolver_loaded.push(rl);
+        let (.., sl) = signed_access_probe(&app, probe_count + idx).await?;
+        signed_loaded.push(sl);
+    }
+    for handle in read_flood_handles {
+        let (status, _) = handle.await??;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    resolver_idle.sort_unstable();
+    resolver_loaded.sort_unstable();
+    signed_idle.sort_unstable();
+    signed_loaded.sort_unstable();
+    let resolver_idle_avg = avg(&resolver_idle);
+    let resolver_loaded_avg = avg(&resolver_loaded);
+    let signed_idle_avg = avg(&signed_idle);
+    let signed_loaded_avg = avg(&signed_loaded);
+    let resolver_loaded_p99 = pctl99(&resolver_loaded);
+    let signed_loaded_p99 = pctl99(&signed_loaded);
+    let resolver_slowdown =
+        resolver_loaded_avg.as_secs_f64() / resolver_idle_avg.as_secs_f64().max(f64::MIN_POSITIVE);
+    let signed_slowdown =
+        signed_loaded_avg.as_secs_f64() / signed_idle_avg.as_secs_f64().max(f64::MIN_POSITIVE);
+    println!("  resolver      : HTTP {resolver_status}");
+    println!(
+        "    idle {resolver_idle_avg:?}  ->  under load {resolver_loaded_avg:?} \
+         / p99 {resolver_loaded_p99:?}  ({resolver_slowdown:.0}x)"
+    );
+    println!("  signed-access : HTTP {signed_status}");
+    println!(
+        "    idle {signed_idle_avg:?}  ->  under load {signed_loaded_avg:?} \
+         / p99 {signed_loaded_p99:?}  ({signed_slowdown:.0}x)"
+    );
+    println!();
+
     println!("Conclusion:");
     println!("  Per-admission latency grew {growth:.1}x across this run because every");
     println!("  mutation persists the full kernel state (clone + JSON + fsync) under one");
@@ -299,6 +425,9 @@ async fn issue_4515_control_api_mutation_latency_scales_with_state() -> TestResu
     println!("  Validator claim/finalize are the same store.write() mutations: under");
     println!("  admission load, validator claim latency rose {claim_slowdown:.0}x here, so the");
     println!("  validator backlog cannot drain while the control plane is saturated.");
+    println!("  The artifact resolver and signed-access endpoints are read paths; under");
+    println!("  admission load they stalled {resolver_slowdown:.0}x / {signed_slowdown:.0}x waiting for the same");
+    println!("  lock — the mechanism behind the resolver/signed-access latency alerts.");
     println!();
 
     assert!(
@@ -323,6 +452,22 @@ async fn issue_4515_control_api_mutation_latency_scales_with_state() -> TestResu
         loaded_claim_avg > idle_claim_avg * 2,
         "expected validator claims to stall under admission load \
          (idle avg {idle_claim_avg:?}, under-load avg {loaded_claim_avg:?})"
+    );
+    assert!(
+        resolver_status.is_client_error() && signed_status.is_client_error(),
+        "expected resolver/signed-access probes to reach the handler \
+         (resolver {resolver_status} body {resolver_body}; \
+          signed-access {signed_status} body {signed_body})"
+    );
+    assert!(
+        resolver_loaded_avg > resolver_idle_avg * 2,
+        "expected the artifact resolver to stall under admission load \
+         (idle {resolver_idle_avg:?}, under-load {resolver_loaded_avg:?})"
+    );
+    assert!(
+        signed_loaded_avg > signed_idle_avg * 2,
+        "expected signed-access to stall under admission load \
+         (idle {signed_idle_avg:?}, under-load {signed_loaded_avg:?})"
     );
 
     Ok(())
