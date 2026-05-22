@@ -155,9 +155,9 @@ pub use nip90_runtime::{
 pub use wallet_runtime::{
     PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
     WalletBalanceSnapshot, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
-    WalletInvoiceReport, WalletLockOwner, WalletLockReport, WalletNodeEntropyMetadata,
-    WalletOfferReport, WalletPayReport, WalletRuntimeSurface, WalletStatusReport,
-    WalletStorageLayoutReport, WalletSubcommand, clear_wallet_lock_report,
+    WalletInvoiceReport, WalletLdkNodeStatus, WalletLockOwner, WalletLockReport,
+    WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRuntimeSurface,
+    WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand, clear_wallet_lock_report,
     create_wallet_address_report, create_wallet_invoice_report, export_wallet_entropy_report,
     import_wallet_entropy_report, inspect_wallet_lock_report, load_wallet_balance_status_report,
     load_wallet_credit_summary_report, load_wallet_entropy_status_report,
@@ -400,6 +400,14 @@ pub struct PylonConfig {
     pub wallet_api_key_env: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_entropy_override_path: Option<PathBuf>,
+    #[serde(default = "default_wallet_chain_source_kind")]
+    pub wallet_chain_source_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_esplora_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_electrum_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_rgs_url: Option<String>,
     #[serde(default = "default_buyer_auto_pay_enabled")]
     pub buyer_auto_pay_enabled: bool,
     pub wallet_storage_dir: PathBuf,
@@ -461,6 +469,10 @@ struct PylonPublicConfig {
     wallet_runtime_kind: PylonWalletRuntimeKind,
     wallet_api_key_env: Option<String>,
     wallet_entropy_override_path: Option<PathBuf>,
+    wallet_chain_source_kind: String,
+    wallet_esplora_url: Option<String>,
+    wallet_electrum_url: Option<String>,
+    wallet_rgs_url: Option<String>,
     buyer_auto_pay_enabled: bool,
     wallet_storage_dir: PathBuf,
     local_gemma_base_url: String,
@@ -489,6 +501,10 @@ impl From<&PylonConfig> for PylonPublicConfig {
             wallet_runtime_kind: value.wallet_runtime_kind,
             wallet_api_key_env: value.wallet_api_key_env.clone(),
             wallet_entropy_override_path: value.wallet_entropy_override_path.clone(),
+            wallet_chain_source_kind: value.wallet_chain_source_kind.clone(),
+            wallet_esplora_url: value.wallet_esplora_url.clone(),
+            wallet_electrum_url: value.wallet_electrum_url.clone(),
+            wallet_rgs_url: value.wallet_rgs_url.clone(),
             buyer_auto_pay_enabled: value.buyer_auto_pay_enabled,
             wallet_storage_dir: value.wallet_storage_dir.clone(),
             local_gemma_base_url: value.local_gemma_base_url.clone(),
@@ -10904,8 +10920,44 @@ fn render_public_config_json(config: &PylonConfig) -> Result<String> {
 }
 
 fn validate_pylon_config(config: &PylonConfig) -> Result<()> {
+    validate_wallet_chain_source_config(config)?;
     validate_pylon_probe_config(&config.probe)?;
     validate_pylon_training_config(&config.training)
+}
+
+fn validate_wallet_chain_source_config(config: &PylonConfig) -> Result<()> {
+    match config.wallet_chain_source_kind.as_str() {
+        "none" => Ok(()),
+        "esplora" => {
+            if config.wallet_runtime_kind == PylonWalletRuntimeKind::LdkNode
+                && config
+                    .wallet_esplora_url
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .is_empty()
+            {
+                bail!("wallet_esplora_url must be set when wallet_chain_source_kind=esplora");
+            }
+            Ok(())
+        }
+        "electrum" => {
+            if config.wallet_runtime_kind == PylonWalletRuntimeKind::LdkNode
+                && config
+                    .wallet_electrum_url
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .is_empty()
+            {
+                bail!("wallet_electrum_url must be set when wallet_chain_source_kind=electrum");
+            }
+            Ok(())
+        }
+        other => bail!(
+            "unsupported wallet_chain_source_kind '{other}'; expected none, esplora, or electrum"
+        ),
+    }
 }
 
 fn validate_pylon_probe_config(config: &PylonProbeConfig) -> Result<()> {
@@ -23238,6 +23290,10 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         wallet_runtime_kind: default_wallet_runtime_kind(),
         wallet_api_key_env: default_wallet_api_key_env(),
         wallet_entropy_override_path: None,
+        wallet_chain_source_kind: default_wallet_chain_source_kind(),
+        wallet_esplora_url: None,
+        wallet_electrum_url: None,
+        wallet_rgs_url: None,
         buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
         wallet_storage_dir: base_dir.join("wallet"),
         local_gemma_base_url: "http://127.0.0.1:11434".to_string(),
@@ -23382,6 +23438,10 @@ const fn default_wallet_runtime_kind() -> PylonWalletRuntimeKind {
 
 fn default_wallet_api_key_env() -> Option<String> {
     None
+}
+
+fn default_wallet_chain_source_kind() -> String {
+    "none".to_string()
 }
 
 const fn default_buyer_auto_pay_enabled() -> bool {
@@ -31856,6 +31916,30 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
                 Some(PathBuf::from(value.trim()))
             };
         }
+        "wallet_chain_source_kind" => {
+            next.wallet_chain_source_kind = value.trim().to_ascii_lowercase();
+        }
+        "wallet_esplora_url" => {
+            next.wallet_esplora_url = if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.trim().to_string())
+            };
+        }
+        "wallet_electrum_url" => {
+            next.wallet_electrum_url = if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.trim().to_string())
+            };
+        }
+        "wallet_rgs_url" => {
+            next.wallet_rgs_url = if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.trim().to_string())
+            };
+        }
         "buyer_auto_pay_enabled" => {
             next.buyer_auto_pay_enabled = parse_bool(value)?;
         }
@@ -34639,6 +34723,13 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "wallet_entropy_override_path",
             "/tmp/pylon-wallet-entropy.hex",
         )?;
+        apply_config_set(&mut config, "wallet_chain_source_kind", "esplora")?;
+        apply_config_set(
+            &mut config,
+            "wallet_esplora_url",
+            "http://127.0.0.1:3002/api",
+        )?;
+        apply_config_set(&mut config, "wallet_rgs_url", "http://127.0.0.1:3003/rgs")?;
         apply_config_set(&mut config, "wallet_storage_dir", "/tmp/pylon-wallet")?;
         ensure(
             config.wallet_network == "ldk-external",
@@ -34656,6 +34747,18 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             config.wallet_entropy_override_path.as_deref()
                 == Some(std::path::Path::new("/tmp/pylon-wallet-entropy.hex")),
             "config set should update wallet_entropy_override_path",
+        )?;
+        ensure(
+            config.wallet_chain_source_kind == "esplora",
+            "config set should update wallet_chain_source_kind",
+        )?;
+        ensure(
+            config.wallet_esplora_url.as_deref() == Some("http://127.0.0.1:3002/api"),
+            "config set should update wallet_esplora_url",
+        )?;
+        ensure(
+            config.wallet_rgs_url.as_deref() == Some("http://127.0.0.1:3003/rgs"),
+            "config set should update wallet_rgs_url",
         )?;
         ensure(
             config.wallet_storage_dir == std::path::Path::new("/tmp/pylon-wallet"),

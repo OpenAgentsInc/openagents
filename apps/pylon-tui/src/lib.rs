@@ -6338,6 +6338,7 @@ mod tests {
             runtime: pylon::WalletRuntimeSurface::default(),
             runtime_status: "disconnected".to_string(),
             runtime_detail: Some("syncing".to_string()),
+            ldk_node: None,
             balance: pylon::WalletBalanceSnapshot::default(),
             recent_payments: Vec::new(),
         };
@@ -6382,6 +6383,7 @@ mod tests {
             runtime: pylon::WalletRuntimeSurface::default(),
             runtime_status: "connected".to_string(),
             runtime_detail: Some("wallet synced after withdrawal".to_string()),
+            ldk_node: None,
             balance: pylon::WalletBalanceSnapshot {
                 credited_sats: 8,
                 lightning_sats: 0,

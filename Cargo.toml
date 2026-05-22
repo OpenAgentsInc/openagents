@@ -197,6 +197,7 @@ hex = "0.4.3"
 rand = "0.9"
 bitcoin = "0.32.6"
 crossterm = "0.29"
+ldk-node = "0.7.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "cookies"] }
 insta = "1.34"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
@@ -226,6 +227,9 @@ probe-client = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb6
 probe-core = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb62f56e86ea2191f9812e10b3c6d0f97e719c7" }
 probe-protocol = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb62f56e86ea2191f9812e10b3c6d0f97e719c7" }
 probe-server = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb62f56e86ea2191f9812e10b3c6d0f97e719c7" }
+
+[patch.crates-io]
+rusqlite = { path = "third_party/rusqlite-0.31.0-libsqlite3-0.30.1" }
 
 [profile.dev]
 opt-level = 1

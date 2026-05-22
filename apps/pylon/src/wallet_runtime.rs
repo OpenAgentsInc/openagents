@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use hmac::{Hmac, Mac};
+use ldk_node::Builder as LdkNodeBuilder;
+use ldk_node::bitcoin::Network as LdkBitcoinNetwork;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -17,8 +19,7 @@ type HmacSha256 = Hmac<Sha256>;
 
 const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon uses an external LDK-compatible payout destination. Configure payout_destination for earnings.";
 const MOCK_WALLET_DETAIL: &str = "Pylon is using the deterministic mock wallet runtime for tests.";
-const LDK_NODE_UNAVAILABLE_DETAIL: &str =
-    "Pylon ldk_node wallet runtime is unavailable until the LDK node integration lands.";
+const LDK_NODE_UNAVAILABLE_DETAIL: &str = "Pylon ldk_node payment APIs are not wired yet; this issue only initializes the local node runtime.";
 const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1";
 const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
 const WALLET_NODE_ENTROPY_HKDF_SALT: &[u8] = b"openagents-pylon/ldk-node/node-entropy";
@@ -153,8 +154,25 @@ pub struct WalletStatusReport {
     pub runtime: WalletRuntimeSurface,
     pub runtime_status: String,
     pub runtime_detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ldk_node: Option<WalletLdkNodeStatus>,
     pub balance: WalletBalanceSnapshot,
     pub recent_payments: Vec<PylonWalletPaymentRecord>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletLdkNodeStatus {
+    pub node_id: Option<String>,
+    pub network: String,
+    pub storage_dir: String,
+    pub chain_source_kind: String,
+    pub chain_source_url: Option<String>,
+    pub rgs_url: Option<String>,
+    pub is_running: bool,
+    pub latest_lightning_wallet_sync_timestamp: Option<u64>,
+    pub latest_onchain_wallet_sync_timestamp: Option<u64>,
+    pub latest_rgs_snapshot_timestamp: Option<u64>,
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -316,10 +334,31 @@ struct MockPylonWalletRuntime {
     payout_destination: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct LdkNodeWalletRuntime {
     surface: WalletRuntimeSurface,
+    settings: LdkNodeWalletSettings,
+    entropy: [u8; 64],
     lock: Arc<Mutex<Option<PylonWalletStorageLock>>>,
+    node: Arc<Mutex<Option<ldk_node::Node>>>,
+    last_error: Arc<Mutex<Option<String>>>,
+}
+
+impl std::fmt::Debug for LdkNodeWalletRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LdkNodeWalletRuntime")
+            .field("surface", &self.surface)
+            .field("settings", &self.settings)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct LdkNodeWalletSettings {
+    chain_source_kind: String,
+    esplora_url: Option<String>,
+    electrum_url: Option<String>,
+    rgs_url: Option<String>,
 }
 
 impl PylonWalletRuntime for SelectedPylonWalletRuntime {
@@ -477,6 +516,7 @@ impl PylonWalletRuntime for ExternalTargetWalletRuntime {
             runtime: self.surface.clone(),
             runtime_status: "external_target".to_string(),
             runtime_detail: Some(LDK_EXTERNAL_WALLET_DETAIL.to_string()),
+            ldk_node: None,
             balance: self.balance(ledger)?,
             recent_payments: ledger_payments(ledger, include_recent_payments.then_some(10)),
         })
@@ -557,6 +597,7 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
             runtime: self.surface.clone(),
             runtime_status: "connected".to_string(),
             runtime_detail: Some(MOCK_WALLET_DETAIL.to_string()),
+            ldk_node: None,
             balance: self.balance(ledger)?,
             recent_payments: self.list_payments(ledger, include_recent_payments.then_some(10))?,
         })
@@ -704,10 +745,45 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
         if lock.is_none() {
             *lock = Some(acquire_wallet_storage_lock(&layout)?);
         }
+        drop(lock);
+
+        let mut node = self
+            .node
+            .lock()
+            .map_err(|_| anyhow!("ldk node state is poisoned"))?;
+        if node.is_none() {
+            *node = Some(self.build_node(&layout)?);
+        }
+        let should_start = self.settings.chain_source_kind != "none";
+        if should_start {
+            if let Some(node) = node.as_ref() {
+                if !node.status().is_running {
+                    match node.start() {
+                        Ok(()) => self.set_last_error(None)?,
+                        Err(error) => self.set_last_error(Some(error.to_string()))?,
+                    }
+                }
+            }
+        } else {
+            self.set_last_error(None)?;
+        }
         Ok(())
     }
 
     fn stop(&self) -> Result<()> {
+        let mut node = self
+            .node
+            .lock()
+            .map_err(|_| anyhow!("ldk node state is poisoned"))?;
+        if let Some(node) = node.as_ref() {
+            if node.status().is_running {
+                node.stop()
+                    .map_err(|error| anyhow!("failed to stop ldk node: {error}"))?;
+            }
+        }
+        let _ = node.take();
+        drop(node);
+
         let mut lock = self
             .lock
             .lock()
@@ -721,6 +797,15 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
         ledger: &PylonLedger,
         include_recent_payments: bool,
     ) -> Result<WalletStatusReport> {
+        let should_sync = self
+            .with_node(|node| node.status().is_running)?
+            .unwrap_or(false);
+        if should_sync {
+            let sync_result = self.with_node(|node| node.sync_wallets())?;
+            if let Some(Err(error)) = sync_result {
+                self.set_last_error(Some(error.to_string()))?;
+            }
+        }
         self.status(ledger, include_recent_payments)
     }
 
@@ -729,16 +814,43 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
         ledger: &PylonLedger,
         include_recent_payments: bool,
     ) -> Result<WalletStatusReport> {
+        let ldk_node = self.ldk_node_status()?;
+        let runtime_status = if ldk_node.last_error.is_some() {
+            "error"
+        } else if ldk_node.is_running {
+            "connected"
+        } else {
+            "configured"
+        };
+        let runtime_detail = if let Some(error) = ldk_node.last_error.as_ref() {
+            Some(format!("ldk_node error: {error}"))
+        } else if self.settings.chain_source_kind == "none" {
+            Some("ldk_node built with no chain source; set wallet_chain_source_kind=esplora or electrum to sync/start the live node".to_string())
+        } else {
+            Some("ldk_node runtime initialized".to_string())
+        };
         Ok(WalletStatusReport {
             runtime: self.surface.clone(),
-            runtime_status: "unavailable".to_string(),
-            runtime_detail: Some(LDK_NODE_UNAVAILABLE_DETAIL.to_string()),
+            runtime_status: runtime_status.to_string(),
+            runtime_detail,
+            ldk_node: Some(ldk_node),
             balance: self.balance(ledger)?,
             recent_payments: ledger_payments(ledger, include_recent_payments.then_some(10)),
         })
     }
 
     fn balance(&self, ledger: &PylonLedger) -> Result<WalletBalanceSnapshot> {
+        let node_balance = self.with_node(|node| node.list_balances())?;
+        if let Some(balance) = node_balance {
+            return Ok(WalletBalanceSnapshot {
+                credited_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
+                lightning_sats: balance.total_lightning_balance_sats,
+                onchain_sats: balance.total_onchain_balance_sats,
+                total_sats: balance
+                    .total_lightning_balance_sats
+                    .saturating_add(balance.total_onchain_balance_sats),
+            });
+        }
         Ok(ledger_balance(ledger))
     }
 
@@ -778,8 +890,132 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
     }
 
     fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
-        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+        let channels = self.with_node(|node| node.list_channels())?;
+        Ok(channels
+            .unwrap_or_default()
+            .into_iter()
+            .map(|channel| PylonWalletChannelRecord {
+                channel_id: channel.channel_id.to_string(),
+                status: if channel.is_usable {
+                    "usable".to_string()
+                } else if channel.is_channel_ready {
+                    "ready".to_string()
+                } else {
+                    "pending".to_string()
+                },
+                inbound_sats: channel.inbound_capacity_msat / 1000,
+                outbound_sats: channel.outbound_capacity_msat / 1000,
+            })
+            .collect())
     }
+}
+
+impl LdkNodeWalletRuntime {
+    fn build_node(&self, layout: &WalletStorageLayout) -> Result<ldk_node::Node> {
+        let mut builder = LdkNodeBuilder::new();
+        builder.set_network(parse_ldk_bitcoin_network(self.surface.network.as_str())?);
+        builder.set_entropy_seed_bytes(self.entropy);
+        builder.set_storage_dir_path(layout.sqlite_dir.display().to_string());
+        match self.settings.chain_source_kind.as_str() {
+            "none" => {}
+            "esplora" => {
+                let url = self
+                    .settings
+                    .esplora_url
+                    .clone()
+                    .ok_or_else(|| anyhow!("wallet_esplora_url must be set"))?;
+                builder.set_chain_source_esplora(url, None);
+            }
+            "electrum" => {
+                let url = self
+                    .settings
+                    .electrum_url
+                    .clone()
+                    .ok_or_else(|| anyhow!("wallet_electrum_url must be set"))?;
+                builder.set_chain_source_electrum(url, None);
+            }
+            other => bail!(
+                "unsupported wallet_chain_source_kind '{other}'; expected none, esplora, or electrum"
+            ),
+        }
+        if let Some(rgs_url) = self.settings.rgs_url.clone() {
+            builder.set_gossip_source_rgs(rgs_url);
+        }
+        builder
+            .build()
+            .map_err(|error| anyhow!("failed to build ldk node: {error}"))
+    }
+
+    fn with_node<T>(&self, operation: impl FnOnce(&ldk_node::Node) -> T) -> Result<Option<T>> {
+        let node = self
+            .node
+            .lock()
+            .map_err(|_| anyhow!("ldk node state is poisoned"))?;
+        Ok(node.as_ref().map(operation))
+    }
+
+    fn set_last_error(&self, error: Option<String>) -> Result<()> {
+        let mut last_error = self
+            .last_error
+            .lock()
+            .map_err(|_| anyhow!("ldk node error state is poisoned"))?;
+        *last_error = error;
+        Ok(())
+    }
+
+    fn last_error(&self) -> Result<Option<String>> {
+        let last_error = self
+            .last_error
+            .lock()
+            .map_err(|_| anyhow!("ldk node error state is poisoned"))?;
+        Ok(last_error.clone())
+    }
+
+    fn ldk_node_status(&self) -> Result<WalletLdkNodeStatus> {
+        let layout =
+            wallet_storage_layout_from_root(PathBuf::from(self.surface.storage_dir.as_str()));
+        let status = self.with_node(|node| (node.node_id().to_string(), node.status()))?;
+        let (node_id, node_status) = match status {
+            Some((node_id, status)) => (Some(node_id), Some(status)),
+            None => (None, None),
+        };
+        Ok(WalletLdkNodeStatus {
+            node_id,
+            network: self.surface.network.clone(),
+            storage_dir: layout.sqlite_dir.display().to_string(),
+            chain_source_kind: self.settings.chain_source_kind.clone(),
+            chain_source_url: self.configured_chain_source_url(),
+            rgs_url: self.settings.rgs_url.clone(),
+            is_running: node_status
+                .as_ref()
+                .map(|status| status.is_running)
+                .unwrap_or(false),
+            latest_lightning_wallet_sync_timestamp: node_status
+                .as_ref()
+                .and_then(|status| status.latest_lightning_wallet_sync_timestamp),
+            latest_onchain_wallet_sync_timestamp: node_status
+                .as_ref()
+                .and_then(|status| status.latest_onchain_wallet_sync_timestamp),
+            latest_rgs_snapshot_timestamp: node_status
+                .as_ref()
+                .and_then(|status| status.latest_rgs_snapshot_timestamp),
+            last_error: self.last_error()?,
+        })
+    }
+
+    fn configured_chain_source_url(&self) -> Option<String> {
+        match self.settings.chain_source_kind.as_str() {
+            "esplora" => self.settings.esplora_url.clone(),
+            "electrum" => self.settings.electrum_url.clone(),
+            _ => None,
+        }
+    }
+}
+
+fn parse_ldk_bitcoin_network(network: &str) -> Result<LdkBitcoinNetwork> {
+    network
+        .parse::<LdkBitcoinNetwork>()
+        .with_context(|| format!("unsupported ldk_node wallet_network '{network}'"))
 }
 
 fn ledger_balance(ledger: &PylonLedger) -> WalletBalanceSnapshot {
@@ -1314,6 +1550,35 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
         lines.push(format!("runtime_detail: {detail}"));
+    }
+    if let Some(ldk_node) = report.ldk_node.as_ref() {
+        lines.push(format!(
+            "ldk_node_id: {}",
+            ldk_node.node_id.as_deref().unwrap_or("none")
+        ));
+        lines.push(format!("ldk_storage_dir: {}", ldk_node.storage_dir));
+        lines.push(format!("ldk_chain_source: {}", ldk_node.chain_source_kind));
+        if let Some(url) = ldk_node.chain_source_url.as_deref() {
+            lines.push(format!("ldk_chain_source_url: {url}"));
+        }
+        if let Some(url) = ldk_node.rgs_url.as_deref() {
+            lines.push(format!("ldk_rgs_url: {url}"));
+        }
+        lines.push(format!("ldk_is_running: {}", ldk_node.is_running));
+        if let Some(value) = ldk_node.latest_lightning_wallet_sync_timestamp {
+            lines.push(format!(
+                "ldk_latest_lightning_wallet_sync_timestamp: {value}"
+            ));
+        }
+        if let Some(value) = ldk_node.latest_onchain_wallet_sync_timestamp {
+            lines.push(format!("ldk_latest_onchain_wallet_sync_timestamp: {value}"));
+        }
+        if let Some(value) = ldk_node.latest_rgs_snapshot_timestamp {
+            lines.push(format!("ldk_latest_rgs_snapshot_timestamp: {value}"));
+        }
+        if let Some(error) = ldk_node.last_error.as_deref() {
+            lines.push(format!("ldk_last_error: {error}"));
+        }
     }
     if report.recent_payments.is_empty() {
         lines.push(String::new());
@@ -1894,7 +2159,16 @@ fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
         PylonWalletRuntimeKind::LdkNode => {
             SelectedPylonWalletRuntime::LdkNode(LdkNodeWalletRuntime {
                 surface,
+                settings: LdkNodeWalletSettings {
+                    chain_source_kind: config.wallet_chain_source_kind.clone(),
+                    esplora_url: config.wallet_esplora_url.clone(),
+                    electrum_url: config.wallet_electrum_url.clone(),
+                    rgs_url: config.wallet_rgs_url.clone(),
+                },
+                entropy: node_entropy.bytes,
                 lock: Arc::new(Mutex::new(None)),
+                node: Arc::new(Mutex::new(None)),
+                last_error: Arc::new(Mutex::new(None)),
             })
         }
     };
@@ -2385,6 +2659,7 @@ mod tests {
         let config_path = temp_dir.path().join("config.json");
         let mut config = crate::default_config(temp_dir.path());
         config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        config.wallet_network = "regtest".to_string();
         std::fs::write(
             config.identity_path.as_path(),
             "legal winner thank year wave sausage worth useful legal winner thank yellow\n",
@@ -2518,7 +2793,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn ldk_node_runtime_reports_unavailable_until_integration_lands() {
+    async fn ldk_node_runtime_builds_stable_node_without_chain_source() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let config_path = temp_dir.path().join("config.json");
         let mut config = crate::default_config(temp_dir.path());
@@ -2530,18 +2805,41 @@ mod tests {
             .await
             .expect("ldk_node status");
         assert_eq!(status.runtime.runtime_kind, PylonWalletRuntimeKind::LdkNode);
-        assert_eq!(status.runtime_status, "unavailable");
+        assert_eq!(status.runtime_status, "configured");
+        let first_node_id = status
+            .ldk_node
+            .as_ref()
+            .and_then(|node| node.node_id.clone())
+            .expect("node id");
         assert!(
             status
                 .runtime_detail
                 .as_deref()
                 .unwrap_or_default()
-                .contains("unavailable")
+                .contains("no chain source")
+        );
+        assert_eq!(
+            status
+                .ldk_node
+                .as_ref()
+                .map(|node| node.chain_source_kind.as_str()),
+            Some("none")
+        );
+
+        let restarted = load_wallet_status_report(config_path.as_path())
+            .await
+            .expect("ldk_node restart status");
+        assert_eq!(
+            restarted
+                .ldk_node
+                .as_ref()
+                .and_then(|node| node.node_id.clone()),
+            Some(first_node_id)
         );
 
         let error = create_wallet_address_report(config_path.as_path())
             .await
             .expect_err("ldk_node address should be unavailable");
-        assert!(error.to_string().contains("unavailable"));
+        assert!(error.to_string().contains("payment APIs"));
     }
 }

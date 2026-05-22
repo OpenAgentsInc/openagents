@@ -1150,9 +1150,18 @@ and compatibility surfaces. Real local LDK receive/send behavior is planned in
 Wallet runtime selection is now explicit. `wallet_runtime_kind=external_target`
 is the default compatibility runtime and keeps `payout_destination` as the
 paid-work settlement target. `wallet_runtime_kind=mock` exists for deterministic
-tests. `wallet_runtime_kind=ldk_node` is a placeholder that reports
-`unavailable` until the real LDK node runtime lands. `pylon wallet status
---json` reports the selected kind as `runtime.runtime_kind`.
+tests. `wallet_runtime_kind=ldk_node` now builds a local self-custodial LDK Node
+from the one-phrase entropy path and reopens the same node ID across restarts.
+By default it uses `wallet_chain_source_kind=none`, which is a no-network
+configuration for local and CI verification: the node is built and its storage
+is opened, but live chain sync is not started. To start the live node, set
+`wallet_network` to `bitcoin`, `testnet`, `signet`, or `regtest`, then set
+`wallet_chain_source_kind=esplora` with `wallet_esplora_url`, or
+`wallet_chain_source_kind=electrum` with `wallet_electrum_url`. Optional RGS
+sync is configured with `wallet_rgs_url`. `pylon wallet status --json` reports
+the selected kind as `runtime.runtime_kind` and includes `ldk_node` details such
+as node ID, storage path, chain source, running state, sync timestamps, and the
+last startup/sync error.
 
 The default wallet recovery model is one phrase, not two. Pylon derives the
 future LDK Node 64-byte node entropy from the existing Pylon identity mnemonic
@@ -1189,8 +1198,9 @@ Pylon process is using the wallet state and must be stopped first.
 
 For operator accounting, the bounded retained `ledger.wallet.payments` list is
 not the final source of truth for built-in LDK wallet balances. Current v0.2
-status and earnings projections should be read as retained ledger/accounting
-state until the local LDK wallet runtime and payment-history sync land.
+status includes real LDK Node on-chain and Lightning balance totals when the
+local node runtime is selected, but retained earnings still come from the local
+ledger/accounting state until payment-history sync lands.
 
 The TUI operator sidebar now also treats wallet balance bring-up more honestly.
 Its refresh path loads network status plus balance first instead of waiting on

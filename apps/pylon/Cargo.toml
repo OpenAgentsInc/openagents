@@ -18,6 +18,7 @@ codex-client = { path = "../../crates/codex-client" }
 hex = { workspace = true }
 hmac = "0.12.1"
 jsonwebtoken = "9"
+ldk-node.workspace = true
 libc = "0.2"
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
