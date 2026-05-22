@@ -1201,12 +1201,16 @@ sync is configured with `wallet_rgs_url`. `pylon wallet status --json` reports
 the selected kind as `runtime.runtime_kind` and includes `ldk_node` details such
 as node ID, storage path, redacted storage generation, backup status, last
 encrypted backup digest, stale-backup warning state, chain source, running
-state, sync timestamps, and the last startup/sync error. `backup_missing` means
-no encrypted backup has been exported yet; `backup_stale` means the last export
-is older than the retained stale window; `backup_current` means a recent export
-is recorded in `backup-manifest.json`. `pylon wallet sync --json` returns the
-same redacted status payload after asking the LDK node to sync when it is
-running.
+state, sync timestamps, and the last startup/sync error. Endpoint credentials
+and query strings are redacted before they appear in status, telemetry, or
+receipts. `backup_missing` means no encrypted backup has been exported yet;
+`backup_stale` means the last export is older than the retained stale window;
+`backup_current` means a recent export is recorded in `backup-manifest.json`.
+`pylon wallet sync --json` returns the same redacted status payload after asking
+the LDK node to sync when it is running. `pylon wallet telemetry --json` returns
+the operator support payload for v0.2: health/payable booleans, sync state,
+chain and gossip source labels, balance buckets, channel and liquidity counts,
+backup freshness, warning/error codes, and the redaction policy.
 
 The default wallet recovery model is one phrase, not two. Pylon derives the
 future LDK Node 64-byte node entropy from the existing Pylon identity mnemonic
@@ -1364,6 +1368,7 @@ Inspect the retained wallet status and ledger surfaces:
 cargo pylon-headless wallet status
 cargo pylon-headless wallet sync
 cargo pylon-headless wallet balance
+cargo pylon-headless wallet telemetry
 cargo pylon-headless wallet address
 cargo pylon-headless wallet invoice 21 --description "pylon receive"
 cargo pylon-headless wallet offer --amount-sats 21 --description "pylon offer"

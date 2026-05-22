@@ -117,6 +117,9 @@ pub enum WalletSubcommand {
         yes: bool,
         json: bool,
     },
+    Telemetry {
+        json: bool,
+    },
     History {
         limit: Option<u32>,
         json: bool,
@@ -285,6 +288,97 @@ pub struct WalletHistoryReport {
 pub struct WalletCreditSummaryReport {
     pub runtime: WalletRuntimeSurface,
     pub credits: PylonWalletCreditSummary,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetryReport {
+    pub schema: String,
+    pub generated_at_ms: u64,
+    pub runtime: WalletRuntimeSurface,
+    pub runtime_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_detail: Option<String>,
+    pub node_id: Option<String>,
+    pub health: WalletTelemetryHealth,
+    pub sources: WalletTelemetrySources,
+    pub sync: WalletTelemetrySync,
+    pub balances: WalletBalanceSnapshot,
+    pub channels: WalletTelemetryChannels,
+    pub liquidity: WalletTelemetryLiquidity,
+    pub backup: WalletTelemetryBackup,
+    pub warnings: Vec<WalletTelemetrySignal>,
+    pub errors: Vec<WalletTelemetrySignal>,
+    pub redaction: WalletTelemetryRedaction,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetryHealth {
+    pub state: String,
+    pub payable: bool,
+    pub receive_ready: bool,
+    pub send_ready: bool,
+    pub backup_ready: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetrySources {
+    pub network: String,
+    pub chain_source_kind: String,
+    pub chain_source_url: Option<String>,
+    pub gossip_source_kind: String,
+    pub gossip_source_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetrySync {
+    pub state: String,
+    pub is_running: bool,
+    pub latest_lightning_wallet_sync_timestamp: Option<u64>,
+    pub latest_onchain_wallet_sync_timestamp: Option<u64>,
+    pub latest_rgs_snapshot_timestamp: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetryChannels {
+    pub total_count: usize,
+    pub usable_count: usize,
+    pub ready_count: usize,
+    pub pending_count: usize,
+    pub inactive_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetryLiquidity {
+    pub inbound_sats: u64,
+    pub outbound_sats: u64,
+    pub inbound_bucket: String,
+    pub outbound_bucket: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetryBackup {
+    pub status: String,
+    pub manifest_present: bool,
+    pub artifact_count: usize,
+    pub stale: bool,
+    pub stale_after_ms: u64,
+    pub last_exported_at_ms: Option<u64>,
+    pub last_file_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetrySignal {
+    pub code: String,
+    pub detail: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletTelemetryRedaction {
+    pub policy: String,
+    pub forbidden_secret_classes: Vec<String>,
+    pub endpoint_credentials_redacted: bool,
+    pub raw_channel_state_excluded: bool,
+    pub raw_key_material_excluded: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1615,8 +1709,14 @@ impl LdkNodeWalletRuntime {
             storage_schema_version: WALLET_STORAGE_SCHEMA_VERSION,
             storage_generation: wallet_storage_generation_id(&layout, &self.surface),
             chain_source_kind: self.settings.chain_source_kind.clone(),
-            chain_source_url: self.configured_chain_source_url(),
-            rgs_url: self.settings.rgs_url.clone(),
+            chain_source_url: self
+                .configured_chain_source_url()
+                .map(|url| redact_wallet_telemetry_endpoint(url.as_str())),
+            rgs_url: self
+                .settings
+                .rgs_url
+                .as_deref()
+                .map(redact_wallet_telemetry_endpoint),
             backup_status: backup_summary.status,
             backup_manifest_present: backup_summary.manifest_present,
             backup_artifact_count: backup_summary.artifact_count,
@@ -1637,7 +1737,9 @@ impl LdkNodeWalletRuntime {
             latest_rgs_snapshot_timestamp: node_status
                 .as_ref()
                 .and_then(|status| status.latest_rgs_snapshot_timestamp),
-            last_error: self.last_error()?,
+            last_error: self
+                .last_error()?
+                .map(|error| redact_wallet_secret_text(error.as_str())),
         })
     }
 
@@ -2088,6 +2190,331 @@ fn first_failure_code(error: &str) -> Option<String> {
     Some(code.to_ascii_lowercase())
 }
 
+fn wallet_telemetry_from_status(
+    status: &WalletStatusReport,
+    channels: &[PylonWalletChannelRecord],
+    channel_error: Option<&str>,
+) -> WalletTelemetryReport {
+    let ldk_node = status.ldk_node.as_ref();
+    let node_id = ldk_node.and_then(|node| node.node_id.clone());
+    let inbound_sats = channels
+        .iter()
+        .map(|channel| channel.inbound_sats)
+        .sum::<u64>();
+    let outbound_sats = channels
+        .iter()
+        .map(|channel| channel.outbound_sats)
+        .sum::<u64>();
+    let channel_summary = wallet_telemetry_channel_summary(channels);
+    let backup = wallet_telemetry_backup(status);
+    let sync = wallet_telemetry_sync(status);
+    let errors = wallet_telemetry_errors(status, channel_error);
+    let mut warnings = wallet_telemetry_warnings(status, &channel_summary, &backup, &sync);
+    if let Some(channel_error) = channel_error {
+        warnings.push(WalletTelemetrySignal {
+            code: first_failure_code(channel_error)
+                .unwrap_or_else(|| "wallet_channel_telemetry_unavailable".to_string()),
+            detail: channel_error.to_string(),
+        });
+    }
+    let receive_ready = inbound_sats > 0;
+    let send_ready = outbound_sats > 0 || status.balance.spendable_onchain_sats > 0;
+    let backup_ready = backup.status == "backup_current";
+    let has_error = !errors.is_empty() || status.runtime_status.eq_ignore_ascii_case("error");
+    let payable = status.runtime.runtime_kind == PylonWalletRuntimeKind::LdkNode
+        && sync.is_running
+        && receive_ready
+        && send_ready
+        && !has_error;
+    let health_state = if has_error {
+        "error"
+    } else if payable {
+        "payable"
+    } else if status.runtime.runtime_kind != PylonWalletRuntimeKind::LdkNode {
+        "external"
+    } else if !sync.is_running {
+        "configured_not_running"
+    } else if !receive_ready {
+        "needs_inbound_liquidity"
+    } else {
+        "degraded"
+    };
+    WalletTelemetryReport {
+        schema: "pylon.wallet.telemetry.v1".to_string(),
+        generated_at_ms: now_epoch_ms() as u64,
+        runtime: status.runtime.clone(),
+        runtime_status: status.runtime_status.clone(),
+        runtime_detail: status.runtime_detail.clone(),
+        node_id,
+        health: WalletTelemetryHealth {
+            state: health_state.to_string(),
+            payable,
+            receive_ready,
+            send_ready,
+            backup_ready,
+        },
+        sources: WalletTelemetrySources {
+            network: ldk_node
+                .map(|node| node.network.clone())
+                .unwrap_or_else(|| status.runtime.network.clone()),
+            chain_source_kind: ldk_node
+                .map(|node| node.chain_source_kind.clone())
+                .unwrap_or_else(|| "not_applicable".to_string()),
+            chain_source_url: ldk_node.and_then(|node| node.chain_source_url.clone()),
+            gossip_source_kind: ldk_node
+                .and_then(|node| node.rgs_url.as_ref())
+                .map(|_| "rgs".to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            gossip_source_url: ldk_node.and_then(|node| node.rgs_url.clone()),
+        },
+        sync,
+        balances: status.balance.clone(),
+        channels: channel_summary,
+        liquidity: WalletTelemetryLiquidity {
+            inbound_sats,
+            outbound_sats,
+            inbound_bucket: wallet_liquidity_bucket(inbound_sats),
+            outbound_bucket: wallet_liquidity_bucket(outbound_sats),
+        },
+        backup,
+        warnings,
+        errors,
+        redaction: WalletTelemetryRedaction {
+            policy: "pylon.wallet.telemetry.redacted.v1".to_string(),
+            forbidden_secret_classes: vec![
+                "recovery_phrase".to_string(),
+                "node_entropy".to_string(),
+                "private_key".to_string(),
+                "payment_preimage".to_string(),
+                "bearer_token".to_string(),
+                "raw_channel_state".to_string(),
+            ],
+            endpoint_credentials_redacted: true,
+            raw_channel_state_excluded: true,
+            raw_key_material_excluded: true,
+        },
+    }
+}
+
+fn wallet_telemetry_channel_summary(
+    channels: &[PylonWalletChannelRecord],
+) -> WalletTelemetryChannels {
+    let mut summary = WalletTelemetryChannels {
+        total_count: channels.len(),
+        ..WalletTelemetryChannels::default()
+    };
+    for channel in channels {
+        match channel.status.as_str() {
+            "usable" => summary.usable_count = summary.usable_count.saturating_add(1),
+            "ready" => summary.ready_count = summary.ready_count.saturating_add(1),
+            "pending" => summary.pending_count = summary.pending_count.saturating_add(1),
+            _ => summary.inactive_count = summary.inactive_count.saturating_add(1),
+        }
+    }
+    summary
+}
+
+fn wallet_telemetry_backup(status: &WalletStatusReport) -> WalletTelemetryBackup {
+    status
+        .ldk_node
+        .as_ref()
+        .map(|node| WalletTelemetryBackup {
+            status: node.backup_status.clone(),
+            manifest_present: node.backup_manifest_present,
+            artifact_count: node.backup_artifact_count,
+            stale: node.backup_stale,
+            stale_after_ms: node.backup_stale_after_ms,
+            last_exported_at_ms: node.last_backup_exported_at_ms,
+            last_file_digest: node.last_backup_file_digest.clone(),
+        })
+        .unwrap_or_else(|| WalletTelemetryBackup {
+            status: "not_applicable".to_string(),
+            ..WalletTelemetryBackup::default()
+        })
+}
+
+fn wallet_telemetry_sync(status: &WalletStatusReport) -> WalletTelemetrySync {
+    let Some(node) = status.ldk_node.as_ref() else {
+        return WalletTelemetrySync {
+            state: "not_applicable".to_string(),
+            ..WalletTelemetrySync::default()
+        };
+    };
+    let has_any_sync = node.latest_lightning_wallet_sync_timestamp.is_some()
+        || node.latest_onchain_wallet_sync_timestamp.is_some()
+        || node.latest_rgs_snapshot_timestamp.is_some();
+    let state = if !node.is_running {
+        "not_running"
+    } else if has_any_sync {
+        "synced"
+    } else {
+        "running_not_synced"
+    };
+    WalletTelemetrySync {
+        state: state.to_string(),
+        is_running: node.is_running,
+        latest_lightning_wallet_sync_timestamp: node.latest_lightning_wallet_sync_timestamp,
+        latest_onchain_wallet_sync_timestamp: node.latest_onchain_wallet_sync_timestamp,
+        latest_rgs_snapshot_timestamp: node.latest_rgs_snapshot_timestamp,
+    }
+}
+
+fn wallet_telemetry_errors(
+    status: &WalletStatusReport,
+    channel_error: Option<&str>,
+) -> Vec<WalletTelemetrySignal> {
+    let mut errors = Vec::new();
+    if let Some(error) = status
+        .ldk_node
+        .as_ref()
+        .and_then(|node| node.last_error.as_ref())
+    {
+        errors.push(WalletTelemetrySignal {
+            code: first_failure_code(error).unwrap_or_else(|| "wallet_runtime_error".to_string()),
+            detail: error.clone(),
+        });
+    } else if status.runtime_status.eq_ignore_ascii_case("error") {
+        let detail = status
+            .runtime_detail
+            .as_deref()
+            .unwrap_or("wallet runtime reported error");
+        errors.push(WalletTelemetrySignal {
+            code: first_failure_code(detail).unwrap_or_else(|| "wallet_runtime_error".to_string()),
+            detail: detail.to_string(),
+        });
+    }
+    if let Some(channel_error) = channel_error {
+        errors.push(WalletTelemetrySignal {
+            code: first_failure_code(channel_error)
+                .unwrap_or_else(|| "wallet_channel_telemetry_unavailable".to_string()),
+            detail: channel_error.to_string(),
+        });
+    }
+    errors
+}
+
+fn wallet_telemetry_warnings(
+    status: &WalletStatusReport,
+    channels: &WalletTelemetryChannels,
+    backup: &WalletTelemetryBackup,
+    sync: &WalletTelemetrySync,
+) -> Vec<WalletTelemetrySignal> {
+    let mut warnings = Vec::new();
+    if let Some(node) = status.ldk_node.as_ref() {
+        if node.chain_source_kind == "none" {
+            warnings.push(WalletTelemetrySignal {
+                code: "wallet_chain_source_not_configured".to_string(),
+                detail: "set wallet_chain_source_kind=esplora or electrum before expecting live Lightning sync".to_string(),
+            });
+        }
+        if !sync.is_running {
+            warnings.push(WalletTelemetrySignal {
+                code: "wallet_node_not_running".to_string(),
+                detail: "wallet node is configured but not connected to a chain source".to_string(),
+            });
+        }
+        if backup.stale || backup.status != "backup_current" {
+            warnings.push(WalletTelemetrySignal {
+                code: backup.status.clone(),
+                detail: "export an encrypted wallet backup to refresh recoverable Lightning state"
+                    .to_string(),
+            });
+        }
+        if channels.total_count == 0 {
+            warnings.push(WalletTelemetrySignal {
+                code: "wallet_no_channels".to_string(),
+                detail: "no Lightning channels are visible, so routed receive/send readiness depends on channel setup".to_string(),
+            });
+        }
+    }
+    warnings
+}
+
+fn wallet_liquidity_bucket(sats: u64) -> String {
+    match sats {
+        0 => "zero",
+        1..=9_999 => "low",
+        10_000..=999_999 => "ready",
+        _ => "large",
+    }
+    .to_string()
+}
+
+fn redact_wallet_telemetry_endpoint(value: &str) -> String {
+    let mut redacted = value.trim().to_string();
+    let endpoint = redacted.clone();
+    if let Some((prefix, rest)) = endpoint.split_once("://") {
+        let slash_index = rest.find('/').unwrap_or(rest.len());
+        let authority = &rest[..slash_index];
+        if let Some((_userinfo, host)) = authority.rsplit_once('@') {
+            redacted = format!("{prefix}://[redacted]@{host}{}", &rest[slash_index..]);
+        }
+    }
+    if let Some((base, _query)) = redacted.split_once('?') {
+        redacted = format!("{base}?[redacted]");
+    }
+    if let Some((base, _fragment)) = redacted.split_once('#') {
+        redacted = format!("{base}#[redacted]");
+    }
+    redacted
+}
+
+fn redact_wallet_secret_text(value: &str) -> String {
+    let mut redacted = value.to_string();
+    for marker in [
+        "access_token=",
+        "api_key=",
+        "auth_token=",
+        "bearer=",
+        "entropy=",
+        "mnemonic=",
+        "preimage=",
+        "private_key=",
+        "refresh_token=",
+        "secret=",
+        "token=",
+    ] {
+        redacted = redact_assignment_marker(redacted.as_str(), marker);
+    }
+    redacted = redact_bearer_token(redacted.as_str());
+    redacted
+}
+
+fn redact_assignment_marker(value: &str, marker: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(index) = rest.to_ascii_lowercase().find(marker) {
+        output.push_str(&rest[..index]);
+        output.push_str(marker);
+        output.push_str("[redacted]");
+        let value_start = index + marker.len();
+        let value_tail = &rest[value_start..];
+        let value_end = value_tail
+            .find(|character: char| matches!(character, '&' | ' ' | '\n' | '\r' | '\t' | ',' | ';'))
+            .unwrap_or(value_tail.len());
+        rest = &value_tail[value_end..];
+    }
+    output.push_str(rest);
+    output
+}
+
+fn redact_bearer_token(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(index) = rest.to_ascii_lowercase().find("bearer ") {
+        output.push_str(&rest[..index]);
+        output.push_str("Bearer [redacted]");
+        let value_start = index + "bearer ".len();
+        let value_tail = &rest[value_start..];
+        let value_end = value_tail
+            .find(|character: char| matches!(character, ' ' | '\n' | '\r' | '\t' | ',' | ';'))
+            .unwrap_or(value_tail.len());
+        rest = &value_tail[value_end..];
+    }
+    output.push_str(rest);
+    output
+}
+
 fn failed_wallet_payment_record(
     payment_request: &str,
     amount_sats: Option<u64>,
@@ -2107,7 +2534,7 @@ fn failed_wallet_payment_record(
             .unwrap_or_default(),
         fees_sats: 0,
         method: infer_wallet_payment_method(payment_request),
-        description: Some(error.to_string()),
+        description: Some(redact_wallet_secret_text(error)),
         invoice: Some(payment_request.to_string()),
         payment_hash: None,
         txid: None,
@@ -2279,6 +2706,13 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
             }
             Ok(render_wallet_pay_report(&report))
         }
+        WalletSubcommand::Telemetry { json } => {
+            let report = load_wallet_telemetry_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_telemetry_report(&report))
+        }
         WalletSubcommand::History { limit, json } => {
             let report = load_wallet_history_report(config_path, *limit).await?;
             if *json {
@@ -2400,6 +2834,9 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
         }),
         "balance" => Ok(WalletSubcommand::Balance {
             json: parse_json_only(args, start_index + 2, "wallet balance")?,
+        }),
+        "telemetry" => Ok(WalletSubcommand::Telemetry {
+            json: parse_json_only(args, start_index + 2, "wallet telemetry")?,
         }),
         "address" => Ok(WalletSubcommand::Address {
             json: parse_json_only(args, start_index + 2, "wallet address")?,
@@ -2980,6 +3417,35 @@ pub async fn load_wallet_credit_summary_report(
     })
 }
 
+pub async fn load_wallet_telemetry_report(config_path: &Path) -> Result<WalletTelemetryReport> {
+    let context = prepare_wallet_context(config_path)?;
+    let ledger = load_ledger(config_path)?;
+    context.runtime.start()?;
+    let status = context.runtime.sync(&ledger, false)?;
+    let mut channel_error = None;
+    let channels = match context.runtime.list_channels() {
+        Ok(channels) => channels,
+        Err(error) => {
+            channel_error = Some(redact_wallet_secret_text(error.to_string().as_str()));
+            Vec::new()
+        }
+    };
+    sync_wallet_status(
+        config_path,
+        &status.runtime,
+        status.runtime_status.as_str(),
+        status.runtime_detail.clone(),
+        Some(&status.balance),
+        None,
+        status.recent_payments.as_slice(),
+    )?;
+    Ok(wallet_telemetry_from_status(
+        &status,
+        channels.as_slice(),
+        channel_error.as_deref(),
+    ))
+}
+
 pub async fn load_wallet_entropy_status_report(config_path: &Path) -> Result<WalletEntropyReport> {
     let context = prepare_wallet_context(config_path)?;
     Ok(WalletEntropyReport {
@@ -3471,6 +3937,69 @@ pub fn render_wallet_pay_report(report: &WalletPayReport) -> String {
     }
     if let Some(invoice) = report.payment.invoice.as_deref() {
         lines.push(format!("invoice: {invoice}"));
+    }
+    lines.join("\n")
+}
+
+pub fn render_wallet_telemetry_report(report: &WalletTelemetryReport) -> String {
+    let mut lines = vec![
+        format!("schema: {}", report.schema),
+        format!("generated_at_ms: {}", report.generated_at_ms),
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("runtime_status: {}", report.runtime_status),
+        format!("health_state: {}", report.health.state),
+        format!("payable: {}", report.health.payable),
+        format!("receive_ready: {}", report.health.receive_ready),
+        format!("send_ready: {}", report.health.send_ready),
+        format!("backup_ready: {}", report.health.backup_ready),
+        format!("network: {}", report.sources.network),
+        format!("chain_source_kind: {}", report.sources.chain_source_kind),
+        format!("gossip_source_kind: {}", report.sources.gossip_source_kind),
+        format!("sync_state: {}", report.sync.state),
+        format!("is_running: {}", report.sync.is_running),
+        format!("total_sats: {}", report.balances.total_sats),
+        format!("lightning_sats: {}", report.balances.lightning_sats),
+        format!("onchain_sats: {}", report.balances.onchain_sats),
+        format!("channels_total: {}", report.channels.total_count),
+        format!("channels_usable: {}", report.channels.usable_count),
+        format!("inbound_liquidity_sats: {}", report.liquidity.inbound_sats),
+        format!(
+            "outbound_liquidity_sats: {}",
+            report.liquidity.outbound_sats
+        ),
+        format!(
+            "inbound_liquidity_bucket: {}",
+            report.liquidity.inbound_bucket
+        ),
+        format!(
+            "outbound_liquidity_bucket: {}",
+            report.liquidity.outbound_bucket
+        ),
+        format!("backup_status: {}", report.backup.status),
+        format!("backup_stale: {}", report.backup.stale),
+        format!("warnings: {}", report.warnings.len()),
+        format!("errors: {}", report.errors.len()),
+        format!("redaction_policy: {}", report.redaction.policy),
+    ];
+    if let Some(detail) = report.runtime_detail.as_deref() {
+        lines.push(format!("runtime_detail: {detail}"));
+    }
+    if let Some(node_id) = report.node_id.as_deref() {
+        lines.push(format!("ldk_node_id: {node_id}"));
+    }
+    if let Some(url) = report.sources.chain_source_url.as_deref() {
+        lines.push(format!("chain_source_url: {url}"));
+    }
+    if let Some(url) = report.sources.gossip_source_url.as_deref() {
+        lines.push(format!("gossip_source_url: {url}"));
+    }
+    for warning in &report.warnings {
+        lines.push(format!("warning_code: {}", warning.code));
+        lines.push(format!("warning_detail: {}", warning.detail));
+    }
+    for error in &report.errors {
+        lines.push(format!("error_code: {}", error.code));
+        lines.push(format!("error_detail: {}", error.detail));
     }
     lines.join("\n")
 }
@@ -4695,6 +5224,7 @@ fn sync_wallet_status(
     bitcoin_address: Option<&str>,
     payments: &[PylonWalletPaymentRecord],
 ) -> Result<()> {
+    let runtime_detail = runtime_detail.map(|detail| redact_wallet_secret_text(detail.as_str()));
     mutate_ledger(config_path, |ledger| {
         let detail_for_receipt = runtime_detail.clone();
         ledger.wallet.runtime_status = Some(runtime_status.to_string());
@@ -4739,6 +5269,7 @@ fn sync_wallet_error(
     runtime: &WalletRuntimeSurface,
     error: String,
 ) -> Result<()> {
+    let error = redact_wallet_secret_text(error.as_str());
     mutate_ledger(config_path, |ledger| {
         ledger.wallet.runtime_status = Some("error".to_string());
         ledger.wallet.last_error = Some(error);
@@ -4762,9 +5293,10 @@ mod tests {
         PylonWalletRuntime, PylonWalletRuntimeKind, WalletLockOwner, WalletSubcommand,
         compute_wallet_credit_summary, create_wallet_address_report, create_wallet_invoice_report,
         create_wallet_offer_report, load_wallet_history_report, load_wallet_node_entropy_material,
-        load_wallet_status_report, parse_wallet_command, pay_wallet_invoice_report,
-        render_wallet_entropy_report, render_wallet_status_report, run_wallet_command,
-        wallet_node_entropy_domain_label,
+        load_wallet_status_report, load_wallet_telemetry_report, parse_wallet_command,
+        pay_wallet_invoice_report, redact_wallet_secret_text, redact_wallet_telemetry_endpoint,
+        render_wallet_entropy_report, render_wallet_status_report, render_wallet_telemetry_report,
+        run_wallet_command, wallet_node_entropy_domain_label,
     };
     use crate::PylonWalletPaymentRecord;
 
@@ -4793,6 +5325,18 @@ mod tests {
             )
             .expect("wallet sync should parse"),
             WalletSubcommand::Sync { json: true }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("telemetry"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet telemetry should parse"),
+            WalletSubcommand::Telemetry { json: true }
         );
         assert_eq!(
             parse_wallet_command(
@@ -5187,6 +5731,96 @@ mod tests {
                 "sha256:c68d883864e25cd51b513586b985900041d6631d82114bce7d0802848779a601"
             )
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn wallet_telemetry_reports_health_and_redacts_secret_material() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::LdkNode;
+        config.wallet_network = "regtest".to_string();
+        config.wallet_chain_source_kind = "none".to_string();
+        config.wallet_rgs_url =
+            Some("https://rgs.example.invalid/snapshot?access_token=rgs-secret".to_string());
+        std::fs::write(config.identity_path.as_path(), format!("{phrase}\n"))
+            .expect("write identity phrase");
+        #[cfg(unix)]
+        super::set_private_file_permissions(config.identity_path.as_path(), "identity mnemonic")
+            .expect("set identity permissions");
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let report = load_wallet_telemetry_report(config_path.as_path())
+            .await
+            .expect("wallet telemetry");
+        let rendered = render_wallet_telemetry_report(&report);
+        let json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Telemetry { json: true },
+        )
+        .await
+        .expect("wallet telemetry json");
+
+        assert_eq!(report.schema, "pylon.wallet.telemetry.v1");
+        assert_eq!(report.runtime.runtime_kind, PylonWalletRuntimeKind::LdkNode);
+        assert_eq!(report.sources.chain_source_kind, "none");
+        assert_eq!(report.sources.gossip_source_kind, "rgs");
+        assert_eq!(
+            report.sources.gossip_source_url.as_deref(),
+            Some("https://rgs.example.invalid/snapshot?[redacted]")
+        );
+        assert_eq!(report.backup.status, "backup_missing");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "wallet_chain_source_not_configured")
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "backup_missing")
+        );
+        assert!(rendered.contains("health_state: configured_not_running"));
+        assert!(json.contains("\"policy\": \"pylon.wallet.telemetry.redacted.v1\""));
+        for secret in [
+            phrase,
+            "rgs-secret",
+            "private-key-secret",
+            "payment-preimage-secret",
+            "raw-channel-state-secret",
+            "4a416223cc838ebf2cf4d73a1dce0cf8e737efed66885313d08b3adccb4657cfeb237528c9fb18c4fe080dc2d4027215f7bb92bf79b34ccab7ca6cda4af3a522",
+        ] {
+            assert!(!rendered.contains(secret), "rendered leaked {secret}");
+            assert!(!json.contains(secret), "json leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn wallet_telemetry_redacts_endpoint_credentials_and_error_tokens() {
+        let endpoint = redact_wallet_telemetry_endpoint(
+            "https://alice:secret@example.invalid/rgs?token=abc#frag",
+        );
+        assert_eq!(
+            endpoint,
+            "https://[redacted]@example.invalid/rgs?[redacted]"
+        );
+
+        let detail = redact_wallet_secret_text(
+            "ldk failed with token=abc private_key=def preimage=ghi mnemonic=legal winner Bearer xyz",
+        );
+        assert!(!detail.contains("abc"));
+        assert!(!detail.contains("def"));
+        assert!(!detail.contains("ghi"));
+        assert!(!detail.contains("legal"));
+        assert!(!detail.contains("xyz"));
+        assert!(detail.contains("token=[redacted]"));
+        assert!(detail.contains("private_key=[redacted]"));
+        assert!(detail.contains("preimage=[redacted]"));
+        assert!(detail.contains("mnemonic=[redacted]"));
+        assert!(detail.contains("Bearer [redacted]"));
     }
 
     #[tokio::test(flavor = "current_thread")]

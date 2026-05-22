@@ -9587,6 +9587,7 @@ Commands:\n\
   wallet status [--json]\n\
   wallet sync [--json]\n\
   wallet balance [--json]\n\
+  wallet telemetry [--json]\n\
   wallet address [--json]\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json]\n\
@@ -51330,6 +51331,18 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     command: WalletSubcommand::Status { json: true },
                 },
             "wallet status should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "telemetry".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::Telemetry { json: true },
+                },
+            "wallet telemetry should parse with --json",
         )?;
         ensure(
             parse_args(vec![
