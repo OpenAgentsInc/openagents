@@ -5184,6 +5184,18 @@ async fn render_wallet_command_output(
             let report = pylon::load_wallet_history_report(config_path, *limit).await?;
             Ok(render_wallet_history_output(&report))
         }
+        pylon::WalletSubcommand::EntropyStatus { .. } => {
+            let report = pylon::load_wallet_entropy_status_report(config_path).await?;
+            Ok(pylon::render_wallet_entropy_report(&report))
+        }
+        pylon::WalletSubcommand::EntropyExport { path, .. } => {
+            let report = pylon::export_wallet_entropy_report(config_path, path.as_path()).await?;
+            Ok(pylon::render_wallet_entropy_report(&report))
+        }
+        pylon::WalletSubcommand::EntropyImport { path, .. } => {
+            let report = pylon::import_wallet_entropy_report(config_path, path.as_path()).await?;
+            Ok(pylon::render_wallet_entropy_report(&report))
+        }
     }
 }
 
@@ -5951,6 +5963,9 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
         pylon::WalletSubcommand::Invoice { .. } => "Wallet Invoice",
         pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
         pylon::WalletSubcommand::History { .. } => "Wallet History",
+        pylon::WalletSubcommand::EntropyStatus { .. } => "Wallet Entropy",
+        pylon::WalletSubcommand::EntropyExport { .. } => "Wallet Entropy Export",
+        pylon::WalletSubcommand::EntropyImport { .. } => "Wallet Entropy Import",
     }
     .to_string()
 }

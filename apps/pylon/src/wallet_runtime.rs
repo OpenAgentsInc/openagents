@@ -1,17 +1,25 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
+use bip39::{Language, Mnemonic};
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{
     PylonLedger, PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
     ensure_local_setup, load_ledger, mutate_ledger, now_epoch_ms,
 };
 
+type HmacSha256 = Hmac<Sha256>;
+
 const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon uses an external LDK-compatible payout destination. Configure payout_destination for earnings.";
 const MOCK_WALLET_DETAIL: &str = "Pylon is using the deterministic mock wallet runtime for tests.";
 const LDK_NODE_UNAVAILABLE_DETAIL: &str =
     "Pylon ldk_node wallet runtime is unavailable until the LDK node integration lands.";
+const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1";
+const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
+const WALLET_NODE_ENTROPY_HKDF_SALT: &[u8] = b"openagents-pylon/ldk-node/node-entropy";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -75,6 +83,17 @@ pub enum WalletSubcommand {
         limit: Option<u32>,
         json: bool,
     },
+    EntropyStatus {
+        json: bool,
+    },
+    EntropyExport {
+        path: PathBuf,
+        json: bool,
+    },
+    EntropyImport {
+        path: PathBuf,
+        json: bool,
+    },
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -85,6 +104,23 @@ pub struct WalletRuntimeSurface {
     pub storage_dir: String,
     pub api_key_env: Option<String>,
     pub api_key_source: String,
+    pub node_entropy: WalletNodeEntropyMetadata,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletNodeEntropyMetadata {
+    pub source: String,
+    pub derivation_version: String,
+    pub domain_label: String,
+    pub digest: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub override_path: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct WalletNodeEntropyMaterial {
+    bytes: [u8; 64],
+    metadata: WalletNodeEntropyMetadata,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -149,6 +185,15 @@ pub struct WalletHistoryReport {
 pub struct WalletCreditSummaryReport {
     pub runtime: WalletRuntimeSurface,
     pub credits: PylonWalletCreditSummary,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WalletEntropyReport {
+    pub runtime: WalletRuntimeSurface,
+    pub operation: String,
+    pub metadata: WalletNodeEntropyMetadata,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -729,6 +774,27 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
             }
             Ok(render_wallet_history_report(&report))
         }
+        WalletSubcommand::EntropyStatus { json } => {
+            let report = load_wallet_entropy_status_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_entropy_report(&report))
+        }
+        WalletSubcommand::EntropyExport { path, json } => {
+            let report = export_wallet_entropy_report(config_path, path.as_path()).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_entropy_report(&report))
+        }
+        WalletSubcommand::EntropyImport { path, json } => {
+            let report = import_wallet_entropy_report(config_path, path.as_path()).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_entropy_report(&report))
+        }
     }
 }
 
@@ -871,7 +937,38 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
             }
             Ok(WalletSubcommand::History { limit, json })
         }
+        "entropy" => parse_wallet_entropy_command(args, start_index + 2),
         other => bail!("unsupported wallet subcommand '{other}'"),
+    }
+}
+
+fn parse_wallet_entropy_command(args: &[String], start_index: usize) -> Result<WalletSubcommand> {
+    let action = args
+        .get(start_index)
+        .ok_or_else(|| anyhow!("missing wallet entropy action"))?;
+    match action.as_str() {
+        "status" => Ok(WalletSubcommand::EntropyStatus {
+            json: parse_json_only(args, start_index + 1, "wallet entropy status")?,
+        }),
+        "export" => {
+            let path = args
+                .get(start_index + 1)
+                .ok_or_else(|| anyhow!("missing <path> for wallet entropy export"))?;
+            Ok(WalletSubcommand::EntropyExport {
+                path: PathBuf::from(path),
+                json: parse_json_only(args, start_index + 2, "wallet entropy export")?,
+            })
+        }
+        "import" => {
+            let path = args
+                .get(start_index + 1)
+                .ok_or_else(|| anyhow!("missing <path> for wallet entropy import"))?;
+            Ok(WalletSubcommand::EntropyImport {
+                path: PathBuf::from(path),
+                json: parse_json_only(args, start_index + 2, "wallet entropy import")?,
+            })
+        }
+        other => bail!("unsupported wallet entropy action '{other}'"),
     }
 }
 
@@ -993,6 +1090,49 @@ pub async fn load_wallet_credit_summary_report(
     })
 }
 
+pub async fn load_wallet_entropy_status_report(config_path: &Path) -> Result<WalletEntropyReport> {
+    let context = prepare_wallet_context(config_path)?;
+    Ok(WalletEntropyReport {
+        runtime: context.runtime.surface().clone(),
+        operation: "status".to_string(),
+        metadata: context.runtime.surface().node_entropy.clone(),
+        path: None,
+    })
+}
+
+pub async fn export_wallet_entropy_report(
+    config_path: &Path,
+    export_path: &Path,
+) -> Result<WalletEntropyReport> {
+    let config = ensure_local_setup(config_path)?;
+    let material = load_wallet_node_entropy_material(&config)?;
+    write_explicit_wallet_entropy(export_path, &material.bytes)?;
+    let context = prepare_wallet_context(config_path)?;
+    Ok(WalletEntropyReport {
+        runtime: context.runtime.surface().clone(),
+        operation: "export".to_string(),
+        metadata: material.metadata,
+        path: Some(export_path.display().to_string()),
+    })
+}
+
+pub async fn import_wallet_entropy_report(
+    config_path: &Path,
+    import_path: &Path,
+) -> Result<WalletEntropyReport> {
+    let mut config = ensure_local_setup(config_path)?;
+    let _ = read_explicit_wallet_entropy(import_path)?;
+    config.wallet_entropy_override_path = Some(import_path.to_path_buf());
+    crate::save_config(config_path, &config)?;
+    let context = prepare_wallet_context(config_path)?;
+    Ok(WalletEntropyReport {
+        runtime: context.runtime.surface().clone(),
+        operation: "import".to_string(),
+        metadata: context.runtime.surface().node_entropy.clone(),
+        path: Some(import_path.display().to_string()),
+    })
+}
+
 pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
     let mut lines = vec![
         format!("runtime_kind: {}", report.runtime.runtime_kind),
@@ -1001,6 +1141,19 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
         format!("api_key_source: {}", report.runtime.api_key_source),
         format!("identity_path: {}", report.runtime.identity_path),
         format!("storage_dir: {}", report.runtime.storage_dir),
+        format!("entropy_source: {}", report.runtime.node_entropy.source),
+        format!(
+            "entropy_derivation_version: {}",
+            report.runtime.node_entropy.derivation_version
+        ),
+        format!(
+            "entropy_domain_label: {}",
+            report.runtime.node_entropy.domain_label
+        ),
+        format!(
+            "node_entropy_digest: {}",
+            report.runtime.node_entropy.digest
+        ),
         format!("credited_sats: {}", report.balance.credited_sats),
         format!("lightning_sats: {}", report.balance.lightning_sats),
         format!("onchain_sats: {}", report.balance.onchain_sats),
@@ -1125,6 +1278,28 @@ pub fn render_wallet_history_report(report: &WalletHistoryReport) -> String {
     lines.join("\n")
 }
 
+pub fn render_wallet_entropy_report(report: &WalletEntropyReport) -> String {
+    let mut lines = vec![
+        format!("operation: {}", report.operation),
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("network: {}", report.runtime.network),
+        format!("entropy_source: {}", report.metadata.source),
+        format!(
+            "entropy_derivation_version: {}",
+            report.metadata.derivation_version
+        ),
+        format!("entropy_domain_label: {}", report.metadata.domain_label),
+        format!("node_entropy_digest: {}", report.metadata.digest),
+    ];
+    if let Some(path) = report.path.as_deref() {
+        lines.push(format!("path: {path}"));
+    }
+    if let Some(path) = report.metadata.override_path.as_deref() {
+        lines.push(format!("override_path: {path}"));
+    }
+    lines.join("\n")
+}
+
 fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<bool> {
     let mut json = false;
     let mut index = start_index;
@@ -1140,9 +1315,140 @@ fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<b
     Ok(json)
 }
 
+fn load_wallet_node_entropy_material(
+    config: &crate::PylonConfig,
+) -> Result<WalletNodeEntropyMaterial> {
+    if let Some(path) = config.wallet_entropy_override_path.as_ref() {
+        let bytes = read_explicit_wallet_entropy(path.as_path())?;
+        return Ok(WalletNodeEntropyMaterial {
+            metadata: WalletNodeEntropyMetadata {
+                source: "explicit_entropy_file".to_string(),
+                derivation_version: "explicit-node-entropy-v1".to_string(),
+                domain_label: wallet_node_entropy_domain_label(config.wallet_network.as_str()),
+                digest: node_entropy_digest(&bytes),
+                override_path: Some(path.display().to_string()),
+            },
+            bytes,
+        });
+    }
+
+    let mnemonic = std::fs::read_to_string(config.identity_path.as_path())
+        .with_context(|| {
+            format!(
+                "failed to read identity mnemonic {}",
+                config.identity_path.display()
+            )
+        })?
+        .trim()
+        .to_string();
+    if mnemonic.is_empty() {
+        bail!(
+            "identity mnemonic is empty at {}",
+            config.identity_path.display()
+        );
+    }
+    let parsed = Mnemonic::parse_in_normalized(Language::English, mnemonic.as_str())
+        .context("failed to parse identity mnemonic for wallet entropy derivation")?;
+    let seed = parsed.to_seed("");
+    let domain_label = wallet_node_entropy_domain_label(config.wallet_network.as_str());
+    let bytes = hkdf_sha256_64(seed.as_slice(), domain_label.as_bytes());
+    Ok(WalletNodeEntropyMaterial {
+        metadata: WalletNodeEntropyMetadata {
+            source: "identity_mnemonic_hkdf".to_string(),
+            derivation_version: WALLET_NODE_ENTROPY_DERIVATION_VERSION.to_string(),
+            domain_label,
+            digest: node_entropy_digest(&bytes),
+            override_path: None,
+        },
+        bytes,
+    })
+}
+
+fn wallet_node_entropy_domain_label(network: &str) -> String {
+    format!(
+        "{WALLET_NODE_ENTROPY_LABEL_PREFIX}/{}",
+        network.trim().to_ascii_lowercase()
+    )
+}
+
+fn hkdf_sha256_64(input_key_material: &[u8], info: &[u8]) -> [u8; 64] {
+    let mut extract =
+        HmacSha256::new_from_slice(WALLET_NODE_ENTROPY_HKDF_SALT).expect("HKDF salt is valid");
+    extract.update(input_key_material);
+    let pseudorandom_key = extract.finalize().into_bytes();
+
+    let mut output = [0u8; 64];
+    let mut previous = Vec::<u8>::new();
+    let mut written = 0usize;
+    for counter in 1u8..=2 {
+        let mut expand = HmacSha256::new_from_slice(pseudorandom_key.as_slice())
+            .expect("HKDF pseudorandom key is valid");
+        expand.update(previous.as_slice());
+        expand.update(info);
+        expand.update(&[counter]);
+        previous = expand.finalize().into_bytes().to_vec();
+        let remaining = output.len() - written;
+        let copy_len = remaining.min(previous.len());
+        output[written..written + copy_len].copy_from_slice(&previous[..copy_len]);
+        written += copy_len;
+        if written == output.len() {
+            break;
+        }
+    }
+    output
+}
+
+fn node_entropy_digest(bytes: &[u8; 64]) -> String {
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
+}
+
+fn read_explicit_wallet_entropy(path: &Path) -> Result<[u8; 64]> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read wallet entropy file {}", path.display()))?;
+    let normalized = raw
+        .trim()
+        .strip_prefix("hex:")
+        .unwrap_or_else(|| raw.trim())
+        .trim();
+    let decoded = hex::decode(normalized)
+        .with_context(|| format!("wallet entropy file {} is not hex", path.display()))?;
+    if decoded.len() != 64 {
+        bail!(
+            "wallet entropy file {} must contain exactly 64 bytes encoded as hex",
+            path.display()
+        );
+    }
+    let mut bytes = [0u8; 64];
+    bytes.copy_from_slice(decoded.as_slice());
+    Ok(bytes)
+}
+
+fn write_explicit_wallet_entropy(path: &Path, bytes: &[u8; 64]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create wallet entropy dir {}", parent.display()))?;
+    }
+    std::fs::write(path, format!("{}\n", hex::encode(bytes)))
+        .with_context(|| format!("failed to write wallet entropy file {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).with_context(
+            || {
+                format!(
+                    "failed to set wallet entropy permissions {}",
+                    path.display()
+                )
+            },
+        )?;
+    }
+    Ok(())
+}
+
 fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
     let config = ensure_local_setup(config_path)?;
     let runtime_kind = config.wallet_runtime_kind;
+    let node_entropy = load_wallet_node_entropy_material(&config)?;
     let surface = WalletRuntimeSurface {
         runtime_kind,
         network: config.wallet_network.clone(),
@@ -1154,6 +1460,7 @@ fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
             .as_deref()
             .map(|name| format!("env:{name}"))
             .unwrap_or_else(|| format!("none:{}", runtime_kind.id())),
+        node_entropy: node_entropy.metadata,
     };
     let runtime = match runtime_kind {
         PylonWalletRuntimeKind::ExternalTarget => {
@@ -1224,6 +1531,11 @@ fn sync_wallet_status(
         ledger.wallet.runtime_status = Some(runtime_status.to_string());
         ledger.wallet.last_error = runtime_detail;
         ledger.wallet.network = Some(runtime.network.clone());
+        ledger.wallet.entropy_source = Some(runtime.node_entropy.source.clone());
+        ledger.wallet.entropy_derivation_version =
+            Some(runtime.node_entropy.derivation_version.clone());
+        ledger.wallet.entropy_domain_label = Some(runtime.node_entropy.domain_label.clone());
+        ledger.wallet.node_entropy_digest = Some(runtime.node_entropy.digest.clone());
         if let Some(balance) = balance {
             ledger.wallet.last_balance_sats = Some(balance.total_sats);
             ledger.wallet.last_balance_at_ms = Some(now_epoch_ms() as u64);
@@ -1257,17 +1569,27 @@ fn sync_wallet_error(
         ledger.wallet.runtime_status = Some("error".to_string());
         ledger.wallet.last_error = Some(error);
         ledger.wallet.network = Some(runtime.network.clone());
+        ledger.wallet.entropy_source = Some(runtime.node_entropy.source.clone());
+        ledger.wallet.entropy_derivation_version =
+            Some(runtime.node_entropy.derivation_version.clone());
+        ledger.wallet.entropy_domain_label = Some(runtime.node_entropy.domain_label.clone());
+        ledger.wallet.node_entropy_digest = Some(runtime.node_entropy.digest.clone());
         Ok(())
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use bip39::{Language, Mnemonic};
+
     use super::{
         PylonWalletRuntimeKind, WalletSubcommand, compute_wallet_credit_summary,
         create_wallet_address_report, create_wallet_invoice_report, load_wallet_history_report,
-        load_wallet_status_report, parse_wallet_command, pay_wallet_invoice_report,
-        run_wallet_command,
+        load_wallet_node_entropy_material, load_wallet_status_report, parse_wallet_command,
+        pay_wallet_invoice_report, render_wallet_entropy_report, render_wallet_status_report,
+        run_wallet_command, wallet_node_entropy_domain_label,
     };
     use crate::PylonWalletPaymentRecord;
 
@@ -1299,6 +1621,23 @@ mod tests {
             WalletSubcommand::History {
                 limit: Some(5),
                 json: false,
+            }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("entropy"),
+                    String::from("export"),
+                    String::from("/tmp/pylon-entropy.hex"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet entropy export should parse"),
+            WalletSubcommand::EntropyExport {
+                path: PathBuf::from("/tmp/pylon-entropy.hex"),
+                json: true,
             }
         );
     }
@@ -1424,6 +1763,150 @@ mod tests {
         .await
         .expect("status json");
         assert!(json.contains("\"runtime_kind\": \"external_target\""));
+    }
+
+    #[test]
+    fn identity_mnemonic_derives_stable_domain_separated_node_entropy() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let identity_path = temp_dir.path().join("identity.mnemonic");
+        std::fs::write(
+            identity_path.as_path(),
+            "legal winner thank year wave sausage worth useful legal winner thank yellow\n",
+        )
+        .expect("write identity phrase");
+        let mut config = crate::default_config(temp_dir.path());
+        config.identity_path = identity_path;
+        config.wallet_network = "regtest".to_string();
+
+        let material = load_wallet_node_entropy_material(&config).expect("derive entropy");
+        assert_eq!(
+            hex::encode(material.bytes),
+            "4a416223cc838ebf2cf4d73a1dce0cf8e737efed66885313d08b3adccb4657cfeb237528c9fb18c4fe080dc2d4027215f7bb92bf79b34ccab7ca6cda4af3a522"
+        );
+        assert_eq!(
+            material.metadata.digest,
+            "sha256:c68d883864e25cd51b513586b985900041d6631d82114bce7d0802848779a601"
+        );
+        assert_eq!(material.metadata.source, "identity_mnemonic_hkdf");
+        assert_eq!(
+            material.metadata.derivation_version,
+            "pylon-ldk-node-entropy-v1"
+        );
+        assert_eq!(
+            material.metadata.domain_label,
+            "openagents-pylon/ldk-node/v1/regtest"
+        );
+
+        let mut mainnet = config.clone();
+        mainnet.wallet_network = "mainnet".to_string();
+        let mainnet_material =
+            load_wallet_node_entropy_material(&mainnet).expect("derive mainnet entropy");
+        assert_ne!(material.bytes, mainnet_material.bytes);
+        assert_ne!(material.metadata.digest, mainnet_material.metadata.digest);
+
+        let alternate = super::hkdf_sha256_64(
+            Mnemonic::parse_in_normalized(
+                Language::English,
+                "legal winner thank year wave sausage worth useful legal winner thank yellow",
+            )
+            .expect("parse mnemonic")
+            .to_seed("")
+            .as_slice(),
+            b"openagents-pylon/ldk-node/v2/regtest",
+        );
+        assert_ne!(material.bytes, alternate);
+        assert_ne!(
+            wallet_node_entropy_domain_label("regtest"),
+            "openagents-pylon/ldk-node/v2/regtest"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn wallet_status_redacts_mnemonic_and_raw_node_entropy() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_network = "regtest".to_string();
+        std::fs::write(config.identity_path.as_path(), format!("{phrase}\n"))
+            .expect("write identity phrase");
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let status = load_wallet_status_report(config_path.as_path())
+            .await
+            .expect("status");
+        let rendered = render_wallet_status_report(&status);
+        let json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Status { json: true },
+        )
+        .await
+        .expect("status json");
+        let raw_entropy_hex = "4a416223cc838ebf2cf4d73a1dce0cf8e737efed66885313d08b3adccb4657cfeb237528c9fb18c4fe080dc2d4027215f7bb92bf79b34ccab7ca6cda4af3a522";
+
+        assert!(rendered.contains("entropy_derivation_version: pylon-ldk-node-entropy-v1"));
+        assert!(json.contains("\"derivation_version\": \"pylon-ldk-node-entropy-v1\""));
+        let ledger = crate::load_ledger(config_path.as_path()).expect("ledger");
+        assert_eq!(
+            ledger.wallet.entropy_derivation_version.as_deref(),
+            Some("pylon-ldk-node-entropy-v1")
+        );
+        assert_eq!(
+            ledger.wallet.node_entropy_digest.as_deref(),
+            Some("sha256:c68d883864e25cd51b513586b985900041d6631d82114bce7d0802848779a601")
+        );
+        assert!(!rendered.contains(phrase));
+        assert!(!json.contains(phrase));
+        assert!(!rendered.contains(raw_entropy_hex));
+        assert!(!json.contains(raw_entropy_hex));
+        assert!(
+            json.contains(
+                "sha256:c68d883864e25cd51b513586b985900041d6631d82114bce7d0802848779a601"
+            )
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn entropy_import_export_is_explicit_and_redacted() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let export_path = temp_dir.path().join("wallet-entropy.hex");
+        let mut config = crate::default_config(temp_dir.path());
+        config.wallet_network = "regtest".to_string();
+        std::fs::write(
+            config.identity_path.as_path(),
+            "legal winner thank year wave sausage worth useful legal winner thank yellow\n",
+        )
+        .expect("write identity phrase");
+        crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let export =
+            super::export_wallet_entropy_report(config_path.as_path(), export_path.as_path())
+                .await
+                .expect("export entropy");
+        let exported_hex = std::fs::read_to_string(export_path.as_path())
+            .expect("read exported entropy")
+            .trim()
+            .to_string();
+        assert_eq!(exported_hex.len(), 128);
+        let rendered_export = render_wallet_entropy_report(&export);
+        assert!(!rendered_export.contains(exported_hex.as_str()));
+        assert!(rendered_export.contains("node_entropy_digest: sha256:"));
+
+        let import =
+            super::import_wallet_entropy_report(config_path.as_path(), export_path.as_path())
+                .await
+                .expect("import entropy");
+        assert_eq!(import.metadata.source, "explicit_entropy_file");
+        assert_eq!(
+            import.metadata.override_path,
+            Some(export_path.display().to_string())
+        );
+        let saved = crate::load_config(config_path.as_path()).expect("load config");
+        assert_eq!(
+            saved.wallet_entropy_override_path.as_deref(),
+            Some(export_path.as_path())
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

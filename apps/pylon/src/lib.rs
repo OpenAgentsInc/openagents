@@ -154,13 +154,16 @@ pub use nip90_runtime::{
 };
 pub use wallet_runtime::{
     PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
-    WalletBalanceSnapshot, WalletCreditSummaryReport, WalletHistoryReport, WalletInvoiceReport,
-    WalletOfferReport, WalletPayReport, WalletRuntimeSurface, WalletStatusReport, WalletSubcommand,
-    create_wallet_address_report, create_wallet_invoice_report, load_wallet_balance_status_report,
-    load_wallet_credit_summary_report, load_wallet_history_report, load_wallet_status_report,
+    WalletBalanceSnapshot, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
+    WalletInvoiceReport, WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport,
+    WalletRuntimeSurface, WalletStatusReport, WalletSubcommand, create_wallet_address_report,
+    create_wallet_invoice_report, export_wallet_entropy_report, import_wallet_entropy_report,
+    load_wallet_balance_status_report, load_wallet_credit_summary_report,
+    load_wallet_entropy_status_report, load_wallet_history_report, load_wallet_status_report,
     parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
-    render_wallet_balance_report, render_wallet_history_report, render_wallet_invoice_report,
-    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
+    render_wallet_balance_report, render_wallet_entropy_report, render_wallet_history_report,
+    render_wallet_invoice_report, render_wallet_pay_report, render_wallet_status_report,
+    run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -393,6 +396,8 @@ pub struct PylonConfig {
     pub wallet_runtime_kind: PylonWalletRuntimeKind,
     #[serde(default = "default_wallet_api_key_env")]
     pub wallet_api_key_env: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_entropy_override_path: Option<PathBuf>,
     #[serde(default = "default_buyer_auto_pay_enabled")]
     pub buyer_auto_pay_enabled: bool,
     pub wallet_storage_dir: PathBuf,
@@ -453,6 +458,7 @@ struct PylonPublicConfig {
     wallet_network: String,
     wallet_runtime_kind: PylonWalletRuntimeKind,
     wallet_api_key_env: Option<String>,
+    wallet_entropy_override_path: Option<PathBuf>,
     buyer_auto_pay_enabled: bool,
     wallet_storage_dir: PathBuf,
     local_gemma_base_url: String,
@@ -480,6 +486,7 @@ impl From<&PylonConfig> for PylonPublicConfig {
             wallet_network: value.wallet_network.clone(),
             wallet_runtime_kind: value.wallet_runtime_kind,
             wallet_api_key_env: value.wallet_api_key_env.clone(),
+            wallet_entropy_override_path: value.wallet_entropy_override_path.clone(),
             buyer_auto_pay_enabled: value.buyer_auto_pay_enabled,
             wallet_storage_dir: value.wallet_storage_dir.clone(),
             local_gemma_base_url: value.local_gemma_base_url.clone(),
@@ -9552,6 +9559,7 @@ Commands:\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
+  wallet entropy status|export <path>|import <path> [--json]\n\
   training status [--json]\n\
   training artifacts inspect [--json]\n\
   training artifacts gc [--json]\n\
@@ -23226,6 +23234,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         wallet_network: default_wallet_network(),
         wallet_runtime_kind: default_wallet_runtime_kind(),
         wallet_api_key_env: default_wallet_api_key_env(),
+        wallet_entropy_override_path: None,
         buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
         wallet_storage_dir: base_dir.join("wallet"),
         local_gemma_base_url: "http://127.0.0.1:11434".to_string(),
@@ -31837,6 +31846,13 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
                 Some(value.trim().to_string())
             };
         }
+        "wallet_entropy_override_path" => {
+            next.wallet_entropy_override_path = if value.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(value.trim()))
+            };
+        }
         "buyer_auto_pay_enabled" => {
             next.buyer_auto_pay_enabled = parse_bool(value)?;
         }
@@ -34615,6 +34631,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         apply_config_set(&mut config, "wallet_network", "ldk-external")?;
         apply_config_set(&mut config, "wallet_runtime_kind", "mock")?;
         apply_config_set(&mut config, "wallet_api_key_env", "PYLON_LDK_TARGET_KEY")?;
+        apply_config_set(
+            &mut config,
+            "wallet_entropy_override_path",
+            "/tmp/pylon-wallet-entropy.hex",
+        )?;
         apply_config_set(&mut config, "wallet_storage_dir", "/tmp/pylon-wallet")?;
         ensure(
             config.wallet_network == "ldk-external",
@@ -34627,6 +34648,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ensure(
             config.wallet_api_key_env.as_deref() == Some("PYLON_LDK_TARGET_KEY"),
             "config set should update wallet_api_key_env",
+        )?;
+        ensure(
+            config.wallet_entropy_override_path.as_deref()
+                == Some(std::path::Path::new("/tmp/pylon-wallet-entropy.hex")),
+            "config set should update wallet_entropy_override_path",
         )?;
         ensure(
             config.wallet_storage_dir == std::path::Path::new("/tmp/pylon-wallet"),
@@ -50807,6 +50833,23 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     },
                 },
             "wallet history should parse with a limit",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "entropy".to_string(),
+                "export".to_string(),
+                "/tmp/pylon-entropy.hex".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::EntropyExport {
+                        path: PathBuf::from("/tmp/pylon-entropy.hex"),
+                        json: true,
+                    },
+                },
+            "wallet entropy export should parse with path and json",
         )
     }
 

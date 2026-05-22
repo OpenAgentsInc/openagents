@@ -1154,6 +1154,18 @@ tests. `wallet_runtime_kind=ldk_node` is a placeholder that reports
 `unavailable` until the real LDK node runtime lands. `pylon wallet status
 --json` reports the selected kind as `runtime.runtime_kind`.
 
+The default wallet recovery model is one phrase, not two. Pylon derives the
+future LDK Node 64-byte node entropy from the existing Pylon identity mnemonic
+with HKDF-SHA256 over the BIP39 seed and the domain label
+`openagents-pylon/ldk-node/v1/<wallet_network>`. Status output only exposes the
+redacted derivation metadata: source, version, domain label, and a SHA-256
+digest of the derived entropy. It must not print the raw mnemonic or raw node
+entropy. Advanced operators may use `wallet_entropy_override_path` or `pylon
+wallet entropy import|export <path>` for explicit entropy files, but that is an
+escape hatch rather than the normal setup path. Directly sharing the mnemonic
+bytes without HKDF domain separation is compatibility-only and should not be the
+default.
+
 For operator accounting, the bounded retained `ledger.wallet.payments` list is
 not the final source of truth for built-in LDK wallet balances. Current v0.2
 status and earnings projections should be read as retained ledger/accounting
