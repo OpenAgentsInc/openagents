@@ -161,21 +161,24 @@ pub use wallet_harness::{
 pub use wallet_runtime::{
     PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
     WalletBackupExportReport, WalletBackupInspectReport, WalletBackupPublicManifest,
-    WalletBalanceSnapshot, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
-    WalletInvoiceReport, WalletLdkNodeStatus, WalletLockOwner, WalletLockReport,
-    WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRestoreReport,
-    WalletRuntimeSurface, WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand,
-    clear_wallet_lock_report, create_wallet_address_report, create_wallet_invoice_report,
-    create_wallet_offer_report, export_wallet_backup_report, export_wallet_entropy_report,
-    import_wallet_entropy_report, inspect_wallet_backup_report, inspect_wallet_lock_report,
-    load_wallet_balance_status_report, load_wallet_credit_summary_report,
+    WalletBalanceSnapshot, WalletChannelsReport, WalletCreditSummaryReport, WalletEntropyReport,
+    WalletHistoryReport, WalletInvoiceReport, WalletLdkNodeStatus, WalletLightningReadiness,
+    WalletLockOwner, WalletLockReport, WalletNodeEntropyMetadata, WalletOfferReport,
+    WalletPayReport, WalletRestoreReport, WalletRuntimeSurface, WalletStatusReport,
+    WalletStorageLayoutReport, WalletSubcommand, WalletTelemetryReport, clear_wallet_lock_report,
+    create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
+    export_wallet_backup_report, export_wallet_entropy_report, import_wallet_entropy_report,
+    inspect_wallet_backup_report, inspect_wallet_lock_report, load_wallet_balance_status_report,
+    load_wallet_channels_report, load_wallet_credit_summary_report,
     load_wallet_entropy_status_report, load_wallet_history_report, load_wallet_status_report,
-    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
-    render_wallet_backup_export_report, render_wallet_backup_inspect_report,
-    render_wallet_balance_report, render_wallet_entropy_report, render_wallet_history_report,
+    load_wallet_telemetry_report, parse_wallet_command, pay_wallet_invoice_report,
+    render_wallet_address_report, render_wallet_backup_export_report,
+    render_wallet_backup_inspect_report, render_wallet_balance_report,
+    render_wallet_channels_report, render_wallet_entropy_report, render_wallet_history_report,
     render_wallet_invoice_report, render_wallet_lock_report, render_wallet_offer_report,
     render_wallet_pay_report, render_wallet_restore_report, render_wallet_status_report,
-    restore_wallet_backup_report, restore_wallet_phrase_report, run_wallet_command,
+    render_wallet_telemetry_report, restore_wallet_backup_report, restore_wallet_phrase_report,
+    run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -390,6 +393,9 @@ impl Default for PylonProbeConfig {
 pub struct PylonConfig {
     pub schema_version: u32,
     pub node_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_payout_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_destination: Option<String>,
     pub identity_path: PathBuf,
     pub admin_db_path: PathBuf,
@@ -467,7 +473,8 @@ impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
 struct PylonPublicConfig {
     schema_version: u32,
     node_label: String,
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     identity_path: PathBuf,
     admin_db_path: PathBuf,
     admin_listen_addr: String,
@@ -499,7 +506,8 @@ impl From<&PylonConfig> for PylonPublicConfig {
         Self {
             schema_version: value.schema_version,
             node_label: value.node_label.clone(),
-            payout_destination: value.payout_destination.clone(),
+            external_payout_target: configured_external_payout_target(value),
+            external_payout_target_warning: external_payout_target_warning(value),
             identity_path: value.identity_path.clone(),
             admin_db_path: value.admin_db_path.clone(),
             admin_listen_addr: value.admin_listen_addr.clone(),
@@ -2591,7 +2599,8 @@ struct InitReport {
     ledger_path: String,
     identity_path: String,
     npub: String,
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     admin_listen_addr: String,
 }
 
@@ -2599,7 +2608,8 @@ struct InitReport {
 struct DoctorReport {
     config_path: String,
     node_label: String,
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
@@ -3238,7 +3248,8 @@ pub struct RelayActivityReport {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct PayoutReport {
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     wallet_balance: WalletBalanceSnapshot,
     earnings_lifetime_sats: u64,
     earnings_sats_today: u64,
@@ -3249,7 +3260,7 @@ pub struct PayoutReport {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PayoutWithdrawalReport {
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
     payment_id: String,
     status: String,
     amount_sats: u64,
@@ -9076,7 +9087,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 ledger_path: ledger_path.display().to_string(),
                 identity_path: config.identity_path.display().to_string(),
                 npub: identity.npub,
-                payout_destination: config.payout_destination.clone(),
+                external_payout_target: configured_external_payout_target(&config),
+                external_payout_target_warning: external_payout_target_warning(&config),
                 admin_listen_addr: config.admin_listen_addr.clone(),
             })?))
         }
@@ -9091,7 +9103,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             Ok(Some(serde_json::to_string_pretty(&DoctorReport {
                 config_path: cli.config_path.display().to_string(),
                 node_label: config.node_label.clone(),
-                payout_destination: config.payout_destination.clone(),
+                external_payout_target: configured_external_payout_target(&config),
+                external_payout_target_warning: external_payout_target_warning(&config),
                 identity: identity_metadata(&identity, config.node_label.as_str()),
                 availability,
                 products,
@@ -9531,10 +9544,12 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
 
 pub fn usage() -> &'static str {
     "Standalone Pylon CLI.\n\
-Bare interactive `pylon` opens the terminal UI, which starts and supervises the earning worker.\n\
-Noninteractive `pylon` and `pylon --config-path <path>` run the worker loop directly.\n\
-Use `pylon-tui` or `pylon tui` to open the terminal UI explicitly.\n\
-Use the commands below for explicit provider control and inspection.\n\
+	Bare interactive `pylon` opens the terminal UI, which starts and supervises the earning worker.\n\
+	Noninteractive `pylon` and `pylon --config-path <path>` run the worker loop directly.\n\
+	Use `pylon-tui` or `pylon tui` to open the terminal UI explicitly.\n\
+	Default paid-work setup uses the built-in LDK wallet; start with `wallet status --json`, `wallet channels --json`, and `wallet backup export`.\n\
+	Advanced migration only: `config set external_payout_target <lightning_target>` overrides wallet-generated Nexus registration.\n\
+	Use the commands below for explicit provider control and inspection.\n\
 From this repo, run them with `cargo pylon-headless <command>`, the `pylon` binary directly, or the `oa` binary for proof-runtime commands.\n\
 \n\
 Usage: pylon|oa [--max-cores <n>|--max-threads <n>] [--config-path <path>] [command]\n\
@@ -10892,7 +10907,11 @@ async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
         && config.wallet_runtime_kind != PylonWalletRuntimeKind::LdkNode
     {
         eprintln!(
-            "pylon: no wallet-owned registration target is available; paid-work eligibility requires wallet_runtime_kind=ldk_node or an explicit payout_destination override"
+            "pylon: no wallet-owned registration target is available; use wallet_runtime_kind=ldk_node or set external_payout_target only as an advanced migration override"
+        );
+    } else if configured_external_payout_target(&config).is_some() {
+        eprintln!(
+            "pylon: using advanced external_payout_target override; built-in LDK wallet registration is the default for new nodes"
         );
     }
     let status = apply_control_locally(&config, ProviderControlAction::Online).await?;
@@ -23251,6 +23270,8 @@ fn normalize_legacy_config_value(value: &mut Value) {
         return;
     };
 
+    normalize_legacy_object_key(object, "external_payout_target", &["payout_destination"]);
+
     if !object.contains_key("local_gemma_base_url") {
         if let Some(legacy_value) = object.remove("legacy_runtime_base_url") {
             object.insert("local_gemma_base_url".to_string(), legacy_value);
@@ -23310,6 +23331,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
     PylonConfig {
         schema_version: 1,
         node_label: "pylon".to_string(),
+        external_payout_target: None,
         payout_destination: None,
         identity_path: base_dir.join("identity.mnemonic"),
         admin_db_path: base_dir.join("provider-admin.sqlite"),
@@ -24174,8 +24196,8 @@ fn build_snapshot_from_availability(
                     value: Value::String(config.node_label.clone()),
                 },
                 ProviderJsonEntry {
-                    key: "payout_destination".to_string(),
-                    value: json!(config.payout_destination),
+                    key: "external_payout_target".to_string(),
+                    value: json!(configured_external_payout_target(config)),
                 },
                 ProviderJsonEntry {
                     key: "local_gemma_base_url".to_string(),
@@ -24186,6 +24208,12 @@ fn build_snapshot_from_availability(
                     value: json!(config.local_gemma_preferred_model),
                 },
             ];
+            if let Some(warning) = external_payout_target_warning(config) {
+                entries.push(ProviderJsonEntry {
+                    key: "external_payout_target_warning".to_string(),
+                    value: Value::String(warning),
+                });
+            }
             if let Ok(training_status) = load_training_status_report_with_config(
                 config.admin_db_path.as_path(),
                 config,
@@ -24541,7 +24569,28 @@ fn local_training_build_digest() -> String {
         .clone()
 }
 
+fn configured_external_payout_target(config: &PylonConfig) -> Option<String> {
+    config
+        .external_payout_target
+        .as_ref()
+        .or(config.payout_destination.as_ref())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn external_payout_target_warning(config: &PylonConfig) -> Option<String> {
+    configured_external_payout_target(config).map(|_| {
+        "advanced_external_payout_target_override: built-in LDK wallet registration remains the default for new Pylon nodes"
+            .to_string()
+    })
+}
+
 fn training_settlement_destination(config: &PylonConfig) -> Option<String> {
+    configured_external_payout_target(config)
+}
+
+#[cfg(test)]
+fn legacy_payout_destination_value(config: &PylonConfig) -> Option<String> {
     config
         .payout_destination
         .as_ref()
@@ -25958,7 +26007,8 @@ pub async fn load_payout_report(config_path: &Path, limit: Option<u32>) -> Resul
     }
     let earnings = earnings.earnings.unwrap_or_default();
     Ok(PayoutReport {
-        payout_destination: config.payout_destination,
+        external_payout_target: configured_external_payout_target(&config),
+        external_payout_target_warning: external_payout_target_warning(&config),
         wallet_balance,
         earnings_lifetime_sats: earnings.lifetime_sats,
         earnings_sats_today: earnings.sats_today,
@@ -25974,7 +26024,7 @@ pub async fn run_payout_withdrawal(
     amount_sats: Option<u64>,
 ) -> Result<PayoutWithdrawalReport> {
     let config = load_or_create_config(config_path)?;
-    let payout_destination = config.payout_destination.clone();
+    let external_payout_target = configured_external_payout_target(&config);
     let payment_request = payment_request.trim().to_string();
     if payment_request.is_empty() {
         bail!("payout withdraw requires a payment request");
@@ -25995,7 +26045,7 @@ pub async fn run_payout_withdrawal(
                     amount_sats: Some(report.payment.amount_sats),
                     fees_sats: Some(report.payment.fees_sats),
                     invoice: Some(payment_request.clone()),
-                    payout_destination: payout_destination.clone(),
+                    payout_destination: external_payout_target.clone(),
                     detail: Some(detail.clone()),
                     created_at_ms: now_epoch_ms() as u64,
                     updated_at_ms: now_epoch_ms() as u64,
@@ -26012,7 +26062,7 @@ pub async fn run_payout_withdrawal(
                 Ok(())
             })?;
             Ok(PayoutWithdrawalReport {
-                payout_destination,
+                external_payout_target,
                 payment_id: report.payment_id,
                 status: report.payment.status,
                 amount_sats: report.payment.amount_sats,
@@ -26033,7 +26083,7 @@ pub async fn run_payout_withdrawal(
                     amount_sats,
                     fees_sats: None,
                     invoice: Some(payment_request.clone()),
-                    payout_destination: payout_destination.clone(),
+                    payout_destination: external_payout_target.clone(),
                     detail: Some(error_string.clone()),
                     created_at_ms: now_epoch_ms() as u64,
                     updated_at_ms: now_epoch_ms() as u64,
@@ -26725,8 +26775,8 @@ pub fn render_earnings_report(report: &EarningsReport) -> String {
 pub fn render_payout_report(report: &PayoutReport) -> String {
     let mut lines = vec![
         format!(
-            "payout_destination: {}",
-            report.payout_destination.as_deref().unwrap_or("none")
+            "external_payout_target: {}",
+            report.external_payout_target.as_deref().unwrap_or("none")
         ),
         format!("wallet_total_sats: {}", report.wallet_balance.total_sats),
         format!(
@@ -26743,6 +26793,9 @@ pub fn render_payout_report(report: &PayoutReport) -> String {
         format!("last_job_result: {}", report.last_job_result),
         format!("withdrawals: {}", report.withdrawals.len()),
     ];
+    if let Some(warning) = report.external_payout_target_warning.as_deref() {
+        lines.push(format!("warning: {warning}"));
+    }
     for payout in &report.withdrawals {
         lines.push(String::new());
         lines.push(format!("payout_id: {}", payout.payout_id));
@@ -26779,8 +26832,8 @@ pub fn render_payout_report(report: &PayoutReport) -> String {
 pub fn render_payout_withdrawal_report(report: &PayoutWithdrawalReport) -> String {
     let mut lines = vec![
         format!(
-            "payout_destination: {}",
-            report.payout_destination.as_deref().unwrap_or("none")
+            "external_payout_target: {}",
+            report.external_payout_target.as_deref().unwrap_or("none")
         ),
         format!("payment_id: {}", report.payment_id),
         format!("status: {}", report.status),
@@ -27648,7 +27701,7 @@ async fn build_provider_wallet_registration_target_with_options(
     let status = load_wallet_status_report(config_path).await?;
     if status.runtime.runtime_kind != PylonWalletRuntimeKind::LdkNode {
         bail!(
-            "wallet-generated payout-target registration requires wallet_runtime_kind=ldk_node or an explicit payout_destination override"
+            "wallet-generated payout-target registration requires wallet_runtime_kind=ldk_node or an explicit external_payout_target override"
         );
     }
     let ldk_node = status.ldk_node.as_ref().ok_or_else(|| {
@@ -32161,12 +32214,13 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
     let mut next = config.clone();
     match key {
         "node_label" => next.node_label = value.to_string(),
-        "payout_destination" => {
-            next.payout_destination = if value.trim().is_empty() {
+        "external_payout_target" | "payout_destination" => {
+            next.external_payout_target = if value.trim().is_empty() {
                 None
             } else {
-                Some(value.to_string())
+                Some(value.trim().to_string())
             };
+            next.payout_destination = None;
         }
         "admin_listen_addr" => next.admin_listen_addr = value.to_string(),
         "nexus_control_base_url" => {
@@ -32440,20 +32494,20 @@ mod tests {
         add_configured_relay, apply_config_set, apply_control_command,
         apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
         build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
-        default_config, derive_adapter_training_contributor_availability,
-        derive_training_capability_envelope_v2, derive_training_capability_tier_profile,
-        detect_availability, download_gemma_model_from_base_url,
-        download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
-        drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
-        ensure_training_contribution_bridge_bundles, garbage_collect_training_download_cache,
-        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
-        inspect_psionic_train_runtime_surface_at,
+        configured_external_payout_target, default_config,
+        derive_adapter_training_contributor_availability, derive_training_capability_envelope_v2,
+        derive_training_capability_tier_profile, detect_availability,
+        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
+        drain_training_supervisor, drive_training_supervisor_once, ensure_identity,
+        ensure_no_conflicting_training_assignment, ensure_training_contribution_bridge_bundles,
+        garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
+        gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
-        inspect_training_retained_contribution_artifacts, inventory_rows, load_backend_report,
-        load_earnings_report, load_inventory_report, load_jobs_report,
-        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
-        load_or_create_training_runtime_state, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect,
+        inspect_training_retained_contribution_artifacts, inventory_rows,
+        legacy_payout_destination_value, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
+        load_or_create_config, load_or_create_training_runtime_state, load_product_report,
+        load_receipts_report, load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
         local_training_release_id, maybe_retire_released_terminal_worker_runtime,
         maybe_start_training_supervisor_from_retained_assignment, merge_ledger_earnings,
@@ -34854,12 +34908,18 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
     }
 
     #[test]
-    fn config_set_updates_payout_destination() -> Result<(), Box<dyn std::error::Error>> {
+    fn config_set_updates_external_payout_target() -> Result<(), Box<dyn std::error::Error>> {
         let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
-        apply_config_set(&mut config, "payout_destination", "lnurlp:alice")?;
+        apply_config_set(&mut config, "external_payout_target", "lnurlp:alice")?;
         ensure(
-            config.payout_destination.as_deref() == Some("lnurlp:alice"),
-            "config set should update payout destination",
+            config.external_payout_target.as_deref() == Some("lnurlp:alice"),
+            "config set should update the advanced external payout target",
+        )?;
+        apply_config_set(&mut config, "payout_destination", "lnurlp:bob")?;
+        ensure(
+            config.external_payout_target.as_deref() == Some("lnurlp:bob")
+                && config.payout_destination.is_none(),
+            "legacy payout_destination config set should migrate into external_payout_target",
         )
     }
 
@@ -48868,6 +48928,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "missing nexus_control_base_url should hydrate from the default config",
         )?;
         ensure(
+            configured_external_payout_target(&config).is_none(),
+            "new configs should default to the built-in wallet path without an external payout override",
+        )?;
+        ensure(
             config.inventory_controls.local_gemma_inference_enabled
                 && !config.inventory_controls.apple_fm_inference_enabled
                 && !config.inventory_controls.apple_fm_adapter_hosting_enabled,
@@ -48914,6 +48978,42 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             !config.inventory_controls.local_gemma_inference_enabled
                 && !config.inventory_controls.local_gemma_embeddings_enabled,
             "legacy gpt_oss inventory flags should hydrate local Gemma controls",
+        )
+    }
+
+    #[test]
+    fn load_config_migrates_legacy_payout_destination_to_external_target()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        std::fs::write(
+            config_path.as_path(),
+            r#"{
+  "schema_version": 1,
+  "node_label": "pylon",
+  "payout_destination": "lnurlp:legacy-provider",
+  "identity_path": "/tmp/pylon-test/identity.mnemonic",
+  "admin_db_path": "/tmp/pylon-test/provider-admin.sqlite",
+  "admin_listen_addr": "127.0.0.1:9468",
+  "wallet_storage_dir": "/tmp/pylon-test/wallet"
+}"#,
+        )?;
+
+        let config = super::load_config(config_path.as_path())?;
+        ensure(
+            config.external_payout_target.as_deref() == Some("lnurlp:legacy-provider")
+                && legacy_payout_destination_value(&config).is_none()
+                && configured_external_payout_target(&config).as_deref()
+                    == Some("lnurlp:legacy-provider"),
+            "legacy payout_destination should migrate into the explicit external_payout_target override",
+        )?;
+
+        let rendered = render_public_config_json(&config)?;
+        ensure(
+            rendered.contains("\"external_payout_target\": \"lnurlp:legacy-provider\"")
+                && rendered.contains("advanced_external_payout_target_override")
+                && !rendered.contains("\"payout_destination\""),
+            "config show should expose the new external_payout_target key and omit the legacy key",
         )
     }
 
@@ -49318,7 +49418,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         config.nexus_control_base_url = nexus_base_url;
         config.wallet_runtime_kind = PylonWalletRuntimeKind::ExternalTarget;
         config.wallet_network = "ldk-external".to_string();
-        config.payout_destination = Some("lno1pylonalice".to_string());
+        config.external_payout_target = Some("lno1pylonalice".to_string());
         save_config(config_path.as_path(), &config)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
         let client = provider_presence_client()?;
@@ -49343,7 +49443,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 && requests[1].1["wallet_network"] == "ldk-external"
                 && requests[1].1["wallet_registration_mode"] == "external_override"
                 && requests[1].1.get("wallet_node_id").is_none(),
-            "external payout_destination registration should remain explicit and visibly non-default",
+            "external_payout_target registration should remain explicit and visibly non-default",
         )
     }
 
@@ -52847,7 +52947,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
-        config.payout_destination = Some("lnurlp:provider".to_string());
+        config.external_payout_target = Some("lnurlp:provider".to_string());
         save_config(config_path.as_path(), &config)?;
         mutate_ledger(config_path.as_path(), |ledger| {
             ledger.wallet.last_balance_sats = Some(200);
@@ -52857,14 +52957,14 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let report =
             super::run_payout_withdrawal(config_path.as_path(), "lnbc21withdraw", Some(21)).await?;
         ensure(
-            report.payout_destination.as_deref() == Some("lnurlp:provider")
+            report.external_payout_target.as_deref() == Some("lnurlp:provider")
                 && report.payment_id == "payment-withdraw-001"
                 && report.status == "completed"
                 && report.amount_sats == 21
                 && report.fees_sats == 1
                 && report.invoice == "lnbc21withdraw"
                 && report.post_balance.total_sats == 144,
-            "payout withdrawal should surface the retained destination and payment outcome",
+            "payout withdrawal should surface the external override and payment outcome",
         )?;
 
         let ledger = load_ledger(config_path.as_path())?;

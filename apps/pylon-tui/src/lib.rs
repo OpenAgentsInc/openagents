@@ -2135,11 +2135,9 @@ impl AppShell {
             lines.push("Total balance: unavailable".to_string());
         }
         lines.push(String::new());
-        lines.push(
-            "Payout target: external LDK-compatible target for current paid work".to_string(),
-        );
-        lines.push("Local invoice creation: planned built-in LDK wallet work".to_string());
-        lines.push("Local sends: planned built-in LDK wallet work".to_string());
+        lines.push("Settlement: built-in LDK wallet registers the payment target".to_string());
+        lines.push("Invoices: wallet invoice <sats> after inbound liquidity is ready".to_string());
+        lines.push("Local sends: wallet pay <invoice> --yes".to_string());
         lines.push("Recovery: /wallet recovery".to_string());
         lines
     }
@@ -2188,10 +2186,8 @@ impl AppShell {
                 "Wallet Withdraw",
                 vec![
                     "Local wallet sends land with the built-in LDK wallet runtime.".to_string(),
-                    "Current v0.2 paid-work settlement uses the registered external LDK target."
-                        .to_string(),
-                    "Planned usage: /wallet withdraw <lightning_invoice> [--amount-sats <n>]"
-                        .to_string(),
+                    "External targets are advanced migration overrides only.".to_string(),
+                    "Usage: /wallet withdraw <lightning_invoice> [--amount-sats <n>]".to_string(),
                 ],
             );
             return;
@@ -3017,7 +3013,7 @@ impl AppShell {
             ("Ctrl+C", "quit"),
             ("status", "online while this stays open"),
             ("jobs", "admin-triggered homework runs land automatically"),
-            ("wallet", "external LDK payout target for now"),
+            ("wallet", "built-in LDK wallet"),
         ]
     }
 
@@ -3526,11 +3522,11 @@ impl AppShell {
             .map(|balance| format_sats(balance.total_sats))
             .unwrap_or_else(|| "unavailable".to_string());
         let receive_hint = if self.wallet_surface.payout_destination.is_some() {
-            "External LDK payout target ready".to_string()
+            "Advanced external payout override active".to_string()
         } else if self.wallet_surface.bitcoin_address.is_some() {
-            "Retained Bitcoin address cached".to_string()
+            "Built-in LDK wallet address ready".to_string()
         } else {
-            "Set payout_destination for paid-work eligibility".to_string()
+            "Run wallet status and export an encrypted backup".to_string()
         };
         let mut lines = vec![
             Line::from(vec![
@@ -3544,7 +3540,7 @@ impl AppShell {
             Line::from(vec![key_label("Receive"), Span::raw(receive_hint)]),
             Line::from(vec![
                 key_label("Local sends"),
-                Span::raw("planned built-in LDK wallet work"),
+                Span::raw("built-in LDK wallet guarded by --yes"),
             ]),
         ];
         if let Some(last_paid) = self.latest_wallet_receive_summary() {
@@ -3562,26 +3558,22 @@ impl AppShell {
             .payout_destination
             .as_deref()
             .map(abbreviate_wallet_value)
-            .unwrap_or_else(|| "Set payout_destination to an LDK-compatible target".to_string());
+            .unwrap_or_else(|| "Built-in wallet registration is the default".to_string());
         let bitcoin_address = self
             .wallet_surface
             .bitcoin_address
             .as_deref()
             .map(abbreviate_wallet_value)
-            .unwrap_or_else(|| {
-                "Local wallet address unavailable until LDK runtime lands".to_string()
-            });
+            .unwrap_or_else(|| "Run wallet address after the LDK runtime opens".to_string());
         let fresh_invoice = self
             .wallet_surface
             .latest_invoice
             .as_ref()
             .map(|invoice| format!("{} ready", format_sats(invoice.amount_sats)))
-            .unwrap_or_else(|| {
-                "Local invoice creation is planned built-in LDK wallet work".to_string()
-            });
+            .unwrap_or_else(|| "Run wallet invoice after inbound liquidity is ready".to_string());
         vec![
             Line::from(vec![
-                key_label("Payout destination"),
+                key_label("External override"),
                 Span::raw(payout_destination),
             ]),
             Line::from(vec![
@@ -3590,7 +3582,7 @@ impl AppShell {
             ]),
             Line::from(vec![key_label("Fresh invoice"), Span::raw(fresh_invoice)]),
             Line::from(
-                "[TIP] Current v0.2 settlement uses the registered external LDK target."
+                "[TIP] Current v0.2 settlement registers a wallet-owned target by default."
                     .to_string(),
             ),
         ]
@@ -3613,15 +3605,15 @@ impl AppShell {
         vec![
             Line::from(vec![
                 key_label("Withdraw"),
-                Span::raw("planned: /wallet withdraw <lightning_invoice>"),
+                Span::raw("/wallet withdraw <lightning_invoice>"),
             ]),
             Line::from(vec![
                 key_label("Direct pay"),
-                Span::raw("planned: /wallet pay <lightning_invoice>"),
+                Span::raw("/wallet pay <lightning_invoice>"),
             ]),
             Line::from(vec![key_label("Recent flow"), Span::raw(recent_flow)]),
             Line::from(
-                "[TIP] Current v0.2 pays the registered external LDK target; local sends land with built-in wallet work."
+                "[TIP] Current v0.2 uses the built-in LDK wallet by default; external targets are migration overrides."
                     .to_string(),
             ),
         ]
@@ -4555,7 +4547,7 @@ Controls:\n\
   Ctrl+C   quit\n\
   Keep this window open to stay eligible for admin-triggered homework jobs.\n\
   The TUI starts and supervises the local earning worker automatically.\n\
-  Payouts currently require a registered external LDK target.\n"
+  Payouts use the built-in LDK wallet by default; external targets are advanced migration overrides.\n"
 }
 
 fn should_publish_provider_presence(
@@ -4952,7 +4944,10 @@ fn build_wallet_surface(
                     })
             }),
         balance_live: wallet_status.is_some(),
-        payout_destination: config.payout_destination.clone(),
+        payout_destination: config
+            .external_payout_target
+            .clone()
+            .or(config.payout_destination.clone()),
         bitcoin_address: ledger.wallet.bitcoin_address.clone(),
         latest_invoice: ledger.wallet.invoices.first().cloned(),
         recent_payments: if let Some(report) = wallet_status {
@@ -5152,6 +5147,10 @@ async fn render_wallet_command_output(
             let report = pylon::load_wallet_status_report(config_path).await?;
             Ok(render_wallet_status_output(&report))
         }
+        pylon::WalletSubcommand::Channels { .. } => {
+            let report = pylon::load_wallet_channels_report(config_path).await?;
+            Ok(pylon::render_wallet_channels_report(&report))
+        }
         pylon::WalletSubcommand::Address { .. } => {
             let report = pylon::create_wallet_address_report(config_path).await?;
             Ok(render_wallet_receive_output(&report))
@@ -5198,6 +5197,10 @@ async fn render_wallet_command_output(
             )
             .await?;
             Ok(render_wallet_pay_output(&report))
+        }
+        pylon::WalletSubcommand::Telemetry { .. } => {
+            let report = pylon::load_wallet_telemetry_report(config_path).await?;
+            Ok(pylon::render_wallet_telemetry_report(&report))
         }
         pylon::WalletSubcommand::History { limit, .. } => {
             let report = pylon::load_wallet_history_report(config_path, *limit).await?;
@@ -5328,13 +5331,13 @@ fn render_wallet_receive_output(report: &pylon::WalletAddressReport) -> String {
     if let Some(destination) = report.payout_destination.as_deref() {
         lines.extend([
             String::new(),
-            "External LDK payout destination:".to_string(),
+            "Advanced external payout target:".to_string(),
             destination.to_string(),
         ]);
     }
     lines.extend([
         String::new(),
-        "Next: local invoice creation lands with built-in LDK wallet work.".to_string(),
+        "Next: export an encrypted wallet backup after the wallet is funded.".to_string(),
     ]);
     lines.join("\n")
 }
@@ -6049,10 +6052,12 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
         pylon::WalletSubcommand::Status { .. } => "Wallet Status",
         pylon::WalletSubcommand::Sync { .. } => "Wallet Sync",
         pylon::WalletSubcommand::Balance { .. } => "Wallet Balance",
+        pylon::WalletSubcommand::Channels { .. } => "Wallet Channels",
         pylon::WalletSubcommand::Address { .. } => "Wallet Address",
         pylon::WalletSubcommand::Invoice { .. } => "Wallet Invoice",
         pylon::WalletSubcommand::Offer { .. } => "Wallet Offer",
         pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
+        pylon::WalletSubcommand::Telemetry { .. } => "Wallet Telemetry",
         pylon::WalletSubcommand::History { .. } => "Wallet History",
         pylon::WalletSubcommand::BackupExport { .. } => "Wallet Backup Export",
         pylon::WalletSubcommand::BackupInspect { .. } => "Wallet Backup Inspect",
@@ -6428,6 +6433,8 @@ mod tests {
             runtime_detail: Some("syncing".to_string()),
             ldk_node: None,
             balance: pylon::WalletBalanceSnapshot::default(),
+            channels: Vec::new(),
+            lightning_readiness: pylon::WalletLightningReadiness::default(),
             recent_payments: Vec::new(),
         };
 
@@ -6479,6 +6486,8 @@ mod tests {
                 total_sats: 8,
                 ..pylon::WalletBalanceSnapshot::default()
             },
+            channels: Vec::new(),
+            lightning_readiness: pylon::WalletLightningReadiness::default(),
             recent_payments: Vec::new(),
         };
 
@@ -6716,7 +6725,7 @@ mod tests {
         assert!(footer.contains(&("Ctrl+C", "quit")));
         assert!(footer.contains(&("status", "online while this stays open")));
         assert!(footer.contains(&("jobs", "admin-triggered homework runs land automatically")));
-        assert!(footer.contains(&("wallet", "external LDK payout target for now")));
+        assert!(footer.contains(&("wallet", "built-in LDK wallet")));
     }
 
     #[test]
@@ -6815,7 +6824,7 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(receive.contains("Payout destination:"));
+        assert!(receive.contains("External override:"));
         assert!(receive.contains("lno1pgss97gx"));
         assert!(receive.contains("Bitcoin address:"));
 
@@ -6887,8 +6896,8 @@ mod tests {
             .join("\n");
         assert!(card.contains("Status:"));
         assert!(card.contains("Total balance: 664 sats"));
-        assert!(card.contains("Receive: External LDK payout target ready"));
-        assert!(card.contains("Local sends: planned built-in LDK wallet work"));
+        assert!(card.contains("Receive: Advanced external payout override active"));
+        assert!(card.contains("Local sends: built-in LDK wallet guarded by --yes"));
         assert!(card.contains("Last paid: 34 sats"));
     }
 

@@ -130,11 +130,14 @@ messages.
 ## Pylon v0.2 Registration
 
 Pylon v0.2 nodes must register an LDK-compatible Lightning payout target before
-Nexus treats them as eligible for new paid work. This treasury registration is
-the source of truth for paid-work eligibility; stale settlement fields on node
-heartbeats are ignored. A worker without a registered LDK target is blocked
-before hosted starter auto-launch, manual homework launch, and default CS336
-lease claim admission. Configure one of:
+Nexus treats them as eligible for new paid work. The normal path is
+wallet-generated registration from the built-in Pylon LDK wallet. This treasury
+registration is the source of truth for paid-work eligibility; stale settlement
+fields on node heartbeats are ignored. A worker without a registered LDK target
+is blocked before hosted starter auto-launch, manual homework launch, and
+default CS336 lease claim admission. Only use the advanced
+`external_payout_target` override when intentionally migrating hosted-fleet
+targets or bypassing wallet-generated registration. Override values may be:
 
 - a BOLT12 offer, preferred for durable registration;
 - a BIP353 name;
@@ -144,7 +147,7 @@ lease claim admission. Configure one of:
 Example config intent:
 
 ```text
-payout_destination = "lno..."
+external_payout_target = "lno..."
 ```
 
 For the OpenAgents-hosted Pylon proof fleet, use the idempotent rollout script
@@ -161,7 +164,7 @@ The script:
   `NEXUS_PYLON_REPLACE_PAYOUT_TARGETS=true`;
 - generates one unique BOLT12 offer per missing hosted Pylon from the Nexus LDK
   server;
-- sets `payout_destination` through `pylon config set`;
+- sets `external_payout_target` through `pylon config set`;
 - restarts `pylon.service`;
 - logs only target kind, length, and short hash, never the raw payout target;
 - waits for `/api/stats` to show the expected

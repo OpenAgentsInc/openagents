@@ -29,7 +29,7 @@ use crate::{
 
 type HmacSha256 = Hmac<Sha256>;
 
-const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon uses an external LDK-compatible payout destination. Configure payout_destination for earnings.";
+const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon is using an advanced external_payout_target override. The built-in LDK wallet is the default earnings path.";
 const MOCK_WALLET_DETAIL: &str = "Pylon is using the deterministic mock wallet runtime for tests.";
 const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1";
 const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
@@ -4249,14 +4249,14 @@ pub fn render_wallet_channels_report(report: &WalletChannelsReport) -> String {
 }
 
 pub fn render_wallet_address_report(report: &WalletAddressReport) -> String {
-    let payout_destination = report
+    let external_payout_target = report
         .payout_destination
         .as_deref()
         .unwrap_or("not_configured");
     [
         format!("runtime_kind: {}", report.runtime.runtime_kind),
         format!("network: {}", report.runtime.network),
-        format!("payout_destination: {payout_destination}"),
+        format!("external_payout_target: {external_payout_target}"),
         format!("bitcoin_address: {}", report.bitcoin_address),
     ]
     .join("\n")
@@ -5538,12 +5538,12 @@ fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
         PylonWalletRuntimeKind::ExternalTarget => {
             SelectedPylonWalletRuntime::ExternalTarget(ExternalTargetWalletRuntime {
                 surface,
-                payout_destination: config.payout_destination.clone(),
+                payout_destination: crate::configured_external_payout_target(&config),
             })
         }
         PylonWalletRuntimeKind::Mock => SelectedPylonWalletRuntime::Mock(MockPylonWalletRuntime {
             surface,
-            payout_destination: config.payout_destination.clone(),
+            payout_destination: crate::configured_external_payout_target(&config),
         }),
         PylonWalletRuntimeKind::LdkNode => {
             SelectedPylonWalletRuntime::LdkNode(LdkNodeWalletRuntime {
@@ -6002,7 +6002,7 @@ mod tests {
         let mut config = crate::default_config(temp_dir.path());
         config.wallet_runtime_kind = PylonWalletRuntimeKind::ExternalTarget;
         config.wallet_network = "ldk-external".to_string();
-        config.payout_destination = Some("lno1externaltarget".to_string());
+        config.external_payout_target = Some("lno1externaltarget".to_string());
         crate::save_config(config_path.as_path(), &config).expect("save config");
 
         let report = load_wallet_status_report(config_path.as_path())

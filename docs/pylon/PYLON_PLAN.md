@@ -152,8 +152,9 @@ Pylon v0.2 is the provider-side half of the Spark-to-LDK cutover documented in
 Current v0.2 source has moved past the external-target-only compatibility path.
 Normal paid-work registration now generates a wallet-owned LDK receive target
 inside Pylon, prefers BOLT12 offers, and falls back to a wallet-owned BOLT11
-invoice request when BOLT12 is unavailable. `payout_destination` remains only an
-explicit advanced external-target override during migration. Local wallet sends
+invoice request when BOLT12 is unavailable. `external_payout_target` remains only
+an explicit advanced external-target override during migration; old
+`payout_destination` config is a compatibility alias. Local wallet sends
 now dispatch BOLT11 invoices, BOLT12 offers, and on-chain withdrawals through
 the built-in LDK wallet path, with failed-send receipts retained when LDK or
 local reserve checks refuse the operation.

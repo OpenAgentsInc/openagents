@@ -785,7 +785,7 @@ mod tests {
         let (temp_dir, context) = worker_manifest_context()?;
         let mut config = super::super::default_config(temp_dir.path());
         config.node_label = "node-alpha".to_string();
-        config.payout_destination = Some("lnbc1trainingalpha".to_string());
+        config.external_payout_target = Some("lnbc1trainingalpha".to_string());
         config.training.checkpoint_serve_addr = "127.0.0.1:43000".to_string();
         config.training.role_claims = vec![super::super::PylonTrainingRoleClaim::Worker];
         let identity = identity_fixture(&temp_dir);

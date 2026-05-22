@@ -3405,7 +3405,7 @@ async fn spawn_proof_fleet_node(
     let payout_destination = format!("lnbc1proof{}{}", role.label(), index);
     let mut config = super::default_config(node_root.as_path());
     config.node_label = node_label.clone();
-    config.payout_destination = Some(payout_destination.clone());
+    config.external_payout_target = Some(payout_destination.clone());
     config.admin_listen_addr = format!("127.0.0.1:{}", ports.admin);
     config.nexus_control_base_url = authority.urls.authority_base_url.clone();
     config.relay_urls = authority

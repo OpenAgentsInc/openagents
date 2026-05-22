@@ -29,8 +29,8 @@ accepted-work dispatch receipt, the Pylon wallet-observed incoming payment, a
 withdrawal receipt, and a reconciliation record tying the Nexus operation ID,
 Treasury operation ID, and Pylon payment receipt together.
 
-The local proof intentionally does not require a manual
-`payout_destination`. The target is wallet-generated and marked as:
+The local proof intentionally does not require a manual external payout target.
+The target is wallet-generated and marked as:
 
 ```text
 wallet_generated_bolt11_fallback
