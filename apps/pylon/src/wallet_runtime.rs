@@ -66,6 +66,9 @@ pub enum WalletSubcommand {
     Status {
         json: bool,
     },
+    Sync {
+        json: bool,
+    },
     Balance {
         json: bool,
     },
@@ -146,6 +149,8 @@ pub struct WalletBalanceSnapshot {
     pub credited_sats: u64,
     pub lightning_sats: u64,
     pub onchain_sats: u64,
+    pub spendable_onchain_sats: u64,
+    pub anchor_reserve_sats: u64,
     pub total_sats: u64,
 }
 
@@ -165,9 +170,14 @@ pub struct WalletLdkNodeStatus {
     pub node_id: Option<String>,
     pub network: String,
     pub storage_dir: String,
+    pub storage_schema_version: u32,
+    pub storage_generation: String,
     pub chain_source_kind: String,
     pub chain_source_url: Option<String>,
     pub rgs_url: Option<String>,
+    pub backup_status: String,
+    pub backup_manifest_present: bool,
+    pub backup_artifact_count: usize,
     pub is_running: bool,
     pub latest_lightning_wallet_sync_timestamp: Option<u64>,
     pub latest_onchain_wallet_sync_timestamp: Option<u64>,
@@ -612,6 +622,8 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
             credited_sats: 1_000,
             lightning_sats: 1_000,
             onchain_sats: 0,
+            spendable_onchain_sats: 0,
+            anchor_reserve_sats: 0,
             total_sats: 1_000,
         })
     }
@@ -679,6 +691,8 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
                 credited_sats: 1_000u64.saturating_sub(amount_sats),
                 lightning_sats: 1_000u64.saturating_sub(amount_sats),
                 onchain_sats: 0,
+                spendable_onchain_sats: 0,
+                anchor_reserve_sats: 0,
                 total_sats: 1_000u64.saturating_sub(amount_sats),
             },
         })
@@ -846,6 +860,8 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
                 credited_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
                 lightning_sats: balance.total_lightning_balance_sats,
                 onchain_sats: balance.total_onchain_balance_sats,
+                spendable_onchain_sats: balance.spendable_onchain_balance_sats,
+                anchor_reserve_sats: balance.total_anchor_channels_reserve_sats,
                 total_sats: balance
                     .total_lightning_balance_sats
                     .saturating_add(balance.total_onchain_balance_sats),
@@ -855,7 +871,15 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
     }
 
     fn address(&self) -> Result<WalletAddressReport> {
-        bail!("{LDK_NODE_UNAVAILABLE_DETAIL}")
+        let address = self
+            .with_node(|node| node.onchain_payment().new_address())?
+            .ok_or_else(|| anyhow!("ldk_node is not initialized; run wallet status first"))?
+            .map_err(|error| anyhow!("failed to create ldk_node on-chain address: {error}"))?;
+        Ok(WalletAddressReport {
+            runtime: self.surface.clone(),
+            payout_destination: None,
+            bitcoin_address: address.to_string(),
+        })
     }
 
     fn invoice(
@@ -974,6 +998,8 @@ impl LdkNodeWalletRuntime {
     fn ldk_node_status(&self) -> Result<WalletLdkNodeStatus> {
         let layout =
             wallet_storage_layout_from_root(PathBuf::from(self.surface.storage_dir.as_str()));
+        let backup_manifest_present = layout.backup_manifest_path.is_file();
+        let backup_artifact_count = wallet_backup_artifact_count(&layout)?;
         let status = self.with_node(|node| (node.node_id().to_string(), node.status()))?;
         let (node_id, node_status) = match status {
             Some((node_id, status)) => (Some(node_id), Some(status)),
@@ -983,9 +1009,14 @@ impl LdkNodeWalletRuntime {
             node_id,
             network: self.surface.network.clone(),
             storage_dir: layout.sqlite_dir.display().to_string(),
+            storage_schema_version: WALLET_STORAGE_SCHEMA_VERSION,
+            storage_generation: wallet_storage_generation_id(&layout, &self.surface),
             chain_source_kind: self.settings.chain_source_kind.clone(),
             chain_source_url: self.configured_chain_source_url(),
             rgs_url: self.settings.rgs_url.clone(),
+            backup_status: wallet_backup_status(backup_manifest_present, backup_artifact_count),
+            backup_manifest_present,
+            backup_artifact_count,
             is_running: node_status
                 .as_ref()
                 .map(|status| status.is_running)
@@ -1018,6 +1049,54 @@ fn parse_ldk_bitcoin_network(network: &str) -> Result<LdkBitcoinNetwork> {
         .with_context(|| format!("unsupported ldk_node wallet_network '{network}'"))
 }
 
+fn wallet_storage_generation_id(
+    layout: &WalletStorageLayout,
+    surface: &WalletRuntimeSurface,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(WALLET_STORAGE_SCHEMA_VERSION.to_be_bytes());
+    hasher.update(surface.runtime_kind.id().as_bytes());
+    hasher.update(surface.network.as_bytes());
+    hasher.update(surface.node_entropy.digest.as_bytes());
+    hasher.update(layout.ldk_dir.to_string_lossy().as_bytes());
+    let digest = hex::encode(hasher.finalize());
+    format!("sha256:{}", &digest[..16])
+}
+
+fn wallet_backup_artifact_count(layout: &WalletStorageLayout) -> Result<usize> {
+    if !layout.backup_staging_dir.is_dir() {
+        return Ok(0);
+    }
+    let mut count = 0usize;
+    for entry in std::fs::read_dir(layout.backup_staging_dir.as_path()).with_context(|| {
+        format!(
+            "failed to inspect wallet backup staging directory {}",
+            layout.backup_staging_dir.display()
+        )
+    })? {
+        let entry = entry.with_context(|| {
+            format!(
+                "failed to inspect wallet backup staging directory {}",
+                layout.backup_staging_dir.display()
+            )
+        })?;
+        if entry.file_type().map(|file_type| file_type.is_file())? {
+            count = count.saturating_add(1);
+        }
+    }
+    Ok(count)
+}
+
+fn wallet_backup_status(manifest_present: bool, artifact_count: usize) -> String {
+    if artifact_count > 0 {
+        "backup_artifacts_present".to_string()
+    } else if manifest_present {
+        "manifest_ready".to_string()
+    } else {
+        "missing_manifest".to_string()
+    }
+}
+
 fn ledger_balance(ledger: &PylonLedger) -> WalletBalanceSnapshot {
     WalletBalanceSnapshot {
         total_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
@@ -1038,6 +1117,13 @@ fn ledger_payments(ledger: &PylonLedger, limit: Option<usize>) -> Vec<PylonWalle
 pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) -> Result<String> {
     match command {
         WalletSubcommand::Status { json } => {
+            let report = load_wallet_status_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_status_report(&report))
+        }
+        WalletSubcommand::Sync { json } => {
             let report = load_wallet_status_report(config_path).await?;
             if *json {
                 return Ok(serde_json::to_string_pretty(&report)?);
@@ -1141,6 +1227,9 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
     match subcommand.as_str() {
         "status" => Ok(WalletSubcommand::Status {
             json: parse_json_only(args, start_index + 2, "wallet status")?,
+        }),
+        "sync" => Ok(WalletSubcommand::Sync {
+            json: parse_json_only(args, start_index + 2, "wallet sync")?,
         }),
         "balance" => Ok(WalletSubcommand::Balance {
             json: parse_json_only(args, start_index + 2, "wallet balance")?,
@@ -1354,6 +1443,7 @@ async fn load_wallet_status_report_internal(
 
 pub async fn create_wallet_address_report(config_path: &Path) -> Result<WalletAddressReport> {
     let context = prepare_wallet_context(config_path)?;
+    context.runtime.start()?;
     match context.runtime.address() {
         Ok(report) => {
             sync_wallet_status(
@@ -1546,6 +1636,14 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
         format!("credited_sats: {}", report.balance.credited_sats),
         format!("lightning_sats: {}", report.balance.lightning_sats),
         format!("onchain_sats: {}", report.balance.onchain_sats),
+        format!(
+            "spendable_onchain_sats: {}",
+            report.balance.spendable_onchain_sats
+        ),
+        format!(
+            "anchor_reserve_sats: {}",
+            report.balance.anchor_reserve_sats
+        ),
         format!("total_sats: {}", report.balance.total_sats),
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
@@ -1557,6 +1655,14 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
             ldk_node.node_id.as_deref().unwrap_or("none")
         ));
         lines.push(format!("ldk_storage_dir: {}", ldk_node.storage_dir));
+        lines.push(format!(
+            "ldk_storage_schema_version: {}",
+            ldk_node.storage_schema_version
+        ));
+        lines.push(format!(
+            "ldk_storage_generation: {}",
+            ldk_node.storage_generation
+        ));
         lines.push(format!("ldk_chain_source: {}", ldk_node.chain_source_kind));
         if let Some(url) = ldk_node.chain_source_url.as_deref() {
             lines.push(format!("ldk_chain_source_url: {url}"));
@@ -1564,6 +1670,15 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
         if let Some(url) = ldk_node.rgs_url.as_deref() {
             lines.push(format!("ldk_rgs_url: {url}"));
         }
+        lines.push(format!("ldk_backup_status: {}", ldk_node.backup_status));
+        lines.push(format!(
+            "ldk_backup_manifest_present: {}",
+            ldk_node.backup_manifest_present
+        ));
+        lines.push(format!(
+            "ldk_backup_artifact_count: {}",
+            ldk_node.backup_artifact_count
+        ));
         lines.push(format!("ldk_is_running: {}", ldk_node.is_running));
         if let Some(value) = ldk_node.latest_lightning_wallet_sync_timestamp {
             lines.push(format!(
@@ -1611,6 +1726,14 @@ pub fn render_wallet_balance_report(report: &WalletStatusReport) -> String {
         format!("credited_sats: {}", report.balance.credited_sats),
         format!("lightning_sats: {}", report.balance.lightning_sats),
         format!("onchain_sats: {}", report.balance.onchain_sats),
+        format!(
+            "spendable_onchain_sats: {}",
+            report.balance.spendable_onchain_sats
+        ),
+        format!(
+            "anchor_reserve_sats: {}",
+            report.balance.anchor_reserve_sats
+        ),
         format!("total_sats: {}", report.balance.total_sats),
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
@@ -2306,6 +2429,18 @@ mod tests {
             parse_wallet_command(
                 &[
                     String::from("wallet"),
+                    String::from("sync"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet sync should parse"),
+            WalletSubcommand::Sync { json: true }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
                     String::from("history"),
                     String::from("--limit"),
                     String::from("5"),
@@ -2825,6 +2960,15 @@ mod tests {
                 .map(|node| node.chain_source_kind.as_str()),
             Some("none")
         );
+        let node_status = status.ldk_node.as_ref().expect("ldk node status");
+        assert_eq!(node_status.backup_status, "manifest_ready");
+        assert!(node_status.backup_manifest_present);
+        assert_eq!(node_status.backup_artifact_count, 0);
+        assert_eq!(node_status.storage_schema_version, 1);
+        assert!(node_status.storage_generation.starts_with("sha256:"));
+        assert_eq!(status.balance.onchain_sats, 0);
+        assert_eq!(status.balance.spendable_onchain_sats, 0);
+        assert_eq!(status.balance.anchor_reserve_sats, 0);
 
         let restarted = load_wallet_status_report(config_path.as_path())
             .await
@@ -2837,9 +2981,58 @@ mod tests {
             Some(first_node_id)
         );
 
-        let error = create_wallet_address_report(config_path.as_path())
+        let address = create_wallet_address_report(config_path.as_path())
             .await
-            .expect_err("ldk_node address should be unavailable");
-        assert!(error.to_string().contains("payment APIs"));
+            .expect("ldk_node address");
+        let parsed = address
+            .bitcoin_address
+            .parse::<ldk_node::bitcoin::Address<ldk_node::bitcoin::address::NetworkUnchecked>>()
+            .expect("parse address");
+        assert!(parsed.is_valid_for_network(ldk_node::bitcoin::Network::Regtest));
+
+        let status_json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Status { json: true },
+        )
+        .await
+        .expect("status json");
+        assert!(status_json.contains("\"runtime_kind\": \"ldk_node\""));
+        assert!(status_json.contains("\"backup_status\": \"manifest_ready\""));
+        assert!(status_json.contains("\"storage_generation\": \"sha256:"));
+        assert!(!status_json.contains("legal winner thank"));
+
+        let sync_json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Sync { json: true },
+        )
+        .await
+        .expect("sync json");
+        assert!(sync_json.contains("\"runtime_status\": \"configured\""));
+
+        let balance_json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Balance { json: true },
+        )
+        .await
+        .expect("balance json");
+        assert!(balance_json.contains("\"onchain_sats\": 0"));
+        assert!(balance_json.contains("\"spendable_onchain_sats\": 0"));
+
+        let address_json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Address { json: true },
+        )
+        .await
+        .expect("address json");
+        let address_value: serde_json::Value =
+            serde_json::from_str(address_json.as_str()).expect("address json should parse");
+        let json_address = address_value
+            .get("bitcoin_address")
+            .and_then(serde_json::Value::as_str)
+            .expect("json address");
+        let parsed_json_address = json_address
+            .parse::<ldk_node::bitcoin::Address<ldk_node::bitcoin::address::NetworkUnchecked>>()
+            .expect("parse json address");
+        assert!(parsed_json_address.is_valid_for_network(ldk_node::bitcoin::Network::Regtest));
     }
 }

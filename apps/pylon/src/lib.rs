@@ -9572,6 +9572,7 @@ Commands:\n\
   payout [--limit <n>] [--json]\n\
   payout withdraw <payment_request> [--amount-sats <n>] [--json]\n\
   wallet status [--json]\n\
+  wallet sync [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
@@ -52288,6 +52289,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     credited_sats: 144,
                     lightning_sats: 144,
                     onchain_sats: 0,
+                    ..super::WalletBalanceSnapshot::default()
                 },
             })
         })));

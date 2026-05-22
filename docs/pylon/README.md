@@ -1140,12 +1140,15 @@ recent-job window.
 If the current runtime cannot create or pay with a local wallet, the provider
 path fails honestly instead of pretending the request is payable.
 
-The retained wallet controls now also exist in both places, but in the current
-v0.2 external-target release they should be treated as status, retained ledger,
-and compatibility surfaces. Real local LDK receive/send behavior is planned in
-`OpenAgentsInc/openagents#4520`.
-- TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
-- headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history|lock`
+The retained wallet controls now also exist in both places. In the default
+external-target runtime, address, invoice, pay, and withdraw commands still
+fail honestly because Pylon is only tracking an externally supplied payment
+target. In `wallet_runtime_kind=ldk_node`, Pylon now opens the built-in LDK Node
+and can report status, sync, balance buckets, and real wallet-owned Bitcoin
+receive addresses. Lightning invoice/pay/withdraw flows remain staged behind
+the later wallet tracker issues.
+- TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
+- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|pay|history|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=external_target`
 is the default compatibility runtime and keeps `payout_destination` as the
@@ -1160,8 +1163,10 @@ is opened, but live chain sync is not started. To start the live node, set
 `wallet_chain_source_kind=electrum` with `wallet_electrum_url`. Optional RGS
 sync is configured with `wallet_rgs_url`. `pylon wallet status --json` reports
 the selected kind as `runtime.runtime_kind` and includes `ldk_node` details such
-as node ID, storage path, chain source, running state, sync timestamps, and the
-last startup/sync error.
+as node ID, storage path, redacted storage generation, backup status, chain
+source, running state, sync timestamps, and the last startup/sync error. `pylon
+wallet sync --json` returns the same redacted status payload after asking the
+LDK node to sync when it is running.
 
 The default wallet recovery model is one phrase, not two. Pylon derives the
 future LDK Node 64-byte node entropy from the existing Pylon identity mnemonic
@@ -1308,6 +1313,7 @@ Inspect the retained wallet status and ledger surfaces:
 
 ```bash
 cargo pylon-headless wallet status
+cargo pylon-headless wallet sync
 cargo pylon-headless wallet balance
 cargo pylon-headless wallet address
 cargo pylon-headless wallet invoice 21 --description "pylon receive"
@@ -1317,9 +1323,11 @@ cargo pylon-headless payout --limit 10
 cargo pylon-headless payout withdraw <bolt11> --amount-sats 21
 ```
 
-In the current v0.2 external-target release, address, invoice, pay, and payout
+In the default external-target runtime, address, invoice, pay, and payout
 withdrawal commands may report that the local wallet runtime is unavailable.
-That refusal is expected until the built-in LDK wallet tracker lands.
+With `wallet_runtime_kind=ldk_node`, `wallet address` returns a real on-chain
+address from the built-in BDK wallet. Lightning invoice/pay and withdrawal
+commands still refuse until their dedicated LDK wallet issues land.
 
 Move the node through explicit lifecycle controls:
 

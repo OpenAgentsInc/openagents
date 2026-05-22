@@ -5144,6 +5144,10 @@ async fn render_wallet_command_output(
             let report = pylon::load_wallet_status_report(config_path).await?;
             Ok(render_wallet_status_output(&report))
         }
+        pylon::WalletSubcommand::Sync { .. } => {
+            let report = pylon::load_wallet_status_report(config_path).await?;
+            Ok(render_wallet_status_output(&report))
+        }
         pylon::WalletSubcommand::Balance { .. } => {
             let report = pylon::load_wallet_status_report(config_path).await?;
             Ok(render_wallet_status_output(&report))
@@ -5221,6 +5225,10 @@ fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
             format_sats(report.balance.lightning_sats),
             format_sats(report.balance.onchain_sats)
         ),
+        format!(
+            "Spendable on-chain: {}",
+            format_sats(report.balance.spendable_onchain_sats)
+        ),
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
         lines.push(format!("Runtime: {detail}"));
@@ -5241,21 +5249,24 @@ fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
 }
 
 fn render_wallet_receive_output(report: &pylon::WalletAddressReport) -> String {
-    [
+    let mut lines = vec![
         format!("Network: {}", report.runtime.network),
-        String::new(),
-        "External LDK payout destination:".to_string(),
-        report
-            .payout_destination
-            .clone()
-            .unwrap_or_else(|| "not_configured".to_string()),
         String::new(),
         "Receive on Bitcoin:".to_string(),
         report.bitcoin_address.clone(),
+    ];
+    if let Some(destination) = report.payout_destination.as_deref() {
+        lines.extend([
+            String::new(),
+            "External LDK payout destination:".to_string(),
+            destination.to_string(),
+        ]);
+    }
+    lines.extend([
         String::new(),
         "Next: local invoice creation lands with built-in LDK wallet work.".to_string(),
-    ]
-    .join("\n")
+    ]);
+    lines.join("\n")
 }
 
 fn render_wallet_invoice_output(report: &pylon::WalletInvoiceReport) -> String {
@@ -5966,6 +5977,7 @@ fn relay_report_lines(report: &pylon::RelayReport) -> Vec<String> {
 fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
     match command {
         pylon::WalletSubcommand::Status { .. } => "Wallet Status",
+        pylon::WalletSubcommand::Sync { .. } => "Wallet Sync",
         pylon::WalletSubcommand::Balance { .. } => "Wallet Balance",
         pylon::WalletSubcommand::Address { .. } => "Wallet Address",
         pylon::WalletSubcommand::Invoice { .. } => "Wallet Invoice",
@@ -6188,6 +6200,7 @@ mod tests {
                 lightning_sats: 34,
                 onchain_sats: 55,
                 total_sats: 110,
+                ..pylon::WalletBalanceSnapshot::default()
             }),
             wallet_balance_live: true,
             jobs_found_24h: 8,
@@ -6389,6 +6402,7 @@ mod tests {
                 lightning_sats: 0,
                 onchain_sats: 0,
                 total_sats: 8,
+                ..pylon::WalletBalanceSnapshot::default()
             },
             recent_payments: Vec::new(),
         };
