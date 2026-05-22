@@ -636,6 +636,20 @@ pub struct ProviderPayoutTargetRegistrationRequest {
     pub payment_target_capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pylon_payment_target_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_runtime_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_network: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_target_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_derivation_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_backup_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_registration_mode: Option<String>,
     pub challenge: String,
     pub challenge_signature_hex: String,
 }
@@ -651,6 +665,20 @@ pub struct ProviderPayoutTargetRegistrationResponse {
     pub payment_target_capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pylon_payment_target_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_runtime_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_network: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_target_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_derivation_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_backup_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_registration_mode: Option<String>,
     pub registered_at_unix_ms: u64,
 }
 
@@ -2286,6 +2314,28 @@ fn normalized_payment_target_version(request: &ProviderPayoutTargetRegistrationR
         .filter(|value| !value.is_empty())
         .unwrap_or(PYLON_PAYMENT_TARGET_VERSION_V0_2)
         .to_string()
+}
+
+fn normalized_optional_registration_field(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn normalized_wallet_target_kind(
+    request: &ProviderPayoutTargetRegistrationRequest,
+    target_kind: &str,
+) -> Result<Option<String>> {
+    let Some(kind) = normalized_optional_registration_field(request.wallet_target_kind.as_deref())
+        .map(|value| value.to_ascii_lowercase())
+    else {
+        return Ok(None);
+    };
+    if kind != target_kind {
+        bail!("wallet_target_kind_mismatch");
+    }
+    Ok(Some(kind))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -7256,6 +7306,23 @@ impl TreasuryState {
         let capabilities = normalized_payment_target_capabilities(request)?;
         let version = normalized_payment_target_version(request);
         let capability_refs = capabilities.iter().map(String::as_str).collect::<Vec<_>>();
+        let wallet_node_id =
+            normalized_optional_registration_field(request.wallet_node_id.as_deref());
+        let wallet_runtime_kind =
+            normalized_optional_registration_field(request.wallet_runtime_kind.as_deref())
+                .map(|value| value.to_ascii_lowercase());
+        let wallet_network =
+            normalized_optional_registration_field(request.wallet_network.as_deref())
+                .map(|value| value.to_ascii_lowercase());
+        let wallet_target_kind = normalized_wallet_target_kind(request, target_kind.as_str())?;
+        let wallet_derivation_version =
+            normalized_optional_registration_field(request.wallet_derivation_version.as_deref());
+        let wallet_backup_status =
+            normalized_optional_registration_field(request.wallet_backup_status.as_deref())
+                .map(|value| value.to_ascii_lowercase());
+        let wallet_registration_mode =
+            normalized_optional_registration_field(request.wallet_registration_mode.as_deref())
+                .map(|value| value.to_ascii_lowercase());
         verify_provider_payment_target_registration_signature(
             request.nostr_pubkey_hex.as_str(),
             request.session_id.as_str(),
@@ -7265,6 +7332,13 @@ impl TreasuryState {
                 target_value: target_value.as_str(),
                 capabilities: capability_refs.as_slice(),
                 version: version.as_str(),
+                wallet_node_id: wallet_node_id.as_deref(),
+                wallet_runtime_kind: wallet_runtime_kind.as_deref(),
+                wallet_network: wallet_network.as_deref(),
+                wallet_target_kind: wallet_target_kind.as_deref(),
+                wallet_derivation_version: wallet_derivation_version.as_deref(),
+                wallet_backup_status: wallet_backup_status.as_deref(),
+                wallet_registration_mode: wallet_registration_mode.as_deref(),
             },
             request.challenge_signature_hex.as_str(),
         )
@@ -7294,6 +7368,13 @@ impl TreasuryState {
                     payment_target: target_value,
                     payment_target_capabilities: capabilities,
                     pylon_payment_target_version: Some(version),
+                    wallet_node_id,
+                    wallet_runtime_kind,
+                    wallet_network,
+                    wallet_target_kind,
+                    wallet_derivation_version,
+                    wallet_backup_status,
+                    wallet_registration_mode,
                     registered_at_unix_ms: existing.registered_at_unix_ms,
                 },
                 Vec::new(),
@@ -7332,6 +7413,21 @@ impl TreasuryState {
             target.is_ldk_compatible().to_string(),
         );
         attributes.insert("pylon_payment_target_version".to_string(), version.clone());
+        if let Some(wallet_runtime_kind) = wallet_runtime_kind.as_deref() {
+            attributes.insert(
+                "wallet_runtime_kind".to_string(),
+                wallet_runtime_kind.to_string(),
+            );
+        }
+        if let Some(wallet_network) = wallet_network.as_deref() {
+            attributes.insert("wallet_network".to_string(), wallet_network.to_string());
+        }
+        if let Some(wallet_registration_mode) = wallet_registration_mode.as_deref() {
+            attributes.insert(
+                "wallet_registration_mode".to_string(),
+                wallet_registration_mode.to_string(),
+            );
+        }
 
         Ok((
             ProviderPayoutTargetRegistrationResponse {
@@ -7342,6 +7438,13 @@ impl TreasuryState {
                 payment_target: target_value,
                 payment_target_capabilities: capabilities,
                 pylon_payment_target_version: Some(version),
+                wallet_node_id,
+                wallet_runtime_kind,
+                wallet_network,
+                wallet_target_kind,
+                wallet_derivation_version,
+                wallet_backup_status,
+                wallet_registration_mode,
                 registered_at_unix_ms: now_unix_ms,
             },
             vec![TreasuryReceiptEvent {
@@ -12055,6 +12158,13 @@ mod tests {
                 "durable_payout_target",
             ],
             version: "pylon-payment-target/v0.2",
+            wallet_node_id: Some("02walletnode"),
+            wallet_runtime_kind: Some("ldk_node"),
+            wallet_network: Some("regtest"),
+            wallet_target_kind: Some("bolt12_offer"),
+            wallet_derivation_version: Some("pylon-ldk-node-entropy-v1"),
+            wallet_backup_status: Some("manifest_present"),
+            wallet_registration_mode: Some("wallet_generated"),
         };
         let ldk_signature = sign_provider_payment_target_registration(
             private_key_hex,
@@ -12179,6 +12289,13 @@ mod tests {
                 target_value: "lno1pylonalice",
                 capabilities: capability_refs.as_slice(),
                 version: "pylon-payment-target/v0.2",
+                wallet_node_id: None,
+                wallet_runtime_kind: None,
+                wallet_network: None,
+                wallet_target_kind: None,
+                wallet_derivation_version: None,
+                wallet_backup_status: None,
+                wallet_registration_mode: None,
             },
         )
         .expect("signature should build");
@@ -12191,6 +12308,13 @@ mod tests {
                     payment_target: Some("lno1pylonalice".to_string()),
                     payment_target_capabilities: capabilities,
                     pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
+                    wallet_node_id: None,
+                    wallet_runtime_kind: None,
+                    wallet_network: None,
+                    wallet_target_kind: None,
+                    wallet_derivation_version: None,
+                    wallet_backup_status: None,
+                    wallet_registration_mode: None,
                     challenge: challenge.challenge,
                     challenge_signature_hex: signature,
                 },

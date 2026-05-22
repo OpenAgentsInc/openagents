@@ -13,6 +13,13 @@ pub struct ProviderPaymentTargetRegistration<'a> {
     pub target_value: &'a str,
     pub capabilities: &'a [&'a str],
     pub version: &'a str,
+    pub wallet_node_id: Option<&'a str>,
+    pub wallet_runtime_kind: Option<&'a str>,
+    pub wallet_network: Option<&'a str>,
+    pub wallet_target_kind: Option<&'a str>,
+    pub wallet_derivation_version: Option<&'a str>,
+    pub wallet_backup_status: Option<&'a str>,
+    pub wallet_registration_mode: Option<&'a str>,
 }
 
 pub fn sign_provider_payment_target_registration(
@@ -85,7 +92,9 @@ pub fn infer_ldk_payment_target_kind(value: &str) -> Result<String, String> {
     if normalized.is_empty() {
         return Err("payment_target_missing".to_string());
     }
-    if normalized.starts_with("lno") {
+    if normalized.starts_with("sp1") || normalized.starts_with("spark:") {
+        Err("unsupported_payment_target_kind:spark".to_string())
+    } else if normalized.starts_with("lno") {
         Ok("bolt12_offer".to_string())
     } else if normalized.starts_with("lnurl")
         || normalized.starts_with("lnurlp:")
@@ -170,7 +179,43 @@ fn payment_target_digest(
     hasher.update(registration.version.trim().as_bytes());
     hasher.update(b":");
     hasher.update(capabilities.join(",").as_bytes());
+    update_optional_digest_field(&mut hasher, "wallet_node_id", registration.wallet_node_id);
+    update_optional_digest_field(
+        &mut hasher,
+        "wallet_runtime_kind",
+        registration.wallet_runtime_kind,
+    );
+    update_optional_digest_field(&mut hasher, "wallet_network", registration.wallet_network);
+    update_optional_digest_field(
+        &mut hasher,
+        "wallet_target_kind",
+        registration.wallet_target_kind,
+    );
+    update_optional_digest_field(
+        &mut hasher,
+        "wallet_derivation_version",
+        registration.wallet_derivation_version,
+    );
+    update_optional_digest_field(
+        &mut hasher,
+        "wallet_backup_status",
+        registration.wallet_backup_status,
+    );
+    update_optional_digest_field(
+        &mut hasher,
+        "wallet_registration_mode",
+        registration.wallet_registration_mode,
+    );
     hasher.finalize().into()
+}
+
+fn update_optional_digest_field(hasher: &mut Sha256, name: &str, value: Option<&str>) {
+    if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
+        hasher.update(b":");
+        hasher.update(name.as_bytes());
+        hasher.update(b"=");
+        hasher.update(value.as_bytes());
+    }
 }
 
 fn require_non_empty(value: &str, field: &str) -> Result<(), String> {
@@ -198,6 +243,13 @@ mod tests {
             target_value: "lno1pylonalice",
             capabilities: &["bolt12_offer", "bolt11_invoice_request"],
             version: PYLON_PAYMENT_TARGET_VERSION_V0_2,
+            wallet_node_id: Some("02walletnode"),
+            wallet_runtime_kind: Some("ldk_node"),
+            wallet_network: Some("regtest"),
+            wallet_target_kind: Some("bolt12_offer"),
+            wallet_derivation_version: Some("pylon-ldk-node-entropy-v1"),
+            wallet_backup_status: Some("manifest_present"),
+            wallet_registration_mode: Some("wallet_generated"),
         };
         let signature = sign_provider_payment_target_registration(
             private_key_hex,
@@ -218,6 +270,45 @@ mod tests {
     }
 
     #[test]
+    fn payment_target_signature_binds_wallet_metadata() {
+        let private_key_hex = "1111111111111111111111111111111111111111111111111111111111111111";
+        let nostr_pubkey_hex = "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+        let registration = ProviderPaymentTargetRegistration {
+            target_kind: "bolt12_offer",
+            target_value: "lno1pylonalice",
+            capabilities: &["bolt12_offer", "ldk_payment_target_v0_2"],
+            version: PYLON_PAYMENT_TARGET_VERSION_V0_2,
+            wallet_node_id: Some("02walletnode"),
+            wallet_runtime_kind: Some("ldk_node"),
+            wallet_network: Some("regtest"),
+            wallet_target_kind: Some("bolt12_offer"),
+            wallet_derivation_version: Some("pylon-ldk-node-entropy-v1"),
+            wallet_backup_status: Some("manifest_present"),
+            wallet_registration_mode: Some("wallet_generated"),
+        };
+        let signature = sign_provider_payment_target_registration(
+            private_key_hex,
+            nostr_pubkey_hex,
+            "session-a",
+            "challenge-a",
+            registration.clone(),
+        )
+        .expect("signature should build");
+        let mut tampered = registration;
+        tampered.wallet_network = Some("bitcoin");
+        assert!(
+            verify_provider_payment_target_registration_signature(
+                nostr_pubkey_hex,
+                "session-a",
+                "challenge-a",
+                tampered,
+                signature.as_str(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn ldk_payment_target_rules_reject_unsupported_provider_targets() {
         assert_eq!(
             infer_ldk_payment_target_kind("lno1pylonalice").expect("bolt12 should infer"),
@@ -234,6 +325,10 @@ mod tests {
         assert_eq!(
             infer_ldk_payment_target_kind("lnurlp:alice").expect("lnurl should infer"),
             "lnurl_pay"
+        );
+        assert_eq!(
+            infer_ldk_payment_target_kind("sp1retiredspark").expect_err("spark target is rejected"),
+            "unsupported_payment_target_kind:spark"
         );
         assert_eq!(
             infer_ldk_payment_target_kind("provider:alice")

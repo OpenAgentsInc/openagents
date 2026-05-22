@@ -2847,6 +2847,8 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let config_path = temp_dir.path().join("config.json");
         let mut config = crate::default_config(temp_dir.path());
+        config.wallet_runtime_kind = PylonWalletRuntimeKind::ExternalTarget;
+        config.wallet_network = "ldk-external".to_string();
         config.payout_destination = Some("lno1externaltarget".to_string());
         crate::save_config(config_path.as_path(), &config).expect("save config");
 
@@ -2933,6 +2935,15 @@ mod tests {
         config.wallet_network = "regtest".to_string();
         std::fs::write(config.identity_path.as_path(), format!("{phrase}\n"))
             .expect("write identity phrase");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                config.identity_path.as_path(),
+                std::fs::Permissions::from_mode(0o600),
+            )
+            .expect("set identity permissions");
+        }
         crate::save_config(config_path.as_path(), &config).expect("save config");
 
         let status = load_wallet_status_report(config_path.as_path())
