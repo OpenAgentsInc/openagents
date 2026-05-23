@@ -444,9 +444,11 @@ The current degraded-state codes are:
   has no synced ready or usable LDK channel capacity for those targets. For
   payout readiness this means Nexus has no live outbound channel capacity to
   the registered Pylon side.
-- `stale_wallet_sync`: the last wallet activity/sync timestamp exceeds the
-  configured wallet snapshot freshness threshold, or the wallet has not synced
-  yet.
+- `stale_wallet_sync`: the wallet has not synced yet, or the last wallet
+  activity/sync timestamp exceeds the configured wallet snapshot freshness
+  threshold while reconciliation-relevant payout work is pending. Idle
+  connected wallets keep exposing `wallet_sync_lag_ms` telemetry without
+  raising this degraded state.
 - `stale_event_subscriber`: LDK operation metadata indicates that event
   subscription visibility is stale.
 - `stale_gossip`: LDK operation metadata indicates stale gossip/RGS or routing

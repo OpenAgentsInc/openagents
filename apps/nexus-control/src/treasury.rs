@@ -5847,7 +5847,7 @@ impl TreasuryState {
                 Some(last_activity_at) => {
                     let lag_ms = now_unix_ms.saturating_sub(last_activity_at);
                     let threshold = config.wallet_snapshot_stale_after_ms();
-                    if lag_ms >= threshold {
+                    if lag_ms >= threshold && self.due_wallet_refresh_requires_reconciliation() {
                         states.push(TreasuryDegradedState {
                             code: "stale_wallet_sync".to_string(),
                             severity: "warning".to_string(),
@@ -12503,7 +12503,7 @@ mod tests {
     }
 
     #[test]
-    fn degraded_states_surface_low_liquidity_and_stale_sync() {
+    fn degraded_states_surface_liquidity_and_actionable_stale_sync() {
         let mut config = test_treasury_config();
         config.accepted_work_default_payout_sats = 2_000;
         config.payout_sats_per_window = 500;
@@ -12539,6 +12539,42 @@ mod tests {
 
         assert!(codes.contains("low_outbound_liquidity"));
         assert!(codes.contains("low_inbound_liquidity"));
+        assert!(!codes.contains("stale_wallet_sync"));
+
+        state.payout_records_by_key.insert(
+            "accepted-work:balance-blocked".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:balance-blocked".to_string(),
+                nostr_pubkey_hex: "pubkey-balance-blocked".to_string(),
+                payout_target: "provider:balance-blocked".to_string(),
+                amount_sats: 25,
+                status: "queued".to_string(),
+                reason: Some("wallet_balance_insufficient".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                created_at_unix_ms: 1_000,
+                updated_at_unix_ms: 1_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let status = state.status_response(&config, now_unix_ms);
+        let codes = status
+            .degraded_states
+            .iter()
+            .map(|state| state.code.as_str())
+            .collect::<BTreeSet<_>>();
         assert!(codes.contains("stale_wallet_sync"));
     }
 
