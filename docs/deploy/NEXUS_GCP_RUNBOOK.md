@@ -92,6 +92,8 @@ The Nexus image build is now an explicit hotfix lane:
 - it stages a Nexus-only source context instead of submitting the whole repo
 - it fills non-Nexus workspace members in that staged context with lightweight
   placeholders so Cargo can still resolve the workspace without the full repo
+- it strips root-only patch entries that are not represented in the
+  Nexus-specific lockfile before `cargo fetch --locked`
 - it materializes a `.nexus-build-plan/` dependency layer as the retained
   `cargo-chef` equivalent for the fallback image lane
 - the Docker build now uses BuildKit registry cache, cache mounts, and
