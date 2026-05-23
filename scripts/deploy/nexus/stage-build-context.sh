@@ -23,6 +23,7 @@ REAL_WORKSPACE_PATHS=(
   "crates/nostr/client"
   "crates/nostr/core"
   "third_party/nostr-rs-relay"
+  "third_party/rusqlite-0.31.0-libsqlite3-0.30.1"
 )
 
 [[ -f "$BUILD_PLAN_HELPER" ]] || die "Missing build-plan helper: ${BUILD_PLAN_HELPER}"
@@ -53,6 +54,7 @@ COPY_PATHS=(
   "crates/nostr/client"
   "crates/nostr/core"
   "third_party/nostr-rs-relay"
+  "third_party/rusqlite-0.31.0-libsqlite3-0.30.1"
 )
 
 for relative_path in "${COPY_PATHS[@]}"; do
