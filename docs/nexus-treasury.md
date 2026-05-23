@@ -61,13 +61,12 @@ loop-health, payout, and continuity fields. It does not return payout-target
 identities, raw payout targets, recent payout rows, operation rows, or
 beneficiary debug rows.
 
-The public route is cache-first. It returns the latest redacted public snapshot
-from the treasury status cache and does not rebuild the full internal treasury
-status model on every request. Background wallet refreshes and authenticated
-operator refreshes update that cache. This keeps `/v1/treasury/status` and the
-public proxy responsive even when payout dispatch, wallet reconciliation, or
-LDK provider calls are busy. Authenticated operator exports and projections are
-the right surfaces for row-level diagnostics.
+The public route is live-first for telemetry correctness. When the control
+store is readable, it rebuilds the redacted public treasury status from current
+state and refreshes the treasury status cache. It falls back to the cache only
+when the store is write-locked by payout dispatch, wallet reconciliation, or
+LDK provider work. Authenticated operator exports and projections are the right
+surfaces for row-level diagnostics.
 
 For LDK, read the wallet balances precisely:
 
