@@ -32,6 +32,7 @@ Public Cloud node compatibility lives in:
 
 - `docs/pylon/CLOUD_NODE_V1_COMPATIBILITY.md`
 - `docs/pylon/fixtures/cloud_node_v1/contributor-pylon.json`
+- `docs/pylon/OPEN_SOURCE_CONTRIBUTOR_BOUNDARY.md`
 
 The public contributor boundary helpers live in:
 
@@ -40,6 +41,11 @@ The public contributor boundary helpers live in:
 That crate covers identity, admin state, availability, inventory, lifecycle,
 heartbeat, receipt projections, and public-safe JSON validation without
 launching the Pylon TUI.
+
+Contributor Pylon itself remains open source: the installable app, TUI,
+contributor wallet UX, provider inventory truth, payout behavior, and public
+receipts stay in this repo and must remain auditable without private Cloud repo
+access.
 
 Use those docs for different questions:
 

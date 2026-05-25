@@ -66,6 +66,8 @@ Owns:
   and contributor payout flows.
 - App-specific orchestration that turns public provider-domain primitives into
   a user-run supply connector.
+- Public auditable contributor payout and inventory behavior. Contributor
+  Pylon must remain usable and inspectable without the private `cloud` repo.
 
 Must not own:
 
@@ -90,6 +92,7 @@ Must not own:
 - Private managed Cloud node behavior owned by the private `cloud` repo.
 - Product-agnostic provider substrate state machines already owned by
   `crates/openagents-provider-substrate`.
+- Private `cloud` repo crates or source paths as dependencies.
 
 ## `crates/wgpui`
 

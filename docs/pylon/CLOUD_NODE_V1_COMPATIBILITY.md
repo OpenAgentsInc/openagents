@@ -5,6 +5,13 @@ Status: public contributor compatibility fixture
 Private managed OpenAgents Cloud implementation lives in the private `cloud`
 repo. Contributor Pylon stays open source in this repo.
 
+The full contributor app, TUI, wallet UX, provider inventory truth, payout
+behavior, and public receipts are protected by:
+
+```text
+docs/pylon/OPEN_SOURCE_CONTRIBUTOR_BOUNDARY.md
+```
+
 Pylon may implement the public subset of `openagents.cloud_node.v1` so private
 managed nodes and public contributor nodes can be compared by Nexus, Forge, and
 operator tooling without moving private fleet policy into public Pylon.
