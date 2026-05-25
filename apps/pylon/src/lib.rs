@@ -131,6 +131,14 @@ use tokio::{
     task::JoinHandle,
 };
 
+pub use pylon_core::{
+    DEFAULT_PYLON_HEARTBEAT_INTERVAL_MS, DEFAULT_PYLON_HEARTBEAT_ROUTE,
+    PUBLIC_BOUNDARY_FORBIDDEN_KEYS, PYLON_CORE_SCHEMA_VERSION, PylonCoreAdminState,
+    PylonCoreAvailability, PylonCoreBoundaryError, PylonCoreHeartbeat, PylonCoreIdentity,
+    PylonCoreInventory, PylonCoreInventoryItem, PylonCoreLifecycle, PylonCoreProjectionOptions,
+    PylonCoreReceipt, PylonCoreSnapshot, PylonDesiredMode, assert_public_json_boundary,
+};
+
 type HmacSha256 = Hmac<Sha256>;
 
 pub use ledger::{

@@ -57,6 +57,40 @@ Must not own:
 - Generic UI toolkit primitives that belong in `wgpui`.
 - Reusable provider lifecycle or launch-product derivation logic that belongs in `openagents-provider-substrate`.
 
+## `apps/pylon`
+
+Owns:
+
+- Installable contributor Pylon app behavior, CLI/TUI entrypoints, wallet UX,
+  local provider loops, NIP-90 runtime, local proof runtime, training intake,
+  and contributor payout flows.
+- App-specific orchestration that turns public provider-domain primitives into
+  a user-run supply connector.
+
+Must not own:
+
+- Private managed Cloud node topology, capacity-pool placement, workroom
+  sidecar policy, or internal settlement/accounting adapters.
+- Reusable public contributor boundary helpers that can be tested without
+  launching the app surface.
+
+## `crates/pylon-core`
+
+Owns:
+
+- Public contributor Pylon boundary helpers for identity, admin state,
+  availability, inventory, lifecycle, heartbeat, and receipt projections.
+- Public-safe JSON boundary checks for contributor Cloud Node compatibility
+  fixtures and similar public projection artifacts.
+- Pure tests for contributor boundary behavior that do not launch the TUI.
+
+Must not own:
+
+- Full contributor wallet UX or installable app behavior owned by `apps/pylon`.
+- Private managed Cloud node behavior owned by the private `cloud` repo.
+- Product-agnostic provider substrate state machines already owned by
+  `crates/openagents-provider-substrate`.
+
 ## `crates/wgpui`
 
 Owns:
