@@ -61,13 +61,12 @@ loop-health, payout, and continuity fields. It does not return payout-target
 identities, raw payout targets, recent payout rows, operation rows, or
 beneficiary debug rows.
 
-The public route is cache-first. It returns the latest redacted public snapshot
-from the treasury status cache and does not rebuild the full internal treasury
-status model on every request. Background wallet refreshes and authenticated
-operator refreshes update that cache. This keeps `/v1/treasury/status` and the
-public proxy responsive even when payout dispatch, wallet reconciliation, or
-LDK provider calls are busy. Authenticated operator exports and projections are
-the right surfaces for row-level diagnostics.
+The public route is live-first for telemetry correctness. When the control
+store is readable, it rebuilds the redacted public treasury status from current
+state and refreshes the treasury status cache. It falls back to the cache only
+when the store is write-locked by payout dispatch, wallet reconciliation, or
+LDK provider work. Authenticated operator exports and projections are the right
+surfaces for row-level diagnostics.
 
 For LDK, read the wallet balances precisely:
 
@@ -444,9 +443,11 @@ The current degraded-state codes are:
   has no synced ready or usable LDK channel capacity for those targets. For
   payout readiness this means Nexus has no live outbound channel capacity to
   the registered Pylon side.
-- `stale_wallet_sync`: the last wallet activity/sync timestamp exceeds the
-  configured wallet snapshot freshness threshold, or the wallet has not synced
-  yet.
+- `stale_wallet_sync`: the wallet has not synced yet, or the last wallet
+  activity/sync timestamp exceeds the configured wallet snapshot freshness
+  threshold while reconciliation-relevant payout work is pending. Idle
+  connected wallets keep exposing `wallet_sync_lag_ms` telemetry without
+  raising this degraded state.
 - `stale_event_subscriber`: LDK operation metadata indicates that event
   subscription visibility is stale.
 - `stale_gossip`: LDK operation metadata indicates stale gossip/RGS or routing

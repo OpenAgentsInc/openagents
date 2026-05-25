@@ -68,9 +68,9 @@ get_pylon_target() {
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
-    --command "sudo -u pylon /usr/local/bin/pylon config show" \
-    2>/dev/null \
-    | python3 -c 'import json,sys; print((json.load(sys.stdin).get("payout_destination") or "").strip())'
+	    --command "sudo -u pylon /usr/local/bin/pylon config show" \
+	    2>/dev/null \
+	    | python3 -c 'import json,sys; data=json.load(sys.stdin); print((data.get("external_payout_target") or data.get("payout_destination") or "").strip())'
 }
 
 generate_ldk_bolt12_offer() {
@@ -143,7 +143,7 @@ configure_pylon_target() {
     --command "sudo env PYLON_PAYOUT_TARGET=${quoted_target} PYLON_SERVICE=${quoted_service} bash -s" <<'REMOTE'
 set -euo pipefail
 
-sudo -u pylon /usr/local/bin/pylon config set payout_destination "$PYLON_PAYOUT_TARGET" >/dev/null
+sudo -u pylon /usr/local/bin/pylon config set external_payout_target "$PYLON_PAYOUT_TARGET" >/dev/null
 systemctl restart "$PYLON_SERVICE"
 systemctl is-active "$PYLON_SERVICE" >/dev/null
 sleep 2

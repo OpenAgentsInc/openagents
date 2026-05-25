@@ -2,6 +2,7 @@ mod ledger;
 mod nip90_runtime;
 mod proof;
 mod training_trn_mapping;
+mod wallet_harness;
 mod wallet_runtime;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -130,6 +131,14 @@ use tokio::{
     task::JoinHandle,
 };
 
+pub use pylon_core::{
+    DEFAULT_PYLON_HEARTBEAT_INTERVAL_MS, DEFAULT_PYLON_HEARTBEAT_ROUTE,
+    PUBLIC_BOUNDARY_FORBIDDEN_KEYS, PYLON_CORE_SCHEMA_VERSION, PylonCoreAdminState,
+    PylonCoreAvailability, PylonCoreBoundaryError, PylonCoreHeartbeat, PylonCoreIdentity,
+    PylonCoreInventory, PylonCoreInventoryItem, PylonCoreLifecycle, PylonCoreProjectionOptions,
+    PylonCoreReceipt, PylonCoreSnapshot, PylonDesiredMode, assert_public_json_boundary,
+};
+
 type HmacSha256 = Hmac<Sha256>;
 
 pub use ledger::{
@@ -152,20 +161,32 @@ pub use nip90_runtime::{
     run_provider_online_intake_once, run_provider_requests, scan_provider_requests,
     start_provider_online_intake, submit_buyer_job, watch_buyer_jobs,
 };
+pub use wallet_harness::{
+    PYLON_LDK_WALLET_HARNESS_SCHEMA, PYLON_LDK_WALLET_HARNESS_SCRIPT,
+    PYLON_LDK_WALLET_HARNESS_TEST, PylonLdkWalletHarnessPlan, PylonLdkWalletHarnessStep,
+    pylon_ldk_wallet_harness_plan,
+};
 pub use wallet_runtime::{
     PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
-    WalletBalanceSnapshot, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
-    WalletInvoiceReport, WalletLdkNodeStatus, WalletLockOwner, WalletLockReport,
-    WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport, WalletRuntimeSurface,
-    WalletStatusReport, WalletStorageLayoutReport, WalletSubcommand, clear_wallet_lock_report,
+    WalletBackupExportReport, WalletBackupInspectReport, WalletBackupPublicManifest,
+    WalletBalanceSnapshot, WalletChannelsReport, WalletCreditSummaryReport, WalletEntropyReport,
+    WalletHistoryReport, WalletInvoiceReport, WalletLdkNodeStatus, WalletLightningReadiness,
+    WalletLockOwner, WalletLockReport, WalletNodeEntropyMetadata, WalletOfferReport,
+    WalletPayReport, WalletRestoreReport, WalletRuntimeSurface, WalletStatusReport,
+    WalletStorageLayoutReport, WalletSubcommand, WalletTelemetryReport, clear_wallet_lock_report,
     create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
-    export_wallet_entropy_report, import_wallet_entropy_report, inspect_wallet_lock_report,
-    load_wallet_balance_status_report, load_wallet_credit_summary_report,
+    export_wallet_backup_report, export_wallet_entropy_report, import_wallet_entropy_report,
+    inspect_wallet_backup_report, inspect_wallet_lock_report, load_wallet_balance_status_report,
+    load_wallet_channels_report, load_wallet_credit_summary_report,
     load_wallet_entropy_status_report, load_wallet_history_report, load_wallet_status_report,
-    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
-    render_wallet_balance_report, render_wallet_entropy_report, render_wallet_history_report,
+    load_wallet_telemetry_report, parse_wallet_command, pay_wallet_invoice_report,
+    render_wallet_address_report, render_wallet_backup_export_report,
+    render_wallet_backup_inspect_report, render_wallet_balance_report,
+    render_wallet_channels_report, render_wallet_entropy_report, render_wallet_history_report,
     render_wallet_invoice_report, render_wallet_lock_report, render_wallet_offer_report,
-    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
+    render_wallet_pay_report, render_wallet_restore_report, render_wallet_status_report,
+    render_wallet_telemetry_report, restore_wallet_backup_report, restore_wallet_phrase_report,
+    run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -380,6 +401,9 @@ impl Default for PylonProbeConfig {
 pub struct PylonConfig {
     pub schema_version: u32,
     pub node_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_payout_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_destination: Option<String>,
     pub identity_path: PathBuf,
     pub admin_db_path: PathBuf,
@@ -438,6 +462,7 @@ struct PylonPublicInventoryControls {
     sandbox_python_exec_enabled: bool,
     sandbox_node_exec_enabled: bool,
     sandbox_posix_exec_enabled: bool,
+    adapter_training_contributor_enabled: bool,
 }
 
 impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
@@ -449,6 +474,7 @@ impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
             sandbox_python_exec_enabled: value.sandbox_python_exec_enabled,
             sandbox_node_exec_enabled: value.sandbox_node_exec_enabled,
             sandbox_posix_exec_enabled: value.sandbox_posix_exec_enabled,
+            adapter_training_contributor_enabled: value.adapter_training_contributor_enabled,
         }
     }
 }
@@ -457,7 +483,8 @@ impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
 struct PylonPublicConfig {
     schema_version: u32,
     node_label: String,
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     identity_path: PathBuf,
     admin_db_path: PathBuf,
     admin_listen_addr: String,
@@ -489,7 +516,8 @@ impl From<&PylonConfig> for PylonPublicConfig {
         Self {
             schema_version: value.schema_version,
             node_label: value.node_label.clone(),
-            payout_destination: value.payout_destination.clone(),
+            external_payout_target: configured_external_payout_target(value),
+            external_payout_target_warning: external_payout_target_warning(value),
             identity_path: value.identity_path.clone(),
             admin_db_path: value.admin_db_path.clone(),
             admin_listen_addr: value.admin_listen_addr.clone(),
@@ -2581,7 +2609,8 @@ struct InitReport {
     ledger_path: String,
     identity_path: String,
     npub: String,
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     admin_listen_addr: String,
 }
 
@@ -2589,7 +2618,8 @@ struct InitReport {
 struct DoctorReport {
     config_path: String,
     node_label: String,
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
@@ -3228,7 +3258,8 @@ pub struct RelayActivityReport {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct PayoutReport {
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
+    external_payout_target_warning: Option<String>,
     wallet_balance: WalletBalanceSnapshot,
     earnings_lifetime_sats: u64,
     earnings_sats_today: u64,
@@ -3239,7 +3270,7 @@ pub struct PayoutReport {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PayoutWithdrawalReport {
-    payout_destination: Option<String>,
+    external_payout_target: Option<String>,
     payment_id: String,
     status: String,
     amount_sats: u64,
@@ -9066,7 +9097,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 ledger_path: ledger_path.display().to_string(),
                 identity_path: config.identity_path.display().to_string(),
                 npub: identity.npub,
-                payout_destination: config.payout_destination.clone(),
+                external_payout_target: configured_external_payout_target(&config),
+                external_payout_target_warning: external_payout_target_warning(&config),
                 admin_listen_addr: config.admin_listen_addr.clone(),
             })?))
         }
@@ -9081,7 +9113,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             Ok(Some(serde_json::to_string_pretty(&DoctorReport {
                 config_path: cli.config_path.display().to_string(),
                 node_label: config.node_label.clone(),
-                payout_destination: config.payout_destination.clone(),
+                external_payout_target: configured_external_payout_target(&config),
+                external_payout_target_warning: external_payout_target_warning(&config),
                 identity: identity_metadata(&identity, config.node_label.as_str()),
                 availability,
                 products,
@@ -9521,10 +9554,12 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
 
 pub fn usage() -> &'static str {
     "Standalone Pylon CLI.\n\
-Bare interactive `pylon` opens the terminal UI, which starts and supervises the earning worker.\n\
-Noninteractive `pylon` and `pylon --config-path <path>` run the worker loop directly.\n\
-Use `pylon-tui` or `pylon tui` to open the terminal UI explicitly.\n\
-Use the commands below for explicit provider control and inspection.\n\
+	Bare interactive `pylon` opens the terminal UI, which starts and supervises the earning worker.\n\
+	Noninteractive `pylon` and `pylon --config-path <path>` run the worker loop directly.\n\
+	Use `pylon-tui` or `pylon tui` to open the terminal UI explicitly.\n\
+	Default paid-work setup uses the built-in LDK wallet; start with `wallet status --json`, `wallet channels --json`, and `wallet backup export`.\n\
+	Advanced migration only: `config set external_payout_target <lightning_target>` overrides wallet-generated Nexus registration.\n\
+	Use the commands below for explicit provider control and inspection.\n\
 From this repo, run them with `cargo pylon-headless <command>`, the `pylon` binary directly, or the `oa` binary for proof-runtime commands.\n\
 \n\
 Usage: pylon|oa [--max-cores <n>|--max-threads <n>] [--config-path <path>] [command]\n\
@@ -9577,11 +9612,17 @@ Commands:\n\
   wallet status [--json]\n\
   wallet sync [--json]\n\
   wallet balance [--json]\n\
+  wallet channels [--json]\n\
+  wallet telemetry [--json]\n\
   wallet address [--json]\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet pay <payment_request> [--amount-sats <n>] [--yes] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
+  wallet backup export <path> [--passphrase-env <ENV>] [--include-identity-mnemonic] [--json]\n\
+  wallet backup inspect <path> [--json]\n\
+  wallet restore phrase (--mnemonic-env <ENV>|--mnemonic-file <path>) [--wallet-network <network>] [--yes] [--json]\n\
+  wallet restore backup <path> [--passphrase-env <ENV>] [--yes] [--json]\n\
   wallet entropy status|export <path>|import <path> [--json]\n\
   wallet lock status|clear [--json]\n\
   training status [--json]\n\
@@ -10876,7 +10917,11 @@ async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
         && config.wallet_runtime_kind != PylonWalletRuntimeKind::LdkNode
     {
         eprintln!(
-            "pylon: no wallet-owned registration target is available; paid-work eligibility requires wallet_runtime_kind=ldk_node or an explicit payout_destination override"
+            "pylon: no wallet-owned registration target is available; use wallet_runtime_kind=ldk_node or set external_payout_target only as an advanced migration override"
+        );
+    } else if configured_external_payout_target(&config).is_some() {
+        eprintln!(
+            "pylon: using advanced external_payout_target override; built-in LDK wallet registration is the default for new nodes"
         );
     }
     let status = apply_control_locally(&config, ProviderControlAction::Online).await?;
@@ -19538,7 +19583,7 @@ async fn maybe_reconcile_training_terminal_window(
             && let Some(closeout_hints) =
                 load_training_terminal_closeout_hints(run_root, run_status, window_status)?
         {
-            changed |= maybe_reconcile_training_scored_window(
+            let replayed = maybe_reconcile_training_scored_window(
                 state,
                 active,
                 client,
@@ -19546,6 +19591,49 @@ async fn maybe_reconcile_training_terminal_window(
                 contribution_outcomes.clone(),
             )
             .await?;
+            changed |= replayed;
+            if replayed
+                && let Some(accepted_outcome_id) = window.accepted_outcome_id.as_deref()
+                && let Ok(updated_outcomes) = client
+                    .list_accepted_outcomes(
+                        Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                        Some(context.manifest.environment_ref.as_str()),
+                    )
+                    .await
+                && let Some(updated_outcome) = updated_outcomes
+                    .into_iter()
+                    .find(|outcome| outcome.outcome_id == accepted_outcome_id)
+            {
+                let checkpoint_ref = updated_outcome
+                    .training_summary
+                    .as_ref()
+                    .and_then(|summary| summary.accepted_checkpoint_ref.clone());
+                let acceptance_state = training_closeout_status_from_metadata(&updated_outcome);
+                let payout_eligible = training_closeout_payout_eligible(&updated_outcome);
+                for outcome in &contribution_outcomes {
+                    changed |= record_training_closeout_progress_stage(
+                        state,
+                        outcome.assignment_id.as_str(),
+                        outcome.training_run_id.as_str(),
+                        outcome.window_id.as_str(),
+                        active.role,
+                        PylonTrainingCloseoutStage::Accepted,
+                        None,
+                        checkpoint_ref.clone(),
+                        Some(acceptance_state.clone()),
+                        payout_eligible.then_some("pending".to_string()),
+                        None,
+                        None,
+                    );
+                    changed |= update_training_closeout_public_settlement_metadata(
+                        state,
+                        outcome.assignment_id.as_str(),
+                        None,
+                        Some(accepted_outcome_id),
+                        None,
+                    );
+                }
+            }
         }
         for outcome in &contribution_outcomes {
             changed |= record_training_closeout_progress_stage(
@@ -20103,10 +20191,16 @@ async fn report_training_terminal_runtime_to_authority(
         );
     }
 
+    let window_already_reconciled = state
+        .window_cache
+        .get(active.window_id.as_str())
+        .is_some_and(|entry| entry.state == "reconciled");
+
     if run_succeeded
         && checkpoint_published
         && active.role == PylonTrainingRoleClaim::Worker
         && retained_contribution.is_some()
+        && !window_already_reconciled
     {
         let retained = retained_contribution
             .as_ref()
@@ -23235,6 +23329,8 @@ fn normalize_legacy_config_value(value: &mut Value) {
         return;
     };
 
+    normalize_legacy_object_key(object, "external_payout_target", &["payout_destination"]);
+
     if !object.contains_key("local_gemma_base_url") {
         if let Some(legacy_value) = object.remove("legacy_runtime_base_url") {
             object.insert("local_gemma_base_url".to_string(), legacy_value);
@@ -23294,6 +23390,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
     PylonConfig {
         schema_version: 1,
         node_label: "pylon".to_string(),
+        external_payout_target: None,
         payout_destination: None,
         identity_path: base_dir.join("identity.mnemonic"),
         admin_db_path: base_dir.join("provider-admin.sqlite"),
@@ -24158,8 +24255,8 @@ fn build_snapshot_from_availability(
                     value: Value::String(config.node_label.clone()),
                 },
                 ProviderJsonEntry {
-                    key: "payout_destination".to_string(),
-                    value: json!(config.payout_destination),
+                    key: "external_payout_target".to_string(),
+                    value: json!(configured_external_payout_target(config)),
                 },
                 ProviderJsonEntry {
                     key: "local_gemma_base_url".to_string(),
@@ -24170,6 +24267,12 @@ fn build_snapshot_from_availability(
                     value: json!(config.local_gemma_preferred_model),
                 },
             ];
+            if let Some(warning) = external_payout_target_warning(config) {
+                entries.push(ProviderJsonEntry {
+                    key: "external_payout_target_warning".to_string(),
+                    value: Value::String(warning),
+                });
+            }
             if let Ok(training_status) = load_training_status_report_with_config(
                 config.admin_db_path.as_path(),
                 config,
@@ -24525,7 +24628,28 @@ fn local_training_build_digest() -> String {
         .clone()
 }
 
+fn configured_external_payout_target(config: &PylonConfig) -> Option<String> {
+    config
+        .external_payout_target
+        .as_ref()
+        .or(config.payout_destination.as_ref())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn external_payout_target_warning(config: &PylonConfig) -> Option<String> {
+    configured_external_payout_target(config).map(|_| {
+        "advanced_external_payout_target_override: built-in LDK wallet registration remains the default for new Pylon nodes"
+            .to_string()
+    })
+}
+
 fn training_settlement_destination(config: &PylonConfig) -> Option<String> {
+    configured_external_payout_target(config)
+}
+
+#[cfg(test)]
+fn legacy_payout_destination_value(config: &PylonConfig) -> Option<String> {
     config
         .payout_destination
         .as_ref()
@@ -25942,7 +26066,8 @@ pub async fn load_payout_report(config_path: &Path, limit: Option<u32>) -> Resul
     }
     let earnings = earnings.earnings.unwrap_or_default();
     Ok(PayoutReport {
-        payout_destination: config.payout_destination,
+        external_payout_target: configured_external_payout_target(&config),
+        external_payout_target_warning: external_payout_target_warning(&config),
         wallet_balance,
         earnings_lifetime_sats: earnings.lifetime_sats,
         earnings_sats_today: earnings.sats_today,
@@ -25958,7 +26083,7 @@ pub async fn run_payout_withdrawal(
     amount_sats: Option<u64>,
 ) -> Result<PayoutWithdrawalReport> {
     let config = load_or_create_config(config_path)?;
-    let payout_destination = config.payout_destination.clone();
+    let external_payout_target = configured_external_payout_target(&config);
     let payment_request = payment_request.trim().to_string();
     if payment_request.is_empty() {
         bail!("payout withdraw requires a payment request");
@@ -25979,7 +26104,7 @@ pub async fn run_payout_withdrawal(
                     amount_sats: Some(report.payment.amount_sats),
                     fees_sats: Some(report.payment.fees_sats),
                     invoice: Some(payment_request.clone()),
-                    payout_destination: payout_destination.clone(),
+                    payout_destination: external_payout_target.clone(),
                     detail: Some(detail.clone()),
                     created_at_ms: now_epoch_ms() as u64,
                     updated_at_ms: now_epoch_ms() as u64,
@@ -25996,7 +26121,7 @@ pub async fn run_payout_withdrawal(
                 Ok(())
             })?;
             Ok(PayoutWithdrawalReport {
-                payout_destination,
+                external_payout_target,
                 payment_id: report.payment_id,
                 status: report.payment.status,
                 amount_sats: report.payment.amount_sats,
@@ -26017,7 +26142,7 @@ pub async fn run_payout_withdrawal(
                     amount_sats,
                     fees_sats: None,
                     invoice: Some(payment_request.clone()),
-                    payout_destination: payout_destination.clone(),
+                    payout_destination: external_payout_target.clone(),
                     detail: Some(error_string.clone()),
                     created_at_ms: now_epoch_ms() as u64,
                     updated_at_ms: now_epoch_ms() as u64,
@@ -26709,8 +26834,8 @@ pub fn render_earnings_report(report: &EarningsReport) -> String {
 pub fn render_payout_report(report: &PayoutReport) -> String {
     let mut lines = vec![
         format!(
-            "payout_destination: {}",
-            report.payout_destination.as_deref().unwrap_or("none")
+            "external_payout_target: {}",
+            report.external_payout_target.as_deref().unwrap_or("none")
         ),
         format!("wallet_total_sats: {}", report.wallet_balance.total_sats),
         format!(
@@ -26727,6 +26852,9 @@ pub fn render_payout_report(report: &PayoutReport) -> String {
         format!("last_job_result: {}", report.last_job_result),
         format!("withdrawals: {}", report.withdrawals.len()),
     ];
+    if let Some(warning) = report.external_payout_target_warning.as_deref() {
+        lines.push(format!("warning: {warning}"));
+    }
     for payout in &report.withdrawals {
         lines.push(String::new());
         lines.push(format!("payout_id: {}", payout.payout_id));
@@ -26763,8 +26891,8 @@ pub fn render_payout_report(report: &PayoutReport) -> String {
 pub fn render_payout_withdrawal_report(report: &PayoutWithdrawalReport) -> String {
     let mut lines = vec![
         format!(
-            "payout_destination: {}",
-            report.payout_destination.as_deref().unwrap_or("none")
+            "external_payout_target: {}",
+            report.external_payout_target.as_deref().unwrap_or("none")
         ),
         format!("payment_id: {}", report.payment_id),
         format!("status: {}", report.status),
@@ -27632,7 +27760,7 @@ async fn build_provider_wallet_registration_target_with_options(
     let status = load_wallet_status_report(config_path).await?;
     if status.runtime.runtime_kind != PylonWalletRuntimeKind::LdkNode {
         bail!(
-            "wallet-generated payout-target registration requires wallet_runtime_kind=ldk_node or an explicit payout_destination override"
+            "wallet-generated payout-target registration requires wallet_runtime_kind=ldk_node or an explicit external_payout_target override"
         );
     }
     let ldk_node = status.ldk_node.as_ref().ok_or_else(|| {
@@ -32145,12 +32273,13 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
     let mut next = config.clone();
     match key {
         "node_label" => next.node_label = value.to_string(),
-        "payout_destination" => {
-            next.payout_destination = if value.trim().is_empty() {
+        "external_payout_target" | "payout_destination" => {
+            next.external_payout_target = if value.trim().is_empty() {
                 None
             } else {
-                Some(value.to_string())
+                Some(value.trim().to_string())
             };
+            next.payout_destination = None;
         }
         "admin_listen_addr" => next.admin_listen_addr = value.to_string(),
         "nexus_control_base_url" => {
@@ -32424,20 +32553,20 @@ mod tests {
         add_configured_relay, apply_config_set, apply_control_command,
         apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
         build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
-        default_config, derive_adapter_training_contributor_availability,
-        derive_training_capability_envelope_v2, derive_training_capability_tier_profile,
-        detect_availability, download_gemma_model_from_base_url,
-        download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
-        drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
-        ensure_training_contribution_bridge_bundles, garbage_collect_training_download_cache,
-        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
-        inspect_psionic_train_runtime_surface_at,
+        configured_external_payout_target, default_config,
+        derive_adapter_training_contributor_availability, derive_training_capability_envelope_v2,
+        derive_training_capability_tier_profile, detect_availability,
+        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
+        drain_training_supervisor, drive_training_supervisor_once, ensure_identity,
+        ensure_no_conflicting_training_assignment, ensure_training_contribution_bridge_bundles,
+        garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
+        gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
-        inspect_training_retained_contribution_artifacts, inventory_rows, load_backend_report,
-        load_earnings_report, load_inventory_report, load_jobs_report,
-        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
-        load_or_create_training_runtime_state, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect,
+        inspect_training_retained_contribution_artifacts, inventory_rows,
+        legacy_payout_destination_value, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
+        load_or_create_config, load_or_create_training_runtime_state, load_product_report,
+        load_receipts_report, load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
         local_training_release_id, maybe_retire_released_terminal_worker_runtime,
         maybe_start_training_supervisor_from_retained_assignment, merge_ledger_earnings,
@@ -32542,6 +32671,10 @@ mod tests {
         } else {
             Err(std::io::Error::other(message.to_string()).into())
         }
+    }
+
+    fn test_future_training_lease_expires_at_ms() -> i64 {
+        now_epoch_ms() + 600_000
     }
 
     #[test]
@@ -34838,12 +34971,18 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
     }
 
     #[test]
-    fn config_set_updates_payout_destination() -> Result<(), Box<dyn std::error::Error>> {
+    fn config_set_updates_external_payout_target() -> Result<(), Box<dyn std::error::Error>> {
         let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
-        apply_config_set(&mut config, "payout_destination", "lnurlp:alice")?;
+        apply_config_set(&mut config, "external_payout_target", "lnurlp:alice")?;
         ensure(
-            config.payout_destination.as_deref() == Some("lnurlp:alice"),
-            "config set should update payout destination",
+            config.external_payout_target.as_deref() == Some("lnurlp:alice"),
+            "config set should update the advanced external payout target",
+        )?;
+        apply_config_set(&mut config, "payout_destination", "lnurlp:bob")?;
+        ensure(
+            config.external_payout_target.as_deref() == Some("lnurlp:bob")
+                && config.payout_destination.is_none(),
+            "legacy payout_destination config set should migrate into external_payout_target",
         )
     }
 
@@ -36989,7 +37128,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "acked".to_string(),
                 manifest_digest: Some("sha256:manifest-expected".to_string()),
                 checkpoint_ref: None,
-                expires_at_ms: Some(1_762_500_000_100),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.expected".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -37018,7 +37157,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "acked".to_string(),
                 manifest_digest: Some("sha256:manifest-other".to_string()),
                 checkpoint_ref: None,
-                expires_at_ms: Some(1_762_500_000_200),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.other".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -37047,7 +37186,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "leased".to_string(),
                 manifest_digest: Some("sha256:manifest-missing".to_string()),
                 checkpoint_ref: None,
-                expires_at_ms: Some(1_762_500_000_300),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: None,
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -37286,7 +37425,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     "assignment_id": "assign.node01.window0001",
                     "role": "worker",
                     "issued_at_ms": 1_762_491_200_600_i64,
-                    "expires_at_ms": 1_762_491_260_600_i64,
+                    "expires_at_ms": test_future_training_lease_expires_at_ms(),
                     "manifest_digest": "sha256:manifest-alpha",
                     "checkpoint_ref": "checkpoint://run.alpha/0001"
                 }),
@@ -37695,7 +37834,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     "assignment_id": "assign.node01.window0001",
                     "role": "worker",
                     "issued_at_ms": 1_762_491_200_600_i64,
-                    "expires_at_ms": 1_762_491_260_600_i64,
+                    "expires_at_ms": test_future_training_lease_expires_at_ms(),
                     "manifest_digest": "sha256:manifest-alpha",
                     "checkpoint_ref": "checkpoint://run.alpha/0001",
                     "membership_revision": "members.rev2",
@@ -38148,7 +38287,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "leased".to_string(),
                 manifest_digest: Some("sha256:manifest-alpha".to_string()),
                 checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
-                expires_at_ms: Some(1_762_491_260_600),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.alpha".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -38433,7 +38572,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 state: "leased".to_string(),
                 manifest_digest: Some("sha256:manifest-alpha".to_string()),
                 checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
-                expires_at_ms: Some(1_762_491_260_600),
+                expires_at_ms: Some(test_future_training_lease_expires_at_ms()),
                 network_id: Some("trainnet.alpha".to_string()),
                 challenge_id: None,
                 peer_node_pubkey: None,
@@ -38937,7 +39076,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                                 attempt: 1,
                                 validator_id: validator_public_key.clone(),
                                 leased_at_ms: 1_762_491_210_700,
-                                expires_at_ms: 1_762_491_270_700,
+                                expires_at_ms: test_future_training_lease_expires_at_ms() as u64,
                             }),
                             final_result: None,
                         },
@@ -38946,7 +39085,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                             attempt: 1,
                             validator_id: validator_public_key.clone(),
                             leased_at_ms: 1_762_491_210_700,
-                            expires_at_ms: 1_762_491_270_700,
+                            expires_at_ms: test_future_training_lease_expires_at_ms() as u64,
                         }),
                         result: None,
                         window: Some(training_adapter_window_fixture(
@@ -39177,7 +39316,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 attempt: 1,
                 validator_id: identity.public_key_hex.clone(),
                 leased_at_ms: 1_762_491_210_700,
-                expires_at_ms: 1_762_491_270_700,
+                expires_at_ms: test_future_training_lease_expires_at_ms() as u64,
             },
         );
         let lease = state
@@ -43294,6 +43433,8 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.training.run_root = temp_dir.path().join("training");
         config.relay_auth_enabled = false;
+        config.relay_urls = vec!["ws://127.0.0.1:9".to_string()];
+        config.training.relay_urls = vec!["ws://127.0.0.1:9".to_string()];
         save_config(config_path.as_path(), &config)?;
 
         let local_run_root = config.training.run_root.join("runs").join("run.alpha");
@@ -43323,18 +43464,21 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ]);
 
         let queued_report = publish_training_trn_state(config_path.as_path(), None).await?;
+        let queued_entries = queued_report
+            .node_records
+            .iter()
+            .chain(queued_report.receipts.iter())
+            .chain(queued_report.artifact_locators.iter())
+            .collect::<Vec<_>>();
         ensure(
-            queued_report
-                .node_records
-                .iter()
-                .chain(queued_report.receipts.iter())
-                .chain(queued_report.artifact_locators.iter())
-                .all(|entry| {
-                    entry.publication_state == "queued_retry"
-                        && entry.pending_retry
-                        && entry.event_id.is_empty()
-                }),
-            "relay outages should queue every training TRN publication instead of failing or pretending publish succeeded",
+            queued_entries.iter().all(|entry| {
+                entry.publication_state == "queued_retry"
+                    && entry.pending_retry
+                    && entry.event_id.is_empty()
+            }),
+            &format!(
+                "relay outages should queue every training TRN publication instead of failing or pretending publish succeeded: {queued_entries:#?}",
+            ),
         )?;
 
         let queued_state = load_or_create_training_runtime_state(&config)?;
@@ -43378,6 +43522,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
         std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        config.relay_urls = vec![relay.url.clone()];
+        config.training.relay_urls = vec![relay.url.clone()];
+        save_config(config_path.as_path(), &config)?;
 
         let recovered_report = publish_training_trn_state(config_path.as_path(), None).await?;
         ensure(
@@ -46297,7 +46444,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     entry.stage == super::PylonTrainingCloseoutStage::Accepted
                         && entry.acceptance_state.as_deref() == Some("rewarded")
                 }),
-            "replayed closeout should advance the retained worker entry from refused to rewarded",
+            &format!(
+                "replayed closeout should advance the retained worker entry from refused to rewarded: {:#?}",
+                state.closeout_progress.get("assign.node01.window0001")
+            ),
         )?;
         ensure(
             state.authority_receipt_records.values().any(|record| {
@@ -48852,6 +49002,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "missing nexus_control_base_url should hydrate from the default config",
         )?;
         ensure(
+            configured_external_payout_target(&config).is_none(),
+            "new configs should default to the built-in wallet path without an external payout override",
+        )?;
+        ensure(
             config.inventory_controls.local_gemma_inference_enabled
                 && !config.inventory_controls.apple_fm_inference_enabled
                 && !config.inventory_controls.apple_fm_adapter_hosting_enabled,
@@ -48898,6 +49052,42 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             !config.inventory_controls.local_gemma_inference_enabled
                 && !config.inventory_controls.local_gemma_embeddings_enabled,
             "legacy gpt_oss inventory flags should hydrate local Gemma controls",
+        )
+    }
+
+    #[test]
+    fn load_config_migrates_legacy_payout_destination_to_external_target()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        std::fs::write(
+            config_path.as_path(),
+            r#"{
+  "schema_version": 1,
+  "node_label": "pylon",
+  "payout_destination": "lnurlp:legacy-provider",
+  "identity_path": "/tmp/pylon-test/identity.mnemonic",
+  "admin_db_path": "/tmp/pylon-test/provider-admin.sqlite",
+  "admin_listen_addr": "127.0.0.1:9468",
+  "wallet_storage_dir": "/tmp/pylon-test/wallet"
+}"#,
+        )?;
+
+        let config = super::load_config(config_path.as_path())?;
+        ensure(
+            config.external_payout_target.as_deref() == Some("lnurlp:legacy-provider")
+                && legacy_payout_destination_value(&config).is_none()
+                && configured_external_payout_target(&config).as_deref()
+                    == Some("lnurlp:legacy-provider"),
+            "legacy payout_destination should migrate into the explicit external_payout_target override",
+        )?;
+
+        let rendered = render_public_config_json(&config)?;
+        ensure(
+            rendered.contains("\"external_payout_target\": \"lnurlp:legacy-provider\"")
+                && rendered.contains("advanced_external_payout_target_override")
+                && !rendered.contains("\"payout_destination\""),
+            "config show should expose the new external_payout_target key and omit the legacy key",
         )
     }
 
@@ -49302,7 +49492,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         config.nexus_control_base_url = nexus_base_url;
         config.wallet_runtime_kind = PylonWalletRuntimeKind::ExternalTarget;
         config.wallet_network = "ldk-external".to_string();
-        config.payout_destination = Some("lno1pylonalice".to_string());
+        config.external_payout_target = Some("lno1pylonalice".to_string());
         save_config(config_path.as_path(), &config)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
         let client = provider_presence_client()?;
@@ -49327,7 +49517,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 && requests[1].1["wallet_network"] == "ldk-external"
                 && requests[1].1["wallet_registration_mode"] == "external_override"
                 && requests[1].1.get("wallet_node_id").is_none(),
-            "external payout_destination registration should remain explicit and visibly non-default",
+            "external_payout_target registration should remain explicit and visibly non-default",
         )
     }
 
@@ -50859,6 +51049,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        config
+            .inventory_controls
+            .adapter_training_contributor_enabled = false;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
@@ -51320,6 +51513,30 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ensure(
             parse_args(vec![
                 "wallet".to_string(),
+                "telemetry".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::Telemetry { json: true },
+                },
+            "wallet telemetry should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "channels".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::Channels { json: true },
+                },
+            "wallet channels should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
                 "invoice".to_string(),
                 "21".to_string(),
                 "--description".to_string(),
@@ -51351,6 +51568,90 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     },
                 },
             "wallet history should parse with a limit",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "backup".to_string(),
+                "export".to_string(),
+                "/tmp/pylon-wallet-backup.json".to_string(),
+                "--passphrase-env".to_string(),
+                "PYLON_TEST_BACKUP_PASSPHRASE".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::BackupExport {
+                        path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                        passphrase_env: Some("PYLON_TEST_BACKUP_PASSPHRASE".to_string()),
+                        include_identity_mnemonic: false,
+                        json: true,
+                    },
+                },
+            "wallet backup export should parse with passphrase env and json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "backup".to_string(),
+                "inspect".to_string(),
+                "/tmp/pylon-wallet-backup.json".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::BackupInspect {
+                        path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                        json: true,
+                    },
+                },
+            "wallet backup inspect should parse with json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "restore".to_string(),
+                "phrase".to_string(),
+                "--mnemonic-env".to_string(),
+                "PYLON_TEST_RESTORE_MNEMONIC".to_string(),
+                "--wallet-network".to_string(),
+                "regtest".to_string(),
+                "--yes".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::RestorePhrase {
+                        mnemonic_env: Some("PYLON_TEST_RESTORE_MNEMONIC".to_string()),
+                        mnemonic_file: None,
+                        wallet_network: Some("regtest".to_string()),
+                        yes: true,
+                        json: true,
+                    },
+                },
+            "wallet restore phrase should parse with mnemonic env, network, yes, and json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "restore".to_string(),
+                "backup".to_string(),
+                "/tmp/pylon-wallet-backup.json".to_string(),
+                "--passphrase-env".to_string(),
+                "PYLON_TEST_BACKUP_PASSPHRASE".to_string(),
+                "--yes".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::RestoreBackup {
+                        path: PathBuf::from("/tmp/pylon-wallet-backup.json"),
+                        passphrase_env: Some("PYLON_TEST_BACKUP_PASSPHRASE".to_string()),
+                        yes: true,
+                        json: true,
+                    },
+                },
+            "wallet restore backup should parse with passphrase env, yes, and json",
         )?;
         ensure(
             parse_args(vec![
@@ -52723,7 +53024,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
-        config.payout_destination = Some("lnurlp:provider".to_string());
+        config.external_payout_target = Some("lnurlp:provider".to_string());
         save_config(config_path.as_path(), &config)?;
         mutate_ledger(config_path.as_path(), |ledger| {
             ledger.wallet.last_balance_sats = Some(200);
@@ -52733,14 +53034,14 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let report =
             super::run_payout_withdrawal(config_path.as_path(), "lnbc21withdraw", Some(21)).await?;
         ensure(
-            report.payout_destination.as_deref() == Some("lnurlp:provider")
+            report.external_payout_target.as_deref() == Some("lnurlp:provider")
                 && report.payment_id == "payment-withdraw-001"
                 && report.status == "completed"
                 && report.amount_sats == 21
                 && report.fees_sats == 1
                 && report.invoice == "lnbc21withdraw"
                 && report.post_balance.total_sats == 144,
-            "payout withdrawal should surface the retained destination and payment outcome",
+            "payout withdrawal should surface the external override and payment outcome",
         )?;
 
         let ledger = load_ledger(config_path.as_path())?;
@@ -54914,6 +55215,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        config
+            .inventory_controls
+            .adapter_training_contributor_enabled = false;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
@@ -55096,6 +55400,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        config
+            .inventory_controls
+            .adapter_training_contributor_enabled = false;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 

@@ -14,6 +14,7 @@ workspace = true
 anyhow.workspace = true
 axum = "0.8"
 bip39 = "2.2.0"
+chacha20poly1305 = "0.10.1"
 codex-client = { path = "../../crates/codex-client" }
 hex = { workspace = true }
 hmac = "0.12.1"
@@ -24,10 +25,12 @@ nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
+pylon-core = { path = "../../crates/pylon-core" }
 psionic-train.workspace = true
 rand.workspace = true
 reqwest.workspace = true
 rustls = { version = "0.23", features = ["ring"] }
+scrypt = "0.11.0"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -35,6 +38,8 @@ sysinfo.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+electrsd = { version = "0.36.1", features = ["electrs_0_10_6", "corepc-node_27_2"], default-features = false }
+electrum-client = { version = "0.24.0", features = ["proxy", "use-rustls-ring"], default-features = false }
 futures-util = "0.3"
 tempfile = "3"
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }

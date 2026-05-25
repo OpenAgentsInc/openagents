@@ -1,0 +1,17 @@
+[package]
+name = "pylon-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Public contributor Pylon core boundary helpers"
+
+[lints]
+workspace = true
+
+[dependencies]
+openagents-provider-substrate = { path = "../openagents-provider-substrate" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

@@ -18465,12 +18465,14 @@ async fn treasury_status(
     State(state): State<AppState>,
 ) -> Result<Json<TreasuryStatusResponse>, ApiError> {
     let now = now_unix_ms();
-    if let Some(status) = try_cached_treasury_status_snapshot(&state)? {
-        return Ok(Json(status.public_api_view()));
-    }
     let store = match try_read_store(&state, "treasury_status_live_store_busy") {
         Ok(store) => store,
-        Err(error) => return Err(error),
+        Err(error) => {
+            if let Some(status) = try_cached_treasury_status_snapshot(&state)? {
+                return Ok(Json(status.public_api_view()));
+            }
+            return Err(error);
+        }
     };
     let status = store.treasury.status_response(&state.config.treasury, now);
     drop(store);
@@ -37960,9 +37962,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn treasury_status_fails_fast_when_status_cache_is_busy() -> Result<()> {
+    async fn treasury_status_uses_live_snapshot_when_store_is_readable() -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_router_with_state(state.clone());
+
+        let mut cached =
+            super::cached_treasury_status_snapshot(&state).expect("initial treasury status cache");
+        cached.wallet_balance_sats = 777;
+        cached.wallet_runtime_status = Some("cached".to_string());
+        super::replace_treasury_status_cache(&state, cached);
+
+        let live_status = {
+            let store = state.store.read().expect("store read lock");
+            store
+                .treasury
+                .status_response(&state.config.treasury, super::now_unix_ms())
+        };
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(status_response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(status_response).await?;
+        assert_eq!(status.wallet_balance_sats, live_status.wallet_balance_sats);
+        assert_eq!(
+            status.wallet_runtime_status,
+            live_status.wallet_runtime_status
+        );
+        assert_ne!(status.wallet_runtime_status.as_deref(), Some("cached"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_status_fails_fast_when_store_and_status_cache_are_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let _store_guard = state.store.write().expect("store write lock");
         let _cache_guard = state
             .treasury_status_cache
             .write()

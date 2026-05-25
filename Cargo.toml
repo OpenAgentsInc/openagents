@@ -21,6 +21,7 @@ members = [
     "crates/openagents-kernel-core",
     "crates/openagents-kernel-proto",
     "crates/openagents-provider-substrate",
+    "crates/pylon-core",
     "crates/psionic-train-contract",
     "crates/openagents-validator-service",
     "crates/nostr/client",

@@ -31,6 +31,19 @@ mkdir -p "$CONTEXT_DIR"
 find "$CONTEXT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
 cp "$ROOT_DIR/Cargo.toml" "$CONTEXT_DIR/Cargo.toml"
+python3 - "$CONTEXT_DIR/Cargo.toml" <<'PY'
+from pathlib import Path
+import sys
+
+cargo_toml = Path(sys.argv[1])
+lines = cargo_toml.read_text().splitlines()
+filtered = [
+    line
+    for line in lines
+    if line.strip() != 'rusqlite = { path = "third_party/rusqlite-0.31.0-libsqlite3-0.30.1" }'
+]
+cargo_toml.write_text("\n".join(filtered) + "\n")
+PY
 if [[ -f "$NEXUS_LOCKFILE_PATH" ]]; then
   cp "$NEXUS_LOCKFILE_PATH" "$CONTEXT_DIR/Cargo.lock"
 else

@@ -152,8 +152,9 @@ Pylon v0.2 is the provider-side half of the Spark-to-LDK cutover documented in
 Current v0.2 source has moved past the external-target-only compatibility path.
 Normal paid-work registration now generates a wallet-owned LDK receive target
 inside Pylon, prefers BOLT12 offers, and falls back to a wallet-owned BOLT11
-invoice request when BOLT12 is unavailable. `payout_destination` remains only an
-explicit advanced external-target override during migration. Local wallet sends
+invoice request when BOLT12 is unavailable. `external_payout_target` remains only
+an explicit advanced external-target override during migration; old
+`payout_destination` config is a compatibility alias. Local wallet sends
 now dispatch BOLT11 invoices, BOLT12 offers, and on-chain withdrawals through
 the built-in LDK wallet path, with failed-send receipts retained when LDK or
 local reserve checks refuse the operation.
@@ -197,6 +198,15 @@ Current implementation status:
   ledger, carries payment hashes, txids, Nexus operation IDs, local receipt IDs,
   and typed failure codes where known, and keeps repeated sync/history runs
   idempotent.
+- Pylon can now export a single encrypted LDK wallet backup file with a redacted
+  public manifest, scrypt/XChaCha20-Poly1305 encryption, optional all-in-one
+  identity mnemonic inclusion, local backup receipts, and status states for
+  missing, stale, and current backups.
+- Pylon can now restore either from the one recovery phrase or from a full
+  encrypted backup. Phrase-only restore recreates identity and deterministic LDK
+  entropy while warning that Lightning state is not restored; full-backup
+  restore validates network/derivation/passphrase, refuses active wallet locks,
+  restores the encrypted LDK state snapshot, and records restore receipts.
 
 Pylon must remain a provider connector and local contributor wallet. It should
 not own Nexus treasury keys, run the hosted treasury LDK node, or become a
