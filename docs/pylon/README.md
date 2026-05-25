@@ -28,6 +28,11 @@ The v0.2 built-in LDK wallet operator docs live in:
 - `docs/pylon/LDK_WALLET_REGTEST_HARNESS.md`
 - `docs/pylon/LDK_WALLET_TELEMETRY.md`
 
+Public Cloud node compatibility lives in:
+
+- `docs/pylon/CLOUD_NODE_V1_COMPATIBILITY.md`
+- `docs/pylon/fixtures/cloud_node_v1/contributor-pylon.json`
+
 Use those docs for different questions:
 
 - roadmap and phase tracker: what the admitted-node MVP implementation closed
