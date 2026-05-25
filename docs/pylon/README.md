@@ -33,6 +33,14 @@ Public Cloud node compatibility lives in:
 - `docs/pylon/CLOUD_NODE_V1_COMPATIBILITY.md`
 - `docs/pylon/fixtures/cloud_node_v1/contributor-pylon.json`
 
+The public contributor boundary helpers live in:
+
+- `crates/pylon-core`
+
+That crate covers identity, admin state, availability, inventory, lifecycle,
+heartbeat, receipt projections, and public-safe JSON validation without
+launching the Pylon TUI.
+
 Use those docs for different questions:
 
 - roadmap and phase tracker: what the admitted-node MVP implementation closed
@@ -44,6 +52,13 @@ Use those docs for different questions:
 The frozen Phase 0 machine-readable contract for that roadmap now lives in:
 
 - `crates/openagents-kernel-core/src/pylon_training.rs`
+
+The pure public boundary smoke is:
+
+```bash
+cargo test -p pylon-core
+cargo test -p pylon --test cloud_node_v1_fixture
+```
 
 The default local repo entrypoint is the online earning loop:
 

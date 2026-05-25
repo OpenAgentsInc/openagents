@@ -25,6 +25,7 @@ nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
+pylon-core = { path = "../../crates/pylon-core" }
 psionic-train.workspace = true
 rand.workspace = true
 reqwest.workspace = true

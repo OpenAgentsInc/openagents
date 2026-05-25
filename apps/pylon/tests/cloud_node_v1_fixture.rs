@@ -31,32 +31,7 @@ fn contributor_cloud_node_v1_fixture_is_public_safe() -> Result<(), Box<dyn std:
         Some(false)
     );
 
-    for forbidden_key in [
-        "wallet_seed",
-        "node_entropy",
-        "private_key",
-        "preimage",
-        "bearer_token",
-        "api_key",
-        "private_topology",
-        "capacity_pool_secret",
-        "internal_accounting_credential",
-    ] {
-        assert!(
-            !json_contains_key(&fixture, forbidden_key),
-            "fixture must not expose forbidden key {forbidden_key}"
-        );
-    }
+    pylon_core::assert_public_json_boundary(&fixture)?;
 
     Ok(())
-}
-
-fn json_contains_key(value: &Value, needle: &str) -> bool {
-    match value {
-        Value::Object(map) => map
-            .iter()
-            .any(|(key, value)| key == needle || json_contains_key(value, needle)),
-        Value::Array(values) => values.iter().any(|value| json_contains_key(value, needle)),
-        _ => false,
-    }
 }

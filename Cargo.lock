@@ -9400,6 +9400,7 @@ dependencies = [
  "openagents-kernel-core",
  "openagents-provider-substrate",
  "psionic-train",
+ "pylon-core",
  "rand 0.9.2",
  "reqwest 0.12.28",
  "rustls 0.23.40",
@@ -9411,6 +9412,16 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.24.0",
+]
+
+[[package]]
+name = "pylon-core"
+version = "0.1.23"
+dependencies = [
+ "openagents-provider-substrate",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
