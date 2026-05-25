@@ -12,6 +12,25 @@ pub const PYLON_CORE_SCHEMA_VERSION: &str = "openagents.pylon_core.v1";
 pub const DEFAULT_PYLON_HEARTBEAT_ROUTE: &str = "/api/provider-presence/heartbeat";
 pub const DEFAULT_PYLON_HEARTBEAT_INTERVAL_MS: u64 = 30_000;
 
+pub const CONTRIBUTOR_OPEN_SOURCE_SURFACES: &[&str] = &[
+    "installable_app",
+    "tui",
+    "contributor_wallet_ux",
+    "provider_inventory_truth",
+    "payout_behavior",
+    "public_receipts",
+];
+
+pub const PRIVATE_CLOUD_DEPENDENCY_MARKERS: &[&str] = &[
+    "OpenAgentsInc/cloud",
+    "openagentsinc/cloud",
+    "../cloud",
+    "../../cloud",
+    "openagents-cloud-contract",
+    "oa-node",
+    "oa-workroomd",
+];
+
 pub const PUBLIC_BOUNDARY_FORBIDDEN_KEYS: &[&str] = &[
     "wallet_seed",
     "node_entropy",
@@ -393,6 +412,20 @@ pub fn assert_public_json_boundary(value: &Value) -> Result<(), PylonCoreBoundar
     )))
 }
 
+pub fn assert_no_private_cloud_dependency_text(
+    label: &str,
+    text: &str,
+) -> Result<(), PylonCoreBoundaryError> {
+    for marker in PRIVATE_CLOUD_DEPENDENCY_MARKERS {
+        if text.contains(marker) {
+            return Err(PylonCoreBoundaryError::Invalid(format!(
+                "{label} must not depend on private cloud marker '{marker}'"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn collect_forbidden_keys(value: &Value, path: &str, violations: &mut Vec<String>) {
     match value {
         Value::Object(map) => {
@@ -443,6 +476,12 @@ mod tests {
 
     const CONTRIBUTOR_CLOUD_NODE_FIXTURE: &str =
         include_str!("../../../docs/pylon/fixtures/cloud_node_v1/contributor-pylon.json");
+    const ROOT_CARGO: &str = include_str!("../../../Cargo.toml");
+    const PYLON_CARGO: &str = include_str!("../../../apps/pylon/Cargo.toml");
+    const PYLON_TUI_CARGO: &str = include_str!("../../../apps/pylon-tui/Cargo.toml");
+    const PYLON_CORE_CARGO: &str = include_str!("../Cargo.toml");
+    const OPEN_SOURCE_BOUNDARY_DOC: &str =
+        include_str!("../../../docs/pylon/OPEN_SOURCE_CONTRIBUTOR_BOUNDARY.md");
 
     #[test]
     fn provider_status_projects_public_pylon_core_without_tui() {
@@ -500,6 +539,29 @@ mod tests {
             .unwrap_or_else(|error| panic!("contributor Cloud Node fixture should parse: {error}"));
         assert_public_json_boundary(&fixture)
             .unwrap_or_else(|error| panic!("fixture should be public safe: {error}"));
+    }
+
+    #[test]
+    fn contributor_pylon_manifests_do_not_depend_on_private_cloud_repo() {
+        for (label, text) in [
+            ("root Cargo.toml", ROOT_CARGO),
+            ("apps/pylon/Cargo.toml", PYLON_CARGO),
+            ("apps/pylon-tui/Cargo.toml", PYLON_TUI_CARGO),
+            ("crates/pylon-core/Cargo.toml", PYLON_CORE_CARGO),
+        ] {
+            assert_no_private_cloud_dependency_text(label, text)
+                .unwrap_or_else(|error| panic!("{label} should stay public-only: {error}"));
+        }
+    }
+
+    #[test]
+    fn open_source_boundary_doc_names_required_public_surfaces() {
+        for surface in CONTRIBUTOR_OPEN_SOURCE_SURFACES {
+            assert!(
+                OPEN_SOURCE_BOUNDARY_DOC.contains(surface),
+                "boundary doc must name public surface {surface}"
+            );
+        }
     }
 
     #[test]
