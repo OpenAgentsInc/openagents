@@ -35,6 +35,15 @@ pub struct PylonProcessedProviderRequestRecord {
     pub updated_at_ms: u64,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonProviderAdmissionLease {
+    pub request_event_id: String,
+    pub requester_pubkey: String,
+    pub status: String,
+    pub expires_at_ms: u64,
+    pub updated_at_ms: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonProcessedProviderRequestStore {
     pub schema_version: u32,
@@ -43,6 +52,8 @@ pub struct PylonProcessedProviderRequestStore {
         deserialize_with = "deserialize_requests_from_vec"
     )]
     pub requests: HashMap<String, PylonProcessedProviderRequestRecord>,
+    #[serde(default)]
+    pub admission_leases: HashMap<String, PylonProviderAdmissionLease>,
 }
 
 impl Default for PylonProcessedProviderRequestStore {
@@ -50,6 +61,7 @@ impl Default for PylonProcessedProviderRequestStore {
         Self {
             schema_version: PROCESSED_PROVIDER_REQUESTS_SCHEMA_VERSION,
             requests: HashMap::new(),
+            admission_leases: HashMap::new(),
         }
     }
 }
@@ -82,6 +94,37 @@ impl PylonProcessedProviderRequestStore {
 
     pub fn contains(&self, request_event_id: &str) -> bool {
         self.requests.contains_key(request_event_id)
+    }
+
+    pub fn remember_admission_lease(
+        &mut self,
+        request_event_id: impl Into<String>,
+        requester_pubkey: impl Into<String>,
+        status: impl Into<String>,
+        expires_at_ms: u64,
+    ) {
+        let request_event_id = request_event_id.into();
+        self.admission_leases.insert(
+            request_event_id.clone(),
+            PylonProviderAdmissionLease {
+                request_event_id,
+                requester_pubkey: requester_pubkey.into(),
+                status: status.into(),
+                expires_at_ms,
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+    }
+
+    pub fn prune_expired_admission_leases(&mut self, now_ms: u64) {
+        self.admission_leases
+            .retain(|_, lease| lease.expires_at_ms > now_ms);
+    }
+
+    pub fn has_active_admission_lease(&self, request_event_id: &str, now_ms: u64) -> bool {
+        self.admission_leases
+            .get(request_event_id)
+            .is_some_and(|lease| lease.expires_at_ms > now_ms)
     }
 }
 

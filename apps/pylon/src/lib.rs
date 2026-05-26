@@ -53209,7 +53209,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn provider_run_processes_matching_request_locally()
+    async fn provider_run_drops_priced_no_bid_before_execution()
     -> Result<(), Box<dyn std::error::Error>> {
         let _guard = super::nip90_runtime::lock_test_runtime();
         let base_url =
@@ -53287,30 +53287,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 break;
             }
             drop(scan_ws);
-
-            let (publish_stream, _) = relay_listener
-                .accept()
-                .await
-                .expect("accept publish client");
-            let mut publish_ws = accept_async(publish_stream)
-                .await
-                .expect("upgrade publish websocket");
-            let mut published = Vec::new();
-            while let Some(message) = publish_ws.next().await {
-                let Ok(Message::Text(payload)) = message else {
-                    continue;
-                };
-                if !payload.contains("\"EVENT\"") {
-                    continue;
-                }
-                let value: serde_json::Value =
-                    serde_json::from_str(payload.as_str()).expect("parse published event");
-                published.push(value[1].clone());
-                if published.len() == 2 {
-                    return published;
-                }
-            }
-            panic!("relay did not receive the published feedback and result events");
+            Vec::<serde_json::Value>::new()
         });
 
         let mut config = load_or_create_config(config_path.as_path())?;
@@ -53322,35 +53299,24 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
 
         let report = run_provider_requests(config_path.as_path(), 1).await?;
         ensure(
-            report.accepted_count == 1 && report.completed_count == 1,
-            "provider run should accept and complete the matching request",
+            report.accepted_count == 0 && report.completed_count == 0 && report.dropped_count == 1,
+            "provider admission should drop no-bid priced requests before local execution",
         )?;
         ensure(
             report.entries.iter().any(|entry| {
                 entry.request_event_id == "run-job-001"
-                    && entry.status == "completed"
-                    && entry
-                        .result_preview
-                        .as_deref()
-                        .is_some_and(|value| value.contains("mesh reply"))
-                    && entry.feedback_event_ids.len() == 1
-                    && entry.result_event_id.is_some()
+                    && entry.status == "dropped"
+                    && entry.error_detail.as_deref() == Some("missing_bid")
+                    && entry.feedback_event_ids.is_empty()
+                    && entry.result_event_id.is_none()
             }),
-            "provider run report should surface the local result preview",
+            "provider run report should surface the missing_bid admission reason",
         )?;
 
         let published = relay_server.await?;
         ensure(
-            published.len() == 2,
-            "provider run should publish both a feedback event and a result event",
-        )?;
-        ensure(
-            published.iter().any(|event| event["kind"] == 7000),
-            "provider run should publish kind:7000 processing feedback",
-        )?;
-        ensure(
-            published.iter().any(|event| event["kind"] == 6050),
-            "provider run should publish kind:6050 job results",
+            published.is_empty(),
+            "admission rejection should not publish processing feedback or results",
         )?;
 
         let ledger = load_ledger(config_path.as_path())?;
@@ -53358,27 +53324,17 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             .jobs
             .iter()
             .find(|job| job.id == "run-job-001")
-            .ok_or_else(|| std::io::Error::other("missing processed provider job"))?;
+            .ok_or_else(|| std::io::Error::other("missing rejected provider job"))?;
         ensure(
-            job.status == "completed_local",
-            "provider run should persist the completed local lifecycle state",
-        )?;
-        ensure(
-            job.result_preview
-                .as_deref()
-                .is_some_and(|value| value.contains("mesh reply")),
-            "provider run should persist the streamed local result preview",
-        )?;
-        ensure(
-            job.feedback_event_ids.len() == 1 && job.result_event_id.is_some(),
-            "provider run should persist the published feedback and result event ids",
+            job.status == "rejected_policy" && job.error_detail.as_deref() == Some("missing_bid"),
+            "provider run should persist the no-bid admission rejection",
         )?;
         ensure(
             ledger
                 .relay_activity
                 .iter()
-                .any(|entry| entry.kind == "nip90.result_published"),
-            "provider run should persist result publication activity",
+                .any(|entry| entry.kind == "nip90.job_rejected"),
+            "provider run should persist admission rejection activity",
         )?;
         Ok(())
     }
@@ -53434,7 +53390,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         let relay_url = format!("ws://{relay_addr}");
         let provider_pubkey = identity.public_key_hex.clone();
         let relay_server = tokio::spawn(async move {
-            let mut request_sent = false;
+            let request_sent = false;
             let mut published = Vec::new();
             loop {
                 let (stream, _) = relay_listener.accept().await.expect("accept relay client");
@@ -53464,8 +53420,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                         ws.send(Message::Text(matching.to_string().into()))
                             .await
                             .expect("send matching request");
-                        request_sent = true;
-                        continue;
+                        return Vec::<serde_json::Value>::new();
                     }
                     if !payload.contains("\"EVENT\"") {
                         continue;
@@ -53537,24 +53492,27 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     std::io::Error::other("timed out waiting for automatic provider intake")
                 })??;
                 ensure(
-                    published.len() == 2
-                        && published.iter().any(|event| event["kind"] == 7000)
-                        && published.iter().any(|event| event["kind"] == 6050),
-                    "serve online mode should automatically publish feedback and result events",
+                    published.is_empty(),
+                    "serve online mode should not publish feedback or results for no-bid priced work",
                 )?;
 
-                let ledger = load_ledger(config_path.as_path())?;
-                ensure(
-                    ledger.jobs.iter().any(|job| {
+                let deadline = std::time::Instant::now() + Duration::from_secs(8);
+                loop {
+                    let ledger = load_ledger(config_path.as_path())?;
+                    if ledger.jobs.iter().any(|job| {
                         job.id == "run-job-auto-001"
-                            && job.status == "completed_local"
-                            && job
-                                .result_preview
-                                .as_deref()
-                                .is_some_and(|value| value.contains("auto reply"))
-                    }),
-                    "automatic serve intake should persist the completed provider job",
-                )?;
+                            && job.status == "rejected_policy"
+                            && job.error_detail.as_deref() == Some("missing_bid")
+                    }) {
+                        break;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return Err::<(), Box<dyn std::error::Error>>(Box::new(std::io::Error::other(
+                            "timed out waiting for automatic provider admission rejection",
+                        )));
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
 
                 serve_task.abort();
                 let _ = serve_task.await;
@@ -53632,6 +53590,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     "tags": [
                         ["i", "hello from buyer", "text"],
                         ["param", "model", "gemma4:e4b"],
+                        ["bid", "21000"],
                         ["p", provider_pubkey]
                     ],
                     "content": "",
