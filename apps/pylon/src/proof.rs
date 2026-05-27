@@ -28,6 +28,9 @@ const PROOF_PORT_SLOTS: u16 = 2_000;
 const PROOF_PORT_STRIDE: u16 = 10;
 const PROOF_ROUTE_TIMEOUT: Duration = Duration::from_secs(10);
 const PROOF_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const PROOF_FLEET_DIAGNOSTIC_INTERVAL: Duration = Duration::from_secs(2);
+const PROOF_ROUTE_PROBE_TIMEOUT: Duration = Duration::from_millis(750);
+const PROOF_ROUTE_PROBE_TOTAL_TIMEOUT: Duration = Duration::from_secs(3);
 const PROOF_ARTIFACT_BUCKET: &str = "gs://proof-local-artifacts";
 const PROOF_ARTIFACT_UPLOAD_PREFIX: &str = "/upload";
 const HOSTED_CS336_A1_STARTER_NETWORK_ID: &str = "trainnet.cs336.a1.demo";
@@ -2504,6 +2507,61 @@ fn a1_minimal_simulated_fleet_status(
     }
 }
 
+fn proof_run_status_from_detail(detail: Option<&ProofObservedTrainingRunDetail>) -> Option<&str> {
+    detail.map(|value| value.run.run_status.as_str())
+}
+
+#[derive(Clone, Debug)]
+struct ProofFleetDiagnosticScheduler {
+    last_refresh_at: Instant,
+    last_run_status: Option<String>,
+    interval: Duration,
+}
+
+impl ProofFleetDiagnosticScheduler {
+    fn new(last_refresh_at: Instant, initial_run_status: Option<&str>, interval: Duration) -> Self {
+        Self {
+            last_refresh_at,
+            last_run_status: initial_run_status.map(ToString::to_string),
+            interval,
+        }
+    }
+
+    fn should_refresh(&self, now: Instant, run_status: Option<&str>, force: bool) -> bool {
+        if force {
+            return true;
+        }
+        if let Some(run_status) = run_status
+            && self.last_run_status.as_deref() != Some(run_status)
+        {
+            return true;
+        }
+        now.duration_since(self.last_refresh_at) >= self.interval
+    }
+
+    fn mark_refreshed(&mut self, now: Instant, run_status: Option<&str>) {
+        self.last_refresh_at = now;
+        self.last_run_status = run_status.map(ToString::to_string);
+    }
+}
+
+async fn refresh_proof_fleet_status_if_due(
+    config_path: &Path,
+    namespace: &str,
+    scheduler: &mut ProofFleetDiagnosticScheduler,
+    now: Instant,
+    run_detail: Option<&ProofObservedTrainingRunDetail>,
+    force: bool,
+    fleet_status: &mut ProofFleetStatusReport,
+) -> Result<()> {
+    let run_status = proof_run_status_from_detail(run_detail);
+    if scheduler.should_refresh(now, run_status, force) {
+        *fleet_status = collect_proof_fleet_status(config_path, namespace).await?;
+        scheduler.mark_refreshed(Instant::now(), run_status);
+    }
+    Ok(())
+}
+
 async fn run_standard_proof_lane(
     config_path: &Path,
     command: &ProofRunCommand,
@@ -2564,6 +2622,11 @@ async fn run_standard_proof_lane(
         (training_run_id, Some(launch), launch_detail)
     };
     let mut fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
+    let mut diagnostic_scheduler = ProofFleetDiagnosticScheduler::new(
+        Instant::now(),
+        Some(launch_detail.run.run_status.as_str()),
+        PROOF_FLEET_DIAGNOSTIC_INTERVAL,
+    );
     if proof_run_status_is_terminal(&launch_detail.run) {
         let report = ProofRunReport {
             namespace,
@@ -2615,6 +2678,16 @@ async fn run_standard_proof_lane(
             }
             last_detail = Some(detail);
         }
+        refresh_proof_fleet_status_if_due(
+            config_path,
+            namespace.as_str(),
+            &mut diagnostic_scheduler,
+            Instant::now(),
+            last_detail.as_ref(),
+            false,
+            &mut fleet_status,
+        )
+        .await?;
         if let Some((blocker_id, detail)) =
             detect_proof_run_blocker(&fleet_status, last_detail.as_ref())
         {
@@ -2662,6 +2735,16 @@ async fn run_standard_proof_lane(
             }
         }
         if Instant::now() >= deadline {
+            refresh_proof_fleet_status_if_due(
+                config_path,
+                namespace.as_str(),
+                &mut diagnostic_scheduler,
+                Instant::now(),
+                last_detail.as_ref(),
+                true,
+                &mut fleet_status,
+            )
+            .await?;
             let report = ProofRunReport {
                 namespace,
                 lane: command.lane.label().to_string(),
@@ -2683,7 +2766,6 @@ async fn run_standard_proof_lane(
             return Ok(report);
         }
         tokio::time::sleep(PROOF_POLL_INTERVAL).await;
-        fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
     }
 }
 
@@ -5537,6 +5619,29 @@ fn save_runtime_state(path: &Path, state: &ProofAuthorityRuntimeState) -> Result
 }
 
 async fn collect_route_probes(state: &ProofAuthorityRuntimeState) -> Vec<ProofRouteProbe> {
+    match tokio::time::timeout(
+        PROOF_ROUTE_PROBE_TOTAL_TIMEOUT,
+        collect_route_probes_with_process_check(state),
+    )
+    .await
+    {
+        Ok(probes) => probes,
+        Err(_) => vec![ProofRouteProbe {
+            route_id: "route_probe_total_budget".to_string(),
+            url: state.urls.authority_base_url.clone(),
+            ok: false,
+            status: None,
+            detail: format!(
+                "route probes timed out after {}ms total budget",
+                PROOF_ROUTE_PROBE_TOTAL_TIMEOUT.as_millis()
+            ),
+        }],
+    }
+}
+
+async fn collect_route_probes_with_process_check(
+    state: &ProofAuthorityRuntimeState,
+) -> Vec<ProofRouteProbe> {
     let authority_running = process_is_running(&state.authority_process);
     let artifact_running = process_is_running(&state.artifact_store_process);
     if !authority_running || !artifact_running {
@@ -5616,9 +5721,13 @@ async fn probe_route(
     method: reqwest::Method,
     expected: &[StatusCode],
 ) -> ProofRouteProbe {
-    let response = client.request(method, url.as_str()).send().await;
+    let response = tokio::time::timeout(
+        PROOF_ROUTE_PROBE_TIMEOUT,
+        client.request(method, url.as_str()).send(),
+    )
+    .await;
     match response {
-        Ok(response) => {
+        Ok(Ok(response)) => {
             let status = response.status();
             let ok = expected.contains(&status);
             let detail = if ok {
@@ -5634,12 +5743,22 @@ async fn probe_route(
                 detail,
             }
         }
-        Err(error) => ProofRouteProbe {
+        Ok(Err(error)) => ProofRouteProbe {
             route_id: route_id.to_string(),
             url,
             ok: false,
             status: None,
             detail: error.to_string(),
+        },
+        Err(_) => ProofRouteProbe {
+            route_id: route_id.to_string(),
+            url,
+            ok: false,
+            status: None,
+            detail: format!(
+                "route probe timed out after {}ms",
+                PROOF_ROUTE_PROBE_TIMEOUT.as_millis()
+            ),
         },
     }
 }
@@ -6365,7 +6484,9 @@ mod tests {
         validate_a1_minimal_launch_projection,
     };
 
-    use anyhow::{Result, anyhow};
+    use std::time::Duration;
+
+    use anyhow::{Result, anyhow, ensure};
     use axum::http::StatusCode;
     use serde_json::Value;
     use serde_json::json;
@@ -6555,6 +6676,92 @@ mod tests {
         );
 
         server.abort();
+        Ok(())
+    }
+
+    #[test]
+    fn proof_fleet_diagnostics_scheduler_skips_steady_state_before_interval() {
+        let started_at = tokio::time::Instant::now();
+        let scheduler = super::ProofFleetDiagnosticScheduler::new(
+            started_at,
+            Some("running"),
+            super::PROOF_FLEET_DIAGNOSTIC_INTERVAL,
+        );
+
+        assert!(!scheduler.should_refresh(
+            started_at + Duration::from_millis(200),
+            Some("running"),
+            false,
+        ));
+    }
+
+    #[test]
+    fn proof_fleet_diagnostics_scheduler_refreshes_after_interval() {
+        let started_at = tokio::time::Instant::now();
+        let scheduler = super::ProofFleetDiagnosticScheduler::new(
+            started_at,
+            Some("running"),
+            super::PROOF_FLEET_DIAGNOSTIC_INTERVAL,
+        );
+
+        assert!(scheduler.should_refresh(
+            started_at + super::PROOF_FLEET_DIAGNOSTIC_INTERVAL,
+            Some("running"),
+            false,
+        ));
+    }
+
+    #[test]
+    fn proof_fleet_diagnostics_scheduler_refreshes_on_status_transition() {
+        let started_at = tokio::time::Instant::now();
+        let scheduler = super::ProofFleetDiagnosticScheduler::new(
+            started_at,
+            Some("running"),
+            super::PROOF_FLEET_DIAGNOSTIC_INTERVAL,
+        );
+
+        assert!(scheduler.should_refresh(
+            started_at + Duration::from_millis(200),
+            Some("completed"),
+            false,
+        ));
+    }
+
+    #[tokio::test]
+    async fn proof_route_probe_reports_timeout_without_waiting_for_server() -> Result<()> {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let _server = tokio::spawn(async move {
+            if let Ok((_stream, _peer)) = listener.accept().await {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        });
+        let client = reqwest::Client::new();
+
+        let probe = tokio::time::timeout(
+            super::PROOF_ROUTE_PROBE_TIMEOUT + Duration::from_secs(1),
+            super::probe_route(
+                &client,
+                "slow_route",
+                format!("http://{addr}/slow"),
+                reqwest::Method::GET,
+                &[StatusCode::OK],
+            ),
+        )
+        .await
+        .map_err(|_| anyhow!("probe_route did not enforce its own timeout"))?;
+
+        ensure!(
+            probe.route_id == "slow_route",
+            "expected slow_route probe, got {}",
+            probe.route_id
+        );
+        ensure!(!probe.ok, "expected timeout probe to report not ok");
+        ensure!(
+            probe.detail.contains("timed out"),
+            "expected timeout detail, got {}",
+            probe.detail
+        );
         Ok(())
     }
 
