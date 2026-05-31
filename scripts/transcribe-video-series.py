@@ -70,6 +70,13 @@ def slugish(value: str) -> str:
     return value.strip("-") or "episode"
 
 
+def extraction_url(url: str) -> str:
+    return (
+        url.replace("https://twitter.com/", "https://x.com/")
+        .replace("http://twitter.com/", "https://x.com/")
+    )
+
+
 def load_env_file(path: Path) -> None:
     if not path.exists():
         raise SystemExit(f"env file not found: {path}")
@@ -197,9 +204,9 @@ def download_metadata(episode: Episode, episode_dir: Path, root: Path) -> dict[s
         "--no-warnings",
         "--dump-single-json",
         "--skip-download",
-        episode.url,
+        extraction_url(episode.url),
     ]
-    print(f"metadata: episode {episode.number} {episode.url}")
+    print(f"metadata: episode {episode.number} {extraction_url(episode.url)}")
     result = run(cmd, root, capture=True)
     info_path.write_text(result.stdout)
     return json.loads(result.stdout)
@@ -226,7 +233,7 @@ def download_media(episode: Episode, episode_dir: Path, root: Path, fmt: str, fo
         "mp4",
         "-o",
         str(media_dir / "media-%(id)s.%(ext)s"),
-        episode.url,
+        extraction_url(episode.url),
     ]
     if force:
         cmd.append("--force-overwrites")
