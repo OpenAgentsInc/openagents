@@ -265,18 +265,30 @@ def ffprobe_duration(path: Path, root: Path) -> float:
         return 0.0
 
 
-def extract_audio(media_files: list[Path], episode_dir: Path, root: Path, force: bool) -> list[Path]:
+def extract_audio(
+    media_files: list[Path],
+    episode_dir: Path,
+    root: Path,
+    force: bool,
+    max_audio_seconds: int,
+) -> list[Path]:
     command_path("ffmpeg")
     audio_dir = episode_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     audio_files: list[Path] = []
 
     for index, media_path in enumerate(media_files, start=1):
-        audio_path = audio_dir / f"audio-part-{index:02d}.mp3"
-        if audio_path.exists() and not force:
-            audio_files.append(audio_path)
+        pattern = f"audio-part-{index:02d}-*.mp3"
+        existing = sorted(audio_dir.glob(pattern))
+        if existing and not force:
+            audio_files.extend(existing)
             continue
-        print(f"audio: {media_path.name} -> {audio_path.name}")
+
+        for stale in existing:
+            stale.unlink()
+
+        output_pattern = audio_dir / f"audio-part-{index:02d}-%03d.mp3"
+        print(f"audio: {media_path.name} -> {output_pattern.name}")
         run(
             [
                 "ffmpeg",
@@ -290,11 +302,20 @@ def extract_audio(media_files: list[Path], episode_dir: Path, root: Path, force:
                 "16000",
                 "-b:a",
                 "64k",
-                str(audio_path),
+                "-f",
+                "segment",
+                "-segment_time",
+                str(max_audio_seconds),
+                "-reset_timestamps",
+                "1",
+                str(output_pattern),
             ],
             root,
         )
-        audio_files.append(audio_path)
+        generated = sorted(audio_dir.glob(pattern))
+        if not generated:
+            raise SystemExit(f"ffmpeg produced no audio chunks for {media_path}")
+        audio_files.extend(generated)
     return audio_files
 
 
@@ -516,7 +537,13 @@ def process_episode(args: argparse.Namespace, episode: Episode, root: Path, spea
 
     info = download_metadata(episode, episode_dir, root)
     media_files = download_media(episode, episode_dir, root, args.format, args.force_download)
-    audio_files = extract_audio(media_files, episode_dir, root, args.force_audio)
+    audio_files = extract_audio(
+        media_files,
+        episode_dir,
+        root,
+        args.force_audio,
+        args.max_audio_seconds,
+    )
 
     if args.download_only:
         print(f"download-only: episode {episode.number} media/audio retained under {episode_dir}")
@@ -593,6 +620,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force-download", action="store_true", help="force redownload of media")
     parser.add_argument("--force-audio", action="store_true", help="force regeneration of audio")
     parser.add_argument("--force-transcribe", action="store_true", help="force API transcription even if raw JSON exists")
+    parser.add_argument("--max-audio-seconds", type=int, default=1200, help="maximum seconds per extracted audio chunk")
     parser.add_argument("--download-only", action="store_true", help="download media and audio but do not call transcription API")
     parser.add_argument("--dry-run", action="store_true", help="print selected episodes and exit")
     parser.add_argument("--keep-going", action="store_true", help="continue batch runs after an episode failure")

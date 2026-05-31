@@ -222,9 +222,19 @@ Each downloaded media file is converted with `ffmpeg` to:
 - 16 kHz
 - MP3
 - 64 kbps
+- 20-minute chunks by default
 
 This keeps files small enough for normal transcription requests and removes
 video payload from the API call.
+
+The default chunk length is controlled by:
+
+```bash
+--max-audio-seconds 1200
+```
+
+Long X videos can exceed normal transcription-request limits when sent as a
+single audio file. Keep chunking enabled for all batch work.
 
 ### 6. Transcribe Each Part
 
