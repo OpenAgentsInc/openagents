@@ -33,7 +33,7 @@ DEFAULT_WIKI_URL = (
 DEFAULT_WORK_DIR = "var/video-series-transcripts"
 DEFAULT_TRANSCRIPT_DIR = "docs/transcripts"
 DEFAULT_MODEL = "gpt-4o-transcribe-diarize"
-DEFAULT_FORMAT = "bestvideo[height<=270]+bestaudio/best[height<=270]/worst"
+DEFAULT_FORMAT = "bestaudio/best[height<=270]/worst"
 TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions"
 
 

@@ -205,14 +205,21 @@ multiple video parts. The metadata records each media entry and duration.
 
 ### 4. Download Media
 
-The script downloads low-resolution media by default:
+The script downloads audio-first media by default:
 
 ```text
-bestvideo[height<=270]+bestaudio/best[height<=270]/worst
+bestaudio/best[height<=270]/worst
 ```
 
-This keeps operator tests cheap while still preserving usable audio. The media
-is written under the ignored episode work directory.
+This keeps batch transcription cheap while preserving the audio needed for the
+markdown transcript. If an operator needs a retained low-resolution video proof,
+pass an explicit format such as:
+
+```bash
+--format 'bestvideo[height<=270]+bestaudio/best[height<=270]/worst'
+```
+
+The media is written under the ignored episode work directory.
 
 ### 5. Extract Normalized Audio
 
