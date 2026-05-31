@@ -555,6 +555,19 @@ def process_episode(args: argparse.Namespace, episode: Episode, root: Path, spea
     print(f"wrote: {output_path}")
 
 
+def write_failure(episode: Episode, episode_dir: Path, error: BaseException) -> None:
+    payload = {
+        "episode": episode.number,
+        "title": episode.title,
+        "url": episode.url,
+        "failed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "error": str(error),
+    }
+    failure_path = episode_dir / "failure.json"
+    failure_path.parent.mkdir(parents=True, exist_ok=True)
+    failure_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Download and transcribe OpenAgents wiki video-series episodes."
@@ -582,6 +595,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force-transcribe", action="store_true", help="force API transcription even if raw JSON exists")
     parser.add_argument("--download-only", action="store_true", help="download media and audio but do not call transcription API")
     parser.add_argument("--dry-run", action="store_true", help="print selected episodes and exit")
+    parser.add_argument("--keep-going", action="store_true", help="continue batch runs after an episode failure")
     parser.add_argument("--api-pause-seconds", type=float, default=0.0, help="pause between audio-part transcription requests")
     return parser
 
@@ -614,8 +628,26 @@ def main() -> int:
         return 0
 
     speaker_map = parse_speaker_map(args.speaker)
+    failures = []
     for episode in selected:
-        process_episode(args, episode, root, speaker_map)
+        try:
+            process_episode(args, episode, root, speaker_map)
+        except SystemExit as error:
+            code = error.code
+            if isinstance(code, int) and code == 0:
+                continue
+            episode_dir = root / args.work_dir / f"{episode.number:03d}-{slugish(episode.title)}"
+            write_failure(episode, episode_dir, error)
+            failures.append((episode, str(error)))
+            print(f"failed: episode {episode.number}: {error}", file=sys.stderr)
+            if not args.keep_going:
+                raise
+
+    if failures:
+        print("episode failures:")
+        for episode, error in failures:
+            print(f"- {episode.number}: {episode.title}: {error}")
+        return 2
     return 0
 
 

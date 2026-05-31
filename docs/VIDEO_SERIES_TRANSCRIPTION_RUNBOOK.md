@@ -140,6 +140,7 @@ Transcribe all missing episodes:
 ```bash
 python3 scripts/transcribe-video-series.py \
   --missing \
+  --keep-going \
   --env-file ../.secrets/probe-openai.env
 ```
 
@@ -149,6 +150,7 @@ Limit a missing run to a small batch:
 python3 scripts/transcribe-video-series.py \
   --missing \
   --limit 5 \
+  --keep-going \
   --env-file ../.secrets/probe-openai.env
 ```
 
@@ -229,6 +231,16 @@ video payload from the API call.
 Each audio part is sent independently to the transcription API. The raw JSON
 response is saved in the ignored episode work directory.
 
+If `yt-dlp`, `ffmpeg`, or transcription fails for one episode in a batch run
+with `--keep-going`, the script records:
+
+```text
+var/video-series-transcripts/<episode>/failure.json
+```
+
+and continues. This is expected for deleted posts, posts without downloadable
+media, or temporary X/Twitter extractor failures.
+
 For multi-part X posts, the script offsets later segment timestamps by the
 duration of previous parts before writing the final markdown transcript.
 
@@ -267,6 +279,8 @@ Before committing a generated transcript:
 
 - X/Twitter extraction can break when X changes its guest-token or media APIs.
   `yt-dlp` updates usually fix this.
+- Some wiki links may no longer expose downloadable video to `yt-dlp`. Batch
+  runs should use `--keep-going` and inspect `failure.json` files afterward.
 - Diarization is model-derived. It is useful for structure, not final speaker
   authority.
 - The script does not commit or archive media files.
@@ -287,4 +301,3 @@ python3 scripts/transcribe-video-series.py \
   --episode 1 \
   --env-file ../.secrets/probe-openai.env
 ```
-
