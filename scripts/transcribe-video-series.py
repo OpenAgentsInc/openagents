@@ -218,12 +218,23 @@ def select_episodes(
     return selected
 
 
-def download_metadata(episode: Episode, episode_dir: Path, root: Path) -> dict[str, Any]:
+def ytdlp_cookie_args(args: argparse.Namespace) -> list[str]:
+    if not args.cookies_from_browser:
+        return []
+    return ["--cookies-from-browser", args.cookies_from_browser]
+
+
+def download_metadata(
+    episode: Episode,
+    episode_dir: Path,
+    root: Path,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
     info_path = episode_dir / "episode.info.json"
     if info_path.exists():
         return json.loads(info_path.read_text())
 
-    cmd = ytdlp_command() + [
+    cmd = ytdlp_command() + ytdlp_cookie_args(args) + [
         "--no-warnings",
         "--dump-single-json",
         "--skip-download",
@@ -235,7 +246,12 @@ def download_metadata(episode: Episode, episode_dir: Path, root: Path) -> dict[s
     return json.loads(result.stdout)
 
 
-def download_media(episode: Episode, episode_dir: Path, root: Path, fmt: str, force: bool) -> list[Path]:
+def download_media(
+    episode: Episode,
+    episode_dir: Path,
+    root: Path,
+    args: argparse.Namespace,
+) -> list[Path]:
     media_dir = episode_dir / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
     existing = sorted(
@@ -243,22 +259,22 @@ def download_media(episode: Episode, episode_dir: Path, root: Path, fmt: str, fo
         for path in media_dir.iterdir()
         if path.is_file() and path.suffix.lower() in {".mp4", ".m4a", ".webm", ".mkv", ".mov"}
     )
-    if existing and not force:
+    if existing and not args.force_download:
         return existing
 
-    cmd = ytdlp_command() + [
+    cmd = ytdlp_command() + ytdlp_cookie_args(args) + [
         "--yes-playlist",
         "--no-warnings",
         "--no-progress",
         "-f",
-        fmt,
+        args.format,
         "--merge-output-format",
         "mp4",
         "-o",
         str(media_dir / "media-%(id)s.%(ext)s"),
         extraction_url(episode.url),
     ]
-    if force:
+    if args.force_download:
         cmd.append("--force-overwrites")
 
     print(f"download: episode {episode.number} media")
@@ -565,8 +581,8 @@ def process_episode(args: argparse.Namespace, episode: Episode, root: Path, spea
     episode_dir = root / args.work_dir / f"{episode.number:03d}-{slugish(episode.title)}"
     episode_dir.mkdir(parents=True, exist_ok=True)
 
-    info = download_metadata(episode, episode_dir, root)
-    media_files = download_media(episode, episode_dir, root, args.format, args.force_download)
+    info = download_metadata(episode, episode_dir, root, args)
+    media_files = download_media(episode, episode_dir, root, args)
     audio_files = extract_audio(
         media_files,
         episode_dir,
@@ -644,6 +660,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--language", default="en")
     parser.add_argument("--format", default=DEFAULT_FORMAT, help="yt-dlp format selector")
+    parser.add_argument("--cookies-from-browser", help="pass a browser name to yt-dlp --cookies-from-browser for protected X media, e.g. chrome")
     parser.add_argument("--speaker", action="append", default=[], help="map model speaker label to name, e.g. speaker_0=Christopher David")
     parser.add_argument("--limit", type=int, help="limit selected episodes, useful with --missing")
     parser.add_argument("--reverse", action="store_true", help="process selected episodes in descending wiki order")
