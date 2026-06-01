@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
@@ -71,10 +72,29 @@ def slugish(value: str) -> str:
 
 
 def extraction_url(url: str) -> str:
-    return (
+    normalized = (
         url.replace("https://twitter.com/", "https://x.com/")
         .replace("http://twitter.com/", "https://x.com/")
     )
+    if "x.com/" not in normalized:
+        return normalized
+
+    # The wiki has older @OpenAgentsInc URLs. X's media extractor sometimes
+    # fails on those even when the post is now canonical under @OpenAgents.
+    oembed_url = (
+        "https://publish.twitter.com/oembed?url="
+        + urllib.parse.quote(normalized, safe="")
+    )
+    try:
+        with urllib.request.urlopen(oembed_url, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
+        return normalized
+
+    canonical = data.get("url")
+    if isinstance(canonical, str) and canonical:
+        return canonical
+    return normalized
 
 
 def load_env_file(path: Path) -> None:
