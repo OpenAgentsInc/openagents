@@ -78,41 +78,41 @@ This index tracks every episode listed in the OpenAgents video-series wiki. Comp
 | 158 | Quest for the Holy Grail | [158.md](158.md) | Working session covering Quest for the Holy Grail. |
 | 157 | Chains of Thought and Action | [157.md](157.md) | Working session covering Chains of Thought and Action. |
 | 156 | Aider Repo Maps | [156.md](156.md) | Agent product/runtime work centered on Aider Repo Maps. |
-| 155 | Open Knowledge Graph | Pending | Working session covering Open Knowledge Graph. |
-| 154 | Agentic OSINT | Pending | Agent product/runtime work centered on Agentic OSINT. |
-| 153 | High-Velocity Bitcoin | Pending | Product and infrastructure work around High-Velocity Bitcoin, with emphasis on agent-native money flows. |
-| 152 | Code by Voice | Pending | Working session covering Code by Voice. |
-| 151 | Speak to Onyx | Pending | Working session covering Speak to Onyx. |
-| 150 | Neutrality Wins | Pending | Working session covering Neutrality Wins. |
-| 149 | Onyx Beta Launch | Pending | Working session covering Onyx Beta Launch. |
-| 148 | Exploring the Genesis Physics Engine | Pending | Working session covering Exploring the Genesis Physics Engine. |
-| 147 | Planning a Data Marketplace | Pending | Working session covering Planning a Data Marketplace. |
-| 146 | Sensemaking: Drones | Pending | Working session covering Sensemaking: Drones. |
-| 145 | Going Local | Pending | Working session covering Going Local. |
-| 144 | Pylon and the Model Context Protocol | Pending | Working session covering Pylon and the Model Context Protocol. |
-| 143 | Onyx as Bitcoin Wallet | Pending | Product and infrastructure work around Onyx as Bitcoin Wallet, with emphasis on agent-native money flows. |
-| 142 | Data Vending Machines | Pending | Working session covering Data Vending Machines. |
-| 141 | One Market | Pending | Working session covering One Market. |
-| 140 | Open-Sourcing Onyx | Pending | Working session covering Open-Sourcing Onyx. |
-| 139 | Going Mobile | Pending | Working session covering Going Mobile. |
-| 138 | Year One Recap | Pending | Working session covering Year One Recap. |
-| 137 | Projects | Pending | Working session covering Projects. |
-| 136 | Teams | Pending | Working session covering Teams. |
-| 135 | Agentic CRM Design | Pending | Agent product/runtime work centered on Agentic CRM Design. |
-| 134 | Inescapable Inertia | Pending | Working session covering Inescapable Inertia. |
-| 133 | HTMX Server Sent Events, Part 2 | Pending | Engineering session focused on HTMX Server Sent Events, Part 2 and the supporting integration surface. |
-| 132 | v3 Core Feature | Pending | Working session covering v3 Core Feature. |
-| 131 | v3 Landing Page | Pending | Working session covering v3 Landing Page. |
-| 130 | OpenAgents <> OpenPress | Pending | Agent product/runtime work centered on OpenAgents <> OpenPress. |
-| 129 | Hosting OpenPress | Pending | Working session covering Hosting OpenPress. |
-| 128 | Styling OpenPress | Pending | Working session covering Styling OpenPress. |
-| 127 | Hello OpenPress | Pending | Introductory build/demo session for Hello OpenPress. |
-| 126 | OpenPress and the End of WordPress | Pending | Working session covering OpenPress and the End of WordPress. |
-| 125 | The Master Plan | Pending | Working session covering The Master Plan. |
-| 124 | Magic AI = Deep State | Pending | Working session covering Magic AI = Deep State. |
-| 123 | GitHub Issues to Pull Requests | Pending | Working session covering GitHub Issues to Pull Requests. |
-| 122 | Codebase Indexing via GraphRAG | Pending | Working session covering Codebase Indexing via GraphRAG. |
-| 121 | SWE-bench Planning | Pending | Working session covering SWE-bench Planning. |
+| 155 | Open Knowledge Graph | [155.md](155.md) | Working session covering Open Knowledge Graph. |
+| 154 | Agentic OSINT | [154.md](154.md) | Agent product/runtime work centered on Agentic OSINT. |
+| 153 | High-Velocity Bitcoin | [153.md](153.md) | Product and infrastructure work around High-Velocity Bitcoin, with emphasis on agent-native money flows. |
+| 152 | Code by Voice | [152.md](152.md) | Working session covering Code by Voice. |
+| 151 | Speak to Onyx | [151.md](151.md) | Working session covering Speak to Onyx. |
+| 150 | Neutrality Wins | [150.md](150.md) | Working session covering Neutrality Wins. |
+| 149 | Onyx Beta Launch | [149.md](149.md) | Working session covering Onyx Beta Launch. |
+| 148 | Exploring the Genesis Physics Engine | [148.md](148.md) | Working session covering Exploring the Genesis Physics Engine. |
+| 147 | Planning a Data Marketplace | [147.md](147.md) | Working session covering Planning a Data Marketplace. |
+| 146 | Sensemaking: Drones | [146.md](146.md) | Working session covering Sensemaking: Drones. |
+| 145 | Going Local | [145.md](145.md) | Working session covering Going Local. |
+| 144 | Pylon and the Model Context Protocol | [144.md](144.md) | Working session covering Pylon and the Model Context Protocol. |
+| 143 | Onyx as Bitcoin Wallet | [143.md](143.md) | Product and infrastructure work around Onyx as Bitcoin Wallet, with emphasis on agent-native money flows. |
+| 142 | Data Vending Machines | [142.md](142.md) | Working session covering Data Vending Machines. |
+| 141 | One Market | [141.md](141.md) | Working session covering One Market. |
+| 140 | Open-Sourcing Onyx | [140.md](140.md) | Working session covering Open-Sourcing Onyx. |
+| 139 | Going Mobile | [139.md](139.md) | Working session covering Going Mobile. |
+| 138 | Year One Recap | [138.md](138.md) | Working session covering Year One Recap. |
+| 137 | Projects | [137.md](137.md) | Working session covering Projects. |
+| 136 | Teams | [136.md](136.md) | Working session covering Teams. |
+| 135 | Agentic CRM Design | [135.md](135.md) | Agent product/runtime work centered on Agentic CRM Design. |
+| 134 | Inescapable Inertia | [134.md](134.md) | Working session covering Inescapable Inertia. |
+| 133 | HTMX Server Sent Events, Part 2 | [133.md](133.md) | Engineering session focused on HTMX Server Sent Events, Part 2 and the supporting integration surface. |
+| 132 | v3 Core Feature | [132.md](132.md) | Working session covering v3 Core Feature. |
+| 131 | v3 Landing Page | [131.md](131.md) | Working session covering v3 Landing Page. |
+| 130 | OpenAgents <> OpenPress | [130.md](130.md) | Agent product/runtime work centered on OpenAgents <> OpenPress. |
+| 129 | Hosting OpenPress | [129.md](129.md) | Working session covering Hosting OpenPress. |
+| 128 | Styling OpenPress | [128.md](128.md) | Working session covering Styling OpenPress. |
+| 127 | Hello OpenPress | [127.md](127.md) | Introductory build/demo session for Hello OpenPress. |
+| 126 | OpenPress and the End of WordPress | [126.md](126.md) | Working session covering OpenPress and the End of WordPress. |
+| 125 | The Master Plan | [125.md](125.md) | Working session covering The Master Plan. |
+| 124 | Magic AI = Deep State | [124.md](124.md) | Working session covering Magic AI = Deep State. |
+| 123 | GitHub Issues to Pull Requests | [123.md](123.md) | Working session covering GitHub Issues to Pull Requests. |
+| 122 | Codebase Indexing via GraphRAG | [122.md](122.md) | Working session covering Codebase Indexing via GraphRAG. |
+| 121 | SWE-bench Planning | [121.md](121.md) | Working session covering SWE-bench Planning. |
 | 120 | Exploring SWE-bench Verified | Pending | Working session covering Exploring SWE-bench Verified. |
 | 119 | v2 Beta Launch | Pending | Working session covering v2 Beta Launch. |
 | 118 | Version Two | Pending | Working session covering Version Two. |
@@ -217,21 +217,21 @@ This index tracks every episode listed in the OpenAgents video-series wiki. Comp
 | 19 | Chat with PDF, OpenAgents Edition | Pending | Agent product/runtime work centered on Chat with PDF, OpenAgents Edition. |
 | 18 | Connecting the UI, Part 2 | Pending | Working session covering Connecting the UI, Part 2. |
 | 17 | Connecting the UI | Pending | Working session covering Connecting the UI. |
-| 16 | PDF to Embeddings | Pending | Working session covering PDF to Embeddings. |
-| 15 | Similarity Search | Pending | Working session covering Similarity Search. |
-| 14 | Embeddings 101 | Pending | Working session covering Embeddings 101. |
-| 13 | RAG First Principles | Pending | Working session covering RAG First Principles. |
-| 12 | RAG Planning | Pending | Working session covering RAG Planning. |
-| 11 | Chatting with a PDF | Pending | Working session covering Chatting with a PDF. |
-| 10 | Connecting to Vectara | Pending | Working session covering Connecting to Vectara. |
-| 9 | Building the UI | Pending | Working session covering Building the UI. |
-| 8 | Agent UX Design | Pending | Agent product/runtime work centered on Agent UX Design. |
-| 7 | First Feature Tests | Pending | Working session covering First Feature Tests. |
-| 6 | Implementing Agent Data Models via TDD | Pending | Agent product/runtime work centered on Implementing Agent Data Models via TDD. |
-| 5 | Agent First Principles | Pending | Agent product/runtime work centered on Agent First Principles. |
-| 4 | Deploying a Landing Page | Pending | Working session covering Deploying a Landing Page. |
-| 3 | Hello Laravel | Pending | Introductory build/demo session for Hello Laravel. |
-| 2 | Choosing a Tech Stack | Pending | Working session covering Choosing a Tech Stack. |
-| 1 | Intro | Pending | Working session covering Intro. |
+| 16 | PDF to Embeddings | [016.md](016.md) | Working session covering PDF to Embeddings. |
+| 15 | Similarity Search | [015.md](015.md) | Working session covering Similarity Search. |
+| 14 | Embeddings 101 | [014.md](014.md) | Working session covering Embeddings 101. |
+| 13 | RAG First Principles | [013.md](013.md) | Working session covering RAG First Principles. |
+| 12 | RAG Planning | [012.md](012.md) | Working session covering RAG Planning. |
+| 11 | Chatting with a PDF | [011.md](011.md) | Working session covering Chatting with a PDF. |
+| 10 | Connecting to Vectara | [010.md](010.md) | Working session covering Connecting to Vectara. |
+| 9 | Building the UI | [009.md](009.md) | Working session covering Building the UI. |
+| 8 | Agent UX Design | [008.md](008.md) | Agent product/runtime work centered on Agent UX Design. |
+| 7 | First Feature Tests | [007.md](007.md) | Working session covering First Feature Tests. |
+| 6 | Implementing Agent Data Models via TDD | [006.md](006.md) | Agent product/runtime work centered on Implementing Agent Data Models via TDD. |
+| 5 | Agent First Principles | [005.md](005.md) | Agent product/runtime work centered on Agent First Principles. |
+| 4 | Deploying a Landing Page | [004.md](004.md) | Working session covering Deploying a Landing Page. |
+| 3 | Hello Laravel | [003.md](003.md) | Introductory build/demo session for Hello Laravel. |
+| 2 | Choosing a Tech Stack | [002.md](002.md) | Working session covering Choosing a Tech Stack. |
+| 1 | Intro | [001.md](001.md) | Working session covering Intro. |
 
-Coverage: 72/227 transcripts present.
+Coverage: 123/227 transcripts present.
