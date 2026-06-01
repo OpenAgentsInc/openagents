@@ -154,6 +154,17 @@ python3 scripts/transcribe-video-series.py \
   --env-file ../.secrets/probe-openai.env
 ```
 
+Run a missing batch from newest to oldest:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --missing \
+  --reverse \
+  --limit 5 \
+  --keep-going \
+  --env-file ../.secrets/probe-openai.env
+```
+
 Overwrite an existing transcript:
 
 ```bash

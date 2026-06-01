@@ -196,6 +196,7 @@ def select_episodes(
     missing: bool,
     overwrite: bool,
     limit: Optional[int],
+    reverse: bool,
 ) -> list[Episode]:
     if episode_number is not None:
         selected = [episode for episode in episodes if episode.number == episode_number]
@@ -210,6 +211,8 @@ def select_episodes(
     else:
         raise SystemExit("choose --episode <number> or --missing")
 
+    if reverse:
+        selected = list(reversed(selected))
     if limit is not None:
         selected = selected[:limit]
     return selected
@@ -643,6 +646,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", default=DEFAULT_FORMAT, help="yt-dlp format selector")
     parser.add_argument("--speaker", action="append", default=[], help="map model speaker label to name, e.g. speaker_0=Christopher David")
     parser.add_argument("--limit", type=int, help="limit selected episodes, useful with --missing")
+    parser.add_argument("--reverse", action="store_true", help="process selected episodes in descending wiki order")
     parser.add_argument("--overwrite", action="store_true", help="overwrite existing markdown transcript")
     parser.add_argument("--force-download", action="store_true", help="force redownload of media")
     parser.add_argument("--force-audio", action="store_true", help="force regeneration of audio")
@@ -674,6 +678,7 @@ def main() -> int:
         missing=args.missing,
         overwrite=args.overwrite,
         limit=args.limit,
+        reverse=args.reverse,
     )
 
     if args.dry_run:
