@@ -1,7 +1,7 @@
 # OpenAgents Transcript Theme Guide
 
 This directory contains machine-generated transcripts for the video corpus
-currently checked in here: episodes `001`-`016` and `121`-`227`. It is not a
+currently checked in here: episodes `001`-`016` and `118`-`227`. It is not a
 complete archive of episodes `001`-`227`.
 
 Use this file as a navigation map. The transcripts are good enough for theme
@@ -14,10 +14,11 @@ URL in their header.
 - Episodes [`001`](001.md)-[`016`](016.md) cover the original 2023 build in
   public: open agents as a web product, Laravel/Inertia/React setup, agent data
   models, TDD, UX, file upload, RAG, Vectara, embeddings, and pgvector.
-- Episodes [`121`](121.md)-[`125`](125.md) are the SWE-bench and master-plan
-  bridge: public benchmark planning, codebase indexing via GraphRAG, GitHub
-  issues to pull requests, criticism of closed "AI coder" fundraising, and the
-  graph-based agent business model.
+- Episodes [`118`](118.md)-[`125`](125.md) are the v2, beta, SWE-bench, and
+  master-plan bridge: the live `openagents.com` chat/HUD product,
+  GitHub-connected tools, public benchmark planning, codebase indexing via
+  GraphRAG, GitHub issues to pull requests, criticism of closed "AI coder"
+  fundraising, and the graph-based agent business model.
 - Episodes [`126`](126.md)-[`138`](138.md) pivot into OpenPress and
   OpenAgents v3: a Laravel/Blade site-builder thesis, hosted sites, Shad-style
   blocks, HTMX/SSE experiments, the return to Inertia for velocity, an
@@ -47,13 +48,13 @@ URL in their header.
 | --- | --- | --- |
 | Open agents versus closed AI capture | The founding claim is that agents, models, data, money, and compute should be open rather than controlled by closed labs. The middle episodes add critiques of closed AI-coder fundraising, OpenAI/lab lock-in, and platform capture; the launch arc sharpens that into opposition to regulatory capture, walled gardens, token schemes, and lab-controlled access. | [`001` Intro](001.md), [`124` Magic AI = Deep State](124.md), [`139` Going Mobile](139.md), [`150` Neutrality Wins](150.md), [`166` OpenAI Delenda Est](166.md), [`181` American DeepSeek?](181.md), [`200` The Agent Network](200.md), [`204` DO NOT BREAK USERSPACE](204.md), [`205` Vintage Microsoft Evil Shit](205.md), [`220` OAPN launch thesis](220.md), [`222` Bittensor/Templar response](222.md), [`227` Ocean Power](227.md) |
 | Agent first principles | The early product definition reduces an agent to concrete product needs: chat, planning, actions, web/API/browser interaction, files, tasks, conversations, users, and agents as data models. The v3 arc restates this as "ask for something and an agent makes it happen." | [`005` Agent First Principles](005.md), [`006` Implementing Agent Data Models via TDD](006.md), [`007` First Feature Tests](007.md), [`008` Agent UX Design](008.md), [`012` RAG Planning](012.md), [`132` v3 Core Feature](132.md), [`138` Year One Recap](138.md) |
-| Build in public and ship early | The series repeatedly favors working software, public commits, visible rough edges, and fast feedback over closed lab development. The pattern starts with the 2023 Laravel app, continues through OpenPress/OpenAgents v3 and Onyx beta releases, and returns in the Zero Base/Tauri reset and OAPN "worse is better" framing. | [`002` Choosing a Tech Stack](002.md), [`003` Hello Laravel](003.md), [`004` Deploying a Landing Page](004.md), [`006`](006.md), [`008`](008.md), [`127` Hello OpenPress](127.md), [`131` v3 Landing Page](131.md), [`149` Onyx Beta Launch](149.md), [`183` Zero Base](183.md), [`184` Hello Tauri](184.md), [`226` Worse is Better](226.md) |
+| Build in public and ship early | The series repeatedly favors working software, public commits, visible rough edges, and fast feedback over closed lab development. The pattern starts with the 2023 Laravel app, continues through v2, the public beta, OpenPress/OpenAgents v3, and Onyx beta releases, and returns in the Zero Base/Tauri reset and OAPN "worse is better" framing. | [`002` Choosing a Tech Stack](002.md), [`003` Hello Laravel](003.md), [`004` Deploying a Landing Page](004.md), [`006`](006.md), [`008`](008.md), [`118` Version Two](118.md), [`119` v2 Beta Launch](119.md), [`127` Hello OpenPress](127.md), [`131` v3 Landing Page](131.md), [`149` Onyx Beta Launch](149.md), [`183` Zero Base](183.md), [`184` Hello Tauri](184.md), [`226` Worse is Better](226.md) |
 | RAG, documents, and knowledge grounding | The first technical arc builds toward document-aware agents: PDF upload, Vectara integration, local RAG planning, embeddings, semantic search, and pgvector-backed similarity search. Later episodes generalize the same idea into codebase GraphRAG, repo maps, and crowdsourced knowledge graphs for current events. | [`010` Connecting to Vectara](010.md), [`011` Chatting with a PDF](011.md), [`012` RAG Planning](012.md), [`013` RAG First Principles](013.md), [`014` Embeddings 101](014.md), [`015` Similarity Search](015.md), [`016` PDF to Embeddings](016.md), [`122` Codebase Indexing via GraphRAG](122.md), [`155` Open Knowledge Graph](155.md) |
-| Coding-agent work loops and evaluation | The coding-agent arc moves from public benchmark strategy to actual issue-to-PR workflows: SWE-bench Verified data, repo indexes, GitHub issue selection, branch creation, file edits, tests, relevant-file selection, reasoning streams, hosted grep/scrape tools, MCP integration, and eventually multi-agent coding dashboards. | [`121` SWE-bench Planning](121.md), [`122`](122.md), [`123` GitHub Issues to Pull Requests](123.md), [`156` Aider Repo Maps](156.md), [`159` Onyx Repo Maps](159.md), [`160` Relevant Files](160.md), [`161` Basic Coding Loop](161.md), [`162` Reasoning Stream](162.md), [`163` Issue Reasoning Demo](163.md), [`164` The New OpenAgents.com](164.md), [`165` Integrating MCP via AI SDK](165.md), [`167` Overnight Agent](167.md), [`188`](188.md), [`196`](196.md), [`198`](198.md), [`206`](206.md), [`218` Probe](218.md), [`219` Probe: Inference Modes](219.md) |
+| Coding-agent work loops and evaluation | The coding-agent arc moves from a live GitHub-connected v2 product to public benchmark strategy and actual issue-to-PR workflows: SWE-bench Verified data, repo indexes, GitHub issue selection, branch creation, file edits, tests, relevant-file selection, reasoning streams, hosted grep/scrape tools, MCP integration, and eventually multi-agent coding dashboards. | [`118` Version Two](118.md), [`119` v2 Beta Launch](119.md), [`120` Exploring SWE-bench Verified](120.md), [`121` SWE-bench Planning](121.md), [`122`](122.md), [`123` GitHub Issues to Pull Requests](123.md), [`156` Aider Repo Maps](156.md), [`159` Onyx Repo Maps](159.md), [`160` Relevant Files](160.md), [`161` Basic Coding Loop](161.md), [`162` Reasoning Stream](162.md), [`163` Issue Reasoning Demo](163.md), [`164` The New OpenAgents.com](164.md), [`165` Integrating MCP via AI SDK](165.md), [`167` Overnight Agent](167.md), [`188`](188.md), [`196`](196.md), [`198`](198.md), [`206`](206.md), [`218` Probe](218.md), [`219` Probe: Inference Modes](219.md) |
 | Graph-based agents and knowledge systems | A repeated technical thesis is that agents should be built from graphs: execution graphs for actions, knowledge graphs for context, code graphs for repos, and public graphs for sensemaking. This connects SWE-bench indexing, the master plan, data markets, OSINT, and open knowledge graphs. | [`122`](122.md), [`125` The Master Plan](125.md), [`146` Sensemaking: Drones](146.md), [`147` Planning a Data Marketplace](147.md), [`154` Agentic OSINT](154.md), [`155`](155.md), [`157` Chains of Thought and Action](157.md), [`158` Quest for the Holy Grail](158.md), [`160`](160.md), [`162`](162.md), [`215` Data Market](215.md) |
 | OpenPress and agentic site building | OpenPress appears as both a WordPress replacement thesis and a product wedge for agents: public-domain/open-source site infrastructure, Laravel/Blade simplicity, hosted sites, Shad-inspired components, reusable blocks, OpenAgents v3 landing/chat surfaces, and a site builder where the core action is asking an agent to make a site change. | [`126` OpenPress and the End of WordPress](126.md), [`127` Hello OpenPress](127.md), [`128` Styling OpenPress](128.md), [`129` Hosting OpenPress](129.md), [`130` OpenAgents <> OpenPress](130.md), [`131` v3 Landing Page](131.md), [`132` v3 Core Feature](132.md), [`133` HTMX Server Sent Events, Part 2](133.md), [`134` Inescapable Inertia](134.md) |
 | Business workrooms, CRM, teams, and projects | The v3 product expands from chat into operational software: agentic CRM, lead/contact workflows, team-scoped data, team switching, project-scoped knowledge and chats, and a business-friendly interface that looks familiar while being agent-native underneath. | [`135` Agentic CRM Design](135.md), [`136` Teams](136.md), [`137` Projects](137.md), [`138` Year One Recap](138.md), [`164`](164.md), [`188`](188.md), [`199`](199.md), [`227`](227.md) |
-| UI beyond terminal agents | The product direction rejects fragile terminal-only workflows in favor of dense desktop, web, mobile, HUD, voice, hand-tracking, pane, sidebar, history, and dashboard interfaces for serious agent operation. Onyx adds mobile-first and voice-first control; OpenPress/v3 adds web app blocks, chat shells, and business workspaces. | [`008` Agent UX Design](008.md), [`131`](131.md), [`132`](132.md), [`135`](135.md), [`139` Going Mobile](139.md), [`149`](149.md), [`151` Speak to Onyx](151.md), [`152` Code by Voice](152.md), [`170` Commander](170.md), [`175` Commander v0.0.1](175.md), [`176` Hand Tracking](176.md), [`184` Hello Tauri](184.md), [`185`](185.md), [`188`](188.md), [`193`](193.md), [`195` Designing 10x Better](195.md), [`196`](196.md), [`208`](208.md) |
+| UI beyond terminal agents | The product direction rejects fragile terminal-only workflows in favor of dense desktop, web, mobile, HUD, voice, hand-tracking, pane, sidebar, history, and dashboard interfaces for serious agent operation. The v2 arc adds draggable panes and a configurable chat workspace; Onyx adds mobile-first and voice-first control; OpenPress/v3 adds web app blocks, chat shells, and business workspaces. | [`008` Agent UX Design](008.md), [`118`](118.md), [`119`](119.md), [`131`](131.md), [`132`](132.md), [`135`](135.md), [`139` Going Mobile](139.md), [`149`](149.md), [`151` Speak to Onyx](151.md), [`152` Code by Voice](152.md), [`170` Commander](170.md), [`175` Commander v0.0.1](175.md), [`176` Hand Tracking](176.md), [`184` Hello Tauri](184.md), [`185`](185.md), [`188`](188.md), [`193`](193.md), [`195` Designing 10x Better](195.md), [`196`](196.md), [`208`](208.md) |
 | Onyx as the mobile personal agent | Onyx becomes the phone entry point into the network: local model chat, open-source app releases, beta distribution, voice input, pocket coding agents, GitHub-token-backed tools, Bitcoin wallet plans, data vending, and eventually the user's portable agent identity. | [`139`](139.md), [`140` Open-Sourcing Onyx](140.md), [`141` One Market](141.md), [`142` Data Vending Machines](142.md), [`143` Onyx as Bitcoin Wallet](143.md), [`145` Going Local](145.md), [`149`](149.md), [`151`](151.md), [`152`](152.md), [`153` High-Velocity Bitcoin](153.md) |
 | Bitcoin, Lightning, Spark, identity, and wallets | Agents and users need keys, wallets, settlement, and identity. The videos move from an Agent Payments API to Onyx as a Lightning/Liquid wallet, high-velocity Bitcoin, Nostr identity, seed phrases, hot-wallet safety, Spark/Lightning sends, and Autopilot-native Bitcoin operations. | [`140`](140.md), [`143`](143.md), [`153`](153.md), [`169` Agent Payments API](169.md), [`171` Visualizing Agent Payments](171.md), [`172` Sync Engine](172.md), [`173` OpenAgents Bitcoin Wallet](173.md), [`207` Your Keys, Your Coins, Your Identity](207.md), [`208`](208.md), [`212` Autopilot Learns Bitcoin](212.md), [`213` Agent Markets](213.md), [`214` compute market launch](214.md) |
 | Nostr and open agent protocols | Nostr is treated as the neutral data and coordination layer: NIP-90 jobs, data vending, public chat, labeling, reporting, zaps, agent messages, marketplaces, skills, sovereign agents, key splitting, relays, and open client interoperability. MCP becomes the local/tool protocol that can plug into that market through Pylon and AI SDK. | [`140`](140.md), [`141`](141.md), [`142`](142.md), [`144` Pylon and the Model Context Protocol](144.md), [`147`](147.md), [`155`](155.md), [`165`](165.md), [`177` Commander as Nostr Client](177.md), [`178` Swarm Inference](178.md), [`200`](200.md), [`203` Pylon and Nexus](203.md), [`209` Open Moltbook](209.md), [`213`](213.md), [`214`](214.md), [`215` Data Market](215.md) |
@@ -87,16 +88,17 @@ Core feature set:
 - **Autopilot chat and workbench.** A central chat surface that can delegate to
   Codex, Probe, local models, cloud models, and swarm jobs while keeping
   history, artifacts, tasks, GitHub issues, PRs, runs, approvals, and event
-  logs visible. This comes from the SWE-bench, issue-to-PR, and
-  Autopilot/dashboard arcs in [`121`](121.md), [`123`](123.md),
-  [`163`](163.md), [`164`](164.md), [`188`](188.md), [`196`](196.md),
-  [`199`](199.md), [`206`](206.md), and [`208`](208.md).
+  logs visible. This comes from the v2 beta, SWE-bench, issue-to-PR, and
+  Autopilot/dashboard arcs in [`118`](118.md), [`119`](119.md),
+  [`120`](120.md), [`121`](121.md), [`123`](123.md), [`163`](163.md), [`164`](164.md),
+  [`188`](188.md), [`196`](196.md), [`199`](199.md), [`206`](206.md), and
+  [`208`](208.md).
 - **Benchmark and repo-intelligence cockpit.** A public/private area for
   loading benchmark datasets, indexing repos, viewing code graphs, choosing
   issues, running agents, comparing patches, and converting successful work
   into productized coding-agent capabilities. The SWE-bench and GraphRAG
-  foundation appears in [`121`](121.md), [`122`](122.md), [`156`](156.md),
-  [`159`](159.md), [`160`](160.md), and [`162`](162.md).
+  foundation appears in [`120`](120.md), [`121`](121.md), [`122`](122.md),
+  [`156`](156.md), [`159`](159.md), [`160`](160.md), and [`162`](162.md).
 - **OpenPress site builder and hosting.** A user can ask for a website, blog,
   landing page, or client site; agents compose it from open blocks, host it,
   style it, update it, and expose code/export paths. This is the OpenPress and
@@ -184,7 +186,7 @@ Start with the project thesis:
 [`001`](001.md) -> [`125`](125.md) -> [`140`](140.md) -> [`141`](141.md) -> [`200`](200.md) -> [`213`](213.md) -> [`214`](214.md) -> [`221`](221.md) -> [`224`](224.md).
 
 To understand coding agents and repo intelligence:
-[`121`](121.md) -> [`122`](122.md) -> [`123`](123.md) -> [`156`](156.md) -> [`160`](160.md) -> [`162`](162.md) -> [`163`](163.md) -> [`164`](164.md) -> [`165`](165.md) -> [`206`](206.md) -> [`218`](218.md).
+[`118`](118.md) -> [`119`](119.md) -> [`120`](120.md) -> [`121`](121.md) -> [`122`](122.md) -> [`123`](123.md) -> [`156`](156.md) -> [`160`](160.md) -> [`162`](162.md) -> [`163`](163.md) -> [`164`](164.md) -> [`165`](165.md) -> [`206`](206.md) -> [`218`](218.md).
 
 To understand OpenPress and the v3 web product:
 [`126`](126.md) -> [`127`](127.md) -> [`128`](128.md) -> [`129`](129.md) -> [`130`](130.md) -> [`131`](131.md) -> [`132`](132.md) -> [`133`](133.md) -> [`134`](134.md) -> [`135`](135.md) -> [`136`](136.md) -> [`137`](137.md).
@@ -196,7 +198,7 @@ To understand data markets and open sensemaking:
 [`146`](146.md) -> [`147`](147.md) -> [`154`](154.md) -> [`155`](155.md) -> [`181`](181.md) -> [`182`](182.md) -> [`215`](215.md) -> [`227`](227.md).
 
 To understand the product surface:
-[`005`](005.md) -> [`008`](008.md) -> [`132`](132.md) -> [`135`](135.md) -> [`139`](139.md) -> [`163`](163.md) -> [`164`](164.md) -> [`165`](165.md) -> [`183`](183.md) -> [`188`](188.md) -> [`199`](199.md) -> [`206`](206.md) -> [`208`](208.md).
+[`005`](005.md) -> [`008`](008.md) -> [`118`](118.md) -> [`119`](119.md) -> [`132`](132.md) -> [`135`](135.md) -> [`139`](139.md) -> [`163`](163.md) -> [`164`](164.md) -> [`165`](165.md) -> [`183`](183.md) -> [`188`](188.md) -> [`199`](199.md) -> [`206`](206.md) -> [`208`](208.md).
 
 To understand compute, Pylon, Nexus, and training:
 [`144`](144.md) -> [`145`](145.md) -> [`178`](178.md) -> [`202`](202.md) -> [`203`](203.md) -> [`214`](214.md) -> [`221`](221.md) -> [`222`](222.md) -> [`224`](224.md) -> [`227`](227.md).
@@ -206,7 +208,7 @@ To understand the 2023 RAG/web-app base:
 
 ## Notes For Future Updates
 
-- Add missing episode ranges if transcripts for `017`-`120` are generated.
+- Add missing episode ranges if transcripts for `017`-`117` are generated.
 - Keep launch claims synced with canonical docs, especially the episode 222
   launch-hardening note.
 - Prefer episode links over raw quotes unless the transcript has been checked
