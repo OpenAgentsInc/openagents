@@ -22,6 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import http.client
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -427,12 +428,32 @@ def transcribe_audio(
     )
 
     print(f"transcribe: {audio_path.name} using {model}")
-    try:
-        with urllib.request.urlopen(request, timeout=900) as response:
-            raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as error:
-        raw_error = error.read().decode("utf-8", errors="replace")
-        raise SystemExit(f"transcription API failed: HTTP {error.code}: {raw_error}") from error
+    retryable_http = {408, 409, 429, 500, 502, 503, 504, 520, 522, 524}
+    last_error: BaseException | None = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(request, timeout=900) as response:
+                raw = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as error:
+            raw_error = error.read().decode("utf-8", errors="replace")
+            last_error = SystemExit(
+                f"transcription API failed: HTTP {error.code}: {raw_error}"
+            )
+            if error.code not in retryable_http or attempt == 3:
+                raise last_error from error
+        except (
+            TimeoutError,
+            urllib.error.URLError,
+            http.client.RemoteDisconnected,
+            ConnectionResetError,
+        ) as error:
+            last_error = error
+            if attempt == 3:
+                raise SystemExit(f"transcription API failed: {error}") from error
+        time.sleep(5 * attempt)
+    else:
+        raise SystemExit(f"transcription API failed: {last_error}")
 
     output_json.write_text(raw)
     return json.loads(raw)
@@ -713,6 +734,13 @@ def main() -> int:
             code = error.code
             if isinstance(code, int) and code == 0:
                 continue
+            episode_dir = root / args.work_dir / f"{episode.number:03d}-{slugish(episode.title)}"
+            write_failure(episode, episode_dir, error)
+            failures.append((episode, str(error)))
+            print(f"failed: episode {episode.number}: {error}", file=sys.stderr)
+            if not args.keep_going:
+                raise
+        except Exception as error:
             episode_dir = root / args.work_dir / f"{episode.number:03d}-{slugish(episode.title)}"
             write_failure(episode, episode_dir, error)
             failures.append((episode, str(error)))
