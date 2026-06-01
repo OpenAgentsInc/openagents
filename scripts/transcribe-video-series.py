@@ -186,8 +186,20 @@ def parse_speaker_map(values: Iterable[str]) -> dict[str, str]:
     return mapping
 
 
+def episode_label(episode_number: int) -> str:
+    return f"{episode_number:03d}"
+
+
+def pad_episode_mentions(value: str) -> str:
+    return re.sub(
+        r"(OpenAgents(?:\s+-)?\s+Episode\s+)(\d{1,2})(\b)",
+        lambda match: f"{match.group(1)}{int(match.group(2)):03d}{match.group(3)}",
+        value,
+    )
+
+
 def transcript_path(transcript_dir: Path, episode: Episode) -> Path:
-    return transcript_dir / f"{episode.number}.md"
+    return transcript_dir / f"{episode_label(episode.number)}.md"
 
 
 def select_episodes(
@@ -607,12 +619,12 @@ def write_markdown(
     wiki_url: str,
     model: str,
 ) -> None:
-    title = sanitize_ascii(info.get("title") or episode.title)
+    title = pad_episode_mentions(sanitize_ascii(info.get("title") or episode.title))
     upload_date = sanitize_ascii(str(info.get("upload_date") or "unknown"))
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     lines = [
-        f"# Transcription: OpenAgents Episode {episode.number} - {episode.title}",
+        f"# Transcription: OpenAgents Episode {episode_label(episode.number)} - {episode.title}",
         "",
         f"Source: {episode.url}",
         f"Wiki source: {wiki_url}",
@@ -733,7 +745,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--missing",
         "--all-missing",
         action="store_true",
-        help="transcribe every wiki episode missing docs/transcripts/<episode>.md",
+        help="transcribe every wiki episode missing docs/transcripts/<episode-number>.md",
     )
     parser.add_argument("--wiki-url", default=DEFAULT_WIKI_URL)
     parser.add_argument("--output-dir", default=DEFAULT_TRANSCRIPT_DIR)

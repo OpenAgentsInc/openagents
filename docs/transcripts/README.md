@@ -1,8 +1,8 @@
 # OpenAgents Transcript Theme Guide
 
 This directory contains machine-generated transcripts for the video corpus
-currently checked in here: episodes `001`-`016` and `118`-`227`. It is not a
-complete archive of episodes `001`-`227`.
+currently checked in here: episodes `001`-`016`, `038`-`085`, and `087`-`227`.
+It is not a complete archive of episodes `001`-`227`.
 
 Use this file as a navigation map. The transcripts are good enough for theme
 discovery, but verify wording against the video before using them as
