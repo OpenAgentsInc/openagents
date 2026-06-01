@@ -43,6 +43,78 @@ URL in their header.
 | Agent markets, revenue share, and bounties | The economic claim is that contributors should be paid directly: compute providers, data sellers, skill authors, developers, validators, and community members. The market set expands from compute to data, labor, liquidity, and risk. | [`001`](001.md), [`169`](169.md), [`173`](173.md), [`199`](199.md), [`200`](200.md), [`206`](206.md), [`207`](207.md), [`212`](212.md), [`213`](213.md), [`215`](215.md), [`220`](220.md), [`223`](223.md), [`225` bounties](225.md) |
 | Research review and agentic sensemaking | Several episodes are less product-demo and more research synthesis: American DeepSeek, weather modification research, Apple Silicon workload share, product design audits, Cursor reverse engineering, recursive language models, and ocean-powered compute/legal benchmark strategy. | [`181`](181.md), [`182` Sensemaking](182.md), [`194`](194.md), [`195`](195.md), [`197` Reverse Engineering Cursor](197.md), [`202`](202.md), [`226`](226.md), [`227`](227.md) |
 
+## Speculation: One Product
+
+This is speculative synthesis from the transcripts, not a product contract.
+Assume there is one web app at `openagents.com` that tries to encompass the
+whole corpus. It would be an agent operating system with a built-in market:
+ChatGPT-style entry, Autopilot work control, Bitcoin wallet, Nostr identity,
+Pylon provider management, data/labor/compute marketplaces, and public proof of
+what work happened.
+
+The first screen would be a signed-in command center. The user sees a chat
+composer, active agent threads, wallet balance, online/provider state, recent
+earnings, open jobs, model/runtime status, and public network stats. It should
+feel closer to an operations dashboard than a marketing page. The basic promise:
+ask agents to do useful work, put your own resources online, get paid Bitcoin,
+and verify the receipts.
+
+Core feature set:
+
+- **Autopilot chat and workbench.** A central chat surface that can delegate to
+  Codex, Probe, local models, cloud models, and swarm jobs while keeping
+  history, artifacts, tasks, runs, approvals, and event logs visible. This
+  comes from the Autopilot and dashboard arc in [`188`](188.md),
+  [`196`](196.md), [`199`](199.md), [`206`](206.md), and [`208`](208.md).
+- **Personal agent memory and documents.** Upload PDFs, chats, repos, and local
+  files; ground answers in retrieved sources; run semantic search; and turn
+  valuable private data into optionally sellable, redacted datasets. This joins
+  the RAG arc in [`010`](010.md)-[`016`](016.md) with the data market in
+  [`215`](215.md).
+- **Wallet and identity layer.** Every user and agent has keys, a Nostr
+  identity, a hot wallet for small balances, Lightning/Spark or LDK settlement,
+  invoices, sends, withdrawals, and transaction history. The product must make
+  custody limits explicit. Relevant videos: [`169`](169.md), [`173`](173.md),
+  [`207`](207.md), [`208`](208.md), and [`212`](212.md).
+- **Go Online provider mode.** A browser-managed install/control flow for
+  Pylon on the user's machine, plus status, job lifecycle, resource limits,
+  supported hardware, earned sats, logs, and receipts. The web app should not
+  pretend the browser itself owns local compute; it coordinates a local Pylon
+  or desktop companion. Relevant videos: [`178`](178.md), [`203`](203.md),
+  [`214`](214.md), [`221`](221.md), and [`224`](224.md).
+- **Marketplace hub.** One place to buy and sell compute, data, labor, skills,
+  liquidity, and risk verification. Listings should be protocol-backed, priced
+  in sats, attached to reputation, and usable by humans or agents. See
+  [`200`](200.md), [`209`](209.md), [`213`](213.md), [`214`](214.md), and
+  [`215`](215.md).
+- **Open protocol console.** Nostr relay status, NIP-90 jobs, data vending
+  events, agent messages, marketplace listings, sovereign-agent key status, and
+  signed receipts should be inspectable. This keeps the app from becoming a
+  closed silo. See [`177`](177.md), [`203`](203.md), [`209`](209.md), and
+  [`222`](222.md).
+- **Training and model factory.** A buyer/operator surface for launching
+  training, fine-tuning, benchmark, and validation runs over Pylon/Psionic
+  supply. It would show run instructions, assignments, checkpoints, validators,
+  accepted outcomes, payout eligibility, and public stats. See [`216`](216.md),
+  [`217`](217.md), [`222`](222.md), [`224`](224.md), and [`227`](227.md).
+- **Revenue-share and bounty center.** Contributors can find bounties, submit
+  issues, ship skills/modules, register datasets, review accepted work, and see
+  payout history. This turns the "pay contributors" theme into an operational
+  workflow. See [`001`](001.md), [`199`](199.md), [`207`](207.md), and
+  [`225`](225.md).
+- **Enterprise and domain workrooms.** A business can bring private data,
+  create custom agents, run legal or coding benchmarks, fine-tune models, and
+  buy network resources without learning the protocol details. The legal
+  fine-tuning and "last agent" direction appears most clearly in
+  [`227`](227.md).
+
+The hardest product requirement would be authority separation. The web app can
+compose the experience, but wallet authority, provider admission, local compute,
+training truth, payout truth, and signed receipts need explicit runtime owners.
+If the product hides those boundaries, it collapses into another closed AI
+dashboard. If it exposes them cleanly, `openagents.com` becomes the front door
+for an open agent economy.
+
 ## Reading Paths
 
 Start with the project thesis:
