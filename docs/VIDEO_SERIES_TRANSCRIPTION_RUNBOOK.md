@@ -79,6 +79,11 @@ For this workspace, the reusable local fallback secret is outside this repo:
 
 Do not print or commit the key.
 
+When OpenAI transcription quota is unavailable, the same script can use a local
+Apple Silicon MLX Whisper fallback through `uvx --from mlx-whisper mlx_whisper`.
+That mode does not require an API key, but it downloads a cached Python package
+and model weights outside the repo on first use.
+
 ## Transcription API Notes
 
 The default model is:
@@ -108,6 +113,34 @@ Use `--speaker` mappings when a reviewed episode has known speakers:
 
 Speaker labels are model-derived. Review and correct them before treating the
 transcript as quote-grade source material.
+
+## Local MLX Whisper Fallback
+
+Use the local fallback only when the OpenAI API path is unavailable or when an
+operator deliberately wants local-only transcription:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --episode 108 \
+  --transcriber mlx-whisper \
+  --mlx-model mlx-community/whisper-tiny \
+  --cookies-from-browser chrome
+```
+
+The fallback writes the same markdown output and stores raw JSON under the same
+ignored `var/video-series-transcripts/<episode>/transcriptions/` directory. The
+generated transcript metadata records the model as:
+
+```text
+mlx-whisper/<model>
+```
+
+The default MLX model is `mlx-community/whisper-tiny` because it is fast enough
+for emergency quota bypass. For better quality, pass a larger MLX Whisper model
+with `--mlx-model`; expect slower local runtime and larger model downloads.
+
+Local MLX output is not diarized. It normally appears under a generic `Speaker`
+label unless a future local diarization pass is added.
 
 ## Basic Commands
 
@@ -269,8 +302,10 @@ single audio file. Keep chunking enabled for all batch work.
 
 ### 6. Transcribe Each Part
 
-Each audio part is sent independently to the transcription API. The raw JSON
-response is saved in the ignored episode work directory.
+Each audio part is sent independently to the selected transcription backend. In
+the default OpenAI mode, this is the transcription API. In `--transcriber
+mlx-whisper` mode, this is local MLX Whisper. The raw JSON response is saved in
+the ignored episode work directory.
 
 If `yt-dlp`, `ffmpeg`, or transcription fails for one episode in a batch run
 with `--keep-going`, the script records:

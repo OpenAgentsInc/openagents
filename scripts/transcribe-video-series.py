@@ -23,6 +23,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import http.client
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -459,6 +460,53 @@ def transcribe_audio(
     return json.loads(raw)
 
 
+def transcribe_audio_mlx(
+    audio_path: Path,
+    output_json: Path,
+    *,
+    model: str,
+    language: str,
+    force: bool,
+    root: Path,
+) -> dict[str, Any]:
+    if output_json.exists() and not force:
+        return json.loads(output_json.read_text())
+
+    if not shutil.which("uvx"):
+        raise SystemExit("required command not found for --transcriber mlx-whisper: uvx")
+
+    print(f"transcribe: {audio_path.name} using mlx-whisper {model}")
+    with tempfile.TemporaryDirectory(prefix="openagents-mlx-whisper-") as temp_dir:
+        temp_path = Path(temp_dir)
+        run(
+            [
+                "uvx",
+                "--from",
+                "mlx-whisper",
+                "mlx_whisper",
+                str(audio_path),
+                "--model",
+                model,
+                "--language",
+                language,
+                "--output-dir",
+                str(temp_path),
+                "--output-format",
+                "json",
+                "--verbose",
+                "False",
+            ],
+            root,
+        )
+        json_files = sorted(temp_path.glob("*.json"))
+        if not json_files:
+            raise SystemExit(f"mlx-whisper produced no JSON for {audio_path}")
+        raw = json_files[0].read_text()
+
+    output_json.write_text(raw)
+    return json.loads(raw)
+
+
 def segment_start(segment: dict[str, Any]) -> float:
     for key in ("start", "start_time", "start_ms"):
         value = segment.get(key)
@@ -616,7 +664,6 @@ def process_episode(args: argparse.Namespace, episode: Episode, root: Path, spea
         print(f"download-only: episode {episode.number} media/audio retained under {episode_dir}")
         return
 
-    api_key = get_api_key()
     transcript_json_dir = episode_dir / "transcriptions"
     transcript_json_dir.mkdir(parents=True, exist_ok=True)
 
@@ -624,14 +671,28 @@ def process_episode(args: argparse.Namespace, episode: Episode, root: Path, spea
     offset = 0.0
     for index, audio_path in enumerate(audio_files, start=1):
         output_json = transcript_json_dir / f"transcription-part-{index:02d}.json"
-        response = transcribe_audio(
-            audio_path,
-            output_json,
-            api_key=api_key,
-            model=args.model,
-            language=args.language,
-            force=args.force_transcribe,
-        )
+        if args.transcriber == "openai":
+            response = transcribe_audio(
+                audio_path,
+                output_json,
+                api_key=get_api_key(),
+                model=args.model,
+                language=args.language,
+                force=args.force_transcribe,
+            )
+            model_label = args.model
+        elif args.transcriber == "mlx-whisper":
+            response = transcribe_audio_mlx(
+                audio_path,
+                output_json,
+                model=args.mlx_model,
+                language=args.language,
+                force=args.force_transcribe,
+                root=root,
+            )
+            model_label = f"mlx-whisper/{args.mlx_model}"
+        else:
+            raise SystemExit(f"unsupported transcriber: {args.transcriber}")
         all_segments.extend(
             response_segments(response, offset_seconds=offset, speaker_map=speaker_map)
         )
@@ -644,7 +705,7 @@ def process_episode(args: argparse.Namespace, episode: Episode, root: Path, spea
         segments=all_segments,
         transcript_file=output_path,
         wiki_url=args.wiki_url,
-        model=args.model,
+        model=model_label,
     )
     print(f"wrote: {output_path}")
 
@@ -679,6 +740,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-dir", default=DEFAULT_WORK_DIR)
     parser.add_argument("--env-file", type=Path, help="optional env file containing OPENAI_API_KEY or PROBE_OPENAI_API_KEY")
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--transcriber", choices=["openai", "mlx-whisper"], default="openai", help="transcription backend")
+    parser.add_argument("--mlx-model", default="mlx-community/whisper-tiny", help="MLX Whisper model repo or local model path")
     parser.add_argument("--language", default="en")
     parser.add_argument("--format", default=DEFAULT_FORMAT, help="yt-dlp format selector")
     parser.add_argument("--cookies-from-browser", help="pass a browser name to yt-dlp --cookies-from-browser for protected X media, e.g. chrome")
