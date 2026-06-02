@@ -1,0 +1,379 @@
+# Video Series Download And Transcription Runbook
+
+Status: operator runbook
+
+Last updated: 2026-05-31
+
+## Purpose
+
+This runbook defines the retained process for turning the OpenAgents GitHub wiki
+video-series index into local episode transcripts.
+
+The workflow supports two operator modes:
+
+- transcribe one specific episode by number
+- transcribe every wiki episode that does not yet have
+  `docs/transcripts/<episode>.md`
+
+The script intentionally keeps large downloaded media and raw transcription JSON
+out of Git. Only reviewed markdown transcripts should be committed.
+
+## Sources
+
+The canonical video-series index is the GitHub wiki page:
+
+- <https://github.com/OpenAgentsInc/openagents/wiki/Video-Series>
+
+For automation, use the raw wiki markdown:
+
+- <https://raw.githubusercontent.com/wiki/OpenAgentsInc/openagents/Video-Series.md>
+
+The raw markdown is easier to parse because each episode is a numbered markdown
+link:
+
+```markdown
+224. [Distributed Training 101](https://x.com/OpenAgents/status/2044890647342027072)
+```
+
+As of this runbook, the raw wiki contained 227 episode links.
+
+## Local Layout
+
+Tracked outputs:
+
+- `docs/transcripts/<episode>.md`
+
+Ignored local working files:
+
+- `var/video-series-transcripts/<episode>/episode.info.json`
+- `var/video-series-transcripts/<episode>/media-*`
+- `var/video-series-transcripts/<episode>/audio-part-*.mp3`
+- `var/video-series-transcripts/<episode>/transcription-part-*.json`
+
+`var/` is already ignored by this repo. Do not commit downloaded video, audio,
+or raw API JSON unless a future task explicitly asks for an archival artifact.
+
+## Dependencies
+
+Required local commands:
+
+- `python3`
+- `ffmpeg`
+- `ffprobe`
+- either `yt-dlp` or `uvx`
+
+The script prefers a local `yt-dlp` binary. If that is missing, it runs
+`uvx yt-dlp`, which downloads and runs an ephemeral/cached copy without adding a
+repo dependency.
+
+Transcription requires an OpenAI API key. The script reads either:
+
+- `OPENAI_API_KEY`
+- `PROBE_OPENAI_API_KEY`
+
+For this workspace, the reusable local fallback secret is outside this repo:
+
+```bash
+../.secrets/probe-openai.env
+```
+
+Do not print or commit the key.
+
+When OpenAI transcription quota is unavailable, the same script can use a local
+Apple Silicon MLX Whisper fallback through `uvx --from mlx-whisper mlx_whisper`.
+That mode does not require an API key, but it downloads a cached Python package
+and model weights outside the repo on first use.
+
+## Transcription API Notes
+
+The default model is:
+
+```text
+gpt-4o-transcribe-diarize
+```
+
+The script requests:
+
+- `response_format=diarized_json`
+- `chunking_strategy=auto`
+- `language=en`
+
+This produces speaker-labeled segments when the model can infer speakers. The
+script converts those segments into markdown lines:
+
+```markdown
+**[00:00] Speaker 0:** Text.
+```
+
+Use `--speaker` mappings when a reviewed episode has known speakers:
+
+```bash
+--speaker speaker_0="Christopher David" --speaker speaker_1="Car Gonzalez"
+```
+
+Speaker labels are model-derived. Review and correct them before treating the
+transcript as quote-grade source material.
+
+## Local MLX Whisper Fallback
+
+Use the local fallback only when the OpenAI API path is unavailable or when an
+operator deliberately wants local-only transcription:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --episode 108 \
+  --transcriber mlx-whisper \
+  --mlx-model mlx-community/whisper-tiny \
+  --cookies-from-browser chrome
+```
+
+The fallback writes the same markdown output and stores raw JSON under the same
+ignored `var/video-series-transcripts/<episode>/transcriptions/` directory. The
+generated transcript metadata records the model as:
+
+```text
+mlx-whisper/<model>
+```
+
+The default MLX model is `mlx-community/whisper-tiny` because it is fast enough
+for emergency quota bypass. For better quality, pass a larger MLX Whisper model
+with `--mlx-model`; expect slower local runtime and larger model downloads.
+
+Local MLX output is not diarized. It normally appears under a generic `Speaker`
+label unless a future local diarization pass is added.
+
+## Basic Commands
+
+List missing transcripts without downloading:
+
+```bash
+python3 scripts/transcribe-video-series.py --missing --dry-run
+```
+
+Transcribe one episode:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --episode 1 \
+  --env-file ../.secrets/probe-openai.env
+```
+
+Transcribe one episode with known speaker names:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --episode 224 \
+  --env-file ../.secrets/probe-openai.env \
+  --speaker speaker_0="Christopher David" \
+  --speaker speaker_1="Car Gonzalez"
+```
+
+Transcribe all missing episodes:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --missing \
+  --keep-going \
+  --env-file ../.secrets/probe-openai.env
+```
+
+Limit a missing run to a small batch:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --missing \
+  --limit 5 \
+  --keep-going \
+  --env-file ../.secrets/probe-openai.env
+```
+
+Run a missing batch from newest to oldest:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --missing \
+  --reverse \
+  --limit 5 \
+  --keep-going \
+  --env-file ../.secrets/probe-openai.env
+```
+
+Retry protected X media with local browser cookies when public media URLs return
+HTTP 403:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --missing \
+  --reverse \
+  --limit 5 \
+  --keep-going \
+  --cookies-from-browser chrome \
+  --env-file ../.secrets/probe-openai.env
+```
+
+Overwrite an existing transcript:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --episode 224 \
+  --overwrite \
+  --env-file ../.secrets/probe-openai.env
+```
+
+## Process Details
+
+### 1. Fetch The Wiki Index
+
+The script downloads the raw wiki markdown and parses numbered markdown links.
+It does not scrape GitHub HTML.
+
+The parsed record is:
+
+- episode number
+- episode title
+- episode URL
+
+### 2. Decide The Episode Set
+
+With `--episode <number>`, the script selects exactly that episode.
+
+With `--missing`, it selects every wiki episode where
+`docs/transcripts/<episode>.md` is absent.
+
+Existing transcripts are skipped by default. Use `--overwrite` only when the
+operator deliberately wants to regenerate a transcript.
+
+### 3. Download Metadata
+
+For each selected episode, the script runs:
+
+```bash
+yt-dlp --dump-single-json --skip-download <episode-url>
+```
+
+The metadata is retained as:
+
+```text
+var/video-series-transcripts/<episode>/episode.info.json
+```
+
+Twitter/X posts often appear as playlists because a single post can contain
+multiple video parts. The metadata records each media entry and duration.
+
+### 4. Download Media
+
+The script downloads audio-first media by default:
+
+```text
+bestaudio/best[height<=270]/worst
+```
+
+This keeps batch transcription cheap while preserving the audio needed for the
+markdown transcript. If an operator needs a retained low-resolution video proof,
+pass an explicit format such as:
+
+```bash
+--format 'bestvideo[height<=270]+bestaudio/best[height<=270]/worst'
+```
+
+The media is written under the ignored episode work directory.
+
+### 5. Extract Normalized Audio
+
+Each downloaded media file is converted with `ffmpeg` to:
+
+- mono
+- 16 kHz
+- MP3
+- 64 kbps
+- 20-minute chunks by default
+
+This keeps files small enough for normal transcription requests and removes
+video payload from the API call.
+
+The default chunk length is controlled by:
+
+```bash
+--max-audio-seconds 1200
+```
+
+Long X videos can exceed normal transcription-request limits when sent as a
+single audio file. Keep chunking enabled for all batch work.
+
+### 6. Transcribe Each Part
+
+Each audio part is sent independently to the selected transcription backend. In
+the default OpenAI mode, this is the transcription API. In `--transcriber
+mlx-whisper` mode, this is local MLX Whisper. The raw JSON response is saved in
+the ignored episode work directory.
+
+If `yt-dlp`, `ffmpeg`, or transcription fails for one episode in a batch run
+with `--keep-going`, the script records:
+
+```text
+var/video-series-transcripts/<episode>/failure.json
+```
+
+and continues. This is expected for deleted posts, posts without downloadable
+media, or temporary X/Twitter extractor failures.
+
+For multi-part X posts, the script offsets later segment timestamps by the
+duration of previous parts before writing the final markdown transcript.
+
+### 7. Write Markdown
+
+The final transcript is written to:
+
+```text
+docs/transcripts/<episode>.md
+```
+
+The generated file includes:
+
+- title
+- source URL
+- wiki source URL
+- model
+- generated timestamp
+- transcript body with timestamped speaker lines
+
+The body follows the same broad structure as the existing retained transcripts:
+markdown, speaker names in bold, timestamps, then utterance text.
+
+## Review Checklist
+
+Before committing a generated transcript:
+
+1. Confirm the source URL and episode number match the wiki.
+2. Confirm no raw API key or local secret path was written into the transcript.
+3. Scan speaker labels and rename obvious speakers.
+4. Spot-check timestamps near the start, middle, and end.
+5. Confirm downloaded media and JSON stayed under ignored `var/`.
+6. Stage only the script, runbook, and intended markdown transcript.
+
+## Known Limitations
+
+- X/Twitter extraction can break when X changes its guest-token or media APIs.
+  `yt-dlp` updates usually fix this.
+- Some wiki links may no longer expose downloadable video to `yt-dlp`. Batch
+  runs should use `--keep-going` and inspect `failure.json` files afterward.
+- Diarization is model-derived. It is useful for structure, not final speaker
+  authority.
+- The script does not commit or archive media files.
+- The script does not yet create pull requests or update the wiki.
+- The script does not try to infer canonical human speaker names. Use
+  `--speaker` mapping or edit the generated markdown after review.
+
+## Current Proof
+
+The first retained smoke test should be a missing short episode, not an existing
+214-227 transcript, so the test proves both download and new markdown output
+without overwriting prior work.
+
+The recommended smoke command is:
+
+```bash
+python3 scripts/transcribe-video-series.py \
+  --episode 1 \
+  --env-file ../.secrets/probe-openai.env
+```
