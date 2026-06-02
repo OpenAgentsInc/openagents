@@ -92,3 +92,4 @@ crates/wgpui/src/theme/dynamic.rs | owner:wgpui | added:2026-02-26 | reason: pre
 crates/wgpui/src/tools.rs | owner:wgpui | added:2026-02-26 | reason: pre-existing pedantic warnings | review_cadence:monthly
 apps/pylon/src/ledger.rs | owner:pylon | added:2026-05-21 | reason: existing pylon warning debt blocks touched-file gate | expires_on:2026-06-21
 apps/pylon/src/nip90_runtime.rs | owner:pylon | added:2026-05-21 | reason: existing pylon warning debt blocks touched-file gate | expires_on:2026-06-21
+apps/pylon/src/proof.rs | owner:pylon | added:2026-06-02 | reason: existing pylon warning debt blocks touched-file gate | expires_on:2026-07-02

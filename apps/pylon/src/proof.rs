@@ -2969,13 +2969,15 @@ async fn run_manual_replacement_attempt_proof_lane(
         )
         .await
     {
-        let fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
-        let observed_run = fetch_proof_training_run_detail(
-            authority_state.urls.authority_base_url.as_str(),
-            training_run_id.as_str(),
-        )
-        .await?
-        .or(Some(observed_launch.clone()));
+        let (fleet_status, run_detail_result) = tokio::join!(
+            collect_proof_fleet_status(config_path, namespace.as_str()),
+            fetch_proof_training_run_detail(
+                authority_state.urls.authority_base_url.as_str(),
+                training_run_id.as_str(),
+            )
+        );
+        let fleet_status = fleet_status?;
+        let observed_run = run_detail_result?.or(Some(observed_launch.clone()));
         let report = ProofRunReport {
             namespace,
             lane: command.lane.label().to_string(),
@@ -3107,13 +3109,15 @@ async fn run_manual_replacement_attempt_proof_lane(
         )
         .await
     {
-        let fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
-        let observed_run = fetch_proof_training_run_detail(
-            authority_state.urls.authority_base_url.as_str(),
-            training_run_id.as_str(),
-        )
-        .await?
-        .or(Some(observed_launch.clone()));
+        let (fleet_status, run_detail_result) = tokio::join!(
+            collect_proof_fleet_status(config_path, namespace.as_str()),
+            fetch_proof_training_run_detail(
+                authority_state.urls.authority_base_url.as_str(),
+                training_run_id.as_str(),
+            )
+        );
+        let fleet_status = fleet_status?;
+        let observed_run = run_detail_result?.or(Some(observed_launch.clone()));
         let report = ProofRunReport {
             namespace,
             lane: command.lane.label().to_string(),
@@ -3132,13 +3136,15 @@ async fn run_manual_replacement_attempt_proof_lane(
         return Ok(report);
     }
 
-    let fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
-    let observed_run = fetch_proof_training_run_detail(
-        authority_state.urls.authority_base_url.as_str(),
-        training_run_id.as_str(),
-    )
-    .await?
-    .or(Some(observed_launch));
+    let (fleet_status, run_detail_result) = tokio::join!(
+        collect_proof_fleet_status(config_path, namespace.as_str()),
+        fetch_proof_training_run_detail(
+            authority_state.urls.authority_base_url.as_str(),
+            training_run_id.as_str(),
+        )
+    );
+    let fleet_status = fleet_status?;
+    let observed_run = run_detail_result?.or(Some(observed_launch));
     let replacement_detail =
         format!("{replacement_assignment_detail} sealed and reconciled locally");
     if let Some((blocker_id, detail)) =
@@ -5664,15 +5670,14 @@ async fn collect_route_probes_with_process_check(
     }
 
     let client = reqwest::Client::new();
-    vec![
+    let (p1, p2, p3, p4, p5) = tokio::join!(
         probe_route(
             &client,
             "healthz",
             format!("{}/healthz", state.urls.authority_base_url),
             reqwest::Method::GET,
             &[StatusCode::OK],
-        )
-        .await,
+        ),
         probe_route(
             &client,
             "training_artifact_layout",
@@ -5682,16 +5687,14 @@ async fn collect_route_probes_with_process_check(
             ),
             reqwest::Method::GET,
             &[StatusCode::OK],
-        )
-        .await,
+        ),
         probe_route(
             &client,
             "treasury_status",
             format!("{}/v1/treasury/status", state.urls.authority_base_url),
             reqwest::Method::GET,
             &[StatusCode::OK],
-        )
-        .await,
+        ),
         probe_route(
             &client,
             "admin_demo_launch_route",
@@ -5701,17 +5704,16 @@ async fn collect_route_probes_with_process_check(
             ),
             reqwest::Method::GET,
             &[StatusCode::METHOD_NOT_ALLOWED, StatusCode::UNAUTHORIZED],
-        )
-        .await,
+        ),
         probe_route(
             &client,
             "artifact_store_healthz",
             format!("http://127.0.0.1:{}/healthz", state.ports.artifact_store),
             reqwest::Method::GET,
             &[StatusCode::OK],
-        )
-        .await,
-    ]
+        ),
+    );
+    vec![p1, p2, p3, p4, p5]
 }
 
 async fn probe_route(
