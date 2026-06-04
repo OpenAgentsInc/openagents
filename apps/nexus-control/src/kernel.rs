@@ -2259,6 +2259,12 @@ fn challenge_summary_for_proof(
 
 impl KernelState {
     pub fn new_with_persistence(persistence_path: Option<PathBuf>) -> Self {
+        // In test builds, skip the background writer so tests that read the
+        // state file immediately after a mutation see writes synchronously
+        // (matching the contract tests assert). Production gets the async path.
+        #[cfg(test)]
+        let persist_writer: Option<KernelPersistWriter> = None;
+        #[cfg(not(test))]
         let persist_writer = persistence_path
             .as_ref()
             .map(|_| spawn_kernel_state_writer());
