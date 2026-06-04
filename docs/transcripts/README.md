@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`227` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
+This directory contains machine-generated transcripts for episodes `001`-`228` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -21,7 +21,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 - Episodes [`166`](166.md)-[`182`](182.md): The series broadens into AI politics, overnight agents, payments APIs, Commander, wallets, Nostr clients, swarm inference, research review, and sensemaking.
 - Episodes [`183`](183.md)-[`198`](198.md): The product resets into Tauri, mobile sync, dashboards, Tricoder, web/mobile coding agents, Cursor study, and Autopilot foundations.
 - Episodes [`199`](199.md)-[`213`](213.md): Autopilot becomes the personal-agent surface while Pylon, Nexus, identity, Bitcoin, Open Moltbook, online agents, and agent markets converge.
-- Episodes [`214`](214.md)-[`227`](227.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, and ocean-powered compute ambition.
+- Episodes [`214`](214.md)-[`228`](228.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, ocean-powered compute ambition, and the Autopilot beta commercial wedge.
 
 ## Complete Episode Index
 
@@ -313,7 +313,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-227 - OAPN launch, Psionic, distributed training, bounties, and ocean power
+### 214-228 - OAPN launch, Psionic, distributed training, bounties, ocean power, and Autopilot beta
 
 | Episode | Summary |
 | --- | --- |
@@ -331,6 +331,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`225` Developer Bounties](225.md) | Announces bounties across the product and ML stack. |
 | [`226` Worse is Better](226.md) | Explains the Bell Labs/New Jersey product philosophy. |
 | [`227` Ocean Power](227.md) | Expands the compute-market thesis toward ocean-powered infrastructure. |
+| [`228` Autopilot Get Paid to Code](228.md) | Introduces the Autopilot beta wedge: free coding-agent tasks, public traces, paid useful agent data, and eventual paid credits. |
 
 ## Major Themes
 
@@ -355,12 +356,12 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | OpenPress and agentic site building | OpenPress uses agents to build, style, host, and maintain websites while keeping the stack open and exportable. | [`126`](126.md), [`127`](127.md), [`128`](128.md), [`129`](129.md), [`130`](130.md), [`131`](131.md), [`132`](132.md), [`133`](133.md), [`134`](134.md), [`180`](180.md) |
 | CRM, teams, projects, and business workrooms | The v3/business arc turns agent chat into operational software with contacts, leads, teams, projects, scoped context, and business workflows. | [`135`](135.md), [`136`](136.md), [`137`](137.md), [`138`](138.md), [`164`](164.md), [`188`](188.md), [`199`](199.md), [`225`](225.md), [`227`](227.md) |
 | Onyx, mobile, and voice | Onyx is the mobile controller for the agent network, with local models, voice, wallet intent, GitHub tools, pocket coding, and beta distribution. | [`139`](139.md), [`140`](140.md), [`143`](143.md), [`145`](145.md), [`149`](149.md), [`151`](151.md), [`152`](152.md), [`153`](153.md), [`187`](187.md), [`193`](193.md) |
-| Data markets, OSINT, and knowledge graphs | OpenAgents treats private data, public reports, OSINT, model feedback, and graph curation as sellable and verifiable resources. | [`142`](142.md), [`146`](146.md), [`147`](147.md), [`154`](154.md), [`155`](155.md), [`181`](181.md), [`182`](182.md), [`215`](215.md), [`226`](226.md), [`227`](227.md) |
+| Data markets, OSINT, and knowledge graphs | OpenAgents treats private data, public reports, OSINT, model feedback, agent traces, and graph curation as sellable and verifiable resources. | [`142`](142.md), [`146`](146.md), [`147`](147.md), [`154`](154.md), [`155`](155.md), [`181`](181.md), [`182`](182.md), [`215`](215.md), [`226`](226.md), [`227`](227.md), [`228`](228.md) |
 | Local models, Pylon, and model routing | Local model routing starts on phones and desktops, then becomes Pylon provider mode and market-routed compute. | [`065`](065.md), [`084`](084.md), [`144`](144.md), [`145`](145.md), [`178`](178.md), [`194`](194.md), [`201`](201.md), [`203`](203.md), [`214`](214.md), [`221`](221.md) |
 | Compute markets and compute fracking | The compute thesis progresses from GPUtopia to swarm inference, Apple Silicon fracking, Pylon/Nexus, OAPN provider onboarding, and ocean power. | [`174`](174.md), [`178`](178.md), [`194`](194.md), [`201`](201.md), [`203`](203.md), [`214`](214.md), [`221`](221.md), [`223`](223.md), [`224`](224.md), [`227`](227.md) |
 | Psionic, Probe, and Rust-native ML | The later stack replaces Python/C++/closed runtimes with Rust-native inference, custom kernels, Probe coding agents, and Psionic training/inference code. | [`216`](216.md), [`217`](217.md), [`218`](218.md), [`219`](219.md), [`221`](221.md), [`222`](222.md), [`224`](224.md), [`225`](225.md) |
 | Distributed training and model production | The launch arc turns compute supply into real training work, homework-style assignments, checkpoints, validation, payouts, and public stats. | [`202`](202.md), [`203`](203.md), [`214`](214.md), [`216`](216.md), [`220`](220.md), [`221`](221.md), [`222`](222.md), [`223`](223.md), [`224`](224.md), [`227`](227.md) |
-| Revenue share, bounties, and contributor economics | The economic pattern is to pay builders, data sellers, compute providers, tool authors, skill authors, validators, and product contributors directly in Bitcoin. | [`001`](001.md), [`037`](037.md), [`098`](098.md), [`125`](125.md), [`140`](140.md), [`147`](147.md), [`169`](169.md), [`199`](199.md), [`207`](207.md), [`213`](213.md), [`214`](214.md), [`215`](215.md), [`223`](223.md), [`225`](225.md) |
+| Revenue share, bounties, and contributor economics | The economic pattern is to pay builders, data sellers, compute providers, tool authors, skill authors, validators, agent-trace contributors, and product contributors directly in Bitcoin. | [`001`](001.md), [`037`](037.md), [`098`](098.md), [`125`](125.md), [`140`](140.md), [`147`](147.md), [`169`](169.md), [`199`](199.md), [`207`](207.md), [`213`](213.md), [`214`](214.md), [`215`](215.md), [`223`](223.md), [`225`](225.md), [`228`](228.md) |
 | Research review and sensemaking | Several episodes synthesize external research or product references: NeurIPS, GPT store, Devin clones, Genesis, DeepSeek, weather modification, Cursor, recursive models, and Bell Labs design. | [`036`](036.md), [`047`](047.md), [`104`](104.md), [`105`](105.md), [`109`](109.md), [`124`](124.md), [`146`](146.md), [`148`](148.md), [`181`](181.md), [`182`](182.md), [`197`](197.md), [`202`](202.md), [`226`](226.md), [`227`](227.md) |
 
 ## Speculation: One Product
@@ -387,7 +388,7 @@ The hardest product requirement is authority separation. The web app can compose
 
 ## Reading Paths
 
-**Project thesis:** [`001`](001.md) -> [`005`](005.md) -> [`047`](047.md) -> [`086`](086.md) -> [`100`](100.md) -> [`125`](125.md) -> [`141`](141.md) -> [`200`](200.md) -> [`214`](214.md) -> [`220`](220.md) -> [`226`](226.md) -> [`227`](227.md).
+**Project thesis:** [`001`](001.md) -> [`005`](005.md) -> [`047`](047.md) -> [`086`](086.md) -> [`100`](100.md) -> [`125`](125.md) -> [`141`](141.md) -> [`200`](200.md) -> [`214`](214.md) -> [`220`](220.md) -> [`226`](226.md) -> [`227`](227.md) -> [`228`](228.md).
 
 **Original RAG and document product:** [`010`](010.md) -> [`011`](011.md) -> [`012`](012.md) -> [`013`](013.md) -> [`014`](014.md) -> [`015`](015.md) -> [`016`](016.md) -> [`017`](017.md) -> [`018`](018.md) -> [`019`](019.md).
 
@@ -397,7 +398,7 @@ The hardest product requirement is authority separation. The web app can compose
 
 **Plugins, APIs, and agent store:** [`048`](048.md) -> [`049`](049.md) -> [`053`](053.md) -> [`054`](054.md) -> [`055`](055.md) -> [`058`](058.md) -> [`062`](062.md) -> [`063`](063.md) -> [`066`](066.md) -> [`070`](070.md) -> [`072`](072.md) -> [`085`](085.md) -> [`092`](092.md) -> [`102`](102.md).
 
-**Payments, wallets, and markets:** [`037`](037.md) -> [`042`](042.md) -> [`062`](062.md) -> [`064`](064.md) -> [`093`](093.md) -> [`095`](095.md) -> [`096`](096.md) -> [`097`](097.md) -> [`098`](098.md) -> [`099`](099.md) -> [`143`](143.md) -> [`153`](153.md) -> [`169`](169.md) -> [`173`](173.md) -> [`207`](207.md) -> [`212`](212.md) -> [`213`](213.md) -> [`214`](214.md) -> [`215`](215.md) -> [`223`](223.md).
+**Payments, wallets, and markets:** [`037`](037.md) -> [`042`](042.md) -> [`062`](062.md) -> [`064`](064.md) -> [`093`](093.md) -> [`095`](095.md) -> [`096`](096.md) -> [`097`](097.md) -> [`098`](098.md) -> [`099`](099.md) -> [`143`](143.md) -> [`153`](153.md) -> [`169`](169.md) -> [`173`](173.md) -> [`207`](207.md) -> [`212`](212.md) -> [`213`](213.md) -> [`214`](214.md) -> [`215`](215.md) -> [`223`](223.md) -> [`228`](228.md).
 
 **AutoDev and repo intelligence:** [`103`](103.md) -> [`107`](107.md) -> [`108`](108.md) -> [`110`](110.md) -> [`111`](111.md) -> [`112`](112.md) -> [`113`](113.md) -> [`114`](114.md) -> [`115`](115.md) -> [`117`](117.md) -> [`118`](118.md) -> [`119`](119.md) -> [`120`](120.md) -> [`121`](121.md) -> [`122`](122.md) -> [`123`](123.md) -> [`156`](156.md) -> [`160`](160.md) -> [`161`](161.md) -> [`162`](162.md) -> [`163`](163.md) -> [`218`](218.md) -> [`219`](219.md).
 
@@ -405,9 +406,9 @@ The hardest product requirement is authority separation. The web app can compose
 
 **Onyx, mobile, voice, and local models:** [`139`](139.md) -> [`140`](140.md) -> [`143`](143.md) -> [`144`](144.md) -> [`145`](145.md) -> [`149`](149.md) -> [`151`](151.md) -> [`152`](152.md) -> [`153`](153.md) -> [`187`](187.md) -> [`193`](193.md).
 
-**Data, OSINT, and knowledge graph:** [`142`](142.md) -> [`146`](146.md) -> [`147`](147.md) -> [`154`](154.md) -> [`155`](155.md) -> [`181`](181.md) -> [`182`](182.md) -> [`215`](215.md) -> [`227`](227.md).
+**Data, OSINT, and knowledge graph:** [`142`](142.md) -> [`146`](146.md) -> [`147`](147.md) -> [`154`](154.md) -> [`155`](155.md) -> [`181`](181.md) -> [`182`](182.md) -> [`215`](215.md) -> [`227`](227.md) -> [`228`](228.md).
 
-**Autopilot and operator surfaces:** [`183`](183.md) -> [`184`](184.md) -> [`185`](185.md) -> [`188`](188.md) -> [`190`](190.md) -> [`191`](191.md) -> [`192`](192.md) -> [`193`](193.md) -> [`195`](195.md) -> [`196`](196.md) -> [`198`](198.md) -> [`199`](199.md) -> [`206`](206.md) -> [`208`](208.md) -> [`211`](211.md).
+**Autopilot and operator surfaces:** [`183`](183.md) -> [`184`](184.md) -> [`185`](185.md) -> [`188`](188.md) -> [`190`](190.md) -> [`191`](191.md) -> [`192`](192.md) -> [`193`](193.md) -> [`195`](195.md) -> [`196`](196.md) -> [`198`](198.md) -> [`199`](199.md) -> [`206`](206.md) -> [`208`](208.md) -> [`211`](211.md) -> [`228`](228.md).
 
 **Compute, Pylon, Nexus, Psionic, and training:** [`174`](174.md) -> [`178`](178.md) -> [`194`](194.md) -> [`201`](201.md) -> [`203`](203.md) -> [`214`](214.md) -> [`216`](216.md) -> [`217`](217.md) -> [`221`](221.md) -> [`222`](222.md) -> [`223`](223.md) -> [`224`](224.md) -> [`225`](225.md) -> [`227`](227.md).
 
