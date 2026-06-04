@@ -12435,9 +12435,50 @@ fn training_authority_status_is_retryable(status: reqwest::StatusCode) -> bool {
 
 fn training_coordination_retry_delay(attempt: usize) -> Duration {
     let multiplier = 1_u64 << u32::try_from(attempt).unwrap_or(0);
-    Duration::from_millis(
-        DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS.saturating_mul(multiplier),
-    )
+    let target = DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS.saturating_mul(multiplier);
+    // Equal jitter: keep half of the backoff fixed and randomize the other
+    // half. Without jitter, many pylons that hit the same Nexus 503 retry in
+    // lockstep and re-saturate the control plane the instant it recovers.
+    let fixed = target / 2;
+    let jitter = if fixed > 0 {
+        rand::random::<u64>() % (fixed + 1)
+    } else {
+        0
+    };
+    Duration::from_millis(fixed + jitter)
+}
+
+#[cfg(test)]
+mod training_coordination_retry_delay_tests {
+    use super::{training_coordination_retry_delay, DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS};
+
+    #[test]
+    fn retry_delay_stays_within_equal_jitter_bounds() {
+        for attempt in 0..8 {
+            let multiplier = 1_u64 << u32::try_from(attempt).unwrap_or(0);
+            let target = DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS.saturating_mul(multiplier);
+            for _ in 0..256 {
+                let delay = u64::try_from(training_coordination_retry_delay(attempt).as_millis())
+                    .expect("retry delay fits in u64");
+                assert!(
+                    delay >= target / 2 && delay <= target,
+                    "delay {delay}ms outside the equal-jitter band for target {target}ms"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn retry_delay_is_actually_jittered() {
+        let mut observed = std::collections::BTreeSet::new();
+        for _ in 0..256 {
+            observed.insert(training_coordination_retry_delay(3).as_millis());
+        }
+        assert!(
+            observed.len() > 1,
+            "retry delay should be randomized to desynchronize fleet retries"
+        );
+    }
 }
 
 fn training_lease_state_is_terminal(state: &str) -> bool {

@@ -41,7 +41,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 workspace = true
 
 [dev-dependencies]
+axum = "0.8"
 http-body-util = "0.1"
+serde_json = "1"
 tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower = { version = "0.5", features = ["util"] }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
