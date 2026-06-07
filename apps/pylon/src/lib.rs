@@ -31409,6 +31409,9 @@ async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusRe
         .json::<ProviderStatusResponse>()
         .await
         .context("failed to decode provider admin status response")?;
+    if !live_admin_status_matches_config(config, &status)? {
+        return Ok(None);
+    }
     Ok(Some(status))
 }
 
@@ -31416,6 +31419,9 @@ async fn try_live_json<T: DeserializeOwned>(
     config: &PylonConfig,
     endpoint: &str,
 ) -> Result<Option<T>> {
+    if try_live_status(config).await?.is_none() {
+        return Ok(None);
+    }
     let client = admin_client()?;
     let url = format!("http://{}{}", config.admin_listen_addr, endpoint);
     let response = match client.get(url.as_str()).send().await {
@@ -31450,6 +31456,9 @@ async fn try_live_training_post<T: DeserializeOwned>(
     config: &PylonConfig,
     endpoint: &str,
 ) -> Result<Option<T>> {
+    if try_live_status(config).await?.is_none() {
+        return Ok(None);
+    }
     let client = admin_client()?;
     let url = format!("http://{}{}", config.admin_listen_addr, endpoint);
     let response = match client.post(url.as_str()).send().await {
@@ -31483,6 +31492,9 @@ async fn try_live_training_post<T: DeserializeOwned>(
 }
 
 async fn try_live_control(config: &PylonConfig, action: ProviderControlAction) -> Result<bool> {
+    if try_live_status(config).await?.is_none() {
+        return Ok(false);
+    }
     let client = admin_client()?;
     let endpoint = match action {
         ProviderControlAction::Online => "online",
@@ -31517,6 +31529,22 @@ async fn try_live_control(config: &PylonConfig, action: ProviderControlAction) -
         .await
         .with_context(|| format!("failed to decode {} control response", action.label()))?;
     Ok(true)
+}
+
+fn live_admin_status_matches_config(
+    config: &PylonConfig,
+    status: &ProviderStatusResponse,
+) -> Result<bool> {
+    let identity = match load_identity_from_path(config.identity_path.as_path()) {
+        Ok(identity) => identity,
+        Err(_) => return Ok(false),
+    };
+    let observed_public_key = status
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.identity.as_ref())
+        .and_then(|identity| identity.public_key_hex.as_deref());
+    Ok(observed_public_key == Some(identity.public_key_hex.as_str()))
 }
 
 fn admin_client() -> Result<reqwest::Client> {
@@ -32699,8 +32727,9 @@ mod tests {
         PylonTrainingValidatorChallengeCoordinatorResponse, PylonTrainingWindowCacheEntry,
         PylonTrainingWindowProgressRequest, PylonWalletCreditSummary, PylonWalletInvoiceRecord,
         PylonWalletLiquidityProviderKind, PylonWalletPaymentRecord, PylonWalletRuntimeKind,
-        ReportContext, TRN_TRAINING_NODE_RECORD_KIND, TRN_TRAINING_RECEIPT_KIND,
-        TrainingArtifactsCommand, TrainingCommand, TrainingManifestInspectionContext,
+        ProviderIdentityMetadata, ReportContext, TRN_TRAINING_NODE_RECORD_KIND,
+        TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand, TrainingCommand,
+        TrainingManifestInspectionContext,
         TrainingOperatorStatusReport, TrainingTrnPublicationReport, WalletInvoiceReport,
         WalletNodeEntropyMetadata, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
         apply_config_set, apply_control_command, apply_training_reputation_gate_to_availability,
@@ -49853,10 +49882,84 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "control-plane warning detail should remain visible",
         )?;
         ensure(
-            snapshot.health_events.iter().any(|event| {
-                event.code == "CONTROL_PLANE_UNAVAILABLE" && event.severity == "warn"
-            }),
+            snapshot
+                .health_events
+                .iter()
+                .any(|event| event.code == "CONTROL_PLANE_UNAVAILABLE" && event.severity == "warn"),
             "control-plane warning should be preserved as a warning health event",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn status_ignores_live_admin_server_with_mismatched_identity()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        let local_identity = ensure_identity(config.identity_path.as_path())?;
+        let mut foreign_snapshot = build_snapshot_from_availability(
+            &config,
+            None,
+            ProviderDesiredMode::Online,
+            None,
+            ProviderAvailability {
+                local_gemma: ready_health("gemma4:e4b", &["gemma4:e4b"], Some("gemma_ready")),
+                apple_foundation_models: ProviderBackendHealth::default(),
+                apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+                adapter_training_contributor:
+                    ProviderAdapterTrainingContributorAvailability::default(),
+                pooled_inference: ProviderPooledInferenceAvailability::default(),
+                sandbox: ProviderSandboxAvailability::default(),
+            },
+            Some("foreign runtime error".to_string()),
+        );
+        foreign_snapshot.identity = Some(ProviderIdentityMetadata {
+            npub: Some("npub1foreign".to_string()),
+            public_key_hex: Some(
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string(),
+            ),
+            display_name: Some("Foreign Pylon".to_string()),
+            node_label: Some("foreign".to_string()),
+        });
+        let foreign_status = ProviderStatusResponse {
+            listen_addr: Some("127.0.0.1:9468".to_string()),
+            desired_mode: ProviderDesiredMode::Online,
+            snapshot: Some(foreign_snapshot),
+        };
+        let foreign_status_body = serde_json::to_string(&foreign_status)?;
+        let base_url = start_mock_http_server(move |_method, path, _body| {
+            if path == "/v1/status" {
+                return (200, "application/json", foreign_status_body.clone());
+            }
+            (
+                404,
+                "application/json",
+                "{\"error\":\"not_found\"}".to_string(),
+            )
+        })
+        .await?;
+        config.admin_listen_addr = base_url
+            .strip_prefix("http://")
+            .ok_or("mock admin URL should be http")?
+            .to_string();
+        save_config(config_path.as_path(), &config)?;
+
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        let observed_public_key = status
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.identity.as_ref())
+            .and_then(|identity| identity.public_key_hex.as_deref());
+
+        ensure(
+            observed_public_key == Some(local_identity.public_key_hex.as_str()),
+            "status should ignore a live admin server that belongs to a different Pylon identity",
+        )?;
+        ensure(
+            status.snapshot.as_ref().is_none_or(|snapshot| {
+                snapshot.runtime.last_error.as_deref() != Some("foreign runtime error")
+            }),
+            "status should not surface the foreign admin server's runtime error",
         )
     }
 
