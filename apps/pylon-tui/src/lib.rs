@@ -2826,37 +2826,38 @@ impl AppShell {
         self.system_stats.uptime_seconds = Some(System::uptime());
 
         let now = Instant::now();
-        if let Some(cpu) = self.system_stats.cpu_usage_percent
-            && cpu >= CPU_WATCHDOG_THRESHOLD_PERCENT
-            && now >= self.next_cpu_watchdog_log_at
-        {
-            let message = format!("Host CPU is {:.0}% during Pylon TUI refresh.", cpu);
-            append_tui_session_log(
-                self.config_path.as_path(),
-                format!("cpu watchdog threshold crossed cpu_percent={cpu:.1}"),
-            );
-            self.push_system_message("CPU Watchdog", message);
-            self.next_cpu_watchdog_log_at = now + WATCHDOG_LOG_INTERVAL;
+        if let Some(cpu) = self.system_stats.cpu_usage_percent {
+            if cpu >= CPU_WATCHDOG_THRESHOLD_PERCENT && now >= self.next_cpu_watchdog_log_at {
+                let message = format!("Host CPU is {:.0}% during Pylon TUI refresh.", cpu);
+                append_tui_session_log(
+                    self.config_path.as_path(),
+                    format!("cpu watchdog threshold crossed cpu_percent={cpu:.1}"),
+                );
+                self.push_system_message("CPU Watchdog", message);
+                self.next_cpu_watchdog_log_at = now + WATCHDOG_LOG_INTERVAL;
+            }
         }
         if let (Some(available), Some(total)) = (
             self.system_stats.available_memory_bytes,
             self.system_stats.total_memory_bytes,
-        ) && available <= MEMORY_WATCHDOG_AVAILABLE_FLOOR_BYTES
-            && total > MEMORY_WATCHDOG_AVAILABLE_FLOOR_BYTES
-            && now >= self.next_memory_watchdog_log_at
-        {
-            let message = format!(
-                "Host memory is low: {} available.",
-                format_byte_size(available)
-            );
-            append_tui_session_log(
-                self.config_path.as_path(),
-                format!(
-                    "memory watchdog threshold crossed available_bytes={available} total_bytes={total}"
-                ),
-            );
-            self.push_system_message("Memory Watchdog", message);
-            self.next_memory_watchdog_log_at = now + WATCHDOG_LOG_INTERVAL;
+        ) {
+            if available <= MEMORY_WATCHDOG_AVAILABLE_FLOOR_BYTES
+                && total > MEMORY_WATCHDOG_AVAILABLE_FLOOR_BYTES
+                && now >= self.next_memory_watchdog_log_at
+            {
+                let message = format!(
+                    "Host memory is low: {} available.",
+                    format_byte_size(available)
+                );
+                append_tui_session_log(
+                    self.config_path.as_path(),
+                    format!(
+                        "memory watchdog threshold crossed available_bytes={available} total_bytes={total}"
+                    ),
+                );
+                self.push_system_message("Memory Watchdog", message);
+                self.next_memory_watchdog_log_at = now + WATCHDOG_LOG_INTERVAL;
+            }
         }
 
         self.system_stats.disk_summary =
@@ -5235,6 +5236,18 @@ async fn render_wallet_command_output(
     command: &pylon::WalletSubcommand,
 ) -> Result<String> {
     match command {
+        pylon::WalletSubcommand::Start { .. } => {
+            let report = pylon::start_wallet_runtime_report(config_path).await?;
+            Ok(pylon::render_wallet_lifecycle_report(&report))
+        }
+        pylon::WalletSubcommand::Stop { .. } => {
+            let report = pylon::stop_wallet_runtime_report(config_path).await?;
+            Ok(pylon::render_wallet_lifecycle_report(&report))
+        }
+        pylon::WalletSubcommand::Restart { .. } => {
+            let report = pylon::restart_wallet_runtime_report(config_path).await?;
+            Ok(pylon::render_wallet_lifecycle_report(&report))
+        }
         pylon::WalletSubcommand::Status { .. } => {
             let report = pylon::load_wallet_status_report(config_path).await?;
             Ok(render_wallet_status_output(&report))
@@ -6149,6 +6162,9 @@ fn relay_report_lines(report: &pylon::RelayReport) -> Vec<String> {
 
 fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
     match command {
+        pylon::WalletSubcommand::Start { .. } => "Wallet Start",
+        pylon::WalletSubcommand::Stop { .. } => "Wallet Stop",
+        pylon::WalletSubcommand::Restart { .. } => "Wallet Restart",
         pylon::WalletSubcommand::Status { .. } => "Wallet Status",
         pylon::WalletSubcommand::Sync { .. } => "Wallet Sync",
         pylon::WalletSubcommand::Balance { .. } => "Wallet Balance",

@@ -221,10 +221,11 @@ pub use wallet_runtime::{
     render_wallet_address_report, render_wallet_backup_export_report,
     render_wallet_backup_inspect_report, render_wallet_balance_report,
     render_wallet_channels_report, render_wallet_entropy_report, render_wallet_history_report,
-    render_wallet_invoice_report, render_wallet_lock_report, render_wallet_offer_report,
-    render_wallet_pay_report, render_wallet_restore_report, render_wallet_status_report,
-    render_wallet_telemetry_report, restore_wallet_backup_report, restore_wallet_phrase_report,
-    run_wallet_command,
+    render_wallet_invoice_report, render_wallet_lifecycle_report, render_wallet_lock_report,
+    render_wallet_offer_report, render_wallet_pay_report, render_wallet_restore_report,
+    render_wallet_status_report, render_wallet_telemetry_report, restart_wallet_runtime_report,
+    restore_wallet_backup_report, restore_wallet_phrase_report, run_wallet_command,
+    start_wallet_runtime_report, stop_wallet_runtime_report,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
