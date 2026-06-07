@@ -185,7 +185,7 @@ while_let_loop = "allow"
 
 
 [workspace.package]
-version = "0.1.23"
+version = "0.2.0"
 edition = "2024"
 authors = ["OpenAgents"]
 license = "CC-0"

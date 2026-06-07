@@ -1,3 +1,18 @@
+#![allow(
+    clippy::enum_variant_names,
+    clippy::print_stderr,
+    reason = "Deprecated desktop launcher keeps legacy action names and CLI stderr behavior."
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_used
+    )
+)]
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 

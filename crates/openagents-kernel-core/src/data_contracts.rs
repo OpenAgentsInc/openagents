@@ -90,7 +90,7 @@ fn money_to_proto(money: &Money) -> proto_common::Money {
 }
 
 fn money_from_proto(money: &proto_common::Money) -> Result<Money> {
-    let Some(amount) = money.amount.clone() else {
+    let Some(amount) = money.amount else {
         return Err(missing("money.amount"));
     };
     Ok(Money {

@@ -2,6 +2,20 @@
     clippy::print_stdout,
     reason = "CLI intentionally prints structured operator and agent-facing output."
 )]
+#![allow(
+    clippy::filter_next,
+    clippy::format_in_format_args,
+    reason = "Deprecated operator CLI keeps legacy formatting and parsing style."
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_used
+    )
+)]
 
 use std::fs;
 use std::io::{Read, Write};

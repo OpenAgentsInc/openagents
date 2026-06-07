@@ -3,7 +3,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use nostr::nip89::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO, PricingInfo};
 use nostr::nip90::{
     InputType, JobFeedback, JobInput, JobRequest, JobResult, JobStatus, create_job_feedback_event,
@@ -1298,7 +1298,9 @@ async fn run_provider_request_collection(
                         Some(pool) => pool,
                         None => {
                             publish_pool = Some(build_relay_pool(&config, &identity).await?);
-                            publish_pool.as_ref().expect("publish pool should exist")
+                            publish_pool
+                                .as_ref()
+                                .ok_or_else(|| anyhow!("publish pool was not retained"))?
                         }
                     },
                 };
@@ -1401,7 +1403,9 @@ async fn run_provider_request_collection(
                 Some(pool) => pool,
                 None => {
                     publish_pool = Some(build_relay_pool(&config, &identity).await?);
-                    publish_pool.as_ref().expect("publish pool should exist")
+                    publish_pool
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("publish pool was not retained"))?
                 }
             },
         };

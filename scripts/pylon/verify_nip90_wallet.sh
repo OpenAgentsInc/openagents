@@ -8,25 +8,26 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 CONFIG_PATH="$TMP_DIR/config.json"
 export OPENAGENTS_PYLON_HOME="$TMP_DIR/home"
 export OPENAGENTS_SPARK_NETWORK="regtest"
+PYLON_CARGO=(cargo run -p pylon --bin pylon --)
 
 cd "$ROOT_DIR"
 
-cargo run -p pylon -- --config-path "$CONFIG_PATH" init >/dev/null
-cargo run -p pylon -- --config-path "$CONFIG_PATH" config set wallet_network regtest >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" init >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" config set wallet_network regtest >/dev/null
 
-config_json="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" config show)"
+config_json="$("${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" config show)"
 grep -q '"wallet_network": "regtest"' <<<"$config_json"
 
-activity_output="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" activity)"
+activity_output="$("${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" activity)"
 grep -q '^activity: none$' <<<"$activity_output"
 
-cargo run -p pylon -- --config-path "$CONFIG_PATH" relays >/dev/null
-cargo run -p pylon -- --config-path "$CONFIG_PATH" jobs >/dev/null
-cargo run -p pylon -- --config-path "$CONFIG_PATH" earnings >/dev/null
-cargo run -p pylon -- --config-path "$CONFIG_PATH" receipts >/dev/null
-cargo run -p pylon -- --config-path "$CONFIG_PATH" payout >/dev/null
-cargo run -p pylon -- --config-path "$CONFIG_PATH" job history >/dev/null
-cargo run -p pylon -- --config-path "$CONFIG_PATH" job policy show >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" relays >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" jobs >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" earnings >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" receipts >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" payout >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" job history >/dev/null
+"${PYLON_CARGO[@]}" --config-path "$CONFIG_PATH" job policy show >/dev/null
 
 cargo test -p pylon relay_refresh_records_auth_challenges -- --nocapture
 cargo test -p pylon publish_announcement_persists_handler_event -- --nocapture

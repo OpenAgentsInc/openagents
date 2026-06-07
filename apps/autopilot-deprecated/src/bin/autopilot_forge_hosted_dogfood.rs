@@ -1,3 +1,8 @@
+#![allow(
+    clippy::print_stderr,
+    reason = "Deprecated dogfood CLI prints operator errors to stderr."
+)]
+
 use std::process::ExitCode;
 
 fn main() -> ExitCode {

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::panic_in_result_fn,
+    reason = "Fixture tests use assertions for clearer failure output."
+)]
+
 use serde_json::Value;
 
 const CONTRIBUTOR_FIXTURE: &str =

@@ -377,6 +377,10 @@ impl CompiledAgentExecutor {
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Trace entries intentionally bind phase metadata, input/output, confidence, and trace payload at one call site."
+    )]
     fn phase_entry<I: Serialize, O: Serialize>(
         &self,
         phase: &str,

@@ -2,6 +2,19 @@
     clippy::print_stdout,
     reason = "headless runtime intentionally prints operator-facing startup information."
 )]
+#![allow(
+    clippy::print_stderr,
+    reason = "headless runtime intentionally prints operator-facing errors to stderr."
+)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_used
+    )
+)]
 
 use std::path::PathBuf;
 use std::process::ExitCode;

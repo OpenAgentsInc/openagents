@@ -1193,8 +1193,10 @@ path fails honestly instead of pretending the request is payable.
 The retained wallet controls now also exist in both places. The default
 `wallet_runtime_kind=moneydevkit` path wraps MoneyDevKit's agent-wallet CLI,
 reports status, balance, BOLT11 invoices, BOLT12 offers, sends, and payment
-history through JSON stdout, and records typed failed-send receipts when
-parsing, runtime state, routing, or balance checks refuse the send. The
+history through JSON stdout, reports the non-secret
+`runtime.local_daemon_port` used by the wrapped local daemon, and records typed
+failed-send receipts when parsing, runtime state, routing, or balance checks
+refuse the send. The
 `wallet_runtime_kind=ldk_node` path opens the native LDK Node and can report
 channel telemetry, sync, balance buckets, real wallet-owned Bitcoin receive
 addresses, and encrypted backup state. On-chain withdrawal targets are only
@@ -1231,7 +1233,10 @@ Wallet runtime selection is now explicit. `wallet_runtime_kind=moneydevkit` is
 the default runtime and wraps MoneyDevKit's local agent-wallet daemon. It
 auto-initializes wallet state under Pylon's wallet storage root and uses
 `wallet_network=bitcoin` as MDK `mainnet`, while `signet`, `testnet`, `regtest`,
-and `mutinynet` map to MDK `signet` for non-mainnet testing.
+and `mutinynet` map to MDK `signet` for non-mainnet testing. The wrapper sets
+a stable Pylon-scoped `MDK_WALLET_PORT`; `wallet status --json` exposes that
+value as `runtime.local_daemon_port` so two local Pylon homes can prove they
+are not sharing one MDK daemon.
 `wallet_runtime_kind=ldk_node` remains available for the native LDK Node path
 and builds a local self-custodial LDK Node from the one-phrase entropy path,
 reopening the same node ID across restarts. `wallet_runtime_kind=external_target`

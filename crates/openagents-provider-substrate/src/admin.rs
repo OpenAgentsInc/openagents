@@ -1412,6 +1412,11 @@ fn transition_api_error(error: ProviderTransitionError) -> (StatusCode, Json<Pro
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::panic_in_result_fn,
+        reason = "Admin persistence tests use assertions for direct fixture diagnostics."
+    )]
+
     use std::sync::Arc;
 
     use super::{

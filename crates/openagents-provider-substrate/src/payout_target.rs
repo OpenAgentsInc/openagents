@@ -227,6 +227,11 @@ fn require_non_empty(value: &str, field: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        reason = "Payout target tests use expect messages for concise assertion diagnostics."
+    )]
+
     use super::{
         LDK_PAYMENT_TARGET_CAPABILITY_V0_2, PYLON_PAYMENT_TARGET_VERSION_V0_2,
         ProviderPaymentTargetRegistration, infer_ldk_payment_target_kind,

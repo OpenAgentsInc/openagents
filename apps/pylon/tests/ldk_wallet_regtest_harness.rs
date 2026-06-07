@@ -1,3 +1,10 @@
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "Ignored heavy regtest harness keeps assertion-style setup and teardown diagnostics."
+)]
+
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;

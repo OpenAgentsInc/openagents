@@ -1,3 +1,8 @@
+#![allow(
+    clippy::print_stdout,
+    reason = "Forge hosted harness is a CLI proof tool that prints artifact paths for operators."
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;

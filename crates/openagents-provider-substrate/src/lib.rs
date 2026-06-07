@@ -873,12 +873,10 @@ pub fn match_adapter_training_contributor(
     if !availability.authority_receipt_supported {
         reason_codes.push(ProviderAdapterTrainingMatchReasonCode::AuthorityReceiptsUnavailable);
     }
-    if request.execution_backend.is_some_and(|backend| {
-        !availability
-            .execution_backends
-            .iter()
-            .any(|value| *value == backend)
-    }) {
+    if request
+        .execution_backend
+        .is_some_and(|backend| !availability.execution_backends.contains(&backend))
+    {
         reason_codes.push(ProviderAdapterTrainingMatchReasonCode::ExecutionBackendUnsupported);
     }
     if !availability
@@ -992,14 +990,12 @@ pub fn settlement_hook_from_authority(
             })
         }
         ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow => {
-            if window.accepted_outcome_id.is_none() {
-                return None;
-            }
+            let accepted_outcome_id = window.accepted_outcome_id.as_ref()?;
             Some(ProviderAdapterTrainingSettlementHook {
                 training_run_id: window.training_run_id.clone(),
                 window_id: window.window_id.clone(),
                 contribution_id: None,
-                accepted_outcome_id: window.accepted_outcome_id.clone(),
+                accepted_outcome_id: Some(accepted_outcome_id.clone()),
                 trigger,
                 validator_policy_ref: window.validator_policy_ref.clone(),
                 window_summary_digest: window.window_summary_digest.clone(),
@@ -2389,7 +2385,7 @@ pub fn derive_provider_lifecycle(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used)]
+    #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
 
     use super::{
         ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,

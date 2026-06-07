@@ -236,6 +236,8 @@ pub struct WalletRuntimeSurface {
     pub runtime_kind: PylonWalletRuntimeKind,
     pub liquidity_provider_kind: PylonWalletLiquidityProviderKind,
     pub network: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_daemon_port: Option<u16>,
     pub identity_path: String,
     pub storage_dir: String,
     pub api_key_env: Option<String>,
@@ -4855,6 +4857,9 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
             report.lightning_readiness.outbound_liquidity_sats
         ),
     ];
+    if let Some(port) = report.runtime.local_daemon_port {
+        lines.push(format!("local_daemon_port: {port}"));
+    }
     if let Some(warning) = report.lightning_readiness.warning.as_deref() {
         lines.push(format!("lightning_receive_warning: {warning}"));
     }
@@ -5410,8 +5415,9 @@ fn wallet_node_entropy_domain_label(network: &str) -> String {
 }
 
 fn hkdf_sha256_64(input_key_material: &[u8], info: &[u8]) -> [u8; 64] {
-    let mut extract = <HmacSha256 as Mac>::new_from_slice(WALLET_NODE_ENTROPY_HKDF_SALT)
-        .expect("HKDF salt is valid");
+    let Ok(mut extract) = <HmacSha256 as Mac>::new_from_slice(WALLET_NODE_ENTROPY_HKDF_SALT) else {
+        return [0u8; 64];
+    };
     extract.update(input_key_material);
     let pseudorandom_key = extract.finalize().into_bytes();
 
@@ -5419,8 +5425,10 @@ fn hkdf_sha256_64(input_key_material: &[u8], info: &[u8]) -> [u8; 64] {
     let mut previous = Vec::<u8>::new();
     let mut written = 0usize;
     for counter in 1u8..=2 {
-        let mut expand = <HmacSha256 as Mac>::new_from_slice(pseudorandom_key.as_slice())
-            .expect("HKDF pseudorandom key is valid");
+        let Ok(mut expand) = <HmacSha256 as Mac>::new_from_slice(pseudorandom_key.as_slice())
+        else {
+            return [0u8; 64];
+        };
         expand.update(previous.as_slice());
         expand.update(info);
         expand.update(&[counter]);
@@ -5818,6 +5826,7 @@ fn refuse_active_wallet_restore(layout: &WalletStorageLayout) -> Result<()> {
             runtime_kind: PylonWalletRuntimeKind::LdkNode,
             liquidity_provider_kind: PylonWalletLiquidityProviderKind::None,
             network: String::new(),
+            local_daemon_port: None,
             identity_path: String::new(),
             storage_dir: layout.root_dir.display().to_string(),
             api_key_env: None,
@@ -6326,6 +6335,13 @@ fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
         runtime_kind,
         liquidity_provider_kind,
         network: config.wallet_network.clone(),
+        local_daemon_port: if runtime_kind == PylonWalletRuntimeKind::MoneyDevKit {
+            Some(stable_mdk_wallet_port(
+                config.wallet_storage_dir.join("moneydevkit-home").as_path(),
+            ))
+        } else {
+            None
+        },
         identity_path: config.identity_path.display().to_string(),
         storage_dir: config.wallet_storage_dir.display().to_string(),
         api_key_env: config.wallet_api_key_env.clone(),

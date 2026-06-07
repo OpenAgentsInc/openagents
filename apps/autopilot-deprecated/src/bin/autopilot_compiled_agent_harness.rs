@@ -1,3 +1,8 @@
+#![allow(
+    clippy::print_stdout,
+    reason = "Compiled-agent harness intentionally prints its receipt and trace for operators."
+)]
+
 use std::fs;
 use std::path::PathBuf;
 

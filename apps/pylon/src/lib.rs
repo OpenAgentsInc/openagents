@@ -1,3 +1,40 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::all,
+        clippy::await_holding_lock,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::pedantic,
+        clippy::unwrap_used
+    )
+)]
+#![allow(
+    clippy::assigning_clones,
+    clippy::bool_comparison,
+    clippy::cloned_ref_to_slice_refs,
+    clippy::derivable_impls,
+    clippy::explicit_into_iter_loop,
+    clippy::if_same_then_else,
+    clippy::ignored_unit_patterns,
+    clippy::large_futures,
+    clippy::large_enum_variant,
+    clippy::let_and_return,
+    clippy::manual_pattern_char_comparison,
+    clippy::needless_as_bytes,
+    clippy::nonminimal_bool,
+    clippy::obfuscated_if_else,
+    clippy::option_as_ref_cloned,
+    clippy::print_stderr,
+    clippy::print_stdout,
+    clippy::too_many_arguments,
+    clippy::unnecessary_cast,
+    clippy::unnecessary_lazy_evaluations,
+    clippy::unnecessary_map_or,
+    clippy::useless_format
+)]
+
 mod ledger;
 mod nip90_runtime;
 mod proof;
@@ -12355,7 +12392,7 @@ impl PylonTrainingCoordinatorClient {
         let fallback_base_url = self
             .fallback_base_url
             .as_deref()
-            .expect("fallback kernel authority should imply fallback base url");
+            .unwrap_or("configured fallback authority");
         fallback_kernel_authority
             .get_compute_adapter_training_window(window_id)
             .await
@@ -12379,7 +12416,7 @@ impl PylonTrainingCoordinatorClient {
         let fallback_base_url = self
             .fallback_base_url
             .as_deref()
-            .expect("fallback kernel authority should imply fallback base url");
+            .unwrap_or("configured fallback authority");
         fallback_kernel_authority
             .list_compute_adapter_contribution_outcomes(training_run_id, window_id, disposition)
             .await
@@ -12402,7 +12439,7 @@ impl PylonTrainingCoordinatorClient {
         let fallback_base_url = self
             .fallback_base_url
             .as_deref()
-            .expect("fallback kernel authority should imply fallback base url");
+            .unwrap_or("configured fallback authority");
         fallback_kernel_authority
             .list_compute_accepted_outcomes(outcome_kind, environment_ref)
             .await
@@ -13366,6 +13403,16 @@ async fn run_training_assignment_intake_once_with_context_for_run(
                         lease.lease_id, lease.assignment_id
                     ));
                     cache_training_run_lease(state, &lease, requested_at_ms);
+                    let cached_lease =
+                        state
+                            .lease_cache
+                            .get(lease.lease_id.as_str())
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "cached lease `{}` missing after successful lease response",
+                                    lease.lease_id
+                                )
+                            })?;
                     report_training_heartbeat_with_readmission(
                         &client,
                         config,
@@ -13379,10 +13426,7 @@ async fn run_training_assignment_intake_once_with_context_for_run(
                         &training_lease_presence_heartbeat_request(
                             identity,
                             now_epoch_ms(),
-                            state
-                                .lease_cache
-                                .get(lease.lease_id.as_str())
-                                .expect("cached lease after successful lease response"),
+                            cached_lease,
                         ),
                     )
                     .await?;
@@ -16484,7 +16528,7 @@ async fn publish_training_trn_state(
             let pointer = state
                 .publication_pointers
                 .get(pointer_key.as_str())
-                .expect("existing training node record pointer");
+                .ok_or_else(|| anyhow!("existing training node record pointer is missing"))?;
             report
                 .node_records
                 .push(build_training_trn_publication_entry(
@@ -17251,10 +17295,9 @@ fn reconcile_training_terminal_runtime_state_from_status_packets(
         return Ok(false);
     }
 
-    let runtime = state
-        .active_runtime
-        .as_mut()
-        .expect("active runtime should still exist while reconciling terminal status");
+    let Some(runtime) = state.active_runtime.as_mut() else {
+        return Ok(false);
+    };
     let changed = runtime.process_state != PylonTrainingSupervisorProcessState::Stopped
         || runtime.last_exit_code != Some(0)
         || runtime.last_failure_reason.is_some()
@@ -20255,12 +20298,11 @@ async fn report_training_terminal_runtime_to_authority(
     if run_succeeded
         && checkpoint_published
         && active.role == PylonTrainingRoleClaim::Worker
-        && retained_contribution.is_some()
         && !window_already_reconciled
     {
-        let retained = retained_contribution
-            .as_ref()
-            .expect("retained contribution checked above");
+        let Some(retained) = retained_contribution.as_ref() else {
+            return Ok(changed);
+        };
         match ensure_training_terminal_contribution_artifacts_uploaded(config, active, context)
             .await
         {
@@ -22733,7 +22775,7 @@ fn reconcile_orphaned_training_supervisor_state(
     let recovered = state
         .active_runtime
         .as_mut()
-        .expect("active runtime should still exist while recovering");
+        .ok_or_else(|| anyhow!("active runtime disappeared while recovering supervisor state"))?;
     recovered.pid = None;
     recovered.updated_at_ms = updated_at_ms;
     if let Some(failure_reason) = failure_reason {
@@ -22889,18 +22931,15 @@ async fn maybe_start_training_supervisor_from_retained_assignment(
         }
     }
     let request = training_start_request_from_retained_lease(config, &lease)?;
-    let owned_command = if command_override.is_none() {
-        Some(default_psionic_train_supervisor_command(
-            request.manifest_path.as_path(),
-        )?)
-    } else {
-        None
+    let owned_command;
+    let command = match command_override {
+        Some(command) => command,
+        None => {
+            owned_command =
+                default_psionic_train_supervisor_command(request.manifest_path.as_path())?;
+            &owned_command
+        }
     };
-    let command = command_override.unwrap_or_else(|| {
-        owned_command
-            .as_ref()
-            .expect("default training supervisor command should exist")
-    });
     let process = start_training_supervisor(config, state, &request, command).await?;
     *process_slot = Some(process);
     Ok(true)
@@ -23355,18 +23394,15 @@ async fn restart_training_supervisor(
         .ok_or_else(|| anyhow!("no retained training runtime is available to restart"))?
         .clone();
     let request = training_start_request_from_active_runtime(&active);
-    let owned_command = if command_override.is_none() {
-        Some(default_psionic_train_supervisor_command(
-            request.manifest_path.as_path(),
-        )?)
-    } else {
-        None
+    let owned_command;
+    let command = match command_override {
+        Some(command) => command,
+        None => {
+            owned_command =
+                default_psionic_train_supervisor_command(request.manifest_path.as_path())?;
+            &owned_command
+        }
     };
-    let command = command_override.unwrap_or_else(|| {
-        owned_command
-            .as_ref()
-            .expect("default supervisor command should exist when no override is supplied")
-    });
     start_training_supervisor(config, state, &request, command).await
 }
 
@@ -27358,7 +27394,9 @@ fn load_cached_provider_host_telemetry(config_path: &Path) -> ProviderHostTeleme
     }
     let now = Instant::now();
     let cache = PROVIDER_HOST_TELEMETRY_CACHE.get_or_init(|| Mutex::new(None));
-    let mut guard = cache.lock().expect("provider host telemetry cache");
+    let Ok(mut guard) = cache.lock() else {
+        return collect_provider_host_telemetry(config_path);
+    };
     let snapshot = collect_provider_host_telemetry(config_path);
     *guard = Some(ProviderHostTelemetryCacheEntry {
         config_path: config_path.to_path_buf(),
@@ -27373,7 +27411,9 @@ fn cached_provider_host_telemetry_if_fresh(
 ) -> Option<ProviderHostTelemetrySnapshot> {
     let now = Instant::now();
     let cache = PROVIDER_HOST_TELEMETRY_CACHE.get_or_init(|| Mutex::new(None));
-    let guard = cache.lock().expect("provider host telemetry cache");
+    let Ok(guard) = cache.lock() else {
+        return None;
+    };
     let entry = guard.as_ref()?;
     let cache_is_fresh = entry.config_path == config_path
         && now.duration_since(entry.refreshed_at)
@@ -43950,7 +43990,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             synced_state
                 .lease_cache
                 .get("lease.node01.window0001")
-                .is_some_and(|lease| lease.state == "released")
+                .is_some_and(|lease| lease.state == "acked")
                 && synced_state
                     .authority_receipt_records
                     .get("window_progress::window.0001::sealing")
@@ -43960,8 +44000,17 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     .values()
                     .any(|record| {
                         record.receipt_kind == "checkpoint_publication" && !record.pending_retry
+                    })
+                && synced_state
+                    .closeout_progress
+                    .get("assign.node01.window0001")
+                    .is_some_and(|entry| {
+                        entry.stage == super::PylonTrainingCloseoutStage::CheckpointPublished
+                            && entry.last_error.is_none()
+                            && entry.checkpoint_ref.as_deref()
+                                == Some("checkpoint://run.alpha/0001")
                     }),
-            "successful terminal sync should retain completed window/checkpoint authority receipts and terminalize the lease locally",
+            "successful terminal sync should retain completed window/checkpoint authority receipts without releasing the lease before reconcile/accepted closeout",
         )?;
 
         let counts = request_counts
@@ -44477,7 +44526,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 .authority_receipt_records
                 .get("window_seal::window.0001")
                 .is_some_and(|record| !record.pending_retry)
-                && synced_state.active_runtime.is_none()
+                && synced_state
+                    .active_runtime
+                    .as_ref()
+                    .is_some_and(|runtime| runtime.lease_id == "lease.node01.window0001")
                 && synced_state
                     .closeout_progress
                     .get("assign.node01.window0001")
@@ -44486,7 +44538,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                             && entry.checkpoint_ref.as_deref()
                                 == Some("checkpoint://run.alpha/0042")
                     }),
-            "terminal sync should persist both the successful window seal receipt and the closeout progress stage",
+            "terminal sync should persist the successful window seal receipt and closeout progress while retaining the worker until reconcile/accepted closeout",
         )?;
         ensure(
             !stored_objects
@@ -49467,6 +49519,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 runtime_kind: PylonWalletRuntimeKind::MoneyDevKit,
                 liquidity_provider_kind: PylonWalletLiquidityProviderKind::MoneyDevKit,
                 network: "bitcoin".to_string(),
+                local_daemon_port: Some(3456),
                 identity_path: "/tmp/pylon-mdk-test/identity.mnemonic".to_string(),
                 storage_dir: "/tmp/pylon-mdk-test/wallet".to_string(),
                 api_key_env: None,

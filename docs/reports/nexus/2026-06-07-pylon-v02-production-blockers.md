@@ -45,6 +45,10 @@ Pylon source evidence:
 - The two-home MDK wrapper smoke passed.
 - The local `cs336-a1-hosted-starter` proof lane completed with simulated
   accepted-work payout behavior.
+- The 2026-06-07 release-candidate matrix rerun passed the standalone Pylon
+  verifier, retained NIP-90/wallet verifier, sandbox evidence commands,
+  Artanis contract/fake-workroomd checks, and a two-home MDK wrapper smoke
+  exposing distinct `runtime.local_daemon_port` values.
 
 Omega Cloudflare MDK evidence:
 
@@ -62,28 +66,18 @@ Cloud/Artanis contract evidence:
 
 - The sibling `cloud` Artanis bootstrap contract and fake-workroomd tests
   passed against Cloud commit `65972fe286ebe25866f49569901b36925fc0e7dc`.
-- The remaining Artanis gap is one live account-backed SHC run through
-  `POST /v1/artanis/bootstrap/start`.
+- The live account-backed SHC Artanis bootstrap run passed through
+  `POST /v1/artanis/bootstrap/start` with `wallet_authority=false`.
+- The live proof is recorded in
+  `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`
+  with SHC run id `artanis.bootstrap.pylon-launch.20260607141825`,
+  Omega `agent_runs.status=completed`, and all eight required launch artifact
+  digests captured.
 
 ## Remaining release gates
 
 Pylon v0.2 should not be released until these are true:
 
-- focused Pylon repo checks from `docs/pylon/PYLON_VERIFICATION_MATRIX.md`
-  pass from current `main`;
-- one live account-backed Artanis SHC bootstrap run completes with
-  `wallet_authority=false`;
-- the live Artanis run captures:
-  - `result.md`;
-  - `artanis-source-map.json`;
-  - `pylon-launch-plan.json`;
-  - `continual-learning-plan.json`;
-  - `signature-mining-plan.json`;
-  - `work-order-drafts.json`;
-  - `artifact-manifest.json`;
-  - `proof-bundle.json`;
-- a public-safe Artanis/Pylon receipt is committed under
-  `docs/reports/nexus/`;
 - the public GitHub `pylon-v0.2.0` release assets and npm bootstrap package are
   published from pushed `main`;
 - a fresh Pylon home proves the public install/user path;
@@ -101,7 +95,7 @@ is pushed. Its Spark removal and MDK-wrapper cleanup scope has been completed;
 remaining v0.2 release work is tracked by `#4551` and by this release-gate
 report.
 
-`#4551` remains the active release issue for the live Artanis bootstrap.
+`#4551` is closed after the live Artanis bootstrap proof landed on `main`.
 
 ## What still belongs to old native Nexus
 

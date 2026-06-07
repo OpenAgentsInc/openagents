@@ -120,17 +120,45 @@ MoneyDevKit provider-registration metadata, plus parser and deterministic mock
 coverage for the new lifecycle commands. The TUI tests cover the updated
 MDK-default operator copy.
 
+## 2026-06-07 Release Candidate Rerun
+
+The later v0.2 release candidate added `runtime.local_daemon_port` to wallet
+status JSON so the two-home smoke can prove daemon-port isolation from CLI
+output without inspecting private runtime internals.
+
+Rerun summary:
+
+```text
+MDK wrapper smoke passed: home-a moneydevkit 39397, home-b moneydevkit 44854
+```
+
+The rerun validated:
+
+- `wallet status --json` reports `runtime.runtime_kind=moneydevkit`;
+- `wallet status --json` reports a numeric `runtime.local_daemon_port`;
+- `wallet balance --json` returns a JSON object;
+- `wallet invoice 21 --description ... --json` returns a BOLT11 receive
+  artifact;
+- `wallet offer --description ... --json` returns a BOLT12 receive artifact;
+- `wallet history --limit 5 --json` returns a JSON object;
+- two clean Pylon homes used different MDK daemon ports.
+
+No mnemonic, preimage, full invoice, or full offer was committed. Temporary
+smoke daemons under `/var/.../T/tmp...` and `/var/.../T/.tmp...` were stopped
+after the run; only the real local `.secrets/pylon-v02-mdk-*` wallet daemons
+remained.
+
 ## Release Status
 
 This is still not a Pylon v0.2 release proof.
 
-Remaining blockers before creating `pylon-v0.2.0`:
+Current status as of the later 2026-06-07 release-gate update:
 
-- deploy the Nexus tracked-payout reconciliation fix from issue `#4548`;
-- run admin treasury refresh on production;
-- confirm `/v1/treasury/status` no longer reports
-  `continuity_alert:confirmations_stalled`;
-- fund the isolated MDK real-bitcoin test wallet or otherwise provide a live
-  wallet with bitcoin available for the proof;
-- run a production accepted-work payout proof with real bitcoin movement;
-- record the production proof receipt and only then create the GitHub release.
+- `#4548` and the old native-LDK treasury refresh path are no longer default
+  release blockers for the MDK-default Pylon v0.2 path.
+- Omega has recorded a real 100-bitcoin-sat MDK checkout/payment proof.
+- The live Artanis SHC bootstrap proof is recorded in
+  `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`.
+- Remaining work before `pylon-v0.2.0` is the current `main` release matrix,
+  public GitHub release asset publication, npm bootstrap publication, fresh
+  public install smoke, and post-release Artanis/Pylon paid-work proof.

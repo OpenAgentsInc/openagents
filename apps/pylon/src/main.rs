@@ -10,6 +10,15 @@
     clippy::print_stderr,
     reason = "CLI utility intentionally writes usage/errors to stderr."
 )]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_used
+    )
+)]
 
 use std::io::IsTerminal;
 use std::path::PathBuf;

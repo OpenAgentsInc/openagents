@@ -10,6 +10,10 @@
     clippy::print_stderr,
     reason = "CLI utility intentionally writes usage/errors to stderr."
 )]
+#![allow(
+    clippy::large_futures,
+    reason = "CLI binary awaits the shared Pylon command dispatcher."
+)]
 
 use anyhow::Result;
 

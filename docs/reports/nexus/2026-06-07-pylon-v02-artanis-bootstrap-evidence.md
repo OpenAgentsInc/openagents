@@ -59,28 +59,37 @@ and that a fake `oa-workroomd` can complete the Artanis path, persist
 `artanis-bootstrap-assignment.json`, emit the Artanis context events, and
 capture the expected fake launch artifacts.
 
-## Remaining release gap
+## Live release proof
 
-This is not enough to release Pylon v0.2.
-
-Before creating `pylon-v0.2.0`, OpenAgents still needs one live account-backed
-SHC run through:
+The local contract and fake-workroomd evidence above was not sufficient by
+itself. The live account-backed SHC run has now also completed through:
 
 ```text
 POST /v1/artanis/bootstrap/start
 ```
 
-That run must:
+Current accepted proof:
 
-- use a fresh approved ChatGPT/Codex provider-account grant;
-- keep `wallet_authority=false`;
-- run on the no-wallet SHC workroom boundary;
-- capture every required artifact listed above;
-- retain a public-safe proof receipt that names the Cloud commit, OpenAgents
-  release-candidate commit, SHC run id, artifact refs, and closeout status.
+- report:
+  `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`
+- SHC run id: `artanis.bootstrap.pylon-launch.20260607141825`
+- Omega external run id:
+  `shc-codex:oa-shc-katy-01:artanis.bootstrap.pylon-launch.20260607141825`
+- wallet authority: `false`
+- Omega status: `completed`
+- required artifacts captured:
+  - `result.md`;
+  - `artanis-source-map.json`;
+  - `pylon-launch-plan.json`;
+  - `continual-learning-plan.json`;
+  - `signature-mining-plan.json`;
+  - `work-order-drafts.json`;
+  - `artifact-manifest.json`;
+  - `proof-bundle.json`.
 
-The live Artanis run is separate from the MDK/Omega real-bitcoin payment proof.
-Both are required before the Pylon v0.2 GitHub release should be created.
+The live Artanis run is separate from the MDK/Omega real-bitcoin payment proof;
+both are now recorded as release-candidate evidence before the Pylon v0.2
+GitHub release is created.
 
 For this MDK-default release, the required payment proof no longer depends on
 the old GCP-hosted native Nexus public edge or native-LDK continuity state. The

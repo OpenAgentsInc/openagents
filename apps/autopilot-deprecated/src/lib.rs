@@ -3,6 +3,7 @@
     clippy::all,
     clippy::expect_used,
     clippy::panic,
+    clippy::panic_in_result_fn,
     clippy::pedantic,
     clippy::unwrap_used
 )]

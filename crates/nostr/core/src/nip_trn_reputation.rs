@@ -111,7 +111,7 @@ pub fn pylon_training_observed_labels_from_event(
 
     let mut observed = Vec::new();
     for tag in &event.tags {
-        if !tag.first().is_some_and(|value| value == "l") {
+        if tag.first().is_none_or(|value| value != "l") {
             continue;
         }
         let Some(label_value) = tag.get(1).map(String::as_str) else {

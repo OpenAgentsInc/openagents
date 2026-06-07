@@ -11,6 +11,10 @@ pub struct HistoryChartSeries<'a> {
     pub line_alpha: f32,
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Chart painting call sites pass geometry, theme, labels, data, and paint context directly."
+)]
 pub fn paint_history_chart_body(
     bounds: Bounds,
     accent: Hsla,
@@ -247,7 +251,7 @@ fn truncate_text_to_width(
     let mut low = 0usize;
     let mut high = chars.len();
     while low < high {
-        let mid = (low + high + 1) / 2;
+        let mid = (low + high).div_ceil(2);
         let candidate = format!("{}...", chars[..mid].iter().collect::<String>());
         if measure(candidate.as_str(), paint) <= max_width {
             low = mid;
