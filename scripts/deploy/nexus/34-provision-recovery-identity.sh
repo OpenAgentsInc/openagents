@@ -121,6 +121,42 @@ grant_project_role() {
     --role "$role"
 }
 
+grant_org_role_if_available() {
+  local role="$1"
+
+  if dry_run; then
+    show_cmd gcloud projects describe "$GCP_PROJECT" --format "value(parent.type,parent.id)"
+    show_cmd gcloud organizations add-iam-policy-binding "<organization-id>" \
+      --member "serviceAccount:${NEXUS_RECOVERY_SERVICE_ACCOUNT_EMAIL}" \
+      --role "$role"
+    return
+  fi
+
+  local parent
+  parent="$(gcloud projects describe "$GCP_PROJECT" --format "value(parent.type,parent.id)")"
+  local parent_type
+  local parent_id
+  parent_type="$(awk '{print $1}' <<<"$parent")"
+  parent_id="$(awk '{print $2}' <<<"$parent")"
+
+  if [[ "$parent_type" != "organization" || -z "$parent_id" ]]; then
+    log "Project parent is not an organization; skipping ${role}"
+    return
+  fi
+
+  run_or_show_quiet gcloud organizations add-iam-policy-binding "$parent_id" \
+    --member "serviceAccount:${NEXUS_RECOVERY_SERVICE_ACCOUNT_EMAIL}" \
+    --role "$role"
+}
+
+grant_vm_service_account_user() {
+  run_or_show_quiet gcloud iam service-accounts add-iam-policy-binding \
+    "$NEXUS_SERVICE_ACCOUNT_EMAIL" \
+    --project "$GCP_PROJECT" \
+    --member "serviceAccount:${NEXUS_RECOVERY_SERVICE_ACCOUNT_EMAIL}" \
+    --role roles/iam.serviceAccountUser
+}
+
 verify_project_role() {
   local role="$1"
   local member="serviceAccount:${NEXUS_RECOVERY_SERVICE_ACCOUNT_EMAIL}"
@@ -173,6 +209,8 @@ for role in \
   verify_project_role "$role"
 done
 
+grant_org_role_if_available roles/compute.osLoginExternalUser
+grant_vm_service_account_user
 grant_impersonator_if_requested
 
 log "Nexus recovery identity ready: ${NEXUS_RECOVERY_SERVICE_ACCOUNT_EMAIL}"

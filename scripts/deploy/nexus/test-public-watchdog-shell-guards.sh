@@ -55,6 +55,8 @@ assert_contains 'last-event.json' "$AUDIT_SCRIPT_TEXT"
 assert_contains 'edge-failure-count' "$AUDIT_SCRIPT_TEXT"
 assert_contains 'local-origin-health' "$AUDIT_SCRIPT_TEXT"
 assert_contains 'recovery-proxy-health' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'REMOTE_SCRIPT="/tmp/nexus-audit-public-watchdog-' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'rm -f ${REMOTE_SCRIPT}' "$AUDIT_SCRIPT_TEXT"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT

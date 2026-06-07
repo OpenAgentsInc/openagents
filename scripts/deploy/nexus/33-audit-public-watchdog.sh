@@ -13,6 +13,7 @@ if ! instance_exists "$NEXUS_VM"; then
 fi
 
 TMP_REMOTE_SCRIPT="$(mktemp)"
+REMOTE_SCRIPT="/tmp/nexus-audit-public-watchdog-$(date -u +%Y%m%d%H%M%S)-$$.sh"
 trap 'rm -f "$TMP_REMOTE_SCRIPT"' EXIT
 
 cat >"$TMP_REMOTE_SCRIPT" <<'REMOTE'
@@ -120,10 +121,10 @@ chmod +x "$TMP_REMOTE_SCRIPT"
 gcloud compute scp --tunnel-through-iap \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
-  "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:/tmp/nexus-audit-public-watchdog.sh"
+  "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:${REMOTE_SCRIPT}"
 
 gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
-  --command "chmod +x /tmp/nexus-audit-public-watchdog.sh && /tmp/nexus-audit-public-watchdog.sh"
+  --command "chmod +x ${REMOTE_SCRIPT} && ${REMOTE_SCRIPT}; status=\$?; rm -f ${REMOTE_SCRIPT}; exit \$status"

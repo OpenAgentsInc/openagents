@@ -524,9 +524,12 @@ scripts/deploy/nexus/34-provision-recovery-identity.sh
 By default this creates or updates
 `nexus-recovery-operator@<project>.iam.gserviceaccount.com`, a custom project
 role with VM inspect/reset permissions, `roles/iap.tunnelResourceAccessor`, and
-`roles/compute.osAdminLogin`. It deliberately does not create service-account
-keys and it does not grant project owner or Compute Admin. To let a specific
-approved human or workload impersonate the recovery identity, set
+`roles/compute.osAdminLogin`. For OS Login on the production VM, it also grants
+the recovery identity `roles/compute.osLoginExternalUser` on the project parent
+organization when one exists and `roles/iam.serviceAccountUser` on the
+VM-attached `nexus-mainnet` service account. It deliberately does not create
+service-account keys and it does not grant project owner or Compute Admin. To
+let a specific approved human or workload impersonate the recovery identity, set
 `NEXUS_RECOVERY_IMPERSONATOR_MEMBER` to the exact IAM member string before
 running the script, for example:
 
