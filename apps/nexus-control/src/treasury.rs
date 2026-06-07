@@ -25,9 +25,10 @@ use sha2::{Digest, Sha256};
 use crate::economy::AuthorityReceiptContext;
 use crate::treasury_provider::{
     LdkChainBackend, LdkNetwork, LdkServerBalances, LdkServerChannel, LdkServerClient,
-    LdkTreasuryProvider, LdkTreasuryProviderConfig, TreasuryLightningProvider,
-    TreasuryLightningProviderConfig, TreasuryLightningProviderKind, TreasuryProviderFundingRequest,
-    TreasuryProviderFundingTarget, TreasuryProviderPayoutRequest,
+    LdkServerClientErrorKind, LdkServerPayment, LdkServerPaymentStatus, LdkTreasuryProvider,
+    LdkTreasuryProviderConfig, TreasuryLightningProvider, TreasuryLightningProviderConfig,
+    TreasuryLightningProviderKind, TreasuryProviderFundingRequest, TreasuryProviderFundingTarget,
+    TreasuryProviderPayoutRequest,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -8739,6 +8740,37 @@ fn ldk_wallet_snapshot(
     }
 }
 
+fn ldk_payment_status_label(status: LdkServerPaymentStatus) -> &'static str {
+    match status {
+        LdkServerPaymentStatus::Pending => "pending",
+        LdkServerPaymentStatus::Succeeded => "succeeded",
+        LdkServerPaymentStatus::Failed => "failed",
+        LdkServerPaymentStatus::Unknown => "unknown",
+    }
+}
+
+fn ldk_payment_summary(payment: LdkServerPayment, timestamp_seconds: u64) -> PaymentSummary {
+    PaymentSummary {
+        id: payment.payment_id,
+        direction: "send".to_string(),
+        status: ldk_payment_status_label(payment.status).to_string(),
+        amount_sats: payment.amount_msat.unwrap_or_default() / 1_000,
+        fees_sats: 0,
+        timestamp: timestamp_seconds,
+        method: "ldk".to_string(),
+        description: Some("LDK provider payment status lookup".to_string()),
+        invoice: None,
+        destination_pubkey: None,
+        payment_hash: (!payment.payment_hash.trim().is_empty()).then_some(payment.payment_hash),
+        htlc_status: None,
+        htlc_expiry_epoch_seconds: None,
+        status_detail: Some(format!(
+            "ldk_payment_status:{}",
+            ldk_payment_status_label(payment.status)
+        )),
+    }
+}
+
 async fn load_ldk_server_balances(config: &TreasuryConfig) -> Result<LdkServerBalances> {
     let client = LdkServerClient::from_provider_config(&config.lightning_provider.ldk)
         .map_err(|error| anyhow!("ldk_wallet_snapshot_client_failed:{error}"))?;
@@ -8897,7 +8929,7 @@ pub async fn load_live_wallet_snapshot(
 pub async fn load_live_wallet_refresh_result_with_plan(
     config: &TreasuryConfig,
     create_if_missing: bool,
-    _refresh_plan: TreasuryWalletRefreshPlan,
+    refresh_plan: TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
     let _ = create_if_missing;
     if config.simulated_wallet_enabled {
@@ -8919,11 +8951,59 @@ pub async fn load_live_wallet_refresh_result_with_plan(
         });
     }
 
-    let balances = load_ldk_server_balances(config).await?;
+    let client = LdkServerClient::from_provider_config(&config.lightning_provider.ldk)
+        .map_err(|error| anyhow!("ldk_wallet_snapshot_client_failed:{error}"))?;
+    let balances = client
+        .get_balances()
+        .await
+        .map_err(|error| anyhow!("ldk_wallet_snapshot_balance_failed:{error}"))?;
+    let lookup_timestamp_seconds = now_unix_ms() / 1_000;
+    let mut payments = Vec::new();
+    let mut seen_payment_ids = BTreeSet::new();
+    let mut unresolved_payment_ids = refresh_plan.tracked_payment_ids.clone();
+    for payment_id in &refresh_plan.tracked_payment_ids {
+        let lookup = tokio::time::timeout(
+            Duration::from_millis(TREASURY_WALLET_REFRESH_TRACKED_PAYMENT_LOOKUP_TIMEOUT_MS),
+            client.get_payment(payment_id.as_str()),
+        )
+        .await;
+        match lookup {
+            Ok(Ok(payment)) => {
+                let _ = track_wallet_refresh_payment(
+                    &mut payments,
+                    &mut seen_payment_ids,
+                    &mut unresolved_payment_ids,
+                    ldk_payment_summary(payment, lookup_timestamp_seconds),
+                );
+            }
+            Ok(Err(error)) if error.kind == LdkServerClientErrorKind::InvalidRequest => {
+                tracing::warn!(
+                    payment_id_hash = treasury_hash(payment_id.as_str()),
+                    reason = error.normalized_reason(),
+                    "tracked LDK payment lookup returned no provider row",
+                );
+            }
+            Ok(Err(error)) => {
+                return Err(anyhow!("ldk_wallet_snapshot_payment_lookup_failed:{error}"));
+            }
+            Err(_) => {
+                return Err(anyhow!(
+                    "ldk_wallet_snapshot_payment_lookup_timeout:{}",
+                    treasury_hash(payment_id.as_str())
+                ));
+            }
+        }
+    }
 
+    let mut snapshot = ldk_wallet_snapshot(config, balances, payments);
+    snapshot.wallet_payment_scan_mode = Some(wallet_payment_scan_mode(&refresh_plan).to_string());
     Ok(TreasuryWalletRefreshResult {
-        snapshot: ldk_wallet_snapshot(config, balances, Vec::new()),
-        progress: TreasuryWalletRefreshProgress::default(),
+        snapshot,
+        progress: TreasuryWalletRefreshProgress {
+            history_scan_page_offset: refresh_plan.history_scan_page_offset,
+            history_pages_scanned: 0,
+            history_hit_end_of_history: unresolved_payment_ids.is_empty(),
+        },
     })
 }
 
@@ -11208,15 +11288,16 @@ mod tests {
         TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
         TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
         build_treasury_wallet_recovery_comparison, create_live_funding_target,
-        dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
-        payout_window_started_at, payout_window_started_at_for_identity, run_treasury_command,
-        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        track_wallet_refresh_payment, treasury_test_hook_lock, validate_wallet_hydration_balance,
-        wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
+        dispatch_live_payouts, ldk_payment_summary, parse_treasury_command, payout_phase_offset_ms,
+        payout_window_key, payout_window_started_at, payout_window_started_at_for_identity,
+        run_treasury_command, set_test_wallet_funding_hook, set_test_wallet_send_hook,
+        set_test_wallet_snapshot_hook, track_wallet_refresh_payment, treasury_test_hook_lock,
+        validate_wallet_hydration_balance, wallet_refresh_page_offsets,
+        wallet_refresh_payment_page_budget, write_json_file,
     };
     use crate::treasury_provider::{
-        LdkChainBackend, LdkNetwork, LdkServerBalances, LdkServerChannel,
-        LdkTreasuryProviderConfig, TreasuryProviderFundingTarget,
+        LdkChainBackend, LdkNetwork, LdkServerBalances, LdkServerChannel, LdkServerPayment,
+        LdkServerPaymentStatus, LdkTreasuryProviderConfig, TreasuryProviderFundingTarget,
     };
     use openagents_provider_substrate::{
         ProviderPaymentTargetRegistration, sign_provider_payment_target_registration,
@@ -17801,6 +17882,110 @@ mod tests {
         ));
         assert_eq!(payments.len(), 1);
         assert!(unresolved_payment_ids.contains("pay-still-pending"));
+    }
+
+    #[test]
+    fn ldk_payment_summary_maps_provider_status_for_tracked_refresh() {
+        let payment = LdkServerPayment {
+            payment_id: "pay-confirm-me".to_string(),
+            payment_hash: "hash-confirm-me".to_string(),
+            amount_msat: Some(25_000),
+            status: LdkServerPaymentStatus::Succeeded,
+        };
+
+        let summary = ldk_payment_summary(payment, 1_780_800_000);
+
+        assert_eq!(summary.id, "pay-confirm-me");
+        assert_eq!(summary.direction, "send");
+        assert_eq!(summary.status, "succeeded");
+        assert_eq!(summary.amount_sats, 25);
+        assert_eq!(summary.method, "ldk");
+        assert_eq!(summary.payment_hash.as_deref(), Some("hash-confirm-me"));
+        assert!(super::wallet_payment_is_confirmed(&summary));
+    }
+
+    #[test]
+    fn tracked_ldk_payment_summary_confirms_dispatched_payout() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_780_800_000_000u64;
+        let payout_key = "accepted-work:tracked-refresh".to_string();
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "lno1trackedrefresh".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("pay-confirm-me".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                updated_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted-outcome-a".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state
+            .payout_key_by_payment_id
+            .insert("pay-confirm-me".to_string(), payout_key.clone());
+
+        let receipts = state.apply_wallet_snapshot(
+            &TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                wallet_hydration_mode: Some("ldk_provider_scaffold".to_string()),
+                wallet_payment_scan_mode: Some("recent_plus_backfill".to_string()),
+                balance_sats: 125_748,
+                total_onchain_balance_sats: 176_459,
+                spendable_onchain_balance_sats: 126_459,
+                lightning_balance_sats: 125_748,
+                payments: vec![ldk_payment_summary(
+                    LdkServerPayment {
+                        payment_id: "pay-confirm-me".to_string(),
+                        payment_hash: "hash-confirm-me".to_string(),
+                        amount_msat: Some(25_000),
+                        status: LdkServerPaymentStatus::Succeeded,
+                    },
+                    now_unix_ms / 1_000,
+                )],
+            },
+            now_unix_ms,
+        );
+
+        let record = state
+            .payout_records_by_key
+            .get(&payout_key)
+            .expect("tracked payout");
+        assert_eq!(record.status, "confirmed");
+        assert!(record.confirm_receipt_recorded);
+        assert!(record.counted_in_paid_total);
+        assert_eq!(state.accepted_work_payout_sats_paid_total, 25);
+        assert_eq!(
+            state
+                .training_payout_ledger_summary()
+                .accepted_work_pending_payout_count,
+            0
+        );
+        assert_eq!(
+            state
+                .public_stats(&config, now_unix_ms)
+                .pending_confirmation_count,
+            0
+        );
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].receipt_type, "treasury.payout.confirmed");
     }
 
     #[test]
