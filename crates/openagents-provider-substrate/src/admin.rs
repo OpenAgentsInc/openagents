@@ -216,6 +216,12 @@ pub struct ProviderRecentJob {
     pub request_id: Option<String>,
     pub status: String,
     pub demand_source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
     pub product_id: Option<String>,
     pub compute_family: Option<String>,
     pub backend_family: Option<String>,
@@ -236,6 +242,12 @@ pub struct ProviderReceiptSummary {
     pub receipt_type: String,
     pub created_at_ms: i64,
     pub canonical_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
     pub compute_family: Option<String>,
     pub backend_family: Option<String>,
     pub sandbox_execution_class: Option<String>,
@@ -1574,6 +1586,9 @@ mod tests {
                 request_id: Some("req-1".to_string()),
                 status: "succeeded".to_string(),
                 demand_source: "open_network".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
                 compute_family: Some("inference".to_string()),
                 backend_family: Some("local_gemma".to_string()),
@@ -1592,6 +1607,9 @@ mod tests {
                 receipt_type: "earn.job.settled.v1".to_string(),
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 compute_family: Some("inference".to_string()),
                 backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,

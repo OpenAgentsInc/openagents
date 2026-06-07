@@ -210,6 +210,12 @@ pub struct PylonLedgerJob {
     pub direction: String,
     pub request_kind: u16,
     pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
     pub prompt: Option<String>,
     pub relay_url: Option<String>,
     pub provider_pubkey: Option<String>,
@@ -242,6 +248,9 @@ impl PylonLedgerJob {
             direction: direction.into(),
             request_kind,
             status: status.into(),
+            artanis_run_id: None,
+            artanis_assignment_id: None,
+            settlement_intent_id: None,
             prompt: None,
             relay_url: None,
             provider_pubkey: None,
@@ -394,6 +403,12 @@ pub struct PylonSettlementRecord {
     pub job_id: String,
     pub direction: String,
     pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
     pub amount_msats: u64,
     pub payment_reference: Option<String>,
     pub receipt_detail: Option<String>,
@@ -1032,6 +1047,9 @@ mod tests {
                 job_id: String::from("job-001"),
                 direction: String::from("buyer"),
                 status: String::from("settled"),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 amount_msats: 42_000,
                 payment_reference: Some(String::from("payment-001")),
                 receipt_detail: Some(String::from("paid and accepted")),
@@ -1176,6 +1194,9 @@ mod tests {
             job_id: "nexus-op-001".to_string(),
             direction: "provider".to_string(),
             status: "payment_received".to_string(),
+            artanis_run_id: None,
+            artanis_assignment_id: None,
+            settlement_intent_id: None,
             amount_msats: 21_000,
             payment_reference: Some("payment-hash-001".to_string()),
             receipt_detail: Some("invoice completed in local wallet".to_string()),

@@ -26341,6 +26341,15 @@ fn merge_provider_recent_job(existing: &mut ProviderRecentJob, ledger_job: &Prov
     if existing.failure_reason.is_none() && ledger_job.failure_reason.is_some() {
         existing.failure_reason = ledger_job.failure_reason.clone();
     }
+    if existing.artanis_run_id.is_none() && ledger_job.artanis_run_id.is_some() {
+        existing.artanis_run_id = ledger_job.artanis_run_id.clone();
+    }
+    if existing.artanis_assignment_id.is_none() && ledger_job.artanis_assignment_id.is_some() {
+        existing.artanis_assignment_id = ledger_job.artanis_assignment_id.clone();
+    }
+    if existing.settlement_intent_id.is_none() && ledger_job.settlement_intent_id.is_some() {
+        existing.settlement_intent_id = ledger_job.settlement_intent_id.clone();
+    }
     if existing.status != "settled" && ledger_job.status == "settled" {
         existing.status = "settled".to_string();
     }
@@ -26567,6 +26576,15 @@ fn ledger_provider_recent_jobs(ledger: &PylonLedger) -> Vec<ProviderRecentJob> {
                     job.status.clone()
                 },
                 demand_source: "nostr_nip90".to_string(),
+                artanis_run_id: job.artanis_run_id.clone().or_else(|| {
+                    settlement.and_then(|settlement| settlement.artanis_run_id.clone())
+                }),
+                artanis_assignment_id: job.artanis_assignment_id.clone().or_else(|| {
+                    settlement.and_then(|settlement| settlement.artanis_assignment_id.clone())
+                }),
+                settlement_intent_id: job.settlement_intent_id.clone().or_else(|| {
+                    settlement.and_then(|settlement| settlement.settlement_intent_id.clone())
+                }),
                 product_id: None,
                 compute_family: Some("text_generation".to_string()),
                 backend_family: None,
@@ -26623,6 +26641,9 @@ fn ledger_receipt_summaries(ledger: &PylonLedger) -> Vec<ProviderReceiptSummary>
                 },
                 created_at_ms: settlement.updated_at_ms as i64,
                 canonical_hash: settlement_canonical_hash(settlement),
+                artanis_run_id: settlement.artanis_run_id.clone(),
+                artanis_assignment_id: settlement.artanis_assignment_id.clone(),
+                settlement_intent_id: settlement.settlement_intent_id.clone(),
                 compute_family: Some("text_generation".to_string()),
                 backend_family: None,
                 sandbox_execution_class: None,
@@ -26659,6 +26680,18 @@ fn settlement_canonical_hash(settlement: &PylonSettlementRecord) -> String {
     if let Some(payment_reference) = settlement.payment_reference.as_deref() {
         hasher.update(b"|");
         hasher.update(payment_reference.as_bytes());
+    }
+    if let Some(artanis_run_id) = settlement.artanis_run_id.as_deref() {
+        hasher.update(b"|artanis_run_id=");
+        hasher.update(artanis_run_id.as_bytes());
+    }
+    if let Some(artanis_assignment_id) = settlement.artanis_assignment_id.as_deref() {
+        hasher.update(b"|artanis_assignment_id=");
+        hasher.update(artanis_assignment_id.as_bytes());
+    }
+    if let Some(settlement_intent_id) = settlement.settlement_intent_id.as_deref() {
+        hasher.update(b"|settlement_intent_id=");
+        hasher.update(settlement_intent_id.as_bytes());
     }
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }
@@ -53364,6 +53397,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 job_id: "buyer-replay-001".to_string(),
                 direction: "buyer".to_string(),
                 status: "payment_submitted".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 amount_msats: 21_000,
                 payment_reference: Some("payment-replay-001".to_string()),
                 receipt_detail: Some("buyer approved and submitted invoice payment".to_string()),
@@ -54543,6 +54579,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             job_id: "provider-job-001".to_string(),
             direction: "provider".to_string(),
             status: "settled".to_string(),
+            artanis_run_id: None,
+            artanis_assignment_id: None,
+            settlement_intent_id: None,
             amount_msats: 510_000,
             payment_reference: Some("payment-001".to_string()),
             receipt_detail: Some("local settlement".to_string()),
@@ -54576,6 +54615,72 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
     }
 
     #[test]
+    fn ledger_reports_project_artanis_settlement_authority_ids() {
+        let mut ledger = PylonLedger::default();
+        let mut job = PylonLedgerJob::new("provider-job-artanis-001", "provider", 5050, "settled");
+        job.artanis_run_id = Some("artanis.bootstrap.pylon-launch.test".to_string());
+        job.artanis_assignment_id = Some("artanis-mdk-bridge-test".to_string());
+        job.settlement_intent_id = Some("settlement-intent-test".to_string());
+        ledger.upsert_job(job);
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: "provider-settlement-artanis-001".to_string(),
+            job_id: "provider-job-artanis-001".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            artanis_run_id: Some("artanis.bootstrap.pylon-launch.test".to_string()),
+            artanis_assignment_id: Some("artanis-mdk-bridge-test".to_string()),
+            settlement_intent_id: Some("settlement-intent-test".to_string()),
+            amount_msats: 21_000,
+            payment_reference: Some("payment-artanis-001".to_string()),
+            receipt_detail: Some("Artanis assignment settlement observed".to_string()),
+            created_at_ms: 1_762_700_101_000,
+            updated_at_ms: 1_762_700_102_000,
+        });
+
+        let jobs = super::ledger_provider_recent_jobs(&ledger);
+        let job = jobs
+            .iter()
+            .find(|job| job.job_id == "provider-job-artanis-001")
+            .expect("projected Artanis-linked job");
+        assert_eq!(
+            job.artanis_run_id.as_deref(),
+            Some("artanis.bootstrap.pylon-launch.test")
+        );
+        assert_eq!(
+            job.artanis_assignment_id.as_deref(),
+            Some("artanis-mdk-bridge-test")
+        );
+        assert_eq!(
+            job.settlement_intent_id.as_deref(),
+            Some("settlement-intent-test")
+        );
+
+        let receipts = super::ledger_receipt_summaries(&ledger);
+        let receipt = receipts
+            .iter()
+            .find(|receipt| receipt.receipt_id == "provider-settlement-artanis-001")
+            .expect("projected Artanis-linked receipt");
+        assert_eq!(
+            receipt.artanis_run_id.as_deref(),
+            Some("artanis.bootstrap.pylon-launch.test")
+        );
+        assert_eq!(
+            receipt.artanis_assignment_id.as_deref(),
+            Some("artanis-mdk-bridge-test")
+        );
+        assert_eq!(
+            receipt.settlement_intent_id.as_deref(),
+            Some("settlement-intent-test")
+        );
+        assert!(
+            receipt
+                .canonical_hash
+                .starts_with("sha256:"),
+            "receipt canonical hash should still be present"
+        );
+    }
+
+    #[test]
     fn merge_ledger_earnings_uses_settlement_created_at_for_today_window() {
         let now_ms = now_epoch_ms() as u64;
         let current_day = now_ms / 86_400_000;
@@ -54592,6 +54697,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             job_id: "provider-job-002".to_string(),
             direction: "provider".to_string(),
             status: "settled".to_string(),
+            artanis_run_id: None,
+            artanis_assignment_id: None,
+            settlement_intent_id: None,
             amount_msats: 21_000,
             payment_reference: Some("payment-002".to_string()),
             receipt_detail: Some("old settlement".to_string()),
@@ -54633,6 +54741,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             job_id: "provider-job-duplicate-001".to_string(),
             direction: "provider".to_string(),
             status: "payment_received".to_string(),
+            artanis_run_id: None,
+            artanis_assignment_id: None,
+            settlement_intent_id: None,
             amount_msats: 42_000,
             payment_reference: Some("payment-ledger-001".to_string()),
             receipt_detail: Some("wallet credit observed".to_string()),
@@ -54646,6 +54757,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 request_id: Some("request-duplicate-001".to_string()),
                 status: "completed_local".to_string(),
                 demand_source: "nostr_nip90".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 product_id: None,
                 compute_family: Some("text_generation".to_string()),
                 backend_family: None,
@@ -54687,6 +54801,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     request_id: Some("req-newest".to_string()),
                     status: "completed_local".to_string(),
                     demand_source: "nostr_nip90".to_string(),
+                    artanis_run_id: None,
+                    artanis_assignment_id: None,
+                    settlement_intent_id: None,
                     product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
                     compute_family: Some("text_generation".to_string()),
                     backend_family: Some("local_gemma".to_string()),
@@ -54705,6 +54822,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     request_id: Some("req-oldest".to_string()),
                     status: "settled".to_string(),
                     demand_source: "nostr_nip90".to_string(),
+                    artanis_run_id: None,
+                    artanis_assignment_id: None,
+                    settlement_intent_id: None,
                     product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
                     compute_family: Some("text_generation".to_string()),
                     backend_family: Some("local_gemma".to_string()),
@@ -54852,6 +54972,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 request_id: Some("req-1".to_string()),
                 status: "settled".to_string(),
                 demand_source: "open_network".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
                 compute_family: Some("inference".to_string()),
                 backend_family: Some("local_gemma".to_string()),
@@ -54870,6 +54993,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 request_id: Some("req-2".to_string()),
                 status: "failed".to_string(),
                 demand_source: "open_network".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 product_id: Some("sandbox.python.exec".to_string()),
                 compute_family: Some("sandbox_execution".to_string()),
                 backend_family: Some("sandbox".to_string()),
@@ -54890,6 +55016,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 receipt_type: "earn.job.settled.v1".to_string(),
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 compute_family: Some("inference".to_string()),
                 backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,
@@ -54908,6 +55037,9 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 receipt_type: "sandbox.execution.delivery.v1".to_string(),
                 created_at_ms: 1_762_300_032_500,
                 canonical_hash: "sha256:receipt-2".to_string(),
+                artanis_run_id: None,
+                artanis_assignment_id: None,
+                settlement_intent_id: None,
                 compute_family: Some("sandbox_execution".to_string()),
                 backend_family: Some("sandbox".to_string()),
                 sandbox_execution_class: Some("sandbox.python.exec".to_string()),

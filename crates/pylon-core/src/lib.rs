@@ -384,6 +384,12 @@ pub struct PylonCoreReceipt {
     pub canonical_hash: String,
     pub work_unit_id: Option<String>,
     pub reason_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
 }
 
 impl From<&ProviderReceiptSummary> for PylonCoreReceipt {
@@ -395,6 +401,9 @@ impl From<&ProviderReceiptSummary> for PylonCoreReceipt {
             canonical_hash: receipt.canonical_hash.clone(),
             work_unit_id: receipt.work_unit_id.clone(),
             reason_code: receipt.reason_code.clone(),
+            artanis_run_id: receipt.artanis_run_id.clone(),
+            artanis_assignment_id: receipt.artanis_assignment_id.clone(),
+            settlement_intent_id: receipt.settlement_intent_id.clone(),
         }
     }
 }

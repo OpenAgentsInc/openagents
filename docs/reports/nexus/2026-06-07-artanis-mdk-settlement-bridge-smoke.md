@@ -95,3 +95,21 @@ operator manually assembling the proof.
 Do not claim fully automated production Artanis paid-work settlement until that
 server-side path is deployed and a fresh live proof records the same id chain
 without manual bridge assembly.
+
+## 2026-06-07 Follow-Up
+
+Pylon now carries optional public-safe Artanis settlement authority ids through
+the retained provider ledger and public report projections:
+
+- `artanis_run_id`
+- `artanis_assignment_id`
+- `settlement_intent_id`
+
+Those fields are available on retained provider jobs, provider settlements,
+provider receipt summaries, and Pylon core receipt projections when present.
+They are omitted when absent so older ledger files and existing NIP-90 jobs
+remain compatible.
+
+This is not the full production bridge. It is the first data-model step needed
+for the deployed path to prove that one Artanis assignment id is the source of
+truth for a Pylon accepted-work result, MDK settlement, and public receipt.
