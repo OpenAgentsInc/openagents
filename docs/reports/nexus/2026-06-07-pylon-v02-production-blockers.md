@@ -42,6 +42,9 @@ Production evidence is not green:
 - `#4550`: the production recovery/deploy credential path must support
   noninteractive approved-agent or approved-operator recovery so future public
   edge outages can be audited and repaired without waiting on a browser reauth.
+  The source implementation now includes
+  `scripts/deploy/nexus/34-provision-recovery-identity.sh` for a keyless,
+  dry-runnable `nexus-recovery-operator` identity.
 - `#4504`: the Pylon v0.2 tracker remains open until public Nexus is healthy,
   `#4548` is verified, and a live real-bitcoin accepted-work payout proof is
   recorded.

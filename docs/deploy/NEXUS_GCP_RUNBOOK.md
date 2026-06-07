@@ -511,8 +511,36 @@ gcloud config set account chris@openagents.com
 gcloud auth login
 ```
 
-or grant a dedicated deploy service account the above image-lane or binary-lane
-permissions before attempting production closeout.
+or provision the dedicated recovery identity before attempting production
+closeout:
+
+```bash
+NEXUS_RECOVERY_IDENTITY_DRY_RUN=true \
+scripts/deploy/nexus/34-provision-recovery-identity.sh
+
+scripts/deploy/nexus/34-provision-recovery-identity.sh
+```
+
+By default this creates or updates
+`nexus-recovery-operator@<project>.iam.gserviceaccount.com`, a custom project
+role with VM inspect/reset permissions, `roles/iap.tunnelResourceAccessor`, and
+`roles/compute.osAdminLogin`. It deliberately does not create service-account
+keys and it does not grant project owner or Compute Admin. To let a specific
+approved human or workload impersonate the recovery identity, set
+`NEXUS_RECOVERY_IMPERSONATOR_MEMBER` to the exact IAM member string before
+running the script, for example:
+
+```bash
+NEXUS_RECOVERY_IMPERSONATOR_MEMBER='user:chris@openagents.com' \
+scripts/deploy/nexus/34-provision-recovery-identity.sh
+```
+
+Then run recovery/audit commands through impersonation:
+
+```bash
+CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT=nexus-recovery-operator@openagentsgemini.iam.gserviceaccount.com \
+scripts/deploy/nexus/33-audit-public-watchdog.sh
+```
 
 For isolated validation lanes, publish a unique image tag without moving
 `latest`:

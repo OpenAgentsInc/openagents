@@ -181,10 +181,14 @@ Reader/monitor role, enabled now:
 Recoverer role, not granted by this runbook:
 
 - Future recovery actions must be leased through Forge first.
-- GCP mutation permissions should be split into a separate recoverer service
-  account or narrowly bound conditional role.
-- Service restart, Cloudflare tunnel repair, and VM mutation rights should not
-  be added to the monitor service account by default.
+- GCP mutation permissions are split into the separate
+  `nexus-recovery-operator` identity provisioned by
+  `scripts/deploy/nexus/34-provision-recovery-identity.sh`.
+- Service restart, Cloudflare tunnel repair, and VM mutation rights must not be
+  added to the monitor service account by default.
+- Use `NEXUS_RECOVERY_IMPERSONATOR_MEMBER` only for a specific approved human
+  or workload that should impersonate the recovery identity. Do not create
+  service-account keys.
 
 Treasury role:
 
