@@ -155,3 +155,42 @@ production closure needs Artanis itself to create/authorize assignments with
 these ids in deployed operation and a fresh live proof showing the same id
 chain across Artanis dispatch, Pylon accepted work, MDK settlement, and the
 public receipt without operator assembly.
+
+## 2026-06-07 Follow-Up 3
+
+The private Cloud Artanis bootstrap contract/control path now has the matching
+source-of-truth metadata hook.
+
+Cloud commit:
+
+```text
+OpenAgentsInc/cloud d0f84e4 Attach Artanis settlement intent metadata
+```
+
+That change adds optional no-wallet `settlement_intent` metadata to
+`openagents.artanis_bootstrap_assignment.v1`:
+
+- `artanis_run_id`
+- `artanis_assignment_id`
+- `settlement_intent_id`
+- optional `public_receipt_id`
+
+The Cloud contract validates those values as public-safe contract refs and
+requires `settlement_intent.artanis_run_id` to equal `bootstrap_run_id`.
+`oa-codex-control` now emits `artanis.settlement_intent.attached` when the
+intent is present and includes the exact Pylon structured-request fields and
+`oa:*` tag mapping in the generated Artanis prompt. The workroom still has
+`wallet_authority=false`; the settlement intent is traceability metadata only.
+
+Cloud verification:
+
+```bash
+cargo test -p openagents-cloud-contract -- --nocapture
+cargo test -p oa-codex-control artanis_bootstrap -- --nocapture
+```
+
+Remaining gap for #4553: deploy/run a fresh Artanis bootstrap assignment using
+the new Cloud contract, then prove the same id chain appears in the Artanis
+dispatch event, Pylon NIP-90 accepted-work/settled run, MDK settlement, and
+public receipt. Until that proof exists, the production claim remains
+intentionally blocked.
