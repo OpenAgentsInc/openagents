@@ -113,3 +113,45 @@ remain compatible.
 This is not the full production bridge. It is the first data-model step needed
 for the deployed path to prove that one Artanis assignment id is the source of
 truth for a Pylon accepted-work result, MDK settlement, and public receipt.
+
+## 2026-06-07 Follow-Up 2
+
+Pylon now also carries those authority ids through the live NIP-90 request path.
+
+Structured buyer/Artanis submissions can include:
+
+```json
+{
+  "artanis_run_id": "artanis.bootstrap.pylon-launch.test",
+  "artanis_assignment_id": "assignment-json-001",
+  "settlement_intent_id": "settlement-intent-json-001"
+}
+```
+
+Pylon validates those values as short public-safe ids, appends them to the
+published NIP-90 job request as explicit OpenAgents tags, and ignores invalid
+or unknown metadata. Provider intake accepts the following exact tag names:
+
+- `oa:artanis_run_id`
+- `oa:artanis_assignment_id`
+- `oa:settlement_intent_id`
+
+The same values now flow through provider scan output, provider run output,
+retained provider jobs, provider settlements, retained job reports, and receipt
+reports. The paid-provider regression exercises the real local run loop:
+payment-required first, wallet payment observed second, then settled provider
+job and receipt projection with the same authority ids.
+
+Verification:
+
+```bash
+cargo check -p pylon -p pylon-core -p openagents-provider-substrate
+cargo test -p pylon submit_buyer_job_accepts_structured_payload_json -- --nocapture
+cargo test -p pylon provider_run_settles_paid_request_and_projects_retained_views -- --nocapture
+```
+
+Remaining gap for #4553: this is still a Pylon-side runtime bridge. The final
+production closure needs Artanis itself to create/authorize assignments with
+these ids in deployed operation and a fresh live proof showing the same id
+chain across Artanis dispatch, Pylon accepted work, MDK settlement, and the
+public receipt without operator assembly.

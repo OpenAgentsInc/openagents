@@ -50,6 +50,12 @@ pub struct ProviderIntakeEntry {
     pub prompt_preview: Option<String>,
     pub model: Option<String>,
     pub bid_msats: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -76,6 +82,12 @@ pub struct ProviderRunEntry {
     pub bolt11: Option<String>,
     pub payment_id: Option<String>,
     pub settlement_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
     pub result_preview: Option<String>,
     pub error_detail: Option<String>,
     pub feedback_event_ids: Vec<String>,
@@ -257,6 +269,12 @@ pub struct BuyerJobSubmitReport {
     pub bid_msats: Option<u64>,
     pub output_mime: Option<String>,
     pub prompt_preview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artanis_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artanis_assignment_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_intent_id: Option<String>,
     pub status: String,
     pub detail: Option<String>,
 }
@@ -364,6 +382,12 @@ struct StructuredBuyerJobPayload {
     bid_msats: Option<u64>,
     #[serde(default)]
     output: Option<String>,
+    #[serde(default)]
+    artanis_run_id: Option<String>,
+    #[serde(default)]
+    artanis_assignment_id: Option<String>,
+    #[serde(default)]
+    settlement_intent_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -613,6 +637,15 @@ pub fn render_provider_intake_report(report: &ProviderIntakeReport) -> String {
         if let Some(bid_msats) = entry.bid_msats {
             lines.push(format!("bid_msats: {bid_msats}"));
         }
+        if let Some(artanis_run_id) = entry.artanis_run_id.as_deref() {
+            lines.push(format!("artanis_run_id: {artanis_run_id}"));
+        }
+        if let Some(artanis_assignment_id) = entry.artanis_assignment_id.as_deref() {
+            lines.push(format!("artanis_assignment_id: {artanis_assignment_id}"));
+        }
+        if let Some(settlement_intent_id) = entry.settlement_intent_id.as_deref() {
+            lines.push(format!("settlement_intent_id: {settlement_intent_id}"));
+        }
     }
     lines.join("\n")
 }
@@ -806,6 +839,9 @@ fn report_entry_for_admission_rejection(
         bolt11: None,
         payment_id: None,
         settlement_id: None,
+        artanis_run_id: observed.entry.artanis_run_id.clone(),
+        artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+        settlement_intent_id: observed.entry.settlement_intent_id.clone(),
         result_preview: None,
         error_detail: Some(reason.to_string()),
         feedback_event_ids: Vec::new(),
@@ -869,6 +905,9 @@ async fn run_provider_request_collection(
                 settlement_id: existing_job
                     .as_ref()
                     .and_then(|job| job.settlement_id.clone()),
+                artanis_run_id: observed.entry.artanis_run_id.clone(),
+                artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                 result_preview: None,
                 error_detail: Some("job already handled locally".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -896,6 +935,9 @@ async fn run_provider_request_collection(
                 bolt11: None,
                 payment_id: None,
                 settlement_id: None,
+                artanis_run_id: observed.entry.artanis_run_id.clone(),
+                artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                 result_preview: None,
                 error_detail: observed.entry.drop_reason.clone(),
                 feedback_event_ids: Vec::new(),
@@ -923,6 +965,9 @@ async fn run_provider_request_collection(
                 bolt11: None,
                 payment_id: None,
                 settlement_id: None,
+                artanis_run_id: observed.entry.artanis_run_id.clone(),
+                artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                 result_preview: None,
                 error_detail: Some("provider_not_online".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -950,6 +995,9 @@ async fn run_provider_request_collection(
                 bolt11: None,
                 payment_id: None,
                 settlement_id: None,
+                artanis_run_id: observed.entry.artanis_run_id.clone(),
+                artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                 result_preview: None,
                 error_detail: Some("no_local_supply".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -979,6 +1027,9 @@ async fn run_provider_request_collection(
                     bolt11: None,
                     payment_id: None,
                     settlement_id: None,
+                    artanis_run_id: observed.entry.artanis_run_id.clone(),
+                    artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                    settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                     result_preview: None,
                     error_detail: Some("invalid_request".to_string()),
                     feedback_event_ids: Vec::new(),
@@ -1007,6 +1058,9 @@ async fn run_provider_request_collection(
                 bolt11: None,
                 payment_id: None,
                 settlement_id: None,
+                artanis_run_id: observed.entry.artanis_run_id.clone(),
+                artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                 result_preview: None,
                 error_detail: Some("model_unavailable".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -1034,6 +1088,9 @@ async fn run_provider_request_collection(
                 bolt11: None,
                 payment_id: None,
                 settlement_id: None,
+                artanis_run_id: observed.entry.artanis_run_id.clone(),
+                artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                 result_preview: None,
                 error_detail: Some("missing_text_input".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -1204,6 +1261,9 @@ async fn run_provider_request_collection(
                         bolt11: None,
                         payment_id: None,
                         settlement_id: None,
+                        artanis_run_id: observed.entry.artanis_run_id.clone(),
+                        artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                        settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                         result_preview: None,
                         error_detail: Some("payment_required_job_missing_invoice".to_string()),
                         feedback_event_ids: existing_job.feedback_event_ids.clone(),
@@ -1240,6 +1300,9 @@ async fn run_provider_request_collection(
                         bolt11: Some(bolt11.to_string()),
                         payment_id: existing_job.payment_id.clone(),
                         settlement_id: existing_job.settlement_id.clone(),
+                        artanis_run_id: observed.entry.artanis_run_id.clone(),
+                        artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                        settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                         result_preview: None,
                         error_detail: Some("awaiting_payment".to_string()),
                         feedback_event_ids: existing_job.feedback_event_ids.clone(),
@@ -1284,6 +1347,9 @@ async fn run_provider_request_collection(
                             bolt11: None,
                             payment_id: None,
                             settlement_id: None,
+                            artanis_run_id: observed.entry.artanis_run_id.clone(),
+                            artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                            settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                             result_preview: None,
                             error_detail: Some(error_string),
                             feedback_event_ids: Vec::new(),
@@ -1342,6 +1408,9 @@ async fn run_provider_request_collection(
                             bolt11: Some(payment_requirement.bolt11.clone()),
                             payment_id: None,
                             settlement_id: None,
+                            artanis_run_id: observed.entry.artanis_run_id.clone(),
+                            artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                            settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                             result_preview: None,
                             error_detail: Some(error_string),
                             feedback_event_ids: Vec::new(),
@@ -1375,6 +1444,9 @@ async fn run_provider_request_collection(
                     bolt11: Some(payment_requirement.bolt11),
                     payment_id: None,
                     settlement_id: None,
+                    artanis_run_id: observed.entry.artanis_run_id.clone(),
+                    artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                    settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                     result_preview: None,
                     error_detail: None,
                     feedback_event_ids: vec![payment_event.id],
@@ -1448,6 +1520,9 @@ async fn run_provider_request_collection(
                         .as_ref()
                         .map(|payment| payment.payment_id.clone()),
                     settlement_id: settlement_id.clone(),
+                    artanis_run_id: observed.entry.artanis_run_id.clone(),
+                    artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                    settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                     result_preview: None,
                     error_detail: Some(error_string),
                     feedback_event_ids: Vec::new(),
@@ -1522,6 +1597,9 @@ async fn run_provider_request_collection(
                                 .as_ref()
                                 .map(|payment| payment.payment_id.clone()),
                             settlement_id: settlement_id.clone(),
+                            artanis_run_id: observed.entry.artanis_run_id.clone(),
+                            artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                            settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                             result_preview: Some(result_preview),
                             error_detail: Some(error_string.clone()),
                             feedback_event_ids: vec![processing_event.id.clone()],
@@ -1584,6 +1662,9 @@ async fn run_provider_request_collection(
                         .as_ref()
                         .map(|payment| payment.payment_id.clone()),
                     settlement_id: settlement_id.clone(),
+                    artanis_run_id: observed.entry.artanis_run_id.clone(),
+                    artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                    settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                     result_preview: Some(result_preview),
                     error_detail: None,
                     feedback_event_ids: vec![processing_event.id.clone()],
@@ -1628,6 +1709,9 @@ async fn run_provider_request_collection(
                         .as_ref()
                         .map(|payment| payment.payment_id.clone()),
                     settlement_id: settlement_id.clone(),
+                    artanis_run_id: observed.entry.artanis_run_id.clone(),
+                    artanis_assignment_id: observed.entry.artanis_assignment_id.clone(),
+                    settlement_intent_id: observed.entry.settlement_intent_id.clone(),
                     result_preview: None,
                     error_detail: Some(error_string.clone()),
                     feedback_event_ids: error_feedback
@@ -1728,6 +1812,15 @@ pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
         if let Some(settlement_id) = entry.settlement_id.as_deref() {
             lines.push(format!("settlement_id: {settlement_id}"));
         }
+        if let Some(artanis_run_id) = entry.artanis_run_id.as_deref() {
+            lines.push(format!("artanis_run_id: {artanis_run_id}"));
+        }
+        if let Some(artanis_assignment_id) = entry.artanis_assignment_id.as_deref() {
+            lines.push(format!("artanis_assignment_id: {artanis_assignment_id}"));
+        }
+        if let Some(settlement_intent_id) = entry.settlement_intent_id.as_deref() {
+            lines.push(format!("settlement_intent_id: {settlement_intent_id}"));
+        }
         if let Some(result_preview) = entry.result_preview.as_deref() {
             lines.push(format!("result_preview: {result_preview}"));
         }
@@ -1768,10 +1861,15 @@ pub async fn submit_buyer_job(
     let provider_pubkey = job_request.service_providers.first().cloned();
     let output_mime = job_request.output.clone();
     let pool = build_relay_pool(&config, &identity).await?;
+    let structured = structured_buyer_job_payload(&request)?;
+    let (artanis_run_id, artanis_assignment_id, settlement_intent_id) =
+        openagents_authority_ids_from_structured(structured.as_ref());
+    let mut template = create_job_request_event(&job_request);
+    add_openagents_authority_tags(&mut template, structured.as_ref());
     let event = publish_signed_event(
         &pool,
         &signer_key,
-        create_job_request_event(&job_request),
+        template,
         "buyer job request",
     )
     .await?;
@@ -1785,6 +1883,9 @@ pub async fn submit_buyer_job(
         model.as_deref(),
         provider_pubkey.as_deref(),
         job_request.bid,
+        artanis_run_id.as_deref(),
+        artanis_assignment_id.as_deref(),
+        settlement_intent_id.as_deref(),
     )?;
     Ok(BuyerJobSubmitReport {
         job_id: event.id.clone(),
@@ -1796,6 +1897,9 @@ pub async fn submit_buyer_job(
         bid_msats: job_request.bid,
         output_mime,
         prompt_preview,
+        artanis_run_id,
+        artanis_assignment_id,
+        settlement_intent_id,
         status: "submitted".to_string(),
         detail: Some("published retained kind:5050 request to configured relays".to_string()),
     })
@@ -1827,6 +1931,15 @@ pub fn render_buyer_job_submit_report(report: &BuyerJobSubmitReport) -> String {
     ];
     if let Some(prompt_preview) = report.prompt_preview.as_deref() {
         lines.push(format!("prompt_preview: {prompt_preview}"));
+    }
+    if let Some(artanis_run_id) = report.artanis_run_id.as_deref() {
+        lines.push(format!("artanis_run_id: {artanis_run_id}"));
+    }
+    if let Some(artanis_assignment_id) = report.artanis_assignment_id.as_deref() {
+        lines.push(format!("artanis_assignment_id: {artanis_assignment_id}"));
+    }
+    if let Some(settlement_intent_id) = report.settlement_intent_id.as_deref() {
+        lines.push(format!("settlement_intent_id: {settlement_intent_id}"));
     }
     if let Some(detail) = report.detail.as_deref() {
         lines.push(format!("detail: {detail}"));
@@ -2388,13 +2501,7 @@ fn build_buyer_job_request(
     config: &PylonConfig,
     request: &BuyerJobSubmitRequest,
 ) -> Result<JobRequest> {
-    let structured = match request.request_json.as_deref() {
-        Some(raw) => Some(
-            serde_json::from_str::<StructuredBuyerJobPayload>(raw)
-                .context("failed to parse buyer job structured payload")?,
-        ),
-        None => None,
-    };
+    let structured = structured_buyer_job_payload(request)?;
     if request.prompt.is_some() && structured.is_some() {
         bail!("buyer job submit accepts either prompt text or --request-json, not both");
     }
@@ -2489,6 +2596,19 @@ fn build_buyer_job_request(
         job_request = job_request.with_bid(bid_msats);
     }
     Ok(job_request)
+}
+
+fn structured_buyer_job_payload(
+    request: &BuyerJobSubmitRequest,
+) -> Result<Option<StructuredBuyerJobPayload>> {
+    request
+        .request_json
+        .as_deref()
+        .map(|raw| {
+            serde_json::from_str::<StructuredBuyerJobPayload>(raw)
+                .context("failed to parse buyer job structured payload")
+        })
+        .transpose()
 }
 
 fn tracked_buyer_request_ids(
@@ -2820,6 +2940,8 @@ fn classify_provider_request(
     spec: Option<&AnnouncementSpec>,
     event: &Event,
 ) -> ProviderIntakeEntry {
+    let (artanis_run_id, artanis_assignment_id, settlement_intent_id) =
+        openagents_authority_ids_from_event(event);
     let default = ProviderIntakeEntry {
         request_event_id: event.id.clone(),
         requester_pubkey: event.pubkey.clone(),
@@ -2830,6 +2952,9 @@ fn classify_provider_request(
         prompt_preview: None,
         model: None,
         bid_msats: None,
+        artanis_run_id: artanis_run_id.clone(),
+        artanis_assignment_id: artanis_assignment_id.clone(),
+        settlement_intent_id: settlement_intent_id.clone(),
     };
     let Ok(request) = JobRequest::from_event(event) else {
         return default;
@@ -2861,6 +2986,9 @@ fn classify_provider_request(
             prompt_preview,
             model,
             bid_msats: request.bid,
+            artanis_run_id,
+            artanis_assignment_id,
+            settlement_intent_id,
         };
     }
     if spec.is_none() {
@@ -2874,6 +3002,9 @@ fn classify_provider_request(
             prompt_preview,
             model,
             bid_msats: request.bid,
+            artanis_run_id,
+            artanis_assignment_id,
+            settlement_intent_id,
         };
     }
     ProviderIntakeEntry {
@@ -2886,7 +3017,109 @@ fn classify_provider_request(
         prompt_preview,
         model,
         bid_msats: request.bid,
+        artanis_run_id,
+        artanis_assignment_id,
+        settlement_intent_id,
     }
+}
+
+fn openagents_authority_ids_from_event(
+    event: &Event,
+) -> (Option<String>, Option<String>, Option<String>) {
+    (
+        openagents_authority_tag_value(event, "artanis_run_id"),
+        openagents_authority_tag_value(event, "artanis_assignment_id"),
+        openagents_authority_tag_value(event, "settlement_intent_id"),
+    )
+}
+
+fn openagents_authority_ids_from_structured(
+    structured: Option<&StructuredBuyerJobPayload>,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let Some(structured) = structured else {
+        return (None, None, None);
+    };
+    (
+        structured
+            .artanis_run_id
+            .as_deref()
+            .and_then(public_safe_openagents_authority_id),
+        structured
+            .artanis_assignment_id
+            .as_deref()
+            .and_then(public_safe_openagents_authority_id),
+        structured
+            .settlement_intent_id
+            .as_deref()
+            .and_then(public_safe_openagents_authority_id),
+    )
+}
+
+fn openagents_authority_tag_value(event: &Event, field: &str) -> Option<String> {
+    event.tags.iter().find_map(|tag| {
+        let key = tag.first()?;
+        if !openagents_authority_tag_key_matches(key, field) {
+            return None;
+        }
+        tag.get(1)
+            .and_then(|value| public_safe_openagents_authority_id(value))
+    })
+}
+
+fn openagents_authority_tag_key_matches(key: &str, field: &str) -> bool {
+    key == field
+        || key.strip_prefix("oa:") == Some(field)
+        || key.strip_prefix("openagents:") == Some(field)
+}
+
+fn public_safe_openagents_authority_id(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 160 {
+        return None;
+    }
+    if trimmed.chars().all(|character| {
+        character.is_ascii_alphanumeric()
+            || matches!(character, '.' | ':' | '_' | '-' | '/' | '#')
+    }) {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+fn add_openagents_authority_tags(
+    template: &mut nostr::nip01::EventTemplate,
+    structured: Option<&StructuredBuyerJobPayload>,
+) {
+    let Some(structured) = structured else {
+        return;
+    };
+    push_openagents_authority_tag(
+        template,
+        "oa:artanis_run_id",
+        structured.artanis_run_id.as_deref(),
+    );
+    push_openagents_authority_tag(
+        template,
+        "oa:artanis_assignment_id",
+        structured.artanis_assignment_id.as_deref(),
+    );
+    push_openagents_authority_tag(
+        template,
+        "oa:settlement_intent_id",
+        structured.settlement_intent_id.as_deref(),
+    );
+}
+
+fn push_openagents_authority_tag(
+    template: &mut nostr::nip01::EventTemplate,
+    tag_name: &str,
+    value: Option<&str>,
+) {
+    let Some(value) = value.and_then(public_safe_openagents_authority_id) else {
+        return;
+    };
+    template.tags.push(vec![tag_name.to_string(), value]);
 }
 
 fn spec_to_local_target(spec: &AnnouncementSpec) -> LocalGemmaChatTarget {
@@ -3016,6 +3249,7 @@ fn apply_provider_run_state(
     job.prompt.clone_from(&entry.prompt_preview);
     job.model.clone_from(&entry.model);
     job.bid_msats = entry.bid_msats;
+    apply_openagents_authority_ids_to_job(&mut job, entry);
     if let Some(amount_msats) = amount_msats {
         job.amount_msats = Some(amount_msats);
     }
@@ -3114,6 +3348,33 @@ fn apply_provider_run_state(
     }
 }
 
+fn apply_openagents_authority_ids_to_job(job: &mut PylonLedgerJob, entry: &ProviderIntakeEntry) {
+    if let Some(value) = entry.artanis_run_id.as_ref() {
+        job.artanis_run_id = Some(value.clone());
+    }
+    if let Some(value) = entry.artanis_assignment_id.as_ref() {
+        job.artanis_assignment_id = Some(value.clone());
+    }
+    if let Some(value) = entry.settlement_intent_id.as_ref() {
+        job.settlement_intent_id = Some(value.clone());
+    }
+}
+
+fn apply_openagents_authority_ids_to_settlement(
+    settlement: &mut PylonSettlementRecord,
+    entry: &ProviderIntakeEntry,
+) {
+    if let Some(value) = entry.artanis_run_id.as_ref() {
+        settlement.artanis_run_id = Some(value.clone());
+    }
+    if let Some(value) = entry.artanis_assignment_id.as_ref() {
+        settlement.artanis_assignment_id = Some(value.clone());
+    }
+    if let Some(value) = entry.settlement_intent_id.as_ref() {
+        settlement.settlement_intent_id = Some(value.clone());
+    }
+}
+
 fn persist_provider_run_state(
     config_path: &Path,
     provider_pubkey: &str,
@@ -3176,6 +3437,7 @@ fn record_provider_payment_received(
         settlement.amount_msats = amount_msats;
         settlement.payment_reference = Some(payment.payment_id.clone());
         settlement.receipt_detail = Some("invoice completed in local wallet".to_string());
+        apply_openagents_authority_ids_to_settlement(&mut settlement, entry);
         ledger.upsert_settlement(settlement);
         ledger.upsert_wallet_payment(payment.clone());
         if let Some(invoice) = payment.invoice.as_deref() {
@@ -3201,6 +3463,7 @@ fn record_provider_payment_received(
             updated_job.payment_id = Some(payment.payment_id.clone());
             updated_job.settlement_id = Some(settlement_id.clone());
             updated_job.status = "payment_settled".to_string();
+            apply_openagents_authority_ids_to_job(&mut updated_job, entry);
             ledger.upsert_job(updated_job);
         }
         ledger.push_relay_activity(PylonRelayActivity {
@@ -3252,6 +3515,7 @@ fn record_provider_settlement_outcome(
         settlement.amount_msats = amount_msats;
         settlement.payment_reference = Some(payment.payment_id.clone());
         settlement.receipt_detail = Some(detail.to_string());
+        apply_openagents_authority_ids_to_settlement(&mut settlement, entry);
         ledger.upsert_settlement(settlement);
         if let Some(job) = ledger
             .jobs
@@ -3262,6 +3526,7 @@ fn record_provider_settlement_outcome(
             let mut updated_job = job;
             updated_job.payment_id = Some(payment.payment_id.clone());
             updated_job.settlement_id = Some(settlement_id.clone());
+            apply_openagents_authority_ids_to_job(&mut updated_job, entry);
             if status.eq_ignore_ascii_case("settled") {
                 updated_job.status = "settled".to_string();
             }
@@ -3502,6 +3767,7 @@ fn persist_provider_intake(config_path: &Path, report: &ProviderIntakeReport) ->
             job.prompt = entry.prompt_preview.clone();
             job.model = entry.model.clone();
             job.bid_msats = entry.bid_msats;
+            apply_openagents_authority_ids_to_job(&mut job, entry);
             job.status = if entry.decision == "match" {
                 "observed_match".to_string()
             } else {
@@ -3543,6 +3809,9 @@ fn persist_buyer_job_submission(
     model: Option<&str>,
     provider_pubkey: Option<&str>,
     bid_msats: Option<u64>,
+    artanis_run_id: Option<&str>,
+    artanis_assignment_id: Option<&str>,
+    settlement_intent_id: Option<&str>,
 ) -> Result<()> {
     mutate_ledger(config_path, |ledger| {
         let mut job = PylonLedgerJob::new(
@@ -3565,6 +3834,9 @@ fn persist_buyer_job_submission(
         job.model = model.map(ToString::to_string);
         job.bid_msats = bid_msats;
         job.result_preview = prompt_preview.map(ToString::to_string);
+        job.artanis_run_id = artanis_run_id.map(ToString::to_string);
+        job.artanis_assignment_id = artanis_assignment_id.map(ToString::to_string);
+        job.settlement_intent_id = settlement_intent_id.map(ToString::to_string);
         job.error_detail = None;
         ledger.upsert_job(job);
         ledger.push_relay_activity(PylonRelayActivity {
@@ -3912,6 +4184,9 @@ mod provider_admission_tests {
             prompt_preview: Some("hello".to_string()),
             model: Some("gemma4:e4b".to_string()),
             bid_msats,
+            artanis_run_id: None,
+            artanis_assignment_id: None,
+            settlement_intent_id: None,
         }
     }
 

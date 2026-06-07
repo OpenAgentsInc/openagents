@@ -52859,7 +52859,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "model": "gemma4:json",
             "provider": "provider-json",
             "bid_msats": 12000,
-            "output": "text/plain"
+            "output": "text/plain",
+            "artanis_run_id": "artanis.bootstrap.pylon-launch.test",
+            "artanis_assignment_id": "assignment-json-001",
+            "settlement_intent_id": "settlement-intent-json-001"
         })
         .to_string();
         let report = submit_buyer_job(
@@ -52877,8 +52880,13 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ensure(
             report.model.as_deref() == Some("gemma4:json")
                 && report.provider_pubkey.as_deref() == Some("provider-json")
-                && report.output_mime.as_deref() == Some("text/plain"),
-            "structured buyer submit should surface JSON-derived fields",
+                && report.output_mime.as_deref() == Some("text/plain")
+                && report.artanis_run_id.as_deref()
+                    == Some("artanis.bootstrap.pylon-launch.test")
+                && report.artanis_assignment_id.as_deref() == Some("assignment-json-001")
+                && report.settlement_intent_id.as_deref()
+                    == Some("settlement-intent-json-001"),
+            "structured buyer submit should surface JSON-derived fields and Artanis authority ids",
         )?;
 
         let event = relay_server.await?;
@@ -52912,6 +52920,14 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 && has_tag(&["p", "provider-json"]),
             "structured buyer submit should publish output, bid, and provider tags",
         )?;
+        ensure(
+            has_tag(&[
+                "oa:artanis_run_id",
+                "artanis.bootstrap.pylon-launch.test",
+            ]) && has_tag(&["oa:artanis_assignment_id", "assignment-json-001"])
+                && has_tag(&["oa:settlement_intent_id", "settlement-intent-json-001"]),
+            "structured buyer submit should publish Artanis settlement authority tags",
+        )?;
 
         let ledger = load_ledger(config_path.as_path())?;
         let job = ledger
@@ -52922,8 +52938,13 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         ensure(
             job.prompt.as_deref() == Some(request_json.as_str())
                 && job.result_preview.as_deref() == Some("json prompt")
-                && job.model.as_deref() == Some("gemma4:json"),
-            "structured buyer submit should persist the raw JSON payload locally",
+                && job.model.as_deref() == Some("gemma4:json")
+                && job.artanis_run_id.as_deref()
+                    == Some("artanis.bootstrap.pylon-launch.test")
+                && job.artanis_assignment_id.as_deref() == Some("assignment-json-001")
+                && job.settlement_intent_id.as_deref()
+                    == Some("settlement-intent-json-001"),
+            "structured buyer submit should persist the raw JSON payload and authority ids locally",
         )?;
         Ok(())
     }
@@ -54362,7 +54383,10 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                         ["i", "paid run", "text"],
                         ["param", "model", "gemma4:e4b"],
                         ["bid", "24000"],
-                        ["p", provider_pubkey]
+                        ["p", provider_pubkey],
+                        ["oa:artanis_run_id", "artanis.bootstrap.pylon-launch.test"],
+                        ["oa:artanis_assignment_id", "assignment-run-pay-002"],
+                        ["oa:settlement_intent_id", "settlement-intent-run-pay-002"]
                     ],
                     "content": "",
                     "sig": "55".repeat(64)
@@ -54465,6 +54489,18 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             first_report.payment_required_count == 1 && first_report.completed_count == 0,
             "first provider run should stop at payment-required",
         )?;
+        ensure(
+            first_report.entries.iter().any(|entry| {
+                entry.request_event_id == "run-job-pay-002"
+                    && entry.status == "payment_required"
+                    && entry.artanis_run_id.as_deref()
+                        == Some("artanis.bootstrap.pylon-launch.test")
+                    && entry.artanis_assignment_id.as_deref() == Some("assignment-run-pay-002")
+                    && entry.settlement_intent_id.as_deref()
+                        == Some("settlement-intent-run-pay-002")
+            }),
+            "first provider run should surface Artanis authority ids while waiting for payment",
+        )?;
 
         super::nip90_runtime::set_test_wallet_payments_hook(Some(Box::new(|| {
             Ok(vec![PylonWalletPaymentRecord {
@@ -54497,6 +54533,11 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     && entry.status == "settled"
                     && entry.payment_id.as_deref() == Some("payment-recv-001")
                     && entry.settlement_id.is_some()
+                    && entry.artanis_run_id.as_deref()
+                        == Some("artanis.bootstrap.pylon-launch.test")
+                    && entry.artanis_assignment_id.as_deref() == Some("assignment-run-pay-002")
+                    && entry.settlement_intent_id.as_deref()
+                        == Some("settlement-intent-run-pay-002")
                     && entry
                         .result_preview
                         .as_deref()
@@ -54516,8 +54557,28 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             job.status == "settled"
                 && job.payment_id.as_deref() == Some("payment-recv-001")
                 && job.settlement_id.is_some()
-                && job.result_event_id.is_some(),
-            "ledger should persist settled provider job state",
+                && job.result_event_id.is_some()
+                && job.artanis_run_id.as_deref()
+                    == Some("artanis.bootstrap.pylon-launch.test")
+                && job.artanis_assignment_id.as_deref() == Some("assignment-run-pay-002")
+                && job.settlement_intent_id.as_deref()
+                    == Some("settlement-intent-run-pay-002"),
+            "ledger should persist settled provider job state and Artanis authority ids",
+        )?;
+
+        let settlement = ledger
+            .settlements
+            .iter()
+            .find(|settlement| settlement.job_id == "run-job-pay-002")
+            .ok_or_else(|| std::io::Error::other("missing settled provider settlement"))?;
+        ensure(
+            settlement.status == "settled"
+                && settlement.artanis_run_id.as_deref()
+                    == Some("artanis.bootstrap.pylon-launch.test")
+                && settlement.artanis_assignment_id.as_deref() == Some("assignment-run-pay-002")
+                && settlement.settlement_intent_id.as_deref()
+                    == Some("settlement-intent-run-pay-002"),
+            "ledger should persist settled provider settlement authority ids",
         )?;
 
         let jobs_report = load_jobs_report(config_path.as_path(), Some(4)).await?;
@@ -54527,8 +54588,13 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                     && job.status == "settled"
                     && job.payout_sats == 21
                     && job.payment_pointer == "payment-recv-001"
+                    && job.artanis_run_id.as_deref()
+                        == Some("artanis.bootstrap.pylon-launch.test")
+                    && job.artanis_assignment_id.as_deref() == Some("assignment-run-pay-002")
+                    && job.settlement_intent_id.as_deref()
+                        == Some("settlement-intent-run-pay-002")
             }),
-            "jobs report should include the retained settled provider job",
+            "jobs report should include the retained Artanis-linked settled provider job",
         )?;
 
         let earnings_report = load_earnings_report(config_path.as_path()).await?;
@@ -54547,8 +54613,14 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 receipt.work_unit_id.as_deref() == Some("run-job-pay-002")
                     && receipt.reason_code.as_deref() == Some("SETTLED")
                     && receipt.notional_sats == Some(21)
+                    && receipt.artanis_run_id.as_deref()
+                        == Some("artanis.bootstrap.pylon-launch.test")
+                    && receipt.artanis_assignment_id.as_deref()
+                        == Some("assignment-run-pay-002")
+                    && receipt.settlement_intent_id.as_deref()
+                        == Some("settlement-intent-run-pay-002")
             }),
-            "receipts report should include the retained settlement receipt",
+            "receipts report should include the retained Artanis-linked settlement receipt",
         )?;
 
         let (first_published, second_published) = relay_server.await?;
