@@ -140,6 +140,8 @@ const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
 const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
 const TREASURY_RETIRED_UNPAYABLE_PAYOUT_REASON: &str = "retired_unpayable_non_ldk_payout_record";
+const TREASURY_RETIRED_UNTRACKABLE_LDK_PAYOUT_REASON: &str =
+    "retired_untrackable_legacy_ldk_payout_record";
 const TREASURY_UNSUPPORTED_LDK_PAYMENT_TARGET_KIND_REASON: &str =
     "unsupported_ldk_payment_target_kind";
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
@@ -2773,6 +2775,32 @@ fn payout_record_has_ldk_target(record: &TreasuryPayoutRecord) -> bool {
     payout_rail_for_payment_request(record.payout_target.as_str()) == "ldk"
 }
 
+fn ldk_provider_payment_id_is_queryable(payment_id: &str) -> bool {
+    payment_id.len() == 64 && payment_id.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn payout_record_has_unqueryable_ldk_payment_id(record: &TreasuryPayoutRecord) -> bool {
+    payout_record_has_ldk_target(record)
+        && record
+            .payment_id
+            .as_deref()
+            .is_some_and(|payment_id| !ldk_provider_payment_id_is_queryable(payment_id))
+}
+
+fn payout_record_should_retire_untrackable_ldk(
+    record: &TreasuryPayoutRecord,
+    now_unix_ms: u64,
+) -> bool {
+    matches!(
+        record.status.as_str(),
+        "queued" | "dispatching" | "dispatched" | "failed"
+    ) && payout_record_has_unqueryable_ldk_payment_id(record)
+        && record
+            .updated_at_unix_ms
+            .saturating_add(TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS)
+            <= now_unix_ms
+}
+
 fn payout_record_reason_contains(record: &TreasuryPayoutRecord, needle: &str) -> bool {
     record
         .reason
@@ -2783,6 +2811,7 @@ fn payout_record_reason_contains(record: &TreasuryPayoutRecord, needle: &str) ->
 fn payout_record_is_retired_historical(record: &TreasuryPayoutRecord) -> bool {
     record.status == "failed"
         && (record.reason.as_deref() == Some(TREASURY_RETIRED_UNPAYABLE_PAYOUT_REASON)
+            || record.reason.as_deref() == Some(TREASURY_RETIRED_UNTRACKABLE_LDK_PAYOUT_REASON)
             || (!payout_record_has_ldk_target(record)
                 && payout_record_reason_contains(
                     record,
@@ -2790,16 +2819,33 @@ fn payout_record_is_retired_historical(record: &TreasuryPayoutRecord) -> bool {
                 )))
 }
 
-fn payout_record_should_be_retired_as_historical(record: &TreasuryPayoutRecord) -> bool {
-    matches!(
+fn payout_record_should_be_retired_as_historical(
+    record: &TreasuryPayoutRecord,
+    now_unix_ms: u64,
+) -> bool {
+    (matches!(
         record.status.as_str(),
         "queued" | "dispatching" | "dispatched" | "failed"
-    ) && !payout_record_has_ldk_target(record)
+    ) && !payout_record_has_ldk_target(record))
+        || payout_record_should_retire_untrackable_ldk(record, now_unix_ms)
+}
+
+fn payout_record_retirement_reason(record: &TreasuryPayoutRecord) -> &'static str {
+    if payout_record_has_unqueryable_ldk_payment_id(record) {
+        TREASURY_RETIRED_UNTRACKABLE_LDK_PAYOUT_REASON
+    } else {
+        TREASURY_RETIRED_UNPAYABLE_PAYOUT_REASON
+    }
 }
 
 fn payout_record_cleanup_disposition(record: &TreasuryPayoutRecord) -> &'static str {
     match record.status.as_str() {
         "confirmed" => "settled",
+        "queued" | "dispatching" | "dispatched"
+            if payout_record_has_unqueryable_ldk_payment_id(record) =>
+        {
+            "untrackable_ldk_pending"
+        }
         "queued" | "dispatching" | "dispatched" if payout_record_has_ldk_target(record) => {
             "current_ldk_pending"
         }
@@ -4525,7 +4571,7 @@ impl TreasuryState {
         let payout_keys = self
             .payout_records_by_key
             .values()
-            .filter(|record| payout_record_should_be_retired_as_historical(record))
+            .filter(|record| payout_record_should_be_retired_as_historical(record, now_unix_ms))
             .map(|record| record.payout_key.clone())
             .collect::<Vec<_>>();
         self.retire_unpayable_payout_keys(payout_keys, now_unix_ms)
@@ -4536,14 +4582,14 @@ impl TreasuryState {
         payout_keys: Vec<String>,
         now_unix_ms: u64,
     ) -> (bool, Vec<TreasuryPayoutLedgerCleanupRetiredRecord>) {
-        let reason = TREASURY_RETIRED_UNPAYABLE_PAYOUT_REASON.to_string();
         let mut changed = false;
         let mut retired_records = Vec::new();
         for payout_key in payout_keys {
-            let (provider_payment_id, retired_record) = {
+            let (provider_payment_id, retired_record, reason) = {
                 let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
                     continue;
                 };
+                let reason = payout_record_retirement_reason(record).to_string();
                 let retired_record = TreasuryPayoutLedgerCleanupRetiredRecord {
                     payout_key: record.payout_key.clone(),
                     previous_status: record.status.clone(),
@@ -4579,7 +4625,7 @@ impl TreasuryState {
                     record.updated_at_unix_ms = now_unix_ms;
                 }
                 changed |= record_changed;
-                (provider_payment_id, retired_record)
+                (provider_payment_id, retired_record, reason)
             };
             retired_records.push(retired_record);
             changed |= self.update_payout_operation_status(
@@ -6621,7 +6667,7 @@ impl TreasuryState {
             let records = self
                 .payout_records_by_key
                 .values()
-                .filter(|record| payout_record_should_be_retired_as_historical(record))
+                .filter(|record| payout_record_should_be_retired_as_historical(record, now_unix_ms))
                 .map(|record| TreasuryPayoutLedgerCleanupRetiredRecord {
                     payout_key: record.payout_key.clone(),
                     previous_status: record.status.clone(),
@@ -11567,6 +11613,100 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn cleanup_retires_stale_unqueryable_ldk_dispatched_records() {
+        let mut state = TreasuryState::default();
+        let payout_key = "accepted_work:legacy-ldk-synthetic-payment-id:pubkey-a";
+        let now = 1_800_000_000_000u64;
+        let mut record = test_payout_record(payout_key, "dispatched");
+        record.payout_target = "lno1pylonlegacytarget".to_string();
+        record.payment_id = Some("ldk-payment-legacy-synthetic".to_string());
+        record.updated_at_unix_ms =
+            now.saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 1);
+        record.classification = TreasuryPayoutClassification {
+            payout_class: TreasuryPayoutClass::AcceptedWork,
+            payout_basis: Some("validator_verdict".to_string()),
+            ..TreasuryPayoutClassification::default()
+        };
+        state
+            .payout_records_by_key
+            .insert(payout_key.to_string(), record);
+
+        let report = state.payout_ledger_cleanup_report(true, now);
+
+        assert!(report.changed);
+        assert_eq!(report.records_retired.len(), 1);
+        assert_eq!(report.before_summary.accepted_work_pending_payout_count, 1);
+        assert_eq!(report.after_summary.accepted_work_pending_payout_count, 0);
+        assert_eq!(
+            report
+                .before_disposition_counts
+                .get("untrackable_ldk_pending"),
+            Some(&1)
+        );
+        let retired = state
+            .payout_records_by_key
+            .get(payout_key)
+            .expect("retired synthetic ldk record");
+        assert_eq!(retired.status, "failed");
+        assert_eq!(
+            retired.reason.as_deref(),
+            Some("retired_untrackable_legacy_ldk_payout_record")
+        );
+        assert!(retired.fail_receipt_recorded);
+        assert_eq!(
+            super::treasury_payout_reconciliation_status(retired),
+            "retired_historical"
+        );
+    }
+
+    #[test]
+    fn cleanup_preserves_fresh_or_queryable_ldk_dispatched_records() {
+        let mut state = TreasuryState::default();
+        let now = 1_800_000_000_000u64;
+
+        let fresh_key = "accepted_work:fresh-synthetic-ldk:pubkey-a";
+        let mut fresh = test_payout_record(fresh_key, "dispatched");
+        fresh.payout_target = "lno1pylonfreshsynthetic".to_string();
+        fresh.payment_id = Some("ldk-payment-fresh-synthetic".to_string());
+        fresh.updated_at_unix_ms =
+            now.saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS - 1);
+        state
+            .payout_records_by_key
+            .insert(fresh_key.to_string(), fresh);
+
+        let queryable_key = "accepted_work:queryable-ldk:pubkey-a";
+        let mut queryable = test_payout_record(queryable_key, "dispatched");
+        queryable.payout_target = "lno1pylonqueryable".to_string();
+        queryable.payment_id = Some("a".repeat(64));
+        queryable.updated_at_unix_ms =
+            now.saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 1);
+        state
+            .payout_records_by_key
+            .insert(queryable_key.to_string(), queryable);
+
+        let report = state.payout_ledger_cleanup_report(true, now);
+
+        assert!(!report.changed);
+        assert!(report.records_retired.is_empty());
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get(fresh_key)
+                .expect("fresh synthetic record")
+                .status,
+            "dispatched"
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get(queryable_key)
+                .expect("queryable ldk record")
+                .status,
+            "dispatched"
+        );
     }
 
     #[test]
