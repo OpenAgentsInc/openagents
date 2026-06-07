@@ -32,6 +32,8 @@ NEXUS_BASE="${OA_NEXUS_BASE:-https://nexus.openagents.com}"
 
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 RECEIPT_PATH="${ARTIFACTS_DIR}/ldk-accepted-work-smoke-${TIMESTAMP}.json"
+RAW_STDOUT_PATH="${ARTIFACTS_DIR}/ldk-accepted-work-smoke-${TIMESTAMP}.stdout"
+LOG_PATH="${ARTIFACTS_DIR}/ldk-accepted-work-smoke-${TIMESTAMP}.log"
 
 cd "${REPO_ROOT}"
 
@@ -55,31 +57,75 @@ echo "=== Nexus/Pylon LDK accepted-work proof smoke ==="
 echo "Lane:    ${LANE}"
 echo "Timeout: ${TIMEOUT}s"
 echo "Receipt: ${RECEIPT_PATH}"
+echo "Log:     ${LOG_PATH}"
 echo ""
 
 PROOF_ARGS=(
   proof run
-  --lane "${LANE}"
-  --timeout "${TIMEOUT}"
+  "${LANE}"
+  --timeout-seconds "${TIMEOUT}"
   --json
 )
 if [[ -n "${OA_PROOF_NAMESPACE:-}" ]]; then
   PROOF_ARGS+=(--namespace "${OA_PROOF_NAMESPACE}")
 fi
 
-if ! "${OA_BIN}" "${PROOF_ARGS[@]}" >"${RECEIPT_PATH}" 2>&1; then
-  echo ""
-  echo "FAIL: proof run exited non-zero"
-  echo "Receipt:        ${RECEIPT_PATH}"
-  echo "Nexus stats:    ${NEXUS_BASE}/api/stats"
-  echo "Treasury:       ${NEXUS_BASE}/v1/treasury/status"
-  exit 1
-fi
-
 if ! command -v jq &>/dev/null; then
+  if ! "${OA_BIN}" "${PROOF_ARGS[@]}" >"${RECEIPT_PATH}" 2>"${LOG_PATH}"; then
+    echo ""
+    echo "FAIL: proof run exited non-zero"
+    echo "Receipt:     ${RECEIPT_PATH}"
+    echo "Log:         ${LOG_PATH}"
+    echo "Nexus stats: ${NEXUS_BASE}/api/stats"
+    echo "Treasury:    ${NEXUS_BASE}/v1/treasury/status"
+    exit 1
+  fi
   echo "PASS: proof run completed (install jq for structured validation)"
   echo "Receipt: ${RECEIPT_PATH}"
+  echo "Log:     ${LOG_PATH}"
   exit 0
+fi
+
+set +e
+"${OA_BIN}" "${PROOF_ARGS[@]}" >"${RAW_STDOUT_PATH}" 2>"${LOG_PATH}"
+PROOF_EXIT=$?
+set -e
+
+if jq -e . "${RAW_STDOUT_PATH}" >/dev/null 2>&1; then
+  mv "${RAW_STDOUT_PATH}" "${RECEIPT_PATH}"
+else
+  STDOUT_TAIL="$(tail -40 "${RAW_STDOUT_PATH}" 2>/dev/null || true)"
+  STDERR_TAIL="$(tail -40 "${LOG_PATH}" 2>/dev/null || true)"
+  jq -n \
+    --arg status "failed" \
+    --arg lane "${LANE}" \
+    --arg detail "proof command did not emit valid JSON stdout" \
+    --arg blocker_id "proof_command_no_json_stdout" \
+    --argjson command_exit_code "${PROOF_EXIT}" \
+    --arg raw_stdout_path "${RAW_STDOUT_PATH}" \
+    --arg stderr_log_path "${LOG_PATH}" \
+    --arg stdout_tail "${STDOUT_TAIL}" \
+    --arg stderr_tail "${STDERR_TAIL}" \
+    '{
+      status: $status,
+      lane: $lane,
+      detail: $detail,
+      blocker_id: $blocker_id,
+      command_exit_code: $command_exit_code,
+      raw_stdout_path: $raw_stdout_path,
+      stderr_log_path: $stderr_log_path,
+      stdout_tail: $stdout_tail,
+      stderr_tail: $stderr_tail
+    }' >"${RECEIPT_PATH}"
+fi
+
+if [[ "${PROOF_EXIT}" -ne 0 ]]; then
+  echo ""
+  echo "FAIL: proof run exited non-zero"
+  echo "Receipt:     ${RECEIPT_PATH}"
+  echo "Log:         ${LOG_PATH}"
+  echo "Nexus stats: ${NEXUS_BASE}/api/stats"
+  echo "Treasury:    ${NEXUS_BASE}/v1/treasury/status"
 fi
 
 STATUS="$(jq -r '.status // "unknown"' "${RECEIPT_PATH}")"
@@ -99,6 +145,7 @@ if [[ "${STATUS}" != "completed" ]]; then
   echo ""
   echo "FAIL: proof did not complete (status=${STATUS}, blocker=${BLOCKER})"
   echo "Receipt:     ${RECEIPT_PATH}"
+  echo "Log:         ${LOG_PATH}"
   echo "Nexus stats: ${NEXUS_BASE}/api/stats"
   echo "Treasury:    ${NEXUS_BASE}/v1/treasury/status"
   if [[ "${RUN_ID}" != "none" ]]; then

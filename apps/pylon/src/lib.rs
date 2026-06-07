@@ -12454,13 +12454,16 @@ fn training_coordination_retry_delay(attempt: usize) -> Duration {
 
 #[cfg(test)]
 mod training_coordination_retry_delay_tests {
-    use super::{training_coordination_retry_delay, DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS};
+    use super::{
+        DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS, training_coordination_retry_delay,
+    };
 
     #[test]
     fn retry_delay_stays_within_equal_jitter_bounds() {
         for attempt in 0..8 {
             let multiplier = 1_u64 << u32::try_from(attempt).unwrap_or(0);
-            let target = DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS.saturating_mul(multiplier);
+            let target =
+                DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS.saturating_mul(multiplier);
             for _ in 0..256 {
                 let delay = u64::try_from(training_coordination_retry_delay(attempt).as_millis())
                     .expect("retry delay fits in u64");
@@ -19139,9 +19142,7 @@ fn maybe_retire_released_terminal_worker_runtime(
     let Some(progress) = state.closeout_progress.get(active.assignment_id.as_str()) else {
         return false;
     };
-    if progress.stage != PylonTrainingCloseoutStage::TerminalFailed
-        && progress.stage.ordinal() < PylonTrainingCloseoutStage::WindowSealed.ordinal()
-    {
+    if !training_closeout_progress_allows_worker_release(progress) {
         return false;
     }
     if state
@@ -19153,6 +19154,13 @@ fn maybe_retire_released_terminal_worker_runtime(
         return true;
     }
     false
+}
+
+fn training_closeout_progress_allows_worker_release(
+    progress: &PylonTrainingCloseoutProgressEntry,
+) -> bool {
+    progress.stage == PylonTrainingCloseoutStage::TerminalFailed
+        || progress.stage.ordinal() >= PylonTrainingCloseoutStage::ReconcileObserved.ordinal()
 }
 
 async fn maybe_finalize_training_terminal_validator_challenge(
@@ -20320,6 +20328,10 @@ async fn report_training_terminal_runtime_to_authority(
             observe_training_terminal_closeout_state(state, active, context, &client).await?;
     }
 
+    let closeout_observed_for_release = state
+        .closeout_progress
+        .get(active.assignment_id.as_str())
+        .is_some_and(training_closeout_progress_allows_worker_release);
     let target_lease_state = if training_authority_receipt_is_recorded(
         state,
         training_authority_receipt_key("failure_notice", active.assignment_id.as_str()).as_str(),
@@ -20340,6 +20352,7 @@ async fn report_training_terminal_runtime_to_authority(
                 .as_str(),
             )
         })
+        && closeout_observed_for_release
     {
         Some("released")
     } else if active.process_state == PylonTrainingSupervisorProcessState::Stopped
@@ -20348,6 +20361,9 @@ async fn report_training_terminal_runtime_to_authority(
             PylonTrainingSupervisorDesiredState::Draining
                 | PylonTrainingSupervisorDesiredState::Stopped
         )
+        && (active.role != PylonTrainingRoleClaim::Worker
+            || !training_run_completed_successfully(active, run_status.as_ref())
+            || closeout_observed_for_release)
     {
         Some("drained")
     } else {
@@ -31575,8 +31591,12 @@ fn derive_adapter_training_contributor_availability(
     }
 }
 
+fn training_host_telemetry_cache_key(config: &PylonConfig) -> &Path {
+    config.admin_db_path.as_path()
+}
+
 fn load_training_host_telemetry(config: &PylonConfig) -> ProviderHostTelemetrySnapshot {
-    collect_provider_host_telemetry(config.training.run_root.as_path())
+    load_cached_provider_host_telemetry(training_host_telemetry_cache_key(config))
 }
 
 fn training_capability_backend_families(host: &ProviderHostTelemetrySnapshot) -> Vec<String> {
@@ -32662,11 +32682,12 @@ mod tests {
         sync_training_authority_state, sync_training_terminal_runtime_once,
         training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
         training_assignment_intake_interval, training_download_cache_root,
-        training_lease_claim_error_is_nonfatal, training_raw_sha256_hex,
-        training_retained_assignment_authority_error_is_stale, training_run_root_for_id,
-        training_runs_root, training_runtime_manifest_path_for_run, training_runtime_state_path,
-        training_settlement_destination, training_supervisor_pid_is_running,
-        training_validator_challenge_path_segment, training_validator_challenge_root,
+        training_host_telemetry_cache_key, training_lease_claim_error_is_nonfatal,
+        training_raw_sha256_hex, training_retained_assignment_authority_error_is_stale,
+        training_run_root_for_id, training_runs_root, training_runtime_manifest_path_for_run,
+        training_runtime_state_path, training_settlement_destination,
+        training_supervisor_pid_is_running, training_validator_challenge_path_segment,
+        training_validator_challenge_root,
         training_validator_materialization_error_is_terminalizable, watch_buyer_jobs,
         write_training_json_value,
     };
@@ -33157,7 +33178,7 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
     }
 
     #[test]
-    fn released_sealed_worker_runtime_retires_for_validator_followup()
+    fn released_sealed_worker_runtime_stays_active_until_closeout_observed()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut active = training_active_runtime_fixture();
         active.process_state = PylonTrainingSupervisorProcessState::Stopped;
@@ -33213,9 +33234,65 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
         );
 
         ensure(
+            !maybe_retire_released_terminal_worker_runtime(&mut state, &active)
+                && state.active_runtime.is_some(),
+            "a released terminal worker must keep active_runtime after window_sealed so it can observe scored/reconciled closeout",
+        )?;
+
+        let _ = super::record_training_closeout_progress_stage(
+            &mut state,
+            active.assignment_id.as_str(),
+            active.training_run_id.as_str(),
+            active.window_id.as_str(),
+            PylonTrainingRoleClaim::Worker,
+            super::PylonTrainingCloseoutStage::ReconcileObserved,
+            None,
+            Some("checkpoint://run.alpha/0001".to_string()),
+            Some("reconciled".to_string()),
+            None,
+            None,
+            None,
+        );
+
+        ensure(
             maybe_retire_released_terminal_worker_runtime(&mut state, &active)
                 && state.active_runtime.is_none(),
-            "a released terminal worker should clear active_runtime so validator intake can proceed",
+            "a released terminal worker may retire after reconcile_observed",
+        )
+    }
+
+    #[test]
+    fn worker_release_waits_for_reconcile_observed_closeout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut entry = super::PylonTrainingCloseoutProgressEntry {
+            assignment_id: "assign.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+            stage: super::PylonTrainingCloseoutStage::WindowSealed,
+            challenge_id: None,
+            contribution_id: Some("contrib.alpha".to_string()),
+            checkpoint_ref: Some("checkpoint://alpha".to_string()),
+            authority_assignment_state: Some("active".to_string()),
+            authority_window_state: Some("sealed".to_string()),
+            acceptance_state: Some("sealed".to_string()),
+            accepted_outcome_id: None,
+            payout_state: None,
+            payout_id: None,
+            payout_receipt_id: None,
+            payout_reconciliation_status: None,
+            last_error: None,
+            updated_at_ms: now_epoch_ms(),
+        };
+
+        ensure(
+            !super::training_closeout_progress_allows_worker_release(&entry),
+            "window_sealed is not sufficient to release a worker for the next assignment",
+        )?;
+        entry.stage = super::PylonTrainingCloseoutStage::ReconcileObserved;
+        ensure(
+            super::training_closeout_progress_allows_worker_release(&entry),
+            "reconcile_observed is sufficient to release a worker after closeout handoff",
         )
     }
 
@@ -35372,6 +35449,22 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
                 .inventory_controls
                 .adapter_training_contributor_enabled,
             "default pylon config should advertise the training contributor inventory by default",
+        )
+    }
+
+    #[test]
+    fn training_host_telemetry_uses_provider_admin_context()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config = default_config(temp_dir.path());
+
+        ensure(
+            training_host_telemetry_cache_key(&config) == config.admin_db_path.as_path(),
+            "training intake should use the same provider-admin host telemetry context as published provider capability, not the per-run training directory",
+        )?;
+        ensure(
+            training_host_telemetry_cache_key(&config) != config.training.run_root.as_path(),
+            "training intake should not derive host capability from the mutable run-root path",
         )
     }
 

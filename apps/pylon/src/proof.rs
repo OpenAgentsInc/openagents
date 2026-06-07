@@ -5490,6 +5490,10 @@ fn authority_environment(
             layout.kernel_state_path.display().to_string(),
         ),
         (
+            "NEXUS_CONTROL_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED".to_string(),
+            "true".to_string(),
+        ),
+        (
             "NEXUS_CONTROL_LISTEN_ADDR".to_string(),
             format!("127.0.0.1:{authority_base_port}"),
         ),
@@ -6584,6 +6588,11 @@ mod tests {
             env.get("NEXUS_RELAY_UPSTREAM_LISTEN_ADDR")
                 .map(String::as_str),
             Some("127.0.0.1:41001")
+        );
+        assert_eq!(
+            env.get("NEXUS_CONTROL_CS336_HOMEWORK_LEASE_AUTO_LAUNCH_ENABLED")
+                .map(String::as_str),
+            Some("true")
         );
         Ok(())
     }
