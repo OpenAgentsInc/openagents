@@ -167,13 +167,14 @@ pub use wallet_harness::{
     pylon_ldk_wallet_harness_plan,
 };
 pub use wallet_runtime::{
-    PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletAddressReport,
-    WalletBackupExportReport, WalletBackupInspectReport, WalletBackupPublicManifest,
-    WalletBalanceSnapshot, WalletChannelsReport, WalletCreditSummaryReport, WalletEntropyReport,
-    WalletHistoryReport, WalletInvoiceReport, WalletLdkNodeStatus, WalletLightningReadiness,
-    WalletLockOwner, WalletLockReport, WalletNodeEntropyMetadata, WalletOfferReport,
-    WalletPayReport, WalletRestoreReport, WalletRuntimeSurface, WalletStatusReport,
-    WalletStorageLayoutReport, WalletSubcommand, WalletTelemetryReport, clear_wallet_lock_report,
+    PylonWalletChannelRecord, PylonWalletLiquidityProviderKind, PylonWalletRuntime,
+    PylonWalletRuntimeKind, WalletAddressReport, WalletBackupExportReport,
+    WalletBackupInspectReport, WalletBackupPublicManifest, WalletBalanceSnapshot,
+    WalletChannelsReport, WalletCreditSummaryReport, WalletEntropyReport, WalletHistoryReport,
+    WalletInvoiceReport, WalletLdkNodeStatus, WalletLightningReadiness, WalletLockOwner,
+    WalletLockReport, WalletNodeEntropyMetadata, WalletOfferReport, WalletPayReport,
+    WalletRestoreReport, WalletRuntimeSurface, WalletStatusReport, WalletStorageLayoutReport,
+    WalletSubcommand, WalletTelemetryReport, clear_wallet_lock_report,
     create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
     export_wallet_backup_report, export_wallet_entropy_report, import_wallet_entropy_report,
     inspect_wallet_backup_report, inspect_wallet_lock_report, load_wallet_balance_status_report,
@@ -9557,7 +9558,7 @@ pub fn usage() -> &'static str {
 	Bare interactive `pylon` opens the terminal UI, which starts and supervises the earning worker.\n\
 	Noninteractive `pylon` and `pylon --config-path <path>` run the worker loop directly.\n\
 	Use `pylon-tui` or `pylon tui` to open the terminal UI explicitly.\n\
-	Default paid-work setup uses the built-in LDK wallet; start with `wallet status --json`, `wallet channels --json`, and `wallet backup export`.\n\
+	Default paid-work setup uses the wrapped MoneyDevKit agent wallet; start with `wallet status --json`, `wallet balance --json`, and `wallet history --json`.\n\
 	Advanced migration only: `config set external_payout_target <lightning_target>` overrides wallet-generated Nexus registration.\n\
 	Use the commands below for explicit provider control and inspection.\n\
 From this repo, run them with `cargo pylon-headless <command>`, the `pylon` binary directly, or the `oa` binary for proof-runtime commands.\n\
@@ -10914,14 +10915,17 @@ pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
 async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
     let config = ensure_local_setup(config_path)?;
     if training_settlement_destination(&config).is_none()
-        && config.wallet_runtime_kind != PylonWalletRuntimeKind::LdkNode
+        && !matches!(
+            config.wallet_runtime_kind,
+            PylonWalletRuntimeKind::LdkNode | PylonWalletRuntimeKind::MoneyDevKit
+        )
     {
         eprintln!(
-            "pylon: no wallet-owned registration target is available; use wallet_runtime_kind=ldk_node or set external_payout_target only as an advanced migration override"
+            "pylon: no wallet-owned registration target is available; use wallet_runtime_kind=moneydevkit or wallet_runtime_kind=ldk_node, or set external_payout_target only as an advanced migration override"
         );
     } else if configured_external_payout_target(&config).is_some() {
         eprintln!(
-            "pylon: using advanced external_payout_target override; built-in LDK wallet registration is the default for new nodes"
+            "pylon: using advanced external_payout_target override; built-in MoneyDevKit wallet registration is the default for new nodes"
         );
     }
     let status = apply_control_locally(&config, ProviderControlAction::Online).await?;
@@ -23546,7 +23550,7 @@ fn default_wallet_network() -> String {
 }
 
 const fn default_wallet_runtime_kind() -> PylonWalletRuntimeKind {
-    PylonWalletRuntimeKind::LdkNode
+    PylonWalletRuntimeKind::MoneyDevKit
 }
 
 fn default_wallet_api_key_env() -> Option<String> {
@@ -24639,7 +24643,7 @@ fn configured_external_payout_target(config: &PylonConfig) -> Option<String> {
 
 fn external_payout_target_warning(config: &PylonConfig) -> Option<String> {
     configured_external_payout_target(config).map(|_| {
-        "advanced_external_payout_target_override: built-in LDK wallet registration remains the default for new Pylon nodes"
+        "advanced_external_payout_target_override: MoneyDevKit wallet registration remains the default for new Pylon nodes"
             .to_string()
     })
 }
@@ -27758,14 +27762,21 @@ async fn build_provider_wallet_registration_target_with_options(
     }
 
     let status = load_wallet_status_report(config_path).await?;
-    if status.runtime.runtime_kind != PylonWalletRuntimeKind::LdkNode {
+    if !matches!(
+        status.runtime.runtime_kind,
+        PylonWalletRuntimeKind::LdkNode | PylonWalletRuntimeKind::MoneyDevKit
+    ) {
         bail!(
-            "wallet-generated payout-target registration requires wallet_runtime_kind=ldk_node or an explicit external_payout_target override"
+            "wallet-generated payout-target registration requires wallet_runtime_kind=moneydevkit or wallet_runtime_kind=ldk_node, or an explicit external_payout_target override"
         );
     }
-    let ldk_node = status.ldk_node.as_ref().ok_or_else(|| {
-        anyhow!("wallet-generated payout-target registration requires ldk_node status")
-    })?;
+    let ldk_node = if status.runtime.runtime_kind == PylonWalletRuntimeKind::LdkNode {
+        Some(status.ldk_node.as_ref().ok_or_else(|| {
+            anyhow!("wallet-generated payout-target registration requires ldk_node status")
+        })?)
+    } else {
+        None
+    };
     if !force_bolt11_fallback {
         match create_wallet_offer_report(
             config_path,
@@ -27781,7 +27792,11 @@ async fn build_provider_wallet_registration_target_with_options(
                     "bolt12_offer",
                     &report.runtime,
                     ldk_node,
-                    "wallet_generated",
+                    if report.runtime.runtime_kind == PylonWalletRuntimeKind::MoneyDevKit {
+                        "moneydevkit_wallet_generated"
+                    } else {
+                        "wallet_generated"
+                    },
                 )?;
                 persist_wallet_last_registration(config, &target)?;
                 return Ok(target);
@@ -27809,7 +27824,11 @@ async fn build_provider_wallet_registration_target_with_options(
         "bolt11_invoice",
         &report.runtime,
         ldk_node,
-        "wallet_generated_bolt11_fallback",
+        if report.runtime.runtime_kind == PylonWalletRuntimeKind::MoneyDevKit {
+            "moneydevkit_wallet_generated_bolt11_fallback"
+        } else {
+            "wallet_generated_bolt11_fallback"
+        },
     )?;
     persist_wallet_last_registration(config, &target)?;
     Ok(target)
@@ -27819,7 +27838,7 @@ fn provider_wallet_registration_target_from_parts(
     payment_target: String,
     expected_kind: &str,
     runtime: &WalletRuntimeSurface,
-    ldk_node: &WalletLdkNodeStatus,
+    ldk_node: Option<&WalletLdkNodeStatus>,
     registration_mode: &str,
 ) -> Result<ProviderWalletRegistrationTarget> {
     let payment_target_kind = infer_ldk_payment_target_kind(payment_target.as_str())
@@ -27836,12 +27855,18 @@ fn provider_wallet_registration_target_from_parts(
         payment_target,
         payment_target_capabilities,
         pylon_payment_target_version: PYLON_PAYMENT_TARGET_VERSION_V0_2.to_string(),
-        wallet_node_id: ldk_node.node_id.clone(),
+        wallet_node_id: ldk_node.and_then(|node| node.node_id.clone()),
         wallet_runtime_kind: runtime.runtime_kind.to_string(),
         wallet_network: runtime.network.clone(),
         wallet_target_kind: payment_target_kind,
-        wallet_derivation_version: runtime.node_entropy.derivation_version.clone(),
-        wallet_backup_status: ldk_node.backup_status.clone(),
+        wallet_derivation_version: if runtime.runtime_kind == PylonWalletRuntimeKind::MoneyDevKit {
+            "moneydevkit-agent-wallet-v1".to_string()
+        } else {
+            runtime.node_entropy.derivation_version.clone()
+        },
+        wallet_backup_status: ldk_node
+            .map(|node| node.backup_status.clone())
+            .unwrap_or_else(|| "moneydevkit_config_local".to_string()),
         wallet_registration_mode: registration_mode.to_string(),
     })
 }
@@ -27852,7 +27877,7 @@ fn persist_wallet_last_registration(
 ) -> Result<()> {
     let path = config
         .wallet_storage_dir
-        .join("ldk")
+        .join(target.wallet_runtime_kind.as_str())
         .join("last-registration.json");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).with_context(|| {
@@ -32546,21 +32571,22 @@ mod tests {
         PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
         PylonTrainingValidatorChallengeCoordinatorResponse, PylonTrainingWindowCacheEntry,
         PylonTrainingWindowProgressRequest, PylonWalletCreditSummary, PylonWalletInvoiceRecord,
-        PylonWalletPaymentRecord, PylonWalletRuntimeKind, ReportContext,
-        TRN_TRAINING_NODE_RECORD_KIND, TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand,
-        TrainingCommand, TrainingManifestInspectionContext, TrainingOperatorStatusReport,
-        TrainingTrnPublicationReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
-        add_configured_relay, apply_config_set, apply_control_command,
-        apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
-        build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
-        configured_external_payout_target, default_config,
-        derive_adapter_training_contributor_availability, derive_training_capability_envelope_v2,
-        derive_training_capability_tier_profile, detect_availability,
-        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
-        drain_training_supervisor, drive_training_supervisor_once, ensure_identity,
-        ensure_no_conflicting_training_assignment, ensure_training_contribution_bridge_bundles,
-        garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
-        gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
+        PylonWalletLiquidityProviderKind, PylonWalletPaymentRecord, PylonWalletRuntimeKind,
+        ReportContext, TRN_TRAINING_NODE_RECORD_KIND, TRN_TRAINING_RECEIPT_KIND,
+        TrainingArtifactsCommand, TrainingCommand, TrainingManifestInspectionContext,
+        TrainingOperatorStatusReport, TrainingTrnPublicationReport, WalletInvoiceReport,
+        WalletNodeEntropyMetadata, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
+        apply_config_set, apply_control_command, apply_training_reputation_gate_to_availability,
+        build_psionic_train_invocation_manifest, build_pylon_training_admin_router,
+        build_snapshot_from_availability, bytes_to_gib_ceil, configured_external_payout_target,
+        default_config, derive_adapter_training_contributor_availability,
+        derive_training_capability_envelope_v2, derive_training_capability_tier_profile,
+        detect_availability, download_gemma_model_from_base_url,
+        download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
+        drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
+        ensure_training_contribution_bridge_bundles, garbage_collect_training_download_cache,
+        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
+        inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
         inspect_training_retained_contribution_artifacts, inventory_rows,
         legacy_payout_destination_value, load_backend_report, load_earnings_report,
@@ -48990,8 +49016,8 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             "missing wallet storage should hydrate from the default config",
         )?;
         ensure(
-            config.wallet_runtime_kind == PylonWalletRuntimeKind::LdkNode,
-            "missing wallet runtime kind should hydrate to the built-in ldk_node wallet",
+            config.wallet_runtime_kind == PylonWalletRuntimeKind::MoneyDevKit,
+            "missing wallet runtime kind should hydrate to the built-in MoneyDevKit wallet",
         )?;
         ensure(
             config.local_gemma_base_url == "http://127.0.0.1:11434",
@@ -49291,6 +49317,38 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             offline_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
                 && offline_request.1["session_id"] == "session-test",
             "offline report should include the same identity and session",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn moneydevkit_provider_registration_metadata_is_wallet_owned()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let target = super::provider_wallet_registration_target_from_parts(
+            "lno1pylonmoneydevkit".to_string(),
+            "bolt12_offer",
+            &WalletRuntimeSurface {
+                runtime_kind: PylonWalletRuntimeKind::MoneyDevKit,
+                liquidity_provider_kind: PylonWalletLiquidityProviderKind::MoneyDevKit,
+                network: "bitcoin".to_string(),
+                identity_path: "/tmp/pylon-mdk-test/identity.mnemonic".to_string(),
+                storage_dir: "/tmp/pylon-mdk-test/wallet".to_string(),
+                api_key_env: None,
+                api_key_source: "none:moneydevkit".to_string(),
+                node_entropy: WalletNodeEntropyMetadata::default(),
+            },
+            None,
+            "moneydevkit_wallet_generated",
+        )?;
+        ensure(
+            target.wallet_runtime_kind == "moneydevkit"
+                && target.wallet_node_id.is_none()
+                && target.wallet_derivation_version == "moneydevkit-agent-wallet-v1"
+                && target.wallet_backup_status == "moneydevkit_config_local"
+                && target.wallet_registration_mode == "moneydevkit_wallet_generated"
+                && target
+                    .payment_target_capabilities
+                    .contains(&"bolt12_offer".to_string()),
+            "MoneyDevKit registration metadata should be wallet-owned without pretending to expose an LDK node ID",
         )
     }
 

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -20,6 +21,7 @@ use ldk_node::payment::{
 };
 use scrypt::{Params as ScryptParams, scrypt};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -48,6 +50,8 @@ const WALLET_BACKUP_KEY_LEN: usize = 32;
 const DEFAULT_BOLT11_EXPIRY_SECONDS: u32 = 3_600;
 const DEFAULT_RECEIVE_DESCRIPTION: &str = "OpenAgents Pylon receive";
 const SATS_PER_BTC: u64 = 100_000_000;
+const MONEYDEVKIT_AGENT_WALLET_PACKAGE: &str = "@moneydevkit/agent-wallet@latest";
+const MONEYDEVKIT_WALLET_DETAIL: &str = "Pylon is using MoneyDevKit's local agent-wallet runtime for self-custodial Lightning payments.";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,6 +60,8 @@ pub enum PylonWalletRuntimeKind {
     ExternalTarget,
     Mock,
     LdkNode,
+    #[serde(rename = "moneydevkit", alias = "money_dev_kit", alias = "mdk")]
+    MoneyDevKit,
 }
 
 impl PylonWalletRuntimeKind {
@@ -64,6 +70,7 @@ impl PylonWalletRuntimeKind {
             Self::ExternalTarget => "external_target",
             Self::Mock => "mock",
             Self::LdkNode => "ldk_node",
+            Self::MoneyDevKit => "moneydevkit",
         }
     }
 
@@ -72,14 +79,56 @@ impl PylonWalletRuntimeKind {
             "external_target" | "external" | "ldk_external" => Ok(Self::ExternalTarget),
             "mock" => Ok(Self::Mock),
             "ldk_node" | "ldknode" => Ok(Self::LdkNode),
+            "moneydevkit" | "money_dev_kit" | "mdk" | "agent_wallet" | "mdk_agent_wallet" => {
+                Ok(Self::MoneyDevKit)
+            }
             other => bail!(
-                "unsupported wallet_runtime_kind '{other}'; expected external_target, mock, or ldk_node"
+                "unsupported wallet_runtime_kind '{other}'; expected external_target, mock, ldk_node, or moneydevkit"
             ),
         }
     }
 }
 
 impl std::fmt::Display for PylonWalletRuntimeKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.id())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonWalletLiquidityProviderKind {
+    #[default]
+    None,
+    #[serde(rename = "moneydevkit", alias = "money_dev_kit", alias = "mdk")]
+    MoneyDevKit,
+    CustomLsps,
+}
+
+impl PylonWalletLiquidityProviderKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::MoneyDevKit => "moneydevkit",
+            Self::CustomLsps => "custom_lsps",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+            "" | "none" | "off" | "disabled" => Ok(Self::None),
+            "moneydevkit" | "money_dev_kit" | "mdk" => Ok(Self::MoneyDevKit),
+            "custom_lsps" | "custom_lsp" | "lsps" | "lsps1" | "lsps2" | "lsps4" => {
+                Ok(Self::CustomLsps)
+            }
+            other => bail!(
+                "unsupported wallet_liquidity_provider_kind '{other}'; expected none, moneydevkit, or custom_lsps"
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for PylonWalletLiquidityProviderKind {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.id())
     }
@@ -172,6 +221,7 @@ pub enum WalletSubcommand {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct WalletRuntimeSurface {
     pub runtime_kind: PylonWalletRuntimeKind,
+    pub liquidity_provider_kind: PylonWalletLiquidityProviderKind,
     pub network: String,
     pub identity_path: String,
     pub storage_dir: String,
@@ -401,6 +451,7 @@ pub struct WalletLightningReadiness {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct WalletLspReadiness {
+    pub provider_kind: PylonWalletLiquidityProviderKind,
     pub supported_protocols: Vec<String>,
     pub configured: bool,
     pub state: String,
@@ -665,6 +716,7 @@ enum SelectedPylonWalletRuntime {
     ExternalTarget(ExternalTargetWalletRuntime),
     Mock(MockPylonWalletRuntime),
     LdkNode(LdkNodeWalletRuntime),
+    MoneyDevKit(MoneyDevKitWalletRuntime),
 }
 
 #[derive(Clone, Debug)]
@@ -677,6 +729,13 @@ struct ExternalTargetWalletRuntime {
 struct MockPylonWalletRuntime {
     surface: WalletRuntimeSurface,
     payout_destination: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct MoneyDevKitWalletRuntime {
+    surface: WalletRuntimeSurface,
+    home_dir: PathBuf,
+    network: String,
 }
 
 #[derive(Clone)]
@@ -712,6 +771,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.surface(),
             Self::Mock(runtime) => runtime.surface(),
             Self::LdkNode(runtime) => runtime.surface(),
+            Self::MoneyDevKit(runtime) => runtime.surface(),
         }
     }
 
@@ -720,6 +780,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.start(),
             Self::Mock(runtime) => runtime.start(),
             Self::LdkNode(runtime) => runtime.start(),
+            Self::MoneyDevKit(runtime) => runtime.start(),
         }
     }
 
@@ -728,6 +789,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.stop(),
             Self::Mock(runtime) => runtime.stop(),
             Self::LdkNode(runtime) => runtime.stop(),
+            Self::MoneyDevKit(runtime) => runtime.stop(),
         }
     }
 
@@ -740,6 +802,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.sync(ledger, include_recent_payments),
             Self::Mock(runtime) => runtime.sync(ledger, include_recent_payments),
             Self::LdkNode(runtime) => runtime.sync(ledger, include_recent_payments),
+            Self::MoneyDevKit(runtime) => runtime.sync(ledger, include_recent_payments),
         }
     }
 
@@ -752,6 +815,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.status(ledger, include_recent_payments),
             Self::Mock(runtime) => runtime.status(ledger, include_recent_payments),
             Self::LdkNode(runtime) => runtime.status(ledger, include_recent_payments),
+            Self::MoneyDevKit(runtime) => runtime.status(ledger, include_recent_payments),
         }
     }
 
@@ -760,6 +824,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.balance(ledger),
             Self::Mock(runtime) => runtime.balance(ledger),
             Self::LdkNode(runtime) => runtime.balance(ledger),
+            Self::MoneyDevKit(runtime) => runtime.balance(ledger),
         }
     }
 
@@ -768,6 +833,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.address(),
             Self::Mock(runtime) => runtime.address(),
             Self::LdkNode(runtime) => runtime.address(),
+            Self::MoneyDevKit(runtime) => runtime.address(),
         }
     }
 
@@ -783,6 +849,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             }
             Self::Mock(runtime) => runtime.invoice(amount_sats, description, expiry_seconds),
             Self::LdkNode(runtime) => runtime.invoice(amount_sats, description, expiry_seconds),
+            Self::MoneyDevKit(runtime) => runtime.invoice(amount_sats, description, expiry_seconds),
         }
     }
 
@@ -798,6 +865,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             }
             Self::Mock(runtime) => runtime.offer(amount_sats, description, expiry_seconds),
             Self::LdkNode(runtime) => runtime.offer(amount_sats, description, expiry_seconds),
+            Self::MoneyDevKit(runtime) => runtime.offer(amount_sats, description, expiry_seconds),
         }
     }
 
@@ -806,6 +874,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.pay(payment_request, amount_sats),
             Self::Mock(runtime) => runtime.pay(payment_request, amount_sats),
             Self::LdkNode(runtime) => runtime.pay(payment_request, amount_sats),
+            Self::MoneyDevKit(runtime) => runtime.pay(payment_request, amount_sats),
         }
     }
 
@@ -814,6 +883,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.withdraw(payment_request, amount_sats),
             Self::Mock(runtime) => runtime.withdraw(payment_request, amount_sats),
             Self::LdkNode(runtime) => runtime.withdraw(payment_request, amount_sats),
+            Self::MoneyDevKit(runtime) => runtime.withdraw(payment_request, amount_sats),
         }
     }
 
@@ -826,6 +896,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.list_payments(ledger, limit),
             Self::Mock(runtime) => runtime.list_payments(ledger, limit),
             Self::LdkNode(runtime) => runtime.list_payments(ledger, limit),
+            Self::MoneyDevKit(runtime) => runtime.list_payments(ledger, limit),
         }
     }
 
@@ -834,6 +905,7 @@ impl PylonWalletRuntime for SelectedPylonWalletRuntime {
             Self::ExternalTarget(runtime) => runtime.list_channels(),
             Self::Mock(runtime) => runtime.list_channels(),
             Self::LdkNode(runtime) => runtime.list_channels(),
+            Self::MoneyDevKit(runtime) => runtime.list_channels(),
         }
     }
 }
@@ -865,8 +937,12 @@ impl PylonWalletRuntime for ExternalTargetWalletRuntime {
         include_recent_payments: bool,
     ) -> Result<WalletStatusReport> {
         let channels = self.list_channels()?;
-        let lightning_readiness =
-            wallet_lightning_readiness(self.surface.runtime_kind, channels.as_slice(), true);
+        let lightning_readiness = wallet_lightning_readiness(
+            self.surface.runtime_kind,
+            self.surface.liquidity_provider_kind,
+            channels.as_slice(),
+            true,
+        );
         Ok(WalletStatusReport {
             runtime: self.surface.clone(),
             runtime_status: "external_target".to_string(),
@@ -957,8 +1033,12 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
         include_recent_payments: bool,
     ) -> Result<WalletStatusReport> {
         let channels = self.list_channels()?;
-        let lightning_readiness =
-            wallet_lightning_readiness(self.surface.runtime_kind, channels.as_slice(), true);
+        let lightning_readiness = wallet_lightning_readiness(
+            self.surface.runtime_kind,
+            self.surface.liquidity_provider_kind,
+            channels.as_slice(),
+            true,
+        );
         Ok(WalletStatusReport {
             runtime: self.surface.clone(),
             runtime_status: "connected".to_string(),
@@ -1129,6 +1209,325 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
     }
 }
 
+impl MoneyDevKitWalletRuntime {
+    fn agent_wallet_home(&self) -> PathBuf {
+        self.home_dir.join(".mdk-wallet")
+    }
+
+    fn mdk_network(&self) -> &'static str {
+        match self
+            .network
+            .trim()
+            .to_ascii_lowercase()
+            .replace('-', "_")
+            .as_str()
+        {
+            "bitcoin" | "mainnet" | "btc" => "mainnet",
+            "signet" | "testnet" | "regtest" | "mutinynet" => "signet",
+            _ => "signet",
+        }
+    }
+
+    fn ensure_private_home(&self) -> Result<()> {
+        create_private_dir(self.home_dir.as_path(), "MoneyDevKit wallet home")?;
+        Ok(())
+    }
+
+    fn ensure_initialized(&self) -> Result<()> {
+        self.ensure_private_home()?;
+        if self.agent_wallet_home().join("config.json").exists() {
+            return Ok(());
+        }
+        let _ = self.run_agent_wallet_command(&["init", "--network", self.mdk_network()])?;
+        Ok(())
+    }
+
+    fn run_agent_wallet_command(&self, args: &[&str]) -> Result<Value> {
+        self.ensure_private_home()?;
+        let output = Command::new("npx")
+            .arg("-y")
+            .arg(MONEYDEVKIT_AGENT_WALLET_PACKAGE)
+            .args(args)
+            .env("HOME", self.home_dir.as_os_str())
+            .env("MDK_WALLET_NETWORK", self.mdk_network())
+            .output()
+            .with_context(|| {
+                format!(
+                    "failed to run MoneyDevKit agent wallet command '{}'",
+                    args.join(" ")
+                )
+            })?;
+        let stdout = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
+        let stderr = String::from_utf8_lossy(output.stderr.as_slice()).to_string();
+        if !output.status.success() {
+            let detail = redact_mdk_command_output(format!("{stdout}\n{stderr}").as_str());
+            bail!(
+                "MoneyDevKit agent wallet command '{}' failed: {}",
+                args.join(" "),
+                detail.trim()
+            );
+        }
+        parse_mdk_stdout_json(stdout.as_str()).with_context(|| {
+            format!(
+                "MoneyDevKit command '{}' did not return JSON",
+                args.join(" ")
+            )
+        })
+    }
+
+    fn maybe_run_agent_wallet_command(&self, args: &[&str]) -> Result<Option<Value>> {
+        match self.run_agent_wallet_command(args) {
+            Ok(value) => Ok(Some(value)),
+            Err(error) => {
+                let detail = error.to_string();
+                if detail.contains("Not initialized")
+                    || detail.contains("not initialized")
+                    || detail.contains("No such file")
+                {
+                    return Ok(None);
+                }
+                Err(error)
+            }
+        }
+    }
+}
+
+impl PylonWalletRuntime for MoneyDevKitWalletRuntime {
+    fn surface(&self) -> &WalletRuntimeSurface {
+        &self.surface
+    }
+
+    fn start(&self) -> Result<()> {
+        self.ensure_initialized()?;
+        let _ = self.run_agent_wallet_command(&["start"])?;
+        Ok(())
+    }
+
+    fn stop(&self) -> Result<()> {
+        match self.run_agent_wallet_command(&["stop"]) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                let detail = error.to_string();
+                if detail.contains("not_running") || detail.contains("not running") {
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    fn sync(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        self.status(ledger, include_recent_payments)
+    }
+
+    fn status(
+        &self,
+        ledger: &PylonLedger,
+        include_recent_payments: bool,
+    ) -> Result<WalletStatusReport> {
+        self.ensure_initialized()?;
+        let status = self.run_agent_wallet_command(&["status"])?;
+        let running = mdk_json_bool(&status, &["running"]).unwrap_or(false);
+        let channels = self.list_channels()?;
+        let lightning_readiness = wallet_lightning_readiness(
+            self.surface.runtime_kind,
+            self.surface.liquidity_provider_kind,
+            channels.as_slice(),
+            false,
+        );
+        let recent_payments = if include_recent_payments {
+            self.list_payments(ledger, Some(10))?
+        } else {
+            Vec::new()
+        };
+        Ok(WalletStatusReport {
+            runtime: self.surface.clone(),
+            runtime_status: if running { "connected" } else { "configured" }.to_string(),
+            runtime_detail: Some(MONEYDEVKIT_WALLET_DETAIL.to_string()),
+            ldk_node: None,
+            balance: self.balance(ledger)?,
+            channels,
+            lightning_readiness,
+            recent_payments,
+        })
+    }
+
+    fn balance(&self, ledger: &PylonLedger) -> Result<WalletBalanceSnapshot> {
+        self.ensure_initialized()?;
+        let value = self.run_agent_wallet_command(&["balance"])?;
+        let lightning_sats =
+            mdk_json_u64(&value, &["balance_sats", "balanceSats"]).unwrap_or_default();
+        Ok(WalletBalanceSnapshot {
+            credited_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
+            lightning_sats,
+            onchain_sats: 0,
+            spendable_onchain_sats: 0,
+            anchor_reserve_sats: 0,
+            total_sats: lightning_sats,
+        })
+    }
+
+    fn address(&self) -> Result<WalletAddressReport> {
+        bail!(
+            "MoneyDevKit agent-wallet does not expose an on-chain receive address through its CLI; use wallet invoice or wallet offer for Lightning receives"
+        )
+    }
+
+    fn invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletInvoiceReport> {
+        self.ensure_initialized()?;
+        let description_text = description
+            .clone()
+            .unwrap_or_else(|| DEFAULT_RECEIVE_DESCRIPTION.to_string());
+        let amount_text = amount_sats.to_string();
+        let value = self.run_agent_wallet_command(&[
+            "receive",
+            amount_text.as_str(),
+            "--description",
+            description_text.as_str(),
+        ])?;
+        let invoice = mdk_json_string(&value, &["invoice"])
+            .ok_or_else(|| anyhow!("MoneyDevKit receive response did not include invoice"))?;
+        let payment_hash = mdk_json_string(&value, &["payment_hash", "paymentHash"]);
+        let now = now_epoch_ms() as u64;
+        let expiry_seconds = expiry_seconds.unwrap_or(DEFAULT_BOLT11_EXPIRY_SECONDS);
+        let invoice_id = payment_hash
+            .as_ref()
+            .map(|hash| format!("mdk-bolt11-{hash}"))
+            .unwrap_or_else(|| short_wallet_digest_id("mdk-bolt11", invoice.as_str()));
+        Ok(WalletInvoiceReport {
+            runtime: self.surface.clone(),
+            invoice: PylonWalletInvoiceRecord {
+                invoice_id,
+                amount_sats,
+                status: "open".to_string(),
+                payment_request: invoice,
+                description: Some(description_text),
+                payment_hash,
+                runtime_kind: Some(self.surface.runtime_kind.to_string()),
+                expires_at_ms: Some(now.saturating_add(u64::from(expiry_seconds) * 1000)),
+                created_at_ms: now,
+                updated_at_ms: now,
+            },
+        })
+    }
+
+    fn offer(
+        &self,
+        amount_sats: Option<u64>,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Result<WalletOfferReport> {
+        self.ensure_initialized()?;
+        let description_text = description
+            .clone()
+            .unwrap_or_else(|| DEFAULT_RECEIVE_DESCRIPTION.to_string());
+        let value = self.run_agent_wallet_command(&[
+            "receive-bolt12",
+            "--description",
+            description_text.as_str(),
+        ])?;
+        let offer = mdk_json_string(&value, &["offer"])
+            .ok_or_else(|| anyhow!("MoneyDevKit receive-bolt12 response did not include offer"))?;
+        let now = now_epoch_ms() as u64;
+        Ok(WalletOfferReport {
+            runtime: self.surface.clone(),
+            offer,
+            amount_sats,
+            description: Some(description_text),
+            created_at_ms: now,
+            expires_at_ms: expiry_seconds
+                .map(|seconds| now.saturating_add(u64::from(seconds) * 1000)),
+        })
+    }
+
+    fn pay(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        self.ensure_initialized()?;
+        let mut args = vec!["send", payment_request];
+        let amount_text;
+        if let Some(amount_sats) = amount_sats {
+            amount_text = amount_sats.to_string();
+            args.push(amount_text.as_str());
+        }
+        let value = self.run_agent_wallet_command(args.as_slice())?;
+        let now = now_epoch_ms() as u64;
+        let payment_id = mdk_json_string(&value, &["payment_id", "paymentId"])
+            .unwrap_or_else(|| short_wallet_digest_id("mdk-send", payment_request));
+        let payment_hash = mdk_json_string(&value, &["payment_hash", "paymentHash"]);
+        let status =
+            mdk_json_string(&value, &["status"]).unwrap_or_else(|| "completed".to_string());
+        let amount_sats = amount_sats
+            .or_else(|| infer_payment_request_amount_sats(payment_request))
+            .unwrap_or_default();
+        let payment = PylonWalletPaymentRecord {
+            payment_id: payment_id.clone(),
+            direction: "send".to_string(),
+            status,
+            amount_sats,
+            fees_sats: 0,
+            method: infer_wallet_payment_method(payment_request),
+            description: Some("MoneyDevKit agent-wallet send".to_string()),
+            invoice: Some(payment_request.to_string()),
+            payment_hash,
+            txid: None,
+            operation_id: None,
+            receipt_id: Some(format!("wallet:moneydevkit:{payment_id}")),
+            failure_code: None,
+            created_at_ms: now,
+            updated_at_ms: now,
+        };
+        Ok(WalletPayReport {
+            runtime: self.surface.clone(),
+            payment_id,
+            payment,
+            post_balance: self.balance(&PylonLedger::default())?,
+        })
+    }
+
+    fn withdraw(&self, payment_request: &str, amount_sats: Option<u64>) -> Result<WalletPayReport> {
+        self.pay(payment_request, amount_sats)
+    }
+
+    fn list_payments(
+        &self,
+        ledger: &PylonLedger,
+        limit: Option<u32>,
+    ) -> Result<Vec<PylonWalletPaymentRecord>> {
+        self.ensure_initialized()?;
+        let runtime_records = match self.maybe_run_agent_wallet_command(&["payments"])? {
+            Some(value) => value
+                .get("payments")
+                .and_then(Value::as_array)
+                .map(|payments| {
+                    payments
+                        .iter()
+                        .filter_map(mdk_payment_record_from_value)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            None => Vec::new(),
+        };
+        Ok(merge_wallet_payment_records(
+            ledger_payments(ledger, None),
+            runtime_records,
+            limit.map(|value| value as usize),
+        ))
+    }
+
+    fn list_channels(&self) -> Result<Vec<PylonWalletChannelRecord>> {
+        Ok(Vec::new())
+    }
+}
+
 impl PylonWalletRuntime for LdkNodeWalletRuntime {
     fn surface(&self) -> &WalletRuntimeSurface {
         &self.surface
@@ -1237,8 +1636,12 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
             Some("ldk_node runtime initialized".to_string())
         };
         let channels = self.list_channels()?;
-        let lightning_readiness =
-            wallet_lightning_readiness(self.surface.runtime_kind, channels.as_slice(), true);
+        let lightning_readiness = wallet_lightning_readiness(
+            self.surface.runtime_kind,
+            self.surface.liquidity_provider_kind,
+            channels.as_slice(),
+            true,
+        );
         Ok(WalletStatusReport {
             runtime: self.surface.clone(),
             runtime_status: runtime_status.to_string(),
@@ -2037,6 +2440,134 @@ fn merge_wallet_payment_records(
     ledger_payments
 }
 
+fn parse_mdk_stdout_json(stdout: &str) -> Result<Value> {
+    if let Ok(value) = serde_json::from_str::<Value>(stdout.trim()) {
+        return Ok(value);
+    }
+    for line in stdout.lines().rev() {
+        let line = line.trim();
+        if line.starts_with('{') || line.starts_with('[') {
+            return serde_json::from_str::<Value>(line)
+                .with_context(|| "failed to parse MoneyDevKit JSON line");
+        }
+    }
+    bail!("MoneyDevKit command did not emit a JSON object on stdout")
+}
+
+fn mdk_json_string(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+}
+
+fn mdk_json_u64(value: &Value, keys: &[&str]) -> Option<u64> {
+    keys.iter()
+        .find_map(|key| value.get(*key))
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
+                .or_else(|| value.as_str().and_then(|value| value.parse::<u64>().ok()))
+        })
+}
+
+fn mdk_json_bool(value: &Value, keys: &[&str]) -> Option<bool> {
+    keys.iter()
+        .find_map(|key| value.get(*key))
+        .and_then(|value| {
+            value.as_bool().or_else(|| {
+                value.as_str().and_then(|value| match value {
+                    "true" | "1" | "yes" => Some(true),
+                    "false" | "0" | "no" => Some(false),
+                    _ => None,
+                })
+            })
+        })
+}
+
+fn short_wallet_digest_id(prefix: &str, value: &str) -> String {
+    let digest = hex::encode(Sha256::digest(value.as_bytes()));
+    format!("{prefix}:{}", &digest[..16])
+}
+
+fn redact_mdk_command_output(value: &str) -> String {
+    let mut redacted = redact_wallet_secret_text(value);
+    if let Ok(mut json) = parse_mdk_stdout_json(value) {
+        redact_mdk_json_value(&mut json);
+        if let Ok(rendered) = serde_json::to_string(&json) {
+            redacted = rendered;
+        }
+    }
+    redacted
+}
+
+fn redact_mdk_json_value(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (key, value) in map.iter_mut() {
+                if matches!(
+                    key.as_str(),
+                    "mnemonic" | "preimage" | "private_key" | "secret" | "token"
+                ) {
+                    *value = Value::String("[redacted]".to_string());
+                } else {
+                    redact_mdk_json_value(value);
+                }
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                redact_mdk_json_value(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn mdk_payment_record_from_value(value: &Value) -> Option<PylonWalletPaymentRecord> {
+    let amount_sats = mdk_json_u64(value, &["amountSats", "amount_sats"])?;
+    let timestamp = mdk_json_u64(value, &["timestamp", "createdAt", "created_at"])
+        .unwrap_or_else(|| now_epoch_ms() as u64);
+    let timestamp_ms = if timestamp < 10_000_000_000 {
+        timestamp.saturating_mul(1_000)
+    } else {
+        timestamp
+    };
+    let payment_hash = mdk_json_string(value, &["paymentHash", "payment_hash"]);
+    let payment_id = mdk_json_string(value, &["paymentId", "payment_id"])
+        .or_else(|| payment_hash.clone())
+        .unwrap_or_else(|| short_wallet_digest_id("mdk-payment", value.to_string().as_str()));
+    let direction = match mdk_json_string(value, &["direction"])?.as_str() {
+        "inbound" | "receive" => "receive",
+        "outbound" | "send" => "send",
+        _ => "unknown",
+    }
+    .to_string();
+    let destination = mdk_json_string(value, &["destination"]);
+    let payer_note = mdk_json_string(value, &["payerNote", "payer_note"]);
+    let method = destination
+        .as_deref()
+        .map(infer_wallet_payment_method)
+        .unwrap_or_else(|| "lightning".to_string());
+    Some(PylonWalletPaymentRecord {
+        payment_id: payment_id.clone(),
+        direction,
+        status: mdk_json_string(value, &["status"]).unwrap_or_else(|| "completed".to_string()),
+        amount_sats,
+        fees_sats: 0,
+        method,
+        description: payer_note.or_else(|| Some("MoneyDevKit agent-wallet payment".to_string())),
+        invoice: destination,
+        payment_hash,
+        txid: None,
+        operation_id: None,
+        receipt_id: Some(format!("wallet:moneydevkit:{payment_id}")),
+        failure_code: None,
+        created_at_ms: timestamp_ms,
+        updated_at_ms: timestamp_ms,
+    })
+}
+
 fn ldk_payment_details_to_wallet_record(details: LdkPaymentDetails) -> PylonWalletPaymentRecord {
     let (method, payment_hash, txid, detail) = ldk_payment_kind_metadata(&details.kind);
     let status = match details.status {
@@ -2307,6 +2838,8 @@ fn wallet_telemetry_from_status(
         && receive_ready
         && send_ready
         && !has_error;
+    let payable = payable
+        || (status.runtime.runtime_kind == PylonWalletRuntimeKind::MoneyDevKit && !has_error);
     let health_state = if has_error {
         "error"
     } else if payable {
@@ -2401,6 +2934,7 @@ fn wallet_channels_report_from_channels(
         liquidity: wallet_telemetry_liquidity(channels.as_slice()),
         lightning_readiness: wallet_lightning_readiness(
             runtime.runtime_kind,
+            runtime.liquidity_provider_kind,
             channels.as_slice(),
             true,
         ),
@@ -2427,6 +2961,7 @@ fn wallet_telemetry_liquidity(channels: &[PylonWalletChannelRecord]) -> WalletTe
 
 fn wallet_lightning_readiness(
     runtime_kind: PylonWalletRuntimeKind,
+    liquidity_provider_kind: PylonWalletLiquidityProviderKind,
     channels: &[PylonWalletChannelRecord],
     can_receive_onchain: bool,
 ) -> WalletLightningReadiness {
@@ -2436,14 +2971,24 @@ fn wallet_lightning_readiness(
         .iter()
         .filter(|channel| channel.peer_connected)
         .count();
-    let lsp = wallet_lsp_readiness(runtime_kind);
+    let lsp = wallet_lsp_readiness(runtime_kind, liquidity_provider_kind);
     let can_receive_lightning =
         channel_summary.usable_count > 0 && liquidity.inbound_sats > 0 && peer_connected_count > 0;
     let can_send_lightning =
         channel_summary.usable_count > 0 && liquidity.outbound_sats > 0 && peer_connected_count > 0;
     let (state, warning_code, warning, remediation) = if runtime_kind
-        == PylonWalletRuntimeKind::ExternalTarget
+        == PylonWalletRuntimeKind::MoneyDevKit
     {
+        (
+                "moneydevkit_agent_wallet_ready".to_string(),
+                None,
+                None,
+                vec![
+                    "MoneyDevKit agent-wallet manages Lightning liquidity behind the local daemon; raw channels are intentionally not exposed through Pylon."
+                        .to_string(),
+                ],
+            )
+    } else if runtime_kind == PylonWalletRuntimeKind::ExternalTarget {
         (
             "external_target".to_string(),
             None,
@@ -2513,9 +3058,21 @@ fn wallet_lightning_readiness(
     };
     WalletLightningReadiness {
         state,
-        can_receive_lightning,
-        can_receive_onchain,
-        can_send_lightning,
+        can_receive_lightning: if runtime_kind == PylonWalletRuntimeKind::MoneyDevKit {
+            true
+        } else {
+            can_receive_lightning
+        },
+        can_receive_onchain: if runtime_kind == PylonWalletRuntimeKind::MoneyDevKit {
+            false
+        } else {
+            can_receive_onchain
+        },
+        can_send_lightning: if runtime_kind == PylonWalletRuntimeKind::MoneyDevKit {
+            true
+        } else {
+            can_send_lightning
+        },
         inbound_liquidity_sats: liquidity.inbound_sats,
         outbound_liquidity_sats: liquidity.outbound_sats,
         usable_channel_count: channel_summary.usable_count,
@@ -2528,9 +3085,16 @@ fn wallet_lightning_readiness(
     }
 }
 
-fn wallet_lsp_readiness(runtime_kind: PylonWalletRuntimeKind) -> WalletLspReadiness {
-    if runtime_kind != PylonWalletRuntimeKind::LdkNode {
+fn wallet_lsp_readiness(
+    runtime_kind: PylonWalletRuntimeKind,
+    provider_kind: PylonWalletLiquidityProviderKind,
+) -> WalletLspReadiness {
+    if !matches!(
+        runtime_kind,
+        PylonWalletRuntimeKind::LdkNode | PylonWalletRuntimeKind::MoneyDevKit
+    ) {
         return WalletLspReadiness {
+            provider_kind,
             supported_protocols: Vec::new(),
             configured: false,
             state: "not_applicable".to_string(),
@@ -2538,11 +3102,39 @@ fn wallet_lsp_readiness(runtime_kind: PylonWalletRuntimeKind) -> WalletLspReadin
                 .to_string(),
         };
     }
-    WalletLspReadiness {
-        supported_protocols: vec!["lsps1".to_string(), "lsps2".to_string()],
-        configured: false,
-        state: "not_configured".to_string(),
-        detail: "The linked ldk-node build exposes LSPS1 and LSPS2 hooks, including LSPS2 just-in-time inbound liquidity; Pylon surfaces readiness now and needs operator LSP credentials before enabling an LSP client.".to_string(),
+    match provider_kind {
+        PylonWalletLiquidityProviderKind::None => WalletLspReadiness {
+            provider_kind,
+            supported_protocols: vec!["lsps1".to_string(), "lsps2".to_string()],
+            configured: false,
+            state: "not_configured".to_string(),
+            detail: "No wallet liquidity provider is selected. The linked ldk-node build exposes LSPS1 and LSPS2 hooks, but Pylon will not use a provider until wallet_liquidity_provider_kind is set.".to_string(),
+        },
+        PylonWalletLiquidityProviderKind::MoneyDevKit => WalletLspReadiness {
+            provider_kind,
+            supported_protocols: vec![
+                "lsps1".to_string(),
+                "lsps2".to_string(),
+                "lsps4".to_string(),
+                "jit_receive".to_string(),
+                "vss_optional".to_string(),
+            ],
+            configured: true,
+            state: "moneydevkit_selected".to_string(),
+            detail: "MoneyDevKit agent-wallet is selected as the wrapped Pylon wallet runtime for LSP/JIT receive readiness. Pylon still owns Nexus payout target registration, accepted-work eligibility, and payout receipts.".to_string(),
+        },
+        PylonWalletLiquidityProviderKind::CustomLsps => WalletLspReadiness {
+            provider_kind,
+            supported_protocols: vec![
+                "lsps1".to_string(),
+                "lsps2".to_string(),
+                "lsps4".to_string(),
+                "jit_receive".to_string(),
+            ],
+            configured: true,
+            state: "custom_lsps_selected".to_string(),
+            detail: "A custom LSPS liquidity provider is selected. Pylon still owns the local LDK wallet, Nexus payout target registration, accepted-work eligibility, and payout receipts.".to_string(),
+        },
     }
 }
 
@@ -3644,6 +4236,7 @@ pub async fn load_wallet_history_report(
     let channels = context.runtime.list_channels()?;
     let lightning_readiness = wallet_lightning_readiness(
         context.runtime.surface().runtime_kind,
+        context.runtime.surface().liquidity_provider_kind,
         channels.as_slice(),
         true,
     );
@@ -5020,6 +5613,7 @@ fn refuse_active_wallet_restore(layout: &WalletStorageLayout) -> Result<()> {
     let report = wallet_lock_report(
         WalletRuntimeSurface {
             runtime_kind: PylonWalletRuntimeKind::LdkNode,
+            liquidity_provider_kind: PylonWalletLiquidityProviderKind::None,
             network: String::new(),
             identity_path: String::new(),
             storage_dir: layout.root_dir.display().to_string(),
@@ -5521,8 +6115,13 @@ fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
     let _layout = ensure_wallet_storage_layout(&config)?;
     let runtime_kind = config.wallet_runtime_kind;
     let node_entropy = load_wallet_node_entropy_material(&config)?;
+    let liquidity_provider_kind = match runtime_kind {
+        PylonWalletRuntimeKind::MoneyDevKit => PylonWalletLiquidityProviderKind::MoneyDevKit,
+        _ => PylonWalletLiquidityProviderKind::None,
+    };
     let surface = WalletRuntimeSurface {
         runtime_kind,
+        liquidity_provider_kind,
         network: config.wallet_network.clone(),
         identity_path: config.identity_path.display().to_string(),
         storage_dir: config.wallet_storage_dir.display().to_string(),
@@ -5545,6 +6144,13 @@ fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
             surface,
             payout_destination: crate::configured_external_payout_target(&config),
         }),
+        PylonWalletRuntimeKind::MoneyDevKit => {
+            SelectedPylonWalletRuntime::MoneyDevKit(MoneyDevKitWalletRuntime {
+                surface,
+                home_dir: config.wallet_storage_dir.join("moneydevkit-home"),
+                network: config.wallet_network.clone(),
+            })
+        }
         PylonWalletRuntimeKind::LdkNode => {
             SelectedPylonWalletRuntime::LdkNode(LdkNodeWalletRuntime {
                 surface,
@@ -5677,14 +6283,15 @@ mod tests {
     use bip39::{Language, Mnemonic};
 
     use super::{
-        PylonWalletChannelRecord, PylonWalletRuntime, PylonWalletRuntimeKind, WalletLockOwner,
-        WalletSubcommand, compute_wallet_credit_summary, create_wallet_address_report,
-        create_wallet_invoice_report, create_wallet_offer_report, load_wallet_channels_report,
-        load_wallet_history_report, load_wallet_node_entropy_material, load_wallet_status_report,
-        load_wallet_telemetry_report, parse_wallet_command, pay_wallet_invoice_report,
-        redact_wallet_secret_text, redact_wallet_telemetry_endpoint, render_wallet_channels_report,
-        render_wallet_entropy_report, render_wallet_status_report, render_wallet_telemetry_report,
-        run_wallet_command, wallet_lightning_readiness, wallet_node_entropy_domain_label,
+        PylonWalletChannelRecord, PylonWalletLiquidityProviderKind, PylonWalletRuntime,
+        PylonWalletRuntimeKind, WalletLockOwner, WalletSubcommand, compute_wallet_credit_summary,
+        create_wallet_address_report, create_wallet_invoice_report, create_wallet_offer_report,
+        load_wallet_channels_report, load_wallet_history_report, load_wallet_node_entropy_material,
+        load_wallet_status_report, load_wallet_telemetry_report, parse_wallet_command,
+        pay_wallet_invoice_report, redact_wallet_secret_text, redact_wallet_telemetry_endpoint,
+        render_wallet_channels_report, render_wallet_entropy_report, render_wallet_status_report,
+        render_wallet_telemetry_report, run_wallet_command, wallet_lightning_readiness,
+        wallet_node_entropy_domain_label,
     };
     use crate::PylonWalletPaymentRecord;
 
@@ -6225,7 +6832,12 @@ mod tests {
 
     #[test]
     fn wallet_lightning_readiness_projects_channel_states() {
-        let no_channels = wallet_lightning_readiness(PylonWalletRuntimeKind::LdkNode, &[], true);
+        let no_channels = wallet_lightning_readiness(
+            PylonWalletRuntimeKind::LdkNode,
+            PylonWalletLiquidityProviderKind::None,
+            &[],
+            true,
+        );
         assert_eq!(no_channels.state, "onchain_only_no_channels");
         assert!(!no_channels.can_receive_lightning);
         assert!(no_channels.can_receive_onchain);
@@ -6236,6 +6848,7 @@ mod tests {
 
         let pending = wallet_lightning_readiness(
             PylonWalletRuntimeKind::LdkNode,
+            PylonWalletLiquidityProviderKind::None,
             &[test_channel("pending", 0, 0, false)],
             true,
         );
@@ -6247,6 +6860,7 @@ mod tests {
 
         let usable = wallet_lightning_readiness(
             PylonWalletRuntimeKind::LdkNode,
+            PylonWalletLiquidityProviderKind::None,
             &[test_channel("usable", 4_000, 6_000, true)],
             true,
         );
@@ -6259,6 +6873,7 @@ mod tests {
 
         let route_limited = wallet_lightning_readiness(
             PylonWalletRuntimeKind::LdkNode,
+            PylonWalletLiquidityProviderKind::None,
             &[test_channel("usable", 0, 6_000, true)],
             true,
         );

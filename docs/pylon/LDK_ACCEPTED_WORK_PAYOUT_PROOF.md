@@ -24,6 +24,11 @@ The local proof uses two real `ldk-node` wallets on regtest:
 - receiver = the Pylon wallet-owned target;
 - payer = the local Treasury LDK authority fixture.
 
+For Pylon v0.2 release readiness, this remains the native LDK regression proof.
+The default production wallet runtime is now the wrapped MoneyDevKit
+agent-wallet path; run the MoneyDevKit wallet-wrapper smoke in
+`PYLON_VERIFICATION_MATRIX.md` alongside this LDK harness.
+
 The artifact records a Nexus-style wallet registration receipt, a Treasury
 accepted-work dispatch receipt, the Pylon wallet-observed incoming payment, a
 withdrawal receipt, and a reconciliation record tying the Nexus operation ID,
