@@ -135,65 +135,52 @@ Default to:
   code integrated on `main`, and only to confirm live deployment or real
   settlement behavior that the simulated system intentionally does not cover.
 
-## Nexus Release Process
+## Pylon/Nexus/MDK Release Process
 
-- There is one production Nexus release path.
-- Nexus and Pylon production payment work is LDK-only. Do not add Spark,
-  Spark drain, or Spark SDK dependencies to the normal Nexus deploy, treasury
-  provider, payout, funding, Pylon registration, API, or chat/admin path.
-- The normal deployable Nexus image must not copy, compile, or link
+- The current Pylon v0.2 release path is MDK-default, not native-LDK-default.
+  Pylon wraps MoneyDevKit `agent-wallet` for the normal local wallet runtime.
+  Native LDK remains an explicit lower-level regression, channel-telemetry, and
+  hardening lane.
+- Do not add Spark, Spark drain, or Spark SDK dependencies to the normal
+  Nexus, Pylon, treasury, payout, funding, registration, API, or chat/admin
+  path. The normal deployable code must not copy, compile, or link
   `crates/spark`, `openagents-spark`, `breez-sdk-spark`, `spark-wallet`, or
-  `spark-sdk`. If those appear in a staged Nexus build context, remove the
-  caller or artifact instead of adding a runtime flag.
-- Use a clean `openagents` checkout or temporary worktree at the exact commit
-  being shipped.
-- Build and push the registry image with:
-  `bash scripts/deploy/nexus/01-build-and-push-image.sh`
-- Deploy that registry image with:
-  `DEPLOY_IMAGE=... bash scripts/deploy/nexus/03-configure-and-start.sh`
-- Verify the same deployment with:
-  `DEPLOY_IMAGE=... bash scripts/deploy/nexus/04-verify-gates.sh`
-- After deploy, also verify `https://nexus.openagents.com/v1/treasury/status`
-  and any task-specific payout or receipt checks required by the change.
-- Treat public Nexus reachability failures as emergencies. If
-  `https://nexus.openagents.com/api/stats` or the public provider heartbeat
-  path returns Cloudflare `530` / `1033`, if Pylon nodes start reporting Nexus
-  heartbeat failures, or if the hosted online fleet collapses because the
-  public Nexus origin is unreachable, stop normal issue work and restore public
-  reachability first. Check `nexus-relay`, `nexus-cloudflared`, the VM-local
-  `http://127.0.0.1:8080/healthz` origin, and the public hostname in that
-  order. Do not leave production red while continuing unrelated tasks.
-- To generate a hosted Nexus treasury Lightning funding invoice, use the
-  documented funding-target endpoint instead of touching wallet files directly:
-  `POST https://nexus.openagents.com/v1/treasury/funding-target` with JSON such
-  as `{"amount_sats":50000,"description":"OpenAgents Nexus treasury funding","expiry_seconds":3600}`.
-  The detailed future-agent runbook is
-  `docs/deploy/NEXUS_TREASURY_FUNDING_INVOICE_RUNBOOK.md`.
-  The response field `bolt11_invoice` is the invoice to give the payer. Do not
-  treat invoice creation, a funding-target HTTP 504, or a small cached balance
-  movement as proof that the invoice was paid. Payment proof requires
-  `/v1/treasury/status` to show the receive in wallet state, a higher spendable
-  balance, or subsequent payout dispatch/confirmation.
-- If post-restart payout smoke fails only because the treasury wallet is
-  underfunded, fund the wallet first and then redeploy the exact image. Do not
-  keep redeploying or rolling back images to solve a balance problem.
-- If post-restart payout smoke fails with wallet errors after the local proof
-  runtime is green, use the explicit treasury recovery path instead of blind
-  redeploys. Build a main image that contains both `nexus-relay` and
-  `nexus-control`, generate a wallet recovery report with
-  `NEXUS_TREASURY_RECOVERY_ACTION=report DEPLOY_IMAGE=... bash scripts/deploy/nexus/09-recover-treasury-wallet.sh`,
-  review the report, and cut over only with a validated report via
-  `NEXUS_TREASURY_RECOVERY_ACTION=cutover NEXUS_TREASURY_RECOVERY_REPORT_PATH=...`.
-  Record the report/deploy receipts and keep `#4368` open until a fresh live
-  completed payout send and accepted-work receipt are proven.
-- Active treasury recovery is LDK Server backup/restore plus Nexus operation
-  reconciliation. Do not restore Spark wallet inspection or Spark drain
-  recovery into the normal Nexus deploy path.
-- Do not bypass this path with VM-local `docker build`, VM-local image tags,
-  manual systemd drop-ins, or ad hoc `docker run` replacements on
-  `nexus-mainnet-1`.
-- If the registry build or scripted deploy is blocked, report the blocker.
-  Do not leave production pinned to a VM-local image as the steady state.
+  `spark-sdk`.
+- For current MDK-default release work, the production payment proof path runs
+  through Omega on Cloudflare:
+  - `openagents.com` Worker/API authority;
+  - Cloudflare Container MDK sidecar;
+  - D1-backed checkout, receipt, entitlement, and public-safe projection state;
+  - local/Pylon MDK agent wallets for payer/provider movement proof.
+- The old GCP-hosted native Nexus/LDK deployment is historical and remains
+  useful for explicit native-LDK regression work only. Do not block the
+  MDK-default Pylon v0.2 release on `nexus.openagents.com` GCP public-edge
+  `530` / `1033`, stale LDK continuity alerts, or GCP deploy credentials unless
+  the current issue explicitly changes or requires that old native Nexus lane.
+- For distributed training, homework, Nexus authority, Pylon fleet, artifact,
+  validator, reconcile, closeout, or payout-proof work, use the local proof
+  runtime first. Production is a final confirmation surface, not the ordinary
+  debugger.
+- For Pylon v0.2 release work, required evidence is:
+  - focused Pylon repo tests and smoke commands from
+    `docs/pylon/PYLON_VERIFICATION_MATRIX.md`;
+  - a clean two-home MDK wrapper smoke proving isolated Pylon wallet homes and
+    stable `MDK_WALLET_PORT`;
+  - the Cloudflare/Omega MDK checkout smoke or a newer equivalent real-bitcoin
+    proof;
+  - one live account-backed Artanis SHC bootstrap run with
+    `wallet_authority=false`;
+  - a public Pylon GitHub release and post-release fresh-home install smoke;
+  - a post-release Artanis/Pylon paid-work proof or a specific remaining
+    blocker recorded in docs and issue comments.
+- If a future issue explicitly changes the old GCP/native-LDK Nexus runtime,
+  use the GCP runbooks and do not close that issue until the old runtime's
+  deploy, treasury, and public-health proof is complete. That requirement is
+  scoped to native Nexus issues; it is not the default release gate for the
+  MDK/Omega path.
+- Use a clean `openagents` checkout on `main` for release candidates. Commit
+  and push docs/code before issue closeout. Branch work is evidence, not
+  closeout.
 
 ## Psionic Specs
 

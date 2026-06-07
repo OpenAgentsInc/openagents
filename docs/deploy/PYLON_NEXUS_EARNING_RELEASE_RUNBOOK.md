@@ -144,20 +144,23 @@ all of these are true:
 - the relevant code and docs are committed and pushed to `origin/main`
 - the public Pylon release that users need has been published, if the issue
   depends on public install behavior
-- the production Nexus image is built from the pushed `main` commit, if Nexus
-  behavior changed
-- the production service is deployed onto that exact image
+- the production service affected by the issue is deployed from the pushed
+  commit: Omega/Cloudflare for the MDK-default checkout, receipt, and Site
+  commerce path; old GCP/native Nexus only when the issue explicitly changes
+  that native lane
 - a fresh public-style Pylon home proves the user path by running bare `pylon`
 - hosted work reaches the expected terminal state
-- accepted work creates and dispatches the payout required by the issue
+- accepted work creates and dispatches or simulates the payout required by the
+  issue, with real-bitcoin movement required before public payment claims
 - proof artifacts, deployment receipts, and issue comments name the exact
-  commit, image, release, run id, contribution id, node id, and payout state
+  commit, release, run id, contribution id, node id, checkout/payment proof,
+  and payout state
 
 Branch work is evidence. It is not closeout.
 
 ## Correct Release Order
 
-Use this sequence for public earning-loop changes:
+Use this sequence for MDK-default Pylon v0.2 public earning-loop changes:
 
 1. Make the Pylon/Nexus changes in `openagents`.
 2. Run the relevant local proof runtime and focused Rust tests.
@@ -173,19 +176,29 @@ Use this sequence for public earning-loop changes:
    `wallet_authority=false` and capture the declared Pylon launch artifacts.
 5. Bump the workspace version and `packages/pylon-bootstrap/package.json` when
    the public Pylon binary behavior changes.
-6. Refresh deploy locks before any Nexus Cloud Build if workspace package
-   versions changed.
+6. Verify the Omega Cloudflare MDK sidecar path remains live or point to a
+   newer public-safe proof. The 2026-06-07 proof path is:
+   `openagents.com Worker -> MDK_SIDECAR -> Cloudflare Container -> MDK
+   platform`, with a 100-bitcoin-sat checkout paid from a local MDK agent
+   wallet and merchant checkout status `PAYMENT_RECEIVED`.
 7. Commit and push the exact release candidate to `origin/main`.
 8. Publish the GitHub `pylon-vX.Y.Z` release assets and npm bootstrap package.
-9. Build the Nexus image from the pushed commit.
-10. Deploy the Nexus image through the scripted production path.
-11. Prove the user path from a fresh Pylon home using the public npm/bootstrap
+9. Prove the user path from a fresh Pylon home using the public npm/bootstrap
    lane or already-installed release binary.
-12. Record receipts, update docs, comment on issues, and close only after
+10. Run the post-release Artanis/Pylon paid-work proof. For v0.2 this may use
+    the Cloudflare/Omega MDK proof path plus the local proof runtime until the
+    full production accepted-work settlement bridge is live.
+11. Record receipts, update docs, comment on issues, and close only after
     payout proof is visible.
 
 Do not reverse steps 5 and 7. A Cloud Build image from an unpushed detached
 worktree can run, but it cannot honestly close the issue.
+
+Only use the old GCP/native Nexus image build and deploy steps when the issue
+explicitly changes that old native runtime. `nexus.openagents.com` public-edge
+`530` / `1033`, stale native-LDK continuity state, or missing local `gcloud`
+credentials are not release blockers for the MDK-default Pylon v0.2 path unless
+the task is specifically to repair or verify the old native Nexus lane.
 
 Npm bootstrap-only changes can publish a new `@openagentsinc/pylon` package
 without cutting a new GitHub `pylon-vX.Y.Z` binary release when the Rust Pylon

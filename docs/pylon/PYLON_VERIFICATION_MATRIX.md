@@ -43,6 +43,7 @@ If any release note, marketing text, or operator doc violates one of those state
 | Wallet runtime selection | `cargo run -p pylon -- wallet status --json`, then `cargo run -p pylon -- config set wallet_runtime_kind mock` and re-run status | reports `runtime.runtime_kind=moneydevkit` by default and `runtime.runtime_kind=mock` after the explicit test override; `external_target` is only an advanced migration override |
 | Wallet runtime lifecycle | `cargo run -p pylon -- wallet start --json`, `wallet restart --json`, and `wallet stop --json` on a mock home and an MDK smoke home | returns structured lifecycle reports through the selected Pylon wallet runtime, allows agents/operators to control the wrapped MDK daemon without calling MDK directly, and leaves no temp smoke daemon running after stop |
 | MoneyDevKit default wallet wrapper | on a clean Pylon home, run `wallet status --json`, `wallet balance --json`, `wallet invoice 21 --description "pylon receive" --json`, `wallet offer --description "pylon offer" --json`, and `wallet history --json`; repeat with a second clean Pylon home on the same machine | auto-initializes a Pylon-scoped MDK agent-wallet home, reports JSON status/balance/history without printing mnemonic or preimages, returns BOLT11 and BOLT12 receive artifacts, records runtime kind `moneydevkit` in retained wallet metadata, and sets a stable Pylon-scoped `MDK_WALLET_PORT` so two local Pylon homes do not share the same MDK daemon |
+| Omega Cloudflare MDK checkout proof | verify or reference a current public-safe Omega report showing `openagents.com` Worker -> `MDK_SIDECAR` -> Cloudflare Container -> MDK platform, a real bitcoin-denominated checkout, local MDK wallet payment, merchant paid status, and payer balance delta | proves the MDK-default release path does not depend on old GCP/native Nexus reachability; raw access tokens, mnemonics, invoices, payment hashes, preimages, and checkout client secrets are not included in public evidence |
 | Wallet entropy derivation | `cargo run -p pylon -- wallet entropy status --json` | reports redacted one-phrase HKDF derivation metadata and a node entropy digest without printing the mnemonic or raw 64-byte entropy |
 | Wallet storage lock | `cargo run -p pylon -- wallet lock status --json` after startup; run a second lock acquisition in tests | creates the private `wallet/ldk/` layout, reports lock owner/stale state, refuses a second active writer, and only clears stale locks explicitly |
 | LDK Node no-network open | `cargo run -p pylon -- config set wallet_runtime_kind ldk_node`, `cargo run -p pylon -- config set wallet_network regtest`, then `cargo run -p pylon -- wallet status --json` | builds the local LDK Node from derived entropy, reports a stable `ldk_node.node_id`, opens SQLite storage, and stays non-running with `wallet_chain_source_kind=none` |
@@ -95,6 +96,16 @@ also pass before a release candidate is called valid:
 Those tests prove the contract and fake-workroomd path only. A public Pylon
 v0.2 release also needs one live account-backed SHC Artanis bootstrap run with
 wallet authority set to `false` and the required artifacts captured.
+
+The current MDK-default release path also needs Omega Cloudflare MDK evidence.
+As of 2026-06-07, the accepted proof is recorded in the Omega docs and
+summarized in `docs/reports/nexus/2026-06-07-pylon-v02-production-blockers.md`:
+the `openagents.com` Worker reached a Cloudflare Container MDK sidecar, created
+a 100-bitcoin-sat checkout, paid it from a local MDK agent wallet, observed
+merchant status `PAYMENT_RECEIVED`, and recorded the payer balance delta. A
+newer equivalent proof may replace that evidence. Do not block this MDK-default
+release on old GCP/native Nexus public-edge `530` / `1033` or stale native-LDK
+continuity state unless the task explicitly changes that native lane.
 
 Sandbox-specific evidence that should remain green:
 
@@ -174,6 +185,8 @@ Release candidate:
 
 - run the full repo-level checks above
 - run the Artanis/Pylon bootstrap contract and fake-workroomd checks above
+- verify current Omega Cloudflare MDK checkout proof or produce a newer
+  public-safe equivalent
 - run the standalone smoke path on at least one machine with local Gemma supply
 - run the sandbox-specific evidence commands on at least one machine with declared sandbox profiles
 - confirm persisted status, jobs, earnings, and receipts survive a restart

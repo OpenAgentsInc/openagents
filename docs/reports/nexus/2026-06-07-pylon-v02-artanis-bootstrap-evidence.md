@@ -79,6 +79,13 @@ That run must:
 - retain a public-safe proof receipt that names the Cloud commit, OpenAgents
   release-candidate commit, SHC run id, artifact refs, and closeout status.
 
-The live Artanis run is separate from the Nexus real-bitcoin accepted-work
-payout proof. Both are required before the Pylon v0.2 GitHub release should be
-created.
+The live Artanis run is separate from the MDK/Omega real-bitcoin payment proof.
+Both are required before the Pylon v0.2 GitHub release should be created.
+
+For this MDK-default release, the required payment proof no longer depends on
+the old GCP-hosted native Nexus public edge or native-LDK continuity state. The
+current accepted payment proof is the Omega Cloudflare MDK sidecar smoke
+recorded on 2026-06-07: Worker to Cloudflare Container sidecar, a
+100-bitcoin-sat checkout, local MDK wallet payment, merchant status
+`PAYMENT_RECEIVED`, and a payer wallet balance delta. A newer equivalent
+public-safe proof can replace that evidence.
