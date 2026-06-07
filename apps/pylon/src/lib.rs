@@ -24414,7 +24414,10 @@ fn derive_runtime_snapshot(
     let eligible_products = products.iter().filter(|product| product.eligible).count();
     let enabled_products = products.iter().filter(|product| product.enabled).count();
     let queue_depth = previous_runtime.map_or(0, |runtime| runtime.queue_depth);
-    let state = if runtime_error.is_some() {
+    let fatal_runtime_error = runtime_error
+        .as_deref()
+        .is_some_and(|error| !runtime_error_is_control_plane_warning(error));
+    let state = if fatal_runtime_error {
         "error".to_string()
     } else {
         match desired_mode {
@@ -24592,11 +24595,24 @@ fn build_health_events(
 ) -> Vec<ProviderHealthEvent> {
     let mut events = Vec::new();
     if let Some(runtime_error) = runtime_error {
+        let control_plane_warning = runtime_error_is_control_plane_warning(runtime_error);
         events.push(ProviderHealthEvent {
-            event_id: "runtime_error".to_string(),
+            event_id: if control_plane_warning {
+                "control_plane_warning".to_string()
+            } else {
+                "runtime_error".to_string()
+            },
             occurred_at_ms: now_epoch_ms(),
-            severity: "error".to_string(),
-            code: "STATUS_BUILD_ERROR".to_string(),
+            severity: if control_plane_warning {
+                "warn".to_string()
+            } else {
+                "error".to_string()
+            },
+            code: if control_plane_warning {
+                "CONTROL_PLANE_UNAVAILABLE".to_string()
+            } else {
+                "STATUS_BUILD_ERROR".to_string()
+            },
             detail: runtime_error.to_string(),
             source: "pylon".to_string(),
         });
@@ -24618,6 +24634,12 @@ fn build_health_events(
             }),
     );
     events
+}
+
+fn runtime_error_is_control_plane_warning(error: &str) -> bool {
+    let normalized = error.trim().to_ascii_lowercase();
+    normalized.starts_with("nexus provider heartbeat failed:")
+        || normalized.starts_with("nexus payout-target sync failed:")
 }
 
 fn provider_blocker_codes(
@@ -49787,6 +49809,55 @@ pub const PSIONIC_TRAIN_QWEN_LEGAL_ADAPTER_SFT_ENVIRONMENT_REF: &str = \"psionic
             Some("nexus payout-target sync failed: challenge timed out"),
         );
         assert_eq!(provider_control_plane_runtime_error(None, None), None);
+    }
+
+    #[test]
+    fn provider_control_plane_warning_does_not_degrade_local_runtime()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config = default_config(temp_dir.path());
+        let runtime_error = provider_control_plane_runtime_error(
+            Some("nexus provider presence heartbeat failed: error code: 1033"),
+            None,
+        );
+        let snapshot = build_snapshot_from_availability(
+            &config,
+            None,
+            ProviderDesiredMode::Online,
+            None,
+            ProviderAvailability {
+                local_gemma: ready_health("gemma4:e4b", &["gemma4:e4b"], Some("gemma_ready")),
+                apple_foundation_models: ProviderBackendHealth::default(),
+                apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+                adapter_training_contributor:
+                    ProviderAdapterTrainingContributorAvailability::default(),
+                pooled_inference: ProviderPooledInferenceAvailability::default(),
+                sandbox: ProviderSandboxAvailability::default(),
+            },
+            runtime_error,
+        );
+
+        ensure(
+            snapshot.runtime.authoritative_status.as_deref() == Some("online"),
+            "control-plane heartbeat failures should not turn a locally ready Pylon into a runtime error",
+        )?;
+        ensure(
+            snapshot.runtime.degraded_reason_code.is_none(),
+            "control-plane heartbeat failures should not assign STATUS_BUILD_ERROR",
+        )?;
+        ensure(
+            snapshot.runtime.last_error.as_deref().is_some_and(|value| {
+                value.contains("nexus provider heartbeat failed")
+                    && value.contains("error code: 1033")
+            }),
+            "control-plane warning detail should remain visible",
+        )?;
+        ensure(
+            snapshot.health_events.iter().any(|event| {
+                event.code == "CONTROL_PLANE_UNAVAILABLE" && event.severity == "warn"
+            }),
+            "control-plane warning should be preserved as a warning health event",
+        )
     }
 
     fn codex_probe(
