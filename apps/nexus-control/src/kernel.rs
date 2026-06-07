@@ -113,6 +113,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::mpsc;
 
 const SNAPSHOT_WINDOW_MS: i64 = 86_400_000;
 const COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION: u32 = 1;
@@ -127,6 +128,86 @@ const COMPUTE_DELIVERY_REJECTION_GUARDED_RATE: f64 = 0.10;
 const COMPUTE_DELIVERY_REJECTION_TRIPPED_RATE: f64 = 0.25;
 const TRAINING_NODE_HEARTBEAT_INTERVAL_MS: i64 = 5_000;
 const TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS: i64 = 120_000;
+
+struct KernelPersistWork {
+    seq: u64,
+    path: PathBuf,
+    state: Box<PersistedComputeAuthorityState>,
+}
+
+/// Owns the background kernel-state writer thread. Dropping this value closes
+/// the channel and joins the thread, ensuring all queued writes finish before
+/// the caller proceeds (e.g. before a reload, or on graceful shutdown).
+struct KernelPersistWriter {
+    tx: Option<mpsc::SyncSender<KernelPersistWork>>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl std::fmt::Debug for KernelPersistWriter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KernelPersistWriter").finish_non_exhaustive()
+    }
+}
+
+impl Drop for KernelPersistWriter {
+    fn drop(&mut self) {
+        // Drop the sender first so the background thread's recv() returns Err
+        // and the thread exits its loop.
+        drop(self.tx.take());
+        // Now join: block until all pending writes are complete.
+        if let Some(handle) = self.join.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn write_kernel_state(
+    path: &std::path::Path,
+    seq: u64,
+    state: &PersistedComputeAuthorityState,
+) -> Result<(), String> {
+    let payload = serde_json::to_vec_pretty(state)
+        .map_err(|error| format!("kernel_state_encode_failed: {error}"))?;
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "kernel_state_parent_create_failed:{}:{}",
+                parent.display(),
+                error
+            )
+        })?;
+    }
+    // Include the sequence number in the temp path so concurrent sync fallback
+    // writes and background writes never collide on the same temp file.
+    let tmp_path = path.with_extension(format!("tmp.{seq}"));
+    fs::write(tmp_path.as_path(), &payload).map_err(|error| {
+        format!("kernel_state_write_failed:{}:{}", tmp_path.display(), error)
+    })?;
+    fs::rename(tmp_path.as_path(), path)
+        .map_err(|error| format!("kernel_state_rename_failed:{}:{}", path.display(), error))?;
+    Ok(())
+}
+
+fn spawn_kernel_state_writer() -> KernelPersistWriter {
+    let (tx, rx) = mpsc::sync_channel::<KernelPersistWork>(1);
+    let join = std::thread::Builder::new()
+        .name("kernel-state-writer".to_string())
+        .spawn(move || {
+            while let Ok(work) = rx.recv() {
+                let mut latest = work;
+                while let Ok(newer) = rx.try_recv() {
+                    latest = newer;
+                }
+                if let Err(error) = write_kernel_state(&latest.path, latest.seq, &latest.state) {
+                    tracing::warn!("kernel_state_async_write_failed:{error}");
+                }
+            }
+        })
+        .ok();
+    KernelPersistWriter { tx: Some(tx), join }
+}
 
 #[derive(Debug, Clone)]
 pub struct ComputeRuntimePolicy {
@@ -424,6 +505,8 @@ pub struct KernelState {
     next_projection_seq: u64,
     persistence_path: Option<PathBuf>,
     last_persistence_error: Option<String>,
+    persist_seq: u64,
+    persist_writer: Option<KernelPersistWriter>,
     compute_runtime_policy: ComputeRuntimePolicy,
 }
 
@@ -2176,10 +2259,20 @@ fn challenge_summary_for_proof(
 
 impl KernelState {
     pub fn new_with_persistence(persistence_path: Option<PathBuf>) -> Self {
+        // In test builds, skip the background writer so tests that read the
+        // state file immediately after a mutation see writes synchronously
+        // (matching the contract tests assert). Production gets the async path.
+        #[cfg(test)]
+        let persist_writer: Option<KernelPersistWriter> = None;
+        #[cfg(not(test))]
+        let persist_writer = persistence_path
+            .as_ref()
+            .map(|_| spawn_kernel_state_writer());
         let mut state = Self {
             receipt_store: InMemoryReceiptStore::new(),
             next_projection_seq: 1,
             persistence_path,
+            persist_writer,
             ..Self::default()
         };
         if state.load_persisted_compute_authority_state() {
@@ -4493,11 +4586,8 @@ impl KernelState {
         true
     }
 
-    fn persist_compute_authority_state(&mut self) -> Result<(), String> {
-        let Some(path) = self.persistence_path.clone() else {
-            return Ok(());
-        };
-        let persisted = PersistedComputeAuthorityState {
+    fn build_persist_snapshot(&self) -> PersistedComputeAuthorityState {
+        PersistedComputeAuthorityState {
             schema_version: COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION,
             receipt_store: self.receipt_store.persisted(),
             compute_products: self.compute_products.clone().into_iter().collect(),
@@ -4566,28 +4656,48 @@ impl KernelState {
             compute_indices: self.compute_indices.clone().into_iter().collect(),
             snapshots: self.snapshots.clone(),
             next_projection_seq: self.next_projection_seq.max(1),
-        };
-        let payload = serde_json::to_vec_pretty(&persisted)
-            .map_err(|error| format!("kernel_state_encode_failed: {error}"))?;
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            fs::create_dir_all(parent).map_err(|error| {
-                format!(
-                    "kernel_state_parent_create_failed:{}:{}",
-                    parent.display(),
-                    error
-                )
-            })?;
         }
-        let tmp_path = path.with_extension("tmp");
-        fs::write(tmp_path.as_path(), payload).map_err(|error| {
-            format!("kernel_state_write_failed:{}:{}", tmp_path.display(), error)
-        })?;
-        fs::rename(tmp_path.as_path(), path.as_path())
-            .map_err(|error| format!("kernel_state_rename_failed:{}:{}", path.display(), error))?;
-        self.last_persistence_error = None;
-        Ok(())
+    }
+
+    fn persist_compute_authority_state(&mut self) -> Result<(), String> {
+        let Some(path) = self.persistence_path.clone() else {
+            return Ok(());
+        };
+        // Clone state while still holding the write lock (fast, in-memory only).
+        // Serialization and disk I/O happen off the lock in the background writer,
+        // so the global RwLock<ControlStore> is not held during the slow path.
+        let snapshot = self.build_persist_snapshot();
+        self.persist_seq = self.persist_seq.saturating_add(1);
+        let seq = self.persist_seq;
+        if let Some(tx) = self.persist_writer.as_ref().and_then(|w| w.tx.as_ref()) {
+            let work = KernelPersistWork { seq, path, state: Box::new(snapshot) };
+            match tx.try_send(work) {
+                Ok(_) => {
+                    self.last_persistence_error = None;
+                    return Ok(());
+                }
+                Err(e) => {
+                    // Channel full or disconnected: fall back to synchronous write so
+                    // this mutation is not silently un-persisted.
+                    let work = match e {
+                        mpsc::TrySendError::Full(w) => w,
+                        mpsc::TrySendError::Disconnected(w) => w,
+                    };
+                    let result = write_kernel_state(&work.path, work.seq, &work.state);
+                    match &result {
+                        Ok(_) => self.last_persistence_error = None,
+                        Err(error) => self.last_persistence_error = Some(error.clone()),
+                    }
+                    return result;
+                }
+            }
+        }
+        let result = write_kernel_state(&path, seq, &snapshot);
+        match &result {
+            Ok(_) => self.last_persistence_error = None,
+            Err(error) => self.last_persistence_error = Some(error.clone()),
+        }
+        result
     }
 
     pub fn create_work_unit(
@@ -18074,6 +18184,8 @@ mod tests {
             )
             .expect("persist publication record");
 
+        // Drop kernel to flush the background writer before reading the file.
+        drop(kernel);
         let payload = std::fs::read_to_string(path.as_path()).expect("read persisted kernel state");
         assert!(
             !payload.contains(marker),

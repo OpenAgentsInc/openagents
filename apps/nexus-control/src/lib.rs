@@ -39054,6 +39054,7 @@ mod tests {
         let log_contents = std::fs::read_to_string(receipt_log_path.as_path())?;
         assert!(log_contents.contains("\"receipt_type\":\"desktop_session.created\""));
 
+        drop(app);
         let reloaded_app = build_router(config);
         let stats_response = reloaded_app
             .oneshot(
@@ -40904,6 +40905,10 @@ mod tests {
             .await?;
         assert_eq!(index_response.status(), StatusCode::OK);
 
+        // Drop the first router to flush the background kernel-state writer before
+        // simulating a restart. In production the process shuts down (and the
+        // writer flushes via Drop) before the new process starts.
+        drop(app);
         let reloaded_app = build_router(config);
         let reloaded_session = create_session_token(&reloaded_app).await?;
 
@@ -41250,6 +41255,7 @@ mod tests {
                 .supports_replica_type(ComputeTrainingReplicaType::Island)
         );
 
+        drop(app);
         let reloaded_app = build_router(config);
         let reloaded_nodes_response = reloaded_app
             .clone()
