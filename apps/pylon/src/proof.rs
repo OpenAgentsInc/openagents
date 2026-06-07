@@ -5218,6 +5218,10 @@ fn current_executable_path() -> Result<PathBuf> {
 }
 
 fn resolve_workspace_binary(binary: &str, package: &str) -> Result<PathBuf> {
+    if let Some(packaged_binary) = locate_packaged_support_binary(binary)? {
+        return Ok(packaged_binary);
+    }
+
     let status = StdCommand::new("cargo")
         .current_dir(workspace_root())
         .args(["build", "-p", package, "--bin", binary])
@@ -5236,6 +5240,13 @@ fn locate_workspace_binary(binary: &str) -> Result<Option<PathBuf>> {
         .find(|candidate| candidate.is_file()))
 }
 
+fn locate_packaged_support_binary(binary: &str) -> Result<Option<PathBuf>> {
+    let current_exe = current_executable_path()?;
+    Ok(packaged_support_binary_candidates(binary, current_exe.as_path())
+        .into_iter()
+        .find(|candidate| candidate.is_file()))
+}
+
 fn expected_workspace_binary_path(binary: &str) -> Result<PathBuf> {
     let executable = platform_binary_name(binary);
     Ok(workspace_root()
@@ -5245,8 +5256,14 @@ fn expected_workspace_binary_path(binary: &str) -> Result<PathBuf> {
 }
 
 fn workspace_binary_candidates(binary: &str) -> Result<Vec<PathBuf>> {
-    let executable = platform_binary_name(binary);
     let current_exe = current_executable_path()?;
+    let mut candidates = packaged_support_binary_candidates(binary, current_exe.as_path());
+    candidates.push(expected_workspace_binary_path(binary)?);
+    Ok(candidates)
+}
+
+fn packaged_support_binary_candidates(binary: &str, current_exe: &Path) -> Vec<PathBuf> {
+    let executable = platform_binary_name(binary);
     let mut candidates = Vec::new();
     if let Some(parent) = current_exe.parent() {
         candidates.push(parent.join(executable.as_str()));
@@ -5254,8 +5271,7 @@ fn workspace_binary_candidates(binary: &str) -> Result<Vec<PathBuf>> {
             candidates.push(grandparent.join(executable.as_str()));
         }
     }
-    candidates.push(expected_workspace_binary_path(binary)?);
-    Ok(candidates)
+    candidates
 }
 
 fn workspace_root() -> PathBuf {
@@ -7153,6 +7169,23 @@ mod tests {
         assert_eq!(
             parse_proof_lane("a1_minimal_launch_b").expect("launch B lane"),
             ProofLane::A1MinimalDistributedLmLaunchB
+        );
+    }
+
+    #[test]
+    fn packaged_support_binary_candidates_prefer_current_executable_directory() {
+        let current_exe = std::path::PathBuf::from("/tmp/pylon-release/pylon-v0.2.1/pylon");
+        let candidates =
+            super::packaged_support_binary_candidates("nexus-relay", current_exe.as_path());
+        let executable = super::platform_binary_name("nexus-relay");
+
+        assert_eq!(
+            candidates.first(),
+            Some(&std::path::PathBuf::from("/tmp/pylon-release/pylon-v0.2.1").join(&executable))
+        );
+        assert_eq!(
+            candidates.get(1),
+            Some(&std::path::PathBuf::from("/tmp/pylon-release").join(&executable))
         );
     }
 
