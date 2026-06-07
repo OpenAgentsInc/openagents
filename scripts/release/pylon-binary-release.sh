@@ -89,7 +89,8 @@ host_arch() {
 }
 
 ensure_clean_git() {
-  [[ -z "$(git status --porcelain)" ]] || die "Git worktree must be clean before cutting a release"
+  git diff --quiet || die "Tracked files must be clean before cutting a release"
+  git diff --cached --quiet || die "Staged changes must be clean before cutting a release"
 }
 
 powershell_command() {
@@ -138,12 +139,20 @@ release_exists() {
 }
 
 build_binaries() {
-  cargo build --release -p pylon -p pylon-tui
+  cargo build --release -p pylon -p pylon-tui -p nexus-relay -p nexus-control
   cargo build \
     --manifest-path "${PSIONIC_REPO}/Cargo.toml" \
     --release \
     -p psionic-train \
     --bin psionic-train
+}
+
+install_openagents_support_binary() {
+  local name="$1"
+  local source_binary="${REPO_ROOT}/target/release/$(binary_name "$name")"
+
+  [[ -x "$source_binary" ]] || die "Missing built ${name} binary at ${source_binary}"
+  install -m 0755 "$source_binary" "${STAGE_DIR}/$(binary_name "$name")"
 }
 
 ensure_psionic_runtime_source() {
@@ -235,6 +244,8 @@ Platform: $(host_os)-$(host_arch)
 This archive contains:
 - ${pylon_bin}: the default user entrypoint plus headless worker/provider CLI
 - ${pylon_tui_bin}: the minimal homework-earning terminal dashboard
+- $(binary_name nexus-relay): local proof-runtime authority for release smokes
+- $(binary_name nexus-control): local debug proof-runtime authority for release smokes
 - psionic/target/release/$(psionic_train_binary_name): the packaged machine-training runtime
   used by Pylon for admin-triggered homework/training work
 
@@ -257,6 +268,9 @@ Important:
   earning lane. The retained Gemma benchmark path still shells into a full
   sibling Psionic checkout; set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic
   when you need that lane.
+- This archive includes the proof-runtime authority binaries that `pylon proof`
+  needs for local release smokes, so `pylon proof run ...` does not require a
+  source checkout or Cargo toolchain on the target machine.
 - Source builds remain the fallback for unsupported platforms or when you need
   to modify the code.
 EOF
@@ -308,6 +322,9 @@ Notes:
   \`./psionic\`, including \`psionic/target/release/$(psionic_train_binary_name)\`, so the
   default homework worker can advertise training capability without a separate
   sibling checkout.
+- This archive also includes \`$(binary_name nexus-relay)\` and
+  \`$(binary_name nexus-control)\`, which the local proof runtime uses as
+  support authorities during release smokes.
 - The packaged Psionic runtime includes \`psionic/.openagents-psionic-revision\`
   so hosted workers derive training admission identity without requiring a Git
   checkout on the Pylon machine.
@@ -384,6 +401,8 @@ install -m 0755 \
 install -m 0755 \
   "${REPO_ROOT}/target/release/$(binary_name pylon-tui)" \
   "${STAGE_DIR}/$(binary_name pylon-tui)"
+install_openagents_support_binary "nexus-relay"
+install_openagents_support_binary "nexus-control"
 install_psionic_train_runtime_surface
 write_readme "${STAGE_DIR}/README.txt" "$ARCHIVE_DIR"
 
