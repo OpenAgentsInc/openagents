@@ -32,6 +32,16 @@ Default to:
 - concrete causal language
 - plain statements of what is true, what changes, and why it matters
 
+## GitHub CLI Comment Safety
+
+- When creating GitHub issue or PR bodies/comments with `gh`, use
+  `--body-file` and a temporary file whenever the Markdown contains backticks,
+  `$`, quotes, code, JSON, shell snippets, or multiple paragraphs.
+- Do not pass Markdown with backticks through a double-quoted shell argument;
+  the shell treats backticks as command substitution and corrupts the comment.
+- Prefer quoted heredocs such as `<<'EOF'` for temporary body files so Markdown
+  reaches `gh` unchanged.
+
 ## Scope
 
 - This repository is intentionally pruned for MVP work.
