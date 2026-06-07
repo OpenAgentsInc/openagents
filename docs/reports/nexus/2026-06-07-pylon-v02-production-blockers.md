@@ -39,6 +39,9 @@ Production evidence is not green:
 - `#4548`: the tracked LDK payout reconciliation fix is pushed in source but
   still needs a live Nexus deploy plus admin treasury refresh after Nexus is
   reachable.
+- `#4550`: the production recovery/deploy credential path must support
+  noninteractive approved-agent or approved-operator recovery so future public
+  edge outages can be audited and repaired without waiting on a browser reauth.
 - `#4504`: the Pylon v0.2 tracker remains open until public Nexus is healthy,
   `#4548` is verified, and a live real-bitcoin accepted-work payout proof is
   recorded.
