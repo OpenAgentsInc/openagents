@@ -205,10 +205,10 @@ runtime surface, and was verified from public Darwin and Linux archives. The
 SHC Linux proof hid the build checkout and removed Cargo from `PATH` before
 running `pylon proof run`.
 
-The same proof records that `@openagentsinc/pylon@0.2.2` publication remained
-blocked by npm `EOTP`; do not claim the npm bootstrap package is live until the
-one-time publish authorization is completed and a clean package install smoke
-is recorded.
+The same proof records that `@openagentsinc/pylon@0.2.2` is published and that
+a clean SHC npm bootstrap smoke installed the Linux release asset, initialized a
+fresh Pylon home, and detected the packaged Psionic runtime under the extracted
+archive.
 
 The same rollout found that the release script was compiling every binary in
 the local `psionic-train` package when building the packaged runtime surface.

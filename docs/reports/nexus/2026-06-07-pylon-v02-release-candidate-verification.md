@@ -122,9 +122,10 @@ After this release-candidate report, the public binary release was patched to
 3. Verify fresh public-style installs from the released assets. Done:
    `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.
 4. Publish `@openagentsinc/pylon@0.2.2` when npm publish authorization is
-   available. Still blocked because npm returns `EOTP` after CLI auth is
-   restored.
-5. Verify a fresh npm bootstrap path after the npm package is published.
+   available. Done after operator completed npm CLI authorization.
+5. Verify a fresh npm bootstrap path after the npm package is published. Done
+   on SHC with isolated `HOME`, npm cache, install root, and Pylon home; see
+   `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.
 6. Keep the post-release paid-work claim bounded: the current evidence is
    Omega/Cloudflare MDK checkout proof plus public-release local proof-runtime
    accepted-work closeout. Do not claim real public Bitcoin settlement for

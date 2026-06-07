@@ -114,9 +114,10 @@ The current public Pylon v0.2 release publication proof is
 records `pylon-v0.2.2` as the stable `OpenAgentsInc/openagents` GitHub binary
 release, checksum-verified Darwin arm64 and Linux x86_64 assets, fresh
 extracted-binary proof smokes on macOS and SHC Linux, the SHC no-source proof
-with Cargo removed from `PATH`, the npm publication `EOTP` blocker, and cleanup
-of the misplaced `OpenAgentsInc/psionic` `v0.2.0` release/tag. Treat
-`pylon-v0.2.0` and `pylon-v0.2.1` as superseded packaging attempts.
+with Cargo removed from `PATH`, the published `@openagentsinc/pylon@0.2.2`
+npm bootstrap smoke on SHC, and cleanup of the misplaced
+`OpenAgentsInc/psionic` `v0.2.0` release/tag. Treat `pylon-v0.2.0` and
+`pylon-v0.2.1` as superseded packaging attempts.
 
 Sandbox-specific evidence that should remain green:
 

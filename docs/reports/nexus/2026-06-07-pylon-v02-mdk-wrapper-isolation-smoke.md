@@ -160,6 +160,6 @@ Current status as of the later 2026-06-07 release-gate update:
 - The live Artanis SHC bootstrap proof is recorded in
   `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`.
 - Later release work published and verified `pylon-v0.2.2` as the stable public
-  GitHub binary release. The remaining bootstrap gap is npm publication, which
-  is blocked on npm one-time authorization for `@openagentsinc/pylon@0.2.2`.
-  See `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.
+  GitHub binary release and published `@openagentsinc/pylon@0.2.2` on npm. SHC
+  clean npm bootstrap evidence is recorded in
+  `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.

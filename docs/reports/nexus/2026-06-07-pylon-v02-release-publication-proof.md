@@ -168,28 +168,65 @@ Public-safe artifacts:
 - `docs/reports/nexus/pylon-v022-shc-nosource-proof-20260607183407.json`
 - `docs/reports/nexus/pylon-v022-shc-nosource-status-20260607183407.json`
 
-## Npm Bootstrap Status
+## Npm Bootstrap Proof
 
-The npm bootstrap package is prepared locally as
-`@openagentsinc/pylon@0.2.2`, but it is not published yet.
+The npm bootstrap package is published as `@openagentsinc/pylon@0.2.2`.
 
 Evidence:
 
-- `npm view @openagentsinc/pylon versions --json` still shows latest published
-  version `0.1.17`.
+- `npm view @openagentsinc/pylon version` returns `0.2.2`.
+- `npm view @openagentsinc/pylon@0.2.2 dist --json` returns:
+  - integrity:
+    `sha512-JSnt0JbaFZ/F2ngjC+zMvtXqYBvbhRBdDsTfDUCQV++tLW1CtM+Kwx8P+5QGGjFxkJwmGaaNiuSW0A3IAHjOAA==`
+  - shasum: `cbffc9e216196e218c261bf5328970c6cdf8982a`
+  - tarball:
+    `https://registry.npmjs.org/@openagentsinc/pylon/-/pylon-0.2.2.tgz`
 - `npm whoami` succeeds for the `openagentsinc` account.
-- `npm publish --access public` from `packages/pylon-bootstrap` reaches the
-  registry for `@openagentsinc/pylon@0.2.2`, but returns `EOTP` and requires a
-  one-time publish authorization.
+- The operator completed npm CLI one-time authorization and
+  `npm publish --access public` returned `+ @openagentsinc/pylon@0.2.2`.
 
-Release implication:
+SHC clean npm bootstrap smoke:
 
-- The GitHub release assets are live and verified for Darwin arm64 and Linux
-  x86_64.
-- The npm bootstrap remains blocked on npm OTP or web-auth publish completion.
-- Once npm authorization is available, publish from `packages/pylon-bootstrap`
-  at version `0.2.2`, then verify a clean package install path against the
-  public `pylon-v0.2.2` GitHub release assets.
+```bash
+HOME="$SMOKE_ROOT/home-env" \
+NPM_CONFIG_CACHE="$SMOKE_ROOT/npm-cache" \
+OPENAGENTS_DISABLE_TELEMETRY=1 \
+npm exec --yes --package @openagentsinc/pylon@0.2.2 -- pylon \
+  --version 0.2.2 \
+  --install-root "$SMOKE_ROOT/install" \
+  --pylon-home "$SMOKE_ROOT/pylon-home" \
+  --no-launch \
+  --no-updates \
+  --json
+```
+
+Observed results:
+
+- Node: `v18.19.1`.
+- npm: `9.2.0`.
+- `version`: `0.2.2`.
+- `tagName`: `pylon-v0.2.2`.
+- `target`: `linux` / `x86_64`.
+- `installMethod`: `release_asset`.
+- `cached`: `false`.
+- installed binary:
+  `/tmp/pylon-npm-022-shc.FuRL6t/install/versions/pylon-v0.2.2-linux-x86_64/pylon`.
+- installed TUI:
+  `/tmp/pylon-npm-022-shc.FuRL6t/install/versions/pylon-v0.2.2-linux-x86_64/pylon-tui`.
+- fresh init config:
+  `/tmp/pylon-npm-022-shc.FuRL6t/pylon-home/config.json`.
+- `desiredMode`: `offline`.
+- inventory rows: `2`.
+- packaged Psionic source:
+  `/tmp/pylon-npm-022-shc.FuRL6t/install/versions/pylon-v0.2.2-linux-x86_64/psionic`.
+- `psionicRepoSource`: `exe_ancestor_sibling`.
+- `runtimeSurfaceDetected`: `true`.
+- `contributorSupported`: `true`.
+- executable packaged files included `pylon`, `pylon-tui`, `nexus-relay`,
+  `nexus-control`, and `psionic/.openagents-psionic-revision`.
+
+Public-safe artifact:
+`docs/reports/nexus/pylon-v022-shc-npm-bootstrap-202606071836.json`.
 
 ## Release Engineering Notes
 
@@ -243,10 +280,10 @@ Bitcoin settlement.
 
 ## Current Release Judgment
 
-`pylon-v0.2.2` is the stable public GitHub binary release for Pylon v0.2.
+`pylon-v0.2.2` is the stable public GitHub binary release for Pylon v0.2, and
+`@openagentsinc/pylon@0.2.2` is published and verified through a clean SHC npm
+bootstrap smoke.
 
-The remaining gap is npm bootstrap publication, which is blocked by npm
-one-time authorization rather than code or release-asset readiness. If an npm
-or post-release smoke fix is needed, cut a later patch release such as
-`pylon-v0.2.3` or publish `@openagentsinc/pylon@0.2.2` without changing the
-binary release when the Rust artifacts remain unchanged.
+If an npm or post-release smoke fix is needed later, cut a later patch release
+such as `pylon-v0.2.3` or publish a package-only patch when the Rust artifacts
+remain unchanged.

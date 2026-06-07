@@ -86,12 +86,14 @@ The GitHub binary release gate is now satisfied:
 - release evidence is recorded in
   `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.
 
-The remaining distribution gap is npm bootstrap publication:
+The npm bootstrap publication gate is now satisfied:
 
-- `@openagentsinc/pylon@0.2.2` is prepared locally;
-- `npm publish --access public` reaches the registry but returns `EOTP`;
-- do not claim the npm bootstrap path is live until the one-time authorization
-  completes and a clean package install smoke is recorded.
+- `@openagentsinc/pylon@0.2.2` is published on npm;
+- `npm view @openagentsinc/pylon version` returns `0.2.2`;
+- SHC clean npm bootstrap installed the Linux release asset through
+  `npm exec --yes --package @openagentsinc/pylon@0.2.2 -- pylon ...`;
+- the smoke initialized a fresh Pylon home and detected packaged Psionic under
+  the extracted archive.
 
 The current post-release paid-work proof is local proof-runtime accepted-work
 closeout plus the Omega/Cloudflare MDK checkout proof. It does not claim real
