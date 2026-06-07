@@ -74,15 +74,29 @@ Cloud/Artanis contract evidence:
   Omega `agent_runs.status=completed`, and all eight required launch artifact
   digests captured.
 
-## Remaining release gates
+## Current release gates
 
-Pylon v0.2 should not be released until these are true:
+The GitHub binary release gate is now satisfied:
 
-- the public GitHub `pylon-v0.2.0` release assets and npm bootstrap package are
-  published from pushed `main`;
-- a fresh Pylon home proves the public install/user path;
-- a post-release Artanis/Pylon paid-work proof uses the MDK/Omega proof path or
-  records a precise remaining settlement-bridge blocker.
+- `pylon-v0.2.2` is published in `OpenAgentsInc/openagents`;
+- Darwin arm64 and Linux x86_64 public archives are checksum verified;
+- the SHC Linux proof hid the build checkout and removed Cargo from `PATH`;
+- fresh public archives ran the bounded paid-work proof lane to `completed`
+  with `closeout=rewarded`, `workers_healthy=2`, and `validators_healthy=1`;
+- release evidence is recorded in
+  `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.
+
+The remaining distribution gap is npm bootstrap publication:
+
+- `@openagentsinc/pylon@0.2.2` is prepared locally;
+- `npm publish --access public` reaches the registry but returns `EOTP`;
+- do not claim the npm bootstrap path is live until the one-time authorization
+  completes and a clean package install smoke is recorded.
+
+The current post-release paid-work proof is local proof-runtime accepted-work
+closeout plus the Omega/Cloudflare MDK checkout proof. It does not claim real
+public Bitcoin settlement for Artanis-dispatched work until the settlement
+bridge is explicitly completed.
 
 ## Issue disposition
 
@@ -96,6 +110,8 @@ remaining v0.2 release work is tracked by `#4551` and by this release-gate
 report.
 
 `#4551` is closed after the live Artanis bootstrap proof landed on `main`.
+The follow-up v0.2.2 public release proof is commented there as
+`https://github.com/OpenAgentsInc/openagents/issues/4551#issuecomment-4643655333`.
 
 ## What still belongs to old native Nexus
 

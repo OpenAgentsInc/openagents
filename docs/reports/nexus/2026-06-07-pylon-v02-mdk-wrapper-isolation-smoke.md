@@ -159,6 +159,7 @@ Current status as of the later 2026-06-07 release-gate update:
 - Omega has recorded a real 100-bitcoin-sat MDK checkout/payment proof.
 - The live Artanis SHC bootstrap proof is recorded in
   `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`.
-- Remaining work before `pylon-v0.2.0` is the current `main` release matrix,
-  public GitHub release asset publication, npm bootstrap publication, fresh
-  public install smoke, and post-release Artanis/Pylon paid-work proof.
+- Later release work published and verified `pylon-v0.2.2` as the stable public
+  GitHub binary release. The remaining bootstrap gap is npm publication, which
+  is blocked on npm one-time authorization for `@openagentsinc/pylon@0.2.2`.
+  See `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.

@@ -13,8 +13,8 @@ Cloudflare with the MDK sidecar proof recorded in Omega and summarized in
 ## Source State
 
 - OpenAgents branch: `main`
-- Workspace package version: `0.2.0`
-- Pylon npm bootstrap package version: `0.2.0`
+- Workspace package version: `0.2.2`
+- Pylon npm bootstrap package version: `0.2.2`
 - Live Artanis SHC proof:
   `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`
 - Existing Omega MDK proof: 100-bitcoin-sat checkout, local MDK wallet payment,
@@ -108,20 +108,24 @@ MoneyDevKit wrapper checks:
 - Stale docs now identify the MDK/Omega Cloudflare path as the current release
   path and scope old GCP/native Nexus work to explicit native-LDK tasks.
 
-## Remaining Release Work
+## Release Publication Follow-Up
 
-Before declaring Pylon v0.2 fully live:
+After this release-candidate report, the public binary release was patched to
+`pylon-v0.2.2` and verified from public archives.
 
-1. Commit and push the release candidate to `origin/main`. Done:
+1. Commit and push the release candidate to `origin/main`. Done for the first
+   candidate:
    `f836eb909a9ce323b4097b30a01b6e358ec03fed`.
-2. Publish the GitHub `pylon-v0.2.0` release asset from a clean worktree. Done:
-   `https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.2.0`.
-3. Verify a fresh public-style install from the released asset. Done:
+2. Patch and publish the stable GitHub binary release after packaging defects
+   were found. Done:
+   `https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.2.2`.
+3. Verify fresh public-style installs from the released assets. Done:
    `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.
-4. Publish `@openagentsinc/pylon@0.2.0` when npm publish authorization is
-   available. Blocked during publication proof because npm returned `EOTP`
-   after CLI auth was restored.
+4. Publish `@openagentsinc/pylon@0.2.2` when npm publish authorization is
+   available. Still blocked because npm returns `EOTP` after CLI auth is
+   restored.
 5. Verify a fresh npm bootstrap path after the npm package is published.
-6. Run or record the post-release Artanis/Pylon paid-work proof using the
-   MDK/Omega proof path, or document the exact remaining settlement-bridge
-   blocker.
+6. Keep the post-release paid-work claim bounded: the current evidence is
+   Omega/Cloudflare MDK checkout proof plus public-release local proof-runtime
+   accepted-work closeout. Do not claim real public Bitcoin settlement for
+   Artanis-dispatched work until the settlement bridge is explicitly completed.
