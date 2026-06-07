@@ -194,21 +194,32 @@ Use this sequence for MDK-default Pylon v0.2 public earning-loop changes:
 11. Record receipts, update docs, comment on issues, and close only after
     payout proof is visible.
 
-For the 2026-06-07 `pylon-v0.2.0` rollout, the GitHub release assets were
-published and verified from fresh extracted archives on macOS and SHC Linux.
-The proof is
-`docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`. The
-same proof records that `@openagentsinc/pylon@0.2.0` publication remained
-blocked by npm `EOTP`; do not claim the npm bootstrap package is live until
-the one-time publish authorization is completed and a clean package install
-smoke is recorded.
+For the 2026-06-07 Pylon v0.2 rollout, the stable public GitHub binary release
+is `pylon-v0.2.2`. The proof is
+`docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`. It
+records that `pylon-v0.2.0` missed required proof-runtime support binaries and
+`pylon-v0.2.1` still preferred source-tree Cargo fallback paths when a source
+checkout existed. `pylon-v0.2.2` fixes those packaging defects, includes
+`pylon`, `pylon-tui`, `nexus-relay`, `nexus-control`, and the packaged Psionic
+runtime surface, and was verified from public Darwin and Linux archives. The
+SHC Linux proof hid the build checkout and removed Cargo from `PATH` before
+running `pylon proof run`.
+
+The same proof records that `@openagentsinc/pylon@0.2.2` publication remained
+blocked by npm `EOTP`; do not claim the npm bootstrap package is live until the
+one-time publish authorization is completed and a clean package install smoke
+is recorded.
 
 The same rollout found that the release script was compiling every binary in
 the local `psionic-train` package when building the packaged runtime surface.
 The correct release-script shape is `cargo build --manifest-path
 <psionic>/Cargo.toml --release -p psionic-train --bin psionic-train`. Keep that
 constraint in place so Linux release assets can be built on SHC-class machines
-without spending hours on unrelated training/demo binaries.
+without spending hours on unrelated training/demo binaries. Even with that fix,
+a cold SHC Linux build of `pylon-v0.2.2` spent about 23 minutes on OpenAgents
+release binaries and about 21 minutes on the Psionic support binary, so future
+patch releases should consider support-runtime caching or a cheaper packaged
+runtime profile.
 
 Pylon release assets belong in `OpenAgentsInc/openagents` under `pylon-v...`
 tags. Do not publish Pylon release artifacts in `OpenAgentsInc/psionic`. The

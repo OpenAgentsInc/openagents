@@ -4,206 +4,206 @@ Date: 2026-06-07
 
 ## Summary
 
-`pylon-v0.2.0` is published in the canonical `OpenAgentsInc/openagents`
-repository and the Darwin arm64 release asset has been verified from a fresh
-download outside the source checkout.
+`pylon-v0.2.2` is the current stable public Pylon v0.2 binary release in the
+canonical `OpenAgentsInc/openagents` repository.
+
+The release is published with Darwin arm64 and Linux x86_64 assets. Both assets
+were downloaded from the public GitHub release URL, checksum verified, extracted
+outside the source checkout, and used to run the bounded
+`cs336-a1-hosted-starter` proof lane to terminal `completed` state.
 
 This report does not treat the old GCP/native Nexus lane as a release blocker.
-The v0.2 release path is the MDK-default Pylon path with Omega/Cloudflare MDK
-checkout proof and the Artanis SHC bootstrap proof already recorded in this
-repository.
+The current v0.2 release path is the MDK-default Pylon path with
+Omega/Cloudflare MDK checkout proof, the Artanis SHC bootstrap proof, and local
+proof-runtime accepted-work evidence recorded in this repository.
 
-## Published Release
+## Current Published Release
 
 - Repository: `OpenAgentsInc/openagents`
-- Release tag: `pylon-v0.2.0`
-- Release URL: `https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.2.0`
-- Release name: `Pylon v0.2.0`
-- Published at: `2026-06-07T15:53:22Z`
-- Target commit: `f836eb909a9ce323b4097b30a01b6e358ec03fed`
+- Release tag: `pylon-v0.2.2`
+- Release URL:
+  `https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.2.2`
+- Release name: `Pylon v0.2.2`
+- Published at: `2026-06-07T17:39:57Z`
+- Target commit: `673fefd4b230242198b053e7a4be3e08727b0a8b`
 - Release status: not draft, not prerelease
 
 Published assets:
 
 | Asset | Size | GitHub digest |
 | --- | ---: | --- |
-| `pylon-v0.2.0-darwin-arm64.tar.gz` | `38848961` bytes | `sha256:9a130516aa6e3b74ab09786bd0f92c2b020d1bc67c6c5cfab4951f6666e71b6f` |
-| `pylon-v0.2.0-darwin-arm64.tar.gz.sha256` | `99` bytes | `sha256:25104797aa4d7639c72e82488167e82a8af76fd3f6235558db39a1bfaed08c97` |
-| `pylon-v0.2.0-linux-x86_64.tar.gz` | `141199792` bytes | `sha256:ee10e5d3eec003dde1788d616b3cfdfedd990a138f4bd2099c1a35c5a35e046b` |
-| `pylon-v0.2.0-linux-x86_64.tar.gz.sha256` | `99` bytes | `sha256:830127758083de6b95564080d82c1ff35c5a0f11066df5d0426ac41758a6f93a` |
+| `pylon-v0.2.2-darwin-arm64.tar.gz` | `65207049` bytes | `sha256:08d9c2283c4636930c53eb5a428df1188f9f3789d7183c1e64f8d390f272c92b` |
+| `pylon-v0.2.2-darwin-arm64.tar.gz.sha256` | `99` bytes | `sha256:1798a32a67a6d533a8b72a268ed90f207f4469171429195c24331d1970e1e3c1` |
+| `pylon-v0.2.2-linux-x86_64.tar.gz` | `233130191` bytes | `sha256:60e01f28851437b486319a53b688f44f7a4e6e3a17734770bde9867886810a3c` |
+| `pylon-v0.2.2-linux-x86_64.tar.gz.sha256` | `99` bytes | `sha256:2460bceffa63ae613bd86fb244c34e9458e322a12e08ee2da8381240fb8b8ce7` |
 
-## Fresh Release Asset Smoke
+## Why v0.2.2 Exists
 
-The release archive was downloaded through GitHub Releases into a temp
-directory, verified with the uploaded checksum file, extracted, and run outside
-the source checkout.
+The first v0.2 publication attempts exposed real packaging defects:
 
-Commands run:
+- `pylon-v0.2.0` shipped public binaries, but the proof lane could not run from
+  a fresh archive on SHC because the archive did not include the support
+  binaries `nexus-relay` and `nexus-control`.
+- `pylon-v0.2.1` packaged those support binaries and fixed release README
+  escaping, but the proof runtime still preferred source-tree `cargo build`
+  fallback paths over colocated packaged support binaries when a source checkout
+  happened to exist.
+- `pylon-v0.2.2` fixes both problems. The archive includes `pylon`,
+  `pylon-tui`, `nexus-relay`, `nexus-control`, and the packaged Psionic runtime
+  surface. The runtime resolver now prefers colocated support binaries before
+  falling back to Cargo.
+
+Treat `pylon-v0.2.0` and `pylon-v0.2.1` as superseded. Operators should install
+or test `pylon-v0.2.2` or a later patch release.
+
+## Darwin Public Asset Proof
+
+The Darwin arm64 archive was downloaded through the public GitHub release URL,
+verified with the uploaded checksum file, extracted into a temp directory, and
+run outside the source checkout.
+
+Proof command shape:
 
 ```bash
-gh release download pylon-v0.2.0 \
-  --repo OpenAgentsInc/openagents \
-  --pattern 'pylon-v0.2.0-darwin-arm64.tar.gz' \
-  --pattern 'pylon-v0.2.0-darwin-arm64.tar.gz.sha256'
-
-shasum -a 256 -c pylon-v0.2.0-darwin-arm64.tar.gz.sha256
-tar -xzf pylon-v0.2.0-darwin-arm64.tar.gz
-cd pylon-v0.2.0-darwin-arm64
+curl -fsSL -o pylon-v0.2.2-darwin-arm64.tar.gz \
+  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.2/pylon-v0.2.2-darwin-arm64.tar.gz
+curl -fsSL -o pylon-v0.2.2-darwin-arm64.tar.gz.sha256 \
+  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.2/pylon-v0.2.2-darwin-arm64.tar.gz.sha256
+shasum -a 256 -c pylon-v0.2.2-darwin-arm64.tar.gz.sha256
+tar -xzf pylon-v0.2.2-darwin-arm64.tar.gz
+cd pylon-v0.2.2-darwin-arm64
 ./pylon --version
-./pylon --help
 ./pylon-tui --version
-./pylon-tui --help
+PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+  ./pylon proof run cs336-a1-hosted-starter \
+  --namespace pylon-v022-darwin-public-proof-20260607174023 \
+  --timeout-seconds 600 \
+  --json
 ```
 
 Observed results:
 
-- Checksum verification returned `pylon-v0.2.0-darwin-arm64.tar.gz: OK`.
-- `./pylon --version` returned `pylon 0.2.0`.
-- `./pylon-tui --version` returned `pylon-tui 0.2.0`.
-- `./pylon --help` advertised the MDK-default wallet wrapper and the explicit
-  provider and wallet commands.
-- `./pylon-tui --help` advertised the TUI as the homework dashboard and stated
-  that payouts use the wrapped MoneyDevKit wallet by default.
+- Checksum verification returned `pylon-v0.2.2-darwin-arm64.tar.gz: OK`.
+- `./pylon --version` returned `pylon 0.2.2`.
+- `./pylon-tui --version` returned `pylon-tui 0.2.2`.
+- `nexus-relay` and `nexus-control` were executable in the extracted archive.
+- `PATH` excluded the local Cargo toolchain during the proof run.
+- Process inspection showed the proof using the extracted archive's `pylon` and
+  colocated `nexus-relay`, with no Cargo or Rust compiler process.
 
-## Fresh Pylon Home Smoke
+Proof result:
 
-The extracted `pylon` binary was then run with an empty isolated Pylon home.
+```json
+{
+  "status": "completed",
+  "lane": "cs336-a1-hosted-starter",
+  "namespace": "pylon-v022-darwin-public-proof-20260607174023",
+  "detail": "window window.cs336.a1.starter.20260607174056.8b8804ed.0001 reconciled with 1 accepted contribution(s), closeout=rewarded, workers_healthy=2, validators_healthy=1"
+}
+```
 
-Commands run:
+Public-safe artifact:
+`docs/reports/nexus/pylon-v022-darwin-public-proof-20260607174023.json`.
+
+## Linux SHC No-Source Public Asset Proof
+
+The Linux x86_64 archive was built on SHC and uploaded to GitHub Releases. To
+avoid false confidence from a colocated build checkout, the SHC build directory
+was then moved out of the expected source path before the public install proof
+was rerun.
+
+Proof command shape:
 
 ```bash
-SMOKE_HOME=$(mktemp -d /tmp/pylon-v02-home.XXXXXX)
-OPENAGENTS_PYLON_HOME="$SMOKE_HOME" ./pylon init
-OPENAGENTS_PYLON_HOME="$SMOKE_HOME" ./pylon status --json
-OPENAGENTS_PYLON_HOME="$SMOKE_HOME" ./pylon inventory --json
-OPENAGENTS_PYLON_HOME="$SMOKE_HOME" ./pylon wallet status --json
+curl -fsSL -o pylon-v0.2.2-linux-x86_64.tar.gz \
+  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.2/pylon-v0.2.2-linux-x86_64.tar.gz
+curl -fsSL -o pylon-v0.2.2-linux-x86_64.tar.gz.sha256 \
+  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.2/pylon-v0.2.2-linux-x86_64.tar.gz.sha256
+sha256sum -c pylon-v0.2.2-linux-x86_64.tar.gz.sha256
+tar -xzf pylon-v0.2.2-linux-x86_64.tar.gz
+cd pylon-v0.2.2-linux-x86_64
+./pylon --version
+./pylon-tui --version
+test -x ./nexus-relay
+test -x ./nexus-control
+test -x ./psionic/target/release/psionic-train
+OPENAGENTS_PYLON_HOME="$RUN_ROOT/pylon-home" ./pylon init
+OPENAGENTS_PYLON_HOME="$RUN_ROOT/pylon-home" ./pylon status --json
+PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+  OPENAGENTS_PYLON_HOME="$RUN_ROOT/pylon-home" \
+  ./pylon proof run cs336-a1-hosted-starter \
+  --namespace pylon-v022-shc-nosource-proof-20260607183407 \
+  --timeout-seconds 600 \
+  --json
 ```
 
 Observed results:
 
-- `init` created `config.json`, `ledger.json`, and `identity.mnemonic` under
-  the isolated home.
-- `status --json` returned the expected `desired_mode`, `listen_addr`, and
-  `snapshot` top-level fields.
-- `inventory --json` returned a structured inventory object.
-- `wallet status --json` returned a connected default MDK runtime with:
-  - `runtime.runtime_kind=moneydevkit`
-  - `runtime.liquidity_provider_kind=moneydevkit`
-  - `runtime.network=bitcoin`
-  - `runtime.local_daemon_port=36004`
-  - `runtime.storage_dir` under the isolated Pylon home
-  - `runtime.api_key_source=none:moneydevkit`
-  - redacted HKDF node entropy metadata
+- Checksum verification returned `pylon-v0.2.2-linux-x86_64.tar.gz: OK`.
+- `./pylon --version` returned `pylon 0.2.2`.
+- `./pylon-tui --version` returned `pylon-tui 0.2.2`.
+- `nexus-relay`, `nexus-control`, and
+  `psionic/target/release/psionic-train` were executable in the extracted
+  archive.
+- The original SHC build checkout was hidden before this proof.
+- `PATH` excluded Cargo during the proof run.
+- Process inspection showed the proof using only paths under the extracted
+  public archive:
+  `/tmp/pylon-v022-shc-nosource.4lwjA8/pylon-v0.2.2-linux-x86_64/...`.
+- No Cargo or Rust compiler process was present during the no-source proof.
 
-No mnemonic, preimage, raw invoice, raw offer, or private wallet state was
-committed.
+Proof result:
+
+```json
+{
+  "status": "completed",
+  "lane": "cs336-a1-hosted-starter",
+  "namespace": "pylon-v022-shc-nosource-proof-20260607183407",
+  "detail": "window window.cs336.a1.starter.20260607183442.404ae7ea.0001 reconciled with 1 accepted contribution(s), closeout=rewarded, workers_healthy=2, validators_healthy=1"
+}
+```
+
+Public-safe artifacts:
+
+- `docs/reports/nexus/pylon-v022-shc-nosource-proof-20260607183407.json`
+- `docs/reports/nexus/pylon-v022-shc-nosource-status-20260607183407.json`
 
 ## Npm Bootstrap Status
 
-The npm package was bumped locally to `@openagentsinc/pylon@0.2.0`, but it was
-not published during this proof because npm requires a one-time publish
-authorization.
+The npm bootstrap package is prepared locally as
+`@openagentsinc/pylon@0.2.2`, but it is not published yet.
 
 Evidence:
 
-- `npm view @openagentsinc/pylon versions --json` showed latest published
-  version `0.1.17`; `0.2.0` was not present.
-- Before the operator refreshed CLI auth, `npm whoami` returned
-  `E401 Unauthorized`.
-- After CLI auth was refreshed, `npm whoami` returned `openagentsinc`.
-- `npm publish --access public` reached the registry and returned `EOTP`:
-  npm requires a one-time publish authorization for this package/account.
+- `npm view @openagentsinc/pylon versions --json` still shows latest published
+  version `0.1.17`.
+- `npm whoami` succeeds for the `openagentsinc` account.
+- `npm publish --access public` from `packages/pylon-bootstrap` reaches the
+  registry for `@openagentsinc/pylon@0.2.2`, but returns `EOTP` and requires a
+  one-time publish authorization.
 
 Release implication:
 
-- The GitHub release asset is live and verified.
-- The npm bootstrap remains blocked on an npm OTP or npm web-auth publish
-  completion for `@openagentsinc/pylon@0.2.0`.
-- Once npm credentials are restored, publish from
-  `packages/pylon-bootstrap` with version `0.2.0` and verify the package
-  install path from a clean cache.
+- The GitHub release assets are live and verified for Darwin arm64 and Linux
+  x86_64.
+- The npm bootstrap remains blocked on npm OTP or web-auth publish completion.
+- Once npm authorization is available, publish from `packages/pylon-bootstrap`
+  at version `0.2.2`, then verify a clean package install path against the
+  public `pylon-v0.2.2` GitHub release assets.
 
-## Linux SHC Asset Build Follow-Up
+## Release Engineering Notes
 
-After the Darwin publication proof, the release was tested against the Linux
-SHC host `oa-shc-katy-01` (`x86_64`). The first Linux archive attempt exposed a
-release-script inefficiency: `scripts/release/pylon-binary-release.sh` used
-`cargo build --manifest-path <psionic>/Cargo.toml --release -p psionic-train`,
-which builds every binary target in the `psionic-train` package. On a cold
-Linux cache this led to an hours-long build and was stopped before archive
-publication.
+The SHC Linux archive build completed from a clean clone, but the packaged
+Psionic support binary build is expensive on cold cache:
 
-The script was fixed after the v0.2.0 Darwin release so the packaged runtime
-build uses only the required binary:
+- OpenAgents release-profile build: `23m35s`.
+- Psionic `psionic-train` support build: `20m41s`.
+- Final Linux archive size: `223M`.
 
-```bash
-cargo build \
-  --manifest-path "${PSIONIC_REPO}/Cargo.toml" \
-  --release \
-  -p psionic-train \
-  --bin psionic-train
-```
-
-Linux archive publication should be rerun with that fixed script, uploaded to
-the canonical `pylon-v0.2.0` release if the binary source remains unchanged, or
-to a `pylon-v0.2.1` patch release if additional code changes are made.
-
-The rerun with the fixed script succeeded on SHC:
-
-- OpenAgents checkout: `4c89bcece` for the fixed script and docs.
-- Pylon binary source: unchanged from release target commit
-  `f836eb909a9ce323b4097b30a01b6e358ec03fed`.
-- Psionic checkout: `fe185894292a86a987348ef1c2602d715a5327d4`.
-- The OpenAgents release-profile Pylon binaries were already cached and
-  rebuilt in `6.92s`.
-- The fixed local Psionic runtime build completed in `2m16s`.
-- Archive written on SHC:
-  `/tmp/oa-pylon-v02-linux-build/openagents/target/pylon-release/pylon-v0.2.0-linux-x86_64.tar.gz`.
-- Checksum written on SHC:
-  `/tmp/oa-pylon-v02-linux-build/openagents/target/pylon-release/pylon-v0.2.0-linux-x86_64.tar.gz.sha256`.
-- Local checksum verification after copying the assets back to the Mac returned
-  `pylon-v0.2.0-linux-x86_64.tar.gz: OK`.
-- Both Linux assets were uploaded to
-  `https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.2.0`.
-
-The Linux asset was then redownloaded from the public GitHub release URL on
-SHC with `curl -fL`, verified with `sha256sum -c`, extracted, and run from an
-isolated home:
-
-```bash
-curl -fL -o pylon-v0.2.0-linux-x86_64.tar.gz \
-  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.0/pylon-v0.2.0-linux-x86_64.tar.gz
-curl -fL -o pylon-v0.2.0-linux-x86_64.tar.gz.sha256 \
-  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.0/pylon-v0.2.0-linux-x86_64.tar.gz.sha256
-sha256sum -c pylon-v0.2.0-linux-x86_64.tar.gz.sha256
-tar -xzf pylon-v0.2.0-linux-x86_64.tar.gz
-cd pylon-v0.2.0-linux-x86_64
-./pylon --version
-./pylon-tui --version
-OPENAGENTS_PYLON_HOME="$HOME_DIR" ./pylon init
-OPENAGENTS_PYLON_HOME="$HOME_DIR" ./pylon status --json
-OPENAGENTS_PYLON_HOME="$HOME_DIR" ./pylon wallet status --json
-```
-
-Observed SHC smoke results:
-
-- Checksum verification returned `pylon-v0.2.0-linux-x86_64.tar.gz: OK`.
-- `./pylon --version` returned `pylon 0.2.0`.
-- `./pylon-tui --version` returned `pylon-tui 0.2.0`.
-- Isolated home:
-  `/tmp/pylon-v02-linux-home.SYyREJ`.
-- `status --json` returned the expected `desired_mode`, `listen_addr`, and
-  `snapshot` fields.
-- `wallet status --json` returned:
-  - `runtime.runtime_kind=moneydevkit`
-  - `runtime.liquidity_provider_kind=moneydevkit`
-  - `runtime.network=bitcoin`
-  - `runtime.local_daemon_port=38080`
-  - `runtime.storage_dir=/tmp/pylon-v02-linux-home.SYyREJ/wallet`
-  - `runtime_status=connected`
-
-No GitHub credentials were installed on SHC for this smoke; the asset was
-downloaded through the public release URL.
+The build is valid, but future patch releases should consider reducing the
+support-runtime profile or caching the Psionic support artifact. Do not remove
+the support runtime from the archive unless the proof lane is changed to avoid
+needing it.
 
 ## Misplaced Psionic Release Cleanup
 
@@ -225,19 +225,9 @@ Verification:
 
 - `gh release view v0.2.0 --repo OpenAgentsInc/psionic` no longer resolves.
 
-## Remaining Gate
+## Post-Release Artanis/Pylon Paid-Work Proof
 
-The remaining rollout gate is the post-release Artanis/Pylon paid-work proof:
-
-- Artanis dispatches or simulates a paid work assignment against the v0.2
-  Pylon path.
-- The proof records the assignment/run id, Pylon identity, settlement/payment
-  state, and public-safe receipt evidence.
-- The proof uses the current Omega/Cloudflare MDK path or a documented local
-  proof-runtime bridge, not the old GCP/native Nexus lane unless that legacy
-  lane is explicitly under test.
-
-Current post-release proof artifact:
+The current post-release proof artifact is:
 
 - `docs/reports/nexus/pylon-v02-post-release-artanis-paid-work-proof-20260607-155959.json`
 - status: `completed`
@@ -246,7 +236,17 @@ Current post-release proof artifact:
 - detail:
   `window window.cs336.a1.starter.20260607160246.69d216ae.0001 reconciled with 1 accepted contribution(s), closeout=rewarded, workers_healthy=2, validators_healthy=1`
 
-That proof was run from the downloaded Darwin `pylon-v0.2.0` binary using an
-isolated Pylon home. It proves released-binary accepted-work closeout through
-the local proof runtime with simulated treasury enabled. It does not claim
-real public Bitcoin settlement.
+That proof was run from a downloaded Darwin Pylon binary using an isolated
+Pylon home. It proves released-binary accepted-work closeout through the local
+proof runtime with simulated treasury enabled. It does not claim real public
+Bitcoin settlement.
+
+## Current Release Judgment
+
+`pylon-v0.2.2` is the stable public GitHub binary release for Pylon v0.2.
+
+The remaining gap is npm bootstrap publication, which is blocked by npm
+one-time authorization rather than code or release-asset readiness. If an npm
+or post-release smoke fix is needed, cut a later patch release such as
+`pylon-v0.2.3` or publish `@openagentsinc/pylon@0.2.2` without changing the
+binary release when the Rust artifacts remain unchanged.
