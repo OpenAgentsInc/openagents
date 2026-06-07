@@ -174,6 +174,9 @@ Use this sequence for MDK-default Pylon v0.2 public earning-loop changes:
    sibling `cloud` repo, then complete one live account-backed SHC Artanis
    bootstrap workroom before public release. The live run must keep
    `wallet_authority=false` and capture the declared Pylon launch artifacts.
+   The current accepted proof is
+   `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`
+   for run id `artanis.bootstrap.pylon-launch.20260607141825`.
 5. Bump the workspace version and `packages/pylon-bootstrap/package.json` when
    the public Pylon binary behavior changes.
 6. Verify the Omega Cloudflare MDK sidecar path remains live or point to a

@@ -57,7 +57,7 @@ If any release note, marketing text, or operator doc violates one of those state
 | Encrypted wallet backup export | set `PYLON_WALLET_BACKUP_PASSPHRASE`, run `wallet backup export ./pylon-wallet-backup.json --passphrase-env PYLON_WALLET_BACKUP_PASSPHRASE --json`, then `wallet backup inspect ./pylon-wallet-backup.json --json` | writes a single private encrypted backup file with a redacted public manifest, includes LDK node/sqlite/backup-staging/registration state inside ciphertext, refuses wrong passphrases/corrupt ciphertext in tests, records a wallet backup receipt, and moves status from `backup_missing` to `backup_current` without printing mnemonic, entropy, or channel state |
 | Wallet restore paths | run focused tests for `wallet restore phrase --mnemonic-env ... --wallet-network regtest --yes` and `wallet restore backup ./pylon-wallet-backup.json --passphrase-env ... --yes` | phrase-only restore recreates identity and deterministic entropy while warning that Lightning state is not restored; full-backup restore validates network/passphrase/derivation, restores LDK files and registration metadata, refuses active locks, detects stale backup status, and records typed restore receipts |
 | Wallet-owned Nexus registration | on a clean Pylon home, run the normal online loop against Nexus or the provider payout-target mock | registers paid-work eligibility without manual external payout config, signs the challenge with a wallet-owned MoneyDevKit BOLT12 target or BOLT11 fallback, includes runtime/network/derivation/backup metadata, includes node ID only for the native LDK path, rejects Spark targets, and marks explicit `external_payout_target` values as non-default overrides |
-| Artanis Pylon launch bootstrap | in the sibling `cloud` repo, run `cargo test -p openagents-cloud-contract artanis_bootstrap_assignment_fixture_parses_and_validates` and `cargo test -p oa-codex-control artanis_bootstrap`; before public release, also run one account-backed `/v1/artanis/bootstrap/start` workroom on SHC with no wallet authority | proves the Artanis bootstrap assignment validates, translates into a bounded Codex workroom request, emits Artanis context events, persists the assignment, and captures required launch artifacts; the live SHC run must produce `result.md`, `artanis-source-map.json`, `pylon-launch-plan.json`, `continual-learning-plan.json`, `signature-mining-plan.json`, `work-order-drafts.json`, `artifact-manifest.json`, and `proof-bundle.json` before Pylon v0.2 is released |
+| Artanis Pylon launch bootstrap | in the sibling `cloud` repo, run `cargo test -p openagents-cloud-contract artanis_bootstrap_assignment_fixture_parses_and_validates` and `cargo test -p oa-codex-control artanis_bootstrap`; before public release, also run one account-backed `/v1/artanis/bootstrap/start` workroom on SHC with no wallet authority | proves the Artanis bootstrap assignment validates, translates into a bounded Codex workroom request, emits Artanis context events, persists the assignment, and captures required launch artifacts; the 2026-06-07 live proof is `docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md` with run id `artanis.bootstrap.pylon-launch.20260607141825`, `wallet_authority=false`, Omega `agent_runs.status=completed`, and all eight required artifact digests captured |
 | Online transition | `cargo run -p pylon -- online` | desired mode becomes `online`; unhealthy supply becomes `degraded`, not falsely healthy |
 | Pause/resume | `cargo run -p pylon -- pause` then `resume` | transitions are explicit and truthful |
 | Offline transition | `cargo run -p pylon -- offline` | desired mode becomes `offline` |
@@ -95,7 +95,9 @@ also pass before a release candidate is called valid:
 
 Those tests prove the contract and fake-workroomd path only. A public Pylon
 v0.2 release also needs one live account-backed SHC Artanis bootstrap run with
-wallet authority set to `false` and the required artifacts captured.
+wallet authority set to `false` and the required artifacts captured. The
+current accepted proof is
+`docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md`.
 
 The current MDK-default release path also needs Omega Cloudflare MDK evidence.
 As of 2026-06-07, the accepted proof is recorded in the Omega docs and
@@ -185,6 +187,8 @@ Release candidate:
 
 - run the full repo-level checks above
 - run the Artanis/Pylon bootstrap contract and fake-workroomd checks above
+- verify the live Artanis SHC bootstrap proof above, or produce a newer
+  public-safe equivalent if the release candidate changes that boundary
 - verify current Omega Cloudflare MDK checkout proof or produce a newer
   public-safe equivalent
 - run the standalone smoke path on at least one machine with local Gemma supply
