@@ -1225,7 +1225,7 @@ backup <path> --passphrase-env <ENV> --yes` decrypts a Pylon backup, validates
 network and derivation metadata, restores the LDK storage snapshot, and refuses
 to run while another live Pylon wallet process holds the wallet lock.
 - TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
-- headless: `cargo pylon-headless wallet status|sync|balance|address|invoice|offer|pay|history|backup|restore|lock`
+- headless: `cargo pylon-headless wallet start|stop|restart|status|sync|balance|address|invoice|offer|pay|history|backup|restore|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=moneydevkit` is
 the default runtime and wraps MoneyDevKit's local agent-wallet daemon. It
@@ -1413,6 +1413,7 @@ cargo pylon-headless activity
 Inspect the retained wallet status and ledger surfaces:
 
 ```bash
+cargo pylon-headless wallet start
 cargo pylon-headless wallet status
 cargo pylon-headless wallet sync
 cargo pylon-headless wallet balance
@@ -1425,6 +1426,7 @@ cargo pylon-headless wallet backup export ./pylon-wallet-backup.json --passphras
 cargo pylon-headless wallet backup inspect ./pylon-wallet-backup.json
 cargo pylon-headless wallet restore phrase --mnemonic-env PYLON_RECOVERY_PHRASE --wallet-network regtest --yes
 cargo pylon-headless wallet restore backup ./pylon-wallet-backup.json --passphrase-env PYLON_WALLET_BACKUP_PASSPHRASE --yes
+cargo pylon-headless wallet stop
 cargo pylon-headless payout --limit 10
 cargo pylon-headless payout withdraw <bolt11-or-bolt12-or-address> --amount-sats 21 --yes
 ```

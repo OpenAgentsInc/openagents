@@ -68,18 +68,56 @@ test wallet daemon under `.secrets/pylon-v02-mdk-real-wallet-home` remains
 running on port `3462` so it can observe a live payment if the operator funds
 the test wallet.
 
+## Lifecycle Smoke
+
+Issue `#4549` added Pylon-native wallet lifecycle commands so agents and
+operators do not need to call MDK directly for daemon control:
+
+```bash
+cargo run -q -p pylon --bin pylon -- wallet start --json
+cargo run -q -p pylon --bin pylon -- wallet status --json
+cargo run -q -p pylon --bin pylon -- wallet restart --json
+cargo run -q -p pylon --bin pylon -- wallet stop --json
+```
+
+Observed redacted result:
+
+```json
+{
+  "startAction": "start",
+  "startRuntime": "moneydevkit",
+  "startStatus": "started",
+  "statusRuntime": "moneydevkit",
+  "statusState": "connected",
+  "restartAction": "restart",
+  "restartStatus": "started",
+  "stopAction": "stop",
+  "stopStatus": "stopped"
+}
+```
+
+The first restart attempt exposed an MDK teardown race: `stop` can return before
+the daemon's listening port is reusable, causing immediate `restart` to see
+`EADDRINUSE` or a start timeout. The wrapper now waits after stop and retries
+restart once. The final smoke confirmed no `agent-wallet` process remained
+under the temporary Pylon home after `wallet stop` returned.
+
 ## Tests
 
 Passed:
 
 ```bash
 cargo test -p pylon moneydevkit_
+cargo test -p pylon parse_wallet_command_supports_balance_and_history
+cargo test -p pylon mock_runtime_returns_deterministic_wallet_reports
+cargo check -p pylon
 cargo test -p pylon-tui footer_hints_focus_on_passive_homework_earning
 cargo test -p pylon-tui wallet_card_surfaces_balance_and_clear_actions
 ```
 
 The Pylon tests cover stable MDK daemon port derivation and wallet-owned
-MoneyDevKit provider-registration metadata. The TUI tests cover the updated
+MoneyDevKit provider-registration metadata, plus parser and deterministic mock
+coverage for the new lifecycle commands. The TUI tests cover the updated
 MDK-default operator copy.
 
 ## Release Status
@@ -96,4 +134,3 @@ Remaining blockers before creating `pylon-v0.2.0`:
   wallet with bitcoin available for the proof;
 - run a production accepted-work payout proof with real bitcoin movement;
 - record the production proof receipt and only then create the GitHub release.
-

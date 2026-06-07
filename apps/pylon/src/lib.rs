@@ -9610,6 +9610,9 @@ Commands:\n\
   job policy [show|auto|manual] [--json]\n\
   payout [--limit <n>] [--json]\n\
   payout withdraw <payment_request> [--amount-sats <n>] [--yes] [--json]\n\
+  wallet start [--json]\n\
+  wallet stop [--json]\n\
+  wallet restart [--json]\n\
   wallet status [--json]\n\
   wallet sync [--json]\n\
   wallet balance [--json]\n\

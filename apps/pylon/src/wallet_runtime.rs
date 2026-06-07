@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
@@ -139,6 +140,15 @@ impl std::fmt::Display for PylonWalletLiquidityProviderKind {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WalletSubcommand {
+    Start {
+        json: bool,
+    },
+    Stop {
+        json: bool,
+    },
+    Restart {
+        json: bool,
+    },
     Status {
         json: bool,
     },
@@ -288,6 +298,14 @@ pub struct WalletStatusReport {
     pub channels: Vec<PylonWalletChannelRecord>,
     pub lightning_readiness: WalletLightningReadiness,
     pub recent_payments: Vec<PylonWalletPaymentRecord>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletLifecycleReport {
+    pub runtime: WalletRuntimeSurface,
+    pub action: String,
+    pub runtime_status: String,
+    pub runtime_detail: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -1302,6 +1320,39 @@ impl MoneyDevKitWalletRuntime {
             }
         }
     }
+
+    fn wait_until_stopped(&self) -> Result<()> {
+        let mut last_error: Option<String> = None;
+        for _ in 0..20 {
+            match self.run_agent_wallet_command(&["status"]) {
+                Ok(value) => {
+                    if !mdk_json_bool(&value, &["running"]).unwrap_or(false) {
+                        std::thread::sleep(Duration::from_millis(8_000));
+                        return Ok(());
+                    }
+                }
+                Err(error) => {
+                    let detail = error.to_string();
+                    if detail.contains("not_running")
+                        || detail.contains("not running")
+                        || detail.contains("connection refused")
+                    {
+                        std::thread::sleep(Duration::from_millis(8_000));
+                        return Ok(());
+                    }
+                    last_error = Some(detail);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        bail!(
+            "MoneyDevKit agent wallet did not stop within timeout{}",
+            last_error
+                .as_deref()
+                .map(|detail| format!("; last status error: {detail}"))
+                .unwrap_or_default()
+        )
+    }
 }
 
 impl PylonWalletRuntime for MoneyDevKitWalletRuntime {
@@ -1317,7 +1368,7 @@ impl PylonWalletRuntime for MoneyDevKitWalletRuntime {
 
     fn stop(&self) -> Result<()> {
         match self.run_agent_wallet_command(&["stop"]) {
-            Ok(_) => Ok(()),
+            Ok(_) => self.wait_until_stopped(),
             Err(error) => {
                 let detail = error.to_string();
                 if detail.contains("not_running") || detail.contains("not running") {
@@ -3479,6 +3530,27 @@ fn require_explicit_restore_confirmation(command: &str, yes: bool) -> Result<()>
 
 pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) -> Result<String> {
     match command {
+        WalletSubcommand::Start { json } => {
+            let report = start_wallet_runtime_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_lifecycle_report(&report))
+        }
+        WalletSubcommand::Stop { json } => {
+            let report = stop_wallet_runtime_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_lifecycle_report(&report))
+        }
+        WalletSubcommand::Restart { json } => {
+            let report = restart_wallet_runtime_report(config_path).await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_lifecycle_report(&report))
+        }
         WalletSubcommand::Status { json } => {
             let report = load_wallet_status_report(config_path).await?;
             if *json {
@@ -3685,6 +3757,15 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
         .get(start_index + 1)
         .ok_or_else(|| anyhow!("missing wallet subcommand"))?;
     match subcommand.as_str() {
+        "start" => Ok(WalletSubcommand::Start {
+            json: parse_json_only(args, start_index + 2, "wallet start")?,
+        }),
+        "stop" => Ok(WalletSubcommand::Stop {
+            json: parse_json_only(args, start_index + 2, "wallet stop")?,
+        }),
+        "restart" => Ok(WalletSubcommand::Restart {
+            json: parse_json_only(args, start_index + 2, "wallet restart")?,
+        }),
         "status" => Ok(WalletSubcommand::Status {
             json: parse_json_only(args, start_index + 2, "wallet status")?,
         }),
@@ -4118,6 +4199,95 @@ fn parse_wallet_lock_command(args: &[String], start_index: usize) -> Result<Wall
 
 pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatusReport> {
     load_wallet_status_report_internal(config_path, true).await
+}
+
+pub async fn start_wallet_runtime_report(config_path: &Path) -> Result<WalletLifecycleReport> {
+    run_wallet_lifecycle_report(config_path, "started").await
+}
+
+pub async fn stop_wallet_runtime_report(config_path: &Path) -> Result<WalletLifecycleReport> {
+    let context = prepare_wallet_context(config_path)?;
+    context.runtime.stop()?;
+    let report = WalletLifecycleReport {
+        runtime: context.runtime.surface().clone(),
+        action: "stop".to_string(),
+        runtime_status: "stopped".to_string(),
+        runtime_detail: Some(format!(
+            "{} wallet runtime stopped",
+            context.runtime.surface().runtime_kind
+        )),
+    };
+    sync_wallet_status(
+        config_path,
+        &report.runtime,
+        report.runtime_status.as_str(),
+        report.runtime_detail.clone(),
+        None,
+        None,
+        &[],
+    )?;
+    Ok(report)
+}
+
+pub async fn restart_wallet_runtime_report(config_path: &Path) -> Result<WalletLifecycleReport> {
+    let context = prepare_wallet_context(config_path)?;
+    context.runtime.stop()?;
+    std::thread::sleep(Duration::from_millis(750));
+    if let Err(first_error) = context.runtime.start() {
+        std::thread::sleep(Duration::from_millis(1_500));
+        context.runtime.start().with_context(|| {
+            format!(
+                "wallet runtime restart failed after retry; first start error: {}",
+                first_error
+            )
+        })?;
+    }
+    let report = WalletLifecycleReport {
+        runtime: context.runtime.surface().clone(),
+        action: "restart".to_string(),
+        runtime_status: "started".to_string(),
+        runtime_detail: Some(format!(
+            "{} wallet runtime restarted",
+            context.runtime.surface().runtime_kind
+        )),
+    };
+    sync_wallet_status(
+        config_path,
+        &report.runtime,
+        report.runtime_status.as_str(),
+        report.runtime_detail.clone(),
+        None,
+        None,
+        &[],
+    )?;
+    Ok(report)
+}
+
+async fn run_wallet_lifecycle_report(
+    config_path: &Path,
+    runtime_status: &str,
+) -> Result<WalletLifecycleReport> {
+    let context = prepare_wallet_context(config_path)?;
+    context.runtime.start()?;
+    let report = WalletLifecycleReport {
+        runtime: context.runtime.surface().clone(),
+        action: "start".to_string(),
+        runtime_status: runtime_status.to_string(),
+        runtime_detail: Some(format!(
+            "{} wallet runtime started",
+            context.runtime.surface().runtime_kind
+        )),
+    };
+    sync_wallet_status(
+        config_path,
+        &report.runtime,
+        report.runtime_status.as_str(),
+        report.runtime_detail.clone(),
+        None,
+        None,
+        &[],
+    )?;
+    Ok(report)
 }
 
 pub async fn load_wallet_balance_status_report(config_path: &Path) -> Result<WalletStatusReport> {
@@ -4606,6 +4776,20 @@ pub async fn clear_wallet_lock_report(config_path: &Path) -> Result<WalletLockRe
         &layout,
         before.locked,
     ))
+}
+
+pub fn render_wallet_lifecycle_report(report: &WalletLifecycleReport) -> String {
+    let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("action: {}", report.action),
+        format!("runtime_status: {}", report.runtime_status),
+        format!("network: {}", report.runtime.network),
+        format!("storage_dir: {}", report.runtime.storage_dir),
+    ];
+    if let Some(detail) = report.runtime_detail.as_deref() {
+        lines.push(format!("detail: {detail}"));
+    }
+    lines.join("\n")
 }
 
 pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
@@ -6336,6 +6520,42 @@ mod tests {
             parse_wallet_command(
                 &[
                     String::from("wallet"),
+                    String::from("start"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet start should parse"),
+            WalletSubcommand::Start { json: true }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("stop"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet stop should parse"),
+            WalletSubcommand::Stop { json: true }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
+                    String::from("restart"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet restart should parse"),
+            WalletSubcommand::Restart { json: true }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
                     String::from("balance"),
                     String::from("--json"),
                 ],
@@ -7584,6 +7804,33 @@ mod tests {
         config.wallet_runtime_kind = PylonWalletRuntimeKind::Mock;
         config.wallet_network = "regtest".to_string();
         crate::save_config(config_path.as_path(), &config).expect("save config");
+
+        let start_json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Start { json: true },
+        )
+        .await
+        .expect("mock start json");
+        assert!(start_json.contains("\"action\": \"start\""));
+        assert!(start_json.contains("\"runtime_status\": \"started\""));
+
+        let restart_text = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Restart { json: false },
+        )
+        .await
+        .expect("mock restart text");
+        assert!(restart_text.contains("action: restart"));
+        assert!(restart_text.contains("runtime_status: started"));
+
+        let stop_json = run_wallet_command(
+            config_path.as_path(),
+            &WalletSubcommand::Stop { json: true },
+        )
+        .await
+        .expect("mock stop json");
+        assert!(stop_json.contains("\"action\": \"stop\""));
+        assert!(stop_json.contains("\"runtime_status\": \"stopped\""));
 
         let status = load_wallet_status_report(config_path.as_path())
             .await
