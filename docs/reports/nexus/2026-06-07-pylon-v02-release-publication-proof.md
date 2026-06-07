@@ -17,6 +17,20 @@ The current v0.2 release path is the MDK-default Pylon path with
 Omega/Cloudflare MDK checkout proof, the Artanis SHC bootstrap proof, and local
 proof-runtime accepted-work evidence recorded in this repository.
 
+Post-release integrated proof is now recorded in:
+
+```text
+docs/reports/nexus/2026-06-07-artanis-pylon-v022-integrated-paid-work-proof.md
+docs/reports/nexus/artanis-pylon-v022-integrated-paid-work-proof-20260607193426.json
+```
+
+That proof ties together the live Artanis bootstrap, npm/public-release Pylon
+install, SHC no-source accepted-work proof, and a real 21-bitcoin-sat MDK
+agent-wallet payment. It intentionally reports
+`completed_with_settlement_bridge_gap`, because the production bridge from an
+Artanis assignment id directly into an MDK settlement receipt is not yet
+implemented.
+
 ## Current Published Release
 
 - Repository: `OpenAgentsInc/openagents`
@@ -227,6 +241,27 @@ Observed results:
 
 Public-safe artifact:
 `docs/reports/nexus/pylon-v022-shc-npm-bootstrap-202606071836.json`.
+
+## Post-Release Artanis/Pylon Paid-Work Proof
+
+The post-release proof bundle command is now:
+
+```bash
+MDK_PAYMENT_REDACTED_SUMMARY=<ignored-redacted-mdk-payment-summary.json> \
+OUTPUT_PATH=docs/reports/nexus/artanis-pylon-v022-integrated-paid-work-proof-<timestamp>.json \
+scripts/nexus/artanis-pylon-integrated-proof-bundle.sh
+```
+
+The 2026-06-07 run used a funded local MDK test payer wallet and a fresh
+Pylon-scoped receiver wallet. The payer balance moved from `6700` to `6679`
+bitcoin sats, and the receiver observed one inbound payment. The committed
+bundle stores only digests for invoice/payment identifiers and does not commit
+raw invoices, payment ids, payment hashes, preimages, mnemonics, tokens, or
+wallet state.
+
+The direct production bridge from Artanis assignment id to Pylon accepted work
+to MDK settlement receipt remains the exact next implementation gap. Do not
+claim full production Artanis paid-work settlement from this proof alone.
 
 ## Release Engineering Notes
 

@@ -95,13 +95,20 @@ The npm bootstrap publication gate is now satisfied:
 - the smoke initialized a fresh Pylon home and detected packaged Psionic under
   the extracted archive.
 
-The current post-release paid-work proof is local proof-runtime accepted-work
-closeout plus the Omega/Cloudflare MDK checkout proof. It does not claim real
-public Bitcoin settlement for Artanis-dispatched work until the settlement
-bridge is explicitly completed.
+The post-release paid-work bundle is now recorded in:
 
-The remaining integrated Artanis-dispatched paid Pylon work proof is tracked by
-`OpenAgentsInc/openagents#4552`.
+```text
+docs/reports/nexus/2026-06-07-artanis-pylon-v022-integrated-paid-work-proof.md
+docs/reports/nexus/artanis-pylon-v022-integrated-paid-work-proof-20260607193426.json
+```
+
+It ties together Artanis launch supervision, public npm/release Pylon install,
+SHC no-source accepted/rewarded work, and a real 21-bitcoin-sat MDK
+agent-wallet payment. Its status is `completed_with_settlement_bridge_gap`.
+That is the honest v0.2.2 boundary: real payment movement works, but production
+Artanis-dispatched work settlement must not be claimed until the Artanis
+assignment id, Pylon accepted-work result, MDK payment/settlement record, and
+public receipt are one idempotent production trace.
 
 ## Issue disposition
 

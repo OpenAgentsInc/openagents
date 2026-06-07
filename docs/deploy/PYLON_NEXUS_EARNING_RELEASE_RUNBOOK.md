@@ -194,6 +194,23 @@ Use this sequence for MDK-default Pylon v0.2 public earning-loop changes:
 11. Record receipts, update docs, comment on issues, and close only after
     payout proof is visible.
 
+The 2026-06-07 post-release proof for `pylon-v0.2.2` is:
+
+```text
+docs/reports/nexus/2026-06-07-artanis-pylon-v022-integrated-paid-work-proof.md
+docs/reports/nexus/artanis-pylon-v022-integrated-paid-work-proof-20260607193426.json
+```
+
+It ties together the live Artanis SHC bootstrap run, the public
+`@openagentsinc/pylon@0.2.2` npm bootstrap path, SHC no-source accepted work
+from the public `pylon-v0.2.2` archive, and a real 21-bitcoin-sat MDK
+agent-wallet payment. The proof status is
+`completed_with_settlement_bridge_gap`; this is not a failure of the v0.2.2
+release path, but it is a hard no-overclaim boundary. Production Artanis
+paid-work settlement is not fully live until the Artanis assignment id, Pylon
+accepted-work result, MDK payment/settlement record, and public receipt are one
+idempotent production trace.
+
 For the 2026-06-07 Pylon v0.2 rollout, the stable public GitHub binary release
 is `pylon-v0.2.2`. The proof is
 `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`. It

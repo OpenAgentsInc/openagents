@@ -1,0 +1,120 @@
+{
+  "schema_version": "openagents.artanis_pylon_v022_integrated_paid_work_proof.v1",
+  "generated_at": "2026-06-07T19:36:58.286930+00:00",
+  "status": "completed_with_settlement_bridge_gap",
+  "release": {
+    "pylon_version": "0.2.2",
+    "github_release_tag": "pylon-v0.2.2",
+    "npm_package": "@openagentsinc/pylon@0.2.2"
+  },
+  "source_artifacts": {
+    "artanis_proof_doc": {
+      "path": "docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md",
+      "sha256": "sha256:6f1f196fe5d1ef186791b8cd9c3dbabaa5d39a286440ad85044e23f72a8b2fd2"
+    },
+    "pylon_accepted_work_proof": {
+      "path": "docs/reports/nexus/pylon-v022-shc-nosource-proof-20260607183407.json",
+      "sha256": "sha256:a1ac4028e402a01dd442a3da1463eca9e7383c44a231d75b2f94a7d527719030"
+    },
+    "pylon_npm_bootstrap_proof": {
+      "path": "docs/reports/nexus/pylon-v022-shc-npm-bootstrap-202606071836.json",
+      "sha256": "sha256:1b9f85c031bb712fc5d3816873596a996823ace57130b0b1e6b6aae04c414616"
+    },
+    "mdk_payment_redacted_summary": {
+      "path_label": "operator-local ignored .secrets redacted summary",
+      "sha256": "sha256:35a8458f5817f7066039f7d3cde4618e34c3a01ac028081b5857f422e9e52fda"
+    }
+  },
+  "artanis_dispatch_evidence": {
+    "proof_type": "live_account_backed_shc_bootstrap",
+    "shc_run_id": "artanis.bootstrap.pylon-launch.20260607141825",
+    "omega_external_run_id": "shc-codex:oa-shc-katy-01:artanis.bootstrap.pylon-launch.20260607141825",
+    "runner": "oa-shc-katy-01",
+    "wallet_authority": "false",
+    "omega_status": "completed",
+    "artifact_count": 8,
+    "note": "This is the current live Artanis supervisor proof for the Pylon launch lane. It proves bounded SHC workroom dispatch and artifact capture with wallet authority disabled."
+  },
+  "public_pylon_install_evidence": {
+    "proof_type": "npm_bootstrap_to_public_release_asset",
+    "version": "0.2.2",
+    "tag_name": "pylon-v0.2.2",
+    "target": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "install_method": "release_asset",
+    "cached": false,
+    "binary_path_contains_release_version": true,
+    "pylon_home_label": "fresh SHC temp Pylon home",
+    "desired_mode": "offline",
+    "runtime_surface_detected": true,
+    "psionic_repo_source": "exe_ancestor_sibling",
+    "contributor_supported": true,
+    "inventory_row_count": 2
+  },
+  "accepted_work_evidence": {
+    "proof_type": "shc_no_source_public_release_asset_proof",
+    "status": "completed",
+    "lane": "cs336-a1-hosted-starter",
+    "namespace": "pylon-v022-shc-nosource-proof-20260607183407",
+    "detail": "window window.cs336.a1.starter.20260607183442.404ae7ea.0001 reconciled with 1 accepted contribution(s), closeout=rewarded, workers_healthy=2, validators_healthy=1",
+    "assignment_ref": {
+      "training_run_id": "run.cs336.a1.starter.20260607183442.404ae7ea",
+      "window_id": "window.cs336.a1.starter.20260607183442.404ae7ea.0001",
+      "accepted_contributions": 1,
+      "closeout_status": "rewarded",
+      "worker_node_label": "proof-pylon.v022.shc.nosource.proof.20260607183407-worker-1"
+    },
+    "nodes": [
+      {
+        "role": "worker",
+        "index": 1,
+        "node_label": "proof-pylon.v022.shc.nosource.proof.20260607183407-worker-1",
+        "payout_destination_label": "redacted-proof-fixture-target",
+        "process_binary_contains_release_version": true,
+        "current_run_id": "run.cs336.a1.starter.20260607183442.404ae7ea"
+      },
+      {
+        "role": "worker",
+        "index": 2,
+        "node_label": "proof-pylon.v022.shc.nosource.proof.20260607183407-worker-2",
+        "payout_destination_label": "redacted-proof-fixture-target",
+        "process_binary_contains_release_version": true,
+        "current_run_id": "run.cs336.a1.starter.20260607183442.5d06160f"
+      },
+      {
+        "role": "validator",
+        "index": 1,
+        "node_label": "proof-pylon.v022.shc.nosource.proof.20260607183407-validator-1",
+        "payout_destination_label": "redacted-proof-fixture-target",
+        "process_binary_contains_release_version": true,
+        "current_run_id": "run.cs336.a1.starter.20260607183442.404ae7ea"
+      }
+    ],
+    "authority_binary_contains_release_version": true,
+    "artifact_binary_contains_release_version": true
+  },
+  "mdk_payment_evidence": {
+    "proof_type": "real_mdk_agent_wallet_lightning_payment",
+    "run_id": "artanis-pylon-v022-mdk-payment-20260607193426",
+    "amount_sats": 21,
+    "payer_balance_before_sats": 6700,
+    "payer_balance_after_sats": 6679,
+    "payer_balance_delta_sats": -21,
+    "receiver_runtime_kind": "moneydevkit",
+    "receiver_balance_after_sats": 20,
+    "receiver_payment_count_after": 1,
+    "invoice_digest": "sha256:477115b3f44b1e661d1d0b42fbb0ca676a27752cda067017e2b7dca98bf2f54f",
+    "payment_id_digest": "sha256:2e537e295a648be0c9306d9be75791197851be1ba236a82ec675688be049a6bf",
+    "payment_hash_digest": "sha256:2e537e295a648be0c9306d9be75791197851be1ba236a82ec675688be049a6bf",
+    "preimage_observed_but_not_disclosed": true,
+    "raw_material_redaction": "raw invoice, destination, payment id, payment hash, and preimage stored only under ignored .secrets run directory; committed artifacts must use digests only"
+  },
+  "bridge_assessment": {
+    "single_production_artanis_assignment_to_mdk_settlement_bridge": false,
+    "exact_remaining_blocker": "The released Pylon proof runtime can prove accepted/rewarded work from the public pylon-v0.2.2 install path, and the MDK agent-wallet can settle a real bitcoin-denominated Lightning payment to a Pylon-scoped receiver wallet. The production bridge that is still not implemented is the authority/idempotency link that makes an Artanis-created assignment id the direct source of truth for the MDK checkout/payment/settlement record.",
+    "no_overclaim": "Do not claim that production Artanis paid-work settlement is fully live until the Artanis assignment id, Pylon accepted-work result, MDK payment intent, and public receipt are one idempotent production trace.",
+    "bounded_v02_claim": "Pylon v0.2.2 public install works, accepted/rewarded work is proven from public release assets, Artanis can dispatch the launch workroom, and real MDK Lightning payment movement works through the selected wallet runtime."
+  }
+}
