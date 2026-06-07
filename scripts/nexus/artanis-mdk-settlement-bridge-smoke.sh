@@ -6,8 +6,8 @@ cd "$ROOT_DIR"
 
 ARTANIS_PROOF_DOC="${ARTANIS_PROOF_DOC:-docs/reports/nexus/2026-06-07-pylon-v02-live-artanis-shc-bootstrap-proof.md}"
 PYLON_ACCEPTED_WORK_PROOF="${PYLON_ACCEPTED_WORK_PROOF:-docs/reports/nexus/pylon-v022-shc-nosource-proof-20260607183407.json}"
-PYLON_PACKAGE="${PYLON_PACKAGE:-@openagentsinc/pylon@0.2.2}"
-PYLON_VERSION="${PYLON_VERSION:-0.2.2}"
+PYLON_PACKAGE="${PYLON_PACKAGE:-@openagentsinc/pylon@latest}"
+PYLON_VERSION="${PYLON_VERSION:-0.2.4}"
 AMOUNT_SATS="${AMOUNT_SATS:-21}"
 MDK_PAYER_HOME="${MDK_PAYER_HOME:-}"
 MDK_PAYER_PORT="${MDK_PAYER_PORT:-3462}"
@@ -145,7 +145,7 @@ for _ in $(seq 1 20); do
   sleep 3
 done
 
-python3 - "$RAW_ARTIFACT_DIR" "$OUTPUT_PATH" <<'PY'
+python3 - "$RAW_ARTIFACT_DIR" "$OUTPUT_PATH" "$PYLON_PACKAGE" "$PYLON_VERSION" <<'PY'
 import datetime as dt
 import hashlib
 import json
@@ -154,6 +154,8 @@ import sys
 
 raw_dir = pathlib.Path(sys.argv[1])
 output_path = pathlib.Path(sys.argv[2])
+pylon_package = sys.argv[3]
+pylon_version = sys.argv[4]
 
 
 def load(name: str):
@@ -219,13 +221,16 @@ receipt = {
         "closeout_status": plan["closeout_status"],
     },
     "public_pylon_install": {
-        "package": "@openagentsinc/pylon@0.2.2",
+        "package": pylon_package,
+        "requested_version": pylon_version,
         "version": bootstrap.get("version"),
         "tag_name": bootstrap.get("tagName"),
         "install_method": bootstrap.get("installMethod"),
         "cached": bootstrap.get("cached"),
         "target": bootstrap.get("target"),
-        "binary_path_contains_release_version": "pylon-v0.2.2"
+        "resolved_tag_matches_requested_version": bootstrap.get("tagName")
+        == f"pylon-v{pylon_version}",
+        "binary_path_contains_release_version": f"pylon-v{pylon_version}"
         in ((bootstrap.get("binaries") or {}).get("pylon") or ""),
     },
     "receiver_wallet": {
