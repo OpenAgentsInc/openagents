@@ -109,6 +109,13 @@ newer equivalent proof may replace that evidence. Do not block this MDK-default
 release on old GCP/native Nexus public-edge `530` / `1033` or stale native-LDK
 continuity state unless the task explicitly changes that native lane.
 
+The current public Pylon v0.2 release publication proof is
+`docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`. It
+records the live `OpenAgentsInc/openagents` GitHub release, checksum-verified
+Darwin arm64 asset, fresh extracted-binary smoke, isolated-home MDK wallet
+status smoke, npm publication credential blocker, and cleanup of the misplaced
+`OpenAgentsInc/psionic` `v0.2.0` release/tag.
+
 Sandbox-specific evidence that should remain green:
 
 ```bash
@@ -191,6 +198,8 @@ Release candidate:
   public-safe equivalent if the release candidate changes that boundary
 - verify current Omega Cloudflare MDK checkout proof or produce a newer
   public-safe equivalent
+- publish the canonical `OpenAgentsInc/openagents` `pylon-v...` release asset
+  and verify it from a fresh extracted archive outside the source checkout
 - run the standalone smoke path on at least one machine with local Gemma supply
 - run the sandbox-specific evidence commands on at least one machine with declared sandbox profiles
 - confirm persisted status, jobs, earnings, and receipts survive a restart

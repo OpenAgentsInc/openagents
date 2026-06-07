@@ -1,0 +1,220 @@
+{
+  "namespace": "pylon-v02-post-release-20260607-155959",
+  "lane": "cs336-a1-hosted-starter",
+  "generated_at_ms": 1780848296190,
+  "timeout_seconds": 600,
+  "status": "completed",
+  "detail": "window window.cs336.a1.starter.20260607160246.69d216ae.0001 reconciled with 1 accepted contribution(s), closeout=rewarded, workers_healthy=2, validators_healthy=1",
+  "fleet": {
+    "configured": true,
+    "namespace": "pylon-v02-post-release-20260607-155959",
+    "mode": "prod_shaped",
+    "network_id": "trainnet.cs336.a1.demo",
+    "run_slug": "proof.pylon.v02.post.release.20260607.155959",
+    "paths": {
+      "namespace_root": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959",
+      "fleet_root": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet",
+      "fleet_state_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/fleet-state.json",
+      "run_report_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/run-report.json",
+      "trace_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/authority-state-trace.json",
+      "summary_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/proof-summary.json"
+    },
+    "authority": {
+      "configured": true,
+      "namespace": "pylon-v02-post-release-20260607-155959",
+      "mode": "prod_shaped",
+      "started_at_ms": 1780848135547,
+      "admin_auth_configured": true,
+      "treasury_enabled": true,
+      "ports": {
+        "relay_http": 46630,
+        "relay_upstream": 46631,
+        "control_http": 46632,
+        "artifact_store": 46633
+      },
+      "paths": {
+        "namespace_root": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959",
+        "authority_env_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/authority/authority.env",
+        "relay_data_dir": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/authority/relay-data",
+        "receipt_log_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/state/receipts.jsonl",
+        "kernel_state_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/state/kernel-state.json",
+        "treasury_state_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/state/treasury-state.json",
+        "treasury_wallet_dir": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/state/treasury-wallet",
+        "treasury_wallet_mnemonic_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/state/treasury.mnemonic",
+        "training_trn_identity_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/state/training-trn-identity.mnemonic",
+        "signer_credentials_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/artifacts/gcs-signer.json",
+        "artifact_store_root": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/artifacts/store",
+        "artifact_trace_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/artifacts/object-trace.jsonl"
+      },
+      "urls": {
+        "authority_base_url": "http://127.0.0.1:46630",
+        "artifact_store_base_url": "http://127.0.0.1:46633/upload",
+        "relay_ws_url": "ws://127.0.0.1:46630/"
+      },
+      "authority_process": {
+        "binary": "/private/tmp/openagents-pylon-v02-release.DlTVo2/target/debug/nexus-relay",
+        "pid": 78305,
+        "running": true,
+        "log_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/logs/authority.log"
+      },
+      "artifact_store_process": {
+        "binary": "/private/tmp/pylon-v02-install-smoke.n6gJup/pylon-v0.2.0-darwin-arm64/pylon",
+        "pid": 62671,
+        "running": true,
+        "log_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/logs/artifact-store.log"
+      },
+      "probes": [
+        {
+          "route_id": "healthz",
+          "url": "http://127.0.0.1:46630/healthz",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        {
+          "route_id": "training_artifact_layout",
+          "url": "http://127.0.0.1:46630/v1/kernel/compute/training/artifact-storage-layout",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        {
+          "route_id": "treasury_status",
+          "url": "http://127.0.0.1:46630/v1/treasury/status",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        {
+          "route_id": "admin_demo_launch_route",
+          "url": "http://127.0.0.1:46630/v1/admin/training/demo-runs/cs336-a1/launch",
+          "ok": true,
+          "status": 405,
+          "detail": "route reachable with 405"
+        },
+        {
+          "route_id": "artifact_store_healthz",
+          "url": "http://127.0.0.1:46633/healthz",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        }
+      ],
+      "artifact_smoke": {
+        "artifact_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.pylon.v02.post.release.20260607.155959~run~run.pylon.v02.post.release.20260607.155959~window~window.pylon.v02.post.release.20260607.155959.0001~assignment~assign.pylon.v02.post.release.20260607.155959.worker.1.attempt1",
+        "relative_object_path": "windows/window.pylon.v02.post.release.20260607.155959.0001/contributions/assign.pylon.v02.post.release.20260607.155959.worker.1.attempt1/adapter_delta_bundle.json",
+        "expected_digest": "sha256:47adafda1fd52e9b1fca0e5ef5bce6ff14c07bc1afd0cfaa2694011ee748a188",
+        "payload_size_bytes": 436,
+        "trace_entry_count": 2,
+        "verified_at_ms": 1780848135551
+      }
+    },
+    "nodes": [
+      {
+        "role": "worker",
+        "index": 1,
+        "node_label": "proof-pylon.v02.post.release.20260607.155959-worker-1",
+        "payout_destination": "lnbc1proofworker1",
+        "home_dir": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-1",
+        "config_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-1/config.json",
+        "run_root": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-1/training",
+        "admin_url": "http://127.0.0.1:50030",
+        "checkpoint_serve_url": "http://127.0.0.1:50031",
+        "stale_retained_state_injected": false,
+        "process": {
+          "binary": "/private/tmp/pylon-v02-install-smoke.n6gJup/pylon-v0.2.0-darwin-arm64/pylon",
+          "pid": 78363,
+          "running": true,
+          "log_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-1/logs/serve.log"
+        },
+        "training": {
+          "current_run_id": "run.cs336.a1.starter.20260607160246.69d216ae",
+          "active_window_id": "window.cs336.a1.starter.20260607160246.69d216ae.0001",
+          "active_runtime_process_state": "stopped",
+          "recent_issue_count": 0,
+          "pending_closeout_count": 0
+        }
+      },
+      {
+        "role": "worker",
+        "index": 2,
+        "node_label": "proof-pylon.v02.post.release.20260607.155959-worker-2",
+        "payout_destination": "lnbc1proofworker2",
+        "home_dir": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-2",
+        "config_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-2/config.json",
+        "run_root": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-2/training",
+        "admin_url": "http://127.0.0.1:57200",
+        "checkpoint_serve_url": "http://127.0.0.1:57201",
+        "stale_retained_state_injected": false,
+        "process": {
+          "binary": "/private/tmp/pylon-v02-install-smoke.n6gJup/pylon-v0.2.0-darwin-arm64/pylon",
+          "pid": 78364,
+          "running": true,
+          "log_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/worker-2/logs/serve.log"
+        },
+        "training": {
+          "current_run_id": "run.cs336.a1.starter.20260607160419.c6e4c02d",
+          "active_window_id": "window.cs336.a1.starter.20260607160419.c6e4c02d.0001",
+          "active_runtime_process_state": "stopped",
+          "recent_issue_count": 0,
+          "pending_closeout_count": 0
+        }
+      },
+      {
+        "role": "validator",
+        "index": 1,
+        "node_label": "proof-pylon.v02.post.release.20260607.155959-validator-1",
+        "payout_destination": "lnbc1proofvalidator1",
+        "home_dir": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/validator-1",
+        "config_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/validator-1/config.json",
+        "run_root": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/validator-1/training",
+        "admin_url": "http://127.0.0.1:50070",
+        "checkpoint_serve_url": "http://127.0.0.1:50071",
+        "stale_retained_state_injected": false,
+        "process": {
+          "binary": "/private/tmp/pylon-v02-install-smoke.n6gJup/pylon-v0.2.0-darwin-arm64/pylon",
+          "pid": 78365,
+          "running": true,
+          "log_path": "/tmp/pylon-v02-post-release-proof-home.h7jOYB/proof/namespaces/pylon-v02-post-release-20260607-155959/fleet/validator-1/logs/serve.log"
+        },
+        "training": {
+          "current_run_id": "run.cs336.a1.starter.20260607160246.69d216ae",
+          "active_window_id": "window.cs336.a1.starter.20260607160246.69d216ae.0001",
+          "active_runtime_process_state": "stopped",
+          "recent_issue_count": 0,
+          "pending_closeout_count": 0
+        }
+      }
+    ]
+  },
+  "observed_run": {
+    "training_run_id": "run.cs336.a1.starter.20260607160246.69d216ae",
+    "run": {
+      "training_run_id": "run.cs336.a1.starter.20260607160246.69d216ae",
+      "run_status": "running",
+      "current_window_id": "window.cs336.a1.starter.20260607160246.69d216ae.0002",
+      "active_window_count": 0,
+      "pending_validation_window_count": 0,
+      "validator_challenges_open": 0,
+      "validator_challenges_queued": 0,
+      "latest_closeout_status": "rewarded"
+    },
+    "windows": [
+      {
+        "window_id": "window.cs336.a1.starter.20260607160246.69d216ae.0001",
+        "status": "reconciled",
+        "closeout_status": "rewarded",
+        "accepted_contributions": 1,
+        "validator_challenges_open": 0,
+        "validator_challenges_queued": 0
+      }
+    ],
+    "contribution_count": 1,
+    "node_count": 1,
+    "caveat_count": 2,
+    "first_caveat_id": "validator_backlog",
+    "first_caveat_severity": "critical",
+    "first_caveat_title": "Validator backlog",
+    "first_caveat_detail": "1 fresh pending window(s) // 2 fresh open challenge(s) // 2 fresh queued challenge(s)."
+  }
+}

@@ -139,7 +139,11 @@ release_exists() {
 
 build_binaries() {
   cargo build --release -p pylon -p pylon-tui
-  cargo build --manifest-path "${PSIONIC_REPO}/Cargo.toml" --release -p psionic-train
+  cargo build \
+    --manifest-path "${PSIONIC_REPO}/Cargo.toml" \
+    --release \
+    -p psionic-train \
+    --bin psionic-train
 }
 
 ensure_psionic_runtime_source() {

@@ -110,13 +110,18 @@ MoneyDevKit wrapper checks:
 
 ## Remaining Release Work
 
-Before declaring Pylon v0.2 live:
+Before declaring Pylon v0.2 fully live:
 
-1. Commit and push the release candidate to `origin/main`.
-2. Publish the GitHub `pylon-v0.2.0` release asset from a clean worktree.
-3. Publish `@openagentsinc/pylon@0.2.0` if npm authentication is available.
-4. Verify a fresh public-style install from the released asset.
-5. Verify a fresh npm bootstrap path if the npm package is published.
+1. Commit and push the release candidate to `origin/main`. Done:
+   `f836eb909a9ce323b4097b30a01b6e358ec03fed`.
+2. Publish the GitHub `pylon-v0.2.0` release asset from a clean worktree. Done:
+   `https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.2.0`.
+3. Verify a fresh public-style install from the released asset. Done:
+   `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`.
+4. Publish `@openagentsinc/pylon@0.2.0` when npm publish authorization is
+   available. Blocked during publication proof because npm returned `EOTP`
+   after CLI auth was restored.
+5. Verify a fresh npm bootstrap path after the npm package is published.
 6. Run or record the post-release Artanis/Pylon paid-work proof using the
    MDK/Omega proof path, or document the exact remaining settlement-bridge
    blocker.
