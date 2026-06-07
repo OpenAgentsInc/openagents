@@ -600,6 +600,33 @@ proxy unit with:
 scripts/deploy/nexus/16-install-public-watchdog.sh
 ```
 
+When public Nexus is already returning Cloudflare `530` / `1033`, first prove
+whether the VM still has the expected watchdog/recovery-proxy state installed:
+
+```bash
+scripts/deploy/nexus/33-audit-public-watchdog.sh
+```
+
+The audit command is read-only. It SSHes to `nexus-mainnet-1` through IAP and
+prints the `nexus-public-watchdog.timer`, `nexus-public-watchdog.service`,
+`nexus-http-recovery-proxy.service`, `nexus-cloudflared.service`, and
+`nexus-relay.service` state, the public-watchdog environment, the current
+`TUNNEL_ORIGIN_URL`, local origin and recovery-proxy health probes, the latest
+structured watchdog event, the consecutive edge-failure count, and recent
+watchdog/recovery-proxy logs. It intentionally does not print Cloudflare tunnel
+tokens or other secrets.
+
+For a live `530` / `1033` outage, use this order:
+
+1. Run `33-audit-public-watchdog.sh` and capture the output in the issue or
+   report.
+2. If the watchdog or recovery-proxy units/files are missing or stale, run
+   `16-install-public-watchdog.sh`.
+3. If the VM is unreachable over IAP or the audit proves the watchdog cannot
+   execute, reset the VM from GCP, then immediately rerun the audit.
+4. Only after public `/healthz` or `/health` and `/api/stats` are reachable
+   again should the Pylon/Nexus release path continue.
+
 The deploy path also installs a guest-network watchdog. It runs every
 `NEXUS_GUEST_NETWORK_WATCHDOG_INTERVAL_SECONDS` seconds (`60` by default) and
 checks Google metadata, DNS resolution for the Cloudflare tunnel edge, the VM

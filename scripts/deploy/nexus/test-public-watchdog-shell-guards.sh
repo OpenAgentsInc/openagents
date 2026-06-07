@@ -14,7 +14,10 @@ assert_contains() {
 }
 
 bash -n "$TARGET_SCRIPT"
+AUDIT_SCRIPT="${SCRIPT_DIR}/33-audit-public-watchdog.sh"
+bash -n "$AUDIT_SCRIPT"
 SCRIPT_TEXT="$(cat "$TARGET_SCRIPT")"
+AUDIT_SCRIPT_TEXT="$(cat "$AUDIT_SCRIPT")"
 CHECK_SCRIPT_TEXT="$(sed -n "/cat >\"\$TMP_CHECK_SCRIPT\" <<'CHECK'/,/^CHECK$/p" "$TARGET_SCRIPT")"
 
 assert_contains 'public_edge_failure()' "$CHECK_SCRIPT_TEXT"
@@ -45,6 +48,13 @@ assert_contains 'systemctl reboot' "$CHECK_SCRIPT_TEXT"
 assert_contains 'NEXUS_PUBLIC_WATCHDOG_DRY_RUN' "$CHECK_SCRIPT_TEXT"
 assert_contains 'healthy startup_grace' "$CHECK_SCRIPT_TEXT"
 assert_contains 'public_health=${startup_public_health_code} public_stats=${startup_public_stats_code}' "$CHECK_SCRIPT_TEXT"
+assert_contains 'nexus-public-watchdog.timer' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'nexus-http-recovery-proxy.service' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'TUNNEL_ORIGIN_URL=' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'last-event.json' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'edge-failure-count' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'local-origin-health' "$AUDIT_SCRIPT_TEXT"
+assert_contains 'recovery-proxy-health' "$AUDIT_SCRIPT_TEXT"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
