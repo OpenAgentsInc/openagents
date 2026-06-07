@@ -111,9 +111,10 @@ continuity state unless the task explicitly changes that native lane.
 
 The current public Pylon v0.2 release publication proof is
 `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`. It
-records the live `OpenAgentsInc/openagents` GitHub release, checksum-verified
-Darwin arm64 asset, fresh extracted-binary smoke, isolated-home MDK wallet
-status smoke, npm publication credential blocker, and cleanup of the misplaced
+records the live `OpenAgentsInc/openagents` GitHub release,
+checksum-verified Darwin arm64 and Linux x86_64 assets, fresh extracted-binary
+smokes, isolated-home MDK wallet status smokes on macOS and SHC Linux, npm
+publication `EOTP` blocker, and cleanup of the misplaced
 `OpenAgentsInc/psionic` `v0.2.0` release/tag.
 
 Sandbox-specific evidence that should remain green:

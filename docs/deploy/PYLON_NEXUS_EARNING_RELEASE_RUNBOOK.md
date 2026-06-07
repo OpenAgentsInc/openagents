@@ -194,8 +194,9 @@ Use this sequence for MDK-default Pylon v0.2 public earning-loop changes:
 11. Record receipts, update docs, comment on issues, and close only after
     payout proof is visible.
 
-For the 2026-06-07 `pylon-v0.2.0` rollout, the GitHub release asset was
-published and verified from a fresh extracted archive. The proof is
+For the 2026-06-07 `pylon-v0.2.0` rollout, the GitHub release assets were
+published and verified from fresh extracted archives on macOS and SHC Linux.
+The proof is
 `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`. The
 same proof records that `@openagentsinc/pylon@0.2.0` publication remained
 blocked by npm `EOTP`; do not claim the npm bootstrap package is live until

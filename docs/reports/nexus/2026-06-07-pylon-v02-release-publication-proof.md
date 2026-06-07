@@ -29,6 +29,8 @@ Published assets:
 | --- | ---: | --- |
 | `pylon-v0.2.0-darwin-arm64.tar.gz` | `38848961` bytes | `sha256:9a130516aa6e3b74ab09786bd0f92c2b020d1bc67c6c5cfab4951f6666e71b6f` |
 | `pylon-v0.2.0-darwin-arm64.tar.gz.sha256` | `99` bytes | `sha256:25104797aa4d7639c72e82488167e82a8af76fd3f6235558db39a1bfaed08c97` |
+| `pylon-v0.2.0-linux-x86_64.tar.gz` | `141199792` bytes | `sha256:ee10e5d3eec003dde1788d616b3cfdfedd990a138f4bd2099c1a35c5a35e046b` |
+| `pylon-v0.2.0-linux-x86_64.tar.gz.sha256` | `99` bytes | `sha256:830127758083de6b95564080d82c1ff35c5a0f11066df5d0426ac41758a6f93a` |
 
 ## Fresh Release Asset Smoke
 
@@ -145,6 +147,63 @@ cargo build \
 Linux archive publication should be rerun with that fixed script, uploaded to
 the canonical `pylon-v0.2.0` release if the binary source remains unchanged, or
 to a `pylon-v0.2.1` patch release if additional code changes are made.
+
+The rerun with the fixed script succeeded on SHC:
+
+- OpenAgents checkout: `4c89bcece` for the fixed script and docs.
+- Pylon binary source: unchanged from release target commit
+  `f836eb909a9ce323b4097b30a01b6e358ec03fed`.
+- Psionic checkout: `fe185894292a86a987348ef1c2602d715a5327d4`.
+- The OpenAgents release-profile Pylon binaries were already cached and
+  rebuilt in `6.92s`.
+- The fixed local Psionic runtime build completed in `2m16s`.
+- Archive written on SHC:
+  `/tmp/oa-pylon-v02-linux-build/openagents/target/pylon-release/pylon-v0.2.0-linux-x86_64.tar.gz`.
+- Checksum written on SHC:
+  `/tmp/oa-pylon-v02-linux-build/openagents/target/pylon-release/pylon-v0.2.0-linux-x86_64.tar.gz.sha256`.
+- Local checksum verification after copying the assets back to the Mac returned
+  `pylon-v0.2.0-linux-x86_64.tar.gz: OK`.
+- Both Linux assets were uploaded to
+  `https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.2.0`.
+
+The Linux asset was then redownloaded from the public GitHub release URL on
+SHC with `curl -fL`, verified with `sha256sum -c`, extracted, and run from an
+isolated home:
+
+```bash
+curl -fL -o pylon-v0.2.0-linux-x86_64.tar.gz \
+  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.0/pylon-v0.2.0-linux-x86_64.tar.gz
+curl -fL -o pylon-v0.2.0-linux-x86_64.tar.gz.sha256 \
+  https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.2.0/pylon-v0.2.0-linux-x86_64.tar.gz.sha256
+sha256sum -c pylon-v0.2.0-linux-x86_64.tar.gz.sha256
+tar -xzf pylon-v0.2.0-linux-x86_64.tar.gz
+cd pylon-v0.2.0-linux-x86_64
+./pylon --version
+./pylon-tui --version
+OPENAGENTS_PYLON_HOME="$HOME_DIR" ./pylon init
+OPENAGENTS_PYLON_HOME="$HOME_DIR" ./pylon status --json
+OPENAGENTS_PYLON_HOME="$HOME_DIR" ./pylon wallet status --json
+```
+
+Observed SHC smoke results:
+
+- Checksum verification returned `pylon-v0.2.0-linux-x86_64.tar.gz: OK`.
+- `./pylon --version` returned `pylon 0.2.0`.
+- `./pylon-tui --version` returned `pylon-tui 0.2.0`.
+- Isolated home:
+  `/tmp/pylon-v02-linux-home.SYyREJ`.
+- `status --json` returned the expected `desired_mode`, `listen_addr`, and
+  `snapshot` fields.
+- `wallet status --json` returned:
+  - `runtime.runtime_kind=moneydevkit`
+  - `runtime.liquidity_provider_kind=moneydevkit`
+  - `runtime.network=bitcoin`
+  - `runtime.local_daemon_port=38080`
+  - `runtime.storage_dir=/tmp/pylon-v02-linux-home.SYyREJ/wallet`
+  - `runtime_status=connected`
+
+No GitHub credentials were installed on SHC for this smoke; the asset was
+downloaded through the public release URL.
 
 ## Misplaced Psionic Release Cleanup
 
