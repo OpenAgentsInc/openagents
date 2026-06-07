@@ -4926,6 +4926,10 @@ name = "pylon"
 version = "0.1.23"
 
 [[package]]
+name = "pylon-core"
+version = "0.1.23"
+
+[[package]]
 name = "pylon-tui"
 version = "0.1.23"
 
