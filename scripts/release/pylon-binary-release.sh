@@ -268,8 +268,8 @@ Important:
   earning lane. The retained Gemma benchmark path still shells into a full
   sibling Psionic checkout; set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic
   when you need that lane.
-- This archive includes the proof-runtime authority binaries that `pylon proof`
-  needs for local release smokes, so `pylon proof run ...` does not require a
+- This archive includes the proof-runtime authority binaries that \`pylon proof\`
+  needs for local release smokes, so \`pylon proof run ...\` does not require a
   source checkout or Cargo toolchain on the target machine.
 - Source builds remain the fallback for unsupported platforms or when you need
   to modify the code.
