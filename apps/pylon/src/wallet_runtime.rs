@@ -1,4 +1,5 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, hash_map::DefaultHasher};
+use std::hash::{Hash, Hasher};
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -31,7 +32,7 @@ use crate::{
 
 type HmacSha256 = Hmac<Sha256>;
 
-const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon is using an advanced external_payout_target override. The built-in LDK wallet is the default earnings path.";
+const LDK_EXTERNAL_WALLET_DETAIL: &str = "Pylon is using an advanced external_payout_target override. The wrapped MoneyDevKit wallet is the default earnings path.";
 const MOCK_WALLET_DETAIL: &str = "Pylon is using the deterministic mock wallet runtime for tests.";
 const WALLET_NODE_ENTROPY_DERIVATION_VERSION: &str = "pylon-ldk-node-entropy-v1";
 const WALLET_NODE_ENTROPY_LABEL_PREFIX: &str = "openagents-pylon/ldk-node/v1";
@@ -52,6 +53,8 @@ const DEFAULT_RECEIVE_DESCRIPTION: &str = "OpenAgents Pylon receive";
 const SATS_PER_BTC: u64 = 100_000_000;
 const MONEYDEVKIT_AGENT_WALLET_PACKAGE: &str = "@moneydevkit/agent-wallet@latest";
 const MONEYDEVKIT_WALLET_DETAIL: &str = "Pylon is using MoneyDevKit's local agent-wallet runtime for self-custodial Lightning payments.";
+const MONEYDEVKIT_PORT_BASE: u16 = 35_000;
+const MONEYDEVKIT_PORT_SPAN: u16 = 20_000;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1228,6 +1231,14 @@ impl MoneyDevKitWalletRuntime {
         }
     }
 
+    fn mdk_port(&self) -> u16 {
+        stable_mdk_wallet_port(self.home_dir.as_path())
+    }
+
+    fn mdk_port_string(&self) -> String {
+        self.mdk_port().to_string()
+    }
+
     fn ensure_private_home(&self) -> Result<()> {
         create_private_dir(self.home_dir.as_path(), "MoneyDevKit wallet home")?;
         Ok(())
@@ -1249,6 +1260,7 @@ impl MoneyDevKitWalletRuntime {
             .arg(MONEYDEVKIT_AGENT_WALLET_PACKAGE)
             .args(args)
             .env("HOME", self.home_dir.as_os_str())
+            .env("MDK_WALLET_PORT", self.mdk_port_string())
             .env("MDK_WALLET_NETWORK", self.mdk_network())
             .output()
             .with_context(|| {
@@ -2452,6 +2464,13 @@ fn parse_mdk_stdout_json(stdout: &str) -> Result<Value> {
         }
     }
     bail!("MoneyDevKit command did not emit a JSON object on stdout")
+}
+
+fn stable_mdk_wallet_port(home_dir: &Path) -> u16 {
+    let mut hasher = DefaultHasher::new();
+    home_dir.hash(&mut hasher);
+    let offset = (hasher.finish() % u64::from(MONEYDEVKIT_PORT_SPAN)) as u16;
+    MONEYDEVKIT_PORT_BASE.saturating_add(offset)
 }
 
 fn mdk_json_string(value: &Value, keys: &[&str]) -> Option<String> {
@@ -6290,10 +6309,26 @@ mod tests {
         load_wallet_status_report, load_wallet_telemetry_report, parse_wallet_command,
         pay_wallet_invoice_report, redact_wallet_secret_text, redact_wallet_telemetry_endpoint,
         render_wallet_channels_report, render_wallet_entropy_report, render_wallet_status_report,
-        render_wallet_telemetry_report, run_wallet_command, wallet_lightning_readiness,
-        wallet_node_entropy_domain_label,
+        render_wallet_telemetry_report, run_wallet_command, stable_mdk_wallet_port,
+        wallet_lightning_readiness, wallet_node_entropy_domain_label,
     };
     use crate::PylonWalletPaymentRecord;
+
+    #[test]
+    fn moneydevkit_wallet_port_is_stable_and_pylon_scoped() {
+        let first = stable_mdk_wallet_port(PathBuf::from("/tmp/pylon-a").as_path());
+        let first_again = stable_mdk_wallet_port(PathBuf::from("/tmp/pylon-a").as_path());
+        let scoped_ports: Vec<u16> = (0..32)
+            .map(|index| {
+                stable_mdk_wallet_port(PathBuf::from(format!("/tmp/pylon-{index}")).as_path())
+            })
+            .collect();
+
+        assert_eq!(first, first_again);
+        assert!(scoped_ports.iter().any(|port| *port != first));
+        assert!(first >= super::MONEYDEVKIT_PORT_BASE);
+        assert!(first < super::MONEYDEVKIT_PORT_BASE + super::MONEYDEVKIT_PORT_SPAN);
+    }
 
     #[test]
     fn parse_wallet_command_supports_balance_and_history() {

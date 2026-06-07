@@ -12,8 +12,9 @@ These surfaces remain public in this repo:
 
 - `installable_app`: `apps/pylon`, release scripts, and the npm bootstrap path.
 - `tui`: `apps/pylon-tui` and the explicit `pylon tui` shell.
-- `contributor_wallet_ux`: built-in LDK wallet setup, backup, channel,
-  invoice, payment, and withdraw surfaces.
+- `contributor_wallet_ux`: wrapped MoneyDevKit wallet setup, invoice, payment,
+  and withdraw surfaces, plus explicit native LDK backup/channel/on-chain
+  surfaces.
 - `provider_inventory_truth`: public provider availability, inventory,
   capability, and local status projections.
 - `payout_behavior`: contributor payout target registration, accepted-work

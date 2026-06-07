@@ -639,21 +639,21 @@ alias. Spark destination creation is no longer part of normal Pylon startup or
 registration, and Spark-only nodes are not eligible for new paid work after
 cutover.
 
-The MoneyDevKit wrapper runs `@moneydevkit/agent-wallet` with JSON stdout and a
-Pylon-scoped `HOME`, so wallet state lives under the selected Pylon wallet
-storage root rather than the operator's personal home wallet. The native LDK
-wallet path remains available via `wallet_runtime_kind=ldk_node` for low-level
-channel telemetry, on-chain address management, encrypted LDK backups, and
-regtest harness coverage. Current source can create wallet-owned receive
-artifacts, and sign Nexus registration payloads with runtime kind, network,
-target kind, capabilities, derivation version, backup status, and registration
-mode. In the native LDK path it also includes wallet node ID. It can now submit
-outbound BOLT11 and BOLT12 sends through the selected wallet runtime, submit
-on-chain withdrawals from the built-in LDK wallet while
-retaining anchor-channel reserve, and persist failed send receipts when the
-selected runtime or local balance checks refuse a payment. BIP353 names still
-require an external resolution step until the selected runtime exposes native
-name resolution.
+The MoneyDevKit wrapper runs `@moneydevkit/agent-wallet` with JSON stdout, a
+Pylon-scoped `HOME`, and a stable Pylon-scoped `MDK_WALLET_PORT`, so wallet
+state and the local MDK daemon are isolated from the operator's personal MDK
+wallet and from other Pylon homes on the same machine. The native LDK wallet
+path remains available via `wallet_runtime_kind=ldk_node` for low-level channel
+telemetry, on-chain address management, encrypted LDK backups, and regtest
+harness coverage. Current source can create wallet-owned receive artifacts, and
+sign Nexus registration payloads with runtime kind, network, target kind,
+capabilities, derivation version, backup status, and registration mode. In the
+native LDK path it also includes wallet node ID. It can now submit outbound
+BOLT11 and BOLT12 sends through the selected wallet runtime. The native LDK path
+also submits on-chain withdrawals while retaining anchor-channel reserve. Failed
+send receipts are persisted when the selected runtime or local balance checks
+refuse a payment. BIP353 names still require an external resolution step until
+the selected runtime exposes native name resolution.
 
 The prior `0.1.15` release receipt is
 `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the
@@ -1271,8 +1271,8 @@ escape hatch rather than the normal setup path. Directly sharing the mnemonic
 bytes without HKDF domain separation is compatibility-only and should not be the
 default.
 
-Pylon also prepares the built-in LDK wallet storage root before the real node
-runtime owns funds. The default layout is:
+When the native LDK Node path is selected, Pylon prepares the built-in LDK
+wallet storage root before the real node runtime owns funds. The layout is:
 
 ```text
 ~/.openagents/pylon/wallet/ldk/
@@ -1293,16 +1293,17 @@ after the report says the owning process is stale. An active lock means another
 Pylon process is using the wallet state and must be stopped first.
 
 For operator accounting, the bounded retained `ledger.wallet.payments` list is
-not the final source of truth for built-in LDK wallet balances. Current v0.2
-status includes real LDK Node on-chain and Lightning balance totals when the
-local node runtime is selected, and `wallet history --json` projects LDK payment
-records into retained wallet ledger rows and receipts for local accounting.
+not the final source of truth for wallet balances. Current v0.2 status includes
+MoneyDevKit Lightning balance totals in the default runtime, and real LDK Node
+on-chain and Lightning balance totals when the native node runtime is selected.
+`wallet history --json` projects selected-runtime payment records into retained
+wallet ledger rows and receipts for local accounting.
 
-BOLT11 receive invoices created by the built-in LDK wallet are retained in the
-local ledger with the public payment request, payment hash, runtime kind,
+BOLT11 receive invoices created by the selected wallet runtime are retained in
+the local ledger with the public payment request, payment hash, runtime kind,
 creation timestamp, and expiry timestamp. Pylon does not store or print
 preimages, mnemonic words, or raw LDK node entropy in those records. BOLT12
-offer creation returns a typed actionable error when the configured LDK runtime
+offer creation returns a typed actionable error when the configured runtime
 cannot produce an offer, and the required fallback is an explicit BOLT11 invoice
 for the requested amount.
 

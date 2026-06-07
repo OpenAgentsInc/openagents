@@ -203,7 +203,10 @@ mod wrapped_rows_tests {
         ];
         // Line 1 fits one row; the long CPU line wraps at width 20.
         let total = wrapped_line_total(&lines, 20);
-        assert!(total >= 4, "expected the long CPU line to wrap, got {total}");
+        assert!(
+            total >= 4,
+            "expected the long CPU line to wrap, got {total}"
+        );
     }
 }
 
@@ -2210,7 +2213,9 @@ impl AppShell {
             lines.push("Total balance: unavailable".to_string());
         }
         lines.push(String::new());
-        lines.push("Settlement: built-in LDK wallet registers the payment target".to_string());
+        lines.push(
+            "Settlement: wrapped MoneyDevKit wallet registers the payment target".to_string(),
+        );
         lines.push("Invoices: wallet invoice <sats> after inbound liquidity is ready".to_string());
         lines.push("Local sends: wallet pay <invoice> --yes".to_string());
         lines.push("Recovery: /wallet recovery".to_string());
@@ -2260,7 +2265,7 @@ impl AppShell {
             self.push_system_lines(
                 "Wallet Withdraw",
                 vec![
-                    "Local wallet sends land with the built-in LDK wallet runtime.".to_string(),
+                    "Local wallet sends use the selected Pylon wallet runtime.".to_string(),
                     "External targets are advanced migration overrides only.".to_string(),
                     "Usage: /wallet withdraw <lightning_invoice> [--amount-sats <n>]".to_string(),
                 ],
@@ -3095,7 +3100,7 @@ impl AppShell {
             ("Ctrl+C", "quit"),
             ("status", "online while this stays open"),
             ("jobs", "admin-triggered homework runs land automatically"),
-            ("wallet", "built-in LDK wallet"),
+            ("wallet", "MoneyDevKit wallet"),
         ]
     }
 
@@ -3622,7 +3627,7 @@ impl AppShell {
             Line::from(vec![key_label("Receive"), Span::raw(receive_hint)]),
             Line::from(vec![
                 key_label("Local sends"),
-                Span::raw("built-in LDK wallet guarded by --yes"),
+                Span::raw("wallet pay guarded by --yes"),
             ]),
         ];
         if let Some(last_paid) = self.latest_wallet_receive_summary() {
@@ -3695,7 +3700,7 @@ impl AppShell {
             ]),
             Line::from(vec![key_label("Recent flow"), Span::raw(recent_flow)]),
             Line::from(
-                "[TIP] Current v0.2 uses the built-in LDK wallet by default; external targets are migration overrides."
+                "[TIP] Current v0.2 uses the wrapped MoneyDevKit wallet by default; native LDK is an advanced channel path."
                     .to_string(),
             ),
         ]
@@ -4629,7 +4634,7 @@ Controls:\n\
   Ctrl+C   quit\n\
   Keep this window open to stay eligible for admin-triggered homework jobs.\n\
   The TUI starts and supervises the local earning worker automatically.\n\
-  Payouts use the built-in LDK wallet by default; external targets are advanced migration overrides.\n"
+  Payouts use the wrapped MoneyDevKit wallet by default; external targets are advanced migration overrides.\n"
 }
 
 fn should_publish_provider_presence(
@@ -6820,7 +6825,7 @@ mod tests {
         assert!(footer.contains(&("Ctrl+C", "quit")));
         assert!(footer.contains(&("status", "online while this stays open")));
         assert!(footer.contains(&("jobs", "admin-triggered homework runs land automatically")));
-        assert!(footer.contains(&("wallet", "built-in LDK wallet")));
+        assert!(footer.contains(&("wallet", "MoneyDevKit wallet")));
     }
 
     #[test]
@@ -6992,7 +6997,7 @@ mod tests {
         assert!(card.contains("Status:"));
         assert!(card.contains("Total balance: 664 sats"));
         assert!(card.contains("Receive: Advanced external payout override active"));
-        assert!(card.contains("Local sends: built-in LDK wallet guarded by --yes"));
+        assert!(card.contains("Local sends: wallet pay guarded by --yes"));
         assert!(card.contains("Last paid: 34 sats"));
     }
 

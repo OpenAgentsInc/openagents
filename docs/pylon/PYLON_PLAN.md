@@ -155,9 +155,11 @@ inside Pylon, prefers BOLT12 offers, and falls back to a wallet-owned BOLT11
 invoice request when BOLT12 is unavailable. `external_payout_target` remains only
 an explicit advanced external-target override during migration; old
 `payout_destination` config is a compatibility alias. Local wallet sends
-now dispatch BOLT11 invoices, BOLT12 offers, and on-chain withdrawals through
-the built-in LDK wallet path, with failed-send receipts retained when LDK or
-local reserve checks refuse the operation.
+now dispatch BOLT11 invoices and BOLT12 offers through the selected Pylon wallet
+runtime. The default runtime wraps MoneyDevKit's `agent-wallet`; the explicit
+native LDK Node path also supports on-chain withdrawals, with failed-send
+receipts retained when the selected runtime or local reserve checks refuse the
+operation.
 
 The required sequence is:
 
@@ -191,9 +193,10 @@ Current implementation status:
 - Nexus accepted-work payout dispatch now uses LDK-compatible Pylon v0.2
   targets and records the exact rail, target hash, idempotency key, payment id,
   and terminal event state in the payout receipt.
-- Pylon local withdrawal now sends from the contributor's built-in wallet for
-  BOLT11, BOLT12, BIP21, and direct on-chain targets. BIP353 remains an explicit
-  unavailable state until the selected LDK runtime exposes name resolution.
+- Pylon local withdrawal now sends from the contributor's selected wallet
+  runtime for BOLT11 and BOLT12 targets. The native LDK Node path additionally
+  supports BIP21 and direct on-chain targets. BIP353 remains an explicit
+  unavailable state until the selected runtime exposes name resolution.
 - Pylon wallet history now projects LDK Node payment records into the local
   ledger, carries payment hashes, txids, Nexus operation IDs, local receipt IDs,
   and typed failure codes where known, and keeps repeated sync/history runs
@@ -209,9 +212,10 @@ Current implementation status:
   restores the encrypted LDK state snapshot, and records restore receipts.
 
 Pylon must remain a provider connector and local contributor wallet. It should
-not own Nexus treasury keys, run the hosted treasury LDK node, or become a
-browser wallet/runtime bridge. The built-in LDK wallet belongs on the
-contributor side and must stay separate from Nexus/Treasury payer custody.
+not own Nexus treasury keys, run the hosted treasury wallet, or become a browser
+wallet/runtime bridge. The wrapped MoneyDevKit wallet and explicit native LDK
+path belong on the contributor side and must stay separate from Nexus/Treasury
+payer custody.
 
 This means the right sequence is **canonize first, extract second, package third**, with extraction work starting during the current issue slate rather than being deferred indefinitely.
 

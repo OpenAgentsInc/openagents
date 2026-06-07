@@ -161,17 +161,23 @@ Use this sequence for public earning-loop changes:
 
 1. Make the Pylon/Nexus changes in `openagents`.
 2. Run the relevant local proof runtime and focused Rust tests.
-3. Bump the workspace version and `packages/pylon-bootstrap/package.json` when
+3. For Pylon v0.2+ wallet changes, run a clean two-home MoneyDevKit wrapper
+   smoke before release. The default wallet runtime must auto-initialize
+   `@moneydevkit/agent-wallet` under a Pylon-scoped `HOME`, set a stable
+   Pylon-scoped `MDK_WALLET_PORT`, return JSON status/balance/history, return
+   BOLT11 and BOLT12 receive artifacts, and prove two local Pylon homes do not
+   share one MDK daemon.
+4. Bump the workspace version and `packages/pylon-bootstrap/package.json` when
    the public Pylon binary behavior changes.
-4. Refresh deploy locks before any Nexus Cloud Build if workspace package
+5. Refresh deploy locks before any Nexus Cloud Build if workspace package
    versions changed.
-5. Commit and push the exact release candidate to `origin/main`.
-6. Publish the GitHub `pylon-vX.Y.Z` release assets and npm bootstrap package.
-7. Build the Nexus image from the pushed commit.
-8. Deploy the Nexus image through the scripted production path.
-9. Prove the user path from a fresh Pylon home using the public npm/bootstrap
+6. Commit and push the exact release candidate to `origin/main`.
+7. Publish the GitHub `pylon-vX.Y.Z` release assets and npm bootstrap package.
+8. Build the Nexus image from the pushed commit.
+9. Deploy the Nexus image through the scripted production path.
+10. Prove the user path from a fresh Pylon home using the public npm/bootstrap
    lane or already-installed release binary.
-10. Record receipts, update docs, comment on issues, and close only after
+11. Record receipts, update docs, comment on issues, and close only after
     payout proof is visible.
 
 Do not reverse steps 5 and 7. A Cloud Build image from an unpushed detached
