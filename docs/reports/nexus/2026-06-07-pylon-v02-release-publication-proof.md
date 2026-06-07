@@ -263,6 +263,18 @@ The direct production bridge from Artanis assignment id to Pylon accepted work
 to MDK settlement receipt remains the exact next implementation gap. Do not
 claim full production Artanis paid-work settlement from this proof alone.
 
+Follow-up bridge smoke:
+
+```text
+docs/reports/nexus/2026-06-07-artanis-mdk-settlement-bridge-smoke.md
+docs/reports/nexus/artanis-mdk-settlement-bridge-smoke-20260607195330.json
+```
+
+That smoke completed a real 21-bitcoin-sat MDK payment using a generated
+Artanis/Pylon settlement assignment id and a public npm-installed Pylon
+receiver. It proves the bridge shape and live payment movement. It is still an
+operator smoke, not the deployed production server bridge.
+
 ## Release Engineering Notes
 
 The SHC Linux archive build completed from a clean clone, but the packaged

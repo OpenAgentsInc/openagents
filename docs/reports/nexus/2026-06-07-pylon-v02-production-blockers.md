@@ -110,6 +110,19 @@ Artanis-dispatched work settlement must not be claimed until the Artanis
 assignment id, Pylon accepted-work result, MDK payment/settlement record, and
 public receipt are one idempotent production trace.
 
+Issue `#4553` now also has an operator bridge smoke:
+
+```text
+docs/reports/nexus/2026-06-07-artanis-mdk-settlement-bridge-smoke.md
+docs/reports/nexus/artanis-mdk-settlement-bridge-smoke-20260607195330.json
+```
+
+The smoke completed a real 21-bitcoin-sat MDK payment where the public-safe
+receipt carries a generated Artanis/Pylon settlement assignment id. The
+remaining blocker is no longer "can this shape be paid"; it is the deployed
+production bridge that creates and updates the settlement intent automatically
+from Artanis dispatch and Pylon accepted-work events.
+
 ## Issue disposition
 
 `#4548` should be closed as superseded for the MDK-default release. The source

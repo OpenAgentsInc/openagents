@@ -45,6 +45,7 @@ If any release note, marketing text, or operator doc violates one of those state
 | MoneyDevKit default wallet wrapper | on a clean Pylon home, run `wallet status --json`, `wallet balance --json`, `wallet invoice 21 --description "pylon receive" --json`, `wallet offer --description "pylon offer" --json`, and `wallet history --json`; repeat with a second clean Pylon home on the same machine | auto-initializes a Pylon-scoped MDK agent-wallet home, reports JSON status/balance/history without printing mnemonic or preimages, returns BOLT11 and BOLT12 receive artifacts, records runtime kind `moneydevkit` and `runtime.local_daemon_port` in retained wallet metadata, and sets a stable Pylon-scoped `MDK_WALLET_PORT` so two local Pylon homes do not share the same MDK daemon |
 | Omega Cloudflare MDK checkout proof | verify or reference a current public-safe Omega report showing `openagents.com` Worker -> `MDK_SIDECAR` -> Cloudflare Container -> MDK platform, a real bitcoin-denominated checkout, local MDK wallet payment, merchant paid status, and payer balance delta | proves the MDK-default release path does not depend on old GCP/native Nexus reachability; raw access tokens, mnemonics, invoices, payment hashes, preimages, and checkout client secrets are not included in public evidence |
 | Post-release Artanis/Pylon paid-work bundle | run `scripts/nexus/artanis-pylon-integrated-proof-bundle.sh` with a fresh redacted MDK payment summary after public release publication | records the live Artanis SHC bootstrap, public npm/release Pylon install, SHC no-source accepted/rewarded work, and real MDK agent-wallet bitcoin movement in one public-safe bundle. The 2026-06-07 `pylon-v0.2.2` bundle is `completed_with_settlement_bridge_gap`, meaning the remaining blocker is the direct production bridge from Artanis assignment id to MDK settlement receipt. |
+| Artanis assignment to MDK settlement bridge smoke | run `scripts/nexus/artanis-mdk-settlement-bridge-smoke.sh` with a funded MDK payer wallet and ignored raw artifact directory | installs Pylon through `@openagentsinc/pylon@0.2.2`, creates a Pylon-scoped MDK invoice for a generated Artanis/Pylon settlement assignment id, pays it with real bitcoin, polls receiver history, and writes a public-safe receipt. The 2026-06-07 smoke is complete, but the deployed production server bridge remains separate work. |
 | Wallet entropy derivation | `cargo run -p pylon -- wallet entropy status --json` | reports redacted one-phrase HKDF derivation metadata and a node entropy digest without printing the mnemonic or raw 64-byte entropy |
 | Wallet storage lock | `cargo run -p pylon -- wallet lock status --json` after startup; run a second lock acquisition in tests | creates the private `wallet/ldk/` layout, reports lock owner/stale state, refuses a second active writer, and only clears stale locks explicitly |
 | LDK Node no-network open | `cargo run -p pylon -- config set wallet_runtime_kind ldk_node`, `cargo run -p pylon -- config set wallet_network regtest`, then `cargo run -p pylon -- wallet status --json` | builds the local LDK Node from derived entropy, reports a stable `ldk_node.node_id`, opens SQLite storage, and stays non-running with `wallet_chain_source_kind=none` |
@@ -127,6 +128,14 @@ with JSON evidence in
 It proves real MDK bitcoin movement plus public-release accepted work, while
 explicitly not claiming that production Artanis assignment settlement is fully
 live.
+
+The current Artanis assignment to MDK settlement bridge smoke is
+`docs/reports/nexus/2026-06-07-artanis-mdk-settlement-bridge-smoke.md` with
+JSON evidence in
+`docs/reports/nexus/artanis-mdk-settlement-bridge-smoke-20260607195330.json`.
+It proves the bridge shape with a generated settlement assignment id and a real
+21-bitcoin-sat MDK payment, but it is still an operator smoke rather than the
+deployed production server bridge.
 
 Sandbox-specific evidence that should remain green:
 

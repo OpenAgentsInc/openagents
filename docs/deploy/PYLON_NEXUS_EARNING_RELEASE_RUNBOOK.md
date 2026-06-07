@@ -211,6 +211,19 @@ paid-work settlement is not fully live until the Artanis assignment id, Pylon
 accepted-work result, MDK payment/settlement record, and public receipt are one
 idempotent production trace.
 
+The follow-up bridge-shape smoke is:
+
+```text
+docs/reports/nexus/2026-06-07-artanis-mdk-settlement-bridge-smoke.md
+docs/reports/nexus/artanis-mdk-settlement-bridge-smoke-20260607195330.json
+```
+
+It creates a generated Artanis/Pylon settlement assignment id, installs Pylon
+through the public npm/release path, creates a Pylon-scoped MDK invoice, pays
+it from the funded MDK payer wallet, and writes a public-safe receipt. Treat it
+as proof that the bridge shape and payment movement work, not as proof that the
+production server bridge is deployed.
+
 For the 2026-06-07 Pylon v0.2 rollout, the stable public GitHub binary release
 is `pylon-v0.2.2`. The proof is
 `docs/reports/nexus/2026-06-07-pylon-v02-release-publication-proof.md`. It
