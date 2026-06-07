@@ -22,6 +22,8 @@ Local MDK evidence is green:
 - The two-home MDK wrapper smoke passed.
 - The local `cs336-a1-hosted-starter` proof lane completed with simulated
   accepted-work payout behavior.
+- The sibling `cloud` Artanis bootstrap contract and fake-workroomd tests
+  passed against Cloud commit `65972fe286ebe25866f49569901b36925fc0e7dc`.
 
 Production evidence is not green:
 
@@ -31,6 +33,8 @@ Production evidence is not green:
   body `error code: 1033`.
 - `https://openagents.com/stats` was reachable, so the outage is scoped to the
   Nexus public edge/origin path rather than the whole public web surface.
+- No live account-backed SHC Artanis bootstrap run has completed for this Pylon
+  v0.2 release candidate yet.
 
 ## Blocking issues
 
@@ -97,6 +101,8 @@ Do not create `pylon-v0.2.0` until all of the following are true:
   `continuity_alert:confirmations_stalled`;
 - a fresh production accepted-work proof moves real bitcoin to a provider
   wallet;
+- one live account-backed Artanis `/v1/artanis/bootstrap/start` run completes
+  on SHC with `wallet_authority=false` and the required Pylon launch artifacts;
 - a public-safe production proof receipt is committed under
   `docs/reports/nexus/`;
 - GitHub issues `#4450`, `#4548`, and `#4504` have closeout comments naming the

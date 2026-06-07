@@ -167,17 +167,21 @@ Use this sequence for public earning-loop changes:
    Pylon-scoped `MDK_WALLET_PORT`, return JSON status/balance/history, return
    BOLT11 and BOLT12 receive artifacts, and prove two local Pylon homes do not
    share one MDK daemon.
-4. Bump the workspace version and `packages/pylon-bootstrap/package.json` when
+4. Run the Artanis/Pylon bootstrap contract and fake-workroomd checks in the
+   sibling `cloud` repo, then complete one live account-backed SHC Artanis
+   bootstrap workroom before public release. The live run must keep
+   `wallet_authority=false` and capture the declared Pylon launch artifacts.
+5. Bump the workspace version and `packages/pylon-bootstrap/package.json` when
    the public Pylon binary behavior changes.
-5. Refresh deploy locks before any Nexus Cloud Build if workspace package
+6. Refresh deploy locks before any Nexus Cloud Build if workspace package
    versions changed.
-6. Commit and push the exact release candidate to `origin/main`.
-7. Publish the GitHub `pylon-vX.Y.Z` release assets and npm bootstrap package.
-8. Build the Nexus image from the pushed commit.
-9. Deploy the Nexus image through the scripted production path.
-10. Prove the user path from a fresh Pylon home using the public npm/bootstrap
+7. Commit and push the exact release candidate to `origin/main`.
+8. Publish the GitHub `pylon-vX.Y.Z` release assets and npm bootstrap package.
+9. Build the Nexus image from the pushed commit.
+10. Deploy the Nexus image through the scripted production path.
+11. Prove the user path from a fresh Pylon home using the public npm/bootstrap
    lane or already-installed release binary.
-11. Record receipts, update docs, comment on issues, and close only after
+12. Record receipts, update docs, comment on issues, and close only after
     payout proof is visible.
 
 Do not reverse steps 5 and 7. A Cloud Build image from an unpushed detached
