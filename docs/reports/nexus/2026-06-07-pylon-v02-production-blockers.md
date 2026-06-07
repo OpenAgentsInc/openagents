@@ -100,6 +100,9 @@ closeout plus the Omega/Cloudflare MDK checkout proof. It does not claim real
 public Bitcoin settlement for Artanis-dispatched work until the settlement
 bridge is explicitly completed.
 
+The remaining integrated Artanis-dispatched paid Pylon work proof is tracked by
+`OpenAgentsInc/openagents#4552`.
+
 ## Issue disposition
 
 `#4548` should be closed as superseded for the MDK-default release. The source

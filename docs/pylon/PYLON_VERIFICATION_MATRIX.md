@@ -119,6 +119,11 @@ npm bootstrap smoke on SHC, and cleanup of the misplaced
 `OpenAgentsInc/psionic` `v0.2.0` release/tag. Treat `pylon-v0.2.0` and
 `pylon-v0.2.1` as superseded packaging attempts.
 
+The stricter integrated Artanis-dispatched paid Pylon work and settlement
+receipt proof is tracked separately by `OpenAgentsInc/openagents#4552`; do not
+use the distribution proof alone to claim real public Bitcoin settlement for
+Artanis-dispatched Pylon work.
+
 Sandbox-specific evidence that should remain green:
 
 ```bash

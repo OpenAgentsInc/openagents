@@ -278,6 +278,10 @@ Pylon home. It proves released-binary accepted-work closeout through the local
 proof runtime with simulated treasury enabled. It does not claim real public
 Bitcoin settlement.
 
+The stricter integrated proof where Artanis dispatches a paid Pylon assignment
+and the assignment is linked to terminal payment/settlement evidence is tracked
+by `OpenAgentsInc/openagents#4552`.
+
 ## Current Release Judgment
 
 `pylon-v0.2.2` is the stable public GitHub binary release for Pylon v0.2, and
@@ -287,3 +291,7 @@ bootstrap smoke.
 If an npm or post-release smoke fix is needed later, cut a later patch release
 such as `pylon-v0.2.3` or publish a package-only patch when the Rust artifacts
 remain unchanged.
+
+Do not close the broader Artanis paid-work settlement bridge as complete until
+`OpenAgentsInc/openagents#4552` has a public-safe integrated proof artifact on
+`main`.
