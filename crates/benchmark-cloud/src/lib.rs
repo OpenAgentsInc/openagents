@@ -17,6 +17,8 @@ pub const PYLON_BENCHMARK_WORKER_CAPABILITY_SCHEMA_REF: &str =
     "openagents.pylon_benchmark_worker_capability.v1";
 pub const PYLON_BENCHMARK_WORK_REQUIREMENT_SCHEMA_REF: &str =
     "openagents.pylon_benchmark_work_requirement.v1";
+pub const PROBE_GEPA_STAGE0_SMOKE_CAMPAIGN_SCHEMA_REF: &str =
+    "openagents.probe_gepa_stage0_smoke_campaign.v1";
 
 pub const PROBE_RUNNER_REQUIRED_ARTIFACT_FILES: [&str; 8] = [
     "result.json",
@@ -345,6 +347,20 @@ pub enum PylonBenchmarkWorkKind {
     ModelTraining,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GepaCandidateKind {
+    Baseline,
+    MutatedTextBundle,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BenchmarkCloseoutState {
+    Accepted,
+    Rejected,
+}
+
 impl PylonBenchmarkWorkKind {
     pub fn requires_model_training(&self) -> bool {
         matches!(self, Self::LoraFineTuning | Self::ModelTraining)
@@ -426,6 +442,59 @@ pub struct PylonBenchmarkWorkerMatch {
     pub blocker_refs: Vec<String>,
     pub payout_ready_for_paid_work: bool,
     pub admitted_for_assignment: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GepaTextBundleCandidate {
+    pub candidate_ref: String,
+    pub candidate_hash: String,
+    pub parent_candidate_ref: Option<String>,
+    pub candidate_kind: GepaCandidateKind,
+    pub prompt_bundle_ref: String,
+    pub blueprint_bundle_ref: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeGepaMetricCallRecord {
+    pub metric_call_ref: String,
+    pub candidate_ref: String,
+    pub candidate_hash: String,
+    pub task_ref: String,
+    pub task_id: String,
+    pub probe_assignment_ref: String,
+    pub pylon_assignment_ref: Option<String>,
+    pub probe_closeout_ref: String,
+    pub probe_closeout_bundle_ref: String,
+    pub benchmark_result_ref: String,
+    pub artifact_manifest_ref: String,
+    pub benchmark_cloud_proof_bundle_ref: String,
+    pub resource_usage_receipt_ref: Option<String>,
+    pub verifier_import_ref: String,
+    pub closeout_state: BenchmarkCloseoutState,
+    pub score_bps: Option<u32>,
+    pub status: BenchmarkRunStatus,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeGepaStage0SmokeCampaign {
+    pub schema_ref: String,
+    pub campaign_id: String,
+    pub campaign_ref: String,
+    pub split_manifest_ref: String,
+    pub benchmark_suite_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub retained_fixture_refs: Vec<String>,
+    pub candidates: Vec<GepaTextBundleCandidate>,
+    pub metric_calls: Vec<ProbeGepaMetricCallRecord>,
+    pub pylon_worker_match_refs: Vec<String>,
+    pub public_status_ref: String,
+    pub public_status_label: String,
+    pub promotion_state_ref: String,
+    pub no_lora: bool,
+    pub no_model_training: bool,
+    pub no_public_leaderboard_claim: bool,
+    pub automatic_promotion_enabled: bool,
+    pub redaction_state: BenchmarkRedactionState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -545,6 +614,10 @@ pub enum BenchmarkContractError {
         capability_ref: String,
         work_ref: String,
         blocker_refs: Vec<String>,
+    },
+    Stage0SmokeInvalid {
+        campaign_ref: String,
+        reason: String,
     },
 }
 
@@ -898,6 +971,366 @@ pub fn match_pylon_benchmark_worker(
         blocker_refs,
         payout_ready_for_paid_work,
         admitted_for_assignment: matched,
+    })
+}
+
+pub fn build_probe_gepa_stage0_smoke_campaign(
+    manifest: &BenchmarkCampaignSplitManifest,
+    probe_commit: impl Into<String>,
+) -> Result<ProbeGepaStage0SmokeCampaign, BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    let probe_commit = probe_commit.into();
+    let retained_tasks = manifest
+        .tasks
+        .iter()
+        .filter(|task| {
+            task.lane == BenchmarkSplitLane::RetainedFixture
+                && task.evidence_split == BenchmarkEvidenceSplit::Retained
+        })
+        .take(5)
+        .collect::<Vec<_>>();
+
+    if retained_tasks.len() < 3 {
+        return stage0_smoke_error(
+            "campaign.probe_gepa.stage0.retained_smoke.2026_06_08",
+            "Stage 0 smoke requires at least three retained fixtures",
+        );
+    }
+
+    let candidates = probe_gepa_stage0_smoke_candidates();
+    let pylon_worker_match_refs = vec![
+        String::from("pylon_assignment_ref.public.stage0.shc_box_1"),
+        String::from("pylon_assignment_ref.public.stage0.shc_box_2"),
+    ];
+    let mut metric_calls = Vec::new();
+
+    for (candidate_index, candidate) in candidates.iter().enumerate() {
+        for (task_index, task) in retained_tasks.iter().enumerate() {
+            let assignment = probe_assignment_from_split_task(
+                manifest,
+                task,
+                probe_commit.clone(),
+                candidate.candidate_hash.clone(),
+                vec![String::from(
+                    "program_signature.probe.benchmark.service_readiness.v1",
+                )],
+                "tool_menu.probe.terminal_bench.service_readiness.v1",
+            );
+            let outcome = stage0_smoke_outcome(candidate_index, task_index);
+            let artifacts =
+                run_fake_probe_benchmark_task(manifest, task, &assignment, outcome.clone())?;
+            let metric_index = metric_calls.len() + 1;
+            let closeout_state = if artifacts.result_json.status == BenchmarkRunStatus::Succeeded {
+                BenchmarkCloseoutState::Accepted
+            } else {
+                BenchmarkCloseoutState::Rejected
+            };
+
+            metric_calls.push(ProbeGepaMetricCallRecord {
+                metric_call_ref: format!("metric_call.probe_gepa.stage0.{:02}", metric_index),
+                candidate_ref: candidate.candidate_ref.clone(),
+                candidate_hash: candidate.candidate_hash.clone(),
+                task_ref: task.task_ref.clone(),
+                task_id: task.task_id.clone(),
+                probe_assignment_ref: assignment.assignment_ref.clone(),
+                pylon_assignment_ref: Some(format!(
+                    "{}.{}",
+                    pylon_worker_match_refs[metric_index % pylon_worker_match_refs.len()],
+                    metric_index
+                )),
+                probe_closeout_ref: artifacts
+                    .result_json
+                    .probe_closeout_import
+                    .as_ref()
+                    .map(|import| import.probe_closeout_ref.clone())
+                    .unwrap_or_default(),
+                probe_closeout_bundle_ref: format!(
+                    "probe_closeout_bundle.probe_gepa.stage0.{:02}",
+                    metric_index
+                ),
+                benchmark_result_ref: artifacts.result_json.result_ref.clone(),
+                artifact_manifest_ref: artifacts.artifact_manifest_json.manifest_ref.clone(),
+                benchmark_cloud_proof_bundle_ref: artifacts.proof_bundle_json.proof_bundle_ref,
+                resource_usage_receipt_ref: Some(
+                    artifacts.resource_usage_receipt_json.receipt_ref.clone(),
+                ),
+                verifier_import_ref: format!(
+                    "verifier_import.probe_gepa.stage0.{:02}",
+                    metric_index
+                ),
+                closeout_state,
+                score_bps: artifacts.result_json.score_bps,
+                status: artifacts.result_json.status,
+            });
+        }
+    }
+
+    let campaign = ProbeGepaStage0SmokeCampaign {
+        schema_ref: String::from(PROBE_GEPA_STAGE0_SMOKE_CAMPAIGN_SCHEMA_REF),
+        campaign_id: String::from("probe-gepa-stage0-retained-smoke-2026-06-08"),
+        campaign_ref: String::from("campaign.probe_gepa.stage0.retained_smoke.2026_06_08"),
+        split_manifest_ref: manifest.manifest_ref.clone(),
+        benchmark_suite_ref: manifest.benchmark_suite_ref.clone(),
+        dataset: manifest.dataset.clone(),
+        retained_fixture_refs: retained_tasks
+            .iter()
+            .map(|task| task.task_ref.clone())
+            .collect(),
+        candidates,
+        metric_calls,
+        pylon_worker_match_refs,
+        public_status_ref: String::from("public_status.probe_gepa.measured_retained_smoke.v1"),
+        public_status_label: String::from("measured retained smoke"),
+        promotion_state_ref: String::from("promotion_state.probe_gepa.stage0.no_promotion.v1"),
+        no_lora: true,
+        no_model_training: true,
+        no_public_leaderboard_claim: true,
+        automatic_promotion_enabled: false,
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+
+    validate_probe_gepa_stage0_smoke_campaign(&campaign, manifest)?;
+    Ok(campaign)
+}
+
+pub fn validate_probe_gepa_stage0_smoke_campaign(
+    campaign: &ProbeGepaStage0SmokeCampaign,
+    manifest: &BenchmarkCampaignSplitManifest,
+) -> Result<(), BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    if campaign.schema_ref != PROBE_GEPA_STAGE0_SMOKE_CAMPAIGN_SCHEMA_REF {
+        return stage0_smoke_error(&campaign.campaign_ref, "unsupported campaign schema ref");
+    }
+
+    if campaign.campaign_id.is_empty() || campaign.campaign_ref.is_empty() {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "Stage 0 smoke campaign must include id and ref",
+        );
+    }
+
+    if campaign.split_manifest_ref != manifest.manifest_ref {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "campaign split manifest ref must match validated manifest",
+        );
+    }
+
+    if campaign.retained_fixture_refs.len() < 3 || campaign.retained_fixture_refs.len() > 6 {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "Stage 0 smoke must use three to six retained fixtures",
+        );
+    }
+
+    if campaign.metric_calls.len() < 20 || campaign.metric_calls.len() > 40 {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "Stage 0 smoke must contain twenty to forty metric calls",
+        );
+    }
+
+    if campaign.candidates.len() < 2
+        || !campaign
+            .candidates
+            .iter()
+            .any(|candidate| candidate.candidate_kind == GepaCandidateKind::Baseline)
+        || !campaign
+            .candidates
+            .iter()
+            .any(|candidate| candidate.candidate_kind == GepaCandidateKind::MutatedTextBundle)
+    {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "campaign must include a baseline and at least one mutated text-bundle candidate",
+        );
+    }
+
+    if !campaign.no_lora
+        || !campaign.no_model_training
+        || !campaign.no_public_leaderboard_claim
+        || campaign.automatic_promotion_enabled
+    {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "Stage 0 smoke cannot enable LoRA, model training, public leaderboard claims, or automatic promotion",
+        );
+    }
+
+    if campaign.public_status_ref != "public_status.probe_gepa.measured_retained_smoke.v1"
+        || campaign.public_status_label != "measured retained smoke"
+    {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "campaign public status must be measured retained smoke",
+        );
+    }
+
+    if campaign.redaction_state != BenchmarkRedactionState::PublicSafe {
+        return stage0_smoke_error(&campaign.campaign_ref, "campaign must be public-safe");
+    }
+
+    let retained_refs = campaign
+        .retained_fixture_refs
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let candidate_hashes = campaign
+        .candidates
+        .iter()
+        .map(|candidate| candidate.candidate_hash.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    if candidate_hashes.len() != campaign.candidates.len() {
+        return stage0_smoke_error(&campaign.campaign_ref, "candidate hashes must be unique");
+    }
+
+    for candidate in &campaign.candidates {
+        if candidate.candidate_ref.is_empty()
+            || candidate.candidate_hash.is_empty()
+            || candidate.prompt_bundle_ref.is_empty()
+            || candidate.blueprint_bundle_ref.is_empty()
+        {
+            return stage0_smoke_error(
+                &campaign.campaign_ref,
+                "candidate refs, hashes, prompt bundle refs, and Blueprint bundle refs are required",
+            );
+        }
+    }
+
+    let mut metric_refs = std::collections::BTreeSet::new();
+    let mut accepted = 0usize;
+    let mut rejected = 0usize;
+
+    for metric_call in &campaign.metric_calls {
+        if !metric_refs.insert(&metric_call.metric_call_ref) {
+            return stage0_smoke_error(&campaign.campaign_ref, "metric call refs must be unique");
+        }
+
+        if !retained_refs.contains(&metric_call.task_ref) {
+            return stage0_smoke_error(
+                &campaign.campaign_ref,
+                "Stage 0 metric calls must use retained fixtures only",
+            );
+        }
+
+        if !candidate_hashes.contains(metric_call.candidate_hash.as_str()) {
+            return stage0_smoke_error(
+                &campaign.campaign_ref,
+                "metric call candidate hash must reference campaign candidate",
+            );
+        }
+
+        if metric_call.probe_assignment_ref.is_empty()
+            || metric_call.probe_closeout_ref.is_empty()
+            || metric_call.probe_closeout_bundle_ref.is_empty()
+            || metric_call.benchmark_result_ref.is_empty()
+            || metric_call.artifact_manifest_ref.is_empty()
+            || metric_call.benchmark_cloud_proof_bundle_ref.is_empty()
+            || metric_call.verifier_import_ref.is_empty()
+        {
+            return stage0_smoke_error(
+                &campaign.campaign_ref,
+                "metric calls must carry Probe closeout, Benchmark Cloud proof, result, artifact, and verifier import refs",
+            );
+        }
+
+        match metric_call.closeout_state {
+            BenchmarkCloseoutState::Accepted => accepted += 1,
+            BenchmarkCloseoutState::Rejected => rejected += 1,
+        }
+    }
+
+    if accepted == 0 || rejected == 0 {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "Stage 0 smoke must include accepted and rejected closeout refs",
+        );
+    }
+
+    if campaign.metric_calls.iter().any(|metric_call| {
+        metric_call.pylon_assignment_ref.is_some() && campaign.pylon_worker_match_refs.is_empty()
+    }) {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "Pylon assignment refs require campaign worker match refs",
+        );
+    }
+
+    if serde_json::to_value(campaign)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+    {
+        return stage0_smoke_error(
+            &campaign.campaign_ref,
+            "Stage 0 smoke campaign contains unsafe material",
+        );
+    }
+
+    Ok(())
+}
+
+fn probe_gepa_stage0_smoke_candidates() -> Vec<GepaTextBundleCandidate> {
+    vec![
+        GepaTextBundleCandidate {
+            candidate_ref: String::from("candidate.probe_gepa.stage0.baseline"),
+            candidate_hash: String::from(
+                "sha256:1000000000000000000000000000000000000000000000000000000000000001",
+            ),
+            parent_candidate_ref: None,
+            candidate_kind: GepaCandidateKind::Baseline,
+            prompt_bundle_ref: String::from("prompt_bundle.probe_gepa.stage0.baseline.v1"),
+            blueprint_bundle_ref: String::from("blueprint_bundle.probe_gepa.stage0.baseline.v1"),
+        },
+        GepaTextBundleCandidate {
+            candidate_ref: String::from("candidate.probe_gepa.stage0.mutation_1"),
+            candidate_hash: String::from(
+                "sha256:1000000000000000000000000000000000000000000000000000000000000002",
+            ),
+            parent_candidate_ref: Some(String::from("candidate.probe_gepa.stage0.baseline")),
+            candidate_kind: GepaCandidateKind::MutatedTextBundle,
+            prompt_bundle_ref: String::from("prompt_bundle.probe_gepa.stage0.mutation_1.v1"),
+            blueprint_bundle_ref: String::from("blueprint_bundle.probe_gepa.stage0.mutation_1.v1"),
+        },
+        GepaTextBundleCandidate {
+            candidate_ref: String::from("candidate.probe_gepa.stage0.mutation_2"),
+            candidate_hash: String::from(
+                "sha256:1000000000000000000000000000000000000000000000000000000000000003",
+            ),
+            parent_candidate_ref: Some(String::from("candidate.probe_gepa.stage0.baseline")),
+            candidate_kind: GepaCandidateKind::MutatedTextBundle,
+            prompt_bundle_ref: String::from("prompt_bundle.probe_gepa.stage0.mutation_2.v1"),
+            blueprint_bundle_ref: String::from("blueprint_bundle.probe_gepa.stage0.mutation_2.v1"),
+        },
+        GepaTextBundleCandidate {
+            candidate_ref: String::from("candidate.probe_gepa.stage0.mutation_3"),
+            candidate_hash: String::from(
+                "sha256:1000000000000000000000000000000000000000000000000000000000000004",
+            ),
+            parent_candidate_ref: Some(String::from("candidate.probe_gepa.stage0.baseline")),
+            candidate_kind: GepaCandidateKind::MutatedTextBundle,
+            prompt_bundle_ref: String::from("prompt_bundle.probe_gepa.stage0.mutation_3.v1"),
+            blueprint_bundle_ref: String::from("blueprint_bundle.probe_gepa.stage0.mutation_3.v1"),
+        },
+    ]
+}
+
+fn stage0_smoke_outcome(candidate_index: usize, task_index: usize) -> ProbeFakeRunnerOutcome {
+    match (candidate_index + task_index) % 5 {
+        0 | 1 | 3 => ProbeFakeRunnerOutcome::Pass,
+        2 => ProbeFakeRunnerOutcome::Error,
+        _ => ProbeFakeRunnerOutcome::Timeout,
+    }
+}
+
+fn stage0_smoke_error<T>(
+    campaign_ref: impl Into<String>,
+    reason: impl Into<String>,
+) -> Result<T, BenchmarkContractError> {
+    Err(BenchmarkContractError::Stage0SmokeInvalid {
+        campaign_ref: campaign_ref.into(),
+        reason: reason.into(),
     })
 }
 
@@ -1690,6 +2123,78 @@ mod tests {
         assert!(matches!(
             build_probe_command_invocation(&assignment),
             Err(BenchmarkContractError::ProbeRunnerInvalid { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_stage0_smoke_campaign_runs_retained_metric_calls()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let campaign = build_probe_gepa_stage0_smoke_campaign(&manifest, "abc1234")
+            .map_err(|error| format!("unexpected Stage 0 smoke error: {error:?}"))?;
+
+        assert_eq!(
+            campaign.campaign_id,
+            "probe-gepa-stage0-retained-smoke-2026-06-08"
+        );
+        assert_eq!(campaign.retained_fixture_refs.len(), 5);
+        assert_eq!(campaign.candidates.len(), 4);
+        assert_eq!(campaign.metric_calls.len(), 20);
+        assert!(campaign.metric_calls.iter().all(|call| {
+            call.pylon_assignment_ref
+                .as_ref()
+                .is_some_and(|assignment_ref| {
+                    assignment_ref.starts_with("pylon_assignment_ref.public.stage0.shc_box_")
+                })
+        }));
+        assert!(
+            campaign
+                .metric_calls
+                .iter()
+                .any(|call| call.closeout_state == BenchmarkCloseoutState::Accepted)
+        );
+        assert!(
+            campaign
+                .metric_calls
+                .iter()
+                .any(|call| call.closeout_state == BenchmarkCloseoutState::Rejected)
+        );
+        assert!(campaign.metric_calls.iter().all(
+            |call| !call.probe_closeout_bundle_ref.is_empty()
+                && !call.benchmark_cloud_proof_bundle_ref.is_empty()
+                && !call.verifier_import_ref.is_empty()
+        ));
+        assert_eq!(campaign.public_status_label, "measured retained smoke");
+        assert!(!campaign.automatic_promotion_enabled);
+        assert!(campaign.no_lora);
+        assert!(campaign.no_model_training);
+        assert!(campaign.no_public_leaderboard_claim);
+        validate_probe_gepa_stage0_smoke_campaign(&campaign, &manifest)
+            .map_err(|error| format!("unexpected campaign validation error: {error:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_stage0_smoke_rejects_public_claim_or_training_overclaim()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let mut campaign = build_probe_gepa_stage0_smoke_campaign(&manifest, "abc1234")
+            .map_err(|error| format!("unexpected Stage 0 smoke error: {error:?}"))?;
+
+        campaign.no_model_training = false;
+        assert!(matches!(
+            validate_probe_gepa_stage0_smoke_campaign(&campaign, &manifest),
+            Err(BenchmarkContractError::Stage0SmokeInvalid { .. })
+        ));
+
+        campaign.no_model_training = true;
+        campaign.public_status_label = String::from("public leaderboard winner");
+        assert!(matches!(
+            validate_probe_gepa_stage0_smoke_campaign(&campaign, &manifest),
+            Err(BenchmarkContractError::Stage0SmokeInvalid { .. })
         ));
         Ok(())
     }

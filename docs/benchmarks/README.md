@@ -39,6 +39,12 @@ validation split, frozen holdout split, local smoke fixtures, public-safe task
 refs, scorer/verifier refs, and allowed claim state for the first Probe GEPA
 campaign.
 
+The first executable Stage 0 smoke is implemented by
+`build_probe_gepa_stage0_smoke_campaign` in `crates/benchmark-cloud`. It uses
+five retained Terminal-Bench fixtures, four text-bundle candidates, and twenty
+metric-call records. The example runner is
+`cargo run -p benchmark-cloud --example probe_gepa_stage0_smoke`.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
@@ -91,6 +97,11 @@ claim on its own. The `public_claim_upgrade_authority` flag must remain false.
 Any non-`none` public claim level requires `live` evidence and at least one
 external release gate ref. Retained, validation, and holdout records must not
 claim that Probe beats Terminal-Bench.
+
+The Stage 0 smoke campaign can project only
+`public_status.probe_gepa.measured_retained_smoke.v1`. It explicitly records no
+LoRA, no model training, no public leaderboard claim, and no automatic
+promotion.
 
 ## Verification
 
