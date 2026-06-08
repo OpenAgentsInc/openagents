@@ -20,6 +20,11 @@ office clusters, small GPU pods, and future energy-adjacent compute can become
 routable supply when discovery, job packaging, verification, routing, receipts,
 and Bitcoin settlement are built into the product.
 
+The energy thesis is accepted outcomes per kilowatt hour. OpenAgents is not
+trying to maximize tokens for their own sake; it is trying to convert
+electricity, prepaid capacity, idle machines, and agent labor into accepted
+work at the lowest trustworthy cost.
+
 ## Current Product
 
 ### Coding on Autopilot
@@ -156,6 +161,32 @@ domain benchmarks with evidence. The current distributed fine-tuning and
 benchmark push is aimed at the largest participant-count training run in the
 world this week.
 
+### Energy-Aware Agentic Inference
+
+Episode 232 sharpens the infrastructure thesis: AI work is not just
+`electrons -> tokens`. For OpenAgents, the product loop is
+`electrons -> accepted outcomes`.
+
+Answer inference needs speed because a user is waiting. Agentic inference is
+different. Coding missions, site revisions, batch document processing,
+benchmark runs, validation, fine-tuning work, and long-running agent tasks can
+often wait minutes or hours. That temporal flexibility is valuable. OpenAI and
+Anthropic already price batch API work at a discount; OpenAgents builds a
+product around the same fact and pushes it deeper into the compute and energy
+layer.
+
+Bitcoin miners already know how to find cheap power, work around grid
+constraints, and monetize energy that would otherwise be hard to sell. In
+Texas, ERCOT, curtailment windows, flexible load, storage, and cheap-power
+routing are part of the operating reality. OpenAgents applies that logic to
+agent work: route flexible workloads to the cheapest trustworthy mix of local
+machines, Pylons, prepaid cloud capacity, subsidized coding-agent accounts,
+and energy-aware compute providers.
+
+The metric is accepted outcomes per kilowatt hour: how much verified useful
+agent work the system can produce for each unit of energy. That is the number
+that matters more than raw tokens when the buyer cares about completed tasks.
+
 ### Artanis
 
 Artanis is the public campaign narrator and overseer for selected OpenAgents
@@ -267,8 +298,8 @@ The system supports five linked markets:
 
 - **Compute**: stranded consumer machines, Pylons, Apple Silicon devices,
   gaming GPUs, CPU fallbacks, prepaid cloud credits, subsidized coding-agent
-  accounts, SHC/GCP/Simp workrooms, small GPU pods, and future flexible-load
-  providers.
+  accounts, SHC/GCP/Simp workrooms, energy-aware providers, small GPU pods,
+  and future flexible-load providers.
 - **Data**: permissioned datasets, artifacts, context packs, transcript
   slices, source-backed knowledge, local data packages, accepted coding traces,
   site-building traces, and benchmark examples.
@@ -277,7 +308,8 @@ The system supports five linked markets:
 - **Liquidity**: Bitcoin, Lightning, L402, MDK, checkout, credit, payout, and
   settlement flows.
 - **Risk**: verification depth, warranties, policy, payout gates,
-  failure handling, route reliability, and benchmark-backed confidence.
+  failure handling, route reliability, energy-cost exposure, and
+  benchmark-backed confidence.
 
 These markets share a kernel: contracts, verification, receipts, liability,
 settlement, policy, and public projection.
@@ -318,6 +350,11 @@ or lessons in exchange for free or subsidized execution and future revenue
 share. Accepted lessons become plugins, policies, datasets, or benchmark
 fixtures that can improve future paid workflows.
 
+For energy-aware work, the scheduler can prefer time windows, regions,
+providers, and routes where electricity, thermal limits, prepaid capacity, and
+latency requirements line up. Fast answer inference can still use premium
+routes. Flexible agentic inference can wait for cheaper electrons.
+
 ## Active Repos
 
 OpenAgents is split across standalone Git repos. They are intentionally not
@@ -357,6 +394,10 @@ As of June 8, 2026, the recent closed issue work shows these live directions:
 - Autopilot is using free and subsidized async coding work to collect useful
   traces, derive reusable lessons, and turn those lessons into rev-share
   plugins for future paid workflows.
+- Episode 232 adds the energy-orchestration layer: OpenAgents should optimize
+  accepted outcomes per kilowatt hour across flexible agentic inference,
+  Bitcoin-miner-style power economics, ERCOT-aware compute, and prepaid or
+  stranded capacity.
 
 Recent Artanis/Pylon evidence:
 
@@ -388,6 +429,9 @@ public receipt.
   iterative site revisions, hosted URLs, and referral revenue.
 - [docs/transcripts/230.md](docs/transcripts/230.md): OpenAgents flow of
   funds, five markets, Bitcoin/Nostr stance, and agent commerce framing.
+- [docs/transcripts/232.md](docs/transcripts/232.md): energy-aware agentic
+  inference, accepted outcomes per kilowatt hour, ERCOT/miner economics, and
+  compute orchestration.
 - [docs/pylon/PYLON_VERIFICATION_MATRIX.md](docs/pylon/PYLON_VERIFICATION_MATRIX.md):
   Pylon release and proof gates.
 - [docs/benchmarks/README.md](docs/benchmarks/README.md): public Benchmark
