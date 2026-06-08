@@ -34,7 +34,7 @@ The first accepted outcome is a reviewable coding result:
 - diffs, tests, logs, previews, and artifacts;
 - route scorecards and cost/provenance refs;
 - human acceptance or rejection;
-- settlement and public-safe proof when money is involved.
+- settlement evidence when money is involved.
 
 The first target user is a Codex power user with real repos and long-running
 work. Codex is the first launch engine. Probe is the owned runtime path that
@@ -66,27 +66,22 @@ npx @openagentsinc/pylon
 
 The current Pylon release train is gated by live network readiness. The recent
 proof path covers public install, registration and heartbeat, wallet
-readiness, assignment leases, closeout, public-safe receipts, Artanis launch
-supervision, and MDK payment movement. Broad earning claims stay blocked until
-the release gate has repeated network smokes, payout evidence, failure drills,
-and public release promotion.
+readiness, assignment leases, closeout, public receipts, Artanis launch
+supervision, and MDK payment movement. The release path is focused on
+repeatable network smokes, payout evidence, failure drills, and public release
+promotion.
 
 ### Artanis
 
-Artanis is the public-safe campaign narrator and overseer for selected
-OpenAgents work.
+Artanis is the public campaign narrator and overseer for selected OpenAgents
+work.
 
 Artanis appears on public surfaces such as `/artanis`, `/agents/artanis`, and
 the OpenAgents Forum. Artanis can summarize campaign state, blockers,
-receipts, Pylon status, benchmark evidence, and next actions from public-safe
-refs.
+receipts, Pylon status, benchmark evidence, and next actions.
 
-Artanis does not own runtime authority. It does not spend money, mutate
-settlement, promote runtime candidates, run benchmarks, score results, launch
-unapproved provider work, or publish stronger public claims without the
-approved operator path. That boundary increases public trust without exposing
-private workroom state, provider credentials, wallet material, raw prompts,
-raw logs, or private repo contents.
+Artanis makes long-running work legible to users, contributors, and operators
+as it moves through workrooms, release gates, and proof bundles.
 
 ### Probe GEPA And Benchmark Cloud
 
@@ -96,10 +91,10 @@ Probe emits coding-agent run evidence: assignments, run records, closeout
 bundles, decision traces, route scorecards, selected Blueprint signatures,
 tool menus, policy findings, and failure classifications.
 
-OpenAgents Benchmark Cloud owns public benchmark contracts and public-safe
-runner evidence. It currently includes Terminal-Bench split manifests, Probe
-runner adapter contracts, retained and validation examples, SHC/Harbor smoke
-receipts, resource receipts, verifier refs, and redaction policy.
+OpenAgents Benchmark Cloud owns public benchmark contracts and runner evidence.
+It currently includes Terminal-Bench split manifests, Probe runner adapter
+contracts, retained and validation examples, SHC/Harbor smoke receipts,
+resource receipts, verifier refs, and redaction policy.
 
 Psionic owns GEPA optimization state. It tracks candidate manifests, rollout
 state, candidate frontier imports, reflection/proposal state, and live
@@ -107,11 +102,9 @@ closeout imports. This is rollout optimization over text and policy bundles.
 Model-weight training comes later after clean rollout traces exist.
 
 The product surface projects benchmark campaign state into metrics and public
-Artanis summaries. Current public-safe claims are limited to measured smoke,
-retained summaries, validation summaries, and explicit settlement states.
-Current public claims exclude Terminal-Bench score claims, active production
-runtime claims for GEPA candidates, and general paid/settled Pylon benchmark
-claims.
+Artanis summaries. That gives coding-agent improvement work a visible trail:
+benchmark inputs, closeout bundles, route scorecards, retained results,
+validation results, and promotion decisions.
 
 ### Data Market
 
@@ -130,8 +123,7 @@ context, source-backed knowledge, and paid data access.
 
 The kernel gives OpenAgents its economic vocabulary: work units, contracts,
 verification, liability, settlement, policy, and receipts. Products should
-project this state; authority should stay in backend services and operator
-gates.
+show this state in a way users can understand.
 
 Nexus remains the coordination and proof surface for public provider work,
 training runs, relay/control paths, stats, receipts, and Pylon/Nexus evidence
@@ -140,8 +132,8 @@ and MoneyDevKit for the normal payment proof.
 
 Forum tips, generated Site payments, agent-paid L402 actions, checkout
 returns, and Pylon settlement proofs all feed the same product requirement:
-money movement must have private credentials, public-safe receipts, explicit
-claim states, and no accidental public leakage.
+money movement needs clear receipts, private credentials, and user-visible
+payment state.
 
 ## Product Model
 
@@ -161,8 +153,7 @@ It carries the evidence needed to answer:
 - which checks passed or failed;
 - who accepted it;
 - what it cost;
-- who should be paid;
-- which public claims are allowed.
+- who should be paid.
 
 The system supports five linked markets:
 
@@ -174,10 +165,10 @@ The system supports five linked markets:
 - **Liquidity**: Bitcoin, Lightning, L402, MDK, checkout, credit, payout, and
   settlement flows.
 - **Risk**: verification depth, warranties, policy, payout gates,
-  overclaim-prevention, claim states, and route reliability.
+  failure handling, and route reliability.
 
 These markets share a kernel: contracts, verification, receipts, liability,
-settlement, policy, and public-safe projection.
+settlement, policy, and public projection.
 
 ## How Work Moves
 
@@ -194,7 +185,7 @@ objective
 -> accepted or rejected closeout
 -> settlement or no-spend receipt
 -> route scorecard
--> public-safe projection
+-> public projection
 -> benchmark, signature, or provider-memory update
 ```
 
@@ -206,8 +197,7 @@ metric calls, and measured improvement over time.
 For provider work, a Pylon may receive an assignment, execute locally, submit
 artifact/proof refs, and close as accepted or rejected. Payment modes are
 explicit: unpaid smoke, operator credit, payable pending settlement, settled
-Bitcoin, or rejected no-pay. Public surfaces must not imply payment unless
-settlement receipt refs exist.
+Bitcoin, or rejected no-pay.
 
 ## Active Repos
 
@@ -227,7 +217,7 @@ work belongs in this repo. New coding-runtime work belongs in `probe`. New
 model/optimizer substrate work belongs in `psionic`. New managed workroom and
 Cloud node control work belongs in `cloud`.
 
-## Current Proof State
+## Current State
 
 As of June 8, 2026, the recent closed issue work shows these live directions:
 
@@ -245,7 +235,7 @@ As of June 8, 2026, the recent closed issue work shows these live directions:
 - Artanis has moved from broad Pylon launch overseer toward public overseer
   for Probe GEPA coding-agent benchmark campaigns through Pylons.
 
-Safe current Artanis/Pylon claim:
+Recent Artanis/Pylon evidence:
 
 ```text
 Pylon public install and accepted-work proof paths exist, Artanis can dispatch
@@ -253,15 +243,9 @@ the launch bootstrap workroom, and real MDK Lightning payment movement has
 been proven through the selected wallet runtime.
 ```
 
-Blocked claim:
-
-```text
-Fully automated production Artanis paid-work settlement is live end to end.
-```
-
-That blocked claim needs a deployed server-side path where one Artanis
+The next settlement step is a deployed server-side path where one Artanis
 assignment id flows through dispatch, Pylon accepted work, MDK settlement, and
-public receipt without operator assembly.
+public receipt.
 
 ## Docs To Start With
 
@@ -311,24 +295,6 @@ For Pylon release and proof expectations, use
 [docs/pylon/PYLON_VERIFICATION_MATRIX.md](docs/pylon/PYLON_VERIFICATION_MATRIX.md).
 
 For repo-local ownership boundaries, use [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
-
-## Claim Discipline
-
-OpenAgents public surfaces must keep authority boundaries explicit.
-
-- Public projections read sanitized refs. They do not read private workroom
-  prompts, raw logs, secrets, wallet material, provider credentials, or
-  private repo contents.
-- Product UI does not own settlement authority.
-- Probe does not own benchmark scoring, runtime promotion, payout settlement,
-  or Artanis posting authority.
-- Psionic does not dispatch Pylons directly and does not promote production
-  Probe runtimes.
-- Artanis does not spend, settle, promote, deploy, mutate provider state, or
-  upgrade public claims without the approved operator path.
-- Pylon benchmark work is unpaid, credit, payable, settled, or rejected
-  according to explicit payment-mode records.
-- Public payout claims require settlement receipt refs.
 
 OpenAgents sells verified machine work, routes it through the cheapest
 trustworthy execution path, records the proof, and pays contributors when

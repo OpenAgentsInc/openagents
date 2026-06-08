@@ -48,6 +48,28 @@ Default to:
 - Primary authority is `docs/MVP.md`.
 - If guidance conflicts, direct user instruction wins.
 
+## Public README And Projection Rules
+
+- Keep `README.md` human-facing. It should introduce the product, current
+  surfaces, active repos, setup paths, and useful docs.
+- Do not add "Claim Discipline", public-claim guardrail, agent-policy,
+  secret-redaction, or authority-boundary sections to `README.md`.
+- Put agent-facing public projection and claim-boundary rules in this file or
+  the relevant runbook instead.
+- Public projections read sanitized refs. They must not read private workroom
+  prompts, raw logs, secrets, wallet material, provider credentials, or
+  private repo contents.
+- Product UI does not own settlement authority.
+- Probe does not own benchmark scoring, runtime promotion, payout settlement,
+  or Artanis posting authority.
+- Psionic does not dispatch Pylons directly and does not promote production
+  Probe runtimes.
+- Artanis does not spend, settle, promote, deploy, mutate provider state, or
+  upgrade public claims without the approved operator path.
+- Pylon benchmark work is unpaid, credit, payable, settled, or rejected
+  according to explicit payment-mode records.
+- Public payout claims require settlement receipt refs.
+
 ## Current Working Set
 
 - The current shipped desktop implementation still uses the existing
