@@ -11,8 +11,8 @@ babysitting every turn.
 
 OpenAgents is broader than coding. It connects personal agents, provider
 nodes, model/runtime infrastructure, Bitcoin-native payments,
-benchmark-driven learning, public proof, and a marketplace for compute, data,
-labor, liquidity, and risk.
+benchmark-driven learning, public proof, reusable agent plugins, referral
+revenue, and a marketplace for compute, data, labor, liquidity, and risk.
 
 The supply-side thesis is stranded compute: useful machines that exist but do
 not yet have a clean market path. Laptops, Apple Silicon machines, gaming GPUs,
@@ -32,6 +32,18 @@ deliverable is an Autopilot Mission Briefing: what changed, what ran, what
 failed, which decisions are waiting, what it cost, which route was used, and
 which artifacts prove the result.
 
+The beta is deliberately free or cheap to start. OpenAgents can use remaining
+Google Cloud credits, other prepaid cloud credits, subsidized monthly
+Codex/Claude Code-style accounts, local machines, and Pylon capacity to run
+async coding work without charging every basic request as a separate Bitcoin
+purchase. Paid plans buy faster routes, larger scopes, private team rooms, and
+dedicated capacity.
+
+Autopilot is slow by design when that makes the economics better. A user can
+give it a repo and a goal, leave it running, and return later to review the
+result. The product gets more useful as users spawn many Autopilots instead of
+waiting on one expensive synchronous chat turn.
+
 The first accepted outcome is a reviewable coding result:
 
 - a scoped objective;
@@ -46,6 +58,24 @@ The first target user is a Codex power user with real repos and long-running
 work. Codex is the first launch engine. Probe is the owned runtime path that
 lets OpenAgents control sessions, tool policy, backends, closeout bundles, and
 benchmark evidence behind the same product shell.
+
+A local coding-agent equivalent extends the same mission flow to user-owned or
+prepaid machines. That lane uses local or already-paid compute for coding
+work, while still producing the artifacts, traces, and closeout bundles that
+Autopilot can learn from.
+
+### Autopilot Sites
+
+Autopilot Sites is the website-builder lane for the same product.
+
+The user describes a site or project, receives a live staging result, asks for
+revisions, and gets a hosted URL on `sites.openagents.com`. The first launch
+example was an ocean thermal energy and floating compute site produced and
+revised through Autopilot for no direct user charge.
+
+Sites also gives OpenAgents a referral surface. A useful site can bring in
+users, agents, customers, or businesses. When that traffic later pays for
+OpenAgents workflows, the referrer can earn a share of the revenue.
 
 ### Autopilot
 
@@ -106,11 +136,25 @@ work, and coding-agent improvement loops. The transcript shorthand for this is
 compute fracking: add incentives, routing, verification, receipts, and
 settlement so idle machines can flow into the market.
 
+The commercial bet is that limitless consumer compute is worth more than zero.
+OpenAgents can pay slightly more than zero for idle Apple Silicon, gaming GPUs,
+CPU fallback work, and prepaid agent-account capacity, then use that supply to
+undercut expensive centralized AI services. The goal is to convert existing AI
+subsidies and unused local capacity into Bitcoin income for contributors.
+
 This is why Pylon, Nexus, Psionic, Probe, and Autopilot belong together.
 Pylon brings machines online. Nexus coordinates work and proof. Psionic and
 Probe create the owned runtime and model-improvement path. Autopilot gives
 buyers a product surface that can use the network without making them think
 about provider plumbing.
+
+OpenAgents is not starting by training a base model. The near-term learning
+loop is a continual coding-agent improvement engine: collect useful traces,
+extract lessons, turn them into reusable DSPy-style plugins and policies,
+fine-tune coding-agent models where it helps, and climb public coding and
+domain benchmarks with evidence. The current distributed fine-tuning and
+benchmark push is aimed at the largest participant-count training run in the
+world this week.
 
 ### Artanis
 
@@ -140,7 +184,8 @@ resource receipts, verifier refs, and redaction policy.
 Psionic owns GEPA optimization state. It tracks candidate manifests, rollout
 state, candidate frontier imports, reflection/proposal state, and live
 closeout imports. This is rollout optimization over text and policy bundles.
-Model-weight training comes later after clean rollout traces exist.
+Targeted coding-agent fine-tuning is the near-term model-weight path.
+Base-model training is not the starting point.
 
 The product surface projects benchmark campaign state into metrics and public
 Artanis summaries. That gives coding-agent improvement work a visible trail:
@@ -159,6 +204,28 @@ cover data assets, access grants, delivery bundles, and revocation receipts.
 The Data Market is not the first commercial wedge. It is part of the same
 accepted-outcome economy because useful agent work often needs permissioned
 context, source-backed knowledge, and paid data access.
+
+Coding traces and site-building traces are part of this same data thesis when
+users choose to share them. OpenAgents can mine accepted work for lessons,
+plugins, examples, routing improvements, benchmark cases, and fine-tuning
+data. If a lesson or plugin created from a contributor's data is later used in
+paid workflows, that contributor can earn revenue share.
+
+### Plugins And Revshare
+
+OpenAgents is reviving the old agent plugin marketplace as a learning and
+revenue layer for Autopilot.
+
+The useful output of a successful run is not only the patch, site, or artifact.
+It is also the reusable lesson: a better prompt, a DSPy module, a workflow
+plugin, a policy bundle, a validator, a benchmark fixture, or a domain-specific
+procedure. Autopilot should turn repeated lessons into reusable components
+that future workflows can call directly.
+
+When a paid workflow uses a plugin, referral, lesson, or dataset that came from
+a contributor, revenue can flow back to that contributor in Bitcoin. That is
+the economic link between free Autopilot, shared traces, Pylon compute,
+Benchmark Cloud, and the larger agent marketplace.
 
 ### Kernel, Nexus, And Payments
 
@@ -199,15 +266,18 @@ It carries the evidence needed to answer:
 The system supports five linked markets:
 
 - **Compute**: stranded consumer machines, Pylons, Apple Silicon devices,
-  gaming GPUs, CPU fallbacks, SHC/GCP/Simp workrooms, small GPU pods, and
-  future flexible-load providers.
+  gaming GPUs, CPU fallbacks, prepaid cloud credits, subsidized coding-agent
+  accounts, SHC/GCP/Simp workrooms, small GPU pods, and future flexible-load
+  providers.
 - **Data**: permissioned datasets, artifacts, context packs, transcript
-  slices, source-backed knowledge, and local data packages.
-- **Labor**: agent work sold as accepted outcomes.
+  slices, source-backed knowledge, local data packages, accepted coding traces,
+  site-building traces, and benchmark examples.
+- **Labor**: agent work sold as accepted outcomes, including coding missions,
+  site builds, revisions, validation, and benchmark work.
 - **Liquidity**: Bitcoin, Lightning, L402, MDK, checkout, credit, payout, and
   settlement flows.
 - **Risk**: verification depth, warranties, policy, payout gates,
-  failure handling, and route reliability.
+  failure handling, route reliability, and benchmark-backed confidence.
 
 These markets share a kernel: contracts, verification, receipts, liability,
 settlement, policy, and public projection.
@@ -232,14 +302,21 @@ objective
 ```
 
 For Coding on Autopilot, the route may start with Codex account fleets and
-managed SHC/GCP/Simp workrooms. Probe, Psionic, Pylon, and Benchmark Cloud
-provide the owned path for runtime evidence, rollout optimization, distributed
-metric calls, and measured improvement over time.
+managed SHC/GCP/Simp workrooms, prepaid cloud credits, subsidized monthly
+coding-agent accounts, local compute, or Pylons. Probe, Psionic, Pylon, and
+Benchmark Cloud provide the owned path for runtime evidence, lesson extraction,
+plugin reuse, rollout optimization, distributed metric calls, and measured
+improvement over time.
 
 For provider work, a Pylon may receive an assignment, execute locally, submit
 artifact/proof refs, and close as accepted or rejected. Payment modes are
 explicit: unpaid smoke, operator credit, payable pending settlement, settled
 Bitcoin, or rejected no-pay.
+
+For shared-learning work, a user may choose to share traces, examples, sites,
+or lessons in exchange for free or subsidized execution and future revenue
+share. Accepted lessons become plugins, policies, datasets, or benchmark
+fixtures that can improve future paid workflows.
 
 ## Active Repos
 
@@ -265,7 +342,8 @@ As of June 8, 2026, the recent closed issue work shows these live directions:
 
 - The active product surface owns Pylon network readiness, Pylon v0.2.5+
   public stats projection, release gates, Artanis public projections, Forum
-  payment surfaces, and Gemini provider-account grants.
+  payment surfaces, Gemini provider-account grants, free Autopilot missions,
+  Autopilot Sites, referral surfaces, and paid upgrade paths.
 - OpenAgents owns public Benchmark Cloud contracts, Probe GEPA Stage 0/1
   receipts, live SHC/Harbor smoke bundles, Pylon capability envelopes, and
   Artanis/Pylon release proof bundles.
@@ -276,6 +354,9 @@ As of June 8, 2026, the recent closed issue work shows these live directions:
   frontier state, and imports of live Pylon closeouts.
 - Artanis has moved from broad Pylon launch overseer toward public overseer
   for Probe GEPA coding-agent benchmark campaigns through Pylons.
+- Autopilot is using free and subsidized async coding work to collect useful
+  traces, derive reusable lessons, and turn those lessons into rev-share
+  plugins for future paid workflows.
 
 Recent Artanis/Pylon evidence:
 
@@ -301,6 +382,12 @@ public receipt.
 - [docs/transcripts/README.md](docs/transcripts/README.md): transcript theme
   guide, including the compute markets, compute fracking, Pylon, Nexus,
   Psionic, and training arc.
+- [docs/transcripts/228.md](docs/transcripts/228.md): Free Autopilot beta,
+  async coding work, shared traces, and rev-share lessons.
+- [docs/transcripts/229.md](docs/transcripts/229.md): Autopilot Sites,
+  iterative site revisions, hosted URLs, and referral revenue.
+- [docs/transcripts/230.md](docs/transcripts/230.md): OpenAgents flow of
+  funds, five markets, Bitcoin/Nostr stance, and agent commerce framing.
 - [docs/pylon/PYLON_VERIFICATION_MATRIX.md](docs/pylon/PYLON_VERIFICATION_MATRIX.md):
   Pylon release and proof gates.
 - [docs/benchmarks/README.md](docs/benchmarks/README.md): public Benchmark
