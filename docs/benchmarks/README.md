@@ -58,6 +58,13 @@ records cost, duration, verifier result, artifact availability, candidate hash,
 and Probe commit for every rollout. The example runner is
 `cargo run -p benchmark-cloud --example probe_gepa_validation_sweep`.
 
+The first observed Probe runner smoke is implemented by
+`run_observed_probe_benchmark_task`. It accepts a public-safe observed Probe
+closeout, validates task materialization against the allowed task refs and
+permitted workspace refs, then writes the same normalized bundle used by fake,
+retained fixture, and live SHC/Harbor runs. The example runner is
+`cargo run -p benchmark-cloud --example probe_observed_runner_smoke`.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
@@ -87,12 +94,15 @@ JSON payload, records the Probe command invocation as `probe benchmark run
 - `artifact_manifest.json`
 - `proof_bundle.json`
 - `resource_usage_receipt.json`
+- `route_scorecard.json`
 - `probe-run-record.json`
 - `probe-closeout.json`
 
-The fake runner path covers pass, timeout, and error outcomes. It preserves
-artifact, proof, and resource records for successful and failed outcomes and
-keeps Probe-selected Blueprint signature refs plus the Probe tool-menu ref in
+The fake runner path covers pass, timeout, and error outcomes. The observed
+runner path covers real Probe closeout imports for success, failure, timeout,
+and policy-blocked outcomes. Both preserve artifact, proof, resource,
+route-scorecard, and failure-classification records where required, and both
+keep Probe-selected Blueprint signature refs plus the Probe tool-menu ref in
 the proof bundle. Assignment refs are public account/grant refs only; raw
 credentials and private traces are rejected before invocation.
 
