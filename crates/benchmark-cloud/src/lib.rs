@@ -13,6 +13,10 @@ pub const BENCHMARK_RUN_MANIFEST_SCHEMA_REF: &str = "openagents.benchmark_run_ma
 pub const BENCHMARK_CAMPAIGN_SPLIT_MANIFEST_SCHEMA_REF: &str =
     "openagents.benchmark_campaign_split_manifest.v1";
 pub const PROBE_BENCHMARK_ASSIGNMENT_SCHEMA_REF: &str = "probe.benchmark_assignment.v1";
+pub const PYLON_BENCHMARK_WORKER_CAPABILITY_SCHEMA_REF: &str =
+    "openagents.pylon_benchmark_worker_capability.v1";
+pub const PYLON_BENCHMARK_WORK_REQUIREMENT_SCHEMA_REF: &str =
+    "openagents.pylon_benchmark_work_requirement.v1";
 
 pub const PROBE_RUNNER_REQUIRED_ARTIFACT_FILES: [&str; 8] = [
     "result.json",
@@ -315,6 +319,116 @@ pub enum ProbeFakeRunnerOutcome {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonBenchmarkIsolationProfile {
+    HostLocal,
+    Sandbox,
+    ShcBox,
+    Container,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonBenchmarkPayoutReadiness {
+    NotReady,
+    NoSpendOnly,
+    CreditOnly,
+    SettlementReady,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonBenchmarkWorkKind {
+    BenchmarkEvaluation,
+    GepaRolloutMetricCall,
+    LoraFineTuning,
+    ModelTraining,
+}
+
+impl PylonBenchmarkWorkKind {
+    pub fn requires_model_training(&self) -> bool {
+        matches!(self, Self::LoraFineTuning | Self::ModelTraining)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonBenchmarkHardwareEnvelope {
+    pub cpu_arch_ref: String,
+    pub cpu_core_count: u32,
+    pub disk_available_bytes: u64,
+    pub gpu_memory_bytes: Option<u64>,
+    pub gpu_refs: Vec<String>,
+    pub ram_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonBenchmarkWorkerCapabilityEnvelope {
+    pub schema_ref: String,
+    pub capability_ref: String,
+    pub worker_ref: String,
+    pub pylon_version_ref: String,
+    pub advertised_at: String,
+    pub benchmark_runner_support: bool,
+    pub harbor_terminal_bench_support: bool,
+    pub probe_runtime_support: bool,
+    pub local_model_support: bool,
+    pub apple_fm_support: bool,
+    pub qwen_adapter_support: bool,
+    pub mlx_training_support: bool,
+    pub rollout_eval_support: bool,
+    pub model_training_support: bool,
+    pub hardware: PylonBenchmarkHardwareEnvelope,
+    pub max_wall_clock_ms: u64,
+    pub max_cost_budget_ref: Option<String>,
+    pub isolation_profile: PylonBenchmarkIsolationProfile,
+    pub artifact_upload_support: bool,
+    pub proof_receipt_support: bool,
+    pub assignment_lease_support: bool,
+    pub closeout_support: bool,
+    pub payout_readiness: PylonBenchmarkPayoutReadiness,
+    pub public_capability_refs: Vec<String>,
+    pub caveat_refs: Vec<String>,
+    pub redaction_state: BenchmarkRedactionState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonBenchmarkWorkRequirement {
+    pub schema_ref: String,
+    pub work_ref: String,
+    pub work_kind: PylonBenchmarkWorkKind,
+    pub benchmark_suite_ref: String,
+    pub task_ref: String,
+    pub candidate_hash: Option<String>,
+    pub requires_harbor_terminal_bench: bool,
+    pub requires_probe_runtime: bool,
+    pub requires_local_model: bool,
+    pub requires_apple_fm: bool,
+    pub requires_qwen_adapter: bool,
+    pub requires_mlx_training: bool,
+    pub min_cpu_core_count: u32,
+    pub min_ram_bytes: u64,
+    pub min_disk_available_bytes: u64,
+    pub min_gpu_memory_bytes: Option<u64>,
+    pub max_wall_clock_ms: u64,
+    pub requires_artifact_upload: bool,
+    pub requires_proof_receipts: bool,
+    pub requires_assignment_lease: bool,
+    pub requires_closeout: bool,
+    pub accepted_payment_modes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonBenchmarkWorkerMatch {
+    pub matched: bool,
+    pub worker_ref: String,
+    pub work_ref: String,
+    pub work_kind: PylonBenchmarkWorkKind,
+    pub blocker_refs: Vec<String>,
+    pub payout_ready_for_paid_work: bool,
+    pub admitted_for_assignment: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProbeBenchmarkRunMetadata {
     pub runner_ref: String,
     pub benchmark_suite_ref: String,
@@ -422,6 +536,15 @@ pub enum BenchmarkContractError {
     ProbeRunnerInvalid {
         run_ref: String,
         reason: String,
+    },
+    WorkerCapabilityInvalid {
+        capability_ref: String,
+        reason: String,
+    },
+    WorkerCapabilityNotMatched {
+        capability_ref: String,
+        work_ref: String,
+        blocker_refs: Vec<String>,
     },
 }
 
@@ -670,6 +793,235 @@ pub fn build_probe_command_invocation(
     })
 }
 
+pub fn validate_pylon_benchmark_worker_capability(
+    capability: &PylonBenchmarkWorkerCapabilityEnvelope,
+) -> Result<(), BenchmarkContractError> {
+    if capability.schema_ref != PYLON_BENCHMARK_WORKER_CAPABILITY_SCHEMA_REF {
+        return worker_capability_error(capability, "unsupported worker capability schema ref");
+    }
+
+    if capability.redaction_state != BenchmarkRedactionState::PublicSafe {
+        return worker_capability_error(capability, "worker capability must be public-safe");
+    }
+
+    if capability.capability_ref.is_empty() || capability.worker_ref.is_empty() {
+        return worker_capability_error(
+            capability,
+            "worker capability must include capability and worker refs",
+        );
+    }
+
+    if capability.rollout_eval_support && !capability.benchmark_runner_support {
+        return worker_capability_error(
+            capability,
+            "rollout/eval support requires benchmark runner support",
+        );
+    }
+
+    if capability.probe_runtime_support && !capability.benchmark_runner_support {
+        return worker_capability_error(
+            capability,
+            "Probe runtime support requires benchmark runner support",
+        );
+    }
+
+    if capability.mlx_training_support && !capability.model_training_support {
+        return worker_capability_error(
+            capability,
+            "MLX training support requires explicit model training support",
+        );
+    }
+
+    if capability.model_training_support && !capability.local_model_support {
+        return worker_capability_error(
+            capability,
+            "model training support requires local model support",
+        );
+    }
+
+    if capability.max_wall_clock_ms == 0 {
+        return worker_capability_error(
+            capability,
+            "worker capability must include a non-zero max wall-clock budget",
+        );
+    }
+
+    if capability.hardware.cpu_core_count == 0 || capability.hardware.ram_bytes == 0 {
+        return worker_capability_error(
+            capability,
+            "worker capability must include CPU and RAM capacity",
+        );
+    }
+
+    if worker_capability_contains_unsafe_material(capability) {
+        return worker_capability_error(
+            capability,
+            "worker capability contains private, credential, raw log, payment, payout, or private repo material",
+        );
+    }
+
+    Ok(())
+}
+
+pub fn match_pylon_benchmark_worker(
+    capability: &PylonBenchmarkWorkerCapabilityEnvelope,
+    requirement: &PylonBenchmarkWorkRequirement,
+) -> Result<PylonBenchmarkWorkerMatch, BenchmarkContractError> {
+    validate_pylon_benchmark_worker_capability(capability)?;
+
+    if requirement.schema_ref != PYLON_BENCHMARK_WORK_REQUIREMENT_SCHEMA_REF {
+        return Err(BenchmarkContractError::WorkerCapabilityInvalid {
+            capability_ref: capability.capability_ref.clone(),
+            reason: String::from("unsupported benchmark work requirement schema ref"),
+        });
+    }
+
+    if worker_requirement_contains_unsafe_material(requirement) {
+        return Err(BenchmarkContractError::WorkerCapabilityInvalid {
+            capability_ref: capability.capability_ref.clone(),
+            reason: String::from("benchmark work requirement contains unsafe material"),
+        });
+    }
+
+    let blocker_refs = pylon_benchmark_worker_blockers(capability, requirement);
+    let matched = blocker_refs.is_empty();
+    let payout_ready_for_paid_work = matches!(
+        capability.payout_readiness,
+        PylonBenchmarkPayoutReadiness::SettlementReady
+    );
+
+    Ok(PylonBenchmarkWorkerMatch {
+        matched,
+        worker_ref: capability.worker_ref.clone(),
+        work_ref: requirement.work_ref.clone(),
+        work_kind: requirement.work_kind.clone(),
+        blocker_refs,
+        payout_ready_for_paid_work,
+        admitted_for_assignment: matched,
+    })
+}
+
+fn pylon_benchmark_worker_blockers(
+    capability: &PylonBenchmarkWorkerCapabilityEnvelope,
+    requirement: &PylonBenchmarkWorkRequirement,
+) -> Vec<String> {
+    let mut blockers = Vec::new();
+
+    if !capability.benchmark_runner_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.benchmark_runner_missing",
+        ));
+    }
+
+    if requirement.requires_harbor_terminal_bench && !capability.harbor_terminal_bench_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.harbor_terminal_bench_missing",
+        ));
+    }
+
+    if requirement.requires_probe_runtime && !capability.probe_runtime_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.probe_runtime_missing",
+        ));
+    }
+
+    if requirement.requires_local_model && !capability.local_model_support {
+        blockers.push(String::from("blocker.pylon.capability.local_model_missing"));
+    }
+
+    if requirement.requires_apple_fm && !capability.apple_fm_support {
+        blockers.push(String::from("blocker.pylon.capability.apple_fm_missing"));
+    }
+
+    if requirement.requires_qwen_adapter && !capability.qwen_adapter_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.qwen_adapter_missing",
+        ));
+    }
+
+    if requirement.requires_mlx_training && !capability.mlx_training_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.mlx_training_missing",
+        ));
+    }
+
+    if requirement.work_kind.requires_model_training() && !capability.model_training_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.model_training_missing",
+        ));
+    }
+
+    if !requirement.work_kind.requires_model_training() && !capability.rollout_eval_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.rollout_eval_missing",
+        ));
+    }
+
+    if capability.hardware.cpu_core_count < requirement.min_cpu_core_count {
+        blockers.push(String::from(
+            "blocker.pylon.capacity.cpu_cores_insufficient",
+        ));
+    }
+
+    if capability.hardware.ram_bytes < requirement.min_ram_bytes {
+        blockers.push(String::from("blocker.pylon.capacity.ram_insufficient"));
+    }
+
+    if capability.hardware.disk_available_bytes < requirement.min_disk_available_bytes {
+        blockers.push(String::from("blocker.pylon.capacity.disk_insufficient"));
+    }
+
+    if let Some(required_gpu_memory) = requirement.min_gpu_memory_bytes {
+        if capability.hardware.gpu_memory_bytes.unwrap_or(0) < required_gpu_memory {
+            blockers.push(String::from(
+                "blocker.pylon.capacity.gpu_memory_insufficient",
+            ));
+        }
+    }
+
+    if capability.max_wall_clock_ms < requirement.max_wall_clock_ms {
+        blockers.push(String::from(
+            "blocker.pylon.capacity.wall_clock_budget_insufficient",
+        ));
+    }
+
+    if requirement.requires_artifact_upload && !capability.artifact_upload_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.artifact_upload_missing",
+        ));
+    }
+
+    if requirement.requires_proof_receipts && !capability.proof_receipt_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.proof_receipts_missing",
+        ));
+    }
+
+    if requirement.requires_assignment_lease && !capability.assignment_lease_support {
+        blockers.push(String::from(
+            "blocker.pylon.capability.assignment_lease_missing",
+        ));
+    }
+
+    if requirement.requires_closeout && !capability.closeout_support {
+        blockers.push(String::from("blocker.pylon.capability.closeout_missing"));
+    }
+
+    blockers.sort();
+    blockers.dedup();
+    blockers
+}
+
+fn worker_capability_error(
+    capability: &PylonBenchmarkWorkerCapabilityEnvelope,
+    reason: impl Into<String>,
+) -> Result<(), BenchmarkContractError> {
+    Err(BenchmarkContractError::WorkerCapabilityInvalid {
+        capability_ref: capability.capability_ref.clone(),
+        reason: reason.into(),
+    })
+}
+
 pub fn run_fake_probe_benchmark_task(
     manifest: &BenchmarkCampaignSplitManifest,
     task: &BenchmarkSplitTaskEntry,
@@ -838,6 +1190,22 @@ pub fn artifact_set_contains_unsafe_material(
         .unwrap_or(true)
 }
 
+pub fn worker_capability_contains_unsafe_material(
+    capability: &PylonBenchmarkWorkerCapabilityEnvelope,
+) -> bool {
+    serde_json::to_value(capability)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+}
+
+pub fn worker_requirement_contains_unsafe_material(
+    requirement: &PylonBenchmarkWorkRequirement,
+) -> bool {
+    serde_json::to_value(requirement)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+}
+
 fn validate_probe_assignment_public_refs(
     assignment: &ProbeBenchmarkAssignment,
 ) -> Result<(), BenchmarkContractError> {
@@ -964,6 +1332,9 @@ fn string_contains_unsafe_material(value: &str) -> bool {
         || normalized.contains("auth.json")
         || normalized.contains("private_harbor_trace")
         || normalized.contains("private-repo://")
+        || normalized.contains("raw_runner_log")
+        || normalized.contains("raw_run_log")
+        || normalized.contains("runner_log")
         || normalized.contains("wallet_mnemonic")
         || raw_logs_unsafe
 }
@@ -993,6 +1364,79 @@ mod tests {
             scorer_ref: String::from("scorer.terminal_bench.binary.v1"),
             verifier_ref: String::from("verifier.terminal_bench.configure_git_webserver.v1"),
             verifier_public_ref: String::from("verifier_public.terminal_bench.binary_outcome.v1"),
+        }
+    }
+
+    fn pylon_rollout_capability() -> PylonBenchmarkWorkerCapabilityEnvelope {
+        PylonBenchmarkWorkerCapabilityEnvelope {
+            schema_ref: String::from(PYLON_BENCHMARK_WORKER_CAPABILITY_SCHEMA_REF),
+            capability_ref: String::from("capability.public.pylon.shc_box_1.probe_gepa.v1"),
+            worker_ref: String::from("pylon.public.shc_box_1"),
+            pylon_version_ref: String::from("release.public.pylon_v0_2_0"),
+            advertised_at: String::from("2026-06-08T00:00:00.000Z"),
+            benchmark_runner_support: true,
+            harbor_terminal_bench_support: true,
+            probe_runtime_support: true,
+            local_model_support: true,
+            apple_fm_support: true,
+            qwen_adapter_support: false,
+            mlx_training_support: false,
+            rollout_eval_support: true,
+            model_training_support: false,
+            hardware: PylonBenchmarkHardwareEnvelope {
+                cpu_arch_ref: String::from("cpu_arch.apple_silicon.arm64"),
+                cpu_core_count: 12,
+                disk_available_bytes: 500_000_000_000,
+                gpu_memory_bytes: Some(32_000_000_000),
+                gpu_refs: vec![String::from("gpu.apple.integrated_m_series")],
+                ram_bytes: 64_000_000_000,
+            },
+            max_wall_clock_ms: 1_800_000,
+            max_cost_budget_ref: Some(String::from("budget.pylon.no_spend.stage_0")),
+            isolation_profile: PylonBenchmarkIsolationProfile::ShcBox,
+            artifact_upload_support: true,
+            proof_receipt_support: true,
+            assignment_lease_support: true,
+            closeout_support: true,
+            payout_readiness: PylonBenchmarkPayoutReadiness::NoSpendOnly,
+            public_capability_refs: vec![
+                String::from("capability.public.pylon.benchmark_runner"),
+                String::from("capability.public.pylon.probe_runtime"),
+                String::from("capability.public.pylon.gepa_rollout_eval"),
+            ],
+            caveat_refs: vec![String::from(
+                "caveat.public.pylon.worker_admission_not_payout_readiness",
+            )],
+            redaction_state: BenchmarkRedactionState::PublicSafe,
+        }
+    }
+
+    fn probe_gepa_rollout_requirement() -> PylonBenchmarkWorkRequirement {
+        PylonBenchmarkWorkRequirement {
+            schema_ref: String::from(PYLON_BENCHMARK_WORK_REQUIREMENT_SCHEMA_REF),
+            work_ref: String::from("work.public.probe_gepa.configure_git_webserver.1"),
+            work_kind: PylonBenchmarkWorkKind::GepaRolloutMetricCall,
+            benchmark_suite_ref: String::from(
+                "benchmark_suite.terminal_bench_2.harbor.retained.v1",
+            ),
+            task_ref: String::from("task.terminal_bench.configure-git-webserver.v1"),
+            candidate_hash: Some(String::from("sha256:candidate-1")),
+            requires_harbor_terminal_bench: true,
+            requires_probe_runtime: true,
+            requires_local_model: true,
+            requires_apple_fm: false,
+            requires_qwen_adapter: false,
+            requires_mlx_training: false,
+            min_cpu_core_count: 4,
+            min_ram_bytes: 16_000_000_000,
+            min_disk_available_bytes: 50_000_000_000,
+            min_gpu_memory_bytes: None,
+            max_wall_clock_ms: 900_000,
+            requires_artifact_upload: true,
+            requires_proof_receipts: true,
+            requires_assignment_lease: true,
+            requires_closeout: true,
+            accepted_payment_modes: vec![String::from("no_spend")],
         }
     }
 
@@ -1248,5 +1692,83 @@ mod tests {
             Err(BenchmarkContractError::ProbeRunnerInvalid { .. })
         ));
         Ok(())
+    }
+
+    #[test]
+    fn pylon_worker_capability_matches_probe_gepa_rollout_without_payout_readiness()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let capability = pylon_rollout_capability();
+        let requirement = probe_gepa_rollout_requirement();
+        validate_pylon_benchmark_worker_capability(&capability)
+            .map_err(|error| format!("unexpected capability validation error: {error:?}"))?;
+        let matched = match_pylon_benchmark_worker(&capability, &requirement)
+            .map_err(|error| format!("unexpected match error: {error:?}"))?;
+
+        assert!(matched.matched);
+        assert!(matched.admitted_for_assignment);
+        assert!(!matched.payout_ready_for_paid_work);
+        assert_eq!(matched.worker_ref, "pylon.public.shc_box_1");
+        assert_eq!(matched.blocker_refs, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn pylon_worker_capability_distinguishes_rollout_eval_from_model_training() {
+        let capability = pylon_rollout_capability();
+        let mut training_requirement = probe_gepa_rollout_requirement();
+        training_requirement.work_kind = PylonBenchmarkWorkKind::LoraFineTuning;
+        training_requirement.requires_mlx_training = true;
+        training_requirement.min_gpu_memory_bytes = Some(64_000_000_000);
+
+        let matched = match_pylon_benchmark_worker(&capability, &training_requirement)
+            .expect("valid capability should return non-match blockers");
+
+        assert!(!matched.matched);
+        assert!(matched.blocker_refs.contains(&String::from(
+            "blocker.pylon.capability.model_training_missing"
+        )));
+        assert!(matched.blocker_refs.contains(&String::from(
+            "blocker.pylon.capability.mlx_training_missing"
+        )));
+        assert!(matched.blocker_refs.contains(&String::from(
+            "blocker.pylon.capacity.gpu_memory_insufficient"
+        )));
+    }
+
+    #[test]
+    fn pylon_worker_capability_rejects_overclaiming_and_unsafe_refs() {
+        let mut overclaim = pylon_rollout_capability();
+        overclaim.mlx_training_support = true;
+        assert!(matches!(
+            validate_pylon_benchmark_worker_capability(&overclaim),
+            Err(BenchmarkContractError::WorkerCapabilityInvalid { .. })
+        ));
+
+        let mut unsafe_capability = pylon_rollout_capability();
+        unsafe_capability.public_capability_refs = vec![String::from("raw_runner_log.private")];
+        assert!(matches!(
+            validate_pylon_benchmark_worker_capability(&unsafe_capability),
+            Err(BenchmarkContractError::WorkerCapabilityInvalid { .. })
+        ));
+    }
+
+    #[test]
+    fn pylon_worker_capability_admission_does_not_imply_settlement_readiness() {
+        let mut settlement_capability = pylon_rollout_capability();
+        settlement_capability.payout_readiness = PylonBenchmarkPayoutReadiness::SettlementReady;
+        let matched =
+            match_pylon_benchmark_worker(&settlement_capability, &probe_gepa_rollout_requirement())
+                .expect("settlement-ready worker should still match rollout work");
+
+        assert!(matched.matched);
+        assert!(matched.payout_ready_for_paid_work);
+
+        let no_spend_match = match_pylon_benchmark_worker(
+            &pylon_rollout_capability(),
+            &probe_gepa_rollout_requirement(),
+        )
+        .expect("no-spend worker should match rollout work");
+        assert!(no_spend_match.matched);
+        assert!(!no_spend_match.payout_ready_for_paid_work);
     }
 }
