@@ -1,0 +1,52 @@
+{
+  "schema_ref": "openagents.benchmark_result.v1",
+  "result_ref": "benchmark_result.terminal_bench.configure_git_webserver.1",
+  "run_ref": "benchmark_run.terminal_bench_2.harbor.stage_0.1",
+  "task_run_ref": "task_run.configure_git_webserver.1",
+  "dataset": {
+    "slug": "terminal-bench-2-harbor",
+    "version": "2026-06-08"
+  },
+  "evidence_split": "retained",
+  "status": "failed",
+  "scorer_verifier": {
+    "scorer_ref": "scorer.terminal_bench.binary.v1",
+    "verifier_ref": "verifier.terminal_bench.configure_git_webserver.v1",
+    "verifier_public_ref": "verifier_public.terminal_bench.binary_outcome.v1"
+  },
+  "score_bps": null,
+  "failure_classification_ref": "failure_classification.configure_git_webserver.service_readiness",
+  "artifact_manifest_refs": [
+    "artifact_manifest.probe.configure_git_webserver.1"
+  ],
+  "proof_bundle_refs": [
+    "proof_bundle.probe.configure_git_webserver.1"
+  ],
+  "resource_usage_receipt_ref": null,
+  "resource_unavailable_reason": "meter_unavailable_in_smoke",
+  "probe_closeout_import": {
+    "probe_assignment_ref": "probe_benchmark_assignment.configure_git_webserver.1",
+    "probe_closeout_ref": "probe_closeout.probe_run.configure_git_webserver.1",
+    "probe_commit": "abc1234",
+    "probe_run_record_ref": "probe-run-record.json",
+    "probe_run_ref": "probe_run.configure_git_webserver.1",
+    "candidate_hash": "sha256:candidate-1",
+    "selected_signature_refs": [
+      "program_signature.probe.benchmark.service_readiness.v1"
+    ],
+    "tool_menu_ref": "tool_menu.probe.terminal_bench.service_readiness.v1"
+  },
+  "no_cheat": {
+    "policy_ref": "policy.openagents.benchmark.no_cheat.public_refs_only.v1",
+    "no_hidden_verifier_content": true,
+    "no_private_repo_refs": true,
+    "no_raw_logs": true,
+    "no_task_solution_material": true
+  },
+  "redaction_state": "public_safe",
+  "public_claim_boundary": {
+    "claim_level": "none",
+    "external_release_gate_refs": [],
+    "public_claim_upgrade_authority": false
+  }
+}

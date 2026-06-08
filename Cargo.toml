@@ -20,6 +20,7 @@ members = [
     "crates/openagents-compiled-agent",
     "crates/openagents-kernel-core",
     "crates/openagents-kernel-proto",
+    "crates/benchmark-cloud",
     "crates/openagents-provider-substrate",
     "crates/pylon-core",
     "crates/psionic-train-contract",
