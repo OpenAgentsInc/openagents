@@ -73,6 +73,14 @@ receipt intentionally proves failure-closeout preservation rather than success
 or a public score. The example runner is
 `cargo run -p benchmark-cloud --example probe_shc_harbor_live_smoke_receipt`.
 
+The first Stage 0 live receipt bundle is recorded in
+`2026-06-08-probe-gepa-stage0-live-receipt-bundle.md`. It wraps the same live
+SHC/Harbor run in a campaign-level bundle that preserves live assignment IDs,
+`probe-closeout.json`, verifier refs, artifact manifests, proof bundles,
+resource receipt refs, route scorecards, failure classifications, event refs,
+and Psionic import refs. The example runner is
+`cargo run -p benchmark-cloud --example probe_gepa_stage0_live_receipt_bundle`.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
@@ -133,6 +141,12 @@ The Stage 0 smoke campaign can project only
 `public_status.probe_gepa.measured_retained_smoke.v1`. It explicitly records no
 LoRA, no model training, no public leaderboard claim, and no automatic
 promotion.
+
+The Stage 0 live receipt bundle can project only
+`public_status.probe_gepa.live_smoke_measured_only.v1`. It records no LoRA, no
+model training, no public leaderboard claim, no paid-work claim, and
+`public_claim_level: none`. It is live failure-closeout evidence, not a public
+Terminal-Bench score.
 
 The Stage 1 retained sprint can project only retained-evidence summary status.
 Its selected candidate may enter `optimizer_accepted` or `rejected`, but not an

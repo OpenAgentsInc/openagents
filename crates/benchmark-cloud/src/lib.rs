@@ -20,10 +20,20 @@ pub const PYLON_BENCHMARK_WORK_REQUIREMENT_SCHEMA_REF: &str =
     "openagents.pylon_benchmark_work_requirement.v1";
 pub const PROBE_GEPA_STAGE0_SMOKE_CAMPAIGN_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage0_smoke_campaign.v1";
+pub const PROBE_GEPA_STAGE0_LIVE_RECEIPT_BUNDLE_SCHEMA_REF: &str =
+    "openagents.probe_gepa_stage0_live_receipt_bundle.v1";
 pub const PROBE_GEPA_STAGE1_RETAINED_SPRINT_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage1_retained_sprint.v1";
 pub const PROBE_GEPA_VALIDATION_SWEEP_SCHEMA_REF: &str =
     "openagents.probe_gepa_validation_sweep.v1";
+
+const SHC_HARBOR_LIVE_SMOKE_TASK_REF: &str =
+    "benchmark_task.terminal_bench.retained.db_wal_recovery.v1";
+const SHC_HARBOR_LIVE_SMOKE_CANDIDATE_HASH: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000004563";
+const SHC_HARBOR_LIVE_SMOKE_HOST_REF: &str = "shc.oa_shc_katy_01";
+const SHC_HARBOR_LIVE_SMOKE_JOB_ID: &str = "e487217a-715e-448c-8d45-e528b76980e7";
+const SHC_HARBOR_LIVE_SMOKE_TRIAL_ID: &str = "a6c6c245-b9c0-44a8-a8c0-0c7fe5cc3383";
 
 pub const PROBE_RUNNER_REQUIRED_ARTIFACT_FILES: [&str; 9] = [
     "result.json",
@@ -622,6 +632,53 @@ pub struct ProbeGepaStage0SmokeCampaign {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeShcHarborLiveSmokeArtifacts {
+    pub assignment: ProbeBenchmarkAssignment,
+    pub materialization: ProbeBenchmarkTaskMaterialization,
+    pub artifacts: ProbeBenchmarkRunnerArtifactSet,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeGepaStage0LiveReceiptBundle {
+    pub schema_ref: String,
+    pub bundle_id: String,
+    pub bundle_ref: String,
+    pub campaign_ref: String,
+    pub campaign_id: String,
+    pub benchmark_suite_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub source_issue_refs: Vec<String>,
+    pub shc_host_ref: String,
+    pub harbor_job_id: String,
+    pub harbor_trial_id: String,
+    pub live_assignment_ids: Vec<String>,
+    pub metric_calls: Vec<ProbeGepaMetricCallRecord>,
+    pub normalized_artifact_file_names: Vec<String>,
+    pub probe_assignment_refs: Vec<String>,
+    pub probe_run_record_refs: Vec<String>,
+    pub probe_closeout_refs: Vec<String>,
+    pub probe_closeout_json_refs: Vec<String>,
+    pub verifier_refs: Vec<ScorerVerifierRef>,
+    pub verifier_result_refs: Vec<String>,
+    pub artifact_manifest_refs: Vec<String>,
+    pub proof_bundle_refs: Vec<String>,
+    pub resource_usage_receipt_refs: Vec<String>,
+    pub resource_unavailable_reasons: Vec<String>,
+    pub route_scorecard_refs: Vec<String>,
+    pub failure_classification_refs: Vec<String>,
+    pub event_refs: Vec<String>,
+    pub psionic_import_refs: Vec<String>,
+    pub public_status_ref: String,
+    pub public_status_label: String,
+    pub public_claim_level: BenchmarkPublicClaimLevel,
+    pub no_lora: bool,
+    pub no_model_training: bool,
+    pub no_public_leaderboard_claim: bool,
+    pub no_paid_work_claim: bool,
+    pub redaction_state: BenchmarkRedactionState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProbeGepaCandidateRetainedSummary {
     pub candidate_ref: String,
     pub candidate_hash: String,
@@ -816,6 +873,10 @@ pub enum BenchmarkContractError {
     },
     Stage0SmokeInvalid {
         campaign_ref: String,
+        reason: String,
+    },
+    Stage0LiveReceiptInvalid {
+        bundle_ref: String,
         reason: String,
     },
     Stage1SprintInvalid {
@@ -1482,6 +1543,321 @@ pub fn validate_probe_gepa_stage0_smoke_campaign(
         return stage0_smoke_error(
             &campaign.campaign_ref,
             "Stage 0 smoke campaign contains unsafe material",
+        );
+    }
+
+    Ok(())
+}
+
+pub fn build_probe_shc_harbor_live_smoke_artifacts(
+    manifest: &BenchmarkCampaignSplitManifest,
+    probe_commit: impl Into<String>,
+) -> Result<ProbeShcHarborLiveSmokeArtifacts, BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    let task = manifest
+        .tasks
+        .iter()
+        .find(|task| task.task_ref == SHC_HARBOR_LIVE_SMOKE_TASK_REF)
+        .ok_or_else(|| BenchmarkContractError::ProbeRunnerInvalid {
+            run_ref: String::from("benchmark_run.probe.shc_harbor.db_wal_recovery.20260608"),
+            reason: String::from("missing retained db-wal-recovery task"),
+        })?;
+    let assignment = probe_assignment_from_split_task(
+        manifest,
+        task,
+        probe_commit.into(),
+        SHC_HARBOR_LIVE_SMOKE_CANDIDATE_HASH,
+        vec![String::from(
+            "blueprint_signature.probe.terminal_bench.sqlite_wal_recovery.v1",
+        )],
+        "tool_menu.probe.terminal_bench.safe_shell_edit.v1",
+    );
+    let materialization = materialize_probe_benchmark_task(
+        &assignment,
+        manifest.retained_fixture_refs.clone(),
+        vec![
+            String::from("workspace_ref.shc.oa_shc_katy_01.harbor.db_wal_recovery"),
+            String::from("workspace_ref.shc.oa_shc_katy_01.probe_closeout_bundle"),
+        ],
+        "sandbox_policy.benchmark_cloud.probe.shc_harbor_public_safe.v1",
+    )?;
+    let closeout = shc_harbor_live_smoke_closeout(task, &assignment);
+    let artifacts = run_observed_probe_benchmark_task(
+        manifest,
+        task,
+        &assignment,
+        &materialization,
+        &closeout,
+    )?;
+
+    Ok(ProbeShcHarborLiveSmokeArtifacts {
+        assignment,
+        materialization,
+        artifacts,
+    })
+}
+
+pub fn build_probe_gepa_stage0_live_receipt_bundle(
+    manifest: &BenchmarkCampaignSplitManifest,
+    probe_commit: impl Into<String>,
+) -> Result<ProbeGepaStage0LiveReceiptBundle, BenchmarkContractError> {
+    let live = build_probe_shc_harbor_live_smoke_artifacts(manifest, probe_commit)?;
+    let result = &live.artifacts.result_json;
+    let task = manifest
+        .tasks
+        .iter()
+        .find(|task| task.task_ref == live.assignment.task_ref)
+        .ok_or_else(|| BenchmarkContractError::Stage0LiveReceiptInvalid {
+            bundle_ref: String::from("bundle.probe_gepa.stage0.live_shc_harbor.2026_06_08"),
+            reason: String::from("live assignment task ref must exist in split manifest"),
+        })?;
+    let closeout_import = result.probe_closeout_import.as_ref().ok_or_else(|| {
+        BenchmarkContractError::Stage0LiveReceiptInvalid {
+            bundle_ref: String::from("bundle.probe_gepa.stage0.live_shc_harbor.2026_06_08"),
+            reason: String::from("live receipt requires Probe closeout import refs"),
+        }
+    })?;
+    let closeout_state = if result.status == BenchmarkRunStatus::Succeeded {
+        BenchmarkCloseoutState::Accepted
+    } else {
+        BenchmarkCloseoutState::Rejected
+    };
+    let resource_usage_receipt_ref = live
+        .artifacts
+        .resource_usage_receipt_json
+        .receipt_ref
+        .clone();
+    let duration_ms = live.artifacts.resource_usage_receipt_json.duration_ms;
+    let cost_ref = live.artifacts.resource_usage_receipt_json.cost_ref.clone();
+    let metric_call = ProbeGepaMetricCallRecord {
+        metric_call_ref: String::from("metric_call.probe_gepa.stage0.live_shc_harbor.001"),
+        candidate_ref: String::from("candidate.probe_gepa.stage0.live_shc_probe_codex_signature"),
+        candidate_hash: live.assignment.candidate_hash.clone(),
+        task_ref: task.task_ref.clone(),
+        task_id: task.task_id.clone(),
+        verifier_ref: task.scorer_verifier.verifier_ref.clone(),
+        probe_assignment_ref: live.assignment.assignment_ref.clone(),
+        pylon_assignment_ref: None,
+        payment_mode: String::from("unpaid_smoke"),
+        probe_closeout_ref: closeout_import.probe_closeout_ref.clone(),
+        probe_closeout_bundle_ref: String::from(
+            "probe_closeout_bundle.shc_harbor.db_wal_recovery.20260608",
+        ),
+        benchmark_result_ref: result.result_ref.clone(),
+        artifact_manifest_ref: live.artifacts.artifact_manifest_json.manifest_ref.clone(),
+        benchmark_cloud_proof_bundle_ref: live.artifacts.proof_bundle_json.proof_bundle_ref.clone(),
+        resource_usage_receipt_ref: Some(resource_usage_receipt_ref.clone()),
+        verifier_import_ref: String::from("verifier_import.probe_gepa.stage0.live_shc_harbor.001"),
+        verifier_result_ref: String::from(
+            "verifier_result.terminal_bench.db_wal_recovery.shc_harbor.20260608.reward_0",
+        ),
+        cost_ref,
+        duration_ms,
+        artifact_available: true,
+        failure_classification_ref: result.failure_classification_ref.clone(),
+        closeout_state,
+        score_bps: result.score_bps,
+        status: result.status.clone(),
+    };
+    let failure_classification_refs = result
+        .failure_classification_ref
+        .clone()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let bundle = ProbeGepaStage0LiveReceiptBundle {
+        schema_ref: String::from(PROBE_GEPA_STAGE0_LIVE_RECEIPT_BUNDLE_SCHEMA_REF),
+        bundle_id: String::from("probe-gepa-stage0-live-shc-harbor-receipt-2026-06-08"),
+        bundle_ref: String::from("bundle.probe_gepa.stage0.live_shc_harbor.2026_06_08"),
+        campaign_ref: String::from("campaign.probe_gepa.stage0.live_receipts.2026_06_08"),
+        campaign_id: String::from("probe-gepa-stage0-live-receipts-2026-06-08"),
+        benchmark_suite_ref: manifest.benchmark_suite_ref.clone(),
+        dataset: manifest.dataset.clone(),
+        source_issue_refs: vec![
+            String::from("github.OpenAgentsInc.openagents.issue.4563"),
+            String::from("github.OpenAgentsInc.openagents.issue.4565"),
+        ],
+        shc_host_ref: String::from(SHC_HARBOR_LIVE_SMOKE_HOST_REF),
+        harbor_job_id: String::from(SHC_HARBOR_LIVE_SMOKE_JOB_ID),
+        harbor_trial_id: String::from(SHC_HARBOR_LIVE_SMOKE_TRIAL_ID),
+        live_assignment_ids: vec![
+            live.assignment.assignment_ref.clone(),
+            format!("harbor_job.{SHC_HARBOR_LIVE_SMOKE_JOB_ID}"),
+            format!("harbor_trial.{SHC_HARBOR_LIVE_SMOKE_TRIAL_ID}"),
+        ],
+        metric_calls: vec![metric_call],
+        normalized_artifact_file_names: live
+            .artifacts
+            .file_names()
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        probe_assignment_refs: vec![live.assignment.assignment_ref.clone()],
+        probe_run_record_refs: vec![String::from("probe-run-record.json")],
+        probe_closeout_refs: vec![closeout_import.probe_closeout_ref.clone()],
+        probe_closeout_json_refs: vec![String::from("probe-closeout.json")],
+        verifier_refs: vec![task.scorer_verifier.clone()],
+        verifier_result_refs: vec![String::from(
+            "verifier_result.terminal_bench.db_wal_recovery.shc_harbor.20260608.reward_0",
+        )],
+        artifact_manifest_refs: vec![live.artifacts.artifact_manifest_json.manifest_ref.clone()],
+        proof_bundle_refs: vec![live.artifacts.proof_bundle_json.proof_bundle_ref.clone()],
+        resource_usage_receipt_refs: vec![resource_usage_receipt_ref],
+        resource_unavailable_reasons: live
+            .artifacts
+            .resource_usage_receipt_json
+            .unavailable_reason
+            .clone()
+            .into_iter()
+            .collect(),
+        route_scorecard_refs: vec![live.artifacts.route_scorecard_json.scorecard_ref.clone()],
+        failure_classification_refs,
+        event_refs: live
+            .artifacts
+            .events_jsonl
+            .iter()
+            .map(|event| event.event_ref.clone())
+            .collect(),
+        psionic_import_refs: vec![String::from(
+            "psionic_import.probe_gepa.stage0.live_shc_harbor.20260608",
+        )],
+        public_status_ref: String::from("public_status.probe_gepa.live_smoke_measured_only.v1"),
+        public_status_label: String::from("live smoke measured only"),
+        public_claim_level: BenchmarkPublicClaimLevel::None,
+        no_lora: true,
+        no_model_training: true,
+        no_public_leaderboard_claim: true,
+        no_paid_work_claim: true,
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+
+    validate_probe_gepa_stage0_live_receipt_bundle(&bundle, manifest)?;
+    Ok(bundle)
+}
+
+pub fn validate_probe_gepa_stage0_live_receipt_bundle(
+    bundle: &ProbeGepaStage0LiveReceiptBundle,
+    manifest: &BenchmarkCampaignSplitManifest,
+) -> Result<(), BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    if bundle.schema_ref != PROBE_GEPA_STAGE0_LIVE_RECEIPT_BUNDLE_SCHEMA_REF {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "unsupported live receipt schema ref",
+        );
+    }
+
+    if bundle.bundle_id.is_empty()
+        || bundle.bundle_ref.is_empty()
+        || bundle.campaign_id.is_empty()
+        || bundle.campaign_ref.is_empty()
+        || bundle.shc_host_ref.is_empty()
+        || bundle.harbor_job_id.is_empty()
+        || bundle.harbor_trial_id.is_empty()
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "live receipt bundle must include bundle, campaign, SHC host, Harbor job, and Harbor trial refs",
+        );
+    }
+
+    if bundle.benchmark_suite_ref != manifest.benchmark_suite_ref
+        || bundle.dataset != manifest.dataset
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "live receipt bundle benchmark suite and dataset must match split manifest",
+        );
+    }
+
+    if bundle.public_status_label != "live smoke measured only"
+        || bundle.public_claim_level != BenchmarkPublicClaimLevel::None
+        || !bundle.no_lora
+        || !bundle.no_model_training
+        || !bundle.no_public_leaderboard_claim
+        || !bundle.no_paid_work_claim
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "live receipt bundle cannot claim public score, paid work, LoRA, model training, or leaderboard standing",
+        );
+    }
+
+    if bundle.redaction_state != BenchmarkRedactionState::PublicSafe {
+        return stage0_live_receipt_error(&bundle.bundle_ref, "bundle must be public-safe");
+    }
+
+    let required_file_refs = PROBE_RUNNER_REQUIRED_ARTIFACT_FILES
+        .iter()
+        .map(|file_name| file_name.to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+    let bundle_file_refs = bundle
+        .normalized_artifact_file_names
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    if bundle_file_refs != required_file_refs {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "live receipt bundle must preserve the complete normalized Probe artifact file set",
+        );
+    }
+
+    if bundle.source_issue_refs.is_empty()
+        || bundle.live_assignment_ids.len() < 3
+        || bundle.metric_calls.is_empty()
+        || bundle.probe_assignment_refs.is_empty()
+        || bundle.probe_run_record_refs.is_empty()
+        || bundle.probe_closeout_refs.is_empty()
+        || bundle.probe_closeout_json_refs.is_empty()
+        || bundle.verifier_refs.is_empty()
+        || bundle.verifier_result_refs.is_empty()
+        || bundle.artifact_manifest_refs.is_empty()
+        || bundle.proof_bundle_refs.is_empty()
+        || bundle.resource_usage_receipt_refs.is_empty()
+        || bundle.resource_unavailable_reasons.is_empty()
+        || bundle.route_scorecard_refs.is_empty()
+        || bundle.failure_classification_refs.is_empty()
+        || bundle.event_refs.is_empty()
+        || bundle.psionic_import_refs.is_empty()
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "live receipt bundle must preserve assignment, closeout, verifier, artifact, proof, resource, route, failure, event, and Psionic import refs",
+        );
+    }
+
+    for metric_call in &bundle.metric_calls {
+        if metric_call.payment_mode != "unpaid_smoke"
+            || metric_call.status != BenchmarkRunStatus::Failed
+            || metric_call.closeout_state != BenchmarkCloseoutState::Rejected
+            || metric_call.probe_assignment_ref.is_empty()
+            || metric_call.probe_closeout_ref.is_empty()
+            || metric_call.probe_closeout_bundle_ref.is_empty()
+            || metric_call.benchmark_result_ref.is_empty()
+            || metric_call.artifact_manifest_ref.is_empty()
+            || metric_call.benchmark_cloud_proof_bundle_ref.is_empty()
+            || metric_call.resource_usage_receipt_ref.is_none()
+            || metric_call.verifier_ref.is_empty()
+            || metric_call.verifier_result_ref.is_empty()
+            || !metric_call.artifact_available
+            || metric_call.failure_classification_ref.is_none()
+        {
+            return stage0_live_receipt_error(
+                &bundle.bundle_ref,
+                "live metric call must preserve unpaid failed closeout, verifier, artifact, proof, resource, route, and failure refs",
+            );
+        }
+    }
+
+    if serde_json::to_value(bundle)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "live receipt bundle contains unsafe material",
         );
     }
 
@@ -2316,6 +2692,103 @@ fn validation_sweep_error<T>(
         sweep_ref: sweep_ref.into(),
         reason: reason.into(),
     })
+}
+
+fn stage0_live_receipt_error<T>(
+    bundle_ref: impl Into<String>,
+    reason: impl Into<String>,
+) -> Result<T, BenchmarkContractError> {
+    Err(BenchmarkContractError::Stage0LiveReceiptInvalid {
+        bundle_ref: bundle_ref.into(),
+        reason: reason.into(),
+    })
+}
+
+fn shc_harbor_live_smoke_closeout(
+    task: &BenchmarkSplitTaskEntry,
+    assignment: &ProbeBenchmarkAssignment,
+) -> ProbeBenchmarkObservedCloseout {
+    let run_ref = "benchmark_run.probe.shc_harbor.db_wal_recovery.20260608";
+    ProbeBenchmarkObservedCloseout {
+        closeout_ref: String::from("probe_closeout.shc_harbor.db_wal_recovery.20260608"),
+        run_ref: String::from(run_ref),
+        assignment_ref: assignment.assignment_ref.clone(),
+        candidate_hash: assignment.candidate_hash.clone(),
+        run_status: BenchmarkRunStatus::Failed,
+        score_bps: None,
+        artifact_manifest_refs: vec![String::from(
+            "artifact_manifest.probe.shc_harbor.db_wal_recovery.20260608",
+        )],
+        proof_bundle_refs: vec![String::from(
+            "proof_bundle.probe.shc_harbor.db_wal_recovery.20260608",
+        )],
+        resource_usage_receipt_ref: None,
+        resource_unavailable_reason: Some(String::from(
+            "shc_harbor_meter_unavailable_after_nonzero_agent_exit",
+        )),
+        verifier_result_refs: vec![String::from(
+            "verifier_result.terminal_bench.db_wal_recovery.shc_harbor.20260608.reward_0",
+        )],
+        event_refs: vec![
+            String::from("event.shc_harbor.db_wal_recovery.20260608.assignment_accepted"),
+            String::from("event.shc_harbor.db_wal_recovery.20260608.harbor_started"),
+            String::from("event.shc_harbor.db_wal_recovery.20260608.agent_nonzero_exit"),
+            String::from("event.shc_harbor.db_wal_recovery.20260608.closeout_rejected"),
+        ],
+        policy_finding_refs: Vec::new(),
+        partial_artifact_refs: vec![
+            String::from("artifact_ref.shc_harbor.db_wal_recovery.20260608.job_result_json"),
+            String::from("artifact_ref.shc_harbor.db_wal_recovery.20260608.trial_result_json"),
+            String::from(
+                "artifact_ref.shc_harbor.db_wal_recovery.20260608.agent_trajectory_digest",
+            ),
+        ],
+        failure_classification_ref: Some(String::from(
+            "failure_classification.probe.shc_harbor.db_wal_recovery.nonzero_agent_exit",
+        )),
+        route_scorecard: ProbeBenchmarkRouteScorecard {
+            schema_ref: String::from(PROBE_BENCHMARK_ROUTE_SCORECARD_SCHEMA_REF),
+            scorecard_ref: String::from(
+                "route_scorecard.probe.shc_harbor.db_wal_recovery.20260608",
+            ),
+            candidate_hash: assignment.candidate_hash.clone(),
+            expected_cost_ref: String::from("cost.probe.expected.unpaid_smoke"),
+            expected_latency_ms: 900_000,
+            observed_cost_ref: String::from("cost.probe.observed.shc_harbor.unavailable"),
+            observed_latency_ms: 61_499,
+            post_closeout_route_score_bps: 1_000,
+            privacy_tier: ProbeBenchmarkPrivacyTier::ShcBox,
+            rejected_routes: vec![
+                ProbeBenchmarkRejectedRoute {
+                    reason_ref: String::from("reason.probe.route.apple_fm_not_admitted_on_shc"),
+                    route_kind: ProbeBenchmarkRouteKind::AppleFm,
+                    route_ref: String::from("route.probe.apple_fm.local"),
+                },
+                ProbeBenchmarkRejectedRoute {
+                    reason_ref: String::from(
+                        "reason.probe.route.pylon_worker_not_wired_for_live_smoke",
+                    ),
+                    route_kind: ProbeBenchmarkRouteKind::Pylon,
+                    route_ref: String::from("route.probe.pylon.unpaid_smoke"),
+                },
+            ],
+            route_reason_ref: String::from("reason.probe.route.shc_harbor_probe_signature_smoke"),
+            selected_agent_or_model_ref: String::from(
+                "agent.probe_codex.signature.sqlite_wal_recovery",
+            ),
+            selected_isolation_profile_ref: String::from("isolation.shc.harbor.terminal_bench"),
+            selected_provider_ref: String::from(SHC_HARBOR_LIVE_SMOKE_HOST_REF),
+            selected_route_kind: ProbeBenchmarkRouteKind::ProbeCodex,
+            selected_runner_ref: String::from("runner.shc.oa_shc_katy_01.harbor"),
+            selected_signature_refs: assignment.selected_blueprint_signature_refs.clone(),
+            selected_verifier_ref: task.scorer_verifier.verifier_ref.clone(),
+            tool_menu_ref: assignment.tool_menu_ref.clone(),
+            trust_tier: ProbeBenchmarkTrustTier::OwnedWorker,
+        },
+        started_at: String::from("2026-06-08T13:05:43.262399Z"),
+        completed_at: String::from("2026-06-08T13:06:44.761206Z"),
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    }
 }
 
 fn pylon_benchmark_worker_blockers(
@@ -4003,6 +4476,78 @@ mod tests {
         assert!(matches!(
             validate_probe_gepa_stage0_smoke_campaign(&campaign, &manifest),
             Err(BenchmarkContractError::Stage0SmokeInvalid { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_stage0_live_receipt_bundle_preserves_shc_harbor_refs()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let bundle = build_probe_gepa_stage0_live_receipt_bundle(
+            &manifest,
+            "probe.commit.shc-live-smoke-20260608",
+        )
+        .map_err(|error| format!("unexpected Stage 0 live bundle error: {error:?}"))?;
+
+        assert_eq!(
+            bundle.bundle_id,
+            "probe-gepa-stage0-live-shc-harbor-receipt-2026-06-08"
+        );
+        assert_eq!(bundle.public_status_label, "live smoke measured only");
+        assert_eq!(bundle.public_claim_level, BenchmarkPublicClaimLevel::None);
+        assert_eq!(bundle.harbor_job_id, SHC_HARBOR_LIVE_SMOKE_JOB_ID);
+        assert_eq!(bundle.harbor_trial_id, SHC_HARBOR_LIVE_SMOKE_TRIAL_ID);
+        assert_eq!(bundle.metric_calls.len(), 1);
+        assert_eq!(bundle.metric_calls[0].payment_mode, "unpaid_smoke");
+        assert_eq!(
+            bundle.metric_calls[0].closeout_state,
+            BenchmarkCloseoutState::Rejected
+        );
+        assert_eq!(bundle.metric_calls[0].status, BenchmarkRunStatus::Failed);
+        assert!(
+            bundle
+                .probe_closeout_json_refs
+                .contains(&String::from("probe-closeout.json"))
+        );
+        assert!(
+            bundle
+                .normalized_artifact_file_names
+                .contains(&String::from("resource_usage_receipt.json"))
+        );
+        assert!(bundle.failure_classification_refs.contains(&String::from(
+            "failure_classification.probe.shc_harbor.db_wal_recovery.nonzero_agent_exit"
+        )));
+        assert_eq!(bundle.resource_usage_receipt_refs.len(), 1);
+        assert_eq!(bundle.route_scorecard_refs.len(), 1);
+        validate_probe_gepa_stage0_live_receipt_bundle(&bundle, &manifest)
+            .map_err(|error| format!("unexpected live bundle validation error: {error:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_stage0_live_receipt_bundle_rejects_public_or_paid_overclaim()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let mut bundle = build_probe_gepa_stage0_live_receipt_bundle(
+            &manifest,
+            "probe.commit.shc-live-smoke-20260608",
+        )
+        .map_err(|error| format!("unexpected Stage 0 live bundle error: {error:?}"))?;
+
+        bundle.public_claim_level = BenchmarkPublicClaimLevel::LiveClaim;
+        assert!(matches!(
+            validate_probe_gepa_stage0_live_receipt_bundle(&bundle, &manifest),
+            Err(BenchmarkContractError::Stage0LiveReceiptInvalid { .. })
+        ));
+
+        bundle.public_claim_level = BenchmarkPublicClaimLevel::None;
+        bundle.no_paid_work_claim = false;
+        assert!(matches!(
+            validate_probe_gepa_stage0_live_receipt_bundle(&bundle, &manifest),
+            Err(BenchmarkContractError::Stage0LiveReceiptInvalid { .. })
         ));
         Ok(())
     }
