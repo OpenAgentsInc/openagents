@@ -1,469 +1,375 @@
 # OpenAgents
 
-OpenAgents is building the economic infrastructure for machine work.
+OpenAgents is the agent cloud for verifiable machine work.
 
-We are focused on two linked problems in AI:
+The product turns agent activity into accepted outcomes: a bounded request,
+a workroom, artifacts, verification, human acceptance, receipts, route
+scorecards, and settlement evidence. The first commercial wedge is **Coding on
+Autopilot**: a hosted coding-agent control surface for power users who want
+long-running work across repos, accounts, and managed workrooms without
+babysitting every turn.
 
-- agent misuse can create massive economic damage when output outruns
-  verification
-- compute supply is constrained, so capacity has to be allocated more
-  intelligently
+The larger system is broader than coding. OpenAgents connects personal agents,
+provider nodes, model/runtime infrastructure, Bitcoin-native payments,
+benchmark-driven learning, public proof, and a marketplace for compute, data,
+labor, liquidity, and risk. Some internal planning docs call the fully
+integrated product "Omni." The public product remains OpenAgents, with
+Autopilot as the main buyer/operator surface.
 
-The OpenAgents marketplace has five interlocking markets:
+## Current Product
 
-- `Compute`
-- `Data`
-- `Labor`
-- `Liquidity`
-- `Risk`
+### Coding on Autopilot
 
-This repo also owns several key shipped and planned product surfaces:
+Coding on Autopilot is the launch product.
 
-- the `Autopilot` desktop product and market-facing runtime surfaces
-- the Tauri `Autopilot` shell scaffold at `apps/autopilot`
-- the `Pylon` provider connector
-- the `Nexus` hosted coordination and authority slice
-- the `wgpui` product UI stack
-- starter kernel and proto authority surfaces
-- the current secondary Data Market slice
+The user starts a mission against a repo, connects or grants access to coding
+accounts and runners, and lets Autopilot run work in managed workrooms. The
+deliverable is an Autopilot Mission Briefing: what changed, what ran, what
+failed, which decisions are waiting, what it cost, which route was used, and
+which artifacts prove the result.
 
-Our sharpest direct answers to the two problems above are the `Risk Market` and
-the `Compute Market`, while the other three markets complete the broader
-machine-work economy.
+The first accepted outcome is a reviewable coding result:
 
-The Risk Market exists to price failure probability, verification depth,
-coverage, and liability before unsafe machine work is trusted. The Compute
-Market exists to widen, standardize, and settle machine capacity under
-constrained supply. Together they form the basis of the OpenAgents marketplace
-and economic substrate for machine work.
+- a scoped objective;
+- a repo and trust policy;
+- one or more workroom runs;
+- diffs, tests, logs, previews, and artifacts;
+- route scorecards and cost/provenance refs;
+- human acceptance or rejection;
+- settlement and public-safe proof when money is involved.
 
-## Autopilot
+The first target user is a Codex power user with real repos and long-running
+work. Codex is the first launch engine. Probe is the owned runtime path that
+lets OpenAgents control sessions, tool policy, backends, closeout bundles, and
+benchmark evidence behind the same product shell.
 
-Autopilot is your personal agent.
+### Autopilot
 
-Autopilot runs on your computer, where it can do useful work for you and others, earning you bitcoin. Soon you can control Autopilot from our mobile app or openagents.com.
+Autopilot is the personal operator surface for OpenAgents.
 
-Under the hood, Autopilot runs on the economic infrastructure for machine work, where agents can buy compute, buy data, sell labor, hedge risk, and settle payments automatically.
+On the web, Autopilot lives in `openagents.com` and is implemented in the
+active sibling repo `autopilot-omega`. That product owns missions, workrooms,
+project rooms, account fleets, public/private projections, Forum surfaces,
+Artanis, Pylon network readiness surfaces, and payment-facing user flows.
 
-The MVP is intentionally narrow. The primary shipped revenue loop is still compute: one user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning.
+In this repo, Autopilot also has native and desktop roots:
 
-In parallel, the repo now also ships a starter Data Market slice: a dedicated `Data Seller` conversational pane, a read-only `Data Market` pane, a narrow `Data Buyer` request pane, full `autopilotctl data-market ...` control, a no-window `autopilot_headless_data_market` runtime, a terminal-driven `seller-prompt` entrypoint into the same seller lane, and a verified targeted NIP-90 request/result path over real public relays.
+- `apps/autopilot`: the next Tauri desktop shell prototype.
+- `apps/autopilot-deprecated`: the retained WGPUI desktop surface and control
+  plane used by existing local-runtime, provider, wallet, data-market, and
+  programmatic-control flows.
 
-The market is still called the OpenAgents Compute Market. At launch, the first live compute product families are `inference` and `embeddings`. That is an umbrella compute market with standardized launch products inside it, not a claim that raw accelerator spot or futures trading is already live.
+The desktop product remains important because local machines are provider
+nodes. A user can run Autopilot or Pylon locally, bring a machine online, and
+earn Bitcoin for accepted work when the relevant work class is available.
 
-This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
+### Pylon
 
-The web product deployed at `autopilot.openagents.com` is not owned here. It
-lives in the sibling private `autopilot` repo and consumes Blueprint for CRM,
-CEO, Voice, Memory, Action, Program, evidence, and receipt authority. This
-repo remains the home for native/desktop, market-facing, kernel-facing, Nexus,
-Pylon, WGPUI, and compute/data-market work.
+Pylon is the public provider node.
 
-The next Tauri implementation now lives in this monorepo:
+It lets a machine register, heartbeat, advertise capabilities, receive bounded
+assignments, run work locally, upload artifacts and proof refs, and expose
+wallet/readiness state for payout. Current Pylon v0.2 work uses MoneyDevKit by
+default for the normal release and payment-proof path. Native LDK remains a
+lower-level regression and hardening lane.
 
-```text
-apps/autopilot
-```
-
-Do not call that app `autopilot-tauri`. The product name is `Autopilot`; Tauri
-is the desktop shell implementation.
-
-The current WGPUI desktop surface remains at `apps/autopilot-deprecated` while
-the Tauri shell proves the next product direction.
-
-## Marketplace
-
-Autopilot connects you to the OpenAgents Marketplace, which consists of five interlocking markets — compute, data, labor, liquidity, risk — running on one shared economic substrate.
-
-```text
-Applications / Wedge
-  Autopilot
-    personal agent, wallet, desktop runtime, first earning loop
-
-Markets on one shared substrate
-  Compute Market
-    buys and sells machine capacity, with inference and embeddings as the first live compute product families
-
-  Data Market
-    buys and sells access to datasets, artifacts, stored conversations, and local context
-
-  Labor Market
-    buys and sells machine work
-
-  Liquidity Market
-    routing, FX, and value movement between participants and rails
-
-  Risk Market
-    prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
-
-Economic Kernel
-  contracts, verification, liability, settlement, policy, receipts
-
-Execution + Coordination Substrate
-  local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
-```
-
-These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
-
-The compute market allocates scarce machine capacity. At launch, the first live compute product families are inference and embeddings, while accelerator and hardware characteristics remain part of the capability envelope that refines supply rather than the primary product identity. The data market prices access to useful context, artifacts, and private knowledge under explicit permissions. The labor market turns compute and data into completed work. The liquidity market moves value through the system. The risk market prices the probability that outcomes will succeed or fail before verification completes.
-
-Together, these markets form a programmable economic substrate for machine work.
-
-In effect, the system treats uncertainty itself as a tradable signal. Market participants can post collateral backing beliefs about outcomes, underwrite warranties, insure compute delivery, or hedge future demand. Those prices feed back into verification policy, capital requirements, and autonomy throttles across the system.
-
-A higher-level overview lives in [docs/kernel/README.md](docs/kernel/README.md).
-
-The product authority is [docs/MVP.md](docs/MVP.md).
-Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
-Autopilot UI style is defined in
-[docs/ENGINEERING_GRAPHICS_UI.md](docs/ENGINEERING_GRAPHICS_UI.md).
-Docs are indexed in [docs/README.md](docs/README.md).
-
-For the current release cut and honest shipped-vs-planned scope, see
-[docs/v01.md](docs/v01.md).
-
-## Earn
-
-Autopilot Earn starts with the OpenAgents Compute Market. You run the desktop app, press `Go Online`, and offer standardized compute products into the network. At launch, the first live compute product families are inference and embeddings. Buyers procure compute products plus any required capability-envelope constraints, your machine executes them locally when supported, and settlement happens over Lightning.
-
-MVP completion means this loop works end to end with clear proof in-app: job lifecycle, payment settlement, and wallet-confirmed earnings. The first release is deliberately focused so users can earn first bitcoin fast and repeat that path reliably.
-
-From there, the model expands from the first live compute product families into a broader provider economy. Compute is lane one. Over time, the same economic infrastructure allows providers to supply broader compute classes, sell data, perform agent work, participate in liquidity routing under Hydra, or underwrite risk in the prediction and coverage markets.
-
-The architecture stays the same: intent-driven work, deterministic receipts, and explicit payouts.
-
-For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/autopilot-earn/README.md](docs/autopilot-earn/README.md).
-For canonical implementation status, see: [docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md](docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md).
-The broader Autopilot Earn doc set is consolidated under `docs/autopilot-earn/`.
-
-## Pylon
-
-`Pylon` is the standalone provider node for the current paid training path.
-It is the easiest way to put a machine online for OpenAgents jobs without
-running the full Autopilot desktop app.
-
-Run it once with npm:
+The user-facing command is:
 
 ```bash
 npx @openagentsinc/pylon
 ```
 
-Or install the package-managed launcher and then use the normal provider
-command:
+The current Pylon release train is gated by Omega network readiness. The recent
+proof path covers public install, registration and heartbeat, wallet readiness,
+assignment leases, closeout, public-safe receipts, Artanis launch supervision,
+and MDK payment movement. Broad earning claims stay blocked until the release
+gate has repeated network smokes, payout evidence, failure drills, and public
+release promotion.
 
-```bash
-npm install -g @openagentsinc/pylon
-pylon
-```
+### Artanis
 
-By default, the package-managed launcher checks trusted GitHub `pylon-v...`
-releases at startup and then on a six-hour background cadence while the Pylon
-terminal UI is open. If a newer release initiated by `AtlantisPleb` appears,
-the launcher downloads and verifies the matching standalone binary, then
-restarts the local dashboard from the updated cache. Set `GITHUB_TOKEN` or
-`GH_TOKEN` to authenticate GitHub release lookups when running from a shared
-network, and use `pylon --no-updates` only when you intentionally need to keep
-the currently installed cached binary running.
+Artanis is the public-safe campaign narrator and overseer for selected
+OpenAgents work.
 
-Auto-update is a launcher feature, not a native feature of direct release
-assets. Keep the npm or bun-installed `pylon` command on `PATH` if you want
-automatic updates. If you extract a GitHub `pylon-v...` archive and run the
-standalone `./pylon` binary directly, that process reports its compiled version
-until you manually replace it with a newer archive.
+Artanis appears on public surfaces such as `/artanis`, `/agents/artanis`, and
+the OpenAgents Forum. Artanis can summarize campaign state, blockers,
+receipts, Pylon status, benchmark evidence, and next actions from public-safe
+refs.
 
-Keep that process running. Pylon creates local node identity and wallet state,
-marks the node online, advertises eligible capabilities to Nexus, asks for
-available work, executes assigned jobs locally, and watches for accepted-work
-payouts. A normal Pylon operator should not need a Nexus admin bearer token,
-a CS336-specific command, a direct artifact-store credential, or a separate
-course opt-in. The user-facing contract is: run `pylon`, stay online, and get
-paid when assigned work closes out as accepted.
+Artanis does not own runtime authority. It does not spend money, mutate
+settlement, promote runtime candidates, run benchmarks, score results, launch
+unapproved provider work, or publish stronger public claims without the
+operator/Omega authority path. That boundary matters because Artanis is meant
+to increase public trust without exposing private workroom state, provider
+credentials, wallet material, raw prompts, raw logs, or private repo contents.
 
-Current production truth:
+### Probe GEPA And Benchmark Cloud
 
-- The current recommended paid-training launcher is `@openagentsinc/pylon`
-  `0.1.17` or newer. It resolves the latest trusted `pylon-v...` release asset
-  and keeps the running dashboard updated on the bounded background cadence
-  unless `--no-updates` or a pinned `--version` is used.
-- The latest trusted standalone binary release is `pylon-v0.1.16`, published
-  by `AtlantisPleb`.
-- Public `/api/stats` online client versions are live provider heartbeat
-  versions, not installer intent. A lingering `pylon/0.1.14` row after
-  `pylon-v0.1.16` is published means an old process is still running, a pinned
-  or `--no-updates` launcher is active, or a direct-release binary was started
-  manually. It is not fixed by the stats page hiding the old row.
-- The live paid work class is bounded hosted homework/training work, currently
-  the CS336 A1 starter lane used to prove the earning loop.
-- Work is not yet a fully open demand marketplace. Hosted Nexus currently
-  paces paid homework jobs from the server side.
-- Production Nexus automatically dispatches a fresh CS336 A1 homework run about
-  every 10 minutes for online eligible Pylons. The current automatic pacing
-  target is `pylon-v0.1.16+`, online-only, up to 256 contributors, 25 sats per
-  accepted contribution, and a 6,400-sat cap per automatic cycle.
-- Admins can still trigger override batches with
-  `POST /v1/admin/homework/cs336-a1/dispatch` when they need a bounded proof,
-  faster smoke, or a temporary payout pace different from the automatic loop.
-- Online eligible Pylons can receive those jobs automatically when work is
-  available. Users do not manually pick the assignment.
-- Treasury pays only accepted homework work. Placeholder/liveness payouts,
-  including the old periodic 600-sat sends, are not part of the current claim.
-- Pylon currently still needs the local training runtime prerequisites for this
-  homework lane. In practice, keep a compatible Psionic checkout discoverable
-  until that runtime is bundled more tightly. `pylon doctor` and
-  `pylon training status --json` report missing runtime prerequisites.
-- For Psionic-backed homework/training work, `0.1.12` fixed the Mac launch
-  path. `0.1.13` keeps that worker-launch behavior and removes the last legacy
-  runtime wording plus automatic runtime mutation from the public install path.
-  `0.1.14` keeps those guarantees and fixes the production long-homework-ID
-  crash that could make the TUI-managed worker exit with status 1 while stale
-  dashboard panels still looked alive. `0.1.15` additionally blocks terminal
-  training-window seal until the worker contribution artifact bundle has
-  uploaded and verified, preventing validators from seeing a sealed
-  contribution whose signed artifact fetch still returns 404. `0.1.16`
-  packages the minimal Psionic training runtime for standalone homework-worker
-  admission. `@openagentsinc/pylon` `0.1.17` is a package-only launcher update
-  that forwards CLI subcommands such as `pylon status --json` and uses a
-  bounded background update cadence. Pylon runs a current
-  `target/release/psionic-train` when present and otherwise falls back to
-  `cargo run --release`, with failure receipts that show signal/log-tail
-  details instead of only `code -1`.
+OpenAgents is building a benchmark-driven learning loop for coding agents.
 
-Useful inspection commands:
+Probe emits coding-agent run evidence: assignments, run records, closeout
+bundles, decision traces, route scorecards, selected Blueprint signatures,
+tool menus, policy findings, and failure classifications.
 
-```bash
-pylon --version
-pylon status --json
-pylon training status --json
-pylon wallet balance --json
-pylon wallet channels --json
-pylon wallet history --limit 20 --json
-```
+OpenAgents Benchmark Cloud owns public benchmark contracts and public-safe
+runner evidence. It currently includes Terminal-Bench split manifests, Probe
+runner adapter contracts, retained and validation examples, SHC/Harbor smoke
+receipts, resource receipts, verifier refs, and redaction policy.
 
-The v0.2 built-in wallet path is LDK-backed and user-owned. `wallet status`,
-`wallet channels`, `wallet history`, and `wallet telemetry` distinguish
-on-chain funds, spendable on-chain funds, Lightning channel balance, inbound
-liquidity, outbound liquidity, and the anchor reserve that must stay available
-for channel safety. A wallet can be able to receive on-chain Bitcoin while still
-not being ready to receive Lightning payments; in that case the channel
-readiness state surfaces the typed reason, usually no channels, a pending
-channel, disconnected peers, or missing inbound liquidity. LSP support is
-reported separately: the linked LDK Node stack exposes LSPS1/LSPS2 integration
-hooks, but Pylon reports `lsp_state=not_configured` until operator LSP
-credentials and policy are configured.
+Psionic owns GEPA optimization state. It tracks candidate manifests, rollout
+state, candidate frontier imports, reflection/proposal state, and live
+closeout imports. This is rollout optimization over text and policy bundles.
+Model-weight training comes later after clean rollout traces exist.
 
-For noninteractive operator proof, do not let the npm bootstrap launch an
-interactive UI. Bootstrap with `--no-launch`, then run the installed `pylon`
-binary directly from the bootstrap cache or install root.
+Omega projects the benchmark campaign state into product metrics and public
+Artanis summaries. Current public-safe claims are limited to measured smoke,
+retained summaries, validation summaries, and explicit settlement states.
+Current public claims exclude Terminal-Bench score claims, active production
+runtime claims for GEPA candidates, and general paid/settled Pylon benchmark
+claims.
 
-A prior npm release-asset production proof used `pylon-v0.1.8`, an
-npm-installed worker, a separate validator, and a separately triggered admin
-homework run. The run reconciled with one accepted contribution,
-`closeout_status=rewarded`, a confirmed and settled 25-sat accepted-work
-Treasury payout, and a 25-sat worker wallet balance. The proof receipt is
-[docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json](docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json).
+### Data Market
 
-The latest Autopilot-controlled production proof used `main` at `96295609b`,
-started the Autopilot-managed Pylon process in `online` mode, dispatched a
-bounded hosted homework run, validated it with a separate validator, and
-verified the worker wallet increased from `0` to `25` sats. That proof is
-recorded in
-[docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md](docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md).
-That source proof is newer than the older `pylon-v0.1.9` tag. The
-`pylon-v0.1.10` release carried those Autopilot/Pylon fixes through the public
-release asset and npm bootstrap path. `pylon-v0.1.11` made `pylon` open the
-minimal homework dashboard, had the TUI start and supervise the earning worker,
-and kept Gemma diagnostics/downloads opt-in during homework onboarding.
-`pylon-v0.1.12` was the first live hosted-Nexus homework dispatcher floor
-because it fixed the Psionic-backed Mac training-worker launch path.
-`pylon-v0.1.16` is the current recommended public binary because it keeps the
-`0.1.14` path-hashing and TUI worker-exit fixes, prevents terminal workers from
-sealing a window before their contribution artifact bundle is actually
-reachable for validator replay, and packages the minimal Psionic training
-runtime. Use `@openagentsinc/pylon` `0.1.17` or newer for the package-managed
-launcher fixes around CLI forwarding and bounded GitHub update polling.
-The `0.1.16` release receipt is
-[docs/reports/nexus/20260427-pylon-v0.1.16-release.json](docs/reports/nexus/20260427-pylon-v0.1.16-release.json).
-The `0.1.15` release receipt is
-[docs/reports/nexus/20260426-pylon-v0.1.15-release.json](docs/reports/nexus/20260426-pylon-v0.1.15-release.json).
-The `0.1.14` release receipt is
-[docs/reports/nexus/20260425-pylon-v0.1.14-release.json](docs/reports/nexus/20260425-pylon-v0.1.14-release.json).
-The `0.1.13` release receipt is
-[docs/reports/nexus/20260423-pylon-v0.1.13-release.json](docs/reports/nexus/20260423-pylon-v0.1.13-release.json).
-The `0.1.11` release receipt is
-[docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json](docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json).
-The prior full accepted-work payout proof remains
-[docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json](docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json).
+This repo also retains a real secondary Data Market slice.
 
-Operator details live in
-[docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md](docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md).
-The retrospective audit is
-[docs/reports/nexus/2026-04-21-issue-4368-retrospective-audit.md](docs/reports/nexus/2026-04-21-issue-4368-retrospective-audit.md).
+The current path has a Data Seller lane, a read-only Data Market pane, a
+narrow Data Buyer targeted-request surface, `autopilotctl data-market ...`
+control, a headless runtime, and targeted NIP-90 request/result transport for
+permissioned data vending. Kernel objects cover data assets, access grants,
+delivery bundles, and revocation receipts.
 
-## Data Market
+The Data Market is not the first commercial wedge. It is part of the same
+accepted-outcome economy because useful agent work often needs permissioned
+context, source-backed knowledge, and paid data access.
 
-The current Data Market is a real secondary MVP slice, not just a spec.
+### Kernel, Nexus, And Payments
 
-What exists now:
+The kernel gives OpenAgents its economic vocabulary: work units, contracts,
+verification, liability, settlement, policy, and receipts. Products should
+project this state; authority should stay in backend services and operator
+gates.
 
-- `Data Seller`: a dedicated conversational seller lane for drafting, exact preview, confirm, publish, grant issuance, payment-required feedback, delivery, and revocation
-- `Data Market`: a read-only market snapshot and operator-facing lifecycle pane that now surfaces packaging posture, redacted Codex-export markers, and recent fulfillment activity
-- `Data Buyer`: a narrow buyer surface that selects a visible asset/default offer, shows the bundle/posture being purchased, and publishes a targeted request
-- `autopilotctl data-market ...`: full shell-first control over the same app-owned seller/buyer state machine
-- `autopilotctl data-market seller-prompt "<prompt>"`: terminal automation of the same dedicated `Data Seller` lane for audits and agent-driven seller flows
-- `autopilot_headless_data_market`: a no-window runtime for scripts, operators, and agents
-- repo-owned skills for both conversational and CLI-first seller flows
+Nexus remains the retained coordination and proof surface for public provider
+work, training runs, relay/control paths, stats, receipts, and Pylon/Nexus
+history inside this repo. The current Pylon v0.2 default release path uses
+Omega, Cloudflare, and MoneyDevKit for the normal payment proof. The older
+GCP-hosted native Nexus/LDK path is a regression and hardening lane unless an
+issue explicitly targets it.
 
-How it works today:
+Forum tips, generated Site payments, agent-paid L402 actions, checkout returns,
+and Pylon settlement proofs all feed the same product requirement: money
+movement must have private credentials, public-safe receipts, explicit claim
+states, and no accidental public leakage.
 
-- kernel authority owns `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt`
-- desktop, CLI, and skills all drive the same app-owned data-market logic through typed desktop-control actions
-- the panes are intentionally read-heavy: `autopilotctl` and headless/skill flows steer mutations, while the UI exposes the exact preview, package, posture, request, payment, delivery, and revocation truth
-- transport is a targeted NIP-90 data-vending profile:
-  - request kind `5960`
-  - result kind `6960`
-  - handler/capability kind `31990`
-- the strict public-relay verification path now works live against:
-  - `wss://relay.damus.io`
-  - `wss://relay.primal.net`
+## Product Model
 
-Where to start:
-
-- implementation/status: [docs/kernel/markets/data-market.md](docs/kernel/markets/data-market.md)
-- CLI and headless runbook: [docs/headless-data-market.md](docs/headless-data-market.md)
-- latest seller-prompt paid-flow proof: [docs/audits/2026-03-21-data-seller-one-sentence-prompt-paid-flow-audit.md](docs/audits/2026-03-21-data-seller-one-sentence-prompt-paid-flow-audit.md)
-- implementation spec and backlog: [docs/plans/data-market-mvp-implementation-spec.md](docs/plans/data-market-mvp-implementation-spec.md)
-- repo-owned skills: [skills/README.md](skills/README.md)
-
-## Kernel
-
-### What it is
-
-The **Economy Kernel** is the shared substrate behind the agents marketplace.
-
-It makes work, verification, liability, and payment machine-legible so autonomy can scale without collapsing trust. It is not a wallet and not a UI. It is the authority layer that products and markets program against.
-
-Every important action is explicit, policy-bounded, and receipted.
-
-### What it provides
-
-The kernel provides:
-
-* **WorkUnits and contracts** for defining machine work and its acceptance criteria
-* **Verification** with tiers, evidence, and independence requirements
-* **Settlement** with payment proofs, replay safety, and explicit failure modes
-* **Bounded credit** through envelopes rather than open-ended lines
-* **Collateral** through bonds and reserves
-* **Liability** through warranties, claims, and remedies
-* **Observability** through public snapshots and operator-grade stats
-
-### The market layers above it
-
-The marketplace layers on top of the kernel are:
-
-* **Compute Market** — spot and forward machine capacity, delivery proofs, and pricing signals for compute
-* **Data Market** — permissioned access to datasets, artifacts, stored conversations, and local context
-* **Labor Market** — agent-delivered work that consumes compute and settles against verified outcomes
-* **Liquidity Market** — routing, solver participation, FX, exchange, and settlement across participants and rails
-* **Risk Market** — prediction, coverage, underwriting, and policy signals that price uncertainty across labor and compute
-
-Together these layers form a programmable economic substrate for machine work: compute providers supply capacity, data providers supply context, agents perform tasks, liquidity markets move value, and risk markets price uncertainty. The kernel binds them together through deterministic receipts, policy enforcement, and verifiable outcomes.
-
-### Why the risk market matters
-
-Risk markets are used to price uncertainty across the system.
-
-Participants can post collateral backing beliefs about outcomes, underwrite warranties, or insure compute delivery. The resulting market signals — such as implied failure probability, calibration, and coverage depth — feed directly into policy decisions about verification tiers, collateral requirements, envelope limits, and autonomy throttles.
-
-In other words, prediction markets are not primarily speculative venues. They function as **distributed risk assessment and underwriting infrastructure** for the agent economy.
-
-### The control loop
-
-The central control variable is **verifiable share** (`sv`): the fraction of work verified to an appropriate tier before money is released.
-
-That matters because the constraint in an agent economy is not raw output. It is trusted output.
-
-The kernel uses verification results, receipts, incidents, market signals, and policy bundles to decide:
-
-* whether work can settle
-* how much autonomy is allowed
-* how much collateral is required
-* when to tighten or halt risky flows
-
-### Runtime and authority model
-
-Autopilot runs locally on the user's machine. The desktop app is where jobs are received, work is executed, wallet state is shown, and local job history is projected.
-
-Authority does **not** live in the desktop client.
-
-Authority lives in backend services: **TreasuryRouter** and the **Kernel Authority API**. The app sends authenticated HTTPS requests to TreasuryRouter, which evaluates policy and invokes kernel authority operations. Money movement, settlement, verdict finalization, and other authoritative state changes happen there and are recorded as canonical receipts.
-
-**Nostr** and **Spacetime** are used for coordination, sync, identity, and projections. They are not authority lanes for money, liability, or verdict changes.
-
-This separation is intentional:
-
-* local runtime executes work
-* backend authority mutates economic truth
-* coordination channels project progress
-* receipts provide the canonical audit trail
-
-### Read more
-
-Planning and diagrams:
-
-* **[docs/kernel/README.md](docs/kernel/README.md)** — high-level overview of the kernel and marketplace layers
-* **[docs/kernel/markets/README.md](docs/kernel/markets/README.md)** — canonical per-market implementation status for Compute, Data, Labor, Liquidity, and Risk
-* **[docs/kernel/economy-kernel.md](docs/kernel/economy-kernel.md)** — normative spec: invariants, work, verification, liability, settlement, and control loop
-* **[docs/kernel/economy-kernel-proto.md](docs/kernel/economy-kernel-proto.md)** — proto-first design: packages, PolicyBundle, EconomySnapshot, incidents, safety, and audit
-* **[docs/kernel/markets/risk-market.md](docs/kernel/markets/risk-market.md)** — canonical risk-market implementation status
-* **[docs/kernel/prediction-markets.md](docs/kernel/prediction-markets.md)** — deeper prediction, coverage, and underwriting background
-* **[docs/kernel/diagram.md](docs/kernel/diagram.md)** — system diagrams and supporting visual framing
-
-## Agent Install Instructions
-
-If you are using a terminal coding agent, you can paste this prompt:
+OpenAgents has one core unit:
 
 ```text
-Clone https://github.com/OpenAgentsInc/openagents.git. Ensure the Rust toolchain is installed so `cargo` and `rustc` are available.
-
-If you are on Windows, do the repo, model, and runtime work inside WSL Ubuntu, not PowerShell or `cmd`, unless the user explicitly wants a Windows-native path. Install and enter Ubuntu first with `wsl --install -d Ubuntu`, `wsl -l -v`, and `wsl -d Ubuntu`. Keep the checkout under the Linux filesystem such as `~/openagents`, not under `/mnt/c/...`.
-
-If you are on Debian, Ubuntu, or WSL Ubuntu, install the native build prerequisites before building: `sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev curl git zstd`.
-
-If you are on macOS and using the Apple FM release path, test the bridge first. From the repo root: (1) build the bridge: `cd swift/foundation-bridge && ./build.sh` (requires Swift: Xcode or `xcode-select --install`). (2) Run it: `./bin/foundation-bridge` (default port 11435). (3) Verify: `curl -s http://127.0.0.1:11435/health` — confirm a JSON response. (4) Then start the desktop app: `cargo install --path .` and `cargo autopilot`. If the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead.
-
-If you are on a supported Linux NVIDIA host and using GPT-OSS, set `OPENAGENTS_GPT_OSS_BACKEND=cuda` and `OPENAGENTS_GPT_OSS_MODEL_PATH=/path/to/gpt-oss-20b-mxfp4.gguf`, then start the app. Mission Control now auto-warms the configured GPT-OSS model on startup. Verify with `autopilotctl local-runtime status` and `autopilotctl wait local-runtime-ready`.
-
-If you are bringing up standalone `Pylon`, provision a local Gemma runtime in the same environment where `pylon` will run, verify `curl http://127.0.0.1:11434/api/tags`, and make sure a `gemma4:*` model is loaded first. On Windows, do that inside WSL Ubuntu. If the machine has an NVIDIA GPU, verify passthrough with `nvidia-smi` inside WSL before claiming GPU readiness.
-
-See AGENTS.md for the Apple bridge rule and [docs/headless-compute.md](docs/headless-compute.md) for the current local-runtime runbooks.
+accepted outcome
 ```
 
-## Run Locally
+An accepted outcome records that useful work closed under explicit criteria.
+It carries the evidence needed to answer:
 
-Requires the Rust toolchain (`cargo`/`rustc`).
+- what was requested;
+- which route executed it;
+- which model, account, runner, provider, or workroom was used;
+- which artifacts were produced;
+- which checks passed or failed;
+- who accepted it;
+- what it cost;
+- who should be paid;
+- which public claims are allowed.
 
-Normal repo builds use a vendored `protoc` resolver through
-[.cargo/config.toml](.cargo/config.toml), so you do not need to install a
-machine-local Protocol Buffers compiler just to build `openagents`.
+The system supports five linked markets:
 
-**Install build prerequisites on Debian/Ubuntu:**
+- **Compute**: capacity from local machines, Pylons, SHC/GCP/Simp workrooms,
+  GPUs, CPUs, and future flexible-load providers.
+- **Data**: permissioned datasets, artifacts, context packs, transcript
+  slices, source-backed knowledge, and local data packages.
+- **Labor**: agent work sold as accepted outcomes.
+- **Liquidity**: Bitcoin, Lightning, L402, MDK, checkout, credit, payout, and
+  settlement flows.
+- **Risk**: verification depth, warranties, policy, payout gates,
+  overclaim-prevention, claim states, and route reliability.
+
+These markets share a kernel: contracts, verification, receipts, liability,
+settlement, policy, and public-safe projection.
+
+## How Work Moves
+
+The normal OpenAgents loop is:
+
+```text
+objective
+-> outcome contract
+-> route selection
+-> managed or local workroom
+-> runtime execution
+-> artifacts and proof refs
+-> verification and review
+-> accepted or rejected closeout
+-> settlement or no-spend receipt
+-> route scorecard
+-> public-safe projection
+-> benchmark, signature, or provider-memory update
+```
+
+For Coding on Autopilot, the route may start with Codex account fleets and
+managed SHC/GCP/Simp workrooms. Probe, Psionic, Pylon, and Benchmark Cloud
+provide the owned path for runtime evidence, rollout optimization, distributed
+metric calls, and measured improvement over time.
+
+For provider work, a Pylon may receive an assignment, execute locally, submit
+artifact/proof refs, and close as accepted or rejected. Payment modes are
+explicit: unpaid smoke, operator credit, payable pending settlement, settled
+Bitcoin, or rejected no-pay. Public surfaces must not imply payment unless
+settlement receipt refs exist.
+
+## Active Repos
+
+OpenAgents is split across standalone Git repos. They are intentionally not
+submodules.
+
+| Repo | Role |
+| --- | --- |
+| `autopilot-omega` | Active `openagents.com` product surface. Owns Coding on Autopilot, missions, workrooms, public/private projections, Forum, Artanis, Omega Pylon APIs, payment-facing product flows, operator dashboards, and release gates. |
+| `openagents` | This public Rust monorepo. Owns native/desktop Autopilot surfaces, Pylon app and TUI, Pylon core, provider substrate, public Benchmark Cloud contracts, kernel/proto surfaces, Nexus control/relay apps, Nostr/data-market paths, WGPUI, transcripts, release proof docs, and public provider evidence. |
+| `probe` | Owned coding-agent runtime. Owns sessions, turns, transcripts, compaction, tool policy, provider backends, assignments, Blueprint signature lookup, closeout bundles, route scorecards, benchmark evidence, and CLI/operator execution boundaries. |
+| `psionic` | Rust-native model, inference, training, and optimizer substrate. Owns GEPA candidate manifests, rollout coordination, candidate frontier state, live closeout imports, execution substrate, and future model-production loops. |
+| `cloud` | Private managed Cloud node and control-plane repo. Owns SHC/Codex control paths, workroom sidecars, Artanis bootstrap assignment contracts, managed runner adapters, and private deployment topology. |
+| `treasury` | Settlement and payment-authority work. Used for the longer-term separation of payout, receipt, treasury, and economic authority from product UI. |
+| `tap-ldk` | Experimental native Rust Lightning/LDK Taproot Assets proof-of-concept work. |
+| `ldk-node` | Owned fork used for live native LDK runtime patches needed by `tap-ldk` and lower-level Lightning hardening. |
+| `workspace` root | Shared strategy, routing, mining, Omni, investor, and cross-repo docs. The root docs synthesize the product direction but are not the implementation home for app code. |
+
+Historical and source-material repos still matter, but they are not active
+homes for new product work:
+
+- `vortex`: previous Convex/Next.js `openagents.com` product-surface clone and
+  source material for Omni planning.
+- `autopilot-deprecated`: legacy React/Vite Autopilot source material.
+- `autopilot4-deprecated`: deprecated Rust/Maud Autopilot source material.
+- `autopilot2` and `autopilot3`: standalone product foundations used as
+  source material and experiments.
+- `deprecated/openagents.com`: deprecated Laravel/Inertia `openagents.com`
+  clone.
+- `backroom`: archived OpenAgents code and historical docs.
+
+New public/product `openagents.com` work belongs in `autopilot-omega`. New
+Pylon, public Benchmark Cloud, desktop, kernel, and public provider-runtime
+work belongs in this repo. New coding-runtime work belongs in `probe`. New
+model/optimizer substrate work belongs in `psionic`. New managed workroom and
+Cloud node control work belongs in `cloud`.
+
+## Current Proof State
+
+As of June 8, 2026, the recent closed issue work shows these live directions:
+
+- Omega owns Pylon network readiness, Pylon v0.2.5+ public stats projection,
+  release gates, Artanis public projections, Forum payment surfaces, and
+  Gemini provider-account grants.
+- OpenAgents owns public Benchmark Cloud contracts, Probe GEPA Stage 0/1
+  receipts, live SHC/Harbor smoke bundles, Pylon capability envelopes, and
+  Artanis/Pylon release proof bundles.
+- Probe owns provider-neutral LLM contracts, Apple Foundation Models support,
+  Gemini API support, Blueprint signature lookup, account-grant resolution,
+  closeout bundles, and benchmark route scorecards.
+- Psionic owns GEPA candidate manifests, rollout coordination, candidate
+  frontier state, and imports of live Omega/Pylon closeouts.
+- Artanis has moved from broad Pylon launch overseer toward public overseer
+  for Probe GEPA coding-agent benchmark campaigns through Pylons.
+
+Safe current Artanis/Pylon claim:
+
+```text
+Pylon public install and accepted-work proof paths exist, Artanis can dispatch
+the launch bootstrap workroom, and real MDK Lightning payment movement has
+been proven through the selected wallet runtime.
+```
+
+Blocked claim:
+
+```text
+Fully automated production Artanis paid-work settlement is live end to end.
+```
+
+That blocked claim needs a deployed server-side path where one Artanis
+assignment id flows through dispatch, Pylon accepted work, MDK settlement, and
+public receipt without operator assembly.
+
+## Build History
+
+The public transcript index in
+[docs/transcripts/README.md](docs/transcripts/README.md) is the best map of
+how the project got here.
+
+The major arcs are:
+
+- web app, local documents, embeddings, and RAG;
+- Faerie and early GitHub issue-to-PR automation;
+- inspectable agents, traces, graph nodes, Concierge, Sleuth, and Bitcoin
+  balances;
+- plugins, WASM, Nostr, L402, Lightning withdrawals, and agent stores;
+- AutoDev, artifacts, HUDs, memory, SWE-bench study, and coding-agent loops;
+- OpenPress, CRM, teams, projects, and business workrooms;
+- Onyx mobile, local models, voice, wallets, Pylon, data markets, and OSINT;
+- Autopilot, Pylon, Nexus, identity, Bitcoin, online agents, and agent
+  markets;
+- OAPN, Psionic, Probe, distributed training, bounties, Autopilot beta, Sites,
+  agent-directed market instructions, and the OpenAgents Forum.
+
+Those themes now converge into Coding on Autopilot, Pylon provider supply,
+Probe runtime evidence, Psionic optimization, Artanis public proof, and
+Bitcoin-native settlement.
+
+## Docs To Start With
+
+- [docs/MVP.md](docs/MVP.md): desktop and earn MVP authority for this repo.
+- [docs/OWNERSHIP.md](docs/OWNERSHIP.md): repo-local ownership boundaries.
+- [docs/kernel/README.md](docs/kernel/README.md): kernel and marketplace
+  overview.
+- [docs/kernel/markets/README.md](docs/kernel/markets/README.md): compute,
+  data, labor, liquidity, and risk market status.
+- [docs/kernel/markets/data-market.md](docs/kernel/markets/data-market.md):
+  current Data Market implementation status.
+- [docs/pylon/PYLON_VERIFICATION_MATRIX.md](docs/pylon/PYLON_VERIFICATION_MATRIX.md):
+  Pylon release and proof gates.
+- [docs/benchmarks/README.md](docs/benchmarks/README.md): public Benchmark
+  Cloud and Probe GEPA receipt map.
+- [docs/benchmarks/2026-06-08-probe-gepa-stage0-live-receipt-bundle.md](docs/benchmarks/2026-06-08-probe-gepa-stage0-live-receipt-bundle.md):
+  current live Stage 0 Probe GEPA receipt bundle.
+- [docs/transcripts/README.md](docs/transcripts/README.md): public build
+  history and transcript theme guide.
+- [docs/headless-compute.md](docs/headless-compute.md): programmatic desktop,
+  provider, and local-runtime control.
+
+## Running This Repo
+
+This repo builds desktop, Pylon, kernel, Nexus, provider, and Benchmark Cloud
+code.
+
+Install Rust first so `cargo` and `rustc` are available. Normal builds use the
+vendored `protoc` resolver in [.cargo/config.toml](.cargo/config.toml), so a
+machine-local Protocol Buffers install is not required for ordinary builds.
+
+On Debian, Ubuntu, or WSL Ubuntu:
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y pkg-config libssl-dev curl git zstd
 ```
 
-**Run:**
+Run the retained desktop app:
+
 ```bash
 git clone https://github.com/OpenAgentsInc/openagents.git
 cd openagents
 cargo autopilot
 ```
 
-`cargo autopilot` is defined in `.cargo/config.toml` as a local Cargo alias for `autopilot-desktop`.
-
-### Autopilot Tauri Shell
-
-The next desktop shell starts in `apps/autopilot`.
+Run the next Tauri shell:
 
 ```bash
 cd apps/autopilot
@@ -471,110 +377,64 @@ bun install
 bun run tauri dev
 ```
 
-The Tauri shell is intentionally a starter surface. Keep Rust authority and
-privileged integration behind Tauri commands, events, or channels. Keep
-TypeScript focused on product UI and projection.
-
-### Psionic Checkout For Cross-Repo Dev
-
-Normal `cargo autopilot` and `cargo check` flows fetch Psionic through pinned
-git dependencies automatically. You only need a local Psionic checkout when you
-are:
-
-- editing Psionic alongside `openagents`
-- running retained cross-repo release/validation scripts
-- invoking Psionic-owned tests or binaries directly
-
-The retained scripts assume a sibling checkout at `../psionic` by default:
+Run Pylon:
 
 ```bash
-git clone https://github.com/OpenAgentsInc/openagents.git
-git clone https://github.com/OpenAgentsInc/psionic.git
-cd openagents
+npx @openagentsinc/pylon
 ```
 
-If you keep Psionic somewhere else, set
-`OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic`.
-
-**Run on Linux with GPT-OSS/CUDA:**
-```bash
-git clone https://github.com/OpenAgentsInc/openagents.git
-cd openagents
-export OPENAGENTS_GPT_OSS_BACKEND=cuda
-export OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf
-cargo autopilot
-```
-
-If `OPENAGENTS_GPT_OSS_MODEL_PATH` is unset, the runtime defaults to `~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf`.
-
-### Apple FM bridge (macOS, for Go Online)
-
-On macOS, going **Go Online** in the desktop app uses **Apple Foundation Models** via a small Swift HTTP bridge. You need the bridge built and (for the system model to be ready) **Apple Intelligence** enabled: System Settings → Apple Intelligence → turn on.
-
-- **Build the bridge once** (from repo root): `cd swift/foundation-bridge && ./build.sh`. This produces `bin/foundation-bridge`. Building requires the Swift compiler (Xcode from the App Store, or `xcode-select --install` for Command Line Tools only).
-- **Test the bridge**: run `./bin/foundation-bridge`, then `curl -s http://127.0.0.1:11435/health` — you should get a JSON response. The desktop app can also start the bridge automatically when you open Mission Control.
-- **Shipping the app** so users don’t build on their machine: build the bridge once, then include `bin/foundation-bridge` in your app bundle (e.g. `YourApp.app/Contents/MacOS/foundation-bridge` or `Contents/Resources/foundation-bridge`). See [swift/foundation-bridge/README.md](swift/foundation-bridge/README.md) for steps and [OpenAgentsInc/psionic bridge considerations](https://github.com/OpenAgentsInc/psionic/blob/main/docs/FM_BRIDGE_CONSIDERATIONS.md) for full bridge considerations (architecture, discovery, shipping, user requirements).
-
-### GPT-OSS local runtime (supported Linux NVIDIA/CUDA hosts)
-
-On supported Linux NVIDIA hosts, Mission Control and `autopilotctl` use the
-same app-owned local-runtime contract for GPT-OSS.
-
-- Export `OPENAGENTS_GPT_OSS_BACKEND=cuda`
-- Export `OPENAGENTS_GPT_OSS_MODEL_PATH=/absolute/path/to/gpt-oss-20b-mxfp4.gguf`
-- If the model-path env var is unset, the runtime looks for `~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf`
-- Launch the app with `cargo autopilot`
-- Mission Control should auto-warm the configured GPT-OSS model on startup and clear the preflight blocker once the model is ready
-- Verify with:
+Run the public Benchmark Cloud checks:
 
 ```bash
-autopilotctl local-runtime status
-autopilotctl wait local-runtime-ready
-autopilotctl wait gpt-oss-ready
-autopilotctl provider online
+cargo test -p benchmark-cloud
+scripts/benchmarks/validate-benchmark-cloud-contracts.sh
 ```
 
-If you want to force a new runtime probe after changing env vars or swapping GGUFs:
+For Pylon release and proof expectations, use
+[docs/pylon/PYLON_VERIFICATION_MATRIX.md](docs/pylon/PYLON_VERIFICATION_MATRIX.md).
 
-```bash
-autopilotctl local-runtime refresh
-autopilotctl wait local-runtime-ready
-```
+For desktop MVP scope, use [docs/MVP.md](docs/MVP.md). For repo-local
+ownership boundaries, use [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 
-Repeatable scripted form:
+## Programmatic Control
 
-```bash
-scripts/release/check-gpt-oss-nvidia-mission-control.sh
-```
+The retained desktop surface includes an app-owned control plane:
 
-`Go Online` currently unlocks sell-compute on the GPT-OSS lane only when the
-backend is `cuda` and the configured GGUF model is loaded. Retained Metal/CPU
-GPT-OSS backends can still appear in Mission Control and desktop-control status,
-but they remain runtime bring-up/debug paths instead of supported sell-compute
-hosts.
+- implementation:
+  [apps/autopilot-deprecated/src/desktop_control.rs](apps/autopilot-deprecated/src/desktop_control.rs)
+- CLI:
+  [apps/autopilot-deprecated/src/bin/autopilotctl.rs](apps/autopilot-deprecated/src/bin/autopilotctl.rs)
+- docs:
+  [docs/headless-compute.md](docs/headless-compute.md)
 
-## Programmatic Control And Verification
+`autopilotctl` drives the same Mission Control state the GUI renders. Use it
+for repeatable local proof, provider state, wallet state, runtime readiness,
+and smoke tests.
 
-The repo now includes an app-owned control plane for the running desktop app:
-
-- implementation: [apps/autopilot-deprecated/src/desktop_control.rs](apps/autopilot-deprecated/src/desktop_control.rs)
-- CLI client: [apps/autopilot-deprecated/src/bin/autopilotctl.rs](apps/autopilot-deprecated/src/bin/autopilotctl.rs)
-- documentation: [docs/headless-compute.md](docs/headless-compute.md)
-
-This is UI-synced control, not a separate fake harness. `autopilotctl` drives
-the same Mission Control state the GUI renders, and the runtime persists:
-
-- `desktop-control.json`
-- `latest.jsonl`
-- per-session JSONL logs
-
-For the strongest packaged end-to-end check, use:
+The strongest packaged end-to-end desktop check is:
 
 ```bash
 scripts/release/check-v01-packaged-autopilotctl-roundtrip.sh
 ```
 
-That script builds the bundled app, launches a bundled app plus a runtime app,
-drives both through `autopilotctl`, verifies NIP-28 chat, and proves buyer and
-seller Spark settlement through the real desktop shell. Full details and
-related headless flows are documented in [docs/headless-compute.md](docs/headless-compute.md).
+## Claim Discipline
+
+OpenAgents public surfaces must keep authority boundaries explicit.
+
+- Public projections read sanitized refs. They do not read private workroom
+  prompts, raw logs, secrets, wallet material, provider credentials, or
+  private repo contents.
+- Product UI does not own settlement authority.
+- Probe does not own benchmark scoring, runtime promotion, payout settlement,
+  or Artanis posting authority.
+- Psionic does not dispatch Pylons directly and does not promote production
+  Probe runtimes.
+- Artanis does not spend, settle, promote, deploy, mutate provider state, or
+  upgrade public claims without the approved Omega/operator path.
+- Pylon benchmark work is unpaid, credit, payable, settled, or rejected
+  according to explicit payment-mode records.
+- Public payout claims require settlement receipt refs.
+
+The durable product story is simple: OpenAgents sells verified machine work,
+routes it through the cheapest trustworthy execution path, records the proof,
+and pays contributors when accepted work settles.
