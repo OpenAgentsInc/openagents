@@ -21,6 +21,8 @@ pub const PROBE_GEPA_STAGE0_SMOKE_CAMPAIGN_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage0_smoke_campaign.v1";
 pub const PROBE_GEPA_STAGE1_RETAINED_SPRINT_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage1_retained_sprint.v1";
+pub const PROBE_GEPA_VALIDATION_SWEEP_SCHEMA_REF: &str =
+    "openagents.probe_gepa_validation_sweep.v1";
 
 pub const PROBE_RUNNER_REQUIRED_ARTIFACT_FILES: [&str; 8] = [
     "result.json",
@@ -370,6 +372,14 @@ pub enum GepaCandidateDecisionState {
     Rejected,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeValidationRouteKind {
+    CurrentChampion,
+    GepaCandidate,
+    BaselineBackendRoute,
+}
+
 impl PylonBenchmarkWorkKind {
     pub fn requires_model_training(&self) -> bool {
         matches!(self, Self::LoraFineTuning | Self::ModelTraining)
@@ -481,6 +491,10 @@ pub struct ProbeGepaMetricCallRecord {
     pub benchmark_cloud_proof_bundle_ref: String,
     pub resource_usage_receipt_ref: Option<String>,
     pub verifier_import_ref: String,
+    pub verifier_result_ref: String,
+    pub cost_ref: Option<String>,
+    pub duration_ms: Option<u64>,
+    pub artifact_available: bool,
     pub failure_classification_ref: Option<String>,
     pub closeout_state: BenchmarkCloseoutState,
     pub score_bps: Option<u32>,
@@ -546,6 +560,37 @@ pub struct ProbeGepaStage1RetainedSprint {
     pub no_lora: bool,
     pub no_model_training: bool,
     pub no_public_leaderboard_claim: bool,
+    pub redaction_state: BenchmarkRedactionState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeValidationRoute {
+    pub route_ref: String,
+    pub route_kind: ProbeValidationRouteKind,
+    pub candidate_ref: Option<String>,
+    pub candidate_hash: Option<String>,
+    pub backend_route_ref: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeGepaValidationSweep {
+    pub schema_ref: String,
+    pub campaign_id: String,
+    pub sweep_ref: String,
+    pub split_manifest_ref: String,
+    pub benchmark_suite_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub validation_task_refs: Vec<String>,
+    pub probe_commit: String,
+    pub gepa_candidate_hash: String,
+    pub routes: Vec<ProbeValidationRoute>,
+    pub rollout_records: Vec<ProbeGepaMetricCallRecord>,
+    pub candidate_shadow_state_ref: String,
+    pub candidate_may_move_to_shadow: bool,
+    pub omega_blueprint_gate_refs: Vec<String>,
+    pub public_claim_ref: String,
+    pub public_claim_label: String,
+    pub no_public_beats_terminal_bench_claim: bool,
     pub redaction_state: BenchmarkRedactionState,
 }
 
@@ -673,6 +718,10 @@ pub enum BenchmarkContractError {
     },
     Stage1SprintInvalid {
         campaign_ref: String,
+        reason: String,
+    },
+    ValidationSweepInvalid {
+        sweep_ref: String,
         reason: String,
     },
 }
@@ -1117,6 +1166,13 @@ pub fn build_probe_gepa_stage0_smoke_campaign(
                     "verifier_import.probe_gepa.stage0.{:02}",
                     metric_index
                 ),
+                verifier_result_ref: format!(
+                    "verifier_result.probe_gepa.stage0.{:02}",
+                    metric_index
+                ),
+                cost_ref: artifacts.resource_usage_receipt_json.cost_ref.clone(),
+                duration_ms: artifacts.resource_usage_receipt_json.duration_ms,
+                artifact_available: true,
                 failure_classification_ref: artifacts.result_json.failure_classification_ref,
                 closeout_state,
                 score_bps: artifacts.result_json.score_bps,
@@ -1419,6 +1475,13 @@ pub fn build_probe_gepa_stage1_retained_sprint(
                         "verifier_import.probe_gepa.stage1.{:03}",
                         metric_index
                     ),
+                    verifier_result_ref: format!(
+                        "verifier_result.probe_gepa.stage1.{:03}",
+                        metric_index
+                    ),
+                    cost_ref: artifacts.resource_usage_receipt_json.cost_ref.clone(),
+                    duration_ms: artifacts.resource_usage_receipt_json.duration_ms,
+                    artifact_available: true,
                     failure_classification_ref: artifacts.result_json.failure_classification_ref,
                     closeout_state,
                     score_bps: artifacts.result_json.score_bps,
@@ -1610,6 +1673,305 @@ pub fn validate_probe_gepa_stage1_retained_sprint(
     Ok(())
 }
 
+pub fn build_probe_gepa_validation_sweep(
+    manifest: &BenchmarkCampaignSplitManifest,
+    probe_commit: impl Into<String>,
+    gepa_candidate_hash: impl Into<String>,
+) -> Result<ProbeGepaValidationSweep, BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    let probe_commit = probe_commit.into();
+    let gepa_candidate_hash = gepa_candidate_hash.into();
+    let validation_tasks = manifest
+        .tasks
+        .iter()
+        .filter(|task| {
+            task.lane == BenchmarkSplitLane::Validation
+                && task.evidence_split == BenchmarkEvidenceSplit::Validation
+        })
+        .collect::<Vec<_>>();
+    let routes = probe_gepa_validation_routes(&gepa_candidate_hash);
+    let mut rollout_records = Vec::new();
+
+    for (route_index, route) in routes.iter().enumerate() {
+        for (task_index, task) in validation_tasks.iter().enumerate() {
+            let candidate_hash = route
+                .candidate_hash
+                .clone()
+                .unwrap_or_else(|| format!("sha256:{:064x}", 0x3000 + route_index));
+            let assignment = probe_assignment_from_split_task(
+                manifest,
+                task,
+                probe_commit.clone(),
+                candidate_hash.clone(),
+                vec![String::from(
+                    "program_signature.probe.validation.terminal_bench.v1",
+                )],
+                "tool_menu.probe.terminal_bench.validation.v1",
+            );
+            let outcome = validation_sweep_outcome(route_index, task_index);
+            let artifacts =
+                run_fake_probe_benchmark_task(manifest, task, &assignment, outcome.clone())?;
+            let rollout_index = rollout_records.len() + 1;
+            let closeout_state = if artifacts.result_json.status == BenchmarkRunStatus::Succeeded {
+                BenchmarkCloseoutState::Accepted
+            } else {
+                BenchmarkCloseoutState::Rejected
+            };
+
+            rollout_records.push(ProbeGepaMetricCallRecord {
+                metric_call_ref: format!("metric_call.probe_gepa.validation.{:03}", rollout_index),
+                candidate_ref: route
+                    .candidate_ref
+                    .clone()
+                    .unwrap_or_else(|| route.route_ref.clone()),
+                candidate_hash,
+                task_ref: task.task_ref.clone(),
+                task_id: task.task_id.clone(),
+                verifier_ref: task.scorer_verifier.verifier_ref.clone(),
+                probe_assignment_ref: assignment.assignment_ref.clone(),
+                pylon_assignment_ref: Some(format!(
+                    "shc_assignment_ref.public.validation.{rollout_index:03}"
+                )),
+                payment_mode: String::from("unpaid_smoke"),
+                probe_closeout_ref: artifacts
+                    .result_json
+                    .probe_closeout_import
+                    .as_ref()
+                    .map(|import| import.probe_closeout_ref.clone())
+                    .unwrap_or_default(),
+                probe_closeout_bundle_ref: format!(
+                    "probe_closeout_bundle.probe_gepa.validation.{:03}",
+                    rollout_index
+                ),
+                benchmark_result_ref: format!(
+                    "{}.validation.{:03}",
+                    artifacts.result_json.result_ref, rollout_index
+                ),
+                artifact_manifest_ref: format!(
+                    "{}.validation.{:03}",
+                    artifacts.artifact_manifest_json.manifest_ref, rollout_index
+                ),
+                benchmark_cloud_proof_bundle_ref: format!(
+                    "{}.validation.{:03}",
+                    artifacts.proof_bundle_json.proof_bundle_ref, rollout_index
+                ),
+                resource_usage_receipt_ref: Some(format!(
+                    "{}.validation.{:03}",
+                    artifacts.resource_usage_receipt_json.receipt_ref, rollout_index
+                )),
+                verifier_import_ref: format!(
+                    "verifier_import.probe_gepa.validation.{:03}",
+                    rollout_index
+                ),
+                verifier_result_ref: format!(
+                    "verifier_result.probe_gepa.validation.{:03}",
+                    rollout_index
+                ),
+                cost_ref: Some(
+                    artifacts
+                        .resource_usage_receipt_json
+                        .cost_ref
+                        .clone()
+                        .unwrap_or_else(|| String::from("cost.probe.validation.zero")),
+                ),
+                duration_ms: Some(
+                    artifacts
+                        .resource_usage_receipt_json
+                        .duration_ms
+                        .unwrap_or(1_500),
+                ),
+                artifact_available: true,
+                failure_classification_ref: artifacts.result_json.failure_classification_ref,
+                closeout_state,
+                score_bps: artifacts.result_json.score_bps,
+                status: artifacts.result_json.status,
+            });
+        }
+    }
+
+    let sweep = ProbeGepaValidationSweep {
+        schema_ref: String::from(PROBE_GEPA_VALIDATION_SWEEP_SCHEMA_REF),
+        campaign_id: String::from("probe-gepa-validation-sweep-2026-06-08"),
+        sweep_ref: String::from("sweep.probe_gepa.validation.shc_terminal_bench.2026_06_08"),
+        split_manifest_ref: manifest.manifest_ref.clone(),
+        benchmark_suite_ref: manifest.benchmark_suite_ref.clone(),
+        dataset: manifest.dataset.clone(),
+        validation_task_refs: validation_tasks
+            .iter()
+            .map(|task| task.task_ref.clone())
+            .collect(),
+        probe_commit,
+        gepa_candidate_hash,
+        routes,
+        rollout_records,
+        candidate_shadow_state_ref: String::from(
+            "shadow_state.probe_gepa.candidate.allowed_by_omega_blueprint_gates.v1",
+        ),
+        candidate_may_move_to_shadow: true,
+        omega_blueprint_gate_refs: vec![
+            String::from("omega_gate.probe_gepa.validation_shadow_approval.v1"),
+            String::from("blueprint_gate.probe_gepa.validation_shadow_approval.v1"),
+        ],
+        public_claim_ref: String::from("public_claim.probe_gepa.validation_measured_only.v1"),
+        public_claim_label: String::from("validation measured only"),
+        no_public_beats_terminal_bench_claim: true,
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+
+    validate_probe_gepa_validation_sweep(&sweep, manifest)?;
+    Ok(sweep)
+}
+
+pub fn validate_probe_gepa_validation_sweep(
+    sweep: &ProbeGepaValidationSweep,
+    manifest: &BenchmarkCampaignSplitManifest,
+) -> Result<(), BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    if sweep.schema_ref != PROBE_GEPA_VALIDATION_SWEEP_SCHEMA_REF {
+        return validation_sweep_error(&sweep.sweep_ref, "unsupported validation sweep schema ref");
+    }
+
+    if sweep.campaign_id.is_empty()
+        || sweep.sweep_ref.is_empty()
+        || sweep.probe_commit.is_empty()
+        || sweep.gepa_candidate_hash.is_empty()
+    {
+        return validation_sweep_error(
+            &sweep.sweep_ref,
+            "validation sweep must include campaign id, sweep ref, Probe commit, and candidate hash",
+        );
+    }
+
+    if sweep.split_manifest_ref != manifest.manifest_ref {
+        return validation_sweep_error(
+            &sweep.sweep_ref,
+            "validation sweep split manifest ref must match validated manifest",
+        );
+    }
+
+    let validation_refs = sweep
+        .validation_task_refs
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    if validation_refs.is_empty() {
+        return validation_sweep_error(
+            &sweep.sweep_ref,
+            "validation sweep must include validation task refs",
+        );
+    }
+
+    for task_ref in &sweep.validation_task_refs {
+        let Some(task) = manifest
+            .tasks
+            .iter()
+            .find(|task| &task.task_ref == task_ref)
+        else {
+            return validation_sweep_error(
+                &sweep.sweep_ref,
+                "validation task ref must be present in split manifest",
+            );
+        };
+        if task.evidence_split != BenchmarkEvidenceSplit::Validation
+            || task.lane != BenchmarkSplitLane::Validation
+        {
+            return validation_sweep_error(
+                &sweep.sweep_ref,
+                "validation sweep cannot use retained or holdout tasks",
+            );
+        }
+    }
+
+    if sweep.routes.len() != 3
+        || !sweep
+            .routes
+            .iter()
+            .any(|route| route.route_kind == ProbeValidationRouteKind::CurrentChampion)
+        || !sweep
+            .routes
+            .iter()
+            .any(|route| route.route_kind == ProbeValidationRouteKind::GepaCandidate)
+        || !sweep
+            .routes
+            .iter()
+            .any(|route| route.route_kind == ProbeValidationRouteKind::BaselineBackendRoute)
+    {
+        return validation_sweep_error(
+            &sweep.sweep_ref,
+            "validation sweep must compare champion, GEPA candidate, and baseline backend routes",
+        );
+    }
+
+    if !sweep.no_public_beats_terminal_bench_claim
+        || sweep.public_claim_label != "validation measured only"
+    {
+        return validation_sweep_error(
+            &sweep.sweep_ref,
+            "validation sweep cannot claim Probe beats Terminal-Bench",
+        );
+    }
+
+    if sweep.candidate_may_move_to_shadow
+        && !(sweep
+            .omega_blueprint_gate_refs
+            .iter()
+            .any(|gate| gate.starts_with("omega_gate."))
+            && sweep
+                .omega_blueprint_gate_refs
+                .iter()
+                .any(|gate| gate.starts_with("blueprint_gate.")))
+    {
+        return validation_sweep_error(
+            &sweep.sweep_ref,
+            "shadow movement requires Omega and Blueprint gate refs",
+        );
+    }
+
+    let mut rollout_refs = std::collections::BTreeSet::new();
+    for rollout in &sweep.rollout_records {
+        if !rollout_refs.insert(&rollout.metric_call_ref) {
+            return validation_sweep_error(&sweep.sweep_ref, "rollout refs must be unique");
+        }
+
+        if !validation_refs.contains(&rollout.task_ref) {
+            return validation_sweep_error(
+                &sweep.sweep_ref,
+                "all rollout records must use validation split tasks",
+            );
+        }
+
+        if rollout.probe_closeout_bundle_ref.is_empty()
+            || rollout.candidate_hash.is_empty()
+            || rollout.verifier_ref.is_empty()
+            || rollout.verifier_result_ref.is_empty()
+            || rollout.artifact_manifest_ref.is_empty()
+            || rollout.benchmark_cloud_proof_bundle_ref.is_empty()
+            || rollout.resource_usage_receipt_ref.is_none()
+            || rollout.cost_ref.is_none()
+            || rollout.duration_ms.is_none()
+            || !rollout.artifact_available
+        {
+            return validation_sweep_error(
+                &sweep.sweep_ref,
+                "validation rollouts must preserve closeout, candidate, verifier, artifact, proof, resource, cost, duration, and artifact availability records",
+            );
+        }
+    }
+
+    if serde_json::to_value(sweep)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+    {
+        return validation_sweep_error(
+            &sweep.sweep_ref,
+            "validation sweep contains unsafe material",
+        );
+    }
+
+    Ok(())
+}
+
 fn probe_gepa_stage0_smoke_candidates() -> Vec<GepaTextBundleCandidate> {
     vec![
         GepaTextBundleCandidate {
@@ -1691,6 +2053,34 @@ fn probe_gepa_stage1_sprint_candidates() -> Vec<GepaTextBundleCandidate> {
     candidates
 }
 
+fn probe_gepa_validation_routes(gepa_candidate_hash: &str) -> Vec<ProbeValidationRoute> {
+    vec![
+        ProbeValidationRoute {
+            route_ref: String::from("route.probe.validation.current_champion"),
+            route_kind: ProbeValidationRouteKind::CurrentChampion,
+            candidate_ref: Some(String::from("candidate.probe_gepa.stage1.champion")),
+            candidate_hash: Some(String::from(
+                "sha256:0000000000000000000000000000000000000000000000000000000000002001",
+            )),
+            backend_route_ref: String::from("backend_route.probe.current_champion.v1"),
+        },
+        ProbeValidationRoute {
+            route_ref: String::from("route.probe.validation.gepa_candidate"),
+            route_kind: ProbeValidationRouteKind::GepaCandidate,
+            candidate_ref: Some(String::from("candidate.probe_gepa.stage1.mutation_08")),
+            candidate_hash: Some(gepa_candidate_hash.to_string()),
+            backend_route_ref: String::from("backend_route.probe.gepa_candidate.v1"),
+        },
+        ProbeValidationRoute {
+            route_ref: String::from("route.probe.validation.baseline_backend"),
+            route_kind: ProbeValidationRouteKind::BaselineBackendRoute,
+            candidate_ref: None,
+            candidate_hash: None,
+            backend_route_ref: String::from("backend_route.probe.baseline_backend.v1"),
+        },
+    ]
+}
+
 fn retained_summaries_for_candidates(
     candidates: &[GepaTextBundleCandidate],
     metric_calls: &[ProbeGepaMetricCallRecord],
@@ -1770,6 +2160,32 @@ fn stage1_sprint_outcome(
     }
 }
 
+fn validation_sweep_outcome(route_index: usize, task_index: usize) -> ProbeFakeRunnerOutcome {
+    match route_index {
+        0 => {
+            if task_index % 3 == 0 {
+                ProbeFakeRunnerOutcome::Timeout
+            } else {
+                ProbeFakeRunnerOutcome::Pass
+            }
+        }
+        1 => {
+            if task_index == 5 {
+                ProbeFakeRunnerOutcome::Error
+            } else {
+                ProbeFakeRunnerOutcome::Pass
+            }
+        }
+        _ => {
+            if task_index % 2 == 0 {
+                ProbeFakeRunnerOutcome::Pass
+            } else {
+                ProbeFakeRunnerOutcome::Error
+            }
+        }
+    }
+}
+
 fn stage0_smoke_error<T>(
     campaign_ref: impl Into<String>,
     reason: impl Into<String>,
@@ -1786,6 +2202,16 @@ fn stage1_sprint_error<T>(
 ) -> Result<T, BenchmarkContractError> {
     Err(BenchmarkContractError::Stage1SprintInvalid {
         campaign_ref: campaign_ref.into(),
+        reason: reason.into(),
+    })
+}
+
+fn validation_sweep_error<T>(
+    sweep_ref: impl Into<String>,
+    reason: impl Into<String>,
+) -> Result<T, BenchmarkContractError> {
+    Err(BenchmarkContractError::ValidationSweepInvalid {
+        sweep_ref: sweep_ref.into(),
         reason: reason.into(),
     })
 }
@@ -2736,6 +3162,92 @@ mod tests {
         assert!(matches!(
             validate_probe_gepa_stage1_retained_sprint(&campaign, &manifest),
             Err(BenchmarkContractError::Stage1SprintInvalid { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_validation_sweep_runs_selected_shc_tasks_without_holdout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let sweep = build_probe_gepa_validation_sweep(
+            &manifest,
+            "abc1234",
+            "sha256:0000000000000000000000000000000000000000000000000000000000002008",
+        )
+        .map_err(|error| format!("unexpected validation sweep error: {error:?}"))?;
+
+        assert_eq!(sweep.campaign_id, "probe-gepa-validation-sweep-2026-06-08");
+        assert_eq!(sweep.validation_task_refs.len(), 6);
+        assert_eq!(sweep.routes.len(), 3);
+        assert_eq!(sweep.rollout_records.len(), 18);
+        assert!(sweep.rollout_records.iter().all(|rollout| {
+            rollout.task_id.starts_with("validation.")
+                && !rollout.probe_closeout_bundle_ref.is_empty()
+                && !rollout.candidate_hash.is_empty()
+                && !rollout.verifier_ref.is_empty()
+                && !rollout.verifier_result_ref.is_empty()
+                && rollout.cost_ref.is_some()
+                && rollout.duration_ms.is_some()
+                && rollout.artifact_available
+        }));
+        assert!(sweep.no_public_beats_terminal_bench_claim);
+        assert_eq!(sweep.public_claim_label, "validation measured only");
+        assert!(sweep.candidate_may_move_to_shadow);
+        assert!(
+            sweep
+                .omega_blueprint_gate_refs
+                .iter()
+                .any(|gate| gate.starts_with("omega_gate."))
+        );
+        assert!(
+            sweep
+                .omega_blueprint_gate_refs
+                .iter()
+                .any(|gate| gate.starts_with("blueprint_gate."))
+        );
+        validate_probe_gepa_validation_sweep(&sweep, &manifest)
+            .map_err(|error| format!("unexpected sweep validation error: {error:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_validation_sweep_rejects_holdout_public_claim_or_missing_shadow_gate()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let mut sweep = build_probe_gepa_validation_sweep(
+            &manifest,
+            "abc1234",
+            "sha256:0000000000000000000000000000000000000000000000000000000000002008",
+        )
+        .map_err(|error| format!("unexpected validation sweep error: {error:?}"))?;
+
+        sweep.validation_task_refs[0] =
+            String::from("benchmark_task.terminal_bench.holdout.vulnerable_secret.v1");
+        assert!(matches!(
+            validate_probe_gepa_validation_sweep(&sweep, &manifest),
+            Err(BenchmarkContractError::ValidationSweepInvalid { .. })
+        ));
+
+        sweep = build_probe_gepa_validation_sweep(
+            &manifest,
+            "abc1234",
+            "sha256:0000000000000000000000000000000000000000000000000000000000002008",
+        )
+        .map_err(|error| format!("unexpected validation sweep error: {error:?}"))?;
+        sweep.no_public_beats_terminal_bench_claim = false;
+        assert!(matches!(
+            validate_probe_gepa_validation_sweep(&sweep, &manifest),
+            Err(BenchmarkContractError::ValidationSweepInvalid { .. })
+        ));
+
+        sweep.no_public_beats_terminal_bench_claim = true;
+        sweep.omega_blueprint_gate_refs = vec![String::from("omega_gate.only")];
+        assert!(matches!(
+            validate_probe_gepa_validation_sweep(&sweep, &manifest),
+            Err(BenchmarkContractError::ValidationSweepInvalid { .. })
         ));
         Ok(())
     }

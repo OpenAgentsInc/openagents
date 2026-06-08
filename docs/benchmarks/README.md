@@ -51,6 +51,13 @@ manifest, seven retained fixtures, eight Pylon assignment refs, ten text-bundle
 candidates, and 210 metric-call records. The example runner is
 `cargo run -p benchmark-cloud --example probe_gepa_stage1_retained_sprint`.
 
+The first selected SHC validation sweep is implemented by
+`build_probe_gepa_validation_sweep`. It uses validation tasks only, compares the
+current Probe champion, the GEPA candidate, and a baseline backend route, and
+records cost, duration, verifier result, artifact availability, candidate hash,
+and Probe commit for every rollout. The example runner is
+`cargo run -p benchmark-cloud --example probe_gepa_validation_sweep`.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
@@ -112,6 +119,10 @@ promotion.
 The Stage 1 retained sprint can project only retained-evidence summary status.
 Its selected candidate may enter `optimizer_accepted` or `rejected`, but not an
 active production state.
+
+The validation sweep can project only `validation measured only`. It must not
+claim that Probe beats Terminal-Bench. A candidate may move to shadow only when
+Omega and Blueprint gate refs are present.
 
 ## Verification
 
