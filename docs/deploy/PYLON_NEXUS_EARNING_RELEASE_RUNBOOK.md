@@ -160,6 +160,20 @@ Branch work is evidence. It is not closeout.
 
 ## Correct Release Order
 
+### 2026-06-08 freeze baseline
+
+The current public baseline is `pylon-v0.2.4` on GitHub Releases and
+`@openagentsinc/pylon@0.2.5` on npm `latest`. The freeze closeout is
+`docs/reports/nexus/2026-06-08-pylon-release-freeze-network-readiness-closeout.md`.
+
+Do not publish a newer public Pylon GitHub release, npm package version, npm
+`latest` dist-tag move, or broad download/earning announcement until the live
+Probe/Pylon/Psionic network path is proven through OpenAgents #4563, OpenAgents
+#4564, Psionic #1093, Omega #513, and Probe #188. Omega #511 and #512 are
+bounded Artanis launch-gate evidence. They are not a public Terminal-Bench
+score, paid benchmark settlement proof, broad Pylon earning proof, or Probe
+candidate activation proof.
+
 Use this sequence for MDK-default Pylon v0.2 public earning-loop changes:
 
 1. Make the Pylon/Nexus changes in `openagents`.

@@ -21,6 +21,21 @@ These statements must remain true in docs, code, and operator guidance:
 
 If any release note, marketing text, or operator doc violates one of those statements, the rollout should stop.
 
+## 2026-06-08 Release Freeze Baseline
+
+The current public baseline is `pylon-v0.2.4` on GitHub Releases and
+`@openagentsinc/pylon@0.2.5` on npm `latest`. The freeze record is
+`docs/reports/nexus/2026-06-08-pylon-release-freeze-network-readiness-closeout.md`.
+
+Do not cut another public Pylon GitHub release, npm package version, npm
+`latest` dist-tag move, or broad download/earning announcement until the live
+Probe/Pylon/Psionic network path is proven through OpenAgents #4563, OpenAgents
+#4564, Psionic #1093, Omega #513, and Probe #188.
+
+Omega #511 and #512 prove retained GEPA/Pylon smoke and bounded Artanis status
+operation. They do not prove public Terminal-Bench scores, paid benchmark
+settlement, broad Pylon earning readiness, or Probe candidate activation.
+
 ## Deterministic Matrix
 
 | Area | Verification Path | Expected Result |

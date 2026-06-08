@@ -506,6 +506,15 @@ to `openagents.com` so the public stats page can show install starts,
 completions, source-build fallbacks, Rust prompts, and smoke-test outcomes.
 Set `OPENAGENTS_DISABLE_TELEMETRY=1` to disable that stream, or point
 `OPENAGENTS_TELEMETRY_URL` at a non-production endpoint during local validation.
+
+As of the 2026-06-08 network-readiness freeze, the current public baseline is
+`pylon-v0.2.4` on GitHub Releases and `@openagentsinc/pylon@0.2.5` on npm
+`latest`. That baseline is not a broad earning-readiness claim. The next public
+Pylon release or npm `latest` move is blocked until the live
+Probe/Pylon/Psionic network evidence tracked in
+`docs/reports/nexus/2026-06-08-pylon-release-freeze-network-readiness-closeout.md`
+is retained.
+
 The bootstrap summary now ends with an explicit operator verdict:
 
 - `fully online`
