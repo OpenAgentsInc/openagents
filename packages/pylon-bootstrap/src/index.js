@@ -28,6 +28,7 @@ const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
 const SOURCE_BUILD_INSTALL_METHOD = "source_build";
 const PREFERRED_RUNTIME_MODEL_NAME = "gemma4:e4b";
 const DEFAULT_PYLON_RESOURCE_MODE = "background_20";
+const DEFAULT_MDK_RECEIVE_AMOUNT_SATS = 1;
 const DEFAULT_PYLON_CAPABILITY_REFS = [
   "capability.public.pylon_launcher",
   "capability.public.inference",
@@ -1795,6 +1796,167 @@ export async function registerPylonWithOpenAgents(
   };
 }
 
+function buildMdkAgentWalletEnv(options = {}) {
+  const env = { ...process.env };
+  if (options.openAgentsMdkWalletHome) {
+    env.HOME = path.resolve(options.openAgentsMdkWalletHome);
+  }
+  if (options.openAgentsMdkWalletPort) {
+    env.MDK_WALLET_PORT = String(options.openAgentsMdkWalletPort);
+  }
+  return env;
+}
+
+async function runMdkAgentWalletJson(args, options, runProcessImpl) {
+  const { stdout } = await runProcessImpl(
+    "npx",
+    ["-y", "@moneydevkit/agent-wallet@latest", ...args],
+    { env: buildMdkAgentWalletEnv(options) },
+  );
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    throw new Error(
+      `MDK agent wallet returned invalid JSON for \`agent-wallet ${args.join(" ")}\`: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+export async function setupMdkWalletReadinessForOpenAgentsPylon(
+  options,
+  {
+    fetchImpl = globalThis.fetch,
+    init = null,
+    status = null,
+    registration = null,
+    runProcessImpl = runProcess,
+    onStatus = null,
+  } = {},
+) {
+  if (!options.openAgentsSetupMdkWallet) {
+    return null;
+  }
+
+  const token =
+    options.openAgentsAgentToken ??
+    process.env.OPENAGENTS_AGENT_TOKEN ??
+    process.env.OPENAGENTS_PYLON_AGENT_TOKEN;
+
+  if (!token) {
+    throw new Error(
+      "MDK wallet readiness reporting requires OPENAGENTS_AGENT_TOKEN or --openagents-agent-token.",
+    );
+  }
+
+  const pylonRef =
+    registration?.pylonRef ??
+    resolveOpenAgentsPylonRef({
+      explicitPylonRef: options.openAgentsPylonRef,
+      init,
+      status,
+      configPath: init?.config_path ?? options.configPath ?? null,
+      target: options.target,
+    });
+
+  if (!pylonRef) {
+    throw new Error(
+      "MDK wallet readiness could not derive a stable public Pylon ref; pass --pylon-ref.",
+    );
+  }
+
+  const apiBase = (options.openAgentsApiBase ?? DEFAULT_OPENAGENTS_API_BASE)
+    .replace(/\/+$/, "");
+  const receiveAmount = Number.isFinite(options.openAgentsMdkReceiveAmountSats)
+    ? options.openAgentsMdkReceiveAmountSats
+    : DEFAULT_MDK_RECEIVE_AMOUNT_SATS;
+
+  emitStatus(onStatus, "Preparing MDK agent wallet readiness", pylonRef);
+  let walletInit;
+  try {
+    walletInit = await runMdkAgentWalletJson(["init", "--show"], options, runProcessImpl);
+  } catch {
+    walletInit = await runMdkAgentWalletJson(["init"], options, runProcessImpl);
+  }
+
+  const balance = await runMdkAgentWalletJson(["balance"], options, runProcessImpl);
+  const receive = await runMdkAgentWalletJson(
+    [
+      "receive",
+      String(receiveAmount),
+      "--description",
+      `OpenAgents Pylon readiness ${pylonRef}`,
+    ],
+    options,
+    runProcessImpl,
+  );
+
+  const walletRef = `wallet.public.mdk_agent_wallet.${publicHash(
+    firstString(walletInit?.walletId, walletInit?.wallet_id, pylonRef) ?? pylonRef,
+  )}`;
+  const receiveRef = `receive.redacted.mdk_agent_wallet.${publicHash(
+    firstString(receive?.invoice, receive?.payment_hash, receive?.paymentHash, pylonRef) ?? pylonRef,
+  )}`;
+  const payoutTargetRef = `payout_target.public.mdk_agent_wallet.${publicHash(
+    `${pylonRef}:${receiveRef}`,
+  )}`;
+  const balanceReady =
+    typeof balance?.balance_sats === "number" && balance.balance_sats > 0
+      ? "balance.mdk_agent_wallet.minimum_satisfied"
+      : "balance.mdk_agent_wallet.minimum_not_satisfied";
+
+  emitStatus(onStatus, "Reporting MDK wallet readiness", pylonRef);
+  const walletReadiness = await postOpenAgentsJson({
+    fetchImpl,
+    url: `${apiBase}/api/pylons/${encodeURIComponent(pylonRef)}/wallet-readiness`,
+    token,
+    idempotencyKey: `pylon-wallet-readiness-${pylonRef}-${receiveRef}`,
+    body: {
+      balanceRefs: [balanceReady],
+      liquidityRefs: ["liquidity.public.receive_ready"],
+      readinessRefs: [
+        "readiness.public.mdk_agent_wallet_initialized",
+        "readiness.public.mdk_agent_wallet_receive_ready",
+        receiveRef,
+      ],
+      status: "ready",
+      walletReady: true,
+      walletRef,
+    },
+  });
+
+  emitStatus(onStatus, "Requesting OpenAgents payout-target admission", pylonRef);
+  const payoutTargetAdmission = await postOpenAgentsJson({
+    fetchImpl,
+    url: `${apiBase}/api/pylons/${encodeURIComponent(pylonRef)}/payout-target-admission`,
+    token,
+    idempotencyKey: `pylon-payout-target-${pylonRef}-${payoutTargetRef}`,
+    body: {
+      admissionRefs: ["admission.public.requested", receiveRef],
+      payoutTargetRef,
+      policyRefs: ["policy.public.operator_review_required"],
+      status: "requested",
+    },
+  });
+
+  return {
+    pylonRef,
+    walletReady: true,
+    walletRef,
+    receiveRef,
+    payoutTargetRef,
+    balanceReadinessRef: balanceReady,
+    walletReadiness: {
+      idempotent: Boolean(walletReadiness?.idempotent),
+    },
+    payoutTargetAdmission: {
+      idempotent: Boolean(payoutTargetAdmission?.idempotent),
+      status: "requested",
+    },
+  };
+}
+
 export async function ensureReleaseInstall(
   options = {},
   {
@@ -2182,6 +2344,17 @@ export async function bootstrapInstalledPylon(
       onStatus,
       status,
     });
+    const openAgentsMdkWallet = await setupMdkWalletReadinessForOpenAgentsPylon(
+      options,
+      {
+        fetchImpl,
+        init,
+        onStatus,
+        registration: openAgentsRegistration,
+        runProcessImpl,
+        status,
+      },
+    );
 
     let download = null;
     if (!skipModelDownload) {
@@ -2281,6 +2454,7 @@ export async function bootstrapInstalledPylon(
       status,
       inventory,
       openAgentsRegistration,
+      openAgentsMdkWallet,
       model,
       download,
       diagnostic,

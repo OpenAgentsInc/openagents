@@ -123,6 +123,13 @@ test("parseArgs supports OpenAgents registration flags", () => {
     "capability.public.gpu,capability.public.mlx",
     "--capability-ref",
     "capability.public.local",
+    "--setup-mdk-wallet",
+    "--mdk-wallet-home",
+    "/tmp/mdk-home",
+    "--mdk-wallet-port",
+    "3457",
+    "--mdk-receive-amount-sats",
+    "21",
   ]);
 
   expect(options.openAgentsRegister).toBe(true);
@@ -136,6 +143,10 @@ test("parseArgs supports OpenAgents registration flags", () => {
     "capability.public.mlx",
     "capability.public.local",
   ]);
+  expect(options.openAgentsSetupMdkWallet).toBe(true);
+  expect(options.openAgentsMdkWalletHome).toBe("/tmp/mdk-home");
+  expect(options.openAgentsMdkWalletPort).toBe(3457);
+  expect(options.openAgentsMdkReceiveAmountSats).toBe(21);
 });
 
 test("parseArgs forwards Pylon CLI commands after launcher options", () => {

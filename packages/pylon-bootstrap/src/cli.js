@@ -135,6 +135,14 @@ Options:
                                        Default: background_20
   --capability-ref <ref>               Add a public-safe capability ref.
                                        May be repeated or comma-separated.
+  --setup-mdk-wallet                   Initialize or reuse the local MDK agent
+                                       wallet, create receive readiness, and
+                                       report redacted wallet/payout refs.
+  --mdk-wallet-home <path>             HOME override for isolated MDK wallet
+                                       config during tests or operator smokes.
+  --mdk-wallet-port <port>             MDK agent-wallet daemon port override.
+  --mdk-receive-amount-sats <amount>   Tiny receive amount for readiness.
+                                       Default: 1 satoshi of bitcoin.
 
 Test and maintainer options:
   --repo <owner/name>                  Override the GitHub release repo.
@@ -169,6 +177,10 @@ export function parseArgs(argv) {
     openAgentsPylonDisplayName: null,
     openAgentsResourceMode: "background_20",
     openAgentsCapabilityRefs: [],
+    openAgentsSetupMdkWallet: false,
+    openAgentsMdkWalletHome: null,
+    openAgentsMdkWalletPort: null,
+    openAgentsMdkReceiveAmountSats: 1,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -295,6 +307,27 @@ export function parseArgs(argv) {
         );
         break;
       }
+      case "--setup-mdk-wallet":
+        options.openAgentsSetupMdkWallet = true;
+        break;
+      case "--mdk-wallet-home":
+        options.openAgentsMdkWalletHome = argv[++index];
+        if (!options.openAgentsMdkWalletHome) {
+          throw new Error("--mdk-wallet-home requires a value.");
+        }
+        break;
+      case "--mdk-wallet-port":
+        options.openAgentsMdkWalletPort = parseIntegerFlag(
+          argv[++index],
+          "--mdk-wallet-port",
+        );
+        break;
+      case "--mdk-receive-amount-sats":
+        options.openAgentsMdkReceiveAmountSats = parseIntegerFlag(
+          argv[++index],
+          "--mdk-receive-amount-sats",
+        );
+        break;
       case "--repo":
         options.repo = argv[++index];
         if (!options.repo) {

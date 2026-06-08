@@ -18,6 +18,7 @@ npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --no-updates
 npx @openagentsinc/pylon status --json
 npx @openagentsinc/pylon --register-openagents --no-launch --json
+npx @openagentsinc/pylon --register-openagents --setup-mdk-wallet --no-launch --json
 npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --run-diagnostics
 npx @openagentsinc/pylon --verbose
 ```
@@ -67,6 +68,9 @@ The launcher:
   `pylon` binary after bootstrap instead of opening `pylon-tui`
 - can register the local Pylon with OpenAgents and send a public-safe
   heartbeat when `--register-openagents` is explicitly set
+- can initialize or reuse a local MoneyDevKit agent wallet, generate local
+  receive readiness, and report only redacted wallet/payout-target refs when
+  `--setup-mdk-wallet` is explicitly set
 - on native Windows x86_64, installs `pylon.exe` and `pylon-tui.exe` from the
   Windows `.zip` release asset and forwards CLI subcommands to `pylon.exe`
 - while the TUI is running on the default release track, checks GitHub Releases
@@ -125,6 +129,44 @@ Optional public-safe registration flags:
 The registration payload deliberately excludes local paths, wallet material,
 private model inventory, hostnames, SSH details, provider credentials, and raw
 payment data.
+
+## MDK wallet readiness
+
+After registration, a Pylon can report wallet receive readiness and request
+payout-target admission:
+
+```bash
+export OPENAGENTS_AGENT_TOKEN="oa_agent_..."
+
+npx @openagentsinc/pylon@latest \
+  --register-openagents \
+  --setup-mdk-wallet \
+  --openagents-api https://openagents.com \
+  --resource-mode background_20 \
+  --no-launch \
+  --json
+```
+
+Optional test/operator isolation flags:
+
+```bash
+--mdk-wallet-home /path/to/ignored/mdk-home
+--mdk-wallet-port 3457
+--mdk-receive-amount-sats 21
+```
+
+The launcher uses `npx @moneydevkit/agent-wallet@latest` locally. It may run
+`init --show`, `init`, `balance`, and `receive`. It submits only:
+
+- `wallet.public.mdk_agent_wallet.<digest>`;
+- `receive.redacted.mdk_agent_wallet.<digest>`;
+- `payout_target.public.mdk_agent_wallet.<digest>`;
+- bucketed readiness refs such as
+  `balance.mdk_agent_wallet.minimum_not_satisfied`.
+
+It does not submit the mnemonic, wallet config, raw receive invoice, payment
+hash, preimage, exact wallet balance, wallet home path, or private destination
+material to OpenAgents.
 
 Set `OPENAGENTS_DISABLE_TELEMETRY=1` to disable installer telemetry, or
 `OPENAGENTS_TELEMETRY_URL=http://127.0.0.1:8000/api/telemetry/events` to point

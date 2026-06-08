@@ -1536,6 +1536,158 @@ describe("@openagentsinc/pylon bootstrap", () => {
     expect(statuses).toContain("Sending OpenAgents Pylon heartbeat");
   });
 
+  test("bootstrapInstalledPylon reports MDK wallet and payout-target readiness with redacted refs only", async () => {
+    const posts = [];
+    const processCalls = [];
+
+    const summary = await bootstrapInstalledPylon(
+      {
+        version: "1.2.3",
+        tagName: "pylon-v1.2.3",
+        target: { os: "linux", arch: "x86_64" },
+        cached: false,
+        pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
+        model: "gemma-4-e4b",
+        configPath: "/tmp/private/pylon-config.json",
+        openAgentsRegister: true,
+        openAgentsSetupMdkWallet: true,
+        openAgentsApiBase: "https://openagents.example.test",
+        openAgentsAgentToken: "oa_agent_secret",
+        openAgentsPylonRef: "pylon.test.mdk",
+        openAgentsMdkWalletHome: "/tmp/private/mdk-home",
+        openAgentsMdkWalletPort: 3457,
+        openAgentsMdkReceiveAmountSats: 21,
+      },
+      {
+        fetchImpl: async (url, init) => {
+          posts.push({
+            url,
+            headers: init.headers,
+            body: JSON.parse(init.body),
+          });
+          return new Response(
+            JSON.stringify({ idempotent: false, ok: true }),
+            { status: 201 },
+          );
+        },
+        runProcessImpl: async (command, args, options = {}) => {
+          processCalls.push({ command, args, env: options.env });
+          const joined = args.join(" ");
+          if (command === "/tmp/pylon" && joined === "--help") {
+            return { stdout: "usage", stderr: "" };
+          }
+          if (command === "/tmp/pylon" && joined === "init") {
+            return {
+              stdout: JSON.stringify({
+                config_path: "/tmp/private/pylon-config.json",
+                node_id: "node-public-mdk",
+              }),
+              stderr: "",
+            };
+          }
+          if (command === "/tmp/pylon" && joined === "status --json") {
+            return {
+              stdout: JSON.stringify({
+                snapshot: {
+                  runtime: { authoritative_status: "ready" },
+                },
+              }),
+              stderr: "",
+            };
+          }
+          if (command === "/tmp/pylon" && joined === "inventory --json") {
+            return { stdout: JSON.stringify({ rows: [] }), stderr: "" };
+          }
+          if (
+            command === "npx" &&
+            joined === "-y @moneydevkit/agent-wallet@latest init --show"
+          ) {
+            return {
+              stdout: JSON.stringify({ walletId: "wallet-private-id" }),
+              stderr: "",
+            };
+          }
+          if (
+            command === "npx" &&
+            joined === "-y @moneydevkit/agent-wallet@latest balance"
+          ) {
+            return { stdout: JSON.stringify({ balance_sats: 0 }), stderr: "" };
+          }
+          if (
+            command === "npx" &&
+            joined.startsWith(
+              "-y @moneydevkit/agent-wallet@latest receive 21 --description OpenAgents Pylon readiness pylon.test.mdk",
+            )
+          ) {
+            return {
+              stdout: JSON.stringify({
+                invoice: "lnbc21n1privateinvoice",
+                payment_hash: "private-payment-hash",
+              }),
+              stderr: "",
+            };
+          }
+          throw new Error(`Unexpected command: ${command} ${joined}`);
+        },
+      },
+    );
+
+    expect(posts.map((post) => new URL(post.url).pathname)).toEqual([
+      "/api/pylons/register",
+      "/api/pylons/pylon.test.mdk/heartbeat",
+      "/api/pylons/pylon.test.mdk/wallet-readiness",
+      "/api/pylons/pylon.test.mdk/payout-target-admission",
+    ]);
+    const walletReadiness = posts[2].body;
+    const payoutTarget = posts[3].body;
+    expect(walletReadiness).toEqual(
+      expect.objectContaining({
+        balanceRefs: ["balance.mdk_agent_wallet.minimum_not_satisfied"],
+        liquidityRefs: ["liquidity.public.receive_ready"],
+        status: "ready",
+        walletReady: true,
+      }),
+    );
+    expect(walletReadiness.walletRef).toMatch(
+      /^wallet\.public\.mdk_agent_wallet\.[a-f0-9]{16}$/,
+    );
+    expect(walletReadiness.readinessRefs).toContain(
+      "readiness.public.mdk_agent_wallet_receive_ready",
+    );
+    expect(
+      walletReadiness.readinessRefs.some((ref) =>
+        /^receive\.redacted\.mdk_agent_wallet\.[a-f0-9]{16}$/.test(ref),
+      ),
+    ).toBe(true);
+    expect(payoutTarget.admissionRefs).toContain("admission.public.requested");
+    expect(payoutTarget.payoutTargetRef).toMatch(
+      /^payout_target\.public\.mdk_agent_wallet\.[a-f0-9]{16}$/,
+    );
+    expect(payoutTarget.policyRefs).toEqual([
+      "policy.public.operator_review_required",
+    ]);
+    expect(payoutTarget.status).toBe("requested");
+    const postedJson = JSON.stringify(posts.map((post) => post.body));
+    expect(postedJson).not.toContain("lnbc21n1privateinvoice");
+    expect(postedJson).not.toContain("private-payment-hash");
+    expect(postedJson).not.toContain("/tmp/private");
+    expect(JSON.stringify(summary.openAgentsMdkWallet)).not.toContain(
+      "lnbc21n1privateinvoice",
+    );
+    expect(
+      processCalls.find(
+        (call) =>
+          call.command === "npx" &&
+          call.args.join(" ") ===
+            "-y @moneydevkit/agent-wallet@latest balance",
+      )?.env,
+    ).toEqual(expect.objectContaining({
+      HOME: "/tmp/private/mdk-home",
+      MDK_WALLET_PORT: "3457",
+    }));
+  });
+
   test("resolveOpenAgentsPylonRef prefers explicit refs and otherwise hashes stable identity", () => {
     expect(
       resolveOpenAgentsPylonRef({
