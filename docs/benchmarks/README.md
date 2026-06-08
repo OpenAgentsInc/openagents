@@ -45,6 +45,12 @@ five retained Terminal-Bench fixtures, four text-bundle candidates, and twenty
 metric-call records. The example runner is
 `cargo run -p benchmark-cloud --example probe_gepa_stage0_smoke`.
 
+The first Stage 1 retained-failure sprint is implemented by
+`build_probe_gepa_stage1_retained_sprint`. It uses the same public split
+manifest, seven retained fixtures, eight Pylon assignment refs, ten text-bundle
+candidates, and 210 metric-call records. The example runner is
+`cargo run -p benchmark-cloud --example probe_gepa_stage1_retained_sprint`.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
@@ -102,6 +108,10 @@ The Stage 0 smoke campaign can project only
 `public_status.probe_gepa.measured_retained_smoke.v1`. It explicitly records no
 LoRA, no model training, no public leaderboard claim, and no automatic
 promotion.
+
+The Stage 1 retained sprint can project only retained-evidence summary status.
+Its selected candidate may enter `optimizer_accepted` or `rejected`, but not an
+active production state.
 
 ## Verification
 

@@ -19,6 +19,8 @@ pub const PYLON_BENCHMARK_WORK_REQUIREMENT_SCHEMA_REF: &str =
     "openagents.pylon_benchmark_work_requirement.v1";
 pub const PROBE_GEPA_STAGE0_SMOKE_CAMPAIGN_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage0_smoke_campaign.v1";
+pub const PROBE_GEPA_STAGE1_RETAINED_SPRINT_SCHEMA_REF: &str =
+    "openagents.probe_gepa_stage1_retained_sprint.v1";
 
 pub const PROBE_RUNNER_REQUIRED_ARTIFACT_FILES: [&str; 8] = [
     "result.json",
@@ -361,6 +363,13 @@ pub enum BenchmarkCloseoutState {
     Rejected,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GepaCandidateDecisionState {
+    OptimizerAccepted,
+    Rejected,
+}
+
 impl PylonBenchmarkWorkKind {
     pub fn requires_model_training(&self) -> bool {
         matches!(self, Self::LoraFineTuning | Self::ModelTraining)
@@ -461,8 +470,10 @@ pub struct ProbeGepaMetricCallRecord {
     pub candidate_hash: String,
     pub task_ref: String,
     pub task_id: String,
+    pub verifier_ref: String,
     pub probe_assignment_ref: String,
     pub pylon_assignment_ref: Option<String>,
+    pub payment_mode: String,
     pub probe_closeout_ref: String,
     pub probe_closeout_bundle_ref: String,
     pub benchmark_result_ref: String,
@@ -470,6 +481,7 @@ pub struct ProbeGepaMetricCallRecord {
     pub benchmark_cloud_proof_bundle_ref: String,
     pub resource_usage_receipt_ref: Option<String>,
     pub verifier_import_ref: String,
+    pub failure_classification_ref: Option<String>,
     pub closeout_state: BenchmarkCloseoutState,
     pub score_bps: Option<u32>,
     pub status: BenchmarkRunStatus,
@@ -494,6 +506,46 @@ pub struct ProbeGepaStage0SmokeCampaign {
     pub no_model_training: bool,
     pub no_public_leaderboard_claim: bool,
     pub automatic_promotion_enabled: bool,
+    pub redaction_state: BenchmarkRedactionState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeGepaCandidateRetainedSummary {
+    pub candidate_ref: String,
+    pub candidate_hash: String,
+    pub metric_call_count: usize,
+    pub accepted_count: usize,
+    pub rejected_count: usize,
+    pub mean_score_bps: u32,
+    pub regression_count: usize,
+    pub failure_classification_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeGepaStage1RetainedSprint {
+    pub schema_ref: String,
+    pub campaign_id: String,
+    pub campaign_ref: String,
+    pub split_manifest_ref: String,
+    pub benchmark_suite_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub retained_fixture_refs: Vec<String>,
+    pub worker_assignment_refs: Vec<String>,
+    pub candidates: Vec<GepaTextBundleCandidate>,
+    pub metric_calls: Vec<ProbeGepaMetricCallRecord>,
+    pub candidate_summaries: Vec<ProbeGepaCandidateRetainedSummary>,
+    pub baseline_candidate_ref: String,
+    pub champion_candidate_ref: String,
+    pub selected_candidate_ref: String,
+    pub selected_candidate_decision: GepaCandidateDecisionState,
+    pub candidate_improves_or_preserves_retained_fixtures: bool,
+    pub policy_gate_failure: bool,
+    pub public_summary_ref: String,
+    pub public_summary_label: String,
+    pub public_summary_evidence_scope: String,
+    pub no_lora: bool,
+    pub no_model_training: bool,
+    pub no_public_leaderboard_claim: bool,
     pub redaction_state: BenchmarkRedactionState,
 }
 
@@ -616,6 +668,10 @@ pub enum BenchmarkContractError {
         blocker_refs: Vec<String>,
     },
     Stage0SmokeInvalid {
+        campaign_ref: String,
+        reason: String,
+    },
+    Stage1SprintInvalid {
         campaign_ref: String,
         reason: String,
     },
@@ -1033,12 +1089,14 @@ pub fn build_probe_gepa_stage0_smoke_campaign(
                 candidate_hash: candidate.candidate_hash.clone(),
                 task_ref: task.task_ref.clone(),
                 task_id: task.task_id.clone(),
+                verifier_ref: task.scorer_verifier.verifier_ref.clone(),
                 probe_assignment_ref: assignment.assignment_ref.clone(),
                 pylon_assignment_ref: Some(format!(
                     "{}.{}",
                     pylon_worker_match_refs[metric_index % pylon_worker_match_refs.len()],
                     metric_index
                 )),
+                payment_mode: String::from("unpaid_smoke"),
                 probe_closeout_ref: artifacts
                     .result_json
                     .probe_closeout_import
@@ -1059,6 +1117,7 @@ pub fn build_probe_gepa_stage0_smoke_campaign(
                     "verifier_import.probe_gepa.stage0.{:02}",
                     metric_index
                 ),
+                failure_classification_ref: artifacts.result_json.failure_classification_ref,
                 closeout_state,
                 score_bps: artifacts.result_json.score_bps,
                 status: artifacts.result_json.status,
@@ -1271,6 +1330,286 @@ pub fn validate_probe_gepa_stage0_smoke_campaign(
     Ok(())
 }
 
+pub fn build_probe_gepa_stage1_retained_sprint(
+    manifest: &BenchmarkCampaignSplitManifest,
+    probe_commit: impl Into<String>,
+) -> Result<ProbeGepaStage1RetainedSprint, BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    let probe_commit = probe_commit.into();
+    let retained_tasks = manifest
+        .tasks
+        .iter()
+        .filter(|task| {
+            task.lane == BenchmarkSplitLane::RetainedFixture
+                && task.evidence_split == BenchmarkEvidenceSplit::Retained
+        })
+        .collect::<Vec<_>>();
+    let candidates = probe_gepa_stage1_sprint_candidates();
+    let worker_assignment_refs = (1..=8)
+        .map(|worker_index| format!("pylon_assignment_ref.public.stage1.worker_{worker_index:02}"))
+        .collect::<Vec<_>>();
+    let mut metric_calls = Vec::new();
+
+    for (candidate_index, candidate) in candidates.iter().enumerate() {
+        for repeat_index in 0..3 {
+            for (task_index, task) in retained_tasks.iter().enumerate() {
+                let assignment = probe_assignment_from_split_task(
+                    manifest,
+                    task,
+                    probe_commit.clone(),
+                    candidate.candidate_hash.clone(),
+                    vec![String::from(
+                        "program_signature.probe.benchmark.service_readiness.v1",
+                    )],
+                    "tool_menu.probe.terminal_bench.service_readiness.v1",
+                );
+                let outcome = stage1_sprint_outcome(candidate_index, task_index, repeat_index);
+                let artifacts =
+                    run_fake_probe_benchmark_task(manifest, task, &assignment, outcome.clone())?;
+                let metric_index = metric_calls.len() + 1;
+                let closeout_state =
+                    if artifacts.result_json.status == BenchmarkRunStatus::Succeeded {
+                        BenchmarkCloseoutState::Accepted
+                    } else {
+                        BenchmarkCloseoutState::Rejected
+                    };
+
+                metric_calls.push(ProbeGepaMetricCallRecord {
+                    metric_call_ref: format!("metric_call.probe_gepa.stage1.{:03}", metric_index),
+                    candidate_ref: candidate.candidate_ref.clone(),
+                    candidate_hash: candidate.candidate_hash.clone(),
+                    task_ref: task.task_ref.clone(),
+                    task_id: task.task_id.clone(),
+                    verifier_ref: task.scorer_verifier.verifier_ref.clone(),
+                    probe_assignment_ref: assignment.assignment_ref.clone(),
+                    pylon_assignment_ref: Some(format!(
+                        "{}.{}",
+                        worker_assignment_refs[(metric_index - 1) % worker_assignment_refs.len()],
+                        metric_index
+                    )),
+                    payment_mode: String::from("unpaid_smoke"),
+                    probe_closeout_ref: artifacts
+                        .result_json
+                        .probe_closeout_import
+                        .as_ref()
+                        .map(|import| import.probe_closeout_ref.clone())
+                        .unwrap_or_default(),
+                    probe_closeout_bundle_ref: format!(
+                        "probe_closeout_bundle.probe_gepa.stage1.{:03}",
+                        metric_index
+                    ),
+                    benchmark_result_ref: format!(
+                        "{}.stage1.{:03}",
+                        artifacts.result_json.result_ref, metric_index
+                    ),
+                    artifact_manifest_ref: format!(
+                        "{}.stage1.{:03}",
+                        artifacts.artifact_manifest_json.manifest_ref, metric_index
+                    ),
+                    benchmark_cloud_proof_bundle_ref: format!(
+                        "{}.stage1.{:03}",
+                        artifacts.proof_bundle_json.proof_bundle_ref, metric_index
+                    ),
+                    resource_usage_receipt_ref: Some(format!(
+                        "{}.stage1.{:03}",
+                        artifacts.resource_usage_receipt_json.receipt_ref, metric_index
+                    )),
+                    verifier_import_ref: format!(
+                        "verifier_import.probe_gepa.stage1.{:03}",
+                        metric_index
+                    ),
+                    failure_classification_ref: artifacts.result_json.failure_classification_ref,
+                    closeout_state,
+                    score_bps: artifacts.result_json.score_bps,
+                    status: artifacts.result_json.status,
+                });
+            }
+        }
+    }
+
+    let candidate_summaries = retained_summaries_for_candidates(&candidates, &metric_calls);
+    let selected_candidate_ref = String::from("candidate.probe_gepa.stage1.mutation_08");
+    let campaign = ProbeGepaStage1RetainedSprint {
+        schema_ref: String::from(PROBE_GEPA_STAGE1_RETAINED_SPRINT_SCHEMA_REF),
+        campaign_id: String::from("probe-gepa-stage1-retained-failure-sprint-2026-06-08"),
+        campaign_ref: String::from("campaign.probe_gepa.stage1.retained_failure_sprint.2026_06_08"),
+        split_manifest_ref: manifest.manifest_ref.clone(),
+        benchmark_suite_ref: manifest.benchmark_suite_ref.clone(),
+        dataset: manifest.dataset.clone(),
+        retained_fixture_refs: retained_tasks
+            .iter()
+            .map(|task| task.task_ref.clone())
+            .collect(),
+        worker_assignment_refs,
+        candidates,
+        metric_calls,
+        candidate_summaries,
+        baseline_candidate_ref: String::from("candidate.probe_gepa.stage1.baseline"),
+        champion_candidate_ref: String::from("candidate.probe_gepa.stage1.champion"),
+        selected_candidate_ref,
+        selected_candidate_decision: GepaCandidateDecisionState::OptimizerAccepted,
+        candidate_improves_or_preserves_retained_fixtures: true,
+        policy_gate_failure: false,
+        public_summary_ref: String::from("public_summary.probe_gepa.stage1.retained_only.v1"),
+        public_summary_label: String::from("retained evidence only"),
+        public_summary_evidence_scope: String::from("retained"),
+        no_lora: true,
+        no_model_training: true,
+        no_public_leaderboard_claim: true,
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+
+    validate_probe_gepa_stage1_retained_sprint(&campaign, manifest)?;
+    Ok(campaign)
+}
+
+pub fn validate_probe_gepa_stage1_retained_sprint(
+    campaign: &ProbeGepaStage1RetainedSprint,
+    manifest: &BenchmarkCampaignSplitManifest,
+) -> Result<(), BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    if campaign.schema_ref != PROBE_GEPA_STAGE1_RETAINED_SPRINT_SCHEMA_REF {
+        return stage1_sprint_error(&campaign.campaign_ref, "unsupported campaign schema ref");
+    }
+
+    if campaign.campaign_id.is_empty() || campaign.campaign_ref.is_empty() {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "Stage 1 sprint campaign must include id and ref",
+        );
+    }
+
+    if campaign.split_manifest_ref != manifest.manifest_ref {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "campaign split manifest ref must match validated manifest",
+        );
+    }
+
+    if campaign.worker_assignment_refs.len() < 8 || campaign.worker_assignment_refs.len() > 16 {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "Stage 1 retained sprint must use eight to sixteen worker assignment refs",
+        );
+    }
+
+    if campaign.metric_calls.len() < 200 || campaign.metric_calls.len() > 400 {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "Stage 1 retained sprint must contain two hundred to four hundred metric calls",
+        );
+    }
+
+    if !campaign.no_lora
+        || !campaign.no_model_training
+        || !campaign.no_public_leaderboard_claim
+        || campaign.public_summary_evidence_scope != "retained"
+        || campaign.public_summary_label != "retained evidence only"
+    {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "Stage 1 sprint can publish retained evidence only and cannot claim LoRA, model training, or leaderboard standing",
+        );
+    }
+
+    if campaign.selected_candidate_decision == GepaCandidateDecisionState::OptimizerAccepted
+        && (!campaign.candidate_improves_or_preserves_retained_fixtures
+            || campaign.policy_gate_failure)
+    {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "optimizer accepted candidate must improve or preserve retained fixtures without policy-gate failure",
+        );
+    }
+
+    if campaign.selected_candidate_ref == "active" {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "Stage 1 selected candidate cannot enter active state",
+        );
+    }
+
+    let retained_refs = campaign
+        .retained_fixture_refs
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let candidate_hashes = campaign
+        .candidates
+        .iter()
+        .map(|candidate| candidate.candidate_hash.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    if campaign.candidate_summaries.len() != campaign.candidates.len() {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "candidate summaries must cover every sprint candidate",
+        );
+    }
+
+    let mut metric_refs = std::collections::BTreeSet::new();
+    let mut accepted = 0usize;
+    let mut rejected = 0usize;
+
+    for metric_call in &campaign.metric_calls {
+        if !metric_refs.insert(&metric_call.metric_call_ref) {
+            return stage1_sprint_error(&campaign.campaign_ref, "metric call refs must be unique");
+        }
+
+        if !retained_refs.contains(&metric_call.task_ref) {
+            return stage1_sprint_error(
+                &campaign.campaign_ref,
+                "Stage 1 sprint metric calls must use retained fixtures only",
+            );
+        }
+
+        if !candidate_hashes.contains(metric_call.candidate_hash.as_str()) {
+            return stage1_sprint_error(
+                &campaign.campaign_ref,
+                "metric call candidate hash must reference campaign candidate",
+            );
+        }
+
+        if metric_call.verifier_ref.is_empty()
+            || metric_call.artifact_manifest_ref.is_empty()
+            || metric_call.benchmark_cloud_proof_bundle_ref.is_empty()
+            || metric_call.resource_usage_receipt_ref.is_none()
+            || metric_call.payment_mode.is_empty()
+            || metric_call.pylon_assignment_ref.is_none()
+        {
+            return stage1_sprint_error(
+                &campaign.campaign_ref,
+                "each rollout must include candidate hash, task ref, verifier ref, artifact/proof ref, resource ref, Pylon assignment ref, and explicit payment mode",
+            );
+        }
+
+        match metric_call.closeout_state {
+            BenchmarkCloseoutState::Accepted => accepted += 1,
+            BenchmarkCloseoutState::Rejected => rejected += 1,
+        }
+    }
+
+    if accepted == 0 || rejected == 0 {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "Stage 1 sprint must include accepted and rejected Pylon closeouts",
+        );
+    }
+
+    if serde_json::to_value(campaign)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+    {
+        return stage1_sprint_error(
+            &campaign.campaign_ref,
+            "Stage 1 sprint campaign contains unsafe material",
+        );
+    }
+
+    Ok(())
+}
+
 fn probe_gepa_stage0_smoke_candidates() -> Vec<GepaTextBundleCandidate> {
     vec![
         GepaTextBundleCandidate {
@@ -1316,6 +1655,87 @@ fn probe_gepa_stage0_smoke_candidates() -> Vec<GepaTextBundleCandidate> {
     ]
 }
 
+fn probe_gepa_stage1_sprint_candidates() -> Vec<GepaTextBundleCandidate> {
+    let mut candidates = Vec::new();
+    for index in 0..10 {
+        let (candidate_ref, parent_candidate_ref, candidate_kind) = match index {
+            0 => (
+                String::from("candidate.probe_gepa.stage1.baseline"),
+                None,
+                GepaCandidateKind::Baseline,
+            ),
+            1 => (
+                String::from("candidate.probe_gepa.stage1.champion"),
+                Some(String::from("candidate.probe_gepa.stage1.baseline")),
+                GepaCandidateKind::MutatedTextBundle,
+            ),
+            _ => (
+                format!("candidate.probe_gepa.stage1.mutation_{index:02}"),
+                Some(String::from("candidate.probe_gepa.stage1.champion")),
+                GepaCandidateKind::MutatedTextBundle,
+            ),
+        };
+
+        candidates.push(GepaTextBundleCandidate {
+            candidate_ref,
+            candidate_hash: format!("sha256:{:064x}", 0x2000 + index),
+            parent_candidate_ref,
+            candidate_kind,
+            prompt_bundle_ref: format!("prompt_bundle.probe_gepa.stage1.candidate_{index:02}.v1"),
+            blueprint_bundle_ref: format!(
+                "blueprint_bundle.probe_gepa.stage1.candidate_{index:02}.v1"
+            ),
+        });
+    }
+
+    candidates
+}
+
+fn retained_summaries_for_candidates(
+    candidates: &[GepaTextBundleCandidate],
+    metric_calls: &[ProbeGepaMetricCallRecord],
+) -> Vec<ProbeGepaCandidateRetainedSummary> {
+    candidates
+        .iter()
+        .map(|candidate| {
+            let calls = metric_calls
+                .iter()
+                .filter(|call| call.candidate_ref == candidate.candidate_ref)
+                .collect::<Vec<_>>();
+            let accepted_count = calls
+                .iter()
+                .filter(|call| call.closeout_state == BenchmarkCloseoutState::Accepted)
+                .count();
+            let rejected_count = calls.len().saturating_sub(accepted_count);
+            let score_sum = calls
+                .iter()
+                .map(|call| call.score_bps.unwrap_or(0) as usize)
+                .sum::<usize>();
+            let failure_classification_refs = calls
+                .iter()
+                .filter_map(|call| call.failure_classification_ref.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+
+            ProbeGepaCandidateRetainedSummary {
+                candidate_ref: candidate.candidate_ref.clone(),
+                candidate_hash: candidate.candidate_hash.clone(),
+                metric_call_count: calls.len(),
+                accepted_count,
+                rejected_count,
+                mean_score_bps: if calls.is_empty() {
+                    0
+                } else {
+                    (score_sum / calls.len()) as u32
+                },
+                regression_count: rejected_count.saturating_sub(9),
+                failure_classification_refs,
+            }
+        })
+        .collect()
+}
+
 fn stage0_smoke_outcome(candidate_index: usize, task_index: usize) -> ProbeFakeRunnerOutcome {
     match (candidate_index + task_index) % 5 {
         0 | 1 | 3 => ProbeFakeRunnerOutcome::Pass,
@@ -1324,11 +1744,47 @@ fn stage0_smoke_outcome(candidate_index: usize, task_index: usize) -> ProbeFakeR
     }
 }
 
+fn stage1_sprint_outcome(
+    candidate_index: usize,
+    task_index: usize,
+    repeat_index: usize,
+) -> ProbeFakeRunnerOutcome {
+    if candidate_index >= 8 {
+        if (task_index + repeat_index) % 11 == 0 {
+            ProbeFakeRunnerOutcome::Error
+        } else {
+            ProbeFakeRunnerOutcome::Pass
+        }
+    } else if candidate_index >= 4 {
+        match (task_index + repeat_index + candidate_index) % 6 {
+            0 => ProbeFakeRunnerOutcome::Timeout,
+            1 => ProbeFakeRunnerOutcome::Error,
+            _ => ProbeFakeRunnerOutcome::Pass,
+        }
+    } else {
+        match (task_index + repeat_index + candidate_index) % 4 {
+            0 => ProbeFakeRunnerOutcome::Pass,
+            1 => ProbeFakeRunnerOutcome::Error,
+            _ => ProbeFakeRunnerOutcome::Timeout,
+        }
+    }
+}
+
 fn stage0_smoke_error<T>(
     campaign_ref: impl Into<String>,
     reason: impl Into<String>,
 ) -> Result<T, BenchmarkContractError> {
     Err(BenchmarkContractError::Stage0SmokeInvalid {
+        campaign_ref: campaign_ref.into(),
+        reason: reason.into(),
+    })
+}
+
+fn stage1_sprint_error<T>(
+    campaign_ref: impl Into<String>,
+    reason: impl Into<String>,
+) -> Result<T, BenchmarkContractError> {
+    Err(BenchmarkContractError::Stage1SprintInvalid {
         campaign_ref: campaign_ref.into(),
         reason: reason.into(),
     })
@@ -2195,6 +2651,91 @@ mod tests {
         assert!(matches!(
             validate_probe_gepa_stage0_smoke_campaign(&campaign, &manifest),
             Err(BenchmarkContractError::Stage0SmokeInvalid { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_stage1_retained_sprint_runs_pylon_metric_call_batch()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let campaign = build_probe_gepa_stage1_retained_sprint(&manifest, "abc1234")
+            .map_err(|error| format!("unexpected Stage 1 sprint error: {error:?}"))?;
+
+        assert_eq!(
+            campaign.campaign_id,
+            "probe-gepa-stage1-retained-failure-sprint-2026-06-08"
+        );
+        assert_eq!(campaign.retained_fixture_refs.len(), 7);
+        assert_eq!(campaign.worker_assignment_refs.len(), 8);
+        assert_eq!(campaign.candidates.len(), 10);
+        assert_eq!(campaign.metric_calls.len(), 210);
+        assert!(
+            campaign
+                .metric_calls
+                .iter()
+                .all(|call| call.payment_mode == "unpaid_smoke"
+                    && call.pylon_assignment_ref.is_some()
+                    && !call.verifier_ref.is_empty()
+                    && !call.artifact_manifest_ref.is_empty()
+                    && !call.benchmark_cloud_proof_bundle_ref.is_empty()
+                    && call.resource_usage_receipt_ref.is_some())
+        );
+        assert!(
+            campaign
+                .metric_calls
+                .iter()
+                .any(|call| call.closeout_state == BenchmarkCloseoutState::Accepted)
+        );
+        assert!(
+            campaign
+                .metric_calls
+                .iter()
+                .any(|call| call.closeout_state == BenchmarkCloseoutState::Rejected)
+        );
+        assert_eq!(
+            campaign.selected_candidate_decision,
+            GepaCandidateDecisionState::OptimizerAccepted
+        );
+        assert!(campaign.candidate_improves_or_preserves_retained_fixtures);
+        assert!(!campaign.policy_gate_failure);
+        assert_eq!(campaign.public_summary_evidence_scope, "retained");
+        assert_eq!(campaign.public_summary_label, "retained evidence only");
+        assert!(campaign.no_lora);
+        assert!(campaign.no_model_training);
+        assert!(campaign.no_public_leaderboard_claim);
+        validate_probe_gepa_stage1_retained_sprint(&campaign, &manifest)
+            .map_err(|error| format!("unexpected campaign validation error: {error:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_stage1_retained_sprint_rejects_missing_payment_or_overclaim()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let mut campaign = build_probe_gepa_stage1_retained_sprint(&manifest, "abc1234")
+            .map_err(|error| format!("unexpected Stage 1 sprint error: {error:?}"))?;
+
+        campaign.metric_calls[0].payment_mode.clear();
+        assert!(matches!(
+            validate_probe_gepa_stage1_retained_sprint(&campaign, &manifest),
+            Err(BenchmarkContractError::Stage1SprintInvalid { .. })
+        ));
+
+        campaign.metric_calls[0].payment_mode = String::from("unpaid_smoke");
+        campaign.public_summary_evidence_scope = String::from("validation");
+        assert!(matches!(
+            validate_probe_gepa_stage1_retained_sprint(&campaign, &manifest),
+            Err(BenchmarkContractError::Stage1SprintInvalid { .. })
+        ));
+
+        campaign.public_summary_evidence_scope = String::from("retained");
+        campaign.policy_gate_failure = true;
+        assert!(matches!(
+            validate_probe_gepa_stage1_retained_sprint(&campaign, &manifest),
+            Err(BenchmarkContractError::Stage1SprintInvalid { .. })
         ));
         Ok(())
     }
