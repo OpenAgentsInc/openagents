@@ -106,6 +106,38 @@ test("parseArgs supports disabling release polling", () => {
   expect(options.noUpdates).toBe(true);
 });
 
+test("parseArgs supports OpenAgents registration flags", () => {
+  const options = parseArgs([
+    "--register-openagents",
+    "--openagents-api",
+    "https://openagents.example.test",
+    "--openagents-agent-token",
+    "oa_agent_secret",
+    "--pylon-ref",
+    "pylon.test.one",
+    "--pylon-display-name",
+    "Test Pylon",
+    "--resource-mode",
+    "balanced",
+    "--capability-ref",
+    "capability.public.gpu,capability.public.mlx",
+    "--capability-ref",
+    "capability.public.local",
+  ]);
+
+  expect(options.openAgentsRegister).toBe(true);
+  expect(options.openAgentsApiBase).toBe("https://openagents.example.test");
+  expect(options.openAgentsAgentToken).toBe("oa_agent_secret");
+  expect(options.openAgentsPylonRef).toBe("pylon.test.one");
+  expect(options.openAgentsPylonDisplayName).toBe("Test Pylon");
+  expect(options.openAgentsResourceMode).toBe("balanced");
+  expect(options.openAgentsCapabilityRefs).toEqual([
+    "capability.public.gpu",
+    "capability.public.mlx",
+    "capability.public.local",
+  ]);
+});
+
 test("parseArgs forwards Pylon CLI commands after launcher options", () => {
   const options = parseArgs([
     "--install-root",

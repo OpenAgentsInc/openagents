@@ -15,6 +15,7 @@ export { createTelemetryClient } from "./telemetry.js";
 export const DEFAULT_RELEASE_REPO = "OpenAgentsInc/openagents";
 export const DEFAULT_RELEASE_API_BASE = "https://api.github.com";
 export const DEFAULT_RELEASE_GIT_BASE = "https://github.com";
+export const DEFAULT_OPENAGENTS_API_BASE = "https://openagents.com";
 export const DEFAULT_RUSTUP_INIT_URL = "https://sh.rustup.rs";
 export const DEFAULT_MODEL_ID = "gemma-4-e4b";
 export const DEFAULT_DIAGNOSTIC_REPEATS = 3;
@@ -26,6 +27,11 @@ const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
 const SOURCE_BUILD_INSTALL_METHOD = "source_build";
 const PREFERRED_RUNTIME_MODEL_NAME = "gemma4:e4b";
+const DEFAULT_PYLON_RESOURCE_MODE = "background_20";
+const DEFAULT_PYLON_CAPABILITY_REFS = [
+  "capability.public.pylon_launcher",
+  "capability.public.inference",
+];
 const LEGACY_SOURCE_BUILD_SIBLING_REPOSITORIES = {
   "spark-sdk": "https://github.com/AtlantisPleb/spark-sdk.git",
 };
@@ -1549,6 +1555,246 @@ function isUnsupportedGemmaDiagnoseError(error) {
   );
 }
 
+function publicHash(value) {
+  return createHash("sha256").update(String(value)).digest("hex").slice(0, 16);
+}
+
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function normalizePublicPylonRef(value) {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .slice(0, 120);
+
+  if (!normalized || normalized.length < 3) {
+    return null;
+  }
+
+  return normalized;
+}
+
+export function resolveOpenAgentsPylonRef({
+  explicitPylonRef = null,
+  init = null,
+  status = null,
+  configPath = null,
+  target = null,
+} = {}) {
+  const explicit = normalizePublicPylonRef(explicitPylonRef);
+  if (explicit) {
+    return explicit;
+  }
+
+  const source = firstString(
+    init?.pylon_ref,
+    init?.pylonRef,
+    init?.identity_ref,
+    init?.identityRef,
+    init?.node_id,
+    init?.nodeId,
+    init?.public_key,
+    init?.publicKey,
+    init?.identity?.pylon_ref,
+    init?.identity?.node_id,
+    init?.identity?.public_key,
+    status?.pylon_ref,
+    status?.pylonRef,
+    status?.node_id,
+    status?.nodeId,
+    status?.snapshot?.identity?.pylon_ref,
+    status?.snapshot?.identity?.node_id,
+    status?.snapshot?.identity?.public_key,
+    configPath,
+  );
+
+  if (!source) {
+    return null;
+  }
+
+  const platform = target?.os && target?.arch ? `${target.os}.${target.arch}` : "local";
+  return `pylon.${platform}.${publicHash(source)}`.slice(0, 120);
+}
+
+function statusLabelFromPylonStatus(status) {
+  const authoritative = firstString(
+    status?.snapshot?.runtime?.authoritative_status,
+    status?.snapshot?.runtime?.status,
+    status?.runtime?.authoritative_status,
+    status?.status,
+  );
+
+  if (!authoritative) {
+    return "not_ready";
+  }
+
+  const normalized = authoritative.toLowerCase();
+  if (normalized.includes("ready") || normalized.includes("online")) {
+    return "online";
+  }
+  if (normalized.includes("degraded")) {
+    return "degraded";
+  }
+  if (normalized.includes("blocked") || normalized.includes("error")) {
+    return "blocked";
+  }
+  return normalized.slice(0, 80);
+}
+
+function capabilityRefsFromOptions(options, inventory) {
+  const explicit = Array.isArray(options.openAgentsCapabilityRefs)
+    ? options.openAgentsCapabilityRefs
+    : [];
+  const refs = new Set(
+    [...DEFAULT_PYLON_CAPABILITY_REFS, ...explicit]
+      .map((ref) => String(ref).trim())
+      .filter(Boolean),
+  );
+
+  if (Array.isArray(inventory?.rows) && inventory.rows.length > 0) {
+    refs.add("capability.public.local_inventory_present");
+  }
+
+  return Array.from(refs);
+}
+
+async function postOpenAgentsJson({
+  fetchImpl,
+  url,
+  token,
+  idempotencyKey,
+  body,
+}) {
+  const response = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  const payload = text.trim() ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const reason =
+      payload?.reason ??
+      payload?.error ??
+      `${response.status} ${response.statusText}`.trim();
+    throw new Error(`OpenAgents Pylon registration failed: ${reason}`);
+  }
+
+  return payload;
+}
+
+export async function registerPylonWithOpenAgents(
+  options,
+  {
+    init,
+    status,
+    inventory,
+    fetchImpl = globalThis.fetch,
+    onStatus = null,
+  } = {},
+) {
+  if (!options.openAgentsRegister) {
+    return null;
+  }
+
+  const token =
+    options.openAgentsAgentToken ??
+    process.env.OPENAGENTS_AGENT_TOKEN ??
+    process.env.OPENAGENTS_PYLON_AGENT_TOKEN;
+
+  if (!token) {
+    throw new Error(
+      "OpenAgents registration requires OPENAGENTS_AGENT_TOKEN or --openagents-agent-token.",
+    );
+  }
+
+  if (typeof fetchImpl !== "function") {
+    throw new Error("A fetch implementation is required for OpenAgents registration.");
+  }
+
+  const apiBase = (options.openAgentsApiBase ?? DEFAULT_OPENAGENTS_API_BASE)
+    .replace(/\/+$/, "");
+  const pylonRef = resolveOpenAgentsPylonRef({
+    explicitPylonRef: options.openAgentsPylonRef,
+    init,
+    status,
+    configPath: init?.config_path ?? options.configPath ?? null,
+    target: options.target,
+  });
+
+  if (!pylonRef) {
+    throw new Error(
+      "OpenAgents registration could not derive a stable public Pylon ref; pass --pylon-ref.",
+    );
+  }
+
+  const resourceMode =
+    options.openAgentsResourceMode ?? DEFAULT_PYLON_RESOURCE_MODE;
+  const displayName =
+    options.openAgentsPylonDisplayName ?? `Pylon ${pylonRef.slice(-8)}`;
+  const heartbeatStatus = statusLabelFromPylonStatus(status);
+
+  emitStatus(onStatus, "Registering Pylon with OpenAgents", pylonRef);
+  const registration = await postOpenAgentsJson({
+    fetchImpl,
+    url: `${apiBase}/api/pylons/register`,
+    token,
+    idempotencyKey: `pylon-register-${pylonRef}`,
+    body: {
+      capabilityRefs: capabilityRefsFromOptions(options, inventory),
+      displayName,
+      pylonRef,
+      resourceMode,
+      statusRefs: [
+        `status.public.${heartbeatStatus}`,
+        `release.public.${String(options.tagName ?? `pylon-v${options.version}`).replace(/[^A-Za-z0-9_.:/-]+/g, "_")}`,
+      ],
+    },
+  });
+
+  emitStatus(onStatus, "Sending OpenAgents Pylon heartbeat", heartbeatStatus);
+  const heartbeat = await postOpenAgentsJson({
+    fetchImpl,
+    url: `${apiBase}/api/pylons/${encodeURIComponent(pylonRef)}/heartbeat`,
+    token,
+    idempotencyKey: `pylon-heartbeat-${pylonRef}-${Math.floor(Date.now() / 60_000)}`,
+    body: {
+      capacityRefs: ["capacity.public.launcher_smoke"],
+      healthRefs: [`health.public.${heartbeatStatus}`],
+      resourceMode,
+      status: heartbeatStatus,
+    },
+  });
+
+  return {
+    apiBase,
+    pylonRef,
+    resourceMode,
+    status: heartbeatStatus,
+    registration: {
+      idempotent: Boolean(registration?.idempotent),
+      publicUrl: `${apiBase}/api/pylons/${encodeURIComponent(pylonRef)}`,
+    },
+    heartbeat: {
+      idempotent: Boolean(heartbeat?.idempotent),
+    },
+  };
+}
+
 export async function ensureReleaseInstall(
   options = {},
   {
@@ -1879,6 +2125,7 @@ export async function ensureReleaseInstall(
 export async function bootstrapInstalledPylon(
   options,
   {
+    fetchImpl = globalThis.fetch,
     runProcessImpl = runProcess,
     onStatus = null,
     telemetryClient = null,
@@ -1927,6 +2174,14 @@ export async function bootstrapInstalledPylon(
       options,
       runProcessImpl,
     );
+
+    const openAgentsRegistration = await registerPylonWithOpenAgents(options, {
+      fetchImpl,
+      init,
+      inventory,
+      onStatus,
+      status,
+    });
 
     let download = null;
     if (!skipModelDownload) {
@@ -2025,6 +2280,7 @@ export async function bootstrapInstalledPylon(
       init,
       status,
       inventory,
+      openAgentsRegistration,
       model,
       download,
       diagnostic,

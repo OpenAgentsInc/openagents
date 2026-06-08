@@ -17,6 +17,7 @@ npx @openagentsinc/pylon --version 0.1.16
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --no-updates
 npx @openagentsinc/pylon status --json
+npx @openagentsinc/pylon --register-openagents --no-launch --json
 npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --run-diagnostics
 npx @openagentsinc/pylon --verbose
 ```
@@ -64,6 +65,8 @@ The launcher:
   unless `--no-launch` is set
 - forwards CLI subcommands such as `pylon status --json` to the installed
   `pylon` binary after bootstrap instead of opening `pylon-tui`
+- can register the local Pylon with OpenAgents and send a public-safe
+  heartbeat when `--register-openagents` is explicitly set
 - on native Windows x86_64, installs `pylon.exe` and `pylon-tui.exe` from the
   Windows `.zip` release asset and forwards CLI subcommands to `pylon.exe`
 - while the TUI is running on the default release track, checks GitHub Releases
@@ -87,9 +90,41 @@ The launcher:
   advertise homework-worker capability. Launcher `0.1.17` adds CLI subcommand
   forwarding and bounds background GitHub release checks to avoid
   unauthenticated rate-limit churn.
-- does not try to install or register a local runtime automatically; the
-  bootstrap stays honest about the separate local Gemma runtime
-  prerequisite instead of mutating the host behind the user's back
+- does not register with OpenAgents by default; registration is an explicit
+  token-scoped operator action
+
+## OpenAgents registration
+
+Use this only with an active OpenAgents programmatic agent token. Prefer an
+environment variable so the token is not stored in shell history:
+
+```bash
+export OPENAGENTS_AGENT_TOKEN="oa_agent_..."
+
+npx @openagentsinc/pylon@latest \
+  --register-openagents \
+  --openagents-api https://openagents.com \
+  --resource-mode background_20 \
+  --no-launch \
+  --json
+```
+
+The launcher runs the normal first-run smoke, derives or reuses a stable public
+Pylon ref from the local Pylon identity, registers through
+`POST /api/pylons/register`, and sends a heartbeat through
+`POST /api/pylons/{pylonRef}/heartbeat`.
+
+Optional public-safe registration flags:
+
+```bash
+--pylon-ref pylon.example.local
+--pylon-display-name "Example Pylon"
+--capability-ref capability.public.gpu
+```
+
+The registration payload deliberately excludes local paths, wallet material,
+private model inventory, hostnames, SSH details, provider credentials, and raw
+payment data.
 
 Set `OPENAGENTS_DISABLE_TELEMETRY=1` to disable installer telemetry, or
 `OPENAGENTS_TELEMETRY_URL=http://127.0.0.1:8000/api/telemetry/events` to point

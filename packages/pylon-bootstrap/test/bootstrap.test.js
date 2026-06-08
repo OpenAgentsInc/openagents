@@ -17,6 +17,7 @@ import {
   launchInstalledPylonWithUpdates,
   parseSha256File,
   renderBootstrapSummary,
+  resolveOpenAgentsPylonRef,
   resolvePlatformTarget,
   resolveBootstrapOutcome,
   runProcess,
@@ -1425,6 +1426,128 @@ describe("@openagentsinc/pylon bootstrap", () => {
     expect(statuses).toContain("Skipping optional Gemma diagnostic");
     expect(summary.download).toBeNull();
     expect(summary.diagnosticResult).toBeNull();
+  });
+
+  test("bootstrapInstalledPylon can register and heartbeat with OpenAgents without leaking local paths", async () => {
+    const posts = [];
+    const statuses = [];
+
+    const summary = await bootstrapInstalledPylon(
+      {
+        version: "1.2.3",
+        tagName: "pylon-v1.2.3",
+        target: { os: "darwin", arch: "arm64" },
+        cached: false,
+        pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
+        model: "gemma-4-e4b",
+        configPath: "/tmp/private/pylon-config.json",
+        openAgentsRegister: true,
+        openAgentsApiBase: "https://openagents.example.test",
+        openAgentsAgentToken: "oa_agent_secret",
+        openAgentsPylonDisplayName: "Kitchen Pylon",
+        openAgentsResourceMode: "balanced",
+        openAgentsCapabilityRefs: ["capability.public.gpu"],
+      },
+      {
+        fetchImpl: async (url, init) => {
+          posts.push({
+            url,
+            headers: init.headers,
+            body: JSON.parse(init.body),
+          });
+          return new Response(
+            JSON.stringify({ idempotent: false, ok: true }),
+            { status: 201 },
+          );
+        },
+        runProcessImpl: async (command, args) => {
+          const joined = args.join(" ");
+          if (joined === "--help") {
+            return { stdout: "usage", stderr: "" };
+          }
+          if (joined === "init") {
+            return {
+              stdout: JSON.stringify({
+                config_path: "/tmp/private/pylon-config.json",
+                node_id: "node-public-abc123",
+              }),
+              stderr: "",
+            };
+          }
+          if (joined === "status --json") {
+            return {
+              stdout: JSON.stringify({
+                snapshot: {
+                  runtime: {
+                    authoritative_status: "ready",
+                  },
+                },
+              }),
+              stderr: "",
+            };
+          }
+          if (joined === "inventory --json") {
+            return {
+              stdout: JSON.stringify({ rows: [{ id: "gpu-0" }] }),
+              stderr: "",
+            };
+          }
+          throw new Error(`Unexpected command: ${command} ${joined}`);
+        },
+        onStatus: (event) => statuses.push(event.message),
+      },
+    );
+
+    expect(posts).toHaveLength(2);
+    expect(posts[0].url).toBe(
+      "https://openagents.example.test/api/pylons/register",
+    );
+    expect(posts[0].headers.Authorization).toBe("Bearer oa_agent_secret");
+    expect(posts[0].body).toEqual(
+      expect.objectContaining({
+        capabilityRefs: expect.arrayContaining([
+          "capability.public.pylon_launcher",
+          "capability.public.inference",
+          "capability.public.gpu",
+          "capability.public.local_inventory_present",
+        ]),
+        displayName: "Kitchen Pylon",
+        resourceMode: "balanced",
+      }),
+    );
+    expect(posts[0].body.pylonRef).toMatch(/^pylon\.darwin\.arm64\.[a-f0-9]{16}$/);
+    expect(JSON.stringify(posts.map((post) => post.body))).not.toContain(
+      "/tmp/private",
+    );
+    expect(posts[1].url).toContain(
+      `/api/pylons/${encodeURIComponent(posts[0].body.pylonRef)}/heartbeat`,
+    );
+    expect(posts[1].body.status).toBe("online");
+    expect(summary.openAgentsRegistration).toEqual(
+      expect.objectContaining({
+        apiBase: "https://openagents.example.test",
+        pylonRef: posts[0].body.pylonRef,
+        resourceMode: "balanced",
+        status: "online",
+      }),
+    );
+    expect(statuses).toContain("Registering Pylon with OpenAgents");
+    expect(statuses).toContain("Sending OpenAgents Pylon heartbeat");
+  });
+
+  test("resolveOpenAgentsPylonRef prefers explicit refs and otherwise hashes stable identity", () => {
+    expect(
+      resolveOpenAgentsPylonRef({
+        explicitPylonRef: "Kitchen Pylon 01",
+      }),
+    ).toBe("kitchen-pylon-01");
+    expect(
+      resolveOpenAgentsPylonRef({
+        init: { node_id: "node-public-abc123" },
+        target: { os: "linux", arch: "x86_64" },
+      }),
+    ).toMatch(/^pylon\.linux\.x86_64\.[a-f0-9]{16}$/);
   });
 
   test("launchInstalledPylon opens the managed terminal UI with inherited stdio", async () => {

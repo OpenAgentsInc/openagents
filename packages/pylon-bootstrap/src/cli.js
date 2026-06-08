@@ -2,6 +2,7 @@ import {
   DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS,
   DEFAULT_DIAGNOSTIC_REPEATS,
   DEFAULT_MODEL_ID,
+  DEFAULT_OPENAGENTS_API_BASE,
   DEFAULT_RELEASE_API_BASE,
   DEFAULT_RELEASE_REPO,
   bootstrapInstalledPylon,
@@ -120,6 +121,20 @@ Options:
   --verbose                            Print extra network and recovery detail.
   --debug-network                      Alias for --verbose.
   --json                               Emit a machine-readable JSON summary.
+  --register-openagents                Register and heartbeat this Pylon with
+                                       OpenAgents after local first-run smoke.
+                                       Requires OPENAGENTS_AGENT_TOKEN or
+                                       --openagents-agent-token.
+  --openagents-api <url>               OpenAgents API base for registration.
+                                       Default: ${DEFAULT_OPENAGENTS_API_BASE}
+  --openagents-agent-token <token>     Agent bearer token for registration.
+                                       Prefer the environment variable.
+  --pylon-ref <ref>                    Explicit public-safe Pylon ref.
+  --pylon-display-name <name>          Public-safe Pylon display name.
+  --resource-mode <mode>               Public resource mode for registration.
+                                       Default: background_20
+  --capability-ref <ref>               Add a public-safe capability ref.
+                                       May be repeated or comma-separated.
 
 Test and maintainer options:
   --repo <owner/name>                  Override the GitHub release repo.
@@ -147,6 +162,13 @@ export function parseArgs(argv) {
     json: false,
     help: false,
     pylonArgs: [],
+    openAgentsRegister: false,
+    openAgentsApiBase: DEFAULT_OPENAGENTS_API_BASE,
+    openAgentsAgentToken: null,
+    openAgentsPylonRef: null,
+    openAgentsPylonDisplayName: null,
+    openAgentsResourceMode: "background_20",
+    openAgentsCapabilityRefs: [],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -227,6 +249,52 @@ export function parseArgs(argv) {
       case "--json":
         options.json = true;
         break;
+      case "--register-openagents":
+        options.openAgentsRegister = true;
+        break;
+      case "--openagents-api":
+        options.openAgentsApiBase = argv[++index];
+        if (!options.openAgentsApiBase) {
+          throw new Error("--openagents-api requires a value.");
+        }
+        break;
+      case "--openagents-agent-token":
+        options.openAgentsAgentToken = argv[++index];
+        if (!options.openAgentsAgentToken) {
+          throw new Error("--openagents-agent-token requires a value.");
+        }
+        break;
+      case "--pylon-ref":
+        options.openAgentsPylonRef = argv[++index];
+        if (!options.openAgentsPylonRef) {
+          throw new Error("--pylon-ref requires a value.");
+        }
+        break;
+      case "--pylon-display-name":
+        options.openAgentsPylonDisplayName = argv[++index];
+        if (!options.openAgentsPylonDisplayName) {
+          throw new Error("--pylon-display-name requires a value.");
+        }
+        break;
+      case "--resource-mode":
+        options.openAgentsResourceMode = argv[++index];
+        if (!options.openAgentsResourceMode) {
+          throw new Error("--resource-mode requires a value.");
+        }
+        break;
+      case "--capability-ref": {
+        const value = argv[++index];
+        if (!value) {
+          throw new Error("--capability-ref requires a value.");
+        }
+        options.openAgentsCapabilityRefs.push(
+          ...value
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean),
+        );
+        break;
+      }
       case "--repo":
         options.repo = argv[++index];
         if (!options.repo) {
