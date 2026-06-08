@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 pub const BENCHMARK_TASK_SCHEMA_REF: &str = "openagents.benchmark_task.v1";
 pub const BENCHMARK_RESULT_SCHEMA_REF: &str = "openagents.benchmark_result.v1";
@@ -11,6 +12,18 @@ pub const BENCHMARK_SPLIT_MANIFEST_SCHEMA_REF: &str = "openagents.benchmark_spli
 pub const BENCHMARK_RUN_MANIFEST_SCHEMA_REF: &str = "openagents.benchmark_run_manifest.v1";
 pub const BENCHMARK_CAMPAIGN_SPLIT_MANIFEST_SCHEMA_REF: &str =
     "openagents.benchmark_campaign_split_manifest.v1";
+pub const PROBE_BENCHMARK_ASSIGNMENT_SCHEMA_REF: &str = "probe.benchmark_assignment.v1";
+
+pub const PROBE_RUNNER_REQUIRED_ARTIFACT_FILES: [&str; 8] = [
+    "result.json",
+    "events.jsonl",
+    "metadata.json",
+    "artifact_manifest.json",
+    "proof_bundle.json",
+    "resource_usage_receipt.json",
+    "probe-run-record.json",
+    "probe-closeout.json",
+];
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -169,6 +182,8 @@ pub struct BenchmarkProofBundle {
     pub artifact_manifest_refs: Vec<String>,
     pub scorer_verifier: ScorerVerifierRef,
     pub resource_usage_receipt_ref: Option<String>,
+    pub probe_selected_signature_refs: Vec<String>,
+    pub probe_tool_menu_ref: Option<String>,
     pub redaction_state: BenchmarkRedactionState,
 }
 
@@ -256,6 +271,81 @@ pub struct BenchmarkCampaignSplitManifest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeBenchmarkAssignment {
+    pub schema_ref: String,
+    pub assignment_ref: String,
+    pub benchmark_run_ref: String,
+    pub task_run_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub split_ref: String,
+    pub evidence_split: BenchmarkEvidenceSplit,
+    pub task_ref: String,
+    pub public_task_checksum: String,
+    pub probe_commit: String,
+    pub runtime_ref: String,
+    pub backend_profile_ref: String,
+    pub backend_ref: String,
+    pub model_backend_ref: String,
+    pub provider_account_ref: Option<String>,
+    pub auth_grant_ref: Option<String>,
+    pub selected_blueprint_signature_refs: Vec<String>,
+    pub tool_menu_ref: String,
+    pub candidate_hash: String,
+    pub timeout_policy_ref: String,
+    pub budget_policy_ref: String,
+    pub required_artifact_refs: Vec<String>,
+    pub required_proof_bundle_refs: Vec<String>,
+    pub callback_refs: Vec<String>,
+    pub proof_sink_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeCommandInvocation {
+    pub program: String,
+    pub args: Vec<String>,
+    pub assignment_stdin_json: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeFakeRunnerOutcome {
+    Pass,
+    Timeout,
+    Error,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeBenchmarkRunMetadata {
+    pub runner_ref: String,
+    pub benchmark_suite_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub task_ref: String,
+    pub probe_command: ProbeCommandInvocation,
+    pub selected_signature_refs: Vec<String>,
+    pub tool_menu_ref: String,
+    pub safe_account_grant_refs: bool,
+    pub redaction_state: BenchmarkRedactionState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeBenchmarkRunnerArtifactSet {
+    pub result_json: BenchmarkResult,
+    pub events_jsonl: Vec<BenchmarkEvent>,
+    pub metadata_json: ProbeBenchmarkRunMetadata,
+    pub artifact_manifest_json: BenchmarkArtifactManifest,
+    pub proof_bundle_json: BenchmarkProofBundle,
+    pub resource_usage_receipt_json: ResourceUsageReceipt,
+    pub probe_run_record_json: serde_json::Value,
+    pub probe_closeout_json: serde_json::Value,
+}
+
+impl ProbeBenchmarkRunnerArtifactSet {
+    pub fn file_names(&self) -> Vec<&'static str> {
+        PROBE_RUNNER_REQUIRED_ARTIFACT_FILES.to_vec()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProbeCloseoutImport {
     pub probe_assignment_ref: String,
     pub probe_closeout_ref: String,
@@ -327,6 +417,10 @@ pub enum BenchmarkContractError {
     },
     ManifestInvalid {
         manifest_ref: String,
+        reason: String,
+    },
+    ProbeRunnerInvalid {
+        run_ref: String,
         reason: String,
     },
 }
@@ -514,6 +608,364 @@ fn manifest_error(
         manifest_ref: manifest.manifest_ref.clone(),
         reason: reason.into(),
     })
+}
+
+pub fn probe_assignment_from_split_task(
+    manifest: &BenchmarkCampaignSplitManifest,
+    task: &BenchmarkSplitTaskEntry,
+    probe_commit: impl Into<String>,
+    candidate_hash: impl Into<String>,
+    selected_blueprint_signature_refs: Vec<String>,
+    tool_menu_ref: impl Into<String>,
+) -> ProbeBenchmarkAssignment {
+    ProbeBenchmarkAssignment {
+        schema_ref: String::from(PROBE_BENCHMARK_ASSIGNMENT_SCHEMA_REF),
+        assignment_ref: format!("probe_benchmark_assignment.{}", task.task_id),
+        benchmark_run_ref: String::from("benchmark_run.terminal_bench_2.probe_gepa.stage_0_1"),
+        task_run_ref: format!("task_run.{}", task.task_id),
+        dataset: manifest.dataset.clone(),
+        split_ref: manifest.manifest_ref.clone(),
+        evidence_split: task.evidence_split.clone(),
+        task_ref: task.task_ref.clone(),
+        public_task_checksum: task.public_task_checksum.clone(),
+        probe_commit: probe_commit.into(),
+        runtime_ref: String::from("runtime.probe.v1"),
+        backend_profile_ref: String::from("backend_profile.probe.default.v1"),
+        backend_ref: String::from("probe.backend.runtime"),
+        model_backend_ref: String::from("model_backend.probe.default"),
+        provider_account_ref: Some(String::from("provider_account.probe.fixture")),
+        auth_grant_ref: Some(String::from("provider_grant.probe.fixture")),
+        selected_blueprint_signature_refs,
+        tool_menu_ref: tool_menu_ref.into(),
+        candidate_hash: candidate_hash.into(),
+        timeout_policy_ref: String::from("timeout_policy.benchmark_cloud.probe.default.v1"),
+        budget_policy_ref: String::from("budget_policy.benchmark_cloud.probe.no_spend.v1"),
+        required_artifact_refs: vec![String::from("artifact_manifest.required.probe.closeout.v1")],
+        required_proof_bundle_refs: vec![String::from("proof_bundle.required.probe.closeout.v1")],
+        callback_refs: vec![String::from("callback.benchmark_cloud.probe.v1")],
+        proof_sink_refs: vec![String::from("proof_sink.benchmark_cloud.probe.v1")],
+    }
+}
+
+pub fn build_probe_command_invocation(
+    assignment: &ProbeBenchmarkAssignment,
+) -> Result<ProbeCommandInvocation, BenchmarkContractError> {
+    validate_probe_assignment_public_refs(assignment)?;
+    let assignment_stdin_json = serde_json::to_value(assignment).map_err(|error| {
+        BenchmarkContractError::ProbeRunnerInvalid {
+            run_ref: assignment.task_run_ref.clone(),
+            reason: format!("failed to serialize Probe assignment JSON: {error}"),
+        }
+    })?;
+
+    Ok(ProbeCommandInvocation {
+        program: String::from("probe"),
+        args: vec![
+            String::from("benchmark"),
+            String::from("run"),
+            String::from("--assignment-json"),
+            String::from("-"),
+        ],
+        assignment_stdin_json,
+    })
+}
+
+pub fn run_fake_probe_benchmark_task(
+    manifest: &BenchmarkCampaignSplitManifest,
+    task: &BenchmarkSplitTaskEntry,
+    assignment: &ProbeBenchmarkAssignment,
+    outcome: ProbeFakeRunnerOutcome,
+) -> Result<ProbeBenchmarkRunnerArtifactSet, BenchmarkContractError> {
+    validate_probe_assignment_public_refs(assignment)?;
+    let probe_command = build_probe_command_invocation(assignment)?;
+    let status = status_for_fake_outcome(&outcome);
+    let run_ref = format!("benchmark_run.probe.{}", task.task_id);
+    let artifact_manifest_ref = format!("artifact_manifest.probe.{}", task.task_id);
+    let proof_bundle_ref = format!("proof_bundle.probe.{}", task.task_id);
+    let resource_usage_receipt_ref = format!("resource_usage.probe.{}", task.task_id);
+    let probe_closeout_ref = format!("probe_closeout.{}", run_ref);
+    let failure_classification_ref = status.is_terminal_failure().then(|| {
+        format!(
+            "failure_classification.probe.{}.{}",
+            task.task_id,
+            failure_family_for_fake_outcome(&outcome)
+        )
+    });
+    let resource_usage_ref =
+        matches!(outcome, ProbeFakeRunnerOutcome::Pass).then(|| resource_usage_receipt_ref.clone());
+    let resource_unavailable_reason =
+        (!matches!(outcome, ProbeFakeRunnerOutcome::Pass)).then(|| {
+            format!(
+                "{}_before_resource_meter_flush",
+                failure_family_for_fake_outcome(&outcome)
+            )
+        });
+    let events = events_for_fake_outcome(&run_ref, &assignment.task_run_ref, &outcome);
+    let artifact_manifest = BenchmarkArtifactManifest {
+        schema_ref: String::from(BENCHMARK_ARTIFACT_MANIFEST_SCHEMA_REF),
+        manifest_ref: artifact_manifest_ref.clone(),
+        run_ref: run_ref.clone(),
+        artifacts: PROBE_RUNNER_REQUIRED_ARTIFACT_FILES
+            .iter()
+            .map(|file_name| BenchmarkArtifactRef {
+                artifact_ref: format!(
+                    "artifact.probe.{}.{}",
+                    task.task_id,
+                    file_name.replace('.', "_")
+                ),
+                digest: format!("sha256:{}", "0".repeat(64)),
+                media_type: media_type_for_file(file_name).to_string(),
+                public_url_ref: None,
+                size_bytes: 1,
+            })
+            .collect(),
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+    let resource_usage_receipt = ResourceUsageReceipt {
+        schema_ref: String::from(RESOURCE_USAGE_RECEIPT_SCHEMA_REF),
+        receipt_ref: resource_usage_receipt_ref.clone(),
+        run_ref: run_ref.clone(),
+        worker_ref: String::from("worker.shc.probe.fake"),
+        duration_ms: matches!(outcome, ProbeFakeRunnerOutcome::Pass).then_some(1000),
+        cpu_ms: matches!(outcome, ProbeFakeRunnerOutcome::Pass).then_some(500),
+        gpu_ms: None,
+        memory_peak_bytes: Some(1024),
+        token_usage: None,
+        cost_ref: Some(String::from("cost.probe.fake.zero")),
+        unavailable_reason: resource_unavailable_reason.clone(),
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+    let proof_bundle = BenchmarkProofBundle {
+        schema_ref: String::from(BENCHMARK_PROOF_BUNDLE_SCHEMA_REF),
+        proof_bundle_ref: proof_bundle_ref.clone(),
+        run_ref: run_ref.clone(),
+        artifact_manifest_refs: vec![artifact_manifest_ref.clone()],
+        scorer_verifier: task.scorer_verifier.clone(),
+        resource_usage_receipt_ref: Some(resource_usage_receipt_ref.clone()),
+        probe_selected_signature_refs: assignment.selected_blueprint_signature_refs.clone(),
+        probe_tool_menu_ref: Some(assignment.tool_menu_ref.clone()),
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+    let result = BenchmarkResult {
+        schema_ref: String::from(BENCHMARK_RESULT_SCHEMA_REF),
+        result_ref: format!("benchmark_result.probe.{}", task.task_id),
+        run_ref: run_ref.clone(),
+        task_run_ref: assignment.task_run_ref.clone(),
+        dataset: assignment.dataset.clone(),
+        evidence_split: assignment.evidence_split.clone(),
+        status,
+        scorer_verifier: task.scorer_verifier.clone(),
+        score_bps: matches!(outcome, ProbeFakeRunnerOutcome::Pass).then_some(10_000),
+        failure_classification_ref,
+        artifact_manifest_refs: vec![artifact_manifest_ref],
+        proof_bundle_refs: vec![proof_bundle_ref],
+        resource_usage_receipt_ref: resource_usage_ref,
+        resource_unavailable_reason,
+        probe_closeout_import: Some(ProbeCloseoutImport {
+            probe_assignment_ref: assignment.assignment_ref.clone(),
+            probe_closeout_ref: probe_closeout_ref.clone(),
+            probe_commit: assignment.probe_commit.clone(),
+            probe_run_record_ref: String::from("probe-run-record.json"),
+            probe_run_ref: run_ref.clone(),
+            candidate_hash: assignment.candidate_hash.clone(),
+            selected_signature_refs: assignment.selected_blueprint_signature_refs.clone(),
+            tool_menu_ref: assignment.tool_menu_ref.clone(),
+        }),
+        no_cheat: manifest.no_cheat.clone(),
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+        public_claim_boundary: BenchmarkPublicClaimBoundary {
+            claim_level: BenchmarkPublicClaimLevel::None,
+            external_release_gate_refs: Vec::new(),
+            public_claim_upgrade_authority: false,
+        },
+    };
+
+    validate_benchmark_result(&result)?;
+
+    let artifact_set = ProbeBenchmarkRunnerArtifactSet {
+        result_json: result,
+        events_jsonl: events,
+        metadata_json: ProbeBenchmarkRunMetadata {
+            runner_ref: String::from("runner.openagents.harbor.shc.probe.fake"),
+            benchmark_suite_ref: manifest.benchmark_suite_ref.clone(),
+            dataset: manifest.dataset.clone(),
+            task_ref: task.task_ref.clone(),
+            probe_command,
+            selected_signature_refs: assignment.selected_blueprint_signature_refs.clone(),
+            tool_menu_ref: assignment.tool_menu_ref.clone(),
+            safe_account_grant_refs: true,
+            redaction_state: BenchmarkRedactionState::PublicSafe,
+        },
+        artifact_manifest_json: artifact_manifest,
+        proof_bundle_json: proof_bundle,
+        resource_usage_receipt_json: resource_usage_receipt,
+        probe_run_record_json: json!({
+            "schema_ref": "probe.benchmark_run.v1",
+            "run_ref": run_ref,
+            "assignment_ref": assignment.assignment_ref,
+            "candidate_hash": assignment.candidate_hash,
+            "evidence_split": assignment.evidence_split,
+            "status": assignment_status_for_probe_record(&outcome),
+        }),
+        probe_closeout_json: json!({
+            "schema_ref": "probe.benchmark_closeout.v1",
+            "closeout_ref": probe_closeout_ref,
+            "assignment_ref": assignment.assignment_ref,
+            "candidate_hash": assignment.candidate_hash,
+            "selected_signature_refs": assignment.selected_blueprint_signature_refs,
+            "tool_menu_ref": assignment.tool_menu_ref,
+            "artifact_manifest_refs": assignment.required_artifact_refs,
+            "proof_bundle_refs": assignment.required_proof_bundle_refs,
+            "redaction_state": "public_safe",
+        }),
+    };
+
+    if artifact_set_contains_unsafe_material(&artifact_set) {
+        return Err(BenchmarkContractError::ProbeRunnerInvalid {
+            run_ref: artifact_set.result_json.run_ref,
+            reason: String::from("Probe runner artifact set contains unsafe material"),
+        });
+    }
+
+    Ok(artifact_set)
+}
+
+pub fn artifact_set_contains_unsafe_material(
+    artifact_set: &ProbeBenchmarkRunnerArtifactSet,
+) -> bool {
+    serde_json::to_value(artifact_set)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+}
+
+fn validate_probe_assignment_public_refs(
+    assignment: &ProbeBenchmarkAssignment,
+) -> Result<(), BenchmarkContractError> {
+    let fields = [
+        assignment.provider_account_ref.as_deref(),
+        assignment.auth_grant_ref.as_deref(),
+        Some(assignment.task_ref.as_str()),
+        Some(assignment.public_task_checksum.as_str()),
+        Some(assignment.tool_menu_ref.as_str()),
+        Some(assignment.candidate_hash.as_str()),
+    ];
+
+    for value in fields.into_iter().flatten() {
+        if string_contains_unsafe_material(value) {
+            return Err(BenchmarkContractError::ProbeRunnerInvalid {
+                run_ref: assignment.task_run_ref.clone(),
+                reason: String::from(
+                    "Probe assignment contains raw credential or private trace material",
+                ),
+            });
+        }
+    }
+
+    if assignment.selected_blueprint_signature_refs.is_empty() {
+        return Err(BenchmarkContractError::ProbeRunnerInvalid {
+            run_ref: assignment.task_run_ref.clone(),
+            reason: String::from("Probe assignment must include selected Blueprint signature refs"),
+        });
+    }
+
+    Ok(())
+}
+
+fn events_for_fake_outcome(
+    run_ref: &str,
+    task_run_ref: &str,
+    outcome: &ProbeFakeRunnerOutcome,
+) -> Vec<BenchmarkEvent> {
+    let terminal_kind = match outcome {
+        ProbeFakeRunnerOutcome::Pass => BenchmarkEventKind::Completed,
+        ProbeFakeRunnerOutcome::Timeout => BenchmarkEventKind::TimedOut,
+        ProbeFakeRunnerOutcome::Error => BenchmarkEventKind::Failed,
+    };
+
+    vec![
+        BenchmarkEvent {
+            schema_ref: String::from(BENCHMARK_EVENT_SCHEMA_REF),
+            event_ref: format!("event.{run_ref}.started"),
+            run_ref: run_ref.to_string(),
+            task_run_ref: task_run_ref.to_string(),
+            event_kind: BenchmarkEventKind::Started,
+            observed_at: String::from("2026-06-08T00:00:00.000Z"),
+            artifact_refs: Vec::new(),
+            proof_bundle_refs: Vec::new(),
+            redaction_state: BenchmarkRedactionState::PublicSafe,
+        },
+        BenchmarkEvent {
+            schema_ref: String::from(BENCHMARK_EVENT_SCHEMA_REF),
+            event_ref: format!("event.{run_ref}.terminal"),
+            run_ref: run_ref.to_string(),
+            task_run_ref: task_run_ref.to_string(),
+            event_kind: terminal_kind,
+            observed_at: String::from("2026-06-08T00:00:01.000Z"),
+            artifact_refs: vec![format!("artifact_manifest.probe.{task_run_ref}")],
+            proof_bundle_refs: vec![format!("proof_bundle.probe.{task_run_ref}")],
+            redaction_state: BenchmarkRedactionState::PublicSafe,
+        },
+    ]
+}
+
+fn status_for_fake_outcome(outcome: &ProbeFakeRunnerOutcome) -> BenchmarkRunStatus {
+    match outcome {
+        ProbeFakeRunnerOutcome::Pass => BenchmarkRunStatus::Succeeded,
+        ProbeFakeRunnerOutcome::Timeout => BenchmarkRunStatus::TimedOut,
+        ProbeFakeRunnerOutcome::Error => BenchmarkRunStatus::Errored,
+    }
+}
+
+fn assignment_status_for_probe_record(outcome: &ProbeFakeRunnerOutcome) -> &'static str {
+    match outcome {
+        ProbeFakeRunnerOutcome::Pass => "succeeded",
+        ProbeFakeRunnerOutcome::Timeout => "timed_out",
+        ProbeFakeRunnerOutcome::Error => "errored",
+    }
+}
+
+fn failure_family_for_fake_outcome(outcome: &ProbeFakeRunnerOutcome) -> &'static str {
+    match outcome {
+        ProbeFakeRunnerOutcome::Pass => "none",
+        ProbeFakeRunnerOutcome::Timeout => "timeout",
+        ProbeFakeRunnerOutcome::Error => "runtime_error",
+    }
+}
+
+fn media_type_for_file(file_name: &str) -> &'static str {
+    if file_name.ends_with(".jsonl") {
+        "application/x-ndjson"
+    } else {
+        "application/json"
+    }
+}
+
+fn json_contains_unsafe_material(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::String(value) => string_contains_unsafe_material(value),
+        serde_json::Value::Array(values) => values.iter().any(json_contains_unsafe_material),
+        serde_json::Value::Object(values) => values.iter().any(|(key, value)| {
+            string_contains_unsafe_material(key) || json_contains_unsafe_material(value)
+        }),
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            false
+        }
+    }
+}
+
+fn string_contains_unsafe_material(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    let raw_logs_unsafe = normalized.contains("raw_logs") && !normalized.contains("no_raw_logs");
+
+    normalized.contains("sk-")
+        || normalized.contains("bearer ")
+        || normalized.contains("refresh_token")
+        || normalized.contains("access_token")
+        || normalized.contains("auth.json")
+        || normalized.contains("private_harbor_trace")
+        || normalized.contains("private-repo://")
+        || normalized.contains("wallet_mnemonic")
+        || raw_logs_unsafe
 }
 
 #[cfg(test)]
@@ -719,6 +1171,82 @@ mod tests {
         );
         validate_campaign_split_manifest(&manifest)
             .map_err(|error| format!("unexpected manifest validation error: {error:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn fake_probe_runner_pass_timeout_and_error_emit_required_artifacts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let task = manifest
+            .tasks
+            .iter()
+            .find(|task| task.task_id == "configure-git-webserver")
+            .ok_or("missing retained configure-git-webserver task")?;
+        let assignment = probe_assignment_from_split_task(
+            &manifest,
+            task,
+            "abc1234",
+            "sha256:candidate-1",
+            vec![String::from(
+                "program_signature.probe.benchmark.service_readiness.v1",
+            )],
+            "tool_menu.probe.terminal_bench.service_readiness.v1",
+        );
+
+        for outcome in [
+            ProbeFakeRunnerOutcome::Pass,
+            ProbeFakeRunnerOutcome::Timeout,
+            ProbeFakeRunnerOutcome::Error,
+        ] {
+            let artifacts = run_fake_probe_benchmark_task(&manifest, task, &assignment, outcome)
+                .map_err(|error| format!("unexpected fake Probe runner error: {error:?}"))?;
+            assert_eq!(artifacts.file_names(), PROBE_RUNNER_REQUIRED_ARTIFACT_FILES);
+            assert_eq!(
+                artifacts.proof_bundle_json.probe_selected_signature_refs,
+                assignment.selected_blueprint_signature_refs
+            );
+            assert_eq!(
+                artifacts.proof_bundle_json.probe_tool_menu_ref.as_deref(),
+                Some(assignment.tool_menu_ref.as_str())
+            );
+            assert!(!artifacts.artifact_manifest_json.artifacts.is_empty());
+            assert!(!artifacts.result_json.artifact_manifest_refs.is_empty());
+            assert!(!artifacts.result_json.proof_bundle_refs.is_empty());
+            assert!(!artifact_set_contains_unsafe_material(&artifacts));
+            validate_benchmark_result(&artifacts.result_json)
+                .map_err(|error| format!("unexpected validation error: {error:?}"))?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn fake_probe_runner_rejects_raw_auth_material() -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let task = manifest
+            .tasks
+            .iter()
+            .find(|task| task.task_id == "configure-git-webserver")
+            .ok_or("missing retained configure-git-webserver task")?;
+        let mut assignment = probe_assignment_from_split_task(
+            &manifest,
+            task,
+            "abc1234",
+            "sha256:candidate-1",
+            vec![String::from(
+                "program_signature.probe.benchmark.service_readiness.v1",
+            )],
+            "tool_menu.probe.terminal_bench.service_readiness.v1",
+        );
+        assignment.auth_grant_ref = Some(String::from("Bearer raw-token"));
+
+        assert!(matches!(
+            build_probe_command_invocation(&assignment),
+            Err(BenchmarkContractError::ProbeRunnerInvalid { .. })
+        ));
         Ok(())
     }
 }

@@ -55,6 +55,28 @@ need explicit public claim gates before projection.
 Stage 0/1 manifests use `allowed_claim_state: "none"`. They are optimizer and
 validation inputs, not public-score authority.
 
+## Probe Runner Lane
+
+`benchmark-cloud` also defines the public Probe runner adapter contract used by
+the Terminal-Bench lane. It builds a normalized `probe.benchmark_assignment.v1`
+JSON payload, records the Probe command invocation as `probe benchmark run
+--assignment-json -`, and emits the required artifact set:
+
+- `result.json`
+- `events.jsonl`
+- `metadata.json`
+- `artifact_manifest.json`
+- `proof_bundle.json`
+- `resource_usage_receipt.json`
+- `probe-run-record.json`
+- `probe-closeout.json`
+
+The fake runner path covers pass, timeout, and error outcomes. It preserves
+artifact, proof, and resource records for successful and failed outcomes and
+keeps Probe-selected Blueprint signature refs plus the Probe tool-menu ref in
+the proof bundle. Assignment refs are public account/grant refs only; raw
+credentials and private traces are rejected before invocation.
+
 ## Failure Records
 
 Failed, timed-out, policy-blocked, and errored runs must still carry artifact
