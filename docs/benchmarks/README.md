@@ -32,6 +32,13 @@ import Probe closeout refs without committing task text, hidden verifier
 content, private repo refs, raw logs, wallet/payment material, or private
 Harbor traces.
 
+The first split manifest is
+`fixtures/benchmarks/terminal_bench_probe_gepa_stage_0_1_splits.json`. It locks
+the Stage 0/1 task selector version, task order ref, retained fixtures,
+validation split, frozen holdout split, local smoke fixtures, public-safe task
+refs, scorer/verifier refs, and allowed claim state for the first Probe GEPA
+campaign.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
@@ -44,6 +51,9 @@ Benchmark records use explicit split labels:
 Retained and validation evidence can drive GEPA candidate selection and product
 learning. They are not public benchmark claims. Holdout and live evidence still
 need explicit public claim gates before projection.
+
+Stage 0/1 manifests use `allowed_claim_state: "none"`. They are optimizer and
+validation inputs, not public-score authority.
 
 ## Failure Records
 

@@ -9,6 +9,8 @@ pub const BENCHMARK_PROOF_BUNDLE_SCHEMA_REF: &str = "openagents.benchmark_proof_
 pub const RESOURCE_USAGE_RECEIPT_SCHEMA_REF: &str = "openagents.resource_usage_receipt.v1";
 pub const BENCHMARK_SPLIT_MANIFEST_SCHEMA_REF: &str = "openagents.benchmark_split_manifest.v1";
 pub const BENCHMARK_RUN_MANIFEST_SCHEMA_REF: &str = "openagents.benchmark_run_manifest.v1";
+pub const BENCHMARK_CAMPAIGN_SPLIT_MANIFEST_SCHEMA_REF: &str =
+    "openagents.benchmark_campaign_split_manifest.v1";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -71,6 +73,15 @@ pub enum BenchmarkPublicClaimLevel {
     ValidationSummary,
     HoldoutSummary,
     LiveClaim,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BenchmarkSplitLane {
+    RetainedFixture,
+    Validation,
+    FrozenHoldout,
+    LocalSmokeFixture,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -215,6 +226,36 @@ pub struct BenchmarkRunManifest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BenchmarkSplitTaskEntry {
+    pub task_ref: String,
+    pub task_id: String,
+    pub public_task_checksum: String,
+    pub lane: BenchmarkSplitLane,
+    pub evidence_split: BenchmarkEvidenceSplit,
+    pub scorer_verifier: ScorerVerifierRef,
+    pub allowed_claim_level: BenchmarkPublicClaimLevel,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BenchmarkCampaignSplitManifest {
+    pub schema_ref: String,
+    pub manifest_ref: String,
+    pub benchmark_suite_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub task_selector_version: String,
+    pub task_order_ref: String,
+    pub allowed_claim_state: BenchmarkPublicClaimLevel,
+    pub retained_fixture_refs: Vec<String>,
+    pub validation_task_refs: Vec<String>,
+    pub frozen_holdout_task_refs: Vec<String>,
+    pub local_smoke_fixture_refs: Vec<String>,
+    pub scorer_verifier_versions: Vec<ScorerVerifierRef>,
+    pub tasks: Vec<BenchmarkSplitTaskEntry>,
+    pub no_cheat: NoCheatMetadata,
+    pub redaction_state: BenchmarkRedactionState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProbeCloseoutImport {
     pub probe_assignment_ref: String,
     pub probe_closeout_ref: String,
@@ -257,15 +298,37 @@ pub struct BenchmarkResult {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BenchmarkContractError {
-    MissingArtifactManifest { result_ref: String },
-    MissingProofBundle { result_ref: String },
-    MissingFailureClassification { result_ref: String },
-    MissingResourceUsage { result_ref: String },
-    UnsafeNoCheatMetadata { result_ref: String },
-    ProbeCloseoutImportIncomplete { result_ref: String },
-    PublicClaimUpgradeAuthority { result_ref: String },
-    NonLivePublicClaim { result_ref: String },
-    MissingPublicClaimReleaseGate { result_ref: String },
+    MissingArtifactManifest {
+        result_ref: String,
+    },
+    MissingProofBundle {
+        result_ref: String,
+    },
+    MissingFailureClassification {
+        result_ref: String,
+    },
+    MissingResourceUsage {
+        result_ref: String,
+    },
+    UnsafeNoCheatMetadata {
+        result_ref: String,
+    },
+    ProbeCloseoutImportIncomplete {
+        result_ref: String,
+    },
+    PublicClaimUpgradeAuthority {
+        result_ref: String,
+    },
+    NonLivePublicClaim {
+        result_ref: String,
+    },
+    MissingPublicClaimReleaseGate {
+        result_ref: String,
+    },
+    ManifestInvalid {
+        manifest_ref: String,
+        reason: String,
+    },
 }
 
 pub fn validate_benchmark_result(result: &BenchmarkResult) -> Result<(), BenchmarkContractError> {
@@ -339,12 +402,129 @@ pub fn validate_benchmark_result(result: &BenchmarkResult) -> Result<(), Benchma
     Ok(())
 }
 
+pub fn validate_campaign_split_manifest(
+    manifest: &BenchmarkCampaignSplitManifest,
+) -> Result<(), BenchmarkContractError> {
+    if manifest.tasks.is_empty() {
+        return manifest_error(
+            manifest,
+            "manifest must include at least one public task ref",
+        );
+    }
+
+    if !manifest.no_cheat.is_public_safe() {
+        return manifest_error(manifest, "no-cheat metadata must be public-safe");
+    }
+
+    if manifest.allowed_claim_state != BenchmarkPublicClaimLevel::None {
+        return manifest_error(
+            manifest,
+            "Stage 0/1 Probe GEPA split manifests cannot authorize public claims",
+        );
+    }
+
+    let mut task_refs = std::collections::BTreeSet::new();
+
+    for task in &manifest.tasks {
+        if !task_refs.insert(task.task_ref.clone()) {
+            return manifest_error(manifest, "task refs must be unique");
+        }
+
+        if task.allowed_claim_level != BenchmarkPublicClaimLevel::None
+            && task.evidence_split != BenchmarkEvidenceSplit::Live
+        {
+            return manifest_error(
+                manifest,
+                "non-live task entries cannot carry public claim levels",
+            );
+        }
+    }
+
+    require_lane_refs(
+        manifest,
+        &manifest.retained_fixture_refs,
+        BenchmarkSplitLane::RetainedFixture,
+        BenchmarkEvidenceSplit::Retained,
+        "retained_fixture_refs",
+    )?;
+    require_lane_refs(
+        manifest,
+        &manifest.validation_task_refs,
+        BenchmarkSplitLane::Validation,
+        BenchmarkEvidenceSplit::Validation,
+        "validation_task_refs",
+    )?;
+    require_lane_refs(
+        manifest,
+        &manifest.frozen_holdout_task_refs,
+        BenchmarkSplitLane::FrozenHoldout,
+        BenchmarkEvidenceSplit::Holdout,
+        "frozen_holdout_task_refs",
+    )?;
+    require_lane_refs(
+        manifest,
+        &manifest.local_smoke_fixture_refs,
+        BenchmarkSplitLane::LocalSmokeFixture,
+        BenchmarkEvidenceSplit::Retained,
+        "local_smoke_fixture_refs",
+    )?;
+
+    Ok(())
+}
+
+fn require_lane_refs(
+    manifest: &BenchmarkCampaignSplitManifest,
+    refs: &[String],
+    lane: BenchmarkSplitLane,
+    evidence_split: BenchmarkEvidenceSplit,
+    list_name: &str,
+) -> Result<(), BenchmarkContractError> {
+    if refs.is_empty() {
+        return manifest_error(manifest, format!("{list_name} must not be empty"));
+    }
+
+    for task_ref in refs {
+        let Some(task) = manifest
+            .tasks
+            .iter()
+            .find(|task| &task.task_ref == task_ref)
+        else {
+            return manifest_error(
+                manifest,
+                format!("{list_name} contains task ref not present in tasks: {task_ref}"),
+            );
+        };
+
+        if task.lane != lane || task.evidence_split != evidence_split {
+            return manifest_error(
+                manifest,
+                format!("{list_name} contains task ref with mismatched lane or split: {task_ref}"),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn manifest_error(
+    manifest: &BenchmarkCampaignSplitManifest,
+    reason: impl Into<String>,
+) -> Result<(), BenchmarkContractError> {
+    Err(BenchmarkContractError::ManifestInvalid {
+        manifest_ref: manifest.manifest_ref.clone(),
+        reason: reason.into(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const TERMINAL_BENCH_PROBE_SMOKE: &str =
         include_str!("../../../fixtures/benchmarks/terminal_bench_probe_contract_smoke.json");
+    const TERMINAL_BENCH_PROBE_GEPA_SPLITS: &str = include_str!(
+        "../../../fixtures/benchmarks/terminal_bench_probe_gepa_stage_0_1_splits.json"
+    );
 
     fn no_cheat() -> NoCheatMetadata {
         NoCheatMetadata {
@@ -491,5 +671,54 @@ mod tests {
                 "release_gate.openagents.public_benchmark_claim_review.v1",
             ));
         assert!(validate_benchmark_result(&live_result).is_ok());
+    }
+
+    #[test]
+    fn terminal_bench_probe_gepa_split_manifest_loads_and_locks_task_order()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+
+        assert_eq!(
+            manifest.manifest_ref,
+            "benchmark_split_manifest.terminal_bench_2.probe_gepa.stage_0_1.v1"
+        );
+        assert_eq!(
+            manifest.task_selector_version,
+            "task_selector.terminal_bench_2.probe_gepa.stage_0_1.v1"
+        );
+        assert_eq!(
+            manifest.allowed_claim_state,
+            BenchmarkPublicClaimLevel::None
+        );
+        assert_eq!(
+            manifest
+                .tasks
+                .iter()
+                .map(|task| task.task_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "configure-git-webserver",
+                "db-wal-recovery",
+                "filter-js-from-html",
+                "gcode-to-text",
+                "pypi-server",
+                "query-optimize",
+                "runner-stall-supervision",
+                "validation.db-wal-recovery",
+                "validation.configure-git-webserver",
+                "validation.pypi-server",
+                "validation.filter-js-from-html",
+                "validation.gcode-to-text",
+                "validation.query-optimize",
+                "holdout.openssl-selfsigned-cert",
+                "holdout.vulnerable-secret",
+                "local-smoke.probe-closeout-writer",
+                "local-smoke.apple-fm-tool-stream",
+            ]
+        );
+        validate_campaign_split_manifest(&manifest)
+            .map_err(|error| format!("unexpected manifest validation error: {error:?}"))?;
+        Ok(())
     }
 }
