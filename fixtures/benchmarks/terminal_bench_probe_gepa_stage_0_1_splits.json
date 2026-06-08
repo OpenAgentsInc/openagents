@@ -63,7 +63,7 @@
     {
       "task_ref": "benchmark_task.terminal_bench.retained.db_wal_recovery.v1",
       "task_id": "db-wal-recovery",
-      "public_task_checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000102",
+      "public_task_checksum": "sha256:c18abdc4fdc3a01bf374c55a9700708fe6a9662077d29db81abb692f0a3c5f6f",
       "lane": "retained_fixture",
       "evidence_split": "retained",
       "scorer_verifier": {
@@ -141,7 +141,7 @@
     {
       "task_ref": "benchmark_task.terminal_bench.validation.db_wal_recovery.v1",
       "task_id": "validation.db-wal-recovery",
-      "public_task_checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000201",
+      "public_task_checksum": "sha256:c18abdc4fdc3a01bf374c55a9700708fe6a9662077d29db81abb692f0a3c5f6f",
       "lane": "validation",
       "evidence_split": "validation",
       "scorer_verifier": {

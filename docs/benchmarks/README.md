@@ -65,6 +65,14 @@ permitted workspace refs, then writes the same normalized bundle used by fake,
 retained fixture, and live SHC/Harbor runs. The example runner is
 `cargo run -p benchmark-cloud --example probe_observed_runner_smoke`.
 
+The first live SHC/Harbor Probe receipt is recorded in
+`2026-06-08-shc-harbor-probe-live-smoke.md`. It normalizes a fresh
+`oa-shc-katy-01` Terminal-Bench 2 `db-wal-recovery` run using the current
+Probe+Codex signature path. The run failed with a nonzero agent exit, so the
+receipt intentionally proves failure-closeout preservation rather than success
+or a public score. The example runner is
+`cargo run -p benchmark-cloud --example probe_shc_harbor_live_smoke_receipt`.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
