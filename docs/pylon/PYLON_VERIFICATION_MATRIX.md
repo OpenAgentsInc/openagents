@@ -23,11 +23,13 @@ If any release note, marketing text, or operator doc violates one of those state
 
 ## 2026-06-08 Release Freeze Baseline
 
-The current public baseline is `pylon-v0.2.4` on GitHub Releases and
-`@openagentsinc/pylon@0.2.5` on npm `latest`. The freeze record is
+The current public baseline is `pylon-v0.2.5` on GitHub Releases and
+`@openagentsinc/pylon@0.2.5` on npm `latest`. `pylon-v0.2.5` is a narrow wallet
+hotfix for legacy Spark balance detection, live MDK balance display, and
+Spark-to-MDK sweeping. The freeze record is
 `docs/reports/nexus/2026-06-08-pylon-release-freeze-network-readiness-closeout.md`.
 
-Do not cut another public Pylon GitHub release, npm package version, npm
+Do not cut another broad public Pylon GitHub release, npm package version, npm
 `latest` dist-tag move, or broad download/earning announcement until the live
 Probe/Pylon/Psionic network path is proven through OpenAgents #4563, OpenAgents
 #4564, Psionic #1093, Omega #513, and Probe #188.
@@ -58,6 +60,7 @@ settlement, broad Pylon earning readiness, or Probe candidate activation.
 | Wallet runtime selection | `cargo run -p pylon -- wallet status --json`, then `cargo run -p pylon -- config set wallet_runtime_kind mock` and re-run status | reports `runtime.runtime_kind=moneydevkit` by default and `runtime.runtime_kind=mock` after the explicit test override; `external_target` is only an advanced migration override |
 | Wallet runtime lifecycle | `cargo run -p pylon -- wallet start --json`, `wallet restart --json`, and `wallet stop --json` on a mock home and an MDK smoke home | returns structured lifecycle reports through the selected Pylon wallet runtime, allows agents/operators to control the wrapped MDK daemon without calling MDK directly, and leaves no temp smoke daemon running after stop |
 | MoneyDevKit default wallet wrapper | on a clean Pylon home, run `wallet status --json`, `wallet balance --json`, `wallet invoice 21 --description "pylon receive" --json`, `wallet offer --description "pylon offer" --json`, and `wallet history --json`; repeat with a second clean Pylon home on the same machine | auto-initializes a Pylon-scoped MDK agent-wallet home, reports JSON status/balance/history without printing mnemonic or preimages, returns BOLT11 and BOLT12 receive artifacts, records runtime kind `moneydevkit` and `runtime.local_daemon_port` in retained wallet metadata, and sets a stable Pylon-scoped `MDK_WALLET_PORT` so two local Pylon homes do not share the same MDK daemon |
+| Legacy Spark wallet migration | seed a retained ledger row with `method: spark`, run `wallet status --json`, `wallet migrate-spark --json`, and, with a funded old Spark helper on mainnet, `wallet migrate-spark --yes --json`; inspect the standalone archive for `spark-wallet-cli` beside `pylon` | status/history label the current balance as live MDK balance and report `legacy_spark`; the dry run reports helper availability, old Spark spendable balance, unclaimed deposits, and blockers without spending; the confirmed run creates an MDK invoice, pays it from Spark through the sidecar, polls for the MDK balance increase, and records `wallet.migration.legacy_spark_to_mdk.v1` without printing the mnemonic, preimage, raw invoice secret, or Spark SDK state |
 | Omega Cloudflare MDK checkout proof | verify or reference a current public-safe Omega report showing `openagents.com` Worker -> `MDK_SIDECAR` -> Cloudflare Container -> MDK platform, a real bitcoin-denominated checkout, local MDK wallet payment, merchant paid status, and payer balance delta | proves the MDK-default release path does not depend on old GCP/native Nexus reachability; raw access tokens, mnemonics, invoices, payment hashes, preimages, and checkout client secrets are not included in public evidence |
 | Post-release Artanis/Pylon paid-work bundle | run `scripts/nexus/artanis-pylon-integrated-proof-bundle.sh` with a fresh redacted MDK payment summary after public release publication | records the live Artanis SHC bootstrap, public npm/release Pylon install, SHC no-source accepted/rewarded work, and real MDK agent-wallet bitcoin movement in one public-safe bundle. The 2026-06-07 `pylon-v0.2.2` bundle is `completed_with_settlement_bridge_gap`, meaning the remaining blocker is the direct production bridge from Artanis assignment id to MDK settlement receipt. |
 | Artanis assignment to MDK settlement bridge smoke | run `scripts/nexus/artanis-mdk-settlement-bridge-smoke.sh` with a funded MDK payer wallet and ignored raw artifact directory | installs Pylon through `@openagentsinc/pylon@0.2.2`, creates a Pylon-scoped MDK invoice for a generated Artanis/Pylon settlement assignment id, pays it with real bitcoin, polls receiver history, and writes a public-safe receipt. The 2026-06-07 smoke is complete, but the deployed production server bridge remains separate work. |

@@ -299,11 +299,13 @@ struct PaymentHistoryEntry {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct WalletSurfaceState {
+    runtime_kind: Option<pylon::PylonWalletRuntimeKind>,
     runtime_status: Option<String>,
     runtime_detail: Option<String>,
     network: Option<String>,
     balance: Option<pylon::WalletBalanceSnapshot>,
     balance_live: bool,
+    legacy_spark: Option<pylon::WalletLegacySparkStatus>,
     payout_destination: Option<String>,
     bitcoin_address: Option<String>,
     latest_invoice: Option<pylon::PylonWalletInvoiceRecord>,
@@ -2200,7 +2202,8 @@ impl AppShell {
         }
         if let Some(balance) = self.wallet_surface.balance.as_ref() {
             lines.push(format!(
-                "Total balance: {}",
+                "{}: {}",
+                self.wallet_balance_label(),
                 format_sats(balance.total_sats)
             ));
             lines.push(format!(
@@ -2210,7 +2213,18 @@ impl AppShell {
                 format_sats(balance.onchain_sats)
             ));
         } else {
-            lines.push("Total balance: unavailable".to_string());
+            lines.push(format!("{}: unavailable", self.wallet_balance_label()));
+        }
+        if let Some(legacy) = self.wallet_surface.legacy_spark.as_ref() {
+            lines.push(format!(
+                "Legacy Spark: {} retained across {} payments; {}",
+                format_sats(legacy.retained_credit_sats),
+                legacy.retained_payment_count,
+                legacy.state
+            ));
+            if let Some(command) = legacy.recommended_command.as_deref() {
+                lines.push(format!("Migration: {command}"));
+            }
         }
         lines.push(String::new());
         lines.push(
@@ -3572,7 +3586,7 @@ impl AppShell {
             ]),
             Line::from(vec![key_label("Network"), Span::raw(network)]),
             Line::from(vec![
-                key_label("Total balance"),
+                key_label(self.wallet_balance_label()),
                 Span::styled(balance, emphasis_text()),
             ]),
         ];
@@ -3592,6 +3606,16 @@ impl AppShell {
             lines.push(Line::from(vec![
                 key_label("Runtime"),
                 Span::raw(error.to_string()),
+            ]));
+        }
+        if let Some(legacy) = self.wallet_surface.legacy_spark.as_ref() {
+            lines.push(Line::from(vec![
+                key_label("Legacy Spark"),
+                Span::raw(format!(
+                    "{} retained; {}",
+                    format_sats(legacy.retained_credit_sats),
+                    legacy.state
+                )),
             ]));
         }
         lines
@@ -3622,7 +3646,7 @@ impl AppShell {
                 Span::styled(wallet_status.to_string(), state_badge_style(wallet_status)),
             ]),
             Line::from(vec![
-                key_label("Total balance"),
+                key_label(self.wallet_balance_label()),
                 Span::styled(total_balance, emphasis_text()),
             ]),
             Line::from(vec![key_label("Receive"), Span::raw(receive_hint)]),
@@ -3637,7 +3661,21 @@ impl AppShell {
                 Span::raw(last_paid),
             ]));
         }
+        if let Some(legacy) = self.wallet_surface.legacy_spark.as_ref() {
+            lines.push(Line::from(vec![
+                key_label("Legacy Spark"),
+                Span::raw(format_sats(legacy.retained_credit_sats)),
+            ]));
+        }
         lines
+    }
+
+    fn wallet_balance_label(&self) -> &'static str {
+        if self.wallet_surface.runtime_kind == Some(pylon::PylonWalletRuntimeKind::MoneyDevKit) {
+            "Live MDK balance"
+        } else {
+            "Total balance"
+        }
     }
 
     fn wallet_receive_lines(&self) -> Vec<Line<'static>> {
@@ -5024,6 +5062,9 @@ fn build_wallet_surface(
     ledger: &pylon::PylonLedger,
 ) -> WalletSurfaceState {
     WalletSurfaceState {
+        runtime_kind: wallet_status
+            .map(|report| report.runtime.runtime_kind)
+            .or(Some(config.wallet_runtime_kind)),
         runtime_status: wallet_status
             .map(|report| report.runtime_status.clone())
             .or_else(|| ledger.wallet.runtime_status.clone()),
@@ -5045,6 +5086,7 @@ fn build_wallet_surface(
                     })
             }),
         balance_live: wallet_status.is_some(),
+        legacy_spark: wallet_status.and_then(|report| report.legacy_spark.clone()),
         payout_destination: config
             .external_payout_target
             .clone()
@@ -5319,6 +5361,27 @@ async fn render_wallet_command_output(
             let report = pylon::load_wallet_history_report(config_path, *limit).await?;
             Ok(render_wallet_history_output(&report))
         }
+        pylon::WalletSubcommand::MigrateSpark {
+            spark_cli,
+            storage_dir,
+            amount_sats,
+            reserve_sats,
+            poll_seconds,
+            yes,
+            ..
+        } => {
+            let report = pylon::migrate_legacy_spark_wallet_report(
+                config_path,
+                spark_cli.as_deref(),
+                storage_dir.as_deref(),
+                *amount_sats,
+                *reserve_sats,
+                *poll_seconds,
+                *yes,
+            )
+            .await?;
+            Ok(pylon::render_wallet_legacy_spark_migration_report(&report))
+        }
         pylon::WalletSubcommand::BackupExport {
             path,
             passphrase_env,
@@ -5398,13 +5461,22 @@ async fn render_wallet_command_output(
 }
 
 fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
+    let balance_label = if report.runtime.runtime_kind == pylon::PylonWalletRuntimeKind::MoneyDevKit
+    {
+        "Live MDK balance"
+    } else {
+        "Total balance"
+    };
     let mut lines = vec![
         format!(
             "Status: {}",
             title_case_status(report.runtime_status.as_str())
         ),
         format!("Network: {}", report.runtime.network),
-        format!("Total balance: {}", format_sats(report.balance.total_sats)),
+        format!(
+            "{balance_label}: {}",
+            format_sats(report.balance.total_sats)
+        ),
         format!(
             "Balance mix: {} credited, {} Lightning, {} on-chain",
             format_sats(report.balance.credited_sats),
@@ -5418,6 +5490,17 @@ fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
         lines.push(format!("Runtime: {detail}"));
+    }
+    if let Some(legacy) = report.legacy_spark.as_ref() {
+        lines.push(format!(
+            "Legacy Spark: {} retained across {} payments; {}",
+            format_sats(legacy.retained_credit_sats),
+            legacy.retained_payment_count,
+            legacy.state
+        ));
+        if let Some(command) = legacy.recommended_command.as_deref() {
+            lines.push(format!("Migration: {command}"));
+        }
     }
     if !report.recent_payments.is_empty() {
         lines.push(String::new());
@@ -6175,6 +6258,7 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
         pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
         pylon::WalletSubcommand::Telemetry { .. } => "Wallet Telemetry",
         pylon::WalletSubcommand::History { .. } => "Wallet History",
+        pylon::WalletSubcommand::MigrateSpark { .. } => "Wallet Spark Migration",
         pylon::WalletSubcommand::BackupExport { .. } => "Wallet Backup Export",
         pylon::WalletSubcommand::BackupInspect { .. } => "Wallet Backup Inspect",
         pylon::WalletSubcommand::RestorePhrase { .. } => "Wallet Restore Phrase",
@@ -6549,6 +6633,7 @@ mod tests {
             runtime_detail: Some("syncing".to_string()),
             ldk_node: None,
             balance: pylon::WalletBalanceSnapshot::default(),
+            legacy_spark: None,
             channels: Vec::new(),
             lightning_readiness: pylon::WalletLightningReadiness::default(),
             recent_payments: Vec::new(),
@@ -6605,6 +6690,7 @@ mod tests {
                 total_sats: 8,
                 ..pylon::WalletBalanceSnapshot::default()
             },
+            legacy_spark: None,
             channels: Vec::new(),
             lightning_readiness: pylon::WalletLightningReadiness::default(),
             recent_payments: Vec::new(),
@@ -7018,6 +7104,41 @@ mod tests {
         assert!(card.contains("Receive: Advanced external payout override active"));
         assert!(card.contains("Local sends: wallet pay guarded by --yes"));
         assert!(card.contains("Last paid: 34 sats"));
+    }
+
+    #[test]
+    fn wallet_view_labels_mdk_balance_and_legacy_spark_history() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.wallet_surface = WalletSurfaceState {
+            runtime_kind: Some(pylon::PylonWalletRuntimeKind::MoneyDevKit),
+            runtime_status: Some("connected".to_string()),
+            balance: Some(pylon::WalletBalanceSnapshot {
+                lightning_sats: 12,
+                total_sats: 12,
+                ..pylon::WalletBalanceSnapshot::default()
+            }),
+            legacy_spark: Some(pylon::WalletLegacySparkStatus {
+                detected: true,
+                state: "migration_recommended".to_string(),
+                retained_payment_count: 2,
+                retained_credit_sats: 377,
+                live_mdk_balance_sats: 12,
+                helper_available: true,
+                helper_path: Some("/tmp/spark-wallet-cli".to_string()),
+                recommended_command: Some("pylon wallet migrate-spark --yes".to_string()),
+                detail: "retained Spark receive history exists".to_string(),
+            }),
+            ..WalletSurfaceState::default()
+        };
+
+        let wallet = app
+            .wallet_overview_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(wallet.contains("Live MDK balance: 12 sats"));
+        assert!(wallet.contains("Legacy Spark: 377 sats retained; migration_recommended"));
     }
 
     #[test]

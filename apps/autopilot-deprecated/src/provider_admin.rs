@@ -325,6 +325,9 @@ fn recent_job_from_row(row: &JobHistoryReceiptRow) -> ProviderRecentJob {
         completed_at_epoch_seconds: row.completed_at_epoch_seconds,
         payout_sats: row.payout_sats,
         payment_pointer: row.payment_pointer.clone(),
+        artanis_run_id: None,
+        artanis_assignment_id: None,
+        settlement_intent_id: None,
         failure_reason: row.failure_reason.clone(),
         delivery_proof_id: row.delivery_proof_id.clone(),
     }
@@ -387,6 +390,9 @@ fn receipt_summary(receipt: &Receipt) -> ProviderReceiptSummary {
             .liability_premium
             .as_ref()
             .and_then(money_sats),
+        artanis_run_id: None,
+        artanis_assignment_id: None,
+        settlement_intent_id: None,
         work_unit_id: receipt.trace.work_unit_id.clone(),
     }
 }

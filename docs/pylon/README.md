@@ -25,6 +25,7 @@ proof-flow visualization lives in:
 The v0.2 wallet operator docs include the default MoneyDevKit wrapper and the
 native LDK fallback path:
 
+- `docs/pylon/LEGACY_SPARK_WALLET_MIGRATION.md`
 - `docs/pylon/LDK_WALLET_CHANNEL_LIQUIDITY.md`
 - `docs/pylon/LDK_WALLET_REGTEST_HARNESS.md`
 - `docs/pylon/LDK_WALLET_TELEMETRY.md`
@@ -508,9 +509,11 @@ Set `OPENAGENTS_DISABLE_TELEMETRY=1` to disable that stream, or point
 `OPENAGENTS_TELEMETRY_URL` at a non-production endpoint during local validation.
 
 As of the 2026-06-08 network-readiness freeze, the current public baseline is
-`pylon-v0.2.4` on GitHub Releases and `@openagentsinc/pylon@0.2.5` on npm
-`latest`. That baseline is not a broad earning-readiness claim. The next public
-Pylon release or npm `latest` move is blocked until the live
+`pylon-v0.2.5` on GitHub Releases and `@openagentsinc/pylon@0.2.5` on npm
+`latest`. `pylon-v0.2.5` is a narrow wallet hotfix for legacy Spark balance
+detection, live MDK balance display, and one-command Spark-to-MDK sweeping; it
+is not a broad earning-readiness claim. The next broad public Pylon release or
+npm `latest` move is blocked until the live
 Probe/Pylon/Psionic network evidence tracked in
 `docs/reports/nexus/2026-06-08-pylon-release-freeze-network-readiness-closeout.md`
 is retained.
@@ -647,6 +650,26 @@ bypass wallet-generated registration. Older config files that contain
 alias. Spark destination creation is no longer part of normal Pylon startup or
 registration, and Spark-only nodes are not eligible for new paid work after
 cutover.
+
+If a node upgraded from a v0.1 Spark wallet, `wallet status` and `wallet
+history` now detect retained `method: spark` receive rows and label the current
+number as the live MoneyDevKit balance. Spendable legacy Spark value is swept by
+one explicit command:
+
+```bash
+pylon wallet migrate-spark
+pylon wallet migrate-spark --yes
+```
+
+The dry run checks the old Spark wallet and reports any blocker. The confirmed
+run creates an MDK invoice, pays it from Spark through the migration sidecar,
+polls for the MDK balance increase, and records a redacted migration receipt.
+Release archives from `pylon-v0.2.5` onward include `spark-wallet-cli` beside
+`pylon` for this migration path. Source or custom installs can set
+`PYLON_LEGACY_SPARK_WALLET_CLI=/absolute/path/to/spark-wallet-cli`. Keep the
+old mnemonic/storage backup until the migration reports `completed`. Full
+operator details live in
+`docs/pylon/LEGACY_SPARK_WALLET_MIGRATION.md`.
 
 The MoneyDevKit wrapper runs `@moneydevkit/agent-wallet` with JSON stdout, a
 Pylon-scoped `HOME`, and a stable Pylon-scoped `MDK_WALLET_PORT`, so wallet
@@ -1235,8 +1258,8 @@ channel monitors, channel manager state, or payment continuity. `wallet restore
 backup <path> --passphrase-env <ENV> --yes` decrypts a Pylon backup, validates
 network and derivation metadata, restores the LDK storage snapshot, and refuses
 to run while another live Pylon wallet process holds the wallet lock.
-- TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
-- headless: `cargo pylon-headless wallet start|stop|restart|status|sync|balance|address|invoice|offer|pay|history|backup|restore|lock`
+- TUI: `/wallet`, `/wallet sync`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet offer [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>]`, `/wallet pay <bolt11|bolt12|bitcoin-uri|address> [--amount-sats <n>]`, `/wallet history [--limit <n>]`, `/wallet migrate-spark [--yes]`
+- headless: `cargo pylon-headless wallet start|stop|restart|status|sync|balance|address|invoice|offer|pay|history|migrate-spark|backup|restore|lock`
 
 Wallet runtime selection is now explicit. `wallet_runtime_kind=moneydevkit` is
 the default runtime and wraps MoneyDevKit's local agent-wallet daemon. It

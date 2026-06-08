@@ -56,6 +56,8 @@ const MONEYDEVKIT_AGENT_WALLET_PACKAGE: &str = "@moneydevkit/agent-wallet@latest
 const MONEYDEVKIT_WALLET_DETAIL: &str = "Pylon is using MoneyDevKit's local agent-wallet runtime for self-custodial Lightning payments.";
 const MONEYDEVKIT_PORT_BASE: u16 = 35_000;
 const MONEYDEVKIT_PORT_SPAN: u16 = 20_000;
+const ENV_LEGACY_SPARK_WALLET_CLI: &str = "PYLON_LEGACY_SPARK_WALLET_CLI";
+const DEFAULT_LEGACY_SPARK_MIGRATION_POLL_SECONDS: u64 = 45;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -189,6 +191,15 @@ pub enum WalletSubcommand {
         limit: Option<u32>,
         json: bool,
     },
+    MigrateSpark {
+        spark_cli: Option<PathBuf>,
+        storage_dir: Option<PathBuf>,
+        amount_sats: Option<u64>,
+        reserve_sats: u64,
+        poll_seconds: u64,
+        yes: bool,
+        json: bool,
+    },
     BackupExport {
         path: PathBuf,
         passphrase_env: Option<String>,
@@ -297,6 +308,8 @@ pub struct WalletStatusReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ldk_node: Option<WalletLdkNodeStatus>,
     pub balance: WalletBalanceSnapshot,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy_spark: Option<WalletLegacySparkStatus>,
     pub channels: Vec<PylonWalletChannelRecord>,
     pub lightning_readiness: WalletLightningReadiness,
     pub recent_payments: Vec<PylonWalletPaymentRecord>,
@@ -370,8 +383,58 @@ pub struct WalletHistoryReport {
     pub runtime: WalletRuntimeSurface,
     pub channels: Vec<PylonWalletChannelRecord>,
     pub lightning_readiness: WalletLightningReadiness,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy_spark: Option<WalletLegacySparkStatus>,
     pub payments: Vec<PylonWalletPaymentRecord>,
     pub receipts: Vec<PylonWalletReceiptRecord>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletLegacySparkStatus {
+    pub detected: bool,
+    pub state: String,
+    pub retained_payment_count: usize,
+    pub retained_credit_sats: u64,
+    pub live_mdk_balance_sats: u64,
+    pub helper_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub helper_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_command: Option<String>,
+    pub detail: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletLegacySparkCliStatus {
+    pub helper_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub helper_path: Option<String>,
+    pub network: String,
+    pub spark_balance_sats: Option<u64>,
+    pub unclaimed_deposit_count: Option<u64>,
+    pub unclaimed_deposit_sats: Option<u64>,
+    pub recent_payment_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletLegacySparkMigrationReport {
+    pub runtime: WalletRuntimeSurface,
+    pub status: String,
+    pub amount_sats: Option<u64>,
+    pub reserve_sats: u64,
+    pub pre_mdk_balance_sats: u64,
+    pub post_mdk_balance_sats: u64,
+    pub legacy_spark: WalletLegacySparkStatus,
+    pub legacy_spark_cli: WalletLegacySparkCliStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mdk_invoice_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spark_payment_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_id: Option<String>,
+    pub detail: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -972,6 +1035,7 @@ impl PylonWalletRuntime for ExternalTargetWalletRuntime {
             runtime_detail: Some(LDK_EXTERNAL_WALLET_DETAIL.to_string()),
             ldk_node: None,
             balance: self.balance(ledger)?,
+            legacy_spark: None,
             channels,
             lightning_readiness,
             recent_payments: ledger_payments(ledger, include_recent_payments.then_some(10)),
@@ -1068,6 +1132,7 @@ impl PylonWalletRuntime for MockPylonWalletRuntime {
             runtime_detail: Some(MOCK_WALLET_DETAIL.to_string()),
             ldk_node: None,
             balance: self.balance(ledger)?,
+            legacy_spark: None,
             channels,
             lightning_readiness,
             recent_payments: self.list_payments(ledger, include_recent_payments.then_some(10))?,
@@ -1416,6 +1481,7 @@ impl PylonWalletRuntime for MoneyDevKitWalletRuntime {
             runtime_detail: Some(MONEYDEVKIT_WALLET_DETAIL.to_string()),
             ldk_node: None,
             balance: self.balance(ledger)?,
+            legacy_spark: None,
             channels,
             lightning_readiness,
             recent_payments,
@@ -1713,6 +1779,7 @@ impl PylonWalletRuntime for LdkNodeWalletRuntime {
             runtime_detail,
             ldk_node: Some(ldk_node),
             balance: self.balance(ledger)?,
+            legacy_spark: None,
             channels,
             lightning_readiness,
             recent_payments: self.list_payments(ledger, include_recent_payments.then_some(10))?,
@@ -2638,6 +2705,322 @@ fn mdk_payment_record_from_value(value: &Value) -> Option<PylonWalletPaymentReco
         created_at_ms: timestamp_ms,
         updated_at_ms: timestamp_ms,
     })
+}
+
+fn wallet_json_value_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    Some(current)
+}
+
+fn wallet_json_string_path(value: &Value, path: &[&str]) -> Option<String> {
+    wallet_json_value_path(value, path)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+}
+
+fn wallet_json_u64_path(value: &Value, path: &[&str]) -> Option<u64> {
+    wallet_json_value_path(value, path).and_then(|value| {
+        value
+            .as_u64()
+            .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
+            .or_else(|| value.as_str().and_then(|value| value.parse::<u64>().ok()))
+    })
+}
+
+fn wallet_json_array_len_path(value: &Value, path: &[&str]) -> Option<u64> {
+    wallet_json_value_path(value, path)
+        .and_then(Value::as_array)
+        .map(|values| values.len() as u64)
+}
+
+fn wallet_payment_is_legacy_spark(payment: &PylonWalletPaymentRecord) -> bool {
+    let method = payment.method.trim().to_ascii_lowercase();
+    method == "spark" || method.starts_with("spark_") || method.starts_with("spark-")
+}
+
+fn legacy_spark_status_from_ledger(
+    ledger: &PylonLedger,
+    runtime_kind: PylonWalletRuntimeKind,
+    live_mdk_balance_sats: u64,
+    helper_path: Option<&Path>,
+) -> Option<WalletLegacySparkStatus> {
+    let retained_payment_count = ledger
+        .wallet
+        .payments
+        .iter()
+        .filter(|payment| wallet_payment_is_legacy_spark(payment))
+        .filter(|payment| wallet_payment_counts_as_credit(payment))
+        .count();
+    let retained_credit_sats = ledger
+        .wallet
+        .payments
+        .iter()
+        .filter(|payment| wallet_payment_is_legacy_spark(payment))
+        .filter(|payment| wallet_payment_counts_as_credit(payment))
+        .fold(0_u64, |total, payment| {
+            total.saturating_add(payment.amount_sats)
+        });
+    if retained_payment_count == 0 && retained_credit_sats == 0 {
+        return None;
+    }
+    let migration_completed = ledger.wallet.receipts.iter().any(|receipt| {
+        receipt.receipt_type == "wallet.migration.legacy_spark_to_mdk.v1"
+            && receipt.status.eq_ignore_ascii_case("completed")
+    });
+    let helper_available = helper_path.is_some();
+    let state = if migration_completed {
+        "migrated"
+    } else if runtime_kind != PylonWalletRuntimeKind::MoneyDevKit {
+        "legacy_history_detected"
+    } else if live_mdk_balance_sats == 0 {
+        "migration_recommended"
+    } else if live_mdk_balance_sats < retained_credit_sats {
+        "migration_check_recommended"
+    } else {
+        "legacy_history_detected"
+    };
+    let recommended_command = if migration_completed {
+        None
+    } else if helper_available {
+        Some("pylon wallet migrate-spark --yes".to_string())
+    } else {
+        Some(format!(
+            "{ENV_LEGACY_SPARK_WALLET_CLI}=/absolute/path/to/spark-wallet-cli pylon wallet migrate-spark --yes"
+        ))
+    };
+    let detail = if migration_completed {
+        "legacy Spark migration receipt is already present".to_string()
+    } else if runtime_kind != PylonWalletRuntimeKind::MoneyDevKit {
+        "retained Spark receive history exists; select wallet_runtime_kind=moneydevkit before sweeping old Spark funds into MDK".to_string()
+    } else if helper_available {
+        "retained Spark receive history exists; run wallet migrate-spark --yes to sweep any live legacy Spark balance into MDK".to_string()
+    } else {
+        "retained Spark receive history exists, but no spark-wallet-cli helper was found beside pylon or in PATH".to_string()
+    };
+    Some(WalletLegacySparkStatus {
+        detected: true,
+        state: state.to_string(),
+        retained_payment_count,
+        retained_credit_sats,
+        live_mdk_balance_sats,
+        helper_available,
+        helper_path: helper_path.map(|path| path.display().to_string()),
+        recommended_command,
+        detail,
+    })
+}
+
+fn legacy_spark_status_not_detected(
+    runtime_kind: PylonWalletRuntimeKind,
+    live_mdk_balance_sats: u64,
+    helper_path: Option<&Path>,
+) -> WalletLegacySparkStatus {
+    let helper_available = helper_path.is_some();
+    WalletLegacySparkStatus {
+        detected: false,
+        state: "not_detected".to_string(),
+        retained_payment_count: 0,
+        retained_credit_sats: 0,
+        live_mdk_balance_sats,
+        helper_available,
+        helper_path: helper_path.map(|path| path.display().to_string()),
+        recommended_command: (runtime_kind == PylonWalletRuntimeKind::MoneyDevKit
+            && helper_available)
+            .then(|| "pylon wallet migrate-spark".to_string()),
+        detail: "no retained Spark receive history was found in the Pylon wallet ledger"
+            .to_string(),
+    }
+}
+
+fn resolve_legacy_spark_cli(explicit: Option<&Path>) -> Option<PathBuf> {
+    if let Some(path) = explicit {
+        return legacy_spark_cli_candidate_is_usable(path).then(|| path.to_path_buf());
+    }
+    if let Ok(value) = std::env::var(ENV_LEGACY_SPARK_WALLET_CLI) {
+        let path = PathBuf::from(value.trim());
+        if legacy_spark_cli_candidate_is_usable(path.as_path()) {
+            return Some(path);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for name in legacy_spark_cli_binary_names() {
+                let path = dir.join(name);
+                if legacy_spark_cli_candidate_is_usable(path.as_path()) {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in std::env::split_paths(path_var.as_str()) {
+            for name in legacy_spark_cli_binary_names() {
+                let path = dir.join(name);
+                if legacy_spark_cli_candidate_is_usable(path.as_path()) {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn legacy_spark_cli_binary_names() -> &'static [&'static str] {
+    &["spark-wallet-cli.exe", "spark_wallet_cli.exe"]
+}
+
+#[cfg(not(windows))]
+fn legacy_spark_cli_binary_names() -> &'static [&'static str] {
+    &["spark-wallet-cli", "spark_wallet_cli"]
+}
+
+fn legacy_spark_cli_candidate_is_usable(path: &Path) -> bool {
+    path.is_file()
+}
+
+fn legacy_spark_storage_dir(config: &crate::PylonConfig, storage_dir: Option<&Path>) -> PathBuf {
+    storage_dir.map(Path::to_path_buf).unwrap_or_else(|| {
+        config
+            .identity_path
+            .parent()
+            .map(|parent| parent.join("spark"))
+            .unwrap_or_else(|| PathBuf::from(".openagents/spark"))
+    })
+}
+
+fn legacy_spark_network_from_wallet_network(network: &str) -> &'static str {
+    match network
+        .trim()
+        .to_ascii_lowercase()
+        .replace('-', "_")
+        .as_str()
+    {
+        "regtest" => "regtest",
+        _ => "mainnet",
+    }
+}
+
+fn legacy_spark_migration_network_supported(network: &str) -> bool {
+    matches!(
+        network
+            .trim()
+            .to_ascii_lowercase()
+            .replace('-', "_")
+            .as_str(),
+        "bitcoin" | "mainnet" | "btc"
+    )
+}
+
+fn run_legacy_spark_cli_json(
+    config: &crate::PylonConfig,
+    helper_path: &Path,
+    storage_dir: &Path,
+    command_args: &[String],
+) -> Result<Value> {
+    ensure_private_file_permissions(config.identity_path.as_path(), "identity mnemonic")?;
+    let command_label = command_args
+        .first()
+        .map(String::as_str)
+        .unwrap_or("status")
+        .to_string();
+    let output = Command::new(helper_path)
+        .arg("--network")
+        .arg(legacy_spark_network_from_wallet_network(
+            config.wallet_network.as_str(),
+        ))
+        .arg("--identity-path")
+        .arg(config.identity_path.as_os_str())
+        .arg("--storage-dir")
+        .arg(storage_dir.as_os_str())
+        .args(command_args)
+        .output()
+        .with_context(|| {
+            format!(
+                "failed to run legacy Spark helper {}",
+                helper_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8_lossy(output.stdout.as_slice()).to_string();
+    let stderr = String::from_utf8_lossy(output.stderr.as_slice()).to_string();
+    if !output.status.success() {
+        let detail = redact_mdk_command_output(format!("{stdout}\n{stderr}").as_str());
+        bail!(
+            "legacy Spark helper command '{command_label}' failed: {}",
+            detail.trim()
+        );
+    }
+    parse_mdk_stdout_json(stdout.as_str()).with_context(|| {
+        format!("legacy Spark helper command '{command_label}' did not return JSON")
+    })
+}
+
+fn load_legacy_spark_cli_status(
+    config: &crate::PylonConfig,
+    helper_path: &Path,
+    storage_dir: &Path,
+) -> Result<WalletLegacySparkCliStatus> {
+    let value =
+        run_legacy_spark_cli_json(config, helper_path, storage_dir, &["status".to_string()])?;
+    Ok(WalletLegacySparkCliStatus {
+        helper_available: true,
+        helper_path: Some(helper_path.display().to_string()),
+        network: wallet_json_string_path(&value, &["network"]).unwrap_or_else(|| {
+            legacy_spark_network_from_wallet_network(config.wallet_network.as_str()).to_string()
+        }),
+        spark_balance_sats: wallet_json_u64_path(&value, &["balance", "totalSats"])
+            .or_else(|| wallet_json_u64_path(&value, &["balance", "total_sats"]))
+            .or_else(|| mdk_json_u64(&value, &["balanceSats", "balance_sats"])),
+        unclaimed_deposit_count: mdk_json_u64(
+            &value,
+            &["unclaimedDepositCount", "unclaimed_deposit_count"],
+        )
+        .or_else(|| wallet_json_array_len_path(&value, &["unclaimedDeposits"]))
+        .or_else(|| wallet_json_array_len_path(&value, &["unclaimed_deposits"])),
+        unclaimed_deposit_sats: mdk_json_u64(
+            &value,
+            &["unclaimedDepositTotalSats", "unclaimed_deposit_total_sats"],
+        ),
+        recent_payment_count: wallet_json_array_len_path(&value, &["recentPayments"])
+            .or_else(|| wallet_json_array_len_path(&value, &["recent_payments"])),
+        error: None,
+    })
+}
+
+fn legacy_spark_payment_ref(value: &Value) -> Option<String> {
+    mdk_json_string(value, &["paymentId", "payment_id"])
+        .or_else(|| wallet_json_string_path(value, &["matchedPayment", "id"]))
+        .map(|payment_id| short_wallet_digest_id("spark-payment", payment_id.as_str()))
+}
+
+fn legacy_spark_migration_receipt_id(invoice_id: &str, spark_payment_ref: Option<&str>) -> String {
+    let material = format!(
+        "{}:{}",
+        invoice_id,
+        spark_payment_ref.unwrap_or("spark-payment-submitted")
+    );
+    short_wallet_digest_id("wallet:migration:legacy_spark_to_mdk", material.as_str())
+}
+
+fn poll_wallet_balance_until(
+    context: &WalletRuntimeContext,
+    expected_balance_sats: u64,
+    poll_seconds: u64,
+) -> Option<u64> {
+    let mut latest = None;
+    for _ in 0..=poll_seconds {
+        if let Ok(balance) = context.runtime.balance(&PylonLedger::default()) {
+            latest = Some(balance.total_sats);
+            if balance.total_sats >= expected_balance_sats {
+                return latest;
+            }
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    latest
 }
 
 fn ldk_payment_details_to_wallet_record(details: LdkPaymentDetails) -> PylonWalletPaymentRecord {
@@ -3653,6 +4036,30 @@ pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) 
             }
             Ok(render_wallet_history_report(&report))
         }
+        WalletSubcommand::MigrateSpark {
+            spark_cli,
+            storage_dir,
+            amount_sats,
+            reserve_sats,
+            poll_seconds,
+            yes,
+            json,
+        } => {
+            let report = migrate_legacy_spark_wallet_report(
+                config_path,
+                spark_cli.as_deref(),
+                storage_dir.as_deref(),
+                *amount_sats,
+                *reserve_sats,
+                *poll_seconds,
+                *yes,
+            )
+            .await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_wallet_legacy_spark_migration_report(&report))
+        }
         WalletSubcommand::BackupExport {
             path,
             passphrase_env,
@@ -3977,6 +4384,91 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
                 }
             }
             Ok(WalletSubcommand::History { limit, json })
+        }
+        "migrate-spark" => {
+            let mut spark_cli = None;
+            let mut storage_dir = None;
+            let mut amount_sats = None;
+            let mut reserve_sats = 0_u64;
+            let mut poll_seconds = DEFAULT_LEGACY_SPARK_MIGRATION_POLL_SECONDS;
+            let mut yes = false;
+            let mut json = false;
+            let mut index = start_index + 2;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--spark-cli" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --spark-cli"))?;
+                        spark_cli = Some(PathBuf::from(value));
+                        index += 1;
+                    }
+                    "--storage-dir" => {
+                        index += 1;
+                        let value = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --storage-dir"))?;
+                        storage_dir = Some(PathBuf::from(value));
+                        index += 1;
+                    }
+                    "--amount-sats" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --amount-sats"))?;
+                        let value = raw
+                            .parse::<u64>()
+                            .map_err(|error| anyhow!("invalid --amount-sats '{}': {error}", raw))?;
+                        if value == 0 {
+                            bail!("--amount-sats must be greater than 0");
+                        }
+                        amount_sats = Some(value);
+                        index += 1;
+                    }
+                    "--reserve-sats" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --reserve-sats"))?;
+                        reserve_sats = raw.parse::<u64>().map_err(|error| {
+                            anyhow!("invalid --reserve-sats '{}': {error}", raw)
+                        })?;
+                        index += 1;
+                    }
+                    "--poll-seconds" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --poll-seconds"))?;
+                        poll_seconds = raw.parse::<u64>().map_err(|error| {
+                            anyhow!("invalid --poll-seconds '{}': {error}", raw)
+                        })?;
+                        if poll_seconds == 0 {
+                            bail!("--poll-seconds must be greater than 0");
+                        }
+                        index += 1;
+                    }
+                    "--yes" => {
+                        yes = true;
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for wallet migrate-spark: {other}"),
+                }
+            }
+            Ok(WalletSubcommand::MigrateSpark {
+                spark_cli,
+                storage_dir,
+                amount_sats,
+                reserve_sats,
+                poll_seconds,
+                yes,
+                json,
+            })
         }
         "backup" => parse_wallet_backup_command(args, start_index + 2),
         "restore" => parse_wallet_restore_command(args, start_index + 2),
@@ -4303,7 +4795,13 @@ async fn load_wallet_status_report_internal(
     let context = prepare_wallet_context(config_path)?;
     let ledger = load_ledger(config_path)?;
     context.runtime.start()?;
-    let report = context.runtime.sync(&ledger, include_recent_payments)?;
+    let mut report = context.runtime.sync(&ledger, include_recent_payments)?;
+    report.legacy_spark = legacy_spark_status_from_ledger(
+        &ledger,
+        report.runtime.runtime_kind,
+        report.balance.total_sats,
+        resolve_legacy_spark_cli(None).as_deref(),
+    );
     sync_wallet_status(
         config_path,
         &report.runtime,
@@ -4416,6 +4914,298 @@ pub async fn pay_wallet_invoice_report(
     }
 }
 
+pub async fn migrate_legacy_spark_wallet_report(
+    config_path: &Path,
+    spark_cli: Option<&Path>,
+    storage_dir: Option<&Path>,
+    amount_sats: Option<u64>,
+    reserve_sats: u64,
+    poll_seconds: u64,
+    yes: bool,
+) -> Result<WalletLegacySparkMigrationReport> {
+    let config = ensure_local_setup(config_path)?;
+    let context = prepare_wallet_context(config_path)?;
+    let ledger = load_ledger(config_path)?;
+    let helper_path = resolve_legacy_spark_cli(spark_cli);
+    let runtime = context.runtime.surface().clone();
+    let spark_storage_dir = legacy_spark_storage_dir(&config, storage_dir);
+    let spark_network = legacy_spark_network_from_wallet_network(config.wallet_network.as_str());
+    let mut legacy_spark = legacy_spark_status_from_ledger(
+        &ledger,
+        runtime.runtime_kind,
+        ledger.wallet.last_balance_sats.unwrap_or_default(),
+        helper_path.as_deref(),
+    )
+    .unwrap_or_else(|| {
+        legacy_spark_status_not_detected(
+            runtime.runtime_kind,
+            ledger.wallet.last_balance_sats.unwrap_or_default(),
+            helper_path.as_deref(),
+        )
+    });
+    let mut legacy_spark_cli = WalletLegacySparkCliStatus {
+        helper_available: helper_path.is_some(),
+        helper_path: helper_path.as_ref().map(|path| path.display().to_string()),
+        network: spark_network.to_string(),
+        ..WalletLegacySparkCliStatus::default()
+    };
+
+    if runtime.runtime_kind != PylonWalletRuntimeKind::MoneyDevKit {
+        return Ok(WalletLegacySparkMigrationReport {
+            runtime,
+            status: "blocked".to_string(),
+            amount_sats: None,
+            reserve_sats,
+            pre_mdk_balance_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
+            post_mdk_balance_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
+            legacy_spark,
+            legacy_spark_cli,
+            mdk_invoice_id: None,
+            spark_payment_ref: None,
+            receipt_id: None,
+            detail: "legacy Spark migration requires wallet_runtime_kind=moneydevkit so Pylon can create the destination MDK invoice".to_string(),
+        });
+    }
+
+    context.runtime.start()?;
+    let pre_mdk_balance_sats = context.runtime.balance(&ledger)?.total_sats;
+    legacy_spark = legacy_spark_status_from_ledger(
+        &ledger,
+        runtime.runtime_kind,
+        pre_mdk_balance_sats,
+        helper_path.as_deref(),
+    )
+    .unwrap_or_else(|| {
+        legacy_spark_status_not_detected(
+            runtime.runtime_kind,
+            pre_mdk_balance_sats,
+            helper_path.as_deref(),
+        )
+    });
+
+    if !legacy_spark_migration_network_supported(config.wallet_network.as_str()) {
+        return Ok(WalletLegacySparkMigrationReport {
+            runtime,
+            status: "blocked".to_string(),
+            amount_sats: None,
+            reserve_sats,
+            pre_mdk_balance_sats,
+            post_mdk_balance_sats: pre_mdk_balance_sats,
+            legacy_spark,
+            legacy_spark_cli,
+            mdk_invoice_id: None,
+            spark_payment_ref: None,
+            receipt_id: None,
+            detail: format!(
+                "automatic Spark-to-MDK sweep is only enabled for mainnet Pylon wallets; current wallet_network={} would create a non-mainnet MDK invoice that the legacy Spark helper cannot safely pay",
+                config.wallet_network
+            ),
+        });
+    }
+
+    let Some(helper_path) = helper_path else {
+        let status = if legacy_spark.detected {
+            "blocked"
+        } else {
+            "not_needed"
+        };
+        let detail = if legacy_spark.detected {
+            format!(
+                "retained Spark receive history was found, but no legacy Spark helper is installed; place spark-wallet-cli beside pylon or set {ENV_LEGACY_SPARK_WALLET_CLI}=/absolute/path/to/spark-wallet-cli"
+            )
+        } else {
+            "no retained Spark receive history was found; no migration was attempted".to_string()
+        };
+        return Ok(WalletLegacySparkMigrationReport {
+            runtime,
+            status: status.to_string(),
+            amount_sats: None,
+            reserve_sats,
+            pre_mdk_balance_sats,
+            post_mdk_balance_sats: pre_mdk_balance_sats,
+            legacy_spark,
+            legacy_spark_cli,
+            mdk_invoice_id: None,
+            spark_payment_ref: None,
+            receipt_id: None,
+            detail,
+        });
+    };
+
+    match load_legacy_spark_cli_status(&config, helper_path.as_path(), spark_storage_dir.as_path())
+    {
+        Ok(status) => legacy_spark_cli = status,
+        Err(error) => {
+            legacy_spark_cli.error = Some(redact_wallet_secret_text(error.to_string().as_str()));
+            return Ok(WalletLegacySparkMigrationReport {
+                runtime,
+                status: "blocked".to_string(),
+                amount_sats: None,
+                reserve_sats,
+                pre_mdk_balance_sats,
+                post_mdk_balance_sats: pre_mdk_balance_sats,
+                legacy_spark,
+                legacy_spark_cli,
+                mdk_invoice_id: None,
+                spark_payment_ref: None,
+                receipt_id: None,
+                detail: "legacy Spark helper could not read the old wallet; check the helper path, old identity mnemonic, network, and Spark API key environment".to_string(),
+            });
+        }
+    }
+
+    let unclaimed_deposit_count = legacy_spark_cli.unclaimed_deposit_count.unwrap_or_default();
+    let unclaimed_deposit_sats = legacy_spark_cli.unclaimed_deposit_sats.unwrap_or_default();
+    if unclaimed_deposit_count > 0 || unclaimed_deposit_sats > 0 {
+        return Ok(WalletLegacySparkMigrationReport {
+            runtime,
+            status: "blocked".to_string(),
+            amount_sats: None,
+            reserve_sats,
+            pre_mdk_balance_sats,
+            post_mdk_balance_sats: pre_mdk_balance_sats,
+            legacy_spark,
+            legacy_spark_cli,
+            mdk_invoice_id: None,
+            spark_payment_ref: None,
+            receipt_id: None,
+            detail: "legacy Spark has unclaimed deposits; claim those with the legacy helper first, then rerun wallet migrate-spark --yes".to_string(),
+        });
+    }
+
+    let spark_balance_sats = legacy_spark_cli.spark_balance_sats.unwrap_or_default();
+    if spark_balance_sats == 0 {
+        return Ok(WalletLegacySparkMigrationReport {
+            runtime,
+            status: "not_needed".to_string(),
+            amount_sats: Some(0),
+            reserve_sats,
+            pre_mdk_balance_sats,
+            post_mdk_balance_sats: pre_mdk_balance_sats,
+            legacy_spark,
+            legacy_spark_cli,
+            mdk_invoice_id: None,
+            spark_payment_ref: None,
+            receipt_id: None,
+            detail: "legacy Spark helper reported zero spendable Spark balance".to_string(),
+        });
+    }
+
+    let available_sats = spark_balance_sats.saturating_sub(reserve_sats);
+    let migration_amount_sats = amount_sats.unwrap_or(available_sats);
+    if migration_amount_sats == 0 || migration_amount_sats > available_sats {
+        return Ok(WalletLegacySparkMigrationReport {
+            runtime,
+            status: "blocked".to_string(),
+            amount_sats: Some(migration_amount_sats),
+            reserve_sats,
+            pre_mdk_balance_sats,
+            post_mdk_balance_sats: pre_mdk_balance_sats,
+            legacy_spark,
+            legacy_spark_cli,
+            mdk_invoice_id: None,
+            spark_payment_ref: None,
+            receipt_id: None,
+            detail: format!(
+                "requested Spark migration amount {migration_amount_sats} sats exceeds available balance after reserve ({available_sats} sats)"
+            ),
+        });
+    }
+
+    if !yes {
+        return Ok(WalletLegacySparkMigrationReport {
+            runtime,
+            status: "ready".to_string(),
+            amount_sats: Some(migration_amount_sats),
+            reserve_sats,
+            pre_mdk_balance_sats,
+            post_mdk_balance_sats: pre_mdk_balance_sats,
+            legacy_spark,
+            legacy_spark_cli,
+            mdk_invoice_id: None,
+            spark_payment_ref: None,
+            receipt_id: None,
+            detail: "legacy Spark balance is spendable and ready to sweep; rerun wallet migrate-spark --yes to create an MDK invoice and pay it from Spark".to_string(),
+        });
+    }
+
+    let invoice_report = context.runtime.invoice(
+        migration_amount_sats,
+        Some("OpenAgents Pylon legacy Spark migration".to_string()),
+        Some(DEFAULT_BOLT11_EXPIRY_SECONDS),
+    )?;
+    mutate_ledger(config_path, |ledger| {
+        ledger.upsert_wallet_invoice(invoice_report.invoice.clone());
+        Ok(())
+    })?;
+    let pay_value = run_legacy_spark_cli_json(
+        &config,
+        helper_path.as_path(),
+        spark_storage_dir.as_path(),
+        &[
+            "pay-invoice".to_string(),
+            invoice_report.invoice.payment_request.clone(),
+        ],
+    )
+    .with_context(|| "legacy Spark helper failed while paying the MDK migration invoice")?;
+    let spark_payment_ref = legacy_spark_payment_ref(&pay_value);
+    let expected_mdk_balance = pre_mdk_balance_sats.saturating_add(migration_amount_sats);
+    let post_mdk_balance_sats =
+        poll_wallet_balance_until(&context, expected_mdk_balance, poll_seconds)
+            .unwrap_or(pre_mdk_balance_sats);
+    let completed = post_mdk_balance_sats >= expected_mdk_balance;
+    let status = if completed { "completed" } else { "submitted" };
+    let receipt_id = legacy_spark_migration_receipt_id(
+        invoice_report.invoice.invoice_id.as_str(),
+        spark_payment_ref.as_deref(),
+    );
+    mutate_ledger(config_path, |ledger| {
+        ledger.wallet.last_balance_sats = Some(post_mdk_balance_sats);
+        ledger.wallet.last_balance_at_ms = Some(now_epoch_ms() as u64);
+        ledger.upsert_wallet_receipt(PylonWalletReceiptRecord {
+            receipt_id: receipt_id.clone(),
+            receipt_type: "wallet.migration.legacy_spark_to_mdk.v1".to_string(),
+            status: status.to_string(),
+            direction: None,
+            method: Some("legacy_spark_to_moneydevkit".to_string()),
+            amount_sats: Some(migration_amount_sats),
+            fees_sats: None,
+            payment_id: spark_payment_ref.clone(),
+            payment_hash: invoice_report.invoice.payment_hash.clone(),
+            txid: None,
+            operation_id: Some(invoice_report.invoice.invoice_id.clone()),
+            settlement_id: None,
+            failure_code: (!completed).then(|| "mdk_balance_poll_timeout".to_string()),
+            detail: Some(format!(
+                "legacy Spark balance sweep {} after paying a Pylon-scoped MoneyDevKit invoice",
+                if completed { "confirmed" } else { "submitted" }
+            )),
+            created_at_ms: now_epoch_ms() as u64,
+            updated_at_ms: now_epoch_ms() as u64,
+        });
+        Ok(())
+    })?;
+
+    Ok(WalletLegacySparkMigrationReport {
+        runtime,
+        status: status.to_string(),
+        amount_sats: Some(migration_amount_sats),
+        reserve_sats,
+        pre_mdk_balance_sats,
+        post_mdk_balance_sats,
+        legacy_spark,
+        legacy_spark_cli,
+        mdk_invoice_id: Some(invoice_report.invoice.invoice_id),
+        spark_payment_ref,
+        receipt_id: Some(receipt_id),
+        detail: if completed {
+            "legacy Spark balance was swept into the MoneyDevKit wallet and the MDK balance increase was observed".to_string()
+        } else {
+            "legacy Spark payment was submitted, but the MDK balance increase was not observed before the poll timeout; rerun wallet status/history before retrying".to_string()
+        },
+    })
+}
+
 pub async fn load_wallet_history_report(
     config_path: &Path,
     limit: Option<u32>,
@@ -4431,6 +5221,16 @@ pub async fn load_wallet_history_report(
         channels.as_slice(),
         true,
     );
+    let balance = context
+        .runtime
+        .balance(&ledger)
+        .unwrap_or_else(|_| ledger_balance(&ledger));
+    let legacy_spark = legacy_spark_status_from_ledger(
+        &ledger,
+        context.runtime.surface().runtime_kind,
+        balance.total_sats,
+        resolve_legacy_spark_cli(None).as_deref(),
+    );
     mutate_ledger(config_path, |ledger| {
         for record in &records {
             ledger.upsert_wallet_payment(record.clone());
@@ -4442,6 +5242,7 @@ pub async fn load_wallet_history_report(
         runtime: context.runtime.surface().clone(),
         channels,
         lightning_readiness,
+        legacy_spark,
         payments: records,
         receipts,
     })
@@ -4827,6 +5628,9 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
             report.balance.anchor_reserve_sats
         ),
         format!("total_sats: {}", report.balance.total_sats),
+        (report.runtime.runtime_kind == PylonWalletRuntimeKind::MoneyDevKit)
+            .then(|| format!("live_mdk_balance_sats: {}", report.balance.total_sats))
+            .unwrap_or_else(|| format!("live_wallet_balance_sats: {}", report.balance.total_sats)),
         format!(
             "lightning_receive_state: {}",
             report.lightning_readiness.state
@@ -4866,6 +5670,7 @@ pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
     if let Some(detail) = report.runtime_detail.as_deref() {
         lines.push(format!("runtime_detail: {detail}"));
     }
+    append_legacy_spark_lines(&mut lines, report.legacy_spark.as_ref());
     if let Some(ldk_node) = report.ldk_node.as_ref() {
         lines.push(format!(
             "ldk_node_id: {}",
@@ -4977,10 +5782,14 @@ pub fn render_wallet_balance_report(report: &WalletStatusReport) -> String {
             report.balance.anchor_reserve_sats
         ),
         format!("total_sats: {}", report.balance.total_sats),
+        (report.runtime.runtime_kind == PylonWalletRuntimeKind::MoneyDevKit)
+            .then(|| format!("live_mdk_balance_sats: {}", report.balance.total_sats))
+            .unwrap_or_else(|| format!("live_wallet_balance_sats: {}", report.balance.total_sats)),
     ];
     if let Some(detail) = report.runtime_detail.as_deref() {
         lines.push(format!("runtime_detail: {detail}"));
     }
+    append_legacy_spark_lines(&mut lines, report.legacy_spark.as_ref());
     lines.join("\n")
 }
 
@@ -5122,6 +5931,64 @@ pub fn render_wallet_pay_report(report: &WalletPayReport) -> String {
     lines.join("\n")
 }
 
+pub fn render_wallet_legacy_spark_migration_report(
+    report: &WalletLegacySparkMigrationReport,
+) -> String {
+    let mut lines = vec![
+        format!("runtime_kind: {}", report.runtime.runtime_kind),
+        format!("network: {}", report.runtime.network),
+        format!("status: {}", report.status),
+        format!("pre_mdk_balance_sats: {}", report.pre_mdk_balance_sats),
+        format!("post_mdk_balance_sats: {}", report.post_mdk_balance_sats),
+        format!("reserve_sats: {}", report.reserve_sats),
+    ];
+    if let Some(amount_sats) = report.amount_sats {
+        lines.push(format!("amount_sats: {amount_sats}"));
+    }
+    lines.push(format!(
+        "legacy_spark_detected: {}",
+        report.legacy_spark.detected
+    ));
+    lines.push(format!("legacy_spark_state: {}", report.legacy_spark.state));
+    lines.push(format!(
+        "legacy_spark_retained_credit_sats: {}",
+        report.legacy_spark.retained_credit_sats
+    ));
+    lines.push(format!(
+        "legacy_spark_helper_available: {}",
+        report.legacy_spark_cli.helper_available
+    ));
+    if let Some(path) = report.legacy_spark_cli.helper_path.as_deref() {
+        lines.push(format!("legacy_spark_helper_path: {path}"));
+    }
+    if let Some(balance) = report.legacy_spark_cli.spark_balance_sats {
+        lines.push(format!("legacy_spark_live_balance_sats: {balance}"));
+    }
+    if let Some(count) = report.legacy_spark_cli.unclaimed_deposit_count {
+        lines.push(format!("legacy_spark_unclaimed_deposit_count: {count}"));
+    }
+    if let Some(amount) = report.legacy_spark_cli.unclaimed_deposit_sats {
+        lines.push(format!("legacy_spark_unclaimed_deposit_sats: {amount}"));
+    }
+    if let Some(error) = report.legacy_spark_cli.error.as_deref() {
+        lines.push(format!("legacy_spark_helper_error: {error}"));
+    }
+    if let Some(invoice_id) = report.mdk_invoice_id.as_deref() {
+        lines.push(format!("mdk_invoice_id: {invoice_id}"));
+    }
+    if let Some(payment_ref) = report.spark_payment_ref.as_deref() {
+        lines.push(format!("spark_payment_ref: {payment_ref}"));
+    }
+    if let Some(receipt_id) = report.receipt_id.as_deref() {
+        lines.push(format!("receipt_id: {receipt_id}"));
+    }
+    if let Some(command) = report.legacy_spark.recommended_command.as_deref() {
+        lines.push(format!("recommended_command: {command}"));
+    }
+    lines.push(format!("detail: {}", report.detail));
+    lines.join("\n")
+}
+
 pub fn render_wallet_telemetry_report(report: &WalletTelemetryReport) -> String {
     let mut lines = vec![
         format!("schema: {}", report.schema),
@@ -5200,10 +6067,12 @@ pub fn render_wallet_history_report(report: &WalletHistoryReport) -> String {
         format!("receipts: {}", report.receipts.len()),
     ];
     if report.payments.is_empty() {
+        append_legacy_spark_lines(&mut lines, report.legacy_spark.as_ref());
         lines.push(String::new());
         lines.push("history: none".to_string());
         return lines.join("\n");
     }
+    append_legacy_spark_lines(&mut lines, report.legacy_spark.as_ref());
     for payment in &report.payments {
         lines.push(String::new());
         lines.push(format!("payment_id: {}", payment.payment_id));
@@ -5229,6 +6098,39 @@ pub fn render_wallet_history_report(report: &WalletHistoryReport) -> String {
         }
     }
     lines.join("\n")
+}
+
+fn append_legacy_spark_lines(
+    lines: &mut Vec<String>,
+    legacy_spark: Option<&WalletLegacySparkStatus>,
+) {
+    let Some(legacy_spark) = legacy_spark else {
+        return;
+    };
+    lines.push(format!("legacy_spark_state: {}", legacy_spark.state));
+    lines.push(format!(
+        "legacy_spark_retained_payment_count: {}",
+        legacy_spark.retained_payment_count
+    ));
+    lines.push(format!(
+        "legacy_spark_retained_credit_sats: {}",
+        legacy_spark.retained_credit_sats
+    ));
+    lines.push(format!(
+        "legacy_spark_live_mdk_balance_sats: {}",
+        legacy_spark.live_mdk_balance_sats
+    ));
+    lines.push(format!(
+        "legacy_spark_helper_available: {}",
+        legacy_spark.helper_available
+    ));
+    if let Some(path) = legacy_spark.helper_path.as_deref() {
+        lines.push(format!("legacy_spark_helper_path: {path}"));
+    }
+    if let Some(command) = legacy_spark.recommended_command.as_deref() {
+        lines.push(format!("legacy_spark_recommended_command: {command}"));
+    }
+    lines.push(format!("legacy_spark_detail: {}", legacy_spark.detail));
 }
 
 pub fn render_wallet_entropy_report(report: &WalletEntropyReport) -> String {
@@ -6636,6 +7538,37 @@ mod tests {
             parse_wallet_command(
                 &[
                     String::from("wallet"),
+                    String::from("migrate-spark"),
+                    String::from("--spark-cli"),
+                    String::from("/tmp/spark-wallet-cli"),
+                    String::from("--storage-dir"),
+                    String::from("/tmp/old-spark"),
+                    String::from("--amount-sats"),
+                    String::from("21"),
+                    String::from("--reserve-sats"),
+                    String::from("3"),
+                    String::from("--poll-seconds"),
+                    String::from("9"),
+                    String::from("--yes"),
+                    String::from("--json"),
+                ],
+                0,
+            )
+            .expect("wallet migrate-spark should parse"),
+            WalletSubcommand::MigrateSpark {
+                spark_cli: Some(PathBuf::from("/tmp/spark-wallet-cli")),
+                storage_dir: Some(PathBuf::from("/tmp/old-spark")),
+                amount_sats: Some(21),
+                reserve_sats: 3,
+                poll_seconds: 9,
+                yes: true,
+                json: true,
+            }
+        );
+        assert_eq!(
+            parse_wallet_command(
+                &[
+                    String::from("wallet"),
                     String::from("backup"),
                     String::from("export"),
                     String::from("/tmp/pylon-wallet-backup.json"),
@@ -6733,6 +7666,50 @@ mod tests {
                 path: PathBuf::from("/tmp/pylon-entropy.hex"),
                 json: true,
             }
+        );
+    }
+
+    #[test]
+    fn legacy_spark_status_detects_retained_receive_history() {
+        let mut ledger = crate::PylonLedger::default();
+        ledger.wallet.payments.push(PylonWalletPaymentRecord {
+            payment_id: "spark-receive-1".to_string(),
+            direction: "receive".to_string(),
+            status: "completed".to_string(),
+            amount_sats: 377,
+            fees_sats: 0,
+            method: "spark".to_string(),
+            description: Some("old Spark payment".to_string()),
+            invoice: None,
+            payment_hash: None,
+            txid: None,
+            operation_id: None,
+            receipt_id: None,
+            failure_code: None,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        });
+
+        let status = super::legacy_spark_status_from_ledger(
+            &ledger,
+            PylonWalletRuntimeKind::MoneyDevKit,
+            0,
+            None,
+        )
+        .expect("legacy Spark status should be detected");
+
+        assert!(status.detected);
+        assert_eq!(status.retained_payment_count, 1);
+        assert_eq!(status.retained_credit_sats, 377);
+        assert_eq!(status.state, "migration_recommended");
+        assert!(
+            status
+                .recommended_command
+                .as_deref()
+                .is_some_and(|command| {
+                    command.contains(super::ENV_LEGACY_SPARK_WALLET_CLI)
+                        && command.contains("wallet migrate-spark --yes")
+                })
         );
     }
 

@@ -140,6 +140,7 @@ release_exists() {
 
 build_binaries() {
   cargo build --release -p pylon -p pylon-tui -p nexus-relay -p nexus-control
+  cargo build --release -p autopilot-desktop --bin spark-wallet-cli
   cargo build \
     --manifest-path "${PSIONIC_REPO}/Cargo.toml" \
     --release \
@@ -244,6 +245,8 @@ Platform: $(host_os)-$(host_arch)
 This archive contains:
 - ${pylon_bin}: the default user entrypoint plus headless worker/provider CLI
 - ${pylon_tui_bin}: the minimal homework-earning terminal dashboard
+- $(binary_name spark-wallet-cli): migration-only legacy Spark helper used by
+  \`${pylon_bin} wallet migrate-spark\` when old v0.1 Spark funds need sweeping
 - $(binary_name nexus-relay): local proof-runtime authority for release smokes
 - $(binary_name nexus-control): local debug proof-runtime authority for release smokes
 - psionic/target/release/$(psionic_train_binary_name): the packaged machine-training runtime
@@ -259,6 +262,11 @@ ${extract_block}
 Important:
 - These binaries run without a Rust toolchain.
 - Pylon keeps its local state under ~/.openagents/pylon by default.
+- If this machine previously ran a v0.1 Spark wallet, run
+  \`./${pylon_bin} wallet migrate-spark\` to inspect it and
+  \`./${pylon_bin} wallet migrate-spark --yes\` to sweep the spendable legacy
+  Spark balance into the default MoneyDevKit wallet. The helper is a sidecar
+  for migration only; normal v0.2 startup remains MoneyDevKit-backed.
 - Keep the dashboard open to stay eligible for admin-triggered homework jobs.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
 - The dashboard starts and supervises the earning worker automatically.
@@ -318,6 +326,12 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 Notes:
 - This release is unsigned and not notarized.
 - The current user-facing paid lane is admin-triggered homework/training work.
+- This archive includes \`$(binary_name spark-wallet-cli)\` as a migration-only
+  sidecar. Operators with old v0.1 Spark funds can run
+  \`./${pylon_bin} wallet migrate-spark\` to inspect and
+  \`./${pylon_bin} wallet migrate-spark --yes\` to sweep spendable Spark
+  balance into the default MoneyDevKit wallet without re-entering the recovery
+  phrase.
 - This archive includes a minimal packaged Psionic runtime surface at
   \`./psionic\`, including \`psionic/target/release/$(psionic_train_binary_name)\`, so the
   default homework worker can advertise training capability without a separate
@@ -403,6 +417,7 @@ install -m 0755 \
   "${STAGE_DIR}/$(binary_name pylon-tui)"
 install_openagents_support_binary "nexus-relay"
 install_openagents_support_binary "nexus-control"
+install_openagents_support_binary "spark-wallet-cli"
 install_psionic_train_runtime_surface
 write_readme "${STAGE_DIR}/README.txt" "$ARCHIVE_DIR"
 
