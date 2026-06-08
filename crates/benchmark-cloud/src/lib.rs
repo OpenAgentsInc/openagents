@@ -22,6 +22,8 @@ pub const PROBE_GEPA_STAGE0_SMOKE_CAMPAIGN_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage0_smoke_campaign.v1";
 pub const PROBE_GEPA_STAGE0_LIVE_RECEIPT_BUNDLE_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage0_live_receipt_bundle.v1";
+pub const PROBE_GEPA_TERMINAL_BENCH_PYLON_CANARY_BUNDLE_SCHEMA_REF: &str =
+    "openagents.probe_gepa_terminal_bench_pylon_canary_bundle.v1";
 pub const PROBE_GEPA_STAGE1_RETAINED_SPRINT_SCHEMA_REF: &str =
     "openagents.probe_gepa_stage1_retained_sprint.v1";
 pub const PROBE_GEPA_VALIDATION_SWEEP_SCHEMA_REF: &str =
@@ -45,6 +47,20 @@ pub const PROBE_RUNNER_REQUIRED_ARTIFACT_FILES: [&str; 9] = [
     "route_scorecard.json",
     "probe-run-record.json",
     "probe-closeout.json",
+];
+
+pub const PROBE_PYLON_CANARY_CLOSEOUT_BUNDLE_FILES: [&str; 11] = [
+    "probe-run-record.json",
+    "probe-closeout.json",
+    "decision-trace-summary.json",
+    "selected-signatures.json",
+    "tool-menu.json",
+    "candidate-ref.json",
+    "artifact-refs.json",
+    "resource-usage-ref.json",
+    "policy-findings.json",
+    "failure-classification.json",
+    "route-scorecard.json",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -675,6 +691,41 @@ pub struct ProbeGepaStage0LiveReceiptBundle {
     pub no_model_training: bool,
     pub no_public_leaderboard_claim: bool,
     pub no_paid_work_claim: bool,
+    pub redaction_state: BenchmarkRedactionState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProbeGepaTerminalBenchPylonCanaryBundle {
+    pub schema_ref: String,
+    pub bundle_id: String,
+    pub bundle_ref: String,
+    pub source_issue_refs: Vec<String>,
+    pub benchmark_suite_ref: String,
+    pub dataset: BenchmarkDatasetRef,
+    pub pylon_ref: String,
+    pub pylon_assignment_ref: String,
+    pub probe_run_ref: String,
+    pub receipt_ref: String,
+    pub task_refs: Vec<String>,
+    pub primary_task_ref: String,
+    pub secondary_task_refs: Vec<String>,
+    pub metric_calls: Vec<ProbeGepaMetricCallRecord>,
+    pub closeout_bundle_file_refs: Vec<String>,
+    pub artifact_refs: Vec<String>,
+    pub proof_refs: Vec<String>,
+    pub accepted_work_refs: Vec<String>,
+    pub closeout_refs: Vec<String>,
+    pub live_pylon_event_refs: Vec<String>,
+    pub psionic_import_refs: Vec<String>,
+    pub public_status_ref: String,
+    pub public_status_label: String,
+    pub public_claim_level: BenchmarkPublicClaimLevel,
+    pub no_lora: bool,
+    pub no_model_training: bool,
+    pub no_public_leaderboard_claim: bool,
+    pub no_paid_work_claim: bool,
+    pub no_settlement_claim: bool,
+    pub no_runtime_promotion: bool,
     pub redaction_state: BenchmarkRedactionState,
 }
 
@@ -1858,6 +1909,308 @@ pub fn validate_probe_gepa_stage0_live_receipt_bundle(
         return stage0_live_receipt_error(
             &bundle.bundle_ref,
             "live receipt bundle contains unsafe material",
+        );
+    }
+
+    Ok(())
+}
+
+pub fn build_probe_gepa_terminal_bench_pylon_canary_bundle(
+    manifest: &BenchmarkCampaignSplitManifest,
+) -> Result<ProbeGepaTerminalBenchPylonCanaryBundle, BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    let primary_task = manifest
+        .tasks
+        .iter()
+        .find(|task| task.task_id == "configure-git-webserver")
+        .ok_or_else(|| BenchmarkContractError::Stage0LiveReceiptInvalid {
+            bundle_ref: String::from(
+                "bundle.probe_gepa.terminal_bench_2.pylon_canary.20260608151057",
+            ),
+            reason: String::from("Pylon canary primary task must exist in split manifest"),
+        })?;
+    let secondary_task = manifest
+        .tasks
+        .iter()
+        .find(|task| task.task_id == "filter-js-from-html")
+        .ok_or_else(|| BenchmarkContractError::Stage0LiveReceiptInvalid {
+            bundle_ref: String::from(
+                "bundle.probe_gepa.terminal_bench_2.pylon_canary.20260608151057",
+            ),
+            reason: String::from("Pylon canary secondary task must exist in split manifest"),
+        })?;
+    let pylon_ref = String::from("pylon.artanis.gepa_stats_canary.20260608150415");
+    let assignment_ref =
+        String::from("assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057");
+    let run_ref =
+        String::from("probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057");
+    let candidate_hash =
+        String::from("sha256:a2a44c21a08fcba12108786821dc5045a746e72b0d5a7f45374b08f8ba6a6743");
+    let artifact_refs = vec![
+        format!("artifact.public.{run_ref}.probe_closeout_bundle"),
+        format!("artifact.public.{run_ref}.route_scorecard"),
+        format!("artifact.public.{run_ref}.verifier_result_refs"),
+    ];
+    let proof_refs = vec![
+        format!("proof.public.{run_ref}.no_spend_assignment_lifecycle"),
+        format!("proof.public.{run_ref}.public_safe_redaction"),
+        format!("proof.public.{run_ref}.terminal_bench_2.initial_evidence"),
+    ];
+    let closeout_refs = vec![
+        format!("closeout.public.{run_ref}.operator_reviewed_unpaid_smoke"),
+        format!("probe_closeout.{run_ref}"),
+        format!("route_scorecard.public.{run_ref}"),
+        format!("verifier_result.public.{run_ref}.initial_retained"),
+    ];
+    let resource_usage_receipt_ref =
+        format!("resource_usage.public.{run_ref}.unpaid_smoke.no_spend");
+    let failure_classification_ref = String::from(
+        "failure_classification.probe.retained.configure_git_webserver.service_readiness",
+    );
+    let metric_call = ProbeGepaMetricCallRecord {
+        metric_call_ref: String::from(
+            "metric_call.probe_gepa.terminal_bench_2.pylon_canary.20260608151057.configure_git_webserver",
+        ),
+        candidate_ref: String::from("candidate.probe_gepa.stage0.terminal_bench_2.pylon_canary"),
+        candidate_hash: candidate_hash.clone(),
+        task_ref: primary_task.task_ref.clone(),
+        task_id: primary_task.task_id.clone(),
+        verifier_ref: primary_task.scorer_verifier.verifier_ref.clone(),
+        probe_assignment_ref: assignment_ref.clone(),
+        pylon_assignment_ref: Some(assignment_ref.clone()),
+        payment_mode: String::from("unpaid_smoke"),
+        probe_closeout_ref: format!("probe_closeout.{run_ref}"),
+        probe_closeout_bundle_ref: format!("probe_benchmark_closeout_bundle.{run_ref}"),
+        benchmark_result_ref: String::from(
+            "benchmark_result.probe_gepa.terminal_bench_2.pylon_canary.20260608151057",
+        ),
+        artifact_manifest_ref: format!(
+            "artifact_manifest.public.probe_gepa.terminal_bench_2.pylon_canary.20260608151057"
+        ),
+        benchmark_cloud_proof_bundle_ref: format!(
+            "proof_bundle.public.probe_gepa.terminal_bench_2.pylon_canary.20260608151057"
+        ),
+        resource_usage_receipt_ref: Some(resource_usage_receipt_ref),
+        verifier_import_ref: String::from(
+            "verifier_import.probe_gepa.terminal_bench_2.pylon_canary.20260608151057",
+        ),
+        verifier_result_ref: format!(
+            "verifier_result.public.{run_ref}.initial_retained.service_readiness"
+        ),
+        cost_ref: Some(String::from(
+            "cost.observed.public.probe_gepa.unpaid_smoke.no_spend",
+        )),
+        duration_ms: Some(90_000),
+        artifact_available: true,
+        failure_classification_ref: Some(failure_classification_ref),
+        closeout_state: BenchmarkCloseoutState::Accepted,
+        score_bps: None,
+        status: BenchmarkRunStatus::Failed,
+    };
+    let bundle = ProbeGepaTerminalBenchPylonCanaryBundle {
+        schema_ref: String::from(PROBE_GEPA_TERMINAL_BENCH_PYLON_CANARY_BUNDLE_SCHEMA_REF),
+        bundle_id: String::from("probe-gepa-terminal-bench-2-pylon-canary-20260608151057"),
+        bundle_ref: String::from("bundle.probe_gepa.terminal_bench_2.pylon_canary.20260608151057"),
+        source_issue_refs: vec![
+            String::from("github.OpenAgentsInc.probe.issue.201"),
+            String::from("github.OpenAgentsInc.openagents.issue.4566"),
+        ],
+        benchmark_suite_ref: manifest.benchmark_suite_ref.clone(),
+        dataset: manifest.dataset.clone(),
+        pylon_ref,
+        pylon_assignment_ref: assignment_ref.clone(),
+        probe_run_ref: run_ref.clone(),
+        receipt_ref: String::from(
+            "receipt.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+        ),
+        task_refs: vec![
+            primary_task.task_ref.clone(),
+            secondary_task.task_ref.clone(),
+        ],
+        primary_task_ref: primary_task.task_ref.clone(),
+        secondary_task_refs: vec![secondary_task.task_ref.clone()],
+        metric_calls: vec![metric_call],
+        closeout_bundle_file_refs: PROBE_PYLON_CANARY_CLOSEOUT_BUNDLE_FILES
+            .iter()
+            .map(|file_name| file_name.to_string())
+            .collect(),
+        artifact_refs,
+        proof_refs,
+        accepted_work_refs: vec![format!("accepted_work.public.{run_ref}.probe_gepa_canary")],
+        closeout_refs,
+        live_pylon_event_refs: vec![
+            String::from("pylon_event.heartbeat.cbfba02f-8ce8-4161-954a-109f403a56c1"),
+            String::from("pylon_event.wallet_readiness.ae6b9e8c-58d8-4dde-a1a0-d666d162087a"),
+            String::from("pylon_event.assignment_acceptance.ab63a3aa-771e-47cd-8cf6-1d29f945021e"),
+            String::from("pylon_event.assignment_progress.27bf8d2d-6979-4597-8e85-2da994990710"),
+            String::from(
+                "pylon_event.artifact_proof_metadata.82e04c95-8084-4b95-bbd2-1183b760c7ae",
+            ),
+        ],
+        psionic_import_refs: vec![String::from(
+            "psionic_import.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+        )],
+        public_status_ref: String::from(
+            "public_status.probe_gepa.terminal_bench_2.pylon_canary.initial_retained_evidence.v1",
+        ),
+        public_status_label: String::from("initial retained Pylon canary evidence only"),
+        public_claim_level: BenchmarkPublicClaimLevel::None,
+        no_lora: true,
+        no_model_training: true,
+        no_public_leaderboard_claim: true,
+        no_paid_work_claim: true,
+        no_settlement_claim: true,
+        no_runtime_promotion: true,
+        redaction_state: BenchmarkRedactionState::PublicSafe,
+    };
+
+    validate_probe_gepa_terminal_bench_pylon_canary_bundle(&bundle, manifest)?;
+    Ok(bundle)
+}
+
+pub fn validate_probe_gepa_terminal_bench_pylon_canary_bundle(
+    bundle: &ProbeGepaTerminalBenchPylonCanaryBundle,
+    manifest: &BenchmarkCampaignSplitManifest,
+) -> Result<(), BenchmarkContractError> {
+    validate_campaign_split_manifest(manifest)?;
+
+    if bundle.schema_ref != PROBE_GEPA_TERMINAL_BENCH_PYLON_CANARY_BUNDLE_SCHEMA_REF {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "unsupported Pylon canary schema ref",
+        );
+    }
+
+    if bundle.bundle_id.is_empty()
+        || bundle.bundle_ref.is_empty()
+        || bundle.pylon_ref.is_empty()
+        || bundle.pylon_assignment_ref.is_empty()
+        || bundle.probe_run_ref.is_empty()
+        || bundle.receipt_ref.is_empty()
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary bundle must include bundle, Pylon, assignment, run, and receipt refs",
+        );
+    }
+
+    if bundle.benchmark_suite_ref != manifest.benchmark_suite_ref
+        || bundle.dataset != manifest.dataset
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary bundle benchmark suite and dataset must match split manifest",
+        );
+    }
+
+    if bundle.public_status_label != "initial retained Pylon canary evidence only"
+        || bundle.public_claim_level != BenchmarkPublicClaimLevel::None
+        || !bundle.no_lora
+        || !bundle.no_model_training
+        || !bundle.no_public_leaderboard_claim
+        || !bundle.no_paid_work_claim
+        || !bundle.no_settlement_claim
+        || !bundle.no_runtime_promotion
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary cannot claim public score, paid work, settlement, LoRA, model training, or runtime promotion",
+        );
+    }
+
+    if bundle.redaction_state != BenchmarkRedactionState::PublicSafe {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary bundle must be public-safe",
+        );
+    }
+
+    let manifest_task_refs = manifest
+        .tasks
+        .iter()
+        .map(|task| task.task_ref.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    if bundle.task_refs.is_empty()
+        || !bundle
+            .task_refs
+            .iter()
+            .all(|task_ref| manifest_task_refs.contains(task_ref))
+        || !manifest_task_refs.contains(&bundle.primary_task_ref)
+        || !bundle
+            .secondary_task_refs
+            .iter()
+            .all(|task_ref| manifest_task_refs.contains(task_ref))
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary task refs must be canonical Benchmark Cloud split refs",
+        );
+    }
+
+    let required_file_refs = PROBE_PYLON_CANARY_CLOSEOUT_BUNDLE_FILES
+        .iter()
+        .map(|file_name| file_name.to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+    let bundle_file_refs = bundle
+        .closeout_bundle_file_refs
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    if bundle_file_refs != required_file_refs {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary must preserve the complete Probe closeout bundle file set",
+        );
+    }
+
+    if bundle.source_issue_refs.is_empty()
+        || bundle.metric_calls.len() != 1
+        || bundle.artifact_refs.is_empty()
+        || bundle.proof_refs.is_empty()
+        || bundle.accepted_work_refs.is_empty()
+        || bundle.closeout_refs.is_empty()
+        || bundle.live_pylon_event_refs.len() < 5
+        || bundle.psionic_import_refs.is_empty()
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary must preserve issue, metric-call, artifact, proof, accepted-work, closeout, event, and Psionic import refs",
+        );
+    }
+
+    for metric_call in &bundle.metric_calls {
+        if metric_call.payment_mode != "unpaid_smoke"
+            || metric_call.status != BenchmarkRunStatus::Failed
+            || metric_call.closeout_state != BenchmarkCloseoutState::Accepted
+            || metric_call.score_bps.is_some()
+            || metric_call.pylon_assignment_ref.as_deref() != Some(&bundle.pylon_assignment_ref)
+            || metric_call.probe_assignment_ref != bundle.pylon_assignment_ref
+            || metric_call.probe_closeout_ref.is_empty()
+            || metric_call.probe_closeout_bundle_ref.is_empty()
+            || metric_call.benchmark_result_ref.is_empty()
+            || metric_call.artifact_manifest_ref.is_empty()
+            || metric_call.benchmark_cloud_proof_bundle_ref.is_empty()
+            || metric_call.resource_usage_receipt_ref.is_none()
+            || metric_call.verifier_ref.is_empty()
+            || metric_call.verifier_result_ref.is_empty()
+            || !metric_call.artifact_available
+            || metric_call.failure_classification_ref.is_none()
+        {
+            return stage0_live_receipt_error(
+                &bundle.bundle_ref,
+                "Pylon canary metric call must preserve unpaid failed benchmark evidence with accepted worker closeout refs",
+            );
+        }
+    }
+
+    if serde_json::to_value(bundle)
+        .map(|value| json_contains_unsafe_material(&value))
+        .unwrap_or(true)
+    {
+        return stage0_live_receipt_error(
+            &bundle.bundle_ref,
+            "Pylon canary contains unsafe material",
         );
     }
 
@@ -4549,6 +4902,93 @@ mod tests {
             validate_probe_gepa_stage0_live_receipt_bundle(&bundle, &manifest),
             Err(BenchmarkContractError::Stage0LiveReceiptInvalid { .. })
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_terminal_bench_pylon_canary_preserves_live_assignment_refs()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let bundle = build_probe_gepa_terminal_bench_pylon_canary_bundle(&manifest)
+            .map_err(|error| format!("unexpected Pylon canary bundle error: {error:?}"))?;
+
+        assert_eq!(
+            bundle.bundle_id,
+            "probe-gepa-terminal-bench-2-pylon-canary-20260608151057"
+        );
+        assert_eq!(
+            bundle.pylon_assignment_ref,
+            "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057"
+        );
+        assert_eq!(
+            bundle.pylon_ref,
+            "pylon.artanis.gepa_stats_canary.20260608150415"
+        );
+        assert_eq!(bundle.metric_calls.len(), 1);
+        assert_eq!(bundle.metric_calls[0].payment_mode, "unpaid_smoke");
+        assert_eq!(bundle.metric_calls[0].status, BenchmarkRunStatus::Failed);
+        assert_eq!(
+            bundle.metric_calls[0].closeout_state,
+            BenchmarkCloseoutState::Accepted
+        );
+        assert_eq!(bundle.metric_calls[0].score_bps, None);
+        assert!(bundle.task_refs.contains(&String::from(
+            "benchmark_task.terminal_bench.retained.configure_git_webserver.v1"
+        )));
+        assert!(bundle.task_refs.contains(&String::from(
+            "benchmark_task.terminal_bench.retained.filter_js_from_html.v1"
+        )));
+        assert!(
+            bundle
+                .closeout_bundle_file_refs
+                .contains(&String::from("probe-closeout.json"))
+        );
+        assert!(bundle.closeout_refs.contains(&String::from(
+            "probe_closeout.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057"
+        )));
+        assert_eq!(bundle.live_pylon_event_refs.len(), 5);
+        assert_eq!(
+            bundle.public_status_label,
+            "initial retained Pylon canary evidence only"
+        );
+        assert_eq!(bundle.public_claim_level, BenchmarkPublicClaimLevel::None);
+        assert!(bundle.no_paid_work_claim);
+        assert!(bundle.no_settlement_claim);
+        assert!(bundle.no_runtime_promotion);
+        validate_probe_gepa_terminal_bench_pylon_canary_bundle(&bundle, &manifest)
+            .map_err(|error| format!("unexpected Pylon canary validation error: {error:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn probe_gepa_terminal_bench_pylon_canary_rejects_public_paid_or_settled_overclaim()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest: BenchmarkCampaignSplitManifest =
+            serde_json::from_str(TERMINAL_BENCH_PROBE_GEPA_SPLITS)?;
+        let mut bundle = build_probe_gepa_terminal_bench_pylon_canary_bundle(&manifest)
+            .map_err(|error| format!("unexpected Pylon canary bundle error: {error:?}"))?;
+
+        bundle.public_claim_level = BenchmarkPublicClaimLevel::LiveClaim;
+        assert!(matches!(
+            validate_probe_gepa_terminal_bench_pylon_canary_bundle(&bundle, &manifest),
+            Err(BenchmarkContractError::Stage0LiveReceiptInvalid { .. })
+        ));
+
+        bundle.public_claim_level = BenchmarkPublicClaimLevel::None;
+        bundle.no_paid_work_claim = false;
+        assert!(matches!(
+            validate_probe_gepa_terminal_bench_pylon_canary_bundle(&bundle, &manifest),
+            Err(BenchmarkContractError::Stage0LiveReceiptInvalid { .. })
+        ));
+
+        bundle.no_paid_work_claim = true;
+        bundle.no_settlement_claim = false;
+        assert!(matches!(
+            validate_probe_gepa_terminal_bench_pylon_canary_bundle(&bundle, &manifest),
+            Err(BenchmarkContractError::Stage0LiveReceiptInvalid { .. })
+        ));
+
         Ok(())
     }
 

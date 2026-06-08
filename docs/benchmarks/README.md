@@ -81,6 +81,13 @@ resource receipt refs, route scorecards, failure classifications, event refs,
 and Psionic import refs. The example runner is
 `cargo run -p benchmark-cloud --example probe_gepa_stage0_live_receipt_bundle`.
 
+The first live Omega Pylon Probe GEPA Terminal-Bench 2 canary is recorded in
+`2026-06-08-probe-gepa-terminal-bench-pylon-canary.md`. It preserves the live
+Pylon assignment, event, artifact, proof, accepted-work, closeout, route
+scorecard, failure-classification, and Psionic import refs from Probe's
+tracked canary bundle. The example runner is
+`cargo run -p benchmark-cloud --example probe_gepa_terminal_bench_pylon_canary`.
+
 ## Evidence Splits
 
 Benchmark records use explicit split labels:
@@ -147,6 +154,13 @@ The Stage 0 live receipt bundle can project only
 model training, no public leaderboard claim, no paid-work claim, and
 `public_claim_level: none`. It is live failure-closeout evidence, not a public
 Terminal-Bench score.
+
+The Terminal-Bench Pylon canary can project only
+`initial retained Pylon canary evidence only`. It records no LoRA, no model
+training, no public leaderboard claim, no paid-work claim, no settlement claim,
+and no runtime promotion. The worker closeout is accepted evidence work; the
+benchmark metric call remains failed retained evidence and carries a failure
+classification.
 
 The Stage 1 retained sprint can project only retained-evidence summary status.
 Its selected candidate may enter `optimizer_accepted` or `rejected`, but not an
