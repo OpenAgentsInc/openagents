@@ -14,6 +14,12 @@ nodes, model/runtime infrastructure, Bitcoin-native payments,
 benchmark-driven learning, public proof, and a marketplace for compute, data,
 labor, liquidity, and risk.
 
+The supply-side thesis is stranded compute: useful machines that exist but do
+not yet have a clean market path. Laptops, Apple Silicon machines, gaming GPUs,
+office clusters, small GPU pods, and future energy-adjacent compute can become
+routable supply when discovery, job packaging, verification, routing, receipts,
+and Bitcoin settlement are built into the product.
+
 ## Current Product
 
 ### Coding on Autopilot
@@ -53,10 +59,15 @@ Pylon network readiness surfaces, and payment-facing user flows.
 
 Pylon is the public provider node.
 
-It lets a machine register, heartbeat, advertise capabilities, receive bounded
-assignments, run work locally, upload artifacts and proof refs, and expose
-wallet/readiness state for payout. Current Pylon v0.2 work uses MoneyDevKit by
-default for the normal release and payment-proof path.
+Pylon turns stranded compute into market supply. It lets a machine register,
+heartbeat, advertise capabilities, receive bounded assignments, run work
+locally, upload artifacts and proof refs, and expose wallet/readiness state for
+payout. Current Pylon v0.2 work uses MoneyDevKit by default for the normal
+release and payment-proof path.
+
+The product target is simple: install Pylon, go online, contribute useful
+inference, training, validation, or coding-agent work, and get paid in Bitcoin
+when accepted work settles.
 
 The user-facing command is:
 
@@ -70,6 +81,36 @@ readiness, assignment leases, closeout, public receipts, Artanis launch
 supervision, and MDK payment movement. The release path is focused on
 repeatable network smokes, payout evidence, failure drills, and public release
 promotion.
+
+Pylons connect through Nexus and open protocol rails so OpenAgents can buy
+capacity first while leaving room for other buyers to outbid or route around
+OpenAgents over time. The long-term goal is a live compute market where
+consumer devices and specialized nodes both earn from real agent workloads.
+
+### Stranded Compute
+
+OpenAgents treats stranded compute as a missing-market problem. The compute
+already exists; the market plumbing is what is missing.
+
+The product has to solve six practical problems:
+
+- **Discovery**: buyers need to find available machines.
+- **Packaging**: work needs a standard assignment shape.
+- **Trust**: work needs verification, reputation, and replayable evidence.
+- **Settlement**: tiny work units need tiny payments.
+- **Operations**: providers need observability, health, receipts, and recovery.
+- **Demand**: the network needs useful workloads, not empty uptime.
+
+The first workloads are inference, distributed training, validation, benchmark
+work, and coding-agent improvement loops. The transcript shorthand for this is
+compute fracking: add incentives, routing, verification, receipts, and
+settlement so idle machines can flow into the market.
+
+This is why Pylon, Nexus, Psionic, Probe, and Autopilot belong together.
+Pylon brings machines online. Nexus coordinates work and proof. Psionic and
+Probe create the owned runtime and model-improvement path. Autopilot gives
+buyers a product surface that can use the network without making them think
+about provider plumbing.
 
 ### Artanis
 
@@ -157,8 +198,9 @@ It carries the evidence needed to answer:
 
 The system supports five linked markets:
 
-- **Compute**: capacity from local machines, Pylons, SHC/GCP/Simp workrooms,
-  GPUs, CPUs, and future flexible-load providers.
+- **Compute**: stranded consumer machines, Pylons, Apple Silicon devices,
+  gaming GPUs, CPU fallbacks, SHC/GCP/Simp workrooms, small GPU pods, and
+  future flexible-load providers.
 - **Data**: permissioned datasets, artifacts, context packs, transcript
   slices, source-backed knowledge, and local data packages.
 - **Labor**: agent work sold as accepted outcomes.
@@ -256,6 +298,9 @@ public receipt.
   data, labor, liquidity, and risk market status.
 - [docs/kernel/markets/data-market.md](docs/kernel/markets/data-market.md):
   current Data Market implementation status.
+- [docs/transcripts/README.md](docs/transcripts/README.md): transcript theme
+  guide, including the compute markets, compute fracking, Pylon, Nexus,
+  Psionic, and training arc.
 - [docs/pylon/PYLON_VERIFICATION_MATRIX.md](docs/pylon/PYLON_VERIFICATION_MATRIX.md):
   Pylon release and proof gates.
 - [docs/benchmarks/README.md](docs/benchmarks/README.md): public Benchmark
