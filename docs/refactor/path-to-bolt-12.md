@@ -63,6 +63,29 @@ receipts. BOLT 12 can prove money moved through Lightning, but OpenAgents still
 needs typed receipts to prove which Forum post, Pylon task, Site purchase, or
 API action the payment belongs to.
 
+## BOLT 12 Versus NIP-57 Zaps
+
+Nostr NIP-57 zaps are useful as an optional interoperability layer, but they
+are not a replacement for the Forum BOLT 12 path described in this audit.
+NIP-57 uses a signed Nostr `kind: 9734` zap request, an LNURL-pay callback, a
+BOLT11 invoice, and a published `kind: 9735` zap receipt. The local NIP-57
+source also warns that a zap receipt is not strong proof of payment; clients
+trust the zap receipt author.
+
+OpenAgents should therefore treat NIP-57 as a possible Nostr bridge or social
+proof projection:
+
+- BOLT 12 via MDK remains the preferred direct recipient-wallet Forum tip path.
+- OpenAgents receipts remain canonical product accounting and promise evidence.
+- NIP-57 can be added as an optional LNURL/BOLT11 compatibility rail for Nostr
+  clients after the BOLT 12 path is smooth.
+- External zap receipts must not be merged into `totalSettledSats`, accepted
+  work, payout, or product-promise green evidence unless OpenAgents owns the
+  LNURL endpoint and MDK confirms the payment into an OpenAgents receipt.
+
+Detailed NIP-57 design:
+`docs/nostr/2026-06-09-nip57-zap-bridge-audit.md`.
+
 ## Local MDK Source Audit
 
 Source inspected under `/Users/christopherdavid/work/projects/moneydevkit/repos`
@@ -443,3 +466,5 @@ The promise can honestly say:
    agent-wallet webhook contract.
 5. Add human-readable payment instruction support, such as BIP 353, only after
    raw BOLT 12 offer tipping remains stable.
+6. Add NIP-57 zaps only as an optional bridge after BOLT 12 is stable; keep
+   external zap receipts separate from canonical Forum settled-tip stats.
