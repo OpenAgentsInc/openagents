@@ -1248,6 +1248,62 @@ describe('Forum paid actions', () => {
     expect(store.directTipWebhookEvents[0]?.delivery_count).toBe(2)
   })
 
+  test('returns the existing receipt when payer retry arrives after webhook settlement', async () => {
+    const store = new ForumPaidActionStore()
+    const originalInput = directTipInput({
+      paymentEvidence: {
+        externalRef: 'external.payment.redacted.direct_tip_observed',
+        paymentMode: 'live',
+        providerRef: 'provider.mdk_agent_wallet.redacted',
+        redactedEvidenceRef: 'evidence.payment.redacted.direct_tip_observed',
+        status: 'observed',
+      },
+    })
+    const pending = await Effect.runPromise(
+      submitForumDirectTip(paidActionDb(store), originalInput, runtime),
+    )
+
+    await Effect.runPromise(
+      reconcileForumDirectTipWebhook(
+        paidActionDb(store),
+        {
+          amount: { amount: 15, asset: 'sats' },
+          attemptId: pending.attemptId,
+          eventBodyDigestRef: 'sha256:forum_mdk_webhook.test.digest',
+          paymentEvidence: {
+            externalRef: 'external.payment.mdk_webhook.test.evt_retry',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_webhook.test',
+            redactedEvidenceRef: 'evidence.payment.mdk_webhook.test.evt_retry',
+            status: 'confirmed',
+          },
+          providerEventRef: 'provider_event.mdk.test.evt_retry',
+          signatureBindingRef: 'binding.forum.mdk.test',
+        },
+        runtime,
+      ),
+    )
+
+    const retry = await Effect.runPromise(
+      submitForumDirectTip(paidActionDb(store), originalInput, runtime),
+    )
+
+    expect(retry).toMatchObject({
+      attemptId: pending.attemptId,
+      idempotent: true,
+      receipt: {
+        paymentEvent: {
+          externalRef: 'external.payment.mdk_webhook.test.evt_retry',
+          providerRef: 'provider.mdk_webhook.test',
+          status: 'confirmed',
+        },
+      },
+      status: 'settled',
+    })
+    expect(store.receipts).toHaveLength(1)
+    expect(store.paymentEvents).toHaveLength(1)
+  })
+
   test('rejects direct-tip webhook amount mismatch before settlement', async () => {
     const store = new ForumPaidActionStore()
     const pending = await Effect.runPromise(

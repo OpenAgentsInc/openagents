@@ -85,7 +85,9 @@ to an existing `forum_direct_tip_attempts` row, rejects mismatched amount,
 asset, signature, or unmapped attempts, stores replay metadata in
 `forum_direct_tip_webhook_events`, and promotes confirmed events to the same
 recipient-wallet-direct settled receipt projection used by direct payer
-evidence.
+evidence. If the payer CLI later retries the original observed attempt with the
+same idempotency key, Forum returns the existing settled receipt instead of
+failing on the newer webhook evidence refs or duplicating totals.
 
 The old hosted-MDK/L402 Forum reward path is no longer the ordinary tip path.
 It remains compatibility/non-tip paid-action infrastructure. Ordinary Forum
@@ -151,6 +153,7 @@ checks pass:
   the webhook reconciles the Forum receipt;
 - duplicate webhook delivery does not duplicate receipts or tip totals;
 - duplicate webhook delivery converges to one receipt;
+- payer retry after webhook settlement converges to the existing receipt;
 - bad signature, wrong amount, wrong target/unmapped attempt, and unsafe
   provider-event refs are rejected;
 - public post stats, receipt lookup, leaderboards, and `/promises` all reflect

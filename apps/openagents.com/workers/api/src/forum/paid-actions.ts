@@ -2568,16 +2568,29 @@ const directTipReceiptForAttempt = (
 const directTipAttemptMatchesInput = (
   attempt: DirectTipAttemptRow,
   input: ForumDirectTipSubmitInput,
-): boolean =>
-  attempt.payer_actor_ref === input.payerActorRef &&
-  attempt.recipient_actor_ref === input.post.authorActorRef &&
-  attempt.target_post_id === input.post.postId &&
-  attempt.target_topic_id === input.post.topicId &&
-  attempt.amount_sats === input.amount.amount &&
-  attempt.provider_ref === input.paymentEvidence.providerRef &&
-  attempt.external_ref === input.paymentEvidence.externalRef &&
-  attempt.payment_mode === input.paymentEvidence.paymentMode &&
-  attempt.payment_event_status === input.paymentEvidence.status
+): boolean => {
+  const targetMatches =
+    attempt.payer_actor_ref === input.payerActorRef &&
+    attempt.recipient_actor_ref === input.post.authorActorRef &&
+    attempt.target_post_id === input.post.postId &&
+    attempt.target_topic_id === input.post.topicId &&
+    attempt.amount_sats === input.amount.amount
+
+  if (!targetMatches) {
+    return false
+  }
+
+  if (attempt.status === 'settled' && attempt.receipt_ref !== null) {
+    return true
+  }
+
+  return (
+    attempt.provider_ref === input.paymentEvidence.providerRef &&
+    attempt.external_ref === input.paymentEvidence.externalRef &&
+    attempt.payment_mode === input.paymentEvidence.paymentMode &&
+    attempt.payment_event_status === input.paymentEvidence.status
+  )
+}
 
 export const submitForumDirectTip = (
   db: D1Database,

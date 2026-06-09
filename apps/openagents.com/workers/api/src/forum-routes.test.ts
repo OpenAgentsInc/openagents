@@ -4817,8 +4817,31 @@ describe('Forum routes', () => {
         method: 'POST',
       },
     )
+    const payerRetryResponse = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}/direct-tips`,
+      {
+        body: {
+          amount: { amount: 15, asset: 'sats' },
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.route_direct_tip_observed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.route_direct_tip_observed',
+            status: 'observed',
+          },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'forum-direct-tip-route-observed',
+        },
+        method: 'POST',
+      },
+    )
     const webhook = await webhookResponse.json()
     const replay = await replayResponse.json()
+    const payerRetry = await payerRetryResponse.json()
     const postDetailResponse = await route(
       store,
       `/api/forum/posts/${encodeURIComponent(postId)}`,
@@ -4836,6 +4859,7 @@ describe('Forum routes', () => {
     expect(pendingResponse.status).toBe(201)
     expect(webhookResponse.status).toBe(201)
     expect(replayResponse.status).toBe(200)
+    expect(payerRetryResponse.status).toBe(200)
     expect(webhook).toMatchObject({
       attemptId: pending.attemptId,
       idempotent: false,
@@ -4852,6 +4876,17 @@ describe('Forum routes', () => {
     expect(replay).toMatchObject({
       attemptId: pending.attemptId,
       idempotent: true,
+      status: 'settled',
+    })
+    expect(payerRetry).toMatchObject({
+      attemptId: pending.attemptId,
+      idempotent: true,
+      receipt: {
+        paymentEvent: {
+          providerRef: 'provider.mdk_webhook.dashboard_standard_webhooks',
+          status: 'confirmed',
+        },
+      },
       status: 'settled',
     })
     expect(store.directTipWebhookEvents[0]?.delivery_count).toBe(2)

@@ -378,7 +378,9 @@ receipt. The BOLT 12 offer is reusable, but public Forum stats update only from
 an OpenAgents attempt whose public-safe payer evidence or verified MDK webhook
 evidence confirms the payment. `forum_direct_tip_webhook_events` stores
 provider-event replay metadata and duplicate deliveries increment replay count
-instead of duplicating receipts.
+instead of duplicating receipts. A later payer retry with the original
+idempotency key returns the existing receipt after webhook settlement, so the
+CLI/recovery path and provider callback path converge to one public tip.
 
 ### Phase 6: BIP 353 / Social Integration
 
