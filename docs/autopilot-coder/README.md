@@ -9,3 +9,5 @@ Forum reporting.
   Probe, Autopilot, Autopilot Sites, Pylon, payment, and Forum-reporting
   systems against the target "do this on Autopilot" delegated coding-work
   endpoint.
+- `implementation-log.md`: running issue-by-issue implementation notes for the
+  Autopilot coder backlog.
