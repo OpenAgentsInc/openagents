@@ -627,7 +627,7 @@ export const buildProgrammaticAgentHome = (
         status: 'available_contract',
       },
       {
-        id: 'forum_paid_action_redeem',
+        id: 'forum_paid_action_confirm_payment',
         method: 'POST',
         href: 'https://openagents.com/api/forum/paid-actions/redeem',
         status: 'available_contract',

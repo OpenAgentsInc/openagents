@@ -171,15 +171,9 @@ const earningFromRow = (row: ForumTipEarningRow): ForumCreatorEarning => {
 const summarizeEarnings = (
   earnings: ReadonlyArray<ForumCreatorEarning>,
 ): ForumCreatorEarningsSummary => {
-  const paidStates = new Set([
-    'paid',
-    'recipient_pending',
-    'dispatched',
-    'settled',
-  ])
   const totalPaidSats = earnings
     .filter(earning => earning.amount.asset === 'sats')
-    .filter(earning => paidStates.has(earning.settlementState))
+    .filter(earning => earning.tipSettlement.creatorReceivedSpendableValue)
     .reduce((sum, earning) => sum + earning.amount.amount, 0)
   const totalSettledSats = earnings
     .filter(earning => earning.amount.asset === 'sats')
@@ -255,6 +249,8 @@ const readEarningRows = (
                        AND sc.archived_at IS NULL
                      WHERE ma.action_kind = 'post_reward'
                        AND ma.earning_actor_ref IS NOT NULL
+                       AND json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                       AND sc.id IS NOT NULL
                        AND ma.archived_at IS NULL`
   const scopedQuery =
     input.actorRef === null
@@ -280,8 +276,18 @@ const countEarningRows = (
 ): Effect.Effect<number, ForumStorageError> => {
   const baseQuery = `SELECT COUNT(*) AS count
                       FROM forum_money_actions ma
+                      JOIN forum_receipts r
+                        ON r.id = ma.receipt_id
+                       AND r.archived_at IS NULL
+                      JOIN forum_payment_events pe
+                        ON pe.id = ma.payment_event_id
+                       AND pe.archived_at IS NULL
+                      JOIN forum_tip_settlement_claims sc
+                        ON sc.receipt_id = r.id
+                       AND sc.archived_at IS NULL
                      WHERE ma.action_kind = 'post_reward'
                        AND ma.earning_actor_ref IS NOT NULL
+                       AND json_extract(pe.public_projection_json, '$.status') = 'confirmed'
                        AND ma.archived_at IS NULL`
   const scopedQuery =
     actorRef === null ? baseQuery : `${baseQuery} AND ma.earning_actor_ref = ?`
@@ -332,10 +338,12 @@ const readPostLeaderboardRows = (
                 p.actor_json AS actor_json,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND sc.id IS NOT NULL
                   THEN 1
                 END) AS tip_count,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_paid_sats,
@@ -365,8 +373,8 @@ const readPostLeaderboardRows = (
             AND ma.target_topic_id IS NOT NULL
             AND ma.archived_at IS NULL
           GROUP BY ma.target_post_id, ma.target_topic_id, p.actor_json
-         HAVING total_paid_sats > 0
-          ORDER BY total_paid_sats DESC, tip_count DESC, ma.target_post_id ASC
+         HAVING total_settled_sats > 0
+          ORDER BY total_settled_sats DESC, tip_count DESC, ma.target_post_id ASC
           LIMIT ?`,
       )
       .bind(limit)
@@ -386,10 +394,12 @@ const readCreatorLeaderboardRows = (
         `SELECT p.actor_json AS actor_json,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND sc.id IS NOT NULL
                   THEN 1
                 END) AS tip_count,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_paid_sats,
@@ -418,8 +428,8 @@ const readCreatorLeaderboardRows = (
             AND ma.earning_actor_ref IS NOT NULL
             AND ma.archived_at IS NULL
           GROUP BY ma.earning_actor_ref, p.actor_json
-         HAVING total_paid_sats > 0
-          ORDER BY total_paid_sats DESC, tip_count DESC, ma.earning_actor_ref ASC
+         HAVING total_settled_sats > 0
+          ORDER BY total_settled_sats DESC, tip_count DESC, ma.earning_actor_ref ASC
           LIMIT ?`,
       )
       .bind(limit)

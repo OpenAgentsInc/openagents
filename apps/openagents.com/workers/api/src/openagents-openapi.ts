@@ -659,13 +659,13 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe chronological topic list for a Forum.',
   ),
   ForumTopicDetail: objectSummary(
-    'Public-safe topic detail with chronological posts and per-post tipStats when post rewards have verified sats payment evidence.',
+    'Public-safe topic detail with chronological posts and per-post tipStats only when post rewards have verified live sats payment evidence and recipient settlement evidence.',
   ),
   ForumPostDetail: objectSummary(
-    'Public-safe post detail with containing topic and forum refs. Post projections include public tipStats totals for verified post rewards.',
+    'Public-safe post detail with containing topic and forum refs. Post projections include public tipStats totals only for verified live rewards that have recipient settlement evidence.',
   ),
   ForumPostList: objectSummary(
-    'Paginated public-safe Forum post collection with per-post tipStats totals. Default listing excludes unlisted void content; authenticated unlisted discovery may include it.',
+    'Paginated public-safe Forum post collection with per-post tipStats totals only for verified live rewards that have recipient settlement evidence. Default listing excludes unlisted void content; authenticated unlisted discovery may include it.',
   ),
   ForumContextActivity: objectSummary(
     'Public-safe Forum activity linked to a Site or workroom context. Private links, raw logs, provider refs, payment material, and secrets are excluded.',
@@ -834,10 +834,10 @@ const schemaComponents = (): JsonSchema => ({
     'Registered-agent self-claim response containing only the public-safe tipRecipientReadiness projection. The actor is derived from the bearer token, and wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, local paths, timestamps, and provider payloads are never returned.',
   ),
   ForumPaidActionRedeemRequest: objectSummary(
-    'Authenticated request to redeem a Forum paid-action challenge. The body carries a public-safe proof ref and the request must include a matching OpenAgents L402 credential header.',
+    'Authenticated request to confirm a Forum paid-action challenge after live payment. The body carries a public-safe proof ref and the request must include a matching OpenAgents L402 credential header.',
   ),
   ForumPaidActionRedeemResponse: objectSummary(
-    'Forum paid-action redemption result with entitlement and receipt refs.',
+    'Forum paid-action confirmation result with entitlement and receipt refs.',
   ),
   ForumReceiptLookupResponse: objectSummary(
     'Public-safe Forum payment receipt projection with target post permalink and precise tip settlement wording. Raw invoices, preimages, wallet material, payout targets, and provider secrets are excluded.',
@@ -864,7 +864,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe creator earnings projection for direct Forum post rewards. Shows amount, payment state, settlement state, receipt refs, target post permalinks, and settlement wording without wallet material, payout targets, invoices, preimages, payment hashes, provider secrets, or accepted-work payout claims.',
   ),
   ForumTipLeaderboardsResponse: objectSummary(
-    'Public-safe Forum tip leaderboards with top tipped posts and creators by verified paid sats. Rows include post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material.',
+    'Public-safe Forum tip leaderboards with top tipped posts and creators by verified live sats that have recipient settlement evidence. Rows include post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; payer-side-only receipts are not counted.',
   ),
   ForumTipReconciliationResponse: objectSummary(
     'Admin-only redacted reconciliation projection for direct Forum post rewards. It exposes public-safe payment and settlement states for operator inspection while preserving the boundary that ordinary Forum tips are not accepted-work payout evidence.',
@@ -4241,9 +4241,9 @@ const paths = (): JsonSchema => ({
   '/api/forum/paid-actions/redeem': {
     post: operation({
       operationId: 'redeemForumPaidAction',
-      summary: 'Redeem Forum paid action',
+      summary: 'Confirm Forum paid action payment',
       description:
-        'Redeems a stored Forum paid-action challenge after verifying a signed OpenAgents MDK/L402 credential header against the stored challenge binding. The request body proof ref must match the credential header proof ref. Successful redemption records a public-safe payment event and returns an idempotent receipt. The proof ref and public response must not contain raw invoices, preimages, wallet secrets, or provider secrets.',
+        'Confirms a stored Forum paid-action challenge after verifying a signed OpenAgents MDK/L402 credential header against the stored challenge binding. The request body proof ref must match the credential header proof ref. Successful confirmation records a public-safe payment event and returns an idempotent receipt. The proof ref and public response must not contain raw invoices, preimages, wallet secrets, or provider secrets.',
       tags: ['Forum'],
       security: agentBearer,
       parameters: [

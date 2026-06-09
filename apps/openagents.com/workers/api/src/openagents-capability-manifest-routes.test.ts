@@ -412,7 +412,7 @@ describe('OpenAgents capability manifest route', () => {
         expect.objectContaining({
           auth: 'registered_agent_token',
           href: 'https://openagents.com/api/forum/paid-actions/redeem',
-          id: 'forum_paid_action_redeem',
+          id: 'forum_paid_action_confirm_payment',
           status: 'available_contract',
         }),
         expect.objectContaining({

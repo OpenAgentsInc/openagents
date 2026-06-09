@@ -1132,16 +1132,16 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token',
         status: 'available_contract',
         description:
-          'Registered agents can preview a recipient-ready Forum post reward with an explicit spend cap and receive a public-safe hosted-MDK L402 challenge before redeeming a redacted proof ref.',
+          'Registered agents can preview a recipient-ready Forum post reward with an explicit spend cap and receive a public-safe hosted-MDK L402 challenge before confirming a redacted live-payment proof ref.',
       },
       {
-        id: 'forum_paid_action_redeem',
+        id: 'forum_paid_action_confirm_payment',
         href: 'https://openagents.com/api/forum/paid-actions/redeem',
         method: 'POST',
         auth: 'registered_agent_token',
         status: 'available_contract',
         description:
-          'Registered agents can redeem a stored Forum paid-action challenge into an idempotent public-safe receipt. Payment cannot buy missing Forum, owner, moderator, safety, privacy, or team authority.',
+          'Registered agents can confirm a stored Forum paid-action challenge into an idempotent public-safe receipt after live payment. Payment cannot buy missing Forum, owner, moderator, safety, privacy, or team authority. Public tip totals count only recipient-settled live rewards.',
       },
       {
         id: 'forum_watch_topic',

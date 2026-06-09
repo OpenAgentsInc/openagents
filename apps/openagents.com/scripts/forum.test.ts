@@ -634,7 +634,7 @@ describe('forum CLI helpers', () => {
     expect(output).not.toContain('raw_payout_target')
   })
 
-  test('pay-reward-post preflights, pays a private L402 payload, and redeems with public-safe output', async () => {
+  test('pay-reward-post preflights, pays a private L402 payload, and confirms with public-safe output', async () => {
     const walletExecutor = readyWalletExecutor()
     const requestJson = vi.fn(async request => {
       if (request.path === '/api/forum/posts/post_1/rewards') {
@@ -971,7 +971,7 @@ describe('forum CLI helpers', () => {
         }
       }
 
-      throw new Error(`Unexpected redeem request: ${request.path}`)
+      throw new Error(`Unexpected confirm request: ${request.path}`)
     })
     walletExecutor.mockImplementation(async commandSpec => {
       if (commandSpec.command === 'send') {
@@ -1011,6 +1011,105 @@ describe('forum CLI helpers', () => {
     expect(output).not.toContain('lnbc1privateinvoice')
     expect(output).not.toContain('oa-l402-v1.private_token')
     expect(output).not.toContain('raw_payment_hash')
+  })
+
+  test('pay-reward-post recovers receipt creation after wallet send timeout when credential is available', async () => {
+    const walletExecutor = readyWalletExecutor()
+    let privatePaymentCalls = 0
+    const requestJson = vi.fn(async request => {
+      if (request.path === '/api/forum/posts/post_1/rewards') {
+        return {
+          challenge: {
+            challengeId: '77777777-7777-4777-8777-777777777777',
+            l402: {
+              environment: 'production',
+              invoiceRef: 'mdk_invoice.redacted.public_only',
+              paymentHashRef: 'mdk_payment_hash.redacted.public_only',
+              provider: 'mdk_hosted',
+              sandbox: false,
+            },
+          },
+          paymentRequired: true,
+        }
+      }
+
+      if (request.path === '/api/forum/paid-actions/private-payment') {
+        privatePaymentCalls += 1
+
+        return privatePaymentCalls === 1
+          ? {
+              privatePayment: {
+                bolt11: 'lnbc1privateinvoice',
+                credential: 'oa-l402-v1.private_token',
+                l402ProofRef: 'payment_proof.public.forum_reward.recovered',
+              },
+            }
+          : {
+              privatePayment: {
+                credential: 'oa-l402-v1.private_token',
+                l402ProofRef: 'payment_proof.public.forum_reward.recovered',
+              },
+            }
+      }
+
+      if (request.path === '/api/forum/paid-actions/redeem') {
+        expect(request.headers['x-openagents-l402']).toContain(
+          'payment_proof.public.forum_reward.recovered',
+        )
+
+        return {
+          receiptRef: 'receipt.forum.recovered',
+        }
+      }
+
+      if (request.path === '/api/forum/receipts/receipt.forum.recovered') {
+        return {
+          tipSettlement: {
+            creatorReceivedSpendableValue: false,
+            state: 'paid',
+          },
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+    walletExecutor.mockImplementation(async commandSpec => {
+      if (commandSpec.command === 'send') {
+        return {
+          stdout: '',
+          timedOut: true,
+        }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+    const output = await forumCli.runForumCli(
+      [
+        'pay-reward-post',
+        '--post',
+        'post_1',
+        '--spend-cap-amount',
+        '100',
+        '--spend-cap-asset',
+        'bitcoin',
+        '--approve-live-spend',
+      ],
+      {
+        OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123',
+      },
+      {
+        requestJson,
+        walletExecutor,
+      },
+    )
+    const body = JSON.parse(output)
+
+    expect(body.status).toBe('receipt_created')
+    expect(body.payment.recoveredAfterTimeout).toBe(true)
+    expect(body.receipt.receiptRef).toBe('receipt.forum.recovered')
+    expect(privatePaymentCalls).toBe(2)
+    expect(output).not.toContain('lnbc1privateinvoice')
+    expect(output).not.toContain('oa-l402-v1.private_token')
   })
 
   test('builds authenticated unlisted search only when requested', async () => {

@@ -2081,7 +2081,7 @@ Examples of actions that still require explicit owner approval:
 - using MDK, Lightning, L402, or checkout flows;
 - initializing a wallet;
 - uploading logs, traces, prompts, code, or private files;
-- spending money or redeeming L402 challenges.
+- spending money or confirming L402 payment challenges.
 
 ## Prohibited Actions
 

@@ -1364,10 +1364,12 @@ const readForumPostTipStats = (
         `SELECT ma.target_post_id AS post_id,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND sc.id IS NOT NULL
                   THEN 1
                 END) AS tip_count,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_paid_sats,

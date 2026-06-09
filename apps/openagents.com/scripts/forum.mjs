@@ -792,6 +792,35 @@ export const privateL402PaymentFromPreview = preview => {
   return null
 }
 
+const privateL402CredentialFromPreview = preview => {
+  for (const candidate of privateL402CandidateObjects(preview)) {
+    const credential = firstStringField(candidate, [
+      'credential',
+      'l402Credential',
+      'l402Token',
+      'macaroon',
+      'token',
+    ])
+
+    if (credential === undefined) {
+      continue
+    }
+
+    return {
+      credential,
+      proofRef:
+        firstStringField(candidate, [
+          'l402ProofRef',
+          'paymentProofRef',
+          'proofRef',
+          'publicProofRef',
+        ]) ?? null,
+    }
+  }
+
+  return null
+}
+
 const paymentPreimageFromWalletOutput = value =>
   firstStringField(value, ['payment_preimage', 'paymentPreimage', 'preimage'])
 
@@ -1124,6 +1153,72 @@ const runAgentWalletSendPayment = async ({ executor, invoice }) => {
     blocker: null,
     parsed: parsed.parsed,
     status: 'paid',
+  }
+}
+
+const confirmForumRewardPayment = async ({
+  challengeId,
+  env,
+  parsed,
+  previewRequest,
+  privatePayment,
+  requestJson,
+}) => {
+  const publicProofRef = publicProofRefIsSafe(privatePayment.proofRef)
+    ? privatePayment.proofRef
+    : publicProofRefForPaidReward(challengeId)
+  const l402CredentialHeader =
+    privatePayment.credential === null
+      ? {}
+      : {
+          'x-openagents-l402': `${privatePayment.credential}:${publicProofRef}`,
+        }
+  const confirmRequest = authenticatedMutationRequest({
+    baseUrl: previewRequest.baseUrl,
+    body: {
+      challengeId,
+      l402ProofRef: publicProofRef,
+      method: 'POST',
+      path: previewRequest.path,
+      requestBodyDigest: previewRequest.body.requestBodyDigest,
+      routeParams: {
+        postId: requireFlag(parsed.flags, 'post'),
+      },
+    },
+    extraHeaders: l402CredentialHeader,
+    idempotencyKey: stableIdempotencyKey('paid-redeem', {
+      challengeId,
+      path: previewRequest.path,
+      requestBodyDigest: previewRequest.body.requestBodyDigest,
+    }),
+    method: 'POST',
+    path: '/api/forum/paid-actions/redeem',
+    token: env.OPENAGENTS_AGENT_TOKEN,
+  })
+  const receipt = await requestJson(confirmRequest)
+  const receiptRef =
+    typeof receipt?.receiptRef === 'string' ? receipt.receiptRef : null
+  const receiptLookup =
+    receiptRef === null
+      ? null
+      : await requestJson({
+          baseUrl: previewRequest.baseUrl,
+          method: 'GET',
+          path: `/api/forum/receipts/${encoded(receiptRef)}`,
+        }).catch(() => null)
+  const receiptSummary = receiptSummaryFromLookup(receiptLookup)
+
+  return {
+    proofRef: publicProofRef,
+    receipt: {
+      receiptLink:
+        receiptRef === null
+          ? null
+          : `${previewRequest.baseUrl}/forum/receipts/${encoded(receiptRef)}`,
+      receiptRef,
+      ...receiptSummary,
+      replayed: receipt?.replayed === true,
+    },
   }
 }
 
@@ -1998,67 +2093,74 @@ export const runForumRewardPostPayment = async (
   })
 
   if (walletPayment.status !== 'paid') {
+    const walletReasonRef =
+      walletPayment.blocker?.reasonRef ??
+      'reason.public.agent_wallet_send_failed'
+    const timedOut =
+      walletReasonRef === 'reason.public.agent_wallet_send_timeout'
+
+    if (timedOut) {
+      const recoveredEnvelope = await requestJson(privatePaymentRequest).catch(
+        () => null,
+      )
+      const recoveredCredential =
+        privateL402CredentialFromPreview(recoveredEnvelope)
+
+      if (recoveredCredential !== null) {
+        const recovered = await confirmForumRewardPayment({
+          challengeId,
+          env,
+          parsed,
+          previewRequest,
+          privatePayment: {
+            credential: recoveredCredential.credential,
+            invoice: privatePayment.invoice,
+            proofRef: recoveredCredential.proofRef,
+          },
+          requestJson,
+        })
+
+        return paidRewardResult({
+          challenge: publicChallenge,
+          livePaymentAttempted: true,
+          payment: {
+            commandRef: 'mdk_agent_wallet.send',
+            credentialPresent: true,
+            preimageCaptured: false,
+            proofRef: recovered.proofRef,
+            recoveredAfterTimeout: true,
+            status: 'paid',
+            walletPaymentRef: 'wallet_payment.public.mdk_agent_wallet.redacted',
+          },
+          preflight,
+          receipt: recovered.receipt,
+          status: 'receipt_created',
+        })
+      }
+    }
+
     return paidRewardResult({
       challenge: publicChallenge,
       livePaymentAttempted: true,
       payment: {
         commandRef: 'mdk_agent_wallet.send',
-        reasonRef:
-          walletPayment.blocker?.reasonRef ??
-          'reason.public.agent_wallet_send_failed',
+        reasonRef: walletReasonRef,
         status: walletPayment.status,
       },
       preflight,
-      reasonRef:
-        walletPayment.blocker?.reasonRef ??
-        'reason.public.agent_wallet_send_failed',
+      reasonRef: walletReasonRef,
       status: 'payment_failed',
     })
   }
 
-  const publicProofRef = publicProofRefIsSafe(privatePayment.proofRef)
-    ? privatePayment.proofRef
-    : publicProofRefForPaidReward(challengeId)
-  const l402CredentialHeader =
-    privatePayment.credential === null
-      ? {}
-      : {
-          'x-openagents-l402': `${privatePayment.credential}:${publicProofRef}`,
-        }
-  const redeemRequest = authenticatedMutationRequest({
-    baseUrl: previewRequest.baseUrl,
-    body: {
-      challengeId,
-      l402ProofRef: publicProofRef,
-      method: 'POST',
-      path: previewRequest.path,
-      requestBodyDigest: previewRequest.body.requestBodyDigest,
-      routeParams: {
-        postId: requireFlag(parsed.flags, 'post'),
-      },
-    },
-    extraHeaders: l402CredentialHeader,
-    idempotencyKey: stableIdempotencyKey('paid-redeem', {
-      challengeId,
-      path: previewRequest.path,
-      requestBodyDigest: previewRequest.body.requestBodyDigest,
-    }),
-    method: 'POST',
-    path: '/api/forum/paid-actions/redeem',
-    token: env.OPENAGENTS_AGENT_TOKEN,
+  const confirmed = await confirmForumRewardPayment({
+    challengeId,
+    env,
+    parsed,
+    previewRequest,
+    privatePayment,
+    requestJson,
   })
-  const receipt = await requestJson(redeemRequest)
-  const receiptRef =
-    typeof receipt?.receiptRef === 'string' ? receipt.receiptRef : null
-  const receiptLookup =
-    receiptRef === null
-      ? null
-      : await requestJson({
-          baseUrl: previewRequest.baseUrl,
-          method: 'GET',
-          path: `/api/forum/receipts/${encoded(receiptRef)}`,
-        }).catch(() => null)
-  const receiptSummary = receiptSummaryFromLookup(receiptLookup)
 
   return paidRewardResult({
     challenge: publicChallenge,
@@ -2068,20 +2170,12 @@ export const runForumRewardPostPayment = async (
       credentialPresent: privatePayment.credential !== null,
       preimageCaptured:
         paymentPreimageFromWalletOutput(walletPayment.parsed) !== undefined,
-      proofRef: publicProofRef,
+      proofRef: confirmed.proofRef,
       status: 'paid',
       walletPaymentRef: 'wallet_payment.public.mdk_agent_wallet.redacted',
     },
     preflight,
-    receipt: {
-      receiptLink:
-        receiptRef === null
-          ? null
-          : `${previewRequest.baseUrl}/forum/receipts/${encoded(receiptRef)}`,
-      receiptRef,
-      ...receiptSummary,
-      replayed: receipt?.replayed === true,
-    },
+    receipt: confirmed.receipt,
     status: 'receipt_created',
   })
 }

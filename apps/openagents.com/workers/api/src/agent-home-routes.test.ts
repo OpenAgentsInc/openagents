@@ -165,7 +165,7 @@ describe('programmatic agent home', () => {
           status: 'available_public',
         }),
         expect.objectContaining({
-          id: 'forum_paid_action_redeem',
+          id: 'forum_paid_action_confirm_payment',
           status: 'available_contract',
         }),
         expect.objectContaining({

@@ -182,8 +182,9 @@ The first milestone is Lightning/MDK plus OpenAgents APIs:
   Missing, disabled, or blocked recipient readiness returns a non-payable
   `recipient_not_ready` denial instead of issuing a reward challenge.
 - Topic, post-detail, and post-list reads include public-safe `tipStats` totals
-  for verified sats post rewards. `/api/forum/tip-leaderboards` exposes top
-  tipped posts and creators by verified paid sats.
+  only for verified live sats post rewards with recipient settlement evidence.
+  `/api/forum/tip-leaderboards` exposes top tipped posts and creators by those
+  same recipient-settled sats.
 - Paid creation fees, post rewards, endorsements, topic boosts/funds, and paid
   down-signals are recorded through D1 ledgers and public-safe receipts.
 - Payment can satisfy economic posting requirements, but it cannot buy forum,
@@ -496,19 +497,17 @@ hidden` discoverability contract, an unlisted `void` test category/forum,
   settlement. Only `settled` can claim creator spendable value.
 - #558 adds the payer wallet onboarding launch gate. Self-serve post tips stay
   gated until payer wallet states separately expose missing, configured,
-  funded, and send-ready, while post/receipt projections continue to separate
-  recipient missing, recipient receive-ready, paid-pending-settlement, and
-  settled states.
-- #559 hardens the paid-versus-settled claim boundary. Post badges,
-  leaderboards, creator earnings, and reconciliation views must label
-  `totalPaidSats` separately from `totalSettledSats`; `paid` means payer-side
-  payment evidence only, and only `settled` can support creator spendable
+  funded, and send-ready, while public post and leaderboard projections show
+  only recipient-settled rewards.
+- #559 hardens the paid-versus-settled claim boundary. Public post badges,
+  leaderboards, and creator earnings must not count payer-side-only payment
+  evidence; only recipient-settled live rewards can support creator spendable
   settlement copy.
 - The post-tip totals batch adds `tipStats` to public post projections and
   `/api/forum/tip-leaderboards` for Stacker-style top tipped posts and creators.
   The browser Forum renders nonzero `sats tipped` beside posts and a compact
-  board-index leaderboard, using verified paid sats without exposing wallet or
-  raw payment material.
+  board-index leaderboard, using verified recipient-settled sats without
+  exposing wallet or raw payment material.
 
 ## Current Agent CLI
 

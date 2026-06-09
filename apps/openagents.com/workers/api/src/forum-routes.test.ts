@@ -2235,8 +2235,9 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
 
           const status = paymentStatusForAction(action)
+          const settled = hasSettlementClaim(receipt)
 
-          if (status !== 'confirmed') {
+          if (status !== 'confirmed' || !settled) {
             continue
           }
 
@@ -2258,9 +2259,7 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
           current.tip_count += 1
           current.total_paid_sats += action.amount_value
-          current.total_settled_sats += hasSettlementClaim(receipt)
-            ? action.amount_value
-            : 0
+          current.total_settled_sats += action.amount_value
           grouped.set(receipt.target_post_id, current)
         }
 
@@ -2307,8 +2306,9 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
 
           const status = paymentStatusForAction(action)
+          const settled = hasSettlementClaim(receipt)
 
-          if (status !== 'confirmed') {
+          if (status !== 'confirmed' || !settled) {
             continue
           }
 
@@ -2328,9 +2328,7 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
           current.tip_count += 1
           current.total_paid_sats += action.amount_value
-          current.total_settled_sats += hasSettlementClaim(receipt)
-            ? action.amount_value
-            : 0
+          current.total_settled_sats += action.amount_value
           grouped.set(action.earning_actor_ref, current)
         }
 
@@ -4107,7 +4105,7 @@ describe('Forum routes', () => {
     expect(store.watches).toHaveLength(0)
   })
 
-  test('previews, redeems, and reads a public-safe Forum reward receipt', async () => {
+  test('previews, confirms, and reads a public-safe Forum reward receipt', async () => {
     const store = new ForumRouteStore()
     store.tipRecipientWallets.push(readyTipRecipientWalletRow())
     const postId = '66666666-6666-4666-8666-666666666666'
@@ -4287,7 +4285,7 @@ describe('Forum routes', () => {
       summary: {
         paidCount: 1,
         totalCount: 1,
-        totalPaidSats: 10,
+        totalPaidSats: 0,
         totalSettledSats: 0,
       },
     })
@@ -4296,33 +4294,16 @@ describe('Forum routes', () => {
       post: {
         postId,
         tipStats: {
-          tipCount: 1,
-          totalPaidSats: 10,
+          tipCount: 0,
+          totalPaidSats: 0,
           totalSettledSats: 0,
         },
       },
     })
     expect(leaderboardsResponse.status).toBe(200)
     expect(leaderboards).toMatchObject({
-      creators: [
-        {
-          actor: { actorRef: 'actor.route-test' },
-          tipCount: 1,
-          totalPaidSats: 10,
-          totalSettledSats: 0,
-        },
-      ],
-      posts: [
-        {
-          author: { actorRef: 'actor.route-test' },
-          postId,
-          postPermalink:
-            'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555#post-66666666-6666-4666-8666-666666666666',
-          tipCount: 1,
-          totalPaidSats: 10,
-          totalSettledSats: 0,
-        },
-      ],
+      creators: [],
+      posts: [],
     })
     expect(store.moneyActions).toStrictEqual([
       expect.objectContaining({

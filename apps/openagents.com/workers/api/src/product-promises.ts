@@ -416,7 +416,7 @@ export const publicProductPromisesDocument = () => {
         'blocker.product_promises.creator_settlement_receipt_smoke_missing',
       ],
       verification:
-        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, and smoke:forum:mdk-readiness. Forum launch status and tip leaderboards must distinguish wallet recipient readiness, paid evidence, hosted payout authority, and creator settlement.',
+        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, and smoke:forum:mdk-readiness. Forum launch status and tip leaderboards must distinguish wallet recipient readiness, live payment evidence, hosted payout authority, and creator settlement. Public tip totals count only recipient-settled live rewards.',
       authorityBoundary:
         'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, or settlement authority.',
     },
