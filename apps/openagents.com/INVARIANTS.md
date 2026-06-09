@@ -611,7 +611,7 @@ This is the invariant ledger for `openagents`.
   must verify that the URL returns the expected transcript body, not an HTML
   fallback page.
 - The public launch dashboard must include every numbered source-transcript
-  promise from the chrisjuan gap audit exactly once with red/yellow/green state,
+  promise from the source-conversation gap audit exactly once with red/yellow/green state,
   evidence refs, blocker refs, safe copy, and unsafe-copy boundaries. Stale
   endpoint data must not leave stale-sensitive rows green.
 - Regression coverage for this policy lives in

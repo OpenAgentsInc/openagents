@@ -6,8 +6,8 @@ Issue: #571
 ## Scope
 
 `GET /api/public/launch-dashboard` is the machine-checkable red/yellow/green
-truth surface for the launch promises inventoried from `chrisjuan.md` in
-`docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md`.
+truth surface for the launch promises inventoried from `source-conversation.md` in
+`docs/2026-06-08-pylon-agentic-revenue-gap-audit.md`.
 
 The dashboard contains one row for each numbered source-transcript promise.
 

@@ -45,7 +45,7 @@ const storeForRoute = {
 
 const transcriptPromiseCount = (): number => {
   const audit = readFileSync(
-    '../../docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md',
+    '../../docs/2026-06-08-pylon-agentic-revenue-gap-audit.md',
     'utf8',
   )
   const sourceInventory = audit.slice(

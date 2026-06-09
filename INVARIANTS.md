@@ -62,3 +62,11 @@ More specific invariant ledgers apply inside imported apps and packages.
 - This initial promise system is documentation-backed. Runtime enforcement must
   be added before treating the registry as an automated product gate; until
   then, `docs/promises/checks-and-gates.md` is the model-boundary record.
+
+## Commit Metadata Privacy
+
+- Commit messages, commit trailers, and other committed metadata must not
+  include individual people’s names unless the user explicitly requests a
+  legally or historically required attribution.
+- Prefer neutral product, team, source, operator, reporter, maintainer, or role
+  wording in commits and committed process records.

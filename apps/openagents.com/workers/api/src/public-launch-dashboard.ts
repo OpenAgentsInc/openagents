@@ -66,7 +66,7 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
       'blocker.launch_dashboard.pylon_release.native_windows_wsl_unproven',
     ],
     evidenceRefs: [
-      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#new-pylon-release-tomorrow',
+      'docs/2026-06-08-pylon-agentic-revenue-gap-audit.md#new-pylon-release-tomorrow',
       'package.npm.@openagentsinc/pylon.0.2.5',
     ],
     promiseId: 'pylon_release_tomorrow',
@@ -169,7 +169,7 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     ],
     evidenceRefs: [
       'docs/live/AGENTS.md#pylon-registration-status-and-receipts',
-      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#money-dev-kit',
+      'docs/2026-06-08-pylon-agentic-revenue-gap-audit.md#money-dev-kit',
     ],
     promiseId: 'no_wallet_knowledge_bitcoin',
     promiseText:
@@ -187,7 +187,7 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     ],
     evidenceRefs: [
       'route:/r/site/{publicSourceRef}',
-      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#referrals-from-autopilot-sites',
+      'docs/2026-06-08-pylon-agentic-revenue-gap-audit.md#referrals-from-autopilot-sites',
     ],
     promiseId: 'site_referral_bitcoin_stream',
     promiseText:
@@ -204,7 +204,7 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     ],
     evidenceRefs: [
       'docs/mdk',
-      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#money-dev-kit',
+      'docs/2026-06-08-pylon-agentic-revenue-gap-audit.md#money-dev-kit',
     ],
     promiseId: 'money_dev_kit_payments',
     promiseText:
@@ -461,7 +461,7 @@ export const projectPublicLaunchDashboard = (input: {
       rows,
       schemaVersion: PublicLaunchDashboardSchemaVersion,
       sourceRefs: [
-        'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md',
+        'docs/2026-06-08-pylon-agentic-revenue-gap-audit.md',
         'docs/live/AGENTS.md',
         'route:/api/public/pylon-stats',
         'route:/api/public/artanis/report',

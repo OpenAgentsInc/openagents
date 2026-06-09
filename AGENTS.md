@@ -42,3 +42,7 @@ previous repository shape.
 - Do not commit secrets, dependency caches, build output, `target/`, `dist/`,
   `node_modules/`, or local runtime state.
 - Keep Git operations scoped to this repository when working here.
+- Do not put individual people’s names in commit messages, commit trailers, or
+  other committed metadata unless the user explicitly asks for a legally or
+  historically required attribution. Use neutral product, team, source,
+  operator, or role wording instead.
