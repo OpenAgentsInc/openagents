@@ -59,6 +59,43 @@ the NIP parity gaps and relay policy gaps listed below.
 
 OpenAgents is not currently using live Nostr infrastructure.
 
+### 2026-06-09 Relay POC Update
+
+After the initial audit, OpenAgents added and deployed a handshake-only relay
+POC for issue <https://github.com/OpenAgentsInc/openagents/issues/4621>.
+
+Current POC app:
+
+- app path: `apps/nostr-relay`;
+- package: `@openagents/nostr-relay`;
+- relay library: `nostr-effect@0.0.12`;
+- Worker name: `openagents-nostr-relay-poc`;
+- deployed URL:
+  <https://openagents-nostr-relay-poc.openagents.workers.dev>;
+- Durable Object class: `NostrRelayDO`;
+- Durable Object storage: SQLite-backed Durable Object migration `v1`;
+- local/deployed smoke script: `apps/nostr-relay/scripts/smoke.ts`.
+
+Verified smoke command:
+
+```sh
+bun run --cwd apps/nostr-relay smoke https://openagents-nostr-relay-poc.openagents.workers.dev
+```
+
+Verified result:
+
+```text
+NIP-11 GET https://openagents-nostr-relay-poc.openagents.workers.dev/
+WebSocket connect wss://openagents-nostr-relay-poc.openagents.workers.dev/
+Handshake messages: [["EOSE","openagents-poc-..."]]
+Nostr relay smoke passed
+```
+
+This POC changes the deployment status, not the product authority boundary. It
+does not make Pylon Nostr identity live, does not implement orange-check, does
+not federate Forum, and does not provide payment, assignment, payout, or
+settlement authority.
+
 The current product-promise registry intentionally keeps Nostr claims scoped:
 
 - `identity.autopilot_keys_wallet.v1` is red and historical. Current public
@@ -285,10 +322,10 @@ Production blockers before OpenAgents relies on it:
 | Scale | Single global Durable Object is simple but can bottleneck. | Need sharding strategy before broad public relay traffic. |
 | Ops | Observability, migrations, retention, and backup/export policy need product decisions. | Relay state becomes public infrastructure once advertised. |
 
-Decision: use `nostr-effect` for a canary OpenAgents relay after fixing
-NIP-98 strict verification, NIP-58 current badge shapes, NIP-85 assertions,
-NIP-67 EOSE hints, and relay policy. Do not deploy it as a general production
-relay before those gates.
+Decision: use `nostr-effect` for the handshake-only POC now, and for a broader
+canary OpenAgents relay after fixing NIP-98 strict verification, NIP-58 current
+badge shapes, NIP-85 assertions, NIP-67 EOSE hints, and relay policy. Do not
+deploy it as a general production relay before those gates.
 
 ## Cloudflare Versus Google Cloud
 
@@ -385,8 +422,11 @@ solve connection coordination plus colocated storage.
 
 ### Phase 3: relay canary
 
-- Fix `nostr-effect` blockers needed for Pylon and orange-check.
-- Deploy a scoped Cloudflare Durable Object relay.
+- Status: handshake-only POC deployed at
+  <https://openagents-nostr-relay-poc.openagents.workers.dev> for issue
+  <https://github.com/OpenAgentsInc/openagents/issues/4621>.
+- Remaining: fix `nostr-effect` blockers needed for Pylon and orange-check.
+- Remaining: promote from handshake POC to scoped canary relay policy.
 - Restrict writes to authenticated OpenAgents-issued events and registered
   Pylon pubkeys.
 - Publish honest NIP-11 metadata.

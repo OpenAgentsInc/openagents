@@ -5,6 +5,7 @@
 .secrets/
 node_modules/
 .bun/
+.wrangler/
 .turbo/
 .vite/
 dist/
