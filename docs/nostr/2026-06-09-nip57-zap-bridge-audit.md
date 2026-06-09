@@ -131,10 +131,26 @@ Nostr client or OpenAgents zap bridge
 -> OpenAgents optionally imports/links public-safe zap receipt
 ```
 
-If OpenAgents owns the LNURL server and receives the payment through MDK, it
-can attach the zap to an OpenAgents receipt after MDK confirms the payment. If
-OpenAgents does not own the LNURL server, it must treat the zap receipt as
-external social proof only.
+Yes: OpenAgents can run the LNURL-pay endpoint itself. That is the right way to
+make NIP-57 more than loose external social proof. In that model, OpenAgents is
+the recipient LNURL server, issues the BOLT11 invoice through MDK, receives the
+MDK invoice-paid event or webhook, writes an OpenAgents receipt, and then
+publishes the NIP-57 zap receipt as the Nostr-facing mirror of an
+OpenAgents-confirmed payment.
+
+The distinction is:
+
+- **OpenAgents-owned LNURL endpoint**: the OpenAgents receipt can be canonical
+  after MDK confirms the invoice payment. The zap receipt is a public Nostr
+  projection of that canonical receipt.
+- **External LNURL endpoint**: OpenAgents only sees relay-published zap
+  receipts and must treat them as external social proof unless it has a
+  separate trusted settlement integration with that LNURL provider.
+
+Owning the LNURL endpoint improves verification, but it does not make the
+NIP-57 receipt itself the proof. The proof for OpenAgents is still the
+MDK/provider payment event plus the OpenAgents receipt that binds amount,
+target, payer identity if available, recipient, and policy state.
 
 ## Implementation Options
 
@@ -175,7 +191,9 @@ Do not use this for:
 ### Option B: OpenAgents-owned LNURL zap endpoint
 
 OpenAgents exposes LNURL-pay endpoints for actors/posts that want NIP-57 zap
-compatibility.
+compatibility. This is implementable and is the recommended canary if we want
+NIP-57 to count as OpenAgents-owned payment evidence rather than external zap
+commentary.
 
 Example public routes:
 
@@ -219,6 +237,20 @@ Callback behavior:
    OpenAgents-owned and policy allows it.
 7. Publish a NIP-57 `kind: 9735` receipt to the requested relays.
 
+The verification chain for this option is:
+
+```text
+NIP-57 zap request
+-> OpenAgents LNURL callback validates the request
+-> OpenAgents/MDK issues a target-bound BOLT11 invoice
+-> MDK confirms the invoice was paid
+-> OpenAgents writes a target-bound payment receipt
+-> OpenAgents publishes a NIP-57 zap receipt signed by its advertised nostrPubkey
+```
+
+In this chain, the NIP-57 receipt is not the thing OpenAgents trusts. It is the
+thing OpenAgents publishes because it already trusted the MDK payment event.
+
 Pros:
 
 - Nostr clients can zap OpenAgents targets;
@@ -234,7 +266,21 @@ Cons:
 - requires relay publication and retry policy;
 - risks confusing users if UI collapses zaps and canonical BOLT 12 tips.
 
-Recommended only after the strict BOLT 12 Forum tip smoke is green.
+Recommended canary path:
+
+1. Keep ordinary Forum tips on direct BOLT 12.
+2. Add one OpenAgents-owned LNURL zap endpoint for a canary actor or canary
+   Forum post.
+3. Reconcile invoice-paid events through MDK into the same style of
+   public-safe OpenAgents receipt ledger used for other payment evidence.
+4. Publish the NIP-57 receipt only after that OpenAgents receipt exists.
+5. Keep browser/UI accounting separate until the canary proves no confusion
+   between direct BOLT 12 tips, OpenAgents-owned zaps, and external zaps.
+
+This can be started before broad Nostr bridge work, but it should not be used
+to mark `forum.content_tipping.v1` green until the direct BOLT 12 Forum tip
+path also passes its strict live smoke. It can support a separate planned
+`protocol.nip57_zap_bridge.v1` promise.
 
 ### Option C: BOLT 12-first Nostr extension
 

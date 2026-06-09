@@ -82,6 +82,11 @@ proof projection:
 - External zap receipts must not be merged into `totalSettledSats`, accepted
   work, payout, or product-promise green evidence unless OpenAgents owns the
   LNURL endpoint and MDK confirms the payment into an OpenAgents receipt.
+- OpenAgents can own that LNURL endpoint. In that case, the stronger
+  verification chain is OpenAgents LNURL callback -> MDK-issued invoice ->
+  MDK invoice-paid event -> OpenAgents receipt -> NIP-57 zap receipt
+  publication. The zap receipt is the Nostr-facing mirror, not the evidence
+  OpenAgents trusts internally.
 
 Detailed NIP-57 design:
 `docs/nostr/2026-06-09-nip57-zap-bridge-audit.md`.
