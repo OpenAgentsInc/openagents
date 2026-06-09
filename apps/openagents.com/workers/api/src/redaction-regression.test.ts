@@ -322,7 +322,7 @@ const committedPublicPaymentFiles = [
   },
   {
     label: 'Pylon release gate runbook',
-    path: '../../docs/nexus/2026-06-07-pylon-v02-omega-release-gate-runbook.md',
+    path: '../../docs/nexus/2026-06-07-pylon-v02-openagents-release-gate-runbook.md',
   },
   {
     label: 'MDK payout adapter runbook',

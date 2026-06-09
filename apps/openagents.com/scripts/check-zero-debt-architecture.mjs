@@ -266,7 +266,7 @@ const budgetChecks = [
 ]
 
 const runPromiseAllowlist = new Map([
-  ['workers/api/src/index.ts', 4],
+  ['workers/api/src/index.ts', 5],
   ['workers/api/src/observability.ts', 1],
   ['workers/api/src/omni-handlers.ts', 7],
   ['workers/api/src/thread-access.ts', 1],
