@@ -10,7 +10,8 @@ Pylon worker closeout loop, and OA-AUTO-023 Autopilot delivery ingestion from
 Pylon worker closeouts, and OA-AUTO-024 customer review/revision API.
 It also includes OA-AUTO-025, the documented public no-spend Autopilot Coder
 smoke command, OA-AUTO-026, the signed/verifier-gated L402 retry path, and
-OA-AUTO-027, the CI-safe paid Autopilot Coder route smoke.
+OA-AUTO-027, the CI-safe paid Autopilot Coder route smoke, and the #4619
+epic closeout for the real no-spend Pylon execution path.
 This document is intentionally stricter than
 the implementation log: it distinguishes route-harness proof from a real paid
 agent doing real coding work.
@@ -47,7 +48,8 @@ It also cross-checks the current implementation surfaces those docs describe:
 
 The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed, and
 the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-027` are also closed as
-of this audit. Those issues built the first Autopilot work-order spine plus the
+of this audit. Epic #4619 is also complete for the no-spend Pylon route
+contract. Those issues built the first Autopilot work-order spine plus the
 initial production Pylon placement, Pylon assignment lease, and normalized
 assignment-payload pieces plus a bounded no-spend requester-Pylon closeout
 loop, Autopilot delivery ingestion from that closeout, and the owner-granted
@@ -589,7 +591,20 @@ bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:no-spend
 The smoke drives the route-level no-spend path and scans retained projections
 for private paths, wallet/payment material, provider payloads, raw prompts,
 raw logs, raw source archives, secret material, and forbidden
-hosted-infrastructure wording.
+hosted-infrastructure wording. It does not pass the test-only
+`pylonRegistrations` placement dependency and does not use an injected hosted
+executor; placement reads the Pylon API store and the closeout travels through
+the Pylon assignment API before Autopilot ingests delivered refs.
+
+The companion Pylon runtime regression is:
+
+```sh
+bun test --cwd apps/pylon tests/assignment.test.ts tests/live-worker-loop-smoke.test.ts
+```
+
+That pair closes epic #4619 for the CI-safe no-spend Pylon execution path.
+The remaining no-spend gap is staging/live execution against deployed
+credentials.
 
 2. Paid public task:
    - registered or anonymous-paid agent submits task;

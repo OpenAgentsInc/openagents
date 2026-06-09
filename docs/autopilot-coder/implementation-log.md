@@ -901,3 +901,37 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:paid`
+
+## Epic #4619: Real No-Spend Pylon Execution Path Closeout
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4619`
+
+Status: complete for the CI-safe no-spend Pylon execution contract; staging/live
+deployment remains a separate environment run.
+
+Implemented across child issues:
+
+- Production Pylon placement input.
+- Durable Pylon assignment leases.
+- Normalized coding assignment payloads.
+- Pylon accept/progress/artifact/proof/closeout flow.
+- Autopilot delivery ingestion from Pylon worker closeouts.
+- Owner-granted review decisions.
+- A documented no-spend Autopilot Coder smoke.
+
+Closeout clarification:
+
+- The no-spend smoke does not pass test-only `pylonRegistrations` and does not
+  use an injected hosted executor.
+- It reads Pylon presence from the Pylon API store, creates a durable
+  assignment lease, accepts/closes through the Pylon assignment API, ingests
+  delivered refs back into Autopilot, and scans retained projections for
+  private material.
+- The Pylon runtime regression covers local assignment normalization,
+  acceptance, proof/progress/closeout receipts, cancellation handling, and
+  public-safe closeout refs.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:no-spend`
+- `bun test --cwd apps/pylon tests/assignment.test.ts tests/live-worker-loop-smoke.test.ts`
