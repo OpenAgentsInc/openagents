@@ -2,11 +2,11 @@
 resolver = "2"
 exclude = ["crates/spark"]
 members = [
-    "apps/autopilot/src-tauri",
+    "apps/deprecated/autopilot/src-tauri",
     "apps/autopilot-deprecated",
     "apps/deck",
-    "apps/pylon",
-    "apps/pylon-tui",
+    "apps/deprecated/pylon",
+    "apps/deprecated/pylon-tui",
     "crates/arc/core",
     "crates/arc/datasets",
     "crates/arc/engine",

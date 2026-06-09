@@ -15,17 +15,17 @@ anyhow.workspace = true
 axum = "0.8"
 bip39 = "2.2.0"
 chacha20poly1305 = "0.10.1"
-codex-client = { path = "../../crates/codex-client" }
+codex-client = { path = "../../../crates/codex-client" }
 hex = { workspace = true }
 hmac = "0.12.1"
 jsonwebtoken = "9"
 ldk-node.workspace = true
 libc = "0.2"
-nostr = { path = "../../crates/nostr/core" }
-nostr-client = { path = "../../crates/nostr/client" }
-openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
-openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
-pylon-core = { path = "../../crates/pylon-core" }
+nostr = { path = "../../../crates/nostr/core" }
+nostr-client = { path = "../../../crates/nostr/client" }
+openagents-kernel-core = { path = "../../../crates/openagents-kernel-core" }
+openagents-provider-substrate = { path = "../../../crates/openagents-provider-substrate" }
+pylon-core = { path = "../../../crates/pylon-core" }
 psionic-train.workspace = true
 rand.workspace = true
 reqwest.workspace = true
