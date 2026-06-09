@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`231` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
+This directory contains machine-generated transcripts for episodes `001`-`233` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -21,7 +21,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 - Episodes [`166`](166.md)-[`182`](182.md): The series broadens into AI politics, overnight agents, payments APIs, Commander, wallets, Nostr clients, swarm inference, research review, and sensemaking.
 - Episodes [`183`](183.md)-[`198`](198.md): The product resets into Tauri, mobile sync, dashboards, Tricoder, web/mobile coding agents, Cursor study, and Autopilot foundations.
 - Episodes [`199`](199.md)-[`213`](213.md): Autopilot becomes the personal-agent surface while Pylon, Nexus, identity, Bitcoin, Open Moltbook, online agents, and agent markets converge.
-- Episodes [`214`](214.md)-[`231`](231.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, ocean-powered compute ambition, the Autopilot beta commercial wedge, Autopilot Sites, agent-directed market instructions, and the OpenAgents Forum.
+- Episodes [`214`](214.md)-[`233`](233.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, ocean-powered compute ambition, the Autopilot beta commercial wedge, Autopilot Sites, agent-directed market instructions, the OpenAgents Forum, energy and compute orchestration, and monorepo consolidation.
 
 ## Complete Episode Index
 
@@ -313,7 +313,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-231 - OAPN launch, Psionic, distributed training, bounties, ocean power, Autopilot beta, Sites, and Forum
+### 214-233 - OAPN launch, Psionic, distributed training, bounties, ocean power, Autopilot beta, Sites, Forum, Energy Orchestration, and Consolidation
 
 | Episode | Summary |
 | --- | --- |
@@ -335,12 +335,14 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`229` Autopilot Sites](229.md) | Launches Autopilot Sites, shows Ben's OTEC revision workflow, and frames public sites as referral surfaces. |
 | [`230` Calling All Agents](230.md) | Addresses AI agents directly with the OpenAgents history, flow-of-funds thesis, five agent markets, Bitcoin/Nostr protocol stance, and Reed's Law network argument. |
 | [`231` The Forum](231.md) | Launches the OpenAgents Forum as an old-school bulletin board rebuilt for agents, public discussion, Bitcoin-weighted moderation, and agent participation. |
+| [`232` Energy and Compute](232.md) | Explores the co-optimization of energy and compute, agentic inference flexibility, and the "accepted outcomes per kilowatt hour" metric. |
+| [`233` Consolidation](233.md) | Details the consolidation of OpenAgents repositories into the single GitHub monorepo (`openagents`) using Bun, Effect, and Cloudflare Workers. |
 
 ## Major Themes
 
 | Theme | What It Covers | Start With |
 | --- | --- | --- |
-| Open agents versus closed AI capture | OpenAgents is framed as an open alternative to lab-controlled agents, closed marketplaces, regulatory capture, and platform shutdown risk. | [`001`](001.md), [`047`](047.md), [`086`](086.md), [`101`](101.md), [`124`](124.md), [`150`](150.md), [`166`](166.md), [`181`](181.md), [`200`](200.md), [`204`](204.md), [`205`](205.md), [`220`](220.md), [`222`](222.md), [`226`](226.md), [`227`](227.md), [`230`](230.md), [`231`](231.md) |
+| Open agents versus closed AI capture | OpenAgents is framed as an open alternative to lab-controlled agents, closed marketplaces, regulatory capture, and platform shutdown risk. | [`001`](001.md), [`047`](047.md), [`086`](086.md), [`101`](101.md), [`124`](124.md), [`150`](150.md), [`166`](166.md), [`181`](181.md), [`200`](200.md), [`204`](204.md), [`205`](205.md), [`220`](220.md), [`222`](222.md), [`226`](226.md), [`227`](227.md), [`230`](230.md), [`231`](231.md), [`232`](232.md), [`233`](233.md) |
 | Build in public and ship early | The series repeatedly ships rough software, public demos, live launches, beta access, and worse-is-better product loops instead of closed-lab secrecy. | [`002`](002.md), [`003`](003.md), [`004`](004.md), [`006`](006.md), [`008`](008.md), [`086`](086.md), [`092`](092.md), [`100`](100.md), [`119`](119.md), [`149`](149.md), [`183`](183.md), [`184`](184.md), [`214`](214.md), [`221`](221.md), [`226`](226.md), [`228`](228.md), [`229`](229.md), [`231`](231.md) |
 | Agent first principles | Agents are treated as concrete software objects: users, chats, plans, actions, tasks, conversations, tools, memory, payments, and inspection logs. | [`005`](005.md), [`006`](006.md), [`007`](007.md), [`020`](020.md), [`033`](033.md), [`038`](038.md), [`040`](040.md), [`090`](090.md), [`132`](132.md), [`138`](138.md), [`199`](199.md), [`230`](230.md), [`231`](231.md) |
 | RAG, documents, and private knowledge | The first app arc builds PDF upload, retrieval, embeddings, pgvector search, chat-with-docs, and later generalizes this into codebase and knowledge graphs. | [`010`](010.md), [`011`](011.md), [`012`](012.md), [`013`](013.md), [`014`](014.md), [`015`](015.md), [`016`](016.md), [`017`](017.md), [`018`](018.md), [`019`](019.md), [`023`](023.md), [`046`](046.md), [`122`](122.md), [`155`](155.md) |
