@@ -132,6 +132,7 @@ export type OpenAgentsAutopilotSettlementMode =
 
 export const OpenAgentsAutopilotWorkState = S.Literals([
   'accepted_free_slice',
+  'accepted',
   'access_required',
   'blocked',
   'delivered',
@@ -139,6 +140,8 @@ export const OpenAgentsAutopilotWorkState = S.Literals([
   'payment_required',
   'paid_ready',
   'queued_or_running',
+  'rejected',
+  'revision_required',
 ])
 export type OpenAgentsAutopilotWorkState =
   typeof OpenAgentsAutopilotWorkState.Type

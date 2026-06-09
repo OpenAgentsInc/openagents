@@ -159,6 +159,34 @@ export type AutopilotWorkFundingProjection = Readonly<{
   workerPayoutEligible: false
 }>
 
+export type AutopilotWorkReviewAction =
+  | 'accept'
+  | 'reject'
+  | 'request_changes'
+
+const AutopilotWorkReviewDecisionRecord = S.Struct({
+  action: S.Literals(['accept', 'reject', 'request_changes']),
+  actorAgentCredentialId: S.String,
+  actorAgentUserId: S.String,
+  decisionRefs: S.Array(S.String),
+  idempotencyKeyHash: S.String,
+  recordedAt: S.String,
+  rejectionRefs: S.Array(S.String),
+  revisionRequestRefs: S.Array(S.String),
+})
+export type AutopilotWorkReviewDecisionRecord =
+  typeof AutopilotWorkReviewDecisionRecord.Type
+
+export type AutopilotWorkReviewDecisionProjection =
+  AutopilotWorkReviewDecisionRecord & Readonly<{
+    acceptedWorkAuthority: false
+    deployAuthority: false
+    forumAutoPublishAllowed: false
+    publicSafe: true
+    settlementAuthority: false
+    workerPayoutAuthority: false
+  }>
+
 export type AutopilotWorkPlacementPolicyRecordProjection = Readonly<{
   allowedRunnerKinds: OpenAgentsAutopilotWorkRequest['placementPolicy']['allowedRunnerKinds']
   auditable: true
@@ -178,11 +206,14 @@ export type AutopilotWorkNextActionProjection = Readonly<{
   reasonRefs: ReadonlyArray<string>
   retryAfterSeconds: number | null
   state:
+    | 'accepted'
     | 'blocked'
     | 'delivered'
     | 'needs_input'
     | 'payment_required'
     | 'ready'
+    | 'rejected'
+    | 'revision_required'
     | 'retry_later'
 }>
 
@@ -192,19 +223,25 @@ export type AutopilotWorkTaskAccessState =
 
 export type AutopilotWorkTaskLifecycleState =
   | 'access_required'
+  | 'accepted'
   | 'blocked'
   | 'delivered'
   | 'payment_required'
   | 'queued_or_running'
+  | 'rejected'
   | 'ready_for_assignment'
+  | 'revision_required'
 
 export type AutopilotWorkTaskPlacementState =
+  | 'accepted'
   | 'blocked'
   | 'blocked_on_access'
   | 'blocked_on_payment'
   | 'delivered'
   | 'queued_or_running'
+  | 'rejected'
   | 'ready_for_assignment'
+  | 'revision_required'
 
 export type AutopilotWorkTaskRecordProjection = Readonly<{
   acceptanceCriteriaRefs: ReadonlyArray<string>
@@ -233,6 +270,7 @@ export type AutopilotWorkOrderRecord = Readonly<{
   ownerUserId: string
   paymentChallengeRef: string | null
   request: OpenAgentsAutopilotWorkRequest
+  reviewDecision: AutopilotWorkReviewDecisionRecord | null
   state: OpenAgentsAutopilotWorkStateType
   statusUrlRef: string
   taskRefs: ReadonlyArray<string>
@@ -290,6 +328,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   pylonAssignmentIntents: ReadonlyArray<AutopilotPylonAssignmentIntentProjection>
   quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
+  reviewDecision: AutopilotWorkReviewDecisionProjection | null
   state: OpenAgentsAutopilotWorkStateType
   statusUrlRef: string
   taskRefs: ReadonlyArray<string>
@@ -305,6 +344,8 @@ export type AutopilotWorkEventKind =
   | 'needs_access'
   | 'payment_required'
   | 'queued'
+  | 'rejected'
+  | 'revision_required'
   | 'running'
   | 'settled'
 
@@ -338,6 +379,21 @@ export type AutopilotWorkStore = Readonly<{
       workOrderRef: string
     }>,
   ) => Promise<AutopilotWorkOrderRecord | undefined>
+  recordReviewDecision: (
+    input: Readonly<{
+      ownerUserId: string
+      reviewDecision: AutopilotWorkReviewDecisionRecord
+      state: Extract<
+        OpenAgentsAutopilotWorkStateType,
+        'accepted' | 'rejected' | 'revision_required'
+      >
+      updatedAt: string
+      workOrderRef: string
+    }>,
+  ) => Promise<
+    | Readonly<{ idempotent: boolean; record: AutopilotWorkOrderRecord }>
+    | undefined
+  >
   recordBuyerPaymentProof: (
     input: Readonly<{
       buyerPaymentProofRef: string
@@ -450,6 +506,21 @@ const decodeWorkRequest = (
       }),
     try: async () =>
       decodeOpenAgentsAutopilotWorkRequest(await readJsonObject(request)),
+  })
+
+const decodeReviewDecisionRequest = (
+  request: Request,
+): Effect.Effect<AutopilotWorkReviewDecisionRequest, AutopilotWorkStoreError> =>
+  Effect.tryPromise({
+    catch: error =>
+      new AutopilotWorkStoreError({
+        kind: 'validation_error',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    try: async () =>
+      S.decodeUnknownSync(AutopilotWorkReviewDecisionRequest)(
+        await readJsonObject(request),
+      ),
   })
 
 const routeNowIso = <Bindings>(
@@ -649,6 +720,23 @@ const safeExecutionCloseoutRefPattern =
   /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const unsafeExecutionCloseoutRefPattern =
   /(\/Users\/|\/home\/|access[_-]?token|bearer\s+|checkout|cookie|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage)|payout[_-]?(address|destination|target)|preimage|private[_-]?(key|repo)|provider[_-]?(account|grant|payload|token)|raw[_-]?(auth|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|tool[_-]?log|webhook)|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet[_-]?(home|material|mnemonic|path|private|secret|state)|webhook[_-]?secret)/iu
+const AutopilotWorkReviewPublicSafeRef = S.Trim.check(
+  S.isNonEmpty(),
+  S.isMinLength(3),
+  S.isMaxLength(260),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/),
+)
+const AutopilotWorkReviewRefs = S.optionalKey(
+  S.Array(AutopilotWorkReviewPublicSafeRef),
+)
+const AutopilotWorkReviewDecisionRequest = S.Struct({
+  action: S.Literals(['accept', 'reject', 'request_changes']),
+  decisionRefs: AutopilotWorkReviewRefs,
+  rejectionRefs: AutopilotWorkReviewRefs,
+  revisionRequestRefs: AutopilotWorkReviewRefs,
+})
+type AutopilotWorkReviewDecisionRequest =
+  typeof AutopilotWorkReviewDecisionRequest.Type
 
 const safeBuyerPaymentProofRef = (value: string | null): string | undefined =>
   value !== null &&
@@ -669,6 +757,9 @@ const optionalPublicSafeExecutionCloseoutRefs = (
   refs: ReadonlyArray<string> | undefined,
 ): boolean => refs === undefined || refs.every(publicSafeExecutionCloseoutRef)
 
+const publicSafeReviewRefs = (refs: ReadonlyArray<string>): boolean =>
+  refs.every(publicSafeExecutionCloseoutRef)
+
 const publicSafeRefsFromBody = (
   body: Record<string, unknown>,
   key: string,
@@ -676,6 +767,33 @@ const publicSafeRefsFromBody = (
   Array.isArray(body[key])
     ? body[key].filter((ref): ref is string => typeof ref === 'string')
     : []
+
+const reviewStateForAction = (
+  action: AutopilotWorkReviewAction,
+): Extract<
+  OpenAgentsAutopilotWorkStateType,
+  'accepted' | 'rejected' | 'revision_required'
+> =>
+  action === 'accept'
+    ? 'accepted'
+    : action === 'reject'
+      ? 'rejected'
+      : 'revision_required'
+
+const reviewDecisionProjectionForRecord = (
+  record: AutopilotWorkReviewDecisionRecord | null,
+): AutopilotWorkReviewDecisionProjection | null =>
+  record === null
+    ? null
+    : {
+        ...record,
+        acceptedWorkAuthority: false,
+        deployAuthority: false,
+        forumAutoPublishAllowed: false,
+        publicSafe: true,
+        settlementAuthority: false,
+        workerPayoutAuthority: false,
+      }
 
 const buyerPaymentProofFromRequest = (
   request: Request,
@@ -880,6 +998,8 @@ const lifecycleStateForTask = (
   }
 
   switch (record.state) {
+    case 'accepted':
+      return 'accepted'
     case 'blocked':
     case 'invalid':
       return 'blocked'
@@ -890,6 +1010,10 @@ const lifecycleStateForTask = (
     case 'accepted_free_slice':
     case 'paid_ready':
       return 'ready_for_assignment'
+    case 'rejected':
+      return 'rejected'
+    case 'revision_required':
+      return 'revision_required'
     case 'access_required':
     case 'payment_required':
       return 'ready_for_assignment'
@@ -902,6 +1026,8 @@ const placementStateForLifecycle = (
   switch (lifecycleState) {
     case 'access_required':
       return 'blocked_on_access'
+    case 'accepted':
+      return 'accepted'
     case 'payment_required':
       return 'blocked_on_payment'
     case 'blocked':
@@ -910,8 +1036,12 @@ const placementStateForLifecycle = (
       return 'delivered'
     case 'queued_or_running':
       return 'queued_or_running'
+    case 'rejected':
+      return 'rejected'
     case 'ready_for_assignment':
       return 'ready_for_assignment'
+    case 'revision_required':
+      return 'revision_required'
   }
 }
 
@@ -949,6 +1079,33 @@ const nextActionForRecord = (
   funding: AutopilotWorkFundingProjection,
   placementDecision: AutopilotPlacementDecisionProjection,
 ): AutopilotWorkNextActionProjection => {
+  if (record.state === 'accepted') {
+    return {
+      callerActionRefs: ['caller.wait_for_autopilot_settlement_policy'],
+      reasonRefs: ['next_action.customer_accepted_work'],
+      retryAfterSeconds: null,
+      state: 'accepted',
+    }
+  }
+
+  if (record.state === 'rejected') {
+    return {
+      callerActionRefs: ['caller.create_follow_up_autopilot_work'],
+      reasonRefs: ['next_action.customer_rejected_work'],
+      retryAfterSeconds: null,
+      state: 'rejected',
+    }
+  }
+
+  if (record.state === 'revision_required') {
+    return {
+      callerActionRefs: ['caller.wait_for_or_create_revision_work'],
+      reasonRefs: ['next_action.customer_requested_changes'],
+      retryAfterSeconds: null,
+      state: 'revision_required',
+    }
+  }
+
   if (record.state === 'delivered') {
     return {
       callerActionRefs: ['caller.review_autopilot_closeout'],
@@ -1033,6 +1190,7 @@ const projectionForRecord = (
     pylonAssignmentIntents: [],
     quote: makeAutopilotWorkQuote(record.request),
     repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
+    reviewDecision: reviewDecisionProjectionForRecord(record.reviewDecision),
     state: record.state,
     statusUrlRef: record.statusUrlRef,
     taskRefs: record.taskRefs,
@@ -1482,6 +1640,8 @@ const terminalEventKindForState = (
   state: OpenAgentsAutopilotWorkStateType,
 ): AutopilotWorkEventKind | undefined => {
   switch (state) {
+    case 'accepted':
+      return 'accepted'
     case 'access_required':
       return 'needs_access'
     case 'blocked':
@@ -1495,6 +1655,10 @@ const terminalEventKindForState = (
       return 'running'
     case 'queued_or_running':
       return 'running'
+    case 'rejected':
+      return 'rejected'
+    case 'revision_required':
+      return 'revision_required'
     case 'accepted_free_slice':
       return undefined
   }
@@ -1562,6 +1726,7 @@ const buildWorkOrderRecord = (
     ownerUserId: input.ownerUserId,
     paymentChallengeRef,
     request: input.request,
+    reviewDecision: null,
     state: stateForRequest(input.request),
     statusUrlRef: statusUrlRefForWorkOrder(workOrderRef),
     taskRefs: input.request.tasks.map(task => task.taskRef),
@@ -1762,6 +1927,135 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
   )
 
+const validateReviewDecisionRequest = (
+  body: AutopilotWorkReviewDecisionRequest,
+): Effect.Effect<AutopilotWorkReviewDecisionRequest, AutopilotWorkStoreError> => {
+  const decisionRefs = body.decisionRefs ?? []
+  const rejectionRefs = body.rejectionRefs ?? []
+  const revisionRequestRefs = body.revisionRequestRefs ?? []
+  const refsArePublicSafe =
+    publicSafeReviewRefs(decisionRefs) &&
+    publicSafeReviewRefs(rejectionRefs) &&
+    publicSafeReviewRefs(revisionRequestRefs)
+  const actionHasRequiredRefs =
+    body.action === 'accept'
+      ? decisionRefs.length > 0
+      : body.action === 'reject'
+        ? rejectionRefs.length > 0
+        : revisionRequestRefs.length > 0
+
+  if (!refsArePublicSafe || !actionHasRequiredRefs) {
+    return Effect.fail(
+      new AutopilotWorkStoreError({
+        kind: 'validation_error',
+        reason:
+          'Autopilot review decisions require public-safe action refs for the selected review action.',
+      }),
+    )
+  }
+
+  return Effect.succeed(body)
+}
+
+const reviewDecisionRecordFromRequest = (
+  input: Readonly<{
+    actorAgentCredentialId: string
+    actorAgentUserId: string
+    body: AutopilotWorkReviewDecisionRequest
+    idempotencyKeyHash: string
+    nowIso: string
+  }>,
+): AutopilotWorkReviewDecisionRecord => ({
+  action: input.body.action,
+  actorAgentCredentialId: input.actorAgentCredentialId,
+  actorAgentUserId: input.actorAgentUserId,
+  decisionRefs: input.body.decisionRefs ?? [],
+  idempotencyKeyHash: input.idempotencyKeyHash,
+  recordedAt: input.nowIso,
+  rejectionRefs: input.body.rejectionRefs ?? [],
+  revisionRequestRefs: input.body.revisionRequestRefs ?? [],
+})
+
+const reviewWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  workOrderRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const pylonRegistrations = yield* routePylonRegistrations(
+      dependencies,
+      env,
+    )
+    const auth = yield* authenticateCustomerOrderAgentRequest(
+      request,
+      dependencies.agentStore(env),
+      {
+        nowIso: () => nowIso,
+        requiredScope: 'customer_orders.write',
+      },
+    )
+    const idempotencyKeyHash = yield* requireIdempotencyHash(request)
+    const body = yield* Effect.flatMap(
+      decodeReviewDecisionRequest(request),
+      validateReviewDecisionRequest,
+    )
+    const reviewDecision = reviewDecisionRecordFromRequest({
+      actorAgentCredentialId: auth.agent.credential.id,
+      actorAgentUserId: auth.agent.user.id,
+      body,
+      idempotencyKeyHash,
+      nowIso,
+    })
+    const state = reviewStateForAction(body.action)
+    const result = yield* Effect.tryPromise({
+      catch: error =>
+        error instanceof AutopilotWorkStoreError
+          ? error
+          : new AutopilotWorkStoreError({
+              kind: 'storage_error',
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+      try: () =>
+        dependencies.makeStore(env).recordReviewDecision({
+          ownerUserId: auth.ownerUserId,
+          reviewDecision,
+          state,
+          updatedAt: nowIso,
+          workOrderRef,
+        }),
+    })
+
+    if (result === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_work_not_found',
+          reason: 'Autopilot work order was not found.',
+        },
+        { status: 404 },
+      )
+    }
+
+    return noStoreJsonResponse(
+      {
+        idempotent: result.idempotent,
+        work: projectionForRecord(
+          result.record,
+          result.idempotent,
+          nowIso,
+          pylonRegistrations,
+        ),
+      },
+      { status: result.idempotent ? 200 : 201 },
+    )
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
+      Effect.succeed(unauthorized())
+    ),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
 const parseAfterCursor = (request: Request): number => {
   const url = new URL(request.url)
   const headerCursor = request.headers.get('Last-Event-ID')
@@ -1886,6 +2180,12 @@ const workOrderEventsRefFromPath = (pathname: string): string | undefined => {
   return match?.[1]
 }
 
+const workOrderReviewRefFromPath = (pathname: string): string | undefined => {
+  const match = /^\/api\/autopilot\/work\/([^/]+)\/review$/.exec(pathname)
+
+  return match?.[1]
+}
+
 export const makeAutopilotWorkRoutes = <
   Bindings extends AutopilotWorkRouteEnv,
 >(
@@ -1920,6 +2220,17 @@ export const makeAutopilotWorkRoutes = <
       )
     }
 
+    const workOrderReviewRef = workOrderReviewRefFromPath(url.pathname)
+
+    if (workOrderReviewRef !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('POST', () =>
+          reviewWorkOrder(dependencies, request, env, workOrderReviewRef)
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
+      )
+    }
+
     const workOrderRef = workOrderRefFromPath(url.pathname)
 
     if (workOrderRef !== undefined) {
@@ -1940,6 +2251,15 @@ const executionCloseoutFromRowValue = (
 ): AutopilotWorkExecutionCloseoutRecord | null =>
   typeof value === 'string' && value.trim() !== ''
     ? S.decodeUnknownSync(AutopilotWorkExecutionCloseoutRecord)(
+        parseJsonUnknown(value),
+      )
+    : null
+
+const reviewDecisionFromRowValue = (
+  value: unknown,
+): AutopilotWorkReviewDecisionRecord | null =>
+  typeof value === 'string' && value.trim() !== ''
+    ? S.decodeUnknownSync(AutopilotWorkReviewDecisionRecord)(
         parseJsonUnknown(value),
       )
     : null
@@ -1972,6 +2292,7 @@ const recordFromRow = (
   request: decodeOpenAgentsAutopilotWorkRequest(
     parseJsonUnknown(String(row.request_json)),
   ),
+  reviewDecision: reviewDecisionFromRowValue(row.review_decision_json),
   state: S.decodeUnknownSync(OpenAgentsAutopilotWorkState)(row.state),
   statusUrlRef: String(row.status_url_ref),
   taskRefs: parseJsonStringArray(String(row.task_refs_json)),
@@ -2108,6 +2429,84 @@ export const makeD1AutopilotWorkStore = (
       .first<Record<string, unknown>>()
 
     return row === null ? undefined : recordFromRow(row)
+  },
+  recordReviewDecision: async input => {
+    const existing = await db
+      .prepare(
+        `SELECT *
+         FROM autopilot_work_orders
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(input.workOrderRef, input.ownerUserId)
+      .first<Record<string, unknown>>()
+
+    if (existing === null) {
+      return undefined
+    }
+
+    const existingRecord = recordFromRow(existing)
+
+    if (existingRecord.reviewDecision !== null) {
+      if (
+        existingRecord.reviewDecision.idempotencyKeyHash ===
+        input.reviewDecision.idempotencyKeyHash
+      ) {
+        return { idempotent: true, record: existingRecord }
+      }
+
+      throw new AutopilotWorkStoreError({
+        kind: 'conflict',
+        reason:
+          'Autopilot work already has a review decision with a different idempotency key.',
+      })
+    }
+
+    if (existingRecord.state !== 'delivered') {
+      throw new AutopilotWorkStoreError({
+        kind: 'conflict',
+        reason: 'Autopilot work must be delivered before review.',
+      })
+    }
+
+    await db
+      .prepare(
+        `UPDATE autopilot_work_orders
+         SET review_decision_json = ?,
+             state = ?,
+             updated_at = ?
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+           AND review_decision_json IS NULL
+           AND state = 'delivered'`,
+      )
+      .bind(
+        JSON.stringify(input.reviewDecision),
+        input.state,
+        input.updatedAt,
+        input.workOrderRef,
+        input.ownerUserId,
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `SELECT *
+         FROM autopilot_work_orders
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(input.workOrderRef, input.ownerUserId)
+      .first<Record<string, unknown>>()
+
+    return row === null
+      ? undefined
+      : { idempotent: false, record: recordFromRow(row) }
   },
   recordBuyerPaymentProof: async input => {
     await db

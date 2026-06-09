@@ -7,7 +7,7 @@ closeout bridge commit, OA-AUTO-019 production Pylon placement wiring, and
 OA-AUTO-020 durable Pylon assignment lease creation, and OA-AUTO-021 normalized
 coding assignment payload contract, and OA-AUTO-022 real no-spend requester
 Pylon worker closeout loop, and OA-AUTO-023 Autopilot delivery ingestion from
-Pylon worker closeouts.
+Pylon worker closeouts, and OA-AUTO-024 customer review/revision API.
 This document is intentionally stricter than
 the implementation log: it distinguishes route-harness proof from a real paid
 agent doing real coding work.
@@ -43,12 +43,13 @@ It also cross-checks the current implementation surfaces those docs describe:
 - production Pylon API store wiring in `apps/openagents.com/workers/api/src/index.ts`.
 
 The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed, and
-the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-023` are also closed as
+the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-024` are also closed as
 of this audit. Those issues built the first Autopilot work-order spine plus the
 initial production Pylon placement, Pylon assignment lease, and normalized
 assignment-payload pieces plus a bounded no-spend requester-Pylon closeout
-loop and Autopilot delivery ingestion from that closeout. They did not, by
-themselves, build the full paid coding-agent product.
+loop, Autopilot delivery ingestion from that closeout, and the owner-granted
+review/revision API. They did not, by themselves, build the full paid
+coding-agent product.
 
 ## Executive Finding
 
@@ -68,6 +69,7 @@ registered-agent request
 -> durable Pylon assignment lease or fallback lease intent
 -> requester Pylon no-spend acceptance/progress/artifact/worker-closeout refs
 -> Autopilot work order delivered projection from worker closeout refs
+-> owner/customer review can accept, reject, or request changes
 -> optional injected hosted execution closeout
 -> delivered projection and delivered events
 ```
@@ -227,7 +229,7 @@ Current status by phase:
 | SHC/cloud fallback path | Lease intent built | Needs production runner adapter and lease execution. |
 | Probe coding loop | Normalized coding assignment contract exists, and the Pylon no-spend loop consumes current assignment projections and returns public-safe refs | Needs richer real coding execution, repository checkout/patch/test adapters, and non-Pylon runner consumers. |
 | Result ingestion | Pylon worker closeout refs are captured on assignment state and can deliver the Autopilot work order with public-safe artifact/blocker/build/preview/proof/result/summary/test refs | Needs richer diff/log/blob storage and operator-only evidence retention beyond public refs. |
-| Acceptance | Not built for Autopilot work orders | Needs customer review, operator review, accepted-work state, and revision request API. |
+| Acceptance | Owner-granted review API built for delivered Autopilot work | Needs operator review, accepted-work-to-payout eligibility bridge, and richer follow-up work creation. |
 | GitHub writeback | Not built in Autopilot work path | Needs branch/commit/PR lane after repo grants and proof/test gates. |
 | Sites adapter | Existing Sites control plane exists | Needs Autopilot task adapter for `site_generation` and `site_adjustment`. |
 | Forum reporting | Not built for Autopilot work orders | Needs redacted lifecycle renderer and idempotent posting bridge. |
@@ -448,6 +450,8 @@ Current acceptance state:
 
 ### Step 7: Add customer review and revision API
 
+Status: implemented by OA-AUTO-024.
+
 Build:
 
 - Owner or owner-granted agent can:
@@ -460,6 +464,18 @@ Build:
 Acceptance:
 
 - A delivered task can move to accepted or revision-required without DB edits.
+
+Current acceptance state:
+
+- Built: owner-granted registered agents can accept, reject, or request changes
+  on delivered Autopilot work.
+- Built: review decisions are idempotent and public-safe.
+- Built: accepted/rejected/revision-required states update next actions, task
+  lifecycle projections, and event streams.
+- Built: worker closeout, buyer payment, and review remain separate from
+  payout, settlement, deploy, spend, and Forum publication authority.
+- Still open: operator review and accepted-work payout eligibility are not
+  implemented.
 
 ### Step 8: Add GitHub and Sites delivery adapters
 
@@ -546,11 +562,11 @@ work."
 ### P0: Make the claim real
 
 1. Real Autopilot payment issuance and verification.
-2. Customer review/revision API.
-3. No-spend end-to-end smoke.
-4. Real Autopilot payment issuance and verification.
-5. Paid end-to-end smoke.
-6. Richer diff/blob/build-log ingestion and operator-only evidence storage.
+2. No-spend end-to-end smoke.
+3. Real Autopilot payment issuance and verification.
+4. Paid end-to-end smoke.
+5. Richer diff/blob/build-log ingestion and operator-only evidence storage.
+6. Accepted-work payout eligibility and settlement bridge.
 
 ### P1: Make it useful across product surfaces
 
@@ -580,6 +596,7 @@ production Pylon placement input, durable no-spend Pylon assignment lease
 creation, a normalized coding assignment payload, a bounded requester-Pylon
 no-spend worker closeout loop, delivered closeout projection in a route
 harness, and Autopilot delivered projection from real Pylon worker closeout
-refs; it still does not have a live paid path where a real agent pays, a real
-worker produces accepted repo/Site changes, artifacts are reviewed, and
-eligible workers/providers are settled.
+refs, plus owner-granted customer review states; it still does not have a live
+paid path where a real agent pays, a real worker produces accepted repo/Site
+changes, artifacts are paid-settlement eligible, and eligible workers/providers
+are settled.

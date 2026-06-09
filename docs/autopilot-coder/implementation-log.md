@@ -765,3 +765,38 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/pylon-api-routes.test.ts src/autopilot-coding-assignment.test.ts src/nexus-pylon-visibility-routes.test.ts src/artanis-pylon-proof-trace.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
 - `bun test --cwd apps/pylon tests/assignment.test.ts tests/live-worker-loop-smoke.test.ts`
+
+## OA-AUTO-024: Customer Review And Revision API
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4615`
+
+Status: implemented.
+
+Implemented:
+
+- Added persisted Autopilot review states:
+  - `accepted`
+  - `rejected`
+  - `revision_required`
+- Added `POST /api/autopilot/work/{workOrderRef}/review` for owner-granted
+  registered agents with `customer_orders.write` scope.
+- Added public-safe review request handling for:
+  - `accept`
+  - `reject`
+  - `request_changes`
+- Persisted review decisions with actor agent refs, idempotency key hash,
+  decision refs, rejection refs, and revision request refs.
+- Added D1 migration `0147_autopilot_work_review_decisions.sql` for durable
+  review decision storage.
+- Kept review authority separate from worker closeout, buyer payment,
+  worker payout, settlement, deploy, spend, and Forum publication.
+- Updated work projections, task lifecycle projections, next actions, and event
+  streams for accepted, rejected, and revision-required states.
+- Added route coverage for accept, reject, request-changes, idempotent replay,
+  before-delivery conflict, unsafe review refs, missing write scope, and
+  non-owner denial.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

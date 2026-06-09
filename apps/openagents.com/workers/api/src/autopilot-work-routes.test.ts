@@ -12,7 +12,9 @@ import {
   type AutopilotWorkExecutor,
   type AutopilotWorkExecutionCloseoutRecord,
   type AutopilotWorkOrderRecord,
+  type AutopilotWorkReviewDecisionRecord,
   type AutopilotWorkStore,
+  AutopilotWorkStoreError,
   makeAutopilotWorkRoutes,
   recordAutopilotWorkerCloseoutFromPylon,
 } from './autopilot-work-routes'
@@ -94,6 +96,55 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
     this.recordsByOwnerIdempotency.set(key, updated)
 
     return updated
+  }
+
+  recordReviewDecision = async (input: Readonly<{
+    ownerUserId: string
+    reviewDecision: AutopilotWorkReviewDecisionRecord
+    state: 'accepted' | 'rejected' | 'revision_required'
+    updatedAt: string
+    workOrderRef: string
+  }>) => {
+    const existing = this.records.get(input.workOrderRef)
+
+    if (existing === undefined || existing.ownerUserId !== input.ownerUserId) {
+      return undefined
+    }
+
+    if (existing.reviewDecision !== null) {
+      if (
+        existing.reviewDecision.idempotencyKeyHash ===
+        input.reviewDecision.idempotencyKeyHash
+      ) {
+        return { idempotent: true, record: existing }
+      }
+
+      throw new AutopilotWorkStoreError({
+        kind: 'conflict',
+        reason:
+          'Autopilot work already has a review decision with a different idempotency key.',
+      })
+    }
+
+    if (existing.state !== 'delivered') {
+      throw new AutopilotWorkStoreError({
+        kind: 'conflict',
+        reason: 'Autopilot work must be delivered before review.',
+      })
+    }
+
+    const updated = {
+      ...existing,
+      reviewDecision: input.reviewDecision,
+      state: input.state,
+      updatedAt: input.updatedAt,
+    }
+    const key = `${existing.ownerUserId}:${existing.idempotencyKeyHash}`
+
+    this.records.set(existing.workOrderRef, updated)
+    this.recordsByOwnerIdempotency.set(key, updated)
+
+    return { idempotent: false, record: updated }
   }
 
   recordBuyerPaymentProof = async (input: Readonly<{
@@ -241,6 +292,7 @@ const agentStoreForScopes = (
     'customer_orders.read',
     'customer_orders.write',
   ],
+  ownerUserId = 'github:autopilot-owner',
 ): AgentRegistrationStore => ({
   createAgentRegistration: () => Promise.resolve(),
   findAgentByTokenHash: () =>
@@ -250,7 +302,7 @@ const agentStoreForScopes = (
         customerOrderGrants: [
           {
             expiresAt: null,
-            ownerUserId: 'github:autopilot-owner',
+            ownerUserId,
             scopes,
             status: 'active',
           },
@@ -314,6 +366,7 @@ const route = async (
     pylonApiStore?: PylonApiStore
     pylonRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     pylonStoreRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
+    ownerUserId?: string
     scopes?: ReadonlyArray<string>
     token?: string
   }> = {},
@@ -321,7 +374,7 @@ const route = async (
   let counter = 0
   const maybePylonApiStore = options.pylonApiStore
   const dependencies = {
-    agentStore: () => agentStoreForScopes(options.scopes),
+    agentStore: () => agentStoreForScopes(options.scopes, options.ownerUserId),
     makeId: () => `autopilot_work_order.test_${++counter}`,
     makeStore: () => store,
     nowIso: () => '2026-06-09T17:30:00.000Z',
@@ -439,6 +492,58 @@ const pylonRoute = async (
   return Effect.runPromise(response)
 }
 
+const createDeliveredPylonBackedWork = async () => {
+  const store = new MemoryAutopilotWorkStore()
+  const pylonApiStore = new MemoryPylonApiStore([
+    pylonRegistration({
+      pylonRef: 'pylon.production.docs_agent',
+    }),
+  ])
+  const assignmentRef =
+    'pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract'
+
+  await route(store, '/api/autopilot/work', {
+    body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+    idempotencyKey: `idem-${assignmentRef}`,
+    pylonApiStore,
+  })
+  await pylonRoute(
+    pylonApiStore,
+    `/api/pylons/pylon.production.docs_agent/assignments/${assignmentRef}/accept`,
+    {
+      body: {
+        acceptanceRefs: ['acceptance.public.autopilot_pylon.accepted'],
+        accepted: true,
+      },
+      idempotencyKey: `accept-${assignmentRef}`,
+      method: 'POST',
+    },
+  )
+  await pylonRoute(
+    pylonApiStore,
+    `/api/pylons/pylon.production.docs_agent/assignments/${assignmentRef}/closeout`,
+    {
+      body: {
+        artifactRefs: ['artifact.public.autopilot_docs.patch_summary'],
+        buildRefs: ['build.public.autopilot_docs.not_required'],
+        closeoutRefs: ['closeout.public.autopilot_docs.worker_summary'],
+        previewRefs: ['preview.public.autopilot_docs.not_required'],
+        proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
+        resultRefs: ['result.public.autopilot_docs.delivered'],
+        status: 'closeout_submitted',
+        summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
+        testRefs: ['test.public.autopilot_docs.not_required'],
+      },
+      idempotencyKey: `closeout-${assignmentRef}`,
+      method: 'POST',
+      recordAutopilotWorkerCloseout: (_env, input) =>
+        recordAutopilotWorkerCloseoutFromPylon(store, input),
+    },
+  )
+
+  return { assignmentRef, pylonApiStore, store }
+}
+
 const responseJson = async (response: Response) =>
   response.json() as Promise<Readonly<{
     error?: string
@@ -449,6 +554,7 @@ const responseJson = async (response: Response) =>
       taskRefs: ReadonlyArray<string>
       workOrderRef: string
     }>>
+    idempotent?: boolean
     nextAfter?: number
     work?: Readonly<{
       accessRequirements?: ReadonlyArray<Readonly<{
@@ -480,13 +586,19 @@ const responseJson = async (response: Response) =>
       accessRequestRefs?: ReadonlyArray<string>
       executionCloseout?: Readonly<{
         acceptedWorkAuthority: boolean
+        artifactRefs?: ReadonlyArray<string>
         assignmentRefs: ReadonlyArray<string>
+        blockerRefs?: ReadonlyArray<string>
+        buildRefs?: ReadonlyArray<string>
         closeoutRefs: ReadonlyArray<string>
         forumAutoPublishAllowed: boolean
+        previewRefs?: ReadonlyArray<string>
         proofRefs: ReadonlyArray<string>
         publicSafe: boolean
         resultRefs: ReadonlyArray<string>
         runnerKind: string
+        summaryRefs?: ReadonlyArray<string>
+        testRefs?: ReadonlyArray<string>
         workerPayoutAuthority: boolean
       }> | null
       fallbackLeaseIntents?: ReadonlyArray<Readonly<{
@@ -581,6 +693,21 @@ const responseJson = async (response: Response) =>
         taskRef: string
         writeAuthority: string
       }>>
+      reviewDecision?: Readonly<{
+        acceptedWorkAuthority: boolean
+        action: string
+        actorAgentCredentialId: string
+        actorAgentUserId: string
+        decisionRefs: ReadonlyArray<string>
+        deployAuthority: boolean
+        forumAutoPublishAllowed: boolean
+        publicSafe: boolean
+        recordedAt: string
+        rejectionRefs: ReadonlyArray<string>
+        revisionRequestRefs: ReadonlyArray<string>
+        settlementAuthority: boolean
+        workerPayoutAuthority: boolean
+      }> | null
       state: string
       taskRefs: ReadonlyArray<string>
       tasks?: ReadonlyArray<Readonly<{
@@ -1186,6 +1313,208 @@ describe('Autopilot work routes', () => {
       executionCloseout: null,
       state: 'queued_or_running',
     })
+  })
+
+  test('accepts delivered Autopilot work without granting payout or settlement authority', async () => {
+    const { pylonApiStore, store } = await createDeliveredPylonBackedWork()
+    const review = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public.customer_accepts_delivered_refs'],
+        },
+        idempotencyKey: 'review-accept-autopilot-work',
+        method: 'POST',
+        pylonApiStore,
+      },
+    )
+    const replay = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public.customer_accepts_delivered_refs'],
+        },
+        idempotencyKey: 'review-accept-autopilot-work',
+        method: 'POST',
+        pylonApiStore,
+      },
+    )
+    const events = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/events',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const reviewJson = await responseJson(review)
+    const replayJson = await responseJson(replay)
+    const eventsJson = await responseJson(events)
+
+    expect(review.status).toBe(201)
+    expect(replay.status).toBe(200)
+    expect(replayJson.idempotent).toBe(true)
+    expect(reviewJson.work).toMatchObject({
+      nextAction: {
+        reasonRefs: ['next_action.customer_accepted_work'],
+        state: 'accepted',
+      },
+      reviewDecision: {
+        acceptedWorkAuthority: false,
+        action: 'accept',
+        decisionRefs: ['review.public.customer_accepts_delivered_refs'],
+        deployAuthority: false,
+        forumAutoPublishAllowed: false,
+        publicSafe: true,
+        settlementAuthority: false,
+        workerPayoutAuthority: false,
+      },
+      state: 'accepted',
+    })
+    expect(eventsJson.events).toEqual([
+      expect.objectContaining({ eventKind: 'queued' }),
+      expect.objectContaining({ eventKind: 'accepted' }),
+    ])
+  })
+
+  test('supports delivered-work request-changes and reject review decisions', async () => {
+    const revision = await createDeliveredPylonBackedWork()
+    const revisionReview = await route(
+      revision.store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'request_changes',
+          decisionRefs: ['review.public.customer_requests_changes'],
+          revisionRequestRefs: ['revision.public.tighten_acceptance_tests'],
+        },
+        idempotencyKey: 'review-request-changes-autopilot-work',
+        method: 'POST',
+        pylonApiStore: revision.pylonApiStore,
+      },
+    )
+    const rejected = await createDeliveredPylonBackedWork()
+    const rejectReview = await route(
+      rejected.store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'reject',
+          decisionRefs: ['review.public.customer_rejects_closeout'],
+          rejectionRefs: ['rejection.public.missing_required_artifact'],
+        },
+        idempotencyKey: 'review-reject-autopilot-work',
+        method: 'POST',
+        pylonApiStore: rejected.pylonApiStore,
+      },
+    )
+    const revisionJson = await responseJson(revisionReview)
+    const rejectJson = await responseJson(rejectReview)
+
+    expect(revisionReview.status).toBe(201)
+    expect(revisionJson.work).toMatchObject({
+      nextAction: {
+        reasonRefs: ['next_action.customer_requested_changes'],
+        state: 'revision_required',
+      },
+      reviewDecision: {
+        action: 'request_changes',
+        revisionRequestRefs: ['revision.public.tighten_acceptance_tests'],
+      },
+      state: 'revision_required',
+    })
+    expect(rejectReview.status).toBe(201)
+    expect(rejectJson.work).toMatchObject({
+      nextAction: {
+        reasonRefs: ['next_action.customer_rejected_work'],
+        state: 'rejected',
+      },
+      reviewDecision: {
+        action: 'reject',
+        rejectionRefs: ['rejection.public.missing_required_artifact'],
+      },
+      state: 'rejected',
+    })
+  })
+
+  test('rejects review before delivery, unsafe review refs, and callers without write scope', async () => {
+    const pendingStore = new MemoryAutopilotWorkStore()
+    const pendingPylonStore = new MemoryPylonApiStore([
+      pylonRegistration({
+        pylonRef: 'pylon.production.docs_agent',
+      }),
+    ])
+
+    await route(pendingStore, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-review-pending',
+      pylonApiStore: pendingPylonStore,
+    })
+
+    const beforeDelivery = await route(
+      pendingStore,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public.customer_accepts_delivered_refs'],
+        },
+        idempotencyKey: 'review-before-delivery',
+        method: 'POST',
+        pylonApiStore: pendingPylonStore,
+      },
+    )
+    const delivered = await createDeliveredPylonBackedWork()
+    const unsafe = await route(
+      delivered.store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public./Users/christopher/raw'],
+        },
+        idempotencyKey: 'review-unsafe-ref',
+        method: 'POST',
+        pylonApiStore: delivered.pylonApiStore,
+      },
+    )
+    const readOnly = await route(
+      delivered.store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public.customer_accepts_delivered_refs'],
+        },
+        idempotencyKey: 'review-read-only-denied',
+        method: 'POST',
+        pylonApiStore: delivered.pylonApiStore,
+        scopes: ['customer_orders.read'],
+      },
+    )
+    const nonOwner = await route(
+      delivered.store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public.customer_accepts_delivered_refs'],
+        },
+        idempotencyKey: 'review-non-owner-denied',
+        method: 'POST',
+        ownerUserId: 'github:different-owner',
+        pylonApiStore: delivered.pylonApiStore,
+      },
+    )
+
+    expect(beforeDelivery.status).toBe(409)
+    expect(unsafe.status).toBe(400)
+    expect(readOnly.status).toBe(401)
+    expect(nonOwner.status).toBe(404)
   })
 
   test('returns actionable placement needs-input when no runner is available', async () => {
