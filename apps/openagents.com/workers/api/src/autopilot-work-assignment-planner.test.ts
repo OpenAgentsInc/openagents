@@ -43,4 +43,39 @@ describe('Autopilot work assignment planner', () => {
       },
     ])
   })
+
+  test('records queued tasks without producing another ready assignment', () => {
+    const work = {
+      tasks: [
+        {
+          acceptanceCriteriaRefs: ['acceptance.docs.updated'],
+          accessRequirements: [],
+          accessState: 'satisfied',
+          kind: 'code_change',
+          lifecycleState: 'queued_or_running',
+          paymentState: 'not_required',
+          placementState: 'queued_or_running',
+          repository: {
+            branch: 'main',
+            fullName: 'OpenAgentsInc/openagents',
+            provider: 'github',
+            visibility: 'public',
+          },
+          taskRef: 'task.autopilot_coder.docs_contract',
+        },
+      ],
+      workOrderRef: 'autopilot_work_order.queued_test',
+    } as const
+
+    expect(assignmentIntentsForWorkOrder(work)).toEqual([
+      expect.objectContaining({
+        assignmentIntentRef:
+          'assignment_intent.autopilot_work_order.queued_test.task.autopilot_coder.docs_contract',
+        plannerReasonRefs: ['assignment.queued_or_running'],
+        plannerState: 'queued_or_running',
+        readyForAssignment: false,
+        taskRef: 'task.autopilot_coder.docs_contract',
+      }),
+    ])
+  })
 })

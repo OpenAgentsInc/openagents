@@ -613,3 +613,39 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-placement-selector.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-020: Durable Autopilot-To-Pylon Assignment Leases
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4611`
+
+Status: implemented.
+
+Implemented:
+
+- Added an idempotent Autopilot dispatch transition that turns ready
+  requester-Pylon assignment intents into durable `pylon_api_assignments`
+  records.
+- Reused the existing Pylon assignment lease store and public-safe assignment
+  projection instead of creating a parallel worker queue.
+- Marked Autopilot work orders `queued_or_running` only after at least one
+  Pylon assignment lease exists.
+- Updated assignment planning so queued/running work does not keep emitting
+  fresh ready-for-assignment intents.
+- Linked generated Pylon assignments to the Autopilot work order and task refs
+  through public-safe `taskRefs`, acceptance criteria refs, and deterministic
+  assignment refs.
+- Preserved no-spend mode and authority separation:
+  - `paymentMode: "unpaid_smoke"`;
+  - Forum autopublish disabled;
+  - no deploy authority;
+  - no accepted-work authority;
+  - no payout or settlement authority.
+- Added route coverage proving idempotent Autopilot retries do not create
+  duplicate Pylon assignments.
+- Added route coverage proving the existing Pylon API can poll and accept the
+  Autopilot-created lease.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-assignment-planner.test.ts src/pylon-api-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

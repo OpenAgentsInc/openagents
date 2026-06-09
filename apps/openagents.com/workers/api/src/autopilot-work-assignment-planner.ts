@@ -16,6 +16,7 @@ export type AutopilotWorkAssignmentPlannerState =
   | 'free_slice'
   | 'paid_ready'
   | 'payment_required'
+  | 'queued_or_running'
   | 'ready_for_assignment'
 
 export type AutopilotWorkAssignmentIntentProjection = Readonly<{
@@ -74,6 +75,10 @@ const plannerStateForTask = (
     return 'delivered'
   }
 
+  if (task.lifecycleState === 'queued_or_running') {
+    return 'queued_or_running'
+  }
+
   if (task.lifecycleState === 'ready_for_assignment') {
     return task.paymentState === 'funded' ? 'paid_ready' : 'free_slice'
   }
@@ -109,6 +114,8 @@ const plannerReasonRefsForTask = (
       ]
     case 'payment_required':
       return ['assignment.blocked.payment_required']
+    case 'queued_or_running':
+      return ['assignment.queued_or_running']
     case 'ready_for_assignment':
       return ['assignment.ready_for_assignment']
   }

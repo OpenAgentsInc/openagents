@@ -15,7 +15,14 @@ import {
   type AutopilotWorkStore,
   makeAutopilotWorkRoutes,
 } from './autopilot-work-routes'
-import type { PylonApiRegistrationRecord } from './pylon-api'
+import type {
+  PylonApiAssignmentRecord,
+  PylonApiEventRecord,
+  PylonApiRegistrationRecord,
+  PylonApiStore,
+} from './pylon-api'
+import { PylonApiStoreError } from './pylon-api'
+import { makePylonApiRoutes } from './pylon-api-routes'
 
 class MemoryAutopilotWorkStore implements AutopilotWorkStore {
   readonly records = new Map<string, AutopilotWorkOrderRecord>()
@@ -37,6 +44,30 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
 
   readWorkOrder = async (workOrderRef: string) =>
     this.records.get(workOrderRef)
+
+  recordPylonAssignmentDispatch = async (input: Readonly<{
+    ownerUserId: string
+    updatedAt: string
+    workOrderRef: string
+  }>) => {
+    const existing = this.records.get(input.workOrderRef)
+
+    if (existing === undefined || existing.ownerUserId !== input.ownerUserId) {
+      return undefined
+    }
+
+    const updated = {
+      ...existing,
+      state: 'queued_or_running' as const,
+      updatedAt: input.updatedAt,
+    }
+    const key = `${existing.ownerUserId}:${existing.idempotencyKeyHash}`
+
+    this.records.set(existing.workOrderRef, updated)
+    this.recordsByOwnerIdempotency.set(key, updated)
+
+    return updated
+  }
 
   recordExecutionCloseout = async (input: Readonly<{
     executionCloseout: AutopilotWorkExecutionCloseoutRecord
@@ -94,6 +125,112 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
     ownerUserId: string,
     idempotencyKeyHash: string,
   ) => this.recordsByOwnerIdempotency.get(`${ownerUserId}:${idempotencyKeyHash}`)
+}
+
+class MemoryPylonApiStore implements PylonApiStore {
+  readonly assignments = new Map<string, PylonApiAssignmentRecord>()
+  readonly assignmentsByIdempotency = new Map<string, PylonApiAssignmentRecord>()
+  readonly events = new Map<string, PylonApiEventRecord>()
+  readonly eventsByIdempotency = new Map<string, PylonApiEventRecord>()
+  readonly registrations = new Map<string, PylonApiRegistrationRecord>()
+
+  constructor(registrations: ReadonlyArray<PylonApiRegistrationRecord>) {
+    registrations.forEach(registration => {
+      this.registrations.set(registration.pylonRef, registration)
+    })
+  }
+
+  createAssignment = async (record: PylonApiAssignmentRecord) => {
+    const existing = this.assignmentsByIdempotency.get(
+      record.idempotencyKeyHash,
+    )
+
+    if (existing !== undefined) {
+      return { idempotent: true, record: existing }
+    }
+
+    this.assignments.set(record.assignmentRef, record)
+    this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+
+    return { idempotent: false, record }
+  }
+
+  createEvent = async (record: PylonApiEventRecord) => {
+    const existing = this.eventsByIdempotency.get(record.idempotencyKeyHash)
+
+    if (existing !== undefined) {
+      return { idempotent: true, record: existing }
+    }
+
+    this.events.set(record.eventRef, record)
+    this.eventsByIdempotency.set(record.idempotencyKeyHash, record)
+
+    return { idempotent: false, record }
+  }
+
+  listAssignmentsForPylon = async (pylonRef: string, limit: number) =>
+    Array.from(this.assignments.values())
+      .filter(assignment => assignment.pylonRef === pylonRef)
+      .slice(0, limit)
+
+  listEventsForPylon = async (pylonRef: string, limit: number) =>
+    Array.from(this.events.values())
+      .filter(event => event.pylonRef === pylonRef)
+      .slice(0, limit)
+
+  listEventsForAssignment = async (assignmentRef: string, limit: number) =>
+    Array.from(this.events.values())
+      .filter(event => event.assignmentRef === assignmentRef)
+      .slice(0, limit)
+
+  listRegistrations = async (limit: number) =>
+    Array.from(this.registrations.values()).slice(0, limit)
+
+  readAssignment = async (assignmentRef: string) =>
+    this.assignments.get(assignmentRef)
+
+  readAssignmentByIdempotencyKeyHash = async (idempotencyKeyHash: string) =>
+    this.assignmentsByIdempotency.get(idempotencyKeyHash)
+
+  readEventByIdempotencyKeyHash = async (idempotencyKeyHash: string) =>
+    this.eventsByIdempotency.get(idempotencyKeyHash)
+
+  readRegistration = async (pylonRef: string) =>
+    this.registrations.get(pylonRef)
+
+  updateAssignment = async (record: PylonApiAssignmentRecord) => {
+    this.assignments.set(record.assignmentRef, record)
+    this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+
+    return record
+  }
+
+  upsertRegistration = async (record: PylonApiRegistrationRecord) => {
+    const existing = this.registrations.get(record.pylonRef)
+
+    if (
+      existing !== undefined &&
+      existing.ownerAgentUserId !== record.ownerAgentUserId
+    ) {
+      throw new PylonApiStoreError({
+        kind: 'conflict',
+        reason: 'Pylon ref is already owned by another registered agent.',
+      })
+    }
+
+    const next =
+      existing === undefined
+        ? record
+        : {
+            ...record,
+            createdAt: existing.createdAt,
+            id: existing.id,
+          }
+
+    this.registrations.set(record.pylonRef, next)
+
+    return next
+  }
 }
 
 const agentToken = `${AGENT_TOKEN_PREFIX}autopilot-work-test`
@@ -173,6 +310,7 @@ const route = async (
     idempotencyKey?: string
     executeReadyWork?: AutopilotWorkExecutor
     method?: string
+    pylonApiStore?: PylonApiStore
     pylonRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     pylonStoreRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     scopes?: ReadonlyArray<string>
@@ -180,6 +318,7 @@ const route = async (
   }> = {},
 ) => {
   let counter = 0
+  const maybePylonApiStore = options.pylonApiStore
   const dependencies = {
     agentStore: () => agentStoreForScopes(options.scopes),
     makeId: () => `autopilot_work_order.test_${++counter}`,
@@ -207,6 +346,9 @@ const route = async (
               Promise.resolve(options.pylonStoreRegistrations ?? []),
           }),
         }),
+    ...(maybePylonApiStore === undefined
+      ? {}
+      : { makePylonApiStore: () => maybePylonApiStore }),
   }
   const routes = makeAutopilotWorkRoutes<Record<string, unknown>>(
     dependencies,
@@ -236,6 +378,52 @@ const route = async (
 
   if (response === undefined) {
     throw new Error(`No Autopilot work route matched ${path}`)
+  }
+
+  return Effect.runPromise(response)
+}
+
+const pylonRoute = async (
+  store: PylonApiStore,
+  path: string,
+  options: Readonly<{
+    body?: unknown
+    headers?: HeadersInit
+    idempotencyKey?: string
+    method?: string
+    token?: string
+  }> = {},
+) => {
+  const routes = makePylonApiRoutes<Record<string, unknown>>({
+    agentStore: () => agentStoreForScopes(),
+    makeStore: () => store,
+    nowIso: () => '2026-06-09T17:30:30.000Z',
+  })
+  const body = options.body === undefined
+    ? {}
+    : { body: JSON.stringify(options.body) }
+  const request = new Request(`https://openagents.com${path}`, {
+    ...body,
+    headers: {
+      ...options.headers,
+      ...(options.body === undefined
+        ? {}
+        : { 'content-type': 'application/json' }),
+      ...(options.idempotencyKey === undefined
+        ? {}
+        : { 'Idempotency-Key': options.idempotencyKey }),
+      ...(options.token === undefined
+        ? { authorization: `Bearer ${agentToken}` }
+        : options.token === ''
+          ? {}
+          : { authorization: `Bearer ${options.token}` }),
+    },
+    method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+  })
+  const response = routes.routePylonApiRequest(request, {})
+
+  if (response === undefined) {
+    throw new Error(`No Pylon API route matched ${path}`)
   }
 
   return Effect.runPromise(response)
@@ -412,6 +600,17 @@ const responseJson = async (response: Response) =>
       }>>
       workOrderRef: string
     }>
+    assignment?: Readonly<{
+      assignmentRef: string
+      leaseState: string
+      state: string
+    }>
+    assignments?: ReadonlyArray<Readonly<{
+      assignmentRef: string
+      leaseState: string
+      state: string
+      taskRefs: ReadonlyArray<string>
+    }>>
   }>>
 
 describe('Autopilot work routes', () => {
@@ -702,6 +901,87 @@ describe('Autopilot work routes', () => {
         taskRef: 'task.autopilot_coder.docs_contract',
       }),
     ])
+  })
+
+  test('creates one durable no-spend Pylon assignment lease for requester Pylon work', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([
+      pylonRegistration({
+        pylonRef: 'pylon.production.docs_agent',
+      }),
+    ])
+    const create = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-pylon-lease',
+      pylonApiStore,
+    })
+    const createJson = await responseJson(create)
+    const assignmentRef =
+      'pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract'
+    const replay = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'idempotent replay does not create another lease' },
+      idempotencyKey: 'idem-autopilot-work-pylon-lease',
+      pylonApiStore,
+    })
+    const replayJson = await responseJson(replay)
+    const poll = await pylonRoute(
+      pylonApiStore,
+      '/api/pylons/pylon.production.docs_agent/assignments',
+    )
+    const pollJson = await responseJson(poll)
+    const accept = await pylonRoute(
+      pylonApiStore,
+      `/api/pylons/pylon.production.docs_agent/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.autopilot_pylon.accepted'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-autopilot-pylon-lease',
+        method: 'POST',
+      },
+    )
+    const acceptJson = await responseJson(accept)
+
+    expect(create.status).toBe(202)
+    expect(createJson.work).toMatchObject({
+      assignmentIntents: [
+        expect.objectContaining({
+          plannerReasonRefs: ['assignment.queued_or_running'],
+          plannerState: 'queued_or_running',
+          readyForAssignment: false,
+        }),
+      ],
+      placementDecision: {
+        selectedPylonRef: 'pylon.production.docs_agent',
+        selectedRunnerKind: 'requester_pylon',
+        source: 'requester_pylon',
+      },
+      pylonAssignmentIntents: [],
+      state: 'queued_or_running',
+    })
+    expect(pylonApiStore.assignments.size).toBe(1)
+    expect(replay.status).toBe(200)
+    expect(replayJson.work?.state).toBe('queued_or_running')
+    expect(pylonApiStore.assignments.size).toBe(1)
+    expect(poll.status).toBe(200)
+    expect(pollJson.assignments).toEqual([
+      expect.objectContaining({
+        assignmentRef,
+        leaseState: 'active',
+        state: 'offered',
+        taskRefs: [
+          'autopilot_work_order.test_1',
+          'task.autopilot_coder.docs_contract',
+        ],
+      }),
+    ])
+    expect(accept.status).toBe(201)
+    expect(acceptJson.assignment).toMatchObject({
+      assignmentRef,
+      leaseState: 'active',
+      state: 'accepted',
+    })
   })
 
   test('returns actionable placement needs-input when no runner is available', async () => {

@@ -39,9 +39,11 @@ import {
 } from './l402-payment-headers'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import type {
+  PylonApiAssignmentRecord,
   PylonApiRegistrationRecord,
   PylonApiStore,
 } from './pylon-api'
+import { buildPylonApiAssignmentRecord } from './pylon-api'
 import {
   type AutopilotWorkQuote,
   makeAutopilotWorkQuote,
@@ -296,6 +298,13 @@ export type AutopilotWorkStore = Readonly<{
   createWorkOrder: (
     record: AutopilotWorkOrderRecord,
   ) => Promise<Readonly<{ idempotent: boolean; record: AutopilotWorkOrderRecord }>>
+  recordPylonAssignmentDispatch: (
+    input: Readonly<{
+      ownerUserId: string
+      updatedAt: string
+      workOrderRef: string
+    }>,
+  ) => Promise<AutopilotWorkOrderRecord | undefined>
   recordExecutionCloseout: (
     input: Readonly<{
       executionCloseout: AutopilotWorkExecutionCloseoutRecord
@@ -328,6 +337,28 @@ export type AutopilotWorkExecutor = (
   }>,
 ) => Promise<AutopilotWorkExecutionCloseoutRecord | undefined>
 
+type AutopilotPylonApiStore = Pick<PylonApiStore, 'listRegistrations'> &
+  Partial<
+    Pick<
+      PylonApiStore,
+      | 'createAssignment'
+      | 'listAssignmentsForPylon'
+      | 'readAssignment'
+      | 'readAssignmentByIdempotencyKeyHash'
+      | 'readRegistration'
+    >
+  >
+
+type AutopilotPylonAssignmentLeaseStore =
+  Pick<
+    PylonApiStore,
+    | 'createAssignment'
+    | 'listAssignmentsForPylon'
+    | 'readAssignment'
+    | 'readAssignmentByIdempotencyKeyHash'
+    | 'readRegistration'
+  >
+
 type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
   executeReadyWork?: (
@@ -335,9 +366,7 @@ type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
     input: Parameters<AutopilotWorkExecutor>[0],
   ) => ReturnType<AutopilotWorkExecutor>
   makeId?: () => string
-  makePylonApiStore?: (
-    env: Bindings,
-  ) => Pick<PylonApiStore, 'listRegistrations'>
+  makePylonApiStore?: (env: Bindings) => AutopilotPylonApiStore
   makeStore: (env: Bindings) => AutopilotWorkStore
   nowIso?: () => string
   pylonRegistrations?: (
@@ -434,6 +463,25 @@ const routePylonRegistrations = <Bindings extends AutopilotWorkRouteEnv>(
             dependencies.makePylonApiStore?.(env).listRegistrations(1000) ??
             Promise.resolve([]),
         })
+
+const pylonAssignmentLeaseStore = (
+  store: AutopilotPylonApiStore | undefined,
+): AutopilotPylonAssignmentLeaseStore | undefined =>
+  store !== undefined &&
+  store.createAssignment !== undefined &&
+  store.listAssignmentsForPylon !== undefined &&
+  store.readAssignment !== undefined &&
+  store.readAssignmentByIdempotencyKeyHash !== undefined &&
+  store.readRegistration !== undefined
+    ? {
+        createAssignment: store.createAssignment,
+        listAssignmentsForPylon: store.listAssignmentsForPylon,
+        readAssignment: store.readAssignment,
+        readAssignmentByIdempotencyKeyHash:
+          store.readAssignmentByIdempotencyKeyHash,
+        readRegistration: store.readRegistration,
+      }
+    : undefined
 
 const workOrderRefForId = (id: string): string =>
   id.startsWith('autopilot_work_order.')
@@ -1083,6 +1131,180 @@ const maybeExecuteReadyWork = <Bindings extends AutopilotWorkRouteEnv>(
     return delivered ?? input.record
   })
 
+const autopilotPylonAssignmentIdempotencyKey = (
+  workOrderRef: string,
+  assignmentRef: string,
+): string => `autopilot:pylon_assignment:${workOrderRef}:${assignmentRef}`
+
+const pylonAssignmentRequestForIntent = (
+  work: AutopilotWorkOrderProjection,
+  intent: AutopilotPylonAssignmentIntentProjection,
+) => ({
+  acceptanceCriteriaRefs: intent.acceptanceCriteriaRefs,
+  assignmentRef: intent.assignmentRef,
+  campaignPaused: false,
+  campaignPolicyRefs: [
+    'policy.public.autopilot_coder.no_spend_pylon_assignment',
+  ],
+  campaignRef: `campaign.public.autopilot_coder.no_spend.${work.workOrderRef}`,
+  closeoutPathRefs: intent.closeoutPathRefs,
+  forumAutoPublishAllowed: false,
+  idempotencyRefs: [
+    `idempotency.public.${intent.assignmentRef}.autopilot_work_order`,
+  ],
+  jobKind: intent.jobKind,
+  leaseSeconds: 15 * 60,
+  noDuplicateAssignmentRefs: [
+    `dedupe.public.${intent.assignmentRef}.single_active_lease`,
+  ],
+  noForumAutoPublishRefs: intent.noForumAutoPublishRefs,
+  operatorPauseRefs: ['pause.public.autopilot_coder.no_operator_pause'],
+  paymentMode: intent.paymentMode,
+  pylonRef: intent.pylonRef,
+  requiredCapabilityRefs: intent.requiredCapabilityRefs,
+  resultExpectationRefs: intent.resultExpectationRefs,
+  rollbackRefs: intent.rollbackRefs,
+  selectionPolicyRefs: [
+    `placement_policy.${work.workOrderRef}`,
+    ...intent.selectionPolicyRefs,
+  ],
+  spendCapRefs: intent.spendCapRefs,
+  taskRefs: [work.workOrderRef, intent.taskRef],
+})
+
+const createPylonAssignmentForIntent = async (
+  input: Readonly<{
+    intent: AutopilotPylonAssignmentIntentProjection
+    makeId: () => string
+    nowIso: string
+    ownerAgentUserId: string
+    store: AutopilotPylonAssignmentLeaseStore
+    work: AutopilotWorkOrderProjection
+  }>,
+): Promise<PylonApiAssignmentRecord | undefined> => {
+  const idempotencyKeyHash = await sha256Hex(
+    autopilotPylonAssignmentIdempotencyKey(
+      input.work.workOrderRef,
+      input.intent.assignmentRef,
+    ),
+  )
+  const existingByIdempotency =
+    await input.store.readAssignmentByIdempotencyKeyHash(idempotencyKeyHash)
+
+  if (existingByIdempotency !== undefined) {
+    return existingByIdempotency
+  }
+
+  const existingByRef = await input.store.readAssignment(
+    input.intent.assignmentRef,
+  )
+
+  if (existingByRef !== undefined) {
+    return existingByRef
+  }
+
+  const registration = await input.store.readRegistration(input.intent.pylonRef)
+
+  if (
+    registration === undefined ||
+    registration.ownerAgentUserId !== input.ownerAgentUserId
+  ) {
+    return undefined
+  }
+
+  const assignment = buildPylonApiAssignmentRecord({
+    idempotencyKeyHash,
+    makeId: input.makeId,
+    nowIso: input.nowIso,
+    ownerAgentUserId: registration.ownerAgentUserId,
+    request: pylonAssignmentRequestForIntent(input.work, input.intent),
+  })
+  const result = await input.store.createAssignment(assignment)
+
+  return result.record
+}
+
+const maybeDispatchPylonAssignments = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    idempotent: boolean
+    nowIso: string
+    pylonRegistrations: ReadonlyArray<PylonApiRegistrationRecord>
+    record: AutopilotWorkOrderRecord
+  }>,
+): Effect.Effect<AutopilotWorkOrderRecord, AutopilotWorkStoreError> =>
+  Effect.gen(function* () {
+    if (
+      input.record.executionCloseout !== null ||
+      input.record.state === 'access_required' ||
+      input.record.state === 'payment_required' ||
+      input.record.state === 'queued_or_running'
+    ) {
+      return input.record
+    }
+
+    const pylonStore = pylonAssignmentLeaseStore(
+      dependencies.makePylonApiStore?.(env),
+    )
+
+    if (pylonStore === undefined) {
+      return input.record
+    }
+
+    const work = projectionForRecord(
+      input.record,
+      input.idempotent,
+      input.nowIso,
+      input.pylonRegistrations,
+    )
+
+    if (work.pylonAssignmentIntents.length === 0) {
+      return input.record
+    }
+
+    const assignments = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        Promise.all(
+          work.pylonAssignmentIntents.map(intent =>
+            createPylonAssignmentForIntent({
+              intent,
+              makeId: () => routeMakeId(dependencies),
+              nowIso: input.nowIso,
+              ownerAgentUserId: input.record.agentUserId,
+              store: pylonStore,
+              work,
+            })
+          ),
+        ),
+    })
+
+    if (assignments.filter(Boolean).length === 0) {
+      return input.record
+    }
+
+    const dispatched = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        dependencies.makeStore(env).recordPylonAssignmentDispatch({
+          ownerUserId: input.record.ownerUserId,
+          updatedAt: input.nowIso,
+          workOrderRef: input.record.workOrderRef,
+        }),
+    })
+
+    return dispatched ?? input.record
+  })
+
 const terminalEventKindForState = (
   state: OpenAgentsAutopilotWorkStateType,
 ): AutopilotWorkEventKind | undefined => {
@@ -1230,15 +1452,25 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
           record,
         },
       )
+      const dispatchedRecord = yield* maybeDispatchPylonAssignments(
+        dependencies,
+        env,
+        {
+          idempotent: true,
+          nowIso,
+          pylonRegistrations,
+          record: executedRecord,
+        },
+      )
       const projection = projectionForRecord(
-        executedRecord,
+        dispatchedRecord,
         true,
         nowIso,
         pylonRegistrations,
       )
 
-      return executedRecord.state === 'payment_required'
-        ? paymentRequiredResponse(executedRecord, projection)
+      return dispatchedRecord.state === 'payment_required'
+        ? paymentRequiredResponse(dispatchedRecord, projection)
         : noStoreJsonResponse({ work: projection }, { status: 200 })
     }
 
@@ -1278,15 +1510,25 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
         record: created.record,
       },
     )
+    const dispatchedRecord = yield* maybeDispatchPylonAssignments(
+      dependencies,
+      env,
+      {
+        idempotent: created.idempotent,
+        nowIso,
+        pylonRegistrations,
+        record: executedRecord,
+      },
+    )
     const projection = projectionForRecord(
-      executedRecord,
+      dispatchedRecord,
       created.idempotent,
       nowIso,
       pylonRegistrations,
     )
 
-    return executedRecord.state === 'payment_required'
-      ? paymentRequiredResponse(executedRecord, projection)
+    return dispatchedRecord.state === 'payment_required'
+      ? paymentRequiredResponse(dispatchedRecord, projection)
       : noStoreJsonResponse(
           { work: projection },
           { status: created.idempotent ? 200 : 202 },
@@ -1631,6 +1873,34 @@ export const makeD1AutopilotWorkStore = (
       .run()
 
     return { idempotent: false, record }
+  },
+  recordPylonAssignmentDispatch: async input => {
+    await db
+      .prepare(
+        `UPDATE autopilot_work_orders
+         SET state = 'queued_or_running',
+             updated_at = ?
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+           AND state NOT IN ('access_required', 'payment_required', 'delivered')`,
+      )
+      .bind(input.updatedAt, input.workOrderRef, input.ownerUserId)
+      .run()
+
+    const row = await db
+      .prepare(
+        `SELECT *
+         FROM autopilot_work_orders
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(input.workOrderRef, input.ownerUserId)
+      .first<Record<string, unknown>>()
+
+    return row === null ? undefined : recordFromRow(row)
   },
   recordExecutionCloseout: async input => {
     await db
