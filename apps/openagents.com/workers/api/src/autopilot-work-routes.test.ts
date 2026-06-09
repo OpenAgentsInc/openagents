@@ -210,6 +210,19 @@ const responseJson = async (response: Response) =>
         status: string
       }> | null
       paymentChallengeRef: string | null
+      placementPolicy?: Readonly<{
+        allowedRunnerKinds: ReadonlyArray<string>
+        auditable: boolean
+        disallowedRunnerKinds: ReadonlyArray<string>
+        localOnlyAllowed: boolean
+        placementPolicyRef: string
+        preferredRunnerKinds: ReadonlyArray<string>
+        privacyTier: string
+        promptKeywordRouting: boolean
+        publicTraceAllowed: boolean
+        reasonRefs: ReadonlyArray<string>
+        requiresSecretBroker: boolean
+      }>
       quote?: Readonly<{
         amountCents: number
         paymentRequired: boolean
@@ -284,6 +297,25 @@ describe('Autopilot work routes', () => {
     expect(replay.status).toBe(200)
     expect(firstJson.work).toMatchObject({
       idempotent: false,
+      placementPolicy: {
+        allowedRunnerKinds: ['requester_pylon', 'openagents_shc'],
+        auditable: true,
+        disallowedRunnerKinds: [],
+        localOnlyAllowed: false,
+        placementPolicyRef:
+          'placement_policy.autopilot_work_order.test_1',
+        preferredRunnerKinds: ['requester_pylon'],
+        privacyTier: 'public_beta',
+        promptKeywordRouting: false,
+        publicTraceAllowed: true,
+        reasonRefs: [
+          'placement.privacy.public_beta',
+          'placement.local_only.not_allowed',
+          'placement.public_trace.allowed',
+          'placement.secret_broker.not_required',
+        ],
+        requiresSecretBroker: false,
+      },
       state: 'accepted_free_slice',
       taskRefs: ['task.autopilot_coder.docs_contract'],
       workOrderRef: 'autopilot_work_order.test_1',

@@ -205,7 +205,7 @@ const schemaComponents = (): JsonSchema => ({
     'Typed openagents.autopilot_work_request.v1 delegated coding-work request. It carries public-safe task, repository, placement, payment, and forum policy refs only. Do not include secrets, raw prompts, private repo archives, raw logs, wallet material, invoices, preimages, or provider credentials.',
   ),
   AutopilotWorkEnvelope: objectSummary(
-    'Autopilot work-order response envelope with workOrderRef, clientRequestRef, statusUrlRef, eventStreamRef, task refs, typed task records, assignment intents, access request refs, typed accessRequirements, repositoryAuthorities, deterministic quote, funding projection, optional paymentChallengeRef, idempotent flag, and state.',
+    'Autopilot work-order response envelope with workOrderRef, clientRequestRef, statusUrlRef, eventStreamRef, task refs, typed task records, assignment intents, auditable placement policy record, access request refs, typed accessRequirements, repositoryAuthorities, deterministic quote, funding projection, optional paymentChallengeRef, idempotent flag, and state.',
   ),
   AutopilotWorkEventsEnvelope: objectSummary(
     'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',

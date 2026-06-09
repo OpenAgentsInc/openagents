@@ -122,6 +122,20 @@ export type AutopilotWorkFundingProjection = Readonly<{
   workerPayoutEligible: false
 }>
 
+export type AutopilotWorkPlacementPolicyRecordProjection = Readonly<{
+  allowedRunnerKinds: OpenAgentsAutopilotWorkRequest['placementPolicy']['allowedRunnerKinds']
+  auditable: true
+  disallowedRunnerKinds: OpenAgentsAutopilotWorkRequest['placementPolicy']['disallowedRunnerKinds']
+  localOnlyAllowed: boolean
+  placementPolicyRef: string
+  preferredRunnerKinds: OpenAgentsAutopilotWorkRequest['placementPolicy']['preferredRunnerKinds']
+  privacyTier: OpenAgentsAutopilotWorkRequest['placementPolicy']['privacyTier']
+  promptKeywordRouting: false
+  publicTraceAllowed: boolean
+  reasonRefs: ReadonlyArray<string>
+  requiresSecretBroker: boolean
+}>
+
 export type AutopilotWorkTaskAccessState =
   | 'missing_required_access'
   | 'satisfied'
@@ -187,6 +201,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   idempotent: boolean
   paymentChallenge: AutopilotWorkPaymentChallengeProjection | null
   paymentChallengeRef: string | null
+  placementPolicy: AutopilotWorkPlacementPolicyRecordProjection
   quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
   state: OpenAgentsAutopilotWorkStateType
@@ -595,6 +610,37 @@ const fundingForRecord = (
   }
 }
 
+const placementPolicyForRecord = (
+  record: AutopilotWorkOrderRecord,
+): AutopilotWorkPlacementPolicyRecordProjection => {
+  const policy = record.request.placementPolicy
+
+  return {
+    allowedRunnerKinds: policy.allowedRunnerKinds,
+    auditable: true,
+    disallowedRunnerKinds: policy.disallowedRunnerKinds,
+    localOnlyAllowed: policy.localOnlyAllowed,
+    placementPolicyRef: `placement_policy.${record.workOrderRef}`,
+    preferredRunnerKinds: policy.preferredRunnerKinds,
+    privacyTier: policy.privacyTier,
+    promptKeywordRouting: false,
+    publicTraceAllowed: policy.publicTraceAllowed,
+    reasonRefs: [
+      `placement.privacy.${policy.privacyTier}`,
+      policy.localOnlyAllowed
+        ? 'placement.local_only.allowed'
+        : 'placement.local_only.not_allowed',
+      policy.publicTraceAllowed
+        ? 'placement.public_trace.allowed'
+        : 'placement.public_trace.blocked',
+      policy.requiresSecretBroker
+        ? 'placement.secret_broker.required'
+        : 'placement.secret_broker.not_required',
+    ],
+    requiresSecretBroker: policy.requiresSecretBroker,
+  }
+}
+
 const lifecycleStateForTask = (
   record: AutopilotWorkOrderRecord,
   taskAccessRequirements: ReadonlyArray<AutopilotWorkAccessRequirementProjection>,
@@ -703,6 +749,7 @@ const projectionForRecord = (
     idempotent,
     paymentChallenge: paymentChallengeForRecord(record),
     paymentChallengeRef: record.paymentChallengeRef,
+    placementPolicy: placementPolicyForRecord(record),
     quote: makeAutopilotWorkQuote(record.request),
     repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
     state: record.state,
@@ -1196,12 +1243,13 @@ export const makeD1AutopilotWorkStore = (
           access_request_refs_json,
           buyer_payment_proof_ref,
           payment_challenge_ref,
+          placement_policy_json,
           status_url_ref,
           event_stream_ref,
           created_at,
           updated_at,
           archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         record.id,
@@ -1217,6 +1265,7 @@ export const makeD1AutopilotWorkStore = (
         JSON.stringify(record.accessRequestRefs),
         record.buyerPaymentProofRef,
         record.paymentChallengeRef,
+        JSON.stringify(record.request.placementPolicy),
         record.statusUrlRef,
         record.eventStreamRef,
         record.createdAt,

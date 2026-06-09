@@ -367,3 +367,33 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/operator-order-triage-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-013: Placement Policy Records
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4587`
+
+Status: implemented.
+
+Implemented:
+
+- Added D1 migration `0142_autopilot_work_placement_policies.sql`.
+- Persisted normalized `placement_policy_json` on Autopilot work orders.
+- Added an auditable `placementPolicy` record to work-order projections with:
+  - `privacyTier`
+  - `preferredRunnerKinds`
+  - `allowedRunnerKinds`
+  - `disallowedRunnerKinds`
+  - `localOnlyAllowed`
+  - `publicTraceAllowed`
+  - `requiresSecretBroker`
+  - `reasonRefs`
+- Explicitly exposed:
+  - `auditable: true`
+  - `promptKeywordRouting: false`
+- Updated OpenAPI summary text so agent-readable docs expose placement policy
+  records.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
