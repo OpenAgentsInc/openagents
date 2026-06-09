@@ -2,17 +2,17 @@
 
 Date: 2026-06-03
 
-Status: audit complete; Omega reference implementation now includes durable
+Status: audit complete; OpenAgents product surface reference implementation now includes durable
 team history, team sync, compact inline Autopilot run cards, bounded child-run
 context, and idempotent answer-back messages.
 
 Primary implementation target: `vortex/`
 
-Reference implementation/source material: `autopilot-omega/`
+Reference implementation/source material: `openagents/`
 
-## 2026-06-03 Omega Implementation Update
+## 2026-06-03 OpenAgents product surface Implementation Update
 
-Issue #16 completed the Omega-side reference flow for team Autopilot
+Issue #16 completed the OpenAgents product surface-side reference flow for team Autopilot
 invocations:
 
 - exact `@autopilot <prompt>` team messages pre-generate the parent
@@ -87,7 +87,7 @@ the child run finishes, Autopilot should post a normal visible answer back into
 the team room, preferably using the final assistant message from the child
 Codex/opencode thread as the first implementation source.
 
-The user explicitly asked to start with a full audit, document it in the Omega
+The user explicitly asked to start with a full audit, document it in the OpenAgents product surface
 docs folder, and push that audit.
 
 ## Sources Reviewed
@@ -126,34 +126,34 @@ docs folder, and push that audit.
   - `vortex/server/programs/chat/submitThreadTurn.ts`
   - `vortex/server/collaborativeThreadRegressions.test.ts`
   - `vortex/server/workspaceThreadScope.test.ts`
-- Omega docs:
-  - `autopilot-omega/docs/2026-06-02-cloudflare-only-openagents-sync-audit.md`
-  - `autopilot-omega/docs/2026-06-03-openchamber-ui-ux-port-research.md`
-  - `autopilot-omega/docs/2026-06-03-logged-in-sidebar-consolidation.md`
-  - `autopilot-omega/docs/2026-06-02-shc-agent-deployment-runbook.md`
-  - `autopilot-omega/docs/more.md`
-- Omega implementation:
-  - `autopilot-omega/workers/api/migrations/0004_core_team_memberships.sql`
-  - `autopilot-omega/workers/api/migrations/0012_team_chat_messages.sql`
-  - `autopilot-omega/workers/api/migrations/0014_autopilot_thread_ids.sql`
-  - `autopilot-omega/workers/api/migrations/0020_thread_files.sql`
-  - `autopilot-omega/workers/api/src/index.ts`
-  - `autopilot-omega/workers/api/src/omni-runs.ts`
-  - `autopilot-omega/packages/sync-schema/src/index.ts`
-  - `autopilot-omega/packages/sync-worker/src/index.ts`
-  - `autopilot-omega/apps/web/src/route.ts`
-  - `autopilot-omega/apps/web/src/page/loggedIn/model.ts`
-  - `autopilot-omega/apps/web/src/page/loggedIn/message.ts`
-  - `autopilot-omega/apps/web/src/page/loggedIn/update.ts`
-  - `autopilot-omega/apps/web/src/page/loggedIn/page/chat.ts`
-  - `autopilot-omega/apps/web/src/page/loggedIn/page/files.ts`
+- OpenAgents product surface docs:
+  - `openagents/docs/2026-06-02-cloudflare-only-openagents-sync-audit.md`
+  - `openagents/docs/2026-06-03-openchamber-ui-ux-port-research.md`
+  - `openagents/docs/2026-06-03-logged-in-sidebar-consolidation.md`
+  - `openagents/docs/2026-06-02-shc-agent-deployment-runbook.md`
+  - `openagents/docs/more.md`
+- OpenAgents product surface implementation:
+  - `openagents/workers/api/migrations/0004_core_team_memberships.sql`
+  - `openagents/workers/api/migrations/0012_team_chat_messages.sql`
+  - `openagents/workers/api/migrations/0014_autopilot_thread_ids.sql`
+  - `openagents/workers/api/migrations/0020_thread_files.sql`
+  - `openagents/workers/api/src/index.ts`
+  - `openagents/workers/api/src/omni-runs.ts`
+  - `openagents/packages/sync-schema/src/index.ts`
+  - `openagents/packages/sync-worker/src/index.ts`
+  - `openagents/apps/web/src/route.ts`
+  - `openagents/apps/web/src/page/loggedIn/model.ts`
+  - `openagents/apps/web/src/page/loggedIn/message.ts`
+  - `openagents/apps/web/src/page/loggedIn/update.ts`
+  - `openagents/apps/web/src/page/loggedIn/page/chat.ts`
+  - `openagents/apps/web/src/page/loggedIn/page/files.ts`
   - related logged-in tests referenced by search
 
 ## High-Level Finding
 
-The active product implementation is Vortex, not Omega. The workspace contract
+The active product implementation is Vortex, not OpenAgents product surface. The workspace contract
 routes new Cloud-facing Autopilot UX, workroom, review, approval, acceptance,
-projection, and BFF work to `vortex/`. Omega is still useful because it contains
+projection, and BFF work to `vortex/`. OpenAgents product surface is still useful because it contains
 the prior team-room shape: teams, memberships, explicit team-room routes,
 D1-backed team chat messages, `autopilot_intent` chat rows, Autopilot thread
 ids, and a Cloudflare sync layer with workspace/thread/agent-run/team scopes.
@@ -170,7 +170,7 @@ an answer-back contract where the child run posts its final useful response into
 the parent room.
 
 The correct port is therefore product-contract level, not a direct database
-port. Bring Omega's team-room behavior into Vortex using Vortex's existing
+port. Bring OpenAgents product surface's team-room behavior into Vortex using Vortex's existing
 Convex thread/workroom model.
 
 ## Product Contract To Implement
@@ -253,7 +253,7 @@ already carries `threadId`, `userId`, optional `organizationId`, optional
 `projectId`, role, content, status, model/provider metadata, and timestamps.
 
 This is the right canonical store for Vortex team-room messages. A separate
-Omega-style `team_chat_messages` table is not necessary unless the product
+OpenAgents product surface-style `team_chat_messages` table is not necessary unless the product
 needs a non-thread room aggregate that deliberately sits outside the existing
 thread model.
 
@@ -358,7 +358,7 @@ inspected tree does not expose a first-class `/teams/:teamRef/chat` route. Team
 workspace behavior exists inside the prototype sidebar, not as a durable route
 that resolves a team room by slug/ref.
 
-A first-class route is recommended because Omega's route model and docs already
+A first-class route is recommended because OpenAgents product surface's route model and docs already
 use explicit team room deep links such as `/teams/openagents-core-team/chat`.
 
 ### Vortex Tests Already Cover Related Invariants
@@ -380,7 +380,7 @@ use explicit team room deep links such as `/teams/openagents-core-team/chat`.
 These tests are a strong base. The team-room work should extend them, not
 replace them.
 
-## Omega Prior Behavior and Reference Points
+## OpenAgents product surface Prior Behavior and Reference Points
 
 ### Teams and Memberships
 
@@ -435,7 +435,7 @@ That is the closest existing match to the requested behavior.
 
 ### Thread Files and Team Files
 
-Omega now has a concrete file reference model for the clarified workflow.
+OpenAgents product surface now has a concrete file reference model for the clarified workflow.
 `0020_thread_files.sql` adds `thread_files` with:
 
 - `scope` as `personal` or `team`
@@ -475,7 +475,7 @@ by the user, but it is a useful reference for the required shared-file records.
 Team file list rows now open the file detail page instead of immediately
 downloading the raw object, so users can inspect references first.
 
-### Omega UI State
+### OpenAgents product surface UI State
 
 The logged-in Foldkit app has a `TeamChat` route and a `teamChatThreadId`
 helper returning `team:<teamId>:chat`. The room view can render team context,
@@ -483,20 +483,20 @@ file scope, chat messages, run status, run events, artifacts, and tokens.
 
 At audit time, the reducer's `SubmittedChatComposer` path still launched an
 Autopilot run for every submitted prompt. The client did not have a wired
-`LoadTeamMessages` or `PostTeamMessage` command, so the most reliable Omega
+`LoadTeamMessages` or `PostTeamMessage` command, so the most reliable OpenAgents product surface
 source for "previous version had team message history" was the D1/API layer and
 route model.
 
-As of issue #14, Omega's logged-in web client now models durable team chat
+As of issue #14, OpenAgents product surface's logged-in web client now models durable team chat
 messages, loads `/api/teams/:teamId/chat/messages` on `TeamChatRoute`, renders
 author-labeled team history in the workroom timeline, posts plain team messages
 with `kind: "message"`, and only creates a team Autopilot intent when the
 submitted text exactly starts with `@autopilot `. Personal `/chat` still uses
 the direct `/api/omni/agent-runs` launch path.
 
-### Omega Sync
+### OpenAgents product surface Sync
 
-Omega has the new sync substrate:
+OpenAgents product surface has the new sync substrate:
 
 - `workspace:<userId>`
 - `team:<teamId>`
@@ -754,11 +754,11 @@ For the parent room, sync should include:
 For the child workroom route, sync should include the full event/workroom/run
 records and the file/context bundle required by that workroom.
 
-In Omega, the sync substrate already supports team/thread/agent-run scopes, but
+In OpenAgents product surface, the sync substrate already supports team/thread/agent-run scopes, but
 team chat messages need explicit outbox writes and `team:<teamId>` notifications
 after POST. In Vortex, Convex live queries already provide a subscription model,
 but the inspected app still uses custom browser events and polling for some
-workroom refreshes. If the "new sync thing" is being ported from Omega into
+workroom refreshes. If the "new sync thing" is being ported from OpenAgents product surface into
 Vortex, the team-room work should be one of its first concrete consumers.
 
 If Vortex remains Convex-native for this pass, use Convex queries as the live
@@ -868,7 +868,7 @@ Sync scopes later without changing product behavior.
 - Vortex's current generic chat submit path always starts an assistant/model
   turn. Team-room composer semantics need to be split deliberately.
 - Vortex does not currently have a single complete team-room file upload,
-  authorization, extraction, and runner-read contract. Omega's `thread_files`
+  authorization, extraction, and runner-read contract. OpenAgents product surface's `thread_files`
   path is a useful reference, but Vortex needs its own Convex/storage/sync
   shape.
 - PDF contents need a bounded extraction path before the runner can summarize
@@ -879,7 +879,7 @@ Sync scopes later without changing product behavior.
   when the invoking user cannot launch a run.
 - Answer-back must be idempotent. Runner retries, duplicate terminal events, or
   sync replay must not post multiple final Autopilot summaries into the room.
-- Omega's sync layer now publishes and broadcasts team chat, team files, and
+- OpenAgents product surface's sync layer now publishes and broadcasts team chat, team files, and
   final answer-back messages through `team:<teamId>`. The compact inline
   parent-room run card is implemented in the Foldkit room view; the full run
   event stream remains scoped to `/t/:threadId`.
@@ -909,7 +909,7 @@ Use Vortex's existing thread model as the source of truth:
 - a final Autopilot answer message posted back into the parent room
 - full workroom detail only in the child route
 
-Port Omega's behavior and route semantics, not its exact D1 schema. The Omega
+Port OpenAgents product surface's behavior and route semantics, not its exact D1 schema. The OpenAgents product surface
 `team_chat_messages` table is the historical proof that team rooms had durable
 message history and Autopilot-intent rows. Vortex already has a broader durable
 contract, so the implementation should make the team room a first-class scoped

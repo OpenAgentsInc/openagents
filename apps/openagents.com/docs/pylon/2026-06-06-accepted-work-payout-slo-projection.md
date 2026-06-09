@@ -1,6 +1,6 @@
 # Accepted-Work Payout SLO Projection
 
-Issue #355 / `OMEGA-L-007` adds read-only accepted-work payout SLO
+Issue #355 / `OPENAGENTS-L-007` adds read-only accepted-work payout SLO
 projections.
 
 The implementation lives in
@@ -8,8 +8,8 @@ The implementation lives in
 
 ## Purpose
 
-The projection lets Omega show payout progress and attention states for
-accepted Pylon work without implying that Omega can dispatch payouts, spend
+The projection lets OpenAgents product surface show payout progress and attention states for
+accepted Pylon work without implying that OpenAgents product surface can dispatch payouts, spend
 from a wallet, mutate payout targets, change provider eligibility, charge a
 buyer, or mark settlement.
 

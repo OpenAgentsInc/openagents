@@ -4,11 +4,11 @@ Date: 2026-06-08
 
 ## Executive summary
 
-Omega can sustainably call Gemini through Google Gemini Enterprise Agent
+OpenAgents product surface can sustainably call Gemini through Google Gemini Enterprise Agent
 Platform only if Google authentication moves from the current API-key shape to
 a workload identity shape.
 
-The current Omega image-generation implementation in
+The current OpenAgents product surface image-generation implementation in
 `workers/api/src/image-generation.ts` calls
 `generativelanguage.googleapis.com` with `x-goog-api-key` from the
 `GEMINI_API_KEY` Worker secret. That was a reasonable first slice for
@@ -38,7 +38,7 @@ The sustainable production answer is therefore:
   `gcloud auth application-default login`;
 - production inference must run from an identity-bearing environment, or from
   a broker that runs in one;
-- Omega must stop treating a Google API key as the Gemini production authority;
+- OpenAgents product surface must stop treating a Google API key as the Gemini production authority;
 - access tokens must be short-lived and automatically refreshed by ADC,
   metadata-server credentials, service-account impersonation, or Workload
   Identity Federation;
@@ -46,9 +46,9 @@ The sustainable production answer is therefore:
   and model prompts must stay out of D1, browser state, public sync, docs,
   issue comments, and logs.
 
-The cleanest production architecture for the current Omega/Cloudflare stack is
+The cleanest production architecture for the current OpenAgents product surface/Cloudflare stack is
 a narrow Google inference gateway running on Cloud Run, GKE, or another Google
-Cloud resource with an attached service account. Omega calls that gateway; the
+Cloud resource with an attached service account. OpenAgents product surface calls that gateway; the
 gateway uses ADC to call Agent Platform Model APIs. If we need Cloudflare-only
 direct calls later, use Workload Identity Federation only after we establish a
 stable external identity token with a public issuer/JWKS and bounded claims.
@@ -126,7 +126,7 @@ Primary docs:
 - Google organization policy constraint reference:
   https://docs.cloud.google.com/organization-policy/reference/org-policy-constraints
 
-## Current Omega state
+## Current OpenAgents product surface state
 
 Relevant current files:
 
@@ -292,7 +292,7 @@ For an Agent Platform / Vertex AI authorization key bound to a service account:
 gcloud beta services api-keys create \
   --display-name=openagents-agent-platform-auth-key \
   --api-target=service=aiplatform.googleapis.com \
-  --service-account=omega-gemini-inference@openagentsgemini.iam.gserviceaccount.com
+  --service-account=openagents-gemini-inference@openagentsgemini.iam.gserviceaccount.com
 ```
 
 Then add application restrictions where possible. For a server-side key, prefer
@@ -442,7 +442,7 @@ identity. These are different credential locations and should not be blurred.
 Use a Google-hosted inference gateway as the first durable production step.
 
 ```text
-Omega Worker
+OpenAgents product surface Worker
   -> signed internal inference request
   -> Google Inference Gateway on Cloud Run/GKE/Compute
   -> ADC from attached service account
@@ -451,12 +451,12 @@ Omega Worker
 
 The gateway should be narrow:
 
-- accepts only normalized generation requests from Omega;
-- verifies an Omega service credential, HMAC, Cloudflare Access policy, mTLS
+- accepts only normalized generation requests from OpenAgents product surface;
+- verifies an OpenAgents product surface service credential, HMAC, Cloudflare Access policy, mTLS
   client identity, or a later WIF-backed caller identity;
 - rejects browser-originated calls directly;
 - uses an attached service account such as
-  `omega-gemini-inference@<project>.iam.gserviceaccount.com`;
+  `openagents-gemini-inference@<project>.iam.gserviceaccount.com`;
 - grants only the Agent Platform permissions needed for model inference;
 - never grants Owner, Editor, Viewer, broad admin, billing admin, or service
   account key admin roles;
@@ -467,8 +467,8 @@ The gateway should be narrow:
   request id if available;
 - omits raw prompts from public receipts unless an explicit safe projection is
   modeled and tested;
-- returns normalized application output to Omega;
-- leaves generated image bytes in Omega R2 or moves storage behind a separate
+- returns normalized application output to OpenAgents product surface;
+- leaves generated image bytes in OpenAgents product surface R2 or moves storage behind a separate
   explicit artifact policy.
 
 Why this is the best first step:
@@ -478,7 +478,7 @@ Why this is the best first step:
 - it avoids storing service account keys in Cloudflare;
 - it avoids relying on a human's local `gcloud` login;
 - it gives Google Cloud IAM and audit logs a normal workload principal;
-- it keeps Omega's existing Worker app, auth, R2, D1, and UI surfaces intact;
+- it keeps OpenAgents product surface's existing Worker app, auth, R2, D1, and UI surfaces intact;
 - it creates a small, testable boundary that can be replaced later by direct
   Workload Identity Federation if Cloudflare runtime identity becomes clean
   enough.
@@ -487,7 +487,7 @@ Why this is the best first step:
 
 ### Workload Identity Federation
 
-This is the right long-term shape if Omega must call Agent Platform directly
+This is the right long-term shape if OpenAgents product surface must call Agent Platform directly
 from Cloudflare without a Google-hosted broker. It requires a trustworthy
 external identity credential that Google can validate through WIF.
 
@@ -545,7 +545,7 @@ always-on customer or agent-platform inference.
 
 ## Endpoint migration
 
-Current Omega uses the Google AI Developer API style:
+Current OpenAgents product surface uses the Google AI Developer API style:
 
 ```text
 POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent
@@ -594,7 +594,7 @@ The Google project must have:
 Create a dedicated service account:
 
 ```text
-omega-gemini-inference@<project>.iam.gserviceaccount.com
+openagents-gemini-inference@<project>.iam.gserviceaccount.com
 ```
 
 Grant only inference-required permissions. Start with Google's predefined
@@ -617,7 +617,7 @@ impersonation:
 
 ```sh
 gcloud auth application-default login \
-  --impersonate-service-account=omega-gemini-inference@<project>.iam.gserviceaccount.com
+  --impersonate-service-account=openagents-gemini-inference@<project>.iam.gserviceaccount.com
 ```
 
 That requires the local principal to have
@@ -656,17 +656,17 @@ For local ADC:
 - if local ADC breaks, re-run `gcloud auth application-default login` or the
   Google setup script locally.
 
-## Omega application boundary
+## OpenAgents product surface application boundary
 
 The production application boundary should become:
 
-- browser sends prompt/request to Omega only;
-- Omega authenticates OpenAgents session and operator/team access;
-- Omega writes an internal request receipt without raw credential material;
-- Omega calls the Google inference gateway or WIF-backed Google client;
-- Omega stores output artifacts under existing `ARTIFACTS` policy;
-- Omega returns stable application URLs and normalized metadata;
-- Omega logs only normalized provider errors and safe usage metadata.
+- browser sends prompt/request to OpenAgents product surface only;
+- OpenAgents product surface authenticates OpenAgents session and operator/team access;
+- OpenAgents product surface writes an internal request receipt without raw credential material;
+- OpenAgents product surface calls the Google inference gateway or WIF-backed Google client;
+- OpenAgents product surface stores output artifacts under existing `ARTIFACTS` policy;
+- OpenAgents product surface returns stable application URLs and normalized metadata;
+- OpenAgents product surface logs only normalized provider errors and safe usage metadata.
 
 Do not add:
 
@@ -755,7 +755,7 @@ Provider:
 - response contains safety block;
 - usage metadata missing.
 
-Omega boundary:
+OpenAgents product surface boundary:
 
 - unauthenticated browser cannot call generation;
 - non-operator cannot call generation if route remains operator-only;
@@ -807,7 +807,7 @@ Production verification for the recommended gateway should instead prove:
 
 - the gateway runtime service account is the token source;
 - the gateway can call Agent Platform without `gcloud`;
-- Omega can call the gateway through the intended internal auth boundary;
+- OpenAgents product surface can call the gateway through the intended internal auth boundary;
 - disabling the gateway service account stops inference;
 - no `GEMINI_API_KEY` is required for the production route.
 
@@ -817,10 +817,10 @@ Production verification for the recommended gateway should instead prove:
    auth-mode agnostic and returns normalized text/image/usage output.
 2. Add an Agent Platform request builder for
    `aiplatform.googleapis.com/v1/projects/<project>/locations/<location>/publishers/google/models/<model>:generateContent`.
-3. Add a gateway-client implementation for Omega production.
+3. Add a gateway-client implementation for OpenAgents product surface production.
 4. Implement the Google-hosted inference gateway with attached service account
    ADC.
-5. Protect the gateway with a narrow Omega service-auth boundary.
+5. Protect the gateway with a narrow OpenAgents product surface service-auth boundary.
 6. Add local ADC provider tests gated behind `RUN_GOOGLE_PROVIDER_TESTS=true`.
 7. Add deploy checks proving production mode does not require or send
    `GEMINI_API_KEY`.
@@ -833,9 +833,9 @@ Production verification for the recommended gateway should instead prove:
 
 Use `setup_adc.sh` to authenticate the local operator once and prove the
 Google project can call Agent Platform. Do not treat that local ADC file as
-Omega production auth.
+OpenAgents product surface production auth.
 
 For always-on inference, put Google authentication behind a workload identity:
 prefer a Google-hosted inference gateway with an attached service account now,
 then evaluate direct Cloudflare-to-Google Workload Identity Federation when
-Omega has a stable external identity token suitable for Google's WIF.
+OpenAgents product surface has a stable external identity token suitable for Google's WIF.

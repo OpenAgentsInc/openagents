@@ -1,6 +1,6 @@
 # Blueprint Release Gate And Eval Fixtures v1
 
-Issue: OMEGA-BP-010 / #230
+Issue: OPENAGENTS-BP-010 / #230
 
 This note records the typed Release Gate and eval fixture model. The source of
 truth is `workers/api/src/blueprint/schemas/release-gate.ts`.

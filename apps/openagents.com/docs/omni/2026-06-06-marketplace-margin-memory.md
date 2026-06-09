@@ -1,6 +1,6 @@
 # Marketplace Margin Memory
 
-Status: implemented for issue #375 / `OMEGA-LATE-015`.
+Status: implemented for issue #375 / `OPENAGENTS-LATE-015`.
 
 ## Purpose
 

@@ -74,7 +74,7 @@ bun run artanis:readiness -- \
   --d1-tables "artanis_runtime_snapshots,artanis_loop_records" \
   --latest-pylon-release-tag "pylon-v0.1.23" \
   --scheduled-runner disabled \
-  --source-commit "commit.public.autopilot_omega.3b24bf68"
+  --source-commit "commit.public.autopilot_openagents.3b24bf68"
 ```
 
 When an operator has a read-only D1 table list, pass it through

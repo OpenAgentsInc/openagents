@@ -1,6 +1,6 @@
 # Voice Session Evidence Records
 
-Status: implemented for issue #373 / `OMEGA-LATE-013`.
+Status: implemented for issue #373 / `OPENAGENTS-LATE-013`.
 
 ## Purpose
 

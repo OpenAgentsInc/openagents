@@ -385,7 +385,7 @@ Vortex's current provider-account flow is the right reference:
    writes it only to that run's private SHC directory.
 8. Runner runs the task and scrubs session auth.
 
-In `autopilot-omega`, the concrete Cloudflare endpoints are:
+In `openagents`, the concrete Cloudflare endpoints are:
 
 ```text
 POST /api/provider-accounts/:providerAccountRef/grants
@@ -463,13 +463,13 @@ The work order is attached to the agent-run assignment as `githubWorkOrder`:
   "repository": {
     "provider": "github",
     "owner": "OpenAgentsInc",
-    "repo": "autopilot-omega"
+    "repo": "openagents"
   },
   "baseRef": "main",
   "branchName": "autopilot/smoke-github-write-issue-6",
   "commitMessage": "docs: add autopilot github write smoke receipt",
   "issueNumber": 6,
-  "issueUrl": "https://github.com/OpenAgentsInc/autopilot-omega/issues/6",
+  "issueUrl": "https://github.com/OpenAgentsInc/openagents/issues/6",
   "pullRequestTitle": "docs: add Autopilot GitHub write smoke receipt",
   "writeback": {
     "pushBranch": true,
@@ -482,10 +482,10 @@ The work order is attached to the agent-run assignment as `githubWorkOrder`:
 The 2026-06-02 production smoke exercised the full path:
 
 - run: `agent_run_202c4c5e95e64a3791d18272408bdc80`
-- issue: `https://github.com/OpenAgentsInc/autopilot-omega/issues/6`
+- issue: `https://github.com/OpenAgentsInc/openagents/issues/6`
 - branch: `autopilot/smoke-github-write-issue-6`
 - commit: `1fb869e8407b41ea89beb94a74f9a012ee41a8f4`
-- pull request: `https://github.com/OpenAgentsInc/autopilot-omega/pull/7`
+- pull request: `https://github.com/OpenAgentsInc/openagents/pull/7`
 
 For current SHC Codex runs, account-scoped homes have been documented under:
 
@@ -607,7 +607,7 @@ Initial OpenCode runtime assignment:
   "repository": {
     "provider": "github",
     "owner": "OpenAgentsInc",
-    "repo": "autopilot-omega",
+    "repo": "openagents",
     "ref": "main"
   },
   "providerAccountRef": "provider_account_...",
@@ -668,7 +668,7 @@ Target deploy assignment:
   "repository": {
     "provider": "github",
     "owner": "OpenAgentsInc",
-    "repo": "autopilot-omega",
+    "repo": "openagents",
     "ref": "main"
   },
   "commands": {
@@ -722,7 +722,7 @@ shape, but should normally be issued by the deploy runner rather than manually:
 ```sh
 sudo mkdir -p /opt/openagents/autopilot/releases /opt/openagents/autopilot/shared
 sudo chown -R openagents:openagents /opt/openagents/autopilot
-git clone https://github.com/OpenAgentsInc/autopilot-omega.git /opt/openagents/autopilot/releases/<deploy-id>
+git clone https://github.com/OpenAgentsInc/openagents.git /opt/openagents/autopilot/releases/<deploy-id>
 cd /opt/openagents/autopilot/releases/<deploy-id>
 bun install --frozen-lockfile
 bun run typecheck
@@ -1147,7 +1147,7 @@ After the run/deploy:
 ## Open Issues
 
 - SHC OpenCode server service names, ports, and lifecycle commands need to be
-  captured after first install. Omega now posts Vortex-compatible cancel
+  captured after first install. OpenAgents product surface now posts Vortex-compatible cancel
   actions to candidate `codex-runs/cancel` routes when billing credits are
   exhausted, but SHC should provide an explicit cancellation contract and
   receipt for environment teardown.

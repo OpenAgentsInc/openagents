@@ -1,6 +1,6 @@
-# Omega Probe Program Run Evidence Intake
+# OpenAgents product surface Probe Program Run Evidence Intake
 
-Issue #496 adds the first Omega route that accepts Probe-emitted Blueprint
+Issue #496 adds the first OpenAgents product surface route that accepts Probe-emitted Blueprint
 Program Run evidence.
 
 The route is:
@@ -8,14 +8,14 @@ The route is:
 - `POST /api/blueprint/program-runs`
 
 It accepts Probe's `ProbeBlueprintProgramRunEvidence` envelope and normalizes it
-into Omega's `BlueprintProgramRunRecord` repository. The route is authorized by
+into OpenAgents product surface's `BlueprintProgramRunRecord` repository. The route is authorized by
 the runner callback token path, with admin API token support for operator-owned
 manual verification. It returns `BlueprintProgramRunEvidenceIntakeResponse`,
 which contains only the safe Program Run detail projection, receipt refs, and
-the Omega registry version ref.
+the OpenAgents product surface registry version ref.
 
-The envelope is evidence only. Omega rejects records that claim deploy, email,
-spend, source mutation, or direct mutation authority. Omega also checks the raw
+The envelope is evidence only. OpenAgents product surface rejects records that claim deploy, email,
+spend, source mutation, or direct mutation authority. OpenAgents product surface also checks the raw
 request body before schema decoding so unknown fields cannot smuggle raw
 prompts, callback URLs or tokens, provider payloads, private file content,
 private repo refs, wallet material, customer private data, or provider secrets
@@ -24,7 +24,7 @@ past an otherwise strict schema.
 Accepted records preserve Probe's actor, assignment, runner, workroom, thread,
 order, backend, model, lookup, menu, registry, Program Type, Program Signature,
 Module Version, prompt summary, tool callback, cost, usage, latency, evidence,
-receipt, and typed-output refs. Omega derives the Program Run `purposeRef` from
+receipt, and typed-output refs. OpenAgents product surface derives the Program Run `purposeRef` from
 the current Blueprint Program Registry and requires the evidence
 `registryVersionRef`, Program Type, Program Signature, and Module Version to
 match that registry.

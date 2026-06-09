@@ -247,6 +247,8 @@ export const browserCommandProductIntents = {
   LoadPublicAdjutantActivity: 'public.adjutant.activity.load',
   LoadPublicAgentGoal: 'public.agent.goal.load',
   LoadPublicArtanisReport: 'public.artanis.report.load',
+  LoadPublicForumLaunchStatus: 'public.forum.launch-status.load',
+  LoadPublicForumTipLeaderboards: 'public.forum.tip-leaderboards.load',
   LoadPublicPylonStats: 'public.pylon.stats.load',
   LoadShareProjection: 'share.projection.load',
   LoadSyncSnapshot: 'sync.workspace.snapshot.load',

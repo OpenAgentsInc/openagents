@@ -5,14 +5,14 @@ Related issue: #501
 Repositories:
 
 - `OpenAgentsInc/openagents`
-- `OpenAgentsInc/autopilot-omega`
+- `OpenAgentsInc/openagents`
 
 ## Summary
 
 #501 adds the source-controlled Pylon launcher path for MDK-backed wallet
 readiness. A registered Pylon can now opt into local MoneyDevKit agent-wallet
 setup, create a receive-readiness invoice locally, and submit only redacted
-wallet and payout-target refs to Omega.
+wallet and payout-target refs to OpenAgents product surface.
 
 This is not a payout proof. It proves wallet and payout-target readiness intake
 only. Assignment, accepted-work closeout, bitcoin payout, public receipts,
@@ -70,7 +70,7 @@ Result:
 0 fail
 ```
 
-Omega route/projection tests:
+OpenAgents product surface route/projection tests:
 
 ```bash
 bun run --cwd workers/api test -- \
@@ -85,7 +85,7 @@ Result:
 0 fail
 ```
 
-The Omega route coverage now includes payout-target admission statuses:
+The OpenAgents product surface route coverage now includes payout-target admission statuses:
 
 - `pending`;
 - `approved`;

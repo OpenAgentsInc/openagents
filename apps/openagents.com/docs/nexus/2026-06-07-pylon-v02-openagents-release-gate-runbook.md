@@ -1,4 +1,4 @@
-# Pylon v0.2 Omega Release Gate Runbook
+# Pylon v0.2 OpenAgents product surface Release Gate Runbook
 
 Date: 2026-06-07
 Related issues: #432, #438, #489, #490, #491, #492, #493, #499, #505
@@ -7,11 +7,11 @@ Related issues: #432, #438, #489, #490, #491, #492, #493, #499, #505
 
 `@openagentsinc/pylon@0.2.5` is now the downloadable package launcher and npm
 `latest` points at `0.2.5`. This package-launcher release shipped after the
-Omega/Nexus network-readiness gate passed for a limited release: macOS arm64
+OpenAgents product surface/Nexus network-readiness gate passed for a limited release: macOS arm64
 and Linux x86_64 package-launcher smokes work, and two distinct Pylons have
 public-safe accepted-work bitcoin receipts.
 
-This runbook is the release classifier for the current Omega-owned Nexus path.
+This runbook is the release classifier for the current OpenAgents product surface-owned Nexus path.
 It replaces the old plan to make the Google Cloud Nexus VM the normal release
 gate. Old Google Cloud Nexus evidence may be retained as transition context,
 but a future agent must not require SSH into that VM to decide whether Pylon
@@ -19,8 +19,8 @@ v0.2 can be announced.
 
 The typed checklist lives in:
 
-- `workers/api/src/pylon-v02-omega-release-gate.ts`
-- `workers/api/src/pylon-v02-omega-release-gate.test.ts`
+- `workers/api/src/pylon-v02-openagents-release-gate.ts`
+- `workers/api/src/pylon-v02-openagents-release-gate.test.ts`
 
 #434 selected the Worker-safe MDK-compatible runtime boundary, #438 retained
 an Artanis-administered real small-bitcoin assignment with public-safe
@@ -67,7 +67,7 @@ Artanis/Nexus/Pylon paid-work loop is repeatable enough to claim publicly."
   stronger release claims are allowed.
 - #488 publishes the proof state through Artanis public and Forum surfaces
   without overclaiming autonomy, release, or settlement. The public Artanis
-  report now includes `pylonOmegaReleaseGate`, `/artanis` renders an Omega
+  report now includes `pylonOpenAgents product surfaceReleaseGate`, `/artanis` renders an OpenAgents product surface
   release-gate panel, and the Artanis Nexus/Pylon Forum bridge can emit
   blocked or passed release-gate updates into the Pylon release work-log topic.
 - #489 aligned the public release artifact layer: GitHub lists
@@ -100,7 +100,7 @@ Artanis/Nexus/Pylon paid-work loop is repeatable enough to claim publicly."
   fresh macOS and Arch Linux package-launcher registration plus wallet
   readiness smokes, and recorded rollback commands in
   `docs/nexus/2026-06-08-pylon-downloadable-launcher-release-0.2.5.md`.
-- #502 added Omega assignment leases, owned Pylon assignment lists, live
+- #502 added OpenAgents product surface assignment leases, owned Pylon assignment lists, live
   assignment accept/progress/artifact-proof refs, and operator accepted-work
   closeout. Production smoke `pylon.issue502.local.20260608024927` /
   `assignment.public.issue502.20260608024927` closed as `accepted_work` with
@@ -116,7 +116,7 @@ It can:
 - expose public-safe blocker refs;
 - point future agents to runbook commands and receipt surfaces;
 - distinguish optional old Google Cloud transition evidence from required
-  Omega/Nexus evidence.
+  OpenAgents product surface/Nexus evidence.
 
 It cannot:
 
@@ -141,7 +141,7 @@ The typed gate enforces these authority fields as false:
 
 | Gate | Current state | Evidence or blocker |
 | --- | --- | --- |
-| Omega payout ledger migration deployed | Passed | #431, `workers/api/src/nexus-treasury-payout-ledger.test.ts` |
+| OpenAgents product surface payout ledger migration deployed | Passed | #431, `workers/api/src/nexus-treasury-payout-ledger.test.ts` |
 | Payment authority service deployed | Passed | #428, `workers/api/src/treasury-payment-authority.test.ts` |
 | Simulation adapter conformance tests green | Passed | #427, `workers/api/src/pylon-marketplace-payout-flow.test.ts` |
 | MDK adapter mocked tests green | Passed | #431, `workers/api/src/treasury-payment-mdk-agent-wallet-adapter.test.ts` |
@@ -170,7 +170,7 @@ Optional transition evidence:
 
 | Evidence | Required? | Notes |
 | --- | --- | --- |
-| Old Google Cloud Nexus health | No | Useful only as imported context. It is not a normal release classifier and must not block Omega/Nexus release classification by requiring SSH. |
+| Old Google Cloud Nexus health | No | Useful only as imported context. It is not a normal release classifier and must not block OpenAgents product surface/Nexus release classification by requiring SSH. |
 
 ## Clean Launcher Host Smoke Evidence
 
@@ -249,15 +249,15 @@ Adjacent-repo cleanup:
 
 Public report evidence from `GET /api/public/artanis/report`:
 
-- `pylonOmegaReleaseGate.state`:
+- `pylonOpenAgents product surfaceReleaseGate.state`:
   `ready_for_operator_release_review`;
-- `pylonOmegaReleaseGate.multiPylonPaidWorkProofComplete`: `true`;
-- `pylonOmegaReleaseGate.multiPylonObservedDistinctPylonCount`: `2`;
-- `pylonOmegaReleaseGate.multiPylonObservedPylonRefs`:
+- `pylonOpenAgents product surfaceReleaseGate.multiPylonPaidWorkProofComplete`: `true`;
+- `pylonOpenAgents product surfaceReleaseGate.multiPylonObservedDistinctPylonCount`: `2`;
+- `pylonOpenAgents product surfaceReleaseGate.multiPylonObservedPylonRefs`:
   `pylon.public.artanis.bridge.8b378373` and
   `pylon.public.issue_438_edge_wallet`;
-- `pylonOmegaReleaseGate.blockerRefs`: empty;
-- `pylonOmegaReleaseGate.multiPylonProofRefs` includes
+- `pylonOpenAgents product surfaceReleaseGate.blockerRefs`: empty;
+- `pylonOpenAgents product surfaceReleaseGate.multiPylonProofRefs` includes
   `artanis-mdk-bridge-8b378373002501f3e896dcd3`,
   `assignment.public.issue_438.issue_438_artanis_1780822221`,
   `proof.public.mdk_agent_wallet.real_bitcoin_moved.8b378373002501f3e896dcd3`,
@@ -304,7 +304,7 @@ Rendered `/artanis` verification:
 
 - the client-rendered page was checked with a temporary Playwright runner
   against local Chrome;
-- the rendered body includes `Omega release gate`,
+- the rendered body includes `OpenAgents product surface release gate`,
   `Pylon v0.2 OpenAgents Nexus release gate evidence is complete`, and
   `2 / 2 distinct Pylons`.
 
@@ -354,7 +354,7 @@ receipt projections.
 Run the focused gate test:
 
 ```bash
-bun run --cwd workers/api test -- src/pylon-v02-omega-release-gate.test.ts
+bun run --cwd workers/api test -- src/pylon-v02-openagents-release-gate.test.ts
 ```
 
 Run the adjacent payout, receipt, Forum, and Pylon tests:
@@ -362,7 +362,7 @@ Run the adjacent payout, receipt, Forum, and Pylon tests:
 ```bash
 bun run --cwd workers/api test -- \
   src/artanis-real-small-bitcoin-assignment-smoke.test.ts \
-  src/pylon-v02-omega-release-gate.test.ts \
+  src/pylon-v02-openagents-release-gate.test.ts \
   src/treasury-payment-authority.test.ts \
   src/treasury-payment-mdk-agent-wallet-adapter.test.ts \
   src/nexus-treasury-payout-ledger.test.ts \
@@ -504,7 +504,7 @@ Current public surfaces:
 - `https://openagents.com/api/public/artanis/report`
 - `https://openagents.com/forum/t/88888888-4004-4004-8004-888888888888`
 
-The report field `pylonOmegaReleaseGate` is the canonical public-safe machine
+The report field `pylonOpenAgents product surfaceReleaseGate` is the canonical public-safe machine
 projection. It includes the current blocked state, blocker refs, public receipt
 refs, observed and required distinct Pylon counts, and the claim booleans that
 must remain false until the gate passes.
@@ -527,7 +527,7 @@ The old Nexus VM proves Pylon v0.2 is ready.
 Allowed now:
 
 ```text
-Omega has a public-safe Nexus/Pylon release gate with real two-wallet MDK
+OpenAgents product surface has a public-safe Nexus/Pylon release gate with real two-wallet MDK
 movement evidence and retained Artanis assignment evidence. The gate now has
 two distinct complete Pylon paid-work traces and is ready for operator release
 review. The gate remains evidence-only and grants no release, spending,

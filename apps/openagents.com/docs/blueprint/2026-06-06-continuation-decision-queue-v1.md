@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented for #274 / `OMEGA-CONT-003`.
+Status: implemented for #274 / `OPENAGENTS-CONT-003`.
 
 ## Purpose
 

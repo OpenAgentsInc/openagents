@@ -2,8 +2,8 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for GitHub issues #322 / `OMEGA-075` and
-#362 / `OMEGA-LATE-002`.
+Status: implemented contract note for GitHub issues #322 / `OPENAGENTS-075` and
+#362 / `OPENAGENTS-LATE-002`.
 
 ## Purpose
 

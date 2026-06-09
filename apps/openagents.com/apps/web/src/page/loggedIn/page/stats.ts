@@ -180,14 +180,14 @@ const filterInput = (
   const h = html<Message>()
 
   return h.label(
-    [h.Class('grid gap-1.5')],
+    [Ui.className<Message>('grid gap-1.5')],
     [
-      h.span([h.Class(fieldLabelClass)], [label]),
+      h.span([Ui.className<Message>(fieldLabelClass)], [label]),
       h.input([
         h.Type('text'),
         h.Value(filters[field]),
         h.Placeholder(placeholder),
-        h.Class(inputClass),
+        Ui.className<Message>(inputClass),
         h.OnInput(value => UpdatedTokenUsageStatsFilter({ field, value })),
       ]),
     ],
@@ -203,13 +203,13 @@ const filterSelect = (
   const h = html<Message>()
 
   return h.label(
-    [h.Class('grid gap-1.5')],
+    [Ui.className<Message>('grid gap-1.5')],
     [
-      h.span([h.Class(fieldLabelClass)], [label]),
+      h.span([Ui.className<Message>(fieldLabelClass)], [label]),
       h.select(
         [
           h.Value(filters[field]),
-          h.Class(inputClass),
+          Ui.className<Message>(inputClass),
           h.OnInput(value => UpdatedTokenUsageStatsFilter({ field, value })),
         ],
         options.map(([value, optionLabel]) =>
@@ -238,7 +238,7 @@ const filterPanel = (filters: TokenUsageStatsFilters): Html => {
         level: 2,
       }),
       h.div(
-        [h.Class('mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4')],
+        [Ui.className<Message>('mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4')],
         [
           filterInput(filters, 'since', 'Since', '2026-06-08T00:00:00.000Z'),
           filterInput(filters, 'until', 'Until', '2026-06-08T23:59:59.999Z'),
@@ -285,7 +285,7 @@ const filterPanel = (filters: TokenUsageStatsFilters): Html => {
         ],
       ),
       h.div(
-        [h.Class('mt-4 flex justify-end')],
+        [Ui.className<Message>('mt-4 flex justify-end')],
         [
           Ui.button<Message>({
             label: 'Apply filters',
@@ -298,7 +298,7 @@ const filterPanel = (filters: TokenUsageStatsFilters): Html => {
         ],
       ),
     ],
-    [h.Class('mt-4')],
+    [Ui.className<Message>('mt-4')],
   )
 }
 
@@ -318,24 +318,24 @@ const aggregateRowsTable = (input: {
         level: 2,
       }),
       h.div(
-        [h.Class('mt-4 overflow-x-auto border border-[#222]')],
+        [Ui.className<Message>('mt-4 overflow-x-auto border border-[#222]')],
         [
           h.div(
-            [h.Class(`${tableHeaderClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
+            [Ui.className<Message>(`${tableHeaderClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
             [h.span([], ['Label']), h.span([], ['Tokens']), h.span([], ['Events']), h.span([], ['In / Out'])],
           ),
           ...(input.rows.length === 0
             ? [
                 h.div(
-                  [h.Class('bg-[#010102] px-3 py-4 text-sm text-white/45')],
+                  [Ui.className<Message>('bg-[#010102] px-3 py-4 text-sm text-white/45')],
                   ['No rows for this filter.'],
                 ),
               ]
             : input.rows.map(row =>
                 h.div(
-                  [h.Class(`${tableRowClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
+                  [Ui.className<Message>(`${tableRowClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
                   [
-                    h.span([h.Class('min-w-0 truncate text-[#f1efe8]')], [
+                    h.span([Ui.className<Message>('min-w-0 truncate text-[#f1efe8]')], [
                       safeText(row.label),
                     ]),
                     h.span([], [formatNumber(row.tokenCounts.totalTokens)]),
@@ -349,7 +349,7 @@ const aggregateRowsTable = (input: {
         ],
       ),
     ],
-    [h.Class('min-w-0')],
+    [Ui.className<Message>('min-w-0')],
   )
 }
 
@@ -369,24 +369,24 @@ const actorRowsTable = (input: {
         level: 2,
       }),
       h.div(
-        [h.Class('mt-4 overflow-x-auto border border-[#222]')],
+        [Ui.className<Message>('mt-4 overflow-x-auto border border-[#222]')],
         [
           h.div(
-            [h.Class(`${tableHeaderClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
+            [Ui.className<Message>(`${tableHeaderClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
             [h.span([], ['Actor']), h.span([], ['Tokens']), h.span([], ['Events']), h.span([], ['Team'])],
           ),
           ...(input.rows.length === 0
             ? [
                 h.div(
-                  [h.Class('bg-[#010102] px-3 py-4 text-sm text-white/45')],
+                  [Ui.className<Message>('bg-[#010102] px-3 py-4 text-sm text-white/45')],
                   ['No actor rows for this filter.'],
                 ),
               ]
             : input.rows.map(row =>
                 h.div(
-                  [h.Class(`${tableRowClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
+                  [Ui.className<Message>(`${tableRowClass} grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`)],
                   [
-                    h.span([h.Class('min-w-0 truncate text-[#f1efe8]')], [
+                    h.span([Ui.className<Message>('min-w-0 truncate text-[#f1efe8]')], [
                       actorLabel(row),
                     ]),
                     h.span([], [formatNumber(row.tokenCounts.totalTokens)]),
@@ -398,7 +398,7 @@ const actorRowsTable = (input: {
         ],
       ),
     ],
-    [h.Class('min-w-0')],
+    [Ui.className<Message>('min-w-0')],
   )
 }
 
@@ -414,36 +414,36 @@ const eventRowsTable = (rows: ReadonlyArray<EventRecord>): Html => {
         level: 2,
       }),
       h.div(
-        [h.Class('mt-4 overflow-x-auto border border-[#222]')],
+        [Ui.className<Message>('mt-4 overflow-x-auto border border-[#222]')],
         [
           h.div(
-            [h.Class(`${tableHeaderClass} min-w-[72rem] grid-cols-[10rem_12rem_14rem_14rem_8rem_10rem_1fr]`)],
+            [Ui.className<Message>(`${tableHeaderClass} min-w-[72rem] grid-cols-[10rem_12rem_14rem_14rem_8rem_10rem_1fr]`)],
             [h.span([], ['Observed']), h.span([], ['Model']), h.span([], ['Source']), h.span([], ['Actor']), h.span([], ['Tokens']), h.span([], ['Privacy']), h.span([], ['Safe refs / metadata'])],
           ),
           ...(rows.length === 0
             ? [
                 h.div(
-                  [h.Class('bg-[#010102] px-3 py-4 text-sm text-white/45')],
+                  [Ui.className<Message>('bg-[#010102] px-3 py-4 text-sm text-white/45')],
                   ['No recent token events for this filter.'],
                 ),
               ]
             : rows.map(event =>
                 h.div(
-                  [h.Class(`${tableRowClass} min-w-[72rem] grid-cols-[10rem_12rem_14rem_14rem_8rem_10rem_1fr]`)],
+                  [Ui.className<Message>(`${tableRowClass} min-w-[72rem] grid-cols-[10rem_12rem_14rem_14rem_8rem_10rem_1fr]`)],
                   [
                     h.span([], [safeText(event.observedAt)]),
-                    h.span([h.Class('truncate')], [
+                    h.span([Ui.className<Message>('truncate')], [
                       `${safeText(event.provider)} / ${safeText(event.model)}`,
                     ]),
-                    h.span([h.Class('truncate')], [
+                    h.span([Ui.className<Message>('truncate')], [
                       `${safeText(event.producerSystem)} / ${safeText(event.sourceRoute)} / ${safeText(event.usageTruth)}`,
                     ]),
-                    h.span([h.Class('truncate text-[#f1efe8]')], [
+                    h.span([Ui.className<Message>('truncate text-[#f1efe8]')], [
                       eventActorLabel(event),
                     ]),
                     h.span([], [formatNumber(event.tokenCounts.totalTokens)]),
                     h.span([], [privacyLabel(event)]),
-                    h.span([h.Class('min-w-0 truncate')], [
+                    h.span([Ui.className<Message>('min-w-0 truncate')], [
                       `${eventRefLabel(event)} | ${metadataSnippet(event.safeMetadata)}`,
                     ]),
                   ],
@@ -452,7 +452,7 @@ const eventRowsTable = (rows: ReadonlyArray<EventRecord>): Html => {
         ],
       ),
     ],
-    [h.Class('mt-4')],
+    [Ui.className<Message>('mt-4')],
   )
 }
 
@@ -462,32 +462,32 @@ const statusBanner = (model: Model): Html => {
 
   if (stats._tag === 'TokenUsageStatsLoading') {
     return h.div(
-      [h.Class('mt-4 border border-[#222] bg-[#050505] px-4 py-3 text-sm text-white/55')],
+      [Ui.className<Message>('mt-4 border border-[#222] bg-[#050505] px-4 py-3 text-sm text-white/55')],
       ['Loading token usage ledger...'],
     )
   }
 
   if (stats._tag === 'TokenUsageStatsFailed') {
     return h.div(
-      [h.Class('mt-4 border border-[#5a1f1f] bg-[#170606] px-4 py-3 text-sm text-[#ffb4a8]')],
+      [Ui.className<Message>('mt-4 border border-[#5a1f1f] bg-[#170606] px-4 py-3 text-sm text-[#ffb4a8]')],
       [`Stats load failed: ${stats.error}`],
     )
   }
 
   if (stats._tag !== 'TokenUsageStatsLoaded') {
     return h.div(
-      [h.Class('mt-4 border border-[#222] bg-[#050505] px-4 py-3 text-sm text-white/55')],
+      [Ui.className<Message>('mt-4 border border-[#222] bg-[#050505] px-4 py-3 text-sm text-white/55')],
       ['No token usage request has been loaded yet.'],
     )
   }
 
   return stats.response.usageEvents === 0
     ? h.div(
-        [h.Class('mt-4 border border-[#222] bg-[#050505] px-4 py-3 text-sm text-white/55')],
+        [Ui.className<Message>('mt-4 border border-[#222] bg-[#050505] px-4 py-3 text-sm text-white/55')],
         ['No canonical token usage events match these filters.'],
       )
     : h.div(
-        [h.Class('mt-4 border border-[#1e3a2b] bg-[#07130d] px-4 py-3 text-sm text-[#b8f7d1]')],
+        [Ui.className<Message>('mt-4 border border-[#1e3a2b] bg-[#07130d] px-4 py-3 text-sm text-[#b8f7d1]')],
         [`Generated ${safeText(stats.response.generatedAt)} from canonical token usage aggregates.`],
       )
 }
@@ -537,7 +537,7 @@ export const view = (model: Model): Html => {
             level: 2,
           }),
         ],
-        [h.Class('mt-4')],
+        [Ui.className<Message>('mt-4')],
       ),
       Ui.statGrid<Message>(
         [
@@ -551,10 +551,10 @@ export const view = (model: Model): Html => {
           { label: 'Unknown events', value: formatNumber(truthEventCount(byUsageTruth, 'unknown')), tone: 'negative' },
           { label: 'Usage events', value: formatNumber(usageEvents), tone: 'neutral' },
         ],
-        [h.Class('mt-4')],
+        [Ui.className<Message>('mt-4')],
       ),
       h.div(
-        [h.Class('mt-4 grid gap-4 2xl:grid-cols-2')],
+        [Ui.className<Message>('mt-4 grid gap-4 2xl:grid-cols-2')],
         [
           aggregateRowsTable({
             title: 'Provider and model',
@@ -610,6 +610,6 @@ export const view = (model: Model): Html => {
       ),
       eventRowsTable((response?.recentEvents ?? []) as ReadonlyArray<EventRecord>),
     ],
-    [h.Class('py-4')],
+    [Ui.className<Message>('py-4')],
   )
 }

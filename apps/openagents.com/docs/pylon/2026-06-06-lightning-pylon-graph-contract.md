@@ -1,6 +1,6 @@
 # Lightning/Pylon Graph Contract
 
-Issue #357 / `OMEGA-L-009` adds a read-only contract for future
+Issue #357 / `OPENAGENTS-L-009` adds a read-only contract for future
 Lightning/Pylon graph visualization.
 
 The implementation lives in

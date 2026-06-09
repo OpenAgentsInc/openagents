@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for GitHub issue #312 / `OMEGA-064`.
+Status: implemented contract note for GitHub issue #312 / `OPENAGENTS-064`.
 
 ## Purpose
 
@@ -24,7 +24,7 @@ workroom state.
 | Autopilot beta launch | `verified` | Backed by the public Episode 228 transcript and live blog route refs. |
 | Limited free beta | `verified` | Backed by the public transcript and public blog route refs. |
 | Public traces visible | `measured` | There are public proof/activity surfaces, but this is not a claim that every private workroom trace is public. |
-| GitHub public-repo request flow | `measured` | The launch described the flow and Omega has route refs for GitHub auth and software-order submission. |
+| GitHub public-repo request flow | `measured` | The launch described the flow and OpenAgents product surface has route refs for GitHub auth and software-order submission. |
 | Private-repo support | `planned` | The transcript frames this as intended future support, not a completed launch fact. |
 | Revenue-share model | `modeled` | The transcript describes the economic model, but not a settled payout receipt. |
 | Accepted-work payouts settled | `prohibited` | This must not be publicly claimed until accepted-work settlement receipts exist. |

@@ -1,6 +1,6 @@
 # Blueprint Source Authority And Context Pack v1
 
-Issue: OMEGA-BP-009 / #229
+Issue: OPENAGENTS-BP-009 / #229
 
 This note records the typed Source Authority and Context Pack model. The source
 of truth is `workers/api/src/blueprint/schemas/source-context.ts`.

@@ -1,7 +1,7 @@
 # MDK Agent Wallet And Pay402 Smoke Runbook
 
 Date: 2026-06-07
-Issue: #450 / OMEGA-H-013
+Issue: #450 / OPENAGENTS-H-013
 
 ## Summary
 
@@ -18,7 +18,7 @@ must never pretend to set a wallet balance.
 
 | State          | Meaning                                                                                             |
 | -------------- | --------------------------------------------------------------------------------------------------- |
-| `fake_sandbox` | Omega fake-provider tests and fixture plans. No live wallet spend.                                  |
+| `fake_sandbox` | OpenAgents product surface fake-provider tests and fixture plans. No live wallet spend.                                  |
 | `signet`       | Allowed only after explicit operator approval, named wallet, amount, and spend cap.                 |
 | `live_blocked` | Mainnet-like live bitcoin movement is blocked unless a separate instruction grants exact authority. |
 | `planned`      | Routes or checkout products that do not yet advertise live L402/MDK recovery remain docs-only.      |
@@ -69,7 +69,7 @@ The balance output shape is:
 ```
 
 The JSON field uses `sats` because that is the wallet CLI denomination field.
-In Omega docs and UI, prefer saying bitcoin and add the satoshi denomination
+In OpenAgents product surface docs and UI, prefer saying bitcoin and add the satoshi denomination
 only when the exact CLI amount matters.
 
 ## Receive For Funding

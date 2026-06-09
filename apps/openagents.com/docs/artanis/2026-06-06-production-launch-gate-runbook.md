@@ -11,7 +11,7 @@ The implementation lives in:
 - `apps/web/src/page/loggedOut/page/publicAgent.ts`
 
 `GET /api/public/artanis/report` now includes `productionLaunchGate`, and
-`/artanis` renders a compact Production gate card. As of Omega #511 and #512,
+`/artanis` renders a compact Production gate card. As of OpenAgents product surface #511 and #512,
 the example public projection has retained production-equivalent Probe
 GEPA/Pylon smoke evidence and a separate bounded scheduled-runner proof.
 
@@ -120,7 +120,7 @@ curl -fsS https://openagents.com/api/public/artanis/report \
   | jq '{runtimeState, autonomousLoop, healthSummary, pylonSummary, productionLaunchGate}'
 ```
 
-Omega public Pylon stats:
+OpenAgents product surface public Pylon stats:
 
 ```bash
 curl -fsS https://openagents.com/api/public/pylon-stats \

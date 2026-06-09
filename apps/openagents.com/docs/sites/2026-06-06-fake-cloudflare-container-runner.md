@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented for issue #282 / OMEGA-RUNNER-004.
+Status: implemented for issue #282 / OPENAGENTS-RUNNER-004.
 
 ## Purpose
 
@@ -10,7 +10,7 @@ This slice adds a fake/staging Cloudflare Container runner adapter. It fits the
 gateway contract from #280 but does not execute customer code, start a
 Container, build source, read provider secrets, or charge anyone.
 
-The purpose is to let Omega test the lifecycle, artifact, cancel, and redaction
+The purpose is to let OpenAgents product surface test the lifecycle, artifact, cancel, and redaction
 path before a live Container runner exists.
 
 ## Implemented Contract

@@ -1,6 +1,6 @@
 # Buyer-Side Payment Ledger
 
-Issue: #291 / OMEGA-H-003
+Issue: #291 / OPENAGENTS-H-003
 
 Date: 2026-06-06
 

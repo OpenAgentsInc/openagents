@@ -1,6 +1,6 @@
 # Model Lab Evidence Graph
 
-Status: implemented for issue #382 / `OMEGA-LAB-003`.
+Status: implemented for issue #382 / `OPENAGENTS-LAB-003`.
 
 ## Purpose
 

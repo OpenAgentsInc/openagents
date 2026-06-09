@@ -47,13 +47,13 @@ skills that transfer into another agent harness.
   `probe/docs/benchmarks/2026-06-08-probe-continual-benchmark-learning-apparatus.md`
   and
   `probe/docs/benchmarks/2026-06-08-workspace-benchmark-systems-audit.md`
-- Omega Nexus/Pylon update:
-  `autopilot-omega/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
+- OpenAgents product surface Nexus/Pylon update:
+  `openagents/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
   plus the adjacent Pylon Agent API, release freeze, release gate, wallet
   readiness, and self-serve registration runbooks.
 - Artanis Forum posting/readback:
   `https://openagents.com/AGENTS.md` and
-  `autopilot-omega/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`.
+  `openagents/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`.
 
 Important source observations:
 
@@ -175,18 +175,18 @@ clean traces and labels that make those later training lanes worth opening.
 
 ### 2026-06-08 Pylon Assignment Update
 
-Omega now has a live Pylon assignment lease and closeout path. A registered,
+OpenAgents product surface now has a live Pylon assignment lease and closeout path. A registered,
 wallet-ready Pylon can list owned assignments, accept an assignment, report
 progress, submit public-safe artifact/proof refs, and have an operator close
 the assignment as accepted or rejected work. The #502 production smoke
 `assignment.public.issue502.20260608024927` reached `accepted_work`.
 
 That changes the GEPA implementation plan. The first Pylon-backed metric-call
-batches should reuse the Omega assignment lease lifecycle:
+batches should reuse the OpenAgents product surface assignment lease lifecycle:
 
 ```text
 GEPA coordinator
-  -> Omega/Pylon assignment lease
+  -> OpenAgents product surface/Pylon assignment lease
   -> worker accept
   -> progress events
   -> artifact/proof refs
@@ -241,7 +241,7 @@ our own coding-agent work:
 
 - `probe`
 - `openagents`
-- `autopilot-omega`
+- `openagents`
 - `psionic`
 - `tap-ldk` when Rust protocol work becomes a target
 
@@ -342,7 +342,7 @@ Run a staged GEPA campaign instead of one giant undifferentiated sweep.
 ### Stage 4: Repository-Specific Skills
 
 - run gskill-style optimization over `probe`, `openagents`, and
-  `autopilot-omega`.
+  `openagents`.
 - output should be converted into typed Blueprint candidate components, not
   pasted directly into global agent instructions.
 
@@ -380,7 +380,7 @@ reverted
 metric. It does not mean Probe should use it in production. `shadow` means the
 candidate can run beside active policy and emit comparison evidence.
 `release_candidate` means the candidate passed held-out benchmark gates and
-policy gates. `active` requires the normal Blueprint/Omega release path.
+policy gates. `active` requires the normal Blueprint/OpenAgents product surface release path.
 
 ## Implementation Path
 
@@ -397,7 +397,7 @@ The issue order is:
    split manifests, and true-Probe runner lane.
 3. GEPA candidate optimization: Psionic candidate manifests, GEPA coordinator,
    and Probe candidate execution adapter.
-4. Pylon work slices and paid-work path: Omega/Pylon metric-call assignments,
+4. Pylon work slices and paid-work path: OpenAgents product surface/Pylon metric-call assignments,
    worker capability envelopes, and explicit paid/unpaid/credit/no-spend
    modes.
 5. Stage 0 and Stage 1 campaign: retained-fixture smoke and retained-failure
@@ -484,7 +484,7 @@ Start immediately with Stage 0 and Stage 1:
 - text-bundle candidate only.
 - retained Terminal-Bench failures and Probe acceptance fixtures only.
 - Pylon used as parallel rollout infrastructure.
-- Pylon batches should use the Omega assignment lease lifecycle and closeout
+- Pylon batches should use the OpenAgents product surface assignment lease lifecycle and closeout
   semantics.
 - no model fine-tuning.
 - no public leaderboard claim.

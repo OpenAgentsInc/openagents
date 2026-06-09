@@ -24,7 +24,7 @@ checkout UI primitives for:
 
 The contract is declarative. It references catalog refs, product/action IDs,
 checkout paths, display refs, price, entitlement scope, sandbox state, the
-Omega-hosted checkout intent endpoint, and public-safe customer data
+OpenAgents product surface-hosted checkout intent endpoint, and public-safe customer data
 requirement refs.
 
 It does not store MDK credentials, raw invoices, payment preimages, wallet

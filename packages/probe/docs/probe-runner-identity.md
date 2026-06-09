@@ -1,4 +1,4 @@
-# Probe Runner Identity For Omega Grants
+# Probe Runner Identity For OpenAgents product surface Grants
 
 Date: 2026-06-07
 
@@ -9,8 +9,8 @@ Status: implemented contract slice for Probe issue #160.
 Probe separates runner identity from ChatGPT/Codex provider account identity.
 
 A runner identity proves which local install, SHC box, Pylon node, or sandbox
-runner is allowed to talk to Omega. A provider account ref proves which
-ChatGPT/Codex account Omega selected for the run. A grant binds those two only
+runner is allowed to talk to OpenAgents product surface. A provider account ref proves which
+ChatGPT/Codex account OpenAgents product surface selected for the run. A grant binds those two only
 for one assigned execution context.
 
 ## Implemented Probe Surface
@@ -26,7 +26,7 @@ for one assigned execution context.
 The authorization gate checks:
 
 - runner capabilities include `probe.run`
-- ChatGPT/Codex assignments also include `omega.grant.resolve`
+- ChatGPT/Codex assignments also include `openagents.grant.resolve`
 - Apple FM assignments include `probe.backend.apple_fm_bridge`
 - proof runner id matches linked runner id
 - proof assignment id matches the assignment
@@ -34,7 +34,7 @@ The authorization gate checks:
 - runner link is not expired
 - runner/proof/assignment projections do not contain raw credentials
 
-`prepareAuthorizedProbeAuthRun` authorizes the runner, resolves the Omega
+`prepareAuthorizedProbeAuthRun` authorizes the runner, resolves the OpenAgents product surface
 grant, asks a secret broker for the matching secret ref, and materializes auth
 inside the run home.
 
@@ -60,4 +60,4 @@ should plug into this boundary before production runners resolve grants.
 - raw credential rejection in SHC/Pylon assignment payloads
 - scrub receipt emission after sandbox closeout
 - Apple FM backend assignments requiring backend capability without
-  `omega.grant.resolve`
+  `openagents.grant.resolve`

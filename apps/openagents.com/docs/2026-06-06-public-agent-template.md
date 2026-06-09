@@ -1,7 +1,7 @@
 # Public Agent Template
 
 This note defines the reusable public-agent projection contract added for
-OMEGA-061. Artanis and Adjutant now fit the same public shape instead of each
+OPENAGENTS-061. Artanis and Adjutant now fit the same public shape instead of each
 surface inventing a different proof page model.
 
 ## Contract

@@ -2,15 +2,15 @@
 
 Date: 2026-06-08
 
-Status: current Omega audit after the Probe GEPA, Pylon, Psionic, Forum, and
+Status: current OpenAgents product surface audit after the Probe GEPA, Pylon, Psionic, Forum, and
 Artanis projection work completed through issues #511-#517.
 
 ## Executive Verdict
 
 Artanis is **not ready for full Probe GEPA network launch**.
 
-Artanis is much further along than a design sketch. Omega now has public report
-projection, production launch-gate projection, Pylon v0.2 Omega release-gate
+Artanis is much further along than a design sketch. OpenAgents product surface now has public report
+projection, production launch-gate projection, Pylon v0.2 OpenAgents product surface release-gate
 projection, bounded GEPA scheduled-runner proof schemas, Probe GEPA production
 smoke schemas, Artanis Forum summary authority, Pylon GEPA metric-call
 assignment evidence, Stage 1 shadow-only promotion gating, and settlement
@@ -52,8 +52,8 @@ The live Artanis report currently shows:
 - `productionLaunchGate.canClaimBoundedStatusProjection: true`;
 - `productionLaunchGate.canClaimContinuouslyRunning: false`;
 - `authoritySummary.greenLaunchCopyAllowed: false` while public health is stale;
-- `pylonOmegaReleaseGate.state: "limited_launcher_release_shipped"`;
-- `pylonOmegaReleaseGate.releaseRef:
+- `pylonOpenAgents product surfaceReleaseGate.state: "limited_launcher_release_shipped"`;
+- `pylonOpenAgents product surfaceReleaseGate.releaseRef:
   "release.public.openagents.pylon_npm_launcher_0_2_5"`;
 - `probeGepaProductionSmoke: null`;
 - `gepaScheduledRunner: null`.
@@ -72,7 +72,7 @@ the retained summary post path, not automatic scheduled publication.
 
 ## Source And Test Status
 
-The relevant source contracts are present in Omega:
+The relevant source contracts are present in OpenAgents product surface:
 
 - `workers/api/src/artanis-production-launch-gate.ts`
 - `workers/api/src/artanis-gepa-production-smoke.ts`
@@ -103,7 +103,7 @@ Recent implementation commits relevant to this audit include:
 - `03a78fe0` - Artanis Probe GEPA summary authority;
 - `54153f66` - Probe GEPA settlement readiness gate;
 - `6396c47dc` in `openagents` - Probe GEPA Stage 0 live receipt bundle;
-- prior Omega issues #511, #512, #513, #514, #515, #516, and #517 are closed.
+- prior OpenAgents product surface issues #511, #512, #513, #514, #515, #516, and #517 are closed.
 
 ## What Is Actually Ready
 
@@ -111,7 +111,7 @@ Recent implementation commits relevant to this audit include:
 
 Ready for controlled evidence display.
 
-Omega can build and serve an Artanis public report with runtime, health, Forum,
+OpenAgents product surface can build and serve an Artanis public report with runtime, health, Forum,
 Model Lab, Pylon, release-gate, launch-gate, and Probe GEPA summary fields.
 The report is public-safe and guarded by overclaim checks.
 
@@ -164,7 +164,7 @@ This is not ready as an autonomous benchmark assignment dispatcher.
 
 Ready for operator-authorized posting.
 
-Omega can generate public-safe Artanis Probe GEPA summary copy that distinguishes
+OpenAgents product surface can generate public-safe Artanis Probe GEPA summary copy that distinguishes
 retained smoke, retained summary, validation-only, live-smoke, and shadow
 candidate labels. It requires operator authority refs and projection authority
 refs, and it rejects public benchmark score, paid-work, settlement, active
@@ -173,11 +173,11 @@ production, release-candidate, and distributed-neural-training overclaims.
 The retained Forum post path exists. Automatic scheduled Forum publishing is
 still not a launch claim.
 
-### Pylon v0.2 Omega Release Gate
+### Pylon v0.2 OpenAgents product surface Release Gate
 
 Ready for limited launcher-release language only.
 
-The live report says the Pylon Omega release gate is
+The live report says the Pylon OpenAgents product surface release gate is
 `limited_launcher_release_shipped`, with evidence around a 0.2.5 npm launcher,
 multi-Pylon proof refs, payment/settlement evidence refs, and public receipt
 refs. The same projection still keeps `walletSpendAllowed`,
@@ -204,7 +204,7 @@ Ready for shadow only.
 
 The Stage 1 gate can promote a candidate to `shadow` or reject it back to
 `benchmark_only`. It cannot mark a Probe GEPA candidate as active or release
-candidate. Product activation must still go through separate Omega and
+candidate. Product activation must still go through separate OpenAgents product surface and
 Blueprint production gates.
 
 ## Not Ready For Full Network Launch
@@ -279,10 +279,10 @@ The following are current launch blockers.
     `forumAutoPublishAllowed: false`, so automatic public status publication is
     still a separate launch decision.
 
-11. Open Omega issue #521 remains relevant.
+11. Open OpenAgents product surface issue #521 remains relevant.
 
-    `OpenAgentsInc/autopilot-omega#521` is still open:
-    "Update Artanis reports and public docs for Omega-backed Pylon stats." That
+    `OpenAgentsInc/openagents#521` is still open:
+    "Update Artanis reports and public docs for OpenAgents product surface-backed Pylon stats." That
     is directly related to the current Pylon stats gap and public reporting
     surface.
 
@@ -308,12 +308,12 @@ The following are current launch blockers.
 
 4. Connect live imports to Psionic candidate frontier state.
 
-   Keep deterministic fallback evaluation, but add the live Omega import
+   Keep deterministic fallback evaluation, but add the live OpenAgents product surface import
    backend and show candidate frontier updates from actual Pylon closeouts.
 
 5. Keep Stage 1 candidates shadow-only.
 
-   Let Omega and Blueprint decide any later release-candidate or active
+   Let OpenAgents product surface and Blueprint decide any later release-candidate or active
    production status after product-outcome evidence exists.
 
 6. Add paid-work only after no-spend batches are boring.

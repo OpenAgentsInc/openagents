@@ -3,12 +3,12 @@
 Date: 2026-06-03
 
 Status: Research report for porting OpenChamber-style chat/workroom UX into
-`autopilot-omega`, updated after the first sidebar consolidation pass landed.
+`openagents`, updated after the first sidebar consolidation pass landed.
 
 Scope: This report studies the local `projects/repos/openchamber` and
 `projects/repos/opencode` checkouts as reference material. It focuses on chat
 structure, layout, runtime interaction with OpenCode, and concrete lessons for
-the Foldkit/Effect Autopilot Omega surface.
+the Foldkit/Effect OpenAgents Autopilot surface.
 
 ## Executive Summary
 
@@ -21,14 +21,14 @@ OpenCode server. The core product shape is a three-part workspace:
 3. A right operational panel for Git, files, context, diffs, terminal, and
    other run-adjacent state.
 
-The most important OpenChamber lesson for Omega is that the chat transcript is
+The most important OpenChamber lesson for OpenAgents product surface is that the chat transcript is
 the coordination surface, not the whole application. Chat messages, tool calls,
 file changes, reviews, approvals, and runtime state are projected into one
 workroom. The side panels are not secondary pages; they are live projections of
 the same agent session.
 
-Omega should not port OpenChamber's React, Zustand, Electron, or direct local
-filesystem model. Omega should port the interaction model and event shape into
+OpenAgents product surface should not port OpenChamber's React, Zustand, Electron, or direct local
+filesystem model. OpenAgents product surface should port the interaction model and event shape into
 Foldkit/Effect:
 
 - Treat agent runtime updates as typed events.
@@ -39,14 +39,14 @@ Foldkit/Effect:
 - Preserve dark operational density, compact controls, and first-class review
   affordances.
 
-The current Omega chat model is still mostly string-message oriented. Before a
-live OpenCode-style integration, Omega should introduce a typed workroom model
+The current OpenAgents product surface chat model is still mostly string-message oriented. Before a
+live OpenCode-style integration, OpenAgents product surface should introduce a typed workroom model
 with message parts, tool parts, permission requests, question requests, status,
 todo progress, changed-file summaries, and context panel state.
 
 ## 2026-06-03 Implementation Update
 
-Omega has now completed the first narrow UI port from this research: the
+OpenAgents product surface has now completed the first narrow UI port from this research: the
 logged-in left navigation and the chat/session rail were consolidated into one
 OpenChamber-style workroom sidebar. The first pass landed in the Foldkit
 browser app. A follow-up corrected production ownership so the logged-in
@@ -55,7 +55,7 @@ routes, cookie refresh, and the `/api/auth/session` bootstrap payload.
 
 Implemented work:
 
-- GitHub issue: `OpenAgentsInc/autopilot-omega#8`
+- GitHub issue: `OpenAgentsInc/openagents#8`
 - Commit: `95de11cc fix: consolidate logged-in workroom sidebar`
 - Follow-up implementation note:
   `docs/2026-06-03-logged-in-sidebar-consolidation.md`
@@ -122,7 +122,7 @@ Implemented work:
     omit high-volume text/tool delta records from durable public projection.
   - Live smoke `585f5094-9d8f-4a09-af78-f563320c00f4` was launched through
     `/api/omni/operator/agent-runs` as the target user. It checked out
-    `OpenAgentsInc/autopilot-omega@main`, ran `bun --version`, committed and
+    `OpenAgentsInc/openagents@main`, ran `bun --version`, committed and
     pushed a smoke receipt branch, wrote `result.md` and
     `github-writeback.json`, streamed 96 events into D1, and completed. The
     temporary smoke branch was deleted after verification.
@@ -141,7 +141,7 @@ Implemented work:
     existing OpenCode-style timeline parts, preserving readable chat ordering
     while keeping raw metadata in the run diagnostics dialog.
 - OpenCode/Vortex motion follow-up:
-  - Omega now ports the lightweight Vortex `opencode-motion` vocabulary from
+  - OpenAgents product surface now ports the lightweight Vortex `opencode-motion` vocabulary from
     `vortex/components/autopilot/opencode-motion.tsx` and
     `vortex/app/globals.css` into `apps/web/src/styles.css` using the same
     `oa-status-morph`, `oa-odometer-number`, `oa-text-reveal`,
@@ -192,7 +192,7 @@ Implemented work:
     steps as private operational instructions. Agents should perform them
     quietly and keep user-visible chat focused on the requested work.
 - SHC runtime follow-up:
-  - Omega now records explicit runner modes instead of the ambiguous old
+  - OpenAgents product surface now records explicit runner modes instead of the ambiguous old
     `opencode` runtime label. New runs default to `opencode_codex`, meaning
     SHC launches OpenCode while feeding it the already-materialized Codex
     connected-account auth cache. Raw `codex` remains an explicit alternate
@@ -251,9 +251,9 @@ OpenCode local reference:
 - `projects/repos/opencode`
 - Remote: `https://github.com/anomalyco/opencode.git`
 
-Omega target:
+OpenAgents product surface target:
 
-- `autopilot-omega`
+- `openagents`
 
 Important OpenChamber source paths inspected:
 
@@ -300,7 +300,7 @@ Important OpenCode source paths inspected:
 - `packages/opencode/src/permission/index.ts`
 - `packages/opencode/src/question/index.ts`
 
-Important Omega target paths inspected:
+Important OpenAgents product surface target paths inspected:
 
 - `DESIGN.md`
 - `INVARIANTS.md`
@@ -339,13 +339,13 @@ The OpenChamber `AGENTS.md` describes the intended boundary clearly:
 - Electron owns the desktop shell and security boundary.
 - VS Code parity lives under `packages/vscode/*`.
 
-The product implication is important for Omega. OpenChamber separates "agent
+The product implication is important for OpenAgents product surface. OpenChamber separates "agent
 runtime protocol" from "application runtime". OpenCode is the agent server and
 event source. OpenChamber is the shell that starts, proxies, observes, and
 projects that runtime into a usable workroom.
 
-Omega should keep that separation. OpenCode-style events can be a useful runner
-adapter, but Omega's authoritative product state should remain in OpenAgents
+OpenAgents product surface should keep that separation. OpenCode-style events can be a useful runner
+adapter, but OpenAgents product surface's authoritative product state should remain in OpenAgents
 Cloud, the BFF, or whatever Source Authority controls the run.
 
 ## Visual Structure
@@ -364,7 +364,7 @@ a top context bar, the chat timeline, changed-file summary, and composer. The
 right panel shows runtime controls, tabs, branch state, changed files, commit
 message, and commit/sync actions.
 
-This is the strongest UI pattern to port. Omega should avoid treating chat as a
+This is the strongest UI pattern to port. OpenAgents product surface should avoid treating chat as a
 single full-width page with detached tools. The better model is a persistent
 workroom where navigation, transcript, and operational context stay visible
 together.
@@ -386,7 +386,7 @@ documentation describes the intended hierarchy:
 This gives users repeated-run ergonomics. They can scan many agent sessions
 without leaving the workroom.
 
-Omega should port the information architecture, not necessarily the exact
+OpenAgents product surface should port the information architecture, not necessarily the exact
 component tree. A Foldkit model should represent:
 
 - Project or workspace groups.
@@ -397,7 +397,7 @@ component tree. A Foldkit model should represent:
 - Archived/collapsed state.
 - Worktree or branch metadata when available.
 
-For Omega's OpenAgents context, the grouping may eventually be program, account,
+For OpenAgents product surface's OpenAgents context, the grouping may eventually be program, account,
 workspace, workroom, or Source Authority rather than a raw local directory.
 Still, OpenChamber proves that users need a dense run selector next to the
 timeline.
@@ -431,7 +431,7 @@ The screenshots show several useful patterns:
 - The composer remains bottom-stable and carries attachments, mode controls,
   and pending-change awareness.
 
-Omega should shift from "message body string" to "turn projection". This is the
+OpenAgents product surface should shift from "message body string" to "turn projection". This is the
 single most important model change.
 
 ### Right Operational Panel
@@ -452,7 +452,7 @@ substantial diff/editor surface while the chat remains visible. This is the
 right instinct for review-heavy Autopilot workflows. The agent transcript and
 review artifact should stay connected.
 
-Omega should use the right panel for the current run's authoritative context:
+OpenAgents product surface should use the right panel for the current run's authoritative context:
 
 - Files changed.
 - Review/approval state.
@@ -462,7 +462,7 @@ Omega should use the right panel for the current run's authoritative context:
 - Runtime logs or command output when relevant.
 - Source Authority status.
 
-For Omega, Git may not always be the dominant tab. In OpenAgents workflows, the
+For OpenAgents product surface, Git may not always be the dominant tab. In OpenAgents workflows, the
 right panel may prioritize review, approval, program policy, or receipts over
 raw local Git status. The layout pattern still ports cleanly.
 
@@ -484,8 +484,8 @@ OpenChamber's composer is dense and multimodal. It supports:
 
 This is more than a textarea. It is a command dock for the current workroom.
 
-Omega should preserve that direction while simplifying the first implementation.
-A useful initial Omega composer model should include:
+OpenAgents product surface should preserve that direction while simplifying the first implementation.
+A useful initial OpenAgents product surface composer model should include:
 
 - Prompt text.
 - Selected agent or runtime.
@@ -512,10 +512,10 @@ keep three visible columns on mobile. It collapses to:
 - A small live task/status overlay.
 
 The lesson is that the workroom state survives the viewport change, but the
-layout is projected differently. Omega should model the workroom first and let
+layout is projected differently. OpenAgents product surface should model the workroom first and let
 desktop/mobile views render that model differently.
 
-For Omega, mobile should not be a separate chat-only product. It should expose
+For OpenAgents product surface, mobile should not be a separate chat-only product. It should expose
 the same session, blockers, approvals, and artifacts through compact panels.
 
 ### Settings And Operator Controls
@@ -540,7 +540,7 @@ These settings reveal real product concerns:
 - Diffs need responsive layout choices.
 - Reasoning visibility should be controlled deliberately.
 
-Omega should not copy this entire settings surface first. It should encode the
+OpenAgents product surface should not copy this entire settings surface first. It should encode the
 same choices as typed state, then expose only the controls that fit the
 OpenAgents operator model.
 
@@ -565,7 +565,7 @@ The practical UX rule is:
 - File edits and diffs should be first-class.
 - Runtime blockers should become explicit cards or docks.
 
-Omega should model timeline parts with a discriminated union. A useful target
+OpenAgents product surface should model timeline parts with a discriminated union. A useful target
 shape:
 
 ```text
@@ -582,7 +582,7 @@ TimelinePart =
   | RuntimeStatusPart
 ```
 
-The current Omega `ChatMessage` shape is too flat for this. A string `body` plus
+The current OpenAgents product surface `ChatMessage` shape is too flat for this. A string `body` plus
 message `status` cannot represent:
 
 - Streaming tool deltas.
@@ -593,7 +593,7 @@ message `status` cannot represent:
 - A todo status update.
 - A run that is busy, cooling down, idle, or needs attention.
 
-Omega should keep the current run metadata projection as a narrow foundation,
+OpenAgents product surface should keep the current run metadata projection as a narrow foundation,
 but the next model iteration should introduce structured parts and turn records.
 
 ## Event And Store Architecture
@@ -635,7 +635,7 @@ OpenChamber handles these event families:
 - `question.rejected`
 - `lsp.updated`
 
-Omega should translate that into Foldkit/Effect language:
+OpenAgents product surface should translate that into Foldkit/Effect language:
 
 - External runtime updates become typed messages.
 - The Foldkit update function applies small, targeted state transitions.
@@ -643,7 +643,7 @@ Omega should translate that into Foldkit/Effect language:
 - State is split by feature and update frequency.
 - The view receives already-projected workroom state.
 
-A useful Omega model split:
+A useful OpenAgents product surface model split:
 
 ```text
 LoggedInModel
@@ -721,7 +721,7 @@ Representative operations include:
 - `getSessionStatus`
 
 `sendMessage` ultimately uses OpenCode's async prompt endpoint. That matters for
-Omega: user submit is not just local state mutation. It is a command sent to a
+OpenAgents product surface: user submit is not just local state mutation. It is a command sent to a
 runtime, and the visible transcript is then reconciled through runtime events.
 
 ### Runtime URL And Fetch
@@ -733,8 +733,8 @@ OpenChamber does not hardcode a single server URL in component code. It uses:
   active runtime.
 - Runtime auth headers and URL tokens for assets, SSE, and WebSocket paths.
 
-For Omega, this reinforces a boundary principle: UI code should not directly
-know the physical runtime. It should talk to an Omega BFF or runtime connector
+For OpenAgents product surface, this reinforces a boundary principle: UI code should not directly
+know the physical runtime. It should talk to an OpenAgents product surface BFF or runtime connector
 that owns credentials, endpoint selection, and authorization.
 
 ### Server Boundary
@@ -763,14 +763,14 @@ The lifecycle module waits for OpenCode to print the listening URL, captures
 diagnostics, and stores the active endpoint. The proxy module preserves SSE
 behavior and readiness semantics while OpenCode starts or restarts.
 
-Omega should not copy this local process model unless it grows a local desktop
+OpenAgents product surface should not copy this local process model unless it grows a local desktop
 surface. The Cloud-facing product should keep runtime start/connect/restart
 behind a server-side adapter.
 
 ### OpenCode SDK And Events
 
 The OpenCode SDK exposes a generated client with session and global endpoints.
-The useful surfaces for Omega research are:
+The useful surfaces for OpenAgents product surface research are:
 
 - Global events through `/global/event`.
 - Session list/create/get/update/delete.
@@ -815,11 +815,11 @@ It:
 The user-facing settings expose transport selection because transport matters
 for debugging streaming UIs.
 
-Omega should make transport explicit in the model even if it starts with a
+OpenAgents product surface should make transport explicit in the model even if it starts with a
 single implementation. A hidden stringly transport state would make reconnect,
 debugging, and tests harder later.
 
-## What Omega Should Learn And Port
+## What OpenAgents product surface Should Learn And Port
 
 ### 1. Port The Workroom Frame
 
@@ -831,14 +831,14 @@ The strongest pattern is:
 - Composer at the bottom.
 - Optional terminal/log dock.
 
-Omega already has `Ui.workroomSessionRail`, `Ui.workroomTopBar`,
+OpenAgents product surface already has `Ui.workroomSessionRail`, `Ui.workroomTopBar`,
 `Ui.workroomActionDock`, `Ui.workroomPermissionDock`, and related workroom
 registry functions. The next step is to make those components represent a
 structured model instead of a mostly static seed page.
 
 ### 2. Port Turn-Based Projection
 
-OpenChamber renders a run as turns, not only messages. Omega should define:
+OpenChamber renders a run as turns, not only messages. OpenAgents product surface should define:
 
 - User turn.
 - Assistant response.
@@ -870,7 +870,7 @@ This directly supports Autopilot review and approval flows.
 OpenChamber treats permissions and questions as first-class runtime requests.
 They are not plain assistant text.
 
-Omega should treat approvals, policy blocks, account decisions, operator
+OpenAgents product surface should treat approvals, policy blocks, account decisions, operator
 questions, and Source Authority prompts the same way:
 
 - Show them in the timeline.
@@ -883,7 +883,7 @@ This is a natural fit for OpenAgents acceptance and approval semantics.
 ### 5. Port Context Panel Coupling
 
 The right panel should update from the same events that update the timeline.
-For Omega, this means:
+For OpenAgents product surface, this means:
 
 - A file change event updates both the timeline and changed-files panel.
 - A review request updates both the timeline and approval dock.
@@ -895,7 +895,7 @@ show stale or unrelated state.
 
 ### 6. Port Session Hierarchy
 
-OpenChamber's session rail makes many sessions manageable. Omega should port
+OpenChamber's session rail makes many sessions manageable. OpenAgents product surface should port
 the idea of session grouping and attention state:
 
 - Active sessions.
@@ -905,11 +905,11 @@ the idea of session grouping and attention state:
 - Program/workspace/account grouping.
 - Run status and last update metadata.
 
-The exact labels should be Omega-native, but the density is worth preserving.
+The exact labels should be OpenAgents product surface-native, but the density is worth preserving.
 
 ### 7. Port Transport And Status Visibility
 
-OpenChamber exposes live/busy/idle status and transport controls. Omega should
+OpenChamber exposes live/busy/idle status and transport controls. OpenAgents product surface should
 represent:
 
 - Runtime connected/reconnecting/degraded.
@@ -924,7 +924,7 @@ silent UI can be mistaken for an idle agent.
 ### 8. Port Mobile State, Not Mobile Layout
 
 OpenChamber's mobile screenshot proves the state can survive layout collapse.
-Omega should design desktop and mobile views from the same workroom model:
+OpenAgents product surface should design desktop and mobile views from the same workroom model:
 
 - Desktop: three columns.
 - Tablet: rail or right panel collapses first.
@@ -932,31 +932,31 @@ Omega should design desktop and mobile views from the same workroom model:
 
 The model should not depend on column visibility.
 
-## What Omega Should Not Port
+## What OpenAgents product surface Should Not Port
 
-Omega should avoid copying:
+OpenAgents product surface should avoid copying:
 
 - OpenChamber's React component architecture.
 - Zustand store layout.
 - Electron process lifecycle.
 - Direct local filesystem endpoints as browser-facing product authority.
 - Direct local OpenCode auth assumptions.
-- The exact settings surface before Omega has matching runtime needs.
+- The exact settings surface before OpenAgents product surface has matching runtime needs.
 - One-to-one visual palette decisions from OpenChamber screenshots.
 - Raw user-facing OpenCode protocol details in primary UI.
 
 The OpenChamber palette uses warm off-white text, dark backgrounds, muted
-orange/brown accents, olive/blue status chips, and compact panels. Omega's
+orange/brown accents, olive/blue status chips, and compact panels. OpenAgents product surface's
 `DESIGN.md` already requires a dark Vortex/OpenAgents operational interface,
 pure black foundations, warm off-white text, compact mono details, status rows,
-panes, event tapes, and review surfaces. The port should use Omega's visual
+panes, event tapes, and review surfaces. The port should use OpenAgents product surface's visual
 language while adopting OpenChamber's layout and interaction density.
 
-## Omega Target Architecture
+## OpenAgents product surface Target Architecture
 
 ### Current Gap
 
-The current Omega web model now submits chat turns into real Autopilot run
+The current OpenAgents product surface web model now submits chat turns into real Autopilot run
 records and projects basic SHC/OpenCode run metadata back into the timeline.
 The existing workroom UI registry is promising, but the data model still does
 not yet carry full OpenChamber-grade runtime information.
@@ -1067,13 +1067,13 @@ RuntimeSyncEvent
   RuntimeConnectionChanged
 ```
 
-These names should be made Omega-native during implementation. The important
+These names should be made OpenAgents product surface-native during implementation. The important
 constraint is not the exact naming; it is that runtime facts are explicit and
 typed.
 
 ### Foldkit/Effect Translation
 
-In Omega, the OpenChamber-style architecture should become:
+In OpenAgents product surface, the OpenChamber-style architecture should become:
 
 - Effect services for runtime/BFF clients.
 - Foldkit messages for user actions and runtime events.
@@ -1085,7 +1085,7 @@ Example flow:
 
 1. User submits a composer command.
 2. Foldkit update marks submission pending and emits a command.
-3. Runtime service calls the Omega BFF or runner adapter.
+3. Runtime service calls the OpenAgents product surface BFF or runner adapter.
 4. Runtime stream emits typed events.
 5. Foldkit update applies each event to the workroom model.
 6. The timeline and right panel re-render from the same state.
@@ -1097,7 +1097,7 @@ rendering.
 
 ### Phase 0: Document And Type The Workroom Contract
 
-Add or update Omega documentation and model types for:
+Add or update OpenAgents product surface documentation and model types for:
 
 - Workroom sessions.
 - Timeline turns.
@@ -1112,7 +1112,7 @@ integration that later has to be unwound.
 
 ### Phase 1: Static OpenChamber-Shaped Projection
 
-Use existing Omega workroom registry primitives to create a richer workroom
+Use existing OpenAgents product surface workroom registry primitives to create a richer workroom
 projection:
 
 - Left rail with grouped sessions and attention badges.
@@ -1121,7 +1121,7 @@ projection:
 - Right context panel with review/files/status tabs.
 - Permission/question dock as active blocker UI.
 
-This phase should stay entirely within Omega's dark operational design system.
+This phase should stay entirely within OpenAgents product surface's dark operational design system.
 
 ### Phase 2: Runtime Event Reducer
 
@@ -1139,14 +1139,14 @@ This is where OpenChamber's "clone only touched fields" rule matters most.
 
 ### Phase 3: BFF/Runtime Bridge
 
-Connect the reducer to an authoritative Omega runtime stream:
+Connect the reducer to an authoritative OpenAgents product surface runtime stream:
 
-- Browser subscribes to Omega BFF or Cloud event stream.
+- Browser subscribes to OpenAgents product surface BFF or Cloud event stream.
 - Server-side adapter talks to OpenCode or an OpenCode-like runner when needed.
 - Credentials and runtime URLs stay server-side.
-- Permission/question replies post to Omega commands, not raw local OpenCode
+- Permission/question replies post to OpenAgents product surface commands, not raw local OpenCode
   endpoints from the browser.
-- The adapter maps OpenCode events into Omega `RuntimeSyncEvent` values.
+- The adapter maps OpenCode events into OpenAgents product surface `RuntimeSyncEvent` values.
 
 This preserves product authority while using OpenCode's mature event protocol as
 reference.
@@ -1164,7 +1164,7 @@ After the event shape is stable:
 OpenChamber already proves these concerns become necessary once the transcript
 contains many tool events.
 
-## Concrete UI Registry Deltas For Omega
+## Concrete UI Registry Deltas For OpenAgents product surface
 
 The current `apps/web/src/ui/index.ts` workroom registry should grow toward
 these primitives:
@@ -1220,7 +1220,7 @@ For Autopilot acceptance and receipts:
 For Autopilot runtime authority:
 
 - Browser UI should not own runner authority.
-- OpenCode-like protocol should be adapted through Omega services.
+- OpenCode-like protocol should be adapted through OpenAgents product surface services.
 - Runtime events should be normalized before they reach UI projection.
 
 For Autopilot operator UX:
@@ -1236,17 +1236,17 @@ For Autopilot operator UX:
 ### Risk: Copying Local Filesystem Assumptions
 
 OpenChamber is comfortable with local filesystem and terminal routes because it
-is a local/desktop/web runtime for OpenCode. Omega's Cloud-facing Autopilot
+is a local/desktop/web runtime for OpenCode. OpenAgents product surface's Cloud-facing Autopilot
 surface has different authority constraints. Do not expose local-style file
 routes directly in the browser product.
 
 Guardrail: all filesystem, Git, terminal, and runner operations should go
-through Omega services with explicit authorization and Source Authority
+through OpenAgents product surface services with explicit authorization and Source Authority
 semantics.
 
 ### Risk: Flattening Runtime Events Into Text
 
-If Omega integrates a runner by appending text chunks, it will lose tool,
+If OpenAgents product surface integrates a runner by appending text chunks, it will lose tool,
 permission, question, diff, and review structure.
 
 Guardrail: define `RuntimeSyncEvent` and `TimelinePart` unions before live
@@ -1263,14 +1263,14 @@ stream wherever possible.
 ### Risk: Over-Porting Settings
 
 OpenChamber exposes many useful settings because it supports local runtimes and
-multiple transports. Omega does not need all controls on day one.
+multiple transports. OpenAgents product surface does not need all controls on day one.
 
 Guardrail: model transport/render/diff preferences internally first, expose only
 the settings operators actually need.
 
 ### Risk: React/Zustand Architecture Leakage
 
-OpenChamber's implementation is optimized for React and Zustand. Omega is a
+OpenChamber's implementation is optimized for React and Zustand. OpenAgents product surface is a
 Foldkit/Effect codebase.
 
 Guardrail: port the product model and event reducer ideas, not store and
@@ -1278,23 +1278,23 @@ component architecture.
 
 ## Open Questions
 
-1. What runtime should Omega support first: an SHC runner stream, a direct
+1. What runtime should OpenAgents product surface support first: an SHC runner stream, a direct
    OpenCode server adapter, or an OpenAgents BFF canonical stream?
-2. Should Omega prioritize GitHub PR/review context over raw Git status in the
+2. Should OpenAgents product surface prioritize GitHub PR/review context over raw Git status in the
    right panel?
-3. What is the first "permission" equivalent in Omega: edit approval, Source
+3. What is the first "permission" equivalent in OpenAgents product surface: edit approval, Source
    Authority approval, deployment approval, account action approval, or all of
    them behind one blocker model?
-4. Does Omega need a local desktop/PWA runtime soon, or should the first port
+4. Does OpenAgents product surface need a local desktop/PWA runtime soon, or should the first port
    stay Cloud-first?
 5. Should reasoning traces be visible to operators by default, or only under an
    explicit inspection setting?
 
 ## Near-Term Recommendation
 
-The first shell-level UI port is complete: Omega now has one logged-in workroom
+The first shell-level UI port is complete: OpenAgents product surface now has one logged-in workroom
 sidebar instead of a separate app navigation surface and chat/session rail. The
-next Omega implementation pass should go deeper into the workroom model:
+next OpenAgents product surface implementation pass should go deeper into the workroom model:
 
 1. Replace simple sidebar room rows with typed workroom/session data.
 2. Expand the workroom model with typed turns, parts, blockers, changed files,
@@ -1302,8 +1302,8 @@ next Omega implementation pass should go deeper into the workroom model:
 3. Add focused update tests for turn, part, sidebar, and right-panel projection.
 4. Introduce the runtime event reducer on top of the current Worker-owned run
    event API.
-5. Then move from polling to a live runtime stream through an Omega-owned
+5. Then move from polling to a live runtime stream through an OpenAgents product surface-owned
    service.
 
-This lets Omega keep learning the best UX from OpenChamber without inheriting
+This lets OpenAgents product surface keep learning the best UX from OpenChamber without inheriting
 the wrong runtime authority model.

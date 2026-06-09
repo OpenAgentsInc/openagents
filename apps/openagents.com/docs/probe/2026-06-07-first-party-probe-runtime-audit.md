@@ -2,7 +2,7 @@
 
 Date: 2026-06-07
 Status: zero-tech-debt architecture audit and implementation plan
-Scope: first-party Probe runtime, Omega sync, SHC deployment, optional Pylon installation, and deprecated Probe source-material handling
+Scope: first-party Probe runtime, OpenAgents product surface sync, SHC deployment, optional Pylon installation, and deprecated Probe source-material handling
 
 ## Direction Change
 
@@ -22,7 +22,7 @@ The corrected direction is:
   model.
 - Bun, Effect, SQLite, or any other implementation choice is internal plumbing,
   not a product or protocol name.
-- Omega and Probe share schemas deliberately instead of drifting through ad hoc
+- OpenAgents product surface and Probe share schemas deliberately instead of drifting through ad hoc
   JSON payloads.
 - SHC boxes are a first-class deployment target, not an afterthought.
 - Pylon can download and run Probe when explicitly configured, but Pylon's main
@@ -33,9 +33,9 @@ The corrected direction is:
 
 ## Executive Summary
 
-The intended end state is simple: Omega dispatches coding work to `probe` on a
+The intended end state is simple: OpenAgents product surface dispatches coding work to `probe` on a
 runner backend such as `shc_vm`, and Probe emits typed, redacted events back to
-Omega and OpenAgents Sync. Probe is the product/runtime name; it is not named
+OpenAgents product surface and OpenAgents Sync. Probe is the product/runtime name; it is not named
 after its implementation stack, migration path, or reference repos.
 
 The existing Rust Probe repo is deprecated as an implementation. It remains
@@ -52,20 +52,20 @@ The new Probe runtime should start with a smaller, clearer core:
 - tool execution,
 - approval state,
 - managed runtime control,
-- Omega event export,
+- OpenAgents product surface event export,
 - SHC runner deployment,
 - Pylon optional runtime support.
 
 The goal is not blanket parity with the deprecated Rust runtime. The goal is the
 final OpenAgents coding-agent surface: a runtime that can be deployed to SHC
-boxes, selected by Omega through `RunnerRuntime`, mirrored through OpenAgents
+boxes, selected by OpenAgents product surface through `RunnerRuntime`, mirrored through OpenAgents
 Sync, and operated as the default coding-agent backend for OpenAgents workrooms
 without binding the product to OpenCode, Codex, or Rust Probe internals.
 
-The immediate Omega implication is concrete: `@openagents/sync-schema` currently
-defines `RunnerRuntime` as `opencode_codex | codex`, and Omega defaults
+The immediate OpenAgents product surface implication is concrete: `@openagents/sync-schema` currently
+defines `RunnerRuntime` as `opencode_codex | codex`, and OpenAgents product surface defaults
 `DEFAULT_AGENT_RUNTIME` to `opencode_codex`. The from-scratch Probe path should
-add a first-party runtime discriminator named `probe`, then teach Omega's SHC
+add a first-party runtime discriminator named `probe`, then teach OpenAgents product surface's SHC
 dispatch, event ingestion, run projection, and tests to treat Probe as a
 runtime running on backends such as `shc_vm` and `gcloud_vm`.
 
@@ -80,7 +80,7 @@ Intended end state:
 
 Real caller review:
 
-- Omega currently calls the SHC control path with `opencode_codex`/`codex`
+- OpenAgents product surface currently calls the SHC control path with `opencode_codex`/`codex`
   runtime names. Those are real current callers, so the migration plan should
   add `probe` beside them first and delete the old runtime names only after
   dispatch traffic moves.
@@ -156,13 +156,13 @@ Deprecated command inventory includes:
   signature registry commands
 
 The new runtime should not port this list by default. For each old command,
-search for a real caller first. If there is no current Omega, Pylon, operator,
+search for a real caller first. If there is no current OpenAgents product surface, Pylon, operator,
 or release caller, harvest useful behavior into tests or design notes and leave
 the command out.
 
-### Omega Today
+### OpenAgents product surface Today
 
-Omega already has the Cloudflare product/control path for SHC work:
+OpenAgents product surface already has the Cloudflare product/control path for SHC work:
 
 - `packages/sync-schema/src/index.ts`
   - `RunnerRuntime = 'opencode_codex' | 'codex'`
@@ -182,7 +182,7 @@ Omega already has the Cloudflare product/control path for SHC work:
   - GCP is fallback/reference/sensitive rerun lane
   - product dispatch must be API to runner API, not SSH
 
-Omega does not yet have a Probe-native runtime selector or Probe-native SHC
+OpenAgents product surface does not yet have a Probe-native runtime selector or Probe-native SHC
 control payload. It still names OpenCode/Codex as the default runtime. The
 intended new runtime selector is `probe`.
 
@@ -222,7 +222,7 @@ probe admin-chat-bridge signed --request <path> --secret-env <env> --cwd <worksp
 That command is a real current caller and should be preserved as a narrow Pylon
 bridge during migration. Other deprecated Probe commands should not receive the
 same treatment unless caller search proves they are still live. The target
-SHC/Omega runtime path should move toward managed runtime events instead of
+SHC/OpenAgents product surface runtime path should move toward managed runtime events instead of
 admin-chat accepted-only output.
 
 ## OpenCode Reference Use
@@ -245,7 +245,7 @@ OpenCode should not be used for:
 - event payload authority,
 - direct code vendoring as the Probe core,
 - runtime facade implementation,
-- Omega product contract decisions.
+- OpenAgents product surface product contract decisions.
 
 The practical rule is: references can create requirements and tests, not
 dependencies.
@@ -280,8 +280,8 @@ The new Probe should be an Effect application with these first-party services:
     cleanup receipts.
 - `ProbeArtifactStore`
   - artifact refs, digests, summary files, patches, logs, and closeout material.
-- `ProbeOmegaSync`
-  - maps runtime events to Omega/Synchronization events.
+- `ProbeOpenAgents product surfaceSync`
+  - maps runtime events to OpenAgents product surface/Synchronization events.
 - `ProbeManagedRuntime`
   - start/resume/control/replay/heartbeat/child-session operations.
 - `ProbeManagedEnvironment`
@@ -307,7 +307,7 @@ probe/
     probe-core/
     probe-protocol/
     probe-runtime/
-    probe-omega-sync/
+    probe-openagents-sync/
     probe-shc-runner/
     probe-pylon/
     probe-test-support/
@@ -337,11 +337,11 @@ Each schema should have:
 - JSON fixture,
 - redaction test,
 - round-trip encode/decode test,
-- Omega sync projection test where relevant.
+- OpenAgents product surface sync projection test where relevant.
 
-## Omega Sync Plan
+## OpenAgents product surface Sync Plan
 
-The runtime cannot be correct if Omega and Probe drift. Add a deliberate sync
+The runtime cannot be correct if OpenAgents product surface and Probe drift. Add a deliberate sync
 surface.
 
 ### Shared Runtime Discriminator
@@ -356,7 +356,7 @@ export const RunnerRuntime = S.Literals([
 ])
 ```
 
-Then update Omega tests and default selection policy. The default can remain
+Then update OpenAgents product surface tests and default selection policy. The default can remain
 `opencode_codex` until SHC Probe smoke passes, but `probe` must be a valid
 assignment runtime early so SHC can be tested without schema hacks. Once real
 traffic has moved, delete old runtime names that no longer have callers instead
@@ -399,11 +399,11 @@ The payload should carry refs, not raw credentials or raw provider payloads.
 
 ### Event Ingestion
 
-Omega should ingest Probe events through existing `agent-runs` paths but with a
+OpenAgents product surface should ingest Probe events through existing `agent-runs` paths but with a
 Probe event mapper:
 
 - Probe runtime event -> `AgentRunEvent`
-- Probe artifact ref -> Omega artifact ref
+- Probe artifact ref -> OpenAgents product surface artifact ref
 - Probe approval request -> product approval row/ref
 - Probe terminal event -> run status update
 - Probe usage ref -> billing/usage source ref
@@ -475,7 +475,7 @@ out. `worker` can come after event replay and cancellation are reliable.
 
 ### SHC Control Request
 
-Omega should eventually POST a Probe-shaped control payload to SHC:
+OpenAgents product surface should eventually POST a Probe-shaped control payload to SHC:
 
 ```json
 {
@@ -483,8 +483,8 @@ Omega should eventually POST a Probe-shaped control payload to SHC:
   "agentRuntime": "probe",
   "runnerId": "oa-shc-katy-01",
   "runId": "agent_run_...",
-  "repository": "OpenAgentsInc/autopilot-omega",
-  "repositoryCloneUrl": "https://github.com/OpenAgentsInc/autopilot-omega.git",
+  "repository": "OpenAgentsInc/openagents",
+  "repositoryCloneUrl": "https://github.com/OpenAgentsInc/openagents.git",
   "repositoryRef": "main",
   "goal": "bounded goal text",
   "toolPolicyRef": "policy.probe.low_trust.workspace_write",
@@ -521,7 +521,7 @@ translate to the current host reality with a visible reason.
 
 ### SHC Release And Smoke Gates
 
-Before Omega defaults a run to Probe on SHC:
+Before OpenAgents product surface defaults a run to Probe on SHC:
 
 1. Build a Linux x64 Probe artifact.
 2. Install it on `oa-shc-katy-01` from a release asset, not source checkout.
@@ -604,7 +604,7 @@ Freeze and fixture:
 - SHC assignment schema,
 - Pylon runtime capability schema,
 - backend profile names,
-- Omega `RunnerRuntime` discriminator.
+- OpenAgents product surface `RunnerRuntime` discriminator.
 
 Only freeze contracts that have an intended product role or a real current
 caller. Deprecated Rust Probe surfaces without callers become source-material
@@ -675,18 +675,18 @@ Each tool needs:
 - artifact behavior,
 - unit tests.
 
-### Phase 5: Omega Event Export
+### Phase 5: OpenAgents product surface Event Export
 
 Map Probe events to:
 
 - `probe.website_event.v1`,
-- Omega `AgentRunEvent`,
+- OpenAgents product surface `AgentRunEvent`,
 - OpenAgents Sync changes,
 - token/usage refs,
 - artifact refs,
 - retained failure refs.
 
-No raw runtime payload crosses into Omega.
+No raw runtime payload crosses into OpenAgents product surface.
 
 ### Phase 6: SHC Run-Once
 
@@ -703,9 +703,9 @@ Implement:
 
 This is the first deployable milestone.
 
-### Phase 7: Omega Probe Runtime Selector
+### Phase 7: OpenAgents product surface Probe Runtime Selector
 
-Update Omega:
+Update OpenAgents product surface:
 
 - add `probe` to `RunnerRuntime`,
 - add tests for Probe assignment creation,
@@ -749,7 +749,7 @@ The Rust Probe implementation is already deprecated for this plan. Closure means
 new Probe has harvested the source material that still matters and can ignore or
 archive the rest. Required gates:
 
-- Omega SHC run-once passes,
+- OpenAgents product surface SHC run-once passes,
 - Pylon compatibility passes,
 - managed runtime passes,
 - website events pass,
@@ -761,11 +761,11 @@ archive the rest. Required gates:
 - dead deprecated command surfaces are explicitly not ported.
 
 Forge RLM, optimizer, and some hosted runners can remain later if they are not
-on the critical Pylon/Omega/SHC path.
+on the critical Pylon/OpenAgents product surface/SHC path.
 
 ## Implementation Checklist
 
-Omega docs and schema:
+OpenAgents product surface docs and schema:
 
 - update this audit,
 - add `probe` runtime in `packages/sync-schema`,
@@ -802,9 +802,9 @@ Pylon:
 
 ## Risks
 
-1. Runtime drift between Probe and Omega.
+1. Runtime drift between Probe and OpenAgents product surface.
 
-   Mitigation: shared schemas, fixtures, and Omega sync tests before live SHC
+   Mitigation: shared schemas, fixtures, and OpenAgents product surface sync tests before live SHC
    dispatch.
 
 2. Rebuilding from scratch can under-scope tool behavior.
@@ -849,13 +849,13 @@ Probe:
 - `/Users/christopherdavid/work/probe/crates/probe-core/src/managed_runtime.rs`
 - `/Users/christopherdavid/work/probe/crates/probe-protocol/src`
 
-Omega:
+OpenAgents product surface:
 
-- `/Users/christopherdavid/work/autopilot-omega/packages/sync-schema/src/index.ts`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/omni-runs.ts`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/runner-backends.ts`
-- `/Users/christopherdavid/work/autopilot-omega/docs/2026-06-02-shc-agent-deployment-runbook.md`
-- `/Users/christopherdavid/work/autopilot-omega/docs/probe/2026-06-07-pylon-probe-coding-agent-audit.md`
+- `/Users/christopherdavid/work/openagents/packages/sync-schema/src/index.ts`
+- `/Users/christopherdavid/work/openagents/workers/api/src/omni-runs.ts`
+- `/Users/christopherdavid/work/openagents/workers/api/src/runner-backends.ts`
+- `/Users/christopherdavid/work/openagents/docs/2026-06-02-shc-agent-deployment-runbook.md`
+- `/Users/christopherdavid/work/openagents/docs/probe/2026-06-07-pylon-probe-coding-agent-audit.md`
 
 Pylon:
 

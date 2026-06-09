@@ -144,9 +144,9 @@ await fetch(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       kind: 'github_repository',
-      label: 'OpenAgents Autopilot Omega repository',
+      label: 'OpenAgents OpenAgents Autopilot repository',
       status: 'public_safe',
-      url: 'https://github.com/OpenAgentsInc/autopilot-omega',
+      url: 'https://github.com/OpenAgentsInc/openagents',
     }),
   },
 )

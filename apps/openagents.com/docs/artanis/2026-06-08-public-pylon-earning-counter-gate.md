@@ -1,6 +1,6 @@
 # Public Pylon Earning Counter Gate
 
-Omega now exposes a deterministic public earning gate in
+OpenAgents product surface now exposes a deterministic public earning gate in
 `/api/public/pylon-stats` as `earningLaunchGate`.
 
 The gate exists because public Pylon counters can be live while broad earning

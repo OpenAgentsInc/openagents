@@ -21,7 +21,7 @@
       },
     },
     "apps/openagents.com": {
-      "name": "autopilot-omega",
+      "name": "@openagents/openagents-com",
       "version": "0.1.0",
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20250601.0",
@@ -473,6 +473,8 @@
 
     "@openagents/mullet-sim": ["@openagents/mullet-sim@workspace:apps/openagents.com/packages/mullet-sim"],
 
+    "@openagents/openagents-com": ["@openagents/openagents-com@workspace:apps/openagents.com"],
+
     "@openagents/probe-runtime": ["@openagents/probe-runtime@workspace:packages/probe/packages/runtime"],
 
     "@openagents/provider-account-schema": ["@openagents/provider-account-schema@workspace:apps/openagents.com/packages/provider-account-schema"],
@@ -752,8 +754,6 @@
     "aria-hidden": ["aria-hidden@1.2.6", "", { "dependencies": { "tslib": "^2.0.0" } }, "sha512-ik3ZgC9dY/lYVVM++OISsaYDeg1tb0VtP5uL3ouh1koGOaUMDPpbFIei4JkFimWUFPn90sbMNMXQAIVOlnYKJA=="],
 
     "assertion-error": ["assertion-error@2.0.1", "", {}, "sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA=="],
-
-    "autopilot-omega": ["autopilot-omega@workspace:apps/openagents.com"],
 
     "aws4fetch": ["aws4fetch@1.0.20", "", {}, "sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g=="],
 

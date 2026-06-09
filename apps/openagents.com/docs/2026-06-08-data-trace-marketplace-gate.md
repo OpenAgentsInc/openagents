@@ -2,11 +2,11 @@
 
 Date: 2026-06-08
 
-Issue: [#563](https://github.com/OpenAgentsInc/autopilot-omega/issues/563)
+Issue: [#563](https://github.com/OpenAgentsInc/openagents/issues/563)
 
 ## Launch Decision
 
-Pylon data revenue is blocked until Omega can project one public-safe settled
+Pylon data revenue is blocked until OpenAgents product surface can project one public-safe settled
 data sale smoke. A submitted local trace, a redaction receipt, a valuation, a
 purchase, and an entitlement are all separate states. None of them may be
 collapsed into payout or settlement.
@@ -87,7 +87,7 @@ The tests cover:
 
 ## Current Gap
 
-Omega now has the launch gate and regression tests. It still does not have a
+OpenAgents product surface now has the launch gate and regression tests. It still does not have a
 live data marketplace that stores redacted local traces, prices them, sells
 them, entitles buyers, pays contributors, and settles Bitcoin. Until the
 settled public-safe sale smoke exists with receipt refs, Pylon data revenue

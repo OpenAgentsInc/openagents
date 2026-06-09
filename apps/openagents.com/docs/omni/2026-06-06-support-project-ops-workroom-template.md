@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #343 / `OMEGA-BIZ-003`.
+Status: implemented contract note for issue #343 / `OPENAGENTS-BIZ-003`.
 
 ## Purpose
 
-Omega now has schema-first support and project ops workroom contracts for
+OpenAgents product surface now has schema-first support and project ops workroom contracts for
 customer issue handling, project status work, escalation tracking, decisions,
 risks, status reports, and closeout receipts.
 

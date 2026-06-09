@@ -6,10 +6,10 @@ Status: implemented for Probe issue #181.
 
 Probe-originated Program Signatures, Module Versions, tool packages, context
 packages, and backend projection adapters are modeled as Blueprint contribution
-drafts. Probe can draft and validate those records, but Omega remains the
+drafts. Probe can draft and validate those records, but OpenAgents product surface remains the
 canonical Blueprint contribution and promotion authority.
 
-The Probe draft shape mirrors Omega's Signature Contribution Draft and
+The Probe draft shape mirrors OpenAgents product surface's Signature Contribution Draft and
 Developer Package Contribution semantics:
 
 - contributor refs

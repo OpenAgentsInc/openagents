@@ -9,7 +9,7 @@ first production flow.
 
 Artanis is not ready to deploy as an autonomous production administrator.
 
-Omega has implemented a large amount of the typed substrate needed for
+OpenAgents product surface has implemented a large amount of the typed substrate needed for
 Artanis: public identity, public report aggregation, standalone runtime and
 loop records, health/staleness projection, operator approval gates, Forum
 taxonomy, publication queue, listener/triage contracts, D1 persistence
@@ -54,7 +54,7 @@ Accepted work is paid or settled without public receipt chains.
 
 ## Evidence Reviewed
 
-Local Omega source and docs:
+Local OpenAgents product surface source and docs:
 
 - `workers/api/src/artanis-public-report.ts`
 - `workers/api/src/artanis-production-launch-gate.ts`
@@ -123,7 +123,7 @@ What does exist:
 - Source and docs describing LDK-compatible payout target registration,
   BOLT12/BOLT11 style target support, wallet telemetry, and accepted-work
   payout eligibility.
-- Omega Pylon readiness and launch-communication projections that correctly
+- OpenAgents product surface Pylon readiness and launch-communication projections that correctly
   separate source support from release, platform, eligibility, accepted-work,
   paid, and settled claims.
 
@@ -236,7 +236,7 @@ Pylon network data. At audit time it reported a live feed with:
 - recent client versions from the v0.1 line.
 
 This proves that the public stats surface is useful. Current homepage/report
-stats are Omega-backed Pylon API aggregates; online, wallet-ready,
+stats are OpenAgents product surface-backed Pylon API aggregates; online, wallet-ready,
 assignment-ready, and legacy sellable labels do not prove Pylon v0.2 release
 readiness, accepted work, payout, or settlement.
 
@@ -304,7 +304,7 @@ closed-loop operation.
 
 Before enabling Artanis in production:
 
-1. Deploy the current Omega source so `/api/public/artanis/report` includes
+1. Deploy the current OpenAgents product surface source so `/api/public/artanis/report` includes
    `productionLaunchGate` and `pylonReleaseParity`.
 2. Apply and verify remote D1 migrations 0119, 0120, and 0121.
 3. Confirm `artanis_%` tables exist remotely.
@@ -336,7 +336,7 @@ Before saying Pylon v0.2 shipped:
 
 ## Immediate Priorities
 
-1. Ship deploy parity for current Omega source.
+1. Ship deploy parity for current OpenAgents product surface source.
 2. Apply Artanis D1 migrations in production.
 3. Run the read-only production readiness verifier.
 4. Run a retained production-equivalent smoke.

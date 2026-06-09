@@ -2,11 +2,11 @@
 
 Date: 2026-06-08
 
-Issue: [#564](https://github.com/OpenAgentsInc/autopilot-omega/issues/564)
+Issue: [#564](https://github.com/OpenAgentsInc/openagents/issues/564)
 
 ## Launch Decision
 
-Plugin and signature marketplace revenue is blocked until Omega can project a
+Plugin and signature marketplace revenue is blocked until OpenAgents product surface can project a
 public-safe settled usage event. Existing signature package validation is
 read-only; it does not install a package, promote a runtime, list a package,
 mutate payment state, or create payout eligibility.
@@ -92,7 +92,7 @@ The tests cover:
 
 ## Current Gap
 
-Omega now has package validation and a launch gate for signature marketplace
+OpenAgents product surface now has package validation and a launch gate for signature marketplace
 revenue claims. It still does not have a live marketplace that meters package
 usage, bills buyers, applies revenue-share splits, handles disputes/refunds, and
 settles Bitcoin payouts. Until a settled public-safe usage event has receipt

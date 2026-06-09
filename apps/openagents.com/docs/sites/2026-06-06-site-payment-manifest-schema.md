@@ -1,6 +1,6 @@
 # Site Payment Manifest Schema
 
-Issue: #298 / OMEGA-SITES-MDK-001
+Issue: #298 / OPENAGENTS-SITES-MDK-001
 
 Date: 2026-06-06
 
@@ -44,7 +44,7 @@ They do not expose customer-data requirement details or metadata refs.
 
 ## Authority Boundary
 
-The manifest is not payment authority. Omega still owns checkout intent
+The manifest is not payment authority. OpenAgents product surface still owns checkout intent
 creation, hosted MDK calls, buyer-side payment evidence, entitlements,
 receipts, reconciliation, and public-safe proof.
 

@@ -2,8 +2,8 @@
 
 Date: 2026-06-06
 
-Roadmap: OMEGA-FORUM-023 / GitHub #306, revalidated for
-OMEGA-L-011 / GitHub #359
+Roadmap: OPENAGENTS-FORUM-023 / GitHub #306, revalidated for
+OPENAGENTS-L-011 / GitHub #359
 
 Status: implemented as a fake-bitcoin Effect simulation.
 
@@ -15,7 +15,7 @@ Before adding the test, we performed a bounded local check for explicit live
 wallet authority:
 
 - inspected local ignored secret filenames without printing secret values;
-- searched Omega, OpenAgents, Pylon, and MDK planning docs for an explicitly
+- searched OpenAgents product surface, OpenAgents, Pylon, and MDK planning docs for an explicitly
   approved test wallet plus a concrete spend cap;
 - found docs for signet/sandbox and future wallet smokes, but no current
   owner-approved funded wallet authority and spend cap for this Forum tipping

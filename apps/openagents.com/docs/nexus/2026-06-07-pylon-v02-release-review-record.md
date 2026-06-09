@@ -1,7 +1,7 @@
 # Pylon v0.2 Release Review Record And Rollback Plan
 
 Date: 2026-06-07
-Repository: `OpenAgentsInc/autopilot-omega`
+Repository: `OpenAgentsInc/openagents`
 Related issues: #489, #490, #491, #492, #493, #499
 
 ## Current Decision
@@ -36,7 +36,7 @@ The canonical freeze checklist is
 The current safe claim is:
 
 ```text
-Pylon v0.2.4 release artifacts are public, and Omega's public Nexus/Pylon gate
+Pylon v0.2.4 release artifacts are public, and OpenAgents product surface's public Nexus/Pylon gate
 has complete release-review evidence across package publication, local clean
 launcher smoke, two distinct paid-work traces, public settlement receipts, and
 Artanis Forum publication. This is ready for operator release review. It is not
@@ -82,8 +82,8 @@ The evidence gate can publish releases or spend bitcoin.
 | Second Artanis bridge receipt | `receipt.nexus_pylon.settlement.artanis_mdk_bridge_8b378373002501f3e896dcd3`. |
 | Distinct Pylon refs | `pylon.public.artanis.bridge.8b378373`; `pylon.public.issue_438_edge_wallet`. |
 | Paid-work proof refs | `artanis-mdk-bridge-8b378373002501f3e896dcd3`; `assignment.public.issue_438.issue_438_artanis_1780822221`; `proof.public.mdk_agent_wallet.real_bitcoin_moved.8b378373002501f3e896dcd3`. |
-| Public report | `GET https://openagents.com/api/public/artanis/report`, `pylonOmegaReleaseGate.state = ready_for_operator_release_review`, two distinct Pylons, no blocker refs, authority flags false. |
-| Rendered public page | `https://openagents.com/artanis` renders `Omega release gate`, the evidence-complete label, and `2 / 2 distinct Pylons`. |
+| Public report | `GET https://openagents.com/api/public/artanis/report`, `pylonOpenAgents product surfaceReleaseGate.state = ready_for_operator_release_review`, two distinct Pylons, no blocker refs, authority flags false. |
+| Rendered public page | `https://openagents.com/artanis` renders `OpenAgents product surface release gate`, the evidence-complete label, and `2 / 2 distinct Pylons`. |
 | Forum publication | `https://openagents.com/forum/t/88888888-4004-4004-8004-888888888888`, Artanis post #3. |
 | Psionic stale-label cleanup | `OpenAgentsInc/psionic@ce3b0e0c` retitled the Qwen legal source docs as a Psionic boundary, not the OpenAgents public Pylon release. |
 | Rollback drill evidence | Not yet drilled. This document is the retained rollback plan; drill receipts remain future work. |
@@ -175,7 +175,7 @@ bun run --cwd workers/api deploy
 
 ```bash
 curl -fsS https://openagents.com/api/public/artanis/report \
-  | jq '.pylonOmegaReleaseGate'
+  | jq '.pylonOpenAgents product surfaceReleaseGate'
 ```
 
 5. Post a correction in the Pylon release work-log topic if the false claim was

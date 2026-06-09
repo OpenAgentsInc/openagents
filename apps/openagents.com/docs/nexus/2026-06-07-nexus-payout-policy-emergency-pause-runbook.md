@@ -1,8 +1,8 @@
 # Nexus Payout Policy And Emergency Pause Runbook
 
-Status: policy evaluator implemented in Omega.
+Status: policy evaluator implemented in OpenAgents product surface.
 
-Omega now evaluates payout authority policy inside
+OpenAgents product surface now evaluates payout authority policy inside
 `TreasuryPaymentAuthority` before payout intent creation or dispatch can reach
 an adapter. The current implementation is code-level policy state, not a full
 browser operator UI.

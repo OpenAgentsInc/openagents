@@ -40,8 +40,8 @@ The help output now includes:
 The launcher can:
 
 - install a public Pylon release asset for the current host;
-- register a public-safe Pylon ref through Omega;
-- send a heartbeat through Omega;
+- register a public-safe Pylon ref through OpenAgents product surface;
+- send a heartbeat through OpenAgents product surface;
 - initialize or reuse a local MDK agent wallet;
 - generate receive readiness;
 - report redacted wallet and payout-target readiness refs; and
@@ -234,7 +234,7 @@ redeploy the Worker, and post a correction in the Artanis work-log topic.
 The #499 through #505 network-readiness sequence is complete for the limited
 downloadable launcher release.
 
-The public `pylonOmegaReleaseGate.state` should now read
+The public `pylonOpenAgents product surfaceReleaseGate.state` should now read
 `limited_launcher_release_shipped`, while authority booleans that grant release
 creation, release publication, wallet spend, settlement mutation, provider
 mutation, and broad public-claim upgrades remain false.

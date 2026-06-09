@@ -1,7 +1,7 @@
 # Onboarding Drip Campaign
 
 Status: implemented campaign definition and enrollment scheduler for
-`OMEGA-O-007`.
+`OPENAGENTS-O-007`.
 
 The initial signup drip is a three-step campaign for new users who do not
 already have active or delivered work:

@@ -1,6 +1,6 @@
 # Pylon Payout Target Admission Projection
 
-Issue #350 / `OMEGA-L-002` adds the first read-only payout target admission
+Issue #350 / `OPENAGENTS-L-002` adds the first read-only payout target admission
 projection for Pylon and LDK settlement readiness.
 
 The implementation lives in
@@ -10,7 +10,7 @@ The implementation lives in
 
 This contract separates a Pylon heartbeat from paid-work settlement readiness.
 A node can be online or recently heartbeating without having a registered,
-wallet-owned, LDK-compatible payout target. The admission projection lets Omega
+wallet-owned, LDK-compatible payout target. The admission projection lets OpenAgents product surface
 show that distinction without disclosing payout target material or granting
 settlement authority.
 
@@ -31,7 +31,7 @@ The record carries only safe refs such as target hashes or registration refs,
 not raw BOLT offers, BOLT invoices, BIP353 names, LNURL strings, payout
 addresses, or wallet-owned secrets.
 
-Issue #451 adds Omega's typed payment destination classifier in
+Issue #451 adds OpenAgents product surface's typed payment destination classifier in
 `workers/api/src/payment-destination-input.ts`. That classifier can normalize
 the class of a pasted BOLT11, BOLT12, LNURL, Lightning Address, BIP353-style
 name, or `bitcoin:` URI input before admission, but it is not an admission

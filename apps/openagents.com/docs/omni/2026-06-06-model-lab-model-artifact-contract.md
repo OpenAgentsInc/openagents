@@ -1,11 +1,11 @@
 # Model Lab Model Artifact Contract
 
-Status: implemented for issue #380 / `OMEGA-LAB-001`.
+Status: implemented for issue #380 / `OPENAGENTS-LAB-001`.
 
 ## Purpose
 
 Model Lab needs to remember model and adapter work products without pretending
-Omega can train, install, route, deploy, pay out, settle, or upgrade public
+OpenAgents product surface can train, install, route, deploy, pay out, settle, or upgrade public
 claims from the artifact record itself. The `ModelArtifact` contract records
 identity, source refs, digest evidence, storage refs, provider refs, training
 run refs, eval/benchmark refs, rights caveats, safety redaction, readiness,

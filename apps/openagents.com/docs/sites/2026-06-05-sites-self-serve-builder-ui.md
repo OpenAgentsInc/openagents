@@ -2,7 +2,7 @@
 
 Date: 2026-06-05
 
-Issue: `#202` / `OMEGA-SITES-VIBE-011`
+Issue: `#202` / `OPENAGENTS-SITES-VIBE-011`
 
 ## What Changed
 
@@ -52,9 +52,9 @@ This slice intentionally does not add customer-controlled deploy approval,
 saved-version creation, or source export. Those remain in the later VibeSDK
 parity issues:
 
-- `OMEGA-SITES-VIBE-012`: SDK
-- `OMEGA-SITES-VIBE-013`: GitHub/source export
-- `OMEGA-SITES-VIBE-014`: app library controls
+- `OPENAGENTS-SITES-VIBE-012`: SDK
+- `OPENAGENTS-SITES-VIBE-013`: GitHub/source export
+- `OPENAGENTS-SITES-VIBE-014`: app library controls
 
 ## Verification
 

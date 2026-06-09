@@ -1,8 +1,8 @@
-# Autopilot Omega Broader Effect Refactor Audit
+# OpenAgents Autopilot Broader Effect Refactor Audit
 
 Date: 2026-06-04
 
-Scope: the full `autopilot-omega` codebase, including `apps/web`,
+Scope: the full `openagents` codebase, including `apps/web`,
 `workers/api`, `packages/*`, package dependency topology, route/runtime
 boundaries, tests, schema packages, and Foldkit UI architecture.
 
@@ -21,12 +21,12 @@ contracts or invariants.
 - Workspace and repo guidance:
   - `/Users/christopherdavid/work/AGENTS.md`
   - `/Users/christopherdavid/work/INVARIANTS.md`
-  - `autopilot-omega/AGENTS.md`
-  - `autopilot-omega/INVARIANTS.md`
-- Prior Omega audit:
+  - `openagents/AGENTS.md`
+  - `openagents/INVARIANTS.md`
+- Prior OpenAgents product surface audit:
   - `docs/2026-06-04-effect-foldkit-codebase-audit.md`
 - Zero-tech-debt caller inventory:
-  - `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+  - `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 - Effect topology guardrail:
   - `scripts/check-effect-topology.mjs`
   - `bun run check:effect-topology`
@@ -53,7 +53,7 @@ contracts or invariants.
 
 ## Executive Summary
 
-Omega is no longer in the "Effect adoption seed" phase. The first audit drove
+OpenAgents product surface is no longer in the "Effect adoption seed" phase. The first audit drove
 real extraction: shared schemas, scoped sync, route modules, thread access,
 thread-file `effect-cf` bindings, token leaderboard service boundaries, and
 many runtime/time/ID seams now exist. The next wave is not "add Effect imports"
@@ -65,7 +65,7 @@ runtime boundary.
 The highest leverage next refactors are:
 
 1. Resolve the Effect version topology. The repo currently has
-   `effect@4.0.0-beta.70` for Omega/effect-cf and `effect@4.0.0-beta.66` through
+   `effect@4.0.0-beta.70` for OpenAgents product surface/effect-cf and `effect@4.0.0-beta.66` through
    Foldkit/devtools/plugin peer lines. This is the most important upgrade
    audit item because duplicate Effect runtimes can quietly undermine service,
    schema, and layer identity assumptions.
@@ -91,12 +91,12 @@ dependencyPromise(...))` into route modules whose dependencies already
    shape.
 9. Treat compatibility paths as temporary debt: search current callers, delete
    caller-free aliases, wrappers, fallbacks, and mode flags, and keep only the
-   product/runtime surface Omega would have if it had been Effect-native from
+   product/runtime surface OpenAgents product surface would have if it had been Effect-native from
    day one.
 
 ## 100% Effect Compliance End State
 
-The intended end state is simple: Omega has one coherent Effect runtime and one
+The intended end state is simple: OpenAgents product surface has one coherent Effect runtime and one
 coherent product architecture. Cloudflare, D1, Durable Objects, queues, sync,
 provider accounts, runner dispatch, billing, and browser commands are all
 modeled as typed Effect services, while Foldkit remains the pure Elm-style UI
@@ -137,7 +137,7 @@ import `Effect`:
 - Domain services should return domain values or domain errors, never
   `Response`. Route groups own HTTP mapping.
 - Time, IDs, and randomness should come from injected services such as
-  `Clock`, `Random`, or an Omega UUID service. Business logic should not call
+  `Clock`, `Random`, or an OpenAgents product surface UUID service. Business logic should not call
   `new Date`, `Date.now`, `crypto.randomUUID`, or `Math.random` directly.
 - JSON and unknown inputs should be decoded at named boundaries with Schema.
   Raw `JSON.parse`, `decodeUnknownSync`, and manual nested `unknown` traversal
@@ -178,7 +178,7 @@ Apply the following rules to each refactor slice:
    better than a "compat", "legacy", "registry", or "helpers" bucket.
 
 These rules should make the next refactor wave more deletion-oriented. The
-goal is not to invent a generic framework for Omega; it is to remove accidental
+goal is not to invent a generic framework for OpenAgents product surface; it is to remove accidental
 complexity until the product architecture and the Effect architecture describe
 the same thing.
 
@@ -186,7 +186,7 @@ the same thing.
 
 | Area                    | Current Shape                                                           | Perfect Compliance Target                                                                                            |
 | ----------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Effect dependency graph | Beta 70 for Omega/effect-cf and beta 66 through Foldkit peers           | One Effect line, with the current Foldkit exception deleted as soon as the ecosystem allows it                       |
+| Effect dependency graph | Beta 70 for OpenAgents product surface/effect-cf and beta 66 through Foldkit peers           | One Effect line, with the current Foldkit exception deleted as soon as the ecosystem allows it                       |
 | Worker boundary         | `fetch` plus route modules that still adapt Promise handlers            | One Worker request runtime/layer; route dependencies are Effect programs                                             |
 | Service ownership       | Some service tags exist, but large modules still own mixed concerns     | Every durable domain has a service tag, live layer, test layer, typed methods, and no hidden dependency requirements |
 | Errors                  | Generic `throw new Error` and string-message classification still exist | Expected failures are tagged errors with exhaustive mappers                                                          |
@@ -273,7 +273,7 @@ invariants. The remaining work is about depth, not novelty.
 
 ### 1. Effect version topology is split between beta 70 and beta 66
 
-Omega's workspace packages and Worker are on `effect@4.0.0-beta.70`.
+OpenAgents product surface's workspace packages and Worker are on `effect@4.0.0-beta.70`.
 `effect-cf@0.13.1` requires `effect ^4.0.0-beta.70`, matching that line. But
 `foldkit@0.102.1`, `@foldkit/devtools-mcp@0.9.0`, and
 `@foldkit/vite-plugin@0.7.0` pull `effect@4.0.0-beta.66` and
@@ -297,7 +297,7 @@ Risk:
 Recommendation:
 
 - Add a dependency-topology check script that records the current exception
-  explicitly: Omega/effect-cf may use beta 70 and Foldkit may pull beta 66 until
+  explicitly: OpenAgents product surface/effect-cf may use beta 70 and Foldkit may pull beta 66 until
   a compatible Foldkit release exists.
 - Once Foldkit supports beta 70, upgrade Foldkit, `@foldkit/devtools-mcp`,
   `@foldkit/vite-plugin`, and `@effect/platform-browser` together in one
@@ -308,7 +308,7 @@ Recommendation:
   Effect versions as harmless metadata churn.
 
 The same check showed `@effect/vitest@0.29.0` still peers on `effect ^3.21.0`
-and `vitest ^3.2.0`. Omega should continue using plain Vitest plus
+and `vitest ^3.2.0`. OpenAgents product surface should continue using plain Vitest plus
 `Effect.runPromise` for Effect 4 beta service tests until that peer line
 changes.
 
@@ -366,7 +366,7 @@ Implementation status:
 
 ### 3. `effect-cf` adoption should move from bindings to runtime boundaries
 
-Omega currently uses `effect-cf` for concrete binding services such as
+OpenAgents product surface currently uses `effect-cf` for concrete binding services such as
 `OpenAgentsDatabase` and `ThreadFileArtifacts`. That is good, but the Worker is
 not yet an `effect-cf` Worker boundary. The local `effect-cf` README shows the
 intended direction: Cloudflare services modeled as `Context`, `Layer`, and
@@ -490,7 +490,7 @@ configuration and secrets directly into many modules:
 
 Effect's config model and `Redacted` type are designed to make sensitive
 configuration explicit and safe in logs. Cloudflare Workers do not have to read
-from `process.env` to benefit from this: Omega can build a typed config layer
+from `process.env` to benefit from this: OpenAgents product surface can build a typed config layer
 from Cloudflare `Env` at the Worker boundary.
 
 Recommendation:
@@ -708,7 +708,7 @@ Recommendation:
 - For product routes, preserve the existing redirect/no-store policy in the
   mapper instead of inside services.
 
-This is the practical way to get Effect's typed error channel into Omega
+This is the practical way to get Effect's typed error channel into OpenAgents product surface
 without making every route unreadable.
 
 ### 13. Observability is present in browser commands but thin in Worker services
@@ -765,7 +765,7 @@ the repo has already chosen.
   generic response helper in service code, parent-update helper, and UI
   registry export that exists only for old callers.
 - Maintain the tracked caller inventory in
-  `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`.
+  `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`.
 - Use `rg` to prove current callers before deciding to keep any of them.
 - For each kept compatibility path, record:
   - owner module;
@@ -867,7 +867,7 @@ services all live in one typed dependency graph.
 - Delete old DTO shims after model conversion functions are in place.
 - Delete string-message error classifiers after tagged error mappers cover the
   domain.
-- Delete topology exceptions after Foldkit aligns with Omega's Effect version.
+- Delete topology exceptions after Foldkit aligns with OpenAgents product surface's Effect version.
 - Replace budget tests with stronger zero-allowed tests when each category is
   complete.
 
@@ -880,7 +880,7 @@ The following list is intended to be copied into GitHub as implementation
 issues. It covers every recommendation in this audit, including the
 zero-tech-debt deletion work. These are not live GitHub issues yet.
 
-### Issue 1: Create the Omega zero-tech-debt caller inventory
+### Issue 1: Create the OpenAgents product surface zero-tech-debt caller inventory
 
 Body:
 
@@ -891,7 +891,7 @@ feature gate duplicate, and route response helper that exists only because of
 historical callers.
 
 The tracked inventory for this audit lives at
-`docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`.
+`docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`.
 
 Acceptance criteria:
 
@@ -920,7 +920,7 @@ Acceptance criteria:
 
 - The check reports the installed Effect versions and the packages that pull
   them in.
-- `effect@4.0.0-beta.70` remains the Omega/effect-cf line.
+- `effect@4.0.0-beta.70` remains the OpenAgents product surface/effect-cf line.
 - The Foldkit beta 66 exception is named, documented, and isolated.
 - Any third Effect line fails the check.
 - The issue records `@effect/vitest` as deferred while it peers on Effect 3.
@@ -930,7 +930,7 @@ Acceptance criteria:
 
 Body:
 
-Add guardrail tests that prevent Omega from drifting back toward Promise-first,
+Add guardrail tests that prevent OpenAgents product surface from drifting back toward Promise-first,
 throw-first, route-local, or raw-runtime patterns while the refactor progresses.
 
 Implemented guardrail: `bun run check:architecture`, backed by
@@ -957,7 +957,7 @@ Body:
 
 Refactor `packages/sync-worker` so the sync outbox is a proper Effect service
 instead of a Promise repository. This should be the first shared package to
-fully demonstrate Omega's service/layer/error standard.
+fully demonstrate OpenAgents product surface's service/layer/error standard.
 
 Acceptance criteria:
 
@@ -1542,7 +1542,7 @@ Acceptance criteria:
 
 Body:
 
-Inject time, UUID, and randomness through Effect services or Omega-owned
+Inject time, UUID, and randomness through Effect services or OpenAgents product surface-owned
 service wrappers so business logic becomes deterministic and testable.
 
 Acceptance criteria:
@@ -1550,7 +1550,7 @@ Acceptance criteria:
 - Identify production business logic calling `new Date`, `Date.now`,
   `crypto.randomUUID`, or `Math.random`.
 - Replace those calls with `Clock`, `Random`, `Effect.uuid`, or an
-  Omega-specific UUID service.
+  OpenAgents product surface-specific UUID service.
 - Keep browser DOM/runtime setup exceptions documented if they are truly
   boundary-only.
 - Add tests using deterministic clocks/UUIDs for at least provider grants,
@@ -1639,7 +1639,7 @@ Implementation note, 2026-06-04:
 - `workers/api/src/test/service-fixtures.test.ts` smoke-tests config, D1, SHC
   dispatch, and queue fixture layers.
 - The future `@effect/vitest` migration path is documented in
-  `docs/2026-06-04-omega-effect-test-fixtures.md`.
+  `docs/2026-06-04-openagents-effect-test-fixtures.md`.
 
 ### Issue 26: Track Foldkit, effect-cf, and @effect/vitest alignment upgrades
 
@@ -1655,7 +1655,7 @@ Acceptance criteria:
   `@effect/platform-browser`, and `@effect/vitest`.
 - Re-check npm metadata before any upgrade attempt.
 - Upgrade Foldkit/devtools/plugin/platform-browser together once their peer
-  dependencies align with Omega's Effect line.
+  dependencies align with OpenAgents product surface's Effect line.
 - Remove the Foldkit beta 66 exception from the topology test after alignment.
 - Revisit `@effect/vitest` only when it peers on the repo's Effect major/beta
   line.
@@ -1664,7 +1664,7 @@ Acceptance criteria:
 
 Implementation note, 2026-06-04:
 
-- Added `docs/2026-06-04-omega-effect-dependency-upgrade-tracker.md` as the
+- Added `docs/2026-06-04-openagents-effect-dependency-upgrade-tracker.md` as the
   current dependency upgrade tracker for this issue.
 - Added `bun run check:effect-upgrade-metadata`, backed by
   `scripts/check-effect-upgrade-metadata.mjs`, to force a fresh `npm view`
@@ -1672,9 +1672,9 @@ Implementation note, 2026-06-04:
 - Updated `scripts/check-effect-topology.mjs` to print the tracked installed
   versions explicitly.
 - Rechecked npm metadata on 2026-06-04. The latest published Foldkit family
-  still peers on Effect beta 66, `effect-cf@0.13.1` still matches Omega's beta
+  still peers on Effect beta 66, `effect-cf@0.13.1` still matches OpenAgents product surface's beta
   70 line, and `@effect/vitest@beta` now exists but peers on beta 78 rather
-  than Omega's current beta 70 line. No dependency bump is safe in this issue;
+  than OpenAgents product surface's current beta 70 line. No dependency bump is safe in this issue;
   the temporary topology exception remains intentional until the ecosystem
   aligns.
 
@@ -1718,7 +1718,7 @@ Implementation note, 2026-06-04:
   `Response` return surfaces.
 - Added zero-allowed guardrails for deleted local login symbols, the deleted
   Worker `/chat` redirect alias, and the deleted local login demo files.
-- Updated `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md` with the
+- Updated `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md` with the
   final #44 state and explicit remaining exceptions.
 - Remaining exceptions are caller-backed or package-metadata-blocked:
   `SyncOutboxRepository` Promise facade callers still exist, thread-file route
@@ -1726,11 +1726,11 @@ Implementation note, 2026-06-04:
   still carry raw `Env` / `Response` migration budgets, legacy run ID
   normalization still protects persisted IDs, and the Foldkit Effect beta 66
   exception remains blocked by the npm metadata recorded in
-  `docs/2026-06-04-omega-effect-dependency-upgrade-tracker.md`.
+  `docs/2026-06-04-openagents-effect-dependency-upgrade-tracker.md`.
 
 ## Upgrade Notes
 
-- `effect-cf@0.13.1` currently matches Omega's `effect@4.0.0-beta.70` line.
+- `effect-cf@0.13.1` currently matches OpenAgents product surface's `effect@4.0.0-beta.70` line.
   Extend it by slice; do not rewrite the full Worker in one pass.
 - `foldkit@0.102.1` is installed and latest checked `foldkit@0.104.0` still
   peers on `effect@4.0.0-beta.66`. Treat Foldkit/Effect alignment as a tracked
@@ -1740,7 +1740,7 @@ Implementation note, 2026-06-04:
 - The existing `Effect` beta 70 choice is justified by `effect-cf`; the risk is
   not beta 70 itself, but the mixed beta 66/beta 70 graph.
 - `bun run check:effect-topology` is the executable guardrail for the current
-  state. It allows only the Omega/effect-cf beta 70 line plus the temporary
+  state. It allows only the OpenAgents product surface/effect-cf beta 70 line plus the temporary
   Foldkit beta 66 exception, fails on any third Effect runtime line, and records
   `@effect/vitest` as deferred while its published peer line still targets
   Effect 3.
@@ -1770,7 +1770,7 @@ Implementation note, 2026-06-04:
 
 ## Closing Assessment
 
-Omega is now in a better position than the original audit found. The main
+OpenAgents product surface is now in a better position than the original audit found. The main
 remaining work is less about extraction and more about authority: which module
 owns the domain state, which service owns the side effect, which error union
 owns the failure, and which runtime boundary provides the layer. The next
@@ -1779,7 +1779,7 @@ errors, fewer null-heavy internal states, fewer giant renderer/update modules,
 fewer compatibility facades, and one explicit plan for resolving the split
 Effect dependency graph.
 
-If those changes are made incrementally, Omega can keep its Foldkit UI
+If those changes are made incrementally, OpenAgents product surface can keep its Foldkit UI
 discipline while making the Worker side much closer to Effect's service,
 schema, error, config, and resource-management model. The final standard should
 be deletion-backed: when the intended Effect-native path exists, the old path is

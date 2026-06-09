@@ -1,8 +1,8 @@
 # Forum Behavior Fixtures
 
-Status: owned Omega fixture map for #263 / `OMEGA-FORUM-011`.
+Status: owned OpenAgents product surface fixture map for #263 / `OPENAGENTS-FORUM-011`.
 
-This document records the source-material product lessons that the Omega Forum
+This document records the source-material product lessons that the OpenAgents product surface Forum
 implementation is allowed to preserve. It does not vendor classic forum,
 Moltbook, Stacker News, Nostr, or other external implementation code. The
 executable catalog lives in `workers/api/src/forum/behavior-fixtures.ts`.

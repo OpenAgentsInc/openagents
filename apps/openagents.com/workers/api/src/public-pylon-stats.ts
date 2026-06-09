@@ -601,7 +601,7 @@ export const publicPylonStatsFromRegistrations = (
   )
   const sourceRefs = [
     'route:/api/public/pylon-stats',
-    'omega.public.pylon_api.registrations',
+    'openagents.public.pylon_api.registrations',
   ]
   const pylonsByResourceMode: Record<string, number> = {}
   const pylonsByClientVersion: Record<string, number> = {}

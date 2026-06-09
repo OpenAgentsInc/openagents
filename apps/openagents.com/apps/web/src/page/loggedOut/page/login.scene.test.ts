@@ -5,7 +5,11 @@ import { LoggedOut } from '../../../model'
 import { HomeRoute, OnboardingRoute } from '../../../route'
 import { update } from '../../../update'
 import { view } from '../../../view'
-import { LoadedPublicPylonStats } from '../model'
+import {
+  IdlePublicForumLaunchStatus,
+  IdlePublicForumTipLeaderboards,
+  LoadedPublicPylonStats,
+} from '../model'
 import * as Home from './home'
 
 describe('maintenance landing scene', () => {
@@ -45,8 +49,10 @@ describe('maintenance landing scene', () => {
       {
         update,
         view: () =>
-          Home.view(
-            LoadedPublicPylonStats({
+          Home.view({
+            forumLaunchStatus: IdlePublicForumLaunchStatus(),
+            forumTipLeaderboards: IdlePublicForumTipLeaderboards(),
+            publicPylonStats: LoadedPublicPylonStats({
               stats: {
                 available: true,
                 asOfLabel: 'Just now',
@@ -120,19 +126,17 @@ describe('maintenance landing scene', () => {
                 trainingModelProgressContributors: 0,
               },
             }),
-          ),
+          }),
       },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(Scene.text('Live Pylons')).toExist(),
+      Scene.expect(Scene.text('Pylon Stats')).toExist(),
       Scene.expect(Scene.text('Online now')).toExist(),
-      Scene.expect(Scene.text('Seen in 24h')).toExist(),
+      Scene.expect(Scene.text('Seen 24h')).toExist(),
       Scene.expect(Scene.text('Wallet ready')).toExist(),
-      Scene.expect(Scene.text('Earning gate')).toExist(),
+      Scene.expect(Scene.text('Assigned now')).toExist(),
       Scene.expect(Scene.text('Ready')).toExist(),
-      Scene.expect(Scene.text('Version floor')).toExist(),
-      Scene.expect(Scene.text('v0.2.5+')).toExist(),
-      Scene.expect(Scene.text('Paid')).not.toExist(),
-      Scene.expect(Scene.text('Settled')).not.toExist(),
+      Scene.expect(Scene.text('Accepted-work sats paid')).toExist(),
+      Scene.expect(Scene.text('Tip sats paid')).toExist(),
     )
   })
 

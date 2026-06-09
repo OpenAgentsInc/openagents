@@ -2,7 +2,7 @@
 
 Implemented: 2026-06-05
 
-Issue: #175 / OMEGA-SITES-REF-001
+Issue: #175 / OPENAGENTS-SITES-REF-001
 
 ## Summary
 
@@ -46,7 +46,7 @@ Generated Site source should receive only:
 
 - public source refs;
 - public invite refs when needed; and
-- Omega-owned capture URLs created in the capture/CTA issues.
+- OpenAgents product surface-owned capture URLs created in the capture/CTA issues.
 
 It should not receive token hashes, private invite tokens, wallet material,
 provider account refs, checkout state, auth state, or payout promises.

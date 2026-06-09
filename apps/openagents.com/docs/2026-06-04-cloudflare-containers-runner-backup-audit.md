@@ -7,7 +7,7 @@ policy, or backend schema has been changed by this note.
 
 ## Executive Summary
 
-Cloudflare Containers are a viable backup runner substrate for Omega, but not a
+Cloudflare Containers are a viable backup runner substrate for OpenAgents product surface, but not a
 drop-in replacement for the current SHC dispatch path.
 
 The correct target is:
@@ -19,7 +19,7 @@ OpenAgents Worker API
   -> SHC VM primary adapter
   -> Cloudflare Containers backup adapter
   -> GCP/GCloud reference and sensitive-work fallback adapter
-  -> one callback/event/artifact/receipt path back into Omega
+  -> one callback/event/artifact/receipt path back into OpenAgents product surface
 ```
 
 Cloudflare Containers should be added as a **low-to-medium trust, burst and
@@ -66,7 +66,7 @@ Cloudflare documentation:
 - 2026-05-12 SSH default changelog:
   <https://developers.cloudflare.com/changelog/post/2026-05-12-ssh-enabled-by-default/>
 
-Omega files inspected:
+OpenAgents product surface files inspected:
 
 - `README.md`
 - `AGENTS.md`
@@ -90,11 +90,11 @@ Omega files inspected:
 - `docs/2026-06-02-cloudflare-only-openagents-sync-audit.md`
 - `docs/2026-06-02-shc-agent-deployment-runbook.md`
 - `docs/2026-06-02-provider-account-implementation-notes.md`
-- `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 
-## Current Omega Runner State
+## Current OpenAgents product surface Runner State
 
-Omega already has the right high-level authority split:
+OpenAgents product surface already has the right high-level authority split:
 
 ```text
 Foldkit web app
@@ -143,7 +143,7 @@ The Worker defines a `Container` subclass from `@cloudflare/containers`, adds a
 `containers` config entry, binds the container class through Durable Objects,
 and uses helpers such as `getContainer` or `getRandom` to address instances.
 
-Relevant properties for Omega:
+Relevant properties for OpenAgents product surface:
 
 - Containers require the Workers Paid plan.
 - Images must run on `linux/amd64`.
@@ -176,7 +176,7 @@ Relevant properties for Omega:
 
 ## Fit Assessment
 
-Cloudflare Containers fit Omega as a backup runner when the task can tolerate:
+Cloudflare Containers fit OpenAgents product surface as a backup runner when the task can tolerate:
 
 - ephemeral workspace disk;
 - internet-enabled container networking;
@@ -388,14 +388,14 @@ If the implementation only uses explicit per-run IDs, avoid adding
 
 ## Required Runner Image Work
 
-The Container image needs to run an Omega-compatible runner control server.
+The Container image needs to run an OpenAgents product surface-compatible runner control server.
 The clean path is to reuse the SHC control contract rather than creating a
 second control protocol.
 
 Minimum image contents:
 
 - Linux amd64 base image;
-- Bun or Node runtime required by OpenCode and Omega runner code;
+- Bun or Node runtime required by OpenCode and OpenAgents product surface runner code;
 - Git;
 - GitHub CLI if GitHub writeback still depends on it;
 - OpenCode/Codex runtime entrypoint;
@@ -531,7 +531,7 @@ Do not depend on later SSH into the container to recover artifacts.
 
 ## Billing Requirements
 
-Omega currently bills user-visible "computer usage" in
+OpenAgents product surface currently bills user-visible "computer usage" in
 `workers/api/src/billing.ts` through:
 
 ```text

@@ -4,7 +4,7 @@ Date: 2026-06-08
 
 ## Summary
 
-Omega now exposes an explicit MDK payout-mode gate before Pylon, Site, Forum,
+OpenAgents product surface now exposes an explicit MDK payout-mode gate before Pylon, Site, Forum,
 or Artanis surfaces make payout claims.
 
 The public modes are:
@@ -44,7 +44,7 @@ Hosted sandbox verification is not live payout authority. It projects as
 - Forum tip smoke inherits the agent-wallet mode gate through
   `agentWalletSmoke`.
 - Artanis public reports expose the mode gate through
-  `pylonOmegaReleaseGate.payoutModeGate`.
+  `pylonOpenAgents product surfaceReleaseGate.payoutModeGate`.
 - The web Artanis dashboard renders the declared payment mode alongside the
   release gate.
 
@@ -53,6 +53,6 @@ Hosted sandbox verification is not live payout authority. It projects as
 - `workers/api/src/mdk-payout-mode-gate.test.ts`
 - `workers/api/src/site-payment-manifest.test.ts`
 - `workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts`
-- `workers/api/src/pylon-v02-omega-release-gate.test.ts`
+- `workers/api/src/pylon-v02-openagents-release-gate.test.ts`
 - `workers/api/src/artanis-public-report.test.ts`
 - `apps/web/src/docs-blog-route.test.ts`

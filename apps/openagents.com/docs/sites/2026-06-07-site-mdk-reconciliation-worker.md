@@ -1,11 +1,11 @@
 # Site MDK Reconciliation Worker Contract
 
 Date: 2026-06-07
-Issue: #449 / OMEGA-H-012
+Issue: #449 / OPENAGENTS-H-012
 
 ## Summary
 
-Omega now has a scheduled/queue-safe Site MDK reconciliation worker contract.
+OpenAgents product surface now has a scheduled/queue-safe Site MDK reconciliation worker contract.
 It builds on the existing exact-source Site MDK webhook verification and Site
 MDK reconciliation projector. It does not introduce a second webhook model and
 does not import MDK native node runtime code into the Cloudflare Worker.

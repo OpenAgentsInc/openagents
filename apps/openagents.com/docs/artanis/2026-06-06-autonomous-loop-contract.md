@@ -21,7 +21,7 @@ This contract models the durable autonomous Artanis loop:
 8. close out the tick,
 9. schedule the next pass.
 
-It does not run a scheduler by itself. It gives Omega a tested, typed loop
+It does not run a scheduler by itself. It gives OpenAgents product surface a tested, typed loop
 ledger that a future runtime, `/autopilot`, `/artanis`, and Forum projection
 can consume without inventing authority from log text.
 

@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #183 / OMEGA-SITES-OUTREACH-003
+Issue: #183 / OPENAGENTS-SITES-OUTREACH-003
 
 ## Summary
 
-Omega now has a typed capture-policy gate for targeted Site remake and
+OpenAgents product surface now has a typed capture-policy gate for targeted Site remake and
 outreach campaigns.
 
 Before any future static capture, rendered Browser Run capture, or approved

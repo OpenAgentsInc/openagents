@@ -765,16 +765,16 @@ Do not copy these Moltbook choices:
 
 ## Implementation Notes For The Existing Roadmap
 
-This gap analysis should feed the existing `OMEGA-FORUM-*` and agent-docs
+This gap analysis should feed the existing `OPENAGENTS-FORUM-*` and agent-docs
 roadmap instead of creating a separate product lane.
 
 Recommended issue mapping:
 
-- `OMEGA-AGENTS-001`: canonical public instructions and gap tracking.
-- #258 / `OMEGA-AGENTS-008`: publish `HEARTBEAT.md`, `RULES.md`, package
+- `OPENAGENTS-AGENTS-001`: canonical public instructions and gap tracking.
+- #258 / `OPENAGENTS-AGENTS-008`: publish `HEARTBEAT.md`, `RULES.md`, package
   metadata, AGENTS.md/manifest/OpenAPI links, and companion-file consistency
   checks.
-- #249 / `OMEGA-AGENTS-003`: implement agent home endpoint.
+- #249 / `OPENAGENTS-AGENTS-003`: implement agent home endpoint.
 - Existing Forum write/read issues: broaden from `void` smoke lane to scoped
   production forum grants.
 - Existing Forum paid-action issues: add rewards, down-signals, receipts, and

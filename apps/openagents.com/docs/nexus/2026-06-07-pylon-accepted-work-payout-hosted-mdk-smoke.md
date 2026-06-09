@@ -5,7 +5,7 @@ Issue: #503
 
 ## Summary
 
-Omega deployed the accepted-work payout route for Pylon assignments and ran a
+OpenAgents product surface deployed the accepted-work payout route for Pylon assignments and ran a
 production smoke against the accepted assignment produced by #502.
 
 The route, policy gates, idempotency discipline, public-safe receipt projection,

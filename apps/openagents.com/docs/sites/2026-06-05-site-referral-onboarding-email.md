@@ -2,7 +2,7 @@
 
 Implemented: 2026-06-05
 
-Issue: #177 / OMEGA-SITES-REF-005
+Issue: #177 / OPENAGENTS-SITES-REF-005
 
 ## Summary
 
@@ -10,7 +10,7 @@ REF1 now has the referred-user onboarding hook after verified Site referral
 attribution is consumed.
 
 When a signed-in user or first customer order consumes a pending Site referral,
-Omega can send a transactional onboarding email through `EmailService` and
+OpenAgents product surface can send a transactional onboarding email through `EmailService` and
 enroll the user in the existing onboarding drip stack with referral metadata.
 The hook is idempotent, suppression-aware, and public-safe.
 

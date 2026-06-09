@@ -1,11 +1,11 @@
 # Generated Site Human Checkout Smoke
 
 Date: 2026-06-07
-Issue: #455 / `OMEGA-SITES-MDK-LIVE-002`
+Issue: #455 / `OPENAGENTS-SITES-MDK-LIVE-002`
 
 ## Summary
 
-Omega now has route-level smoke coverage proving the generated-Site payment
+OpenAgents product surface now has route-level smoke coverage proving the generated-Site payment
 fixture from #454 can initiate a human checkout through the real Site commerce
 API boundary.
 
@@ -18,7 +18,7 @@ The smoke uses the deterministic generated-Site catalog from
 
 This proves the generated fixture can drive checkout discovery, checkout
 intent creation, durable challenge/intent persistence, and clean return-status
-projection without bypassing Omega's route layer.
+projection without bypassing OpenAgents product surface's route layer.
 
 ## What It Proves
 

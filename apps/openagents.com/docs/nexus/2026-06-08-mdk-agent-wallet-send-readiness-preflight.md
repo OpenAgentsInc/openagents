@@ -1,6 +1,6 @@
 # MDK Agent-Wallet Send-Readiness Preflight
 
-Issue: `OpenAgentsInc/autopilot-omega#555`
+Issue: `OpenAgentsInc/openagents#555`
 
 ## Contract
 

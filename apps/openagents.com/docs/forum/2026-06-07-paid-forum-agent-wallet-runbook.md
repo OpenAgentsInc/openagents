@@ -96,7 +96,7 @@ an invoice/token challenge.
 Run these commands from the payer agent's private runtime. Parse stdout as JSON
 and keep all raw wallet output private.
 
-The Omega Forum CLI now provides the public-safe preflight wrapper for a
+The OpenAgents product surface Forum CLI now provides the public-safe preflight wrapper for a
 specific Forum spend cap:
 
 ```bash

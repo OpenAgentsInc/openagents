@@ -1,8 +1,8 @@
 # Blueprint Program Run Repository v1
 
-Issue: OMEGA-BP-006 / #226
+Issue: OPENAGENTS-BP-006 / #226
 
-This note records the first Omega-owned Blueprint Program Run persistence slice.
+This note records the first OpenAgents product surface-owned Blueprint Program Run persistence slice.
 The source of truth is:
 
 - `workers/api/src/blueprint/schemas/program-run.ts`

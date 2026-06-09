@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract/API note for issue #348 / `OMEGA-DEV-004`.
+Status: implemented contract/API note for issue #348 / `OPENAGENTS-DEV-004`.
 
 ## Purpose
 
-Omega now exposes a public, read-only SDK seed for developers and AI agents:
+OpenAgents product surface now exposes a public, read-only SDK seed for developers and AI agents:
 
 ```text
 GET /api/omni/sdk-seed
@@ -43,7 +43,7 @@ Each schema entry includes:
 - status; and
 - privacy policy.
 
-The seed references existing Omega Effect Schema and TypeScript source modules
+The seed references existing OpenAgents product surface Effect Schema and TypeScript source modules
 instead of duplicating secret-bearing implementation details.
 
 ## Route Catalog

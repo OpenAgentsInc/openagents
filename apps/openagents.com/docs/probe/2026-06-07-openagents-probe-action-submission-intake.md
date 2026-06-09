@@ -1,6 +1,6 @@
-# Omega Probe Action Submission Intake
+# OpenAgents product surface Probe Action Submission Intake
 
-Issue #497 adds the Omega intake path for Probe Action Submission proposals.
+Issue #497 adds the OpenAgents product surface intake path for Probe Action Submission proposals.
 
 The route is:
 
@@ -8,7 +8,7 @@ The route is:
 - `GET /api/blueprint/action-submissions`
 
 Probe submits `ProbeBlueprintActionSubmissionProposal` records for external
-write-side effects. Omega normalizes accepted proposals into
+write-side effects. OpenAgents product surface normalizes accepted proposals into
 `BlueprintActionSubmission` records in D1. The POST route is runner-callback
 authorized, with admin API token fallback for operator-owned verification. The
 GET route is operator-read only.
@@ -23,7 +23,7 @@ The intake route is proposal only. Accepted records are stored with:
 - `modelConfidenceBypassDisabled: true`
 - `contentRedacted: true`
 
-The route maps Probe external effects into Omega action kinds:
+The route maps Probe external effects into OpenAgents product surface action kinds:
 
 - `create_pull_request` -> `create_pull_request`
 - `deploy` -> `deploy`
@@ -35,9 +35,9 @@ The route maps Probe external effects into Omega action kinds:
 
 Probe-local effects such as sandbox reads, sandbox file edits, and local
 evidence records are rejected. They remain local Probe tools and must not become
-Omega Action Submissions.
+OpenAgents product surface Action Submissions.
 
-Omega requires a Program Run ref, approval policy ref, evidence refs, summary
+OpenAgents product surface requires a Program Run ref, approval policy ref, evidence refs, summary
 ref, and redacted receipt refs. Proposal metadata can preserve Probe actor,
 assignment, Program Type, Program Signature, Module Version, input snapshot,
 effect kind, and redacted typed intent, but the public route response only

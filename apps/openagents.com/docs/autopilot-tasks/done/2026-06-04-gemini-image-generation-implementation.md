@@ -46,7 +46,7 @@ Foreground progress:
   `generated-images/users/2026-06-04/...`, and loaded the R2-backed image URL
   through the same signed-in session with `content-type: image/png`.
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
@@ -86,7 +86,7 @@ This packet is the launch-ready version of that spec.
 
 ## Objective
 
-Implement ImageGen support in Omega using Google Gemini / Imagen through
+Implement ImageGen support in OpenAgents product surface using Google Gemini / Imagen through
 Cloudflare Workers and Effect services.
 
 The feature must let authenticated users request image generation through UI
@@ -224,7 +224,7 @@ If generated images are stored in R2, add an R2 bucket binding such as:
 }
 ```
 
-Do not commit secret values. If the exact binding name differs in current Omega
+Do not commit secret values. If the exact binding name differs in current OpenAgents product surface
 config, use the existing binding style and update this packet.
 
 ## Domain Model
@@ -338,7 +338,7 @@ Expected UI:
 - generated image grid;
 - copy/open/download affordances if already available in the local UI system.
 
-Use existing Omega/Foldkit patterns and the local UI registry. Do not add ad
+Use existing OpenAgents product surface/Foldkit patterns and the local UI registry. Do not add ad
 hoc icons or one-off vanilla CSS.
 
 ## Observability

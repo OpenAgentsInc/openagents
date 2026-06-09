@@ -12,7 +12,7 @@ customer/public visibility.
 
 ## Executive Summary
 
-Omega does not currently have an Exa service. The active Adjutant/Sites
+OpenAgents product surface does not currently have an Exa service. The active Adjutant/Sites
 implementation has durable assignments, preflight, task packets, launch,
 callback lifecycle mapping, public activity projection, and customer-safe
 progress, but the task packet still mostly reflects the order prompt and
@@ -62,15 +62,15 @@ Workspace and repo guidance:
 - `AGENTS.md`
 - `INVARIANTS.md`
 
-Omega Adjutant and Sites docs:
+OpenAgents product surface Adjutant and Sites docs:
 
 - `docs/sites-plan.md`
 - `docs/2026-06-05-adjutant-sites-supervisor-audit.md`
 - `docs/2026-06-04-stripe-effect-service-audit.md`
 - `docs/2026-06-04-effect-foldkit-codebase-audit.md`
-- `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 
-Omega implementation surfaces:
+OpenAgents product surface implementation surfaces:
 
 - `workers/api/src/config.ts`
 - `workers/api/src/stripe-billing.ts`
@@ -109,9 +109,9 @@ External Exa documentation checked on 2026-06-05:
 - `https://exa.ai/docs/reference/rate-limits`
 - `https://exa.ai/docs/websets/api/overview`
 
-## Current Omega State
+## Current OpenAgents product surface State
 
-Omega has no `EXA_API_KEY`, no `exa-js` dependency, no Exa service, no Exa D1
+OpenAgents product surface has no `EXA_API_KEY`, no `exa-js` dependency, no Exa service, no Exa D1
 ledger, and no Exa-backed enrichment step in Adjutant launch.
 
 The current Adjutant implementation is already strong enough to host the new
@@ -141,7 +141,7 @@ does not have a durable, reviewable research brief before the sitebuilder starts
 The only owned-workspace Exa mention outside reference repos is a Probe note
 from the OpenCode audit: tool availability should depend on runtime, model,
 policy, and extension state, including whether Exa-backed search tools are
-available. That lesson matters for Omega because Exa should be a policy-gated
+available. That lesson matters for OpenAgents product surface because Exa should be a policy-gated
 tool and service, not a globally assumed capability.
 
 The Cherry Studio reference is the useful implementation precedent:
@@ -162,7 +162,7 @@ The Cherry Studio reference is the useful implementation precedent:
 - Its Claude Code path injects hosted Exa MCP for structured web search while
   adding tool guidance that describes what the tool can and cannot do.
 
-Omega should not copy that code. It should port the architectural lessons into
+OpenAgents product surface should not copy that code. It should port the architectural lessons into
 Effect services:
 
 - typed provider config;
@@ -175,13 +175,13 @@ Effect services:
 
 ## Current Exa API Notes
 
-New Omega code should target Exa's current `/search` and `/contents` shapes,
+New OpenAgents product surface code should target Exa's current `/search` and `/contents` shapes,
 not older snippets.
 
 Relevant Exa API facts from the checked docs:
 
 - `/search` is `POST https://api.exa.ai/search` with `x-api-key`.
-- JavaScript SDK support exists through `exa-js`, but Omega can use direct
+- JavaScript SDK support exists through `exa-js`, but OpenAgents product surface can use direct
   Worker `fetch` to keep schema decoding and errors under its own service
   boundary.
 - `type: "auto"` is the default search mode. `fast` and `instant` are latency
@@ -207,7 +207,7 @@ Relevant Exa API facts from the checked docs:
 - Default published rate limits are 10 QPS for `/search`, 100 QPS for
   `/contents`, and 10 QPS for `/answer`.
 - Hosted Exa MCP is available at `https://mcp.exa.ai/mcp`. It is useful for
-  agent tool access, but production Omega enrichment should still have a direct
+  agent tool access, but production OpenAgents product surface enrichment should still have a direct
   service path so requests, costs, payload size, and projection safety are
   auditable.
 
@@ -430,23 +430,23 @@ public-safe.
 
 Create and implement these issues in order:
 
-1. [#89](https://github.com/OpenAgentsInc/autopilot-omega/issues/89)
+1. [#89](https://github.com/OpenAgentsInc/openagents/issues/89)
    `Exa enrichment: add source authority, config, and direct API client service`
-2. [#90](https://github.com/OpenAgentsInc/autopilot-omega/issues/90)
+2. [#90](https://github.com/OpenAgentsInc/openagents/issues/90)
    `Exa enrichment: add typed response schemas, fixtures, and provider tests`
-3. [#91](https://github.com/OpenAgentsInc/autopilot-omega/issues/91)
+3. [#91](https://github.com/OpenAgentsInc/openagents/issues/91)
    `Exa enrichment: add D1 research ledger and safe source-card storage`
-4. [#92](https://github.com/OpenAgentsInc/autopilot-omega/issues/92)
+4. [#92](https://github.com/OpenAgentsInc/openagents/issues/92)
    `Exa enrichment: add Adjutant enrichment planner with policy tests`
-5. [#93](https://github.com/OpenAgentsInc/autopilot-omega/issues/93)
+5. [#93](https://github.com/OpenAgentsInc/openagents/issues/93)
    `Exa enrichment: support explicit public identity and repository source refs`
-6. [#94](https://github.com/OpenAgentsInc/autopilot-omega/issues/94)
+6. [#94](https://github.com/OpenAgentsInc/openagents/issues/94)
    `Exa enrichment: tie approved research briefs into Adjutant task packets`
-7. [#95](https://github.com/OpenAgentsInc/autopilot-omega/issues/95)
+7. [#95](https://github.com/OpenAgentsInc/openagents/issues/95)
    `Exa enrichment: add operator APIs and admin review UI for research briefs`
-8. [#96](https://github.com/OpenAgentsInc/autopilot-omega/issues/96)
+8. [#96](https://github.com/OpenAgentsInc/openagents/issues/96)
    `Exa enrichment: add budgets, rate limiting, observability, and cache policy`
-9. [#97](https://github.com/OpenAgentsInc/autopilot-omega/issues/97)
+9. [#97](https://github.com/OpenAgentsInc/openagents/issues/97)
    `Exa enrichment: add Ben OTEC end-to-end smoke and launch runbook`
 
 Each issue should be closed only after the implementation comments include
@@ -477,7 +477,7 @@ Acceptance:
 Deliverables:
 
 - Add Effect Schema models for `/search` and `/contents` request/response
-  shapes used by Omega.
+  shapes used by OpenAgents product surface.
 - Cover results, highlights, text, summary, output, grounding, request ID,
   search type, and cost fields.
 - Add fixtures for successful search, contents retrieval, people search
@@ -488,7 +488,7 @@ Acceptance:
 - Response decoding is total for supported fields and defensive for optional
   provider fields.
 - Older/incorrect parameter shapes such as top-level `text`, top-level
-  `highlights`, and `livecrawl` are not emitted by Omega.
+  `highlights`, and `livecrawl` are not emitted by OpenAgents product surface.
 
 ### 3. Exa enrichment: add D1 research ledger and safe source-card storage
 
@@ -688,7 +688,7 @@ Implemented in #97:
 ## Bottom Line
 
 Adjutant should start projects with a grounded brief, not with a blank web
-search impulse. Exa is a good fit if Omega wraps it as an Effect service with
+search impulse. Exa is a good fit if OpenAgents product surface wraps it as an Effect service with
 typed config, typed responses, explicit source refs, bounded storage, operator
 review, and clear projection policy. The integration should make Ben's OTEC
 site more specific and more honest without weakening the existing explicit

@@ -17,12 +17,12 @@ architecture and execution plans. They are not public benchmark claims.
 2. `2026-06-08-workspace-benchmark-systems-audit.md`
    Inventory of the benchmark systems across Probe, private Cloud source
    material, public benchmark-cloud target architecture, Psionic,
-   Pylon, Omega, and historical repos. Start here when deciding which repo owns
+   Pylon, OpenAgents product surface, and historical repos. Start here when deciding which repo owns
    which part of the benchmark apparatus.
 
 3. `2026-06-08-probe-gepa-benchmark-system-closeout-audit.md`
    Closeout audit for the implemented `plan.md` issue series. It summarizes
-   how Probe, public benchmark-cloud, Psionic, Omega/Pylon, and Artanis now fit
+   how Probe, public benchmark-cloud, Psionic, OpenAgents product surface/Pylon, and Artanis now fit
    together, what is done, what remains live-gated, what was tested, and the
    next milestone for real SHC/Harbor and Pylon-distributed runs.
 
@@ -34,7 +34,7 @@ architecture and execution plans. They are not public benchmark claims.
 
 5. `canaries/20260608151057/`
    First tracked live Probe GEPA Terminal-Bench 2 canary evidence bundle. It
-   records an unpaid Omega Pylon assignment lifecycle through offer, accept,
+   records an unpaid OpenAgents product surface Pylon assignment lifecycle through offer, accept,
    progress, artifact/proof submission, operator accepted-work closeout, a
    schema-backed Probe closeout bundle, and a Psionic import request. It is
    initial retained evidence only, not a public benchmark score, paid work, or
@@ -50,7 +50,7 @@ architecture and execution plans. They are not public benchmark claims.
 
 7. `2026-06-08-probe-continual-benchmark-learning-apparatus.md`
    End-state plan for Probe's continual improvement loop. It defines how Probe,
-   public benchmark-cloud, Psionic, Pylon, and Omega should turn
+   public benchmark-cloud, Psionic, Pylon, and OpenAgents product surface should turn
    benchmark failures into prompt, Blueprint, tool-menu, loop-policy, and LoRA
    candidates with explicit promotion gates.
 
@@ -102,25 +102,25 @@ architecture and execution plans. They are not public benchmark claims.
   provide distributed training capacity for Psionic/Qwen/LoRA work, but GEPA
   itself is distributed benchmark-driven optimization over text artifacts, not
   distributed neural-network training.
-- The 2026-06-08 Omega #502 smoke proved the generic live Pylon assignment
+- The 2026-06-08 OpenAgents product surface #502 smoke proved the generic live Pylon assignment
   lease path. The tracked canary in `canaries/20260608151057/` is the first
   Probe GEPA Terminal-Bench 2 unpaid smoke evidence using that lifecycle, with
   public-safe assignment, progress, artifact, proof, closeout, route scorecard,
   and Psionic import refs.
-- Omega should remain the release gate and projection surface for public and
+- OpenAgents product surface should remain the release gate and projection surface for public and
   private benchmark evidence.
 - Artanis should be the public-safe overseer and campaign narrator for Probe
   benchmark learning, not the runtime, scorer, optimizer, payment authority,
   or promotion authority.
 - The existing Artanis Forum can carry public campaign summaries. Public
   Forum reads use `/api/forum` and exact topic/post APIs. Posting as Artanis
-  follows the Omega local operator runbook
-  `autopilot-omega/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`
+  follows the OpenAgents product surface local operator runbook
+  `openagents/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`
   and requires the dedicated Artanis/operator credential path. Probe may
   prepare public-safe copy or reply under its own registered-agent identity,
   but it must not post as Artanis or invoke the Artanis bridge.
 - The Pylon release freeze remains active for broad download, earning, payout,
-  settlement, and release-promotion claims until the remaining Omega/Nexus
+  settlement, and release-promotion claims until the remaining OpenAgents product surface/Nexus
   gates close.
 
 ## Issue Series Source Of Truth
@@ -135,7 +135,7 @@ Ownership:
 - `openagents`: public Benchmark Cloud contracts, split manifests,
   artifact/proof contracts, Terminal-Bench runner lane, and Pylon benchmark
   package surfaces where applicable.
-- `autopilot-omega`: Artanis projection, Omega/Pylon assignment lease
+- `openagents`: Artanis projection, OpenAgents product surface/Pylon assignment lease
   adaptation, release gates, and public claim boundaries.
 - `psionic`: GEPA coordinator, candidate frontier, candidate manifests,
   reflection/proposal jobs, and later LoRA/Qwen training path.

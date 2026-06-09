@@ -1,11 +1,11 @@
 # Generated Site Checkout Reconciliation Smoke
 
 Date: 2026-06-07
-Issue: #457 / `OMEGA-SITES-MDK-LIVE-004`
+Issue: #457 / `OPENAGENTS-SITES-MDK-LIVE-004`
 
 ## Summary
 
-Omega now has deterministic generated-Site smoke coverage for the
+OpenAgents product surface now has deterministic generated-Site smoke coverage for the
 checkout-to-reconciliation boundary.
 
 The smoke uses the generated-Site fixture from #454:
@@ -20,7 +20,7 @@ The smoke uses the generated-Site fixture from #454:
 
 The modeled provider event source is MDK dashboard Standard Webhooks. The test
 signs a deterministic `checkout.completed` event with the Standard Webhooks
-header family, posts it through Omega's Site commerce webhook route, and then
+header family, posts it through OpenAgents product surface's Site commerce webhook route, and then
 replays the same event to prove duplicate handling.
 
 ## What It Proves

@@ -1,6 +1,6 @@
 # Payment Limit Policy Classifier
 
-Issue: #289 / OMEGA-H-001
+Issue: #289 / OPENAGENTS-H-001
 
 Date: 2026-06-06
 

@@ -1,6 +1,6 @@
 # Mullet Operator Runbook
 
-This runbook is for the private `/mullet` unified simulation runner in Omega.
+This runbook is for the private `/mullet` unified simulation runner in OpenAgents product surface.
 Only the confirmed admin account `chris@openagents.com` may use the browser
 route or `/api/mullet/*` endpoints.
 
@@ -150,7 +150,7 @@ GET /api/mullet/runs/<runId>/export
 
 ## Deploy Gate
 
-Before deploying Omega, run:
+Before deploying OpenAgents product surface, run:
 
 ```bash
 bun run check:deploy

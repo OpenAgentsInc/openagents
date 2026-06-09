@@ -161,7 +161,7 @@ capacity. A mining-led AI pilot is useful, but it is a different claim.
 
 ## What Is Already Substantiated
 
-Omega and the root mining/cloud docs already substantiate the measurement
+OpenAgents product surface and the root mining/cloud docs already substantiate the measurement
 shape.
 
 ### 1. Accepted Outcomes Are The Product Unit
@@ -179,10 +179,10 @@ The AI side of the bitcoin + AI comparison should not be measured in tokens or
 uptime alone. It should be measured in accepted outcomes.
 ```
 
-### 2. Accepted Outcomes Per Energy Is Implemented As An Omega Contract
+### 2. Accepted Outcomes Per Energy Is Implemented As An OpenAgents product surface Contract
 
 `docs/omni/2026-06-06-accepted-outcomes-per-power.md` records the current
-Omega implementation of `OmniOutcomePowerProductivityRecord`.
+OpenAgents product surface implementation of `OmniOutcomePowerProductivityRecord`.
 
 The contract records:
 
@@ -408,7 +408,7 @@ It should be an Artanis-managed evidence sprint that turns Margot's simulator
 into a Pylon product requirement.
 
 This is now tracked as GitHub issue
-[#415](https://github.com/OpenAgentsInc/autopilot-omega/issues/415),
+[#415](https://github.com/OpenAgentsInc/openagents/issues/415),
 `ARTANIS-029: Collect Margot/Pylon comparative economics evidence packets`.
 
 The sprint target:
@@ -450,7 +450,7 @@ Minimum data Artanis should collect:
    artifact, grading, acceptance, rejection, retry, and closeout refs. If not,
    label the packet as economic-model-only and do not claim accepted outcomes.
 8. Product gap list.
-   Record which fields Omega already ingests through Margot export packets and
+   Record which fields OpenAgents product surface already ingests through Margot export packets and
    which fields still need first-class Artanis/Pylon support.
 
 What this can substantiate in 48 hours:
@@ -966,7 +966,7 @@ provider value, or settled payout.
 Safe to say now:
 
 - Outcomes per kilowatt-hour is the right metric for the bitcoin + AI thesis.
-- Omega has typed contracts for accepted outcomes per energy, investor
+- OpenAgents product surface has typed contracts for accepted outcomes per energy, investor
   economics, Margot export ingestion, Artanis claim-state projection, and
   Pylon marketplace/readiness/resource-mode boundaries.
 - Margot's current simulator can model GPU rental, token inference, node-power,

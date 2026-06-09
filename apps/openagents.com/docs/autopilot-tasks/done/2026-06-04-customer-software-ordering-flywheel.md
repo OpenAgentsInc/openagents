@@ -15,7 +15,7 @@ Completion evidence:
 - focused route/startup/update/customer-order API/UI tests and deploy checks
   passed in foreground sessions.
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
@@ -25,7 +25,7 @@ must avoid runner/provider bugs.
 
 Team: OpenAgents core / `team_openagents_core`
 
-Project: Omega customer ordering and launch funnel. Resolve the concrete
+Project: OpenAgents product surface customer ordering and launch funnel. Resolve the concrete
 project ID through operator preflight before dispatch; do not invent one in the
 runner prompt.
 
@@ -59,7 +59,7 @@ The direct implementation must preserve these gates:
 
 ## Objective
 
-Turn Omega's current logged-in onboarding and operator workroom model into the
+Turn OpenAgents product surface's current logged-in onboarding and operator workroom model into the
 launch wedge described in the product transcript:
 
 - GitHub-authenticated users pick a repository and describe what they want
@@ -127,9 +127,9 @@ Avoid putting the transcript's illegal-market analogy into product UI. The
 approved launch hook may say "Your agent dealer" externally, but in-app copy
 should stay direct, commercial, and trust-building.
 
-## Current Omega Starting Point
+## Current OpenAgents product surface Starting Point
 
-Omega already has the raw ingredients for the order funnel, but the current
+OpenAgents product surface already has the raw ingredients for the order funnel, but the current
 access model is still operator-first:
 
 - `apps/web/src/page/loggedIn/page/onboarding.ts` renders a three-step
@@ -162,7 +162,7 @@ access model is still operator-first:
   recordable fixture/demo surfaces. They are not the public customer ordering
   surface.
 
-Omega also has a mature operator workroom path:
+OpenAgents product surface also has a mature operator workroom path:
 
 - `apps/web/src/page/loggedIn/page/chat.ts` renders the real chat/workroom
   experience.
@@ -194,8 +194,8 @@ Planning and runbooks:
 - `2026-06-04-stripe-effect-service-implementation.md`
 - `2026-06-04-effect-driven-chat-demo-page.md`
 - `../2026-06-04-effect-foldkit-codebase-audit.md`
-- `../2026-06-04-omega-broader-effect-refactor-audit.md`
-- `../2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `../2026-06-04-openagents-broader-effect-refactor-audit.md`
+- `../2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 - `../2026-06-03-autopilot-billing-credits.md`
 - `../../DESIGN.md`
 
@@ -347,7 +347,7 @@ content in the launch payload.
    - timestamps and actor IDs.
 7. Add tagged errors and Effect services/layers for customer order storage,
    order creation, order status lookup, quote update, and operator projection.
-   Follow the Omega Effect guidance: `Context.Service`, layers, Schema data,
+   Follow the OpenAgents product surface Effect guidance: `Context.Service`, layers, Schema data,
    tagged errors, and no `Effect.runPromise` below boundaries.
 8. Add D1 migrations for customer orders, order events, consent snapshots, and
    future revenue-share learning references. Keep the initial revenue-share
@@ -420,8 +420,8 @@ content in the launch payload.
 - Do not store secrets, OAuth tokens, provider tokens, session cookies, Stripe
   secrets, callback tokens, or private prompts in order rows, docs, fixtures,
   logs, or public projection fields.
-- Do not copy large chunks from reference repos into Omega. Study references,
-  then implement Omega-native code.
+- Do not copy large chunks from reference repos into OpenAgents product surface. Study references,
+  then implement OpenAgents product surface-native code.
 - Keep UI copy concise. The customer surface should feel like ordering
   software, not learning an internal dashboard.
 

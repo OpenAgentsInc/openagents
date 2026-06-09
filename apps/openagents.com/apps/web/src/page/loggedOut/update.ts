@@ -7,12 +7,16 @@ import {
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
+  FailedLoadPublicForumLaunchStatus,
+  FailedLoadPublicForumTipLeaderboards,
   FailedLoadPublicPylonStats,
   FailedLoadShareProjection,
   Message,
   SucceededLoadPublicAdjutantActivity,
   SucceededLoadPublicAgentGoal,
   SucceededLoadPublicArtanisReport,
+  SucceededLoadPublicForumLaunchStatus,
+  SucceededLoadPublicForumTipLeaderboards,
   SucceededLoadPublicPylonStats,
   SucceededLoadShareProjection,
 } from './message'
@@ -20,17 +24,23 @@ import {
   FailedPublicAdjutantActivity,
   FailedPublicAgent,
   FailedPublicArtanisReport,
+  FailedPublicForumLaunchStatus,
+  FailedPublicForumTipLeaderboards,
   FailedPublicPylonStats,
   FailedShareProjection,
   LoadedPublicAdjutantActivity,
   LoadedPublicAgent,
   LoadedPublicArtanisReport,
+  LoadedPublicForumLaunchStatus,
+  LoadedPublicForumTipLeaderboards,
   LoadedPublicPylonStats,
   LoadedShareProjection,
   Model,
   PublicAdjutantActivity,
   PublicAgentGoalResponse,
   PublicArtanisReport,
+  PublicForumLaunchStatus,
+  PublicForumTipLeaderboards,
   PublicPylonStats,
   ShareProjectionResponse,
 } from './model'
@@ -45,6 +55,16 @@ class PublicAgentGoalLoadError extends S.TaggedErrorClass<PublicAgentGoalLoadErr
 
 class PublicPylonStatsLoadError extends S.TaggedErrorClass<PublicPylonStatsLoadError>()(
   'PublicPylonStatsLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicForumLaunchStatusLoadError extends S.TaggedErrorClass<PublicForumLaunchStatusLoadError>()(
+  'PublicForumLaunchStatusLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicForumTipLeaderboardsLoadError extends S.TaggedErrorClass<PublicForumTipLeaderboardsLoadError>()(
+  'PublicForumTipLeaderboardsLoadError',
   { error: S.Defect },
 ) {}
 
@@ -238,6 +258,90 @@ export const LoadPublicPylonStats = Command.define(
   ),
 )
 
+export const LoadPublicForumLaunchStatus = Command.define(
+  'LoadPublicForumLaunchStatus',
+  SucceededLoadPublicForumLaunchStatus,
+  FailedLoadPublicForumLaunchStatus,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/forum/launch-status', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicForumLaunchStatusLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicForumLaunchStatusLoadError({
+        error: `Forum launch status returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicForumLaunchStatusLoadError({ error }),
+    })
+    const decoded = yield* S.decodeUnknownEffect(PublicForumLaunchStatus)(
+      payload,
+    )
+
+    return SucceededLoadPublicForumLaunchStatus({ status: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicForumLaunchStatus({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadPublicForumTipLeaderboards = Command.define(
+  'LoadPublicForumTipLeaderboards',
+  SucceededLoadPublicForumTipLeaderboards,
+  FailedLoadPublicForumTipLeaderboards,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/forum/tip-leaderboards?limit=10', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicForumTipLeaderboardsLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicForumTipLeaderboardsLoadError({
+        error: `Forum tip leaderboards returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicForumTipLeaderboardsLoadError({ error }),
+    })
+    const decoded = yield* S.decodeUnknownEffect(PublicForumTipLeaderboards)(
+      payload,
+    )
+
+    return SucceededLoadPublicForumTipLeaderboards({
+      leaderboards: decoded,
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicForumTipLeaderboards({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
 export const LoadShareProjection = Command.define(
   'LoadShareProjection',
   { shareId: S.String },
@@ -331,7 +435,11 @@ export const initialCommands = (
   model.route._tag === 'Share'
     ? [LoadShareProjection({ shareId: model.route.shareId })]
     : model.route._tag === 'Home'
-      ? [LoadPublicPylonStats()]
+      ? [
+          LoadPublicPylonStats(),
+          LoadPublicForumLaunchStatus(),
+          LoadPublicForumTipLeaderboards(),
+        ]
       : model.route._tag === 'PublicAgent'
         ? model.route.agentRef === 'artanis'
           ? [
@@ -476,6 +584,34 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       FailedLoadPublicPylonStats: ({ error }) => [
         evo(model, {
           publicPylonStats: () => FailedPublicPylonStats({ error }),
+        }),
+        [],
+      ],
+      SucceededLoadPublicForumLaunchStatus: ({ status }) => [
+        evo(model, {
+          publicForumLaunchStatus: () =>
+            LoadedPublicForumLaunchStatus({ status }),
+        }),
+        [],
+      ],
+      FailedLoadPublicForumLaunchStatus: ({ error }) => [
+        evo(model, {
+          publicForumLaunchStatus: () =>
+            FailedPublicForumLaunchStatus({ error }),
+        }),
+        [],
+      ],
+      SucceededLoadPublicForumTipLeaderboards: ({ leaderboards }) => [
+        evo(model, {
+          publicForumTipLeaderboards: () =>
+            LoadedPublicForumTipLeaderboards({ leaderboards }),
+        }),
+        [],
+      ],
+      FailedLoadPublicForumTipLeaderboards: ({ error }) => [
+        evo(model, {
+          publicForumTipLeaderboards: () =>
+            FailedPublicForumTipLeaderboards({ error }),
         }),
         [],
       ],

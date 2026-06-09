@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Issue: #385 / `OMEGA-LAB-006`
+Issue: #385 / `OPENAGENTS-LAB-006`
 
 Status: implemented as a read-only schema/projection contract in
 `workers/api/src/omni-model-lab-report.ts`.

@@ -1,6 +1,6 @@
 # Worker-Compatible L402 Credential Service
 
-Issue: #292 / OMEGA-H-004
+Issue: #292 / OPENAGENTS-H-004
 
 Date: 2026-06-06
 

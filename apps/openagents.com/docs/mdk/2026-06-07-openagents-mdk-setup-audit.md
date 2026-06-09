@@ -1,17 +1,17 @@
-# Omega MDK Setup Audit
+# OpenAgents product surface MDK Setup Audit
 
 Date: 2026-06-07
-Repository: `OpenAgentsInc/autopilot-omega`
+Repository: `OpenAgentsInc/openagents`
 
 Source follow-up:
 `docs/mdk/2026-06-07-moneydevkit-local-source-audit.md` records the local
 MoneyDevKit source audit across `projects/moneydevkit/repos`. The main result
-is that Omega should port the current `mdk-checkout` core contracts into Effect
+is that OpenAgents product surface should port the current `mdk-checkout` core contracts into Effect
 services, but must not import MDK's native `@moneydevkit/lightning-js` node
 runtime into Cloudflare Worker code.
 
 Production follow-up:
-On 2026-06-07, Omega proved that this can be done on Cloudflare without
+On 2026-06-07, OpenAgents product surface proved that this can be done on Cloudflare without
 returning to the old Google Cloud Nexus plan. The live path is:
 
 ```text
@@ -30,13 +30,13 @@ GCP.
 
 ## Summary
 
-Omega does not have the stock MoneyDevKit Next.js integration installed.
-There is no Next.js `app/api/mdk/route.ts`. Omega now does have a first-party
+OpenAgents product surface does not have the stock MoneyDevKit Next.js integration installed.
+There is no Next.js `app/api/mdk/route.ts`. OpenAgents product surface now does have a first-party
 `/api/mdk` Worker route that proxies to the Cloudflare Container MDK sidecar.
 The sidecar is intentionally isolated from Site source generation and public
 browser JavaScript.
 
-Omega does have a custom Effect/Cloudflare Worker port of the parts of MDK
+OpenAgents product surface does have a custom Effect/Cloudflare Worker port of the parts of MDK
 that matter for OpenAgents:
 
 - checkout input modeling, metadata validation, customer normalization, clean
@@ -109,7 +109,7 @@ Authenticated MDK MCP account inspection found:
 
 | Resource | Status |
 | --- | --- |
-| App | One app: `Omega`, domain `https://openagents.com` |
+| App | One app: `OpenAgents product surface`, domain `https://openagents.com` |
 | App usage | `0`, last used `Never` |
 | Products | None |
 | Checkouts | None |
@@ -127,22 +127,22 @@ by the successful Cloudflare smoke above.
 ## Demo Product, Payment, And Payout Readiness
 
 This is the concrete state for a demo that creates a product, collects a
-payment, and tests a payout through Omega's custom Effect/Worker MDK port.
+payment, and tests a payout through OpenAgents product surface's custom Effect/Worker MDK port.
 
 ### Create A Demo Product
 
 Already built:
 
-- The MDK account has an `Omega` app, but it has no MDK products.
-- Omega has Site payment manifest and product/action schema foundations from
+- The MDK account has an `OpenAgents product surface` app, but it has no MDK products.
+- OpenAgents product surface has Site payment manifest and product/action schema foundations from
   #163, #298, and #299.
-- Omega has a hosted Site checkout-intent route contract from #300.
-- Omega has generated checkout UI primitives from #301, but those primitives
+- OpenAgents product surface has a hosted Site checkout-intent route contract from #300.
+- OpenAgents product surface has generated checkout UI primitives from #301, but those primitives
   are not currently wired to a live MDK-backed buyer checkout.
-- #433 added a non-secret Omega demo amount-checkout catalog mapping for
-  `site_omega_mdk_demo`, version `version_omega_mdk_demo_v1`, product
-  `omega_demo_checkout`, checkout path `/checkout/omega-demo`, and public-safe
-  provider config ref `mdk_amount_checkout.omega_demo_checkout.usd_100`.
+- #433 added a non-secret OpenAgents product surface demo amount-checkout catalog mapping for
+  `site_openagents_mdk_demo`, version `version_openagents_mdk_demo_v1`, product
+  `openagents_demo_checkout`, checkout path `/checkout/openagents-demo`, and public-safe
+  provider config ref `mdk_amount_checkout.openagents_demo_checkout.usd_100`.
   The mapping is implemented in `workers/api/src/site-mdk-demo-product.ts` and
   injected into the Site commerce route catalog.
 - #435 added the public buyer-facing demo product surface at
@@ -156,7 +156,7 @@ Already built:
 Still required:
 
 - Create a real MDK dashboard product if the demo should use MDK product-mode
-  checkout instead of Omega's current amount-checkout mapping. During #433,
+  checkout instead of OpenAgents product surface's current amount-checkout mapping. During #433,
   the authenticated MCP `create_product` tool rejected valid-looking fixed and
   custom product payloads with input validation errors, so the repo mapping
   intentionally uses the amount-checkout lane until a dashboard product ID is
@@ -178,7 +178,7 @@ Issue coverage:
 
 Already built:
 
-- Omega owns the custom Site commerce endpoints under
+- OpenAgents product surface owns the custom Site commerce endpoints under
   `/api/sites/:siteId/commerce/...`; it does not use MDK's Next.js
   `/api/mdk` endpoint.
 - The checkout-intent API validates catalog membership, price, customer-data
@@ -189,7 +189,7 @@ Already built:
   for `create_checkout` and `get_checkout` against a Node-capable sidecar or
   equivalent MDK-compatible route. It posts the same `handler`-selected route
   shape found in local `mdk-checkout`, uses server-only route credentials, maps
-  MDK statuses into Omega statuses, and redacts raw invoices/payment hashes.
+  MDK statuses into OpenAgents product surface statuses, and redacts raw invoices/payment hashes.
 - Worker config now has explicit hosted checkout route bindings:
   `MDK_CHECKOUT_ROUTE_URL`, optional `MDK_CHECKOUT_ROUTE_SECRET` (falling back
   to `MDK_ACCESS_TOKEN`), `MDK_CHECKOUT_ROUTE_KIND`,
@@ -278,7 +278,7 @@ Already built:
   (`minimum_satisfied` or `minimum_not_satisfied`) instead of exact wallet
   balances.
 - #431 has now executed the first real tiny bitcoin movement between two
-  isolated MDK wallets through the Omega authority path. The evidence doc is
+  isolated MDK wallets through the OpenAgents product surface authority path. The evidence doc is
   `docs/nexus/2026-06-07-mdk-two-wallet-smoke-evidence.md`, and the settlement
   receipt is
   `receipt.nexus.issue_431.settlement.issue_431_authority_1780818513507`.
@@ -291,7 +291,7 @@ Still required:
   smoke. Code can enforce and record readiness, but it cannot create the
   spendable balance; an operator or funding source must fund the isolated test
   wallet.
-- Use #432's Omega/Nexus release gate as the active Pylon v0.2 classifier. It
+- Use #432's OpenAgents product surface/Nexus release gate as the active Pylon v0.2 classifier. It
   points to #431 real movement evidence, #434's Worker-safe MDK runtime
   boundary, #452's self-hosted `mdkd` sidecar option, and #438's retained
   Artanis real-assignment evidence. Old Google Cloud Nexus health remains
@@ -323,7 +323,7 @@ Issue coverage:
 
 For this audit, the release-gate evidence blocker set is now cleared. #431
 created the real two-wallet MDK movement evidence, with #436 as its prerequisite
-source. #432 created the typed Omega/Nexus release classifier and runbook. #427
+source. #432 created the typed OpenAgents product surface/Nexus release classifier and runbook. #427
 is already closed and should be treated as part of the existing simulated
 settlement foundation. #428 is now closed and should be treated as the
 dispatch-gating foundation. #429 and #430 are closed/deployed visibility and
@@ -368,7 +368,7 @@ Work that should wait until the open issue set is complete:
   That bridge should depend on #428 dispatch gates, #429 receipt/operator
   visibility, #431 real movement evidence, and #432 release evidence.
 - Use collected demo-product funds as the source of a Pylon payout. Even though
-  #431 proves real movement through Omega receipts, payout testing should stay
+  #431 proves real movement through OpenAgents product surface receipts, payout testing should stay
   on the isolated treasury-test-wallet path until #432 and the buyer-checkout
   bridge are complete.
 - Publish public claims that a product purchase funded a real Pylon settlement.
@@ -396,7 +396,7 @@ Package/config audit:
 Answer to "do we have the API MDK thing setup?":
 
 - No, not as MDK's unified Next.js `/api/mdk` endpoint.
-- Yes, partially, as Omega-owned Effect/Worker contracts under
+- Yes, partially, as OpenAgents product surface-owned Effect/Worker contracts under
   `/api/sites/:siteId/commerce/...`.
 
 ## Worker Routes
@@ -562,7 +562,7 @@ Current status:
 
 Still missing:
 
-- real two-wallet bitcoin movement proof through Omega receipts;
+- real two-wallet bitcoin movement proof through OpenAgents product surface receipts;
 - production operator path for dispatching MDK wallet commands safely;
 - public-safe receipt page for a real MDK payment movement.
 
@@ -571,12 +571,12 @@ Still missing:
 Commands used:
 
 - `gh issue list --state open --search "MDK OR payment OR payout OR checkout OR L402" --json number,title,state,url,updatedAt --limit 50`
-- `gh search issues mdk --repo OpenAgentsInc/autopilot-omega`
-- `gh search issues moneydevkit --repo OpenAgentsInc/autopilot-omega`
-- `gh search issues L402 --repo OpenAgentsInc/autopilot-omega`
-- `gh search issues checkout --repo OpenAgentsInc/autopilot-omega`
-- `gh search issues payout --repo OpenAgentsInc/autopilot-omega`
-- `gh search issues payment --repo OpenAgentsInc/autopilot-omega`
+- `gh search issues mdk --repo OpenAgentsInc/openagents`
+- `gh search issues moneydevkit --repo OpenAgentsInc/openagents`
+- `gh search issues L402 --repo OpenAgentsInc/openagents`
+- `gh search issues checkout --repo OpenAgentsInc/openagents`
+- `gh search issues payout --repo OpenAgentsInc/openagents`
+- `gh search issues payment --repo OpenAgentsInc/openagents`
 - targeted `gh issue view` calls for open Nexus/MDK issues and key closed MDK
   issues.
 
@@ -584,67 +584,67 @@ Commands used:
 
 | Issue | Status | Meaning for MDK |
 | --- | --- | --- |
-| #428 `[OMEGA-NEXUS] Upgrade Artanis Nexus/Pylon adapters with payment-backed dispatch gates` | Closed | Added authority/readiness/spend-cap/idempotency gates before Artanis can dispatch payment-backed work. |
-| #429 `[OMEGA-NEXUS] Add public-safe Nexus/Pylon receipt pages and operator dashboard` | Closed | Added payout/settlement inspection without exposing wallet/payment secrets. |
-| #430 `[OMEGA-NEXUS] Add Forum bridge for Artanis assignment, incident, release, and payout updates` | Closed | Added public-safe payment and payout lifecycle Forum publication mapping. |
-| #431 `[OMEGA-NEXUS] Add two-wallet MDK bitcoin movement smoke with Omega receipts` | Closed/live | First real small-bitcoin MDK movement proof through the Omega authority path. Evidence doc: `docs/nexus/2026-06-07-mdk-two-wallet-smoke-evidence.md`. |
-| #432 `[OMEGA-NEXUS] Add Pylon v0.2 Omega release gate runbook and automated evidence checklist` | Closed/live | Release gate requiring simulation, mocked MDK adapter tests, real two-wallet proof, receipt pages, MDK runtime-boundary evidence, Artanis real-assignment evidence, Forum bridge evidence, and docs. Current projection is ready for operator release review after #434 and #438. |
-| #436 `[OMEGA-MDK] Prepare isolated wallet prerequisites for two-wallet smoke` | Closed | Defines the non-secret wallet existence, funding readiness, payout target approval, adapter readiness, and receipt readiness checklist for #431. |
-| #438 `[OMEGA-NEXUS] Run retained Artanis real small-bitcoin Pylon assignment smoke` | Closed/live | Retains Artanis assignment, accepted-work proof, artifact/proof refs, payout authority refs, public settlement receipt, and release-gate evidence. Evidence doc: `docs/nexus/2026-06-07-artanis-real-small-bitcoin-assignment-smoke-evidence.md`. |
+| #428 `[OPENAGENTS-NEXUS] Upgrade Artanis Nexus/Pylon adapters with payment-backed dispatch gates` | Closed | Added authority/readiness/spend-cap/idempotency gates before Artanis can dispatch payment-backed work. |
+| #429 `[OPENAGENTS-NEXUS] Add public-safe Nexus/Pylon receipt pages and operator dashboard` | Closed | Added payout/settlement inspection without exposing wallet/payment secrets. |
+| #430 `[OPENAGENTS-NEXUS] Add Forum bridge for Artanis assignment, incident, release, and payout updates` | Closed | Added public-safe payment and payout lifecycle Forum publication mapping. |
+| #431 `[OPENAGENTS-NEXUS] Add two-wallet MDK bitcoin movement smoke with OpenAgents product surface receipts` | Closed/live | First real small-bitcoin MDK movement proof through the OpenAgents product surface authority path. Evidence doc: `docs/nexus/2026-06-07-mdk-two-wallet-smoke-evidence.md`. |
+| #432 `[OPENAGENTS-NEXUS] Add Pylon v0.2 OpenAgents product surface release gate runbook and automated evidence checklist` | Closed/live | Release gate requiring simulation, mocked MDK adapter tests, real two-wallet proof, receipt pages, MDK runtime-boundary evidence, Artanis real-assignment evidence, Forum bridge evidence, and docs. Current projection is ready for operator release review after #434 and #438. |
+| #436 `[OPENAGENTS-MDK] Prepare isolated wallet prerequisites for two-wallet smoke` | Closed | Defines the non-secret wallet existence, funding readiness, payout target approval, adapter readiness, and receipt readiness checklist for #431. |
+| #438 `[OPENAGENTS-NEXUS] Run retained Artanis real small-bitcoin Pylon assignment smoke` | Closed/live | Retains Artanis assignment, accepted-work proof, artifact/proof refs, payout authority refs, public settlement receipt, and release-gate evidence. Evidence doc: `docs/nexus/2026-06-07-artanis-real-small-bitcoin-assignment-smoke-evidence.md`. |
 
 ### Key Closed Issues
 
 | Issue | Status | Result |
 | --- | --- | --- |
-| #163 `OMEGA-SITES-COMMERCE-001` | Closed | Site commerce manifest and product/action schema. |
-| #164 `OMEGA-SITES-COMMERCE-002` | Closed | Hosted checkout intent and L402 paid action contract stubs. |
-| #165 `OMEGA-SITES-COMMERCE-003` | Closed | MDK agent-wallet sandbox smoke plan. |
-| #166 `OMEGA-SITES-COMMERCE-004` | Closed | Site payment to referral/revenue-share linkage model. |
-| #289 `OMEGA-H-001` | Closed | Recoverable/non-recoverable payment limit classifier. |
-| #290 `OMEGA-H-002` | Closed | Paid endpoint product catalog. |
-| #291 `OMEGA-H-003` | Closed | Buyer-side payment ledger contract. |
-| #292 `OMEGA-H-004` | Closed | Worker-compatible L402 credential service. |
-| #293 `OMEGA-H-005` | Closed | L402 challenge response and error contract. |
-| #294 `OMEGA-H-006` | Closed | Standard and collision-safe payment headers. |
-| #295 `OMEGA-H-007` | Closed | Hosted MDK invoice client contract with fake/stub client. |
-| #296 `OMEGA-H-007A` | Closed | MDK core checkout semantics ported to Effect/Worker services. |
-| #297 `OMEGA-H-007B` | Closed | MDK core conformance fixtures. |
-| #445 `OMEGA-H-008` | Closed | L402 deferred-settlement contract for success-bound protected handlers. |
-| #446 `OMEGA-H-009` | Closed | One-shot and durable buyer payment entitlement policy decisions. |
-| #447 `OMEGA-H-010` | Closed | Unified payment decision contract for free-beta, credits, Stripe top-up state, L402/MDK proof, entitlements, and hard/manual/provider blocks. |
-| #448 `OMEGA-H-011` | Closed | Dry-run agent spend-cap preview contract for paid routes and generated Site actions with public-safe over-budget guidance and no payment side effects. |
-| #449 `OMEGA-H-012` | Closed | Scheduled/queue-safe Site MDK reconciliation worker contract for stale checkouts, expired challenges, duplicate/replayed provider events, receipt repair, entitlement repair, retry/backoff, and redacted projections. |
-| #450 `OMEGA-H-013` | Closed | MDK agent-wallet and pay402-compatible smoke runbook plus no-funds fixture for status, balance, receive, unpaid challenge, bounded signet send, paid retry, token-cache handling, and redaction. |
-| #451 `OMEGA-H-014` | Closed | Payment destination parser boundary based on the MDK `bitcoin-payment-instructions` source decision, with typed BOLT11/BOLT12/LNURL/Lightning-address/URI classifications and redacted projections. |
-| #452 `OMEGA-H-015` | Closed | Self-hosted `mdkd` sidecar option and config route-kind boundary for fake, hosted, and sidecar modes without native MDK runtime inside the Worker. |
-| #453 `OMEGA-H-016` | Closed | Payment-specific redaction regression suite covering MDK, L402, Site proof/reconciliation/bridge, agent-wallet smoke fixtures, sidecar options, destination parsing, spend previews, entitlement policy, Nexus/Treasury, Artanis, public docs, OpenAPI, manifest, onboarding, and AGENTS. |
-| #454 `OMEGA-SITES-MDK-LIVE-001` | Closed | Deterministic generated-Site payment smoke fixture with one human checkout product, one agent-paid action, manifest/catalog/discovery/helper projections, smoke evidence, and redaction coverage. |
-| #455 `OMEGA-SITES-MDK-LIVE-002` | Closed | Generated-Site human checkout smoke through Site commerce APIs, including discovery, checkout intent, durable challenge/intent persistence, clean return status, redaction, and no payment-verified state before reconciliation. |
-| #456 `OMEGA-SITES-MDK-LIVE-003` | Closed | Registered-agent-gated generated-Site L402 smoke through discovery, spend-cap dry run, challenge creation, over-cap rejection, unsafe proof rejection, entitlement-stub redemption, deterministic idempotent replay, retry projection, and public-surface docs. |
-| #457 `OMEGA-SITES-MDK-LIVE-004` | Closed | Generated-Site reconciliation smoke through checkout return, dashboard Standard Webhooks verification, duplicate replay, payment-verified status transition, receipt, entitlement, payment proof, redaction, and long generated checkout-ref normalization. |
-| #458 `OMEGA-SITES-MDK-LIVE-005` | Closed | Generated-Site payment smoke runbook, Sites index entry, public AGENTS guidance, capability-manifest resource, onboarding hash update, and redaction coverage for separating deterministic fake-provider proof, hosted-provider proof, real bitcoin movement proof, and accepted-work payout settlement evidence. |
-| #298 `OMEGA-SITES-MDK-001` | Closed | Site payment manifest schema. |
-| #299 `OMEGA-SITES-MDK-002` | Closed | Site payment product/action catalog. |
-| #300 `OMEGA-SITES-MDK-003` | Closed | Hosted Site checkout intent API contract. |
-| #301 `OMEGA-SITES-MDK-004` | Closed | Generated checkout UI primitives. |
-| #302 `OMEGA-SITES-MDK-005` | Closed | WFP Site payment middleware. |
-| #303 `OMEGA-SITES-MDK-006` | Closed | Agent-readable Site payment manifest and OpenAPI entries. |
-| #304 `OMEGA-SITES-MDK-007` | Closed | Clean checkout return and entitlement projection. |
-| #305 `OMEGA-SITES-MDK-008` | Closed | Site MDK reconciliation and webhook bridge contract. |
-| #421 `[OMEGA-NEXUS] Add treasury payout authority D1 ledger` | Closed | Ledger for payout authority. |
-| #422 `[OMEGA-NEXUS] Implement TreasuryPaymentAuthority Effect service contract` | Closed | Authority service boundary. |
-| #423 `[OMEGA-NEXUS] Add simulation payout adapter and conformance tests` | Closed | Simulation adapter before live MDK movement. |
-| #424 `[OMEGA-NEXUS] Add MDK agent-wallet payout adapter boundary` | Closed | MDK agent-wallet adapter boundary and runbook. |
-| #425 `[OMEGA-NEXUS] Add payout target approval, spend caps, and emergency pause policy` | Closed | Payout safety gates. |
-| #426 `[OMEGA-NEXUS] Add Pylon registration, heartbeat, wallet readiness, and receipt APIs` | Closed | Pylon readiness and receipt API foundation. |
-| #427 `[OMEGA-NEXUS] Wire Pylon marketplace jobs to payout intents and settlement receipts` | Closed | Accepted-work to payout-intent and settlement-receipt simulation path. No real MDK movement in this issue. |
+| #163 `OPENAGENTS-SITES-COMMERCE-001` | Closed | Site commerce manifest and product/action schema. |
+| #164 `OPENAGENTS-SITES-COMMERCE-002` | Closed | Hosted checkout intent and L402 paid action contract stubs. |
+| #165 `OPENAGENTS-SITES-COMMERCE-003` | Closed | MDK agent-wallet sandbox smoke plan. |
+| #166 `OPENAGENTS-SITES-COMMERCE-004` | Closed | Site payment to referral/revenue-share linkage model. |
+| #289 `OPENAGENTS-H-001` | Closed | Recoverable/non-recoverable payment limit classifier. |
+| #290 `OPENAGENTS-H-002` | Closed | Paid endpoint product catalog. |
+| #291 `OPENAGENTS-H-003` | Closed | Buyer-side payment ledger contract. |
+| #292 `OPENAGENTS-H-004` | Closed | Worker-compatible L402 credential service. |
+| #293 `OPENAGENTS-H-005` | Closed | L402 challenge response and error contract. |
+| #294 `OPENAGENTS-H-006` | Closed | Standard and collision-safe payment headers. |
+| #295 `OPENAGENTS-H-007` | Closed | Hosted MDK invoice client contract with fake/stub client. |
+| #296 `OPENAGENTS-H-007A` | Closed | MDK core checkout semantics ported to Effect/Worker services. |
+| #297 `OPENAGENTS-H-007B` | Closed | MDK core conformance fixtures. |
+| #445 `OPENAGENTS-H-008` | Closed | L402 deferred-settlement contract for success-bound protected handlers. |
+| #446 `OPENAGENTS-H-009` | Closed | One-shot and durable buyer payment entitlement policy decisions. |
+| #447 `OPENAGENTS-H-010` | Closed | Unified payment decision contract for free-beta, credits, Stripe top-up state, L402/MDK proof, entitlements, and hard/manual/provider blocks. |
+| #448 `OPENAGENTS-H-011` | Closed | Dry-run agent spend-cap preview contract for paid routes and generated Site actions with public-safe over-budget guidance and no payment side effects. |
+| #449 `OPENAGENTS-H-012` | Closed | Scheduled/queue-safe Site MDK reconciliation worker contract for stale checkouts, expired challenges, duplicate/replayed provider events, receipt repair, entitlement repair, retry/backoff, and redacted projections. |
+| #450 `OPENAGENTS-H-013` | Closed | MDK agent-wallet and pay402-compatible smoke runbook plus no-funds fixture for status, balance, receive, unpaid challenge, bounded signet send, paid retry, token-cache handling, and redaction. |
+| #451 `OPENAGENTS-H-014` | Closed | Payment destination parser boundary based on the MDK `bitcoin-payment-instructions` source decision, with typed BOLT11/BOLT12/LNURL/Lightning-address/URI classifications and redacted projections. |
+| #452 `OPENAGENTS-H-015` | Closed | Self-hosted `mdkd` sidecar option and config route-kind boundary for fake, hosted, and sidecar modes without native MDK runtime inside the Worker. |
+| #453 `OPENAGENTS-H-016` | Closed | Payment-specific redaction regression suite covering MDK, L402, Site proof/reconciliation/bridge, agent-wallet smoke fixtures, sidecar options, destination parsing, spend previews, entitlement policy, Nexus/Treasury, Artanis, public docs, OpenAPI, manifest, onboarding, and AGENTS. |
+| #454 `OPENAGENTS-SITES-MDK-LIVE-001` | Closed | Deterministic generated-Site payment smoke fixture with one human checkout product, one agent-paid action, manifest/catalog/discovery/helper projections, smoke evidence, and redaction coverage. |
+| #455 `OPENAGENTS-SITES-MDK-LIVE-002` | Closed | Generated-Site human checkout smoke through Site commerce APIs, including discovery, checkout intent, durable challenge/intent persistence, clean return status, redaction, and no payment-verified state before reconciliation. |
+| #456 `OPENAGENTS-SITES-MDK-LIVE-003` | Closed | Registered-agent-gated generated-Site L402 smoke through discovery, spend-cap dry run, challenge creation, over-cap rejection, unsafe proof rejection, entitlement-stub redemption, deterministic idempotent replay, retry projection, and public-surface docs. |
+| #457 `OPENAGENTS-SITES-MDK-LIVE-004` | Closed | Generated-Site reconciliation smoke through checkout return, dashboard Standard Webhooks verification, duplicate replay, payment-verified status transition, receipt, entitlement, payment proof, redaction, and long generated checkout-ref normalization. |
+| #458 `OPENAGENTS-SITES-MDK-LIVE-005` | Closed | Generated-Site payment smoke runbook, Sites index entry, public AGENTS guidance, capability-manifest resource, onboarding hash update, and redaction coverage for separating deterministic fake-provider proof, hosted-provider proof, real bitcoin movement proof, and accepted-work payout settlement evidence. |
+| #298 `OPENAGENTS-SITES-MDK-001` | Closed | Site payment manifest schema. |
+| #299 `OPENAGENTS-SITES-MDK-002` | Closed | Site payment product/action catalog. |
+| #300 `OPENAGENTS-SITES-MDK-003` | Closed | Hosted Site checkout intent API contract. |
+| #301 `OPENAGENTS-SITES-MDK-004` | Closed | Generated checkout UI primitives. |
+| #302 `OPENAGENTS-SITES-MDK-005` | Closed | WFP Site payment middleware. |
+| #303 `OPENAGENTS-SITES-MDK-006` | Closed | Agent-readable Site payment manifest and OpenAPI entries. |
+| #304 `OPENAGENTS-SITES-MDK-007` | Closed | Clean checkout return and entitlement projection. |
+| #305 `OPENAGENTS-SITES-MDK-008` | Closed | Site MDK reconciliation and webhook bridge contract. |
+| #421 `[OPENAGENTS-NEXUS] Add treasury payout authority D1 ledger` | Closed | Ledger for payout authority. |
+| #422 `[OPENAGENTS-NEXUS] Implement TreasuryPaymentAuthority Effect service contract` | Closed | Authority service boundary. |
+| #423 `[OPENAGENTS-NEXUS] Add simulation payout adapter and conformance tests` | Closed | Simulation adapter before live MDK movement. |
+| #424 `[OPENAGENTS-NEXUS] Add MDK agent-wallet payout adapter boundary` | Closed | MDK agent-wallet adapter boundary and runbook. |
+| #425 `[OPENAGENTS-NEXUS] Add payout target approval, spend caps, and emergency pause policy` | Closed | Payout safety gates. |
+| #426 `[OPENAGENTS-NEXUS] Add Pylon registration, heartbeat, wallet readiness, and receipt APIs` | Closed | Pylon readiness and receipt API foundation. |
+| #427 `[OPENAGENTS-NEXUS] Wire Pylon marketplace jobs to payout intents and settlement receipts` | Closed | Accepted-work to payout-intent and settlement-receipt simulation path. No real MDK movement in this issue. |
 
 ## Practical Next Steps
 
 Parallel now:
 
 1. Create or select a small demo product in the MDK account, then map it into
-   an Omega Site commerce catalog record without committing secrets.
+   an OpenAgents product surface Site commerce catalog record without committing secrets.
 2. Deploy/configure the MDK-compatible sidecar or hosted platform route that
    `OpenAgentsHostedMdkClient` can call in production.
 3. Keep the fake provider retained for tests and explicit non-live previews,
@@ -669,7 +669,7 @@ After #431-#432, #434, and #438:
    two-wallet smoke, selected live MDK runtime boundary, retained Artanis
    real-assignment smoke, and release evidence are complete.
 2. Use demo-product payment as payout funding only after #431 proves real MDK
-   movement through Omega receipts and #438 proves the Artanis assignment lane.
+   movement through OpenAgents product surface receipts and #438 proves the Artanis assignment lane.
 3. Publish public product-to-payout claims only after the verified buyer payment
    to payout bridge in #437 links the buyer order, accepted work, payout
    intent, payout attempt, reconciliation, and settlement refs.
@@ -677,11 +677,11 @@ After #431-#432, #434, and #438:
 
 ## Bottom Line
 
-Omega has not "installed MDK" in the framework-package sense. It has ported the
+OpenAgents product surface has not "installed MDK" in the framework-package sense. It has ported the
 useful MDK checkout, payout, and L402 ideas into its own Effect TypeScript
 Worker architecture and keeps provider calls behind typed server boundaries.
 
-As of this audit, Omega can expose a buyer checkout surface, persist checkout
+As of this audit, OpenAgents product surface can expose a buyer checkout surface, persist checkout
 intents, verify exact-source MDK callbacks, project buyer receipts and
 entitlements, and retain real small-bitcoin payout evidence through the
 Nexus/Pylon path. It cannot yet honestly claim that a real MDK-backed demo

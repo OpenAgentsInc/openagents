@@ -1,6 +1,6 @@
-# Omega Probe Contribution Release-Gate Intake
+# OpenAgents product surface Probe Contribution Release-Gate Intake
 
-Issue #498 adds the Omega intake path for Probe-originated Blueprint
+Issue #498 adds the OpenAgents product surface intake path for Probe-originated Blueprint
 contributions.
 
 The route is:
@@ -11,24 +11,24 @@ The route is:
 Probe submits `ProbeBlueprintContributionDraft` records when a Probe run wants
 to contribute Program Signatures, Module Versions, tool packages, context
 packages, UI bindings, outcome templates, or backend projection adapters back to
-Omega. Omega normalizes accepted records into `BlueprintProbeContributionRecord`
+OpenAgents product surface. OpenAgents product surface normalizes accepted records into `BlueprintProbeContributionRecord`
 rows in D1. The POST route accepts runner-callback authorization with admin API
 token fallback for operator verification. The GET route is operator-read only.
 
-Accepted records remain contribution evidence, not runtime authority. Omega
+Accepted records remain contribution evidence, not runtime authority. OpenAgents product surface
 requires every submission to be content-redacted, non-authoritative, and marked
 with `noProductionRuntimeAuthority: true`. The intake path rejects self
 promotion, raw prompts, source archives, runner logs, provider material,
 private repo refs, callback material, wallet or payment secrets, customer
 private data, raw timestamps, and secret-shaped strings before schema decoding.
 
-Candidate runtime use is dogfood-only. Omega records
+Candidate runtime use is dogfood-only. OpenAgents product surface records
 `candidateRuntimeAllowed: true` only when the contribution has a dogfood scope,
 has no runtime authority, is not rejected or archived, has no rejection ref, and
 is not self-promoting. Candidate use does not make the contribution production
 dispatch authority.
 
-Production runtime use requires promotion. Omega records
+Production runtime use requires promotion. OpenAgents product surface records
 `productionRuntimeAllowed: true` only for promoted contributions with approved
 review, a promotion ref, no rejection, no runtime authority, no self-promotion,
 target refs, release gate refs, fixture refs, and retained failure refs.

@@ -4,7 +4,7 @@ Status: active operator runbook packet; API implementation is committed,
 pushed, deployed, and production-smoked. Use this packet as the current
 programmatic dispatch and recovery contract.
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 

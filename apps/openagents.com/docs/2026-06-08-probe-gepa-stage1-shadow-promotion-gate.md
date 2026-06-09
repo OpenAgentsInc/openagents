@@ -2,16 +2,16 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#515`.
+Status: implemented for `OpenAgentsInc/openagents#515`.
 
-Omega now has a typed Stage 1 gate for Probe GEPA candidate movement. The gate
+OpenAgents product surface now has a typed Stage 1 gate for Probe GEPA candidate movement. The gate
 can emit only:
 
 - `shadow`; or
 - rejected `benchmark_only`.
 
 It cannot emit `active` or `release_candidate`. Those states require a separate
-explicit Omega/Blueprint production gate with accepted coding outcome evidence.
+explicit OpenAgents product surface/Blueprint production gate with accepted coding outcome evidence.
 
 The implementation lives in
 `workers/api/src/probe-gepa-stage1-shadow-promotion-gate.ts`.
@@ -28,7 +28,7 @@ The gate consumes:
 - proof completeness basis points;
 - validation delta basis points;
 - typed policy findings with explicit severity;
-- Omega gate refs;
+- OpenAgents product surface gate refs;
 - Blueprint gate refs;
 - requested target state.
 
@@ -47,7 +47,7 @@ The gate returns `shadow` only when all are true:
 - proof bundle refs exist;
 - proof completeness is at least `8000` basis points;
 - validation delta is non-negative;
-- Omega gate refs exist;
+- OpenAgents product surface gate refs exist;
 - Blueprint gate refs exist;
 - no policy finding has `blocking` severity.
 

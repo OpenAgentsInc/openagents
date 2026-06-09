@@ -1,7 +1,7 @@
 # Pylon Network Readiness Release Freeze
 
 Date: 2026-06-07
-Repository: `OpenAgentsInc/autopilot-omega`
+Repository: `OpenAgentsInc/openagents`
 Related issues: #499, #500, #501, #502, #503, #504, #505
 
 ## Decision
@@ -31,19 +31,19 @@ retained public-safe evidence:
 1. Fresh install: a new operator can install and run the Pylon launcher without
    relying on a local source checkout.
 2. Stable identity: first run creates or reuses a stable Pylon identity.
-3. Registration: the Pylon registers through the Omega Pylon Agent API or an
+3. Registration: the Pylon registers through the OpenAgents product surface Pylon Agent API or an
    equivalent scoped onboarding path.
 4. Heartbeat: the Pylon posts heartbeat, capability, and stale/offline status
-   transitions that Omega can inspect.
+   transitions that OpenAgents product surface can inspect.
 5. Public-safe visibility: public stats and operator surfaces show online,
    offline, stale, blocked, and not-ready states without private host details.
 6. Wallet and payout target: the Pylon can set up an MDK-backed bitcoin receive
    path, submit redacted payout readiness, and receive operator approval.
-7. Job assignment: Omega can offer a real assignment to an eligible Pylon.
+7. Job assignment: OpenAgents product surface can offer a real assignment to an eligible Pylon.
 8. Job execution: the Pylon accepts the lease and executes the bounded job.
 9. Proof upload: the Pylon submits artifact/proof refs without private paths,
    prompts, outputs, wallet data, or credentials.
-10. Accepted-work closeout: Omega can mark the work accepted or rejected from
+10. Accepted-work closeout: OpenAgents product surface can mark the work accepted or rejected from
     retained evidence.
 11. Bitcoin payout: accepted work can dispatch a real small bitcoin payout
     through approved payment authority.
@@ -71,7 +71,7 @@ retained public-safe evidence:
 | #499 | Freeze new releases and define this checklist. |
 | #500 | Proved source-level self-serve install, registration, heartbeat, and status visibility on one clean local host and one reachable Arch Linux host; Linux resolved to `pylon-v0.2.2`, so platform asset alignment still belongs to #505. |
 | #501 | Proved source-level MDK agent-wallet setup, redacted wallet readiness, and payout-target admission for a registered Pylon. |
-| #502 | Proved live Omega assignment lease, owned Pylon assignment list, execution progress, artifact/proof refs, accepted-work closeout, and post-closeout public-safe payment-evidence refs for `pylon.issue502.local.20260608024927`. |
+| #502 | Proved live OpenAgents product surface assignment lease, owned Pylon assignment list, execution progress, artifact/proof refs, accepted-work closeout, and post-closeout public-safe payment-evidence refs for `pylon.issue502.local.20260608024927`. |
 | #503 | Settle accepted Pylon work with real bitcoin payouts and public receipts. |
 | #504 | Run repeated multi-Pylon, multi-host network smokes and failure drills. |
 | #505 | Published `@openagentsinc/pylon@0.2.5`, moved npm `latest`, verified package flags, ran macOS and Arch Linux package-launcher registration and wallet-readiness smokes, and documented rollback. |

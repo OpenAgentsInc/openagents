@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #174 / OMEGA-SITES-REF-002
+Issue: #174 / OPENAGENTS-SITES-REF-002
 
 ## Summary
 
-The second Site referral slice adds Omega-owned capture routes and pending
+The second Site referral slice adds OpenAgents product surface-owned capture routes and pending
 attribution persistence.
 
 Public Sites and agent manifests should link to these capture routes instead of

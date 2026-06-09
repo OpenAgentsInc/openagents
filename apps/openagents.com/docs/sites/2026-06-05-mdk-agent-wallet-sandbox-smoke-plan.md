@@ -15,10 +15,10 @@ The split is:
 
 ```text
 generated Site / agent
--> receives public-safe checkout or L402 challenge from Omega
+-> receives public-safe checkout or L402 challenge from OpenAgents product surface
 -> pays with MDK agent-wallet, pay402, or another Lightning wallet
--> returns public-safe proof refs to Omega
--> Omega grants entitlement and records receipt refs
+-> returns public-safe proof refs to OpenAgents product surface
+-> OpenAgents product surface grants entitlement and records receipt refs
 
 Pylon / Nexus / Treasury
 -> remain responsible for provider identity, accepted-work eligibility,
@@ -98,14 +98,14 @@ Rules:
 
 Use two roles:
 
-1. **Omega hosted boundary.** Creates checkout intents, creates L402
+1. **OpenAgents product surface hosted boundary.** Creates checkout intents, creates L402
    challenges, verifies/redacts hosted MDK evidence, grants entitlements, and
    writes D1 receipt/projection records.
 2. **Buyer agent wallet.** Pays invoices through `@moneydevkit/agent-wallet`,
    `pay402`, or another Lightning/L402 client.
 
 Do not run merchant wallet authority inside generated Site source. Static Sites
-call Omega. WFP Sites call Omega through fetch/service binding. Customer-owned
+call OpenAgents product surface. WFP Sites call OpenAgents product surface through fetch/service binding. Customer-owned
 MDK accounts are a later reviewed secret-binding mode.
 
 ## Preparation
@@ -181,7 +181,7 @@ Expected:
 - If the invoice amount is above `maxAmountSats`, the agent refuses to pay.
 - No payment dispatch happens on over-cap challenge.
 - A successful under-cap payment returns a proof/preimage to the client, but
-  Omega stores only redacted payment evidence and receipt refs.
+  OpenAgents product surface stores only redacted payment evidence and receipt refs.
 
 Reference `pay402` behavior:
 
@@ -237,7 +237,7 @@ curl -i -X POST "$OPENAGENTS_BASE_URL/api/sites/$SITE_ID/commerce/l402/redemptio
 
 ### 4. Entitlement grant
 
-Inspect Omega's internal receipt/projection state.
+Inspect OpenAgents product surface's internal receipt/projection state.
 
 Expected:
 
@@ -268,7 +268,7 @@ Redeem a challenge after expiry.
 
 Expected:
 
-- Omega rejects it as stale.
+- OpenAgents product surface rejects it as stale.
 - No entitlement is granted.
 - No accepted-work or provider payout state is created.
 - The agent receives clear instructions to request a fresh challenge.
@@ -295,7 +295,7 @@ curl -i -X POST "$OPENAGENTS_BASE_URL/api/sites/$SITE_ID/commerce/l402/redemptio
 
 ## Hosted MDK Versus Self-Hosted `mdkd`
 
-Default for Autopilot Sites should be hosted MDK through Omega.
+Default for Autopilot Sites should be hosted MDK through OpenAgents product surface.
 
 Use hosted MDK when:
 
@@ -330,7 +330,7 @@ The smoke passes only when all of these are true:
 - generated Site source contains no MDK access token, wallet mnemonic, webhook
   secret, raw invoice, raw preimage, private key, payment hash, or payout
   credential;
-- Omega records payment evidence, entitlement, accepted work, provider payout
+- OpenAgents product surface records payment evidence, entitlement, accepted work, provider payout
   eligibility, and settlement as separate states.
 
 ## Follow-Up Implementation Work

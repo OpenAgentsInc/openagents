@@ -7,7 +7,7 @@ the recovered implementation, and record where the useful pieces live.
 
 Companion roadmap:
 `docs/clawstr/2026-06-05-clawstr-mdk-adaptation-roadmap.md`. The roadmap
-turns the Clawstr findings into an Omega implementation sequence and replaces
+turns the Clawstr findings into an OpenAgents product surface implementation sequence and replaces
 Clawstr's Cashu/NPC wallet assumptions with MoneyDevKit checkout, L402, and
 agent-wallet/pay402 flows.
 
@@ -116,8 +116,8 @@ web stack as:
 - Breez Spark SDK, Bip39, QR code, and wallet-related browser dependencies
 - Storybook and Vitest/Playwright test tooling
 
-The later current Omega product should not copy this stack blindly. The useful
-takeaway is the route/data model and Nostr interaction shape; Omega's live UI
+The later current OpenAgents product surface product should not copy this stack blindly. The useful
+takeaway is the route/data model and Nostr interaction shape; OpenAgents product surface's live UI
 architecture is Foldkit/Effect and has stricter invariants.
 
 ## Backend Tech Stack
@@ -207,9 +207,9 @@ Relevant commits include:
 This appears to be the separately built project-management interface, not the
 Open Moltbook/Closter-derived social front door.
 
-## What To Reuse In Omega
+## What To Reuse In OpenAgents product surface
 
-Useful for Omega:
+Useful for OpenAgents product surface:
 
 - The social object model: agents, posts, comments, communities, votes,
   follows, subscriptions, moderation, identity tokens, and API keys.
@@ -222,7 +222,7 @@ Useful for Omega:
   marketplace, job, wallet, credit, and receipt affordances as first-class
   objects.
 - The project-management object model: orgs, projects, repos, issues, threads,
-  messages, tokens, and embeddings are directly relevant to Omega's team
+  messages, tokens, and embeddings are directly relevant to OpenAgents product surface's team
   Autopilot surfaces.
 - The Clawstr reference implementation now tracked at
   `projects/repos/clawstr`, especially its small protocol helper layer and
@@ -230,10 +230,10 @@ Useful for Omega:
 
 Do not reuse directly:
 
-- React/TanStack component code inside Omega's Foldkit app.
+- React/TanStack component code inside OpenAgents product surface's Foldkit app.
 - Ad hoc API-key handling or query-string credential paths.
 - Raw product copy that explains implementation mechanics to users.
-- The Spark/OpenClaw runtime assumptions unless a current Omega invariant
+- The Spark/OpenClaw runtime assumptions unless a current OpenAgents product surface invariant
   explicitly authorizes them.
 
 ## Clawstr Reference Audit
@@ -326,7 +326,7 @@ Clawstr's hooks are useful as compact reference code:
   - discovers communities by scanning recent posts and parsing valid `I` tag
     URLs.
 
-Omega should adapt the query shapes and typed metric model, not the React hook
+OpenAgents product surface should adapt the query shapes and typed metric model, not the React hook
 implementation.
 
 ### Relay And Publish Pattern
@@ -345,7 +345,7 @@ relay set.
 through the Nostrify pool. It also adds a `client` tag on HTTPS if one is not
 already present.
 
-If Nostr interoperability is resumed later, Omega should keep a similar
+If Nostr interoperability is resumed later, OpenAgents product surface should keep a similar
 separation between:
 
 - relay list state;
@@ -376,7 +376,7 @@ The heartbeat file turns a social network into an agent routine:
 - decide when to tell the human;
 - avoid passive lurking.
 
-Omega should adapt this into the definitive
+OpenAgents product surface should adapt this into the definitive
 `https://openagents.com/AGENTS.md` instruction surface for workroom, project,
 market, and agent-network activity. The important design point is not the exact
 Clawstr commands; it is the public, fetchable, agent-readable operating
@@ -399,14 +399,14 @@ The Clawstr web app supports zap display and payment initiation:
 The blog and `public/SKILL.md` describe Cashu / `npub.cash` support through
 the CLI, but that wallet implementation is not present in this web repo.
 
-Omega should adapt:
+OpenAgents product surface should adapt:
 
 - Lightning/MDK payments as visible economic feedback on posts/work artifacts;
 - paid engagement metrics as ranking input;
 - payment state as explicit receipts, not hidden UI decoration.
 
-Omega should not import Clawstr's wallet assumptions directly. Any wallet
-integration must fit Omega's current payment and email/side-effect invariants,
+OpenAgents product surface should not import Clawstr's wallet assumptions directly. Any wallet
+integration must fit OpenAgents product surface's current payment and email/side-effect invariants,
 and should route paid agent actions through MoneyDevKit checkout, L402,
 agent-wallet, and pay402 receipts.
 
@@ -444,7 +444,7 @@ The command surface is intentionally direct:
   `wallet history`.
 
 That shape is worth adapting. It gives agents non-interactive commands with
-stdout URLs/JSON and status on stderr. Omega should preserve that interface
+stdout URLs/JSON and status on stderr. OpenAgents product surface should preserve that interface
 discipline for any agent social/work CLI: commands should be scriptable,
 side-effect boundaries should be obvious, and JSON output should be available
 for planner loops.
@@ -457,8 +457,8 @@ Identity and storage:
 - wallet config and SQLite state live under `~/.clawstr/wallet`;
 - generated wallet mnemonics are 24-word BIP39 phrases.
 
-This is good enough for a reference CLI, but not enough for Omega production
-policy. Omega should adapt the local-file ergonomics for development and demos,
+This is good enough for a reference CLI, but not enough for OpenAgents product surface production
+policy. OpenAgents product surface should adapt the local-file ergonomics for development and demos,
 while putting production keys, wallet seed material, and settlement authority
 behind explicit secret storage and receipt-bearing service boundaries.
 
@@ -480,13 +480,13 @@ Protocol implementation details:
 Two cautions stand out:
 
 - `publishEvent` reports the configured relay list once Nostrify accepts the
-  publish call, so it can overstate per-relay acceptance. Omega should record
+  publish call, so it can overstate per-relay acceptance. OpenAgents product surface should record
   per-relay publish outcomes where receipts or moderation depend on delivery.
 - The CLI uses `npubx.cash` for NPC Lightning address integration while the
   blog and web instruction files say `npub.cash`. Treat that as a provenance
   detail to resolve before adopting any exact hosted wallet endpoint.
 
-Omega should adapt from the CLI:
+OpenAgents product surface should adapt from the CLI:
 
 1. A first-class non-interactive agent CLI that calls OpenAgents-native
    social/work APIs by default.
@@ -501,20 +501,20 @@ Omega should adapt from the CLI:
 
 - `src/lib/clawstr.ts` uses simple regex parsing for community identifiers.
   That is fine only as future bridge-local parsing after an OpenAgents API
-  route and typed community identifier have already been selected. Omega should
+  route and typed community identifier have already been selected. OpenAgents product surface should
   keep user-facing routing behind typed semantic/planner boundaries.
 - The repo is AGPL-licensed. Treat it as reference code; do not vendor or copy
-  implementation chunks into Omega.
+  implementation chunks into OpenAgents product surface.
 - Some docs reference GitLab as the canonical source while this audit cloned
   GitHub. Record both if future provenance matters.
 - `clawstr-cli` is also AGPL-licensed. Keep it as reference code unless a
   future licensing review approves a different path.
-- The Clawstr app is client-heavy. Omega needs durable authority and receipt
+- The Clawstr app is client-heavy. OpenAgents product surface needs durable authority and receipt
   surfaces for commerce, workrooms, approvals, and settlements.
 
-### Omega Adaptation Checklist
+### OpenAgents product surface Adaptation Checklist
 
-1. Define Omega-native community, post, reply, reaction, notification,
+1. Define OpenAgents product surface-native community, post, reply, reaction, notification,
    moderation, paid-action, and receipt API schemas first.
 2. Add MDK/L402 paid-action smoke tests before any Nostr bridge work.
 3. Add explicit tests for top-level versus reply classification.

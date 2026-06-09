@@ -9,7 +9,7 @@ Pylon/Nexus/Forum/bitcoin proof loop.
 
 Artanis is not ready to deploy as a fully autonomous production administrator.
 
-Omega has a substantial typed implementation path for Artanis: public report
+OpenAgents product surface has a substantial typed implementation path for Artanis: public report
 projection, standalone runtime records, loop and tick contracts, health and
 staleness projection, operator approval gates, Forum publication/listener
 contracts, Nexus/Pylon adapter contracts, Pylon marketplace intake, retained
@@ -61,7 +61,7 @@ Accepted work is paid or settled unless a public receipt chain proves it.
 
 ## Evidence Reviewed
 
-Omega source and docs reviewed:
+OpenAgents product surface source and docs reviewed:
 
 - `docs/artanis/2026-06-06-artanis-implementation-audit.md`
 - `docs/artanis/2026-06-06-artanis-deployment-readiness-audit.md`
@@ -128,7 +128,7 @@ What does exist:
   "ldk_payment_target_v0_2"` exists in provider substrate source.
 - Source-level tests and docs exist around the v0.2 LDK-compatible payout
   target model.
-- Omega has a Pylon v0.2 release-parity evidence projection that correctly
+- OpenAgents product surface has a Pylon v0.2 release-parity evidence projection that correctly
   separates source support from release, platform, eligibility, accepted-work,
   paid-work, and settlement claims.
 
@@ -153,10 +153,10 @@ evidence, real bitcoin movement, and terminal settlement. It is evidence-only:
 it cannot dispatch work, mutate Pylons, create receipts, spend bitcoin, settle
 payments, or publish Pylon v0.2. #486 added the operator proof-run route around
 the settlement bridge, #487 added the multi-Pylon release gate, and #488
-publishes that proof state through `pylonOmegaReleaseGate` in
-`/api/public/artanis/report`, an Omega release-gate panel on `/artanis`, and
+publishes that proof state through `pylonOpenAgents product surfaceReleaseGate` in
+`/api/public/artanis/report`, an OpenAgents product surface release-gate panel on `/artanis`, and
 the Artanis Nexus/Pylon Forum release-work-log bridge. #491 then retained a
-second distinct Pylon proof, moving the Omega release gate to
+second distinct Pylon proof, moving the OpenAgents product surface release gate to
 `ready_for_operator_release_review` while keeping release, wallet-spend,
 settlement-mutation, provider-mutation, and public-claim-upgrade authority
 false. #492 verified that this current state is visible in
@@ -193,7 +193,7 @@ Missing production proof:
 - read-only Forum listener pass feeding back into the next Artanis tick;
 - `/autopilot` operator inspection of retained Artanis rows;
 - public `/api/public/artanis/report` sourced from retained rows and including
-  the current launch-gate, Pylon release-parity, and Pylon v0.2 Omega
+  the current launch-gate, Pylon release-parity, and Pylon v0.2 OpenAgents product surface
   release-gate fields;
 - Pylon v0.2 release artifact install and runtime smoke;
 - Pylon marketplace assignment to an eligible v0.2 Pylon;
@@ -259,7 +259,7 @@ At audit time, it reported:
 - recent client versions in the v0.1 line.
 
 These historical sellable and payout values were Nexus-era observations.
-Current homepage/report stats are Omega-backed Pylon API aggregates; online,
+Current homepage/report stats are OpenAgents product surface-backed Pylon API aggregates; online,
 wallet-ready, assignment-ready, and legacy sellable labels do not prove
 accepted work, payout, or settlement.
 
@@ -350,7 +350,7 @@ operator runbook execution.
 
 Do this before enabling Artanis as a production administrator:
 
-1. Deploy current Omega source so `/api/public/artanis/report` exposes
+1. Deploy current OpenAgents product surface source so `/api/public/artanis/report` exposes
    `productionLaunchGate`, `pylonReleaseParity`, `pylonLaunchCommunication`,
    and `forumRewardSmoke`.
 2. Apply and verify remote D1 migrations:
@@ -410,7 +410,7 @@ These cannot be claimed yet:
 
 Artanis is in late implementation, not deployment.
 
-The engineering direction is sound: Omega now has enough typed gate, evidence,
+The engineering direction is sound: OpenAgents product surface now has enough typed gate, evidence,
 and public-report machinery to prevent many false claims. The remaining
 blockers are not cosmetic. They are the core proof requirements for the system:
 retained production rows, deployed launch-gate parity, Pylon v0.2 release

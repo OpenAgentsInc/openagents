@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented for issue #366 / `OMEGA-LATE-006`.
+Status: implemented for issue #366 / `OPENAGENTS-LATE-006`.
 
 ## Purpose
 

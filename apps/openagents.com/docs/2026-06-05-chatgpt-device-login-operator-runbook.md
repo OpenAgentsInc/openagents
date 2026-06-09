@@ -1,6 +1,6 @@
 # ChatGPT Device Login Operator Runbook
 
-Issue: `OMEGA-P0-002`
+Issue: `OPENAGENTS-P0-002`
 
 This runbook is the command-line path for connecting multiple ChatGPT/Codex
 provider accounts to an OpenAgents user before an overnight Adjutant/Sites run.
@@ -15,7 +15,7 @@ From this Mac, use the existing ignored local secret file rather than asking
 the operator to find or paste the admin token:
 
 ```bash
-cd /Users/christopherdavid/work/autopilot-omega
+cd /Users/christopherdavid/work/openagents
 set -a
 . /Users/christopherdavid/work/.secrets/vortex-admin.env
 set +a
@@ -41,7 +41,7 @@ Use this loop when an operator says they need to connect several accounts now.
 The agent drives the CLI; the operator only completes each browser device-code
 ceremony and replies `done`.
 
-1. In `/Users/christopherdavid/work/autopilot-omega`, source
+1. In `/Users/christopherdavid/work/openagents`, source
    `/Users/christopherdavid/work/.secrets/vortex-admin.env` and set
    `OPENAGENTS_BASE_URL=https://openagents.com`.
 2. Run one `start` command with the next unique label, for example
@@ -137,7 +137,7 @@ workspace secret file yourself, poll the final attempt, run one sanity check for
 that final provider account ref, then run the fleet-level checks:
 
 ```bash
-cd /Users/christopherdavid/work/autopilot-omega
+cd /Users/christopherdavid/work/openagents
 set -a
 . /Users/christopherdavid/work/.secrets/vortex-admin.env
 set +a
@@ -240,7 +240,7 @@ node scripts/provider-chatgpt-device-login.mjs poll <attempt-id>
 Safe statuses:
 
 - `pending`: the code has not been completed yet.
-- `connected`: Omega stored a durable provider account row, health is healthy,
+- `connected`: OpenAgents product surface stored a durable provider account row, health is healthy,
   and auth material is stored behind the server-side secret boundary.
 - `expired`: start a fresh attempt.
 - `denied`: the login was denied.
@@ -281,7 +281,7 @@ otherwise rejected refresh token is normalized to `token_invalidated`, marks the
 account `requires_reauth`, and keeps it out of automatic leases until it is
 reconnected.
 
-When `--parallel` is greater than `1`, Omega also creates a redacted
+When `--parallel` is greater than `1`, OpenAgents product surface also creates a redacted
 simultaneous-probe receipt for each account with:
 
 - probe run ID;
@@ -404,7 +404,7 @@ node scripts/provider-chatgpt-device-login.mjs release-lease \
 ## Fail Over From A Failed Lease
 
 If a selected account fails launch or continuation, classify the failure and
-ask Omega to retry the next eligible account:
+ask OpenAgents product surface to retry the next eligible account:
 
 ```bash
 node scripts/provider-chatgpt-device-login.mjs failover \
@@ -603,7 +603,7 @@ node scripts/provider-chatgpt-device-login.mjs lease \
 
 If the launch succeeds, release the lease as `succeeded`. If the selected
 account fails for account-specific reasons, call `failover` with the normalized
-failure class so Omega can retry the next eligible account and record a
+failure class so OpenAgents product surface can retry the next eligible account and record a
 redacted receipt.
 
 ## Fake Smoke Test

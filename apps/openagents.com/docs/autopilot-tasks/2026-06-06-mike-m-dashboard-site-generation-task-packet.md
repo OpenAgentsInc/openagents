@@ -2,7 +2,7 @@
 
 Status: ready for dispatch
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
@@ -68,7 +68,7 @@ and clear controls that work without server state.
 - Use `adjutant_assignment_a779d4df16bd407ea90adb299752f989` as the work
   receipt.
 - Produce a reviewable Site artifact suitable for `site_versions`.
-- Emit an `openagents.adjutant.site_artifact_receipt.v1` payload so Omega can
+- Emit an `openagents.adjutant.site_artifact_receipt.v1` payload so OpenAgents product surface can
   ingest the output into `site_project_1c1769628bfd41dcb52547df72381468`.
 - Save the version as review-ready only if the artifact is responsive,
   accessible, functional, and free of secret-shaped material.

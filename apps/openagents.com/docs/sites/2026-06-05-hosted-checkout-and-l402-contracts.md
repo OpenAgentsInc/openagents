@@ -1,6 +1,6 @@
 # Hosted Checkout And L402 Site Contracts
 
-Issue #164 added the first Omega-hosted commerce contracts for Autopilot Sites.
+Issue #164 added the first OpenAgents product surface-hosted commerce contracts for Autopilot Sites.
 These are contract stubs, not live MDK settlement yet. Their purpose is to give
 static Sites, Worker-for-Platforms Sites, and agent clients a stable boundary
 that never exposes MDK credentials, wallet material, raw invoices, preimages, or
@@ -8,7 +8,7 @@ provider payout secrets in generated Site source.
 
 ## Static Site Checkout Intent Pattern
 
-A static/R2 Site should create checkout intents through Omega:
+A static/R2 Site should create checkout intents through OpenAgents product surface:
 
 ```http
 POST /api/sites/{siteId}/commerce/checkout-intents
@@ -36,12 +36,12 @@ flags. It does not return raw invoices, payment hashes, wallet credentials, MDK
 tokens, webhooks, or payout material.
 
 Generated Sites must keep success and cancel paths local and clean: no query
-strings, no fragments, no checkout result state in public URLs. Omega owns the
+strings, no fragments, no checkout result state in public URLs. OpenAgents product surface owns the
 durable checkout result and entitlement reconciliation.
 
 ## WFP Site L402 Challenge Pattern
 
-A Worker-for-Platforms or generated API Site should ask Omega for an L402
+A Worker-for-Platforms or generated API Site should ask OpenAgents product surface for an L402
 challenge when an agent calls a paid action:
 
 ```http
@@ -62,7 +62,7 @@ Content-Type: application/json
 }
 ```
 
-Omega requires an active registered OpenAgents agent bearer token for this
+OpenAgents product surface requires an active registered OpenAgents agent bearer token for this
 write. It returns `402 Payment Required` with a standard `WWW-Authenticate`
 L402 header that uses `challenge_ref` and `invoice_ref="redacted"` in this stub
 phase. The JSON body contains the challenge id, expiry, method/path binding,
@@ -75,7 +75,7 @@ to generated Site code.
 ## Redemption Pattern
 
 After a hosted payment flow returns a public-safe proof ref, the Site can ask
-Omega to redeem the challenge:
+OpenAgents product surface to redeem the challenge:
 
 ```http
 POST /api/sites/{siteId}/commerce/l402/redemptions

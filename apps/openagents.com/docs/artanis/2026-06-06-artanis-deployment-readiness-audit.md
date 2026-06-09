@@ -13,7 +13,7 @@ Companion full audit:
 Artanis is not ready to deploy as a continuously running production
 administrator.
 
-The Omega repository has shipped most of the typed Artanis substrate:
+The OpenAgents product surface repository has shipped most of the typed Artanis substrate:
 standalone runtime records, autonomous-loop records, operator steering,
 approval gates, public report projection, health/staleness monitoring, Forum
 taxonomy, publication queue, listener contracts, Nexus/Pylon adapter contracts,
@@ -56,7 +56,7 @@ Accepted work is paid or settled unless a public receipt chain proves it.
 
 ## Sources And Commands Reviewed
 
-Omega source and docs:
+OpenAgents product surface source and docs:
 
 - `docs/artanis/2026-06-06-artanis-implementation-audit.md`
 - `docs/artanis/2026-06-06-autonomous-loop-contract.md`
@@ -312,7 +312,7 @@ At audit time it reported:
 - accepted-work bitcoin over the last 24 hours as zero
 
 Those stats proved there was a live public observation surface. Current
-homepage/report stats are Omega-backed Pylon API aggregates; online,
+homepage/report stats are OpenAgents product surface-backed Pylon API aggregates; online,
 wallet-ready, assignment-ready, and legacy sellable labels do not prove Pylon
 v0.2 release readiness, Artanis dispatch authority, live marketplace
 assignment, accepted-work payout, or settlement.
@@ -411,7 +411,7 @@ Minimum gate sequence:
     - bad Forum post;
     - duplicate tick;
     - stuck approval gate;
-    - stale Omega public Pylon stats;
+    - stale OpenAgents product surface public Pylon stats;
     - accidental runner enablement.
 
 Only after those gates should an operator consider setting:

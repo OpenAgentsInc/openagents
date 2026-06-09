@@ -3,7 +3,7 @@
 Date: 2026-06-08
 Status: audit and Probe integration roadmap
 Scope: Probe, private Cloud Benchmark Cloud source material, public OpenAgents
-Benchmark Cloud target architecture, Psionic legal benchmark lanes, Omega
+Benchmark Cloud target architecture, Psionic legal benchmark lanes, OpenAgents product surface
 product/evidence contracts, OpenAgents Nexus/Pylon benchmark package surfaces,
 historical Autopilot/Backroom source material, and external reference repos.
 
@@ -22,7 +22,7 @@ already has several benchmark systems with separate jobs:
   Rust schemas, artifact receipts, deterministic public suites, synthetic
   legal signature-routing fixtures, Qwen legal adapter training receipts,
   distributed Pylon-worker SFT simulations, and promotion-gate inputs.
-- Omega owns product projection and review contracts: read-only public
+- OpenAgents product surface owns product projection and review contracts: read-only public
   Benchmark Cloud evidence, Probe coding-runtime run projections, Model Lab
   promotion decisions, public/private redaction, and false authority flags for
   launch, payment, routing, deployment, and public-claim upgrades.
@@ -35,7 +35,7 @@ already has several benchmark systems with separate jobs:
 Probe's role is the runtime and evidence bridge. It should consume benchmark
 assignments and Blueprint signature selections, execute or delegate coding-agent
 sessions, emit redacted runtime evidence, preserve retained failures, and make
-public benchmark-cloud, Psionic, and Omega able to compare raw Codex,
+public benchmark-cloud, Psionic, and OpenAgents product surface able to compare raw Codex,
 Probe+Codex, local Apple FM, swarm inference, and future backends against the
 same benchmark evidence contracts.
 
@@ -52,7 +52,7 @@ orchestration service.
 
 What Probe does have:
 
-- Omega account and grant contracts for ChatGPT/Codex account linking.
+- OpenAgents product surface account and grant contracts for ChatGPT/Codex account linking.
 - Per-run auth materialization and scrub contracts.
 - Runner identity gating for SHC/Pylon/sandbox use.
 - Apple FM backend contracts, tool callback sessions, availability/failure
@@ -86,14 +86,14 @@ Bun/Effect runtime only when they support the final product surface.
 | Area | Active repo | Current authority | Probe implication |
 | --- | --- | --- | --- |
 | Terminal-Bench / coding tasks | `openagents` target, private `cloud` source material today | public benchmark-cloud runner and SHC/GCP execution; private Cloud runner is backfill | Rebuild or move the runner contracts into public OpenAgents, then add Probe as a runtime/agent adapter and evidence emitter. |
-| Retained coding failures / signatures | `openagents` target, private `cloud` source material, `probe`, `autopilot-omega` | Public retained fixtures plus Probe Blueprint signature lookup plus Omega release gates | Move fixture playbooks into public retained fixture packages and route through typed lookup. |
+| Retained coding failures / signatures | `openagents` target, private `cloud` source material, `probe`, `openagents` | Public retained fixtures plus Probe Blueprint signature lookup plus OpenAgents product surface release gates | Move fixture playbooks into public retained fixture packages and route through typed lookup. |
 | Legal / Harvey-style benchmark execution | `psionic` | Psionic Rust legal benchmark engine | Probe should run legal-agent sessions only under Psionic task envelopes and return answer/tool/evidence refs. |
 | Legal Qwen training and Pylon SFT | `psionic`, `openagents` | Psionic training receipts; Nexus/Pylon package and worker admission | Probe should provide coding/legal-agent runtime traces; Psionic remains training/eval authority. |
 | GEPA prompt/Blueprint optimization | `psionic`, `openagents`, `probe` | GEPA-style candidate manifests, Pylon rollout receipts, public benchmark-cloud split manifests | Start with text-bundle candidates over retained Terminal-Bench failures before LoRA or broad model training. |
-| Product benchmark projection | `autopilot-omega` | Read-only public benchmark-cloud and Probe run projections | Probe emits safe refs and closeout evidence that Omega can project. |
+| Product benchmark projection | `openagents` | Read-only public benchmark-cloud and Probe run projections | Probe emits safe refs and closeout evidence that OpenAgents product surface can project. |
 | Provider/node benchmark admission | `openagents` | Nexus/Pylon compute benchmark packages and benchmark lane availability | Probe should advertise benchmark-capable runtime profiles, not mutate admission state directly. |
-| Historical Coder evals | `autopilot3` | Deprecated/older product smoke and UI replay suite | Reuse scenario ideas for Probe/Omega acceptance, not implementation. |
-| Historical legal benchmark governance | `autopilot4-deprecated` | Deprecated Rust/Maud campaign/source material | Reuse protocol/release-gate ideas; new authority is Omega plus Psionic. |
+| Historical Coder evals | `autopilot3` | Deprecated/older product smoke and UI replay suite | Reuse scenario ideas for Probe/OpenAgents product surface acceptance, not implementation. |
+| Historical legal benchmark governance | `autopilot4-deprecated` | Deprecated Rust/Maud campaign/source material | Reuse protocol/release-gate ideas; new authority is OpenAgents product surface plus Psionic. |
 | Historical Terminal-Bench HUD | `backroom` | Source material only | Reuse UI/user-story ideas if Probe gets a local HUD, not as active runtime code. |
 | External references | `projects/repos/benchmarks`, `projects/repos/harvey-labs` | Read-only reference repos | Study harness patterns only; do not vendor. |
 
@@ -269,7 +269,7 @@ engine boundary:
 
 - upstream Harvey Python is reference/backfill only;
 - Psionic owns Rust legal benchmark execution/evaluation substrate;
-- Autopilot/Omega Blueprint policy owns upgradable prompts/modules, provider
+- Autopilot/OpenAgents product surface Blueprint policy owns upgradable prompts/modules, provider
   adapter selection, judge policy, release gates, and promotion;
 - provider names such as Gemini, OpenAI-compatible local servers, and Qwen
   fine-tunes are adapter metadata, not benchmark authority.
@@ -422,12 +422,12 @@ Probe should not import Harvey data or code. It should implement the runtime
 side of that pattern: bounded legal-agent sessions, tool policies, answer file
 receipts, source provenance, and redacted transcript export.
 
-## Omega Product/Evidence Contracts
+## OpenAgents product surface Product/Evidence Contracts
 
-Omega is the active product surface for `openagents.com`. The relevant
+OpenAgents product surface is the active product surface for `openagents.com`. The relevant
 benchmark contracts are read-only evidence surfaces.
 
-`autopilot-omega/docs/omni/2026-06-06-benchmark-cloud-evidence-contract.md`
+`openagents/docs/omni/2026-06-06-benchmark-cloud-evidence-contract.md`
 and `workers/api/src/omni-model-lab-benchmark-cloud.ts` define
 `OmniBenchmarkCloudRecord` and projections for:
 
@@ -456,7 +456,7 @@ false:
 - runtime promotion;
 - settlement mutation.
 
-`workers/api/src/probe-coding-runtime-contract.ts` defines Omega's current
+`workers/api/src/probe-coding-runtime-contract.ts` defines OpenAgents product surface's current
 Probe run projection:
 
 - `OpenAgentsProbeRunRequest`
@@ -481,7 +481,7 @@ For benchmark work, this means Probe should emit:
 - closeout receipts;
 - cost/resource refs when available.
 
-Omega then decides whether those refs are enough for product review, Model Lab
+OpenAgents product surface then decides whether those refs are enough for product review, Model Lab
 promotion, public reporting, or provider admission.
 
 ## OpenAgents Nexus/Pylon Benchmark Package Surfaces
@@ -513,16 +513,16 @@ eventually report runtime/backend facts that help a Pylon or SHC node prove it
 can run a requested benchmark-backed assignment, but Probe should not register
 benchmark packages, decide payments, or mark providers accepted.
 
-### 2026-06-08 Omega Pylon Assignment Update
+### 2026-06-08 OpenAgents product surface Pylon Assignment Update
 
-The active Omega Nexus/Pylon docs add a concrete assignment lifecycle that the
+The active OpenAgents product surface Nexus/Pylon docs add a concrete assignment lifecycle that the
 Probe benchmark apparatus should reuse:
 
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-network-readiness-release-freeze.md`
-- `autopilot-omega/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
+- `openagents/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
+- `openagents/docs/nexus/2026-06-07-pylon-network-readiness-release-freeze.md`
+- `openagents/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
 
-The Omega Worker now exposes Pylon registration, heartbeat, wallet-readiness,
+The OpenAgents product surface Worker now exposes Pylon registration, heartbeat, wallet-readiness,
 payout-target admission, owned assignment listing, assignment accept/progress,
 artifact/proof submission, public-safe payment/settlement evidence refs, and
 operator assignment closeout. The #502 production smoke proved:
@@ -536,7 +536,7 @@ pylon.issue502.local.20260608024927
 ```
 
 For Probe, this means future GEPA and benchmark batches should map benchmark
-work into Omega/Pylon assignment leases with accepted or rejected closeout refs.
+work into OpenAgents product surface/Pylon assignment leases with accepted or rejected closeout refs.
 Do not create a separate Pylon benchmark state machine unless the live lease
 path cannot carry a benchmark field after focused review.
 
@@ -582,7 +582,7 @@ Useful source-material patterns:
 - GitHub issue export from benchmark misses;
 - pinned Harvey baseline fixture imports.
 
-Do not route new work there. New product authority belongs in Omega and new
+Do not route new work there. New product authority belongs in OpenAgents product surface and new
 runtime work belongs in Probe/Psionic/Cloud.
 
 ### Autopilot3
@@ -604,7 +604,7 @@ scenarios:
 - multi-repo task planning;
 - UI replay receipt.
 
-This is useful as a product regression checklist for future Omega/Probe
+This is useful as a product regression checklist for future OpenAgents product surface/Probe
 workroom acceptance. It is not the active benchmark runner.
 
 ### Backroom
@@ -619,7 +619,7 @@ docs record a Terminal-Bench HUD concept with live run/task messages,
 WebSocket/RPC flow, task browsing, run history, and E2E gaps.
 
 These are good UI and user-story references if Probe later gets a local HUD or
-Omega gets a benchmark workroom. They are not active execution code.
+OpenAgents product surface gets a benchmark workroom. They are not active execution code.
 
 ## Other Psionic Benchmark/Eval Families
 
@@ -650,7 +650,7 @@ evidence from those evals.
 ### 1. Add Probe Benchmark Assignment Intake
 
 Add Probe-side schemas for normalized benchmark assignment intake. These should
-mirror Cloud/Omega refs without copying raw benchmark inputs:
+mirror Cloud/OpenAgents product surface refs without copying raw benchmark inputs:
 
 - `probe.benchmark_assignment.v1`
 - `probe.benchmark_result_ref.v1`
@@ -740,9 +740,9 @@ runs and return:
 Psionic should remain the scorer, training data builder, adapter promoter, and
 Pylon worker receipt authority.
 
-### 5. Emit Omega-Safe Benchmark Evidence
+### 5. Emit OpenAgents product surface-Safe Benchmark Evidence
 
-Probe closeout should map into Omega's existing contracts:
+Probe closeout should map into OpenAgents product surface's existing contracts:
 
 - `OpenAgentsProbeRunRecord` for runtime view;
 - `OmniBenchmarkCloudRecord` refs for benchmark evidence;
@@ -779,7 +779,7 @@ After the Probe adapter exists:
 4. Run Probe with any local/swarms/API backend profile under the same task
    envelope.
 5. Preserve proof bundles and cost/resource receipts.
-6. Import public-safe refs into Omega/public Benchmark Cloud evidence.
+6. Import public-safe refs into OpenAgents product surface/public Benchmark Cloud evidence.
 
 Start with `configure-git-webserver` for coding and one public/synthetic legal
 fixture for legal.
@@ -797,7 +797,7 @@ The ordered issue series is broader than Probe:
   validation split manifests, and true-Probe Terminal-Bench runner lane.
 - GEPA candidate optimization: text-bundle candidate manifests, the Psionic
   GEPA coordinator, and Probe candidate execution adapter.
-- Pylon work slices and paid-work path: Omega/Pylon metric-call assignments,
+- Pylon work slices and paid-work path: OpenAgents product surface/Pylon metric-call assignments,
   benchmark-capable worker envelopes, and explicit paid/unpaid/credit/no-spend
   payment modes.
 - Stage 0/1 execution: retained-fixture smoke, Pylon-distributed retained
@@ -835,7 +835,7 @@ The benchmark work is already real, but it is distributed:
   that capability should move or be rebuilt into public OpenAgents Benchmark
   Cloud.
 - Psionic can execute and train on legal benchmarks.
-- Omega can project benchmark evidence safely.
+- OpenAgents product surface can project benchmark evidence safely.
 - OpenAgents Nexus/Pylon can admit benchmark-capable compute.
 - Probe can become the runtime that makes those benchmark lanes comparable
   across Codex, API-key models, Apple FM, local inference, swarm inference, and

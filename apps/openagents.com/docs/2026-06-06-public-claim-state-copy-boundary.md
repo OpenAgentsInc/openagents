@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Roadmap: OMEGA-059 / GitHub #307
+Roadmap: OPENAGENTS-059 / GitHub #307
 
 Status: implemented.
 

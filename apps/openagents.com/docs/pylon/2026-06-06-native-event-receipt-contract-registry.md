@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #334 / `OMEGA-RUST-001`.
+Status: implemented contract note for issue #334 / `OPENAGENTS-RUST-001`.
 
 ## Purpose
 
-Omega now has a seed contract registry for native/Rust-adjacent consumers.
+OpenAgents product surface now has a seed contract registry for native/Rust-adjacent consumers.
 
 The implementation lives in
 `workers/api/src/native-contract-registry.ts`.
@@ -20,7 +20,7 @@ upload an artifact, or mutate any runtime state.
 The registry currently covers:
 
 - `ai_agent`;
-- `omega_worker`;
+- `openagents_worker`;
 - `oa_node`;
 - `oa_workroomd`;
 - `probe`;

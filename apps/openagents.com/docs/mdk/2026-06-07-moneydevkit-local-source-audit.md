@@ -1,7 +1,7 @@
-# MoneyDevKit Local Source Audit For Omega
+# MoneyDevKit Local Source Audit For OpenAgents product surface
 
 Date: 2026-06-07
-Repository: `OpenAgentsInc/autopilot-omega`
+Repository: `OpenAgentsInc/openagents`
 
 ## Source Set
 
@@ -17,14 +17,14 @@ This follow-up inspected the local MoneyDevKit source under
 | `api-contract` | `ee0da7e` | Older standalone contract package, version `0.1.22`; useful historical context, but not the current checkout SDK contract. |
 
 The important divergence is that `mdk-checkout/packages/api-contract` is newer
-than the standalone `api-contract` repo. Omega should model the current SDK
+than the standalone `api-contract` repo. OpenAgents product surface should model the current SDK
 from `mdk-checkout`, not the older standalone contract checkout/product files.
 
 ## Checkout Source Shape
 
 The Next.js and Replit packages are thin adapters over `@moneydevkit/core`.
 Their route exports and Express router both forward to
-`packages/core/src/route.ts`. Omega should port the core route/client behavior
+`packages/core/src/route.ts`. OpenAgents product surface should port the core route/client behavior
 into Effect services and schemas instead of installing a Next.js route.
 
 The core route accepts JSON bodies with `handler`, `route`, or `target`. The
@@ -39,7 +39,7 @@ The SDK browser client posts to `/api/mdk` by default, adds the
 `{ data: ... }`. The route also allows server-to-server calls to CSRF routes
 when `x-moneydevkit-webhook-secret` matches `MDK_ACCESS_TOKEN`.
 
-Omega already has its own Site commerce route boundary. The Effect port should
+OpenAgents product surface already has its own Site commerce route boundary. The Effect port should
 map Site checkout intents into the same MDK checkout semantics, but it should
 not expose raw MDK route payloads or credential material to the browser.
 
@@ -56,12 +56,12 @@ path:
    node session and service mdk.com's WS control calls.
 
 That native `lightning-js` dependency is not Cloudflare Worker compatible.
-For Omega, #434 must therefore choose one of these live paths:
+For OpenAgents product surface, #434 must therefore choose one of these live paths:
 
-- use a pure hosted/platform MDK API that does not require Omega's Worker to
+- use a pure hosted/platform MDK API that does not require OpenAgents product surface's Worker to
   derive node IDs or host a native node session; or
 - delegate the MDK node/control route to a Node-capable sidecar/function and
-  keep Omega's Worker as the typed Site commerce authority.
+  keep OpenAgents product surface's Worker as the typed Site commerce authority.
 
 Do not import `@moneydevkit/lightning-js` or port `createMoneyDevKitNode` into
 Worker code.
@@ -76,7 +76,7 @@ available in this Codex session also did not expose an `appId` parameter.
 This version/schema mismatch explains why repo-side demo checkout work should
 continue to use the amount-checkout catalog mapping until a real MDK dashboard
 product ID exists. Product-mode checkout can be added once the dashboard or a
-fixed MCP/API path returns a stable product ID for the `Omega` app.
+fixed MCP/API path returns a stable product ID for the `OpenAgents product surface` app.
 
 ## Webhook Distinction
 
@@ -96,7 +96,7 @@ There are multiple webhook concepts in the MDK source:
   `webhook-signature`) and an `MDK_WEBHOOK_SECRET`.
 
 #434 should not collapse those into one "MDK webhook". It must explicitly
-select which event source Omega configures, verify that exact signature scheme,
+select which event source OpenAgents product surface configures, verify that exact signature scheme,
 and store only redacted event refs and digests.
 
 ## Payout And Balance Source Shape
@@ -119,19 +119,19 @@ dispatch.
 
 Balance is not manufactured by code. In `mdkd` tests, the merchant wallet gets
 spendable Lightning balance by creating an invoice, having a separate payer
-node pay it, waiting for settlement, and then reading `/getbalance`. For Omega
+node pay it, waiting for settlement, and then reading `/getbalance`. For OpenAgents product surface
 smokes, funding the isolated treasury test wallet remains an operator or
 funding-source step. Any repo code should only record readiness and enforce
 redaction.
 
-## Omega Issue Impact
+## OpenAgents product surface Issue Impact
 
 #434 should build the Effect/Worker checkout client from the MDK core and
 current API-contract semantics, but it must not add the stock Next.js `/api/mdk`
 route or native Lightning runtime to the Worker.
 
-#435 should use Omega's Site commerce API and clean return state. The stock
-React checkout appends `checkout-id` to the success URL; Omega's invariant
+#435 should use OpenAgents product surface's Site commerce API and clean return state. The stock
+React checkout appends `checkout-id` to the success URL; OpenAgents product surface's invariant
 requires server-side consumption and clean first-party routes instead.
 
 #431 and #436 should keep using isolated wallet setup and funding prerequisites.

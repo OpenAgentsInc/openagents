@@ -6,7 +6,7 @@ Date: 2026-06-07
 
 The production agent owner-claim flow was failing at the browser login handoff.
 The approve endpoint correctly required an authenticated browser owner session,
-but the claim page sent users to `/login`. Omega intentionally redirects
+but the claim page sent users to `/login`. OpenAgents product surface intentionally redirects
 `/login` to `/`, so clicking **Sign in** never started GitHub OAuth and never
 materialized the owner session needed by `POST /api/agents/claims/:id/approve`.
 
@@ -72,7 +72,7 @@ Before the fix, the rendered page contained:
 <a class="button secondary" href="/login">Sign in</a>
 ```
 
-But Omega's active auth policy deleted the old local `/login` route. The Worker
+But OpenAgents product surface's active auth policy deleted the old local `/login` route. The Worker
 now redirects `/login` to `/`; `/login/github` is the real OAuth start route.
 Therefore the claim page's sign-in button could never start OAuth.
 

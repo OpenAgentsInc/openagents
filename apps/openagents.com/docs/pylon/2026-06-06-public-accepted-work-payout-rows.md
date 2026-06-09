@@ -1,6 +1,6 @@
 # Public Accepted-Work Payout Rows
 
-Issue #356 / `OMEGA-L-008` adds public-safe accepted-work payout row
+Issue #356 / `OPENAGENTS-L-008` adds public-safe accepted-work payout row
 projections.
 
 The implementation lives in

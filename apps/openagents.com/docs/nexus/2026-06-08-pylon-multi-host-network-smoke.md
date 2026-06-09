@@ -5,7 +5,7 @@ Issue: #504
 
 ## Summary
 
-Omega completed the #504 network-readiness smoke without publishing a new Pylon
+OpenAgents product surface completed the #504 network-readiness smoke without publishing a new Pylon
 release.
 
 The smoke proved:
@@ -66,7 +66,7 @@ Both public receipt APIs returned:
 | Hosted MDK direct payout | Blocked for direct hosted payout lane. | Hosted MDK returned `PROGRAMMATIC_PAYOUTS_DISABLED` in #503. | Enable the dashboard app setting or deploy a funded app key with programmatic payouts enabled. The accepted-work settlement proof currently uses `mdk_agent_wallet`. |
 
 Tailnet was used only as a validation transport to reach the Arch Linux host.
-It is not part of the Omega/Nexus/Pylon production infrastructure.
+It is not part of the OpenAgents product surface/Nexus/Pylon production infrastructure.
 
 ## Production Failure Drills
 
@@ -100,7 +100,7 @@ Readback confirmed:
 
 The public Artanis report remained consistent after the smoke:
 
-- `pylonOmegaReleaseGate.state: ready_for_operator_release_review`;
+- `pylonOpenAgents product surfaceReleaseGate.state: ready_for_operator_release_review`;
 - `multiPylonPaidWorkProofComplete: true`;
 - `multiPylonObservedDistinctPylonCount: 2`;
 - no blocker refs; and

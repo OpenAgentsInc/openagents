@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented for issue #281 / OMEGA-RUNNER-003.
+Status: implemented for issue #281 / OPENAGENTS-RUNNER-003.
 
 ## Purpose
 
@@ -10,7 +10,7 @@ This slice models the Cloudflare Container runner binding plan without adding a
 live Container binding or enabling automatic Container dispatch.
 
 Cloudflare's Worker configuration model represents Containers through a
-`containers` entry and a matching Durable Object binding. The disabled Omega
+`containers` entry and a matching Durable Object binding. The disabled OpenAgents product surface
 plan records those requirements as inert config refs until a later issue adds
 real Wrangler bindings and a fake/staging runner path.
 

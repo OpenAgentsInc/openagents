@@ -2,7 +2,7 @@
 
 Date: 2026-06-07
 
-Issue: #430 / `OMEGA-NEXUS-011`
+Issue: #430 / `OPENAGENTS-NEXUS-011`
 
 ## Purpose
 

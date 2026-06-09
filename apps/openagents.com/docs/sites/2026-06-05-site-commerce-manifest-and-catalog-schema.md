@@ -2,7 +2,7 @@
 
 Date: 2026-06-05
 
-Issue: `OpenAgentsInc/autopilot-omega#163`
+Issue: `OpenAgentsInc/openagents#163`
 
 Status: first schema and D1 catalog contract for checkout products and paid
 agent actions.
@@ -11,7 +11,7 @@ agent actions.
 
 Autopilot Sites need a source-visible way to declare commerce intent without
 putting payment secrets into generated Site source. The manifest describes what
-the Site wants to sell or protect. Omega remains the hosted payment boundary
+the Site wants to sell or protect. OpenAgents product surface remains the hosted payment boundary
 that creates checkout intents, L402 challenges, entitlements, receipts, and
 public-safe projections.
 
@@ -140,8 +140,8 @@ The schema intentionally separates:
 
 | State | Owner | Meaning |
 | --- | --- | --- |
-| Checkout evidence | Omega/MDK checkout boundary | A buyer started, completed, failed, or cancelled a checkout. |
-| Entitlement | Omega Site commerce catalog | A customer or agent may access a product/action after payment policy passes. |
+| Checkout evidence | OpenAgents product surface/MDK checkout boundary | A buyer started, completed, failed, or cancelled a checkout. |
+| Entitlement | OpenAgents product surface Site commerce catalog | A customer or agent may access a product/action after payment policy passes. |
 | Accepted work | Autopilot/Nexus/Pylon authority | A work outcome was accepted by the relevant verifier. |
 | Provider payout eligibility | Nexus/Pylon/Treasury policy | A provider may be paid for accepted work. |
 | Settlement | Treasury/Nexus/Pylon receipt | The payment or payout has terminal settlement evidence. |

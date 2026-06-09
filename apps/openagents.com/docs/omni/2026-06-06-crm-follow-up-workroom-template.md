@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #341 / `OMEGA-BIZ-001`.
+Status: implemented contract note for issue #341 / `OPENAGENTS-BIZ-001`.
 
 ## Purpose
 
-Omega now has a schema-first CRM follow-up workroom contract for business
+OpenAgents product surface now has a schema-first CRM follow-up workroom contract for business
 follow-up work that should share the Omni workroom model.
 
 The implementation lives in

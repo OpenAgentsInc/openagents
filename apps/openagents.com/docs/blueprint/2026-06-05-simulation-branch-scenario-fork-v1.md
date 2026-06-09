@@ -1,6 +1,6 @@
 # Blueprint Simulation Branch And Scenario Fork Records v1
 
-Issue: OMEGA-BP-013 / #233
+Issue: OPENAGENTS-BP-013 / #233
 
 This note records the typed Simulation Branch and Scenario Fork model. The
 source of truth is `workers/api/src/blueprint/schemas/simulation.ts`.

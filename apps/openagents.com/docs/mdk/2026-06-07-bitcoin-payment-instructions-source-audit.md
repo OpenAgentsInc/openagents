@@ -1,7 +1,7 @@
 # MoneyDevKit Bitcoin Payment Instructions Source Audit
 
 Date: 2026-06-07
-Issue: #451 / OMEGA-H-014
+Issue: #451 / OPENAGENTS-H-014
 
 ## Source Reviewed
 
@@ -14,7 +14,7 @@ Package: `bitcoin-payment-instructions` `0.7.0`
 
 ## Decision
 
-Omega should use MoneyDevKit's `bitcoin-payment-instructions` crate as a
+OpenAgents product surface should use MoneyDevKit's `bitcoin-payment-instructions` crate as a
 conformance source and future parser/resolver candidate, but it should not be
 imported directly into the Cloudflare Worker runtime today.
 
@@ -29,7 +29,7 @@ The next live resolver step should be one of:
 - compile the crate's pure parser path into a small WASM adapter and keep
   resolver behavior explicit; or
 - run a sidecar/CLI resolver for LNURL, BIP353, or other network-dependent
-  formats and return only typed, redacted refs to Omega.
+  formats and return only typed, redacted refs to OpenAgents product surface.
 
 Do not wire DNS, HTTP, wallet mutation, or payment dispatch into this parser
 boundary.
@@ -62,12 +62,12 @@ capable, but the network resolver paths pull in runtime dependencies:
 - optional proxied HTTP behavior; and
 - resolver modules for BIP353, LNURL, DNSSEC, and onion-message paths.
 
-Those resolver paths are not a normal Cloudflare Worker import. Omega can still
+Those resolver paths are not a normal Cloudflare Worker import. OpenAgents product surface can still
 use the crate as a source of truth for conformance fixtures and can later use a
 WASM or sidecar adapter, but the Worker should not import native MDK wallet,
 DNS, or HTTP resolver runtime directly.
 
-## Omega Parser Boundary
+## OpenAgents product surface Parser Boundary
 
 Implemented file:
 

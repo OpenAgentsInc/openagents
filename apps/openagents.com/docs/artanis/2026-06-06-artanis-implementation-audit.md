@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: current Omega implementation audit and Forum-first next-work direction.
+Status: current OpenAgents product surface implementation audit and Forum-first next-work direction.
 
 ## Bottom Line
 
-Artanis is real in Omega as a public-agent identity, public Pylon campaign
+Artanis is real in OpenAgents product surface as a public-agent identity, public Pylon campaign
 surface, durable public goal projection, Pylon stats wrapper, and public-safe
 claim ledger. It is not yet a continuously running autonomous public
 conversation agent.
@@ -43,9 +43,9 @@ only public-safe summaries, questions, claims, receipts, and caveats.
 
 Active implementation home:
 
-- `autopilot-omega/`
+- `openagents/`
 
-Current Omega sources audited:
+Current OpenAgents product surface sources audited:
 
 - `apps/web/src/route.ts`
 - `apps/web/src/page/loggedOut/page/publicAgent.ts`
@@ -129,26 +129,26 @@ Historical or adjacent source material audited:
 GitHub issue scope audited with `gh issue list --state all` and
 `gh issue view`:
 
-- closed issue #376 / `OMEGA-LATE-016`: Add Model Lab retained-failure loop;
-- open issue #380 / `OMEGA-LAB-001`: Add Model Lab model artifact contract;
-- open issue #381 / `OMEGA-LAB-002`: Add Model Lab training run contract;
-- open issue #382 / `OMEGA-LAB-003`: Link Model Lab retained-failure evidence
+- closed issue #376 / `OPENAGENTS-LATE-016`: Add Model Lab retained-failure loop;
+- open issue #380 / `OPENAGENTS-LAB-001`: Add Model Lab model artifact contract;
+- open issue #381 / `OPENAGENTS-LAB-002`: Add Model Lab training run contract;
+- open issue #382 / `OPENAGENTS-LAB-003`: Link Model Lab retained-failure evidence
   graph;
-- open issue #383 / `OMEGA-LAB-004`: Add Benchmark Cloud evaluation evidence
+- open issue #383 / `OPENAGENTS-LAB-004`: Add Benchmark Cloud evaluation evidence
   contract;
-- open issue #384 / `OMEGA-LAB-005`: Add Model Lab promotion decision ledger;
-- open issue #385 / `OMEGA-LAB-006`: Add public-safe Model Lab report
+- open issue #384 / `OPENAGENTS-LAB-005`: Add Model Lab promotion decision ledger;
+- open issue #385 / `OPENAGENTS-LAB-006`: Add public-safe Model Lab report
   projection.
 
 The historical repos are source material only. New product, public surface,
-projection, workroom, and Forum integration work belongs in Omega unless the
+projection, workroom, and Forum integration work belongs in OpenAgents product surface unless the
 user explicitly asks for deprecated-repo maintenance.
 
-## Current Omega Implementation
+## Current OpenAgents product surface Implementation
 
 ### Identity And Project Substrate
 
-Omega seeds `project_artanis` as an OpenAgents Core team project in
+OpenAgents product surface seeds `project_artanis` as an OpenAgents Core team project in
 `workers/api/migrations/0023_team_projects.sql`.
 
 `workers/api/migrations/0024_project_agent_metadata.sql` attaches compact
@@ -160,10 +160,10 @@ project-agent metadata:
 - scope: `project`
 - runtime: `Autopilot`
 - backend: `SHC`
-- repository: `autopilot-omega`
+- repository: `openagents`
 - focus: `Pylon`
 
-This gives Artanis a durable Omega project identity and agent identity. It does
+This gives Artanis a durable OpenAgents product surface project identity and agent identity. It does
 not by itself prove that an autonomous Artanis runner is continuously claiming
 work.
 
@@ -181,7 +181,7 @@ to `agent_artanis`, then loads:
 `apps/web/src/page/loggedOut/page/publicAgent.ts` gives Artanis a Pylon
 campaign fallback objective:
 
-> Release the next version of Pylon, connect it deeply to Omega, and route
+> Release the next version of Pylon, connect it deeply to OpenAgents product surface, and route
 > more inference and fine-tuning work to the live Pylon wave using the new
 > Bitcoin infrastructure.
 
@@ -190,7 +190,7 @@ operator console or a raw workroom transcript.
 
 ### Public Goal Projection
 
-Omega has tests around the public current-goal route for `agent_artanis`.
+OpenAgents product surface has tests around the public current-goal route for `agent_artanis`.
 The projection is intentionally public-safe:
 
 - private scope fields are omitted;
@@ -276,7 +276,7 @@ The current seeded projection is deliberately conservative:
 - accepted-work payout and settlement claims are prohibited until public
   receipt chains exist.
 
-Omega does not currently define a separate public `paid` state. Payment-like
+OpenAgents product surface does not currently define a separate public `paid` state. Payment-like
 claims must use the shared public claim states and remain blocked, prohibited,
 measured, verified, or settled depending on evidence.
 
@@ -324,7 +324,7 @@ project workroom product shell.
 
 ### Operator Steering Surface
 
-Omega already has the shape of an operator control surface:
+OpenAgents product surface already has the shape of an operator control surface:
 
 - `/autopilot` loads the operator Autopilot shell for team members;
 - `/api/autopilot/goals` and related routes can create, pause, resume, clear,
@@ -343,7 +343,7 @@ plane.
 
 ### Durable Persistence Status
 
-#403 / `ARTANIS-017` is now implemented. Omega has D1 persistence for the
+#403 / `ARTANIS-017` is now implemented. OpenAgents product surface has D1 persistence for the
 evidence-first Artanis records:
 
 - runtime snapshots;
@@ -370,7 +370,7 @@ boundary for #404 and later launch-gate work.
 
 ## Model Lab Issue And Roadmap Audit
 
-Model Lab matters for Artanis because it is the current Omega roadmap lane for
+Model Lab matters for Artanis because it is the current OpenAgents product surface roadmap lane for
 turning retained failures, model artifacts, training runs, evals, benchmarks,
 promotion gates, rollback posture, and public reports into evidence-bearing
 records. A standalone Artanis should be able to monitor and explain that loop,
@@ -379,7 +379,7 @@ adapters, or upgrade public claims without separate authority.
 
 ### Closed Model Lab Issue
 
-#376 / `OMEGA-LATE-016` is closed. It added the Model Lab retained-failure
+#376 / `OPENAGENTS-LATE-016` is closed. It added the Model Lab retained-failure
 loop contract, documented in
 `docs/omni/2026-06-06-model-lab-retained-failure-loop.md`.
 
@@ -405,12 +405,12 @@ The current Model Lab tracker batch is #380 through #385.
 
 | Issue | Status | Artanis relevance |
 | --- | --- | --- |
-| #380 / `OMEGA-LAB-001` Model Artifact | Closed after `0089d6d2`. | Artanis needs model/adapter artifact identity, digest evidence, readiness, rights caveats, rollback posture, and redaction before claiming model progress. |
-| #381 / `OMEGA-LAB-002` Training Run | Closed after `ab4e24c3`. | Artanis needs read-only training/eval/adapter run records so `/autopilot` can show observed runs without claiming Omega launched or promoted them. |
-| #382 / `OMEGA-LAB-003` Evidence Graph | Closed after `69ed4ce3`. | Artanis needs a graph connecting retained failures, candidates, runs, artifacts, eval reruns, validations, and gates before he can explain why a model-lab decision is ready or blocked. |
-| #383 / `OMEGA-LAB-004` Benchmark Cloud Evidence | Closed after `7d0ffe87`. | Artanis needs benchmark suites, tasks, scorecards, regressions, flaky labels, and promotion-blocking failure evidence before public model-improvement claims are credible. |
-| #384 / `OMEGA-LAB-005` Promotion Decision Ledger | Closed after `a0c3120a`. | Artanis needs reviewed promotion decisions with rollback posture and release-gate evidence, while still denying runtime deploy authority until a separate deploy path acts. |
-| #385 / `OMEGA-LAB-006` Public Report Projection | Closed after `2d9bc434`. | Artanis needs a public-safe Model Lab report/export projection for Forum updates, `/artanis`, investor/demo bundles, and agent inspection. |
+| #380 / `OPENAGENTS-LAB-001` Model Artifact | Closed after `0089d6d2`. | Artanis needs model/adapter artifact identity, digest evidence, readiness, rights caveats, rollback posture, and redaction before claiming model progress. |
+| #381 / `OPENAGENTS-LAB-002` Training Run | Closed after `ab4e24c3`. | Artanis needs read-only training/eval/adapter run records so `/autopilot` can show observed runs without claiming OpenAgents product surface launched or promoted them. |
+| #382 / `OPENAGENTS-LAB-003` Evidence Graph | Closed after `69ed4ce3`. | Artanis needs a graph connecting retained failures, candidates, runs, artifacts, eval reruns, validations, and gates before he can explain why a model-lab decision is ready or blocked. |
+| #383 / `OPENAGENTS-LAB-004` Benchmark Cloud Evidence | Closed after `7d0ffe87`. | Artanis needs benchmark suites, tasks, scorecards, regressions, flaky labels, and promotion-blocking failure evidence before public model-improvement claims are credible. |
+| #384 / `OPENAGENTS-LAB-005` Promotion Decision Ledger | Closed after `a0c3120a`. | Artanis needs reviewed promotion decisions with rollback posture and release-gate evidence, while still denying runtime deploy authority until a separate deploy path acts. |
+| #385 / `OPENAGENTS-LAB-006` Public Report Projection | Closed after `2d9bc434`. | Artanis needs a public-safe Model Lab report/export projection for Forum updates, `/artanis`, investor/demo bundles, and agent inspection. |
 
 ### Model Lab Roadmap Implication For Artanis
 
@@ -442,7 +442,7 @@ training-program maintenance agent. It emphasizes:
 
 The briefing is still useful as instruction source material, but its older repo
 routing references are superseded by the current workspace contract: active
-OpenAgents product work is in Omega.
+OpenAgents product work is in OpenAgents product surface.
 
 ### May 22 Gap Audit
 
@@ -462,7 +462,7 @@ schedule/wake
   -> schedule the next pass
 ```
 
-Omega has since replaced the old product home and implemented a stronger
+OpenAgents product surface has since replaced the old product home and implemented a stronger
 public-agent/Pylon proof surface, but the fully autonomous hosted Artanis loop
 is still not proven as complete.
 
@@ -496,7 +496,7 @@ projection design: public agents, instruction versions, public sessions,
 health snapshots, dispatch gates, redacted events, and artifacts. That design
 was intentionally health-only and public-read-only.
 
-This matches Omega's safety posture, but Vortex is not the active
+This matches OpenAgents product surface's safety posture, but Vortex is not the active
 OpenAgents.com product home.
 
 ### Cloud Bootstrap
@@ -516,7 +516,7 @@ Important boundaries:
 - public projection only from redacted summaries and retained artifact or
   receipt refs after closeout.
 
-Cloud owns that private execution envelope. Omega owns the public product
+Cloud owns that private execution envelope. OpenAgents product surface owns the public product
 surface and should consume only public-safe outputs from it.
 
 ## Forum Readiness
@@ -717,62 +717,62 @@ accepted-work payout boundaries.
 
 Allowed claims today:
 
-- Artanis has an active Omega public-agent identity.
+- Artanis has an active OpenAgents product surface public-agent identity.
 - Artanis has public routes at `/artanis` and `/agents/artanis`.
 - Artanis has a public Pylon campaign objective.
-- Omega can load and render the current public durable goal for
+- OpenAgents product surface can load and render the current public durable goal for
   `agent_artanis`.
-- Omega can load and render public Nexus/Pylon stats when the source is fresh.
-- Omega has a public-safe R10 campaign claim ledger for Artanis/Pylon.
-- Omega has public-agent template rules that can generalize Artanis-style
+- OpenAgents product surface can load and render public Nexus/Pylon stats when the source is fresh.
+- OpenAgents product surface has a public-safe R10 campaign claim ledger for Artanis/Pylon.
+- OpenAgents product surface has public-agent template rules that can generalize Artanis-style
   projections.
 - Forum public posting by registered agents is ready as a product/API
   substrate.
 - Model Lab retained-failure loop evidence exists through #376.
 - Model Lab model artifact roadmap/code notes exist, but #380 is still open in
   GitHub as of this audit.
-- Omega has D1 persistence for Artanis runtime snapshots, loop records/ticks,
+- OpenAgents product surface has D1 persistence for Artanis runtime snapshots, loop records/ticks,
   approval gates, health snapshots, work-routing proposals, and Forum
   publication intents.
-- Omega has a disabled-by-default Worker scheduled runner that can persist one
+- OpenAgents product surface has a disabled-by-default Worker scheduled runner that can persist one
   Artanis tick through closeout, record health/proposals/approval gates/Forum
   intents, and collapse duplicate retries without granting execution
   authority.
-- Omega can deliver persisted ready Artanis Forum publication intents into real
+- OpenAgents product surface can deliver persisted ready Artanis Forum publication intents into real
   Forum replies as `agent_artanis`, mark those intents delivered, and collapse
   duplicate retries without granting moderation, payment, wallet, provider,
   training, deployment, payout, or settlement authority.
-- Omega has a read-only Artanis Forum listener contract that can classify
+- OpenAgents product surface has a read-only Artanis Forum listener contract that can classify
   public-safe notifications into reply drafts, operator questions,
   work-routing proposal refs, report intents, no-op handled decisions, and
   notification-read intents downstream of decision receipts.
-- Omega has a Nexus/Pylon admin adapter contract that can summarize public
+- OpenAgents product surface has a Nexus/Pylon admin adapter contract that can summarize public
   fleet status, model approval-gated dispatch records, call the intended route
   refs through a fake adapter, and persist the public receipt with
   `executableAuthority: false`.
-- Omega has Pylon local-agent command packets for every current resource mode,
+- OpenAgents product surface has Pylon local-agent command packets for every current resource mode,
   with dry-run commands, private dry-run evidence refs, owner approval prompts,
   telemetry/checkpoint/pause refs, public earning caveats, and execution
   blocked until an owner-approved path marks the packet approved.
-- Omega has a read-only Artanis/Pylon comparative-economics packet contract
+- OpenAgents product surface has a read-only Artanis/Pylon comparative-economics packet contract
   that can join Margot provenance, GPU rental samples, token-inference unit
   inputs, Pylon node/system-power evidence, ERCOT/NYISO power windows, mining
   counterfactuals, throughput-calculator refs, and accepted-work economics
   while keeping token rows blocked until unit audit verification and keeping
   chip-TDP values separate from node/facility energy.
-- Omega has a read-only Artanis production readiness verifier and JSON command
+- OpenAgents product surface has a read-only Artanis production readiness verifier and JSON command
   that can summarize source, deploy parity, D1 persistence, Pylon release,
   smoke, and scheduler-readiness evidence without applying migrations,
   deploying, posting to Forum, mutating GitHub releases, dispatching Pylon
   work, changing scheduler state, spending bitcoin, or upgrading public
   claims.
-- Omega has a retained production-equivalent launch-smoke evidence contract
+- OpenAgents product surface has a retained production-equivalent launch-smoke evidence contract
   that can connect operator approvals, persisted Artanis rows, Forum delivery
   or no-publish proof, public report refs, and rollback disable refs to the
   production launch gate without granting deployment, scheduler, Forum,
   provider, Pylon dispatch, training, wallet, buyer-charge, or settlement
   authority.
-- Omega has a typed Artanis Forum delivery/listener verification record that
+- OpenAgents product surface has a typed Artanis Forum delivery/listener verification record that
   can retain canonical status and Pylon release work-log topic evidence,
   delivered post refs, delivery receipts, idempotency refs, listener
   notifications, triage drafts, no-op/read refs, and blockers without granting
@@ -1167,7 +1167,7 @@ dataset material. The contract grants no live Pylon job dispatch, provider
 mutation, wallet spend, payment spend, settlement mutation, training launch,
 deployment, or runtime promotion authority.
 
-#428 / `OMEGA-NEXUS-009` is implemented as of
+#428 / `OPENAGENTS-NEXUS-009` is implemented as of
 `workers/api/src/artanis-nexus-pylon-adapters.ts`,
 `workers/api/src/artanis-nexus-pylon-adapters.test.ts`, and
 `docs/nexus/2026-06-07-artanis-payment-backed-dispatch-gates.md`. It extends
@@ -1248,7 +1248,7 @@ moderation routes, and links `/artanis` to the Artanis forum and status topic.
 `docs/artanis/2026-06-06-forum-publication-queue.md`. This adds the typed
 Artanis Forum publication queue for public-safe source refs, target topic refs,
 stable idempotency keys, redaction policy refs, post refs, delivery state,
-public-safe goal refs, R10 claim refs, Model Lab report refs, Omega Pylon
+public-safe goal refs, R10 claim refs, Model Lab report refs, OpenAgents product surface Pylon
 stats refs and separate Nexus/Pylon receipt refs,
 artifact refs, receipt refs, and page URLs. It rejects unsafe refs before
 posting, denies ready/delivered posts to locked, hidden, archived, or
@@ -1277,7 +1277,7 @@ payout, settlement, rollback execution, or public-claim mutation.
 `docs/artanis/2026-06-06-public-report-aggregator.md`. This adds
 `GET /api/public/artanis/report` and updates `/artanis` to load a compact
 public-safe report that aggregates standalone runtime state, autonomous loop
-state, public blockers, Omega public Pylon stats, separate Nexus/Pylon receipt
+state, public blockers, OpenAgents product surface public Pylon stats, separate Nexus/Pylon receipt
 refs, R10 claim states, Model Lab
 public report summary, Forum links, public receipts, and artifacts. The page
 now renders Artanis loop state, Model Lab readiness, accepted-work bitcoin,

@@ -47,4 +47,4 @@ and customer-visible messages only.
 Operator projections expose counts and safe refs, but still avoid raw runner
 payloads, provider logs, source archives, secrets, and unbounded diagnostics.
 
-Full generated-file read/export behavior remains in `OMEGA-SITES-VIBE-004`.
+Full generated-file read/export behavior remains in `OPENAGENTS-SITES-VIBE-004`.

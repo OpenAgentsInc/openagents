@@ -73,7 +73,7 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   provider-account or GitHub-write error handling, logged-in update routing,
   login/root route behavior, UI family modules, or other zero-tech-debt
   cleanup surfaces, read
-  `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`. Treat that
+  `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`. Treat that
   document as a forward contract, not just a historical audit: do not increase
   compatibility budgets, add `Effect.runPromise` bridges, add Promise
   dependency adapters, reintroduce deleted aliases/files, or bypass typed

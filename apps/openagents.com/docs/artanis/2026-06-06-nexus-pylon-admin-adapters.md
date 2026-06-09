@@ -10,7 +10,7 @@ and D1 receipt persistence path.
 ## Purpose
 
 Artanis needs a safe boundary for administering Nexus/Pylon work. The first
-implementation lets Artanis summarize Omega public Pylon fleet state, record
+implementation lets Artanis summarize OpenAgents product surface public Pylon fleet state, record
 approval-gated dispatch proposals, call the intended Nexus/Pylon route through
 a fake test adapter, and persist the resulting public receipt.
 
@@ -31,7 +31,7 @@ The v1 boundary covers these surfaces:
 - acceptance
 - payout and settlement caveats
 
-Public projections use Omega public Pylon stats and public-safe refs only.
+Public projections use OpenAgents product surface public Pylon stats and public-safe refs only.
 Nexus/Pylon receipt refs remain separate evidence for dispatch, payout, and
 settlement paths.
 Operator projections can carry private evidence refs by reference inside
@@ -104,7 +104,7 @@ Coverage lives in `workers/api/src/artanis-nexus-pylon-adapters.test.ts`.
 
 The tests prove:
 
-- public-safe fleet monitoring from Omega public Pylon stats;
+- public-safe fleet monitoring from OpenAgents product surface public Pylon stats;
 - unavailable stats become public blockers;
 - adapter surface coverage includes stats, provider inventory, readiness,
   offers, assignments, run status, artifacts, acceptance, and payout/settlement

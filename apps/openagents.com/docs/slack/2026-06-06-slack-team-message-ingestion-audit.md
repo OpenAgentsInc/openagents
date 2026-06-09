@@ -10,7 +10,7 @@ provider-token store.
 
 OpenAgents users can already opt into GitHub and ChatGPT/Codex connection
 flows. The next connector should let them authorize an OpenAgents Slack bot that
-can ingest messages from their team and make those messages useful inside Omega
+can ingest messages from their team and make those messages useful inside OpenAgents product surface
 workrooms.
 
 ## Executive Summary
@@ -22,20 +22,20 @@ The correct product shape is:
 
 ```text
 OpenAgents signed-in user
-  -> selects an Omega team or project
+  -> selects an OpenAgents product surface team or project
   -> starts Slack OAuth v2 installation
   -> Slack workspace admin/member authorizes the OpenAgents app
-  -> Omega stores Slack installation metadata plus a server-side secret ref
+  -> OpenAgents product surface stores Slack installation metadata plus a server-side secret ref
   -> selected Slack channels become source-authorized connector feeds
   -> Events API messages create Slack source refs and extracted spans
   -> workrooms retrieve bounded Slack context through the source bundle layer
-  -> explicit Slack mentions, slash commands, or Omega UI actions create runs
+  -> explicit Slack mentions, slash commands, or OpenAgents product surface UI actions create runs
 ```
 
 The MVP should be event-first and channel-opt-in:
 
 - install one Slack app into one workspace;
-- bind the Slack workspace to one Omega team;
+- bind the Slack workspace to one OpenAgents product surface team;
 - prioritize private channels the connected user is already part of and will
   add the bot to;
 - choose explicit public or private channels to monitor;
@@ -44,7 +44,7 @@ The MVP should be event-first and channel-opt-in:
 - create workroom context bundles from Slack refs, not from hidden prompt
   stuffing; and
 - launch Autopilot only from explicit triggers such as `@autopilot`, a slash
-  command, a message shortcut, or an Omega UI action.
+  command, a message shortcut, or an OpenAgents product surface UI action.
 
 Do not promise "all team messages" across the whole workspace in the first
 implementation. The MVP promise should instead be "all selected private
@@ -59,30 +59,30 @@ wrong MVP.
 
 ## Sources Reviewed
 
-Local workspace and Omega sources:
+Local workspace and OpenAgents product surface sources:
 
 - `/Users/christopherdavid/work/AGENTS.md`
 - `/Users/christopherdavid/work/INVARIANTS.md`
 - `/Users/christopherdavid/work/docs/omni/README.md`
 - `/Users/christopherdavid/work/docs/omni/vortex-business-workrooms-synthesis.md`
 - `/Users/christopherdavid/work/docs/omni/vortex-knowledge-data-workbench-synthesis.md`
-- `autopilot-omega/AGENTS.md`
-- `autopilot-omega/INVARIANTS.md`
-- `autopilot-omega/docs/2026-06-02-chatgpt-codex-account-connection-opencode-openauth-audit.md`
-- `autopilot-omega/docs/2026-06-02-provider-account-implementation-notes.md`
-- `autopilot-omega/docs/2026-06-03-team-project-rooms.md`
-- `autopilot-omega/docs/2026-06-03-team-room-shared-history-autopilot-audit.md`
-- `autopilot-omega/docs/2026-06-06-omega-data-classification-policy-v2.md`
-- `autopilot-omega/docs/2026-06-06-redaction-regression-suite.md`
-- `autopilot-omega/docs/2026-06-06-audit-export-contracts.md`
-- `autopilot-omega/docs/omni/2026-06-06-knowledge-source-bundle-and-span-model.md`
-- `autopilot-omega/docs/omni/2026-06-05-data-classification-and-trust-v1.md`
-- `autopilot-omega/packages/provider-account-schema/src/index.ts`
-- `autopilot-omega/workers/api/migrations/0009_provider_accounts.sql`
-- `autopilot-omega/workers/api/migrations/0011_github_write_connections.sql`
-- `autopilot-omega/workers/api/src/provider-account-routes.ts`
-- `autopilot-omega/workers/api/src/github-write-connections.ts`
-- `autopilot-omega/apps/web/src/page/loggedIn/page/settings.ts`
+- `openagents/AGENTS.md`
+- `openagents/INVARIANTS.md`
+- `openagents/docs/2026-06-02-chatgpt-codex-account-connection-opencode-openauth-audit.md`
+- `openagents/docs/2026-06-02-provider-account-implementation-notes.md`
+- `openagents/docs/2026-06-03-team-project-rooms.md`
+- `openagents/docs/2026-06-03-team-room-shared-history-autopilot-audit.md`
+- `openagents/docs/2026-06-06-openagents-data-classification-policy-v2.md`
+- `openagents/docs/2026-06-06-redaction-regression-suite.md`
+- `openagents/docs/2026-06-06-audit-export-contracts.md`
+- `openagents/docs/omni/2026-06-06-knowledge-source-bundle-and-span-model.md`
+- `openagents/docs/omni/2026-06-05-data-classification-and-trust-v1.md`
+- `openagents/packages/provider-account-schema/src/index.ts`
+- `openagents/workers/api/migrations/0009_provider_accounts.sql`
+- `openagents/workers/api/migrations/0011_github_write_connections.sql`
+- `openagents/workers/api/src/provider-account-routes.ts`
+- `openagents/workers/api/src/github-write-connections.ts`
+- `openagents/apps/web/src/page/loggedIn/page/settings.ts`
 
 Slack platform sources:
 
@@ -109,9 +109,9 @@ Slack platform sources:
 - Slack token rotation:
   <https://docs.slack.dev/authentication/using-token-rotation/>
 
-## Existing Omega Shape
+## Existing OpenAgents product surface Shape
 
-Omega already has the right primitives for this connector, but they should be
+OpenAgents product surface already has the right primitives for this connector, but they should be
 composed carefully.
 
 ### First-Party Identity Stays OpenAgents
@@ -124,7 +124,7 @@ The ChatGPT/Codex provider-account audit separates three planes:
 
 Slack should follow the same separation. A Slack install does not replace the
 OpenAgents session. It only proves that an actor authorized a Slack workspace
-connector and gave Omega a bot token for Slack API calls.
+connector and gave OpenAgents product surface a bot token for Slack API calls.
 
 ### Slack Is Not The Same As ChatGPT/Codex Provider Accounts
 
@@ -136,14 +136,14 @@ Slack has a different authority shape:
 
 - the install is usually workspace-scoped, not user-account-fleet scoped;
 - the useful resource is a workspace/channel/message graph;
-- the primary ingest path is Slack pushing event callbacks to Omega;
+- the primary ingest path is Slack pushing event callbacks to OpenAgents product surface;
 - backfill reads are connector reads, not model-provider execution grants; and
 - Slack writes are collaboration side effects that require their own approval
   policy.
 
 Therefore Slack should start with dedicated connector tables such as
 `slack_installations`, `slack_channel_links`, and `slack_message_sources`.
-Later, if Omega generalizes provider connections into a typed connector-account
+Later, if OpenAgents product surface generalizes provider connections into a typed connector-account
 registry, Slack can move behind that interface. Do not wedge Slack into the
 `chatgpt_codex` provider-account enum.
 
@@ -189,7 +189,7 @@ Slack message text must not become invisible product truth.
 
 ### OAuth v2 Is The Install Path
 
-Omega should use Slack OAuth v2. The browser starts an install by redirecting
+OpenAgents product surface should use Slack OAuth v2. The browser starts an install by redirecting
 to Slack with:
 
 - `client_id`;
@@ -198,14 +198,14 @@ to Slack with:
 - `redirect_uri`; and
 - one-time `state`.
 
-The callback exchanges `code` through `oauth.v2.access`. Omega stores the
+The callback exchanges `code` through `oauth.v2.access`. OpenAgents product surface stores the
 returned workspace/app metadata and a secret ref for bot token material. The
 callback must consume `code` and `state`, then redirect to a clean first-party
-settings URL to satisfy Omega's clean-public-URL invariant.
+settings URL to satisfy OpenAgents product surface's clean-public-URL invariant.
 
 ### Events API Is The Live Ingest Path
 
-Slack sends URL verification and event callbacks to one request URL. Omega must
+Slack sends URL verification and event callbacks to one request URL. OpenAgents product surface must
 verify Slack signatures before processing. The event handler should acknowledge
 quickly and then queue work. It should not do slow retrieval, embedding,
 workroom launch, or Slack writes inside the request acknowledgment path.
@@ -251,7 +251,7 @@ Design consequences:
 Message ingestion does not imply write authority. Posting a reply, status,
 approval prompt, or generated answer to Slack requires `chat:write` and should
 be modeled as a Slack side effect with a receipt. Slack button clicks and slash
-commands are useful, but they do not bypass Omega approval, acceptance, or
+commands are useful, but they do not bypass OpenAgents product surface approval, acceptance, or
 source-authority rules.
 
 ## Recommended Slack App Manifest Shape
@@ -306,8 +306,8 @@ Authenticated request body:
 
 ```json
 {
-  "omegaTeamId": "team_openagents_core",
-  "omegaProjectId": "project_artanis",
+  "openagentsTeamId": "team_openagents_core",
+  "openagentsProjectId": "project_artanis",
   "redirectAfter": "/settings/integrations"
 }
 ```
@@ -358,7 +358,7 @@ POST /api/slack/installations/:installationRef/disconnect
 
 Server behavior:
 
-1. Require connector admin on the Omega team.
+1. Require connector admin on the OpenAgents product surface team.
 2. Mark the installation disconnected.
 3. Delete or revoke server-side token material where possible.
 4. Stop event/backfill processing for that installation.
@@ -417,7 +417,7 @@ The queued worker should:
 ### Source Ref Shape
 
 Slack source refs should be stable, non-secret, and dereferenceable only through
-authorized Omega code:
+authorized OpenAgents product surface code:
 
 ```text
 slack://team/<slack-team-id>/channel/<channel-id>/message/<message-ts>
@@ -431,7 +431,7 @@ publishes a redacted proof artifact.
 
 ### Message Edits And Deletes
 
-Slack message events include subtypes for changed and deleted messages. Omega
+Slack message events include subtypes for changed and deleted messages. OpenAgents product surface
 should treat them as source lifecycle events:
 
 - edited message: create a new source version, preserve digest lineage, and
@@ -445,7 +445,7 @@ should treat them as source lifecycle events:
 ## Proposed Data Model
 
 The following D1 tables keep Slack separate from provider-account runner
-credentials while matching Omega's existing audit style.
+credentials while matching OpenAgents product surface's existing audit style.
 
 ### `slack_oauth_attempts`
 
@@ -455,8 +455,8 @@ Fields:
 
 - `id`
 - `user_id`
-- `omega_team_id`
-- `omega_project_id`
+- `openagents_team_id`
+- `openagents_project_id`
 - `state`
 - `requested_scopes_json`
 - `requested_user_scopes_json`
@@ -477,8 +477,8 @@ Fields:
 
 - `id`
 - `installation_ref`
-- `omega_team_id`
-- `omega_project_id`
+- `openagents_team_id`
+- `openagents_project_id`
 - `installed_by_user_id`
 - `slack_team_id`
 - `slack_enterprise_id`
@@ -511,14 +511,14 @@ OAuth responses, raw event bodies, or Slack file download URLs.
 
 ### `slack_channel_links`
 
-Purpose: map Slack channels to Omega teams/projects and ingestion policy.
+Purpose: map Slack channels to OpenAgents product surface teams/projects and ingestion policy.
 
 Fields:
 
 - `id`
 - `installation_id`
-- `omega_team_id`
-- `omega_project_id`
+- `openagents_team_id`
+- `openagents_project_id`
 - `slack_channel_id`
 - `slack_channel_name`
 - `channel_kind`: `public | private | slack_connect | dm | mpim`
@@ -533,7 +533,7 @@ Fields:
 Default MVP should allow `private` and `public`, with private-channel ingest as
 the priority. A private channel is eligible only when the Slack app has the
 private-channel scopes, the bot has been added to that specific channel, and an
-Omega connector admin has linked it to the team/project. `dm` and `mpim` should
+OpenAgents product surface connector admin has linked it to the team/project. `dm` and `mpim` should
 be blocked until there is a separate privacy decision.
 
 ### `slack_message_sources`
@@ -546,8 +546,8 @@ Fields:
 - `source_ref`
 - `installation_id`
 - `channel_link_id`
-- `omega_team_id`
-- `omega_project_id`
+- `openagents_team_id`
+- `openagents_project_id`
 - `slack_team_id`
 - `slack_channel_id`
 - `slack_message_ts`
@@ -621,7 +621,7 @@ Projection rules:
 - Public: no Slack message text, channel names, user names, timestamps, raw
   source refs, file refs, or Slack workspace identity.
 - Customer: no Slack message text unless the customer is a member of the same
-  authorized Omega team and an explicit customer-safe export exists.
+  authorized OpenAgents product surface team and an explicit customer-safe export exists.
 - Agent: only bounded context refs selected by the retrieval planner; no broad
   channel transcript.
 - Team: can see team-safe snippets, channel labels, author display names, and
@@ -656,8 +656,8 @@ Recommended context bundle:
 ```json
 {
   "kind": "slack_context_bundle",
-  "omegaTeamId": "team_openagents_core",
-  "omegaProjectId": "project_artanis",
+  "openagentsTeamId": "team_openagents_core",
+  "openagentsProjectId": "project_artanis",
   "selectedSourceRefs": [
     "slack://team/T.../channel/C.../thread/1717620000.000000"
   ],
@@ -687,15 +687,15 @@ MVP trigger options:
 - `@Autopilot summarize this thread`
 - `/autopilot create a workroom from this channel`
 - message shortcut: "Send to OpenAgents"
-- Omega UI action: "Use Slack thread as context"
+- OpenAgents product surface UI action: "Use Slack thread as context"
 
 Trigger parser rules:
 
 - only run after the incoming request is already verified as Slack;
 - require exact mention, slash command, or Slack shortcut payload;
-- map Slack channel to an authorized Omega team/project;
+- map Slack channel to an authorized OpenAgents product surface team/project;
 - check channel link is active;
-- require the Slack actor to map to an Omega member or require a channel-level
+- require the Slack actor to map to an OpenAgents product surface member or require a channel-level
   policy that allows non-member requests to create proposals only;
 - create a proposal or workroom with source refs, not raw Slack text in title;
   and
@@ -711,7 +711,7 @@ slack_user_ref -> optional openagents_user_id
 
 Mapping options:
 
-- self-link from Omega settings;
+- self-link from OpenAgents product surface settings;
 - email-domain match only as an untrusted candidate;
 - team admin confirmation;
 - per-command fallback to "external Slack actor created proposal."
@@ -732,14 +732,14 @@ workroom completed
   -> store slack_write_receipt
 ```
 
-If classification blocks the summary, post only a safe link to the Omega
+If classification blocks the summary, post only a safe link to the OpenAgents product surface
 workroom or ask a human to approve a redacted answer.
 
 ## Feature Possibilities
 
 ### Team Knowledge
 
-- Channel and thread source chips inside Omega workrooms.
+- Channel and thread source chips inside OpenAgents product surface workrooms.
 - "Ask from this Slack thread" actions.
 - Source-backed summaries of selected channels.
 - Weekly project digests from opt-in channels.
@@ -761,7 +761,7 @@ workroom or ask a human to approve a redacted answer.
 - Post compact run cards back to Slack with status, branch, preview, tests, and
   review link.
 - Let a team approve "continue", "request revision", or "open PR" through
-  Slack interactive buttons after Omega verifies the actor and policy.
+  Slack interactive buttons after OpenAgents product surface verifies the actor and policy.
 - Use Slack discussion as mission briefing context without including it in
   public proof bundles.
 
@@ -784,11 +784,11 @@ workroom or ask a human to approve a redacted answer.
 ### Approvals And Receipts
 
 - Slack button for "approve draft", "request revision", or "open workroom".
-- Per-button action receipts tied to Slack user, Omega user mapping, team, and
+- Per-button action receipts tied to Slack user, OpenAgents product surface user mapping, team, and
   source refs.
 - Approval reminders in Slack for pending workroom decisions.
 - Policy-blocked replies when Slack actor cannot be mapped to an authorized
-  Omega member.
+  OpenAgents product surface member.
 
 ### Public Proof And Data Packages
 
@@ -874,7 +874,7 @@ Enterprise Grid support is later work:
 
 The MVP should not depend on enterprise-only APIs.
 
-## Cloudflare/Omega Implementation Sketch
+## Cloudflare/OpenAgents product surface Implementation Sketch
 
 ### Worker Bindings
 
@@ -939,7 +939,7 @@ Add Slack to the settings workspace page as an integration family:
 - "Disconnect".
 
 Team/project rooms should show Slack as source context, not as a replacement
-for native Omega chat:
+for native OpenAgents product surface chat:
 
 - source chips for selected Slack threads;
 - retrieval trace rows showing selected/excluded Slack source refs;
@@ -990,10 +990,10 @@ signature verification, or internal routing. Keep that in docs/operator views.
 ### Phase 4: Workroom Triggers
 
 - Support `@Autopilot` and `/autopilot`.
-- Map Slack channel to Omega team/project.
+- Map Slack channel to OpenAgents product surface team/project.
 - Create workroom proposal/run with Slack source refs.
 - Post safe acknowledgement to Slack.
-- Show run in Omega team/project room.
+- Show run in OpenAgents product surface team/project room.
 
 ### Phase 5: Narrow Backfill
 
@@ -1033,7 +1033,7 @@ Minimum tests before shipping:
 - Event idempotency prevents duplicate source records.
 - Channel allowlist blocks unconfigured channels.
 - Private channels ingest when `groups:history` is granted, the bot is added,
-  and the channel is linked to the Omega team/project.
+  and the channel is linked to the OpenAgents product surface team/project.
 - Private channels do not ingest when the bot is missing or the channel is not
   linked, even if the workspace installation exists.
 - Slack Connect/DM channels obey policy.
@@ -1041,7 +1041,7 @@ Minimum tests before shipping:
 - Message delete hides or blocks source projections.
 - `@Autopilot` exact trigger creates one proposal/run and never duplicates on
   retry.
-- Slack actor mapping cannot grant Omega team permissions by email alone.
+- Slack actor mapping cannot grant OpenAgents product surface team permissions by email alone.
 - Slack writeback requires policy and records a receipt.
 - Redaction regression fixtures include Slack token patterns and raw Slack
   webhook/file payloads.
@@ -1065,8 +1065,8 @@ import as narrow and queued.
 
 ### Identity Confusion
 
-Slack users are not automatically Omega users. Slack commands can create
-proposals, but authority to mutate Omega state should require OpenAgents
+Slack users are not automatically OpenAgents product surface users. Slack commands can create
+proposals, but authority to mutate OpenAgents product surface state should require OpenAgents
 membership mapping and policy checks.
 
 ### Public Projection Leakage
@@ -1077,7 +1077,7 @@ and approval.
 
 ### Feedback Loops
 
-If Omega ingests bot messages and posts summaries back to Slack, it can ingest
+If OpenAgents product surface ingests bot messages and posts summaries back to Slack, it can ingest
 its own output. The normalizer should mark OpenAgents bot messages as receipts
 or exclude them from retrieval unless explicitly needed.
 
@@ -1087,10 +1087,10 @@ or exclude them from retrieval unless explicitly needed.
   for higher-trust deployments?
 - Should MVP require Slack workspace admin install, or allow member install
   with narrower scopes?
-- Which Omega role can connect Slack for a team: owner, admin, project manager,
+- Which OpenAgents product surface role can connect Slack for a team: owner, admin, project manager,
   or a new connector-admin role?
 - What is the fastest user flow for adding the bot to all private channels the
-  installer is part of without pretending Omega can see private channels before
+  installer is part of without pretending OpenAgents product surface can see private channels before
   the bot is invited?
 - How long should raw Slack message content be retained after source refs and
   embeddings exist?
@@ -1102,7 +1102,7 @@ or exclude them from retrieval unless explicitly needed.
 - Should `files:read` ship in MVP or wait until text-only channel ingest is
   stable?
 - Should Slack approval buttons be accepted authority or only a prompt to open
-  Omega? Recommendation: buttons create proposals until actor mapping and
+  OpenAgents product surface? Recommendation: buttons create proposals until actor mapping and
   approval receipts are hardened.
 
 ## Recommendation
@@ -1119,6 +1119,6 @@ Ship Slack in this order:
 6. Narrow per-channel backfill, prioritizing the selected private channels.
 7. Retrieval, digests, CRM/support/project ops features.
 
-This matches Omega's existing direction: provider secrets stay behind server
+This matches OpenAgents product surface's existing direction: provider secrets stay behind server
 refs, user-facing URLs stay clean, source authority remains explicit, and
 workrooms operate on bounded context rather than hidden transcript stuffing.

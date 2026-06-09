@@ -1,13 +1,13 @@
 # MDK Core-Backed Site Payment Helpers
 
 Date: 2026-06-07
-Issue: #443 / `OMEGA-SITES-MDK-013`
+Issue: #443 / `OPENAGENTS-SITES-MDK-013`
 
 ## Summary
 
-Omega now has a source-safe helper contract for generated Sites that need to
+OpenAgents product surface now has a source-safe helper contract for generated Sites that need to
 call OpenAgents-hosted Site commerce routes. The helpers keep payment authority
-inside Omega. Generated static Sites and Worker-compatible Sites call Omega
+inside OpenAgents product surface. Generated static Sites and Worker-compatible Sites call OpenAgents product surface
 APIs; they do not import MoneyDevKit native runtime packages, own MDK
 credentials, hold wallet state, reconcile webhooks, or claim payout authority.
 
@@ -30,7 +30,7 @@ The helper contract covers:
 - static-site fetch examples;
 - Worker-compatible / Workers for Platforms fetch examples.
 
-All request bodies are validated against the current Omega Site commerce route
+All request bodies are validated against the current OpenAgents product surface Site commerce route
 schemas:
 
 - `SiteCheckoutIntentRequest`
@@ -44,7 +44,7 @@ safe error envelopes.
 
 ## Static Site Example
 
-A generated static Site should call Omega directly:
+A generated static Site should call OpenAgents product surface directly:
 
 ```js
 const OPENAGENTS_API_BASE = 'https://openagents.com'
@@ -87,8 +87,8 @@ export async function requestSitePaidAction(siteId, idempotencyKey, body, agentB
 
 ## Worker-Compatible Site Example
 
-A generated Worker-compatible Site should call an Omega commerce binding or
-otherwise fetch the same Omega routes. The generated Site still does not own
+A generated Worker-compatible Site should call an OpenAgents product surface commerce binding or
+otherwise fetch the same OpenAgents product surface routes. The generated Site still does not own
 MDK credentials.
 
 ```js
@@ -172,7 +172,7 @@ Generated Site source must never include:
 - payout or settlement claims.
 
 Generated Sites should not import `@moneydevkit/*`, `@moneydevkit/lightning-js`,
-or any native Lightning runtime package. Omega owns the payment boundary and
+or any native Lightning runtime package. OpenAgents product surface owns the payment boundary and
 the exact-source webhook reconciliation path.
 
 ## Verification

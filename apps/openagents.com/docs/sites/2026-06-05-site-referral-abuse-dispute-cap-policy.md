@@ -2,7 +2,7 @@
 
 Implemented: 2026-06-05
 
-Issue: #180 / OMEGA-SITES-REF-008
+Issue: #180 / OPENAGENTS-SITES-REF-008
 
 ## Summary
 

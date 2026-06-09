@@ -2,12 +2,12 @@
 
 Date: 2026-06-07
 
-This runbook covers the Omega-owned Pylon API surface added for the Nexus v0.2
+This runbook covers the OpenAgents product surface-owned Pylon API surface added for the Nexus v0.2
 rebuild and Pylon v0.2 release gate.
 
 ## Status
 
-The Omega Worker now has a D1-backed Pylon registration and event API:
+The OpenAgents product surface Worker now has a D1-backed Pylon registration and event API:
 
 - `GET /api/pylons`
 - `POST /api/pylons/register`

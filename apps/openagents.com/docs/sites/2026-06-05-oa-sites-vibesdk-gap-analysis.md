@@ -8,7 +8,7 @@ create GitHub issues by itself.
 
 ## Source Set
 
-Local OpenAgents/Omega sources:
+Local OpenAgents/OpenAgents product surface sources:
 
 - `docs/sites-plan.md`
 - `docs/2026-06-05-openai-sites-parity-implementation-audit.md`
@@ -58,7 +58,7 @@ They differ in product center of gravity:
 
 The gap is therefore not one missing feature. It is the absence of a
 first-class builder session layer between customer intent and reviewed Site
-versions. Omega has the control-plane pieces for orders, Sites, versions,
+versions. OpenAgents product surface has the control-plane pieces for orders, Sites, versions,
 deployments, public proof, manifests, OpenAPI, email, and review. VibeSDK has
 the interactive generation, preview, SDK, and Cloudflare app-builder
 experience.
@@ -79,12 +79,12 @@ user or agent prompt
 -> receipts, public proof, billing, and workroom state
 ```
 
-This should still be built on OpenAgents/Omega infrastructure, not by
+This should still be built on OpenAgents/OpenAgents product surface infrastructure, not by
 outsourcing product authority to VibeSDK. The right interpretation of
 "VibeSDK parity while built on their infra" is Cloudflare-infrastructure
 parity: Workers, Durable Objects or Workflows, D1, R2, KV where needed,
 Containers for previews/builds, AI Gateway for model routing, and Workers for
-Platforms for generated app deployment. Omega remains the authority for auth,
+Platforms for generated app deployment. OpenAgents product surface remains the authority for auth,
 orders, workrooms, payments, receipts, projections, and release gates.
 
 The implementation should be cost-tiered. VibeSDK leans on Containers for
@@ -148,8 +148,8 @@ Designed but not complete enough for VibeSDK parity:
 | React/TypeScript/Tailwind generated apps | Some generated static artifact support exists. | No recommended starter enforced by builder. | Add OA Sites starter with React, TypeScript, Tailwind, tests, `.openagents/site.json`, and Worker compatibility rules. |
 | Workers for Platforms deploy | Runtime can dispatch WFP metadata. | No automated upload/config/binding workflow. | Add WFP deployment automation with dispatch namespace upload, bindings, tags, health checks, rollback, and observability. |
 | D1/R2/KV backing services | Metadata tables and binding records exist. | Resource provisioning and runtime injection are incomplete. | Add per-Site or namespaced D1/R2/KV provisioning, migration review, upload metadata, and retention. |
-| AI Gateway model routing | Omega has provider account/Codex runner paths and Exa. | No builder-level AI Gateway abstraction matching VibeSDK. | Add model gateway service for generation/repair tasks while preserving Codex account fleet for coding missions. |
-| Durable agent state | Omega has D1 run/order state. | No Durable Object or equivalent for low-latency WebSocket build sessions. | Add Durable Object or Workflow-backed builder session coordinator with D1 as ledger authority. |
+| AI Gateway model routing | OpenAgents product surface has provider account/Codex runner paths and Exa. | No builder-level AI Gateway abstraction matching VibeSDK. | Add model gateway service for generation/repair tasks while preserving Codex account fleet for coding missions. |
+| Durable agent state | OpenAgents product surface has D1 run/order state. | No Durable Object or equivalent for low-latency WebSocket build sessions. | Add Durable Object or Workflow-backed builder session coordinator with D1 as ledger authority. |
 | Programmatic TypeScript SDK | OpenAPI exists for core public/customer/operator APIs. | No JS SDK with WebSocket session, waits, files, phases, app management. | Publish `@openagents/sites-sdk` or `@openagents/autopilot-sdk` with build/connect/session APIs. |
 | App listing and management | Operator/admin views and customer order views exist. | No builder app library with mine/recent/public/favorites/visibility. | Add Sites project library, visibility controls, delete/archive, clone/export, and public-safe gallery if desired. |
 | GitHub export | Source repo fields and GitHub auth are present elsewhere. | No generated-source export flow or clone token. | Add GitHub export app, branch/PR/export receipts, and expiring clone/download tokens. |
@@ -170,7 +170,7 @@ or public Sites.
 
 ### Builder Runtime
 
-VibeSDK's strongest missing piece in Omega is the builder runtime:
+VibeSDK's strongest missing piece in OpenAgents product surface is the builder runtime:
 
 - a durable session ID;
 - WebSocket or event-stream connection;
@@ -183,18 +183,18 @@ VibeSDK's strongest missing piece in Omega is the builder runtime:
 - deploy-to-Cloudflare status;
 - reconnect and state restoration.
 
-Omega should add this as a Sites Builder subsystem, not as ad hoc fields on
+OpenAgents product surface should add this as a Sites Builder subsystem, not as ad hoc fields on
 `site_projects`. `site_projects` should remain the durable hosted artifact and
 review namespace. A builder session is an attempt to create or modify a
 version.
 
 ### Preview And Build Execution
 
-Omega has compatibility and build-validation receipts, but the current
+OpenAgents product surface has compatibility and build-validation receipts, but the current
 documented implementation notes say the checker and validator do not yet
 clone, execute a live build, adapt, save, or deploy a project.
 
-To match VibeSDK without inheriting unnecessary cost, Omega needs a
+To match VibeSDK without inheriting unnecessary cost, OpenAgents product surface needs a
 cost-aware preview ladder:
 
 1. **Static candidate preview.** For already-generated HTML/CSS/JS or
@@ -217,7 +217,7 @@ disk are based on provisioned resources. Static asset serving and ordinary
 Worker/WFP execution are much cheaper for simple previews and production
 traffic.
 
-When Containers are used, Omega should record a preview/build cost receipt and
+When Containers are used, OpenAgents product surface should record a preview/build cost receipt and
 apply a payment policy:
 
 - free only for bounded public-beta slices and operator-approved smoke runs;
@@ -272,7 +272,7 @@ R2/WFP-first fast path.
 
 ### Deployment Data Plane
 
-Omega already models static R2 deployments and WFP deployments. VibeSDK
+OpenAgents product surface already models static R2 deployments and WFP deployments. VibeSDK
 actually deploys generated apps to Workers for Platforms.
 
 The parity gap is operational automation:
@@ -306,7 +306,7 @@ VibeSDK's SDK is a product surface, not just documentation. It exposes:
 - app list/get/delete/visibility/star/favorite;
 - Git clone token.
 
-Omega's OpenAPI route is the start of this, but full parity requires a
+OpenAgents product surface's OpenAPI route is the start of this, but full parity requires a
 stateful SDK around builder sessions and event streams.
 
 ## Recommended Implementation Order
@@ -447,7 +447,7 @@ Work:
 - Run build validation after relevant phases.
 - Feed bounded errors back into a repair prompt.
 - Add retry budgets and stop conditions.
-- Route model calls through an Omega model gateway. AI Gateway can be the
+- Route model calls through an OpenAgents product surface model gateway. AI Gateway can be the
   Cloudflare-aligned provider router, while Codex/ChatGPT account fleet remains
   available for coding missions that need browser-account dispatch.
 
@@ -494,7 +494,7 @@ Work:
   claim state.
 - Record external deployment IDs and health-check results.
 - Support disable and rollback from `site_deployments`.
-- Keep `omega_static_r2` for static-only outputs and WFP for Worker outputs.
+- Keep `openagents_static_r2` for static-only outputs and WFP for Worker outputs.
 
 Exit criteria:
 
@@ -515,7 +515,7 @@ Work:
 - Add optional KV binding support for session/cache-style apps.
 - Add migration review and apply flow.
 - Add hosted environment value management.
-- Store secrets in Cloudflare Secrets Store or the approved Omega secret
+- Store secrets in Cloudflare Secrets Store or the approved OpenAgents product surface secret
   boundary, not in source, docs, D1 plain text, logs, or public projections.
 - Add public visitor auth and OpenAgents session auth adapters for generated
   apps.
@@ -599,7 +599,7 @@ Work:
 
 Exit criteria:
 
-- Generated source can leave Omega through an auditable GitHub export or
+- Generated source can leave OpenAgents product surface through an auditable GitHub export or
   expiring clone/download path.
 - Public listings do not expose private orders, runner logs, or unpublished
   artifacts.
@@ -625,27 +625,27 @@ Exit criteria:
 
 Suggested issue sequence:
 
-1. `OMEGA-SITES-VIBE-001`: Add builder session D1 schema and repository.
-2. `OMEGA-SITES-VIBE-002`: Add builder session create/read/event APIs.
-3. `OMEGA-SITES-VIBE-003`: Add session event stream and reconnect replay.
-4. `OMEGA-SITES-VIBE-004`: Add generated file snapshot ledger and file APIs.
-5. `OMEGA-SITES-VIBE-005`: Add cost-tiered R2/WFP/Container build and preview
+1. `OPENAGENTS-SITES-VIBE-001`: Add builder session D1 schema and repository.
+2. `OPENAGENTS-SITES-VIBE-002`: Add builder session create/read/event APIs.
+3. `OPENAGENTS-SITES-VIBE-003`: Add session event stream and reconnect replay.
+4. `OPENAGENTS-SITES-VIBE-004`: Add generated file snapshot ledger and file APIs.
+5. `OPENAGENTS-SITES-VIBE-005`: Add cost-tiered R2/WFP/Container build and preview
    runner.
-6. `OMEGA-SITES-VIBE-006`: Add phasic generation timeline and phase events.
-7. `OMEGA-SITES-VIBE-007`: Add bounded auto-repair loop from build/runtime
+6. `OPENAGENTS-SITES-VIBE-006`: Add phasic generation timeline and phase events.
+7. `OPENAGENTS-SITES-VIBE-007`: Add bounded auto-repair loop from build/runtime
    errors.
-8. `OMEGA-SITES-VIBE-008`: Save deployable builder output into
+8. `OPENAGENTS-SITES-VIBE-008`: Save deployable builder output into
    `site_versions`.
-9. `OMEGA-SITES-VIBE-009`: Automate WFP upload, binding injection, health
+9. `OPENAGENTS-SITES-VIBE-009`: Automate WFP upload, binding injection, health
    check, and deployment recording.
-10. `OMEGA-SITES-VIBE-010`: Add D1/R2/KV/env/secrets provisioner for generated
+10. `OPENAGENTS-SITES-VIBE-010`: Add D1/R2/KV/env/secrets provisioner for generated
     apps.
-11. `OMEGA-SITES-VIBE-011`: Add self-serve Sites builder UI.
-12. `OMEGA-SITES-VIBE-012`: Publish OpenAgents Sites SDK with build/connect,
+11. `OPENAGENTS-SITES-VIBE-011`: Add self-serve Sites builder UI.
+12. `OPENAGENTS-SITES-VIBE-012`: Publish OpenAgents Sites SDK with build/connect,
     event, wait, file, preview, save, and deploy helpers.
-13. `OMEGA-SITES-VIBE-013`: Add GitHub export and expiring source clone
+13. `OPENAGENTS-SITES-VIBE-013`: Add GitHub export and expiring source clone
     tokens.
-14. `OMEGA-SITES-VIBE-014`: Add app library visibility, archive/delete,
+14. `OPENAGENTS-SITES-VIBE-014`: Add app library visibility, archive/delete,
     public listing, and optional favorite/star features.
 
 ## Parity Definition

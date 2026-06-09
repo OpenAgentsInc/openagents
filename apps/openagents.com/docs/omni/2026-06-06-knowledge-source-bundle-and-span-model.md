@@ -1,6 +1,6 @@
 # Knowledge Source Bundle And Span Model
 
-Status: implemented for issue #369 / `OMEGA-LATE-009`.
+Status: implemented for issue #369 / `OPENAGENTS-LATE-009`.
 
 ## Purpose
 

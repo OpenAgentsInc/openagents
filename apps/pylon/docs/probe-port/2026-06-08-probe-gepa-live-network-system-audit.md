@@ -13,14 +13,14 @@ imports, and Artanis public projection. The system is still early, but it is no
 longer only a paper plan. The current tranche proved the public Benchmark Cloud
 runner shape, ran one real SHC Harbor Terminal-Bench smoke, imported live
 closeout-shaped evidence into Psionic, and connected Probe GEPA route
-scorecards to Coding on Autopilot outcome metrics in Omega.
+scorecards to Coding on Autopilot outcome metrics in OpenAgents product surface.
 
 The strongest current claim is:
 
 ```text
 Probe GEPA has retained and live-smoke evidence plumbing for coding-agent
 benchmark rollouts, including one SHC Harbor Terminal-Bench failure receipt,
-typed closeout bundles, Psionic import receipts, Omega/Pylon assignment
+typed closeout bundles, Psionic import receipts, OpenAgents product surface/Pylon assignment
 contracts, and Artanis/public projection gates.
 ```
 
@@ -31,7 +31,7 @@ Probe beats Terminal-Bench.
 Pylon benchmark work is generally paid or settled.
 GEPA on Pylons is distributed neural-network training.
 Any Probe GEPA candidate is active production runtime.
-Artanis can publish or activate candidates without Omega/operator authority.
+Artanis can publish or activate candidates without OpenAgents product surface/operator authority.
 ```
 
 ## Repos And Authority
@@ -50,10 +50,10 @@ receipt example.
 
 Psionic owns GEPA optimization state. It owns candidate manifests, local
 deterministic Stage 0 rollout coordination, candidate-frontier state,
-reflection/proposal state, and live Omega/Pylon closeout imports. Psionic does
+reflection/proposal state, and live OpenAgents product surface/Pylon closeout imports. Psionic does
 not dispatch Pylons directly and does not promote Probe runtime candidates.
 
-Omega owns Pylon lease lifecycle, release gates, product projection, Artanis
+OpenAgents product surface owns Pylon lease lifecycle, release gates, product projection, Artanis
 public report surfaces, Forum summary generation, and Coding on Autopilot
 accepted-outcome metrics. It decides whether benchmark evidence is only
 benchmark-only, shadow, release-candidate, or active product authority.
@@ -72,7 +72,7 @@ The current intended data flow is:
    failure-family playbooks, and closeout policy.
 2. OpenAgents Benchmark Cloud selects a public-safe Terminal-Bench task ref
    from retained, validation, or holdout splits.
-3. Omega can create a Pylon GEPA metric-call assignment with explicit payment
+3. OpenAgents product surface can create a Pylon GEPA metric-call assignment with explicit payment
    mode and closeout requirements, or OpenAgents can run an SHC/Harbor fallback
    lane.
 4. Probe executes the assignment with selected Blueprint signatures and allowed
@@ -81,9 +81,9 @@ The current intended data flow is:
    route scorecard, and closeout refs.
 6. Psionic imports local or live closeout evidence into the same coordinator
    frontier state.
-7. Omega projects campaign state for Artanis and maps route scorecards into
+7. OpenAgents product surface projects campaign state for Artanis and maps route scorecards into
    Coding on Autopilot accepted-outcome evidence.
-8. Omega/Blueprint gates decide whether a candidate stays benchmark-only,
+8. OpenAgents product surface/Blueprint gates decide whether a candidate stays benchmark-only,
    becomes shadow, becomes a release candidate, or can ever become active.
 
 GEPA distribution means Pylon-distributed rollout optimization. Pylons can run
@@ -141,7 +141,7 @@ Psionic now has:
 - imported rollout states for accepted, rejected, infrastructure failure,
   model/agent failure, timeout, and policy-blocked runs.
 
-Omega now has:
+OpenAgents product surface now has:
 
 - Pylon GEPA metric-call assignment lifecycle;
 - production-equivalent Artanis Probe GEPA/Pylon smoke gates;
@@ -160,9 +160,9 @@ tranche issues closed:
 - OpenAgents `#4563`;
 - OpenAgents `#4564`;
 - Psionic `#1093`;
-- Omega `#511`;
-- Omega `#512`;
-- Omega `#513`;
+- OpenAgents product surface `#511`;
+- OpenAgents product surface `#512`;
+- OpenAgents product surface `#513`;
 - OpenAgents `#4555`.
 
 ## What Was Tested
@@ -190,20 +190,20 @@ with `closeout_state=agent_failure`, `payment_mode=unpaid_smoke`,
 `imported_result_status=agent_failed`, `frontier_candidate_count=1`, and
 `completed_rollout_count=1`.
 
-Omega:
+OpenAgents product surface:
 
 ```sh
 bun run --cwd workers/api test -- probe-gepa-outcome-metrics.test.ts probe-gepa-forum-summary.test.ts artanis-public-report.test.ts coding-autopilot-missions.test.ts
 bun run --cwd workers/api typecheck
 ```
 
-The focused Omega tests passed 4 files and 22 tests. Typecheck passed.
+The focused OpenAgents product surface tests passed 4 files and 22 tests. Typecheck passed.
 
 Probe:
 
 The Probe repo itself was not changed in this tranche until this audit doc.
 Current Probe runtime tests were not rerun for this audit because the latest
-implementation work landed in OpenAgents, Psionic, and Omega.
+implementation work landed in OpenAgents, Psionic, and OpenAgents product surface.
 
 ## What Is Not Done
 
@@ -213,7 +213,7 @@ smoke was a real Harbor Terminal-Bench run, but current Probe does not yet
 expose a full standalone `probe benchmark run` live command that replaces the
 fallback agent path.
 
-Omega still needs to wire unpaid Probe GEPA leases to a real Pylon worker in
+OpenAgents product surface still needs to wire unpaid Probe GEPA leases to a real Pylon worker in
 the current OpenAgents monorepo Pylon path. The existing lease lifecycle is
 typed and tested, but the next proof should show worker accept, progress refs,
 artifact/proof submission, accepted/rejected closeout, and Psionic import from
@@ -225,12 +225,12 @@ receipts, route scorecards, and failure classifications from live SHC or live
 Pylon assignments.
 
 Stage 1 promotion must be shadow-only at first. No candidate should activate
-from retained or validation evidence. Omega and Blueprint gates must decide
+from retained or validation evidence. OpenAgents product surface and Blueprint gates must decide
 shadow status from retained evidence, validation evidence, policy findings,
 and accepted-outcome metrics.
 
 Artanis public summaries should be generated from projection authority and
-posted only through the existing Omega/operator path. Probe may prepare
+posted only through the existing OpenAgents product surface/operator path. Probe may prepare
 public-safe copy, but Probe should not post as Artanis or invoke the Artanis
 bridge.
 
@@ -255,7 +255,7 @@ benchmark task failure
 -> GEPA candidate text mutation
 -> validation and holdout evidence
 -> Coding on Autopilot workroom outcome delta
--> Omega/Blueprint promotion gate
+-> OpenAgents product surface/Blueprint promotion gate
 -> Artanis public-safe status
 ```
 
@@ -268,7 +268,7 @@ and route scorecards.
 Pylons matter because they can turn idle user and operator machines into
 parallel rollout workers. SHC matters because it gives the project a stable
 first live benchmark host. Psionic matters because it keeps optimizer state and
-later model-training state distinct. Omega matters because it prevents the
+later model-training state distinct. OpenAgents product surface matters because it prevents the
 system from turning benchmark evidence into product, payout, or public-claim
 authority too early.
 
@@ -276,22 +276,22 @@ authority too early.
 
 Current follow-on issues created from the recommended network:
 
-- `OpenAgentsInc/autopilot-omega#514`: wire unpaid Probe GEPA leases to a real
+- `OpenAgentsInc/openagents#514`: wire unpaid Probe GEPA leases to a real
   Pylon worker.
 - `OpenAgentsInc/openagents#4565`: add a live Stage 0 Probe GEPA receipt
   bundle.
-- `OpenAgentsInc/autopilot-omega#515`: gate Probe GEPA Stage 1 candidates to
+- `OpenAgentsInc/openagents#515`: gate Probe GEPA Stage 1 candidates to
   shadow-only promotion.
-- `OpenAgentsInc/autopilot-omega#516`: publish Artanis Probe benchmark
+- `OpenAgentsInc/openagents#516`: publish Artanis Probe benchmark
   summaries from projection authority.
-- `OpenAgentsInc/autopilot-omega#517`: add settlement readiness after no-spend
+- `OpenAgentsInc/openagents#517`: add settlement readiness after no-spend
   Probe GEPA batches.
 - `OpenAgentsInc/psionic#1094`: start the Probe LoRA/Qwen/MLX training lane
   from clean GEPA traces.
 
 Recommended execution order:
 
-1. Wire one real unpaid Pylon worker assignment in Omega/OpenAgents.
+1. Wire one real unpaid Pylon worker assignment in OpenAgents product surface/OpenAgents.
 2. Produce a live Stage 0 receipt bundle with actual assignment and closeout
    refs.
 3. Import that bundle into Psionic and verify candidate-frontier state updates.
@@ -310,6 +310,6 @@ owning repo invariant ledger in the same change.
 
 Do not put new implementation into the deprecated old Probe shape. The old
 Probe repo history remains source material for patterns, tests, and failure
-cases only. The new runtime should stay Bun/Effect, Omega-aware,
+cases only. The new runtime should stay Bun/Effect, OpenAgents product surface-aware,
 Blueprint-aware, Pylon/SHC deployable, and product-gated through
 OpenAgents.com.

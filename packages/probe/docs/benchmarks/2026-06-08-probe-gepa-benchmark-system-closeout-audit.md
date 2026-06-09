@@ -12,7 +12,7 @@ coding-agent benchmark work. OpenAgents owns the public `benchmark-cloud`
 contracts, split manifests, Probe runner adapter shape, worker capability
 envelopes, and deterministic Stage 0, Stage 1, and validation campaign
 examples. Psionic owns the GEPA text-bundle candidate manifest and early
-coordinator state. Omega owns the Pylon lease lifecycle for GEPA metric-call
+coordinator state. OpenAgents product surface owns the Pylon lease lifecycle for GEPA metric-call
 assignments, explicit payment modes, Artanis public projection, Forum summary
 generation, and accepted-outcome metric projection.
 
@@ -41,7 +41,7 @@ The tracker is closed. The linked implementation issues are also closed:
 - Probe: `#182`, `#183`, `#184`, `#185`, `#186`
 - OpenAgents: `#4556`, `#4557`, `#4558`, `#4559`, `#4560`, `#4561`, `#4562`
 - Psionic: `#1091`, `#1092`
-- Omega: `#506`, `#507`, `#508`, `#509`, `#510`
+- OpenAgents product surface: `#506`, `#507`, `#508`, `#509`, `#510`
 
 Every issue has a closeout comment. The touched repos were pushed on `main`.
 The only known leftover local state during the closeout audit was an unrelated
@@ -71,7 +71,7 @@ from agent failure, and keep optimizer acceptance distinct from runtime
 promotion. Pylon execution is modeled as a future evaluator backend, not
 claimed as live in Psionic yet.
 
-Omega owns Pylon lease and projection authority. It records GEPA metric-call
+OpenAgents product surface owns Pylon lease and projection authority. It records GEPA metric-call
 assignments, worker acceptance, progress refs, artifact/proof submissions,
 accepted or rejected closeout, explicit payment modes, and coordinator import
 records. It also owns Artanis public campaign projection, public-safe Forum
@@ -79,7 +79,7 @@ summary generation, and Coding on Autopilot accepted-outcome metric projection.
 
 Artanis is not the executor. It becomes the public-safe narrator and overseer
 for campaign summaries from refs. Probe may prepare public-safe copy, but
-posting as Artanis still requires the existing Omega/operator authority path.
+posting as Artanis still requires the existing OpenAgents product surface/operator authority path.
 
 ## End-To-End Data Flow
 
@@ -89,7 +89,7 @@ The intended flow is now explicit:
    `psionic.probe_gepa_candidate_manifest.v1` text-bundle candidate.
 2. OpenAgents `benchmark-cloud` selects retained or validation task refs from a
    stable split manifest.
-3. Omega creates a Pylon GEPA metric-call assignment or OpenAgents runs the
+3. OpenAgents product surface creates a Pylon GEPA metric-call assignment or OpenAgents runs the
    local/SHC fallback lane.
 4. A worker receives a bounded assignment with campaign, split, task, Probe
    commit, candidate hash, backend profile, expected artifacts, verifier refs,
@@ -100,7 +100,7 @@ The intended flow is now explicit:
    artifact, proof, resource, and verifier records.
 7. Psionic imports rollout results, updates candidate frontier state, and
    records reflection/proposal evidence.
-8. Omega projects campaign state for Artanis and for accepted-outcome analysis.
+8. OpenAgents product surface projects campaign state for Artanis and for accepted-outcome analysis.
 9. Release gates decide whether a candidate remains benchmark-only, enters
    shadow, becomes a release candidate, or is active.
 
@@ -233,7 +233,7 @@ It does not yet run live Pylon dispatch.
 
 ## Pylon Assignment And Payment State
 
-Omega now defines the Probe GEPA metric-call assignment lifecycle in
+OpenAgents product surface now defines the Probe GEPA metric-call assignment lifecycle in
 `workers/api/src/pylon-gepa-metric-call-assignments.ts`.
 
 The lifecycle is:
@@ -305,7 +305,7 @@ Validation sweep:
 
 ## Projection And Product Metrics State
 
-Omega now has `omega.probe_gepa_campaign_projection.v1`. It lets Artanis
+OpenAgents product surface now has `openagents.probe_gepa_campaign_projection.v1`. It lets Artanis
 summarize campaign refs, objective refs, stage, claim state, benchmark suite
 refs, split refs, Probe commit refs, baseline and active candidate refs,
 candidate hash refs, Pylon batch refs, metric-call counts, retained,
@@ -318,8 +318,8 @@ provider credentials, account refs, bearer material, wallet material,
 invoices/preimages, private repo paths, local filesystem paths, raw logs, and
 raw timestamps.
 
-Omega also has a Forum summary generator for
-`omega.probe_gepa_forum_summary.v1`. It creates deterministic public-safe
+OpenAgents product surface also has a Forum summary generator for
+`openagents.probe_gepa_forum_summary.v1`. It creates deterministic public-safe
 Forum copy from refs, not raw traces. It uses exact claim language:
 
 - measured retained smoke only;
@@ -368,7 +368,7 @@ Result: `benchmark-cloud` tests passed, and the Stage 0, Stage 1, and
 validation examples emitted the expected summaries. Stage 0 produced 20 metric
 calls, Stage 1 produced 210 metric calls, and validation produced 18 rollouts.
 
-Omega:
+OpenAgents product surface:
 
 ```sh
 bun run --cwd workers/api test -- \
@@ -413,7 +413,7 @@ The completed work is meaningful:
   examples.
 - Psionic has GEPA text-bundle candidate manifests and an early local
   coordinator.
-- Omega has GEPA metric-call assignment lifecycle, explicit payment modes,
+- OpenAgents product surface has GEPA metric-call assignment lifecycle, explicit payment modes,
   public campaign projection, Forum summary generation, and outcome metrics.
 - The public claim boundary is wired into validators and docs.
 - The GEPA lane terminology is now explicit: the accurate label is
@@ -428,7 +428,7 @@ real tasks end to end in the sandbox and returns verifier-backed results from
 the live environment.
 
 There is not yet a live Pylon-distributed GEPA campaign where multiple real
-Pylon workers accept Omega leases, execute independent metric calls, upload
+Pylon workers accept OpenAgents product surface leases, execute independent metric calls, upload
 artifact/proof refs, and return results into Psionic's coordinator.
 
 The Psionic coordinator does not yet perform a full production GEPA
@@ -499,7 +499,7 @@ false sense of live readiness. The next end-to-end step must run real Probe
 tasks through Harbor on SHC and preserve actual verifier artifacts.
 
 The largest product risk is claiming benchmark progress before accepted
-customer outcomes improve. Omega's outcome projection helps, but public copy
+customer outcomes improve. OpenAgents product surface's outcome projection helps, but public copy
 must keep saying benchmark validation only until accepted outcome refs and
 proof refs exist.
 
@@ -524,14 +524,14 @@ authoritative.
    `probe-closeout.json`, verifier refs, artifact manifests, proof bundles,
    resource receipts, route scorecards, and failure classifications.
 
-2. Wire Omega lease assignment to a real Pylon worker.
+2. Wire OpenAgents product surface lease assignment to a real Pylon worker.
    Use `unpaid_smoke` first. Prove worker accept, progress refs,
    artifact/proof submission, accepted/rejected closeout, and Psionic import
    without payout language.
 
 3. Connect Psionic's coordinator to live Pylon imports.
    Keep the local evaluator as a deterministic fallback, but add the live
-   evaluator backend that consumes Omega assignment imports and updates the
+   evaluator backend that consumes OpenAgents product surface assignment imports and updates the
    same candidate frontier state.
 
 4. Make the Probe runner execute real benchmark tasks, not just the typed
@@ -545,7 +545,7 @@ authoritative.
    or live Pylon assignment ids, closeout refs, and verifier artifacts.
 
 6. Promote a Stage 1 candidate only to `shadow`.
-   Do not activate it. Let Omega and Blueprint gates decide shadow status from
+   Do not activate it. Let OpenAgents product surface and Blueprint gates decide shadow status from
    retained plus validation evidence and policy findings.
 
 7. Connect route scorecards to Coding on Autopilot workrooms.
@@ -554,7 +554,7 @@ authoritative.
    artifact completeness, and proof quality.
 
 8. Prepare Artanis public summaries from the projection generator.
-   Publish only through the existing Omega/operator authority path. The summary
+   Publish only through the existing OpenAgents product surface/operator authority path. The summary
    should say retained smoke, retained summary, or validation measured only,
    not public benchmark score.
 

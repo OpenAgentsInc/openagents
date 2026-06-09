@@ -1,6 +1,6 @@
 # Order Triage Operator Runbook
 
-Issue: `OMEGA-P0-001`
+Issue: `OPENAGENTS-P0-001`
 
 The order triage queue gives operators a durable first-batch view before
 overnight Adjutant or Sites runs. It stores internal launch priority separately
@@ -108,7 +108,7 @@ auth grants, secret refs, raw runner payloads, or private triage notes.
 
 ## Reusable Order Fulfillment Prepare
 
-Issue `OMEGA-006` adds the reusable single-order prepare endpoint for orders
+Issue `OPENAGENTS-006` adds the reusable single-order prepare endpoint for orders
 outside the first-batch-only flow:
 
 ```text
@@ -182,7 +182,7 @@ until the order-specific PR executor consumes authority receipts directly.
 ### Public Repository Fork PR Receipts
 
 For public repositories, a runner or operator-side GitHub workflow can create a
-pull request from an OpenAgents-controlled fork and then hand Omega a PR
+pull request from an OpenAgents-controlled fork and then hand OpenAgents product surface a PR
 receipt. Record it through the public-fork fulfillment path in
 `workers/api/src/github-pr-fulfillment.ts`.
 
@@ -207,7 +207,7 @@ For private repositories, use the customer-grant fulfillment path in
 `workers/api/src/github-pr-fulfillment.ts`. This path is for a runner or
 operator-side GitHub workflow that has already created a PR using a
 customer-approved write grant and needs to record the review-ready artifact in
-Omega.
+OpenAgents product surface.
 
 That path:
 
@@ -325,7 +325,7 @@ The migration seeds triage records for the seven known submitted orders:
 - Ben OTEC site: `runnable_site`, first-batch eligible.
 - OpenAgents marketing: priority, but `needs_clarification` until the first
   slice is scoped.
-- Uplink MVP, AIBTC, and Omega smoke orders: `smoke_or_test`, not launchable.
+- Uplink MVP, AIBTC, and OpenAgents product surface smoke orders: `smoke_or_test`, not launchable.
 - Minnesota legal/lawsuit request: `legal_sensitive_policy_review`, not
   launchable.
 

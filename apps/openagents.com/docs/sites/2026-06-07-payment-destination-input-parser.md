@@ -1,11 +1,11 @@
 # Payment Destination Input Parser
 
 Date: 2026-06-07
-Issue: #451 / OMEGA-H-014
+Issue: #451 / OPENAGENTS-H-014
 
 ## Summary
 
-Omega now has a typed payment destination input classifier for Sites, Forum,
+OpenAgents product surface now has a typed payment destination input classifier for Sites, Forum,
 Pylon, Nexus, and future agent-wallet flows.
 
 Implementation:
@@ -45,9 +45,9 @@ MoneyDevKit's local `bitcoin-payment-instructions` crate is the conformance
 source. It supports more complete Rust parsing and resolver behavior, but its
 network resolver paths are not a direct Cloudflare Worker import.
 
-Omega should either compile a future small WASM parser adapter or delegate
+OpenAgents product surface should either compile a future small WASM parser adapter or delegate
 resolution to an explicit sidecar/CLI boundary. Until that exists, generated
-Sites should call the Omega classifier only for typed validation and safe
+Sites should call the OpenAgents product surface classifier only for typed validation and safe
 projection.
 
 ## Site Builder Rule

@@ -1,6 +1,6 @@
 # Public Launch Copy Gate
 
-Issue: [#569](https://github.com/OpenAgentsInc/autopilot-omega/issues/569)
+Issue: [#569](https://github.com/OpenAgentsInc/openagents/issues/569)
 
 Public launch copy is now machine-checkable before it can claim tomorrow-launch
 promises as live.

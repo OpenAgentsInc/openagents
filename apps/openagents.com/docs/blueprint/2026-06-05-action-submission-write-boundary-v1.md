@@ -1,6 +1,6 @@
 # Blueprint Action Submission Write Boundary v1
 
-Issue: OMEGA-BP-008 / #228
+Issue: OPENAGENTS-BP-008 / #228
 
 This note records the typed Action Submission model. The source of truth is
 `workers/api/src/blueprint/schemas/action-submission.ts`.

@@ -1,8 +1,8 @@
-# Omega Effect Dependency Upgrade Tracker
+# OpenAgents product surface Effect Dependency Upgrade Tracker
 
 Issue: GitHub #43
 
-This tracker records the dependency topology that must change before Omega can
+This tracker records the dependency topology that must change before OpenAgents product surface can
 delete the temporary Foldkit Effect beta 66 exception or move service tests from
 plain Vitest to `@effect/vitest`.
 
@@ -28,7 +28,7 @@ bun run check:effect-topology
 
 That check allows exactly two Effect runtime lines:
 
-- Omega/effect-cf line: `effect@4.0.0-beta.70`
+- OpenAgents product surface/effect-cf line: `effect@4.0.0-beta.70`
 - Temporary Foldkit exception: `effect@4.0.0-beta.66`
 
 Any third Effect runtime line must fail the topology check.
@@ -55,8 +55,8 @@ Metadata checked on 2026-06-04:
 
 | Package                    | Published version checked             | Relevant peer state                                             | Decision                                      |
 | -------------------------- | ------------------------------------- | --------------------------------------------------------------- | --------------------------------------------- |
-| `effect`                   | `latest=3.21.2`, `beta=4.0.0-beta.78` | Omega remains on `4.0.0-beta.70` for current `effect-cf` slice  | do not bump alone                             |
-| `effect-cf`                | `0.13.1`                              | peers on `effect ^4.0.0-beta.70` and SQL beta 70 packages       | still compatible with Omega beta 70           |
+| `effect`                   | `latest=3.21.2`, `beta=4.0.0-beta.78` | OpenAgents product surface remains on `4.0.0-beta.70` for current `effect-cf` slice  | do not bump alone                             |
+| `effect-cf`                | `0.13.1`                              | peers on `effect ^4.0.0-beta.70` and SQL beta 70 packages       | still compatible with OpenAgents product surface beta 70           |
 | `foldkit`                  | `0.104.0`                             | peers exactly on `effect 4.0.0-beta.66` and platform beta 66    | blocked                                       |
 | `@foldkit/devtools-mcp`    | `0.9.0`                               | peers exactly on `effect 4.0.0-beta.66`                         | blocked                                       |
 | `@foldkit/vite-plugin`     | `0.7.0`                               | peers exactly on `effect 4.0.0-beta.66`                         | blocked                                       |
@@ -65,14 +65,14 @@ Metadata checked on 2026-06-04:
 
 Current result: do not upgrade Foldkit, Foldkit devtools, Foldkit Vite plugin,
 `@effect/platform-browser`, or `@effect/vitest` in this issue. The latest
-published peer metadata still cannot produce one clean Effect line for Omega.
+published peer metadata still cannot produce one clean Effect line for OpenAgents product surface.
 
 ## Upgrade Gate
 
 Only attempt the dependency alignment when all of these are true in a fresh
 metadata check:
 
-1. `foldkit@latest` peers on the same Effect beta line used by Omega.
+1. `foldkit@latest` peers on the same Effect beta line used by OpenAgents product surface.
 2. `foldkit@latest` peers on the matching `@effect/platform-browser` beta line.
 3. `@foldkit/devtools-mcp@latest` peers on that same Effect beta line.
 4. `@foldkit/vite-plugin@latest` peers on that same Effect beta line.

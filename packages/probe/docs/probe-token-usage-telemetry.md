@@ -1,6 +1,6 @@
 # Probe Token Usage Telemetry
 
-Probe emits redacted token-usage events to Omega so the Omega Stats dashboard can include Probe local, direct-provider, and managed-assignment inference in global token totals and opt-out-aware leaderboards.
+Probe emits redacted token-usage events to OpenAgents product surface so the OpenAgents product surface Stats dashboard can include Probe local, direct-provider, and managed-assignment inference in global token totals and opt-out-aware leaderboards.
 
 ## Event Contract
 
@@ -8,10 +8,10 @@ Probe sends `openagents.token_usage_event.v1` JSON to:
 
 `POST /api/stats/token-usage/events`
 
-The event matches Omega's canonical token ledger contract:
+The event matches OpenAgents product surface's canonical token ledger contract:
 
 - `producerSystem`: always `probe`.
-- `sourceRoute`: `probe_direct_provider`, `probe_local_model`, or `omega_hosted_gemini`.
+- `sourceRoute`: `probe_direct_provider`, `probe_local_model`, or `openagents_hosted_gemini`.
 - `provider` / `model` / `backendProfile`: safe provider and backend identifiers.
 - `tokenCounts`: normalized input, output, reasoning, cache read, cache write, and total counts.
 - `usageTruth`: `exact`, `estimated`, or `unknown`.
@@ -43,12 +43,12 @@ Apple FM usage preserves the bridge-reported truth:
 
 Local Probe is offline by default. Telemetry sends when either of these is set:
 
-- `PROBE_TOKEN_USAGE_OMEGA_BASE_URL`
-- `PROBE_OMEGA_BASE_URL`
+- `PROBE_TOKEN_USAGE_OPENAGENTS_BASE_URL`
+- `PROBE_OPENAGENTS_BASE_URL`
 
 Managed backend assignments default to `https://openagents.com` when no base URL is configured. Send failures are best-effort and do not fail the inference.
 
-Auth uses `PROBE_TOKEN_USAGE_BEARER_TOKEN` first, then `PROBE_OMEGA_BEARER_TOKEN`.
+Auth uses `PROBE_TOKEN_USAGE_BEARER_TOKEN` first, then `PROBE_OPENAGENTS_BEARER_TOKEN`.
 
 Disable sending entirely with either:
 
@@ -78,7 +78,7 @@ Managed assignments include:
 
 Repository URLs, local paths, and branch names are never sent raw. They are hashed into the repository ref when a commit is unavailable.
 
-## Testing With A Fake Omega Endpoint
+## Testing With A Fake OpenAgents product surface Endpoint
 
 Use a local server or test fetch that accepts:
 
@@ -87,7 +87,7 @@ Use a local server or test fetch that accepts:
 Then run:
 
 ```sh
-PROBE_TOKEN_USAGE_OMEGA_BASE_URL=http://127.0.0.1:8787 \
+PROBE_TOKEN_USAGE_OPENAGENTS_BASE_URL=http://127.0.0.1:8787 \
 GOOGLE_GENERATIVE_AI_API_KEY=... \
 bun run --cwd packages/runtime probe -- backend gemini smoke
 ```
@@ -103,5 +103,5 @@ Relevant tests:
 ```sh
 bun test packages/runtime/tests/token-usage-telemetry.test.ts
 bun test packages/runtime/tests/backend-assignment.test.ts -t "runs an Apple FM assignment"
-bun test packages/runtime/tests/gemini-cli.test.ts -t "falls back to an authenticated Omega Gemini broker"
+bun test packages/runtime/tests/gemini-cli.test.ts -t "falls back to an authenticated OpenAgents product surface Gemini broker"
 ```

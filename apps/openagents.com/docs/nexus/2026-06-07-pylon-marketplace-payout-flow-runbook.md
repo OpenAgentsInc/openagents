@@ -4,7 +4,7 @@ Date: 2026-06-07
 
 ## Status
 
-Issue #427 adds the first Omega-owned bridge from Pylon marketplace accepted
+Issue #427 adds the first OpenAgents product surface-owned bridge from Pylon marketplace accepted
 work to Nexus/Treasury payout intent and settlement receipts.
 
 The implementation is in:
@@ -66,7 +66,7 @@ The accepted-work payout row remains read-only:
 - no settlement mutation;
 - no live wallet spend.
 
-Live bitcoin movement remains blocked until later Omega/Nexus gates prove
+Live bitcoin movement remains blocked until later OpenAgents product surface/Nexus gates prove
 approved payout targets, spend caps, fresh wallet readiness, MDK adapter
 dispatch, reconciliation, and public-safe receipt pages.
 
@@ -106,7 +106,7 @@ The focused payout-flow test checks:
 - #428 must connect Artanis/Nexus/Pylon adapters to this payment-backed gate.
 - #429 must add public-safe Nexus/Pylon receipt pages and operator dashboard
   visibility.
-- #431 must prove a real two-wallet MDK bitcoin movement through the Omega
+- #431 must prove a real two-wallet MDK bitcoin movement through the OpenAgents product surface
   authority path.
 - Marketplace finalization and payout execution are not yet exposed as a
   browser dashboard flow.

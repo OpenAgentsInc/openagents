@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #345 / `OMEGA-DEV-001`.
+Status: implemented contract note for issue #345 / `OPENAGENTS-DEV-001`.
 
 ## Purpose
 
-Omega now has a read-only developer API for validating submitted signature
+OpenAgents product surface now has a read-only developer API for validating submitted signature
 package manifests before review.
 
 The implementation lives in:

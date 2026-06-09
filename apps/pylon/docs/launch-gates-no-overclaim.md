@@ -41,7 +41,7 @@ Blocked copy until separate evidence rows exist:
 - live marketplace, referral payout, or data revenue claims.
 
 `src/launch-gates.ts` exposes `projectLaunchGateMatrix()` for evidence refs and
-`assertLaunchCopyAllowed()` for copy checks. Omega/public launch copy should
+`assertLaunchCopyAllowed()` for copy checks. OpenAgents product surface/public launch copy should
 consume the same states: allowed, blocked, or planned. Blocked claims require
 the named evidence refs before copy can change.
 

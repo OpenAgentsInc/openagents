@@ -1,6 +1,6 @@
 # L402 Response And Error Contract
 
-Issue: #293 / OMEGA-H-005
+Issue: #293 / OPENAGENTS-H-005
 
 Date: 2026-06-06
 

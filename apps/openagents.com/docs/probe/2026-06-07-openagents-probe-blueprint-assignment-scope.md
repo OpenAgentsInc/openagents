@@ -1,6 +1,6 @@
-# Omega Probe Blueprint Assignment Scope
+# OpenAgents product surface Probe Blueprint Assignment Scope
 
-Issue #495 adds the Omega-side assignment surface for Blueprint-scoped Probe
+Issue #495 adds the OpenAgents product surface-side assignment surface for Blueprint-scoped Probe
 runs. The shared `AgentRunAssignment` schema can now carry an optional
 `blueprint` section using the same field names Probe accepts:
 
@@ -21,7 +21,7 @@ runs. The shared `AgentRunAssignment` schema can now carry an optional
 The scope is produced through
 `workers/api/src/probe-blueprint-assignment-scope.ts`, not by hand at each
 dispatch call. That helper derives Program Type, Signature, Module Version,
-Release Gate, purpose, tool, and action-submission policy refs from the Omega
+Release Gate, purpose, tool, and action-submission policy refs from the OpenAgents product surface
 Blueprint registry. It rejects raw prompts, callback URLs or tokens, provider
 payloads, source archives, private repo material, wallet or payment material,
 customer-private data, and unsafe inline registry or contract export slices.

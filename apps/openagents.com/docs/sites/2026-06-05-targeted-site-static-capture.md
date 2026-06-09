@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #184 / OMEGA-SITES-OUTREACH-004
+Issue: #184 / OPENAGENTS-SITES-OUTREACH-004
 
 ## Summary
 
-Omega now has the first static capture service contract for targeted Site
+OpenAgents product surface now has the first static capture service contract for targeted Site
 remake and outreach campaigns.
 
 The service does not perform network fetches yet. It records and projects the

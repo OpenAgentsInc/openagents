@@ -12,11 +12,11 @@ is the first live benchmark lane, but the apparatus should be general enough for
 legal, SWE, Probe retained fixtures, and future OpenAgents benchmark suites.
 
 This is not a benchmark leaderboard script. It is a closed learning loop across
-Probe, public benchmark-cloud, Psionic, Pylon, and Omega: Probe
+Probe, public benchmark-cloud, Psionic, Pylon, and OpenAgents product surface: Probe
 executes and records the agent runtime truth, benchmark-cloud runs
 normalized benchmark jobs, Psionic optimizes prompts, Blueprint usage, and
 later LoRA adapters, Pylon supplies distributed devices for GEPA rollouts first
-and training work later, and Omega publishes the operator-facing evidence and
+and training work later, and OpenAgents product surface publishes the operator-facing evidence and
 release gates.
 
 The existing private `cloud` repo is source material, not the desired long-term
@@ -42,9 +42,9 @@ audited, extended, and run by the wider OpenAgents ecosystem.
 - `psionic/docs/QWEN_LEGAL_FINETUNE_LANE.md`
 - `psionic/reports/qwen36-27b-real-pylon-rehearsal-001.md`
 - `psionic/reports/qwen36-27b-real-lora-sft-actual-20260522T043404Z/README.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-network-readiness-release-freeze.md`
-- `autopilot-omega/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
+- `openagents/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
+- `openagents/docs/nexus/2026-06-07-pylon-network-readiness-release-freeze.md`
+- `openagents/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
 
 ## Current Assets We Can Build On
 
@@ -61,7 +61,7 @@ and closeout evidence as first-class runtime data.
 The current Blueprint-related docs already define the direction:
 
 - no Probe-only signature registry;
-- lookup against Omega/OpenAgents Blueprint authority;
+- lookup against OpenAgents product surface/OpenAgents Blueprint authority;
 - backends get projected tool menus from the same signature lookup path;
 - Apple FM, Codex-style remote models, local Qwen, swarm inference, and Pylon
   workers should all consume the same signature registry concepts;
@@ -253,7 +253,7 @@ Pylon should own:
 - local/swarm compute availability;
 - payment and settlement evidence when jobs are compensated.
 
-Omega should own:
+OpenAgents product surface should own:
 
 - Blueprint authority and release gates;
 - operator-facing benchmark evidence;
@@ -273,7 +273,7 @@ The continual learning loop should run as:
    public benchmark-cloud emits benchmark assignments with task
    metadata, budget, backend constraints, required artifact names, and
    evaluation policy. When a task is routed through Pylon, that assignment
-   should map to the Omega Pylon assignment lease lifecycle rather than a
+   should map to the OpenAgents product surface Pylon assignment lease lifecycle rather than a
    separate benchmark-only state machine.
 
 3. Run Probe variants.
@@ -300,7 +300,7 @@ The continual learning loop should run as:
    sweeps, broader benchmark sweeps, and cross-suite regression checks.
 
 8. Promote or reject.
-   Omega approves promotion. Probe can shadow a candidate before it becomes
+   OpenAgents product surface approves promotion. Probe can shadow a candidate before it becomes
    the default runtime behavior.
 
 9. Preserve lineage.
@@ -380,7 +380,7 @@ Each prompt candidate should be a manifest, not loose text:
 ### Blueprint Candidates
 
 Blueprint candidates should not rewrite the registry from Probe. They should
-propose new or revised Blueprint module versions through Omega's Blueprint
+propose new or revised Blueprint module versions through OpenAgents product surface's Blueprint
 authority. The candidate should say:
 
 - which Program Signature family it targets;
@@ -390,7 +390,7 @@ authority. The candidate should say:
 - what safety/risk constraints apply;
 - which retained and live benchmark gates it passed.
 
-The optimizer may suggest a new module version, but only Omega can accept it as
+The optimizer may suggest a new module version, but only OpenAgents product surface can accept it as
 Blueprint authority.
 
 Candidate examples:
@@ -482,7 +482,7 @@ benchmark and training work around the clock. The device pool should include
 SHC boxes, Apple Silicon Macs, local developer machines, and eventually other
 admitted worker classes.
 
-Omega's #502 live assignment closeout smoke is now the concrete lifecycle to
+OpenAgents product surface's #502 live assignment closeout smoke is now the concrete lifecycle to
 reuse for Probe benchmark batches. The proved flow is:
 
 ```text
@@ -517,7 +517,7 @@ A Pylon worker should advertise capabilities, not vague availability:
 Psionic should dispatch training and evaluation shards through Pylon, collect
 signed receipts, merge adapters, and submit promotion candidates. Probe should
 not trust a remote candidate merely because a worker ran it. It should trust
-the candidate only after replayable artifacts, benchmark results, and Omega
+the candidate only after replayable artifacts, benchmark results, and OpenAgents product surface
 promotion gates agree.
 
 ## Data Model
@@ -605,8 +605,8 @@ A candidate should move through these gates:
    Probe can run the candidate in shadow mode and collect evidence without
    making it default.
 
-8. Omega promotion.
-   Omega records operator approval, release gate status, claim text, and public
+8. OpenAgents product surface promotion.
+   OpenAgents product surface records operator approval, release gate status, claim text, and public
    or private projection.
 
 GEPA acceptance is not runtime promotion. LoRA eval improvement is not runtime
@@ -658,7 +658,7 @@ The current priority unlocks are:
 
 Do not open every issue in Probe. Follow the ownership model in `plan.md`:
 Probe owns runtime and closeout work, OpenAgents owns public Benchmark Cloud,
-Psionic owns GEPA frontier/coordinator work, Omega owns projection/release
+Psionic owns GEPA frontier/coordinator work, OpenAgents product surface owns projection/release
 gates, and Pylon/OpenAgents own worker envelopes and benchmark work slices.
 
 ## Immediate Milestone
@@ -720,7 +720,7 @@ measured improvement engine. Terminal-Bench failures become typed training and
 prompt-improvement examples. Blueprint usage improves through evidence rather
 than intuition. Qwen adapters improve on clean traces and are gated before
 runtime use. Pylons supply around-the-clock compute. SHC provides the first
-serious live benchmark environment. Omega keeps claims honest and promotion
+serious live benchmark environment. OpenAgents product surface keeps claims honest and promotion
 operator-controlled.
 
 The product result should be simple for users: they ask Probe to solve coding

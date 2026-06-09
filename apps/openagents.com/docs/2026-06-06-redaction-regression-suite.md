@@ -2,12 +2,12 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #332 / `OMEGA-085`, extended on
-2026-06-07 for issue #453 / `OMEGA-H-016`.
+Status: implemented contract note for issue #332 / `OPENAGENTS-085`, extended on
+2026-06-07 for issue #453 / `OPENAGENTS-H-016`.
 
 ## Purpose
 
-Omega now has shared unsafe redaction fixtures that public, customer, and
+OpenAgents product surface now has shared unsafe redaction fixtures that public, customer, and
 agent-facing projection tests can reuse.
 
 The implementation lives in:
@@ -54,7 +54,7 @@ The payment fixture catalog now separately covers:
 
 The regression test exercises:
 
-- Omega data policy projections;
+- OpenAgents product surface data policy projections;
 - provider placement projections;
 - policy exception receipt projections;
 - marketplace margin memory projections;

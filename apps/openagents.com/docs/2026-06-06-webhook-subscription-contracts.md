@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #327 / `OMEGA-080`.
+Status: implemented contract note for issue #327 / `OPENAGENTS-080`.
 
 ## Purpose
 
-Omega needs durable webhook contracts before it can let external systems
+OpenAgents product surface needs durable webhook contracts before it can let external systems
 subscribe to workroom, Site, Program Run, claim, receipt, Forum/payment, and
 package-review lifecycle events.
 

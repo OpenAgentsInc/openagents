@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #346 / `OMEGA-DEV-002`.
+Status: implemented contract note for issue #346 / `OPENAGENTS-DEV-002`.
 
 ## Purpose
 
-Omega now has a schema-first model for reviewed and versioned workroom
+OpenAgents product surface now has a schema-first model for reviewed and versioned workroom
 template packages.
 
 The implementation lives in

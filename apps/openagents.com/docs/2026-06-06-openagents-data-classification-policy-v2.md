@@ -1,12 +1,12 @@
-# Omega Data Classification Policy v2
+# OpenAgents product surface Data Classification Policy v2
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #329 / `OMEGA-082`.
+Status: implemented contract note for issue #329 / `OPENAGENTS-082`.
 
 ## Purpose
 
-Omega now has a reusable data-classification policy envelope for orders,
+OpenAgents product surface now has a reusable data-classification policy envelope for orders,
 Sites, revisions, workrooms, artifacts, evidence bundles, task packets, agent
 API payloads, Forum records, receipt records, payment refs, provider-account
 refs, and customer assets.

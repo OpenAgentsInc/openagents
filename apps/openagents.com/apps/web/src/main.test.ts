@@ -304,6 +304,8 @@ describe('authenticated startup routing', () => {
     })
     expect(commands.map(command => command.name)).toEqual([
       'LoadPublicPylonStats',
+      'LoadPublicForumLaunchStatus',
+      'LoadPublicForumTipLeaderboards',
     ])
   })
 
@@ -319,6 +321,8 @@ describe('authenticated startup routing', () => {
     })
     expect(commands.map(command => command.name)).toEqual([
       'LoadPublicPylonStats',
+      'LoadPublicForumLaunchStatus',
+      'LoadPublicForumTipLeaderboards',
       'RedirectToHome',
     ])
   })

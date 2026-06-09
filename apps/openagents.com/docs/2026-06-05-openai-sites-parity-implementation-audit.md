@@ -8,7 +8,7 @@ the internal Adjutant supervisor, or alter customer/order visibility by itself.
 
 ## Executive Summary
 
-Omega now has a serious Autopilot Sites foundation. It is no longer only a
+OpenAgents product surface now has a serious Autopilot Sites foundation. It is no longer only a
 plan. The repo contains:
 
 - D1 tables for `site_projects`, `site_versions`, `site_deployments`,
@@ -28,10 +28,10 @@ plan. The repo contains:
   Site URLs, public Autopilot milestones, and usage receipts without raw runner
   internals.
 
-Compared to OpenAI Sites, Omega is strongest on the control-plane ledger:
+Compared to OpenAI Sites, OpenAgents product surface is strongest on the control-plane ledger:
 projects, versions, deployments, public launch checklist, events, R2 artifact
 storage, rollback/disable, and customer order integration are concrete and
-test-covered. Omega is weakest on the self-serve product loop: there is no
+test-covered. OpenAgents product surface is weakest on the self-serve product loop: there is no
 customer-visible Sites plugin, no `@Sites`-style invocation, no hosted Sites
 sidebar, no automatic source compatibility/build pipeline, no `.openagents`
 metadata file writer, no per-Site Cloudflare resource provisioner, no protected
@@ -51,7 +51,7 @@ The dishonest launch statement would be:
 Autopilot Sites has 100 percent OpenAI Sites feature parity today.
 ```
 
-Omega has enough for Ben's OTEC public Site if the operator path is followed:
+OpenAgents product surface has enough for Ben's OTEC public Site if the operator path is followed:
 create/confirm the Site, assign Autopilot through the internal Adjutant
 supervisor workflow, run enrichment/review, launch a Site-generation run, save
 the produced artifact receipt as a version, review it, deploy it, and verify
@@ -75,7 +75,7 @@ OpenAI feature source:
 - User-provided Sites text in the current thread. The fetched official page
   matched the provided feature set.
 
-Omega evidence reviewed:
+OpenAgents product surface evidence reviewed:
 
 - `docs/sites-plan.md`
 - `docs/sites.md`
@@ -136,7 +136,7 @@ OpenAI Sites, as documented, includes these product capabilities:
     database migrations, build success, selected version, intended audience,
     runtime secrets, deployment status, and production URL.
 
-## Omega Implementation Map
+## OpenAgents product surface Implementation Map
 
 ### Project Model
 
@@ -156,9 +156,9 @@ Evidence:
 
 Comparison to OpenAI:
 
-- Omega has a stronger order-linked project authority than OpenAI's public docs
+- OpenAgents product surface has a stronger order-linked project authority than OpenAI's public docs
   describe.
-- Omega now has a typed `.openagents/site.json` metadata contract helper. The
+- OpenAgents product surface now has a typed `.openagents/site.json` metadata contract helper. The
   runtime can parse, validate, serialize, and derive linkage metadata from Site
   project/version/deployment records. The remaining parity gap is writing that
   file into customer source trees during provision/save/deploy workflows.
@@ -192,14 +192,14 @@ Evidence:
 Comparison to OpenAI:
 
 - OpenAI lets a user start a Sites task in a Codex thread with `@Sites`.
-- Omega requires a submitted order or operator-created Site plus an operator
+- OpenAgents product surface requires a submitted order or operator-created Site plus an operator
   generation request.
-- Omega has the packet shape, but not a customer-facing plugin, composer
+- OpenAgents product surface has the packet shape, but not a customer-facing plugin, composer
   affordance, or direct prompt-to-hosted-project workflow.
 
 Required for parity:
 
-- Add an explicit `@Sites` or "Create Site" action in Omega's product surface.
+- Add an explicit `@Sites` or "Create Site" action in OpenAgents product surface's product surface.
 - Route it through a typed semantic/product selector, not keyword matching.
 - Bind it to Site project creation, Autopilot assignment, preflight, and
   generation request.
@@ -231,7 +231,7 @@ Comparison to OpenAI:
 
 - OpenAI lets Codex inspect an existing compatible project, make required
   changes, and publish it.
-- Omega can now record compatibility status for a source snapshot, but it does
+- OpenAgents product surface can now record compatibility status for a source snapshot, but it does
   not currently clone, build, adapt, or import an existing project into the
   Sites lifecycle.
 
@@ -276,7 +276,7 @@ Evidence:
 Comparison to OpenAI:
 
 - OpenAI's flow has Codex validate a build before saving or deploying.
-- Omega validates the persisted version state but does not itself run a build
+- OpenAgents product surface validates the persisted version state but does not itself run a build
   inside `AutopilotSitesService`.
 - Build authority is delegated to Autopilot-runner receipts.
 
@@ -309,8 +309,8 @@ Evidence:
 
 Comparison to OpenAI:
 
-- Omega matches the save-before-deploy concept.
-- Omega does not strictly require the source Git commit for every saved
+- OpenAgents product surface matches the save-before-deploy concept.
+- OpenAgents product surface does not strictly require the source Git commit for every saved
   version. `sourceCommitSha` is optional, while OpenAI says saved versions are
   associated with the source Git commit used for the build.
 
@@ -348,12 +348,12 @@ Evidence:
 
 Comparison to OpenAI:
 
-- Omega matches the save/deploy split and production URL semantics for public
+- OpenAgents product surface matches the save/deploy split and production URL semantics for public
   static deployments.
-- Omega does not yet provision or upload a Workers for Platforms user Worker.
+- OpenAgents product surface does not yet provision or upload a Workers for Platforms user Worker.
   It can dispatch a deployment only when runtime script and namespace metadata
   already exist.
-- Omega does not yet expose a customer/operator deployment status page
+- OpenAgents product surface does not yet expose a customer/operator deployment status page
   equivalent to an app sidebar project view.
 
 Required for parity:
@@ -381,7 +381,7 @@ Comparison to OpenAI:
 
 - OpenAI exposes a Sites app/sidebar where users can return to projects,
   inspect saved versions, check deployment status, and change access.
-- Omega exposes operator APIs and partial admin/customer projections, but no
+- OpenAgents product surface exposes operator APIs and partial admin/customer projections, but no
   first-class Sites project browser for customers or operators.
 
 Required for parity:
@@ -400,7 +400,7 @@ partially represented.
 
 Evidence:
 
-- Runtime kinds are `omega_static_r2` and `workers_for_platforms`.
+- Runtime kinds are `openagents_static_r2` and `workers_for_platforms`.
 - Static assets manifest maps asset paths to R2 keys and optional HTTP
   metadata.
 - Worker deployments require `workerModuleR2Key`, `runtimeScriptName`, and
@@ -410,13 +410,13 @@ Comparison to OpenAI:
 
 - OpenAI requires Cloudflare Worker-compatible ES module output for hosted
   projects.
-- Omega can model and dispatch Worker-compatible runtime metadata, but does
+- OpenAgents product surface can model and dispatch Worker-compatible runtime metadata, but does
   not yet build, upload, or bind generated ES modules.
-- Omega has no recommended starter equivalent.
+- OpenAgents product surface has no recommended starter equivalent.
 
 Required for parity:
 
-- Define the Omega Sites starter and its build output contract.
+- Define the OpenAgents product surface Sites starter and its build output contract.
 - Add a compatibility checker for generated and existing projects.
 - Add a WFP upload/provision path.
 - Add tests proving a generated ES module can be deployed through
@@ -436,7 +436,7 @@ Evidence:
 Comparison to OpenAI:
 
 - OpenAI Sites can provide D1 as relational storage for durable app data.
-- Omega records that a version needs a D1 binding, but it does not provision a
+- OpenAgents product surface records that a version needs a D1 binding, but it does not provision a
   per-Site D1 database, create per-Site app tables, inject a D1 binding into a
   runtime Worker, or expose a D1 migration review loop for generated apps.
 
@@ -464,7 +464,7 @@ Evidence:
 Comparison to OpenAI:
 
 - OpenAI Sites uses R2 for files and uploads.
-- Omega uses R2 for platform artifacts and static hosting, but generated Sites
+- OpenAgents product surface uses R2 for platform artifacts and static hosting, but generated Sites
   do not have an upload API, object metadata model, or per-Site R2 prefix
   capability exposed to runtime code.
 
@@ -492,7 +492,7 @@ Comparison to OpenAI:
 
 - OpenAI Sites supports workspace-authenticated user identity for internal
   Sites.
-- Omega records internal access intent but does not serve protected Sites
+- OpenAgents product surface records internal access intent but does not serve protected Sites
   through authenticated runtime routes.
 
 Required for parity:
@@ -510,7 +510,7 @@ Current state: not implemented.
 
 Evidence:
 
-- Omega uses OpenAuth/GitHub for the main app and customer sessions.
+- OpenAgents product surface uses OpenAuth/GitHub for the main app and customer sessions.
 - Sites schema has access grants but no site-owned auth provider config.
 - Runtime has no public visitor sign-in flow for generated Sites.
 
@@ -518,7 +518,7 @@ Comparison to OpenAI:
 
 - OpenAI documents public sign-in or external identity provider support for
   authentication-enabled Sites projects.
-- Omega does not yet support this for generated Sites.
+- OpenAgents product surface does not yet support this for generated Sites.
 
 Required for parity:
 
@@ -534,7 +534,7 @@ Current state: broader internal enum, incomplete runtime enforcement.
 
 Evidence:
 
-- Omega access modes: `owner_admins`, `openagents_core`, `customer_owner`,
+- OpenAgents product surface access modes: `owner_admins`, `openagents_core`, `customer_owner`,
   `custom_users`, `public`.
 - Operator route can update access.
 - Public access changes require the launch checklist.
@@ -543,11 +543,11 @@ Evidence:
 Comparison to OpenAI:
 
 - OpenAI modes are `admins_only`, `workspace_all`, and `custom`.
-- Omega can represent `admins_only` as `owner_admins`.
-- Omega can represent `custom` as `custom_users` plus grants.
-- Omega does not have a direct `workspace_all` mode. The nearest internal mode
+- OpenAgents product surface can represent `admins_only` as `owner_admins`.
+- OpenAgents product surface can represent `custom` as `custom_users` plus grants.
+- OpenAgents product surface does not have a direct `workspace_all` mode. The nearest internal mode
   is `openagents_core`, which is narrower than all workspace users.
-- Omega adds `customer_owner` and `public`, which are useful for OpenAgents'
+- OpenAgents product surface adds `customer_owner` and `public`, which are useful for OpenAgents'
   customer Sites lane but not equivalent to OpenAI's workspace model.
 
 Required for parity:
@@ -575,7 +575,7 @@ Comparison to OpenAI:
 
 - OpenAI Sites manages hosted env vars/secrets in the Sites panel, keeps them
   out of `.openai/hosting.json`, and requires redeploy after changes.
-- Omega records env metadata and flags redeploy review, but there is no Sites
+- OpenAgents product surface records env metadata and flags redeploy review, but there is no Sites
   panel, no delete route, no Cloudflare secret write, no runtime binding
   injection, and no redeploy automation.
 
@@ -606,10 +606,10 @@ Evidence:
 
 Comparison to OpenAI:
 
-- Omega's checklist directly covers most OpenAI review-before-share items.
-- Omega lacks explicit database migration review for generated Site app data.
-- Omega lacks a Codex-style review pane for source changes and diffs.
-- Omega lacks a full selected-version review UI.
+- OpenAgents product surface's checklist directly covers most OpenAI review-before-share items.
+- OpenAgents product surface lacks explicit database migration review for generated Site app data.
+- OpenAgents product surface lacks a Codex-style review pane for source changes and diffs.
+- OpenAgents product surface lacks a full selected-version review UI.
 
 Required for parity:
 
@@ -633,8 +633,8 @@ Evidence:
 Comparison to OpenAI:
 
 - OpenAI says every Sites deployment URL is production.
-- Omega treats active deployments as production under `sites.openagents.com`.
-- Omega's clean URL redirect aligns with repo invariants.
+- OpenAgents product surface treats active deployments as production under `sites.openagents.com`.
+- OpenAgents product surface's clean URL redirect aligns with repo invariants.
 
 Required for parity:
 
@@ -645,7 +645,7 @@ Required for parity:
 
 ## Feature Parity Matrix
 
-| OpenAI Sites feature        | Omega current state                             | Parity status                 | Primary gap                            |
+| OpenAI Sites feature        | OpenAgents product surface current state                             | Parity status                 | Primary gap                            |
 | --------------------------- | ----------------------------------------------- | ----------------------------- | -------------------------------------- |
 | Create from prompt          | Software order plus operator generation packet  | Partial                       | No self-serve `@Sites` entrypoint      |
 | Existing project deploy     | Compatibility receipts plus `github_import` metadata | Partial                       | No importer/build runner               |
@@ -863,7 +863,7 @@ The correct OTEC launch path is:
 2. Use `docs/autopilot-tasks/2026-06-05-adjutant-site-fulfillment-runbook.md`
    for the operator launch sequence.
 3. Require source, build, audience, secrets, and URL review before deploy.
-4. Deploy the first OTEC version as `omega_static_r2` unless WFP provisioning
+4. Deploy the first OTEC version as `openagents_static_r2` unless WFP provisioning
    is complete.
 5. Record the deployed URL in the Site and customer order projection.
 6. Publicly expose only approved Site status, URL, public-safe milestones, and
@@ -871,7 +871,7 @@ The correct OTEC launch path is:
 
 ## Completion Standard For True Parity
 
-Omega reaches OpenAI Sites parity only when this audit can be updated to say
+OpenAgents product surface reaches OpenAI Sites parity only when this audit can be updated to say
 all of the following are true:
 
 - A user can explicitly start a Sites task from a prompt or existing project.
@@ -892,6 +892,6 @@ all of the following are true:
 - No secrets, raw provider payloads, private prompts, callback tokens, or
   runner internals leak into customer or public projections.
 
-Until then, Omega should market Autopilot Sites as an operator-supervised beta
+Until then, OpenAgents product surface should market Autopilot Sites as an operator-supervised beta
 that is intentionally narrower than OpenAI Sites but already aligned with the
 same Cloudflare-native architecture.

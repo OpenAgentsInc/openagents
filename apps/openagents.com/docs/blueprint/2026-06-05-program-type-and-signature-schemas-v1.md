@@ -1,8 +1,8 @@
 # Blueprint Program Type and Program Signature Schemas v1
 
-Issue: OMEGA-BP-004 / #224
+Issue: OPENAGENTS-BP-004 / #224
 
-This note records the Omega-owned Blueprint Program Type and Program Signature
+This note records the OpenAgents product surface-owned Blueprint Program Type and Program Signature
 schema slice. The source of truth is `workers/api/src/blueprint/schemas/program.ts`.
 
 ## Purpose

@@ -1,6 +1,6 @@
 # Artanis Public Report Authority Split
 
-Issue: [#567](https://github.com/OpenAgentsInc/autopilot-omega/issues/567)
+Issue: [#567](https://github.com/OpenAgentsInc/openagents/issues/567)
 
 The Artanis public report can be used for launch copy only when it preserves the
 authority split between public status projection and risky actions.

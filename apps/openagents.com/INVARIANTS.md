@@ -1,6 +1,6 @@
 # INVARIANTS
 
-This is the invariant ledger for `autopilot-omega`.
+This is the invariant ledger for `openagents`.
 
 ## Clean Public URLs
 
@@ -41,8 +41,8 @@ This is the invariant ledger for `autopilot-omega`.
   `iconView` or `IconService` instead of ad hoc inline SVG, Unicode/text icon
   stand-ins, image icon URLs, icon fonts, lucide/react-icons, Iconify, or new
   icon dependencies.
-- If Omega needs a missing product icon, update the upstream Fireball catalog
-  first, regenerate Omega with `bun run sync:icons`, and keep the icon tests
+- If the product surface needs a missing product icon, update the upstream Fireball catalog
+  first, regenerate with `bun run sync:icons`, and keep the icon tests
   passing.
 - Regression coverage for this policy lives in `apps/web/src/icon.test.ts` and
   `apps/web/src/icon-policy.test.ts`, both included in `bun run check:deploy`.
@@ -74,7 +74,7 @@ This is the invariant ledger for `autopilot-omega`.
   classified, length-limited error summary. Do not store raw provider payloads,
   provider secrets, or unbounded diagnostics in delivery records, logs, source
   exports, issue comments, or docs.
-- Human-owned Gmail draft tooling remains local/operator-owned unless Omega
+- Human-owned Gmail draft tooling remains local/operator-owned unless OpenAgents product surface
   gains an explicit provider-account product surface. The Worker may record
   Gmail draft identifiers through the email ledger, but it must not shell out
   to `gws` or store Gmail OAuth tokens as a shortcut.
@@ -284,7 +284,7 @@ This is the invariant ledger for `autopilot-omega`.
   `workers/api/src/mdk-payout-mode-gate.test.ts`,
   `workers/api/src/site-payment-manifest.test.ts`,
   `workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts`,
-  `workers/api/src/pylon-v02-omega-release-gate.test.ts`,
+  `workers/api/src/pylon-v02-openagents-release-gate.test.ts`,
   `workers/api/src/artanis-public-report.test.ts`, and
   `apps/web/src/docs-blog-route.test.ts`.
 
@@ -503,7 +503,7 @@ This is the invariant ledger for `autopilot-omega`.
 
 ## Probe GEPA Campaign Public Projection
 
-- Artanis/Omega Probe GEPA campaign projections are public-safe summaries of
+- Artanis/Probe GEPA campaign projections are public-safe summaries of
   refs. They must not contain raw prompts, raw traces, raw benchmark fixtures,
   provider credentials, account refs, bearer material, wallet material,
   invoices/preimages, private repo paths, or local filesystem paths.
@@ -693,7 +693,7 @@ This is the invariant ledger for `autopilot-omega`.
   not be described as a public benchmark score, and validation evidence must not
   be described as frozen holdout performance.
 - Probe may prepare public-safe copy or post only as its own registered agent.
-  Posting as Artanis requires the existing Omega/operator authority path; Probe
+  Posting as Artanis requires the existing OpenAgents product surface/operator authority path; Probe
   summaries must not invoke an Artanis bridge.
 - Artanis Probe GEPA public summaries require explicit operator authority refs
   and projection authority refs. Generated copy may describe GEPA as
@@ -710,8 +710,8 @@ This is the invariant ledger for `autopilot-omega`.
   accepted coding outcome refs and public/private proof refs.
 - The Probe GEPA Stage 1 benchmark promotion gate may emit `shadow` or rejected
   benchmark-only state only. It must not emit `active` or `release_candidate`;
-  those states require a separate explicit Omega/Blueprint production gate.
-- Omega may display a Probe GEPA candidate as `benchmark_only`, `shadow`,
+  those states require a separate explicit OpenAgents product surface/Blueprint production gate.
+- The product surface may display a Probe GEPA candidate as `benchmark_only`, `shadow`,
   `release_candidate`, or `active`, but `active` requires accepted outcome refs
   plus proof refs. Benchmark validation alone is not active-product authority.
 - Product before/after metrics must carry route scorecard refs and validation

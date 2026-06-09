@@ -22,7 +22,7 @@ or change runtime policy by itself.
 
 ## Current Status
 
-Omega has an operator-supervised Sites beta, not an autonomous agent-deployed
+OpenAgents product surface has an operator-supervised Sites beta, not an autonomous agent-deployed
 Sites platform.
 
 Built or materially present:
@@ -152,9 +152,9 @@ Needed:
 - Site receipt projections that separate checkout evidence from accepted-work
   payout and settlement claims.
 
-The MDK Next.js package is useful source material. Omega should not import it
+The MDK Next.js package is useful source material. OpenAgents product surface should not import it
 into generated Sites as the authority. Generated Sites should call an
-Omega-hosted Worker payment boundary that ports the relevant MDK core behavior
+OpenAgents product surface-hosted Worker payment boundary that ports the relevant MDK core behavior
 into Effect TypeScript, D1 ledgers, Worker env bindings, and Web Crypto.
 
 ### Referral And Revenue Share
@@ -233,7 +233,7 @@ Current gap:
 
 - MDK reference packages include `@moneydevkit/nextjs`,
   `@moneydevkit/create`, `agent-wallet`, `api-contract`, and `mdkd`.
-- Omega has not yet implemented the Site checkout/L402 boundary or a public
+- OpenAgents product surface has not yet implemented the Site checkout/L402 boundary or a public
   agent-wallet smoke path.
 
 Needed:
@@ -279,15 +279,15 @@ Open and implement these before public agent-Sites launch:
 
 | Roadmap ID               | Title                                                             | Acceptance shape                                                                                                                                                                                                              |
 | ------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OMEGA-AGENT-SITES-001    | Define agent Site action contract and readiness gates             | Complete in `docs/sites/2026-06-05-agent-site-action-contract.md`; it lists every agent Site action, auth scope, idempotency key, receipt, rate-limit, payment, deploy, and rollback requirement before public CTA re-enable. |
-| OMEGA-AGENT-SITES-002    | Draft gated agent instructions for self-serve Site creation       | Complete in the `https://openagents.com/AGENTS.md` source; it adds dry-run-first Site planning, Pylon/local-compute setup, referral preservation, MDK/payment caveats, and prohibited actions.                                       |
-| OMEGA-AGENT-SITES-003    | Add agent Site creation and deploy API skeleton                   | Complete as a gated skeleton in `workers/api/src/agent-site-routes.ts`; it exposes create, builder-session, preview, save-version, and deploy-request contracts with browser-session plus internal-preview gate, idempotency enforcement, and no actual create/save/deploy authority yet. |
-| OMEGA-PYLON-001          | Audit Pylon v0.2 public readiness gates                           | Complete in `docs/sites/2026-06-05-pylon-v0-2-public-readiness-audit.md`; verdict is partially ready at source-contract level but blocked for broad public claims until v0.2 or documented 0.1-line release, platform assets, WSL/native Windows smokes, and current LDK settlement proof are retained. |
-| OMEGA-PYLON-002          | Add Pylon setup and local compute instruction packet              | Complete in `docs/sites/2026-06-05-pylon-local-compute-instruction-packet.md` and referenced from `https://openagents.com/AGENTS.md`; it covers install commands, version floor, readiness commands, WSL/native Windows caveats, referral preservation, explicit owner/operator authority, and earning caveats. |
-| OMEGA-SITES-COMMERCE-001 | Add Site commerce manifest and product/action schema              | Complete in `workers/api/src/site-commerce.ts`, `workers/api/migrations/0065_site_commerce_catalog.sql`, and `docs/sites/2026-06-05-site-commerce-manifest-and-catalog-schema.md`; the manifest rejects secret-shaped values and separates checkout evidence, entitlement, accepted work, provider payout eligibility, and settlement. |
-| OMEGA-SITES-COMMERCE-002 | Add hosted checkout intent and L402 paid action contracts         | Complete in `workers/api/src/site-commerce-routes.ts` and `docs/sites/2026-06-05-hosted-checkout-and-l402-contracts.md`; static and WFP Sites can request hosted checkout intent, L402 challenge, and L402 redemption contract stubs with idempotency, spend caps, clean returns, stale challenge rejection, and redaction. |
-| OMEGA-SITES-COMMERCE-003 | Add MDK agent-wallet sandbox smoke plan                           | Complete in `docs/sites/2026-06-05-mdk-agent-wallet-sandbox-smoke-plan.md`; it covers unpaid challenge, capped payment, paid retry, entitlement grant, token cache behavior, stale challenge expiration, hosted versus self-hosted MDK decision points, and secret redaction requirements. |
-| OMEGA-SITES-COMMERCE-004 | Link Site payments to referral and provider revenue-share ledgers | Complete in `workers/api/src/site-commerce-revenue-share.ts`, `workers/api/migrations/0066_site_commerce_revenue_share_linkage.sql`, and `docs/sites/2026-06-05-site-payment-referral-revshare-linkage.md`; payment, referral, entitlement, accepted work, provider payout eligibility, and settlement remain separate states linked by public-safe refs. |
+| OPENAGENTS-AGENT-SITES-001    | Define agent Site action contract and readiness gates             | Complete in `docs/sites/2026-06-05-agent-site-action-contract.md`; it lists every agent Site action, auth scope, idempotency key, receipt, rate-limit, payment, deploy, and rollback requirement before public CTA re-enable. |
+| OPENAGENTS-AGENT-SITES-002    | Draft gated agent instructions for self-serve Site creation       | Complete in the `https://openagents.com/AGENTS.md` source; it adds dry-run-first Site planning, Pylon/local-compute setup, referral preservation, MDK/payment caveats, and prohibited actions.                                       |
+| OPENAGENTS-AGENT-SITES-003    | Add agent Site creation and deploy API skeleton                   | Complete as a gated skeleton in `workers/api/src/agent-site-routes.ts`; it exposes create, builder-session, preview, save-version, and deploy-request contracts with browser-session plus internal-preview gate, idempotency enforcement, and no actual create/save/deploy authority yet. |
+| OPENAGENTS-PYLON-001          | Audit Pylon v0.2 public readiness gates                           | Complete in `docs/sites/2026-06-05-pylon-v0-2-public-readiness-audit.md`; verdict is partially ready at source-contract level but blocked for broad public claims until v0.2 or documented 0.1-line release, platform assets, WSL/native Windows smokes, and current LDK settlement proof are retained. |
+| OPENAGENTS-PYLON-002          | Add Pylon setup and local compute instruction packet              | Complete in `docs/sites/2026-06-05-pylon-local-compute-instruction-packet.md` and referenced from `https://openagents.com/AGENTS.md`; it covers install commands, version floor, readiness commands, WSL/native Windows caveats, referral preservation, explicit owner/operator authority, and earning caveats. |
+| OPENAGENTS-SITES-COMMERCE-001 | Add Site commerce manifest and product/action schema              | Complete in `workers/api/src/site-commerce.ts`, `workers/api/migrations/0065_site_commerce_catalog.sql`, and `docs/sites/2026-06-05-site-commerce-manifest-and-catalog-schema.md`; the manifest rejects secret-shaped values and separates checkout evidence, entitlement, accepted work, provider payout eligibility, and settlement. |
+| OPENAGENTS-SITES-COMMERCE-002 | Add hosted checkout intent and L402 paid action contracts         | Complete in `workers/api/src/site-commerce-routes.ts` and `docs/sites/2026-06-05-hosted-checkout-and-l402-contracts.md`; static and WFP Sites can request hosted checkout intent, L402 challenge, and L402 redemption contract stubs with idempotency, spend caps, clean returns, stale challenge rejection, and redaction. |
+| OPENAGENTS-SITES-COMMERCE-003 | Add MDK agent-wallet sandbox smoke plan                           | Complete in `docs/sites/2026-06-05-mdk-agent-wallet-sandbox-smoke-plan.md`; it covers unpaid challenge, capped payment, paid retry, entitlement grant, token cache behavior, stale challenge expiration, hosted versus self-hosted MDK decision points, and secret redaction requirements. |
+| OPENAGENTS-SITES-COMMERCE-004 | Link Site payments to referral and provider revenue-share ledgers | Complete in `workers/api/src/site-commerce-revenue-share.ts`, `workers/api/migrations/0066_site_commerce_revenue_share_linkage.sql`, and `docs/sites/2026-06-05-site-payment-referral-revshare-linkage.md`; payment, referral, entitlement, accepted work, provider payout eligibility, and settlement remain separate states linked by public-safe refs. |
 
 ## Public Launch Gate
 

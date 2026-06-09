@@ -1,8 +1,8 @@
-# Omega Unified Mullet Simulation Runner Audit
+# OpenAgents product surface Unified Mullet Simulation Runner Audit
 
 Date: 2026-06-08
 
-Status: planning audit for a private admin-only Omega implementation.
+Status: planning audit for a private admin-only OpenAgents product surface implementation.
 
 Requested product surface: `/mullet`
 
@@ -16,7 +16,7 @@ out of allowlists.
 ## Goal
 
 Build the unified mining, AI, and accepted-outcome simulation runner inside
-Omega as an internal operator tool. The first version should let Christopher
+OpenAgents product surface as an internal operator tool. The first version should let Christopher
 run and compare scenarios that join:
 
 - Margot Paez-style facility and Bitcoin-mining economics;
@@ -53,11 +53,11 @@ Primary root workspace sources:
 - `../docs/mining/zitron-solution.md`
 - `../projects/repos/oa_aibtc_model` as read-only Margot model reference.
 
-Primary Omega sources:
+Primary OpenAgents product surface sources:
 
 - `docs/mining/2026-06-06-mullet-mining-investor-measurement-audit.md`
 - `docs/mining/2026-06-06-outcomes-per-watt-investor-essay.md`
-- `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 - `INVARIANTS.md`
 - `apps/web/src/route.ts`
 - `apps/web/src/product-policy.ts`
@@ -71,7 +71,7 @@ testing`.
 
 ## Product Requirement
 
-`/mullet` should be a private Omega route for one operator to run scenario
+`/mullet` should be a private OpenAgents product surface route for one operator to run scenario
 simulations and generate internal diligence packets.
 
 The first useful product workflow:
@@ -118,7 +118,7 @@ Access must be enforced on both sides:
 - Worker API gate: every `/api/mullet/*` handler must require a browser session
   and repeat the email allowlist check. Browser gating is not authority.
 
-The existing Omega pattern already has:
+The existing OpenAgents product surface pattern already has:
 
 - `OPENAGENTS_ADMIN_EMAILS` in `workers/api/src/index.ts`, currently tested as
   exactly `['chris@openagents.com']`;
@@ -833,4 +833,4 @@ private Markdown export
 ```
 
 The durable slice is more work, but it avoids a throwaway calculator and gives
-Omega a real foundation for the unified runner Christopher wants.
+OpenAgents product surface a real foundation for the unified runner Christopher wants.

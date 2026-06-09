@@ -23,7 +23,7 @@ Resend API key.
 Migration `0031_stripe_billing.sql` adds Stripe customer mappings, Checkout
 Session attempt records, webhook receipts, and the `stripe_checkout` ledger
 source. The D1 ledger remains the product balance authority; Stripe confirms
-payment, then Omega appends one idempotent positive ledger row per paid Checkout
+payment, then OpenAgents product surface appends one idempotent positive ledger row per paid Checkout
 Session.
 
 New users receive an initial $10.00 launch credit so existing authenticated

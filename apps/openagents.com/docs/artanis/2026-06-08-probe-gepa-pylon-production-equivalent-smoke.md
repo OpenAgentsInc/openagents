@@ -1,6 +1,6 @@
 # Probe GEPA Pylon Production-Equivalent Smoke
 
-Status: retained evidence contract for Omega issue #511.
+Status: retained evidence contract for OpenAgents product surface issue #511.
 
 This smoke is the current source-backed production-launch evidence for the
 Probe GEPA/Pylon lane. It does not claim that Probe beats Terminal-Bench, that
@@ -34,7 +34,7 @@ the public launch-gate blocker:
 
 `blocker.public.artanis.launch_gate.production_e2e_smoke.blocked`
 
-The scheduled-runner blocker remains separate from this smoke. Omega #512 adds
+The scheduled-runner blocker remains separate from this smoke. OpenAgents product surface #512 adds
 that separate bounded proof in
 `docs/artanis/2026-06-08-bounded-gepa-scheduled-runner.md`.
 
@@ -51,9 +51,9 @@ Probe #188:
 - OpenAgents #4563: real SHC Harbor Terminal-Bench smoke with Probe closeout
   bundles;
 - OpenAgents #4564: public Benchmark Cloud runner executing real Probe tasks;
-- Psionic #1093: live Omega/Pylon closeout imports into the GEPA coordinator;
-- Omega #512: bounded scheduled runner proof;
-- Omega #513: route scorecards connected to Coding on Autopilot outcomes.
+- Psionic #1093: live OpenAgents product surface/Pylon closeout imports into the GEPA coordinator;
+- OpenAgents product surface #512: bounded scheduled runner proof;
+- OpenAgents product surface #513: route scorecards connected to Coding on Autopilot outcomes.
 
 Until the live SHC/Harbor run lands, the retained refs remain public-safe
 evidence refs rather than public benchmark results.

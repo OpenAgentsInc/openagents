@@ -73,9 +73,9 @@ same helper rather than defining separate classification semantics.
 
 ## v2 Extension
 
-Issue #329 / `OMEGA-082` extends this helper into the reusable Omega data
+Issue #329 / `OPENAGENTS-082` extends this helper into the reusable OpenAgents product surface data
 policy envelope documented at
-`../2026-06-06-omega-data-classification-policy-v2.md`.
+`../2026-06-06-openagents-data-classification-policy-v2.md`.
 
 The v2 contract adds the `agent` projection audience,
 `deletion_retention_sensitive` classification, classified surfaces for orders,

@@ -5,7 +5,7 @@ Issue: #437
 
 ## Summary
 
-Omega now has an operator-authorized bridge from verified Site buyer payment
+OpenAgents product surface now has an operator-authorized bridge from verified Site buyer payment
 state into Nexus/Treasury payout-intent creation:
 
 `POST /api/sites/{siteId}/commerce/payout-bridges`

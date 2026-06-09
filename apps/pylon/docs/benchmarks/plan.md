@@ -35,7 +35,7 @@ Use this ownership model:
 
 * `probe`: runtime, benchmark assignment intake, candidate execution, closeout evidence, local fixtures, selected signatures/tool menus.
 * `openagents`: public Benchmark Cloud contracts, split manifests, artifact/proof bundle contracts, Terminal-Bench runner lane, Pylon benchmark package surfaces if applicable.
-* `autopilot-omega`: Artanis public projection, Omega/Pylon assignment lease adaptation, release gates, public claim boundaries.
+* `openagents`: Artanis public projection, OpenAgents product surface/Pylon assignment lease adaptation, release gates, public claim boundaries.
 * `psionic`: GEPA coordinator, candidate frontier, candidate manifests, reflection/proposal jobs, later LoRA/Qwen training path.
 * `pylon` or `openagents`: worker capability envelopes, assignment receipt schema, benchmark-capable worker admission, artifact/proof submission path.
 
@@ -398,7 +398,7 @@ The coordinator should:
 * preserve iteration metrics and cost summaries
 * support resumable state
 * support evaluation cache
-* export candidate refs for Probe/Omega/Artanis
+* export candidate refs for Probe/OpenAgents product surface/Artanis
 
 Important language:
 
@@ -477,15 +477,15 @@ Acceptance criteria:
 
 ## Epic 4: Pylon Work Slices And Paid-Work Path
 
-### Issue 10 — Omega/Pylon: Adapt assignment lease lifecycle for GEPA metric-call batches
+### Issue 10 — OpenAgents product surface/Pylon: Adapt assignment lease lifecycle for GEPA metric-call batches
 
 Title:
 
-`Support GEPA benchmark metric-call assignments in Omega/Pylon lease lifecycle`
+`Support GEPA benchmark metric-call assignments in OpenAgents product surface/Pylon lease lifecycle`
 
 Body:
 
-Adapt the existing Omega/Pylon assignment lease lifecycle for Probe GEPA metric-call work.
+Adapt the existing OpenAgents product surface/Pylon assignment lease lifecycle for Probe GEPA metric-call work.
 
 Do not invent a separate benchmark work-state protocol unless required.
 
@@ -563,7 +563,7 @@ Acceptance criteria:
 
 ---
 
-### Issue 12 — Omega/Pylon/OpenAgents: Add paid-work mode flags for benchmark assignments
+### Issue 12 — OpenAgents product surface/Pylon/OpenAgents: Add paid-work mode flags for benchmark assignments
 
 Title:
 
@@ -642,7 +642,7 @@ Acceptance criteria:
 * Benchmark Cloud proof bundles exist.
 * Pylon assignment refs exist if Pylon was used.
 * Accepted/rejected closeout refs exist.
-* Artanis/Omega can project a public-safe “measured retained smoke” status.
+* Artanis/OpenAgents product surface can project a public-safe “measured retained smoke” status.
 * No production promotion occurs.
 
 ---
@@ -721,13 +721,13 @@ Acceptance criteria:
 * Split is validation, not holdout.
 * Cost, duration, verifier result, and artifact availability are recorded.
 * Public claim does not say “Probe beats Terminal-Bench.”
-* Candidate may move to `shadow` only if Omega/Blueprint gates approve.
+* Candidate may move to `shadow` only if OpenAgents product surface/Blueprint gates approve.
 
 ---
 
 ## Epic 6: Artanis And Public Projection
 
-### Issue 16 — Omega/Artanis: Add Probe GEPA campaign projection fields
+### Issue 16 — OpenAgents product surface/Artanis: Add Probe GEPA campaign projection fields
 
 Title:
 
@@ -735,7 +735,7 @@ Title:
 
 Body:
 
-Extend Artanis/Omega public report shape with benchmark-campaign fields.
+Extend Artanis/OpenAgents product surface public report shape with benchmark-campaign fields.
 
 Fields:
 
@@ -788,7 +788,7 @@ Acceptance criteria:
 
 ---
 
-### Issue 17 — Omega/Artanis: Add public-safe Forum summary generator for Probe GEPA campaigns
+### Issue 17 — OpenAgents product surface/Artanis: Add public-safe Forum summary generator for Probe GEPA campaigns
 
 Title:
 
@@ -818,7 +818,7 @@ It should summarize:
 
 Hard boundary:
 
-Probe may prepare public-safe copy or reply as its own registered agent. Probe must not post as Artanis or invoke the Artanis bridge. Posting as Artanis requires the existing Omega/operator authority path.
+Probe may prepare public-safe copy or reply as its own registered agent. Probe must not post as Artanis or invoke the Artanis bridge. Posting as Artanis requires the existing OpenAgents product surface/operator authority path.
 
 Acceptance criteria:
 
@@ -832,7 +832,7 @@ Acceptance criteria:
 
 ## Epic 7: Route Scorecards And Product Impact
 
-### Issue 18 — Probe/Omega: Add route scorecards for benchmark runs
+### Issue 18 — Probe/OpenAgents product surface: Add route scorecards for benchmark runs
 
 Title:
 
@@ -873,7 +873,7 @@ Acceptance criteria:
 
 ---
 
-### Issue 19 — Probe/Omega: Connect benchmark evidence to Coding on Autopilot accepted outcomes
+### Issue 19 — Probe/OpenAgents product surface: Connect benchmark evidence to Coding on Autopilot accepted outcomes
 
 Title:
 
@@ -900,7 +900,7 @@ Metrics:
 Acceptance criteria:
 
 * Benchmark wins are not treated as product wins unless connected to accepted coding outcomes.
-* Omega can display whether a candidate is benchmark-only, shadow, release candidate, or active.
+* OpenAgents product surface can display whether a candidate is benchmark-only, shadow, release candidate, or active.
 * Product metrics can compare before/after for accepted workrooms.
 * Claim text distinguishes benchmark validation from paid customer outcome improvement.
 
@@ -914,7 +914,7 @@ Use labels consistently:
 * `area:benchmark-cloud`
 * `area:pylon`
 * `area:psionic`
-* `area:omega`
+* `area:openagents`
 * `area:artanis`
 * `area:gepa`
 * `area:terminal-bench`
@@ -956,7 +956,7 @@ Blocked claims:
 
 * Probe beats Terminal-Bench from retained or validation evidence.
 * Pylon benchmark work is paid or settled without settlement receipts.
-* GEPA candidate is production without Omega/Blueprint release gates.
+* GEPA candidate is production without OpenAgents product surface/Blueprint release gates.
 * Distributed GEPA rollouts are distributed neural-network training.
 * Pylon is generally ready for download or earning from assignment closeout alone.
 * Local or Apple routes replaced frontier backends without route scorecards and accepted-outcome evidence.

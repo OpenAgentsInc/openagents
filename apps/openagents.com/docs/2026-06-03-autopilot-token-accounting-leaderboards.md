@@ -21,8 +21,8 @@ SHC Autopilot runner
 This keeps token accounting attached to the durable run/event record instead of
 making the dashboard infer usage from UI state.
 
-As of 2026-06-08, Omega also has a canonical cross-system token usage event
-ledger for Probe, Omega-hosted provider brokerage, and future Stats dashboard
+As of 2026-06-08, OpenAgents product surface also has a canonical cross-system token usage event
+ledger for Probe, OpenAgents product surface-hosted provider brokerage, and future Stats dashboard
 rollups:
 
 ```text
@@ -36,7 +36,7 @@ Trusted producer
 The older `autopilot_token_usage` table remains the run-callback ledger for
 Autopilot mission events. The new `token_usage_events` table is the broader
 Stats source of truth for usage that may originate outside an Autopilot run,
-including direct Probe provider calls and Omega provider-broker calls.
+including direct Probe provider calls and OpenAgents product surface provider-broker calls.
 
 ## OpenCode Usage Shape
 
@@ -292,15 +292,15 @@ Canonical event ingestion accepts:
 }
 ```
 
-Accepted producer systems are `probe`, `omega`, `provider_broker`,
+Accepted producer systems are `probe`, `openagents`, `provider_broker`,
 `shc_runner`, `manual`, and `unknown`.
 
 Accepted source routes are `probe_direct_provider`, `probe_local_model`,
-`omega_provider_broker`, `omega_hosted_gemini`, `shc_runner_callback`,
+`openagents_provider_broker`, `openagents_hosted_gemini`, `shc_runner_callback`,
 `manual`, and `unknown`.
 
 `usageTruth` is `exact`, `estimated`, or `unknown`. Exact means the provider
-or runtime reported the bucket counts. Estimated means Omega derived them from
+or runtime reported the bucket counts. Estimated means OpenAgents product surface derived them from
 available runtime counters. Unknown is allowed only when the event still needs
 to preserve a durable missing-usage signal without pretending exactness.
 
@@ -309,24 +309,24 @@ keys, bearer/callback/OAuth material, tool args, raw source, private repo
 paths, local filesystem paths, and customer/private material before writing to
 D1.
 
-## Omega-Hosted Gemini
+## OpenAgents product surface-Hosted Gemini
 
-Omega-hosted Gemini calls through:
+OpenAgents product surface-hosted Gemini calls through:
 
 ```text
 POST /api/provider-accounts/google-gemini/models/<model>:streamGenerateContent?alt=sse
 ```
 
 record canonical token usage when the upstream Gemini response includes
-`usageMetadata`. Omega writes `producerSystem: "omega"` and
-`sourceRoute: "omega_provider_broker"`, maps Gemini token buckets exactly, and
+`usageMetadata`. OpenAgents product surface writes `producerSystem: "openagents"` and
+`sourceRoute: "openagents_provider_broker"`, maps Gemini token buckets exactly, and
 stores only safe request/response metadata. Successful provider responses and
 provider failures are both eligible for recording when `usageMetadata` exists.
 
-Probe calls made directly with a local Gemini key do not pass through Omega and
+Probe calls made directly with a local Gemini key do not pass through OpenAgents product surface and
 must be submitted by Probe through `POST /api/stats/token-usage/events` if they
-should appear in the Omega Stats dashboard. Hosted Omega broker calls are
-recorded by Omega itself.
+should appear in the OpenAgents product surface Stats dashboard. Hosted OpenAgents product surface broker calls are
+recorded by OpenAgents product surface itself.
 
 ## API
 
@@ -376,7 +376,7 @@ type TokenUsageTotals = {
 
 Unauthenticated calls return `401`.
 
-Trusted Probe/Omega producers ingest canonical events with the existing admin
+Trusted Probe/OpenAgents product surface producers ingest canonical events with the existing admin
 bearer token:
 
 ```text
@@ -391,7 +391,7 @@ GET /api/stats/token-usage/aggregate
 GET /api/stats/token-usage/aggregate?since=2026-06-08T00:00:00.000Z
 GET /api/stats/token-usage/aggregate?since=...&until=...
 GET /api/stats/token-usage/aggregate?provider=google_gemini&model=gemini-2.5-flash
-GET /api/stats/token-usage/aggregate?producerSystem=omega&sourceRoute=omega_provider_broker
+GET /api/stats/token-usage/aggregate?producerSystem=openagents&sourceRoute=openagents_provider_broker
 GET /api/stats/token-usage/aggregate?actorUserId=...&actorTeamId=...
 GET /api/stats/token-usage/aggregate?leaderboardEligible=true&usageTruth=exact
 ```
@@ -552,7 +552,7 @@ should not change totals.
 
 - Historical runs without token-bearing events remain at zero until backfilled.
 - Production SHC runs have emitted `usage.unavailable` events for
-  subscription-backed Codex sessions. Omega now treats that as missing producer
+  subscription-backed Codex sessions. OpenAgents product surface now treats that as missing producer
   telemetry, not as an acceptable accounting state. Accurate counts require SHC
   to forward either Codex `turn.completed.usage` JSONL or Codex app-server
   `ThreadTokenUsageUpdated` payloads.

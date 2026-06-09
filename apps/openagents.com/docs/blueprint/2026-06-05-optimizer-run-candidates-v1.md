@@ -1,6 +1,6 @@
 # Blueprint Optimizer Run And Candidate Module Records v1
 
-Issue: OMEGA-BP-012 / #232
+Issue: OPENAGENTS-BP-012 / #232
 
 This note records the typed Optimizer Run and candidate Module Version model.
 The source of truth is `workers/api/src/blueprint/schemas/optimizer-run.ts`.

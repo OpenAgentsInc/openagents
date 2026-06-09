@@ -2,7 +2,7 @@
 
 Date: 2026-06-08
 
-Issue: [#566](https://github.com/OpenAgentsInc/autopilot-omega/issues/566)
+Issue: [#566](https://github.com/OpenAgentsInc/openagents/issues/566)
 
 ## Launch Decision
 
@@ -59,7 +59,7 @@ It blocks:
 
 ## Current Gap
 
-Omega now has the repeatable paid-mode ladder model and tests. This still does
+OpenAgents product surface now has the repeatable paid-mode ladder model and tests. This still does
 not mean a live continuous paid GEPA campaign has run. The next live step is an
 operator-approved small-sats campaign that produces the public-safe payment and
 settlement receipt refs consumed by this gate.

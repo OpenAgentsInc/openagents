@@ -10,9 +10,9 @@ Sources:
 
 This document audits the three supplied Figma files through the Figma MCP
 metadata and design-context surfaces. It is intended as a product and
-implementation inventory for Autopilot Omega, not as a pixel-export spec. The
+implementation inventory for OpenAgents Autopilot, not as a pixel-export spec. The
 Figma MCP generated React/Tailwind reference code for sampled nodes; that code
-is treated only as a structural and token reference. Omega remains a Foldkit app
+is treated only as a structural and token reference. OpenAgents product surface remains a Foldkit app
 with Tailwind utilities and local UI registry patterns.
 
 ## Executive Summary
@@ -134,7 +134,7 @@ The sampled v4 node uses JetBrains Mono throughout:
 - Label lg: JetBrains Mono Bold, 20px, line height 100%, letter spacing 0.
 - Text sm: JetBrains Mono Regular, 14px, line height 100%, letter spacing 0.
 
-Implementation note: this lines up with Omega's existing dark mono direction.
+Implementation note: this lines up with OpenAgents product surface's existing dark mono direction.
 Do not translate this into a light, rounded, SaaS-dashboard theme.
 
 ### Icon And Logo Set
@@ -461,7 +461,7 @@ Logout frames:
 - Proof Home.
 - Home/unauth state with Agent Store.
 
-MVP v2 is useful if Omega needs email/password auth later. It is less useful as
+MVP v2 is useful if OpenAgents product surface needs email/password auth later. It is less useful as
 the current implementation source for the X-only direction.
 
 ### MVP v3 Auth
@@ -649,10 +649,10 @@ Large New Chat modal:
 - Desktop card 816px by 704px, containing Agent Store.
 - Mobile card 361px by 788px, containing Agent Store.
 
-## Component-To-Omega Mapping
+## Component-To-OpenAgents product surface Mapping
 
 The following mapping is recommended if implementing from these designs in
-Omega:
+OpenAgents product surface:
 
 - Figma Button -> local UI registry button primitive, with Tailwind classes for
   variant/status/size.
@@ -730,7 +730,7 @@ UpgradeRequired | UpgradedWait`.
 
 ## Open Questions
 
-- Whether Omega should implement only X login initially or preserve MVP v2's
+- Whether OpenAgents product surface should implement only X login initially or preserve MVP v2's
   email/password flows for a later auth milestone.
 - Whether `ChatGPT-4` in the composer placeholder is intentional brand copy or
   stale placeholder copy that should become agent-specific.
@@ -745,14 +745,14 @@ UpgradeRequired | UpgradedWait`.
 
 v4 should be treated as the primary build target. It contains the current design
 system, responsive component variants, and assembled screen examples needed for
-Omega implementation. v3 is the auth proof companion for X login/logout. MVP v2
+OpenAgents product surface implementation. v3 is the auth proof companion for X login/logout. MVP v2
 is a historical/reference board for earlier email/password flows and broad
 component coverage.
 
-## Omega Current UI Gap Analysis
+## OpenAgents product surface Current UI Gap Analysis
 
-This section compares the Figma direction above with the current Omega web UI
-implementation in `apps/web`. It is based on the code present in the Omega repo
+This section compares the Figma direction above with the current OpenAgents product surface web UI
+implementation in `apps/web`. It is based on the code present in the OpenAgents product surface repo
 on 2026-06-04, especially:
 
 - `DESIGN.md`
@@ -772,7 +772,7 @@ on 2026-06-04, especially:
 
 ### High-Level Fit
 
-Omega already shares the broad design philosophy of the Figma files:
+OpenAgents product surface already shares the broad design philosophy of the Figma files:
 
 - Dark-only UI.
 - Mono-first typography.
@@ -782,24 +782,24 @@ Omega already shares the broad design philosophy of the Figma files:
 - Tailwind utility implementation through a local UI registry.
 - A chat/workroom surface as the primary logged-in product area.
 
-However, Omega is not currently implementing the Figma product surface as shown.
+However, OpenAgents product surface is not currently implementing the Figma product surface as shown.
 The current app is more of an Autopilot workroom/operator console than the
 Figma multi-agent public chat and agent-store shell. It has real product
 features that the Figma files do not model in detail: team rooms, project rooms,
 file attachments, run diagnostics, artifacts, billing, usage telemetry, provider
 connections, GitHub login, and settings. Conversely, the Figma files contain a
 public multi-agent chat/store experience, X auth, agent cards, and unauthenticated
-home states that Omega has either not implemented or has implemented in a
+home states that OpenAgents product surface has either not implemented or has implemented in a
 different shape.
 
-The practical conclusion is that Omega should not blindly replace its current
+The practical conclusion is that OpenAgents product surface should not blindly replace its current
 UI with the Figma UI. The better path is to port the Figma visual system,
 responsive shell geometry, auth/store concepts, and component taxonomy into the
-existing Omega workroom architecture.
+existing OpenAgents product surface workroom architecture.
 
-### Current Omega UI Foundation
+### Current OpenAgents product surface UI Foundation
 
-Omega's design contract in `DESIGN.md` is compatible with the Figma direction:
+OpenAgents product surface's design contract in `DESIGN.md` is compatible with the Figma direction:
 
 - The repo requires dark-only foundations.
 - It prefers pure black, warm off-white text, subtle borders, compact mono
@@ -819,7 +819,7 @@ The current CSS foundation in `apps/web/src/styles.css` defines:
 - Animation utilities for status morphs, odometer values, text reveal, pane
   open, and progress strips.
 
-Current Omega tokens:
+Current OpenAgents product surface tokens:
 
 - `--background-base`: `#101010`
 - `--background-stronger`: `#151515`
@@ -846,29 +846,29 @@ Figma v4 tokens:
 
 Gap:
 
-- Omega's token system is semantically close but not mapped to the Figma token
+- OpenAgents product surface's token system is semantically close but not mapped to the Figma token
   names.
-- Omega uses warmer `#f1efe8` as its primary text, while Figma uses pure white
+- OpenAgents product surface uses warmer `#f1efe8` as its primary text, while Figma uses pure white
   for heading/primary and `#d7d8e5` for body text.
-- Omega's global background base is `#101010`, though many surfaces explicitly
+- OpenAgents product surface's global background base is `#101010`, though many surfaces explicitly
   use `#000` or `#010102`. Figma's root shell is more aggressively black.
-- Omega currently uses Berkeley/Commit Mono, while Figma sampled nodes use
+- OpenAgents product surface currently uses Berkeley/Commit Mono, while Figma sampled nodes use
   JetBrains Mono.
 
 Recommendation:
 
-- Keep Omega's existing design intent, but add a deliberate bridge layer between
-  Figma token names and Omega tokens. For example, define local aliases such as
+- Keep OpenAgents product surface's existing design intent, but add a deliberate bridge layer between
+  Figma token names and OpenAgents product surface tokens. For example, define local aliases such as
   `--oa-figma-bg`, `--oa-figma-bg-secondary`, `--oa-figma-outline`,
   `--oa-figma-text`, and map them to current or adjusted values.
 - Avoid a sudden typography swap unless product direction requires exact Figma
-  fidelity. Berkeley/Commit Mono is consistent with Omega's current design
+  fidelity. Berkeley/Commit Mono is consistent with OpenAgents product surface's current design
   contract. If exact Figma matching becomes required, introduce JetBrains Mono
   as a controlled font asset rather than ad hoc CSS.
 
 ### Current UI Registry Coverage
 
-Omega has a substantial local registry:
+OpenAgents product surface has a substantial local registry:
 
 - `pageShell`
 - `workroomShell`
@@ -901,7 +901,7 @@ Omega has a substantial local registry:
 - data primitives such as tables, stats, lists, badges, feeds, alerts, and
   empty states
 
-This means Omega does not need a ground-up UI component effort. The missing
+This means OpenAgents product surface does not need a ground-up UI component effort. The missing
 work is mostly remapping, renaming, and introducing Figma-specific chat/store
 variants where the current registry is optimized for workroom/product
 operations.
@@ -916,7 +916,7 @@ Figma component coverage status:
 - Button Selector: not directly implemented as the Figma Chats/Agents segmented
   control, though the registry has `tabBar` and sidebar sections.
 - Badge: partially covered by badge/data display primitives and status dots.
-- Text Input: covered, but with Omega validation/status semantics rather than
+- Text Input: covered, but with OpenAgents product surface validation/status semantics rather than
   the exact Figma status set.
 - Image Input: not implemented as a Figma-aligned component.
 - Filepond/File Upload: partially implemented through thread file upload
@@ -1003,7 +1003,7 @@ Privacy Policy.`
 - X Auth screenshot/proof frame.
 - Account Button Tip for logout/account affordance.
 
-Current Omega auth direction in code:
+Current OpenAgents product surface auth direction in code:
 
 - Logged-out login is email/password simulation.
 - Logged-in session/account uses GitHub-derived session data and account menu.
@@ -1023,7 +1023,7 @@ Gap:
 Needed to align:
 
 - Decide whether production auth should be X, GitHub, WorkOS/OpenAuth, or some
-  combination. The Figma current direction says X; the Omega product code says
+  combination. The Figma current direction says X; the OpenAgents product surface product code says
   GitHub login and provider account connection.
 - If X remains desired, add an auth modal state to the logged-out model:
   `NoAuthModal | LoginWithXModal | XAuthInProgress | XAuthFailed`.
@@ -1049,7 +1049,7 @@ onboarding flow.
 
 Gap:
 
-- Onboarding is visually related to Omega's dark UI but not represented in the
+- Onboarding is visually related to OpenAgents product surface's dark UI but not represented in the
   Figma system.
 - It uses larger hero-scale typography and a two-column funding demo. That is
   outside the compact Figma chat/store language.
@@ -1094,12 +1094,12 @@ Figma shell:
 
 Gap:
 
-- Omega sidebar width is 280px, not 256px.
-- Omega sidebar is a mature operational navigation and session rail, not the
+- OpenAgents product surface sidebar width is 280px, not 256px.
+- OpenAgents product surface sidebar is a mature operational navigation and session rail, not the
   Figma Chats/Agents sidebar.
-- Omega mobile nav appears as a `<details>` top disclosure, while Figma mobile
+- OpenAgents product surface mobile nav appears as a `<details>` top disclosure, while Figma mobile
   simply removes/collapses the sidebar and uses a mobile navbar.
-- Omega settings routes intentionally replace the sidebar taxonomy; Figma has no
+- OpenAgents product surface settings routes intentionally replace the sidebar taxonomy; Figma has no
   equivalent settings shell.
 
 Needed to align:
@@ -1141,20 +1141,20 @@ Figma chat timeline:
 
 Gap:
 
-- Omega's timeline is functionally richer but visually different.
-- User messages are right-aligned in Omega; Figma user messages are left-aligned
+- OpenAgents product surface's timeline is functionally richer but visually different.
+- User messages are right-aligned in OpenAgents product surface; Figma user messages are left-aligned
   transcript rows.
-- Omega avatars are generic/user avatars; Figma uses formal Agent Icon variants.
-- Omega assistant/system messages are workroom parts, not simple chat-message
+- OpenAgents product surface avatars are generic/user avatars; Figma uses formal Agent Icon variants.
+- OpenAgents product surface assistant/system messages are workroom parts, not simple chat-message
   rows.
-- Omega run/tool/diff/file cards have no Figma equivalent.
+- OpenAgents product surface run/tool/diff/file cards have no Figma equivalent.
 
 Needed to align:
 
 - Add a lightweight `agentChatMessage` component for Figma-style public chat
   transcripts.
 - Keep `workroomTimelinePart` for Autopilot run/tool/file details; it is needed
-  for Omega's actual product.
+  for OpenAgents product surface's actual product.
 - Consider a hybrid layout:
   - Public/agent-store chat uses Figma-style rows.
   - Autopilot workroom runs use existing timeline parts.
@@ -1270,7 +1270,7 @@ Figma sidebar:
 
 Fit:
 
-- Omega already has session sections and row patterns that can represent chat
+- OpenAgents product surface already has session sections and row patterns that can represent chat
   history.
 - Header actions can represent top utility buttons.
 - Footer rows can be replaced with footer links.
@@ -1294,7 +1294,7 @@ Needed to align:
 
 ### Agent Store Gap
 
-Current Omega has no Figma-style Agent Store implementation. The closest
+Current OpenAgents product surface has no Figma-style Agent Store implementation. The closest
 concepts are:
 
 - Team/project room metadata.
@@ -1337,7 +1337,7 @@ Needed to align:
 
 ### Modal And Overlay Gap
 
-Current Omega modals:
+Current OpenAgents product surface modals:
 
 - `workroomMetadataDialog` for run metadata.
 - Account menu dropdown in sidebar.
@@ -1369,7 +1369,7 @@ Needed to align:
 
 ### Settings, Billing, Usage, Files, And Team Rooms
 
-These surfaces are real Omega product scope but are not deeply represented in
+These surfaces are real OpenAgents product surface product scope but are not deeply represented in
 the Figma files.
 
 Current implemented scope:
@@ -1396,12 +1396,12 @@ Implication:
 
 - These surfaces should not be judged as "wrong" because Figma does not show
   them. They need a second design pass that extends the v4 theme and component
-  system into Omega-specific product workflows.
+  system into OpenAgents product surface-specific product workflows.
 
 Needed to align:
 
 - Keep current workroom/operator density.
-- Normalize tokens and typography to the Figma/Omega bridge layer.
+- Normalize tokens and typography to the Figma/OpenAgents product surface bridge layer.
 - Ensure all controls use the Figma component taxonomy where possible:
   Button, List Button, Badge, Text Input, File Upload, Modal, Sidebar, Navbar.
 - Avoid adding Agent Store concepts to settings/billing unless there is a clear
@@ -1435,7 +1435,7 @@ Important route-ownership note:
 
 ### Implementation Gap Matrix
 
-| Figma concept             | Current Omega status                         | Recommended next step                                      |
+| Figma concept             | Current OpenAgents product surface status                         | Recommended next step                                      |
 | ------------------------- | -------------------------------------------- | ---------------------------------------------------------- |
 | Theme color roles         | Semantically close but token names differ    | Add token bridge and migrate hard-coded hexes gradually    |
 | JetBrains Mono typography | Uses Berkeley/Commit Mono                    | Decide whether exact font fidelity is required             |
@@ -1461,7 +1461,7 @@ Important route-ownership note:
 
 Phase 1: token and primitive bridge.
 
-- Add Figma/Omega token aliases in `styles.css`.
+- Add Figma/OpenAgents product surface token aliases in `styles.css`.
 - Normalize registry hard-coded colors where practical.
 - Figma Button primitive started in `apps/web/src/ui/v4.ts`; continue migrating
   high-visibility actions to `v4Button` / `v4LinkButton`.
@@ -1484,7 +1484,7 @@ Recommended next Figma component extractions, in priority order:
    - Start with title/body/action/footer slots and desktop/mobile width presets.
 
 3. `v4ButtonSelector`
-   - Reason: Figma uses this for Chats/Agents switching. Omega already has
+   - Reason: Figma uses this for Chats/Agents switching. OpenAgents product surface already has
      sidebar route modes that can map to a segmented selector.
    - Include keyboard-accessible tab/segmented-control semantics.
 
@@ -1497,7 +1497,7 @@ Recommended next Figma component extractions, in priority order:
 5. `v4Badge`
    - Reason: Agent status, provider status, plan/tier labels, run status, and
      token usage pages need shared compact labels.
-   - Map Figma variants to existing Omega tones instead of creating a second
+   - Map Figma variants to existing OpenAgents product surface tones instead of creating a second
      unrelated color taxonomy.
 
 6. `v4AgentIcon`
@@ -1518,7 +1518,7 @@ Recommended next Figma component extractions, in priority order:
      and disclaimer/caption slot.
 
 9. `v4ChatMessage`
-   - Reason: Figma chat rows differ from Omega's workroom timeline. A separate
+   - Reason: Figma chat rows differ from OpenAgents product surface's workroom timeline. A separate
      message primitive lets personal/agent-chat surfaces adopt Figma without
      weakening Autopilot run/tool/diff history.
    - Include author, body, timestamp/status, agent icon, and optional action
@@ -1564,7 +1564,7 @@ Phase 5: auth decision and modal.
   the X-specific copy/icon with GitHub/OpenAgents account copy. In that case,
   document the deviation from Figma instead of pretending it is implemented.
 
-Phase 6: Omega-only product surfaces.
+Phase 6: OpenAgents product surface-only product surfaces.
 
 - Re-skin settings, billing, usage, files, and provider connections through the
   token bridge.
@@ -1578,21 +1578,21 @@ Phase 6: Omega-only product surfaces.
 - Auth provider: Figma says X, current code says GitHub/local simulation plus
   provider account connection. This must be resolved before implementing auth
   screens.
-- Product identity: Figma is OpenAgents public multi-agent chat; Omega current
+- Product identity: Figma is OpenAgents public multi-agent chat; OpenAgents product surface current
   UI is OpenAgents Autopilot workroom. If both must exist, they need distinct
   route-level shell variants.
-- Timeline model: Figma basic chat rows are simpler than Omega's run/tool/diff
+- Timeline model: Figma basic chat rows are simpler than OpenAgents product surface's run/tool/diff
   timeline. Replacing the timeline wholesale would remove important Autopilot
   product affordances.
-- Mobile navigation: Figma collapses the sidebar; Omega uses a mobile details
+- Mobile navigation: Figma collapses the sidebar; OpenAgents product surface uses a mobile details
   nav. This is a visible behavior difference and should be decided explicitly.
 - Agent Store data authority: the UI cannot be meaningfully implemented until
   there is a source of truth for available agents, their status, provider,
   access level, and start-chat behavior.
 
-### Bottom Line For Omega
+### Bottom Line For OpenAgents product surface
 
-Omega is directionally compatible with the Figma files but not yet aligned at
+OpenAgents product surface is directionally compatible with the Figma files but not yet aligned at
 the screen/component level. The current repo has a strong dark operational UI
 foundation and a rich workroom registry. What it lacks is the Figma v4 public
 agent-chat layer: Agent Store, agent navbar, Figma sidebar, X/auth modal, New
@@ -1600,5 +1600,5 @@ Chat modal, brand Agent Icons, left-aligned chat rows, and composer mode states.
 
 The fastest high-quality path is to keep the existing workroom UI for Autopilot
 operations and add a Figma-aligned agent-chat shell on top of the current token
-and registry system. That preserves Omega's implemented product depth while
+and registry system. That preserves OpenAgents product surface's implemented product depth while
 bringing the visible chat/home/auth experience in line with v4.

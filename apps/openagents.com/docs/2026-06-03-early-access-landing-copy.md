@@ -2,7 +2,7 @@
 
 Date: 2026-06-03
 
-Status: Draft landing-page copy for the Autopilot Omega early access surface.
+Status: Draft landing-page copy for the OpenAgents Autopilot early access surface.
 
 ## Hero
 

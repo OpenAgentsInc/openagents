@@ -17,7 +17,7 @@ API-key resolution follows the Opencode-compatible order:
 1. explicit API key option;
 2. `GOOGLE_GENERATIVE_AI_API_KEY`;
 3. `GEMINI_API_KEY`;
-4. `PROBE_OMEGA_BEARER_TOKEN` when `PROBE_OMEGA_BASE_URL` is also set;
+4. `PROBE_OPENAGENTS_BEARER_TOKEN` when `PROBE_OPENAGENTS_BASE_URL` is also set;
 5. typed missing-credential failure.
 
 Gemini auth receipts record only the source label and `apiKeyRedacted: true`.
@@ -25,25 +25,25 @@ They must not include the raw key or provider request headers. Runtime HTTP
 code may still construct the `x-goog-api-key` header at the final request
 boundary.
 
-When `PROBE_OMEGA_BASE_URL` and `PROBE_OMEGA_BEARER_TOKEN` are both set and no
+When `PROBE_OPENAGENTS_BASE_URL` and `PROBE_OPENAGENTS_BEARER_TOKEN` are both set and no
 local Gemini API key exists, Probe routes Gemini `streamGenerateContent` calls
-through Omega's authenticated Gemini broker at:
+through OpenAgents product surface's authenticated Gemini broker at:
 
 ```txt
-<PROBE_OMEGA_BASE_URL>/api/provider-accounts/google-gemini
+<PROBE_OPENAGENTS_BASE_URL>/api/provider-accounts/google-gemini
 ```
 
 In that mode Probe sends the OpenAgents programmatic-agent bearer token to
-Omega. Omega owns the Google `GEMINI_API_KEY` Worker secret and forwards the
+OpenAgents product surface. OpenAgents product surface owns the Google `GEMINI_API_KEY` Worker secret and forwards the
 request to `generativelanguage.googleapis.com`. Probe never receives the raw
 Gemini API key.
 
-For the current Probe/Omega integration, Gemini uses basic Google API keys
+For the current Probe/OpenAgents product surface integration, Gemini uses basic Google API keys
 restricted to `generativelanguage.googleapis.com`. ADC, service-account JSON,
 OAuth refresh tokens, and service-account-bound authorization keys are out of
 scope for this backend path.
 
-Omega's Cloudflare Worker consumes the same basic-key shape through its
+OpenAgents product surface's Cloudflare Worker consumes the same basic-key shape through its
 `GEMINI_API_KEY` Worker secret. Do not place Gemini keys in `vars`, D1, issue
 comments, docs, browser-visible responses, or public receipts.
 
@@ -64,8 +64,8 @@ not passed. CLI output reports the API-key source label and
 
 `probe chat` starts a local prompt loop backed by the same Gemini client and
 auth precedence. It defaults to `gemini-3.5-flash`, uses local Gemini API keys
-when present, and otherwise uses the Omega broker when `PROBE_OMEGA_BASE_URL`
-and `PROBE_OMEGA_BEARER_TOKEN` are set. Each turn prints native tool calls,
+when present, and otherwise uses the OpenAgents product surface broker when `PROBE_OPENAGENTS_BASE_URL`
+and `PROBE_OPENAGENTS_BEARER_TOKEN` are set. Each turn prints native tool calls,
 tool results, streamed assistant text, round trips, and token usage. The chat
 tool root defaults to the umbrella workspace above the Probe repo and can be
 overridden with `PROBE_WORKSPACE_ROOT=/Users/christopherdavid/work`. The
@@ -93,16 +93,16 @@ Runner assignments can select Gemini with:
 ```
 
 Gemini assignments require the runner capability `probe.backend.gemini_api`.
-They do not require an Omega provider-account grant in this pass; the API key
+They do not require an OpenAgents product surface provider-account grant in this pass; the API key
 is resolved from the runner environment using the same precedence as local CLI
 calls. Apple FM remains the default backend profile for existing assignments
 that do not select Gemini.
 
-The Omega-managed provider-account path is designed in
-`docs/probe-omega-google-gemini-provider-account-design.md`. Omega now exposes
+The OpenAgents product surface-managed provider-account path is designed in
+`docs/probe-openagents-google-gemini-provider-account-design.md`. OpenAgents product surface now exposes
 a redacted `google_gemini` grant response for Probe-compatible assignment
 metadata, but live hosted inference uses the broker route above so the Worker
-secret never leaves Omega.
+secret never leaves OpenAgents product surface.
 
 ## Request Lowering
 

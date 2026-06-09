@@ -1,6 +1,6 @@
 # Autopilot Continuation Program Signature Catalog v1
 
-Issue: OMEGA-BP-011 / #231
+Issue: OPENAGENTS-BP-011 / #231
 
 This note records the first seeded Autopilot continuation Program Signature
 catalog. The source of truth is

@@ -1,6 +1,6 @@
 # Email Campaign Records
 
-Status: initial schema and repository helpers for `OMEGA-O-006`.
+Status: initial schema and repository helpers for `OPENAGENTS-O-006`.
 
 The campaign tables model scheduling state. They do not replace the existing
 `email_messages` and `email_deliveries` ledger, which remains the authority for

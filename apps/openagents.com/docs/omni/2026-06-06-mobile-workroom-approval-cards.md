@@ -1,6 +1,6 @@
 # Mobile Workroom Projection And Approval Cards
 
-Status: implemented for issue #372 / `OMEGA-LATE-012`.
+Status: implemented for issue #372 / `OPENAGENTS-LATE-012`.
 
 ## Purpose
 

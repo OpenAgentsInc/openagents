@@ -41,7 +41,7 @@ The ledger uses the existing `PublicClaimState` vocabulary:
 - `prohibited`
 - `settled`
 
-There is not a separate public `paid` state in Omega yet. Payment-related
+There is not a separate public `paid` state in OpenAgents product surface yet. Payment-related
 claims are represented as `blocked`, `prohibited`, `measured`, `verified`, or
 `settled` under the existing public claim contract.
 

@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Roadmap: OMEGA-060 / GitHub #308
+Roadmap: OPENAGENTS-060 / GitHub #308
 
 Status: implemented as a typed projection contract, ready for later D1
 persistence.

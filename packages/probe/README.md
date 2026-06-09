@@ -13,7 +13,7 @@ agent runtime. It should be one coherent surface for coding agents that can run
 with API-key model providers, local inference, swarm inference, Codex-style
 hosted execution, and future OpenAgents inference routes without exposing those
 implementation choices as product names. Probe should be opinionated around the
-OpenAgents stack: Omega dispatch, OpenAgents Sync events, SHC boxes, Pylons,
+OpenAgents stack: OpenAgents product surface dispatch, OpenAgents Sync events, SHC boxes, Pylons,
 forum-thread workrooms, artifact receipts, and explicit product acceptance.
 
 OpenCode is an important inspiration point, especially for the shape of a
@@ -32,7 +32,7 @@ pile of separate agent products.
 The same runtime should also be deployable into sandboxes from
 `openagents.com`. Forum threads, workroom requests, and operator actions should
 be able to create bounded Probe assignments that run in SHC boxes or other
-approved sandboxes, emit redacted events back to Omega, produce artifacts, and
+approved sandboxes, emit redacted events back to OpenAgents product surface, produce artifacts, and
 wait for explicit acceptance before any product or writeback authority is
 treated as complete.
 
@@ -44,26 +44,26 @@ Tracked files should stay minimal until the new architecture lands:
 
 - `README.md` explains the reset and target direction.
 - `package.json` defines a Bun workspace/catalog layout modeled after the
-  OpenCode workspace style while pinning the Effect line used by Omega.
+  OpenCode workspace style while pinning the Effect line used by OpenAgents product surface.
 - `packages/runtime/src/contracts/provider-account.ts` defines the first
-  Probe/Omega ChatGPT/Codex account contract.
+  Probe/OpenAgents product surface ChatGPT/Codex account contract.
 - `packages/runtime/src/contracts/assignment.ts` defines the Probe run
-  assignment contract for Omega refs and grants.
-- `packages/runtime/src/omega/grant-client.ts` resolves Omega auth grants into
+  assignment contract for OpenAgents product surface refs and grants.
+- `packages/runtime/src/openagents/grant-client.ts` resolves OpenAgents product surface auth grants into
   Probe materialization plans.
 - `packages/runtime/src/auth/materializer.ts` materializes brokered auth only
   inside per-run env/file targets and scrubs it on closeout.
-- `packages/runtime/src/runner/identity.ts` gates Omega grant use on linked
+- `packages/runtime/src/runner/identity.ts` gates OpenAgents product surface grant use on linked
   Probe runner identity before resolving and materializing auth.
 - `packages/runtime/src/runtime/backend-assignment.ts` routes no-auth Apple FM
   assignments through live backend health and emits backend run events.
-- `packages/runtime/src/cli.ts` exposes the first Probe CLI commands for Omega
-  linking, account management, and Gemini chat through local keys or the Omega
+- `packages/runtime/src/cli.ts` exposes the first Probe CLI commands for OpenAgents product surface
+  linking, account management, and Gemini chat through local keys or the OpenAgents product surface
   broker fallback.
 - `packages/runtime/src/fleet/telemetry.ts` reports auth/account health signals
-  and requests Omega failover without locally iterating raw account tokens.
+  and requests OpenAgents product surface failover without locally iterating raw account tokens.
 - `packages/runtime/src/fleet/token-usage.ts` emits redacted Probe inference
-  token-usage events to Omega for global Stats totals and opt-out-aware
+  token-usage events to OpenAgents product surface for global Stats totals and opt-out-aware
   leaderboards.
 - `packages/runtime/src/fleet/backend-capability.ts` reports Apple FM backend
   capability for Pylon/SHC/sandbox routing from live health.
@@ -84,22 +84,22 @@ Tracked files should stay minimal until the new architecture lands:
   optimization handles.
 - `packages/runtime/src/blueprint/` defines the narrowed Blueprint consumer
   contracts, static registry fixtures, and registry source client Probe needs
-  before live Omega Blueprint routes exist, plus the typed signature lookup
+  before live OpenAgents product surface Blueprint routes exist, plus the typed signature lookup
   service, backend-independent tool menu planner, and local Program Run evidence
   contracts used for backend preflight.
-- `docs/probe-omega-auth-contract.md` records the implemented account-contract
+- `docs/probe-openagents-auth-contract.md` records the implemented account-contract
   slice.
-- `docs/probe-omega-run-assignment.md` records the implemented assignment and
+- `docs/probe-openagents-run-assignment.md` records the implemented assignment and
   grant-resolution slice, including Blueprint-scoped assignment refs for
-  Pylon/Omega dispatch.
+  Pylon/OpenAgents product surface dispatch.
 - `docs/probe-auth-materialization.md` records the implemented per-run auth
   materialization slice.
 - `docs/probe-runner-identity.md` records the SHC/Pylon/sandbox runner
   identity slice.
-- `docs/probe-cli-omega-auth.md` records the CLI account-management slice.
+- `docs/probe-cli-openagents-auth.md` records the CLI account-management slice.
 - `docs/probe-fleet-telemetry.md` records the fleet telemetry and failover
   slice.
-- `docs/probe-token-usage-telemetry.md` records the Probe-to-Omega token usage
+- `docs/probe-token-usage-telemetry.md` records the Probe-to-OpenAgents product surface token usage
   producer, privacy boundaries, opt-out controls, and fake-endpoint test path.
 - `docs/2026-06-07-apple-fm-first-backend-audit.md` audits the previous Apple
   FM implementations and records the plan for making Apple FM the first
@@ -131,7 +131,7 @@ Tracked files should stay minimal until the new architecture lands:
   retained Terminal-Bench fixture package for GEPA Stage 0/1.
 - `docs/2026-06-08-probe-gepa-live-network-system-audit.md` records the
   current cross-repo Probe GEPA live-network system state after the SHC Harbor
-  smoke, Benchmark Cloud runner work, Psionic live import path, Omega route
+  smoke, Benchmark Cloud runner work, Psionic live import path, OpenAgents product surface route
   scorecard/product evidence path, and Artanis projection updates.
 - `.gitignore` keeps local build/cache noise out of the repo.
 - Add a license file before publishing or distributing a new runtime artifact.
@@ -146,7 +146,7 @@ idea into tests or notes and leave the surface deleted.
 The next Probe should start from the final shape:
 
 - `probe` as the only runtime/product name.
-- A typed assignment and event protocol shared deliberately with Omega.
+- A typed assignment and event protocol shared deliberately with OpenAgents product surface.
 - A durable session and event log that can resume, replay, and close out runs.
 - A single tool and approval model across local, swarm, API-key, and Codex-style
   inference routes.

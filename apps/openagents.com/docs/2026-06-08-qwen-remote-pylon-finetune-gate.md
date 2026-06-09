@@ -1,6 +1,6 @@
 # Qwen 3.6 Remote Pylon Fine-Tune Gate
 
-Issue: [#568](https://github.com/OpenAgentsInc/autopilot-omega/issues/568)
+Issue: [#568](https://github.com/OpenAgentsInc/openagents/issues/568)
 
 The Qwen 3.6 public fine-tune claim is blocked until remote Pylon workers
 produce a receipt-backed training run report. The implementation lives in

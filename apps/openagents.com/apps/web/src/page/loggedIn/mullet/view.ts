@@ -39,10 +39,10 @@ const bootstrapSummary = (response: MulletBootstrapResponse): Html => {
   ]
 
   return h.section(
-    [h.Class('grid gap-3 @container')],
+    [Ui.className<Message>('grid gap-3 @container')],
     [
       h.div(
-        [h.Class('grid grid-cols-1 gap-3 @lg:grid-cols-3')],
+        [Ui.className<Message>('grid grid-cols-1 gap-3 @lg:grid-cols-3')],
         [
           metric('Operator', response.access.operatorEmail),
           metric('Visibility', response.access.visibility),
@@ -71,12 +71,12 @@ const metric = (label: string, value: string): Html => {
   const h = html<Message>()
 
   return h.div(
-    [h.Class('min-w-0 border border-[#222] bg-[#080808] p-3')],
+    [Ui.className<Message>('min-w-0 border border-[#222] bg-[#080808] p-3')],
     [
-      h.div([h.Class(`${Ui.eyebrowClass} truncate`)], [label]),
+      h.div([Ui.className<Message>(`${Ui.eyebrowClass} truncate`)], [label]),
       h.div(
         [
-          h.Class(
+          Ui.className<Message>(
             'mt-2 truncate text-base/6 font-medium text-[#f1efe8] sm:text-sm/6',
           ),
         ],
@@ -95,12 +95,12 @@ const bootstrapState = (model: Model): Html => {
       MulletBootstrapLoading: () => loadingPanel('Loading'),
       MulletBootstrapFailed: ({ error }) =>
         h.section(
-          [h.Class('border border-[#333] bg-[#080808] p-4')],
+          [Ui.className<Message>('border border-[#333] bg-[#080808] p-4')],
           [
-            h.div([h.Class(Ui.eyebrowClass)], ['Bootstrap']),
+            h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Bootstrap']),
             h.h2(
               [
-                h.Class(
+                Ui.className<Message>(
                   'mt-2 text-xl/7 font-medium tracking-normal text-[#f1efe8]',
                 ),
               ],
@@ -108,14 +108,14 @@ const bootstrapState = (model: Model): Html => {
             ),
             h.p(
               [
-                h.Class(
+                Ui.className<Message>(
                   'mt-2 max-w-[72ch] text-base/7 text-white/60 sm:text-sm/6',
                 ),
               ],
               [error],
             ),
             h.div(
-              [h.Class('mt-4')],
+              [Ui.className<Message>('mt-4')],
               [
                 Ui.button<Message>({
                   label: 'Retry',
@@ -139,11 +139,11 @@ const loadingPanel = (label: string): Html => {
   const h = html<Message>()
 
   return h.section(
-    [h.Class('border border-[#222] bg-[#080808] p-4')],
+    [Ui.className<Message>('border border-[#222] bg-[#080808] p-4')],
     [
-      h.div([h.Class(Ui.eyebrowClass)], ['Bootstrap']),
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Bootstrap']),
       h.div(
-        [h.Class('mt-2 text-base/7 font-medium text-[#f1efe8] sm:text-sm/6')],
+        [Ui.className<Message>('mt-2 text-base/7 font-medium text-[#f1efe8] sm:text-sm/6')],
         [label],
       ),
     ],
@@ -165,11 +165,11 @@ const templateSelector = (model: Model): Html => {
   const selected = templateIdFromModel(model.mullet.selectedTemplateId)
 
   return h.section(
-    [h.Class('grid gap-3')],
+    [Ui.className<Message>('grid gap-3')],
     [
-      h.div([h.Class(Ui.eyebrowClass)], ['Scenario templates']),
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Scenario templates']),
       h.div(
-        [h.Class('grid grid-cols-1 gap-2 @container sm:grid-cols-2 xl:grid-cols-3')],
+        [Ui.className<Message>('grid grid-cols-1 gap-2 @container sm:grid-cols-2 xl:grid-cols-3')],
         mulletScenarioTemplates.map(template => {
           const active = template.id === selected
 
@@ -179,7 +179,7 @@ const templateSelector = (model: Model): Html => {
               h.OnClick(
                 SelectedMulletScenarioTemplate({ templateId: template.id }),
               ),
-              h.Class(
+              Ui.className<Message>(
                 [
                   'grid min-h-28 cursor-pointer content-start gap-2 border p-3 text-left transition-colors',
                   active
@@ -191,16 +191,16 @@ const templateSelector = (model: Model): Html => {
             [
               h.span(
                 [
-                  h.Class(
+                  Ui.className<Message>(
                     'truncate text-base/6 font-medium tracking-normal text-[#f1efe8] sm:text-sm/6',
                   ),
                 ],
                 [template.title],
               ),
-              h.span([h.Class('text-base/7 text-white/60 sm:text-sm/6')], [
+              h.span([Ui.className<Message>('text-base/7 text-white/60 sm:text-sm/6')], [
                 template.basis,
               ]),
-              h.span([h.Class(`${Ui.eyebrowClass} truncate`)], [
+              h.span([Ui.className<Message>(`${Ui.eyebrowClass} truncate`)], [
                 template.focus,
               ]),
             ],
@@ -222,19 +222,19 @@ const stateLegend = (): Html => {
   ] as const
 
   return h.section(
-    [h.Class('grid gap-3')],
+    [Ui.className<Message>('grid gap-3')],
     [
-      h.div([h.Class(Ui.eyebrowClass)], ['Value states']),
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Value states']),
       h.div(
-        [h.Class('grid grid-cols-1 gap-px border border-[#222] bg-[#222] @container sm:grid-cols-5')],
+        [Ui.className<Message>('grid grid-cols-1 gap-px border border-[#222] bg-[#222] @container sm:grid-cols-5')],
         states.map(([label, detail]) =>
           h.div(
-            [h.Class('min-w-0 bg-[#050505] p-3')],
+            [Ui.className<Message>('min-w-0 bg-[#050505] p-3')],
             [
-              h.div([h.Class('text-base/6 font-medium text-[#f1efe8] sm:text-sm/6')], [
+              h.div([Ui.className<Message>('text-base/6 font-medium text-[#f1efe8] sm:text-sm/6')], [
                 label,
               ]),
-              h.p([h.Class('mt-1 text-base/7 text-white/55 sm:text-sm/6')], [
+              h.p([Ui.className<Message>('mt-1 text-base/7 text-white/55 sm:text-sm/6')], [
                 detail,
               ]),
             ],
@@ -249,7 +249,7 @@ const assumptionEditor = (model: Model): Html => {
   const h = html<Message>()
 
   return h.section(
-    [h.Class('grid gap-4')],
+    [Ui.className<Message>('grid gap-4')],
     [
       Ui.headingBlock<Message>({
         eyebrow: 'Scenario editor',
@@ -259,18 +259,18 @@ const assumptionEditor = (model: Model): Html => {
       }),
       ...assumptionGroups(model.mullet.assumptions).map(group =>
         h.section(
-          [h.Class('grid gap-2')],
+          [Ui.className<Message>('grid gap-2')],
           [
             h.h3(
               [
-                h.Class(
+                Ui.className<Message>(
                   'text-base/6 font-medium capitalize tracking-normal text-[#f1efe8] sm:text-sm/6',
                 ),
               ],
               [group.group],
             ),
             h.div(
-              [h.Class('grid grid-cols-1 gap-px border border-[#222] bg-[#222]')],
+              [Ui.className<Message>('grid grid-cols-1 gap-px border border-[#222] bg-[#222]')],
               group.assumptions.map(assumptionControl),
             ),
           ],
@@ -288,18 +288,18 @@ const assumptionControl = (assumption: MulletAssumption): Html => {
 
   return h.div(
     [
-      h.Class(
+      Ui.className<Message>(
         'grid gap-3 bg-[#050505] p-3 lg:grid-cols-[minmax(160px,0.9fr)_minmax(120px,0.45fr)_minmax(150px,0.6fr)_minmax(180px,0.8fr)] lg:items-start',
       ),
     ],
     [
       h.div(
-        [h.Class('min-w-0')],
+        [Ui.className<Message>('min-w-0')],
         [
-          h.div([h.Class('text-base/6 font-medium text-[#f1efe8] sm:text-sm/6')], [
+          h.div([Ui.className<Message>('text-base/6 font-medium text-[#f1efe8] sm:text-sm/6')], [
             assumption.label,
           ]),
-          h.p([h.Class('mt-1 text-base/7 text-white/55 sm:text-sm/6')], [
+          h.p([Ui.className<Message>('mt-1 text-base/7 text-white/55 sm:text-sm/6')], [
             assumption.requiredEvidence,
           ]),
         ],
@@ -362,15 +362,15 @@ const labeledInput = (input: {
 }): Html => {
   const h = html<Message>()
 
-  return h.label([h.For(input.id), h.Class('grid gap-1.5')], [
-    h.span([h.Class(Ui.eyebrowClass)], [input.label]),
+  return h.label([h.For(input.id), Ui.className<Message>('grid gap-1.5')], [
+    h.span([Ui.className<Message>(Ui.eyebrowClass)], [input.label]),
     h.input([
       ...(input.attrs ?? []),
       h.Id(input.id),
       h.Name(input.name),
       h.Type('text'),
       h.Value(input.value),
-      h.Class(Ui.inputClass),
+      Ui.className<Message>(Ui.inputClass),
     ]),
   ])
 }
@@ -395,14 +395,14 @@ const labeledSelect = (input: {
     'placeholder',
   ]
 
-  return h.label([h.For(input.id), h.Class('grid gap-1.5')], [
-    h.span([h.Class(Ui.eyebrowClass)], [input.label]),
+  return h.label([h.For(input.id), Ui.className<Message>('grid gap-1.5')], [
+    h.span([Ui.className<Message>(Ui.eyebrowClass)], [input.label]),
     h.select(
       [
         ...(input.attrs ?? []),
         h.Id(input.id),
         h.Name(input.name),
-        h.Class(Ui.selectClass),
+        Ui.className<Message>(Ui.selectClass),
       ],
       options.map(option =>
         h.option(
@@ -458,14 +458,14 @@ const sensitivityFocus = (model: Model): Html => {
   const selected = sensitivityAxisFromModel(model.mullet.selectedSensitivityAxisId)
 
   return h.label(
-    [h.For('mullet-sensitivity-axis'), h.Class('grid gap-1.5 sm:max-w-xs')],
+    [h.For('mullet-sensitivity-axis'), Ui.className<Message>('grid gap-1.5 sm:max-w-xs')],
     [
-      h.span([h.Class(Ui.eyebrowClass)], ['Sensitivity focus']),
+      h.span([Ui.className<Message>(Ui.eyebrowClass)], ['Sensitivity focus']),
       h.select(
         [
           h.Id('mullet-sensitivity-axis'),
           h.Name('mulletSensitivityAxis'),
-          h.Class(Ui.selectClass),
+          Ui.className<Message>(Ui.selectClass),
           h.OnInput(value => SelectedMulletSensitivityAxis({ axisId: value })),
         ],
         sensitivityAxisOptions.map(option =>
@@ -495,11 +495,11 @@ export const view = (model: Model): Html => {
   })
 
   return h.div(
-    [h.Class('mx-auto grid w-full max-w-7xl gap-6 px-4 sm:px-6 lg:px-8')],
+    [Ui.className<Message>('mx-auto grid w-full max-w-7xl gap-6 px-4 sm:px-6 lg:px-8')],
     [
       h.header(
         [
-          h.Class(
+          Ui.className<Message>(
             'grid gap-4 border-b border-[#222] pb-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end',
           ),
         ],
@@ -525,7 +525,7 @@ export const view = (model: Model): Html => {
       templateSelector(model),
       stateLegend(),
       h.section(
-        [h.Class('grid grid-cols-1 gap-3 @container md:grid-cols-4')],
+        [Ui.className<Message>('grid grid-cols-1 gap-3 @container md:grid-cols-4')],
         [
           metric('Selected dispatch', projection.selectedCandidate.mode),
           metric(
@@ -541,7 +541,7 @@ export const view = (model: Model): Html => {
       ),
       assumptionEditor(model),
       h.section(
-        [h.Class('grid gap-3')],
+        [Ui.className<Message>('grid gap-3')],
         [
           Ui.headingBlock<Message>({
             eyebrow: 'Hourly dispatch',
@@ -553,7 +553,7 @@ export const view = (model: Model): Html => {
         ],
       ),
       h.section(
-        [h.Class('grid gap-3')],
+        [Ui.className<Message>('grid gap-3')],
         [
           Ui.headingBlock<Message>({
             eyebrow: 'Returns',
@@ -577,7 +577,7 @@ export const view = (model: Model): Html => {
         ],
       ),
       h.section(
-        [h.Class('grid gap-3')],
+        [Ui.className<Message>('grid gap-3')],
         [
           Ui.headingBlock<Message>({
             eyebrow: 'Accepted outcomes',
@@ -596,7 +596,7 @@ export const view = (model: Model): Html => {
         ],
       ),
       h.section(
-        [h.Class('grid gap-3')],
+        [Ui.className<Message>('grid gap-3')],
         [
           Ui.headingBlock<Message>({
             eyebrow: 'Sensitivity',
@@ -620,7 +620,7 @@ export const view = (model: Model): Html => {
         ],
       ),
       h.section(
-        [h.Class('grid gap-3')],
+        [Ui.className<Message>('grid gap-3')],
         [
           Ui.headingBlock<Message>({
             eyebrow: 'Evidence',

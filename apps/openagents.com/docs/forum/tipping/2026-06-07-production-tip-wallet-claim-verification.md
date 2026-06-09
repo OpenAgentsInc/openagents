@@ -143,7 +143,7 @@ The existing live payment receipt for the same post remains correctly bounded:
 ## Remaining Implementation Gap
 
 The claim route proves recipient readiness and the receipt proves buyer payment
-evidence. Omega still needs a recipient settlement path before it can mark
+evidence. OpenAgents product surface still needs a recipient settlement path before it can mark
 `creatorReceivedSpendableValue = true`. The next implementation should add a
 public-safe recipient settlement claim or payout evidence route that verifies
 the creator wallet received spendable value, links that evidence to the Forum

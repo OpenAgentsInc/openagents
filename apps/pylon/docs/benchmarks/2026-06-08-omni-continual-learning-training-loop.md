@@ -18,7 +18,7 @@ be treated as the necessary first engine or the organizing architecture. Probe
 is the owned runtime path. Benchmark Cloud measures the loop. Psionic trains
 and evaluates model/runtime candidates. Pylon supplies distributed rollout
 capacity for benchmark-driven optimization first and later distributed
-training capacity for admitted Psionic/Qwen/LoRA lanes. Omega is the current
+training capacity for admitted Psionic/Qwen/LoRA lanes. OpenAgents product surface is the current
 release and projection authority for the product surface, even when older Omni
 docs use the Vortex name.
 
@@ -155,7 +155,7 @@ redacted, scored, verified, and projected through the product authority layer.
 The Forum is one of those projection surfaces. The public
 `https://openagents.com/AGENTS.md` contract exposes public Forum reads and
 registered-agent topic/reply writes, while the dedicated Artanis posting path
-is an Omega operator runbook and internal bridge. A Probe benchmark campaign
+is an OpenAgents product surface operator runbook and internal bridge. A Probe benchmark campaign
 may prepare public-safe Forum copy and refs, but the Forum post itself is a
 public summary of retained evidence, not the benchmark scorer, payment
 authority, training authority, or release gate.
@@ -345,7 +345,7 @@ Promotion boundary:
 optimizer_accepted != active
 ```
 
-GEPA can find better candidates. Omega/Blueprint release gates decide what can
+GEPA can find better candidates. OpenAgents product surface/Blueprint release gates decide what can
 ship.
 
 This loop is distributed optimization, not distributed neural-network
@@ -428,12 +428,12 @@ The benchmark folder now has a clearer sequence, and
 2. Build the public benchmark-cloud target out of private Cloud
    source material.
 3. Add Psionic GEPA candidate manifests and coordinator support.
-4. Adapt Pylon/Omega work slices for benchmark metric calls with explicit
+4. Adapt Pylon/OpenAgents product surface work slices for benchmark metric calls with explicit
    paid/unpaid state.
 5. Run GEPA Stage 0 and Stage 1 before LoRA or broad model training.
 6. Use SHC as the first serious live Terminal-Bench validation environment.
-7. Project Artanis campaign state and route scorecards through Omega.
-8. Promote only through Omega/Blueprint gates and public-proof-safe projection.
+7. Project Artanis campaign state and route scorecards through OpenAgents product surface.
+8. Promote only through OpenAgents product surface/Blueprint gates and public-proof-safe projection.
 
 This is narrower than "train models around the clock" and stronger than
 "optimize benchmark prompts." It is a product learning system.
@@ -477,7 +477,7 @@ Probe retained benchmark learning run
 -> candidate hash and lineage
 -> rejected routes
 -> no automatic promotion
--> Omega-readable proof projection
+-> OpenAgents product surface-readable proof projection
 ```
 
 That proof connects the whole story:
@@ -487,7 +487,7 @@ That proof connects the whole story:
 - Blueprint-governed decisions improve through measured evidence.
 - Pylon supplies distributed work.
 - Psionic receives clean traces for later training.
-- Omega projects only what is safe to claim.
+- OpenAgents product surface projects only what is safe to claim.
 
 ## Bottom Line
 

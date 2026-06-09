@@ -173,7 +173,7 @@ Status: active
 Scope: project
 Runtime: Autopilot
 Backend: SHC
-Repo: autopilot-omega
+Repo: openagents
 Focus: Pylon
 ```
 
@@ -220,11 +220,11 @@ The public page loads two snapshots:
 
 - the sanitized public Artanis durable goal projection for `agent_artanis`;
 - the public Pylon stats snapshot from `GET /api/public/pylon-stats`, which
-  now projects Omega-owned Pylon API registration and heartbeat state for
+  now projects OpenAgents product surface-owned Pylon API registration and heartbeat state for
   Pylon v0.2.5+ clients.
 
 The visible campaign objective is to release the next Pylon version, connect it
-more deeply to Omega, route more inference and fine-tuning work to the live
+more deeply to OpenAgents product surface, route more inference and fine-tuning work to the live
 Pylon wave, and use the new Bitcoin infrastructure as the work settlement
 layer. The stats panel shows feed state, Pylons online, registered Pylons,
 wallet-ready Pylons, assignment-ready Pylons, 24-hour seen count, minimum

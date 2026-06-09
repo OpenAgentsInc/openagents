@@ -13,16 +13,16 @@ Completion evidence:
 - the customer-order recording flow and 15-second workroom flow are covered by
   focused tests and have been deployed in foreground sessions.
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
 Primary agent: `Artanis` / `agent_artanis`, or another write-capable private
-Omega implementation agent selected by preflight.
+OpenAgents product surface implementation agent selected by preflight.
 
 Team: OpenAgents core / `team_openagents_core`
 
-Project: Omega demo and workroom presentation. Resolve the concrete project ID
+Project: OpenAgents product surface demo and workroom presentation. Resolve the concrete project ID
 through operator preflight before dispatch; do not invent one in the runner
 prompt.
 
@@ -88,7 +88,7 @@ that block honest execution or reporting.
 
 ## Objective
 
-Build a recordable demo page that shows the core Omega workroom journey over
+Build a recordable demo page that shows the core OpenAgents product surface workroom journey over
 roughly 15 seconds using the same logged-in workroom components and message
 flow that the real app uses.
 
@@ -108,9 +108,9 @@ fixtures, and emitted events should be modeled as Schema data and Effect
 services/layers. It must not be a DOM animation, a screenshot, or a parallel
 mock UI that bypasses Foldkit update semantics.
 
-## Current Omega Starting Point
+## Current OpenAgents product surface Starting Point
 
-Omega currently has no `/demo` route.
+OpenAgents product surface currently has no `/demo` route.
 
 Important current route facts:
 
@@ -158,8 +158,8 @@ Relevant implementation docs:
 - `../2026-06-03-team-project-rooms.md`
 - `../2026-06-03-thread-message-archive-support.md`
 - `../2026-06-04-effect-foldkit-codebase-audit.md`
-- `../2026-06-04-omega-broader-effect-refactor-audit.md`
-- `../2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `../2026-06-04-openagents-broader-effect-refactor-audit.md`
+- `../2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 
 Relevant repo files:
 
@@ -259,14 +259,14 @@ Launch input fields:
 
 ```json
 {
-  "repository": "OpenAgentsInc/autopilot-omega",
+  "repository": "OpenAgentsInc/openagents",
   "baseRef": "main",
   "taskSpecPath": "docs/autopilot-tasks/2026-06-04-effect-driven-chat-demo-page.md",
   "agentId": "agent_artanis",
   "teamId": "team_openagents_core",
-  "projectId": "<preflight-resolved-omega-demo-project-id>",
+  "projectId": "<preflight-resolved-openagents-demo-project-id>",
   "visibility": "private",
-  "goal": "Implement a deterministic Effect-driven /demo route that reuses the real Omega logged-in workroom components and shows a 15-second chat-to-agent-to-thread-to-files journey with Schema-backed demo data.",
+  "goal": "Implement a deterministic Effect-driven /demo route that reuses the real OpenAgents product surface logged-in workroom components and shows a 15-second chat-to-agent-to-thread-to-files journey with Schema-backed demo data.",
   "delivery": "commit_or_pull_request_with_tests_and_recording_notes"
 }
 ```

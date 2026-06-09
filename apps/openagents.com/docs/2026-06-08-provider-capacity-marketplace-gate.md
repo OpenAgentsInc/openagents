@@ -16,7 +16,7 @@ planned or blocked rather than implying support.
 
 ## Provider Posture
 
-ChatGPT/Codex is the first modeled provider because Omega already has the
+ChatGPT/Codex is the first modeled provider because OpenAgents product surface already has the
 provider-account connection flow. That connection is necessary evidence, but it
 is not resale authorization and does not make unused subscription capacity
 marketable by itself.

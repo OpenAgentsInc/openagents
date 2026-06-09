@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #339 / `OMEGA-RUST-006`.
+Status: implemented contract note for issue #339 / `OPENAGENTS-RUST-006`.
 
 ## Purpose
 
-Omega now has a schema-first bridge for Pylon provider assignments and
+OpenAgents product surface now has a schema-first bridge for Pylon provider assignments and
 settlement projections.
 
 The implementation lives in

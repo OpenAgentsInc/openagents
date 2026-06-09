@@ -1,13 +1,13 @@
 # Site Payment Primitive SDK Notes
 
 Date: 2026-06-07
-Issue: #444 / `OMEGA-SITES-MDK-014`
+Issue: #444 / `OPENAGENTS-SITES-MDK-014`
 
 ## Summary
 
 OpenAgents Sites now has a coherent payment primitive surface for generated
-Sites, agents, and operators. The surface is intentionally Omega-hosted:
-generated Sites call OpenAgents commerce APIs, and Omega owns checkout
+Sites, agents, and operators. The surface is intentionally OpenAgents product surface-hosted:
+generated Sites call OpenAgents commerce APIs, and OpenAgents product surface owns checkout
 configuration, webhook reconciliation, proof projection, bridge policy, and
 secret handling.
 
@@ -23,7 +23,7 @@ exists.
 | Payment discovery | Live | Public-safe read for catalog items, endpoints, prices, spend-cap hints, entitlement semantics, and implementation states. |
 | Commerce review | Live | Customer/operator read projection of generated checkout products and paid actions. |
 | Commerce review decisions | Operator-gated | Admin-token write path only. Does not create payment, access, deployment, payout, or settlement authority. |
-| Checkout intent | Config-gated | Uses Omega's hosted MDK-compatible route client when configured; otherwise returns explicit missing-configuration state. |
+| Checkout intent | Config-gated | Uses OpenAgents product surface's hosted MDK-compatible route client when configured; otherwise returns explicit missing-configuration state. |
 | Checkout return | Live | Reads durable checkout state for `success`, `cancel`, or `status`; does not consume checkout query strings. |
 | MDK webhook reconciliation | Config-gated | Exact-source verification for dashboard Standard Webhooks, daemon invoice HMAC, or SDK node-control callbacks. |
 | Payment proof | Live | Public-safe buyer-side proof over checkout intent, receipt, reconciliation, and entitlement state. |
@@ -32,7 +32,7 @@ exists.
 | Customer-owned MDK account mode | Live read / operator-gated write | Hosted secret-binding refs only. No generated source credentials. |
 | Payment-to-payout bridge | Operator-gated | Requires verified server-side buyer payment evidence and separate Nexus/Treasury/Pylon release gates. |
 | Smoke tests | Live fake-provider CI | Fake-provider smoke proves flow shape and redaction, not production payment or settlement. |
-| Generated helper contract | Live source contract | Static and Worker-compatible helper examples call Omega routes without MDK native runtime imports. |
+| Generated helper contract | Live source contract | Static and Worker-compatible helper examples call OpenAgents product surface routes without MDK native runtime imports. |
 
 ## Discovery First
 
@@ -92,7 +92,7 @@ Rules:
 
 ## Clean Checkout Returns
 
-Generated Sites should read Omega's return state rather than trusting browser
+Generated Sites should read OpenAgents product surface's return state rather than trusting browser
 query parameters:
 
 ```bash
@@ -212,13 +212,13 @@ The helper contract builds source-safe request plans for:
 - L402 redemption;
 - redacted helper error envelopes.
 
-It validates request bodies against current Omega route schemas and rejects
+It validates request bodies against current OpenAgents product surface route schemas and rejects
 query-state paths, invalid idempotency keys, spend-cap overflow, unsafe API
 bases, raw payment material, and MDK native runtime imports.
 
 Static generated Sites should call `https://openagents.com` directly. Worker
 or Workers for Platforms Sites should call an OpenAgents commerce binding or
-the same Omega route boundary. Neither should own MDK credentials.
+the same OpenAgents product surface route boundary. Neither should own MDK credentials.
 
 ## Customer-Owned MDK Account Mode
 
@@ -267,7 +267,7 @@ route:
 POST /api/sites/{siteId}/commerce/mdk/webhooks
 ```
 
-Omega verifies the configured source family:
+OpenAgents product surface verifies the configured source family:
 
 - dashboard Standard Webhooks;
 - daemon invoice HMAC;

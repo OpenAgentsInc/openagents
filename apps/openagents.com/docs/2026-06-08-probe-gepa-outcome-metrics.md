@@ -2,9 +2,9 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#510`.
+Status: implemented for `OpenAgentsInc/openagents#510`.
 
-Omega now has a projection that connects Probe benchmark learning evidence to
+OpenAgents product surface now has a projection that connects Probe benchmark learning evidence to
 Coding on Autopilot accepted-outcome metrics without turning benchmark wins
 into product wins. The implementation lives in
 `workers/api/src/probe-gepa-outcome-metrics.ts`.
@@ -34,7 +34,7 @@ Autopilot product evidence.
 
 ## Candidate States
 
-Omega can display candidate state as:
+OpenAgents product surface can display candidate state as:
 
 - `benchmark_only`;
 - `shadow`;
@@ -49,7 +49,7 @@ active-product authority.
 The Stage 1 benchmark promotion gate is narrower than the general display
 model. `workers/api/src/probe-gepa-stage1-shadow-promotion-gate.ts` can emit
 only `shadow` or rejected `benchmark_only`. `release_candidate` and `active`
-require a separate explicit Omega/Blueprint production gate.
+require a separate explicit OpenAgents product surface/Blueprint production gate.
 
 ## Claim Boundary
 

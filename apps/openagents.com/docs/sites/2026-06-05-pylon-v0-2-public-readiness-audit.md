@@ -2,10 +2,10 @@
 
 Date: 2026-06-05
 
-Issue: `OpenAgentsInc/autopilot-omega#161`
+Issue: `OpenAgentsInc/openagents#161`
 
 Scope: current Pylon v0.2 public setup readiness for agent-facing local compute
-instructions in Omega.
+instructions in OpenAgents product surface.
 
 ## Verdict
 
@@ -33,7 +33,7 @@ The public release story does not match that source readiness yet:
 - Linux, WSL Ubuntu, and native Windows users must either resolve an older
   binary asset where one exists or fall back to source build.
 
-Therefore Omega may instruct agents and users to use the current Pylon launcher
+Therefore OpenAgents product surface may instruct agents and users to use the current Pylon launcher
 for controlled local-compute setup, but must not say that Pylon v0.2 is broadly
 public-ready until the release, asset, and smoke-proof gates below are closed.
 
@@ -163,7 +163,7 @@ source and prior audit evidence.
 
 ## State Model For Public Claims
 
-Omega and OpenAgents must keep these states separate.
+OpenAgents product surface and OpenAgents must keep these states separate.
 
 | State | Meaning | Public wording allowed |
 | --- | --- | --- |
@@ -288,12 +288,12 @@ Disallowed:
    - v0.2 target registration counters present
 8. Publish an operator-facing state explanation that separates online,
    eligible, assigned, accepted, paid, and settled states.
-9. Update Omega `https://openagents.com/AGENTS.md` only after these gates are current,
+9. Update OpenAgents product surface `https://openagents.com/AGENTS.md` only after these gates are current,
    or keep the current language as controlled/gated setup.
 
 ## Roadmap Impact
 
-The next issue, `OMEGA-PYLON-002`, should not write broad public setup
+The next issue, `OPENAGENTS-PYLON-002`, should not write broad public setup
 instructions. It should write a guarded instruction packet:
 
 - current recommended path: `npx @openagentsinc/pylon`

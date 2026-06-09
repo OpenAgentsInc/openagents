@@ -1,7 +1,7 @@
 # Customer-Owned MDK Account Mode
 
 Date: 2026-06-07
-Issue: #441 / OMEGA-SITES-MDK-011
+Issue: #441 / OPENAGENTS-SITES-MDK-011
 
 ## Purpose
 
@@ -47,7 +47,7 @@ preimages, provider grants, or private customer values.
 
 ## Checkout Behavior
 
-Checkout intent creation still goes through the Omega-hosted Site commerce
+Checkout intent creation still goes through the OpenAgents product surface-hosted Site commerce
 boundary. When an approved customer-owned binding applies to the catalog item,
 the checkout intent response includes:
 

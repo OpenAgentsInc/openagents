@@ -8,7 +8,7 @@ policy, or move money by itself.
 
 ## Source Set
 
-Local OpenAgents/Omega sources reviewed:
+Local OpenAgents/OpenAgents product surface sources reviewed:
 
 - `docs/sites/vida_referral_model_for_openagents.md`
 - `docs/sites-plan.md`
@@ -86,7 +86,7 @@ The payers are agent users:
   checkout products; and
 - future workroom buyers paying for accepted outcomes.
 
-The current Omega starting point is the D1-backed billing credit ledger. Users
+The current OpenAgents product surface starting point is the D1-backed billing credit ledger. Users
 can receive launch credits, coupons, manual credits, and future Stripe credit
 purchases. The Sites and MDK roadmap adds hosted checkout intents and L402
 paid-action flows.
@@ -154,7 +154,7 @@ onboarding, liquidity support, and future Site/agent payment primitives. It
 should not replace Nexus/Treasury/LDK as the payout authority for current
 Pylon accepted-work payments.
 
-2026-06-05 status addendum: the next Omega roadmap batch should prioritize the
+2026-06-05 status addendum: the next OpenAgents product surface roadmap batch should prioritize the
 agent Sites, Pylon setup, and Site commerce contracts before public launch
 claims. Pylon's current public floor remains the narrow v0.1.x earning path:
 `pylon-v0.1.16` or newer with the same guarantees, and the package-managed
@@ -162,7 +162,7 @@ launcher at `@openagentsinc/pylon@0.1.17` or newer. Pylon v0.2 should not be
 advertised as broadly ready until the LDK-compatible payout target
 registration path, hosted/runtime package gates, asset coverage, eligibility
 telemetry, and public instructions are reviewed. Generated commerce Sites
-should use Omega-hosted checkout/L402 boundaries for buyer payment evidence,
+should use OpenAgents product surface-hosted checkout/L402 boundaries for buyer payment evidence,
 while Pylon accepted-work payout claims remain tied to Nexus/Treasury/LDK
 receipts.
 
@@ -217,7 +217,7 @@ credits to create immediate Bitcoin withdrawal liability.
 ```text
 user or agent pays sats
 -> checkout, invoice, or L402 payment reconciles
--> Omega records payment event and accepted usage/action
+-> OpenAgents product surface records payment event and accepted usage/action
 -> split definition is applied
 -> contributor sats ledger entries are created
 -> reserve/compliance checks run
@@ -229,7 +229,7 @@ user or agent pays sats
 ```text
 user or company buys or receives credits
 -> credits are spent on agent usage, Site usage, or workroom usage
--> Omega records usage debit and accepted event
+-> OpenAgents product surface records usage debit and accepted event
 -> split definition is applied
 -> contributor credit ledger entries are created
 -> contributor can spend credits inside OpenAgents
@@ -278,7 +278,7 @@ workroom product can have its own split definition.
 
 Any part of an [agent module](https://github.com/OpenAgentsInc/openagents/wiki/Agent-Modules)
 may have an associated cost that is paid to one or more contributors. In the
-newer Omega/Omni model, this becomes a versioned split definition attached to
+newer OpenAgents product surface/Omni model, this becomes a versioned split definition attached to
 reviewed capability objects:
 
 - agent or Site product;
@@ -343,9 +343,9 @@ If Bob paid the same job with OpenAgents credits rather than sats, the same
 logical split would create credit ledger entries, not Bitcoin withdrawal
 claims.
 
-## Immediate Omega Connection
+## Immediate OpenAgents product surface Connection
 
-Omega can connect referral revenue to the current system before the full
+OpenAgents product surface can connect referral revenue to the current system before the full
 signature marketplace exists.
 
 ### 1. Add Attribution Capture
@@ -416,10 +416,10 @@ site payment event or L402 redemption
 This should be the first Bitcoin referral payout path because the revenue
 source is Bitcoin/Lightning, not card-funded credit.
 
-### 5. Bridge Pylon Accepted-Work Events Into Omega Accounting
+### 5. Bridge Pylon Accepted-Work Events Into OpenAgents product surface Accounting
 
 Pylon/Nexus/Treasury should remain the payout authority for current
-accepted-work compute payments, but Omega needs to understand those events so
+accepted-work compute payments, but OpenAgents product surface needs to understand those events so
 contributors, referrers, Sites, agents, and accounting dashboards share one
 truthful revenue-share model.
 
@@ -437,8 +437,8 @@ LDK dispatch and settlement status
 receipt bundle ref
 ```
 
-This lets Omega attribute Pylon work to a Site, agent, workroom, module, or
-campaign without pretending that the Omega credit ledger itself paid the Pylon
+This lets OpenAgents product surface attribute Pylon work to a Site, agent, workroom, module, or
+campaign without pretending that the OpenAgents product surface credit ledger itself paid the Pylon
 operator. It also keeps MDK in the correct role: checkout and agent payment
 primitive now, liquidity and wallet support later, not the source of truth for
 Pylon accepted-work payouts.
@@ -674,7 +674,7 @@ Useful public aggregates:
 - Add public-safe terms for pending, credited, withdrawable, dispatched, and
   settled states.
 
-### Phase 1: Referral Attribution For Current Omega
+### Phase 1: Referral Attribution For Current OpenAgents product surface
 
 - Add referral invite and attribution tables.
 - Capture referral codes at signup, order submission, and billing checkout
@@ -701,7 +701,7 @@ Useful public aggregates:
 
 ### Phase 4: Pylon Provider Settlement Bridge
 
-- Add Omega-side provider work event records that can reference Pylon accepted
+- Add OpenAgents product surface-side provider work event records that can reference Pylon accepted
   outcomes without replacing Nexus/Treasury/LDK as payout authority.
 - Import or link accepted outcome ids, Pylon provider identities, payout
   target hashes, Nexus operation ids, Treasury operation ids, payout classes,
@@ -731,7 +731,7 @@ Useful public aggregates:
 
 The OpenAgents revenue-share system should start with the simplest useful
 slice: referral attribution tied to real paid usage and paid in the same asset
-the user spent. That lets Omega connect the current credit ledger to referral
+the user spent. That lets OpenAgents product surface connect the current credit ledger to referral
 value immediately, while avoiding the mistake of turning card-funded credits
 or promo grants into instant Bitcoin liabilities.
 

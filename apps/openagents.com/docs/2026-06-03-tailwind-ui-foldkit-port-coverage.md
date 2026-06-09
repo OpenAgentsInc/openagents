@@ -44,7 +44,7 @@ All Application UI family paths from the local download are represented in
 lists, tables, navigation, overlays, and page examples.
 
 The current Foldkit registry includes reusable primitives for the families the
-Omega app actually uses today, plus workroom-specific compositions mapped back
+OpenAgents product surface app actually uses today, plus workroom-specific compositions mapped back
 to Application UI families:
 
 - application shells: sidebar, stacked, multi-column/workroom split
@@ -81,7 +81,7 @@ The registry includes product/category grids, filters, checkout forms, order
 details, order summaries, product lists, product overviews, cart-style line
 items, reviews, incentives, promo sections, and store navigation.
 
-## Omega Codebase Boundary
+## OpenAgents product surface Codebase Boundary
 
 The React/Foldkit app surfaces now compose through `apps/web/src/ui` for the
 public landing page, local login form, logged-in shell, dashboard, settings,

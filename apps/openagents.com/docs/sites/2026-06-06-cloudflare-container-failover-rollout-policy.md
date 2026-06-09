@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented for issue #288 / OMEGA-RUNNER-010.
+Status: implemented for issue #288 / OPENAGENTS-RUNNER-010.
 
 ## Purpose
 

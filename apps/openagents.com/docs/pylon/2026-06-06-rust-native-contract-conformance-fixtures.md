@@ -2,25 +2,25 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #340 / `OMEGA-RUST-007`.
+Status: implemented contract note for issue #340 / `OPENAGENTS-RUST-007`.
 
 ## Purpose
 
-Omega now has local conformance coverage for the Epic S native-facing
+OpenAgents product surface now has local conformance coverage for the Epic S native-facing
 contracts. The tests prove that representative Rust/native payloads can be
-decoded by Omega schemas, projected safely for public/operator audiences, and
+decoded by OpenAgents product surface schemas, projected safely for public/operator audiences, and
 rejected or flagged when required refs, terminal evidence, or redaction
 requirements are missing.
 
 The implementation lives in
 `workers/api/src/rust-native-contract-conformance.test.ts`.
 
-This remains local/test-only. Omega does not depend on `oa-node`,
+This remains local/test-only. OpenAgents product surface does not depend on `oa-node`,
 `oa-workroomd`, Probe, Psionic, Pylon, or any Rust repo at test time.
 
 ## Fixture Sources
 
-The conformance test uses these Omega-side fixtures:
+The conformance test uses these OpenAgents product surface-side fixtures:
 
 - `OPENAGENTS_NATIVE_CONTRACT_REGISTRY_V1`;
 - `OPENAGENTS_OA_NODE_CONFORMANCE_FIXTURES`;
@@ -32,7 +32,7 @@ The conformance test uses these Omega-side fixtures:
 Rust/native repos should either copy these payloads into their own fixture
 suites or generate byte-for-byte equivalent JSON from their native schema
 types. The native tests should compare required fields, enum values, redacted
-refs, and receipt links against these Omega contracts.
+refs, and receipt links against these OpenAgents product surface contracts.
 
 ## Required Coverage
 
@@ -73,6 +73,6 @@ These tests validate schema parity and redaction. They do not launch native
 processes, open sockets, resolve grants, operate wallets, dispatch payouts,
 settle providers, or mutate production state.
 
-When a stable Rust fixture package exists, Omega can consume that package in a
-separate integration lane. Until then, Omega owns the canonical TypeScript
+When a stable Rust fixture package exists, OpenAgents product surface can consume that package in a
+separate integration lane. Until then, OpenAgents product surface owns the canonical TypeScript
 fixtures and native repos should mirror them deliberately.

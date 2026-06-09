@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #185 / OMEGA-SITES-OUTREACH-005
+Issue: #185 / OPENAGENTS-SITES-OUTREACH-005
 
 ## Summary
 
-Omega now has the rendered capture service contract for targeted Site remake
+OpenAgents product surface now has the rendered capture service contract for targeted Site remake
 and outreach campaigns.
 
 Rendered capture is the escalation path after cheap static capture is

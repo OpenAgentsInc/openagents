@@ -1,6 +1,6 @@
 # Hosted MDK Client Contract
 
-Issue: #295 / OMEGA-H-007
+Issue: #295 / OPENAGENTS-H-007
 
 Date: 2026-06-06
 

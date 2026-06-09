@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #336 / `OMEGA-RUST-003`.
+Status: implemented contract note for issue #336 / `OPENAGENTS-RUST-003`.
 
 ## Purpose
 
-Omega now has a schema-first `oa-workroomd` sidecar session contract.
+OpenAgents product surface now has a schema-first `oa-workroomd` sidecar session contract.
 
 The implementation lives in
 `workers/api/src/oa-workroomd-sidecar-contract.ts`.

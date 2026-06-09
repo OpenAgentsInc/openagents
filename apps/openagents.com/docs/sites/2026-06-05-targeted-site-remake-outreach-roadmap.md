@@ -16,7 +16,7 @@ the site, then email the firm a preview link and a meeting link.
 This should become part of the Sites plan in two layers:
 
 1. A short-term internal operator tool. Given a target website or target list,
-   Omega captures public site material, audits the site, drafts an improved
+   OpenAgents product surface captures public site material, audits the site, drafts an improved
    concept Site, and lets an operator review before any outreach email.
 2. A longer-term agent toolkit. Users and their agents can run scoped prospect
    discovery, site audit, remake preview, outreach, and conversion workflows
@@ -65,11 +65,11 @@ capture through robots or crawler policy, the capture run should become
 ## Why Not Just Use A Third-Party Scraper
 
 A third-party service is the quickest way to validate extraction quality, but
-it is the wrong long-term source of truth for Omega:
+it is the wrong long-term source of truth for OpenAgents product surface:
 
 - We already need source authority, source cards, public-safe receipts,
   customer-safe projections, preview artifacts, suppression, and email
-  ledgers. Those records belong in Omega.
+  ledgers. Those records belong in OpenAgents product surface.
 - We need cost-tiered behavior. A static site should cost nearly nothing to
   inspect. A rendered page should pay Browser Run browser-time only when
   needed. A high-value, hard target can use a paid external provider only when
@@ -225,9 +225,9 @@ Outreach must run through the typed `EmailService` boundary:
 
 This lane depends directly on the open email issues:
 
-- `OMEGA-O-005` through `OMEGA-O-010` for templates, drip/campaign tables,
+- `OPENAGENTS-O-005` through `OPENAGENTS-O-010` for templates, drip/campaign tables,
   suppression, scheduler, and webhook ingestion.
-- `OMEGA-SITES-REV-004` for safer stable Site revision activation.
+- `OPENAGENTS-SITES-REV-004` for safer stable Site revision activation.
 
 ## Agent Toolkit Direction
 
@@ -255,25 +255,25 @@ Short-term internal operator lane:
 
 | ID | Title | Outcome |
 | --- | --- | --- |
-| OMEGA-SITES-OUTREACH-001 | Add targeted Site campaign and prospect schema | Implemented in #181. Campaigns and prospects are durable in D1 with deduped domains, public-safe contact refs, suppression/capture/review states, source refs, confidence, budget refs, owner/operator refs, and repository tests. |
-| OMEGA-SITES-OUTREACH-002 | Add Exa-backed prospect discovery planner | Implemented in #182. Operators can plan bounded Exa company searches by vertical/geography/signal, review public-safe source cards, run dry-run discovery, and persist deduped prospect candidates through the #181 repository. |
-| OMEGA-SITES-OUTREACH-003 | Add respectful capture policy and robots/suppression gates | Implemented in #183. Capture policy events classify allowed, disallowed, blocked, manual-review, customer-owned, suppressed, and paid-escalation states; only allowed and paid-escalation records are fetchable, and projections redact suppression/contact/provider/payment/bypass material. |
-| OMEGA-SITES-OUTREACH-004 | Add static site capture and asset graph service | Implemented in #184. Static capture runs require a fetchable #183 policy event, normalize same-origin homepage/page/asset refs, bound source-pack metadata and response summaries, and project only public/operator-safe capture state. |
-| OMEGA-SITES-OUTREACH-005 | Add Browser Run rendered capture service | Implemented in #185. Rendered capture runs require a fetchable #183 policy event, optionally link to static capture, store Browser Run-style output refs and bounded usage summaries, and block bot-protection/login-wall output capture. |
-| OMEGA-SITES-OUTREACH-006 | Add capture provider adapter boundary | Implemented in #186. Provider adapter runs record first-party Worker, Browser Run, Firecrawl, Browserless, Browserbase, Apify, or Container fallback/benchmark refs, require fetchable capture policy, require paid-escalation evidence for paid fallback, and redact raw payloads. |
-| OMEGA-SITES-OUTREACH-007 | Add website quality audit scorer | Implemented in #187. Quality audits record bounded scores for design age, mobile risk, IA, SEO, CTA, trust, image quality, accessibility, performance, content, stale/broken/mixed-content, and legal-sensitive claims, with evidence refs and manual-review routing. |
-| OMEGA-SITES-OUTREACH-008 | Add remake brief and source authority pack | Implemented in #188. `targeted_site_remake_briefs` records reviewable source authority packs, original screenshot refs, copied text/image refs, audit findings, and concept-only generation constraints before preview generation. |
-| OMEGA-SITES-OUTREACH-009 | Add targeted remake preview generation | Implemented in #189. `targeted_site_remake_preview_generations` records concept preview URLs, generated artifact/source refs, candidate Site/version refs, source authority pack refs, generation receipts, and concept-domain guardrails for approved briefs. |
-| OMEGA-SITES-OUTREACH-010 | Add internal operator review UI for targeted remakes | Implemented in #190. `targeted_site_operator_review_events` records review decisions and `targeted-site-operator-review.ts` builds a UI-ready operator model with capture refs, audit score, source authority count, preview state, outreach/meeting readiness, suppression state, disabled-action reasons, and redacted projections. |
-| OMEGA-SITES-OUTREACH-011 | Add typed targeted-remake outreach email | Implemented in #191. `TargetedRemakeOutreachEmailInput` renders concept-preview outreach with preview, meeting, sender, postal/contact, unsubscribe, and preferences links, and `targeted_site_remake_outreach_email_dispatches` records operator-approved EmailService dispatches with suppression and idempotency gates. |
+| OPENAGENTS-SITES-OUTREACH-001 | Add targeted Site campaign and prospect schema | Implemented in #181. Campaigns and prospects are durable in D1 with deduped domains, public-safe contact refs, suppression/capture/review states, source refs, confidence, budget refs, owner/operator refs, and repository tests. |
+| OPENAGENTS-SITES-OUTREACH-002 | Add Exa-backed prospect discovery planner | Implemented in #182. Operators can plan bounded Exa company searches by vertical/geography/signal, review public-safe source cards, run dry-run discovery, and persist deduped prospect candidates through the #181 repository. |
+| OPENAGENTS-SITES-OUTREACH-003 | Add respectful capture policy and robots/suppression gates | Implemented in #183. Capture policy events classify allowed, disallowed, blocked, manual-review, customer-owned, suppressed, and paid-escalation states; only allowed and paid-escalation records are fetchable, and projections redact suppression/contact/provider/payment/bypass material. |
+| OPENAGENTS-SITES-OUTREACH-004 | Add static site capture and asset graph service | Implemented in #184. Static capture runs require a fetchable #183 policy event, normalize same-origin homepage/page/asset refs, bound source-pack metadata and response summaries, and project only public/operator-safe capture state. |
+| OPENAGENTS-SITES-OUTREACH-005 | Add Browser Run rendered capture service | Implemented in #185. Rendered capture runs require a fetchable #183 policy event, optionally link to static capture, store Browser Run-style output refs and bounded usage summaries, and block bot-protection/login-wall output capture. |
+| OPENAGENTS-SITES-OUTREACH-006 | Add capture provider adapter boundary | Implemented in #186. Provider adapter runs record first-party Worker, Browser Run, Firecrawl, Browserless, Browserbase, Apify, or Container fallback/benchmark refs, require fetchable capture policy, require paid-escalation evidence for paid fallback, and redact raw payloads. |
+| OPENAGENTS-SITES-OUTREACH-007 | Add website quality audit scorer | Implemented in #187. Quality audits record bounded scores for design age, mobile risk, IA, SEO, CTA, trust, image quality, accessibility, performance, content, stale/broken/mixed-content, and legal-sensitive claims, with evidence refs and manual-review routing. |
+| OPENAGENTS-SITES-OUTREACH-008 | Add remake brief and source authority pack | Implemented in #188. `targeted_site_remake_briefs` records reviewable source authority packs, original screenshot refs, copied text/image refs, audit findings, and concept-only generation constraints before preview generation. |
+| OPENAGENTS-SITES-OUTREACH-009 | Add targeted remake preview generation | Implemented in #189. `targeted_site_remake_preview_generations` records concept preview URLs, generated artifact/source refs, candidate Site/version refs, source authority pack refs, generation receipts, and concept-domain guardrails for approved briefs. |
+| OPENAGENTS-SITES-OUTREACH-010 | Add internal operator review UI for targeted remakes | Implemented in #190. `targeted_site_operator_review_events` records review decisions and `targeted-site-operator-review.ts` builds a UI-ready operator model with capture refs, audit score, source authority count, preview state, outreach/meeting readiness, suppression state, disabled-action reasons, and redacted projections. |
+| OPENAGENTS-SITES-OUTREACH-011 | Add typed targeted-remake outreach email | Implemented in #191. `TargetedRemakeOutreachEmailInput` renders concept-preview outreach with preview, meeting, sender, postal/contact, unsubscribe, and preferences links, and `targeted_site_remake_outreach_email_dispatches` records operator-approved EmailService dispatches with suppression and idempotency gates. |
 
 Later user/agent campaign lane:
 
 | ID | Title | Outcome |
 | --- | --- | --- |
-| OMEGA-SITES-OUTREACH-012 | Add campaign metrics and conversion ledger | Implemented in #206. `targeted_site_campaign_metric_events` records idempotent public-safe campaign metric events and derives aggregate projections for capture cost, previews, sends, bounces, replies, meetings, conversions, accepted outcomes, refunds, complaints, suppression, and blocked states. |
-| OMEGA-SITES-OUTREACH-013 | Expose scoped agent toolkit for user-owned campaigns | Implemented in #207. `targeted_site_agent_toolkit_grants` and `targeted_site_agent_toolkit_actions` record private scoped agent grants and idempotent actions with dry-run defaults, scopes, spend caps, daily send caps, suppression, approval gates, receipt refs, and public-safe action projections. |
-| OMEGA-SITES-OUTREACH-014 | Add accepted-outcome reward policy for sales agents | Implemented in #208. `targeted_site_sales_reward_policy_events` records proposed leads, accepted meetings/customers, reward eligibility, payout intent, holds, disputes, complaints, refunds, reversals, settlement caveats, public receipt refs, and public-safe projections while keeping buyer payment, referral attribution, accepted work, payout intent, and settlement separate. |
+| OPENAGENTS-SITES-OUTREACH-012 | Add campaign metrics and conversion ledger | Implemented in #206. `targeted_site_campaign_metric_events` records idempotent public-safe campaign metric events and derives aggregate projections for capture cost, previews, sends, bounces, replies, meetings, conversions, accepted outcomes, refunds, complaints, suppression, and blocked states. |
+| OPENAGENTS-SITES-OUTREACH-013 | Expose scoped agent toolkit for user-owned campaigns | Implemented in #207. `targeted_site_agent_toolkit_grants` and `targeted_site_agent_toolkit_actions` record private scoped agent grants and idempotent actions with dry-run defaults, scopes, spend caps, daily send caps, suppression, approval gates, receipt refs, and public-safe action projections. |
+| OPENAGENTS-SITES-OUTREACH-014 | Add accepted-outcome reward policy for sales agents | Implemented in #208. `targeted_site_sales_reward_policy_events` records proposed leads, accepted meetings/customers, reward eligibility, payout intent, holds, disputes, complaints, refunds, reversals, settlement caveats, public receipt refs, and public-safe projections while keeping buyer payment, referral attribution, accepted work, payout intent, and settlement separate. |
 
 ## Source Links
 

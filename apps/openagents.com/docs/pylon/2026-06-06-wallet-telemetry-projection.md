@@ -1,6 +1,6 @@
 # Pylon Wallet Telemetry Projection
 
-Issue #352 / `OMEGA-L-004` adds redacted Pylon wallet telemetry projections.
+Issue #352 / `OPENAGENTS-L-004` adds redacted Pylon wallet telemetry projections.
 
 The implementation lives in `workers/api/src/pylon-wallet-telemetry.ts`.
 

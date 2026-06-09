@@ -2,7 +2,7 @@
 
 Date: 2026-06-07
 
-Status: implemented as the Omega #428 contract slice. This is still a gated
+Status: implemented as the OpenAgents product surface #428 contract slice. This is still a gated
 simulation/control-plane path, not a public Pylon v0.2 release gate and not a
 blanket grant of live bitcoin spend authority.
 
@@ -115,5 +115,5 @@ pieces remain:
 
 - public-safe Nexus/Pylon receipt pages and operator dashboard;
 - Forum bridge for Artanis assignment, incident, release, and payout updates;
-- two-wallet MDK bitcoin movement smoke with Omega receipts;
-- Pylon v0.2 Omega release gate runbook and automated evidence checklist.
+- two-wallet MDK bitcoin movement smoke with OpenAgents product surface receipts;
+- Pylon v0.2 OpenAgents product surface release gate runbook and automated evidence checklist.

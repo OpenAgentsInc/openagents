@@ -1,4 +1,4 @@
-# Specification: Omega Homepage Refactor
+# Specification: OpenAgents product surface Homepage Refactor
 
 Date: 2026-06-09
 Status: Proposed / Spec Phase
@@ -6,13 +6,13 @@ Tracking Issue: #572
 
 ## 1. Executive Summary & Context
 
-The goal is to refactor the public, unauthenticated homepage of Autopilot Omega (`apps/web/src/page/loggedOut/page/home.ts`) to match a highly compact, informational, and dense terminal-like dashboard design.
+The goal is to refactor the public, unauthenticated homepage of OpenAgents Autopilot (`apps/web/src/page/loggedOut/page/home.ts`) to match a highly compact, informational, and dense terminal-like dashboard design.
 
 Following our **Workspace UI Design Guidelines** (`2026-05-01-openagents-design-style-guide.md`), we are moving away from wordy product explanations and decorative fluff. Instead, the homepage should act as an **instrument panel** for both human operators and programmatic agents, styled with **Berkeley Mono** font.
 
 ```
 +-----------------------------------------------------------------------+
-|                       [Header] Autopilot Omega                        |
+|                       [Header] OpenAgents Autopilot                        |
 +------------------------------------------+----------------------------+
 | LEFT COLUMN: INSTR & CODES               | RIGHT COLUMN: NET STATS    |
 | (Instructions for Humans & Agents)       |                            |
@@ -235,7 +235,7 @@ Forbidden homepage copy:
 ## 5. Security & Safety
 
 - **No Secret Leaks**: The public stats page must never consume or render private credentials, authorization bearer tokens, individual user email addresses, private wallet keys, or pending invoices.
-- **Verification of Boundaries**: All displayed fields are confirmed public-safe projection records from Omega's database layer.
+- **Verification of Boundaries**: All displayed fields are confirmed public-safe projection records from OpenAgents product surface's database layer.
 - **Payment Boundary**: Paid sats, settled sats, accepted-work payouts,
   revshare ledger entries, and withdrawable balances are separate states.
 - **No Wallet Material**: The homepage must not render raw invoices, payment

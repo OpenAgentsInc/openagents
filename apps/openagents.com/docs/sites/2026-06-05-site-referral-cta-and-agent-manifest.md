@@ -2,12 +2,12 @@
 
 Implemented: 2026-06-05
 
-Issue: #173 / OMEGA-SITES-REF-003
+Issue: #173 / OPENAGENTS-SITES-REF-003
 
 ## Summary
 
 The third REF0 Site referral slice adds public-safe CTA and agent-manifest
-projections backed by Omega-hosted capture URLs.
+projections backed by OpenAgents product surface-hosted capture URLs.
 
 This does not make referral payouts live. It gives public Sites, public proof,
 and generated Site metadata a safe way to say: start your own OpenAgents Site

@@ -1,14 +1,14 @@
-# Omega Zero-Tech-Debt Caller Inventory
+# OpenAgents Zero-Tech-Debt Caller Inventory
 
 Date: 2026-06-04
 
-Source issue: <https://github.com/OpenAgentsInc/autopilot-omega/issues/18>
+Source issue: <https://github.com/OpenAgentsInc/openagents/issues/18>
 
 Source audit:
-`docs/2026-06-04-omega-broader-effect-refactor-audit.md`
+`docs/2026-06-04-openagents-broader-effect-refactor-audit.md`
 
 Purpose: identify the compatibility paths that must not be preserved by
-default while Omega moves toward the fully Effect-native end state. This
+default while OpenAgents moves toward the fully Effect-native end state. This
 inventory is based on direct `rg` caller evidence gathered on 2026-06-04.
 
 Executable guardrail: `bun run check:architecture`, backed by
@@ -148,7 +148,7 @@ Explicit remaining exceptions after #44:
   canonicalizing old `agent_run_*` / UUID identifiers.
 - The Foldkit Effect beta 66 topology exception remains blocked by package
   metadata; see
-  `docs/2026-06-04-omega-effect-dependency-upgrade-tracker.md`.
+  `docs/2026-06-04-openagents-effect-dependency-upgrade-tracker.md`.
 
 ## Worker Request Boundary
 
@@ -201,7 +201,7 @@ deleted.
 | ZTD-017 | Logged-out local login route model/view                                                                                                        | `apps/web/src/page/loggedOut/model.ts`, `message.ts`, `update.ts`, and `view.ts` import `./page/login`; `apps/web/src/route.ts` still defines `LoginRoute`; Worker has `/login` exact route.                                      | One public login surface at root/Worker auth boundary, with logged-out product routes redirecting through startup policy.                                    | Delete the logged-out local login submodel after `/login` and logged-out startup policy no longer reference it and tests are moved to the final login surface. | Issue #39 or final deletion issue #44.              |
 | ZTD-018 | Long-lived browser model DTO nulls                                                                                                             | `apps/web/src/domain/session.ts` exposes many `S.NullOr` fields; logged-in update/message carries `teamId: S.NullOr(S.String)`; views branch on optional team/project/provider metadata.                                          | DTO-to-model conversion functions that convert boundary nulls into `Option` or tagged state.                                                                 | Delete null-preserving model paths after chat timeline and thread-file models convert.                                                                         | Issue #37.                                          |
 | ZTD-019 | Raw JSON and unknown sync/provider/run payload parsing                                                                                         | `packages/sync-worker/src/index.ts` has `parseJsonOrUndefined`; Worker provider/Omni code parses metadata/payload JSON; token usage parsing works from nullable payload JSON.                                                     | Named Schema boundary decoders with typed decode errors.                                                                                                     | Delete raw parsing helpers after boundary decoders cover stored payloads and callbacks.                                                                        | Issue #41.                                          |
-| ZTD-020 | Raw time/ID primitives in business logic                                                                                                       | `packages/sync-worker/src/index.ts` has `systemSyncWorkerRuntime.nowIso = () => new Date().toISOString()`; additional raw time/ID use will be enumerated by issue #40.                                                            | `Clock`, `Random`, `Effect.uuid`, or Omega-owned runtime services injected through layers.                                                                   | Delete raw primitive calls after deterministic services exist.                                                                                                 | Issue #40; runtime guardrail from #20.              |
+| ZTD-020 | Raw time/ID primitives in business logic                                                                                                       | `packages/sync-worker/src/index.ts` has `systemSyncWorkerRuntime.nowIso = () => new Date().toISOString()`; additional raw time/ID use will be enumerated by issue #40.                                                            | `Clock`, `Random`, `Effect.uuid`, or OpenAgents-owned runtime services injected through layers.                                                                   | Delete raw primitive calls after deterministic services exist.                                                                                                 | Issue #40; runtime guardrail from #20.              |
 
 ## Inventory Maintenance Rules
 

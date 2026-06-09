@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #344 / `OMEGA-BIZ-004`.
+Status: implemented contract note for issue #344 / `OPENAGENTS-BIZ-004`.
 
 ## Purpose
 
-Omega now has a schema-first legal safe-hold workroom contract for
+OpenAgents product surface now has a schema-first legal safe-hold workroom contract for
 legal-sensitive orders that must be held, scoped, source-backed, and routed to
 human/legal review before anything operational happens.
 

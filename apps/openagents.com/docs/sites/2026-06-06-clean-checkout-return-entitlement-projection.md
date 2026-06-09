@@ -46,7 +46,7 @@ Do not derive entitlement or receipt authority from public URL state.
 ## Entitlement Boundary
 
 A clean success return does not create final entitlement authority. The
-projection reports `pending_reconciliation` until Omega has a receipt or
+projection reports `pending_reconciliation` until OpenAgents product surface has a receipt or
 entitlement record.
 
 State interpretation:

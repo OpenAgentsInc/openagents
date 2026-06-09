@@ -2,11 +2,11 @@
 
 Date: 2026-06-05
 
-Issue: `#204` / `OMEGA-SITES-VIBE-013`
+Issue: `#204` / `OPENAGENTS-SITES-VIBE-013`
 
 ## What Changed
 
-Omega now records reviewed Site source export receipts in
+OpenAgents product surface now records reviewed Site source export receipts in
 `site_source_exports`.
 
 The first operator endpoint is:

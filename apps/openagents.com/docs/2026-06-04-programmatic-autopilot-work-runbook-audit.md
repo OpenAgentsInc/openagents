@@ -317,7 +317,7 @@ threads and cannot tell which run is the live continuation.
 
 ## 2026-06-04 Implementation Pass
 
-The recommendations above are now represented by concrete Omega surfaces for
+The recommendations above are now represented by concrete OpenAgents product surface surfaces for
 foreground coding agents:
 
 - `GET` or `POST /api/operator/autopilot/preflight`

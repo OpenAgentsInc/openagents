@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #331 / `OMEGA-084`.
+Status: implemented contract note for issue #331 / `OPENAGENTS-084`.
 
 ## Purpose
 
-Omega now has an evidence-only policy exception receipt contract for reviewed
+OpenAgents product surface now has an evidence-only policy exception receipt contract for reviewed
 bypasses across research, provider placement, access, environment/secret
 policy, public proof, payment/L402, email delivery, Forum moderation, Site
 deployment, and legal-sensitive rules.

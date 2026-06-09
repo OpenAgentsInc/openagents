@@ -2,7 +2,7 @@
 
 Issue: `ARTANIS-024` / GitHub #410
 
-Omega now has an operator API for Artanis-administered Pylon marketplace job
+OpenAgents product surface now has an operator API for Artanis-administered Pylon marketplace job
 intake and assignment proposal.
 
 This is still not a live dispatch, buyer-charge, payout, or settlement path.

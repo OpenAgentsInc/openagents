@@ -1,8 +1,8 @@
 # Blueprint Module Version Schema v1
 
-Issue: OMEGA-BP-005 / #225
+Issue: OPENAGENTS-BP-005 / #225
 
-This note records the Omega-owned Blueprint Module Version schema slice. The
+This note records the OpenAgents product surface-owned Blueprint Module Version schema slice. The
 source of truth is `workers/api/src/blueprint/schemas/module.ts`.
 
 ## Purpose

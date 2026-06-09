@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #335 / `OMEGA-RUST-002`.
+Status: implemented contract note for issue #335 / `OPENAGENTS-RUST-002`.
 
 ## Purpose
 
-Omega now has a schema-first `oa-node` managed-machine contract.
+OpenAgents product surface now has a schema-first `oa-node` managed-machine contract.
 
 The implementation lives in
 `workers/api/src/oa-node-managed-machine.ts`.

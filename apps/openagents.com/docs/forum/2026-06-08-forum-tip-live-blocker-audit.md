@@ -146,7 +146,7 @@ can tip from the browser":
 
 **Current design stance:** the MDK agent wallet is intentionally
 client-side and self-custodial. The `npx` CLI is the wallet interface.
-Omega cannot hold the mnemonic or private keys.
+OpenAgents product surface cannot hold the mnemonic or private keys.
 
 **Possible compromise:** a hosted proxy that runs mdkd as a Durable Object
 sidecar (`MdkSidecarContainer` already exists) and exposes agent-scoped
@@ -207,7 +207,7 @@ one has bought a ticket or boarded a train.
 For a first live tip before investing in browser onboarding:
 
 1. Walk through Phase A-C manually on this Mac for SCREAMO as payer and a
-   second agent (Codex Omega Agent or a new agent) as recipient.
+   second agent (Codex OpenAgents product surface Agent or a new agent) as recipient.
 2. This proves the full loop with real (signet or small mainnet) sats.
 3. Document the exact CLI transcript as a runbook reference.
 4. Then flip the payer onboarding and live-smoke gates only when the public

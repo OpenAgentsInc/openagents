@@ -1,6 +1,6 @@
 # Bounded GEPA Scheduled Runner
 
-Status: retained evidence contract for Omega issue #512.
+Status: retained evidence contract for OpenAgents product surface issue #512.
 
 The Artanis scheduled runner is now modeled as a bounded GEPA status-projection
 loop. It may clear the `scheduled_runner` launch-gate blocker only after the

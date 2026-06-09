@@ -8,7 +8,7 @@ or move production source control away from GitHub.
 
 ## Executive Decision
 
-Cloudflare Artifacts should become Omega's Git-native workspace and closeout
+Cloudflare Artifacts should become OpenAgents product surface's Git-native workspace and closeout
 store for agent work, but not the immediate replacement for GitHub as the
 customer source, social review, issue, CI, or pull-request system.
 
@@ -20,7 +20,7 @@ GitHub
      collaboration, and optional final writeback
 
 Cloudflare Artifacts
-  -> Omega-owned Git workspaces, per-mission forks, patch/diff closeout,
+  -> OpenAgents product surface-owned Git workspaces, per-mission forks, patch/diff closeout,
      internal baseline repos, public-proof repos, transient runner handoff,
      and PR-less accepted outcomes
 
@@ -33,7 +33,7 @@ D1 / Durable Objects / Queues / Workflows
      placement, billing, and review state
 ```
 
-Artifacts helps Omega get away from GitHub in the places where GitHub is being
+Artifacts helps OpenAgents product surface get away from GitHub in the places where GitHub is being
 used only because agents know the `git` CLI: scratch repos, forks, patches,
 commits, diffs, and baseline handoff. It does not remove the need for GitHub
 when the customer repository is hosted there, when a buyer expects a PR, when
@@ -48,16 +48,16 @@ CodingAutopilotMission
   -> mint short-lived repo write token
   -> SHC/local/Cloudflare Container agent clones with standard git
   -> agent commits into Artifacts
-  -> Omega records commit refs, diff refs, test refs, artifact refs, and receipts
+  -> OpenAgents product surface records commit refs, diff refs, test refs, artifact refs, and receipts
   -> optional later GitHub PR writeback after explicit approval
 ```
 
 This gives local and cloud agents a Git endpoint that is not GitHub, while
-keeping Omega's existing approval and projection invariants intact.
+keeping OpenAgents product surface's existing approval and projection invariants intact.
 
 ## Sources Reviewed
 
-Omega local files:
+OpenAgents product surface local files:
 
 - `AGENTS.md`
 - `INVARIANTS.md`
@@ -126,9 +126,9 @@ Recent commits inspected:
 - The current HEAD at the time of this audit was `7ee4a19d`, `Connect Artanis
   to Model Lab context`.
 
-## Current Omega Shape
+## Current OpenAgents product surface Shape
 
-Omega already has the right product authority split for this adoption.
+OpenAgents product surface already has the right product authority split for this adoption.
 
 The Worker is the product control plane. `workers/api/wrangler.jsonc` currently
 binds:
@@ -141,14 +141,14 @@ binds:
 - static web assets from `apps/web/dist`;
 - dispatch namespaces for hosted Sites.
 
-That means the name `ARTIFACTS` is already occupied by R2. If Omega adopts
+That means the name `ARTIFACTS` is already occupied by R2. If OpenAgents product surface adopts
 Cloudflare Artifacts, the binding should be explicitly named something like
 `GIT_ARTIFACTS`, `REPO_ARTIFACTS`, or `ARTIFACT_REPOS`. Do not overload the
-existing R2 artifact binding. In Omega vocabulary, "artifact" already means
+existing R2 artifact binding. In OpenAgents product surface vocabulary, "artifact" already means
 proof refs, screenshots, patches, reports, fulfillment receipts, and R2 blobs.
 Cloudflare Artifacts is specifically Git-compatible repo storage.
 
-Omega's current Coding on Autopilot contracts define:
+OpenAgents product surface's current Coding on Autopilot contracts define:
 
 - durable mission records with artifact refs;
 - decision actions that never perform direct effects;
@@ -165,7 +165,7 @@ Omega's current Coding on Autopilot contracts define:
 - situational awareness records that combine mission, artifact, decision
   action, account failover, and repo trust visibility.
 
-Omega's Omni contracts define:
+OpenAgents product surface's Omni contracts define:
 
 - workrooms as the durable unit that links orders, outcome contracts, sources,
   artifacts, emails, receipts, status, and blockers;
@@ -192,7 +192,7 @@ ledger or turn a repo token into implicit approval to mutate customer source.
 ## What Cloudflare Artifacts Is
 
 Cloudflare presents Artifacts as versioned storage that speaks Git. The product
-page emphasizes three properties that matter for Omega:
+page emphasizes three properties that matter for OpenAgents product surface:
 
 - every repo can be used by normal Git clients;
 - repos can be created, imported, forked, diffed, searched, and managed
@@ -233,7 +233,7 @@ git -c http.extraHeader="Authorization: Bearer $ARTIFACTS_TOKEN" \
 ```
 
 They also support embedding the token secret in an HTTPS Basic-auth remote for
-short-lived, self-contained commands, but Omega should avoid storing or
+short-lived, self-contained commands, but OpenAgents product surface should avoid storing or
 projecting that form because it puts secret material directly in the URL.
 
 Current published limits and pricing that matter:
@@ -255,9 +255,9 @@ protocol v2 receive-pack is not supported. Standard Git clients should still
 work, but the runner should not assume every optional protocol capability is
 available.
 
-## Why It Helps Omega Get Away From GitHub
+## Why It Helps OpenAgents product surface Get Away From GitHub
 
-Artifacts gives Omega a way to stop using GitHub as the default scratchpad.
+Artifacts gives OpenAgents product surface a way to stop using GitHub as the default scratchpad.
 
 Today, if an agent needs to make Git-backed progress, GitHub is the familiar
 remote, even when the work is not ready for PR review and even when the repo is
@@ -269,9 +269,9 @@ an internal OpenAgents experiment. That creates avoidable dependencies:
   redaction, tests, authority, and customer readiness;
 - local and cloud agents need different setup paths if one has GitHub access
   and another does not;
-- product-led review state is split between Omega and GitHub too early.
+- product-led review state is split between OpenAgents product surface and GitHub too early.
 
-Artifacts changes that because Omega can hand an agent a normal Git remote
+Artifacts changes that because OpenAgents product surface can hand an agent a normal Git remote
 without handing it a GitHub repo or GitHub token.
 
 The first benefits are concrete:
@@ -285,15 +285,15 @@ The first benefits are concrete:
 
 2. Baseline fork repos.
 
-   For internal OpenAgents work, Omega can maintain stable baseline repos in
+   For internal OpenAgents work, OpenAgents product surface can maintain stable baseline repos in
    Artifacts and fork them per mission. The Cloudflare best-practices docs
    recommend one repo per agent/session/application and forking from stable
-   baselines. That matches Omega's workroom model better than one crowded repo
+   baselines. That matches OpenAgents product surface's workroom model better than one crowded repo
    with many autonomous branches.
 
 3. Public-source import without ongoing GitHub write authority.
 
-   Artifacts can import public HTTPS remotes. For public GitHub repos, Omega
+   Artifacts can import public HTTPS remotes. For public GitHub repos, OpenAgents product surface
    can import or refresh a baseline, fork it, and let the agent operate in
    Cloudflare-owned Git storage. The final handoff can be a patch, diff, or
    optional GitHub PR after approval.
@@ -303,20 +303,20 @@ The first benefits are concrete:
    Some accepted work does not need a GitHub PR. A customer or internal user
    may need a patch bundle, generated source, site source export, model-lab
    package, or proof repo. Artifacts can hold the Git history and commit refs;
-   Omega can project only safe refs and store opaque/non-Git files in R2.
+   OpenAgents product surface can project only safe refs and store opaque/non-Git files in R2.
 
 5. One Git handoff path for local and cloud agents.
 
    SHC, GCP, Cloudflare Containers, local Codex, local OpenCode, or a future
    Probe runner can all use standard Git over HTTPS. The Worker or REST API
    mints a short-lived write token, the runner clones, the runner pushes, and
-   Omega records the resulting refs. The agent does not need to know whether
+   OpenAgents product surface records the resulting refs. The agent does not need to know whether
    the backing store is GitHub, Artifacts, or something else once the
    assignment gives it a remote and token resolution path.
 
 6. Better product authority sequencing.
 
-   Artifacts lets Omega delay GitHub PR creation until the workroom has:
+   Artifacts lets OpenAgents product surface delay GitHub PR creation until the workroom has:
 
    - evidence bundle refs;
    - diff or patch refs;
@@ -332,7 +332,7 @@ The first benefits are concrete:
 7. Fewer long-lived repo credentials.
 
    Cloudflare Artifacts repo tokens are repo-scoped and can be short-lived.
-   Omega should mint per-run write tokens and per-review read tokens. This is
+   OpenAgents product surface should mint per-run write tokens and per-review read tokens. This is
    narrower than a customer GitHub token with broad `repo` and `workflow`
    scopes, especially for internal scratch work.
 
@@ -362,10 +362,10 @@ versioned Git state.
 Finally, Artifacts is not an execution sandbox. It gives agents a versioned
 filesystem remote. It does not decide whether a runner may execute code, access
 the internet, resolve provider credentials, use customer source, or publish
-results. Those decisions remain in Omega's runner placement, grants, source
+results. Those decisions remain in OpenAgents product surface's runner placement, grants, source
 authority, workroom, evidence, and approval layers.
 
-## Recommended Omega Model
+## Recommended OpenAgents product surface Model
 
 Add a new Git workspace layer instead of bolting Artifacts onto the GitHub
 writeback code.
@@ -382,7 +382,7 @@ Suggested binding name:
 "artifacts": [
   {
     "binding": "GIT_ARTIFACTS",
-    "namespace": "omega-prod"
+    "namespace": "openagents-prod"
   }
 ]
 ```
@@ -505,7 +505,7 @@ Use when the source repo is public or OpenAgents-owned and public-safe.
 9. Runner commits and pushes to Artifacts.
 10. Runner emits closeout manifest with commit refs, diff refs, tests, and caveats.
 11. Worker records evidence bundle, coding artifact records, decision action, and receipt refs.
-12. Customer/operator reviews in Omega.
+12. Customer/operator reviews in OpenAgents product surface.
 13. Optional GitHub PR writeback uses existing authority gate.
 ```
 
@@ -519,11 +519,11 @@ remote should be created.
 
 ```text
 1. Operator or product route creates Artifacts repo through Worker or REST API.
-2. Omega issues a short-lived write token receipt.
+2. OpenAgents product surface issues a short-lived write token receipt.
 3. Local agent runs git clone with http.extraHeader.
 4. Agent works locally.
 5. Agent pushes branch/commit back to Artifacts.
-6. Omega reads safe commit refs and records evidence/artifacts.
+6. OpenAgents product surface reads safe commit refs and records evidence/artifacts.
 ```
 
 This is a clean way to have local agents do Git work without pushing branches
@@ -531,7 +531,7 @@ to GitHub during exploration.
 
 ### Flow 3: Cloudflare Container Backup Runner
 
-Use when Omega later adds the `cloudflare_container` runner lane described in
+Use when OpenAgents product surface later adds the `cloudflare_container` runner lane described in
 the Containers backup audit.
 
 ```text
@@ -558,9 +558,9 @@ grant boundary.
 1. Customer grants source access through the existing GitHub/provider path.
 2. RepoPlacementPolicy classifies the repo as private/sensitive/infra/etc.
 3. Runner clones customer source with the customer-approved grant.
-4. Runner may push sanitized patch commits to an Omega Artifacts repo only if
+4. Runner may push sanitized patch commits to an OpenAgents product surface Artifacts repo only if
    the workroom's data classification and customer grant allow it.
-5. Omega records the Artifacts repo as a private/customer-visible workspace ref.
+5. OpenAgents product surface records the Artifacts repo as a private/customer-visible workspace ref.
 6. GitHub PR writeback still requires the existing writeback authority gate.
 ```
 
@@ -672,7 +672,7 @@ inputs, but they should not make a download URL by default. The current data
 package contract says it records digest refs and does not host files or create
 download URLs. Keep that boundary.
 
-If Omega later offers a downloadable Git bundle, that needs a separate
+If OpenAgents product surface later offers a downloadable Git bundle, that needs a separate
 approval-gated export route with rights manifest, retention, and redaction
 checks.
 
@@ -697,18 +697,18 @@ needs its own authority trail.
 ## Namespace Strategy
 
 Cloudflare recommends partitioning namespaces by environment, team, and high
-rate workload. Omega should not put all repos under `default`.
+rate workload. OpenAgents product surface should not put all repos under `default`.
 
 Recommended namespace shape:
 
 | Namespace | Use |
 | --- | --- |
-| `omega-prod-public` | public/internal public-source agent workspaces |
-| `omega-prod-customer` | customer-authorized private workspaces after policy is ready |
-| `omega-prod-model-lab` | Model Lab public-safe eval/training artifact repos |
-| `omega-prod-sites` | Sites source/version repos if Git-backed site export is needed |
-| `omega-staging` | staging and test runs |
-| `omega-dev` | local/dev experiments |
+| `openagents-prod-public` | public/internal public-source agent workspaces |
+| `openagents-prod-customer` | customer-authorized private workspaces after policy is ready |
+| `openagents-prod-model-lab` | Model Lab public-safe eval/training artifact repos |
+| `openagents-prod-sites` | Sites source/version repos if Git-backed site export is needed |
+| `openagents-staging` | staging and test runs |
+| `openagents-dev` | local/dev experiments |
 
 Repo names should include stable identifiers:
 
@@ -813,7 +813,7 @@ Capabilities:
 
 Acceptance:
 
-- customer/operator can inspect a diff summary in Omega;
+- customer/operator can inspect a diff summary in OpenAgents product surface;
 - evidence bundle can cite Artifacts `source_commit` and `diff` refs;
 - public projection shows only public-safe refs.
 
@@ -917,7 +917,7 @@ not treat Artifacts as a runner or sandbox.
 The right first production outcome is:
 
 ```text
-An Omega mission produces a reviewable commit, diff, test summary, redaction
+An OpenAgents product surface mission produces a reviewable commit, diff, test summary, redaction
 report, and closeout receipt from a Cloudflare Artifacts Git repo, with no
 GitHub write token involved.
 ```
@@ -929,7 +929,7 @@ agent must work by default.
 
 - Does the current Cloudflare account have Artifacts access enabled for the
   Workers Paid plan used by `openagents-autopilot`?
-- Should the first namespace be `omega-prod-public` or a staging-only
+- Should the first namespace be `openagents-prod-public` or a staging-only
   namespace until the smoke is stable?
 - Should local agents receive tokens through an operator-only API route or an
   out-of-band CLI smoke first?

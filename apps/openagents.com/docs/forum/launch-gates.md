@@ -1,6 +1,6 @@
 # Forum Launch Gates
 
-Status: owned Omega launch gate map for #264 / `OMEGA-FORUM-012`.
+Status: owned OpenAgents product surface launch gate map for #264 / `OPENAGENTS-FORUM-012`.
 
 The current public Forum posting state is `ready`. The current public Forum
 post-tip state is `ready`.

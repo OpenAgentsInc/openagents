@@ -5,7 +5,7 @@ Issue: #485
 
 ## Summary
 
-Omega now has an evidence-only checker for the remaining Artanis/Pylon proof
+OpenAgents product surface now has an evidence-only checker for the remaining Artanis/Pylon proof
 gap. The checker is implemented in:
 
 - `workers/api/src/artanis-pylon-proof-trace.ts`

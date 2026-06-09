@@ -6,7 +6,7 @@ Status: implemented for Probe issue #177.
 
 Probe now emits a local Blueprint-compatible Program Run evidence record for
 Apple FM tool-stream turns. This is an evidence record, not a write authority
-grant. It can be cited by Omega workrooms and receipts once the Omega Program
+grant. It can be cited by OpenAgents product surface workrooms and receipts once the OpenAgents product surface Program
 Run intake path exists, but it cannot authorize PR creation, deploys, email,
 payments, public claims, or source-backed business mutations.
 

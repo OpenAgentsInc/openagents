@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #342 / `OMEGA-BIZ-002`.
+Status: implemented contract note for issue #342 / `OPENAGENTS-BIZ-002`.
 
 ## Purpose
 
-Omega now has a schema-first investor ops workroom contract for investor prep,
+OpenAgents product surface now has a schema-first investor ops workroom contract for investor prep,
 data-room tasks, deck/video work orders, follow-up queues, decision receipts,
 and accepted outcome refs.
 

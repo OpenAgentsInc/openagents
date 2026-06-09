@@ -1,6 +1,6 @@
 # Model Lab Retained-Failure Loop
 
-Status: implemented for issue #376 / `OMEGA-LATE-016`.
+Status: implemented for issue #376 / `OPENAGENTS-LATE-016`.
 
 ## Purpose
 

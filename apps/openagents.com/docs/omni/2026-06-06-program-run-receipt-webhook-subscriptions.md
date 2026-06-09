@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #347 / `OMEGA-DEV-003`.
+Status: implemented contract note for issue #347 / `OPENAGENTS-DEV-003`.
 
 ## Purpose
 
-Omega now has a focused schema-first contract for subscribing external systems
+OpenAgents product surface now has a focused schema-first contract for subscribing external systems
 to Program Run and receipt lifecycle events.
 
 The implementation extends the existing webhook subscription contract in:

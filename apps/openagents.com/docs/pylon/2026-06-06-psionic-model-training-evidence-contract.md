@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #338 / `OMEGA-RUST-005`.
+Status: implemented contract note for issue #338 / `OPENAGENTS-RUST-005`.
 
 ## Purpose
 
-Omega now has a schema-first Psionic evidence contract for eval, training,
+OpenAgents product surface now has a schema-first Psionic evidence contract for eval, training,
 optimizer, candidate-module, scorecard, promotion proposal, and rollback
 evidence.
 

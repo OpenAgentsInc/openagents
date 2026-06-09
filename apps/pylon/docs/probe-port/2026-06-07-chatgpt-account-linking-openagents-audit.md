@@ -1,14 +1,14 @@
-# ChatGPT Account Linking And Omega-Connected Probe Auth Audit
+# ChatGPT Account Linking And OpenAgents product surface-Connected Probe Auth Audit
 
 Date: 2026-06-07
 
-Status: architecture audit for connecting Probe to Omega-managed
+Status: architecture audit for connecting Probe to OpenAgents product surface-managed
 ChatGPT/Codex accounts.
 
 ## Intended End State
 
 Probe should be able to run coding-agent work with every relevant ChatGPT/Codex
-account that a user intentionally connects to OpenAgents. Omega should be the
+account that a user intentionally connects to OpenAgents. OpenAgents product surface should be the
 account registry, policy surface, lease authority, and grant issuer. Probe
 should consume scoped runtime grants and materialize authentication only inside
 the run environment that needs it.
@@ -16,7 +16,7 @@ the run environment that needs it.
 This means Probe does not become the long-lived source of truth for ChatGPT
 identity. A local Probe installation, an SHC box, or a sandbox spawned from an
 openagents.com forum thread should receive references and short-lived grants
-from Omega, not raw account credentials in launch payloads, logs, or public
+from OpenAgents product surface, not raw account credentials in launch payloads, logs, or public
 metadata.
 
 ## Scope And Vocabulary
@@ -24,22 +24,22 @@ metadata.
 The product/runtime name is `probe`. Do not introduce implementation-history
 names such as `probe_bun_effect`.
 
-The provider name already modeled in Omega is `chatgpt_codex`. This is the
+The provider name already modeled in OpenAgents product surface is `chatgpt_codex`. This is the
 right provider key for ChatGPT subscription-backed Codex-style coding-agent
-access. The current Omega code also carries a few OpenCode-shaped names in its
+access. The current OpenAgents product surface code also carries a few OpenCode-shaped names in its
 materialization plan. Those names should be treated as transitional and renamed
 to Probe-neutral or Probe-specific contract names during the refactor.
 
 "All relevant ChatGPT accounts" cannot mean silent discovery of every account
 a person may own at OpenAI. The workable product contract is: every account the
-user or operator intentionally connects through the OpenAgents/Omega linking
+user or operator intentionally connects through the OpenAgents/OpenAgents product surface linking
 flow is recorded as a provider account, made visible in the account list, and
 eligible for policy-driven Probe assignment when healthy.
 
-## Current Omega Account Model
+## Current OpenAgents product surface Account Model
 
-Omega already has a strong provider-account substrate in
-`autopilot-omega/packages/provider-account-schema/src/index.ts`.
+OpenAgents product surface already has a strong provider-account substrate in
+`openagents/packages/provider-account-schema/src/index.ts`.
 
 The current public provider is `chatgpt_codex`. Provider accounts carry stable
 refs, user/team scope, labels, plan type, status, health, auth mode, secret
@@ -59,10 +59,10 @@ secret refs may use prefixes such as `secret://`, `vault://`,
 keys, OAuth fields, auth JSON, JWT-looking values, and other secret markers are
 rejected or redacted from public metadata.
 
-## Current Omega API Surface
+## Current OpenAgents product surface API Surface
 
-Omega currently exposes user-facing provider account routes in
-`autopilot-omega/workers/api/src/provider-account-routes.ts`:
+OpenAgents product surface currently exposes user-facing provider account routes in
+`openagents/workers/api/src/provider-account-routes.ts`:
 
 - `GET /api/provider-accounts`
 - `POST /api/provider-accounts/chatgpt-codex/device-login/start`
@@ -75,7 +75,7 @@ Omega currently exposes user-facing provider account routes in
 - `POST /api/provider-accounts/:providerAccountRef/disconnect`
 
 The service layer in
-`autopilot-omega/workers/api/src/provider-account-service.ts` already supports
+`openagents/workers/api/src/provider-account-service.ts` already supports
 the important lifecycle:
 
 - list a user's accounts and pending connection attempts
@@ -88,16 +88,16 @@ the important lifecycle:
 - record health updates and disconnections
 
 The device login client in
-`autopilot-omega/workers/api/src/provider-account-client.ts` starts device
+`openagents/workers/api/src/provider-account-client.ts` starts device
 auth against OpenAI auth endpoints, shows the user a verification URL and user
 code, polls for completion, exchanges the returned authorization code, and
 extracts account labels/ids from token claims when available. In product terms,
-this means Omega can already perform the core "connect this ChatGPT account"
+this means OpenAgents product surface can already perform the core "connect this ChatGPT account"
 ceremony without Probe owning the OAuth flow.
 
-## Current Omega Persistence
+## Current OpenAgents product surface Persistence
 
-Omega's D1 migrations already encode the durable tables needed for a multi
+OpenAgents product surface's D1 migrations already encode the durable tables needed for a multi
 account fleet:
 
 - `provider_accounts`
@@ -116,10 +116,10 @@ lease limits, selection timestamps, launch timestamps, reauth reasons, operator
 notes, and refill notes. That is already the shape of an account fleet, not a
 single-account login button.
 
-## Current Omega UI State
+## Current OpenAgents product surface UI State
 
-Omega's web UI already treats ChatGPT accounts as a settings connection
-surface. The page examples and tests under `autopilot-omega/apps/web` include
+OpenAgents product surface's web UI already treats ChatGPT accounts as a settings connection
+surface. The page examples and tests under `openagents/apps/web` include
 copy and states for:
 
 - "ChatGPT accounts"
@@ -131,13 +131,13 @@ copy and states for:
 
 This is the right product direction for Probe. The first milestone should not
 be a separate Probe-only login island. The user should be able to connect
-accounts in Omega, see them there, and have Probe runs consume those accounts
+accounts in OpenAgents product surface, see them there, and have Probe runs consume those accounts
 through refs and grants.
 
 ## Current Run Assignment Contract
 
-Omega run assignment code already carries provider auth references. In
-`autopilot-omega/workers/api/src/omni-runs.ts`, run assignments can include
+OpenAgents product surface run assignment code already carries provider auth references. In
+`openagents/workers/api/src/omni-runs.ts`, run assignments can include
 `providerAccountRef` and `authGrantRef`. The SHC control request passes those
 refs through with runtime, repo, goal, callback, token ref, and sandbox
 metadata.
@@ -148,17 +148,17 @@ archives, wallet material, or customer private data.
 
 For Probe, this should become the runtime contract:
 
-1. Omega selects or receives a requested `providerAccountRef`.
-2. Omega issues an `authGrantRef` for the run, thread, workroom, runner
+1. OpenAgents product surface selects or receives a requested `providerAccountRef`.
+2. OpenAgents product surface issues an `authGrantRef` for the run, thread, workroom, runner
    session, or lease.
 3. The run assignment sent to SHC/Pylon/Probe includes only those refs.
-4. Probe resolves the grant through Omega from the runner side.
+4. Probe resolves the grant through OpenAgents product surface from the runner side.
 5. The secret broker materializes auth only inside the per-run sandbox.
 6. Probe scrubs the materialized auth and emits a closeout receipt.
 
 ## Current Fleet And Lease Model
 
-Omega's operator provider-account routes already describe the fleet behavior
+OpenAgents product surface's operator provider-account routes already describe the fleet behavior
 Probe needs. The operator surface can start device login, poll device login,
 run sanity checks, create leases, issue lease-bound grants, handle failover,
 explain leases, list active leases, touch leases, release leases, and view a
@@ -171,7 +171,7 @@ and provider account ref. This is the correct policy authority for multi
 account Probe deployment.
 
 Probe should not independently pick from a bag of raw ChatGPT tokens. Probe
-should ask Omega for the account or failover route, then operate with the grant
+should ask OpenAgents product surface for the account or failover route, then operate with the grant
 it receives.
 
 ## Deprecated Probe Auth Source Material
@@ -200,7 +200,7 @@ Those are good implementation patterns to harvest:
 - headless device flow for SSH-only or worker environments
 
 The authority should change. Long-lived account records and secret refs should
-live in Omega. Probe should keep only short-lived per-run materialization state
+live in OpenAgents product surface. Probe should keep only short-lived per-run materialization state
 unless the user explicitly links a local Probe installation for local-only
 work.
 
@@ -216,9 +216,9 @@ material are not.
 Probe should follow the same separation:
 
 - Probe host identity linking proves which local installation, SHC box, or
-  sandbox runner is allowed to talk to Omega.
+  sandbox runner is allowed to talk to OpenAgents product surface.
 - ChatGPT/Codex provider account linking proves which OpenAI account the user
-  intentionally connected through Omega.
+  intentionally connected through OpenAgents product surface.
 - A Probe host identity is not a ChatGPT account.
 - A ChatGPT account is not a Pylon identity.
 - A run grant binds the two at execution time for a narrow purpose.
@@ -230,57 +230,57 @@ because it is linked.
 
 ## Proposed Account Linking Flow
 
-The first working version should be Omega-first.
+The first working version should be OpenAgents product surface-first.
 
 User flow:
 
-1. The user opens Omega/OpenAgents settings and goes to ChatGPT accounts.
+1. The user opens OpenAgents product surface/OpenAgents settings and goes to ChatGPT accounts.
 2. The user clicks "Add ChatGPT account".
-3. Omega starts a device login attempt with `createNew=true` or with an
+3. OpenAgents product surface starts a device login attempt with `createNew=true` or with an
    explicit account ref when reconnecting.
 4. The user opens the OpenAI device page, signs into the intended ChatGPT
    account, and enters the code.
-5. Omega polls the attempt and stores the connected auth in secret storage
+5. OpenAgents product surface polls the attempt and stores the connected auth in secret storage
    behind a public secret ref such as `codex-auth://<providerAccountRef>`.
-6. Omega lists the account with label, plan, status, health, and operator
+6. OpenAgents product surface lists the account with label, plan, status, health, and operator
    metadata.
 7. The user repeats the same flow for every relevant ChatGPT account.
 
 Probe run flow:
 
-1. A forum thread, workroom, operator action, or Pylon request asks Omega to
+1. A forum thread, workroom, operator action, or Pylon request asks OpenAgents product surface to
    launch Probe.
-2. Omega chooses a provider account by explicit request or lease policy.
-3. Omega issues a session/run-scoped grant bound to the selected account and
+2. OpenAgents product surface chooses a provider account by explicit request or lease policy.
+3. OpenAgents product surface issues a session/run-scoped grant bound to the selected account and
    runner session.
 4. The SHC/Pylon control request carries `providerAccountRef` and
    `authGrantRef`, not tokens.
-5. Probe resolves the grant through Omega after proving runner identity.
+5. Probe resolves the grant through OpenAgents product surface after proving runner identity.
 6. Probe receives a redacted materialization plan and a secret ref.
 7. The local secret broker materializes the actual auth into an isolated
    per-run Probe home or environment.
 8. Probe runs the coding-agent task.
 9. Probe reports health, low-credit, rate-limit, failure, or success receipts
-   back to Omega.
+   back to OpenAgents product surface.
 10. Probe scrubs the materialized auth on closeout.
 
 Local Probe management flow:
 
-1. `probe omega link` links a local Probe installation to a user, team, Pylon,
+1. `probe openagents link` links a local Probe installation to a user, team, Pylon,
    or SHC identity using a Pylon-style signed account-link proof.
-2. `probe auth accounts` lists Omega-connected account refs and health for the
+2. `probe auth accounts` lists OpenAgents product surface-connected account refs and health for the
    linked scope without printing raw tokens.
-3. `probe auth add chatgpt` can call the same Omega device-login start/poll
+3. `probe auth add chatgpt` can call the same OpenAgents product surface device-login start/poll
    routes for users who prefer the CLI, but the resulting account still lives
-   in Omega.
+   in OpenAgents product surface.
 4. `probe auth import` may exist later for explicit migration from old local
    Probe or Codex auth files, but it must upload or broker the credential into
-   Omega secret storage and then delete or quarantine the imported local
+   OpenAgents product surface secret storage and then delete or quarantine the imported local
    material if the user chooses.
 
 ## Grant Materialization Contract
 
-Omega currently returns a redacted materialization plan with OpenCode-shaped
+OpenAgents product surface currently returns a redacted materialization plan with OpenCode-shaped
 names. Probe should refactor this into a Probe contract. The exact names can be
 settled during implementation, but the contract should look like this:
 
@@ -307,7 +307,7 @@ global account authority.
 
 ## Account Selection And Failover
 
-Omega should own cross-account selection. Probe should own local execution and
+OpenAgents product surface should own cross-account selection. Probe should own local execution and
 reporting.
 
 Selection policy should support:
@@ -324,7 +324,7 @@ Selection policy should support:
 - last selected timestamp
 - account health and reauth status
 
-Probe should report signals back to Omega:
+Probe should report signals back to OpenAgents product surface:
 
 - access token failed
 - refresh failed
@@ -337,7 +337,7 @@ Probe should report signals back to Omega:
 - auth was scrubbed at closeout
 
 When a run hits account-level failure, Probe should request failover through
-Omega's lease/failover route. It should not locally iterate across every raw
+OpenAgents product surface's lease/failover route. It should not locally iterate across every raw
 account secret.
 
 ## Security Requirements
@@ -348,7 +348,7 @@ The account linking process must preserve these boundaries:
 - No raw ChatGPT/OAuth tokens in public metadata.
 - No raw ChatGPT/OAuth tokens in logs, forum threads, receipts, or gateway
   payloads.
-- Long-lived provider account secret material is stored behind Omega secret
+- Long-lived provider account secret material is stored behind OpenAgents product surface secret
   refs.
 - Grants are short-lived, one-time or narrowly scoped, and runner-session
   bound.
@@ -363,7 +363,7 @@ The account linking process must preserve these boundaries:
 
 ## Required Refactors
 
-Omega:
+OpenAgents product surface:
 
 - Rename OpenCode-shaped materialization types and env hints to Probe-neutral
   names.
@@ -383,25 +383,25 @@ Omega:
 
 Probe:
 
-- Implement an Omega account client.
+- Implement an OpenAgents product surface account client.
 - Implement a grant resolver that accepts `providerAccountRef` and
   `authGrantRef` from the run assignment.
 - Implement a Probe auth materializer that writes only to the per-run
   sandbox/home.
 - Implement scrub-on-closeout and receipt emission.
-- Implement account status commands that read Omega public account projections.
-- Implement optional CLI-driven account add/reconnect by calling Omega's
+- Implement account status commands that read OpenAgents product surface public account projections.
+- Implement optional CLI-driven account add/reconnect by calling OpenAgents product surface's
   device-code routes.
 - Do not recreate the old long-lived multi-account store as the primary
   authority.
 
 Pylon/SHC:
 
-- Link Probe runner identity to Omega using a signed account-link process.
+- Link Probe runner identity to OpenAgents product surface using a signed account-link process.
 - Pass run assignments with account refs and grants.
 - Provide a local broker for secret-ref materialization.
 - Keep raw provider auth out of Pylon link payloads.
-- Emit closeout and scrub receipts back to Omega.
+- Emit closeout and scrub receipts back to OpenAgents product surface.
 
 ## Path To Parity With Deprecated Probe Auth
 
@@ -414,16 +414,16 @@ Milestone 0: contracts and fixtures.
 - Add fake grant fixtures with no real tokens.
 - Add redaction tests around every public projection and receipt.
 
-Milestone 1: Omega multi-account connect/list.
+Milestone 1: OpenAgents product surface multi-account connect/list.
 
-- Use the existing Omega device-code flow.
+- Use the existing OpenAgents product surface device-code flow.
 - Verify repeated "Add ChatGPT account" creates multiple visible accounts.
 - Verify reconnect updates only the selected account.
 - Verify disconnect prevents grant issuance.
 
 Milestone 2: Probe grant consumption.
 
-- Build the Probe-side client that resolves a fake Omega grant.
+- Build the Probe-side client that resolves a fake OpenAgents product surface grant.
 - Materialize fake auth into a temporary per-run home.
 - Run a no-provider smoke using the materialized path.
 - Scrub and prove the file/env is gone after closeout.
@@ -436,31 +436,31 @@ Milestone 3: SHC/Pylon launch.
 
 Milestone 4: fleet selection and failover.
 
-- Use Omega leases to select among all connected accounts.
+- Use OpenAgents product surface leases to select among all connected accounts.
 - Feed Probe auth failures back into account health.
-- Request failover through Omega instead of local token iteration.
+- Request failover through OpenAgents product surface instead of local token iteration.
 - Add account-level cooldown, low-credit, and reauth-required receipts.
 
 Milestone 5: local Probe account management.
 
-- Add `probe omega link`.
+- Add `probe openagents link`.
 - Add `probe auth accounts`.
-- Add optional `probe auth add chatgpt` as a CLI wrapper around Omega's
+- Add optional `probe auth add chatgpt` as a CLI wrapper around OpenAgents product surface's
   device-code flow.
 - Add explicit import from deprecated local Probe/Codex auth files only after
-  the Omega secret-storage path is ready.
+  the OpenAgents product surface secret-storage path is ready.
 
 Milestone 6: inference strategy integration.
 
 - Treat ChatGPT/Codex account grants as one inference strategy.
 - Keep API-key providers, local inference, swarm inference, and Codex-style
   adapters in the same Probe surface.
-- Route each job through Omega policy so account-backed, API-key-backed,
+- Route each job through OpenAgents product surface policy so account-backed, API-key-backed,
   local, and swarm execution are explicit and auditable.
 
 ## Test And Audit Checklist
 
-Omega tests:
+OpenAgents product surface tests:
 
 - multiple ChatGPT accounts can be connected for the same user/team
 - reconnect updates the intended account
@@ -474,7 +474,7 @@ Omega tests:
 Probe tests:
 
 - run assignment parser accepts `providerAccountRef` and `authGrantRef`
-- grant resolver calls Omega and rejects mismatched account refs
+- grant resolver calls OpenAgents product surface and rejects mismatched account refs
 - materializer writes fake auth only inside the per-run directory
 - cleanup removes materialized auth
 - logs and receipts redact auth content
@@ -490,35 +490,35 @@ Pylon/SHC tests:
 
 ## Immediate Recommendation
 
-Implement the first Probe milestone around Omega grant consumption, not a new
-standalone Probe login store. The first working build should accept an Omega
+Implement the first Probe milestone around OpenAgents product surface grant consumption, not a new
+standalone Probe login store. The first working build should accept an OpenAgents product surface
 assignment containing `providerAccountRef` and `authGrantRef`, resolve it,
 materialize a fake auth fixture in a per-run directory, scrub it, and report a
-receipt. In parallel, Omega should verify that its existing settings flow can
+receipt. In parallel, OpenAgents product surface should verify that its existing settings flow can
 connect more than one ChatGPT account and issue a grant for the selected
 account.
 
-After that works end to end, add CLI convenience commands that call Omega's
+After that works end to end, add CLI convenience commands that call OpenAgents product surface's
 same APIs. That gives users a Probe-native surface without splitting account
-authority away from the openagents.com/Omega product.
+authority away from the openagents.com/OpenAgents product surface product.
 
 ## Source Files Reviewed
 
-- `autopilot-omega/packages/provider-account-schema/src/index.ts`
-- `autopilot-omega/workers/api/src/provider-account-routes.ts`
-- `autopilot-omega/workers/api/src/provider-account-service.ts`
-- `autopilot-omega/workers/api/src/provider-account-domain.ts`
-- `autopilot-omega/workers/api/src/provider-account-client.ts`
-- `autopilot-omega/workers/api/src/operator-provider-account-routes.ts`
-- `autopilot-omega/workers/api/src/omni-runs.ts`
-- `autopilot-omega/workers/api/src/runner-gateway.ts`
-- `autopilot-omega/workers/api/src/provider-launch.ts`
-- `autopilot-omega/workers/api/migrations/0009_provider_accounts.sql`
-- `autopilot-omega/workers/api/migrations/0045_provider_account_parallel_probe_receipts.sql`
-- `autopilot-omega/workers/api/migrations/0046_provider_account_leases.sql`
-- `autopilot-omega/workers/api/migrations/0048_provider_account_fleet_fields.sql`
-- `autopilot-omega/workers/api/migrations/0049_provider_account_lease_operations.sql`
-- `autopilot-omega/workers/api/migrations/0050_provider_account_failover_receipt_events.sql`
+- `openagents/packages/provider-account-schema/src/index.ts`
+- `openagents/workers/api/src/provider-account-routes.ts`
+- `openagents/workers/api/src/provider-account-service.ts`
+- `openagents/workers/api/src/provider-account-domain.ts`
+- `openagents/workers/api/src/provider-account-client.ts`
+- `openagents/workers/api/src/operator-provider-account-routes.ts`
+- `openagents/workers/api/src/omni-runs.ts`
+- `openagents/workers/api/src/runner-gateway.ts`
+- `openagents/workers/api/src/provider-launch.ts`
+- `openagents/workers/api/migrations/0009_provider_accounts.sql`
+- `openagents/workers/api/migrations/0045_provider_account_parallel_probe_receipts.sql`
+- `openagents/workers/api/migrations/0046_provider_account_leases.sql`
+- `openagents/workers/api/migrations/0048_provider_account_fleet_fields.sql`
+- `openagents/workers/api/migrations/0049_provider_account_lease_operations.sql`
+- `openagents/workers/api/migrations/0050_provider_account_failover_receipt_events.sql`
 - `openagents/docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md`
 - `openagents/docs/pylon/PYLON_ACCOUNT_LINKING_PROCESS.md`
 - deprecated Probe history at commit `2d82d44`:

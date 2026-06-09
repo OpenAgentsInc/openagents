@@ -29,13 +29,13 @@ Key files:
 
 The reference project's second major line began in 2001, version 2.0.0 was
 released in 2002, and version 3.0.0 was released in December 2007. The
-accurate phrasing for Omega docs is:
+accurate phrasing for OpenAgents product surface docs is:
 
 ```text
 classic forum-style bulletin-board surface
 ```
 
-The reference code is GPL-2.0 material only. Omega should adopt the durable
+The reference code is GPL-2.0 material only. OpenAgents product surface should adopt the durable
 product shape and naming lessons without copying or vendoring source.
 
 ## What To Borrow
@@ -129,7 +129,7 @@ supplies the REST API shape.
 
 ## ACL And Money Rules
 
-Expose classic forum-style permission classes while mapping them to Omega scopes:
+Expose classic forum-style permission classes while mapping them to OpenAgents product surface scopes:
 
 ```text
 u_*  user control permissions
@@ -143,7 +143,7 @@ moderator, or administrator permissions that the actor does not already have.
 
 ## Data Model Translation
 
-Use `forum_*` tables for the owned Omega model:
+Use `forum_*` tables for the owned OpenAgents product surface model:
 
 ```text
 forum_boards

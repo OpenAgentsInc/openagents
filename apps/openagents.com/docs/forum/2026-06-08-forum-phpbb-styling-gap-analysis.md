@@ -4,15 +4,15 @@ Status: styling and structure audit.
 
 Date: 2026-06-08.
 
-Scope: compare the current Omega browser forum surface with phpBB's default
+Scope: compare the current OpenAgents product surface browser forum surface with phpBB's default
 `prosilver` forum structure and styling. This is not a proposal to copy phpBB
-CSS, templates, PHP routes, or GPL source. Omega should keep Foldkit, Effect,
+CSS, templates, PHP routes, or GPL source. OpenAgents product surface should keep Foldkit, Effect,
 REST/JSON APIs, and Tailwind utilities while representing the `prosilver`
 visual structure and color system directly.
 
 ## Sources Reviewed
 
-Omega:
+OpenAgents product surface:
 
 - `apps/web/src/page/forum.ts`
 - `apps/web/src/page/publicHeader.ts`
@@ -35,7 +35,7 @@ phpBB reference:
 
 ## Executive Gap
 
-Omega has the right public nouns and route family: board index, forums, topics,
+OpenAgents product surface has the right public nouns and route family: board index, forums, topics,
 posts, receipts, post numbers, and forum payment affordances. The current
 browser UI does not yet look like a classic forum. It looks like an operational
 black product panel that lists forums, topics, and posts with sparse metadata.
@@ -44,16 +44,16 @@ phpBB's `prosilver` styling feels forum-native because the page is organized as
 a compact information table: light body, white wrap, blue category bars, pale
 blue alternating rows, fixed metadata columns, folder/status icons, last-post
 cells, action bars above and below lists, breadcrumbs, pagination, search, and
-post pages with a persistent author profile column. Omega should target that
+post pages with a persistent author profile column. OpenAgents product surface should target that
 recognizable `prosilver` color scheme and structure using Tailwind classes and
 owned view helpers, not by importing phpBB assets.
 
 The highest-impact change is structural: move from one-column card rows to
 phpBB-style list modules with header rows and stable columns.
 
-## Current Omega Styling
+## Current OpenAgents product surface Styling
 
-Omega's forum page currently uses:
+OpenAgents product surface's forum page currently uses:
 
 - black page background and near-black panels;
 - one centered container around `1180px`;
@@ -75,7 +75,7 @@ Omega's forum page currently uses:
 - no quote, edit, report, watch, bookmark, or moderator affordance row in the
   browser view, even where APIs exist or are planned.
 
-The current look is consistent with Omega's operational product direction, but
+The current look is consistent with OpenAgents product surface's operational product direction, but
 it under-signals "forum." The forum surface should be allowed to depart from
 the all-black product shell and represent `prosilver`'s light blue/white board
 language more literally. It should feel like a bulletin board, not a sparse
@@ -114,9 +114,9 @@ last-activity cells, action bars, and author/profile separation.
 
 ## Styling Gap Matrix
 
-| Area | Omega Now | phpBB `prosilver` Pattern | Gap | Tailwind Direction |
+| Area | OpenAgents product surface Now | phpBB `prosilver` Pattern | Gap | Tailwind Direction |
 | --- | --- | --- | --- | --- |
-| Page shell | Full black app shell with a product header. | Light body, centered white wrap, headerbar, navbar, breadcrumbs. | Omega feels like an app route, not a board. | Add a forum-specific `prosilver` shell: light page background, white wrap, blue header/category bars, breadcrumb/nav strip, and dense board chrome. |
+| Page shell | Full black app shell with a product header. | Light body, centered white wrap, headerbar, navbar, breadcrumbs. | OpenAgents product surface feels like an app route, not a board. | Add a forum-specific `prosilver` shell: light page background, white wrap, blue header/category bars, breadcrumb/nav strip, and dense board chrome. |
 | Board index | Single panel titled "Board index"; flat forum rows. | Category blocks with blue headers and Forum/Topics/Posts/Last post columns. | Missing category grouping and last-post density. | Add `ForumCategorySection` with header row and `grid-cols-[1fr_5rem_5rem_16rem]` on desktop. |
 | Forum row | Title, slug, topic/post counts. | Leading status icon, forum title, description, moderators/subforums, topic count, post count, last post. | Rows lack description, moderators, subforums, status, and last-post destination. | Add icon cell, description line, optional moderator/subforum metadata, and last-post cell. |
 | Forum page | Heading panel plus topic rows. | Title, rules, subforum list, top action bar, topic table, bottom action bar, jumpbox. | Missing action bars, search, pagination, mark-read, rules/subforum treatment. | Add forum toolbar above and below topic list; reserve slots for search and pagination even before all actions are live. |
@@ -174,7 +174,7 @@ Mobile can collapse to a title-first card row with compact metadata chips.
 
 ### 3. Project Last-Post Metadata
 
-phpBB's strongest scan affordance is the "Last post" cell. Omega needs
+phpBB's strongest scan affordance is the "Last post" cell. OpenAgents product surface needs
 public-safe projections for:
 
 - latest topic/post subject;
@@ -189,7 +189,7 @@ to feel like a static directory.
 
 ### 4. Add Status Icons And Badges
 
-phpBB uses a leading icon to encode state before a user reads the text. Omega
+phpBB uses a leading icon to encode state before a user reads the text. OpenAgents product surface
 should render first-party generated icon-catalog icons for:
 
 - read/unread;
@@ -221,7 +221,7 @@ This is the single most important topic-page structural change.
 
 ### 6. Add Action Bars
 
-phpBB pages repeatedly show action bars above and below primary lists. Omega
+phpBB pages repeatedly show action bars above and below primary lists. OpenAgents product surface
 should add:
 
 - board/forum breadcrumb on the left or above;
@@ -238,11 +238,11 @@ labels; they should not imply authority that the API does not grant.
 
 ### 7. Introduce Forum-Specific `prosilver` Tailwind Tokens
 
-The forum should not be constrained to Omega's current dark product shell. The
+The forum should not be constrained to OpenAgents product surface's current dark product shell. The
 target is a Tailwind representation of phpBB `prosilver`'s light color system:
 light gray page, white wrap, blue category bars, pale blue alternating rows,
 blue links, red hover/alert accents, green online state, and amber/gold only
-where Omega's payment layer needs it.
+where OpenAgents product surface's payment layer needs it.
 
 Suggested tokens:
 
@@ -269,7 +269,7 @@ forum-payment: #ffb400
 
 These are `prosilver`-derived values from the reference theme. Use Tailwind
 utility classes or theme variables in `apps/web/src/styles.css`, scoped so the
-forum can carry the phpBB-like surface without forcing the rest of Omega into
+forum can carry the phpBB-like surface without forcing the rest of OpenAgents product surface into
 the same mode.
 
 ### 8. Keep Product Copy Out Of The UI
@@ -286,7 +286,7 @@ say things like:
 - `Reported`
 - `Last post`
 
-This matches phpBB's dense interface and Omega's product-copy rule.
+This matches phpBB's dense interface and OpenAgents product surface's product-copy rule.
 
 ## Data And API Gaps Exposed By Styling
 
@@ -362,13 +362,13 @@ The forum should be considered "more phpBB-like" when:
   cards;
 - links, unread/alert/payment states, and row hover states are visually distinct;
 - no raw phpBB source, CSS, assets, query routes, or GPL-derived code is copied
-  into Omega.
+  into OpenAgents product surface.
 
 ## Non-Goals
 
 - Do not copy phpBB templates or CSS.
 - Do not adopt phpBB query-string routing.
-- Do not replace Omega's REST/JSON API.
+- Do not replace OpenAgents product surface's REST/JSON API.
 - Do not require the whole product to switch modes; the forum surface itself
   should represent the `prosilver` light blue/white scheme.
 - Do not add icon dependencies or inline SVGs outside the generated icon

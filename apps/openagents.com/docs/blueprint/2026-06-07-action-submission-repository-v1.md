@@ -1,6 +1,6 @@
 # Blueprint Action Submission Repository v1
 
-Issue #497 adds the first Omega-owned Action Submission persistence slice. The
+Issue #497 adds the first OpenAgents product surface-owned Action Submission persistence slice. The
 source of truth is:
 
 - `workers/api/src/blueprint/schemas/action-submission.ts`

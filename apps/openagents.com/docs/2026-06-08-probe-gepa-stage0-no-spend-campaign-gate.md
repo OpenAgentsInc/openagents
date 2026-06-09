@@ -2,7 +2,7 @@
 
 Date: 2026-06-08
 
-Issue: [#565](https://github.com/OpenAgentsInc/autopilot-omega/issues/565)
+Issue: [#565](https://github.com/OpenAgentsInc/openagents/issues/565)
 
 ## Launch Decision
 
@@ -84,7 +84,7 @@ The tests cover:
 
 ## Current Gap
 
-Omega now has the Stage 0 no-spend campaign gate and tests. This is still not a
+OpenAgents product surface now has the Stage 0 no-spend campaign gate and tests. This is still not a
 live paid GEPA campaign. Paid and settled-bitcoin modes remain blocked until a
 separate gate supplies payment receipts, settlement receipts, and paid-mode
 policy evidence.

@@ -3,7 +3,7 @@
 Date: 2026-06-08
 
 This folder retains the first public-safe Probe GEPA Terminal-Bench 2 canary
-that completed the live Omega Pylon assignment lifecycle through
+that completed the live OpenAgents product surface Pylon assignment lifecycle through
 `openagents.com`.
 
 The canary is **unpaid smoke evidence**. It proves that a registered Pylon can

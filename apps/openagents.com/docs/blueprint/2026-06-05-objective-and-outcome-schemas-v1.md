@@ -1,8 +1,8 @@
 # Blueprint Objective and Outcome Schemas v1
 
-Issue: OMEGA-BP-003 / #223
+Issue: OPENAGENTS-BP-003 / #223
 
-This note records the first Omega-owned Blueprint Objective and Outcome schema
+This note records the first OpenAgents product surface-owned Blueprint Objective and Outcome schema
 slice. The source of truth is `workers/api/src/blueprint/schemas/objective.ts`.
 
 ## Purpose

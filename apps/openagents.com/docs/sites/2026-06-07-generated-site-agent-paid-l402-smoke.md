@@ -1,11 +1,11 @@
 # Generated Site Agent-Paid L402 Smoke
 
 Date: 2026-06-07
-Issue: #456 / `OMEGA-SITES-MDK-LIVE-003`
+Issue: #456 / `OPENAGENTS-SITES-MDK-LIVE-003`
 
 ## Summary
 
-Omega now has deterministic generated-Site smoke coverage for an agent-paid
+OpenAgents product surface now has deterministic generated-Site smoke coverage for an agent-paid
 L402 action.
 
 The smoke uses the generated-Site fixture from #454:
@@ -77,7 +77,7 @@ tokens, mnemonics, raw invoices, payment hashes, preimages, provider grants, or
 wallet material.
 
 For an agent-paid action, the calling agent supplies its own bearer token from
-its private runtime when calling the Omega commerce API. The generated Site can
+its private runtime when calling the OpenAgents product surface commerce API. The generated Site can
 publish helper code and request shapes, but it cannot become the token holder.
 
 The L402 challenge route returns a payment challenge shape. The redemption route

@@ -1,7 +1,7 @@
 # LDK Readiness Projections
 
-Issue #349 / `OMEGA-L-001` adds the first read-only
-Nexus/Treasury/LDK readiness projection contract for Omega.
+Issue #349 / `OPENAGENTS-L-001` adds the first read-only
+Nexus/Treasury/LDK readiness projection contract for OpenAgents product surface.
 
 The implementation lives in
 `workers/api/src/pylon-ldk-readiness-projections.ts`.
@@ -9,7 +9,7 @@ The implementation lives in
 ## Purpose
 
 The projection lets OpenAgents inspect whether a provider-facing settlement
-rail appears ready without giving Omega, an agent, or a public page authority
+rail appears ready without giving OpenAgents product surface, an agent, or a public page authority
 to spend bitcoin, mutate Nexus or Treasury, open channels, dispatch payouts,
 change payout targets, or claim settlement.
 

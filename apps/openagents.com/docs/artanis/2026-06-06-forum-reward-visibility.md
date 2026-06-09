@@ -3,7 +3,7 @@
 Issue: `ARTANIS-016` / GitHub #401, extended by #412 /
 `ARTANIS-026`.
 
-Omega now has a public-safe Artanis reward visibility contract in
+OpenAgents product surface now has a public-safe Artanis reward visibility contract in
 `workers/api/src/artanis-forum-reward-visibility.ts`.
 
 The goal is narrow: Artanis can summarize Forum reward visibility without

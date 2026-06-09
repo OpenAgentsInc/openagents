@@ -2,7 +2,7 @@
 
 Status: ready for dispatch
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
@@ -94,7 +94,7 @@ run records the required GitHub authority receipts.
 - Use `adjutant_assignment_eeed1c3135b247f496fdd43f06975080` as the work
   receipt.
 - Produce a reviewable Site artifact suitable for `site_versions`.
-- Emit an `openagents.adjutant.site_artifact_receipt.v1` payload so Omega can
+- Emit an `openagents.adjutant.site_artifact_receipt.v1` payload so OpenAgents product surface can
   ingest the output into `site_project_1eef2f6861e54dab8b8c5e3283277a48`.
 - Save the version as review-ready only if the artifact is presentable,
   responsive, and free of secret-shaped or private-repo material.

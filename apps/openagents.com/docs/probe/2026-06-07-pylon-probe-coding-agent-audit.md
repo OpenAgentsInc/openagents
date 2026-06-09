@@ -2,7 +2,7 @@
 
 Date: 2026-06-07
 Status: audit and implementation plan
-Scope: `autopilot-omega`, `probe`, `openagents/apps/pylon`, and historical `deprecated/openagents.com` Pylon workload source material
+Scope: `openagents`, `probe`, `openagents/apps/pylon`, and historical `deprecated/openagents.com` Pylon workload source material
 
 ## Executive Summary
 
@@ -10,21 +10,21 @@ Probe is already the runtime that should own coding-agent execution: session
 lifecycle, backend/model selection, tool calls, approvals, child sessions,
 runtime events, local artifacts, and replayable transcripts. Pylon already has
 local code to advertise a `probe_agent` capability and invoke Probe through a
-signed bridge. Omega already has product-side contracts for Probe run
+signed bridge. OpenAgents product surface already has product-side contracts for Probe run
 projection, Pylon registration/status intake, managed-machine projection,
 workroom sidecars, and provider settlement evidence.
 
-The missing piece is the active broker between those worlds. Omega does not yet
+The missing piece is the active broker between those worlds. OpenAgents product surface does not yet
 expose the machine-facing Pylon workload API that a Pylon can poll to claim a
 coding assignment, and it does not yet persist Probe managed-runtime events as
 the authoritative product view of a coding run. Today, Pylon's runnable Probe
 path is wired against the older Laravel-style `/api/pylon/workloads/*` broker
-shape, while Omega's current Pylon API is a registration and progress surface.
+shape, while OpenAgents product surface's current Pylon API is a registration and progress surface.
 
-The intended architecture should make Omega the product authority and Probe the
+The intended architecture should make OpenAgents product surface the product authority and Probe the
 runtime authority:
 
-- Omega decides which coding work exists, which account/team/workroom it belongs
+- OpenAgents product surface decides which coding work exists, which account/team/workroom it belongs
   to, what policy applies, which Pylon is eligible, and when work is accepted.
 - Pylon advertises local capability and environment facts, claims assigned work,
   launches the local Probe runtime, and forwards safe runtime events.
@@ -34,7 +34,7 @@ runtime authority:
 - Pylon provider settlement remains evidence-only until accepted work and payout
   authority are explicitly recorded by the settlement layer.
 
-Short term, Omega can support the existing Pylon `probe_agent` bridge so Pylons
+Short term, OpenAgents product surface can support the existing Pylon `probe_agent` bridge so Pylons
 can launch Probe for coding assignments. Medium term, the bridge should move
 from the admin-chat signed command into Probe's scheduled-agent or managed
 runtime contracts, because those contracts express durable sessions, approvals,
@@ -76,7 +76,7 @@ secret is present without exposing the secret.
 
 Pylon should not become the product scheduler. It should claim work assigned to
 its registered identity, run the local runtime, and report events and terminal
-evidence back to Omega.
+evidence back to OpenAgents product surface.
 
 The current Pylon implementation has two coding capabilities:
 
@@ -99,14 +99,14 @@ If all checks pass, Pylon advertises a ready `probe_agent` capability with safe
 metadata such as bridge schema, backend profile, bridge availability, and
 workspace count.
 
-### Omega
+### OpenAgents product surface
 
-Omega is the active `openagents.com` product surface. It owns the user-facing
+OpenAgents product surface is the active `openagents.com` product surface. It owns the user-facing
 product, admin/operator API boundaries, Pylon registration/status API,
 projection contracts, workroom and managed-machine product views, and
 settlement evidence gates.
 
-Today Omega has several important contracts but no active Probe workload broker:
+Today OpenAgents product surface has several important contracts but no active Probe workload broker:
 
 - Probe coding runtime projection contract:
   `workers/api/src/probe-coding-runtime-contract.ts`
@@ -121,7 +121,7 @@ Today Omega has several important contracts but no active Probe workload broker:
 - Runner gateway contracts for `cloudflare_container`, `gcloud_vm`, and
   `shc_vm`, but not yet `pylon` or `probe` as an executable backend.
 
-Omega's current Pylon API records registered Pylons, heartbeat/status refs,
+OpenAgents product surface's current Pylon API records registered Pylons, heartbeat/status refs,
 wallet readiness refs, payout target admission refs, assignment progress refs,
 artifact proof refs, payment receipt refs, and settlement status refs. It
 intentionally does not dispatch paid work, approve payout targets, spend
@@ -143,7 +143,7 @@ creates a Pylon assignment using `mode=pylon_probe`, and leaves actual runtime
 execution to the Pylon worker.
 
 That source should be treated as reference material only. New implementation
-belongs in Omega.
+belongs in OpenAgents product surface.
 
 ## How Probe Works Today
 
@@ -165,7 +165,7 @@ updates, artifact refs, runtime progress, and terminal events. The contract
 forbids model keys, bearer tokens, refresh/access tokens, raw local paths, raw
 tool args/output, assignment nonces, and other unsafe material.
 
-The managed runtime API is a better long-term fit for Omega because it supports:
+The managed runtime API is a better long-term fit for OpenAgents product surface because it supports:
 
 - Start, resume, interrupt, cancel, approval resolution, replay, heartbeat, and
   child-session recording operations.
@@ -238,9 +238,9 @@ terminal event is present. That is acceptable for early plumbing, but it is not
 strong enough for product acceptance, user-visible completion, or provider
 settlement.
 
-## How Omega Works Today
+## How OpenAgents product surface Works Today
 
-Omega has the shape of the product contract but not the active assignment loop.
+OpenAgents product surface has the shape of the product contract but not the active assignment loop.
 
 The Probe coding runtime contract defines safe run requests, turn events, tool
 summaries, run records, and projections. It also encodes important policy:
@@ -277,14 +277,14 @@ flowing through Pylons.
 
 The target state is a Probe-first Pylon coding-work pipeline:
 
-1. A Pylon registers with Omega.
+1. A Pylon registers with OpenAgents product surface.
 
    The registration includes stable Pylon identity, safe capability refs, and
    eventually structured capability snapshots for `probe_agent`, including
    backend profile, bridge/runtime schema support, workspace scopes, language
    and tool support, trust level, and managed environment advertisement refs.
 
-2. Omega creates a coding work order.
+2. OpenAgents product surface creates a coding work order.
 
    The work order belongs to a team/account/workroom/program run. It includes
    objective refs, source authority refs, policy refs, workspace scope, trust
@@ -292,7 +292,7 @@ The target state is a Probe-first Pylon coding-work pipeline:
    correlation refs. It should not include raw secrets, raw repo credentials,
    raw local paths, or wallet material.
 
-3. Omega selects an eligible Pylon.
+3. OpenAgents product surface selects an eligible Pylon.
 
    Selection should use typed capability/environment data, not ad hoc keyword
    matching. The selector should compare required capability, provider kind,
@@ -301,7 +301,7 @@ The target state is a Probe-first Pylon coding-work pipeline:
    heartbeat. Probe's managed-environment compatibility model is the right
    conceptual template.
 
-4. Omega creates a Pylon assignment.
+4. OpenAgents product surface creates a Pylon assignment.
 
    The assignment binds the work order to a Pylon identity and a capability key
    such as `probe_agent`. It carries a mode such as `pylon_probe`, sequence
@@ -337,20 +337,20 @@ The target state is a Probe-first Pylon coding-work pipeline:
    `probe.website_event.v1` batches or equivalent managed-runtime event batches
    to Pylon for forwarding.
 
-8. Pylon forwards events to Omega.
+8. Pylon forwards events to OpenAgents product surface.
 
-   Omega persists redacted Probe events, updates the `OpenAgentsProbeRunRecord`,
+   OpenAgents product surface persists redacted Probe events, updates the `OpenAgentsProbeRunRecord`,
    exposes public/operator/team projections, and broadcasts UI updates. Raw
    stdout, raw model payloads, local paths, secrets, and wallet material should
    be rejected at the boundary.
 
-9. Omega controls approvals and cancellation.
+9. OpenAgents product surface controls approvals and cancellation.
 
    The product surface needs endpoints for approval listing, approve/reject,
    cancel, replay, and child-session state. These operations should flow to
    Probe through Pylon and preserve idempotency.
 
-10. Omega records acceptance separately from completion.
+10. OpenAgents product surface records acceptance separately from completion.
 
     A Probe run can finish successfully without being accepted as product work.
     Acceptance should require product-side review or policy. Settlement should
@@ -384,14 +384,14 @@ It is weak for:
 
 The long-term runtime should use Probe managed-runtime or scheduled-agent
 contracts because those are explicitly designed for durable delegated agent
-work. Omega should avoid inventing a second Probe runtime protocol inside the
+work. OpenAgents product surface should avoid inventing a second Probe runtime protocol inside the
 Pylon broker.
 
-## Implementation Plan For Omega
+## Implementation Plan For OpenAgents product surface
 
 ### Phase 1: Workload Broker Skeleton
 
-Add an Omega Worker service and D1 schema for Pylon coding work:
+Add an OpenAgents product surface Worker service and D1 schema for Pylon coding work:
 
 - coding work orders,
 - Pylon assignments,
@@ -410,12 +410,12 @@ Expose machine-facing routes equivalent to the historical broker shape:
 - `POST /api/pylon/workloads/{assignmentRef}/events`
 - `POST /api/pylon/workloads/{assignmentRef}/complete`
 
-The route names can change if Omega has a preferred API namespace, but Pylon
+The route names can change if OpenAgents product surface has a preferred API namespace, but Pylon
 currently expects this shape.
 
 ### Phase 2: Capability Model And Selector
 
-Extend Omega's Pylon registration/progress model from generic refs into a
+Extend OpenAgents product surface's Pylon registration/progress model from generic refs into a
 structured safe capability snapshot for coding selection. The selector should
 match:
 
@@ -435,7 +435,7 @@ strings or free-form keyword matching.
 
 ### Phase 3: Probe Event Ingestion
 
-Map Pylon-forwarded Probe events into Omega's
+Map Pylon-forwarded Probe events into OpenAgents product surface's
 `OpenAgentsProbeRunRecord`/`OpenAgentsProbeRunProjection` contract. The mapping
 should preserve:
 
@@ -464,7 +464,7 @@ Add product-side controls:
 - record accepted-work refs.
 
 The control plane should target the assigned Pylon and Probe session. If Pylon
-is offline, Omega should record the desired terminal/control state and surface
+is offline, OpenAgents product surface should record the desired terminal/control state and surface
 the inability to deliver it rather than pretending the runtime stopped.
 
 ### Phase 5: Managed Runtime Upgrade
@@ -480,7 +480,7 @@ scheduled-agent bridge:
 
 ### Phase 6: Acceptance And Settlement Integration
 
-After Probe run completion, Omega should create accepted-work refs only through
+After Probe run completion, OpenAgents product surface should create accepted-work refs only through
 the product acceptance path. The Pylon settlement bridge can then consume those
 refs with buyer payment evidence, reward intent, payout eligibility, dispatch,
 confirmation, and verification refs.
@@ -490,35 +490,35 @@ artifact upload as payout authority.
 
 ## Gaps And Risks
 
-1. Omega has no Pylon workload broker yet.
+1. OpenAgents product surface has no Pylon workload broker yet.
 
-   The active Omega API can register Pylons and record progress refs, but Pylon
+   The active OpenAgents product surface API can register Pylons and record progress refs, but Pylon
    currently polls a broker shape that exists in the deprecated Laravel clone,
-   not Omega.
+   not OpenAgents product surface.
 
 2. Pylon's current Probe bridge can overstate completion.
 
    The current bridge accepts the Probe session/turn. Pylon may project success
-   when no terminal event appears. Omega must not use that as accepted work or
+   when no terminal event appears. OpenAgents product surface must not use that as accepted work or
    settlement evidence.
 
 3. There are overlapping contracts.
 
    Probe defines website events, managed runtime, scheduled bridge, managed
-   environment, and admin-chat bridge. Omega defines Probe run projection. The
+   environment, and admin-chat bridge. OpenAgents product surface defines Probe run projection. The
    historical Laravel broker defines assignment/event/completion shape. The
-   first Omega implementation should explicitly map these rather than creating
+   first OpenAgents product surface implementation should explicitly map these rather than creating
    another incompatible protocol.
 
-4. Pylon capability data is not yet structured enough in Omega.
+4. Pylon capability data is not yet structured enough in OpenAgents product surface.
 
-   Omega stores capability refs today. Scheduling Probe coding work needs a
+   OpenAgents product surface stores capability refs today. Scheduling Probe coding work needs a
    typed snapshot of `probe_agent` readiness, backend profile, workspace scope,
    runtime schema support, and policy constraints.
 
 5. Workspace authorization is a hard boundary.
 
-   Pylon maps assignment workspace scopes to configured local workspaces. Omega
+   Pylon maps assignment workspace scopes to configured local workspaces. OpenAgents product surface
    must not infer workspace or repository access from the prompt. It should pass
    bounded workspace refs and source authority refs.
 
@@ -530,13 +530,13 @@ artifact upload as payout authority.
 
 7. Approvals are not optional for coding writes.
 
-   Probe and Pylon both model approval-required tool policy. Omega needs product
+   Probe and Pylon both model approval-required tool policy. OpenAgents product surface needs product
    surfaces for approval requests/resolutions before it can safely support
    autonomous file writes, shell commands, network actions, or pull requests.
 
 8. Cancellation and offline behavior need durable state.
 
-   Pylons are local machines and can go offline. Omega must record cancellation
+   Pylons are local machines and can go offline. OpenAgents product surface must record cancellation
    intent and terminal state separately from delivery confirmation.
 
 9. Settlement must stay decoupled.
@@ -544,7 +544,7 @@ artifact upload as payout authority.
    Pylon provider rewards need accepted-work refs and settlement evidence, not
    raw Probe terminal events.
 
-## Concrete Omega Deliverables
+## Concrete OpenAgents product surface Deliverables
 
 The next implementation should add:
 
@@ -557,11 +557,11 @@ The next implementation should add:
 - Mapping from Pylon-forwarded Probe events to `OpenAgentsProbeRunRecord`.
 - Redaction tests for Probe/Pylon event ingestion.
 - Compatibility fixtures based on current Pylon `probe_agent` output.
-- A runbook for configuring a local Pylon with Probe and pointing it at Omega.
+- A runbook for configuring a local Pylon with Probe and pointing it at OpenAgents product surface.
 - Control endpoints for cancellation, approval resolution, event replay, and
   accepted-work recording.
 
-After those are in place, Omega can enable early internal Pylons to deploy Probe
+After those are in place, OpenAgents product surface can enable early internal Pylons to deploy Probe
 for coding with product-visible evidence while keeping runtime authority,
 product authority, and settlement authority separate.
 
@@ -587,19 +587,19 @@ Pylon:
 - `/Users/christopherdavid/work/openagents/docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md`
 - `/Users/christopherdavid/work/openagents/docs/pylon/PYLON_VERIFICATION_MATRIX.md`
 
-Omega:
+OpenAgents product surface:
 
-- `/Users/christopherdavid/work/autopilot-omega/docs/pylon/2026-06-06-probe-coding-runtime-adapter-contract.md`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/probe-coding-runtime-contract.ts`
-- `/Users/christopherdavid/work/autopilot-omega/docs/pylon/2026-06-06-pylon-provider-settlement-bridge.md`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/pylon-settlement-bridge.ts`
-- `/Users/christopherdavid/work/autopilot-omega/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/pylon-api.ts`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/pylon-api-routes.ts`
-- `/Users/christopherdavid/work/autopilot-omega/docs/pylon/2026-06-06-oa-node-managed-machine-contract.md`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/oa-node-managed-machine.ts`
-- `/Users/christopherdavid/work/autopilot-omega/docs/pylon/2026-06-06-oa-workroomd-sidecar-contract.md`
-- `/Users/christopherdavid/work/autopilot-omega/workers/api/src/oa-workroomd-sidecar-contract.ts`
+- `/Users/christopherdavid/work/openagents/docs/pylon/2026-06-06-probe-coding-runtime-adapter-contract.md`
+- `/Users/christopherdavid/work/openagents/workers/api/src/probe-coding-runtime-contract.ts`
+- `/Users/christopherdavid/work/openagents/docs/pylon/2026-06-06-pylon-provider-settlement-bridge.md`
+- `/Users/christopherdavid/work/openagents/workers/api/src/pylon-settlement-bridge.ts`
+- `/Users/christopherdavid/work/openagents/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
+- `/Users/christopherdavid/work/openagents/workers/api/src/pylon-api.ts`
+- `/Users/christopherdavid/work/openagents/workers/api/src/pylon-api-routes.ts`
+- `/Users/christopherdavid/work/openagents/docs/pylon/2026-06-06-oa-node-managed-machine-contract.md`
+- `/Users/christopherdavid/work/openagents/workers/api/src/oa-node-managed-machine.ts`
+- `/Users/christopherdavid/work/openagents/docs/pylon/2026-06-06-oa-workroomd-sidecar-contract.md`
+- `/Users/christopherdavid/work/openagents/workers/api/src/oa-workroomd-sidecar-contract.ts`
 
 Historical reference only:
 

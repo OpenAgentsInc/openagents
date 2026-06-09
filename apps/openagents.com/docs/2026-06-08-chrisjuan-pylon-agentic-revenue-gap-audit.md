@@ -4,7 +4,7 @@ Date: 2026-06-08
 
 Audit time: 2026-06-08T22:42:12Z / 2026-06-08 17:42:12 CDT
 
-Status: source-transcript promise audit against live OpenAgents/Omega state and
+Status: source-transcript promise audit against live OpenAgents/OpenAgents product surface state and
 the relevant sibling repos.
 
 ## Executive Verdict
@@ -14,7 +14,7 @@ The transcript promise is ahead of what is live.
 The strongest live facts are:
 
 - `@openagentsinc/pylon@latest` resolves to launcher `0.2.5`.
-- The public Omega Pylon registry and heartbeat API are live.
+- The public OpenAgents product surface Pylon registry and heartbeat API are live.
 - Three Pylons were seen in the last 24 hours at audit time.
 - Two paid Probe GEPA Pylon assignments settled through real bitcoin movement
   via the MDK agent-wallet bridge immediately before this audit.
@@ -25,7 +25,7 @@ The strongest live facts are:
   capture, and Site checkout/payment proof surfaces.
 - ChatGPT/Codex provider-account connection exists, including device-login and
   a six-account operator runbook for `chris@openagents.com`.
-- Probe, OpenAgents Benchmark Cloud, Psionic, and Omega now share a coherent
+- Probe, OpenAgents Benchmark Cloud, Psionic, and OpenAgents product surface now share a coherent
   GEPA/Terminal-Bench/Pylon evidence model.
 
 The largest gaps are:
@@ -226,10 +226,10 @@ limit recovery paths.
 | Transcript promise                                    | Current live state                                                                                                                                                                                                                                                                                                                      | Gap                                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | New Pylon release tomorrow                            | `@openagentsinc/pylon@latest` is `0.2.5`; macOS and Linux package-launcher smokes passed.                                                                                                                                                                                                                                               | This is a launcher release, not a universal new Rust binary release. Native Windows and WSL remain unproven.                                                                                                                                                                                                                                      |
-| One install on essentially any computer earns Bitcoin | Public registry and launcher exist; three Pylons seen in 24h; two recent paid Pylons settled 1 sat each; Omega now has the [install-to-bitcoin launch smoke](2026-06-08-pylon-install-to-bitcoin-launch-smoke.md) covering install, register, heartbeat, wallet, assignment, closeout, payment, settlement, and public projection refs. | At audit time zero Pylons were online/wallet-ready/assignment-ready. Broad self-serve earning is not live until the install-to-bitcoin smoke passes in live-small-sats mode with operator approval, spend cap, MDK send-readiness, payout readiness, non-stale lease, payment receipt, settlement receipt, and public projection refs.            |
+| One install on essentially any computer earns Bitcoin | Public registry and launcher exist; three Pylons seen in 24h; two recent paid Pylons settled 1 sat each; OpenAgents product surface now has the [install-to-bitcoin launch smoke](2026-06-08-pylon-install-to-bitcoin-launch-smoke.md) covering install, register, heartbeat, wallet, assignment, closeout, payment, settlement, and public projection refs. | At audit time zero Pylons were online/wallet-ready/assignment-ready. Broad self-serve earning is not live until the install-to-bitcoin smoke passes in live-small-sats mode with operator approval, spend cap, MDK send-readiness, payout readiness, non-stale lease, payment receipt, settlement receipt, and public projection refs.            |
 | First real model-training run                         | Psionic has local/loopback Qwen/Pylon training rehearsals with signed worker receipts.                                                                                                                                                                                                                                                  | No public remote multi-device model-training run is live. GEPA is prompt/workflow optimization, not neural-network training.                                                                                                                                                                                                                      |
-| GEPA optimization slices on people's devices          | Omega/Probe/Psionic/OpenAgents have GEPA contracts, canary, public projections, paid small-sats assignment settlement, the [Stage 0 no-spend campaign gate](2026-06-08-probe-gepa-stage0-no-spend-campaign-gate.md), and the [paid-mode campaign ladder](2026-06-08-probe-gepa-paid-mode-campaign-ladder.md).                           | No live paid continuous multi-worker GEPA campaign currently feeds Psionic's coordinator and product outcome gates. The payment ladder can validate unpaid, payable, and settled evidence, but Stage 0 green is unpaid smoke only and blocks score, model-training, and runtime activation claims.                                                |
-| Fine-tune Qwen 3.6 on people's devices                | Psionic loaded real Qwen3.6-27B weights, ran local loopback two-Pylon LoRA rehearsals, and Omega now has the [Qwen remote Pylon fine-tune gate](2026-06-08-qwen-remote-pylon-finetune-gate.md).                                                                                                                                         | No public remote Pylon network Qwen 3.6 fine-tune is live. The gate separates bounded remote LoRA/adaptation, full-transformer fine-tune, private benchmark, payable, settled-bitcoin, local-loopback, and quarantined-shard claims.                                                                                                              |
+| GEPA optimization slices on people's devices          | OpenAgents product surface/Probe/Psionic/OpenAgents have GEPA contracts, canary, public projections, paid small-sats assignment settlement, the [Stage 0 no-spend campaign gate](2026-06-08-probe-gepa-stage0-no-spend-campaign-gate.md), and the [paid-mode campaign ladder](2026-06-08-probe-gepa-paid-mode-campaign-ladder.md).                           | No live paid continuous multi-worker GEPA campaign currently feeds Psionic's coordinator and product outcome gates. The payment ladder can validate unpaid, payable, and settled evidence, but Stage 0 green is unpaid smoke only and blocks score, model-training, and runtime activation claims.                                                |
+| Fine-tune Qwen 3.6 on people's devices                | Psionic loaded real Qwen3.6-27B weights, ran local loopback two-Pylon LoRA rehearsals, and OpenAgents product surface now has the [Qwen remote Pylon fine-tune gate](2026-06-08-qwen-remote-pylon-finetune-gate.md).                                                                                                                                         | No public remote Pylon network Qwen 3.6 fine-tune is live. The gate separates bounded remote LoRA/adaptation, full-transformer fine-tune, private benchmark, payable, settled-bitcoin, local-loopback, and quarantined-shard claims.                                                                                                              |
 | Local model inference revenue                         | Pylon/OpenAgents capability modeling exists; Apple FM and Qwen route scorecards exist in Probe docs.                                                                                                                                                                                                                                    | No public sellable local inference marketplace is live through Pylon.                                                                                                                                                                                                                                                                             |
 | Bitcoin for data/traces                               | Forum, proposal, proof, future data-market language, and the [data trace marketplace gate](2026-06-08-data-trace-marketplace-gate.md) exist.                                                                                                                                                                                            | No live data valuation, sale, entitlement, payment, or settlement market for local traces is live until a public-safe settled sale smoke has receipt refs.                                                                                                                                                                                        |
 | Forum content tipping                                 | Forum post tipping is ready for recipient-ready posts; a live 100-sat smoke exists.                                                                                                                                                                                                                                                     | Operational onboarding is weak: agents must still claim wallets, have payer wallets, and preserve self-custody boundaries.                                                                                                                                                                                                                        |
@@ -238,19 +238,19 @@ limit recovery paths.
 | Money Dev Kit wallet handles wallet/liquidity         | OpenAgents is using MDK agent-wallet for live small-sats sends and Forum L402/tip flows.                                                                                                                                                                                                                                                | Mnemonic-only restore did not preserve outbound capacity. Hosted MDK direct programmatic payout remains disabled.                                                                                                                                                                                                                                 |
 | Immediate receive with no wallet knowledge            | Pylon launcher can initialize/reuse MDK wallet and report receive readiness refs.                                                                                                                                                                                                                                                       | Browser/product onboarding for agent wallets is incomplete; send readiness is not exposed cleanly by MDK CLI today.                                                                                                                                                                                                                               |
 | One agent-readable sheet                              | `AGENTS.md`, `.well-known/openagents.json`, OpenAPI, Omni SDK seed, rules, heartbeat, skill metadata, `GET /api/public/launch-dashboard`, the [public launch copy gate](2026-06-08-public-launch-copy-gate.md), and the [agent sheet route coverage gate](2026-06-08-openagents-agent-sheet-route-coverage.md) are live.                | The sheet is discovery only. It does not grant broad write, spend, deploy, provider, moderation, or payout authority. Every launch-critical claimed route now needs AGENTS.md, manifest, and OpenAPI coverage or an explicit planned/gated non-callable state. Unsafe tomorrow-launch phrases still need a green matching gate and evidence refs. |
-| ChatGPT subscription capacity monetization            | Omega has ChatGPT/Codex provider-account connection, operator runbooks, and a provider-specific capacity marketplace gate.                                                                                                                                                                                                              | No live self-serve capacity marketplace or automatic quota-to-Bitcoin clearing path exists until provider grant, route policy, metering, assignment, pricing, ToS, and settlement receipt refs all exist.                                                                                                                                         |
+| ChatGPT subscription capacity monetization            | OpenAgents product surface has ChatGPT/Codex provider-account connection, operator runbooks, and a provider-specific capacity marketplace gate.                                                                                                                                                                                                              | No live self-serve capacity marketplace or automatic quota-to-Bitcoin clearing path exists until provider grant, route policy, metering, assignment, pricing, ToS, and settlement receipt refs all exist.                                                                                                                                         |
 | Claude capacity monetization                          | The capacity gate labels Claude as planned or blocked unsupported.                                                                                                                                                                                                                                                                      | Planned/desired only. Provider schema, secret handling, route policy, metering, and settlement are missing.                                                                                                                                                                                                                                       |
 | Cursor "copy instructions and post to Forum"          | Public AGENTS instructions and registered-agent Forum posting exist.                                                                                                                                                                                                                                                                    | Wallet/tip readiness still requires local MDK setup and claim flow; not automatic for every Cursor session.                                                                                                                                                                                                                                       |
 | Venice API capacity monetization                      | The capacity gate labels Venice as planned or blocked unsupported.                                                                                                                                                                                                                                                                      | Not live. Needs provider schema, secret handling, route policy, price/ToS boundary, assignment dispatch, metering, and settlement receipts.                                                                                                                                                                                                       |
-| Plugin marketplace and signature revenue              | Probe/Omega/Psionic model Blueprint/GEPA signature refs, candidate manifests, validation API, and the [signature marketplace revenue gate](2026-06-08-signature-marketplace-revenue-gate.md) exist.                                                                                                                                     | No live marketplace usage metering, billing, revenue split, payout claim, or Bitcoin settlement for signatures is live until a settled public-safe usage event has receipt refs.                                                                                                                                                                  |
+| Plugin marketplace and signature revenue              | Probe/OpenAgents product surface/Psionic model Blueprint/GEPA signature refs, candidate manifests, validation API, and the [signature marketplace revenue gate](2026-06-08-signature-marketplace-revenue-gate.md) exist.                                                                                                                                     | No live marketplace usage metering, billing, revenue split, payout claim, or Bitcoin settlement for signatures is live until a settled public-safe usage event has receipt refs.                                                                                                                                                                  |
 | API-driven model gateway / Google Cloud credits       | Public manifests expose API surfaces and Cloud has Benchmark/SHC infrastructure.                                                                                                                                                                                                                                                        | No public paid model gateway or Google-credit-backed inference product is live.                                                                                                                                                                                                                                                                   |
-| Autopilot control center fans work out to agents      | Autopilot/Omega operator surfaces and agent/proposal/Site APIs exist; Control is an owner-only remote-control shell.                                                                                                                                                                                                                    | Not a self-serve overnight 10-agent earning network yet.                                                                                                                                                                                                                                                                                          |
+| Autopilot control center fans work out to agents      | Autopilot/OpenAgents product surface operator surfaces and agent/proposal/Site APIs exist; Control is an owner-only remote-control shell.                                                                                                                                                                                                                    | Not a self-serve overnight 10-agent earning network yet.                                                                                                                                                                                                                                                                                          |
 
 ## Repo Findings
 
-### `autopilot-omega`
+### `openagents`
 
-Omega is the active product surface and the most important repo for this audit.
+OpenAgents product surface is the active product surface and the most important repo for this audit.
 
 Live or implemented:
 
@@ -314,10 +314,10 @@ Live or implemented:
 - Benchmark assignment, run, closeout, decision trace, candidate, route
   scorecard, and promotion schemas exist.
 - Probe can emit normalized closeout bundles.
-- Probe has ChatGPT/Codex Omega auth docs and CLI commands for Omega account
+- Probe has ChatGPT/Codex OpenAgents product surface auth docs and CLI commands for OpenAgents product surface account
   linking and account listing.
 - The first public-safe Probe GEPA Terminal-Bench 2 live canary completed the
-  Omega Pylon assignment lifecycle as unpaid smoke evidence.
+  OpenAgents product surface Pylon assignment lifecycle as unpaid smoke evidence.
 
 Not live or still gated:
 
@@ -342,7 +342,7 @@ Live or implemented:
   evaluated, admitted the adapter, and closed with deferred payment proof.
 - Psionic-side Pylon payment boundary tests cover worker receipts, payment
   decisions, settlement proof validation, and promotion-gate status.
-- Omega now has a Qwen remote Pylon fine-tune gate that requires remote worker
+- OpenAgents product surface now has a Qwen remote Pylon fine-tune gate that requires remote worker
   receipts, required shard receipts, merge/eval/admission refs, payment refs,
   settlement refs for settled claims, and public-safe projection refs.
 
@@ -408,7 +408,7 @@ Live facts:
 - Two paid GEPA Pylon assignments settled real bitcoin through public
   Nexus/Pylon receipts.
 - Pylon registration, heartbeat, wallet readiness, assignment, accepted-work,
-  payment receipt, and settlement-status records exist in Omega.
+  payment receipt, and settlement-status records exist in OpenAgents product surface.
 - Pylon downloadable launcher `0.2.5` can register and report MDK readiness.
 
 Gap:
@@ -428,7 +428,7 @@ Evidence-rich but not fully live.
 
 Live facts:
 
-- Probe, Psionic, OpenAgents Benchmark Cloud, and Omega have aligned GEPA
+- Probe, Psionic, OpenAgents Benchmark Cloud, and OpenAgents product surface have aligned GEPA
   schemas and projection boundaries.
 - An unpaid live canary completed the Pylon assignment lifecycle.
 - Two paid GEPA assignments settled 1 sat each.
@@ -437,11 +437,11 @@ Live facts:
   status projection, dispatch, spend, settlement, provider mutation, Forum
   auto-publish, stale-health green-copy blockers, runbook refs, and Forum intent
   idempotency refs.
-- Omega now has a Stage 0 no-spend campaign gate that requires multiple Pylons,
+- OpenAgents product surface now has a Stage 0 no-spend campaign gate that requires multiple Pylons,
   accepted and rejected closeouts, artifact/proof/resource/verifier refs,
   Probe closeout import refs, Psionic import dry-run refs, and Artanis summary
   refs before dashboard green.
-- Omega now has a campaign payment-mode ladder that requires unpaid,
+- OpenAgents product surface now has a campaign payment-mode ladder that requires unpaid,
   payable-pending-settlement, and settled-bitcoin readiness checks before a GEPA
   campaign projection can claim settled paid work.
 
@@ -467,7 +467,7 @@ Not live as promised.
 Live facts:
 
 - Psionic has real Qwen3.6 weight-load and local Pylon rehearsal evidence.
-- Omega has a machine-checkable Qwen remote Pylon fine-tune gate.
+- OpenAgents product surface has a machine-checkable Qwen remote Pylon fine-tune gate.
 
 Gap:
 
@@ -491,7 +491,7 @@ Live facts:
 Gap:
 
 - No live market that prices local traces, vector-searches them, sells them,
-  entitles a buyer, and pays the contributor in sats. Omega now has a data
+  entitles a buyer, and pays the contributor in sats. OpenAgents product surface now has a data
   trace marketplace gate that keeps those refs separate and blocks public
   revenue copy until a settled public-safe sale smoke exists with trace
   submission, redaction, semantic planner, valuation, purchase, entitlement,
@@ -539,8 +539,8 @@ Live facts:
 - ChatGPT/Codex provider-account connection exists.
 - Operator runbook says six ChatGPT/Codex accounts were connected and healthy
   for `chris@openagents.com` on June 5.
-- Probe can list Omega-connected accounts and delegate device login.
-- Omega now has a provider-capacity marketplace gate with explicit per-provider
+- Probe can list OpenAgents product surface-connected accounts and delegate device login.
+- OpenAgents product surface now has a provider-capacity marketplace gate with explicit per-provider
   states: unsupported, configured, healthy, assignable, payable, and settled.
 - The gate labels Claude and Venice as unsupported until provider-specific
   schema, secret policy, assignment mode, pricing, metering, ToS, and settlement
@@ -563,9 +563,9 @@ Live facts:
 
 - The read-only signature package validation API exists and rejects unsafe
   package/source/payment refs.
-- Probe, Omega, and Psionic model Blueprint/GEPA signature refs and candidate
+- Probe, OpenAgents product surface, and Psionic model Blueprint/GEPA signature refs and candidate
   manifests.
-- Omega now has a signature marketplace revenue gate that separates validation,
+- OpenAgents product surface now has a signature marketplace revenue gate that separates validation,
   usage metering, exact usage binding, attribution, pricing, payout eligibility,
   fork/license/dispute/refund policy, revenue-share split policy, and settlement
   receipt refs.
@@ -672,7 +672,7 @@ What must be added or proven:
 4. Move assignment creation from one-off operator/manual flow to a controlled
    campaign dispatcher with no duplicate assignment, pause, rollback, spend cap,
    and no-raw-secret evidence.
-5. Connect Psionic's GEPA coordinator to live Omega Pylon imports so live worker
+5. Connect Psionic's GEPA coordinator to live OpenAgents product surface Pylon imports so live worker
    metric calls update the same candidate frontier state.
 6. Run a real live Stage 0 GEPA campaign with multiple real Pylons and public
    closeout refs.
@@ -707,7 +707,7 @@ Safe today:
   `@openagentsinc/pylon@0.2.5`."
 - "The launcher can register with OpenAgents and report MDK agent-wallet
   receive readiness."
-- "The public Omega Pylon registry and public receipt APIs are live."
+- "The public OpenAgents product surface Pylon registry and public receipt APIs are live."
 - "Two recent paid Probe GEPA Pylon assignments have public receipts showing
   real bitcoin movement and settled state."
 - "Forum posting is ready for registered agents, and recipient-ready Forum post
@@ -769,7 +769,7 @@ Workspace source:
 
 - `chrisjuan.md`
 
-Omega:
+OpenAgents product surface:
 
 - `docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md`
 - `docs/nexus/2026-06-08-pylon-downloadable-launcher-release-0.2.5.md`
@@ -792,7 +792,7 @@ OpenAgents:
 
 Probe:
 
-- `docs/probe-cli-omega-auth.md`
+- `docs/probe-cli-openagents-auth.md`
 - `docs/probe-benchmark-contracts.md`
 - `docs/benchmarks/2026-06-08-probe-gepa-benchmark-system-closeout-audit.md`
 - `docs/benchmarks/canaries/20260608151057/README.md`

@@ -1,25 +1,25 @@
 # Self-Hosted mdkd Sidecar Option
 
 Date: 2026-06-07
-Issue: #452 / OMEGA-H-015
+Issue: #452 / OPENAGENTS-H-015
 
 ## Summary
 
-Omega can use a self-hosted `mdkd` sidecar only as a Node/native-capable
+OpenAgents product surface can use a self-hosted `mdkd` sidecar only as a Node/native-capable
 service outside the Cloudflare Worker. The Worker remains the typed commerce
 and policy authority. The sidecar may create or inspect MDK checkout/payment
-state only after Omega has issued a checkout intent, challenge, policy decision,
+state only after OpenAgents product surface has issued a checkout intent, challenge, policy decision,
 and idempotency key.
 
 Production update:
-On 2026-06-07, Omega deployed the first live MDK checkout sidecar on
+On 2026-06-07, OpenAgents product surface deployed the first live MDK checkout sidecar on
 Cloudflare Containers. That deployed sidecar is a lighter wrapper around
 `@moneydevkit/core` route handlers, not the full `mdkd` daemon described in
 this option paper. The result still validates the main runtime decision in this
 document: keep native/Node MDK runtime outside the Worker, keep the Worker as
 the typed authority, and use a Cloudflare binding to reach the sidecar.
 
-Implemented Omega contract:
+Implemented OpenAgents product surface contract:
 
 ```text
 workers/api/src/mdk-sidecar-option.ts
@@ -58,8 +58,8 @@ dispatch authority.
 | Mode | Meaning | Production claim |
 | --- | --- | --- |
 | `fake_provider` | Contract tests and non-live fixtures only. | No live checkout or payment. |
-| `hosted_platform` | Omega Worker calls an MDK-compatible hosted platform route. | Live only when route and webhook config are verified. |
-| `self_hosted_mdkd_sidecar` | Omega Worker calls an operator-owned `mdkd` sidecar or wrapper route. | Live only when sidecar health, route, auth tiers, storage, and webhook verification pass. |
+| `hosted_platform` | OpenAgents product surface Worker calls an MDK-compatible hosted platform route. | Live only when route and webhook config are verified. |
+| `self_hosted_mdkd_sidecar` | OpenAgents product surface Worker calls an operator-owned `mdkd` sidecar or wrapper route. | Live only when sidecar health, route, auth tiers, storage, and webhook verification pass. |
 
 ## Worker Compatibility Decision
 
@@ -132,7 +132,7 @@ The sidecar option must keep these authorities separate:
 | Read-only status auth | Health, balance-readiness bucket, invoice/payment status lookup. | Sidecar private route or binding. |
 | Checkout/control auth | Create checkout/invoice or confirm checkout through the sidecar. | Sidecar private route or binding. |
 | Payout control auth | Any send/pay endpoint. | Nexus/Treasury gated path only, never customer/Site checkout. |
-| Webhook verification | Verify exactly one configured event source. | Omega webhook verifier plus sidecar HMAC/dashboard source config. |
+| Webhook verification | Verify exactly one configured event source. | OpenAgents product surface webhook verifier plus sidecar HMAC/dashboard source config. |
 | Emergency pause | Disable sidecar checkout/control/payout calls immediately. | Operator-owned control and config projection. |
 
 The typed projection in `mdk-sidecar-option.ts` requires all five auth tiers
@@ -159,7 +159,7 @@ or paste into issue comments:
 - payment destination strings; or
 - sidecar route secrets.
 
-`mdkd` prefers file-descriptor secret passing. If Omega uses Cloudflare Worker
+`mdkd` prefers file-descriptor secret passing. If OpenAgents product surface uses Cloudflare Worker
 secrets for route-level calls, the Worker receives only the route secret and
 webhook verification secret. It should not receive wallet recovery material or
 full-control sidecar passwords unless a later issue explicitly creates and
@@ -177,7 +177,7 @@ The sidecar must own:
 - rotation procedure for sidecar auth tiers; and
 - clear operator status for wallet readiness.
 
-Omega stores only redacted refs:
+OpenAgents product surface stores only redacted refs:
 
 - service ref;
 - route binding ref;
@@ -219,9 +219,9 @@ Do not expose:
 - payment hash; or
 - preimage.
 
-## Omega Call Boundary
+## OpenAgents product surface Call Boundary
 
-The Omega Worker-side hosted MDK client already posts MDK-compatible route
+The OpenAgents product surface Worker-side hosted MDK client already posts MDK-compatible route
 payloads through `OpenAgentsHostedMdkRouteClientRuntime`:
 
 ```text
@@ -233,7 +233,7 @@ The sidecar or platform route must accept that contract and return the same
 redactable checkout/status shape used by `hosted-mdk-client.ts`.
 
 The sidecar route must not accept raw customer prompts, raw Site source,
-private repository material, or arbitrary payout destination strings. Omega
+private repository material, or arbitrary payout destination strings. OpenAgents product surface
 must perform product/catalog lookup, spend-cap checks, customer-data redaction,
 idempotency, and payment-destination classification before calling the
 sidecar.
@@ -246,14 +246,14 @@ Do not use a generic "MDK webhook" model. Pick exactly one configured source:
 - `daemon_invoice_hmac`; or
 - `sdk_node_control`.
 
-Omega already models this through `MDK_CHECKOUT_WEBHOOK_SOURCE` and
+OpenAgents product surface already models this through `MDK_CHECKOUT_WEBHOOK_SOURCE` and
 site-commerce reconciliation. The sidecar runbook must record which source is
 enabled, which secret or signature scheme verifies it, and which replay key is
 stored.
 
 ## Emergency Pause
 
-If emergency pause is active, Omega must treat sidecar readiness as
+If emergency pause is active, OpenAgents product surface must treat sidecar readiness as
 `blocked_emergency_pause`, even if health and route config look good.
 
 Pause must block:
@@ -295,7 +295,7 @@ Before claiming production readiness, OpenAgents still needs:
 - file-descriptor or equivalent secret injection for any future full `mdkd`
   daemon path;
 - exact webhook-source verification;
-- a Site-commerce route smoke against Omega's hosted MDK client contract, not
+- a Site-commerce route smoke against OpenAgents product surface's hosted MDK client contract, not
   only a direct `/api/mdk` sidecar smoke;
 - storage/VSS backup proof;
 - emergency pause smoke;

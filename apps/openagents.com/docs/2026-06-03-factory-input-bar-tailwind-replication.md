@@ -5,7 +5,7 @@ Date: 2026-06-03
 Status: CSS structure report from the supplied Factory session DOM snippet.
 
 Scope: This note documents how to reproduce the submitted Factory input bar in
-Tailwind for Omega's Foldkit UI registry. It focuses on DOM structure, layout
+Tailwind for OpenAgents product surface's Foldkit UI registry. It focuses on DOM structure, layout
 contracts, spacing, control grouping, token mapping, and a Tailwind skeleton.
 The original markup uses styled-components hash classes, so this report treats
 inline styles, semantic attributes, dimensions, and visible control state as the
@@ -26,9 +26,9 @@ full-width column. The visible bar itself uses `background-color:
 var(--surface-1)` and relies on compact 26-28px controls, 4px radii, 1px
 borders, and small horizontal gaps.
 
-For Omega, the closest local primitive is `Ui.workroomComposer` in
+For OpenAgents product surface, the closest local primitive is `Ui.workroomComposer` in
 `apps/web/src/ui/index.ts`. It currently uses a taller textarea and a more
-panel-like submit row. To match Factory more closely, Omega would need a new
+panel-like submit row. To match Factory more closely, OpenAgents product surface would need a new
 compact variant, likely `workroomCompactComposer`, backed by Tailwind utility
 classes and the existing dark tokens rather than a new vanilla CSS block.
 
@@ -112,11 +112,11 @@ Stack wrapper:
 Surface:
 
 - `relative w-full bg-[var(--surface-1)]`
-- In Omega token language, this should map to `bg-[#010102]` or
+- In OpenAgents product surface token language, this should map to `bg-[#010102]` or
   `bg-surface-base` depending on whether the compact composer should read as a
   hard panel or a softer inset surface.
 - The snippet does not expose border or radius on the surface wrapper. If the
-  surrounding computed CSS adds them, prefer a minimal Omega adaptation:
+  surrounding computed CSS adds them, prefer a minimal OpenAgents product surface adaptation:
   `border border-[#222]` and no radius, or `rounded-[4px]` only if the adjacent
   Factory surface visibly rounds.
 
@@ -143,7 +143,7 @@ Prompt editor shell:
 
 `contenteditable` placeholder support cannot be expressed fully with core
 Tailwind utilities because it needs the `[contenteditable][data-placeholder]:
-empty:before` selector. In Omega, prefer a textarea unless exact Factory parity
+empty:before` selector. In OpenAgents product surface, prefer a textarea unless exact Factory parity
 is needed. If parity is required, add the selector inside a registry-owned
 component class, not in a page-level CSS block.
 
@@ -330,9 +330,9 @@ The skeleton intentionally omits the Google SVG path. In implementation, use a
 small provider icon component or existing provider logo asset rather than
 embedding raw copied SVG path data in the composer primitive.
 
-## Omega Token Mapping
+## OpenAgents product surface Token Mapping
 
-Factory token or behavior to Omega mapping:
+Factory token or behavior to OpenAgents product surface mapping:
 
 - `var(--surface-1)`: `bg-[#010102]` for the panel, or `bg-surface-base` for a
   softer translucent surface.
@@ -343,7 +343,7 @@ Factory token or behavior to Omega mapping:
 - Muted or inactive meters: `bg-white/20` or `text-white/35`.
 - Hover state: `hover:bg-[#141414]`.
 - Active/inset state: `bg-[#080808]`.
-- Focus ring: `focus-visible:outline-[#ffb400]` because Omega uses yellow as a
+- Focus ring: `focus-visible:outline-[#ffb400]` because OpenAgents product surface uses yellow as a
   small functional highlight.
 
 ## Implementation Notes For Foldkit
@@ -372,7 +372,7 @@ attachments.
 For an exact Factory editor, the hard part is not the flex layout; it is the
 `contenteditable` placeholder and input synchronization. In Foldkit, a textarea
 is simpler and already covered by `forms/textareas`. Use `contenteditable` only
-if Omega needs rich text chips, slash commands, inline mentions, or attachment
+if OpenAgents product surface needs rich text chips, slash commands, inline mentions, or attachment
 tokens inside the prompt well.
 
 ## Raw CSS Limits
@@ -400,5 +400,5 @@ What remains inferred:
 - whether the outer surface has computed border radius or shadow;
 - the visual form of the styled meter marks and MCP icon.
 
-For production Omega work, those inferred values should be resolved against the
+For production OpenAgents product surface work, those inferred values should be resolved against the
 local design contract in `DESIGN.md`, not copied from Factory wholesale.

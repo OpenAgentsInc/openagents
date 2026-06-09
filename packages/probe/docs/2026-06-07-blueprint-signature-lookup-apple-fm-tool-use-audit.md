@@ -3,7 +3,7 @@
 Date: 2026-06-07
 
 Status: architecture audit and implementation roadmap for combining the current
-Probe Apple FM tool-use lane with the Omega Blueprint Program Signature system.
+Probe Apple FM tool-use lane with the OpenAgents product surface Blueprint Program Signature system.
 
 ## Executive Summary
 
@@ -38,19 +38,19 @@ they still should draw from the same Blueprint signature registry.
 The correct shape is:
 
 ```text
-Omega Blueprint = source of Program Signature, Module Version, release gate,
+OpenAgents product surface Blueprint = source of Program Signature, Module Version, release gate,
 context, action-submission, evidence, receipt, and export contracts.
 
 Probe = coding-agent runtime that consumes those contracts, selects and projects
 tools for a backend, executes or refuses tools under Probe-local policy, records
-tool evidence, and emits Program Run or action-submission refs back to Omega.
+tool evidence, and emits Program Run or action-submission refs back to OpenAgents product surface.
 ```
 
 Do not create a separate Probe-only signature registry. Start with a
-Probe-local mirror of Omega's current typed seeds because Omega's Blueprint
+Probe-local mirror of OpenAgents product surface's current typed seeds because OpenAgents product surface's Blueprint
 registry and contract export are not live HTTP routes yet. Then replace that
 fixture with authenticated `GET /api/blueprint/program-registry` and
-`GET /api/blueprint/contracts` once Omega wires them.
+`GET /api/blueprint/contracts` once OpenAgents product surface wires them.
 
 ## Source Material Reviewed
 
@@ -59,25 +59,25 @@ OpenAgents transcripts:
 - `openagents/docs/transcripts/206.md`
 - `openagents/docs/transcripts/194.md`
 
-Current Omega Blueprint kernel:
+Current OpenAgents product surface Blueprint kernel:
 
-- `autopilot-omega/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md`
-- `autopilot-omega/docs/blueprint/2026-06-05-legacy-blueprint-primitives-omega-inventory.md`
-- `autopilot-omega/docs/blueprint/2026-06-05-program-type-and-signature-schemas-v1.md`
-- `autopilot-omega/docs/blueprint/2026-06-05-program-registry-projection-v1.md`
-- `autopilot-omega/docs/blueprint/2026-06-05-contract-export-seed-v1.md`
-- `autopilot-omega/docs/blueprint/2026-06-06-signature-contribution-draft-v1.md`
-- `autopilot-omega/docs/blueprint/2026-06-06-developer-package-contribution-v1.md`
-- `autopilot-omega/workers/api/src/blueprint/README.md`
-- `autopilot-omega/workers/api/src/blueprint/schemas/program.ts`
-- `autopilot-omega/workers/api/src/blueprint/schemas/program-run.ts`
-- `autopilot-omega/workers/api/src/blueprint/schemas/program-registry.ts`
-- `autopilot-omega/workers/api/src/blueprint/schemas/continuation-decision.ts`
-- `autopilot-omega/workers/api/src/blueprint/services/continuation-decision.ts`
-- `autopilot-omega/workers/api/src/blueprint/services/program-run-authority.ts`
-- `autopilot-omega/workers/api/src/blueprint/fixtures/autopilot-continuation-signatures.ts`
-- `autopilot-omega/workers/api/src/blueprint/fixtures/program-registry.ts`
-- `autopilot-omega/workers/api/src/blueprint/exports/contract-export.ts`
+- `openagents/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md`
+- `openagents/docs/blueprint/2026-06-05-legacy-blueprint-primitives-openagents-inventory.md`
+- `openagents/docs/blueprint/2026-06-05-program-type-and-signature-schemas-v1.md`
+- `openagents/docs/blueprint/2026-06-05-program-registry-projection-v1.md`
+- `openagents/docs/blueprint/2026-06-05-contract-export-seed-v1.md`
+- `openagents/docs/blueprint/2026-06-06-signature-contribution-draft-v1.md`
+- `openagents/docs/blueprint/2026-06-06-developer-package-contribution-v1.md`
+- `openagents/workers/api/src/blueprint/README.md`
+- `openagents/workers/api/src/blueprint/schemas/program.ts`
+- `openagents/workers/api/src/blueprint/schemas/program-run.ts`
+- `openagents/workers/api/src/blueprint/schemas/program-registry.ts`
+- `openagents/workers/api/src/blueprint/schemas/continuation-decision.ts`
+- `openagents/workers/api/src/blueprint/services/continuation-decision.ts`
+- `openagents/workers/api/src/blueprint/services/program-run-authority.ts`
+- `openagents/workers/api/src/blueprint/fixtures/autopilot-continuation-signatures.ts`
+- `openagents/workers/api/src/blueprint/fixtures/program-registry.ts`
+- `openagents/workers/api/src/blueprint/exports/contract-export.ts`
 
 Deprecated Blueprint source material:
 
@@ -121,7 +121,7 @@ The problem statement was clear:
 - The system should be measurable, evaluable, and improvable over time.
 
 The DSPy-style vocabulary from that episode maps almost directly to current
-Omega Blueprint:
+OpenAgents product surface Blueprint:
 
 | Episode 206 term | Current Blueprint term | Meaning for Probe |
 | --- | --- | --- |
@@ -202,13 +202,13 @@ The old Probe integration contract is also still correct:
 
 That is the boundary this audit preserves.
 
-### Current Omega Blueprint Kernel
+### Current OpenAgents product surface Blueprint Kernel
 
-Omega has rebuilt the live Blueprint kernel as Effect-first TypeScript, not as
+OpenAgents product surface has rebuilt the live Blueprint kernel as Effect-first TypeScript, not as
 a restored Rust service. The roadmap is explicit:
 
 ```text
-Omega owns the first live Blueprint kernel as Effect-first TypeScript services,
+OpenAgents product surface owns the first live Blueprint kernel as Effect-first TypeScript services,
 schemas, migrations, APIs, projections, and tests.
 
 Rust pylons, Probe, Psionic, Nexus, and Treasury consume or emit typed
@@ -257,7 +257,7 @@ communication, it must become a Blueprint Action Submission and receipt path.
 
 ### Current API Reality
 
-Omega currently has typed seeds for the future registry and contract routes:
+OpenAgents product surface currently has typed seeds for the future registry and contract routes:
 
 - `GET /api/blueprint/program-registry`
 - `GET /api/blueprint/contracts`
@@ -266,12 +266,12 @@ Those are not live HTTP routes yet. The docs state that the registry and export
 are typed seeds, not authenticated routes. Probe should therefore implement the
 consumer shape in a way that supports three sources:
 
-- inline assignment payload from Omega;
-- checked-in/generated local fixture copied from the Omega seed;
-- authenticated Omega HTTP route when it exists.
+- inline assignment payload from OpenAgents product surface;
+- checked-in/generated local fixture copied from the OpenAgents product surface seed;
+- authenticated OpenAgents product surface HTTP route when it exists.
 
 The runtime should not block on the live route before it can use the concept.
-It should also not invent a parallel contract that diverges from Omega's
+It should also not invent a parallel contract that diverges from OpenAgents product surface's
 schemas.
 
 ## Current Probe Apple FM Tool-Use State
@@ -368,13 +368,13 @@ selection. The lookup implementation must be one of:
 
 Probe needs a shared request shape. This can live under
 `packages/runtime/src/blueprint/` as a narrowed consumer contract that mirrors
-Omega refs.
+OpenAgents product surface refs.
 
 ```json
 {
   "lookupId": "blueprint_signature_lookup.run_123.preflight_1",
   "actorRef": "probe_runner.local.chris_mac",
-  "workRef": "omega_workroom.thread_456",
+  "workRef": "openagents_workroom.thread_456",
   "objectiveRef": "objective.coding.fix_test_failure",
   "assignmentRef": "probe_assignment.run_123",
   "backend": {
@@ -576,8 +576,8 @@ would create a hidden tool-authority path outside the bridge contract.
 
 ### Proposed First Probe Program Signatures
 
-Omega's current continuation signatures are Autopilot-general. Probe should
-ask Omega to add or export coding-runtime signatures like these:
+OpenAgents product surface's current continuation signatures are Autopilot-general. Probe should
+ask OpenAgents product surface to add or export coding-runtime signatures like these:
 
 | Program Signature | Family | Purpose |
 | --- | --- | --- |
@@ -591,7 +591,7 @@ ask Omega to add or export coding-runtime signatures like these:
 | `program_signature.probe.acceptance_evidence_project.v1` | `proof_projection` | Convert Probe transcript/tool/test evidence into public/customer/operator-safe proof refs. |
 
 These should be Blueprint Program Signatures, not a Probe-only enum list. Probe
-can carry a local fixture until Omega exports them.
+can carry a local fixture until OpenAgents product surface exports them.
 
 ## Apple FM Specific Design
 
@@ -731,7 +731,7 @@ Avoid names tied to Apple FM, Bun, or the old Guidance Module label.
 ### Phase 1: Local Blueprint Consumer Contracts
 
 Add `packages/runtime/src/blueprint/` with a narrowed Effect Schema mirror of
-the Omega export surface Probe actually needs:
+the OpenAgents product surface export surface Probe actually needs:
 
 - contract export seed;
 - program registry projection;
@@ -746,7 +746,7 @@ the Omega export surface Probe actually needs:
 
 Tests:
 
-- decode the current Omega seed shape;
+- decode the current OpenAgents product surface seed shape;
 - reject raw secret-shaped fields;
 - reject direct-mutation-enabled Program Runs;
 - reject registry entries that are not safe projections.
@@ -755,14 +755,14 @@ Tests:
 
 Implement a registry client with three sources:
 
-- `staticFixture`: checked-in Probe fixture generated from Omega's seed;
-- `assignmentInline`: Omega can attach a safe registry slice to a Probe
+- `staticFixture`: checked-in Probe fixture generated from OpenAgents product surface's seed;
+- `assignmentInline`: OpenAgents product surface can attach a safe registry slice to a Probe
   assignment;
-- `omegaHttp`: future authenticated `GET /api/blueprint/program-registry` and
+- `openagentsHttp`: future authenticated `GET /api/blueprint/program-registry` and
   `GET /api/blueprint/contracts`.
 
 The first implementation can use `staticFixture`. The API shape must already
-support the other two so Probe does not need a refactor when Omega routes go
+support the other two so Probe does not need a refactor when OpenAgents product surface routes go
 live.
 
 ### Phase 3: Signature Lookup Service
@@ -839,8 +839,8 @@ evidence object:
 - direct mutation disabled;
 - no deploy/email/source mutation/spend flags.
 
-Default persistence can be local JSON/event records until Omega's repository
-route is live. The shape should match Omega's `BlueprintProgramRunRecord` and
+Default persistence can be local JSON/event records until OpenAgents product surface's repository
+route is live. The shape should match OpenAgents product surface's `BlueprintProgramRunRecord` and
 safe projection discipline.
 
 ### Phase 7: Assignment Integration
@@ -855,7 +855,7 @@ Extend Probe assignments to accept:
 - `blueprint.releaseGateRefs`;
 - `blueprint.actionSubmissionPolicyRef`.
 
-This lets Omega dispatch a bounded Probe without requiring Probe to query the
+This lets OpenAgents product surface dispatch a bounded Probe without requiring Probe to query the
 full registry on every run.
 
 ### Phase 8: Pylon And SHC Capability Reporting
@@ -890,7 +890,7 @@ appropriate approval/receipt path.
 
 ### Phase 10: Release Gates And Marketplace Contributions
 
-Use Omega's Signature Contribution and Developer Package Contribution models
+Use OpenAgents product surface's Signature Contribution and Developer Package Contribution models
 for new Probe tool packs and signatures.
 
 Rules:
@@ -913,7 +913,7 @@ The next issues for Probe should be:
 5. Add Program Run evidence records for Apple FM tool-stream runs.
 6. Extend backend capability reports with Blueprint signature/tool-menu support.
 7. Add assignment fields for registry/signature/context/action-submission refs.
-8. Add a fake Omega registry HTTP client test for the future live route.
+8. Add a fake OpenAgents product surface registry HTTP client test for the future live route.
 
 The first live user-visible proof should be:
 
@@ -937,7 +937,7 @@ The output should include:
 ## Non-Goals
 
 - Do not restore the deprecated standalone Blueprint service.
-- Do not copy Omega's full Blueprint kernel into Probe.
+- Do not copy OpenAgents product surface's full Blueprint kernel into Probe.
 - Do not make Probe the source of Program Signature truth.
 - Do not use ad hoc keyword matching to select tools or signatures.
 - Do not expose every Probe tool to Apple FM by default.
@@ -957,7 +957,7 @@ It is "Probe asks Blueprint what behavior contract and tool scopes apply, then
 projects that bounded menu into Apple FM's up-front session tool format."
 
 That preserves the original Guidance Module goal from Episode 206, uses the
-local Apple FM tool-calling thesis from Episode 194, respects Omega's current
+local Apple FM tool-calling thesis from Episode 194, respects OpenAgents product surface's current
 Blueprint authority, and gives every backend a common signature lookup path.
 Apple FM simply forces Probe to build the lookup and tool-menu planning step
 sooner because its tools must be defined before streaming starts.

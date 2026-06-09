@@ -1,6 +1,6 @@
 # Blueprint Program Registry Projection V1
 
-Issue #234 adds the first Omega-owned Program Registry projection contract.
+Issue #234 adds the first OpenAgents product surface-owned Program Registry projection contract.
 The registry is an operator-safe inspection surface for Program Types, Program
 Signatures, Module Versions, Release Gates, recent Program Runs, evidence refs,
 receipt refs, failure refs, and promotion state.

@@ -1,26 +1,26 @@
-# Probe/Omega Google Gemini Provider Account Design
+# Probe/OpenAgents product surface Google Gemini Provider Account Design
 
 Date: 2026-06-08
 
 Status: Probe-side provider schema, grant validation, and env materialization
-implemented. Omega provider-account storage/grant issuance remains a follow-up.
+implemented. OpenAgents product surface provider-account storage/grant issuance remains a follow-up.
 
 ## Goal
 
-Add a later managed-key path where Omega can lease a Google Gemini provider
+Add a later managed-key path where OpenAgents product surface can lease a Google Gemini provider
 account to an authorized Probe runner. This must not block or replace the
 local direct API-key path:
 
 - `GOOGLE_GENERATIVE_AI_API_KEY`
 - `GEMINI_API_KEY`
-- Omega Cloudflare Worker secret `GEMINI_API_KEY` for Omega-owned server code
+- OpenAgents product surface Cloudflare Worker secret `GEMINI_API_KEY` for OpenAgents product surface-owned server code
 
 The managed path should materialize a scoped Gemini API key into a Probe run
-only after Omega grants a specific assignment to a specific runner session.
+only after OpenAgents product surface grants a specific assignment to a specific runner session.
 
 ## Boundary
 
-Omega owns:
+OpenAgents product surface owns:
 
 - provider account CRUD and operator UI;
 - encrypted secret storage for raw Gemini API keys;
@@ -34,14 +34,14 @@ Omega owns:
 Probe owns:
 
 - provider enum/schema acceptance for `google_gemini`;
-- decoding Omega grant responses for Gemini;
+- decoding OpenAgents product surface grant responses for Gemini;
 - runner authorization checks against assignment refs and runner proof;
 - per-run materialization into `GOOGLE_GENERATIVE_AI_API_KEY`;
 - redacted materialized/scrubbed receipts;
 - scrub-on-closeout and failure cleanup;
 - direct Gemini runtime use after the env key is materialized.
 
-Probe must not become the durable store for raw Gemini keys. Omega must not send
+Probe must not become the durable store for raw Gemini keys. OpenAgents product surface must not send
 raw key material in public assignment projections, issue comments, fixtures, or
 receipts.
 
@@ -90,7 +90,7 @@ Rules:
 
 ## Grant Resolution
 
-Omega should add a provider-specific or provider-generic route that returns the
+OpenAgents product surface should add a provider-specific or provider-generic route that returns the
 same grant envelope pattern Probe already uses for ChatGPT/Codex:
 
 ```json
@@ -118,20 +118,20 @@ same grant envelope pattern Probe already uses for ChatGPT/Codex:
 
 Probe should reject:
 
-- materialization into `GEMINI_API_KEY` when Omega intended
+- materialization into `GEMINI_API_KEY` when OpenAgents product surface intended
   `GOOGLE_GENERATIVE_AI_API_KEY`;
 - OpenCode-specific env names;
 - raw key content in the grant envelope;
 - grants whose provider account, grant ref, runner session, or assignment proof
   do not match.
 
-`GEMINI_API_KEY` remains accepted for local BYO env setup, but Omega-managed
+`GEMINI_API_KEY` remains accepted for local BYO env setup, but OpenAgents product surface-managed
 materialization should prefer `GOOGLE_GENERATIVE_AI_API_KEY` so the managed path
 is distinguishable in receipts and runner state.
 
 ## Runner Authorization
 
-Assignments that use Omega-managed Gemini keys should carry:
+Assignments that use OpenAgents product surface-managed Gemini keys should carry:
 
 ```json
 {
@@ -148,12 +148,12 @@ Assignments that use Omega-managed Gemini keys should carry:
 Required runner capabilities:
 
 - `probe.run`
-- `omega.grant.resolve`
+- `openagents.grant.resolve`
 - `probe.backend.gemini_api`
 
 Local Gemini assignments that only select `backend.kind: "gemini_api"` and do
 not carry provider refs keep the current behavior: they require
-`probe.backend.gemini_api` but not `omega.grant.resolve`.
+`probe.backend.gemini_api` but not `openagents.grant.resolve`.
 
 ## Receipts
 
@@ -177,7 +177,7 @@ Probe receipts must not include:
 - provider payloads;
 - Google project secrets or key strings.
 
-Omega receipts should similarly store refs, health status, rotation refs, and
+OpenAgents product surface receipts should similarly store refs, health status, rotation refs, and
 redacted key status only.
 
 ## Migration And Backfill
@@ -185,7 +185,7 @@ redacted key status only.
 Probe needs no data migration; it only changes schemas and materialization
 logic.
 
-Omega likely needs:
+OpenAgents product surface likely needs:
 
 - provider enum migration for `google_gemini`;
 - optional seed/backfill for the existing production Gemini Worker secret as a
@@ -204,11 +204,11 @@ Implementation should be split:
 
 1. Probe provider schema and materializer support for `google_gemini`:
    OpenAgentsInc/probe#199 (implemented).
-2. Omega provider-account storage, operator surface, and grant resolution for
-   Gemini basic API keys: OpenAgentsInc/autopilot-omega#526.
-3. End-to-end managed Gemini assignment smoke from Omega grant resolution to
+2. OpenAgents product surface provider-account storage, operator surface, and grant resolution for
+   Gemini basic API keys: OpenAgentsInc/openagents#526.
+3. End-to-end managed Gemini assignment smoke from OpenAgents product surface grant resolution to
    Probe env materialization to Gemini backend completion:
    OpenAgentsInc/probe#200 (Probe fake E2E and opt-in live smoke implemented;
-   production Omega route still depends on OpenAgentsInc/autopilot-omega#526).
+   production OpenAgents product surface route still depends on OpenAgentsInc/openagents#526).
 
 These issues can proceed after local Gemini API-key support remains stable.

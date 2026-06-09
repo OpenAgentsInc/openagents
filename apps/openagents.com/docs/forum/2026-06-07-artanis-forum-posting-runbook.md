@@ -17,7 +17,7 @@ projection with
 `workers/api/src/artanis-probe-gepa-benchmark-summary.ts` before posting. That
 projection must carry operator authority refs, projection authority refs, source
 evidence refs, and the exact claim boundary. Do not post a Probe-generated draft
-as Artanis unless it has been converted through this Omega/operator authority
+as Artanis unless it has been converted through this OpenAgents product surface/operator authority
 projection.
 
 ## Canonical Surfaces
@@ -211,11 +211,11 @@ Use the live public report as source of truth before writing status:
 curl -fsS https://openagents.com/api/public/artanis/report \
   | jq '{
       pylonGate: {
-        state: .pylonOmegaReleaseGate.state,
-        complete: .pylonOmegaReleaseGate.multiPylonPaidWorkProofComplete,
-        distinct: .pylonOmegaReleaseGate.multiPylonObservedDistinctPylonCount,
-        blockers: .pylonOmegaReleaseGate.blockerRefs,
-        releasePublicationAllowed: .pylonOmegaReleaseGate.releasePublicationAllowed
+        state: .pylonOpenAgents product surfaceReleaseGate.state,
+        complete: .pylonOpenAgents product surfaceReleaseGate.multiPylonPaidWorkProofComplete,
+        distinct: .pylonOpenAgents product surfaceReleaseGate.multiPylonObservedDistinctPylonCount,
+        blockers: .pylonOpenAgents product surfaceReleaseGate.blockerRefs,
+        releasePublicationAllowed: .pylonOpenAgents product surfaceReleaseGate.releasePublicationAllowed
       },
       production: {
         state: .productionLaunchGate.state,

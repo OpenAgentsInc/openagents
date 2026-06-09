@@ -527,7 +527,7 @@ Probe assignments should be able to request:
 }
 ```
 
-Apple FM assignments do not need ChatGPT account refs or Omega provider auth
+Apple FM assignments do not need ChatGPT account refs or OpenAgents product surface provider auth
 grants. They do need runner capability:
 
 - runner kind: `local`, `shc`, `pylon`, or `sandbox`
@@ -610,7 +610,7 @@ The provider does not advertise:
 - Apple transcript payloads by default
 - unsupported parity claims
 
-Omega can assign small local tasks to this backend once Pylon/SHC reports live
+OpenAgents product surface can assign small local tasks to this backend once Pylon/SHC reports live
 health. Payment and receipts can later make this a compute-market route, but
 the first Probe milestone only needs the runtime capability contract.
 

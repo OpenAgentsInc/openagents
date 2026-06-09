@@ -8,7 +8,7 @@ customer/order/site visibility by itself.
 
 ## Executive Summary
 
-Omega now has the pieces for a real customer software-ordering system and an
+OpenAgents product surface now has the pieces for a real customer software-ordering system and an
 Autopilot Sites lifecycle, but the handoff from a submitted order to a durable,
 supervised site-building run is still mostly an operator action.
 
@@ -77,7 +77,7 @@ Implementation surfaces:
 - `apps/web/src/page/loggedIn/page/admin.ts`
 - `apps/web/src/page/loggedIn/page/order.ts`
 
-## How Omega Is Launching Software Orders Today
+## How OpenAgents product surface Is Launching Software Orders Today
 
 The current customer ordering wedge is intentionally simple:
 
@@ -85,7 +85,7 @@ The current customer ordering wedge is intentionally simple:
 2. The customer writes the requested outcome in plain language.
 3. The customer acknowledges public beta work, data-use, and OpenAgents-paid
    compute terms.
-4. Omega creates or reads an active `software_orders` row.
+4. OpenAgents product surface creates or reads an active `software_orders` row.
 5. The customer lands on `/order` and sees order status, quote/free-slice
    information, and eventual Site URL only.
 6. OpenAgents Core members keep the full operator workroom, team/project chat,
@@ -106,7 +106,7 @@ The customer-order docs are clear that customers should not see runner streams,
 provider-account refs, SHC state, callback payloads, private diagnostics, raw
 shell logs, private prompts, or internal delivery mechanics.
 
-## How Omega Launches Autopilot Runs Today
+## How OpenAgents product surface Launches Autopilot Runs Today
 
 The current Autopilot launch contract is packet-driven and preflight-gated:
 
@@ -162,7 +162,7 @@ The operator API can:
 
 The public runtime can serve `sites.openagents.com/<slug>` from either:
 
-- `omega_static_r2`; or
+- `openagents_static_r2`; or
 - `workers_for_platforms` dispatch metadata.
 
 Important current gap:
@@ -231,7 +231,7 @@ agentId: agent_adjutant
 public route: /adjutant
 canonical public route: /agents/adjutant
 primary product lane: Autopilot Sites
-default repository: OpenAgentsInc/autopilot-omega
+default repository: OpenAgentsInc/openagents
 default baseRef: main
 ```
 
@@ -288,7 +288,7 @@ agent profile + project metadata
   -> public/customer/team/operator projections
 ```
 
-This keeps the system inside Omega's current Autopilot architecture instead of
+This keeps the system inside OpenAgents product surface's current Autopilot architecture instead of
 creating a separate agent runtime.
 
 ## Visibility Model
@@ -385,10 +385,10 @@ Must not show:
 2. Core operator opens admin order queue.
 3. Operator clicks `Assign to Adjutant` or tags a project room with a bounded
    `@adjutant` command that includes an explicit `softwareOrderId` or `siteId`.
-4. Omega creates or finds a `site_projects` row when the order is a Site order.
-5. Omega creates or finds an Adjutant durable goal scoped to
+4. OpenAgents product surface creates or finds a `site_projects` row when the order is a Site order.
+5. OpenAgents product surface creates or finds an Adjutant durable goal scoped to
    `team_openagents_core`, `project_adjutant`, and `agent_adjutant`.
-6. Omega writes an Adjutant assignment receipt linking:
+6. OpenAgents product surface writes an Adjutant assignment receipt linking:
    - `softwareOrderId`;
    - `siteId`;
    - `goalId`;
@@ -397,8 +397,8 @@ Must not show:
    - `commitSha`;
    - visibility policy.
 7. Operator preflight runs.
-8. If preflight passes, Omega launches the run.
-9. If preflight blocks, Omega records a typed blocker and shows the next safe
+8. If preflight passes, OpenAgents product surface launches the run.
+9. If preflight blocks, OpenAgents product surface records a typed blocker and shows the next safe
    action.
 
 ### Site Generation
@@ -692,7 +692,7 @@ Deliverables:
 - Add a D1 migration seeding `project_adjutant` under
   `team_openagents_core`.
 - Add project metadata for `agent_adjutant` with name `Autopilot`, runtime
-  `Autopilot`, backend `SHC`, repository `autopilot-omega`, and focus
+  `Autopilot`, backend `SHC`, repository `openagents`, and focus
   `Sites`.
 - Add tests that preflight can resolve the Adjutant team/project/agent
   metadata.
@@ -879,7 +879,7 @@ Implementation note, June 5, 2026:
   `POST /api/operator/adjutant/assignments/:assignmentId/task-packet` to
   generate safe packet Markdown, validate the `docs/autopilot-tasks/*.md` path
   and pushed commit SHA, confirm the packet exists in
-  `OpenAgentsInc/autopilot-omega` at that SHA through GitHub raw content, and
+  `OpenAgentsInc/openagents` at that SHA through GitHub raw content, and
   record `taskSpecPath` plus `commitSha` on the assignment.
 - Generated packets include assignment, order, Site, goal, target URL, output
   contract, safety rules, and acceptance criteria, while rejecting
@@ -1357,7 +1357,7 @@ The run should not launch until:
 
 ## Bottom Line
 
-Autopilot should be the Sites fulfillment surface that turns Omega's public
+Autopilot should be the Sites fulfillment surface that turns OpenAgents product surface's public
 software-order wedge into repeatable, observable delivery. The system does not
 need a new runtime to get there. Internally, it needs a durable Adjutant
 identity, an assignment ledger, explicit operator assignment APIs,

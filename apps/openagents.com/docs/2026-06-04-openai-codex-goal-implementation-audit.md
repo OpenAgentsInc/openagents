@@ -590,7 +590,7 @@ Useful test coverage lives in several layers:
   status transitions, stale expected goal IDs, usage accounting, budget updates,
   and mode-specific accounting.
 
-## Design Lessons For Omega
+## Design Lessons For OpenAgents product surface
 
 The strongest pattern is the separation between durable goal state, live runtime
 accounting, model tools, and user controls. The model can only create a goal
@@ -616,7 +616,7 @@ side effects across every caller.
 
 The most obvious gap is slash-command budget UX. Codex has a budget in the
 model tool and app-server protocol, but the TUI slash command currently treats
-`--tokens` as literal objective text. If Omega copies the design, it should make
+`--tokens` as literal objective text. If OpenAgents product surface copies the design, it should make
 an explicit choice: either no slash budget syntax, or typed parsing that is
 covered by tests and backed by the same double-option API.
 
@@ -629,7 +629,7 @@ goal the stable product object that Artanis lives around, then treat each
 `agent_runs` row as one execution attempt, continuation turn, or worker session
 for that goal.
 
-Relevant existing Omega pieces:
+Relevant existing OpenAgents product surface pieces:
 
 - `docs/2026-06-03-team-project-rooms.md` records the seeded Artanis project:
   `project_artanis | team_openagents_core | artanis | Artanis`.
@@ -637,7 +637,7 @@ Relevant existing Omega pieces:
   `team_chat_messages.project_id`, and `agent_runs.project_id`.
 - `workers/api/migrations/0024_project_agent_metadata.sql` stores the compact
   Artanis project-agent projection: active project-scoped Autopilot agent,
-  SHC backend, `autopilot-omega` repository, and Pylon focus.
+  SHC backend, `openagents` repository, and Pylon focus.
 - `workers/api/src/omni-runs.ts` persists `agent_runs` with `teamId`,
   `projectId`, runtime/backend, repository, `goal`, assignment JSON, status,
   event cursor, and lifecycle timestamps.
@@ -678,7 +678,7 @@ That page should lead with the public Pylon proof surface before the longer
 activity stream:
 
 - campaign objective: release the next Pylon version, connect it more deeply
-  to Omega, route more inference and fine-tuning work to the live Pylon wave,
+  to OpenAgents product surface, route more inference and fine-tuning work to the live Pylon wave,
   and use the new Bitcoin infrastructure as the work settlement layer;
 - current durable public Artanis goal when one has been published, plus the
   fallback campaign objective while the durable goal is not yet public;
@@ -700,7 +700,7 @@ private substrate.
 
 ### Durable Goal Authority
 
-Omega should add an `agent_goals` or `thread_goals` authority rather than keep
+OpenAgents product surface should add an `agent_goals` or `thread_goals` authority rather than keep
 only `agent_runs.goal` as a free text field. The current run-level `goal` should
 remain as a denormalized snapshot for existing APIs and timeline rendering, but
 the authoritative goal object should carry:
@@ -719,7 +719,7 @@ the authoritative goal object should carry:
 - created, updated, completed, archived timestamps
 
 `agent_runs` should then gain `goal_id`, and every runner event ingestion should
-carry either the expected `goal_id` or a run-to-goal lookup. That gives Omega
+carry either the expected `goal_id` or a run-to-goal lookup. That gives OpenAgents product surface
 the same stale-event protection Codex gets from `goal_id`: if Artanis starts a
 new objective, old SHC callbacks cannot mutate the new goal's status or budget.
 
@@ -734,7 +734,7 @@ standard.
 
 For Artanis, a "turn" is not only a ChatGPT/Codex model turn. It can be a full
 SHC/OpenCode run, a restarted worker session, a follow-up continuation, or a
-checkpointed Workflow step. Omega should map SHC/OpenCode callbacks into a
+checkpointed Workflow step. OpenAgents product surface should map SHC/OpenCode callbacks into a
 small goal runtime event enum:
 
 - `GoalCreated`
@@ -769,7 +769,7 @@ last run ended." A new Artanis continuation should start only when:
 
 If those checks pass, a Queue or Workflow can enqueue the next Artanis run with
 hidden goal context in the assignment. This mirrors Codex's hidden continuation
-prompt while fitting Omega's process-heavy SHC runtime.
+prompt while fitting OpenAgents product surface's process-heavy SHC runtime.
 
 ### Public Visibility And Public Chat
 
@@ -824,7 +824,7 @@ Bad public records are:
 - high-volume token/text deltas that make the UI noisy without adding public
   understanding.
 
-Omega already has this projection instinct. `publicAgentRunBundle()` redacts the
+OpenAgents product surface already has this projection instinct. `publicAgentRunBundle()` redacts the
 runner callback token ref, and the sync projections carry sanitized
 `payloadJson` for diagnostics instead of dumping raw callback bodies into the
 primary chat. The public Artanis stream should make that separation formal:
@@ -905,11 +905,11 @@ trust without exposing the wrong substrate. People should see Artanis moving
 toward a goal through readable events and artifacts. They should not see the
 private runner control plane.
 
-## Omega Implementation Notes
+## OpenAgents product surface Implementation Notes
 
 ### 2026-06-04 Durable Goal Foundation
 
-Issue #45 added the first concrete Omega substrate for this audit:
+Issue #45 added the first concrete OpenAgents product surface substrate for this audit:
 
 - `workers/api/migrations/0027_agent_goals.sql` creates the durable
   `agent_goals` table with status, visibility, current run, token budget,
@@ -1054,7 +1054,7 @@ durable event before the next run can be observed.
 
 ### 2026-06-04 SHC/OpenCode Goal Wiring
 
-Issue #49 connected the durable goal system to the existing Omega run pipeline:
+Issue #49 connected the durable goal system to the existing OpenAgents product surface run pipeline:
 
 - Operator and logged-in user Autopilot launches now resolve a goal scope before
   queuing the run. Project launches use the project agent id when available,
@@ -1071,7 +1071,7 @@ Issue #49 connected the durable goal system to the existing Omega run pipeline:
 - Accepted launch events, dispatch events, callback events, and body-level
   callback statuses are mapped into `AgentGoalRuntimeEvent` values and applied
   through `AgentGoalAccountingService`. Callback token usage uses the existing
-  Omega token-usage extractor and the same external source refs that back
+  OpenAgents product surface token-usage extractor and the same external source refs that back
   `autopilot_token_usage`.
 - Callback body status is a single synthetic goal runtime event. A completed
   callback no longer makes every log record look like `RunCompleted`; ordinary
@@ -1313,6 +1313,6 @@ what Artanis is trying to build, whether a durable public goal has already been
 published, and how many Pylons are connected to Nexus right now without leaking
 operator-only run data.
 
-## Speculation: Combining With Omega Long-Running Agents
+## Speculation: Combining With OpenAgents product surface Long-Running Agents
 
-Omega could combine this pattern with long-running agents by making a persisted `AgentGoal` or `ThreadGoal` Effect service the durable authority for agent objectives, then letting worker sessions report typed runtime events such as `TurnStarted`, `ToolCompleted`, `CheckpointPersisted`, `UsageLimitReached`, `ExternalSet`, and `WorkerResumed` into one policy interpreter that owns accounting, continuation scheduling, and hidden steering. The useful adaptation is not to copy Codex's SQLite details directly, but to preserve the contract: user/API controls own objective replacement and pause/resume, model tools own only explicit create and terminal complete/blocked claims, Cloudflare D1/Durable Object state stores one current goal identity with expected-ID guards, Queues/Workflows resume active goals only after notification snapshots are durable, and all long-running agent restarts replay from persisted goal state rather than from chat memory.
+OpenAgents product surface could combine this pattern with long-running agents by making a persisted `AgentGoal` or `ThreadGoal` Effect service the durable authority for agent objectives, then letting worker sessions report typed runtime events such as `TurnStarted`, `ToolCompleted`, `CheckpointPersisted`, `UsageLimitReached`, `ExternalSet`, and `WorkerResumed` into one policy interpreter that owns accounting, continuation scheduling, and hidden steering. The useful adaptation is not to copy Codex's SQLite details directly, but to preserve the contract: user/API controls own objective replacement and pause/resume, model tools own only explicit create and terminal complete/blocked claims, Cloudflare D1/Durable Object state stores one current goal identity with expected-ID guards, Queues/Workflows resume active goals only after notification snapshots are durable, and all long-running agent restarts replay from persisted goal state rather than from chat memory.

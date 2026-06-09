@@ -1,6 +1,6 @@
 # Blueprint Kernel Boundary
 
-This directory is the Omega-owned Blueprint kernel implementation boundary.
+This directory is the OpenAgents product surface-owned Blueprint kernel implementation boundary.
 
 It owns Effect-first TypeScript schemas, services, repositories, projection
 helpers, fixtures, export adapters, and tests for the Blueprint Program kernel.

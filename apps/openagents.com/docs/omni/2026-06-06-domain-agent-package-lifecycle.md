@@ -1,6 +1,6 @@
 # Domain Agent Package Lifecycle
 
-Status: implemented for issue #374 / `OMEGA-LATE-014`.
+Status: implemented for issue #374 / `OPENAGENTS-LATE-014`.
 
 ## Purpose
 

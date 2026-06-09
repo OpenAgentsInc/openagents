@@ -36,7 +36,7 @@ Models:
 - Apple Silicon host
 - Apple Intelligence available and enabled for the current OS/user context
 - local Apple FM bridge running and reachable
-- no ChatGPT account auth, OpenAI API key, or Omega provider grant required
+- no ChatGPT account auth, OpenAI API key, or OpenAgents product surface provider grant required
 
 If the host is not admitted, record the result as `unsupported` or
 `unavailable`, not `failed`.

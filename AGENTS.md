@@ -9,8 +9,9 @@ previous repository shape.
 
 ## Repo Layout
 
-- `apps/openagents.com/` owns the Omega `openagents.com` product surface.
-- `apps/forum/` owns the separate forum app mounted at `openagents.com/forum`.
+- `apps/openagents.com/` owns the `openagents.com` product surface.
+- `apps/forum/` owns the forum extraction target for
+  `openagents.com/forum`.
 - `apps/pylon/` owns the Pylon contributor app imported from the standalone
   Pylon repository.
 - `packages/probe/` owns the Probe runtime imported from the standalone Probe
@@ -25,7 +26,7 @@ previous repository shape.
 - For work under `apps/openagents.com/`, also read
   `apps/openagents.com/AGENTS.md` and `apps/openagents.com/INVARIANTS.md`.
 - Keep new TypeScript implementation work on Bun, Effect, Effect Schema, and
-  Foldkit where Omega already uses it.
+  Foldkit where `apps/openagents.com` already uses it.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
   explicit historical compatibility work.
 - Do not commit secrets, dependency caches, build output, `target/`, `dist/`,

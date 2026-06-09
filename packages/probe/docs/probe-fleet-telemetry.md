@@ -6,8 +6,8 @@ Status: implemented contract slice for Probe issue #162.
 
 ## Contract
 
-Omega remains the cross-account selection and lease authority. Probe reports
-runtime account signals and asks Omega for failover when the selected account
+OpenAgents product surface remains the cross-account selection and lease authority. Probe reports
+runtime account signals and asks OpenAgents product surface for failover when the selected account
 cannot continue.
 
 Probe does not locally iterate across raw ChatGPT tokens.
@@ -18,10 +18,10 @@ Probe does not locally iterate across raw ChatGPT tokens.
 
 - `ProbeAuthHealthSignal`
 - `makeProbeAuthHealthSignal`
-- `deriveOmegaAccountHealthPatch`
+- `deriveOpenAgents product surfaceAccountHealthPatch`
 - `recordProbeAuthHealthSignal`
-- `shouldRequestOmegaFailover`
-- `makeOmegaFleetTelemetryClient`
+- `shouldRequestOpenAgents product surfaceFailover`
+- `makeOpenAgents product surfaceFleetTelemetryClient`
 - `makeStaticProbeFleetTelemetryClient`
 
 `packages/runtime/src/contracts/provider-account.ts` also exports
@@ -43,7 +43,7 @@ Probe can report:
 - `provider_unavailable`
 - `non_auth_failure`
 
-Auth/account failures with a lease ref request Omega failover through the
+Auth/account failures with a lease ref request OpenAgents product surface failover through the
 operator lease failover route. Successful and non-auth failures do not request
 account failover.
 
@@ -59,7 +59,7 @@ capability report for Pylon/SHC-style provider routing:
 
 Probe advertises the capability only when live Apple FM health is ready.
 Unavailable and unsupported states are still reported as typed capability
-status, with redacted availability receipts, so Omega/OpenAgents can distinguish
+status, with redacted availability receipts, so OpenAgents product surface/OpenAgents can distinguish
 Apple FM from Qwen, Codex, MLX, or other future backends without leaking local
 paths, callback secrets, or transcript payloads.
 

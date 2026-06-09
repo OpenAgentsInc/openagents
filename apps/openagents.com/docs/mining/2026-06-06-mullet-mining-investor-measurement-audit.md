@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: first Omega mining audit for investor-grade measurement, Margot export
+Status: first OpenAgents product surface mining audit for investor-grade measurement, Margot export
 ingestion, and Artanis-facing proof discipline.
 
 ## Bottom Line
@@ -17,7 +17,7 @@ Mining curtails when AI, power prices, grid events, or reserves need the power.
 
 Mining-led opportunistic AI is still useful, especially for SHC-style sites,
 but it is not the same claim. Until a site has AI-priority capacity, accepted
-work receipts, measured power, and backfill evidence, Omega should classify it
+work receipts, measured power, and backfill evidence, OpenAgents product surface should classify it
 as `mining_led_ai_pilot_not_mullet`, not as proven mullet mining.
 
 The investor case should therefore be measured in this order:
@@ -42,7 +42,7 @@ became accepted outcomes, mining revenue, dark capacity, or settled payout.
 
 ## Source Scope
 
-Omega issue scope checked with `gh issue list` / `gh issue view`:
+OpenAgents product surface issue scope checked with `gh issue list` / `gh issue view`:
 
 - open issues #403-#414: the active Artanis implementation queue, covering D1
   persistence, scheduled ticks, operator console, Forum publication/listening,
@@ -56,7 +56,7 @@ Omega issue scope checked with `gh issue list` / `gh issue view`:
   ledger, launch smoke, Pylon v0.2 readiness, resource modes, marketplace job
   contract, Forum bitcoin reward visibility, and payment simulation.
 
-Omega docs read:
+OpenAgents product surface docs read:
 
 - `docs/artanis/2026-06-06-artanis-implementation-audit.md`
 - `docs/pylon/2026-06-06-r10-artanis-pylon-campaign-ledger.md`
@@ -69,7 +69,7 @@ Omega docs read:
 - `docs/pylon/2026-06-06-flexible-load-event-telemetry.md`
 - `docs/pylon/2026-06-06-forward-power-interconnection-scenarios.md`
 
-Workspace-root Margot/mining sources read outside Omega:
+Workspace-root Margot/mining sources read outside OpenAgents product surface:
 
 - `../docs/mining/README.md`
 - `../docs/mining/DESIGN.md`
@@ -104,7 +104,7 @@ External framing checked:
 Artanis is the right public steward for the proof story, but not yet the
 authority for production autonomous claims.
 
-Current Omega truth from the Artanis audit:
+Current OpenAgents product surface truth from the Artanis audit:
 
 - `/artanis` and `/agents/artanis` are public-safe proof/status surfaces.
 - Artanis has public Pylon stats, public goal projection, R10 Pylon campaign
@@ -252,7 +252,7 @@ Investor use:
 - supports forward-power and interconnection scenarios;
 - establishes whether the site can even operate a mullet priority rule.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - `PylonForwardPowerScenarioRecord`
 - `MargotExportPacket`
@@ -280,7 +280,7 @@ Investor use:
 - protects the thesis from "AI revenue" that destroys a better mining or
   curtailment option.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - Margot export mining floor fields;
 - capacity funnel stage and dark-capacity reason refs;
@@ -312,7 +312,7 @@ Investor use:
 - supports a data advantage claim only when outcomes are accepted and routed
   with receipts.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - `OmniInvestorOutcomeEconomicsMetricRecord`
 - `OmniOutcomePowerProductivityRecord`
@@ -343,7 +343,7 @@ Investor use:
 - converts "we have capacity" into a funnel that can be diligenced;
 - makes dead capacity visible rather than quietly hiding it.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - `accountPylonCapacityFunnel`
 - investor demo bundle missing-evidence items
@@ -368,7 +368,7 @@ Investor use:
 - creates a comparable KPI across mining sites, Pylons, GCP, SHC, Tinybox,
   consumer devices, and future pods.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - `projectOmniOutcomePowerProductivity`
 
@@ -398,7 +398,7 @@ Investor use:
 - avoids importing Bitcoin mining's flexibility into AI workloads by
   assumption.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - Pylon flexible-load profiles;
 - Pylon flexible-load event telemetry.
@@ -426,7 +426,7 @@ Investor use:
 - makes incremental small GPU pods or agentic CPU work credible without
   pretending the site is a Tier 3 AI data center.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - Margot export caveat refs;
 - Pylon capacity and resource-mode records;
@@ -451,7 +451,7 @@ Investor use:
 - shows whether flexibility improves grid/emissions outcomes or merely lowers
   operator cost.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - Margot export caveats and provenance;
 - future measured power and LME refs.
@@ -477,7 +477,7 @@ Investor use:
 - clarifies when to use SHC-owned compute, colocate known-good hardware, or
   build a hybrid pod.
 
-Omega surface:
+OpenAgents product surface surface:
 
 - Margot export scenario/diligence refs;
 - investor demo bundle export;
@@ -533,7 +533,7 @@ latency-sensitive, or infrastructure-ready.
 OpenAgents designs agentic workloads that can run on awkward capacity, proves
 accepted outcomes, and uses mining as the economic floor and backfill.
 Margot's model makes the per-MWh economics honest.
-Omega receipts make accepted work, dark capacity, payable, and settlement
+OpenAgents product surface receipts make accepted work, dark capacity, payable, and settlement
 auditable.
 ```
 
@@ -551,7 +551,7 @@ Safe to say now:
 
 - Margot's model gives OpenAgents the method to compare mining and AI in
   dollars per MWh.
-- Omega now has read-only contracts for investor economics, power productivity,
+- OpenAgents product surface now has read-only contracts for investor economics, power productivity,
   capacity funnel accounting, flex profiles, event telemetry, forward-power
   scenarios, and Margot export ingestion.
 - Artanis can become the public steward for these proof packets after the
@@ -574,7 +574,7 @@ Do not say yet:
 
 ## Next Work
 
-Immediate Omega work should be:
+Immediate OpenAgents product surface work should be:
 
 1. Create a `mullet_mining_proof_packet` doc/contract shape that joins Margot
    exports, capacity funnel accounting, outcome-power productivity, investor

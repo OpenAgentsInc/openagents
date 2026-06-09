@@ -2,14 +2,14 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#516`.
+Status: implemented for `OpenAgentsInc/openagents#516`.
 
-Omega now has an Artanis-specific public summary projection for Probe GEPA
+OpenAgents product surface now has an Artanis-specific public summary projection for Probe GEPA
 benchmark evidence. The implementation lives in
 `workers/api/src/artanis-probe-gepa-benchmark-summary.ts`.
 
 This is separate from the Probe Forum draft generator. Probe can draft
-public-safe copy, but posting as Artanis requires the Omega/operator authority
+public-safe copy, but posting as Artanis requires the OpenAgents product surface/operator authority
 path and explicit authority refs.
 
 ## Supported Labels

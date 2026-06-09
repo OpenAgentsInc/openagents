@@ -1,6 +1,6 @@
 # Paid Endpoint Product Catalog
 
-Issue: #290 / OMEGA-H-002
+Issue: #290 / OPENAGENTS-H-002
 
 Date: 2026-06-06
 

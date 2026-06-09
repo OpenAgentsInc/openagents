@@ -3,7 +3,7 @@
 Status: queued delegation packet; blocked from dispatch until the Autopilot
 dispatch gate in `AGENTS.md` is satisfied.
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
@@ -47,7 +47,7 @@ defects that block honest execution, reporting, continuation, or visibility.
 
 ## Objective
 
-Implement the Cloudflare Containers runner backup audit fully in Omega.
+Implement the Cloudflare Containers runner backup audit fully in OpenAgents product surface.
 
 Build a backend-neutral runner gateway that keeps SHC as the primary
 low-to-medium trust runner, adds Cloudflare Containers as a backup and burst
@@ -65,7 +65,7 @@ The finished system must support:
 - a real OpenCode/Codex runner image path once the fake path is proven;
 - provider-account grant resolution inside the runner, not in public Worker
   bodies;
-- callback/event/artifact closeout through the existing Omega ledger;
+- callback/event/artifact closeout through the existing OpenAgents product surface ledger;
 - billing metadata that distinguishes product runner usage from Cloudflare
   platform costs;
 - operator-only health, capacity, and failover visibility;
@@ -152,7 +152,7 @@ Operator and architecture guardrails:
 - `../2026-06-02-shc-agent-deployment-runbook.md`
 - `../2026-06-02-provider-account-implementation-notes.md`
 - `../2026-06-02-cloudflare-only-openagents-sync-audit.md`
-- `../2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `../2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 - `../../INVARIANTS.md`
 - `../../AGENTS.md`
 
@@ -215,7 +215,7 @@ Launch input fields:
 
 ```json
 {
-  "repository": "OpenAgentsInc/autopilot-omega",
+  "repository": "OpenAgentsInc/openagents",
   "baseRef": "main",
   "taskSpecPath": "docs/autopilot-tasks/2026-06-04-cloudflare-containers-runner-backup-implementation.md",
   "agentId": "autopilot",
@@ -402,7 +402,7 @@ credential work to Containers.
 - Do not weaken runtime policy, provider-account redaction, public projection,
   billing gates, or callback validation to make the Container path pass.
 - Do not bypass the zero-tech-debt guardrails. If a temporary adapter facade is
-  required, update `../2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+  required, update `../2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
   with caller evidence, deletion condition, and guardrail.
 - If adding or changing a runtime policy invariant, update `../../INVARIANTS.md`
   in the same change and add the corresponding regression test or explicit
@@ -466,7 +466,7 @@ Delivery:
 ## Suggested Team-Visible Run Summary
 
 ```text
-Implemented the Cloudflare Containers runner backup path for Omega: added the
+Implemented the Cloudflare Containers runner backup path for OpenAgents product surface: added the
 cloudflare_container backend, introduced a backend-neutral runner gateway,
 preserved SHC behavior, added the disabled-by-default Container binding and
 runner path, protected provider-account secrets, and verified callback,

@@ -1,6 +1,6 @@
 # MoneyDevKit LSP/JIT Liquidity Decision
 
-Issue #353 / `OMEGA-L-005` evaluates whether OpenAgents should port, wrap, or
+Issue #353 / `OPENAGENTS-L-005` evaluates whether OpenAgents should port, wrap, or
 defer MoneyDevKit-style LSP and just-in-time receive-liquidity behavior for
 Pylon.
 
@@ -85,7 +85,7 @@ usable LSP channel from dust-level availability and reserves routing-fee
 headroom.
 
 Both are useful Pylon patterns, but they are wallet-mutation logic. They belong
-in the native Pylon/LDK runtime after testing, not in the Omega Worker and not
+in the native Pylon/LDK runtime after testing, not in the OpenAgents product surface Worker and not
 in the current read-only projection issues.
 
 ### Hosted Checkout And L402
@@ -162,7 +162,7 @@ customer-visible docs, or agent-readable manifests:
 - raw telemetry payloads; or
 - raw payout targets.
 
-The MDK wrapper must emit only redacted refs into Omega and preserve the
+The MDK wrapper must emit only redacted refs into OpenAgents product surface and preserve the
 read-only projection boundary already used by:
 
 - `workers/api/src/pylon-ldk-readiness-projections.ts`;
@@ -172,7 +172,7 @@ read-only projection boundary already used by:
 
 ## Test And Deployment Posture
 
-Do not add mainnet wallet mutation or live LSP API calls from Omega.
+Do not add mainnet wallet mutation or live LSP API calls from OpenAgents product surface.
 
 The next implementation stage should be:
 
@@ -189,7 +189,7 @@ The next implementation stage should be:
    dedicated test wallet.
 6. Add Pylon operator telemetry for LSP configuration, channel readiness,
    receive capacity, route failures, and blocked receive state.
-7. Project only redacted readiness state into Omega.
+7. Project only redacted readiness state into OpenAgents product surface.
 
 ## Roadmap Implication
 

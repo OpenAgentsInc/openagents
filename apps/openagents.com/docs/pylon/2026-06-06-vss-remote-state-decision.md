@@ -1,6 +1,6 @@
 # VSS Remote State Decision
 
-Issue #354 / `OMEGA-L-006` evaluates Versioned Storage Service as an optional
+Issue #354 / `OPENAGENTS-L-006` evaluates Versioned Storage Service as an optional
 Pylon wallet backup/sync backend.
 
 ## Decision
@@ -64,7 +64,7 @@ Pylon/LDK runtime already needs to persist:
 - backup status metadata; and
 - redacted restore evidence.
 
-Omega must not store that material. Omega should receive only redacted
+OpenAgents product surface must not store that material. OpenAgents product surface should receive only redacted
 projection refs and readiness state.
 
 ## Encryption And Secret Boundary
@@ -72,7 +72,7 @@ projection refs and readiness state.
 VSS must be treated as remote storage of sensitive wallet state, even if
 client-side encryption is used.
 
-The following are never allowed in Omega, public docs, receipts, issue
+The following are never allowed in OpenAgents product surface, public docs, receipts, issue
 comments, agent manifests, customer-visible surfaces, or logs:
 
 - recovery phrases;
@@ -181,8 +181,8 @@ Pylon owns the wallet runtime and restore flow.
 Nexus and Treasury own payout acceptance, payout dispatch, settlement
 reconciliation, and receipts.
 
-Omega owns public-safe projection, docs, order/Site receipt linking, and
-operator UI. Omega must not become a wallet-state store or VSS proxy unless a
+OpenAgents product surface owns public-safe projection, docs, order/Site receipt linking, and
+operator UI. OpenAgents product surface must not become a wallet-state store or VSS proxy unless a
 later issue explicitly defines that authority and redaction model.
 
 ## Roadmap Implication

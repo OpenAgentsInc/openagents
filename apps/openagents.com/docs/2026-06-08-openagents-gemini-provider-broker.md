@@ -1,6 +1,6 @@
-# Omega Gemini Provider Broker
+# OpenAgents product surface Gemini Provider Broker
 
-Omega supports hosted Gemini text inference for Probe through a protected
+OpenAgents product surface supports hosted Gemini text inference for Probe through a protected
 provider-account broker route.
 
 ## Runtime Contract
@@ -32,8 +32,8 @@ stream sent to Probe remains the provider stream.
 
 Recorded events use:
 
-- `producerSystem: "omega"`;
-- `sourceRoute: "omega_provider_broker"`;
+- `producerSystem: "openagents"`;
+- `sourceRoute: "openagents_provider_broker"`;
 - `provider: "google_gemini"`;
 - `backendProfile: "worker_secret_gemini_api_key"`;
 - `usageTruth: "exact"` when Gemini supplies `usageMetadata`;
@@ -50,9 +50,9 @@ when the upstream response includes `usageMetadata`. It does not store the
 Gemini API key, request body, prompt, response body, provider payload, or tool
 arguments.
 
-Probe should send an `Idempotency-Key` header for hosted Gemini calls. Omega
+Probe should send an `Idempotency-Key` header for hosted Gemini calls. OpenAgents product surface
 uses that key, the authenticated actor, and the model to derive the canonical
-event id and idempotency key. If the header is absent, Omega falls back to a
+event id and idempotency key. If the header is absent, OpenAgents product surface falls back to a
 hash of the request body for retry dedupe without persisting the body.
 
 ## Grant Contract
@@ -85,16 +85,16 @@ browser-visible payloads. API keys should be restricted to
 ## Probe Fallback
 
 Probe uses local Gemini keys first. If no local Gemini key is set, Probe can use
-Omega by setting:
+OpenAgents product surface by setting:
 
 ```sh
-PROBE_OMEGA_BASE_URL=https://openagents.com
-PROBE_OMEGA_BEARER_TOKEN=<OpenAgents programmatic agent token>
+PROBE_OPENAGENTS_BASE_URL=https://openagents.com
+PROBE_OPENAGENTS_BEARER_TOKEN=<OpenAgents programmatic agent token>
 ```
 
-The Probe Gemini client then uses the Omega broker as its Gemini base URL and
-sends the bearer token to Omega instead of sending `x-goog-api-key`.
+The Probe Gemini client then uses the OpenAgents product surface broker as its Gemini base URL and
+sends the bearer token to OpenAgents product surface instead of sending `x-goog-api-key`.
 
 Direct/local Probe Gemini calls remain Probe's responsibility to ledger through
-the canonical token usage ingestion API. Omega can only record calls that pass
+the canonical token usage ingestion API. OpenAgents product surface can only record calls that pass
 through the hosted broker route.

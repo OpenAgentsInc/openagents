@@ -1,6 +1,6 @@
 # Receipt-Backed Public Pylon Paid-Work Totals
 
-Issue: `OpenAgentsInc/autopilot-omega#554`
+Issue: `OpenAgentsInc/openagents#554`
 
 ## Contract
 

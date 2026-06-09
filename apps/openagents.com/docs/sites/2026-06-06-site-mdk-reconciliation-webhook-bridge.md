@@ -2,14 +2,14 @@
 
 Date: 2026-06-06
 
-Roadmap: OMEGA-SITES-MDK-008 / GitHub #305
+Roadmap: OPENAGENTS-SITES-MDK-008 / GitHub #305
 
 Status: implemented as a fake-provider and config-gated contract.
 
 ## Purpose
 
 Generated Sites need a payment bridge that can observe hosted MoneyDevKit
-checkout status changes and turn them into Omega buyer-payment records without
+checkout status changes and turn them into OpenAgents product surface buyer-payment records without
 making the Site itself a wallet, payment processor, or payout authority.
 
 This slice adds the first typed reconciliation boundary for hosted Site
@@ -56,7 +56,7 @@ The current bridge maps events as follows:
 Fake-provider events are allowed for tests and staged generated-Site payment
 flows. Non-fake provider events stay `verification_config_gated` until live
 webhook verification, replay storage, and production MDK credentials are
-configured through the hosted Omega boundary.
+configured through the hosted OpenAgents product surface boundary.
 
 ## Projection Split
 

@@ -65,7 +65,7 @@ The plan table stores `requested_by_user_id`, `reviewed_by_user_id`,
 
 This slice records a reviewed plan/receipt. It does not yet create Cloudflare
 D1 databases, KV namespaces, R2 buckets, or hosted secret values from inside
-Omega. Those actual provisioning actions should be a credentialed follow-up
+OpenAgents product surface. Those actual provisioning actions should be a credentialed follow-up
 client that consumes this approved plan and writes a redacted receipt back to
 the same contract.
 

@@ -1,8 +1,8 @@
-# Autopilot Omega Cloudflare-Only OpenAgents Sync Audit
+# OpenAgents Autopilot Cloudflare-Only OpenAgents Sync Audit
 
 Date: 2026-06-02
 
-Status: canonical replacement plan for `autopilot-omega`. It records the
+Status: canonical replacement plan for `openagents`. It records the
 user-directed target: replace Convex with Cloudflare-only infrastructure,
 remove TanStack DB/Electric/Postgres from the target architecture, use Effect
 as the server authority model, use Foldkit for the webapp, and build a custom
@@ -21,7 +21,7 @@ Build OpenAgents Sync on Cloudflare primitives.
 
 TanStack DB's Electric collection is explicitly a Postgres/ElectricSQL sync
 path. That does not match the stated infrastructure constraint: Cloudflare
-only. For `autopilot-omega`, the replacement stack should be:
+only. For `openagents`, the replacement stack should be:
 
 ```text
 Foldkit webapp
@@ -70,7 +70,7 @@ small owned protocol and implementation, not generic SQL replication.
 
 ## Repository Layout Decision
 
-`autopilot-omega` should be a Bun workspace, not a single-package app. Bun is
+`openagents` should be a Bun workspace, not a single-package app. Bun is
 already the package manager, and the target needs clean runtime boundaries
 between browser code, Cloudflare Worker code, and shared Effect protocol code.
 
@@ -139,8 +139,8 @@ Replacing Convex means replacing:
 - product authorization rules;
 - migration and operator repair workflows.
 
-Autopilot Omega implication: do not hollow Convex out in Vortex. Use Vortex as
-source material and parity reference. In `autopilot-omega`, build Cloudflare
+OpenAgents Autopilot implication: do not hollow Convex out in Vortex. Use Vortex as
+source material and parity reference. In `openagents`, build Cloudflare
 authority from the beginning.
 
 ## Removed From The Target
@@ -152,7 +152,7 @@ authoritative backend and it is not needed if OpenAgents owns its sync
 protocol. Keeping it in the target would add an extra client database
 abstraction before the actual Convex replacement exists.
 
-Drop it from the first `autopilot-omega` plan.
+Drop it from the first `openagents` plan.
 
 ### Electric
 
@@ -165,7 +165,7 @@ is out.
 
 Postgres is a viable future escape hatch through Hyperdrive if D1 becomes the
 wrong store for a specific subsystem. It should not be in the first
-`autopilot-omega` architecture. The stated target is Cloudflare-only.
+`openagents` architecture. The stated target is Cloudflare-only.
 
 ### TanStack Start
 
@@ -192,7 +192,7 @@ node_modules/foldkit/README.md
 ../projects/repos/foldkit/packages/vite-plugin-foldkit/README.md
 ```
 
-The `autopilot-omega` README already defines the stack as Foldkit, Effect,
+The `openagents` README already defines the stack as Foldkit, Effect,
 Cloudflare, OpenAuth, OpenCode, and SHC. Foldkit's README describes it as an
 Effect-built, Elm-architecture frontend framework: one Model, one update
 function, Messages for events, Commands for effects, no hooks, no local React
@@ -218,10 +218,10 @@ Important local findings:
   model-driven navigation.
 - Foldkit includes Story and Scene testing helpers for update-level and
   user-level tests.
-- Foldkit is pre-1.0. This is acceptable for `autopilot-omega` only if we accept
+- Foldkit is pre-1.0. This is acceptable for `openagents` only if we accept
   that we may need to pin versions, vendor patches, or contribute fixes.
 
-Foldkit is a good fit for the `autopilot-omega` webapp because OpenAgents Sync maps
+Foldkit is a good fit for the `openagents` webapp because OpenAgents Sync maps
 cleanly onto its architecture:
 
 ```text
@@ -256,7 +256,7 @@ public-agent:{agentId}
 repo:{repoId}
 ```
 
-Implemented Omega scope names for the first Autopilot slice:
+Implemented OpenAgents product surface scope names for the first Autopilot slice:
 
 ```text
 workspace:{userId}
@@ -730,9 +730,9 @@ expectedVersion conflict checks
 
 ## Migration Model
 
-### Phase 0: Establish autopilot-omega
+### Phase 0: Establish openagents
 
-- Use `autopilot-omega` as the standalone repo on `main`.
+- Use `openagents` as the standalone repo on `main`.
 - Use Bun workspaces for `apps/*`, `workers/*`, and `packages/*`.
 - Use Foldkit + Vite for the webapp in `apps/web`.
 - Put the Cloudflare Worker API, Durable Object surface, Wrangler config, and
@@ -834,7 +834,7 @@ Success criteria:
 
 - Export Vortex Convex data by table family.
 - Transform into Effect Schema/D1/R2 records.
-- Import into `autopilot-omega` staging.
+- Import into `openagents` staging.
 - Run parity checks against Vortex projections.
 - Document intentional model-boundary changes.
 
@@ -844,7 +844,7 @@ Success criteria:
 - parity reports identify missing/changed rows by stable ids;
 - no private secrets are exported into tracked files or logs;
 - rollback means returning traffic to Vortex, not enabling Convex in
-  `autopilot-omega`.
+  `openagents`.
 
 ## Tests And Verification
 
@@ -890,13 +890,13 @@ Success criteria:
 
 ## Recommendation
 
-Proceed with a full Convex replacement in `autopilot-omega` using a
+Proceed with a full Convex replacement in `openagents` using a
 Cloudflare-only data plane and Foldkit webapp.
 
 The first implementation issue should be:
 
 ```text
-Scaffold the Cloudflare-only foundation in autopilot-omega with Foldkit/Vite
+Scaffold the Cloudflare-only foundation in openagents with Foldkit/Vite
 webapp, Effect domain packages, OpenAuth, Wrangler, D1/R2/Queues/Workflows,
 Durable Object sync room, and Agents SDK bindings. Do not add TanStack DB,
 Electric, or Postgres.
@@ -947,7 +947,7 @@ GCloud = backup execution substrate using the same contract
 - Prior SHC/OpenCode/Bun audit:
   `../vortex/docs/omni/2026-06-02-effect-first-openauth-opencode-codex-cloudflare-audit.md`
 
-### Autopilot Omega
+### OpenAgents Autopilot
 
 - Repo README: `README.md`
 - Repo agent instructions: `AGENTS.md`

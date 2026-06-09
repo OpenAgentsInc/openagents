@@ -5,7 +5,7 @@ Issue: #486
 
 ## Summary
 
-Omega now exposes an operator-only proof-run route:
+OpenAgents product surface now exposes an operator-only proof-run route:
 
 ```text
 POST /api/operator/nexus-pylon/proof-runs

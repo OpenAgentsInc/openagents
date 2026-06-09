@@ -49,7 +49,7 @@ The missing v0.3 launch work is not "teach Pylon ML from scratch." The missing
 work is a clean integration boundary where Pylon can prove a local machine is
 available, receive an assignment, invoke Psionic safely when the assignment
 requires ML, and return public-safe evidence without claiming more authority
-than Psionic or Omega granted.
+than Psionic or OpenAgents product surface granted.
 
 ## Current Gap
 
@@ -100,7 +100,7 @@ Psionic should own:
 - worker receipts and retained ML execution evidence;
 - promotion/eval rules for model artifacts.
 
-Omega/OpenAgents should own:
+OpenAgents product surface/OpenAgents should own:
 
 - public assignment dispatch;
 - lease lifecycle and cancellation;
@@ -118,13 +118,13 @@ The near-term connection should stay GEPA-first.
 
 Psionic already defines `psionic.probe_gepa_candidate_manifest.v1`. Pylon's
 runtime tests already consume that manifest shape and run retained benchmark
-candidate execution. Psionic's rollout coordinator can import live Omega/Pylon
-closeouts after Omega has produced normalized refs.
+candidate execution. Psionic's rollout coordinator can import live OpenAgents product surface/Pylon
+closeouts after OpenAgents product surface has produced normalized refs.
 
 That means the first integration can be:
 
 1. Psionic selects or generates a GEPA candidate manifest.
-2. Omega assigns a bounded rollout to one or more Pylons.
+2. OpenAgents product surface assigns a bounded rollout to one or more Pylons.
 3. Pylon validates the assignment requirements against
    `openagents.pylon.gepa_capability_envelope.v0.3`.
 4. Pylon runs the retained benchmark/candidate path locally.

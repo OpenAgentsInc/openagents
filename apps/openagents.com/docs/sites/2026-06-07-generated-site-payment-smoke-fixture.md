@@ -1,11 +1,11 @@
 # Generated Site Payment Smoke Fixture
 
 Date: 2026-06-07
-Issue: #454 / `OMEGA-SITES-MDK-LIVE-001`
+Issue: #454 / `OPENAGENTS-SITES-MDK-LIVE-001`
 
 ## Summary
 
-Omega now has a deterministic generated-Site payment smoke fixture in
+OpenAgents product surface now has a deterministic generated-Site payment smoke fixture in
 `workers/api/src/generated-site-payment-smoke-fixture.ts`.
 
 The fixture represents the commerce shape a generated customer Site should
@@ -20,7 +20,7 @@ authority, or prove settlement.
 
 ## What The Fixture Contains
 
-The fixture composes existing Omega contracts instead of creating a parallel
+The fixture composes existing OpenAgents product surface contracts instead of creating a parallel
 payment model:
 
 - `OpenAgentsSitePaymentManifest`
@@ -40,7 +40,7 @@ The generated Site shape includes clean local paths:
 
 The agent-visible discovery projection exposes the Site commerce endpoints that
 future generated Sites and agents should use. Those endpoints are still
-governed by Omega's real route authority, idempotency, spend-cap, review,
+governed by OpenAgents product surface's real route authority, idempotency, spend-cap, review,
 payment-proof, and reconciliation rules.
 
 ## Why This Is Not Production Payment Evidence

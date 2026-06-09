@@ -1,6 +1,6 @@
 # Data Package Export And Rights Manifest
 
-Status: implemented for issue #371 / `OMEGA-LATE-011`.
+Status: implemented for issue #371 / `OPENAGENTS-LATE-011`.
 
 ## Purpose
 

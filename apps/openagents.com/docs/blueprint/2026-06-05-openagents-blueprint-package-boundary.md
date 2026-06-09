@@ -1,6 +1,6 @@
-# Omega Blueprint Package Boundary
+# OpenAgents product surface Blueprint Package Boundary
 
-Issue #222 adds the first Omega-owned Blueprint kernel source boundary.
+Issue #222 adds the first OpenAgents product surface-owned Blueprint kernel source boundary.
 
 The source boundary is `workers/api/src/blueprint`.
 
@@ -36,8 +36,8 @@ approval-gated. Contract exports are export-only.
 
 The boundary manifest declares:
 
-- `kernelRef = omega.blueprint.kernel.v1`
-- `ownerRef = omega`
+- `kernelRef = openagents.blueprint.kernel.v1`
+- `ownerRef = openagents`
 - `deprecatedDependencyAllowed = false`
 
 This keeps the deprecated Blueprint workspace as reference material only.

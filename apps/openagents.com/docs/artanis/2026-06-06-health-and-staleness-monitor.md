@@ -12,7 +12,7 @@ Status: implemented as a schema/projection contract in
 
 Artanis needs a health layer that can say whether the public proof surface is
 fresh enough to trust. Stale Model Lab reports, lagged Forum publication,
-pending approvals, missing loop ticks, stale Omega public Pylon stats, or unavailable
+pending approvals, missing loop ticks, stale OpenAgents product surface public Pylon stats, or unavailable
 runner backends should become visible blockers and recovery actions. They must
 not become hidden failures or overbroad public claims.
 
@@ -26,7 +26,7 @@ The v1 health snapshot covers:
 - pending approvals
 - Forum publication lag
 - Pylon stats freshness
-- Omega public Pylon stats freshness
+- OpenAgents product surface public Pylon stats freshness
 - Model Lab report freshness
 - runner/backend availability
 

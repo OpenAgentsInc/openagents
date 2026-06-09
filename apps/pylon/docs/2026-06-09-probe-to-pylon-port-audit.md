@@ -11,7 +11,7 @@ Probe runtime code has been ported into Pylon as an internal workspace package:
 - Public entrypoint: exported from the Pylon workspace package
 - CLI route: `pylon runtime ...`
 - Direct namespace aliases: `pylon apple-fm ...`, `pylon backend ...`,
-  `pylon chat ...`, `pylon auth ...`, and `pylon omega ...`
+  `pylon chat ...`, `pylon auth ...`, and `pylon openagents ...`
 
 The old Probe repository is now source history for this runtime surface. New
 runtime work for Apple FM, Gemini, provider materialization, Blueprint tool
@@ -24,7 +24,7 @@ telemetry, and runner identity should land in Pylon.
   fixtures, callback tool session, Blueprint tool projection, acceptance cases,
   receipts, and Program Run evidence.
 - Gemini backend auth, protocol lowering, streaming parser, tool schema
-  sanitization, direct API client, Omega-brokered materialization, receipts, and
+  sanitization, direct API client, OpenAgents product surface-brokered materialization, receipts, and
   CLI commands.
 - Provider-neutral LLM events, messages, request contracts, tools, tool runtime,
   and usage normalization.
@@ -36,7 +36,7 @@ telemetry, and runner identity should land in Pylon.
 - GEPA and Terminal-Bench candidate execution, retained fixtures, closeout
   writer, live canary receipt, and public-safe import artifacts.
 - Fleet backend capability reporting, token usage telemetry, runner identity,
-  Omega account/grant clients, and provider-account projections.
+  OpenAgents product surface account/grant clients, and provider-account projections.
 
 ## Test Gates
 

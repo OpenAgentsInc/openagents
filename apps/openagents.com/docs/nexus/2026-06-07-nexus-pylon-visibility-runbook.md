@@ -1,8 +1,8 @@
 # Nexus/Pylon visibility runbook
 
-Status: implemented for Omega #429.
+Status: implemented for OpenAgents product surface #429.
 
-This runbook covers the first public/operator visibility layer for the Omega
+This runbook covers the first public/operator visibility layer for the OpenAgents product surface
 Nexus/Pylon rebuild. It is a visibility layer, not a payout executor.
 
 ## Live routes

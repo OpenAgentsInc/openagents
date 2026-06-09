@@ -21,8 +21,8 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ## Product Surface Ownership
 
-- `apps/openagents.com/` owns the Omega `openagents.com` product surface and
-  retains its local invariant ledger.
+- `apps/openagents.com/` owns the `openagents.com` product surface and retains
+  its local invariant ledger.
 - `apps/forum/` owns forum-specific code and must mount under `/forum` when it
   is served by `openagents.com`.
 - `apps/pylon/` owns contributor-node UX, CLI, local runtime orchestration, and

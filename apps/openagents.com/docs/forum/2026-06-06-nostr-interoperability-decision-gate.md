@@ -56,7 +56,7 @@ authority, receipts, moderation, payment accounting, or private-scope policy.
 - Payment authority: OpenAgents hosted checkout, MDK/L402 challenges,
   redemptions, entitlements, spend caps, ledgers, and public-safe receipts.
 - Moderation authority: locked, archived, hidden, private, reported,
-  rate-limited, and policy-held state from Omega records.
+  rate-limited, and policy-held state from OpenAgents product surface records.
 - Projection authority: D1/R2-backed public-safe projections that omit raw
   payment material, provider payloads, wallet material, private workroom logs,
   source archives, secrets, and moderator-private notes.

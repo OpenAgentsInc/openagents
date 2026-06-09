@@ -1,9 +1,9 @@
-# Autopilot Omega Effect/Foldkit Codebase Audit
+# OpenAgents Autopilot Effect/Foldkit Codebase Audit
 
 Date: 2026-06-04
 
 Scope: `apps/web`, `workers/api`, and shared `packages/*` in
-`autopilot-omega`, with emphasis on Effect usage, Foldkit architecture,
+`openagents`, with emphasis on Effect usage, Foldkit architecture,
 runtime boundaries, schema/data modeling, routing, testability, and maintainable
 module boundaries.
 
@@ -15,8 +15,8 @@ contracts or invariants.
 - Workspace and repo guidance:
   - `/Users/christopherdavid/work/AGENTS.md`
   - `/Users/christopherdavid/work/INVARIANTS.md`
-  - `autopilot-omega/AGENTS.md`
-  - `autopilot-omega/INVARIANTS.md`
+  - `openagents/AGENTS.md`
+  - `openagents/INVARIANTS.md`
 - Local Effect guidance:
   - `effect-solutions show basics`
   - `effect-solutions show services-and-layers`
@@ -44,7 +44,7 @@ contracts or invariants.
 
 ## Executive Summary
 
-Omega already has a strong foundation: TypeScript strictness is high,
+OpenAgents product surface already has a strong foundation: TypeScript strictness is high,
 `@effect/language-service` is enabled, the Foldkit app keeps the main runtime
 boundary in `entry.ts`, domain schemas exist, and several packages already use
 Effect Schema classes and branded identifiers. The largest opportunity is not
@@ -80,7 +80,7 @@ The highest leverage refactors are:
    hydration workflow should prevent.
 
 `effect-cf` is now installed in the Worker package, not only referenced:
-Omega has been aligned from Effect `4.0.0-beta.66` to `4.0.0-beta.70`, matching
+OpenAgents product surface has been aligned from Effect `4.0.0-beta.66` to `4.0.0-beta.70`, matching
 the current `effect-cf@0.13.1` peer range. The thread-file Worker slice uses
 typed `effect-cf` D1 and R2 binding services, and token leaderboards now read
 through a typed Effect service backed by the `OpenAgentsDatabase` binding. The
@@ -143,12 +143,12 @@ The first migration does not need to rewrite every route. Start with one
 vertical slice, for example thread files or provider accounts, and use it as
 the service pattern for the rest of the Worker.
 
-`effect-cf` gives Omega a concrete version of this target. Its `Worker.make`
+`effect-cf` gives OpenAgents product surface a concrete version of this target. Its `Worker.make`
 and `DurableObject.make` entrypoints build one managed Effect runtime per
 Cloudflare boundary, provide request/event context as services, expose
 `WorkerContext.waitUntil`, and support per-event layers. Its binding modules
 provide typed services for D1, R2, KV, queues, queue consumers, service
-bindings, and Durable Object RPC. That shape maps cleanly to Omega's current
+bindings, and Durable Object RPC. That shape maps cleanly to OpenAgents product surface's current
 bindings:
 
 - `OPENAGENTS_DB` should become a D1 service, with SQL moved into repository
@@ -557,7 +557,7 @@ files. This should be a mechanical refactor with snapshot/scene coverage.
 
 ### Phase 1: Low-risk extraction
 
-- Done 2026-06-04: aligned Omega Effect dependencies from `4.0.0-beta.66` to
+- Done 2026-06-04: aligned OpenAgents product surface Effect dependencies from `4.0.0-beta.66` to
   `4.0.0-beta.70`, matching the current `effect-cf@0.13.1` peer dependency
   line and unblocking direct evaluation of `effect-cf` in Worker slices.
 - Done 2026-06-04: extracted browser `requestJson`, `requestBlob`, and
@@ -628,7 +628,7 @@ Expected payoff: browser and Worker projections stop drifting.
   from the public thread-file route path.
 - Done 2026-06-04: added broader fake-D1 service tests for team listing,
   insert/reload, and detail/reference assembly. Kept plain Vitest because the
-  current `@effect/vitest@0.29.0` peer range is `effect ^3.21.0`, while Omega
+  current `@effect/vitest@0.29.0` peer range is `effect ^3.21.0`, while OpenAgents product surface
   is pinned to `effect 4.0.0-beta.70`.
 - Done 2026-06-04: installed `effect-cf@0.13.1` and
   `@effect/sql-d1@4.0.0-beta.70`, added typed `OpenAgentsDatabase` and
@@ -976,7 +976,7 @@ and detail/reference assembly. The repository tests now cover both D1 write
 bindings and read-side public projection behavior through the Effect service.
 
 The planned `@effect/vitest` adoption is intentionally deferred. The current
-published `@effect/vitest@0.29.0` declares `effect ^3.21.0`, while Omega is
+published `@effect/vitest@0.29.0` declares `effect ^3.21.0`, while OpenAgents product surface is
 pinned to `effect 4.0.0-beta.70` to match Foldkit and the `effect-cf@0.13.1`
 peer line. Pulling `@effect/vitest` into this repo now would create a
 test-framework peer mismatch, so the Phase 3 tests stay on the existing Vitest
@@ -1158,7 +1158,7 @@ No production contract or invariant changed. Phase 3 is complete.
 
 ### 2026-06-04 Effect beta 70 and effect-cf audit update
 
-Omega now pins `effect`, `@effect/platform-browser`, and workspace package
+OpenAgents product surface now pins `effect`, `@effect/platform-browser`, and workspace package
 Effect dependencies to `4.0.0-beta.70`. This matches the current
 `effect-cf@0.13.1` peer dependency line and means Worker slices can evaluate
 `effect-cf` directly without a separate Effect-version migration first.

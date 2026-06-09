@@ -69,4 +69,4 @@ refs and receipt refs, but not raw metadata.
 ## Status
 
 Implemented in GitHub issue `#189` as
-`OMEGA-SITES-OUTREACH-009: Add targeted remake preview generation`.
+`OPENAGENTS-SITES-OUTREACH-009: Add targeted remake preview generation`.

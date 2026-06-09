@@ -80,4 +80,4 @@ metadata.
 ## Status
 
 Implemented in GitHub issue `#190` as
-`OMEGA-SITES-OUTREACH-010: Add internal operator review UI for targeted remakes`.
+`OPENAGENTS-SITES-OUTREACH-010: Add internal operator review UI for targeted remakes`.

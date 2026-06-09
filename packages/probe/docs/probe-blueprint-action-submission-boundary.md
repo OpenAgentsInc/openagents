@@ -45,4 +45,4 @@ data.
 Apple FM can now receive `tool.probe.propose_action_submission` as a projected
 tool, but it is projected with `approval_required` policy. The callback can
 produce a proposal record or an approval-pending transcript; it does not execute
-the external effect. Full Omega persistence and execution remain future work.
+the external effect. Full OpenAgents product surface persistence and execution remain future work.

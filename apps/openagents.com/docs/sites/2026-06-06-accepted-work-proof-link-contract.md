@@ -1,6 +1,6 @@
 # Accepted-Work Proof Links For Sites
 
-Issue #358 / `OMEGA-L-010` adds the receipt-link contract that lets
+Issue #358 / `OPENAGENTS-L-010` adds the receipt-link contract that lets
 Site/order/public proof surfaces point at accepted provider work and
 Pylon/Nexus/Treasury settlement evidence without becoming payout authority.
 

@@ -1,12 +1,12 @@
 # L402 Deferred Settlement Middleware
 
-Issue: #445 / OMEGA-H-008
+Issue: #445 / OPENAGENTS-H-008
 
 Date: 2026-06-07
 
 ## Summary
 
-Omega now has a typed L402 deferred-settlement contract for paid endpoints
+OpenAgents product surface now has a typed L402 deferred-settlement contract for paid endpoints
 whose useful work should only be charged after a success boundary. This is for
 generated Site paid actions, agent-paid APIs, and future workroom routes where a
 handler can fail after the client presents payment evidence.

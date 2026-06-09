@@ -1,6 +1,6 @@
 # Retrieval Trace And Graph Context
 
-Status: implemented for issue #370 / `OMEGA-LATE-010`.
+Status: implemented for issue #370 / `OPENAGENTS-LATE-010`.
 
 ## Purpose
 

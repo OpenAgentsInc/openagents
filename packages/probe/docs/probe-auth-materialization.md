@@ -6,13 +6,13 @@ Status: implemented contract slice for Probe issue #159.
 
 ## Contract
 
-Probe materializes ChatGPT/Codex auth only after resolving an Omega grant and
+Probe materializes ChatGPT/Codex auth only after resolving an OpenAgents product surface grant and
 only inside the current run context. Long-lived provider account material stays
-behind Omega secret refs.
+behind OpenAgents product surface secret refs.
 
 The materializer accepts:
 
-- an `OmegaResolvedAuthGrant`
+- an `OpenAgents product surfaceResolvedAuthGrant`
 - a brokered secret payload whose `providerSecretRef` matches the grant
 - a run-scoped home directory
 
@@ -25,8 +25,8 @@ It supports:
 - Effect bracket cleanup for failing runs
 
 Gemini provider-account materialization follows
-`docs/probe-omega-google-gemini-provider-account-design.md`. Probe accepts
-Omega-managed `google_gemini` grants with materialization kind
+`docs/probe-openagents-google-gemini-provider-account-design.md`. Probe accepts
+OpenAgents product surface-managed `google_gemini` grants with materialization kind
 `probe_gemini_api_key` and materializes them into
 `GOOGLE_GENERATIVE_AI_API_KEY` only after grant resolution. Local BYO
 `GOOGLE_GENERATIVE_AI_API_KEY` / `GEMINI_API_KEY` support remains separate.

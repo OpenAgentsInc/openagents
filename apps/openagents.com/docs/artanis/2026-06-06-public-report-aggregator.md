@@ -18,7 +18,7 @@ projection across:
 - standalone Artanis runtime state;
 - autonomous loop state, tick refs, artifacts, receipts, and blockers;
 - Artanis health and stale/blocked public labels;
-- Omega public Pylon stats;
+- OpenAgents product surface public Pylon stats;
 - standalone Artanis autonomy claim states;
 - R10 Pylon campaign claim states;
 - Model Lab public report summary;
@@ -69,7 +69,7 @@ The report must not expose:
   trace, or raw timestamp material.
 
 The report may reference public docs, public Forum refs, public route refs,
-Omega Pylon stats refs, separate Nexus/Pylon receipt refs, Model Lab public
+OpenAgents product surface Pylon stats refs, separate Nexus/Pylon receipt refs, Model Lab public
 report refs, public artifact refs, public receipt refs, and operator
 route-template refs used only as launch-gate checklist entries.
 

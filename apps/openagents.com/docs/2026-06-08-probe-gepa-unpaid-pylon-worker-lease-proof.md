@@ -2,18 +2,18 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#514`.
+Status: implemented for `OpenAgentsInc/openagents#514`.
 
-Omega now has a public-safe unpaid lease proof for Probe GEPA benchmark
+OpenAgents product surface now has a public-safe unpaid lease proof for Probe GEPA benchmark
 rollouts. The proof creates three demo Pylon workers and runs three
-metric-call assignments through the existing Omega lifecycle:
+metric-call assignments through the existing OpenAgents product surface lifecycle:
 
 1. assignment created;
 2. demo Pylon worker accepts a lease;
 3. worker reports progress refs;
 4. worker submits artifact, proof, verifier, closeout, and resource refs;
 5. evaluator closeout records accepted or rejected work;
-6. Omega emits Psionic coordinator imports.
+6. OpenAgents product surface emits Psionic coordinator imports.
 
 The implementation lives in
 `workers/api/src/probe-gepa-unpaid-pylon-lease-proof.ts`.
@@ -26,7 +26,7 @@ The proof uses these demo Pylons:
 - `pylon.public.demo.beta`
 - `pylon.public.demo.gamma`
 
-They are public-safe demo workers for the Omega/Pylon assignment protocol. This
+They are public-safe demo workers for the OpenAgents product surface/Pylon assignment protocol. This
 does not claim a production Pylon fleet, paid work, settlement, or public
 benchmark score.
 
@@ -40,7 +40,7 @@ and receipt evidence.
 
 The proof preserves:
 
-- Omega assignment refs;
+- OpenAgents product surface assignment refs;
 - demo Pylon worker refs;
 - lease refs;
 - progress refs;

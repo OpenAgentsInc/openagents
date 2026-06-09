@@ -2,7 +2,7 @@
 
 Date: 2026-06-05
 
-Issue: `OpenAgentsInc/autopilot-omega#162`
+Issue: `OpenAgentsInc/openagents#162`
 
 Status: guarded agent/user setup instructions for Autopilot Sites and
 OpenAgents local-compute flows.

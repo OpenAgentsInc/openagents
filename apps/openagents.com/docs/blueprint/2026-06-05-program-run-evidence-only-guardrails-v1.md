@@ -1,6 +1,6 @@
 # Blueprint Program Run Evidence-Only Guardrails v1
 
-Issue: OMEGA-BP-007 / #227
+Issue: OPENAGENTS-BP-007 / #227
 
 This note records the service guard that keeps Blueprint Program Runs as
 evidence, not authority. The source of truth is

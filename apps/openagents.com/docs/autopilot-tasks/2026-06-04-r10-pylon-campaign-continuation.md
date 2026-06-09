@@ -1,8 +1,8 @@
 # Autopilot Task: R10 Pylon Campaign Continuation
 
-Status: dispatched; first Omega public-surface slice merged, continuation needed
+Status: dispatched; first OpenAgents product surface public-surface slice merged, continuation needed
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
@@ -24,7 +24,7 @@ New public Autopilot run:
 - branch: `openagents/autopilot-r10-pylon-campaign`
 - PR title: `Continue R10 Pylon campaign`
 - commit referenced by launch: `ae7912549301df1a0df78353d47f64196ad6faf6`
-- initial implementation slice: Omega-visible public Artanis
+- initial implementation slice: OpenAgents product surface-visible public Artanis
   goal/activity/Pylon stats improvements, safe receipts, stale/unavailable
   stats behavior, public projection safety, and typed blockers for unavailable
   Pylon integration homes.
@@ -33,7 +33,7 @@ Run `f5467248-2703-4938-bbe4-b3e992182ea1` ended with SHC status `canceled`
 after opening PR #57. The branch was still coherent and locally verified, so
 the foreground operator reviewed and merged the PR:
 
-- PR: `https://github.com/OpenAgentsInc/autopilot-omega/pull/57`
+- PR: `https://github.com/OpenAgentsInc/openagents/pull/57`
 - Autopilot commit: `8496fc9e3b7302d8401f55a732a4c90bacac5267`
 - merge commit: `948304c2a095b6a38472dbec10cd835f06508c42`
 
@@ -91,7 +91,7 @@ Continue the R10 Pylon campaign by having Artanis publicly drive the next Pylon
 release:
 
 - release the next version of Pylon;
-- connect Pylon more deeply to the current Omega `openagents.com` codebase;
+- connect Pylon more deeply to the current OpenAgents product surface `openagents.com` codebase;
 - send increasing inference and fine-tuning work to the live Pylon wave;
 - use the new Bitcoin infrastructure as the settlement/accounting layer for
   accepted Pylon work;
@@ -102,18 +102,18 @@ The public narrative should be simple: work that used to wait on direct
 foreground implementation is now being built by Autopilot, with Artanis pursuing
 a visible durable goal and the Pylon network stats shown beside it.
 
-## Current Omega Starting Point
+## Current OpenAgents product surface Starting Point
 
 The foreground implementation already added the public Pylon proof surface:
 
 - `/artanis` maps to `PublicAgentRoute({ agentRef: 'artanis' })`.
 - `/agents/artanis` remains the canonical public-agent route.
-- `GET /api/public/pylon-stats` now projects Omega-owned Pylon API
+- `GET /api/public/pylon-stats` now projects OpenAgents product surface-owned Pylon API
   registration and heartbeat state for Pylon v0.2.5+ clients.
 - The public page renders campaign objective, current public goal when present,
   Nexus connection, Pylon counters, recent Pylon rows, and sanitized activity.
 
-Relevant Omega files:
+Relevant OpenAgents product surface files:
 
 - `../2026-06-04-openai-codex-goal-implementation-audit.md`
 - `../2026-06-03-team-project-rooms.md`
@@ -140,7 +140,7 @@ Production/public links:
 
 ## Commit Input For Dispatch
 
-Before dispatch, commit and push this task spec and the current Omega public
+Before dispatch, commit and push this task spec and the current OpenAgents product surface public
 Pylon surface changes. The Autopilot launch input should reference the commit
 that contains this file.
 
@@ -154,14 +154,14 @@ Launch input fields:
 
 ```json
 {
-  "repository": "OpenAgentsInc/autopilot-omega",
+  "repository": "OpenAgentsInc/openagents",
   "baseRef": "main",
   "taskSpecPath": "docs/autopilot-tasks/2026-06-04-r10-pylon-campaign-continuation.md",
   "agentId": "agent_artanis",
   "projectId": "project_artanis",
   "teamId": "team_openagents_core",
   "visibility": "public",
-  "goal": "Release the next version of Pylon, connect it deeply to Omega, and route more inference and fine-tuning work to the live Pylon wave using the new Bitcoin infrastructure.",
+  "goal": "Release the next version of Pylon, connect it deeply to OpenAgents product surface, and route more inference and fine-tuning work to the live Pylon wave using the new Bitcoin infrastructure.",
   "delivery": "commit_or_pull_request_with_tests_and_public_artifacts"
 }
 ```
@@ -174,7 +174,7 @@ paths, or private runner prompts in the launch payload.
 1. Confirm the public Artanis goal exists, is attached to `agent_artanis`, and
    has public visibility. If the fallback campaign copy is still showing because
    no durable public goal exists, create or update the durable goal first.
-2. Audit the current Omega public Pylon stats implementation and compare it to
+2. Audit the current OpenAgents product surface public Pylon stats implementation and compare it to
    the old Laravel `/stats` behavior. Preserve the old public counters unless a
    counter is no longer present in Nexus.
 3. Make `/artanis` the public campaign page for the run: current goal, current
@@ -182,11 +182,11 @@ paths, or private runner prompts in the launch payload.
    receipts.
 4. Add or complete the live public sync path for Artanis goal/activity/Pylon
    stats if the snapshot-only path is still current at dispatch time.
-5. Identify the current Pylon implementation home and the Omega integration
+5. Identify the current Pylon implementation home and the OpenAgents product surface integration
    points. Do not guess across repositories; if a required repo or branch is
    unavailable, record a typed blocker instead of fabricating the integration.
 6. Implement the next Pylon release work in bounded slices:
-   - Omega-facing registration/status surface;
+   - OpenAgents product surface-facing registration/status surface;
    - workload assignment path for inference and fine-tuning;
    - accepted-work accounting and receipt projection;
    - Bitcoin settlement/accounting integration;
@@ -210,13 +210,13 @@ paths, or private runner prompts in the launch payload.
   count, minimum client version, and recent Pylon rows where available. Online
   and readiness counts do not prove accepted work, paid work, payout, or
   settlement.
-- Unavailable Omega public Pylon stats are shown as unavailable rather than
+- Unavailable OpenAgents product surface public Pylon stats are shown as unavailable rather than
   live.
 - Public Artanis activity has no private control-plane material.
 - The run records a clear current-run/continuation relationship under the same
   durable goal.
 - Tests cover the public route, Pylon stats normalization, unavailable/stale
-  stats behavior, public projection safety, and any new Pylon/Omega integration
+  stats behavior, public projection safety, and any new Pylon/OpenAgents product surface integration
   path.
 - The final artifact includes commit/PR link, test output, and deployment or
   deployment-blocker notes.
@@ -224,7 +224,7 @@ paths, or private runner prompts in the launch payload.
 ## Suggested Public Run Summary
 
 ```text
-Artanis is releasing the next Pylon version and wiring Pylon deeper into Omega.
+Artanis is releasing the next Pylon version and wiring Pylon deeper into OpenAgents product surface.
 The public page shows the live Nexus/Pylon network state, the current goal, and
 sanitized progress as the agent moves inference and fine-tuning work toward the
 Pylon network with Bitcoin-backed accounting.

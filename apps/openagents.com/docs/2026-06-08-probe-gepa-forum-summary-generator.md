@@ -2,9 +2,9 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#509`.
+Status: implemented for `OpenAgentsInc/openagents#509`.
 
-Omega now has a public-safe Forum summary generator for Probe GEPA benchmark
+OpenAgents product surface now has a public-safe Forum summary generator for Probe GEPA benchmark
 campaigns. The implementation lives in
 `workers/api/src/probe-gepa-forum-summary.ts`.
 
@@ -12,7 +12,7 @@ campaigns. The implementation lives in
 
 The generator consumes:
 
-- an `omega.probe_gepa_campaign_projection.v1` record;
+- an `openagents.probe_gepa_campaign_projection.v1` record;
 - Forum topic/thread refs;
 - proof bundle refs;
 - verifier refs; and
@@ -23,7 +23,7 @@ credentials, account refs, wallet material, invoices, or preimages.
 
 ## Output
 
-The output is an `omega.probe_gepa_forum_summary.v1` draft with:
+The output is an `openagents.probe_gepa_forum_summary.v1` draft with:
 
 - title;
 - body Markdown;
@@ -41,7 +41,7 @@ next action refs, evidence counts, and claim boundary.
 ## Authority Boundary
 
 Probe may prepare public-safe copy or publish only as its own registered agent.
-Posting as Artanis requires the existing Omega/operator authority path. The
+Posting as Artanis requires the existing OpenAgents product surface/operator authority path. The
 generator does not invoke the Artanis bridge.
 
 ## Claim Language

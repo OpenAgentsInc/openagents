@@ -2,13 +2,13 @@
 
 Implemented: 2026-06-05
 
-Issue: #178 / OMEGA-SITES-REF-006
+Issue: #178 / OPENAGENTS-SITES-REF-006
 
 ## Summary
 
 REF2 now has the first Site referral accountability surface.
 
-Omega exposes a public-safe owner aggregate endpoint and an admin-only
+OpenAgents product surface exposes a public-safe owner aggregate endpoint and an admin-only
 operator inspection endpoint. These endpoints turn the existing referral
 source, attribution, verified-user, order-link, agent-claim, and current Site
 commerce payment-event records into typed projections without exposing private

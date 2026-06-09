@@ -2,16 +2,16 @@
 
 Status: complete; merged, production config-gated
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
 Primary agent: `Artanis` / `agent_artanis`, or another write-capable private
-Omega implementation agent selected by preflight.
+OpenAgents product surface implementation agent selected by preflight.
 
 Team: OpenAgents core / `team_openagents_core`
 
-Project: Omega billing and Stripe integration / `project_artanis`, resolved by
+Project: OpenAgents product surface billing and Stripe integration / `project_artanis`, resolved by
 operator preflight with `agent_artanis`.
 
 Visibility: private/operator-visible. This is billing infrastructure work, not
@@ -56,7 +56,7 @@ implementation itself:
 
 Next safe action: continue the active durable goal rather than creating an
 unrelated duplicate Stripe goal. The next run must stay inside the checked-out
-`OpenAgentsInc/autopilot-omega` repository and use only repo-relative tracked
+`OpenAgentsInc/openagents` repository and use only repo-relative tracked
 paths unless the runner explicitly grants another path. Do not use broad glob
 patterns, absolute paths, `state/*`, `node_modules`, `.bun`, package caches, or
 local-only reference repo paths. Treat `projects/repos/stripe-node` and
@@ -68,7 +68,7 @@ artifact if implementation completes or if it blocks.
 
 Continuation run `dfc6bc78-9af3-40b3-a91f-fb7828650c84` completed and pushed
 implementation commit `8490cde0254847eefcba496dbd4f0cd14bc8e090` to PR
-`https://github.com/OpenAgentsInc/autopilot-omega/pull/54` on branch
+`https://github.com/OpenAgentsInc/openagents/pull/54` on branch
 `openagents/autopilot-6-4d38-ad01-d0f3c004312f`.
 
 Foreground PR review found that the branch passes:
@@ -197,7 +197,7 @@ Fully implement the Stripe Effect service audit:
 
 - replace the placeholder credit-card checkout API with Stripe Checkout
   Sessions;
-- keep Omega's D1 billing ledger authoritative for Autopilot credits;
+- keep OpenAgents product surface's D1 billing ledger authoritative for Autopilot credits;
 - add typed Effect services and layers for Stripe config, client construction,
   customer management, Checkout Session creation/retrieval, webhook
   verification, and credit fulfillment;
@@ -211,14 +211,14 @@ The implementation should make the current billing system look like it was
 designed around Effect services from the start, not add a raw Stripe SDK call
 inside the existing Promise-shaped route handlers.
 
-## Current Omega Starting Point
+## Current OpenAgents product surface Starting Point
 
 The foreground agent already committed the planning audit:
 
 - commit: `eddd99b8`
 - file: `../2026-06-04-stripe-effect-service-audit.md`
 
-Omega currently has:
+OpenAgents product surface currently has:
 
 - D1-backed `billing_accounts`, `billing_ledger_entries`,
   `billing_usage_cursors`, `billing_coupon_redemptions`, and
@@ -232,12 +232,12 @@ Omega currently has:
 - a clean URL invariant forbidding checkout/payment state in product route
   query parameters or fragments.
 
-Relevant Omega files:
+Relevant OpenAgents product surface files:
 
 - `../2026-06-03-autopilot-billing-credits.md`
 - `../2026-06-04-stripe-effect-service-audit.md`
-- `../2026-06-04-omega-broader-effect-refactor-audit.md`
-- `../2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `../2026-06-04-openagents-broader-effect-refactor-audit.md`
+- `../2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 - `../../workers/api/src/billing.ts`
 - `../../workers/api/src/billing-routes.ts`
 - `../../workers/api/src/operator-billing-routes.ts`
@@ -298,7 +298,7 @@ Launch input fields:
 
 ```json
 {
-  "repository": "OpenAgentsInc/autopilot-omega",
+  "repository": "OpenAgentsInc/openagents",
   "baseRef": "main",
   "taskSpecPath": "docs/autopilot-tasks/2026-06-04-stripe-effect-service-implementation.md",
   "agentId": "agent_artanis",
@@ -398,7 +398,7 @@ Implementation:
 
 - `POST /api/billing/checkout` creates a Stripe Checkout Session in `payment`
   mode and returns a Checkout URL.
-- Checkout Session creation associates the authenticated Omega user with a
+- Checkout Session creation associates the authenticated OpenAgents product surface user with a
   Stripe Customer through a D1 mapping.
 - A paid Checkout Session creates exactly one positive
   `billing_ledger_entries` row with source `stripe_checkout`.

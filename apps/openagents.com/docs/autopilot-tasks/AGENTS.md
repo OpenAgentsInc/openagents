@@ -109,7 +109,7 @@ The packet should be safe for the remote runner to read from the repository.
   foreground-agent supervision.
 - `2026-06-04-r10-pylon-campaign-continuation.md`: public Artanis/Pylon
   campaign continuation packet for releasing the next Pylon version, wiring it
-  deeper into Omega, routing inference and fine-tuning work to Pylons, and using
+  deeper into OpenAgents product surface, routing inference and fine-tuning work to Pylons, and using
   Bitcoin-backed accounting.
 - `2026-06-04-cloudflare-containers-runner-backup-implementation.md`: runner
   backup implementation packet for adding Cloudflare Containers as a backup and

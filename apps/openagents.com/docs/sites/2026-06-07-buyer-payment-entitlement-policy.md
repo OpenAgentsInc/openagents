@@ -5,7 +5,7 @@ Issue: `#446`
 
 ## Summary
 
-Omega now has a typed contract for deciding what a verified buyer payment can
+OpenAgents product surface now has a typed contract for deciding what a verified buyer payment can
 do after payment evidence exists.
 
 The policy layer separates:

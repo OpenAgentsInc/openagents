@@ -90,7 +90,7 @@ The runtime includes:
 
 - Apple Foundation Models bridge support, readiness receipts, streaming tool
   callbacks, and Program Run evidence.
-- Gemini direct API and Omega-brokered Gemini materialization.
+- Gemini direct API and OpenAgents product surface-brokered Gemini materialization.
 - Psionic OpenAI-compatible `/v1/chat/completions` client with text, tool-call
   loop, streaming delta tool-call parsing, max round-trip guard, and redacted
   transcript/tool-call receipts.
@@ -107,7 +107,7 @@ The runtime includes:
 - Retained OpenTUI Markdown rendering helpers and markdown/code streaming
   fixtures.
 - GEPA/Terminal-Bench candidate execution, closeout bundles, token telemetry,
-  runner identity, and Omega grant/account contracts.
+  runner identity, and OpenAgents product surface grant/account contracts.
 - Psionic Qwen3.5 attach-only backend discovery and doctor support with
   `PYLON_PSIONIC_BASE_URL` / `PROBE_PSIONIC_BASE_URL`, 0.8B and 2B model-row
   refs, and redacted availability receipts. See

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "autopilot-omega",
+      "name": "@openagents/openagents-com",
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20250601.0",
         "@effect/language-service": "^0.86.2",

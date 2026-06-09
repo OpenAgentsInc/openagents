@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for GitHub issue #316 / `OMEGA-069`.
+Status: implemented contract note for GitHub issue #316 / `OPENAGENTS-069`.
 
 ## Purpose
 

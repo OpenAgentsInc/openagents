@@ -102,7 +102,7 @@ assignment path. It requires runner capability
 plain-text client used by the CLI, and emits redacted backend
 start/finish/failure events.
 
-Apple FM assignments do not require ChatGPT accounts, OpenAI API keys, Omega
+Apple FM assignments do not require ChatGPT accounts, OpenAI API keys, OpenAgents product surface
 provider auth grants, or local auth materialization.
 
 ## Tool Callback Lane

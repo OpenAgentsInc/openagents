@@ -58,4 +58,4 @@ material, payment or wallet material, and bypass instructions.
 ## Status
 
 Implemented in GitHub issue `#191` as
-`OMEGA-SITES-OUTREACH-011: Add typed targeted-remake outreach email`.
+`OPENAGENTS-SITES-OUTREACH-011: Add typed targeted-remake outreach email`.

@@ -34,7 +34,7 @@ Ben asked for the next revision to:
 
 ## Visual Asset Guardrail
 
-Issue #149 is now implemented in the Omega lifecycle path:
+Issue #149 is now implemented in the OpenAgents product surface lifecycle path:
 
 - task packets call out visual asset requirements when the customer request or
   operator notes ask for images;

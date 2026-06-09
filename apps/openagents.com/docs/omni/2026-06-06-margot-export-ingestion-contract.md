@@ -1,12 +1,12 @@
 # Margot Export Ingestion Contract
 
-Status: implemented for issue #367 / `OMEGA-LATE-007`.
+Status: implemented for issue #367 / `OPENAGENTS-LATE-007`.
 
 ## Purpose
 
 Margot-style facility simulator exports are now modeled as read-only Omni
 packets that can be joined to power, capacity, accepted-work, and investor
-proof surfaces without letting the simulator mutate Omega state.
+proof surfaces without letting the simulator mutate OpenAgents product surface state.
 
 The contract is designed for the current flexible-compute economics loop:
 
@@ -113,7 +113,7 @@ chip TDP is not full-facility power. Real facility power includes the server,
 CPU, memory, storage, networking, fans, cooling, PSU/PDU losses, and site
 overhead.
 
-This contract lets Omega ingest those first comparator values while preserving
+This contract lets OpenAgents product surface ingest those first comparator values while preserving
 that caveat. It also leaves room for future accepted-outcome revenue,
 grid-service value, measured SHC/Pylon telemetry, and settlement receipts to
 appear as separate evidence-backed lanes rather than being collapsed into one
@@ -122,7 +122,7 @@ overconfident number.
 ## Follow-Up Data Collection
 
 GitHub issue
-[#415](https://github.com/OpenAgentsInc/autopilot-omega/issues/415)
+[#415](https://github.com/OpenAgentsInc/openagents/issues/415)
 implemented the Artanis/Pylon comparative-economics evidence packet in
 `workers/api/src/artanis-pylon-comparative-economics.ts`. That packet is the
 next contract after Margot ingestion for collecting all data needed to

@@ -4,9 +4,9 @@ Date: 2026-06-08
 
 Source repo: `/Users/christopherdavid/work/deprecated/openagents.com`
 
-Destination context: Omega docs. This is an audit of the previous Laravel /
+Destination context: OpenAgents product surface docs. This is an audit of the previous Laravel /
 Inertia `openagents.com` homepage implementation that showed live Pylon counts.
-It is evidence for future Omega migration work, not a production contract change.
+It is evidence for future OpenAgents product surface migration work, not a production contract change.
 
 ## Location
 
@@ -187,9 +187,9 @@ properties at 16 KB, stored them in `public_telemetry_events`, and cleared the
 public telemetry cache. `PublicStats` used those records for install/version
 stats on the stats page.
 
-## Migration Notes For Omega
+## Migration Notes For OpenAgents product surface
 
-Omega should not copy the old Laravel shape blindly. The useful migration
+OpenAgents product surface should not copy the old Laravel shape blindly. The useful migration
 shape is:
 
 - keep Nexus as the source of truth for live fleet presence;
@@ -202,7 +202,7 @@ shape is:
 - avoid private node identifiers in public projection; the old public count used
   short identity keys only for local dedupe/storage, not as a public list.
 
-For Omega, this belongs behind the existing public projection and Pylon claim
+For OpenAgents product surface, this belongs behind the existing public projection and Pylon claim
 boundaries in `INVARIANTS.md`. A future code port should add regression tests
 for:
 

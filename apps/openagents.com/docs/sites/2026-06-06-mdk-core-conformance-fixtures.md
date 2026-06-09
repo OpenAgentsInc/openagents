@@ -1,12 +1,12 @@
 # MDK Core Conformance Fixtures
 
-Issue: #297 / OMEGA-H-007B
+Issue: #297 / OPENAGENTS-H-007B
 
 Date: 2026-06-06
 
 ## Purpose
 
-Omega now has public-safe conformance fixtures for the MDK checkout and L402
+OpenAgents product surface now has public-safe conformance fixtures for the MDK checkout and L402
 behaviors it intends to rely on. The fixture set keeps the Worker-native
 contracts compatible with useful MDK semantics without making live MDK network
 calls, publishing real payment credentials, or settling payouts.
@@ -31,7 +31,7 @@ Implemented fixtures:
 
 Adapted fixtures:
 
-- L402 token parsing through Omega's Worker-compatible credential service;
+- L402 token parsing through OpenAgents product surface's Worker-compatible credential service;
 - price re-check through credential verification expectations;
 - proof verification boundary through redacted proof refs instead of raw
   preimages.

@@ -120,8 +120,8 @@ Prior Exa docs:
 - `docs/2026-06-05-ben-otec-exa-enrichment-runbook.md`
 
 Important correction: the older Exa enrichment audit still contains a stale
-"Omega has no Exa service" sentence in its body. Its status line and the current
-code are newer: Omega now has typed Exa config, client, tests, assignment
+"OpenAgents product surface has no Exa service" sentence in its body. Its status line and the current
+code are newer: OpenAgents product surface now has typed Exa config, client, tests, assignment
 enrichment ledger, cache, budget policy, metrics, jobs, source refs, research
 briefs, and operator Adjutant enrichment routes. The new agent search endpoint
 should reuse that working provider boundary where possible, but it should not
@@ -129,7 +129,7 @@ reuse assignment-specific tables as-is.
 
 ## Current Exa State
 
-Omega already has an Effect-native Exa client:
+OpenAgents product surface already has an Effect-native Exa client:
 
 - `EXA_API_KEY` is optional and redacted in config. Missing key produces
   `exa.enabled = false` and `ExaConfigurationDisabled`.
@@ -150,7 +150,7 @@ Omega already has an Effect-native Exa client:
   category support, `/contents`, HTTP error redaction, invalid JSON, schema
   errors, and timeout handling.
 
-Omega also has assignment-scoped Exa operations:
+OpenAgents product surface also has assignment-scoped Exa operations:
 
 - `exa_enrichment_runs`, `exa_enrichment_queries`,
   `exa_enrichment_sources`, and `adjutant_assignment_enrichments` store

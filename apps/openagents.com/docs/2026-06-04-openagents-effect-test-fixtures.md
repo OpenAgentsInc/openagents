@@ -1,6 +1,6 @@
-# Omega Effect Test Fixtures
+# OpenAgents product surface Effect Test Fixtures
 
-Omega uses plain Vitest plus `Effect.runPromise` for service tests while
+OpenAgents product surface uses plain Vitest plus `Effect.runPromise` for service tests while
 `@effect/vitest` remains incompatible with the repo's Effect 4 beta line.
 
 Reusable fixtures:
@@ -32,7 +32,7 @@ const result = await Effect.runPromise(
 ```
 
 Do not import `@effect/vitest` until its peer dependencies support the exact
-Effect major and beta line used by Omega. When that happens, migrate these
+Effect major and beta line used by OpenAgents product surface. When that happens, migrate these
 fixtures by changing only the outer test harness from `test(...)` plus
 `Effect.runPromise(...)` to `it.effect(...)` or `it.layer(...)`. Keep the
 fixture layer constructors themselves as plain `Layer` values so production

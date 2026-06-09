@@ -2,7 +2,7 @@
 
 Status: active launch runbook packet for the first Adjutant Site fulfillment.
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 

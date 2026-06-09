@@ -72,7 +72,7 @@ API credential or an SDK/client capable of writing to:
 
 `/accounts/:account_id/workers/dispatch/namespaces/:namespace/scripts/:script`
 
-The current Omega Worker has the `SITES_DISPATCH` binding for runtime dispatch,
+The current OpenAgents product surface Worker has the `SITES_DISPATCH` binding for runtime dispatch,
 but it does not yet expose a safe first-party upload client or Cloudflare API
 token binding. Therefore this slice records the reviewed upload receipt and
 health result rather than pretending to upload from the Worker.

@@ -5,7 +5,7 @@ Issue: #439
 
 ## Summary
 
-Omega now has a public-safe read route for buyer-side Site payment proof:
+OpenAgents product surface now has a public-safe read route for buyer-side Site payment proof:
 
 ```text
 GET /api/sites/{siteId}/commerce/payment-proofs/{checkoutIntentRef}

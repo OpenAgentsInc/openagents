@@ -1,7 +1,7 @@
 # Artanis D1 Persistence
 
 Issue #403 / `ARTANIS-017` adds the first durable Artanis persistence family in
-Omega.
+OpenAgents product surface.
 
 The implementation lives in:
 

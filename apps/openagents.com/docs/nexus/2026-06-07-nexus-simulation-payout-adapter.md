@@ -1,8 +1,8 @@
 # Nexus Simulation Payout Adapter
 
-Status: implemented for the Omega/Nexus rebuild.
+Status: implemented for the OpenAgents product surface/Nexus rebuild.
 
-The simulation payout adapter is the first green gate before Omega moves real
+The simulation payout adapter is the first green gate before OpenAgents product surface moves real
 bitcoin through MDK. It runs behind the `TreasuryPaymentAuthority` service, so
 the same authority gates apply before any adapter behavior can run:
 
@@ -30,7 +30,7 @@ The adapter can simulate:
 - reconciliation found stale pending attempt.
 
 These states are policy and receipt exercises only. A simulation receipt is not
-proof that bitcoin moved. It proves that Omega's payout authority, idempotency,
+proof that bitcoin moved. It proves that OpenAgents product surface's payout authority, idempotency,
 projection, and reconciliation paths behaved as expected without calling MDK or
 any wallet daemon.
 

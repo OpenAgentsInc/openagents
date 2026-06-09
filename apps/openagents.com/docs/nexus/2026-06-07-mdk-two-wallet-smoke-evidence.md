@@ -5,14 +5,14 @@ Related issue: #431
 
 ## Summary
 
-Omega completed the first real two-wallet MDK bitcoin movement smoke for the
+OpenAgents product surface completed the first real two-wallet MDK bitcoin movement smoke for the
 Nexus/Pylon payout path.
 
 The run moved `1,000` bitcoin sats from an isolated OpenAgents treasury test
 wallet to a separate isolated Pylon edge test wallet through the
 `TreasuryPaymentAuthority` service and the `mdk_agent_wallet` adapter.
 
-The run also wrote a public-safe Omega receipt chain into the remote D1 ledger.
+The run also wrote a public-safe OpenAgents product surface receipt chain into the remote D1 ledger.
 The public receipt route reads those persisted records and projects only
 redacted refs.
 
@@ -43,7 +43,7 @@ Settlement receipt ref:
 
 ## Authority Path
 
-The smoke used the normal Omega authority path:
+The smoke used the normal OpenAgents product surface authority path:
 
 1. Create a fresh Pylon receive invoice inside the private executor boundary.
 2. Store only the redacted invoice digest in the payout target approval.

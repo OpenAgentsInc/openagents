@@ -2,9 +2,9 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#517`.
+Status: implemented for `OpenAgentsInc/openagents#517`.
 
-Omega now has a typed settlement-readiness gate for Probe GEPA Pylon benchmark
+OpenAgents product surface now has a typed settlement-readiness gate for Probe GEPA Pylon benchmark
 work. The gate is intentionally downstream of the unpaid smoke lifecycle: a
 batch can complete as `unpaid_smoke` with no payment or settlement refs, and no
 public payout claim. Paid states are blocked until accepted assignment evidence
@@ -44,7 +44,7 @@ The public claim state cannot exceed the requested payment mode:
 - `settled_bitcoin` may claim settlement only when settlement receipt refs are
   present.
 
-This keeps Artanis and Omega summaries honest while allowing the network to
+This keeps Artanis and OpenAgents product surface summaries honest while allowing the network to
 move from no-spend smoke to paid work once receipts and accounting are stable.
 
 ## Verification

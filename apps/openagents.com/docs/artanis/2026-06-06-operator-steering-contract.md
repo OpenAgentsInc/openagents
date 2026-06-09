@@ -10,7 +10,7 @@ Artanis is steered privately through the Autopilot operator surface. The public
 `/artanis` page and Forum posts are downstream projections, not control planes.
 
 This contract records the first Artanis-specific operator steering model in
-Omega. It complements the existing `/api/operator/autopilot/goals` goal routes
+OpenAgents product surface. It complements the existing `/api/operator/autopilot/goals` goal routes
 by adding Artanis-only lifecycle support, priority commands, private evidence,
 risky-action approval decisions, and public-safe projections.
 

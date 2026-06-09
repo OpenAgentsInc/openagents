@@ -1,6 +1,6 @@
 # OTEC Public Proof Closeout
 
-This note documents the OMEGA-063 extension to the public OTEC proof endpoint.
+This note documents the OPENAGENTS-063 extension to the public OTEC proof endpoint.
 
 The endpoint remains:
 
@@ -33,7 +33,7 @@ The response includes:
 
 `workers/api/src/public-otec-proof.ts` now uses
 `projectPublicClaimRecord(record, 'public')` for OTEC closeout claims. That
-means the proof page inherits the OMEGA-059/060 claim rules: planned, modeled,
+means the proof page inherits the OPENAGENTS-059/060 claim rules: planned, modeled,
 measured, verified, settled, blocked, and prohibited states must be backed by
 the right evidence refs and caveats.
 

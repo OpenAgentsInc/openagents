@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented for issue #326 / `OMEGA-079`.
+Status: implemented for issue #326 / `OPENAGENTS-079`.
 
 ## Purpose
 

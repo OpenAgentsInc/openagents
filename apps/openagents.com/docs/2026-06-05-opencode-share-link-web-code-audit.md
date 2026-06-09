@@ -5,8 +5,8 @@ Date: 2026-06-05
 Reference checkout:
 `/Users/christopherdavid/work/projects/repos/opencode`
 
-Omega target:
-`/Users/christopherdavid/work/autopilot-omega`
+OpenAgents product surface target:
+`/Users/christopherdavid/work/openagents`
 
 Prompt:
 Audit the OpenCode web code that serves share links such as
@@ -64,14 +64,14 @@ A filtered live check on 2026-06-05 showed:
 - `/s/OxNwAx6l` returns an HTML shell containing `Not Found`.
 
 That mismatch matters for compatibility, imports, GitHub PR footer links, and
-any Omega feature that tries to learn from or interoperate with OpenCode share
+any OpenAgents product surface feature that tries to learn from or interoperate with OpenCode share
 URLs.
 
-Omega's proposed version should use the canonical human route `/share/{uuid}`.
+OpenAgents product surface's proposed version should use the canonical human route `/share/{uuid}`.
 It should support public, team-only, and named-user audiences, and the top of
 the page should make that audience explicit with labels such as `Shared
 publicly`, `Shared with members of OpenAgents Core Team`, or `Shared with you`.
-Unlike OpenCode's split hosted share package, Omega does not need a separate
+Unlike OpenCode's split hosted share package, OpenAgents product surface does not need a separate
 Worker for this feature. It should be part of the usual application and API
 stack, implemented through Effect services, Effect Schema boundaries, normal D1
 or R2 repositories, and the existing workroom/chat UI primitives.
@@ -318,7 +318,7 @@ https://opncd.ai/share/<shareId>
 
 or whatever returned URL came from `POST /api/share`.
 
-For Omega, the takeaway is not "copy OpenCode's URL scheme." The takeaway is
+For OpenAgents product surface, the takeaway is not "copy OpenCode's URL scheme." The takeaway is
 that a public-share system needs a single canonical URL constructor owned by
 the share API response. Secondary paths should use the returned URL, not
 rederive a route or slug.
@@ -396,7 +396,7 @@ GET /api/share/:id/data
 The first returns HTML with the serialized SolidStart data payload. The second
 returns the flat `Share.Data[]` JSON directly.
 
-For Omega, this is the most important implementation detail. If Omega provides
+For OpenAgents product surface, this is the most important implementation detail. If OpenAgents product surface provides
 public workroom/session/share views, it should decide explicitly whether public
 HTML may embed raw transcript/diff payloads, or whether the page should fetch
 redacted/projection-scoped data through a narrower API.
@@ -448,9 +448,9 @@ The diff display mode is local state:
 "unified" | "split"
 ```
 
-The page uses shared OpenCode UI components heavily. A port into Omega should
+The page uses shared OpenCode UI components heavily. A port into OpenAgents product surface should
 not copy those components wholesale. Treat their data boundary as the reference
-and build Omega-native rendering around Omega's own workroom, approval, receipt,
+and build OpenAgents product surface-native rendering around OpenAgents product surface's own workroom, approval, receipt,
 and artifact projection contracts.
 
 ## Metadata and Social Cards
@@ -495,7 +495,7 @@ Model display rules:
 This social-card path repeats in stale GitHub Action footer code, but with the
 old `/s/:id` link target.
 
-For Omega, the relevant idea is not the social card service itself. The useful
+For OpenAgents product surface, the relevant idea is not the social card service itself. The useful
 pattern is that share metadata is generated from the public projection state,
 not from a separate marketing CMS.
 
@@ -525,7 +525,7 @@ surface.
 The live `/s/OxNwAx6l` check returned a short HTML response containing
 `Not Found`, not a share route payload.
 
-Omega should not reuse this fallback behavior. A public artifact/share route
+OpenAgents product surface should not reuse this fallback behavior. A public artifact/share route
 should have a branded and product-specific not-found state, and should avoid
 printing stack traces to public users.
 
@@ -647,7 +647,7 @@ But note the use of `z.custom<T>()`. That means the hosted API validates the
 outer discriminated shape, but it does not deeply validate SDK session,
 message, part, diff, or model payloads with a structural schema in this file.
 
-For Omega, that is a serious boundary difference. A public projection endpoint
+For OpenAgents product surface, that is a serious boundary difference. A public projection endpoint
 should prefer Effect Schema or another runtime schema with deep validation at
 every external payload boundary.
 
@@ -733,7 +733,7 @@ The storage `list` implementation parses object-store XML with a regex:
 /<Key>([^<]+)<\/Key>/g
 ```
 
-This is acceptable for the reference, but Omega should avoid ad hoc XML parsing
+This is acceptable for the reference, but OpenAgents product surface should avoid ad hoc XML parsing
 if it has a typed API available.
 
 ## Share Creation
@@ -782,7 +782,7 @@ Implications:
 - A suffix collision becomes `AlreadyExists`, not a retry with fresh entropy.
 - The public URL is stable for a given session suffix.
 
-For Omega, prefer an independent public projection ID with enough entropy and
+For OpenAgents product surface, prefer an independent public projection ID with enough entropy and
 a durable mapping back to the private workroom/session. Do not derive public
 share IDs from internal authority IDs unless there is a clear reason and a
 collision/revocation model.
@@ -854,7 +854,7 @@ share_data/<id>/model
 Current `Share.data` prefers `share_snapshot` and falls back to legacy
 migration only when no snapshot exists.
 
-For Omega, the lesson is to model legacy snapshot migration explicitly if the
+For OpenAgents product surface, the lesson is to model legacy snapshot migration explicitly if the
 public projection format changes. Do not let the public page quietly stitch
 together multiple obsolete formats unless the migration logic has tests and
 bounded retention semantics.
@@ -944,8 +944,8 @@ No active account token available for sharing
 Tests assert these behaviors, including the default `https://opncd.ai`
 fallback.
 
-For Omega, this is a useful split: public unauthenticated share service versus
-authenticated organization-owned share service. But Omega should avoid making a
+For OpenAgents product surface, this is a useful split: public unauthenticated share service versus
+authenticated organization-owned share service. But OpenAgents product surface should avoid making a
 single config key called `enterprise.url` decide public projection authority
 without an explicit Source Authority or operator-controlled routing contract.
 
@@ -999,7 +999,7 @@ This is an important separation:
 - `session_share.secret` is local write authority and should not be projected
   into public UI or exported casually.
 
-Omega should preserve that separation. Public projection URL, internal
+OpenAgents product surface should preserve that separation. Public projection URL, internal
 projection ID, and mutation secret/capability should be different fields with
 different storage and logging rules.
 
@@ -1109,7 +1109,7 @@ Delay:
 Tests verify rapid diff events coalesce into a single delayed sync with the
 latest diff payload.
 
-For Omega, this is a strong design idea: publish deltas from typed events,
+For OpenAgents product surface, this is a strong design idea: publish deltas from typed events,
 coalesce by semantic identity, and do a full sync at share creation. But the
 hosted write boundary should deeply validate input and record projection
 authority explicitly.
@@ -1168,7 +1168,7 @@ managed `share: "disabled"` overrides user `share: "auto"`.
 The v2 config spec keeps `share`, removes `autoshare`, keeps
 `enterprise.url`, and keeps `username`.
 
-For Omega, config should distinguish:
+For OpenAgents product surface, config should distinguish:
 
 - whether public sharing is allowed
 - whether auto-publication is allowed
@@ -1297,7 +1297,7 @@ When importing a URL:
 
 The parser tests show the canonical URL has moved to `/share`.
 
-This is valuable for Omega: import/replay should not read the public HTML page.
+This is valuable for OpenAgents product surface: import/replay should not read the public HTML page.
 It should use a versioned JSON projection endpoint with scoped schema decoding.
 
 ## GitHub Action and PR Workflow Drift
@@ -1342,7 +1342,7 @@ and then calls `opencode import <sessionUrl>`. The current import parser rejects
 the parser sees the URL. A live filtered check indicates `/s/:id` returns a
 NotFound page, not a share payload.
 
-For Omega, do not compute share links from internal session IDs in peripheral
+For OpenAgents product surface, do not compute share links from internal session IDs in peripheral
 automation. Always persist and reuse the canonical URL returned by the share
 creation endpoint.
 
@@ -1370,7 +1370,7 @@ This looks like the source of the older `/s/:id` convention. The current
 SolidStart enterprise package uses `/share/:id`, object-store snapshots, and
 direct JSON data routes instead.
 
-For Omega, the caution is that URL and data-format migrations need active
+For OpenAgents product surface, the caution is that URL and data-format migrations need active
 compatibility policy. OpenCode has both current and legacy code in the repo,
 and some call sites still follow the legacy route.
 
@@ -1414,7 +1414,7 @@ The enterprise package imports Tailwind styles through:
 @import "@opencode-ai/ui/styles/tailwind";
 ```
 
-For Omega, the relevant deployment pattern is:
+For OpenAgents product surface, the relevant deployment pattern is:
 
 - isolate public projection host from local runtime
 - back it with object storage
@@ -1422,7 +1422,7 @@ For Omega, the relevant deployment pattern is:
 - make the share URL API return the canonical public URL
 
 But the current OpenCode host also exposes public CORS data endpoints and SSR
-hydration payloads; Omega should explicitly decide whether that is acceptable.
+hydration payloads; OpenAgents product surface should explicitly decide whether that is acceptable.
 
 ## Tests and Coverage
 
@@ -1534,7 +1534,7 @@ Data exposed by the public read surface:
 The live user-provided example includes a large serialized transcript/diff
 payload in the page HTML and direct JSON data at `/api/share/:id/data`.
 
-For Omega, this should be treated as a public projection contract, not a
+For OpenAgents product surface, this should be treated as a public projection contract, not a
 convenience UI. Public projection needs policy:
 
 - What fields may leave the private workroom?
@@ -1604,7 +1604,7 @@ The storage and client sync logic is tested. The actual route page, metadata,
 not-found behavior, canonical URL behavior, and SSR payload boundary are not
 covered locally in the files I inspected.
 
-## Omega Relevance
+## OpenAgents product surface Relevance
 
 OpenCode's implementation is useful as a reference for:
 
@@ -1616,7 +1616,7 @@ OpenCode's implementation is useful as a reference for:
 - using a direct JSON endpoint for import/replay
 - using shared UI components to render sessions and diffs consistently
 
-It is not directly compatible with Omega's higher-integrity goals:
+It is not directly compatible with OpenAgents product surface's higher-integrity goals:
 
 - It exposes broad raw session data publicly.
 - It lacks deep schema validation at the hosted payload boundary.
@@ -1626,11 +1626,11 @@ It is not directly compatible with Omega's higher-integrity goals:
 - It allows stale URL constructors to remain in docs/action code.
 - It uses prose warnings for privacy rather than a typed redaction policy.
 
-Omega should treat this as a pattern library, not as an authority model.
+OpenAgents product surface should treat this as a pattern library, not as an authority model.
 
-## Proposed Omega Version
+## Proposed OpenAgents product surface Version
 
-The Omega version should keep the one thing OpenCode gets right, which is a
+The OpenAgents product surface version should keep the one thing OpenCode gets right, which is a
 stable, copyable share URL, but it should change the authority model. The
 canonical page route should be:
 
@@ -1644,7 +1644,7 @@ is the stable product URL for humans. Any JSON/API URLs are implementation
 surfaces behind that page.
 
 The share feature should not require a separate Worker. It should live in the
-usual Omega application stack:
+usual OpenAgents product surface application stack:
 
 - route parsing in the existing web app route model
 - API handlers in the existing API Worker route modules
@@ -1653,7 +1653,7 @@ usual Omega application stack:
 - normal sync scopes and receipts where the projection needs live updates
 
 OpenCode split the hosted share service into an enterprise package because its
-local runtime is a separate product. Omega already has one application that owns
+local runtime is a separate product. OpenAgents product surface already has one application that owns
 authenticated workrooms, team rooms, run records, public projections, sync, and
 receipts. Keeping `/share/{uuid}` inside that application avoids a second
 deployment surface, a second origin policy, and a second source of canonical URL
@@ -1661,7 +1661,7 @@ truth.
 
 ### Audience Model
 
-Omega should treat a share as a projection with an explicit audience, not as a
+OpenAgents product surface should treat a share as a projection with an explicit audience, not as a
 single public-link flag. A share can be:
 
 ```txt
@@ -1817,7 +1817,7 @@ share_projection_recipients
 
 The first implementation should bias toward a simple D1-backed projection row
 unless the payload size forces R2. OpenCode's example HTML was large because it
-embedded the full route payload. Omega should keep the schema version explicit
+embedded the full route payload. OpenAgents product surface should keep the schema version explicit
 and choose whether the HTML embeds a small initial projection or fetches the
 timeline from `GET /api/share/{uuid}/v1/data`.
 
@@ -1929,7 +1929,7 @@ from the create endpoint or the same service behind that endpoint.
 ### Projection Shape
 
 The projection should be close enough to the existing workroom timeline model
-that the share page can reuse Omega's chat components:
+that the share page can reuse OpenAgents product surface's chat components:
 
 ```txt
 ShareProjectionV1
@@ -1973,7 +1973,7 @@ redaction, because teams are not the same boundary as runtime credentials.
 
 ### Web UI Parity Target
 
-To reach parity with the OpenCode share page, Omega needs a full read-only
+To reach parity with the OpenCode share page, OpenAgents product surface needs a full read-only
 workroom page, not just a text transcript. The minimum page structure should be:
 
 ```txt
@@ -2010,11 +2010,11 @@ Missing or likely-needed web UI pieces:
 - mobile layout where the transcript remains primary and side panels become
   tabs or drawers
 
-The composer should not appear on the share page unless Omega later adds a
+The composer should not appear on the share page unless OpenAgents product surface later adds a
 commenting/follow-up workflow. If comments are added later, they should be a
 separate explicit feature with their own access model.
 
-### Concrete Porting Boundary For Omega
+### Concrete Porting Boundary For OpenAgents product surface
 
 The narrowest useful implementation slice is:
 
@@ -2068,24 +2068,24 @@ The most important acceptance checks:
 - redaction tests prevent provider secrets, bearer tokens, callback URLs,
   auth-grant refs, and raw runtime payloads from entering projections
 
-## Omega Implementation Addendum
+## OpenAgents product surface Implementation Addendum
 
 Date: 2026-06-05
 
 Issues covered:
 
-- <https://github.com/OpenAgentsInc/autopilot-omega/issues/85>
-- <https://github.com/OpenAgentsInc/autopilot-omega/issues/86>
-- <https://github.com/OpenAgentsInc/autopilot-omega/issues/87>
-- <https://github.com/OpenAgentsInc/autopilot-omega/issues/88>
+- <https://github.com/OpenAgentsInc/openagents/issues/85>
+- <https://github.com/OpenAgentsInc/openagents/issues/86>
+- <https://github.com/OpenAgentsInc/openagents/issues/87>
+- <https://github.com/OpenAgentsInc/openagents/issues/88>
 
-Omega now owns a first implementation pass for the canonical share route:
+OpenAgents product surface now owns a first implementation pass for the canonical share route:
 
 ```txt
 /share/{uuid}
 ```
 
-The share page is part of the normal Omega web application. There is no
+The share page is part of the normal OpenAgents product surface web application. There is no
 separate share Worker or hosted sidecar. The page route is parsed by
 `apps/web/src/route.ts`, rendered through the logged-out public route path, and
 loads projection data from the normal API Worker:
@@ -2184,7 +2184,7 @@ apps/web/src/routing/startup.ts
 apps/web/src/product-policy.ts
 ```
 
-The share view uses existing Omega workroom primitives for the timeline, split
+The share view uses existing OpenAgents product surface workroom primitives for the timeline, split
 layout, side panel, metadata rows, files, artifacts, and receipts. It has
 loading, sign-in-required, forbidden, revoked/expired, not-found, and loaded
 states. The sign-in-required state links to:
@@ -2200,7 +2200,7 @@ Implementation update after the OpenCode-structure UI pass:
   inside the transcript surface, a read-only transcript column, message
   navigation when multiple user messages exist, an optional right review pane,
   and a mobile review disclosure.
-- The Omega version keeps the Vortex/OpenAgents dark mono theme, audience-first
+- The OpenAgents product surface version keeps the Vortex/OpenAgents dark mono theme, audience-first
   share labeling, existing copy/open-source actions, and the existing
   workroom/timeline primitives rather than copying OpenCode's Solid UI
   components.
@@ -2240,7 +2240,7 @@ Known follow-up work after this pass:
 - The create endpoint can project existing agent runs and team threads, but the
   logged-in UI still needs explicit "Share" controls on run/thread surfaces.
 - The side panel currently lists files/artifacts/receipts; deeper unified and
-  split diff rendering should be added when Omega's file/diff projection model
+  split diff rendering should be added when OpenAgents product surface's file/diff projection model
   is finalized.
 - Approval and receipt projection should become richer typed objects instead
   of string refs once the approval/receipt domain model is stable.
@@ -2264,7 +2264,7 @@ provided URL is `packages/enterprise/src/routes/share/[shareID].tsx`, with
 read data supplied by `packages/enterprise/src/core/share.ts` and writes driven
 by `packages/opencode/src/share/share-next.ts`.
 
-The most important Omega lessons are:
+The most important OpenAgents product surface lessons are:
 
 - use `/share/{uuid}` as the canonical page route
 - model share audience explicitly as public, team, or named users
@@ -2274,6 +2274,6 @@ The most important Omega lessons are:
 - separate public URL from write secret
 - validate sync payloads deeply
 - publish redacted, versioned projections instead of raw internal sessions
-- keep the implementation in the normal Omega Effect application, not a
+- keep the implementation in the normal OpenAgents product surface Effect application, not a
   separate Worker
 - treat share-link privacy as a product/security policy, not just a docs note

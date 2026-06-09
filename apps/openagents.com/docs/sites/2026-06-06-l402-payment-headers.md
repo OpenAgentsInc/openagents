@@ -1,6 +1,6 @@
 # L402 Payment Header Contract
 
-Issue: #294 / OMEGA-H-006
+Issue: #294 / OPENAGENTS-H-006
 
 Date: 2026-06-06
 

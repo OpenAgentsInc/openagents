@@ -1,6 +1,6 @@
 # Controlled Pylon Assignment Dispatch Gate
 
-Issue: <https://github.com/OpenAgentsInc/autopilot-omega/issues/553>
+Issue: <https://github.com/OpenAgentsInc/openagents/issues/553>
 
 ## Contract
 

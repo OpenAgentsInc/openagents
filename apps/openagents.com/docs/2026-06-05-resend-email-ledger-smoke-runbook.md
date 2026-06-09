@@ -1,6 +1,6 @@
 # Resend Email Ledger Smoke Runbook
 
-Issue: `OMEGA-O-001`
+Issue: `OPENAGENTS-O-001`
 
 This runbook verifies the current Resend/EmailService readiness boundary for
 first-batch customer notifications.
@@ -19,7 +19,7 @@ first-batch customer notifications.
 
 ## Typed Order/Sites Lifecycle Email Subtypes
 
-Issue `OMEGA-O-002` adds explicit order/Sites lifecycle subtypes under the
+Issue `OPENAGENTS-O-002` adds explicit order/Sites lifecycle subtypes under the
 ledger-compatible `operator_notification` kind. The D1 ledger kind remains
 stable, while `template_slug`, tags, `metadata_json.emailSubtype`, and
 `metadata_json.lifecycleKind` carry the product-specific lifecycle identity.
@@ -55,7 +55,7 @@ or `auth.json` references.
 
 ## Template Package And Preview
 
-Issue `OMEGA-O-005` moves order/Sites lifecycle templates into the
+Issue `OPENAGENTS-O-005` moves order/Sites lifecycle templates into the
 source-controlled `@openagents/email-templates` package. The package is
 Resend-compatible and Worker-safe: it uses schema-first props, renders
 deterministic HTML and plain text, and avoids a runtime React dependency in the
@@ -81,7 +81,7 @@ reservation, idempotency, provider delivery, and event linkage in
 
 ## Lifecycle Dispatch Wiring
 
-Issue `OMEGA-O-003` wires the typed lifecycle templates into the current
+Issue `OPENAGENTS-O-003` wires the typed lifecycle templates into the current
 Adjutant and Sites lifecycle paths:
 
 - Adjutant runner lifecycle callbacks for queued and running states emit
@@ -145,7 +145,7 @@ as skipped with `email_config_missing` until production Resend secrets are set.
 
 ## Operator Delivery Inspection
 
-Issue `OMEGA-O-004` adds the browser-session operator API for inspecting
+Issue `OPENAGENTS-O-004` adds the browser-session operator API for inspecting
 delivery state without shell-only D1 queries:
 
 ```text
@@ -172,7 +172,7 @@ rendered.
 
 ## Resend Webhook Smoke
 
-Issue `OMEGA-O-010` adds the Resend lifecycle webhook route:
+Issue `OPENAGENTS-O-010` adds the Resend lifecycle webhook route:
 
 ```text
 POST /api/webhooks/resend

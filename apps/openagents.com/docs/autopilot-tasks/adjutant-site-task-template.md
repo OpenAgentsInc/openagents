@@ -1,7 +1,7 @@
 # Autopilot Task: Adjutant Site Work Template
 
 Status: template
-Target repo: OpenAgentsInc/autopilot-omega
+Target repo: OpenAgentsInc/openagents
 Target branch: main
 Primary agent: agent_adjutant
 Team: team_openagents_core

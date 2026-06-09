@@ -20,7 +20,7 @@ order IDs, request text, and repository names.
 - Status: `submitted`
 - Visibility: `public`
 - Request: Testing
-- Repository: `OpenAgentsInc/autopilot-omega`
+- Repository: `OpenAgentsInc/openagents`
 - Repository private: `1`
 - Public work acknowledged at: `2026-06-04T17:19:32.927Z`
 - Data use acknowledged at: `2026-06-04T17:19:32.927Z`
@@ -185,7 +185,7 @@ order IDs, request text, and repository names.
 
 | User ID | GitHub username | Name | Email | Onboarding step | Completed at | Onboarding repository | Active order |
 |---|---|---|---|---|---|---|---|
-| `github:14167547` | `AtlantisPleb` | Christopher David | `chris@openagents.com` | `complete` | `2026-06-04T17:19:32.927Z` | `OpenAgentsInc/autopilot-omega` | `software_order_993d773d82d24490888c98112365c2e5` |
+| `github:14167547` | `AtlantisPleb` | Christopher David | `chris@openagents.com` | `complete` | `2026-06-04T17:19:32.927Z` | `OpenAgentsInc/openagents` | `software_order_993d773d82d24490888c98112365c2e5` |
 | `github:79329688` | `kikidesigns` | Kiki David | `margarc1@uat.edu` | `goal` | `null` | `null` | `null` |
 | `github:17035300` | `TheBenMeadows` | ͏ ͏ | `bemeadows@gmail.com` | `goal` | `null` | `null` | `null` |
 | `github:39412710` | `Mike00000001` | Mike M | `mikemahs@yahoo.com` | `goal` | `null` | `null` | `null` |

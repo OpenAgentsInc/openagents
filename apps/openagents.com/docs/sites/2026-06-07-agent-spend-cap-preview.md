@@ -1,11 +1,11 @@
 # Agent Spend-Cap Preview Contract
 
 Date: 2026-06-07
-Issue: #448 / OMEGA-H-011
+Issue: #448 / OPENAGENTS-H-011
 
 ## Summary
 
-Omega now has a typed, side-effect-free spend-cap preview contract for paid
+OpenAgents product surface now has a typed, side-effect-free spend-cap preview contract for paid
 agent actions. It lets an agent or browser client ask whether a proposed paid
 route is under the configured spend cap before the client creates a payment,
 uses account credits, redeems an L402 credential, or receives an entitlement.

@@ -35,36 +35,36 @@ Workspace and historical Artanis source:
 - `autopilot4-deprecated/src/programs.rs`
 - `autopilot4-deprecated/src/work_orders.rs`
 
-Active Omega source and docs:
+Active OpenAgents product surface source and docs:
 
 - `https://openagents.com/AGENTS.md`
-- `autopilot-omega/apps/web/public/AGENTS.md`
-- `autopilot-omega/docs/live/AGENTS.md`
-- `autopilot-omega/docs/forum/README.md`
-- `autopilot-omega/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`
-- `autopilot-omega/docs/2026-06-03-team-project-rooms.md`
-- `autopilot-omega/docs/artanis/2026-06-06-artanis-implementation-audit.md`
-- `autopilot-omega/docs/artanis/2026-06-06-artanis-full-deployment-readiness-audit.md`
-- `autopilot-omega/docs/artanis/2026-06-07-artanis-deploy-readiness-full-audit.md`
-- `autopilot-omega/docs/pylon/2026-06-06-r10-artanis-pylon-campaign-ledger.md`
-- `autopilot-omega/docs/nexus/2026-06-07-artanis-payment-backed-dispatch-gates.md`
-- `autopilot-omega/docs/nexus/2026-06-07-artanis-pylon-operator-proof-run.md`
-- `autopilot-omega/docs/nexus/2026-06-07-artanis-pylon-proof-trace-checker.md`
-- `autopilot-omega/docs/nexus/2026-06-07-artanis-real-small-bitcoin-assignment-smoke-evidence.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-mdk-wallet-readiness-smoke.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-network-readiness-release-freeze.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-self-serve-registration-smoke.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-v02-omega-release-gate-runbook.md`
-- `autopilot-omega/docs/nexus/2026-06-07-pylon-v02-release-review-record.md`
-- `autopilot-omega/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
-- `autopilot-omega/workers/api/src/artanis-runtime.ts`
-- `autopilot-omega/workers/api/src/artanis-loop.ts`
-- `autopilot-omega/workers/api/src/artanis-public-report.ts`
-- `autopilot-omega/workers/api/src/artanis-work-routing.ts`
-- `autopilot-omega/workers/api/src/artanis-continual-learning-templates.ts`
-- `autopilot-omega/workers/api/src/artanis-nexus-pylon-adapters.ts`
-- `autopilot-omega/apps/web/src/product-policy.ts`
+- `openagents/apps/web/public/AGENTS.md`
+- `openagents/docs/live/AGENTS.md`
+- `openagents/docs/forum/README.md`
+- `openagents/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`
+- `openagents/docs/2026-06-03-team-project-rooms.md`
+- `openagents/docs/artanis/2026-06-06-artanis-implementation-audit.md`
+- `openagents/docs/artanis/2026-06-06-artanis-full-deployment-readiness-audit.md`
+- `openagents/docs/artanis/2026-06-07-artanis-deploy-readiness-full-audit.md`
+- `openagents/docs/pylon/2026-06-06-r10-artanis-pylon-campaign-ledger.md`
+- `openagents/docs/nexus/2026-06-07-artanis-payment-backed-dispatch-gates.md`
+- `openagents/docs/nexus/2026-06-07-artanis-pylon-operator-proof-run.md`
+- `openagents/docs/nexus/2026-06-07-artanis-pylon-proof-trace-checker.md`
+- `openagents/docs/nexus/2026-06-07-artanis-real-small-bitcoin-assignment-smoke-evidence.md`
+- `openagents/docs/nexus/2026-06-07-pylon-agent-api-runbook.md`
+- `openagents/docs/nexus/2026-06-07-pylon-mdk-wallet-readiness-smoke.md`
+- `openagents/docs/nexus/2026-06-07-pylon-network-readiness-release-freeze.md`
+- `openagents/docs/nexus/2026-06-07-pylon-self-serve-registration-smoke.md`
+- `openagents/docs/nexus/2026-06-07-pylon-v02-openagents-release-gate-runbook.md`
+- `openagents/docs/nexus/2026-06-07-pylon-v02-release-review-record.md`
+- `openagents/docs/nexus/2026-06-08-pylon-live-assignment-closeout-smoke.md`
+- `openagents/workers/api/src/artanis-runtime.ts`
+- `openagents/workers/api/src/artanis-loop.ts`
+- `openagents/workers/api/src/artanis-public-report.ts`
+- `openagents/workers/api/src/artanis-work-routing.ts`
+- `openagents/workers/api/src/artanis-continual-learning-templates.ts`
+- `openagents/workers/api/src/artanis-nexus-pylon-adapters.ts`
+- `openagents/apps/web/src/product-policy.ts`
 
 OpenAgents, Pylon, and Cloud proof material:
 
@@ -131,18 +131,18 @@ tool-use discipline trace extraction. The execution routes were
 `hosted_coder_runtime`, `local_pylon`, and `psionic_training_runtime`.
 
 That mission remains directionally right, but the active implementation home
-has moved. New product behavior now belongs in Omega. The deprecated
+has moved. New product behavior now belongs in OpenAgents product surface. The deprecated
 Autopilot4 and Vortex material are source material, not implementation homes.
 
-## Active Omega Shape
+## Active OpenAgents product surface Shape
 
-Omega now has the concrete Artanis surface:
+OpenAgents product surface now has the concrete Artanis surface:
 
 - public routes at `/artanis` and `/agents/artanis`;
 - authenticated project identity `project_artanis` under the OpenAgents Core
   Team;
 - a compact project-agent projection with runtime `Autopilot`, backend `SHC`,
-  repo `autopilot-omega`, and focus `Pylon`;
+  repo `openagents`, and focus `Pylon`;
 - public current-goal and public Pylon stats loading;
 - Artanis runtime, loop, health, public report, Forum, approval-gate,
   work-routing, continual-learning-template, Nexus/Pylon adapter, and
@@ -159,7 +159,7 @@ This is the right boundary for benchmark campaigns. Artanis can describe and
 supervise a campaign, but the authority to launch metric calls, spend money,
 train adapters, promote a runtime candidate, or publish a stronger claim must
 remain with the relevant operator gate, Benchmark Cloud, Psionic, Pylon,
-Omega, or payment authority.
+OpenAgents product surface, or payment authority.
 
 ## Current Proof Trail
 
@@ -167,15 +167,15 @@ The current proof trail is Pylon-launch heavy.
 
 What is proven:
 
-- Artanis can be represented as a public Omega project and public agent
+- Artanis can be represented as a public OpenAgents product surface project and public agent
   projection.
-- Omega has a public Artanis report shape that aggregates runtime, loop,
+- OpenAgents product surface has a public Artanis report shape that aggregates runtime, loop,
   health, Model Lab, Pylon, Forum, claim, receipt, and release-gate state.
-- Omega has work-routing capabilities that already include
+- OpenAgents product surface has work-routing capabilities that already include
   `benchmark_cloud`, `probe`, `psionic`, `pylon`, `runner`,
   `coding_runtime_probe`, `benchmark_evaluation`, `gepa_dspy_optimization`,
   `lora_finetuning`, and `pylon_training`.
-- Omega has continual-learning template kinds for benchmark reruns, GEPA/DSPy
+- OpenAgents product surface has continual-learning template kinds for benchmark reruns, GEPA/DSPy
   optimization, dataset curation, adapter validation, LoRA fine-tuning, and
   regression analysis.
 - The private Cloud Artanis bootstrap contract can launch a bounded
@@ -187,7 +187,7 @@ What is proven:
   payment movement.
 - The later Artanis to MDK settlement bridge smoke proves the id-chain shape
   and real payment movement for a generated settlement assignment id.
-- The Omega Pylon Agent API now supports Pylon registration, heartbeat,
+- The OpenAgents product surface Pylon Agent API now supports Pylon registration, heartbeat,
   redacted MDK wallet readiness, payout-target admission, owned assignment
   lists, assignment accept/progress/artifact events, and operator closeout.
 - The #502 production smoke
@@ -213,7 +213,7 @@ What is not proven:
   settlement receipt to public receipt.
 - The #502 live assignment closeout smoke does not prove real bitcoin payout,
   payout-target approval, repeated multi-host jobs, or general Pylon earning
-  readiness. Those remain #503, #504, and #505 work in the Omega/Nexus release
+  readiness. Those remain #503, #504, and #505 work in the OpenAgents product surface/Nexus release
   freeze sequence.
 - No current proof shows Artanis supervising a GEPA campaign over
   Terminal-Bench 2 or Probe retained coding-agent fixtures through Pylons.
@@ -286,7 +286,7 @@ POST /api/forum/topics/{topicId}/posts
 ```
 
 The local operator runbook for posting as the dedicated Artanis Forum identity
-is `autopilot-omega/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`.
+is `openagents/docs/forum/2026-06-07-artanis-forum-posting-runbook.md`.
 It uses the ignored local secret file
 `/Users/christopherdavid/work/.secrets/openagents-artanis-agent.env`, verifies
 identity with `GET /api/agents/me`, posts to the Pylon release work-log topic
@@ -309,7 +309,7 @@ For Probe, this means:
 - Probe must not post as Artanis, invoke the Artanis bridge, or treat Forum
   publication as proof authority.
 - Artanis campaign posts should be generated from retained refs, public
-  Benchmark Cloud state, Pylon assignment/receipt refs, and Omega claim gates.
+  Benchmark Cloud state, Pylon assignment/receipt refs, and OpenAgents product surface claim gates.
 
 ## Similarities To The Probe Benchmark Docs
 
@@ -335,7 +335,7 @@ GEPA lane.
 Both separate execution from authority. Probe should run coding-agent turns and
 emit evidence. Benchmark Cloud should own benchmark contracts and score
 imports. Psionic should own optimizer/model-training truth. Pylon should own
-worker execution and receipts. Omega should own product release gates and
+worker execution and receipts. OpenAgents product surface should own product release gates and
 public projection. Artanis should coordinate and narrate the campaign state
 inside those boundaries.
 
@@ -385,7 +385,7 @@ Plain-language mission:
 ```text
 Coordinate the first public-safe Probe GEPA campaign for coding-agent
 benchmarks, using Benchmark Cloud contracts, Pylon rollout capacity, Probe
-runtime evidence, Psionic optimizer lineage, and Omega public projection gates.
+runtime evidence, Psionic optimizer lineage, and OpenAgents product surface public projection gates.
 ```
 
 Artanis should own these campaign responsibilities:
@@ -420,11 +420,11 @@ Artanis should not own these authorities:
 The refocused flow should be:
 
 ```text
-Omega Artanis goal
+OpenAgents product surface Artanis goal
 -> public Benchmark Cloud split manifest
 -> Psionic/GEPA candidate frontier
 -> Pylon batch assignment plan
--> Omega Pylon assignment lease
+-> OpenAgents product surface Pylon assignment lease
 -> Pylon accept/progress/artifact-proof events
 -> Probe benchmark runs
 -> Benchmark Cloud score import
@@ -432,7 +432,7 @@ Omega Artanis goal
 -> artifact, receipt, and resource manifests
 -> Artanis campaign import
 -> Artanis public report and Forum summary
--> Omega release gate
+-> OpenAgents product surface release gate
 ```
 
 The first campaign should keep Stage 0 and Stage 1 small enough to prove the
@@ -479,7 +479,7 @@ Recommended signatures:
   validation, hold for artifact gaps, open implementation issues, or request
   human approval.
 
-These signatures should be implemented in the active Omega/Blueprint-shaped
+These signatures should be implemented in the active OpenAgents product surface/Blueprint-shaped
 surface, with source/spec synchronization in public `openagents` where
 Benchmark Cloud owns public benchmark contracts. Probe should consume the
 resulting policy and emit evidence; Probe should not own Artanis policy.
@@ -517,7 +517,7 @@ Each Work Order should include:
 - benchmark suite and split refs;
 - Probe commit;
 - candidate hash when applicable;
-- Omega Pylon assignment lease ref when routed through Pylon;
+- OpenAgents product surface Pylon assignment lease ref when routed through Pylon;
 - Pylon assignment refs when applicable;
 - accepted or rejected closeout refs;
 - expected artifacts;
@@ -590,7 +590,7 @@ Blocked claims until further proof:
 - Pylon is generally ready for download or bitcoin earning from #502 alone.
 - GEPA on Pylons is distributed model training; it is distributed rollout
   optimization unless a later Psionic/model-training lane opens.
-- A GEPA candidate is active production runtime before Omega release approval.
+- A GEPA candidate is active production runtime before OpenAgents product surface release approval.
 - A Qwen/LoRA adapter improved Probe before model-training evidence and
   validation exist.
 - Private Cloud bootstrap contracts are the public benchmark authority.
@@ -602,8 +602,8 @@ Blocked claims until further proof:
    source into public `openagents` Benchmark Cloud contracts. Keep private
    Cloud as source material only.
 
-2. Artanis campaign schema in Omega
-   Extend the active Omega Artanis public report, work-routing, and
+2. Artanis campaign schema in OpenAgents product surface
+   Extend the active OpenAgents product surface Artanis public report, work-routing, and
    continual-learning-template contracts with Probe GEPA campaign fields,
    using the existing Effect schema style and no-direct-authority defaults.
 
@@ -617,7 +617,7 @@ Blocked claims until further proof:
    identity, scorer version, no-cheat metadata, and artifact digests.
 
 5. Pylon GEPA assignment bridge
-   Adapt the new Omega Pylon assignment lease and closeout path for
+   Adapt the new OpenAgents product surface Pylon assignment lease and closeout path for
    `gepa_dspy_optimization` and `benchmark_evaluation` work. It should record
    Artanis campaign id, assignment id, candidate hash, metric batch id, split
    refs, artifact/proof refs, accepted or rejected closeout refs, and no-spend
@@ -644,7 +644,7 @@ Blocked claims until further proof:
    batches. Publish public-safe batch summaries, not public benchmark claims.
 
 10. Validation and release review
-   Replay the accepted candidate on validation splits. Only then open an Omega
+   Replay the accepted candidate on validation splits. Only then open an OpenAgents product surface
    release-review path for a Probe/Blueprint text artifact candidate.
 
 11. Later model training
@@ -667,10 +667,10 @@ Artanis-relevant items in the ordered series are:
   contracts, split manifests, and the true-Probe Terminal-Bench runner lane.
 - Issue 7 through Issue 9 in `psionic` and `probe`: register GEPA candidate
   manifests, coordinator state, and candidate execution adapters.
-- Issue 10 through Issue 12 in `autopilot-omega`, `pylon`, or `openagents`:
-  adapt the Omega/Pylon assignment lease lifecycle, capability envelopes, and
+- Issue 10 through Issue 12 in `openagents`, `pylon`, or `openagents`:
+  adapt the OpenAgents product surface/Pylon assignment lease lifecycle, capability envelopes, and
   explicit payment modes for benchmark metric-call work.
-- Issue 16 and Issue 17 in `autopilot-omega`: add Artanis Probe GEPA campaign
+- Issue 16 and Issue 17 in `openagents`: add Artanis Probe GEPA campaign
   projection fields and the public-safe Forum summary generator.
 
 The first Probe-only task remains narrow: define and emit the closeout artifact

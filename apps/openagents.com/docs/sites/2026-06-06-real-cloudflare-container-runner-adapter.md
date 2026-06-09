@@ -2,7 +2,7 @@
 
 Date: 2026-06-06
 
-Status: implemented for issue #285 / OMEGA-RUNNER-007.
+Status: implemented for issue #285 / OPENAGENTS-RUNNER-007.
 
 ## Purpose
 
@@ -22,7 +22,7 @@ image and `class_name`, plus a matching Durable Object binding. Cloudflare's
 documentation also exposes optional `instance_type`, `max_instances`, rollout,
 and image-build controls.
 
-Omega stores only safe refs for those pieces at this stage:
+OpenAgents product surface stores only safe refs for those pieces at this stage:
 
 - class name ref;
 - Durable Object binding ref;

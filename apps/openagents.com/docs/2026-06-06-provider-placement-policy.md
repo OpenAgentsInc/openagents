@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #330 / `OMEGA-083`.
+Status: implemented contract note for issue #330 / `OPENAGENTS-083`.
 
 ## Purpose
 
-Omega now has a reusable provider allowlist and placement restriction contract
+OpenAgents product surface now has a reusable provider allowlist and placement restriction contract
 for scheduler and runner-gateway decisions.
 
 The implementation lives in

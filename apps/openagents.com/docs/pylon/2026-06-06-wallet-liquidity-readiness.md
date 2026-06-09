@@ -1,6 +1,6 @@
 # Pylon Wallet Liquidity Readiness
 
-Issue #351 / `OMEGA-L-003` adds the first read-only Pylon wallet liquidity
+Issue #351 / `OPENAGENTS-L-003` adds the first read-only Pylon wallet liquidity
 readiness model.
 
 The implementation lives in

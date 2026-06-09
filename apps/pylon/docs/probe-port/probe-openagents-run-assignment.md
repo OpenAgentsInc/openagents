@@ -1,4 +1,4 @@
-# Probe/Omega Run Assignment And Grant Resolution
+# Probe/OpenAgents product surface Run Assignment And Grant Resolution
 
 Date: 2026-06-07
 
@@ -6,7 +6,7 @@ Status: implemented contract slice for Probe issue #158.
 
 ## Assignment Shape
 
-Probe runtime assignments may carry Omega provider auth references:
+Probe runtime assignments may carry OpenAgents product surface provider auth references:
 
 - `provider: "chatgpt_codex"`
 - `providerAccountRef`
@@ -32,10 +32,10 @@ The first implemented backend selection is:
 ```
 
 That Apple FM path uses local attach configuration and live health. It does not
-use `providerAccountRef`, `authGrantRef`, ChatGPT account linking, or Omega
+use `providerAccountRef`, `authGrantRef`, ChatGPT account linking, or OpenAgents product surface
 grant resolution.
 
-The first Gemini backend selection path is also no-auth from Omega's
+The first Gemini backend selection path is also no-auth from OpenAgents product surface's
 perspective:
 
 ```json
@@ -50,7 +50,7 @@ perspective:
 That path resolves a local runner API key from `GOOGLE_GENERATIVE_AI_API_KEY`
 or `GEMINI_API_KEY` and requires `probe.backend.gemini_api`.
 
-Omega-managed Gemini key assignments can additionally carry:
+OpenAgents product surface-managed Gemini key assignments can additionally carry:
 
 ```json
 {
@@ -64,13 +64,13 @@ Omega-managed Gemini key assignments can additionally carry:
 }
 ```
 
-That managed path requires `omega.grant.resolve` in addition to
+That managed path requires `openagents.grant.resolve` in addition to
 `probe.backend.gemini_api`, and Probe materializes the resolved key into
 `GOOGLE_GENERATIVE_AI_API_KEY`.
 
 ## Blueprint Scope
 
-Omega or Pylon dispatch can attach a nested `blueprint` section to narrow the
+OpenAgents product surface or Pylon dispatch can attach a nested `blueprint` section to narrow the
 run without requiring Probe to fetch the full registry on every assignment:
 
 ```json
@@ -117,7 +117,7 @@ preserves safe Blueprint refs and strips private-data-shaped Blueprint fields.
 
 ## Grant Resolution
 
-`packages/runtime/src/omega/grant-client.ts` implements an Effect-based Omega
+`packages/runtime/src/openagents/grant-client.ts` implements an Effect-based OpenAgents product surface
 grant resolver. It posts assignment refs to:
 
 `/api/provider-accounts/chatgpt-codex/grants/resolve`
@@ -133,7 +133,7 @@ Current Probe materialization plans use:
 - `homeIsolation: "per_run"`
 - `scrubAfterCloseout: true`
 
-Omega may return `status: "used"` after a successful one-time resolve. Probe
+OpenAgents product surface may return `status: "used"` after a successful one-time resolve. Probe
 accepts that resolved response only when the payload includes the
 Probe-compatible materialization plan.
 
@@ -147,7 +147,7 @@ Probe-compatible materialization plan.
 - expired grants
 - already-used grant records without materialization
 - OpenCode env name rejection
-- unavailable Omega responses
+- unavailable OpenAgents product surface responses
 
 `packages/runtime/tests/blueprint-assignment.test.ts` covers:
 

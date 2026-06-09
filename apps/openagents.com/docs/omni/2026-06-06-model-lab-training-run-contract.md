@@ -1,12 +1,12 @@
 # Model Lab Training Run Contract
 
-Status: implemented for issue #381 / `OMEGA-LAB-002`.
+Status: implemented for issue #381 / `OPENAGENTS-LAB-002`.
 
 ## Purpose
 
 Model Lab needs to describe fine-tune, adapter, eval-only, optimizer,
 distillation, benchmark replay, and data-preparation runs without claiming that
-Omega launched training, mutated a provider, installed an adapter, spent money,
+OpenAgents product surface launched training, mutated a provider, installed an adapter, spent money,
 promoted a runtime, routed production traffic, settled payouts, or upgraded a
 public claim. The `TrainingRun` contract records observed or imported evidence
 and candidate outputs only.

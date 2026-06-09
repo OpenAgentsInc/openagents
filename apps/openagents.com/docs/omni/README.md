@@ -1,6 +1,6 @@
 # Omni Workroom Notes
 
-This folder records Omega implementation notes for the Omni workroom,
+This folder records OpenAgents product surface implementation notes for the Omni workroom,
 accepted-outcome, evidence, briefing, and economics layers.
 
 - `2026-06-05-accepted-outcome-contract-v1.md` records the issue #209
@@ -210,7 +210,7 @@ accepted-outcome, evidence, briefing, and economics layers.
   report-publication, payment, runtime-promotion, payout, settlement, or
   public-claim mutation authority.
 - `2026-06-06-cloudflare-artifacts-git-agent-audit.md` evaluates Cloudflare
-  Artifacts as Omega-owned Git-compatible workspace storage for local, SHC, and
+  Artifacts as OpenAgents product surface-owned Git-compatible workspace storage for local, SHC, and
   future Cloudflare Container agents. It recommends using Artifacts for
   internal/public per-mission Git workspaces, patch/diff closeout, baseline
   forks, and PR-less accepted outcomes while keeping GitHub writeback,

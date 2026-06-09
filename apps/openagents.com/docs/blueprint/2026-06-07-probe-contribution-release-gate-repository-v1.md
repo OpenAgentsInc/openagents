@@ -8,7 +8,7 @@ Status: implemented for issue #498.
 
 `blueprint_probe_contributions` stores Probe-originated Blueprint contribution
 drafts and promoted contribution refs without granting Probe direct runtime
-authority. The repository is the Omega-side ledger for the path from Probe
+authority. The repository is the OpenAgents product surface-side ledger for the path from Probe
 dogfood contribution to release-gated production ref.
 
 The implementation lives in:

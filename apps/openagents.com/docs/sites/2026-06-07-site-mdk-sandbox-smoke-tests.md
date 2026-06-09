@@ -1,11 +1,11 @@
 # Site MDK Sandbox Smoke Tests
 
 Date: 2026-06-07
-Issue: #442 / `OMEGA-SITES-MDK-012`
+Issue: #442 / `OPENAGENTS-SITES-MDK-012`
 
 ## Summary
 
-Omega now has repeatable Site MDK smoke coverage for the current
+OpenAgents product surface now has repeatable Site MDK smoke coverage for the current
 fake-provider Site commerce lane. The smoke proves that the generated-Site
 payment surface can run through discovery, checkout intent creation, clean
 return status, provider reconciliation, replay handling, payment proof,
@@ -18,7 +18,7 @@ payout, or settlement authority.
 
 ## CI Smoke Command
 
-Run the focused smoke suite from the Omega repository root:
+Run the focused smoke suite from the OpenAgents product surface repository root:
 
 ```bash
 bun run --cwd workers/api test -- src/generated-site-payment-smoke-fixture.test.ts src/site-mdk-smoke.test.ts src/site-commerce-routes.test.ts
@@ -112,7 +112,7 @@ inputs must stay in secret bindings or ignored local env files:
 - `MDK_MNEMONIC`
 - `MDK_WEBHOOK_SECRET`, or the exact webhook secret for the configured MDK
   event source
-- any provider route secret used by Omega's hosted MDK route client
+- any provider route secret used by OpenAgents product surface's hosted MDK route client
 
 Do not print those values. Do not put them in fixtures, public output, GitHub
 issues, docs, commit messages, or customer-visible projections.

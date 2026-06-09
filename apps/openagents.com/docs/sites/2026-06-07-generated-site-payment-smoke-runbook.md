@@ -1,14 +1,14 @@
 # Generated Site Payment Smoke Runbook
 
 Date: 2026-06-07
-Issue: #458 / `OMEGA-SITES-MDK-LIVE-005`
+Issue: #458 / `OPENAGENTS-SITES-MDK-LIVE-005`
 
 ## Purpose
 
 This runbook is the public-safe evidence map for the generated-Site payment
 smoke batch.
 
-It explains what the current Omega tests prove, how an agent should inspect a
+It explains what the current OpenAgents product surface tests prove, how an agent should inspect a
 generated Site payment surface, and what an operator must verify before making
 stronger live-payment or settlement claims.
 
@@ -39,7 +39,7 @@ authority.
 
 ## Deterministic Verification
 
-Run from the Omega repository root:
+Run from the OpenAgents product surface repository root:
 
 ```bash
 bun run --cwd workers/api test -- src/generated-site-payment-smoke-fixture.test.ts src/site-mdk-smoke.test.ts src/site-commerce-routes.test.ts
@@ -205,8 +205,8 @@ verify:
 | Evidence type | Meaning | Production claim allowed |
 | --- | --- | --- |
 | Deterministic fake-provider smoke | Route and projection shape is coherent and redaction-safe. | No live payment claim. |
-| Configured hosted-provider or sidecar smoke | Omega verified a configured provider callback in the selected environment. | Live checkout evidence only, if receipts are retained. |
-| Real bitcoin movement proof | A separate approved wallet movement occurred through Omega authority and receipt boundaries. | Movement claim only for the named bounded smoke. |
+| Configured hosted-provider or sidecar smoke | OpenAgents product surface verified a configured provider callback in the selected environment. | Live checkout evidence only, if receipts are retained. |
+| Real bitcoin movement proof | A separate approved wallet movement occurred through OpenAgents product surface authority and receipt boundaries. | Movement claim only for the named bounded smoke. |
 | Accepted-work payout settlement | Nexus/Treasury/Pylon gates accepted work and settlement receipts. | Only after separate accepted-work payout evidence exists. |
 
 ## Redaction Rules

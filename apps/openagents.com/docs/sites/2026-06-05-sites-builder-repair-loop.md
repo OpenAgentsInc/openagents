@@ -5,7 +5,7 @@ builder sessions.
 
 ## Implemented Contract
 
-Omega now has a `site_builder_repair_attempts` ledger for generated Site build,
+OpenAgents product surface now has a `site_builder_repair_attempts` ledger for generated Site build,
 preview, validation, and runtime failures.
 
 Each repair attempt records:

@@ -1,12 +1,12 @@
 # Pylon Live Assignment And Closeout Smoke
 
 Date: 2026-06-08
-Repository: `OpenAgentsInc/autopilot-omega`
+Repository: `OpenAgentsInc/openagents`
 Related issue: #502
 
 ## Summary
 
-#502 adds the first live Omega Pylon assignment lease path. A registered Pylon
+#502 adds the first live OpenAgents product surface Pylon assignment lease path. A registered Pylon
 can now list assignment leases, accept an assignment, report progress, submit
 public-safe artifact/proof refs, and have an operator close the assignment as
 accepted or rejected work.

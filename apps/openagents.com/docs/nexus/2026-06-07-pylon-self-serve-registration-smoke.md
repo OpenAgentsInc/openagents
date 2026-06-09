@@ -1,7 +1,7 @@
 # Pylon Self-Serve Registration Smoke
 
 Date: 2026-06-07
-Repository: `OpenAgentsInc/autopilot-omega`
+Repository: `OpenAgentsInc/openagents`
 Related issue: #500
 Companion source commit: `OpenAgentsInc/openagents@b04ebe4be`
 
@@ -9,7 +9,7 @@ Companion source commit: `OpenAgentsInc/openagents@b04ebe4be`
 
 #500 adds the source path for a fresh Pylon operator to install a public Pylon
 release asset, derive or reuse a stable local Pylon identity, register with
-Omega, send a heartbeat, and appear in the public-safe Pylon API.
+OpenAgents product surface, send a heartbeat, and appear in the public-safe Pylon API.
 
 This does not publish a new Pylon release. The Pylon release freeze from #499
 remains active. The registration feature is in the `openagents` source on

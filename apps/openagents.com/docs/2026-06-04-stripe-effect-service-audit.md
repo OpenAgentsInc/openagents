@@ -4,7 +4,7 @@ Date: 2026-06-04
 
 Scope: future Stripe-backed credit purchase, customer management, balance
 reconciliation, webhook fulfillment, and billing route work in
-`autopilot-omega`, with focus on the Effect service/layer boundary that should
+`openagents`, with focus on the Effect service/layer boundary that should
 replace the current credit-card checkout placeholder.
 
 This is a planning and code-quality audit only. It does not change production
@@ -15,13 +15,13 @@ contracts or invariants.
 - Workspace and repo guidance:
   - `/Users/christopherdavid/work/AGENTS.md`
   - `/Users/christopherdavid/work/INVARIANTS.md`
-  - `autopilot-omega/AGENTS.md`
-  - `autopilot-omega/INVARIANTS.md`
-- Prior Omega Effect audits:
+  - `openagents/AGENTS.md`
+  - `openagents/INVARIANTS.md`
+- Prior OpenAgents product surface Effect audits:
   - `docs/2026-06-04-effect-foldkit-codebase-audit.md`
-  - `docs/2026-06-04-omega-broader-effect-refactor-audit.md`
-  - `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`
-- Current Omega billing docs and code:
+  - `docs/2026-06-04-openagents-broader-effect-refactor-audit.md`
+  - `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
+- Current OpenAgents product surface billing docs and code:
   - `docs/2026-06-03-autopilot-billing-credits.md`
   - `workers/api/src/billing.ts`
   - `workers/api/src/billing-routes.ts`
@@ -46,7 +46,7 @@ contracts or invariants.
 
 ## Executive Summary
 
-Omega already has a first-party USD credit ledger in D1. That ledger should
+OpenAgents product surface already has a first-party USD credit ledger in D1. That ledger should
 remain the product authority for Autopilot credits. Stripe should enter the
 system as an external payment and customer provider wrapped by typed Effect
 services, not as a new source of truth spread through route handlers.
@@ -73,12 +73,12 @@ The most important design rule is that a successful Stripe payment should
 create one auditable positive `billing_ledger_entries` row with a stable
 idempotency key such as `billing:stripe-checkout:<checkout_session_id>`. The UI
 balance remains the derived D1 ledger balance. Stripe customer balance can be
-used later for invoice credits, but it is not a replacement for Omega's
+used later for invoice credits, but it is not a replacement for OpenAgents product surface's
 prepaid Autopilot credit ledger.
 
 ## Current State
 
-Omega currently supports:
+OpenAgents product surface currently supports:
 
 - D1-backed billing accounts and immutable ledger entries.
 - Positive credits from launch grants, coupons, and operator adjustments.
@@ -88,7 +88,7 @@ Omega currently supports:
 - A live admin manual-credit API.
 - Out-of-credits suspension and email notification support.
 
-Omega does not yet charge cards. `POST /api/billing/checkout` currently returns
+OpenAgents product surface does not yet charge cards. `POST /api/billing/checkout` currently returns
 a placeholder payload saying credit card checkout is not wired.
 
 This current shape is healthy in one important way: product balance is already
@@ -109,19 +109,19 @@ Autopilot credits are a product ledger. The product needs to answer:
 
 D1 is the right authority for those questions because the ledger already
 contains product-specific sources, run IDs, team IDs, usage cursors, and
-OpenAgents sync effects. Stripe should confirm money movement, then Omega
-should append an Omega ledger row.
+OpenAgents sync effects. Stripe should confirm money movement, then OpenAgents product surface
+should append an OpenAgents product surface ledger row.
 
 Stripe Customer Balance is a different product. Stripe documents customer
 credit balances as adjustments applied to future invoices. A negative customer
 balance transaction is a credit, and a positive transaction is a debit. That is
-useful if Omega later invoices customers through Stripe Billing, but it should
+useful if OpenAgents product surface later invoices customers through Stripe Billing, but it should
 not be shown as "available Autopilot balance" unless the product intentionally
 switches to invoice-backed credits.
 
 Recommended rule:
 
-- For prepaid Autopilot credits purchased through Checkout, write Omega D1
+- For prepaid Autopilot credits purchased through Checkout, write OpenAgents product surface D1
   ledger entries.
 - For future invoice/subscription credits, optionally mirror invoice credit in
   Stripe Customer Balance Transactions, but keep those rows clearly separated
@@ -130,8 +130,8 @@ Recommended rule:
 ### One Stripe Customer Mapping Per User And Currency
 
 Stripe customers are effectively single-currency once invoicing or credit
-balance is used. Omega's current ledger is USD-only, so create or reuse one
-Stripe Customer per Omega user for `usd`.
+balance is used. OpenAgents product surface's current ledger is USD-only, so create or reuse one
+Stripe Customer per OpenAgents product surface user for `usd`.
 
 Add a mapping table in a future migration, for example:
 
@@ -144,7 +144,7 @@ Add a mapping table in a future migration, for example:
 - `updated_at`
 
 The D1 mapping is the authority. Stripe metadata is a recovery aid, not the
-primary lookup path. Customer metadata should include the Omega user ID, the
+primary lookup path. Customer metadata should include the OpenAgents product surface user ID, the
 environment/mode, and a short product marker. Do not store raw session cookies,
 provider tokens, or internal prompt/run payloads in Stripe metadata.
 
@@ -156,22 +156,22 @@ localized payment method handling, and a small server-side integration.
 
 The session creation service should:
 
-- Require an authenticated Omega user.
+- Require an authenticated OpenAgents product surface user.
 - Resolve the configured credit package to a Stripe Price ID or server-owned
   price data.
 - Ensure a Stripe Customer exists for that user.
 - Create a `payment` mode Checkout Session.
 - Pass `customer`, `client_reference_id`, and narrow metadata containing the
-  Omega user ID, package ID, credit amount, currency, and environment.
+  OpenAgents product surface user ID, package ID, credit amount, currency, and environment.
 - Set a clean `cancel_url` to `/billing`.
 - Set a non-product callback `success_url`, such as
   `/api/billing/stripe/checkout-return?session_id={CHECKOUT_SESSION_ID}`, that
   fulfills idempotently and redirects to clean `/billing`.
 - Omit `payment_method_types`. Stripe's dynamic payment method configuration
-  should be controlled from Stripe settings, not hard-coded in Omega.
+  should be controlled from Stripe settings, not hard-coded in OpenAgents product surface.
 - Pass an idempotency key for the Checkout Session creation POST.
 
-This preserves Omega's clean public URL invariant. Product routes such as
+This preserves OpenAgents product surface's clean public URL invariant. Product routes such as
 `/billing` must not carry `checkout`, `session_id`, or payment result state.
 The callback endpoint may consume the Stripe Session ID and then redirect to a
 clean first-party URL.
@@ -317,7 +317,7 @@ Responsibilities:
   line-items endpoint if package reconciliation requires it.
 - Check `payment_status` before crediting.
 - Validate `amount_total`, `currency`, metadata, package ID, livemode, and
-  customer ID before appending Omega credit.
+  customer ID before appending OpenAgents product surface credit.
 
 Expected tagged errors:
 
@@ -452,7 +452,7 @@ There are three idempotency layers to preserve:
 
 1. Stripe API idempotency for outbound POST calls.
 2. Stripe event ID idempotency for webhook delivery.
-3. Omega ledger idempotency for product credits.
+3. OpenAgents product surface ledger idempotency for product credits.
 
 Recommended keys:
 
@@ -484,7 +484,7 @@ Add an operator reconciliation job that can:
 ## Schema Boundaries
 
 Do not pass raw Stripe SDK objects into browser DTOs or long-lived domain
-state. Stripe SDK types are useful at the leaf boundary, but Omega should
+state. Stripe SDK types are useful at the leaf boundary, but OpenAgents product surface should
 project them into small Schema classes:
 
 - `StripeCustomerRef`
@@ -514,7 +514,7 @@ Decode inbound request bodies with Schema rather than ad hoc
 
 ## Security And Secrets
 
-Stripe security should follow the existing Omega config boundary pattern:
+Stripe security should follow the existing OpenAgents product surface config boundary pattern:
 
 - Store API keys and webhook signing secrets only in Worker secrets.
 - Prefer restricted API keys for production once the exact permissions are
@@ -581,10 +581,10 @@ state does not leak.
 - Do not implement subscriptions in this slice.
 - Do not use Stripe Customer Balance as the visible Autopilot prepaid balance.
 - Do not add a custom Payment Element/card form before Checkout.
-- Do not add Connect platform flows unless Omega is explicitly charging on
+- Do not add Connect platform flows unless OpenAgents product surface is explicitly charging on
   behalf of connected accounts.
 - Do not route Stripe events through browser state.
-- Do not store card or payment method details in Omega.
+- Do not store card or payment method details in OpenAgents product surface.
 
 ## Open Questions
 

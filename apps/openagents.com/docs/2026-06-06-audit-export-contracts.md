@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #333 / `OMEGA-086`.
+Status: implemented contract note for issue #333 / `OPENAGENTS-086`.
 
 ## Purpose
 
-Omega now has a safe audit-export contract for Sites and Autopilot
+OpenAgents product surface now has a safe audit-export contract for Sites and Autopilot
 fulfillment evidence.
 
 The implementation lives in `workers/api/src/audit-export-contracts.ts`.

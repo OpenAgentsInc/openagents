@@ -34,7 +34,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
         [
           M.value(model.route).pipe(
             M.tagsExhaustive({
-              Home: () => Home.view(model.publicPylonStats),
+              Home: () =>
+                Home.view({
+                  forumLaunchStatus: model.publicForumLaunchStatus,
+                  forumTipLeaderboards: model.publicForumTipLeaderboards,
+                  publicPylonStats: model.publicPylonStats,
+                }),
               Invite: () => notFoundView('/invite', homeRouter(), 'Go Home'),
               Onboarding: () => Onboarding.view(model.onboarding),
               Docs: route => Docs.view(route, { _tag: 'LoggedOut' }),

@@ -2,9 +2,9 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#506`.
+Status: implemented for `OpenAgentsInc/openagents#506`.
 
-Omega now has a typed lifecycle contract for Probe GEPA metric-call assignments
+OpenAgents product surface now has a typed lifecycle contract for Probe GEPA metric-call assignments
 that can be accepted by a Pylon worker, updated with progress refs, submitted
 with artifact/proof refs, closed by an operator or evaluator, and imported by
 the Psionic GEPA coordinator.
@@ -18,7 +18,7 @@ The first unpaid demo-worker lease proof lives in
 
 ## Scope
 
-This is the Omega/Pylon lease lifecycle shape for benchmark rollouts. It does
+This is the OpenAgents product surface/Pylon lease lifecycle shape for benchmark rollouts. It does
 not replace Benchmark Cloud manifests, Probe closeouts, or Psionic candidate
 frontier state. It records the assignment work slice and keeps the state machine
 compatible with the existing Pylon marketplace direction:
@@ -65,7 +65,7 @@ settlement receipt refs. Rejected work closes as `rejected_no_pay`.
 ## GEPA Coordinator Import
 
 `pylonGepaMetricCallCoordinatorImport` emits
-`omega.pylon_gepa_metric_call_coordinator_import.v1` with campaign, split, task,
+`openagents.pylon_gepa_metric_call_coordinator_import.v1` with campaign, split, task,
 candidate hash, worker ref, assignment state, closeout decision, artifact refs,
 proof refs, verifier result refs, resource refs, no-spend evidence refs,
 payment receipt refs, settlement receipt refs, and derived accepted-work,

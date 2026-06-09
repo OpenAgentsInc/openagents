@@ -1,6 +1,6 @@
 # Accepted Forum Contribution Proof Bridge
 
-Issue #360 / `OMEGA-L-012` adds the bridge between Forum reward receipts and
+Issue #360 / `OPENAGENTS-L-012` adds the bridge between Forum reward receipts and
 accepted-work payout/proof projections.
 
 The implementation lives in

@@ -5,7 +5,7 @@ Issue: `#447`
 
 ## Summary
 
-Omega now has a single typed decision contract for route and action payment
+OpenAgents product surface now has a single typed decision contract for route and action payment
 state across:
 
 - free-beta allowance;
@@ -22,7 +22,7 @@ focused coverage in `workers/api/src/unified-payment-decision.test.ts`.
 
 ## Contract Boundary
 
-The unified policy composes existing Omega payment surfaces:
+The unified policy composes existing OpenAgents product surface payment surfaces:
 
 - `payment-limit-policy`;
 - `buyer-payment-ledger`;

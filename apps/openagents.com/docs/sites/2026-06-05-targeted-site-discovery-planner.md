@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #182 / OMEGA-SITES-OUTREACH-002
+Issue: #182 / OPENAGENTS-SITES-OUTREACH-002
 
 ## Summary
 
-Omega now has an Exa-backed discovery planner for targeted Site remake and
+OpenAgents product surface now has an Exa-backed discovery planner for targeted Site remake and
 outreach campaigns.
 
 The planner is a typed adapter boundary. It builds bounded Exa company-search

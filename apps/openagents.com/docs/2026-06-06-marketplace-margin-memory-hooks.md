@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #328 / `OMEGA-081`.
+Status: implemented contract note for issue #328 / `OPENAGENTS-081`.
 
 ## Purpose
 
-Marketplace margin memory records let Omega remember which Program Signatures,
+Marketplace margin memory records let OpenAgents product surface remember which Program Signatures,
 modules, tools, sources, packages, providers, reviewers, routes, and work
 classes helped produce accepted work.
 

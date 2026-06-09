@@ -2,7 +2,7 @@
 
 Issue: `ARTANIS-015` / GitHub #400
 
-Omega now has a schema-first contract for Artanis-administered Pylon
+OpenAgents product surface now has a schema-first contract for Artanis-administered Pylon
 marketplace work in `workers/api/src/pylon-marketplace-jobs.ts`.
 
 Issue `ARTANIS-024` / GitHub #410 added the first operator API and D1-backed

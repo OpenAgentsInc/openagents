@@ -40,7 +40,7 @@ The near-term product should be simple on purpose:
    storage bindings, access mode, and logs.
 
 The longer-term product should reach documented OpenAI Sites parity while using
-Omega's own primitives: OpenAuth, GitHub auth, D1, R2, Workers, Workers for
+OpenAgents product surface's own primitives: OpenAuth, GitHub auth, D1, R2, Workers, Workers for
 Platforms, Queues, Workflows, existing Autopilot runner dispatch, Stripe
 credits, email ledger, and OpenAgents Sync.
 
@@ -59,7 +59,7 @@ Local docs and task packets:
 - `docs/2026-06-02-cloudflare-only-openagents-sync-audit.md`
 - `docs/2026-06-04-stripe-effect-service-audit.md`
 - `docs/autopilot-tasks/done/2026-06-04-stripe-effect-service-implementation.md`
-- `docs/2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `docs/2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 - `AGENTS.md`
 - `INVARIANTS.md`
 
@@ -99,9 +99,9 @@ active `software_orders` and no new software orders:
 | Repository | Request | Created | Status |
 | --- | --- | --- | --- |
 | `bensilone/openagents` | Website for ocean based, OTEC powered, SWAC cooled, gigawatt scale, floating datacenter. | 2026-06-04T20:39:14.534Z | submitted |
-| `OpenAgentsInc/autopilot-omega` | Testing | 2026-06-04T20:28:59.755Z | submitted |
+| `OpenAgentsInc/openagents` | Testing | 2026-06-04T20:28:59.755Z | submitted |
 
-Omega already has a narrow customer software-order substrate:
+OpenAgents product surface already has a narrow customer software-order substrate:
 
 - D1 table `software_orders`.
 - Customer active-order API at `/api/customer-orders/active`.
@@ -167,7 +167,7 @@ with undocumented internals or unpublished limits.
 | Metadata file | `.openai/hosting.json` links source to a hosted project and binding names. | `.openagents/site.json` links repo source to `siteId`, `projectId`, D1 binding, R2 binding, access mode, target runtime, and last saved version. |
 | D1 | Sites uses D1 for durable structured data. | Per-site D1 is represented by dedicated D1 databases when needed, or by D1 table namespaces for MVP when a dedicated database is not provisioned yet. |
 | R2 | Sites uses R2 for files and uploads. | Per-site R2 prefixes or buckets store uploads, generated assets, source archives, build bundles, screenshots, and file metadata. |
-| Workspace identity | Sites can use workspace-authenticated user identity. | Access-controlled sites use OpenAuth/Omega session identity and optional customer/team membership. |
+| Workspace identity | Sites can use workspace-authenticated user identity. | Access-controlled sites use OpenAuth/OpenAgents product surface session identity and optional customer/team membership. |
 | Public/external auth | Sites can support public sign-in or external identity provider projects. | Later phase supports public visitor auth through OpenAuth or site-owned auth adapters; MVP supports public anonymous and OpenAgents-authenticated modes. |
 | Access modes | `admins_only`, `workspace_all`, `custom`. | `owner_admins`, `openagents_core`, `customer_owner`, `custom_users`, `public` where `public` is explicit and review-gated. Mapping preserves OpenAI modes while adding public launch semantics. |
 | Secrets/env | Hosted env vars and secrets are managed outside source and require redeploy. | `site_env_vars` stores non-secret metadata; secrets live in Cloudflare secrets/Secrets Store or encrypted operator-owned config, never in source or docs. |
@@ -176,7 +176,7 @@ with undocumented internals or unpublished limits.
 
 ## `.openagents/site.json`
 
-Omega uses `.openagents/site.json` as the local source metadata contract for
+OpenAgents product surface uses `.openagents/site.json` as the local source metadata contract for
 Autopilot Sites. It is intentionally linkage metadata only. Runtime
 environment values and secrets remain hosted/operator-managed and must not be
 stored in this file.
@@ -194,11 +194,11 @@ Current schema version with the planned optional payment extension:
   "source": {
     "provider": "github",
     "owner": "OpenAgentsInc",
-    "name": "autopilot-omega",
+    "name": "openagents",
     "ref": "main"
   },
   "target": {
-    "runtimeKind": "omega_static_r2",
+    "runtimeKind": "openagents_static_r2",
     "slug": "example-site",
     "url": null
   },
@@ -252,15 +252,15 @@ The optional `payments` block is the planned MDK checkout primitive for Sites.
 It lets generated Sites declare human-facing checkout products and agent-facing
 paid actions without embedding MDK merchant secrets in generated source. In v0,
 `merchantMode: "openagents_hosted"` means static Sites and WFP Site Workers call
-Omega's hosted payment service to create checkout intents or L402 challenges.
+OpenAgents product surface's hosted payment service to create checkout intents or L402 challenges.
 Later `customer_mdk_account` mode can bind customer-owned MDK credentials
 through reviewed hosted secrets, but the source metadata file must still never
 contain `MDK_ACCESS_TOKEN`, `MDK_MNEMONIC`, webhook secrets, raw invoices,
 preimages, wallet mnemonics, or payout credentials.
 
-The MDK Next.js checkout package is source reference, not an Omega dependency.
+The MDK Next.js checkout package is source reference, not an OpenAgents product surface dependency.
 The synced `mdk-checkout` source shows the Next.js server route and hook are
-thin re-exports into `@moneydevkit/core`. Omega should recreate the core
+thin re-exports into `@moneydevkit/core`. OpenAgents product surface should recreate the core
 checkout actions, API-contract shapes, metadata validation, signed checkout
 URL handling, and L402 token flow in Effect TypeScript Worker services, then
 expose those through hosted Site payment APIs and WFP service bindings.
@@ -364,7 +364,7 @@ no-mutation, owner-claim/scoped-auth, and future credits/L402 caveats.
 
 Implementation note, June 5, 2026:
 
-- Omega now has a deterministic existing-project compatibility checker for
+- OpenAgents product surface now has a deterministic existing-project compatibility checker for
   operator-provided project file snapshots.
 - `POST /api/operator/sites/:siteId/compatibility/check` records a durable
   `site_compatibility_checks` receipt and `site_compatibility.checked` event.
@@ -373,7 +373,7 @@ Implementation note, June 5, 2026:
   static versus Worker/SSR output, Worker blockers, D1/R2/auth needs,
   environment key names only, findings, blockers, warnings, evidence refs, and
   customer-safe status/next action.
-- Omega now also has deterministic build-validation receipts for operator
+- OpenAgents product surface now also has deterministic build-validation receipts for operator
   provided build candidates.
 - `POST /api/operator/sites/:siteId/build-validations` records a durable
   `site_build_validations` receipt and `site_build_validation.checked` event.
@@ -390,9 +390,9 @@ Implementation note, June 5, 2026:
 
 ## Cloudflare Primitive Mapping
 
-Use Cloudflare as the data plane and Omega as the control plane.
+Use Cloudflare as the data plane and OpenAgents product surface as the control plane.
 
-| Need | Cloudflare primitive | Omega owner |
+| Need | Cloudflare primitive | OpenAgents product surface owner |
 | --- | --- | --- |
 | Main product API and dashboard | Worker | `workers/api` |
 | Customer session and admin auth | OpenAuth on Workers, KV storage | Existing auth boundary |
@@ -416,7 +416,7 @@ For the June 5, 2026 launch path, the fastest honest implementation is:
 
 ```text
 sites.openagents.com/*
-  -> Omega Worker route
+  -> OpenAgents product surface Worker route
   -> D1 lookup by slug
   -> active deployment record
   -> R2 static bundle or generated Worker dispatch target
@@ -831,7 +831,7 @@ Execution for MVP static route:
 3. Promote R2 artifact manifest to active deployment.
 4. Update `site_projects.active_version_id` and
    `site_projects.active_deployment_id`.
-5. Serve through the Omega Worker route under `sites.openagents.com/<slug>`.
+5. Serve through the OpenAgents product surface Worker route under `sites.openagents.com/<slug>`.
 6. Mark deployment active and record URL.
 7. Notify customer/order and operator sync scopes.
 
@@ -1040,7 +1040,7 @@ Implementation note, June 4, 2026:
 - Issue #60 added the `sites.openagents.com` Worker route and a typed static
   runtime backed by `site_projects`, active `site_deployments`, saved
   `site_versions`, and R2 artifact keys from `static_assets_manifest_json`.
-- The MVP serves only public `omega_static_r2` deployments. Missing,
+- The MVP serves only public `openagents_static_r2` deployments. Missing,
   non-public, disabled, stale, or invalid deployments return a safe 404.
 - Query-bearing Site URLs redirect to the same clean path without search
   parameters before runtime lookup.
@@ -1068,7 +1068,7 @@ Implementation note, June 4, 2026:
 - Saved versions persist source archive refs, redacted build log refs, and
   static artifact manifest refs in R2 while storing the durable D1 version row.
 - Deploying requires `build_status = 'saved'`, creates an active
-  `omega_static_r2` deployment, updates the Site active pointers, rolls back
+  `openagents_static_r2` deployment, updates the Site active pointers, rolls back
   previous active deployments, and records rollback metadata in the event
   receipt.
 
@@ -1148,7 +1148,7 @@ Implementation note, June 4, 2026:
   namespace binding and Wrangler configuration for
   `openagents-sites-production`.
 - The Site runtime now resolves active public deployments as either
-  `omega_static_r2` static assets or `workers_for_platforms` user Worker
+  `openagents_static_r2` static assets or `workers_for_platforms` user Worker
   targets. Dynamic targets dispatch through the namespace binding after the
   same public, active, and saved-version checks.
 - Deploy-version now records dynamic runtime metadata: runtime kind, script

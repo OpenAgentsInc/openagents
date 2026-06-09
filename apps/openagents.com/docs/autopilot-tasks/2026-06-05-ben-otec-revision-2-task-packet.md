@@ -49,7 +49,7 @@ Do not edit the existing live Site artifact in place.
 3. Link the new version to the adjustment request and feedback record above.
 4. Leave the current public URL stable; the revision workflow may later make
    the latest approved version active.
-5. Emit an `openagents.adjutant.site_artifact_receipt.v1` payload so Omega can
+5. Emit an `openagents.adjutant.site_artifact_receipt.v1` payload so OpenAgents product surface can
    ingest the new `site_versions` row.
 6. Mark the adjustment ready for review, not customer-accepted.
 7. Trigger the review-ready notification path through the approved

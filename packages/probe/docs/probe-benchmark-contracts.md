@@ -66,7 +66,7 @@ fields before public-safe artifact emission, but decoders reject unsafe input.
 
 Promotion decisions are evidence-only. They can record that retained,
 validation, holdout, or live evidence exists, but they cannot promote runtime
-behavior or upgrade a public benchmark claim. External Omega/OpenAgents release
+behavior or upgrade a public benchmark claim. External OpenAgents product surface/OpenAgents release
 gates remain the authority for publication and promotion.
 
 ## GEPA Live Runner Gate
@@ -74,7 +74,7 @@ gates remain the authority for publication and promotion.
 `packages/runtime/src/benchmark/closeout-writer.ts` also exposes
 `projectProbeGepaLiveRunnerGate`. The projection consumes a normalized closeout
 bundle plus runner execution refs and candidate-manifest authority refs, then
-emits `probe.gepa_live_runner_gate.v1` for Omega import.
+emits `probe.gepa_live_runner_gate.v1` for OpenAgents product surface import.
 
 The gate requires public-safe refs for:
 

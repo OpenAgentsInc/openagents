@@ -29,8 +29,8 @@ made safer incrementally, but the current Google Cloud piece is the biggest
 source of operational drag in this particular run.
 
 The strongest case for rebuilding part of Nexus on the same Effect and
-Cloudflare stack as Omega is not "Cloudflare is simpler in every way." The
-case is that Omega already has a typed, D1-backed, Worker-deployed,
+Cloudflare stack as OpenAgents product surface is not "Cloudflare is simpler in every way." The
+case is that OpenAgents product surface already has a typed, D1-backed, Worker-deployed,
 agent-visible control plane. Moving the control-plane and proof-plane pieces
 of Nexus toward that stack would reduce the number of privileged shells, local
 cloud credentials, VM-only state files, and bespoke smoke paths an agent must
@@ -44,32 +44,32 @@ GPU/inference/training workloads, and host resource control still need a
 native runtime, a container runtime, or external machines. The likely good
 architecture is therefore hybrid:
 
-- Omega/Cloudflare owns Nexus control, receipts, scheduling, agent-facing
+- OpenAgents product surface/Cloudflare owns Nexus control, receipts, scheduling, agent-facing
   APIs, public proofs, payout intents, and operator UX.
 - Native Pylons and any LDK/MDK host processes execute workloads and wallet
   operations at the edge of the network.
 - A smaller amount of Google Cloud or other infrastructure may remain for
   transitional relay services, but it should not be the primary admin surface.
 
-After inspecting the current Omega implementation, the rebuild case is more
-specific than "Cloudflare has useful primitives." Omega already contains
+After inspecting the current OpenAgents product surface implementation, the rebuild case is more
+specific than "Cloudflare has useful primitives." OpenAgents product surface already contains
 D1-backed ledgers and Effect Schema contracts for buyer payments, Site payment
 catalogs, hosted MDK checkout, L402 credentials, Site MDK reconciliation,
 Artanis persistence, Nexus/Pylon adapter dispatches, and Pylon marketplace job
 intake. The gap is not the absence of a payment/control plane. The gap is that
-those Omega surfaces intentionally stop at evidence, projection, and proposal.
+those OpenAgents product surface surfaces intentionally stop at evidence, projection, and proposal.
 They do not yet hold live wallet spend authority, provider payout authority, or
 accepted-work settlement authority.
 
-That means Nexus functionality can plausibly move into Omega earlier than a
+That means Nexus functionality can plausibly move into OpenAgents product surface earlier than a
 blank-slate design would suggest. The right move is to add a narrow
-MDK-backed payment authority service and payout-intent ledger to Omega, then
+MDK-backed payment authority service and payout-intent ledger to OpenAgents product surface, then
 route Nexus/Treasury/Pylon settlement through it. The wrong move would be to
 reuse the buyer-side payment ledger as if it were already provider payout
 truth. The existing code explicitly says it is not.
 
 Later 2026-06-07 update: the MDK checkout sidecar path no longer needs the
-old Google Cloud plan. Omega deployed a Cloudflare Container sidecar for
+old Google Cloud plan. OpenAgents product surface deployed a Cloudflare Container sidecar for
 `@moneydevkit/core`, bound it to the Worker through `MDK_SIDECAR`, provisioned
 a corrected MDK app binding for `https://openagents.com`, and proved a live
 100-bitcoin-sat checkout all the way to provider status `PAYMENT_RECEIVED`.
@@ -79,7 +79,7 @@ The current conclusion is sharper:
 - Workers plus Cloudflare Containers are enough for the checkout sidecar;
 - GCP should not be reintroduced for this checkout lane; and
 - any remaining GCP work should be treated as old Nexus/native-runtime
-  transition context, not the default Omega payment architecture.
+  transition context, not the default OpenAgents product surface payment architecture.
 
 ## Scope of this audit
 
@@ -96,14 +96,14 @@ release work. The immediate production situation was:
   new payout-ledger cleanup command was run.
 - A separate local MDK test wallet had received real bitcoin and was ready for
   a movement proof.
-- The ChatGPT/Codex account fleet in Omega had been expanded and proved with
+- The ChatGPT/Codex account fleet in OpenAgents product surface had been expanded and proved with
   seven connected, healthy accounts and a parallel sanity probe.
 
 The audit focuses on the Google Cloud/Nexus operational lane and whether an
 Effect/Cloudflare rebuild could reduce friction. It does not claim to finish
 the Nexus cleanup or Pylon release by itself.
 
-Additional Omega source inspected for this update:
+Additional OpenAgents product surface source inspected for this update:
 
 - `workers/api/migrations/0114_buyer_payment_ledger.sql`
 - `workers/api/migrations/0115_site_payment_catalog.sql`
@@ -121,7 +121,7 @@ Additional Omega source inspected for this update:
 - `workers/api/src/pylon-marketplace-jobs.ts`
 - `workers/api/src/artanis-nexus-pylon-adapters.ts`
 
-The code-level finding is consistent across those files: Omega has strong
+The code-level finding is consistent across those files: OpenAgents product surface has strong
 typed contracts, redaction, D1 storage, idempotency, public-safe projections,
 and fake/config-gated provider boundaries. It does not yet have production
 MDK webhook verification, accepted-work payout settlement, provider payout
@@ -263,7 +263,7 @@ The current split is awkward:
 - Docker/systemd owns process management.
 - Cloudflare Tunnel owns public reachability.
 - Nexus code owns public health.
-- Omega owns many public product surfaces.
+- OpenAgents product surface owns many public product surfaces.
 
 Required improvement if Google Cloud remains:
 
@@ -287,7 +287,7 @@ The immediate treasury problem was not just a source bug. It had layers:
   operation checks, and VM-local inspection.
 
 The production state is currently too tied to VM-local storage and operator
-commands. That makes it harder to expose cleanly to Omega, Forum, Artanis, or
+commands. That makes it harder to expose cleanly to OpenAgents product surface, Forum, Artanis, or
 agent-facing APIs.
 
 Required improvement if Google Cloud remains:
@@ -345,10 +345,10 @@ mission:
 In short, Artanis needs Nexus to be more like a typed product surface and less
 like a one-off infra shell.
 
-## What Omega already has
+## What OpenAgents product surface already has
 
 This audit originally framed the rebuild mostly in terms of Cloudflare product
-fit. That was too generic. The more important fact is what Omega has already
+fit. That was too generic. The more important fact is what OpenAgents product surface has already
 implemented.
 
 ### Buyer and Site payment foundations
@@ -379,7 +379,7 @@ invoice, and payment-hash refs. The important hard-coded fields are:
 - `providerPayoutAuthority: false`
 - `acceptedWorkSettlementAuthority: false`
 
-So Omega has an MDK checkout contract, but it is not yet an MDK payout
+So OpenAgents product surface has an MDK checkout contract, but it is not yet an MDK payout
 authority.
 
 `workers/api/src/mdk-core-checkout-contract.ts` adds a Worker-compatible
@@ -473,16 +473,16 @@ onchain funds, inbound/outbound liquidity, anchor reserve, channel balance,
 send readiness, and receive readiness. It is read-only and rejects raw wallet
 state, invoices, preimages, payout targets, provider secrets, and raw
 liquidity telemetry. This is directly relevant to MDK edge wallets for Pylons:
-Omega can decide whether a Pylon appears ready to receive or send, but cannot
+OpenAgents product surface can decide whether a Pylon appears ready to receive or send, but cannot
 yet mutate the wallet.
 
-## What Omega does not have yet
+## What OpenAgents product surface does not have yet
 
 After inspecting the implementation, the missing pieces are concrete:
 
 - no production MDK wallet adapter that can create real invoices, send bitcoin,
   list payments, and verify settlement through a funded wallet;
-- no Omega-side treasury payout-intent ledger for accepted work;
+- no OpenAgents product surface-side treasury payout-intent ledger for accepted work;
 - no authority service that can convert accepted work plus buyer payment
   evidence into a bounded payout attempt;
 - no durable record linking MDK payment attempts to Nexus/Treasury/Pylon
@@ -491,8 +491,8 @@ After inspecting the implementation, the missing pieces are concrete:
   fake/config-gated Site reconciliation contract;
 - no Artanis authority upgrade from proposal/fake-dispatch to live dispatch;
 - no API that lets Pylons report MDK wallet readiness or payment receipts as
-  first-party Omega records;
-- no release gate requiring a real buyer-to-Omega and Omega-to-Pylon bitcoin
+  first-party OpenAgents product surface records;
+- no release gate requiring a real buyer-to-OpenAgents product surface and OpenAgents product surface-to-Pylon bitcoin
   movement proof before announcing payment-backed Pylon work.
 
 Cloudflare runtime choices still matter, but they are secondary to this
@@ -500,7 +500,7 @@ authority gap. Workers, D1, Queues, Workflows, R2, and Durable Objects can
 host the ledgers and coordination. They do not automatically create wallet
 authority, payout policy, key custody, or live-money proof.
 
-The remaining non-Omega runtime problems are still real:
+The remaining non-OpenAgents product surface runtime problems are still real:
 
 - running a native LDK or MDK wallet daemon in the exact form it exists today;
 - GPU workloads;
@@ -511,7 +511,7 @@ The remaining non-Omega runtime problems are still real:
 
 That implies a split architecture, not a full rip-and-replace.
 
-## Could Nexus payment authority use MDK from Omega?
+## Could Nexus payment authority use MDK from OpenAgents product surface?
 
 Yes, with a new service boundary. The current code strongly suggests the right
 shape:
@@ -519,14 +519,14 @@ shape:
 - Keep Pylons as MDK edge agent wallets. Pylons should own their local wallet
   process, resource mode, receive readiness, and local payment receipt
   reporting.
-- Add an Omega-side `TreasuryPaymentAuthority` or
+- Add an OpenAgents product surface-side `TreasuryPaymentAuthority` or
   `OpenAgentsMdkPayoutAuthority` Effect service for OpenAgents-controlled
   treasury payouts.
 - Keep wallet secret material out of D1, issue comments, public docs, Forum
   posts, and public projections.
 - Store only payout intents, idempotency keys, safe refs, redacted payment
   refs, reconciliation statuses, spend caps, operator approvals, and public
-  receipt refs in Omega.
+  receipt refs in OpenAgents product surface.
 - Support multiple adapters behind the same interface:
   `simulation`, `mdk_hosted`, `pylon_mdk_edge`, and
   `nexus_ldk_legacy`.
@@ -553,8 +553,8 @@ fits both sides of the system:
   executor for small bounded payouts, assuming key custody, backup, spend caps,
   idempotency, monitoring, and operator override rules are explicitly built.
 
-The caution is that Omega should own policy and receipts, not casually become
-a wallet by accident. If MDK payout functionality is used from Omega, it must
+The caution is that OpenAgents product surface should own policy and receipts, not casually become
+a wallet by accident. If MDK payout functionality is used from OpenAgents product surface, it must
 be behind a deliberate authority boundary with:
 
 - per-surface and per-agent spend caps;
@@ -568,7 +568,7 @@ be behind a deliberate authority boundary with:
 - testnet/signet/sandbox and simulation modes;
 - a production wallet backup and rotation policy.
 
-This would let Nexus functionality move toward Omega without pretending that
+This would let Nexus functionality move toward OpenAgents product surface without pretending that
 the existing buyer payment ledger is enough. Buyer ledger evidence would
 become one input to payout policy. Accepted work, Pylon assignment receipts,
 Treasury receipt refs, wallet readiness, and spend authority would remain
@@ -576,9 +576,9 @@ separate inputs.
 
 ## Candidate Cloudflare/Effect architecture
 
-### Control plane in Omega
+### Control plane in OpenAgents product surface
 
-Omega should own the public and operator control plane:
+OpenAgents product surface should own the public and operator control plane:
 
 - Pylon registration;
 - Pylon capability declarations;
@@ -611,7 +611,7 @@ Implementation shape:
 - Queues/Workflows for retryable background work, cleanup, notifications, and
   human-in-the-loop wait states.
 
-### Native Pylon runtime outside Omega
+### Native Pylon runtime outside OpenAgents product surface
 
 Pylons should remain native where they need native capabilities:
 
@@ -623,13 +623,13 @@ Pylons should remain native where they need native capabilities:
 - local filesystem and process supervision;
 - host-level networking.
 
-But they should talk to Omega through typed, scoped APIs instead of relying on
+But they should talk to OpenAgents product surface through typed, scoped APIs instead of relying on
 Google VM SSH as the coordination path.
 
 Implementation shape:
 
 - Pylon agent runs locally or on a host.
-- It registers with Omega and receives scoped work assignments.
+- It registers with OpenAgents product surface and receives scoped work assignments.
 - It emits heartbeats, capability snapshots, work receipts, and wallet
   readiness proofs.
 - It emits redacted MDK payment receipt refs after receiving payouts or making
@@ -645,10 +645,10 @@ shrink:
 - keep current production bridge alive;
 - continue serving existing public health endpoints;
 - continue any LDK-specific runtime that cannot immediately move;
-- publish legacy payout and Treasury state as redacted Omega receipt refs;
-- expose typed state to Omega rather than requiring SSH.
+- publish legacy payout and Treasury state as redacted OpenAgents product surface receipt refs;
+- expose typed state to OpenAgents product surface rather than requiring SSH.
 
-The long-term goal should be that Artanis can administer Nexus through Omega
+The long-term goal should be that Artanis can administer Nexus through OpenAgents product surface
 APIs and Pylon APIs, not through a Google VM shell.
 
 ## Migration options
@@ -665,7 +665,7 @@ Work required:
 - remote command receipts;
 - public watchdog receipts;
 - treasury cleanup dry-run/apply receipts;
-- operator dashboard in Omega that reads Nexus status;
+- operator dashboard in OpenAgents product surface that reads Nexus status;
 - GitHub issue comment generator.
 
 Pros:
@@ -679,20 +679,20 @@ Cons:
 - still depends on Google VM, IAP, Docker, systemd, and tunnel;
 - still leaves Artanis with a complicated infra shell unless heavily wrapped;
 - still has slow build/deploy cycles for small control-plane fixes;
-- still separates Nexus operational truth from Omega product truth.
+- still separates Nexus operational truth from OpenAgents product surface product truth.
 
 Assessment:
 
 This is necessary short term, but insufficient as the long-term OpenAgents
 agent-admin architecture.
 
-### Option B: Move Nexus control/proof plane to Omega, keep native runtime
+### Option B: Move Nexus control/proof plane to OpenAgents product surface, keep native runtime
 
 This is the recommended direction.
 
 Work required:
 
-- extend the existing Omega Pylon ledgers instead of starting from scratch:
+- extend the existing OpenAgents product surface Pylon ledgers instead of starting from scratch:
   `pylon_marketplace_job_intakes`, `pylon_marketplace_assignments`,
   `artanis_nexus_pylon_adapter_dispatches`, and Artanis persistence already
   exist;
@@ -706,7 +706,7 @@ Work required:
 - add agent/operator APIs for Artanis;
 - add Durable Objects for per-assignment coordination and live progress;
 - add Queues/Workflows for retryable reconciliation and cleanup;
-- make existing Nexus relay publish/import state to Omega;
+- make existing Nexus relay publish/import state to OpenAgents product surface;
 - preserve native Pylon execution and wallet operations where needed.
 
 Pros:
@@ -723,7 +723,7 @@ Cons:
 - requires careful data migration and dual-write/dual-read period;
 - does not eliminate native runtime needs;
 - requires new security policy for agent/operator authority;
-- may reveal gaps in current Omega D1 schema and redaction policy.
+- may reveal gaps in current OpenAgents product surface D1 schema and redaction policy.
 
 Assessment:
 
@@ -755,7 +755,7 @@ Do not choose this as the immediate plan. It is only plausible after the
 native runtime boundary is sharply defined and Cloudflare Containers or other
 runtime options are evaluated against the concrete Pylon/LDK/MDK needs.
 
-## Revised Omega rebuild roadmap
+## Revised OpenAgents product surface rebuild roadmap
 
 This section supersedes the earlier Google Cloud cleanup-first plan. The old
 Google Cloud Nexus lane is now legacy production context, not the Pylon v0.2
@@ -763,45 +763,45 @@ release lane. Do not create a standalone public Nexus v0.2 release from the
 Google Cloud service. Do not spend the next implementation cycle hardening
 Google Cloud deploy mechanics unless a narrow migration export requires it.
 
-The target is now an Omega-owned Nexus control plane:
+The target is now an OpenAgents product surface-owned Nexus control plane:
 
-- Omega owns assignment state, payment authority policy, payout intents,
+- OpenAgents product surface owns assignment state, payment authority policy, payout intents,
   receipts, release gates, Artanis coordination, public-safe proof, and
   operator visibility.
 - Pylons remain native edge workers that run workloads and operate MDK edge
   agent wallets.
 - MDK is wrapped deliberately. Pylon-local MDK wallets handle edge wallet
-  behavior, while Omega/Nexus gets an MDK-backed treasury payout authority
+  behavior, while OpenAgents product surface/Nexus gets an MDK-backed treasury payout authority
   with strict approval, spend cap, idempotency, and receipt boundaries.
-- Pylon v0.2 remains blocked until the Omega/Nexus control plane can prove the
+- Pylon v0.2 remains blocked until the OpenAgents product surface/Nexus control plane can prove the
   full Artanis/Pylon/payment flow in production with real bitcoin and
-  public-safe Omega receipts.
+  public-safe OpenAgents product surface receipts.
 
 ### Phase 0: Stop the legacy release lane
 
 Required work:
 
-- mark the Google Cloud Nexus release path as legacy in Omega docs and
+- mark the Google Cloud Nexus release path as legacy in OpenAgents product surface docs and
   runbooks;
 - keep any old Google Cloud state as migration evidence only;
 - stop using stale VM relay health, in-memory treasury status, or old Nexus
   release issues as the primary Pylon v0.2 gate;
-- keep the funded local MDK test wallet as test input for the new Omega
+- keep the funded local MDK test wallet as test input for the new OpenAgents product surface
   authority proof, not as evidence that the old Nexus release path is ready;
 - make the current release blocker explicit: Pylon v0.2 cannot ship until the
-  Omega/Nexus flow is tested end to end.
+  OpenAgents product surface/Nexus flow is tested end to end.
 
 Acceptance:
 
 - no roadmap item says to finish a standalone Google Cloud Nexus public
   release first;
 - the old Google Cloud work is described only as context or transition input;
-- all new issue bodies point to Omega implementation files, not VM operator
+- all new issue bodies point to OpenAgents product surface implementation files, not VM operator
   shell work.
 
-### Phase 1: Add the Omega treasury payout authority ledger
+### Phase 1: Add the OpenAgents product surface treasury payout authority ledger
 
-Omega already has D1 payment foundations:
+OpenAgents product surface already has D1 payment foundations:
 
 - `workers/api/migrations/0114_buyer_payment_ledger.sql`;
 - `workers/api/migrations/0115_site_payment_catalog.sql`;
@@ -921,7 +921,7 @@ Still missing:
   Artanis can now run a simulation-backed dispatch through
   `TreasuryPaymentAuthority`, record payment authority state, and project
   public-safe gate status without exposing private payment or wallet material.
-- #429 added the first Nexus/Pylon visibility layer in Omega:
+- #429 added the first Nexus/Pylon visibility layer in OpenAgents product surface:
   `GET /api/public/nexus-pylon/receipts/{receiptRef}`,
   `/nexus-pylon/receipts/{receiptRef}`,
   `GET /api/operator/nexus-pylon/dashboard`, and
@@ -943,7 +943,7 @@ dispatch path, but not live MDK spend authority:
 
 Artanis can now:
 
-- run a complete simulated Pylon assignment through Omega after accepted-work,
+- run a complete simulated Pylon assignment through OpenAgents product surface after accepted-work,
   payout-target approval, wallet-readiness, spend-cap, adapter, and
   idempotency gates pass;
 - record payment authority states for proposed, previewed,
@@ -987,22 +987,22 @@ Acceptance:
 ### Phase 5: Prove the MDK flow with simulation, then real bitcoin
 
 The local MDK test wallet already received real bitcoin and can be used as the
-source for a later Omega-controlled proof. That proof should not be considered
-complete until Omega records the full receipt chain.
+source for a later OpenAgents product surface-controlled proof. That proof should not be considered
+complete until OpenAgents product surface records the full receipt chain.
 
 Required sequence:
 
 1. Simulation adapter passes all policy and receipt tests.
 2. A second isolated MDK wallet is created as the Pylon edge wallet.
-3. Omega creates a payout intent for a tiny approved test assignment.
+3. OpenAgents product surface creates a payout intent for a tiny approved test assignment.
 4. The MDK adapter dispatches a small bitcoin payment.
-5. Omega records dispatch, confirmation, verification, and settlement events.
+5. OpenAgents product surface records dispatch, confirmation, verification, and settlement events.
 6. A public-safe receipt page proves the flow without exposing private
    payment material.
 
 Acceptance:
 
-- a real MDK wallet can pay another MDK wallet through the Omega authority
+- a real MDK wallet can pay another MDK wallet through the OpenAgents product surface authority
   path;
 - the receipt chain links buyer evidence, accepted work, payout intent,
   dispatch, confirmation, verification, and settlement;
@@ -1017,7 +1017,7 @@ Required surfaces:
 - public-safe activity feed for Nexus/Pylon work;
 - receipt detail pages;
 - Forum bridge for Artanis assignment, incident, release, and payout updates;
-- AGENTS.md and API docs explaining what agents can do through Omega.
+- AGENTS.md and API docs explaining what agents can do through OpenAgents product surface.
 
 Acceptance:
 
@@ -1026,11 +1026,11 @@ Acceptance:
 - an agent can discover live Forum, Pylon, and Sites capabilities without
   being told to use private operator credentials.
 
-### Phase 7: Release Pylon v0.2 only after Omega gates pass
+### Phase 7: Release Pylon v0.2 only after OpenAgents product surface gates pass
 
 The Pylon v0.2 release gate should require:
 
-- Omega treasury payout ledger migration deployed;
+- OpenAgents product surface treasury payout ledger migration deployed;
 - payment authority service deployed;
 - simulation adapter green;
 - MDK adapter green against an isolated funded test wallet;
@@ -1048,18 +1048,18 @@ Only after those gates pass should OpenAgents cut or announce Pylon v0.2.
 ## Exact GitHub issues to create
 
 The following issue titles and bodies are the exact text to create in
-`OpenAgentsInc/autopilot-omega` via GitHub CLI. The bodies are intentionally
+`OpenAgentsInc/openagents` via GitHub CLI. The bodies are intentionally
 long so the issue itself has enough context for an agent to implement without
 re-reading this full audit.
 
-### 1. `[OMEGA-NEXUS] Freeze legacy GCP Nexus lane and mark Omega as the Pylon v0.2 release path`
+### 1. `[OPENAGENTS-NEXUS] Freeze legacy GCP Nexus lane and mark OpenAgents product surface as the Pylon v0.2 release path`
 
 ```markdown
 ## Context
 
-The old Google Cloud Nexus lane is no longer the release path for Nexus v0.2 or Pylon v0.2. It remains useful as legacy production context and migration evidence, but the current product direction is to rebuild Nexus control, proof, Artanis coordination, and payment authority inside Omega.
+The old Google Cloud Nexus lane is no longer the release path for Nexus v0.2 or Pylon v0.2. It remains useful as legacy production context and migration evidence, but the current product direction is to rebuild Nexus control, proof, Artanis coordination, and payment authority inside OpenAgents product surface.
 
-This issue exists to prevent future agents from continuing the stale plan of hardening the Google Cloud VM/deploy loop before Pylon v0.2. The new gate is Omega-owned Nexus state and MDK-backed payment authority.
+This issue exists to prevent future agents from continuing the stale plan of hardening the Google Cloud VM/deploy loop before Pylon v0.2. The new gate is OpenAgents product surface-owned Nexus state and MDK-backed payment authority.
 
 ## Current code and docs to inspect
 
@@ -1073,17 +1073,17 @@ This issue exists to prevent future agents from continuing the stale plan of har
 
 ## Required work
 
-- Update relevant Omega docs so they clearly say the Google Cloud Nexus lane is legacy context, not the active Pylon v0.2 release path.
-- Remove or demote any roadmap language that says to finish a standalone Google Cloud Nexus public release before rebuilding in Omega.
+- Update relevant OpenAgents product surface docs so they clearly say the Google Cloud Nexus lane is legacy context, not the active Pylon v0.2 release path.
+- Remove or demote any roadmap language that says to finish a standalone Google Cloud Nexus public release before rebuilding in OpenAgents product surface.
 - Add a short transition note explaining that old Google Cloud receipts, cleanup outputs, or VM state may be imported later, but should not be treated as the live control plane.
-- Make the current Pylon v0.2 gate explicit: Omega/Nexus must own assignment state, payment authority policy, public-safe receipts, Artanis coordination, and release evidence.
-- Ensure the roadmap names MDK wrapping as the current decision: Pylons use MDK edge agent wallets, and Omega/Nexus adds an MDK-backed treasury payout authority.
+- Make the current Pylon v0.2 gate explicit: OpenAgents product surface/Nexus must own assignment state, payment authority policy, public-safe receipts, Artanis coordination, and release evidence.
+- Ensure the roadmap names MDK wrapping as the current decision: Pylons use MDK edge agent wallets, and OpenAgents product surface/Nexus adds an MDK-backed treasury payout authority.
 
 ## Acceptance criteria
 
-- No active Omega roadmap section still says to ship a standalone Google Cloud Nexus v0.2 release first.
+- No active OpenAgents product surface roadmap section still says to ship a standalone Google Cloud Nexus v0.2 release first.
 - The Nexus audit says the Google Cloud lane is legacy or transition input only.
-- The Pylon v0.2 release gate is documented as an Omega/Nexus gate.
+- The Pylon v0.2 release gate is documented as an OpenAgents product surface/Nexus gate.
 - MDK is described as something OpenAgents wraps deliberately, not merely as an external liquidity pattern.
 - Docs avoid exposing secrets, raw payment material, VM-only operational tokens, or private payout targets.
 
@@ -1094,14 +1094,14 @@ This issue exists to prevent future agents from continuing the stale plan of har
 - Do not create a Pylon v0.2 public release in this issue.
 ```
 
-### 2. `[OMEGA-NEXUS] Add treasury payout authority D1 ledger`
+### 2. `[OPENAGENTS-NEXUS] Add treasury payout authority D1 ledger`
 
 ```markdown
 ## Context
 
-Omega already has buyer payment, Site payment, agent search payment, Artanis, and Pylon marketplace foundations. Nexus payout authority needs a first-party D1 ledger that links buyer payment evidence, accepted work, Pylon assignment refs, payout targets, spend caps, adapter attempts, reconciliation events, and public-safe receipt projection.
+OpenAgents product surface already has buyer payment, Site payment, agent search payment, Artanis, and Pylon marketplace foundations. Nexus payout authority needs a first-party D1 ledger that links buyer payment evidence, accepted work, Pylon assignment refs, payout targets, spend caps, adapter attempts, reconciliation events, and public-safe receipt projection.
 
-This ledger is the core reason to rebuild Nexus inside Omega. No MDK adapter should be allowed to move bitcoin unless a durable payout intent exists first.
+This ledger is the core reason to rebuild Nexus inside OpenAgents product surface. No MDK adapter should be allowed to move bitcoin unless a durable payout intent exists first.
 
 ## Current code to inspect
 
@@ -1117,7 +1117,7 @@ This ledger is the core reason to rebuild Nexus inside Omega. No MDK adapter sho
 
 ## Required work
 
-- Add D1 migrations for Nexus/Omega payout authority tables.
+- Add D1 migrations for Nexus/OpenAgents product surface payout authority tables.
 - Include, at minimum, tables or equivalent durable records for:
   - treasury payout intents;
   - payout attempts;
@@ -1149,12 +1149,12 @@ This ledger is the core reason to rebuild Nexus inside Omega. No MDK adapter sho
 - Do not build a browser dashboard in this issue.
 ```
 
-### 3. `[OMEGA-NEXUS] Implement TreasuryPaymentAuthority Effect service contract`
+### 3. `[OPENAGENTS-NEXUS] Implement TreasuryPaymentAuthority Effect service contract`
 
 ```markdown
 ## Context
 
-Omega needs a single Effect service boundary for all Nexus payout authority decisions. Route handlers, Artanis adapters, and Pylon marketplace code must not call MDK directly or perform ad hoc payout policy checks.
+OpenAgents product surface needs a single Effect service boundary for all Nexus payout authority decisions. Route handlers, Artanis adapters, and Pylon marketplace code must not call MDK directly or perform ad hoc payout policy checks.
 
 The service should own payout preview, intent creation, spend checks, adapter dispatch, reconciliation, receipt projection, pause policy, and rejection reasons.
 
@@ -1167,7 +1167,7 @@ The service should own payout preview, intent creation, spend checks, adapter di
 - `workers/api/src/site-mdk-reconciliation.ts`
 - `workers/api/src/pylon-settlement-bridge.ts`
 - `workers/api/src/pylon-wallet-liquidity-readiness.ts`
-- the migration added by `[OMEGA-NEXUS] Add treasury payout authority D1 ledger`
+- the migration added by `[OPENAGENTS-NEXUS] Add treasury payout authority D1 ledger`
 
 ## Required work
 
@@ -1210,14 +1210,14 @@ The service should own payout preview, intent creation, spend checks, adapter di
 - Do not add operator approval UI in this issue unless needed for a minimal test fixture.
 ```
 
-### 4. `[OMEGA-NEXUS] Add simulation payout adapter and conformance tests`
+### 4. `[OPENAGENTS-NEXUS] Add simulation payout adapter and conformance tests`
 
 ```markdown
 ## Context
 
-Before Omega moves real bitcoin through MDK, the payment authority needs a deterministic simulation adapter. The simulation adapter should exercise the same policy, idempotency, receipt, and reconciliation paths that the real MDK adapter will use, without moving money.
+Before OpenAgents product surface moves real bitcoin through MDK, the payment authority needs a deterministic simulation adapter. The simulation adapter should exercise the same policy, idempotency, receipt, and reconciliation paths that the real MDK adapter will use, without moving money.
 
-This is the first green gate for the Omega/Nexus rebuild.
+This is the first green gate for the OpenAgents product surface/Nexus rebuild.
 
 ## Current code to inspect
 
@@ -1247,7 +1247,7 @@ This is the first green gate for the Omega/Nexus rebuild.
 ## Acceptance criteria
 
 - The simulation adapter can complete a full payout lifecycle without external services.
-- The conformance suite runs in normal Omega tests.
+- The conformance suite runs in normal OpenAgents product surface tests.
 - Replaying the same idempotency key returns the existing result rather than creating duplicate attempts.
 - Public-safe receipts distinguish simulation from real bitcoin movement.
 - The adapter cannot bypass spend caps, payout target approval, wallet readiness, or pause policy.
@@ -1259,14 +1259,14 @@ This is the first green gate for the Omega/Nexus rebuild.
 - Do not publish a Pylon v0.2 release in this issue.
 ```
 
-### 5. `[OMEGA-NEXUS] Add MDK agent-wallet payout adapter boundary`
+### 5. `[OPENAGENTS-NEXUS] Add MDK agent-wallet payout adapter boundary`
 
 ```markdown
 ## Context
 
-The new decision is that OpenAgents should wrap MDK. Pylons should use MDK edge agent wallets, and Omega/Nexus should add an MDK-backed treasury payout authority. The MDK adapter must be implemented behind the payment authority service boundary and must never leak wallet secrets or raw payment material into D1, logs, docs, issue comments, or public receipts.
+The new decision is that OpenAgents should wrap MDK. Pylons should use MDK edge agent wallets, and OpenAgents product surface/Nexus should add an MDK-backed treasury payout authority. The MDK adapter must be implemented behind the payment authority service boundary and must never leak wallet secrets or raw payment material into D1, logs, docs, issue comments, or public receipts.
 
-The MDK agent wallet CLI emits JSON and can run a local daemon. Omega should treat this as a controlled adapter boundary, not as route-level shell plumbing.
+The MDK agent wallet CLI emits JSON and can run a local daemon. OpenAgents product surface should treat this as a controlled adapter boundary, not as route-level shell plumbing.
 
 ## Current code and docs to inspect
 
@@ -1309,12 +1309,12 @@ The MDK agent wallet CLI emits JSON and can run a local daemon. Omega should tre
 - Do not make MDK the only possible adapter; simulation must remain available.
 ```
 
-### 6. `[OMEGA-NEXUS] Add payout target approval, spend caps, and emergency pause policy`
+### 6. `[OPENAGENTS-NEXUS] Add payout target approval, spend caps, and emergency pause policy`
 
 ```markdown
 ## Context
 
-Omega/Nexus must not allow Artanis, Pylons, or arbitrary agent tokens to spend bitcoin just because they can create work records. Live payout requires policy: approved payout target, spend caps, idempotency, wallet readiness, adapter status, and emergency pause.
+OpenAgents product surface/Nexus must not allow Artanis, Pylons, or arbitrary agent tokens to spend bitcoin just because they can create work records. Live payout requires policy: approved payout target, spend caps, idempotency, wallet readiness, adapter status, and emergency pause.
 
 This issue adds the policy layer that makes MDK wrapping safe enough to test.
 
@@ -1324,7 +1324,7 @@ This issue adds the policy layer that makes MDK wrapping safe enough to test.
 - `workers/api/src/pylon-settlement-bridge.ts`
 - `workers/api/src/pylon-marketplace-jobs.ts`
 - `workers/api/src/artanis-nexus-pylon-adapters.ts`
-- the payout authority ledger and service from earlier Omega/Nexus issues
+- the payout authority ledger and service from earlier OpenAgents product surface/Nexus issues
 
 ## Required work
 
@@ -1358,16 +1358,16 @@ This issue adds the policy layer that makes MDK wrapping safe enough to test.
 - Do not grant broad spending authority to all agent bearer tokens.
 ```
 
-### 7. `[OMEGA-NEXUS] Add Pylon registration, heartbeat, wallet readiness, and receipt APIs`
+### 7. `[OPENAGENTS-NEXUS] Add Pylon registration, heartbeat, wallet readiness, and receipt APIs`
 
-Status on 2026-06-07: implemented in Omega as the D1-backed Pylon Agent API.
+Status on 2026-06-07: implemented in OpenAgents product surface as the D1-backed Pylon Agent API.
 The operator/agent runbook is
 `docs/nexus/2026-06-07-pylon-agent-api-runbook.md`.
 
 ```markdown
 ## Context
 
-Pylon v0.2 needs Pylons to interact with Omega directly. A Pylon should be able to register, post heartbeats, report MDK wallet readiness, accept assignments, upload artifacts/proofs, upload payment receipts, and expose status to Artanis and operators without SSH.
+Pylon v0.2 needs Pylons to interact with OpenAgents product surface directly. A Pylon should be able to register, post heartbeats, report MDK wallet readiness, accept assignments, upload artifacts/proofs, upload payment receipts, and expose status to Artanis and operators without SSH.
 
 Existing Pylon code exists, but it is not yet a complete live API loop.
 
@@ -1401,7 +1401,7 @@ Existing Pylon code exists, but it is not yet a complete live API loop.
 
 ## Acceptance criteria
 
-- A registered Pylon can report heartbeat and wallet readiness through Omega.
+- A registered Pylon can report heartbeat and wallet readiness through OpenAgents product surface.
 - Artanis/operator reads can see current Pylon readiness without SSH.
 - A Pylon can accept and update an assignment through API.
 - A Pylon can attach artifact/proof/payment receipt metadata without exposing private payment data.
@@ -1411,17 +1411,17 @@ Existing Pylon code exists, but it is not yet a complete live API loop.
 
 ## Out of scope
 
-- Do not implement native Pylon workload execution in Omega.
+- Do not implement native Pylon workload execution in OpenAgents product surface.
 - Do not move GPU/training runtime into Workers.
 - Do not create a Pylon release in this issue.
 ```
 
-### 8. `[OMEGA-NEXUS] Wire Pylon marketplace jobs to payout intents and settlement receipts`
+### 8. `[OPENAGENTS-NEXUS] Wire Pylon marketplace jobs to payout intents and settlement receipts`
 
 ```markdown
 ## Context
 
-Omega already has Pylon marketplace job scaffolding and settlement bridge code. The rebuild needs that work loop connected to payout intents and settlement receipts so accepted work can become payable work through the payment authority service.
+OpenAgents product surface already has Pylon marketplace job scaffolding and settlement bridge code. The rebuild needs that work loop connected to payout intents and settlement receipts so accepted work can become payable work through the payment authority service.
 
 This issue connects job intake, assignment, accepted work, payout intent, payout attempt, and settlement projection.
 
@@ -1432,7 +1432,7 @@ This issue connects job intake, assignment, accepted work, payout intent, payout
 - `workers/api/src/artanis-nexus-pylon-adapters.ts`
 - `workers/api/migrations/0121_pylon_marketplace_jobs.sql`
 - `workers/api/migrations/0120_artanis_nexus_pylon_adapter_dispatches.sql`
-- the payout authority ledger and service from earlier Omega/Nexus issues
+- the payout authority ledger and service from earlier OpenAgents product surface/Nexus issues
 
 ## Required work
 
@@ -1480,14 +1480,14 @@ Implementation status on 2026-06-07:
 - Documented the flow in
   `docs/nexus/2026-06-07-pylon-marketplace-payout-flow-runbook.md`.
 
-### 9. `[OMEGA-NEXUS] Upgrade Artanis Nexus/Pylon adapters with payment-backed dispatch gates`
+### 9. `[OPENAGENTS-NEXUS] Upgrade Artanis Nexus/Pylon adapters with payment-backed dispatch gates`
 
 ```markdown
 ## Context
 
 Artanis should become the automated supervisor for Nexus/Pylon work, but it must be gated. It can propose work, publish updates, select Pylons, request payout previews, and create assignments. It must not spend bitcoin or announce paid dispatches until payment authority, wallet readiness, spend cap, approval, and idempotency checks pass.
 
-Current Artanis code exists but needs to be connected to the new Omega/Nexus authority model.
+Current Artanis code exists but needs to be connected to the new OpenAgents product surface/Nexus authority model.
 
 ## Current code to inspect
 
@@ -1496,7 +1496,7 @@ Current Artanis code exists but needs to be connected to the new Omega/Nexus aut
 - `workers/api/migrations/0120_artanis_nexus_pylon_adapter_dispatches.sql`
 - `workers/api/src/pylon-marketplace-jobs.ts`
 - `workers/api/src/pylon-settlement-bridge.ts`
-- the payment authority service and ledger from earlier Omega/Nexus issues
+- the payment authority service and ledger from earlier OpenAgents product surface/Nexus issues
 
 ## Required work
 
@@ -1515,7 +1515,7 @@ Current Artanis code exists but needs to be connected to the new Omega/Nexus aut
 
 ## Acceptance criteria
 
-- Artanis can run a complete simulated Pylon assignment through Omega.
+- Artanis can run a complete simulated Pylon assignment through OpenAgents product surface.
 - Artanis cannot create a live MDK payout attempt unless the payment authority gates pass.
 - Artanis status records are readable by operator surfaces and public-safe projections.
 - Failure states are specific enough to guide the next operator or agent action.
@@ -1546,7 +1546,7 @@ Implementation status on 2026-06-07:
 - Documented the contract in
   `docs/nexus/2026-06-07-artanis-payment-backed-dispatch-gates.md`.
 
-### 10. `[OMEGA-NEXUS] Add public-safe Nexus/Pylon receipt pages and operator dashboard`
+### 10. `[OPENAGENTS-NEXUS] Add public-safe Nexus/Pylon receipt pages and operator dashboard`
 
 Status: implemented by #429. The issue body below remains as the original
 scope. The delivered endpoints are:
@@ -1565,9 +1565,9 @@ call is never presented as settled bitcoin.
 ```markdown
 ## Context
 
-The point of rebuilding Nexus inside Omega is not just cleaner code. It is also visibility. Operators should not need SSH to classify a stuck assignment, and public viewers should be able to inspect safe proof for Artanis/Pylon work without seeing private wallet or customer data.
+The point of rebuilding Nexus inside OpenAgents product surface is not just cleaner code. It is also visibility. Operators should not need SSH to classify a stuck assignment, and public viewers should be able to inspect safe proof for Artanis/Pylon work without seeing private wallet or customer data.
 
-This issue adds the first Omega visibility layer for Nexus/Pylon.
+This issue adds the first OpenAgents product surface visibility layer for Nexus/Pylon.
 
 ## Current code and docs to inspect
 
@@ -1610,7 +1610,7 @@ This issue adds the first Omega visibility layer for Nexus/Pylon.
 - Do not move money in this issue.
 ```
 
-### 11. `[OMEGA-NEXUS] Add Forum bridge for Artanis assignment, incident, release, and payout updates`
+### 11. `[OPENAGENTS-NEXUS] Add Forum bridge for Artanis assignment, incident, release, and payout updates`
 
 ```markdown
 ## Context
@@ -1661,12 +1661,12 @@ This issue adds the bridge from Artanis/Nexus/Pylon events to Forum updates whil
 - Do not use the unlisted void forum as the primary production coordination surface.
 ```
 
-### 12. `[OMEGA-NEXUS] Add two-wallet MDK bitcoin movement smoke with Omega receipts`
+### 12. `[OPENAGENTS-NEXUS] Add two-wallet MDK bitcoin movement smoke with OpenAgents product surface receipts`
 
 ```markdown
 ## Context
 
-The Omega/Nexus rebuild is not ready for Pylon v0.2 until it proves a real small-bitcoin payment through the Omega payment authority path. The user funded a local MDK test wallet for this purpose. The test must move a small amount from an OpenAgents treasury test wallet to a separate Pylon edge test wallet and record public-safe Omega receipts.
+The OpenAgents product surface/Nexus rebuild is not ready for Pylon v0.2 until it proves a real small-bitcoin payment through the OpenAgents product surface payment authority path. The user funded a local MDK test wallet for this purpose. The test must move a small amount from an OpenAgents treasury test wallet to a separate Pylon edge test wallet and record public-safe OpenAgents product surface receipts.
 
 This issue should be done only after the payout authority ledger, service, simulation adapter, MDK adapter, policy gates, Pylon APIs, and settlement bridge are ready.
 
@@ -1689,7 +1689,7 @@ This issue should be done only after the payout authority ledger, service, simul
 - Confirm the treasury test wallet has enough bitcoin for a tiny movement proof.
 - Create a payout target approval for the Pylon edge test wallet.
 - Create a tiny accepted-work fixture or test assignment.
-- Create an Omega payout intent.
+- Create an OpenAgents product surface payout intent.
 - Dispatch through the MDK adapter.
 - Reconcile the payment.
 - Record dispatch, confirmation, verification, and settlement events.
@@ -1699,7 +1699,7 @@ This issue should be done only after the payout authority ledger, service, simul
 ## Acceptance criteria
 
 - The test moves real bitcoin between two isolated MDK wallets.
-- Omega records the full receipt chain.
+- OpenAgents product surface records the full receipt chain.
 - The public-safe receipt proves real movement without exposing raw invoice, preimage, mnemonic, wallet config, private payout target, or wallet secret.
 - The same idempotency key cannot spend twice.
 - The test can be repeated later with a fresh idempotency key and bounded amount.
@@ -1712,12 +1712,12 @@ This issue should be done only after the payout authority ledger, service, simul
 - Do not run this before simulation and policy tests are green.
 ```
 
-### 13. `[OMEGA-NEXUS] Add Pylon v0.2 Omega release gate runbook and automated evidence checklist`
+### 13. `[OPENAGENTS-NEXUS] Add Pylon v0.2 OpenAgents product surface release gate runbook and automated evidence checklist`
 
 ```markdown
 ## Context
 
-Pylon v0.2 should not be announced or released until the Omega/Nexus path is proven. The release gate needs to be explicit, automated where possible, and understandable by future agents.
+Pylon v0.2 should not be announced or released until the OpenAgents product surface/Nexus path is proven. The release gate needs to be explicit, automated where possible, and understandable by future agents.
 
 This issue turns the roadmap into a concrete gate checklist and runbook.
 
@@ -1734,9 +1734,9 @@ This issue turns the roadmap into a concrete gate checklist and runbook.
 
 ## Required work
 
-- Add a Pylon v0.2 release gate runbook in Omega docs.
+- Add a Pylon v0.2 release gate runbook in OpenAgents product surface docs.
 - Include required evidence for:
-  - Omega payout ledger migration deployed;
+  - OpenAgents product surface payout ledger migration deployed;
   - payment authority service deployed;
   - simulation adapter conformance tests green;
   - MDK adapter mocked tests green;
@@ -1760,7 +1760,7 @@ This issue turns the roadmap into a concrete gate checklist and runbook.
 - A future agent can follow the runbook and know whether Pylon v0.2 is releasable.
 - The checklist distinguishes required gates from optional transition evidence.
 - The checklist does not require SSH into the old Google Cloud VM for normal release classification.
-- The runbook says not to create a Pylon v0.2 release until all required Omega/Nexus gates pass.
+- The runbook says not to create a Pylon v0.2 release until all required OpenAgents product surface/Nexus gates pass.
 - The runbook references the public-safe receipt pages and Forum release/update flow.
 
 ## Out of scope
@@ -1776,12 +1776,12 @@ Terminate the old Google Cloud plan as the primary roadmap. Keep it only as
 legacy context and possible migration evidence. The implementation path should
 now be Option B with a sharper mandate: rebuild Nexus control, proof, Artanis
 coordination, payment authority policy, and public/operator visibility inside
-Omega's Effect/Cloudflare stack while preserving native Pylon execution.
+OpenAgents product surface's Effect/Cloudflare stack while preserving native Pylon execution.
 
 The new MDK decision is explicit:
 
 - Pylons use MDK edge agent wallets.
-- Omega/Nexus wraps MDK with a treasury payout authority service.
+- OpenAgents product surface/Nexus wraps MDK with a treasury payout authority service.
 - MDK is not just a checkout/liquidity reference.
 - Live bitcoin movement is allowed only through payout intents, spend caps,
   payout target approvals, idempotency, adapter gates, and public-safe
@@ -1789,7 +1789,7 @@ The new MDK decision is explicit:
 
 The principle should be:
 
-> Shells and VMs may execute native work, but Omega should own the state,
+> Shells and VMs may execute native work, but OpenAgents product surface should own the state,
 > authority, payout policy, receipts, and public proof.
 
 If that principle is followed, Artanis becomes a real automated supervisor

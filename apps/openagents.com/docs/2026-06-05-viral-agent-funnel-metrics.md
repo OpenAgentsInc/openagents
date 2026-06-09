@@ -1,6 +1,6 @@
 # Viral Agent Funnel Metrics
 
-Status: initial Omega implementation for `OMEGA-VIRAL-019`.
+Status: initial OpenAgents product surface implementation for `OPENAGENTS-VIRAL-019`.
 
 The first viral-agent metric slice records public-safe reads of the machine
 interfaces that an external AI agent or human operator can use to understand

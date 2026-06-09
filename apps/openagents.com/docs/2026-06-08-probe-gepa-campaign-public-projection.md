@@ -2,9 +2,9 @@
 
 Date: 2026-06-08
 
-Status: implemented for `OpenAgentsInc/autopilot-omega#508`.
+Status: implemented for `OpenAgentsInc/openagents#508`.
 
-Omega now has a typed public projection shape for Artanis to summarize Probe
+OpenAgents product surface now has a typed public projection shape for Artanis to summarize Probe
 GEPA benchmark campaigns from refs. The implementation lives in
 `workers/api/src/probe-gepa-campaign-projection.ts`.
 

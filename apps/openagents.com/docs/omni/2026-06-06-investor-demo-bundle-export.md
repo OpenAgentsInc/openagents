@@ -1,6 +1,6 @@
 # Investor Demo Bundle Export
 
-Status: implemented for issue #368 / `OMEGA-LATE-008`.
+Status: implemented for issue #368 / `OPENAGENTS-LATE-008`.
 
 ## Purpose
 

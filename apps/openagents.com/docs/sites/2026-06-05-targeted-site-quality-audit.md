@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #187 / OMEGA-SITES-OUTREACH-007
+Issue: #187 / OPENAGENTS-SITES-OUTREACH-007
 
 ## Summary
 
-Omega now has a typed website quality audit scoring contract for targeted Site
+OpenAgents product surface now has a typed website quality audit scoring contract for targeted Site
 remake campaigns.
 
 The scorer consumes evidence refs from static capture, rendered capture, and

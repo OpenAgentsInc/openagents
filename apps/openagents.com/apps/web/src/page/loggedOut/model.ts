@@ -197,6 +197,112 @@ export const PublicPylonStats = S.Struct({
 })
 export type PublicPylonStats = typeof PublicPylonStats.Type
 
+export const PublicForumLaunchGateState = S.Literals([
+  'blocked',
+  'degraded',
+  'gated',
+  'planned',
+  'ready',
+])
+export type PublicForumLaunchGateState =
+  typeof PublicForumLaunchGateState.Type
+
+export const PublicForumLaunchGateSeverity = S.Literals([
+  'required',
+  'recommended',
+])
+export type PublicForumLaunchGateSeverity =
+  typeof PublicForumLaunchGateSeverity.Type
+
+export const PublicForumLaunchGate = S.Struct({
+  id: S.String,
+  label: S.String,
+  severity: PublicForumLaunchGateSeverity,
+  state: PublicForumLaunchGateState,
+  summary: S.String,
+})
+export type PublicForumLaunchGate = typeof PublicForumLaunchGate.Type
+
+export const PublicForumTipPayerWalletReadiness = S.Struct({
+  actorRef: S.String,
+  blockerRefs: S.Array(S.String),
+  caveatRefs: S.Array(S.String),
+  configuredRefs: S.Array(S.String),
+  fundedRefs: S.Array(S.String),
+  sendReadyRefs: S.Array(S.String),
+  sourceRef: S.String,
+  state: S.Literals(['missing', 'configured', 'funded', 'send_ready']),
+  tippingSpendAllowed: S.Boolean,
+})
+export type PublicForumTipPayerWalletReadiness =
+  typeof PublicForumTipPayerWalletReadiness.Type
+
+export const PublicForumLaunchStatus = S.Struct({
+  gates: S.Array(PublicForumLaunchGate),
+  publicPosting: S.Struct({
+    listedForums: PublicForumLaunchGateState,
+    voidLane: PublicForumLaunchGateState,
+  }),
+  publicTipping: S.Struct({
+    gates: S.Array(PublicForumLaunchGate),
+    onboarding: S.optionalKey(
+      S.Struct({
+        payerReadiness: PublicForumTipPayerWalletReadiness,
+        publicCopyRefs: S.Array(S.String),
+        recipientStateRefs: S.Array(S.String),
+        settlementStateRefs: S.Array(S.String),
+      }),
+    ),
+    postTips: PublicForumLaunchGateState,
+    remainingBeforeLiveTips: S.Array(S.String),
+    summary: S.String,
+  }),
+  remainingBeforeBroadLaunch: S.Array(S.String),
+  status: PublicForumLaunchGateState,
+  summary: S.String,
+  updatedAt: S.String,
+})
+export type PublicForumLaunchStatus = typeof PublicForumLaunchStatus.Type
+
+export const PublicForumActorSummary = S.Struct({
+  actorId: S.String,
+  actorRef: S.String,
+  displayName: S.String,
+  groupRefs: S.Array(S.String),
+  isAgent: S.Boolean,
+  slug: S.String,
+})
+export type PublicForumActorSummary = typeof PublicForumActorSummary.Type
+
+export const PublicForumTipLeaderboardPost = S.Struct({
+  author: PublicForumActorSummary,
+  postId: S.String,
+  postPermalink: S.String,
+  tipCount: S.Number,
+  topicId: S.String,
+  totalPaidSats: S.Number,
+  totalSettledSats: S.Number,
+})
+export type PublicForumTipLeaderboardPost =
+  typeof PublicForumTipLeaderboardPost.Type
+
+export const PublicForumTipLeaderboardCreator = S.Struct({
+  actor: PublicForumActorSummary,
+  tipCount: S.Number,
+  totalPaidSats: S.Number,
+  totalSettledSats: S.Number,
+})
+export type PublicForumTipLeaderboardCreator =
+  typeof PublicForumTipLeaderboardCreator.Type
+
+export const PublicForumTipLeaderboards = S.Struct({
+  creators: S.Array(PublicForumTipLeaderboardCreator),
+  generatedAt: S.String,
+  posts: S.Array(PublicForumTipLeaderboardPost),
+})
+export type PublicForumTipLeaderboards =
+  typeof PublicForumTipLeaderboards.Type
+
 export const PublicArtanisReportLoopState = S.Literals([
   'blocked',
   'completed',
@@ -597,6 +703,64 @@ export const PublicPylonStatsModel = S.Union([
 ])
 export type PublicPylonStatsModel = typeof PublicPylonStatsModel.Type
 
+export const IdlePublicForumLaunchStatus = ts(
+  'PublicForumLaunchStatusIdle',
+  {},
+)
+export const LoadingPublicForumLaunchStatus = ts(
+  'PublicForumLaunchStatusLoading',
+  {},
+)
+export const LoadedPublicForumLaunchStatus = ts(
+  'PublicForumLaunchStatusLoaded',
+  {
+    status: PublicForumLaunchStatus,
+  },
+)
+export const FailedPublicForumLaunchStatus = ts(
+  'PublicForumLaunchStatusFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicForumLaunchStatusModel = S.Union([
+  IdlePublicForumLaunchStatus,
+  LoadingPublicForumLaunchStatus,
+  LoadedPublicForumLaunchStatus,
+  FailedPublicForumLaunchStatus,
+])
+export type PublicForumLaunchStatusModel =
+  typeof PublicForumLaunchStatusModel.Type
+
+export const IdlePublicForumTipLeaderboards = ts(
+  'PublicForumTipLeaderboardsIdle',
+  {},
+)
+export const LoadingPublicForumTipLeaderboards = ts(
+  'PublicForumTipLeaderboardsLoading',
+  {},
+)
+export const LoadedPublicForumTipLeaderboards = ts(
+  'PublicForumTipLeaderboardsLoaded',
+  {
+    leaderboards: PublicForumTipLeaderboards,
+  },
+)
+export const FailedPublicForumTipLeaderboards = ts(
+  'PublicForumTipLeaderboardsFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicForumTipLeaderboardsModel = S.Union([
+  IdlePublicForumTipLeaderboards,
+  LoadingPublicForumTipLeaderboards,
+  LoadedPublicForumTipLeaderboards,
+  FailedPublicForumTipLeaderboards,
+])
+export type PublicForumTipLeaderboardsModel =
+  typeof PublicForumTipLeaderboardsModel.Type
+
 export const IdlePublicArtanisReport = ts('PublicArtanisReportIdle', {})
 export const LoadingPublicArtanisReport = ts('PublicArtanisReportLoading', {})
 export const LoadedPublicArtanisReport = ts('PublicArtanisReportLoaded', {
@@ -660,6 +824,8 @@ export const Model = ts('LoggedOut', {
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
   publicPylonStats: PublicPylonStatsModel,
+  publicForumLaunchStatus: PublicForumLaunchStatusModel,
+  publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
   shareProjection: ShareProjectionModel,
 })
 
@@ -687,6 +853,14 @@ export const init = (route: LoggedOutRoute): Model =>
       route._tag === 'Home' || route._tag === 'PublicAgent'
         ? LoadingPublicPylonStats()
         : IdlePublicPylonStats(),
+    publicForumLaunchStatus:
+      route._tag === 'Home'
+        ? LoadingPublicForumLaunchStatus()
+        : IdlePublicForumLaunchStatus(),
+    publicForumTipLeaderboards:
+      route._tag === 'Home'
+        ? LoadingPublicForumTipLeaderboards()
+        : IdlePublicForumTipLeaderboards(),
     shareProjection:
       route._tag === 'Share'
         ? LoadingShareProjection({ shareId: route.shareId })
@@ -698,6 +872,6 @@ export const initOnboardingModel = (): OnboardingModel =>
     couponCode: '',
     fundingAmount: 25,
     isCouponOpen: false,
-    selectedRepository: 'openagents/autopilot-omega',
+    selectedRepository: 'OpenAgentsInc/openagents',
     step: 'github',
   })

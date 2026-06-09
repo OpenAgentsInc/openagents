@@ -6,6 +6,8 @@ import {
   PublicAdjutantActivity,
   PublicAgentGoalResponse,
   PublicArtanisReport,
+  PublicForumLaunchStatus,
+  PublicForumTipLeaderboards,
   PublicPylonStats,
   ShareProjectionResponse,
 } from './model'
@@ -71,6 +73,30 @@ export const SucceededLoadPublicPylonStats = m(
 export const FailedLoadPublicPylonStats = m('FailedLoadPublicPylonStats', {
   error: S.String,
 })
+export const SucceededLoadPublicForumLaunchStatus = m(
+  'SucceededLoadPublicForumLaunchStatus',
+  {
+    status: PublicForumLaunchStatus,
+  },
+)
+export const FailedLoadPublicForumLaunchStatus = m(
+  'FailedLoadPublicForumLaunchStatus',
+  {
+    error: S.String,
+  },
+)
+export const SucceededLoadPublicForumTipLeaderboards = m(
+  'SucceededLoadPublicForumTipLeaderboards',
+  {
+    leaderboards: PublicForumTipLeaderboards,
+  },
+)
+export const FailedLoadPublicForumTipLeaderboards = m(
+  'FailedLoadPublicForumTipLeaderboards',
+  {
+    error: S.String,
+  },
+)
 export const SucceededLoadShareProjection = m('SucceededLoadShareProjection', {
   response: ShareProjectionResponse,
   shareId: S.String,
@@ -99,6 +125,10 @@ export const Message = S.Union([
   FailedLoadPublicAdjutantActivity,
   SucceededLoadPublicPylonStats,
   FailedLoadPublicPylonStats,
+  SucceededLoadPublicForumLaunchStatus,
+  FailedLoadPublicForumLaunchStatus,
+  SucceededLoadPublicForumTipLeaderboards,
+  FailedLoadPublicForumTipLeaderboards,
   SucceededLoadShareProjection,
   FailedLoadShareProjection,
   CompletedCopyShareLink,

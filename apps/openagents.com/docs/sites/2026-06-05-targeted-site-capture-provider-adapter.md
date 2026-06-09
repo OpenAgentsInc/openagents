@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #186 / OMEGA-SITES-OUTREACH-006
+Issue: #186 / OPENAGENTS-SITES-OUTREACH-006
 
 ## Summary
 
-Omega now has a provider-neutral capture adapter boundary for targeted Site
+OpenAgents product surface now has a provider-neutral capture adapter boundary for targeted Site
 remake campaigns.
 
 The boundary records approved fallback, benchmark, first-party, denied,

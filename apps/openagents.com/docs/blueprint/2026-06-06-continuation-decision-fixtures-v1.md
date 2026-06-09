@@ -2,12 +2,12 @@
 
 Date: 2026-06-06
 
-Status: implemented for #273 / `OMEGA-CONT-002`.
+Status: implemented for #273 / `OPENAGENTS-CONT-002`.
 
 ## Purpose
 
 The continuation fixture catalog retains public-safe first-batch examples for
-the continuation decision service. These fixtures let Omega improve
+the continuation decision service. These fixtures let OpenAgents product surface improve
 continuation behavior through visible regression cases instead of hidden prompt
 edits.
 

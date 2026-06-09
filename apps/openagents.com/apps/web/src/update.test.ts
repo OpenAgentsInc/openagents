@@ -146,6 +146,8 @@ describe('app link routing', () => {
     })
     expect(commands.map(command => command.name)).toEqual([
       'LoadPublicPylonStats',
+      'LoadPublicForumLaunchStatus',
+      'LoadPublicForumTipLeaderboards',
       'RedirectToHome',
     ])
   })

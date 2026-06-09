@@ -5,7 +5,7 @@ Issue: #440
 
 ## Summary
 
-Omega now has a Site commerce review layer for generated checkout products and
+OpenAgents product surface now has a Site commerce review layer for generated checkout products and
 paid actions.
 
 The public-safe read route is:
@@ -79,7 +79,7 @@ Site version and catalog ref updates the current review state.
 
 ## Source Safety
 
-Generated Site source must continue to call Omega-hosted payment boundaries,
+Generated Site source must continue to call OpenAgents product surface-hosted payment boundaries,
 such as checkout intent, L402 challenge, and checkout return routes. It must
 not embed:
 

@@ -2,16 +2,16 @@
 
 Status: complete; merged
 
-Target repo: `OpenAgentsInc/autopilot-omega`
+Target repo: `OpenAgentsInc/openagents`
 
 Target branch: `main`
 
 Primary agent: `Artanis` / `agent_artanis`, or another write-capable private
-Omega implementation agent selected by preflight.
+OpenAgents product surface implementation agent selected by preflight.
 
 Team: OpenAgents core / `team_openagents_core`
 
-Project: Omega workroom navigation and thread ownership clarity. Resolve the
+Project: OpenAgents product surface workroom navigation and thread ownership clarity. Resolve the
 concrete project ID through operator preflight before dispatch; do not invent
 one in the runner prompt.
 
@@ -60,7 +60,7 @@ The operator launched a narrower retry with a longer runner timeout:
 
 Retry run `60fcd25d-2301-4662-9d2d-35214ab8add4` completed and opened PR #56:
 
-- PR: `https://github.com/OpenAgentsInc/autopilot-omega/pull/56`
+- PR: `https://github.com/OpenAgentsInc/openagents/pull/56`
 - Autopilot commit: `4f5e5d52e60b5e9f1ffa0abd7921cb4eae555a81`
 - foreground review fix: `9023c01b9812aaa2361d4e2cc361e1956c66e109`
 - merge commit: `43dc89da63a8b2387a57afde5b890a7a9c5c553d`
@@ -204,7 +204,7 @@ Planning and runbooks:
 - `../2026-06-03-team-room-shared-history-autopilot-audit.md`
 - `../2026-06-03-team-project-rooms.md`
 - `../2026-06-04-effect-foldkit-codebase-audit.md`
-- `../2026-06-04-omega-zero-tech-debt-caller-inventory.md`
+- `../2026-06-04-openagents-zero-tech-debt-caller-inventory.md`
 - `../../AGENTS.md`
 - `../../DESIGN.md`
 
@@ -280,7 +280,7 @@ typed boundary is available.
    visibility, newest-first ordering inside each section, and status/ownership
    independence.
 7. Run focused tests, typecheck, full deploy gate, then deploy with the
-   canonical Omega deploy command only if implementation changes are ready to
+   canonical OpenAgents product surface deploy command only if implementation changes are ready to
    ship.
 
 ## Product Copy Rules
@@ -359,14 +359,14 @@ Launch input fields:
 
 ```json
 {
-  "repository": "OpenAgentsInc/autopilot-omega",
+  "repository": "OpenAgentsInc/openagents",
   "baseRef": "main",
   "taskSpecPath": "docs/autopilot-tasks/2026-06-04-thread-ownership-sidebar-separation.md",
   "agentId": "agent_artanis",
   "teamId": "team_openagents_core",
-  "projectId": "<preflight-resolved-omega-workroom-navigation-project-id>",
+  "projectId": "<preflight-resolved-openagents-workroom-navigation-project-id>",
   "visibility": "private",
-  "goal": "Separate Omega sidebar thread lists into clear personal and team-owned areas, preserving active thread visibility, newest-first ordering, project policy, and compact workroom design.",
+  "goal": "Separate OpenAgents product surface sidebar thread lists into clear personal and team-owned areas, preserving active thread visibility, newest-first ordering, project policy, and compact workroom design.",
   "delivery": "commit_or_pull_request_with_tests_and_deployment_notes"
 }
 ```
@@ -374,7 +374,7 @@ Launch input fields:
 ## Suggested Private Run Summary
 
 ```text
-Omega workroom sidebar now separates personal and team-owned threads, keeps the
+OpenAgents product surface workroom sidebar now separates personal and team-owned threads, keeps the
 current thread visible and highlighted, preserves newest-first ordering, and
 keeps run status separate from ownership.
 ```

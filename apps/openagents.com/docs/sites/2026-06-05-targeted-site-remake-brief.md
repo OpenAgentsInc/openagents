@@ -73,4 +73,4 @@ payloads or private material.
 ## Status
 
 Implemented in GitHub issue `#188` as
-`OMEGA-SITES-OUTREACH-008: Add remake brief and source authority pack`.
+`OPENAGENTS-SITES-OUTREACH-008: Add remake brief and source authority pack`.

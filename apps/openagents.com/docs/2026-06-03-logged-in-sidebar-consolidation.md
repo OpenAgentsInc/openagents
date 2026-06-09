@@ -9,13 +9,13 @@ runs backed by SHC dispatch.
 
 ## Summary
 
-Omega now treats the logged-in left rail as one shared workroom sidebar instead
+OpenAgents product surface now treats the logged-in left rail as one shared workroom sidebar instead
 of separate app navigation and chat/session rails. The production logged-in UI
 is now served from the Foldkit/Vite app in `apps/web`; the Worker owns auth,
 API routes, and the session bootstrap endpoint.
 
 The implemented direction follows the OpenChamber sidebar structure while
-keeping Omega's existing dark, compact, mono operational design:
+keeping OpenAgents product surface's existing dark, compact, mono operational design:
 
 - one desktop rail in the 258-280px range;
 - product/account header;

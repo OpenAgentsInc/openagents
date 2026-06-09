@@ -1,12 +1,12 @@
 # MDK Core Checkout Worker Contract
 
-Issue: #296 / OMEGA-H-007A
+Issue: #296 / OPENAGENTS-H-007A
 
 Date: 2026-06-06
 
 ## Purpose
 
-Omega needs the useful MoneyDevKit checkout semantics without importing MDK's
+OpenAgents product surface needs the useful MoneyDevKit checkout semantics without importing MDK's
 Next.js wrappers or exposing MDK implementation details to generated Sites.
 This slice ports the core contract ideas into Effect Schema and
 Worker-compatible helpers.

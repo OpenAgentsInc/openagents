@@ -2,11 +2,11 @@
 
 Implemented: 2026-06-05
 
-Issue: #181 / OMEGA-SITES-OUTREACH-001
+Issue: #181 / OPENAGENTS-SITES-OUTREACH-001
 
 ## Summary
 
-Omega now has the first durable schema slice for targeted Site remake and
+OpenAgents product surface now has the first durable schema slice for targeted Site remake and
 outreach campaigns.
 
 This slice is intentionally internal and governed. It lets operators create a

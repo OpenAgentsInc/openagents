@@ -1,4 +1,4 @@
-# Omega Homepage Pylon v0.2.5 Live Stats Plan
+# OpenAgents product surface Homepage Pylon v0.2.5 Live Stats Plan
 
 Date: 2026-06-08
 
@@ -11,12 +11,12 @@ Related audit:
 ## Implementation Progress
 
 - 2026-06-08: Issue #518 added version-bearing Pylon registration and
-  heartbeat state. Omega now stores `client_version`,
+  heartbeat state. OpenAgents product surface now stores `client_version`,
   `client_protocol_version`, latest heartbeat status/resource mode, and latest
   public health/load/capacity refs on `pylon_api_registrations` for future
   v0.2.5+ stats projection work.
 - 2026-06-08: Issue #519 replaced the production
-  `GET /api/public/pylon-stats` snapshot path with an Omega-owned projection
+  `GET /api/public/pylon-stats` snapshot path with an OpenAgents product surface-owned projection
   from Pylon API registrations. The endpoint now counts only active
   v0.2.5+ registrations, separates online, seen, wallet-ready, and
   assignment-ready states, and keeps Nexus payout fields as nullable
@@ -29,7 +29,7 @@ Related audit:
 ## Goal
 
 Show live Pylon stats on the public `openagents.com` homepage for the new
-Pylon v0.2.5+ line, using Omega-owned Pylon API state instead of rebuilding the
+Pylon v0.2.5+ line, using OpenAgents product surface-owned Pylon API state instead of rebuilding the
 old Laravel/Nexus stats setup.
 
 The first homepage surface should answer a narrow public question:
@@ -42,9 +42,9 @@ The first homepage surface should answer a narrow public question:
 It must not imply that an online Pylon is eligible for paid work, has accepted
 work, has been paid, or is settled.
 
-## Current Omega State
+## Current OpenAgents product surface State
 
-Omega already has two relevant pieces.
+OpenAgents product surface already has two relevant pieces.
 
 First, the old-style public stats endpoint exists:
 
@@ -57,7 +57,7 @@ That endpoint currently fetches `https://nexus.openagents.com/api/stats` and
 maps Nexus fields such as `pylons_online_now`, `pylons_seen_24h`, and
 `recent_pylons`.
 
-Second, the newer Omega Pylon API exists:
+Second, the newer OpenAgents product surface Pylon API exists:
 
 - `workers/api/src/pylon-api.ts`
 - `workers/api/src/pylon-api-routes.ts`
@@ -95,11 +95,11 @@ The root logged-out homepage currently does not load Pylon stats.
 
 ## Proposed Source Of Truth
 
-Use Omega's Pylon API state as the public stats authority for v0.2.5+.
+Use OpenAgents product surface's Pylon API state as the public stats authority for v0.2.5+.
 
 Do not fetch Nexus for homepage live counts. Nexus/Treasury/Pylon receipt
 surfaces can remain separate evidence paths for payout and settlement, but the
-homepage online count should come from Omega-accepted registration and heartbeat
+homepage online count should come from OpenAgents product surface-accepted registration and heartbeat
 records.
 
 The public projection should be read-only and generated from:
@@ -150,7 +150,7 @@ routing.
 ## Public Projection Contract
 
 Replace the Nexus-derived shape behind `GET /api/public/pylon-stats` with an
-Omega projection, while keeping short-term compatibility fields until the
+OpenAgents product surface projection, while keeping short-term compatibility fields until the
 frontend and Artanis report can be updated.
 
 New canonical fields:
@@ -182,14 +182,14 @@ Compatibility fields can remain for one deploy cycle:
 - `nexusAcceptedWorkPayoutSatsPaid24h`
 - training contributor counts
 
-For the Omega-backed projection:
+For the OpenAgents product surface-backed projection:
 
 - `sourceUrl` should become `https://openagents.com/api/public/pylon-stats`;
 - payout fields should be `null` unless a separate public-safe receipt
   aggregator explicitly supplies them;
 - `sellablePylonsOnlineNow` should not be used as an eligibility claim unless
   backed by separate admission/policy evidence. Current public copy should use
-  `pylonsWalletReadyNow` and `pylonsAssignmentReadyNow` for the Omega-backed
+  `pylonsWalletReadyNow` and `pylonsAssignmentReadyNow` for the OpenAgents product surface-backed
   homepage/report stats.
 
 ## Online Count Semantics
@@ -241,14 +241,14 @@ projection is intentionally added.
    only the public projection.
 
 5. Refactor `workers/api/src/public-pylon-stats.ts` so the primary path builds
-   from the Omega store. Keep the existing Nexus mapper as a temporary fallback
+   from the OpenAgents product surface store. Keep the existing Nexus mapper as a temporary fallback
    fixture only if Artanis tests still need it.
 
 6. Update `handlePublicPylonStatsApi` dependencies so the route can access D1
    instead of calling global `fetch`.
 
 7. Done in #521: `openagents-openapi.ts` and
-   `openagents-capability-manifest.ts` describe the Omega-backed stats source,
+   `openagents-capability-manifest.ts` describe the OpenAgents product surface-backed stats source,
    canonical v0.2.5+ fields, and online-versus-payment boundary.
 
 8. Done in #521: Artanis public report adapters read the new field names and
@@ -257,7 +257,7 @@ projection is intentionally added.
 ## Frontend Implementation Steps
 
 1. Update `apps/web/src/page/loggedOut/model.ts` `PublicPylonStats` schema with
-   the new Omega fields while accepting compatibility fields during rollout.
+   the new OpenAgents product surface fields while accepting compatibility fields during rollout.
 
 2. Keep `LoadPublicPylonStats` in
    `apps/web/src/page/loggedOut/update.ts`, still fetching
@@ -277,7 +277,7 @@ projection is intentionally added.
    - a small freshness line.
 
 5. Keep public-agent `/artanis` stats working, but rename copy away from
-   "Nexus connection" once the endpoint is Omega-backed.
+   "Nexus connection" once the endpoint is OpenAgents product surface-backed.
 
 6. Avoid public UI copy that explains internal dispatch, payout, or settlement
    mechanics. Use direct labels and caveats.
@@ -314,12 +314,12 @@ Deploy checks:
 
 1. Ship backend schema and write-path support first.
 2. Release or update Pylon v0.2.5+ so it sends typed version-bearing
-   registration and heartbeat payloads to Omega.
-3. Done in #519: ship the Omega-backed `/api/public/pylon-stats` projection
+   registration and heartbeat payloads to OpenAgents product surface.
+3. Done in #519: ship the OpenAgents product surface-backed `/api/public/pylon-stats` projection
    behind tests.
 4. Done in #520: ship homepage UI using the existing endpoint.
 5. Done in #521: leave the old Nexus mapper available only as an explicit
-   compatibility fixture while Artanis/public report tests use Omega source
+   compatibility fixture while Artanis/public report tests use OpenAgents product surface source
    semantics.
 6. Monitor the public projection for a day before adding stronger public copy.
 

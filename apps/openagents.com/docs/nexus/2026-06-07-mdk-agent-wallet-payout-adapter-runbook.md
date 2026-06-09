@@ -1,13 +1,13 @@
 # MDK Agent-Wallet Payout Adapter Runbook
 
 Status: local agent-wallet adapter boundary implemented; #431 proved a real
-two-wallet bitcoin movement through Omega authority; #503 adds a separate
+two-wallet bitcoin movement through OpenAgents product surface authority; #503 adds a separate
 Worker-safe hosted MDK payout adapter for accepted Pylon work and a production
 `mdk_agent_wallet` settlement bridge receipt for accepted Pylon work. The
 hosted-MDK direct payout lane remains blocked by the MoneyDevKit app's
 programmatic payout toggle.
 
-Omega has an `mdk_agent_wallet` payout adapter boundary at
+OpenAgents product surface has an `mdk_agent_wallet` payout adapter boundary at
 `workers/api/src/treasury-payment-mdk-agent-wallet-adapter.ts`.
 The isolated-wallet prerequisite checklist for the real movement smoke lives
 at `docs/nexus/2026-06-07-mdk-two-wallet-smoke-prerequisites.md`.
@@ -45,7 +45,7 @@ The adapter stores only bounded references:
 - public-safe projection JSON.
 
 If an operator or agent supplies a payout destination string, classify it first
-with Omega's payment destination parser boundary
+with OpenAgents product surface's payment destination parser boundary
 `workers/api/src/payment-destination-input.ts`. The classifier is documented in
 `docs/mdk/2026-06-07-bitcoin-payment-instructions-source-audit.md` and can
 identify BOLT11, BOLT12, LNURL, Lightning Address, BIP353-style names,
@@ -119,8 +119,8 @@ For a real two-wallet smoke, use:
 2. an isolated Pylon edge test wallet;
 3. an explicit spend cap;
 4. a payout target approval whose private destination is resolved locally by
-   the executor, not stored in Omega;
-5. a payout intent in the Omega ledger;
+   the executor, not stored in OpenAgents product surface;
+5. a payout intent in the OpenAgents product surface ledger;
 6. adapter dispatch through `TreasuryPaymentAuthority`;
 7. reconciliation through `payments`; and
 8. public-safe receipt projection.
@@ -145,13 +145,13 @@ The hosted route still goes through `TreasuryPaymentAuthority`. It requires
 accepted-work closeout, retained artifact/proof refs, fresh wallet-readiness
 evidence, payout-target approval, spend-cap policy refs, and an operator
 admin boundary before dispatch. The raw Lightning destination is accepted only
-in the authenticated request body and is passed to MDK; Omega stores and
+in the authenticated request body and is passed to MDK; OpenAgents product surface stores and
 returns only redacted refs.
 
 The production route has been deployed and exercised against accepted
 assignment `assignment.public.issue502.20260608024927`. The route reached MDK,
 but MDK returned the bounded non-retryable app-setting failure
-`PROGRAMMATIC_PAYOUTS_DISABLED`, surfaced by Omega as
+`PROGRAMMATIC_PAYOUTS_DISABLED`, surfaced by OpenAgents product surface as
 `hosted_mdk_programmatic_payouts_disabled`.
 
 Do not retry the same hosted smoke as a Cloudflare, D1, invoice, or Tailnet

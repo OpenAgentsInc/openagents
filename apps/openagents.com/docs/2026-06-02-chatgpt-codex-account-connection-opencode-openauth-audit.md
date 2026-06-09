@@ -2,7 +2,7 @@
 
 Date: 2026-06-02
 
-Status: architecture audit for the Cloudflare-only `autopilot-omega` plan.
+Status: architecture audit for the Cloudflare-only `openagents` plan.
 
 Scope:
 
@@ -11,7 +11,7 @@ Scope:
   account auth, and server auth;
 - define how OpenAgents OpenAuth should relate to both without conflating
   first-party identity with third-party provider credentials;
-- recommend the Cloudflare-only implementation shape for `autopilot-omega`.
+- recommend the Cloudflare-only implementation shape for `openagents`.
 
 ## Executive Summary
 
@@ -117,7 +117,7 @@ OpenCode:
 - `../projects/repos/opencode/packages/web/src/content/docs/cli.mdx`
 - `../projects/repos/opencode/SECURITY.md`
 
-Autopilot Omega:
+OpenAgents Autopilot:
 
 - `README.md`
 - `AGENTS.md`
@@ -295,7 +295,7 @@ Rejected credential-shaped values include:
   rejected;
 - public metadata fails closed if it contains credential-shaped material.
 
-This policy should be ported almost directly to `autopilot-omega` as Effect
+This policy should be ported almost directly to `openagents` as Effect
 Schema plus typed errors.
 
 ### Vortex Grant Flow
@@ -622,7 +622,7 @@ auth.openagents.com
 OpenCode used a separate Cloudflare Worker for OpenAuth at `auth.<domain>` and
 linked it to KV plus the database. That shape is good.
 
-For `autopilot-omega`, start with a separate Worker package in the same Bun
+For `openagents`, start with a separate Worker package in the same Bun
 workspace:
 
 ```text
@@ -642,7 +642,7 @@ packages/auth-worker/
 Do not start by creating a separate GitHub repo unless we need independent
 deploy cadence across multiple products immediately. A separate service
 boundary is required; a separate repository is optional. The safer first move
-is one `autopilot-omega` monorepo with separate `workers/auth` and
+is one `openagents` monorepo with separate `workers/auth` and
 `workers/api` deployments. Extract `openagentsinc/auth` later only when the
 API has stabilized and multiple repos are consuming it.
 
@@ -1533,7 +1533,7 @@ not produce OpenAgents receipts/grants.
 ### Risk: Static Bearer Tokens Stay Forever
 
 Vortex currently has static operator/runner bearer tokens. In
-`autopilot-omega`, those should become service actors or runner-session tokens
+`openagents`, those should become service actors or runner-session tokens
 issued and audited through the OpenAuth/OpenAgents identity layer.
 
 ### Risk: Raw Tokens Leak Through Sync

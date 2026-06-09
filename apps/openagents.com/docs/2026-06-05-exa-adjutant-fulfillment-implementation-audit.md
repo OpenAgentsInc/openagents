@@ -9,7 +9,7 @@ Site, or alter customer/order visibility by itself.
 
 ## Executive Summary
 
-Omega has real Exa infrastructure in production. Exa is not just documented or
+OpenAgents product surface has real Exa infrastructure in production. Exa is not just documented or
 stubbed:
 
 - `EXA_API_KEY` is decoded through the Worker config boundary and is now
@@ -79,7 +79,7 @@ Reference audit used for structure:
 
 - `docs/2026-06-05-openai-sites-parity-implementation-audit.md`
 
-Omega evidence reviewed:
+OpenAgents product surface evidence reviewed:
 
 - `workers/api/src/config.ts`
 - `workers/api/src/exa.ts`
@@ -118,7 +118,7 @@ No secret values or raw Exa payloads are recorded in this audit.
 
 ## Exa Capability Inventory
 
-Current Omega Exa capabilities:
+Current OpenAgents product surface Exa capabilities:
 
 1. Decode Exa config from Cloudflare Worker environment.
 2. Treat `EXA_API_KEY` as a redacted optional secret.

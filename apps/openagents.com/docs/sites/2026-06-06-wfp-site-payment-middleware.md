@@ -31,7 +31,7 @@ The middleware returns one of four source-safe projections:
 - `allow`: a matching active entitlement exists;
 - `payment_required`: no entitlement or payment credential is present, so the
   route returns a 402-style projection with clean L402 headers;
-- `entitlement_required`: a payment credential/proof is present, but Omega has
+- `entitlement_required`: a payment credential/proof is present, but OpenAgents product surface has
   not projected an active entitlement yet;
 - `blocked`: the route metadata does not match the catalog or the route is
   unsafe.

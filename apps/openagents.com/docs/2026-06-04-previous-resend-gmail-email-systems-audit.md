@@ -9,10 +9,10 @@ OpenAgents workspace, with special attention to:
 - Fireball's WorkOS email-code login flow.
 - The deprecated Laravel `openagents.com` CRM transactional email system.
 - The local Gmail draft wrapper that uses production Laravel CRM preview data.
-- The narrow Resend billing notification rail already present in Omega.
+- The narrow Resend billing notification rail already present in OpenAgents product surface.
 
 The goal is not to port code blindly. The goal is to preserve the useful
-product and safety lessons before Omega grows a broader first-party email
+product and safety lessons before OpenAgents product surface grows a broader first-party email
 surface.
 
 ## Source Inventory
@@ -96,20 +96,20 @@ Audited paths:
 The Gmail draft work lives at the workspace level. It is intentionally local
 operator tooling, not a production Laravel mail transport.
 
-### Omega
+### OpenAgents product surface
 
 Audited paths:
 
-- `autopilot-omega/workers/api/src/config.ts`
-- `autopilot-omega/workers/api/src/config.test.ts`
-- `autopilot-omega/workers/api/src/email.ts`
-- `autopilot-omega/workers/api/src/email.test.ts`
-- `autopilot-omega/workers/api/src/billing.ts`
-- `autopilot-omega/workers/api/src/index.ts`
-- `autopilot-omega/workers/api/migrations/0018_billing_out_of_credits.sql`
-- `autopilot-omega/docs/2026-06-03-autopilot-billing-credits.md`
+- `openagents/workers/api/src/config.ts`
+- `openagents/workers/api/src/config.test.ts`
+- `openagents/workers/api/src/email.ts`
+- `openagents/workers/api/src/email.test.ts`
+- `openagents/workers/api/src/billing.ts`
+- `openagents/workers/api/src/index.ts`
+- `openagents/workers/api/migrations/0018_billing_out_of_credits.sql`
+- `openagents/docs/2026-06-03-autopilot-billing-credits.md`
 
-Omega already has a narrow Resend REST sender for billing exhaustion
+OpenAgents product surface already has a narrow Resend REST sender for billing exhaustion
 notifications. It does not yet have the broader CRM/invitation/Gmail draft
 system described below.
 
@@ -126,13 +126,13 @@ There are four distinct historical email patterns, not one:
 4. Local Gmail drafts: a root-workspace wrapper that fetches production CRM
    previews from Laravel and asks `gws` to create Gmail drafts by default.
 
-The strongest idea to carry into Omega is the separation of product intent,
+The strongest idea to carry into OpenAgents product surface is the separation of product intent,
 rendered content, delivery attempt, provider result, and human approval/draft
 posture. The weakest thing to carry forward would be the Laravel-era direct
 synchronous `Mail::send` request path without an Effect service boundary,
 durable typed result, or source-authority receipt.
 
-Omega should treat email as a first-class domain with:
+OpenAgents product surface should treat email as a first-class domain with:
 
 - typed Effect services and layers;
 - schema-decoded provider responses;
@@ -230,11 +230,11 @@ and a production smoke path using a Resend test recipient.
   fine for prelaunch, but less ideal for a general email system.
 - Only last delivery is stored. There is no append-only delivery-attempt table.
 - The error string is stored directly in Convex state. That is useful for
-  operators but should be length-limited, classified, and redacted in Omega.
+  operators but should be length-limited, classified, and redacted in OpenAgents product surface.
 - The idempotency key includes the row id and updated timestamp. It is short
   and practical, but it is not a typed domain object.
 - The sender is a standalone async function, not an Effect service/layer.
-- The API route catches broad errors and maps to generic JSON. Omega should
+- The API route catches broad errors and maps to generic JSON. OpenAgents product surface should
   use typed error variants and a centralized HTTP mapper.
 
 ## Fireball Email-Code Auth System
@@ -394,7 +394,7 @@ The migrations create:
 - `provider_payload`
 - `error_message`
 
-This is the best historical shape for Omega to study. It separates the logical
+This is the best historical shape for OpenAgents product surface to study. It separates the logical
 message from individual provider attempts and leaves space for future delivery,
 open, click, reply, and thread metadata.
 
@@ -485,7 +485,7 @@ without requiring direct-send authority.
 6. records a CRM activity through `CrmActivityService`.
 
 The mailable view is a raw `{!! $bodyHtml !!}` Blade render. That is acceptable
-only because the body is operator/template-controlled in this old app. Omega
+only because the body is operator/template-controlled in this old app. OpenAgents product surface
 should not preserve this raw-render pattern without a stronger sanitization and
 trusted-template boundary.
 
@@ -520,7 +520,7 @@ This is the strongest historical bridge between "agent proposes an action" and
 - `email_deliveries` as `derived_sensitive`, redacting `provider_payload` and
   `error_message`.
 
-This is exactly the posture Omega should keep. Email bodies and provider errors
+This is exactly the posture OpenAgents product surface should keep. Email bodies and provider errors
 can contain private recipient data, private prompts, quoted threads, unsubscribe
 tokens, URLs, or provider diagnostics.
 
@@ -560,7 +560,7 @@ writebacks and `Mail::assertSent`.
   delivery attempted, delivery failed, or delivery accepted.
 - Direct send can exist when CRM admin mode is transitional.
 - Provider error messages are stored directly. They are redacted from export,
-  but Omega should classify and length-limit them at write time.
+  but OpenAgents product surface should classify and length-limit them at write time.
 - Gmail draft ids are not part of the Laravel model because Gmail draft tooling
   lives outside the app.
 
@@ -582,7 +582,7 @@ When an onboarding session completes:
 4. `notification_sent_at` and `notification_recipients` are stored.
 
 This is less architecturally rich than the CRM email system, but it captures a
-separate product use case: operator notifications. Omega should not mix these
+separate product use case: operator notifications. OpenAgents product surface should not mix these
 with CRM/customer transactional messages. They deserve a separate kind such as
 `operator_notification`.
 
@@ -640,11 +640,11 @@ The current wrapper does not:
 - keep secrets anywhere but the local workspace secret file.
 
 Those omissions are fine for local operator tooling. They would not be fine for
-a production Omega user-facing Gmail integration.
+a production OpenAgents product surface user-facing Gmail integration.
 
-## Omega Current Email Surface
+## OpenAgents product surface Current Email Surface
 
-Omega already has one narrow email rail:
+OpenAgents product surface already has one narrow email rail:
 
 - `workers/api/src/config.ts` parses optional Resend config with Effect.
 - `RESEND_API_KEY` is stored as `Redacted`.
@@ -658,7 +658,7 @@ Omega already has one narrow email rail:
 - `sendOutOfCreditsNotificationOnce` reserves first, sends second, then marks
   sent or failed.
 
-This is already closer to the desired Omega style than the Laravel version:
+This is already closer to the desired OpenAgents product surface style than the Laravel version:
 
 - no SDK dependency needed;
 - no raw provider key leaves the config boundary;
@@ -690,12 +690,12 @@ The Laravel CRM model had the right separation:
 - message says what the product intended to send;
 - delivery says what the provider accepted or rejected.
 
-Omega should avoid one-table shortcuts once email grows beyond billing alerts.
+OpenAgents product surface should avoid one-table shortcuts once email grows beyond billing alerts.
 
 ### 2. Preview Is Safer Than Send
 
 The Gmail wrapper succeeded because it consumed preview output, not direct-send
-output. The same rule should hold in Omega:
+output. The same rule should hold in OpenAgents product surface:
 
 - preview/render can be low-risk read authority;
 - draft creation is a controlled intermediate side effect;
@@ -706,7 +706,7 @@ output. The same rule should hold in Omega:
 The previous Gmail design intentionally kept OAuth tokens local. That was the
 right blast-radius decision.
 
-Omega should not put Gmail OAuth tokens into Cloudflare secrets or D1 just to
+OpenAgents product surface should not put Gmail OAuth tokens into Cloudflare secrets or D1 just to
 preserve old experimentation. If Gmail becomes a product feature, it needs a
 real provider-account model, scoped OAuth, refresh handling, revocation,
 receipting, and user-facing account state.
@@ -732,24 +732,24 @@ Do not collapse those into one transport.
 
 ### 5. Provider Idempotency Is Not Enough
 
-Vortex and Omega both use provider idempotency keys. Laravel writebacks use
+Vortex and OpenAgents product surface both use provider idempotency keys. Laravel writebacks use
 application idempotency keys.
 
-Omega needs both:
+OpenAgents product surface needs both:
 
 - application idempotency to avoid duplicate domain records;
 - provider idempotency to avoid duplicate sends when retrying provider calls.
 
 ### 6. Email Bodies Are Sensitive
 
-Laravel's source export redaction is a strong precedent. Omega should treat
+Laravel's source export redaction is a strong precedent. OpenAgents product surface should treat
 email bodies, rendered HTML, provider payloads, and provider errors as
 derived-sensitive material by default.
 
 ### 7. Direct Send Should Be Hard To Reach
 
 Laravel's read-only CRM mode and Blueprint writeback transition were the right
-direction. Omega should not expose casual direct send surfaces without:
+direction. OpenAgents product surface should not expose casual direct send surfaces without:
 
 - explicit capability;
 - source authority;
@@ -758,7 +758,7 @@ direction. Omega should not expose casual direct send surfaces without:
 - dry run;
 - durable receipt.
 
-## Recommended Omega End State
+## Recommended OpenAgents product surface End State
 
 ### Domain Types
 
@@ -803,7 +803,7 @@ Suggested draft statuses:
 
 ### D1 Tables
 
-Omega should generalize the billing notification table into a richer email
+OpenAgents product surface should generalize the billing notification table into a richer email
 ledger when a second email kind appears:
 
 `email_templates`
@@ -893,7 +893,7 @@ inside Effect boundaries and should return typed error variants.
 
 ### Provider Config
 
-Keep the current Omega config posture:
+Keep the current OpenAgents product surface config posture:
 
 - parse env once;
 - validate sender/reply-to;
@@ -927,7 +927,7 @@ Do not put Gmail draft creation in the Cloudflare Worker yet.
 Recommended near-term shape:
 
 - keep local `gws` wrapper as operator tooling;
-- if Omega needs to generate preview content, expose a read-only preview API;
+- if OpenAgents product surface needs to generate preview content, expose a read-only preview API;
 - let the local tool create Gmail drafts from that preview;
 - optionally add an operator-only writeback endpoint to record:
   - draft id;
@@ -955,7 +955,7 @@ Every external email send should answer:
 - where the receipt is stored.
 
 For draft-only local Gmail, the answer can be a local operator note plus a
-writeback record. For production sends, it must be durable inside Omega.
+writeback record. For production sends, it must be durable inside OpenAgents product surface.
 
 ## Concrete Porting Recommendations
 
@@ -971,7 +971,7 @@ Do not port:
 
 - one-row-only delivery history for reusable email;
 - generic thrown errors from env readers;
-- plain Promise sender as the final Omega architecture.
+- plain Promise sender as the final OpenAgents product surface architecture.
 
 ### Port From Fireball
 
@@ -1012,13 +1012,13 @@ Do not port:
 - Explicit `--send` opt-in.
 - HTML preference for rich Gmail drafts.
 
-Do not move to Omega yet:
+Do not move to OpenAgents product surface yet:
 
 - Gmail OAuth tokens;
 - `gws` shell invocation inside Worker;
 - Gmail as a product dependency without provider-account UX.
 
-### Keep From Omega
+### Keep From OpenAgents product surface
 
 - Redacted config.
 - Effect Schema provider response decoding.
@@ -1035,11 +1035,11 @@ Need to improve:
 - centralize provider error classification;
 - add general delivery attempt records before multiple email kinds appear.
 
-## Suggested Implementation Sequence For Omega
+## Suggested Implementation Sequence For OpenAgents product surface
 
-### 2026-06-04 Omega Implementation Pass
+### 2026-06-04 OpenAgents product surface Implementation Pass
 
-Omega now has the first concrete implementation of the recommended end state,
+OpenAgents product surface now has the first concrete implementation of the recommended end state,
 excluding the WorkOS/auth-code pieces by design:
 
 - `workers/api/src/email.ts` defines `EmailService` as a typed Effect service
@@ -1075,7 +1075,7 @@ The 2026-06-04 implementation is designed to persist email data to the
 Cloudflare D1 production database, but only after the new migration is applied
 to the remote database.
 
-Omega's Worker config binds `OPENAGENTS_DB` to the Cloudflare D1 database named
+OpenAgents product surface's Worker config binds `OPENAGENTS_DB` to the Cloudflare D1 database named
 `openagents-autopilot`, using migration files from `workers/api/migrations`.
 Cloudflare D1 migrations are tracked in the database's migration table when
 applied, and Wrangler's D1 migration command is the mechanism that applies
@@ -1102,7 +1102,7 @@ Current persistence facts:
   idempotency key, delivery status, attempted/completed times, classified
   error fields, and a provider payload summary.
 - `email_drafts` stores future Gmail/local draft identifiers and provenance,
-  but Omega does not currently create Gmail drafts in the Worker.
+  but OpenAgents product surface does not currently create Gmail drafts in the Worker.
 
 Important deployment caveat: the current `workers/api` deploy script runs
 checks, builds web assets, and runs `wrangler deploy`; it does not currently
@@ -1131,7 +1131,7 @@ What is not persisted yet:
 
 ### Open And Click Tracking Requirements
 
-Resend supports open and click tracking, but Omega must add both provider
+Resend supports open and click tracking, but OpenAgents product surface must add both provider
 configuration and an ingestion surface before engagement data lands in D1.
 
 Resend tracking setup:
@@ -1147,9 +1147,9 @@ Resend tracking setup:
   HTML links to the tracking subdomain, records the click, and redirects to the
   original URL.
 
-Omega callback setup:
+OpenAgents product surface callback setup:
 
-- Yes, Omega needs a callback endpoint if we want open/click events stored in
+- Yes, OpenAgents product surface needs a callback endpoint if we want open/click events stored in
   the production database.
 - The recommended endpoint is
   `POST https://openagents.com/api/webhooks/resend`.
@@ -1235,12 +1235,12 @@ Privacy and analytics notes:
   email id, with optional recipient, subject, tags, bounce details, and click
   URLs for deeper analytics:
   https://resend.com/docs/dashboard/webhooks/how-to-store-webhooks-data
-- Omega should choose a retention policy before storing raw webhook payloads.
+- OpenAgents product surface should choose a retention policy before storing raw webhook payloads.
   A good default is to store normalized event rows and redacted summaries in
   D1, then add longer-term aggregates if campaign analytics grows.
 
 1. **Document Email Policy**
-   - Add an Omega invariant for email side effects:
+   - Add an OpenAgents product surface invariant for email side effects:
      "production email sends require typed intent, idempotency, source
      authority for non-system sends, and durable delivery status."
 
@@ -1264,7 +1264,7 @@ Privacy and analytics notes:
    - Do not let preview endpoints send.
 
 6. **Add Draft Recording Before Gmail Sending**
-   - If the local Gmail wrapper is revived for Omega, have it call an
+   - If the local Gmail wrapper is revived for OpenAgents product surface, have it call an
      operator-only writeback endpoint after draft creation.
    - Store draft id/thread id if `gws` returns them.
 
@@ -1281,7 +1281,7 @@ Privacy and analytics notes:
 
 ## Verification Plan
 
-For any Omega port, test at these layers:
+For any OpenAgents product surface port, test at these layers:
 
 - Config tests:
   - missing Resend config returns no transport;
@@ -1324,11 +1324,11 @@ For any Omega port, test at these layers:
 
 ## Open Questions
 
-1. Should Omega ever own customer/outreach email directly, or should customer
+1. Should OpenAgents product surface ever own customer/outreach email directly, or should customer
    email stay in Vortex/CRM surfaces?
-2. Should invitation email move from Vortex to Omega, or should Omega only
+2. Should invitation email move from Vortex to OpenAgents product surface, or should OpenAgents product surface only
    consume authenticated users after invitation/prelaunch access is resolved?
-3. Should Gmail drafts remain purely local, or should Omega record local Gmail
+3. Should Gmail drafts remain purely local, or should OpenAgents product surface record local Gmail
    draft ids through an operator-only writeback?
 4. Is billing email a system notification exempt from human approval, and if
    so what policy/version should be recorded on the delivery record?
@@ -1337,7 +1337,7 @@ For any Omega port, test at these layers:
 
 ## Bottom Line
 
-The previous work is valuable, but it points to a more disciplined Omega shape
+The previous work is valuable, but it points to a more disciplined OpenAgents product surface shape
 than any single old implementation:
 
 - use Vortex's Resend idempotency and admin invitation state;
@@ -1345,9 +1345,9 @@ than any single old implementation:
 - use Laravel's template/message/delivery/activity model and preview-before-send
   flow;
 - preserve the Gmail wrapper's draft-first local safety model;
-- keep Omega's current redacted config and schema-decoded Resend REST approach.
+- keep OpenAgents product surface's current redacted config and schema-decoded Resend REST approach.
 
-The immediate Omega rule should be simple: no new email side effect should be a
+The immediate OpenAgents product surface rule should be simple: no new email side effect should be a
 bare provider call from a route. It should pass through a typed service, carry
 an idempotency key, record durable state, redact sensitive bodies/provider
 payloads from exports and logs, and make draft versus send an explicit product

@@ -1,6 +1,6 @@
 # Public Claim Upgrade Receipts
 
-This note documents the OMEGA-062 claim-upgrade receipt contract.
+This note documents the OPENAGENTS-062 claim-upgrade receipt contract.
 
 Public OpenAgents surfaces should not move claims from planned or measured
 states into verified or settled language just because a private workroom says

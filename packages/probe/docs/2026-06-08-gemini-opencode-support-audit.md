@@ -6,7 +6,7 @@ Date: 2026-06-08
 
 Probe does not currently have a Gemini backend, a provider-neutral LLM request
 contract, or direct API-key inference. Its live backend surface is the
-Apple Foundation Models bridge, plus Omega-managed ChatGPT Codex account
+Apple Foundation Models bridge, plus OpenAgents product surface-managed ChatGPT Codex account
 materialization for runner assignments. Probe can already model backend
 capability, receipts, redacted provider evidence, and a backend-specific tool
 callback loop, but those pieces are not enough for standard Gemini tool calls.
@@ -54,7 +54,7 @@ That means there is no place today to say:
 
 - backend kind is `gemini_api`;
 - auth mode is `api_key`;
-- secret source is env or Omega materialization;
+- secret source is env or OpenAgents product surface materialization;
 - stream mode is SSE provider events rather than Apple FM snapshots;
 - model id is `gemini-3.5-flash`, `gemini-3.5-pro`, or another Gemini model.
 
@@ -101,11 +101,11 @@ standard provider tool-call events:
 
 ### Auth And Provider Account Materialization
 
-Probe already has careful auth handling for ChatGPT Codex/Omega:
+Probe already has careful auth handling for ChatGPT Codex/OpenAgents product surface:
 
 - `packages/runtime/src/contracts/provider-account.ts`
 - `packages/runtime/src/contracts/assignment.ts`
-- `packages/runtime/src/omega/grant-client.ts`
+- `packages/runtime/src/openagents/grant-client.ts`
 - `packages/runtime/src/auth/materializer.ts`
 - `packages/runtime/src/runner/identity.ts`
 
@@ -114,12 +114,12 @@ That machinery is provider-account oriented and currently specialized around
 file or env var and scrub it afterward, while receipts remain redacted.
 
 For Gemini ASAP support, Probe can start with local environment resolution
-without touching Omega:
+without touching OpenAgents product surface:
 
 - `GOOGLE_GENERATIVE_AI_API_KEY`
 - optionally `GEMINI_API_KEY` as a compatibility fallback
 
-Later, Omega/provider-account support can add a `google_gemini` provider and
+Later, OpenAgents product surface/provider-account support can add a `google_gemini` provider and
 materialize an API key into `GOOGLE_GENERATIVE_AI_API_KEY`, using the same
 redaction and runner authorization rules.
 
@@ -425,7 +425,7 @@ Expose a narrow path first:
 Then wire assignments:
 
 - allow assignments to select `backendProfileId: gemini-api`;
-- leave Omega provider-account grant support for a later `google_gemini`
+- leave OpenAgents product surface provider-account grant support for a later `google_gemini`
   provider unless the product needs remote managed keys immediately.
 
 ## Recommended First Patch Set
@@ -438,7 +438,7 @@ For the first implementation PR/commit after this audit, keep scope tight:
 4. Add Gemini client plain streaming smoke with env-key resolution.
 5. Add standard tool-loop fixture test with a fake fetch.
 
-Do not start by changing Omega or broad benchmark routing. Gemini must work
+Do not start by changing OpenAgents product surface or broad benchmark routing. Gemini must work
 locally with an API key first, using Opencode's env convention.
 
 ## Source Map

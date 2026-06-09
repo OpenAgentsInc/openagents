@@ -2,11 +2,11 @@
 
 Date: 2026-06-06
 
-Status: implemented contract note for issue #337 / `OMEGA-RUST-004`.
+Status: implemented contract note for issue #337 / `OPENAGENTS-RUST-004`.
 
 ## Purpose
 
-Omega now has a schema-first Probe coding-runtime adapter contract.
+OpenAgents product surface now has a schema-first Probe coding-runtime adapter contract.
 
 The implementation lives in
 `workers/api/src/probe-coding-runtime-contract.ts`.
@@ -79,7 +79,7 @@ Cancelled runs require closeout receipt refs.
   refs, preview refs, cost refs, and closeout receipt refs; and
 - a retained-failure run with failure refs and retained-failure refs.
 
-Future Rust Probe adapters can mirror these fixtures without making Omega
+Future Rust Probe adapters can mirror these fixtures without making OpenAgents product surface
 depend on a Rust fixture package yet.
 
 ## Projection And Redaction

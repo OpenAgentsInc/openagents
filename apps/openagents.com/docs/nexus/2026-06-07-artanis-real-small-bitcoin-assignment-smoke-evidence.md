@@ -6,7 +6,7 @@ Issue: #438
 ## Summary
 
 Issue #438 retained an Artanis-administered Pylon assignment smoke through the
-Omega/Nexus authority path. The smoke moved 0.00001000 bitcoin (1,000
+OpenAgents product surface/Nexus authority path. The smoke moved 0.00001000 bitcoin (1,000
 satoshis) from the OpenAgents treasury test wallet lane to a separate Pylon
 edge test wallet lane through the MDK agent-wallet adapter boundary.
 
@@ -113,11 +113,11 @@ settlement receipt evidence.
 `workers/api/src/artanis-real-small-bitcoin-assignment-smoke.ts` retains the
 typed smoke evidence and public/operator projection boundary.
 
-`workers/api/src/pylon-v02-omega-release-gate.ts` now marks
-`artanis_real_small_bitcoin_assignment` as passed for the current Omega/Nexus
+`workers/api/src/pylon-v02-openagents-release-gate.ts` now marks
+`artanis_real_small_bitcoin_assignment` as passed for the current OpenAgents product surface/Nexus
 gate.
 
-With #434 and #438 complete, the typed Pylon v0.2 Omega/Nexus release gate can
+With #434 and #438 complete, the typed Pylon v0.2 OpenAgents product surface/Nexus release gate can
 classify the evidence set as ready for operator release review. It still does
 not publish a release, spend bitcoin, settle payouts, or upgrade public claims
 by itself.

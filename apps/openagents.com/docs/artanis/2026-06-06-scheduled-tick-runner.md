@@ -92,8 +92,8 @@ Before production auto-run can be enabled:
 
 ## 2026-06-08 Status
 
-Omega #511 added retained Probe GEPA/Pylon production-equivalent smoke
-evidence. Omega #512 adds the separate bounded scheduled-runner proof for
+OpenAgents product surface #511 added retained Probe GEPA/Pylon production-equivalent smoke
+evidence. OpenAgents product surface #512 adds the separate bounded scheduled-runner proof for
 public-safe GEPA status projection. The runner can now clear the
 `scheduled_runner` launch-gate blocker only in that bounded mode: no assignment
 dispatch, no automatic Forum publishing, no provider mutation, no model
