@@ -1,0 +1,1246 @@
+import { Effect } from 'effect'
+import { describe, expect, test } from 'vitest'
+
+import {
+  type AgentRegistrationStore,
+  type ProgrammaticAgentSession,
+} from './agent-registration'
+import {
+  type PylonApiAssignmentRecord,
+  type PylonApiEventRecord,
+  type PylonApiRegistrationRecord,
+  type PylonApiStore,
+  PylonApiStoreError,
+  buildPylonApiRegistrationRecord,
+  makeD1PylonApiStore,
+  pylonClientVersionMeetsMinimum,
+} from './pylon-api'
+import { makePylonApiRoutes } from './pylon-api-routes'
+
+type PylonRouteJson = Readonly<{
+  assignment?: Readonly<{
+    assignmentRef?: string
+    leaseState?: string
+    state?: string
+  }>
+  assignments?: ReadonlyArray<
+    Readonly<{
+      assignmentRef?: string
+      leaseState?: string
+      state?: string
+    }>
+  >
+  dispatchGate?: Readonly<{
+    blockerRefs?: ReadonlyArray<string>
+    dispatchAllowed?: boolean
+    forumAutoPublishAllowed?: boolean
+    noSpendDispatch?: boolean
+    paymentMode?: string | null
+    settlementMutationAllowed?: boolean
+    walletSpendAllowed?: boolean
+  }>
+  error?: string
+  events?: ReadonlyArray<unknown>
+  idempotent?: boolean
+  pylon?: Readonly<{
+    clientProtocolVersion?: string | null
+    clientVersion?: string | null
+    createdAtDisplay?: string
+    latestCapacityRefs?: ReadonlyArray<string>
+    latestHeartbeatDisplay?: string | null
+    latestHeartbeatStatus?: string | null
+    latestHealthRefs?: ReadonlyArray<string>
+    latestLoadRefs?: ReadonlyArray<string>
+    latestResourceMode?: string | null
+    pylonRef?: string
+    walletReady?: boolean
+  }>
+  pylons?: ReadonlyArray<unknown>
+}>
+
+class MemoryPylonApiStore implements PylonApiStore {
+  assignments = new Map<string, PylonApiAssignmentRecord>()
+  assignmentsByIdempotency = new Map<string, PylonApiAssignmentRecord>()
+  events = new Map<string, PylonApiEventRecord>()
+  eventsByIdempotency = new Map<string, PylonApiEventRecord>()
+  registrations = new Map<string, PylonApiRegistrationRecord>()
+
+  createAssignment = async (record: PylonApiAssignmentRecord) => {
+    const existing = this.assignmentsByIdempotency.get(
+      record.idempotencyKeyHash,
+    )
+
+    if (existing !== undefined) {
+      return { idempotent: true, record: existing }
+    }
+
+    this.assignments.set(record.assignmentRef, record)
+    this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+
+    return { idempotent: false, record }
+  }
+
+  createEvent = async (record: PylonApiEventRecord) => {
+    const existing = this.eventsByIdempotency.get(record.idempotencyKeyHash)
+
+    if (existing !== undefined) {
+      return { idempotent: true, record: existing }
+    }
+
+    this.events.set(record.eventRef, record)
+    this.eventsByIdempotency.set(record.idempotencyKeyHash, record)
+
+    return { idempotent: false, record }
+  }
+
+  listEventsForPylon = async (pylonRef: string, limit: number) =>
+    Array.from(this.events.values())
+      .filter(event => event.pylonRef === pylonRef)
+      .slice(0, limit)
+
+  listEventsForAssignment = async (assignmentRef: string, limit: number) =>
+    Array.from(this.events.values())
+      .filter(event => event.assignmentRef === assignmentRef)
+      .slice(0, limit)
+
+  listAssignmentsForPylon = async (pylonRef: string, limit: number) =>
+    Array.from(this.assignments.values())
+      .filter(assignment => assignment.pylonRef === pylonRef)
+      .slice(0, limit)
+
+  listRegistrations = async (limit: number) =>
+    Array.from(this.registrations.values()).slice(0, limit)
+
+  readEventByIdempotencyKeyHash = async (idempotencyKeyHash: string) =>
+    this.eventsByIdempotency.get(idempotencyKeyHash)
+
+  readAssignment = async (assignmentRef: string) =>
+    this.assignments.get(assignmentRef)
+
+  readAssignmentByIdempotencyKeyHash = async (idempotencyKeyHash: string) =>
+    this.assignmentsByIdempotency.get(idempotencyKeyHash)
+
+  readRegistration = async (pylonRef: string) =>
+    this.registrations.get(pylonRef)
+
+  updateAssignment = async (record: PylonApiAssignmentRecord) => {
+    this.assignments.set(record.assignmentRef, record)
+    this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+
+    return record
+  }
+
+  upsertRegistration = async (record: PylonApiRegistrationRecord) => {
+    const existing = this.registrations.get(record.pylonRef)
+
+    if (
+      existing !== undefined &&
+      existing.ownerAgentUserId !== record.ownerAgentUserId
+    ) {
+      throw new PylonApiStoreError({
+        kind: 'conflict',
+        reason: 'Pylon ref is already owned by another registered agent.',
+      })
+    }
+
+    const next =
+      existing === undefined
+        ? record
+        : {
+            ...record,
+            createdAt: existing.createdAt,
+            id: existing.id,
+          }
+
+    this.registrations.set(record.pylonRef, next)
+
+    return next
+  }
+}
+
+type D1InsertShape = Readonly<{
+  bindCount: number
+  columnCount: number
+  valueCount: number
+}>
+
+const d1Result = <T>(results: ReadonlyArray<T> = []): D1Result<T> => ({
+  meta: {} as D1Meta & Record<string, unknown>,
+  results: [...results],
+  success: true,
+})
+
+const countCommaSeparatedSqlValues = (value: string): number =>
+  value
+    .split(',')
+    .map(part => part.trim())
+    .filter(part => part !== '').length
+
+class RegistrationInsertStatement implements D1PreparedStatement {
+  private bindings: ReadonlyArray<unknown> = []
+
+  constructor(
+    private readonly db: RegistrationInsertD1,
+    private readonly query: string,
+  ) {}
+
+  bind(...values: ReadonlyArray<unknown>): D1PreparedStatement {
+    this.bindings = values
+
+    return this
+  }
+
+  first<T = unknown>(): Promise<T | null> {
+    if (this.query.includes('FROM pylon_api_registrations')) {
+      return Promise.resolve(null)
+    }
+
+    return Promise.reject(new Error(`Unexpected D1 first: ${this.query}`))
+  }
+
+  run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    if (this.query.includes('INSERT INTO pylon_api_registrations')) {
+      const columnMatch = /\(([^)]+)\)\s*VALUES/s.exec(this.query)
+      const valueMatch = /VALUES\s*\(([^)]+)\)/s.exec(this.query)
+
+      this.db.registrationInsertShape = {
+        bindCount: this.bindings.length,
+        columnCount: countCommaSeparatedSqlValues(columnMatch?.[1] ?? ''),
+        valueCount: countCommaSeparatedSqlValues(valueMatch?.[1] ?? ''),
+      }
+
+      return Promise.resolve(d1Result<T>())
+    }
+
+    return Promise.reject(new Error(`Unexpected D1 run: ${this.query}`))
+  }
+
+  all<T = unknown>(): Promise<D1Result<T>> {
+    return Promise.reject(new Error(`Unexpected D1 all: ${this.query}`))
+  }
+
+  raw<T = unknown[]>(options: {
+    columnNames: true
+  }): Promise<[string[], ...T[]]>
+  raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>
+  raw<T = unknown[]>(options?: {
+    columnNames?: boolean
+  }): Promise<T[] | [string[], ...T[]]> {
+    return Promise.reject(new Error(`Unexpected D1 raw: ${this.query}`))
+  }
+}
+
+class RegistrationInsertD1 implements D1Database {
+  registrationInsertShape: D1InsertShape | null = null
+
+  batch<T = unknown>(): Promise<Array<D1Result<T>>> {
+    return Promise.reject(new Error('D1 batch should not be used'))
+  }
+
+  dump(): Promise<ArrayBuffer> {
+    return Promise.reject(new Error('D1 dump should not be used'))
+  }
+
+  exec(): Promise<D1ExecResult> {
+    return Promise.reject(new Error('D1 exec should not be used'))
+  }
+
+  prepare(query: string): D1PreparedStatement {
+    return new RegistrationInsertStatement(this, query)
+  }
+
+  withSession(): D1DatabaseSession {
+    throw new Error('D1 session should not be used')
+  }
+}
+
+const sessionFor = (userId: string): ProgrammaticAgentSession => ({
+  credential: {
+    id: `credential-${userId}`,
+    lastUsedAt: '2026-06-07T00:00:00.000Z',
+    profileMetadataJson: '{}',
+    tokenPrefix: 'oa_agent_test',
+  },
+  user: {
+    avatarUrl: null,
+    createdAt: '2026-06-07T00:00:00.000Z',
+    displayName: `Agent ${userId}`,
+    id: userId,
+    kind: 'agent',
+    primaryEmail: null,
+    status: 'active',
+    updatedAt: '2026-06-07T00:00:00.000Z',
+  },
+})
+
+const agentStoreFor = (userId: string): AgentRegistrationStore => ({
+  createAgentRegistration: () => Promise.resolve(),
+  findAgentByTokenHash: () =>
+    Promise.resolve({
+      credentialId: `credential-${userId}`,
+      profileMetadataJson: '{}',
+      tokenPrefix: 'oa_agent_test',
+      user: sessionFor(userId).user,
+    }),
+  touchAgentCredential: () => Promise.resolve(),
+})
+
+const route = async (
+  store: MemoryPylonApiStore,
+  path: string,
+  options: Readonly<{
+    adminToken?: boolean
+    body?: unknown
+    idempotencyKey?: string
+    method?: string
+    nowIso?: string
+    tokenUserId?: string
+  }> = {},
+) => {
+  let counter = 0
+  const init: RequestInit = {
+    headers: {
+      ...(options.body === undefined
+        ? {}
+        : { 'content-type': 'application/json' }),
+      ...(options.idempotencyKey === undefined
+        ? {}
+        : { 'Idempotency-Key': options.idempotencyKey }),
+      ...(options.adminToken === true
+        ? { authorization: 'Bearer admin' }
+        : options.tokenUserId === undefined
+          ? {}
+          : { authorization: `Bearer oa_agent_${options.tokenUserId}` }),
+    },
+    method: options.method ?? 'GET',
+  }
+
+  if (options.body !== undefined) {
+    init.body = JSON.stringify(options.body)
+  }
+
+  const request = new Request(`https://openagents.com${path}`, init)
+  const routes = makePylonApiRoutes({
+    agentStore: () => agentStoreFor(options.tokenUserId ?? 'agent-one'),
+    makeId: () => `test-${++counter}`,
+    makeStore: () => store,
+    nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
+    requireAdminApiToken: request =>
+      Promise.resolve(
+        options.adminToken === true &&
+          request.headers.get('authorization') === 'Bearer admin',
+      ),
+  })
+  const response = routes.routePylonApiRequest(request, {
+    OPENAGENTS_DB: {} as D1Database,
+  })
+
+  if (response === undefined) {
+    throw new Error(`No route matched ${path}`)
+  }
+
+  return Effect.runPromise(response)
+}
+
+const responseJson = async <A = Record<string, unknown>>(response: Response) =>
+  response.json() as Promise<A>
+
+const registerPylon = async (
+  store: MemoryPylonApiStore,
+  input: Readonly<{
+    capabilityRefs?: ReadonlyArray<string>
+    idempotencyKey?: string
+    pylonRef?: string
+    tokenUserId?: string
+  }> = {},
+) =>
+  route(store, '/api/pylons/register', {
+    body: {
+      capabilityRefs: input.capabilityRefs ?? ['capability.public.inference'],
+      clientProtocolVersion: '0.2.5',
+      clientVersion: 'openagents.pylon@0.2.5',
+      displayName: 'Edge Pylon',
+      pylonRef: input.pylonRef ?? 'pylon.test.one',
+      resourceMode: 'background_20',
+      walletRef: 'wallet.public.edge',
+    },
+    idempotencyKey: input.idempotencyKey ?? 'register-pylon-test-one',
+    method: 'POST',
+    tokenUserId: input.tokenUserId ?? 'agent-one',
+  })
+
+const markOnline = async (
+  store: MemoryPylonApiStore,
+  input: Readonly<{
+    nowIso?: string
+    pylonRef?: string
+    status?: string
+    tokenUserId?: string
+  }> = {},
+) => {
+  const pylonRef = input.pylonRef ?? 'pylon.test.one'
+  const nowIso = input.nowIso ?? '2026-06-07T00:10:00.000Z'
+
+  return route(store, `/api/pylons/${pylonRef}/heartbeat`, {
+    body: {
+      capacityRefs: ['capacity.public.gpu_available'],
+      clientProtocolVersion: '0.2.6',
+      clientVersion: 'pylon-v0.2.6',
+      healthRefs: ['health.public.ok'],
+      loadRefs: ['load.public.low'],
+      resourceMode: 'balanced',
+      status: input.status ?? 'online',
+    },
+    idempotencyKey: `heartbeat-online-${pylonRef}-${nowIso.replace(/\D/g, '')}`,
+    method: 'POST',
+    nowIso,
+    tokenUserId: input.tokenUserId ?? 'agent-one',
+  })
+}
+
+const markWalletReady = async (
+  store: MemoryPylonApiStore,
+  pylonRef = 'pylon.test.one',
+  tokenUserId = 'agent-one',
+) =>
+  route(store, `/api/pylons/${pylonRef}/wallet-readiness`, {
+    body: {
+      readinessRefs: ['readiness.public.mdk_agent_wallet_receive_ready'],
+      walletReady: true,
+      walletRef: 'wallet.public.edge',
+    },
+    idempotencyKey: `wallet-ready-${pylonRef}`,
+    method: 'POST',
+    tokenUserId,
+  })
+
+const createAssignment = async (
+  store: MemoryPylonApiStore,
+  input: Readonly<{
+    assignmentRef?: string
+    campaignPaused?: boolean
+    campaignPolicyRefs?: ReadonlyArray<string>
+    forumAutoPublishAllowed?: boolean
+    idempotencyKey?: string
+    leaseSeconds?: number
+    noDuplicateAssignmentRefs?: ReadonlyArray<string>
+    nowIso?: string
+    paymentMode?: string
+    pylonRef?: string
+    requiredCapabilityRefs?: ReadonlyArray<string>
+    spendCapRefs?: ReadonlyArray<string>
+  }> = {},
+) =>
+  route(store, '/api/operator/pylons/assignments', {
+    adminToken: true,
+    body: {
+      acceptanceCriteriaRefs: ['acceptance.public.echo_result'],
+      assignmentRef: input.assignmentRef ?? 'assignment.public.issue502.echo',
+      campaignPaused: input.campaignPaused ?? false,
+      campaignPolicyRefs: input.campaignPolicyRefs ?? [
+        'policy.public.probe_gepa.no_spend_dispatch',
+      ],
+      campaignRef: 'campaign.public.probe_gepa.stage0.no_spend',
+      closeoutPathRefs: ['closeout.public.operator_review_required'],
+      forumAutoPublishAllowed: input.forumAutoPublishAllowed ?? false,
+      idempotencyRefs: ['idempotency.public.pylon_assignment.request_key'],
+      jobKind: 'healthcheck_echo',
+      leaseSeconds: input.leaseSeconds ?? 600,
+      noDuplicateAssignmentRefs: input.noDuplicateAssignmentRefs ?? [
+        'dedupe.public.pylon_assignment.active_lease',
+      ],
+      noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
+      operatorPauseRefs: ['pause.public.artanis.pylon_dispatch'],
+      paymentMode: input.paymentMode ?? 'unpaid_smoke',
+      pylonRef: input.pylonRef ?? 'pylon.test.one',
+      requiredCapabilityRefs: input.requiredCapabilityRefs ?? [
+        'capability.public.inference',
+      ],
+      resultExpectationRefs: ['result.public.echo_summary'],
+      rollbackRefs: ['rollback.public.artanis.cancel_pylon_dispatch'],
+      selectionPolicyRefs: ['selection.public.pylon.capability_match'],
+      spendCapRefs: input.spendCapRefs ?? [],
+      taskRefs: ['task.public.echo_hello_world'],
+    },
+    idempotencyKey: input.idempotencyKey ?? 'assignment-create-echo',
+    method: 'POST',
+    ...(input.nowIso === undefined ? {} : { nowIso: input.nowIso }),
+  })
+
+describe('Pylon API routes', () => {
+  test('D1 store inserts new Pylon registrations with every migrated column represented', async () => {
+    const db = new RegistrationInsertD1()
+    const store = makeD1PylonApiStore(db)
+    const record = buildPylonApiRegistrationRecord({
+      credentialId: 'credential-agent-one',
+      displayName: 'Agent One',
+      makeId: () => 'new-pylon',
+      nowIso: '2026-06-08T14:20:00.000Z',
+      ownerAgentTokenPrefix: 'oa_agent_test',
+      ownerAgentUserId: 'agent-one',
+      request: {
+        capabilityRefs: ['capability.public.probe_gepa_unpaid_smoke'],
+        clientProtocolVersion: '0.2.5',
+        clientVersion: 'openagents.pylon@0.2.5',
+        displayName: 'D1 Insert Pylon',
+        pylonRef: 'pylon.test.d1_insert',
+        resourceMode: 'background_20',
+        statusRefs: ['status.public.d1_insert'],
+        walletRef: 'wallet.public.d1_insert',
+      },
+    })
+
+    await store.upsertRegistration(record)
+
+    expect(db.registrationInsertShape).toEqual({
+      bindCount: 22,
+      columnCount: 23,
+      valueCount: 23,
+    })
+  })
+
+  test('registers a Pylon and exposes public-safe reads', async () => {
+    const store = new MemoryPylonApiStore()
+    const created = await registerPylon(store)
+    const createdJson = await responseJson<PylonRouteJson>(created)
+    const list = await route(store, '/api/pylons')
+    const detail = await route(store, '/api/pylons/pylon.test.one')
+
+    expect(created.status).toBe(201)
+    expect(createdJson.pylon?.pylonRef).toBe('pylon.test.one')
+    expect(createdJson.pylon?.clientVersion).toBe('openagents.pylon@0.2.5')
+    expect(createdJson.pylon?.clientProtocolVersion).toBe('0.2.5')
+    expect(createdJson.pylon?.createdAtDisplay).toBe('Just now')
+    expect(JSON.stringify(createdJson)).not.toMatch(/2026-06-07T00:10/)
+    expect((await responseJson<PylonRouteJson>(list)).pylons).toHaveLength(1)
+    expect((await responseJson<PylonRouteJson>(detail)).events).toHaveLength(1)
+  })
+
+  test('parses Pylon client versions with a v0.2.5 minimum helper', () => {
+    expect(pylonClientVersionMeetsMinimum('0.2.5', '0.2.5')).toBe(true)
+    expect(pylonClientVersionMeetsMinimum('pylon-v0.2.6', '0.2.5')).toBe(true)
+    expect(
+      pylonClientVersionMeetsMinimum('openagents.pylon@0.2.5', '0.2.5'),
+    ).toBe(true)
+    expect(pylonClientVersionMeetsMinimum('pylon-v0.2.4', '0.2.5')).toBe(false)
+    expect(pylonClientVersionMeetsMinimum('release train ready', '0.2.5')).toBe(
+      false,
+    )
+  })
+
+  test('records heartbeat, wallet readiness, assignment, artifact, payment, and settlement events', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: {
+          capacityRefs: ['capacity.public.gpu_available'],
+          clientProtocolVersion: '0.2.6',
+          clientVersion: 'pylon-v0.2.6',
+          healthRefs: ['health.public.ok'],
+          loadRefs: ['load.public.low'],
+          resourceMode: 'balanced',
+          status: 'online',
+        },
+        idempotencyKey: 'key-heartbeat',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const wallet = await route(
+      store,
+      '/api/pylons/pylon.test.one/wallet-readiness',
+      {
+        body: {
+          readinessRefs: ['readiness.public.ok'],
+          status: 'ready',
+          walletReady: true,
+          walletRef: 'wallet.public.edge',
+        },
+        idempotencyKey: 'key-wallet',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const assignment = await createAssignment(store, {
+      assignmentRef: 'assignment.public.one',
+      idempotencyKey: 'key-assignment',
+    })
+    const writes = [
+      [
+        '/api/pylons/pylon.test.one/payout-target-admission',
+        {
+          admissionRefs: ['admission.public.requested'],
+          payoutTargetRef: 'payout_target.public.edge_hash',
+          status: 'requested',
+        },
+      ],
+      [
+        '/api/pylons/pylon.test.one/assignments/assignment.public.one/accept',
+        {
+          acceptanceRefs: ['acceptance.public.assignment_one'],
+          accepted: true,
+        },
+      ],
+      [
+        '/api/pylons/pylon.test.one/assignments/assignment.public.one/progress',
+        {
+          progressPercent: 50,
+          progressRefs: ['progress.public.halfway'],
+          status: 'running',
+        },
+      ],
+      [
+        '/api/pylons/pylon.test.one/assignments/assignment.public.one/artifacts',
+        {
+          artifactRefs: ['artifact.public.bundle_one'],
+          proofRefs: ['proof.public.bundle_one'],
+        },
+      ],
+      [
+        '/api/pylons/pylon.test.one/assignments/assignment.public.one/payment-receipts',
+        {
+          paymentProofRefs: ['payment_proof.public.redacted_one'],
+          receiptRefs: ['receipt.public.payment_one'],
+        },
+      ],
+      [
+        '/api/pylons/pylon.test.one/assignments/assignment.public.one/settlement-status',
+        {
+          settlementRefs: ['settlement.public.done'],
+          status: 'settled',
+          treasuryReceiptRefs: ['treasury_receipt.public.one'],
+        },
+      ],
+    ] as const
+
+    expect(heartbeat.status).toBe(201)
+    expect(wallet.status).toBe(201)
+    expect(assignment.status).toBe(201)
+
+    await Promise.all(
+      writes.map(async ([path, body]) => {
+        const response = await route(store, path, {
+          body,
+          idempotencyKey: `key-${path}`,
+          method: 'POST',
+          tokenUserId: 'agent-one',
+        })
+
+        expect(response.status).toBe(201)
+      }),
+    )
+
+    const detail = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons/pylon.test.one'),
+    )
+
+    expect(detail.events).toHaveLength(9)
+    expect(detail.pylon?.walletReady).toBe(true)
+    expect(detail.pylon?.latestHeartbeatDisplay).toBe('Just now')
+    expect(detail.pylon?.clientVersion).toBe('pylon-v0.2.6')
+    expect(detail.pylon?.clientProtocolVersion).toBe('0.2.6')
+    expect(detail.pylon?.latestHeartbeatStatus).toBe('online')
+    expect(detail.pylon?.latestResourceMode).toBe('balanced')
+    expect(detail.pylon?.latestHealthRefs).toEqual(['health.public.ok'])
+    expect(detail.pylon?.latestLoadRefs).toEqual(['load.public.low'])
+    expect(detail.pylon?.latestCapacityRefs).toEqual([
+      'capacity.public.gpu_available',
+    ])
+  })
+
+  test('rejects malformed Pylon client versions', async () => {
+    const store = new MemoryPylonApiStore()
+    const response = await route(store, '/api/pylons/register', {
+      body: {
+        capabilityRefs: ['capability.public.inference'],
+        clientVersion: 'pylon release train ready',
+        pylonRef: 'pylon.test.bad_version',
+      },
+      idempotencyKey: 'register-bad-client-version',
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    const body = await responseJson<PylonRouteJson>(response)
+
+    expect(response.status).toBe(400)
+    expect(body.error).toBe('pylon_api_validation_error')
+  })
+
+  test('collapses duplicate idempotency keys', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const first = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: { healthRefs: ['health.public.ok'] },
+      idempotencyKey: 'heartbeat-once',
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    const replay = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: { healthRefs: ['health.public.ok'] },
+      idempotencyKey: 'heartbeat-once',
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+
+    expect(first.status).toBe(201)
+    expect(replay.status).toBe(200)
+    expect((await responseJson<PylonRouteJson>(replay)).idempotent).toBe(true)
+  })
+
+  test('records payout-target admission lifecycle statuses as public-safe events', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+
+    for (const status of [
+      'pending',
+      'approved',
+      'revoked',
+      'blocked',
+      'stale',
+    ]) {
+      const response = await route(
+        store,
+        '/api/pylons/pylon.test.one/payout-target-admission',
+        {
+          body: {
+            admissionRefs: [`admission.public.${status}`],
+            payoutTargetRef: 'payout_target.public.edge_hash',
+            policyRefs: [`policy.public.${status}`],
+            status,
+          },
+          idempotencyKey: `payout-target-${status}`,
+          method: 'POST',
+          tokenUserId: 'agent-one',
+        },
+      )
+
+      expect(response.status).toBe(201)
+    }
+
+    const events = Array.from(store.eventsByIdempotency.values()).filter(
+      event => event.eventKind === 'payout_target_admission',
+    )
+
+    expect(events.map(event => event.status)).toEqual([
+      'pending',
+      'approved',
+      'revoked',
+      'blocked',
+      'stale',
+    ])
+    expect(
+      JSON.stringify(events.map(event => event.publicProjectionJson)),
+    ).not.toMatch(/lnbc|payment_hash|preimage|balance\.mdk_agent_wallet\.\d/i)
+  })
+
+  test('blocks controlled assignment dispatch to missing or offline Pylons', async () => {
+    const store = new MemoryPylonApiStore()
+    const missing = await createAssignment(store, {
+      assignmentRef: 'assignment.public.missing_pylon',
+      idempotencyKey: 'assignment-missing-pylon',
+      pylonRef: 'pylon.test.missing',
+    })
+    await registerPylon(store)
+    await markWalletReady(store)
+    const offline = await createAssignment(store, {
+      assignmentRef: 'assignment.public.offline_pylon',
+      idempotencyKey: 'assignment-offline-pylon',
+    })
+    const missingBody = await responseJson<PylonRouteJson>(missing)
+    const offlineBody = await responseJson<PylonRouteJson>(offline)
+
+    expect(missing.status).toBe(409)
+    expect(missingBody.error).toBe('controlled_dispatch_gate_blocked')
+    expect(missingBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.pylon_missing',
+    )
+    expect(offline.status).toBe(409)
+    expect(offlineBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.pylon_offline',
+    )
+  })
+
+  test('blocks controlled assignment dispatch for stale, paused, and wrong-capability Pylons', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store, { nowIso: '2026-06-07T00:00:00.000Z' })
+    await markWalletReady(store)
+    const stale = await createAssignment(store, {
+      assignmentRef: 'assignment.public.stale_pylon',
+      idempotencyKey: 'assignment-stale-pylon',
+    })
+    await markOnline(store)
+    const paused = await createAssignment(store, {
+      assignmentRef: 'assignment.public.paused_campaign',
+      campaignPaused: true,
+      idempotencyKey: 'assignment-paused-campaign',
+    })
+    const wrongCapability = await createAssignment(store, {
+      assignmentRef: 'assignment.public.wrong_capability',
+      idempotencyKey: 'assignment-wrong-capability',
+      requiredCapabilityRefs: ['capability.public.training'],
+    })
+    const staleBody = await responseJson<PylonRouteJson>(stale)
+    const pausedBody = await responseJson<PylonRouteJson>(paused)
+    const wrongCapabilityBody =
+      await responseJson<PylonRouteJson>(wrongCapability)
+
+    expect(stale.status).toBe(409)
+    expect(staleBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.pylon_stale',
+    )
+    expect(paused.status).toBe(409)
+    expect(pausedBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.campaign_paused',
+    )
+    expect(wrongCapability.status).toBe(409)
+    expect(wrongCapabilityBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.wrong_capability',
+    )
+  })
+
+  test('blocks duplicate dispatches and paid modes without spend-cap refs', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+    const first = await createAssignment(store, {
+      assignmentRef: 'assignment.public.active_one',
+      idempotencyKey: 'assignment-active-one',
+    })
+    const duplicate = await createAssignment(store, {
+      assignmentRef: 'assignment.public.active_two',
+      idempotencyKey: 'assignment-active-two',
+    })
+    await registerPylon(store, {
+      idempotencyKey: 'register-pylon-test-two',
+      pylonRef: 'pylon.test.two',
+      tokenUserId: 'agent-two',
+    })
+    await markOnline(store, {
+      pylonRef: 'pylon.test.two',
+      tokenUserId: 'agent-two',
+    })
+    await markWalletReady(store, 'pylon.test.two', 'agent-two')
+    const paidWithoutSpendCap = await createAssignment(store, {
+      assignmentRef: 'assignment.public.paid_without_cap',
+      idempotencyKey: 'assignment-paid-without-cap',
+      paymentMode: 'payable_pending_settlement',
+      pylonRef: 'pylon.test.two',
+    })
+    const duplicateBody = await responseJson<PylonRouteJson>(duplicate)
+    const paidWithoutSpendCapBody =
+      await responseJson<PylonRouteJson>(paidWithoutSpendCap)
+
+    expect(first.status).toBe(201)
+    expect(duplicate.status).toBe(409)
+    expect(duplicateBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+    expect(paidWithoutSpendCap.status).toBe(409)
+    expect(paidWithoutSpendCapBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.paid_mode_missing_spend_cap',
+    )
+  })
+
+  test('blocks missing dispatcher guard refs and automatic Forum publishing', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+    const missingPolicy = await createAssignment(store, {
+      assignmentRef: 'assignment.public.missing_policy',
+      campaignPolicyRefs: [],
+      idempotencyKey: 'assignment-missing-policy',
+    })
+    const forumPublish = await createAssignment(store, {
+      assignmentRef: 'assignment.public.forum_publish',
+      forumAutoPublishAllowed: true,
+      idempotencyKey: 'assignment-forum-publish',
+    })
+    const missingPolicyBody = await responseJson<PylonRouteJson>(missingPolicy)
+    const forumPublishBody = await responseJson<PylonRouteJson>(forumPublish)
+
+    expect(missingPolicy.status).toBe(409)
+    expect(missingPolicyBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.campaign_policy_missing',
+    )
+    expect(forumPublish.status).toBe(409)
+    expect(forumPublishBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.forum_auto_publish_requested',
+    )
+  })
+
+  test('leases, accepts, runs, proves, and closes accepted Pylon work', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+
+    const create = await createAssignment(store)
+    const replay = await createAssignment(store)
+    const list = await route(store, '/api/pylons/pylon.test.one/assignments', {
+      tokenUserId: 'agent-one',
+    })
+    const accept = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/accept',
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.echo_ready'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-echo',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const acceptReplay = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/accept',
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.echo_ready'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-echo',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const progress = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/progress',
+      {
+        body: {
+          progressPercent: 50,
+          progressRefs: ['progress.public.echo_halfway'],
+          status: 'running',
+        },
+        idempotencyKey: 'progress-echo',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const artifacts = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/artifacts',
+      {
+        body: {
+          artifactRefs: ['artifact.public.echo_manifest'],
+          proofRefs: ['proof.public.echo_result'],
+        },
+        idempotencyKey: 'artifact-echo',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const closeout = await route(
+      store,
+      '/api/operator/pylons/assignments/assignment.public.issue502.echo/closeout',
+      {
+        adminToken: true,
+        body: {
+          accepted: true,
+          acceptedWorkRefs: ['accepted_work.public.echo_result'],
+          closeoutRefs: ['closeout.public.operator_reviewed_echo'],
+        },
+        method: 'POST',
+      },
+    )
+    const paymentReceipt = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/payment-receipts',
+      {
+        body: {
+          paymentProofRefs: ['payment_proof.public.accepted_work'],
+          receiptRefs: ['receipt.public.accepted_work'],
+        },
+        idempotencyKey: 'payment-after-closeout',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const progressAfterCloseout = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/progress',
+      {
+        body: {
+          progressRefs: ['progress.public.should_not_mutate'],
+        },
+        idempotencyKey: 'progress-after-closeout',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const createBody = await responseJson<PylonRouteJson>(create)
+    const replayBody = await responseJson<PylonRouteJson>(replay)
+    const listBody = await responseJson<PylonRouteJson>(list)
+    const acceptBody = await responseJson<PylonRouteJson>(accept)
+    const acceptReplayBody = await responseJson<PylonRouteJson>(acceptReplay)
+    const progressBody = await responseJson<PylonRouteJson>(progress)
+    const artifactsBody = await responseJson<PylonRouteJson>(artifacts)
+    const closeoutBody = await responseJson<PylonRouteJson>(closeout)
+    const paymentReceiptBody =
+      await responseJson<PylonRouteJson>(paymentReceipt)
+    const progressAfterCloseoutBody = await responseJson<PylonRouteJson>(
+      progressAfterCloseout,
+    )
+
+    expect(create.status).toBe(201)
+    expect(createBody.assignment?.state).toBe('offered')
+    expect(createBody.dispatchGate?.dispatchAllowed).toBe(true)
+    expect(createBody.dispatchGate?.noSpendDispatch).toBe(true)
+    expect(createBody.dispatchGate?.walletSpendAllowed).toBe(false)
+    expect(createBody.dispatchGate?.settlementMutationAllowed).toBe(false)
+    expect(createBody.dispatchGate?.forumAutoPublishAllowed).toBe(false)
+    expect(replay.status).toBe(200)
+    expect(replayBody.idempotent).toBe(true)
+    expect(listBody.assignments?.[0]?.assignmentRef).toBe(
+      'assignment.public.issue502.echo',
+    )
+    expect(accept.status).toBe(201)
+    expect(acceptBody.assignment?.state).toBe('accepted')
+    expect(acceptReplay.status).toBe(200)
+    expect(acceptReplayBody.idempotent).toBe(true)
+    expect(progress.status).toBe(201)
+    expect(progressBody.assignment?.state).toBe('running')
+    expect(artifacts.status).toBe(201)
+    expect(artifactsBody.assignment?.state).toBe('proof_submitted')
+    expect(closeout.status).toBe(200)
+    expect(closeoutBody.assignment?.state).toBe('accepted_work')
+    expect(paymentReceipt.status).toBe(201)
+    expect(paymentReceiptBody.assignment?.state).toBe('accepted_work')
+    expect(progressAfterCloseout.status).toBe(409)
+    expect(progressAfterCloseoutBody.error).toBe('pylon_api_conflict')
+  })
+
+  test('blocks stale leases, wrong Pylon writes, invalid proof material, and supports rejected closeout', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+    await createAssignment(store, {
+      assignmentRef: 'assignment.public.issue502.stale',
+      idempotencyKey: 'assignment-create-stale',
+      leaseSeconds: 60,
+    })
+    const staleAccept = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.stale/accept',
+      {
+        body: { accepted: true },
+        idempotencyKey: 'accept-stale',
+        method: 'POST',
+        nowIso: '2026-06-07T00:11:01.000Z',
+        tokenUserId: 'agent-one',
+      },
+    )
+    await route(store, '/api/pylons/register', {
+      body: {
+        capabilityRefs: ['capability.public.inference'],
+        pylonRef: 'pylon.test.two',
+      },
+      idempotencyKey: 'register-pylon-test-two',
+      method: 'POST',
+      tokenUserId: 'agent-two',
+    })
+    const wrongPylon = await route(
+      store,
+      '/api/pylons/pylon.test.two/assignments/assignment.public.issue502.stale/accept',
+      {
+        body: { accepted: true },
+        idempotencyKey: 'accept-wrong-pylon',
+        method: 'POST',
+        tokenUserId: 'agent-two',
+      },
+    )
+    await createAssignment(store, {
+      assignmentRef: 'assignment.public.issue502.reject',
+      idempotencyKey: 'assignment-create-reject',
+      nowIso: '2026-06-07T00:11:02.000Z',
+    })
+    await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.reject/accept',
+      {
+        body: { accepted: true },
+        idempotencyKey: 'accept-reject-path',
+        method: 'POST',
+        nowIso: '2026-06-07T00:11:03.000Z',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const invalidProof = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.reject/artifacts',
+      {
+        body: {
+          artifactRefs: ['raw_artifact.private_runner_output'],
+          proofRefs: ['proof.public.invalid'],
+        },
+        idempotencyKey: 'artifact-invalid',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const rejected = await route(
+      store,
+      '/api/operator/pylons/assignments/assignment.public.issue502.reject/closeout',
+      {
+        adminToken: true,
+        body: {
+          accepted: false,
+          closeoutRefs: ['closeout.public.invalid_proof_reviewed'],
+          rejectionRefs: ['rejection.public.invalid_proof'],
+        },
+        method: 'POST',
+      },
+    )
+    const staleBody = await responseJson<PylonRouteJson>(staleAccept)
+    const wrongPylonBody = await responseJson<PylonRouteJson>(wrongPylon)
+    const invalidProofBody = await responseJson<PylonRouteJson>(invalidProof)
+    const rejectedBody = await responseJson<PylonRouteJson>(rejected)
+
+    expect(staleAccept.status).toBe(409)
+    expect(staleBody.error).toBe('pylon_api_conflict')
+    expect(wrongPylon.status).toBe(404)
+    expect(wrongPylonBody.error).toBe('pylon_api_not_found')
+    expect(invalidProof.status).toBe(400)
+    expect(invalidProofBody.error).toBe('pylon_api_validation_error')
+    expect(rejected.status).toBe(200)
+    expect(rejectedBody.assignment?.state).toBe('rejected')
+  })
+
+  test('rejects idempotency key reuse across Pylons, agents, and event kinds', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: { healthRefs: ['health.public.ok'] },
+      idempotencyKey: 'pylon-event-key',
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    const wrongOwner = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: { healthRefs: ['health.public.ok'] },
+        idempotencyKey: 'pylon-event-key',
+        method: 'POST',
+        tokenUserId: 'agent-two',
+      },
+    )
+    const wrongEventKind = await route(
+      store,
+      '/api/pylons/pylon.test.one/wallet-readiness',
+      {
+        body: { walletReady: true },
+        idempotencyKey: 'pylon-event-key',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const wrongRegisterKind = await route(store, '/api/pylons/register', {
+      body: { pylonRef: 'pylon.test.from-event-key' },
+      idempotencyKey: 'pylon-event-key',
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    const registerReplayWithDifferentPylon = await route(
+      store,
+      '/api/pylons/register',
+      {
+        body: { pylonRef: 'pylon.test.different' },
+        idempotencyKey: 'register-pylon-test-one',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const registerReplayBody = await responseJson<PylonRouteJson>(
+      registerReplayWithDifferentPylon,
+    )
+
+    expect(wrongOwner.status).toBe(403)
+    expect(wrongEventKind.status).toBe(409)
+    expect(wrongRegisterKind.status).toBe(409)
+    expect(registerReplayWithDifferentPylon.status).toBe(200)
+    expect(registerReplayBody.idempotent).toBe(true)
+    expect(registerReplayBody.pylon?.pylonRef).toBe('pylon.test.one')
+    expect(store.registrations.has('pylon.test.different')).toBe(false)
+    expect(store.registrations.has('pylon.test.from-event-key')).toBe(false)
+  })
+
+  test('requires registered-agent auth and registration ownership for writes', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const unauthenticated = await route(store, '/api/pylons/register', {
+      body: { pylonRef: 'pylon.no.auth' },
+      idempotencyKey: 'no-auth',
+      method: 'POST',
+    })
+    const wrongOwner = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: { healthRefs: ['health.public.ok'] },
+        idempotencyKey: 'wrong-owner',
+        method: 'POST',
+        tokenUserId: 'agent-two',
+      },
+    )
+
+    expect(unauthenticated.status).toBe(401)
+    expect(wrongOwner.status).toBe(403)
+  })
+
+  test('rejects raw payment and wallet material in write payloads', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const response = await route(
+      store,
+      '/api/pylons/pylon.test.one/wallet-readiness',
+      {
+        body: {
+          readinessRefs: ['readiness.public.ok'],
+          walletReady: true,
+          walletRef: 'lnbc10n1rawinvoice',
+        },
+        idempotencyKey: 'unsafe-wallet',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const body = await responseJson<PylonRouteJson>(response)
+
+    expect(response.status).toBe(400)
+    expect(body.error).toBe('pylon_api_validation_error')
+  })
+
+  test('rejects exact wallet balances in readiness payloads', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const response = await route(
+      store,
+      '/api/pylons/pylon.test.one/wallet-readiness',
+      {
+        body: {
+          balanceRefs: ['balance.mdk_agent_wallet.10000'],
+          readinessRefs: ['readiness.public.ok'],
+          walletReady: true,
+          walletRef: 'wallet.public.edge',
+        },
+        idempotencyKey: 'unsafe-balance',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const body = await responseJson<PylonRouteJson>(response)
+
+    expect(response.status).toBe(400)
+    expect(body.error).toBe('pylon_api_validation_error')
+  })
+})

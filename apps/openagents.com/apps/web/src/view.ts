@@ -1,0 +1,492 @@
+import { Match as M, Option } from 'effect'
+import { type Document, type Html, html } from 'foldkit/html'
+
+import {
+  GotDemoMessage,
+  GotLoggedInMessage,
+  GotLoggedOutMessage,
+  Message,
+} from './message'
+import type { Model } from './model'
+import { Demo, LoggedIn, LoggedOut } from './model'
+import * as Blog from './page/blog'
+import * as Docs from './page/docs'
+import * as Forum from './page/forum'
+import type {
+  PublicPylonStats,
+  PublicPylonStatsModel,
+} from './page/loggedOut/model'
+import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
+import * as Ui from './ui'
+
+const githubLoginHref = '/login/github'
+
+const githubIcon = (): Html => {
+  const h = html<Message>()
+
+  return h.svg(
+    [
+      h.AriaHidden(true),
+      Ui.className<Message>('size-5 shrink-0'),
+      h.Xmlns('http://www.w3.org/2000/svg'),
+      h.ViewBox('0 0 24 24'),
+      h.Fill('currentColor'),
+    ],
+    [
+      h.path(
+        [
+          h.D(
+            'M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.19-1.11-1.51-1.11-1.51-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.97c.85 0 1.7.12 2.5.35 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.95.68 1.92 0 1.38-.01 2.5-.01 2.84 0 .27.18.59.69.49A10.22 10.22 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z',
+          ),
+        ],
+        [],
+      ),
+    ],
+  )
+}
+
+const githubLoginButton = (): Html => {
+  const h = html<Message>()
+
+  return Ui.v4LinkButton<Message>({
+    href: githubLoginHref,
+    label: 'Log in with GitHub',
+    variant: 'secondary',
+    size: 'md',
+    left: githubIcon(),
+    attrs: [
+      h.DataAttribute('login-button', 'github'),
+      h.AriaBusy(false),
+      h.Attribute(
+        'onclick',
+        "if(this.getAttribute('aria-disabled')==='true'){event.preventDefault();return false;}var label=this.querySelector('[data-login-label]');if(label){label.textContent='Logging in...';}this.setAttribute('aria-disabled','true');this.setAttribute('aria-busy','true');this.classList.add('pointer-events-none','opacity-75');",
+      ),
+    ],
+    labelAttrs: [h.DataAttribute('login-label', '')],
+  })
+}
+
+const publicAgentPath = (): Html => {
+  const h = html<Message>()
+  const instruction =
+    'Read https://openagents.com/AGENTS.md. Do a dry-run first. Inspect the manifest and OpenAPI before planning any action.'
+
+  return h.section(
+    [
+      Ui.className<Message>(
+        'mx-auto grid w-full gap-2 border border-white/10 bg-[#010102] p-3 text-left text-[0.6875rem] leading-4 text-white/45 sm:w-[min(100%,20rem)]',
+      ),
+    ],
+    [
+      h.h2(
+        [
+          Ui.className<Message>(
+            'm-0 text-center text-[0.6875rem] font-semibold uppercase leading-none tracking-wide text-white/60',
+          ),
+        ],
+        ['I am an Agent'],
+      ),
+      h.textarea(
+        [
+          h.AriaLabel('Copyable agent instruction'),
+          h.Readonly(true),
+          h.Value(instruction),
+          h.Rows(3),
+          Ui.className<Message>(
+            'min-h-16 resize-none border border-white/10 bg-black p-2 text-[0.625rem] leading-4 text-white/55 outline-none',
+          ),
+        ],
+        [],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-center justify-center gap-2 text-[0.625rem] uppercase leading-none tracking-wide',
+          ),
+        ],
+        [
+          h.a(
+            [
+              h.Href('/.well-known/openagents.json'),
+              Ui.className<Message>(
+                'text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
+              ),
+            ],
+            ['Capability manifest'],
+          ),
+          h.a(
+            [
+              h.Href('/api/openapi.json'),
+              Ui.className<Message>(
+                'text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
+              ),
+            ],
+            ['OpenAPI'],
+          ),
+          h.a(
+            [
+              h.Href('/api/public/proof/otec'),
+              Ui.className<Message>(
+                'text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
+              ),
+            ],
+            ['Public proof'],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const numberFormatter = new Intl.NumberFormat('en-US')
+
+const formatNumber = (value: number): string => numberFormatter.format(value)
+
+const rootStatsFromModel = (
+  model: PublicPylonStatsModel,
+): PublicPylonStats | null =>
+  model._tag === 'PublicPylonStatsLoaded' ? model.stats : null
+
+const rootStatsStatusText = (model: PublicPylonStatsModel): string =>
+  model._tag === 'PublicPylonStatsLoading'
+    ? 'Loading'
+    : model._tag === 'PublicPylonStatsFailed'
+      ? 'Unavailable'
+      : model._tag === 'PublicPylonStatsLoaded' && model.stats.available
+        ? 'Live'
+        : 'Unavailable'
+
+const rootStatsValue = (
+  stats: PublicPylonStats | null,
+  pick: (stats: PublicPylonStats) => string,
+): string => (stats === null ? '-' : pick(stats))
+
+const rootPylonStat = (label: string, value: string, detail: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid min-h-[5.75rem] content-between gap-2 border border-[#222] bg-[#0d0d0d] p-3 text-left',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'truncate text-[0.7rem] uppercase text-white/45',
+          ),
+        ],
+        [label],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'min-w-0 truncate text-2xl font-semibold tabular-nums text-[#f1efe8]',
+          ),
+        ],
+        [value],
+      ),
+      h.div(
+        [Ui.className<Message>('min-h-4 text-[0.72rem] text-white/45')],
+        [detail],
+      ),
+    ],
+  )
+}
+
+const rootPylonStatsStrip = (model: PublicPylonStatsModel): Html => {
+  const h = html<Message>()
+  const stats = rootStatsFromModel(model)
+  const freshness =
+    stats === null
+      ? 'Freshness pending'
+      : stats.available
+        ? `Fresh ${stats.asOfLabel ?? 'recently'}`
+        : (stats.error ?? 'Stats unavailable')
+
+  return h.section(
+    [
+      Ui.className<Message>(
+        'mx-auto grid w-full gap-3 border-t border-[#222] pt-5',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-2 text-left',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-1')],
+            [
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-sm font-semibold text-[#f1efe8]',
+                  ),
+                ],
+                ['Live Pylons'],
+              ),
+              h.p(
+                [Ui.className<Message>('m-0 text-[0.75rem] text-white/45')],
+                [freshness],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'min-h-6 border border-[#242424] px-2 py-1 text-[0.7rem] uppercase text-white/50',
+              ),
+            ],
+            [rootStatsStatusText(model)],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5',
+          ),
+        ],
+        [
+          rootPylonStat(
+            'Online now',
+            rootStatsValue(stats, value => formatNumber(value.pylonsOnlineNow)),
+            'Heartbeat window',
+          ),
+          rootPylonStat(
+            'Seen in 24h',
+            rootStatsValue(stats, value => formatNumber(value.pylonsSeen24h)),
+            'Recent check-ins',
+          ),
+          rootPylonStat(
+            'Wallet ready',
+            rootStatsValue(stats, value =>
+              formatNumber(value.pylonsWalletReadyNow),
+            ),
+            'Public readiness',
+          ),
+          rootPylonStat(
+            'Earning gate',
+            stats === null
+              ? '-'
+              : stats.earningLaunchGate.publicEarningCopyAllowed
+                ? 'Ready'
+                : 'Blocked',
+            stats === null
+              ? 'Stats loading'
+              : stats.earningLaunchGate.publicEarningCopyAllowed
+                ? 'Bounded copy'
+                : 'Unsafe copy blocked',
+          ),
+          rootPylonStat(
+            'Version floor',
+            rootStatsValue(stats, value => `v${value.minimumClientVersion}+`),
+            'Pylon line',
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const maintenanceBody = (
+  publicPylonStats: PublicPylonStatsModel,
+): Document['body'] => {
+  const h = html<Message>()
+
+  return Ui.centeredFrame<Message>([
+    h.div(
+      [
+        Ui.className<Message>(
+          'grid w-full max-w-[260px] gap-6 text-center text-sm leading-6 text-white/70 sm:max-w-none',
+        ),
+      ],
+      [
+        h.p(
+          [Ui.className<Message>('m-0 text-white')],
+          [
+            h.span([Ui.className<Message>('font-bold')], ['Autopilot']),
+            ' is a cloud coding agent.',
+          ],
+        ),
+        h.p(
+          [Ui.className<Message>('m-0 py-2 text-white/50')],
+          ['Now in beta! Get a free coding task back within 24 hours.'],
+        ),
+        h.div([Ui.className<Message>('mb-4')], [githubLoginButton()]),
+        rootPylonStatsStrip(publicPylonStats),
+        publicAgentPath(),
+      ],
+    ),
+  ])
+}
+
+const docTitle = (slug: string): string =>
+  Option.match(Docs.docPageTitle(slug), {
+    onNone: () => 'Docs',
+    onSome: pageTitle => pageTitle,
+  })
+
+const blogTitle = (slug: string): string =>
+  Option.match(Blog.blogPostTitle(slug), {
+    onNone: () => 'Blog',
+    onSome: postTitle => postTitle,
+  })
+
+const title = (model: Model): string =>
+  model._tag === 'Demo'
+    ? 'OpenAgents Demo'
+    : M.value(model.route).pipe(
+        M.tag('Docs', () => 'Docs - OpenAgents'),
+        M.tag('DocsPage', ({ slug }) => `${docTitle(slug)} - OpenAgents`),
+        M.tag('Forum', () => 'Forum - OpenAgents'),
+        M.tag('ForumForum', route => Forum.title(route)),
+        M.tag('ForumTopic', route => Forum.title(route)),
+        M.tag('ForumReceipt', route => Forum.title(route)),
+        M.tag('SiteCheckoutDemo', () => 'Demo checkout - OpenAgents'),
+        M.tag('SiteCheckoutDemoReturn', route => SiteCheckoutDemo.title(route)),
+        M.tag('Blog', () => 'Blog - OpenAgents'),
+        M.tag('BlogPost', ({ slug }) => `${blogTitle(slug)} - OpenAgents`),
+        M.tag('PublicAgent', ({ agentRef }) => `${agentRef} - OpenAgents`),
+        M.tag('Share', () => 'Shared Workroom - OpenAgents'),
+        M.orElse(() => 'OpenAgents'),
+      )
+
+const publicRouteBody = (model: Model): Document['body'] | undefined => {
+  if (model._tag === 'Demo') {
+    return undefined
+  }
+
+  if (model._tag === 'LoggedOut' && model.route._tag === 'PublicAgent') {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-public-agent',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
+  if (model._tag === 'LoggedOut' && model.route._tag === 'Share') {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-share',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
+  if (
+    model.route._tag !== 'Docs' &&
+    model.route._tag !== 'DocsPage' &&
+    model.route._tag !== 'Forum' &&
+    model.route._tag !== 'ForumForum' &&
+    model.route._tag !== 'ForumTopic' &&
+    model.route._tag !== 'ForumReceipt'
+  ) {
+    if (
+      model.route._tag !== 'SiteCheckoutDemo' &&
+      model.route._tag !== 'SiteCheckoutDemoReturn' &&
+      model.route._tag !== 'Blog' &&
+      model.route._tag !== 'BlogPost'
+    ) {
+      return undefined
+    }
+  }
+
+  const authState =
+    model._tag === 'LoggedIn'
+      ? {
+          _tag: 'LoggedIn' as const,
+          onLogout: GotLoggedInMessage({ message: LoggedIn.ClickedLogout() }),
+        }
+      : { _tag: 'LoggedOut' as const }
+
+  if (model.route._tag === 'Docs' || model.route._tag === 'DocsPage') {
+    return Docs.view<Message>(model.route, authState)
+  }
+
+  if (
+    model.route._tag === 'Forum' ||
+    model.route._tag === 'ForumForum' ||
+    model.route._tag === 'ForumTopic' ||
+    model.route._tag === 'ForumReceipt'
+  ) {
+    return Forum.view<Message>(model.route, authState)
+  }
+
+  if (
+    model.route._tag === 'SiteCheckoutDemo' ||
+    model.route._tag === 'SiteCheckoutDemoReturn'
+  ) {
+    return SiteCheckoutDemo.view<Message>(model.route, authState)
+  }
+
+  return Blog.view<Message>(model.route, authState)
+}
+
+export const view = (model: Model): Document => {
+  const maybePublicRouteBody = publicRouteBody(model)
+
+  if (maybePublicRouteBody !== undefined) {
+    return {
+      title: title(model),
+      body: maybePublicRouteBody,
+    }
+  }
+
+  if (model._tag === 'LoggedIn') {
+    const h = html<Message>()
+
+    return {
+      title: title(model),
+      body: h.submodel({
+        slotId: 'logged-in',
+        model,
+        view: LoggedIn.view,
+        toParentMessage: message => GotLoggedInMessage({ message }),
+      }),
+    }
+  }
+
+  if (model._tag === 'Demo') {
+    const h = html<Message>()
+
+    return {
+      title: title(model),
+      body: h.submodel({
+        slotId: 'demo',
+        model,
+        view: Demo.view,
+        toParentMessage: message => GotDemoMessage({ message }),
+      }),
+    }
+  }
+
+  if (model.route._tag === 'Onboarding') {
+    const h = html<Message>()
+
+    return {
+      title: 'Autopilot Onboarding - OpenAgents',
+      body: h.submodel({
+        slotId: 'logged-out-onboarding',
+        model,
+        view: LoggedOut.view,
+        toParentMessage: message => GotLoggedOutMessage({ message }),
+      }),
+    }
+  }
+
+  return {
+    title: title(model),
+    body: maintenanceBody(model.publicPylonStats),
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "schemaRef": "probe.live_terminal_bench_canary_receipt.v1",
+  "receiptRef": "receipt.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "createdAt": "2026-06-08T15:10:57.000Z",
+  "canaryKind": "unpaid_smoke",
+  "evidenceState": "initial_retained_evidence_only",
+  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "pylonRef": "pylon.artanis.gepa_stats_canary.20260608150415",
+  "runRef": "probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "benchmarkSuiteRef": "benchmark_suite.terminal_bench_2.harbor.retained.v1",
+  "taskRefs": [
+    "task.public.terminal_bench_2.configure_git_webserver.retained",
+    "task.public.terminal_bench_2.filter_js_from_html.retained"
+  ],
+  "primaryProbeTaskRef": "task.public.terminal_bench_2.configure_git_webserver.retained",
+  "secondaryProbeTaskRefs": [
+    "task.public.terminal_bench_2.filter_js_from_html.retained"
+  ],
+  "pylonLifecycle": {
+    "assignmentState": "accepted_work",
+    "leaseState": "terminal",
+    "heartbeatEventRef": "pylon_event.heartbeat.cbfba02f-8ce8-4161-954a-109f403a56c1",
+    "walletReadinessEventRef": "pylon_event.wallet_readiness.ae6b9e8c-58d8-4dde-a1a0-d666d162087a",
+    "acceptanceEventRef": "pylon_event.assignment_acceptance.ab63a3aa-771e-47cd-8cf6-1d29f945021e",
+    "progressEventRef": "pylon_event.assignment_progress.27bf8d2d-6979-4597-8e85-2da994990710",
+    "artifactProofEventRef": "pylon_event.artifact_proof_metadata.82e04c95-8084-4b95-bbd2-1183b760c7ae",
+    "artifactRefs": [
+      "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.probe_closeout_bundle",
+      "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.route_scorecard",
+      "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.verifier_result_refs"
+    ],
+    "proofRefs": [
+      "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.no_spend_assignment_lifecycle",
+      "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.public_safe_redaction",
+      "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.terminal_bench_2.initial_evidence"
+    ],
+    "acceptedWorkRefs": [
+      "accepted_work.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.probe_gepa_canary"
+    ],
+    "closeoutRefs": [
+      "closeout.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.operator_reviewed_unpaid_smoke",
+      "probe_closeout.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+      "route_scorecard.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+      "verifier_result.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.initial_retained"
+    ]
+  },
+  "closeoutBundle": {
+    "directoryRef": "docs/benchmarks/canaries/20260608151057/closeout-bundle",
+    "bundleRef": "probe_benchmark_closeout_bundle.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+    "fileRefs": [
+      "probe-run-record.json",
+      "probe-closeout.json",
+      "decision-trace-summary.json",
+      "selected-signatures.json",
+      "tool-menu.json",
+      "candidate-ref.json",
+      "artifact-refs.json",
+      "resource-usage-ref.json",
+      "policy-findings.json",
+      "failure-classification.json",
+      "route-scorecard.json"
+    ]
+  },
+  "publicStatsSnapshot": {
+    "routeRef": "https://openagents.com/api/public/pylon-stats",
+    "status": "live",
+    "pylonsRegisteredTotal": 1,
+    "pylonsOnlineNow": 1,
+    "pylonsWalletReadyNow": 1,
+    "pylonsAssignmentReadyNow": 1,
+    "minimumClientVersion": "0.2.5"
+  },
+  "artanisSnapshot": {
+    "routeRef": "https://openagents.com/api/public/artanis/report",
+    "runtimeState": "running",
+    "healthOverallState": "stale",
+    "overclaimBlocked": true,
+    "probeGepaProductionSmokeState": "retained",
+    "gepaScheduledRunnerState": "retained"
+  },
+  "psionicImportRefs": {
+    "importRef": "psionic_import.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+    "frontierUpdateRef": "frontier_update.pending.psionic.probe_gepa.terminal_bench_2.canary.20260608151057",
+    "sourceReceiptRef": "receipt.public.probe_gepa.terminal_bench_2.canary.20260608151057"
+  },
+  "claimBoundary": {
+    "publicBenchmarkScoreClaimAllowed": false,
+    "paidWorkClaimAllowed": false,
+    "settledBitcoinClaimAllowed": false,
+    "modelTrainingClaimAllowed": false,
+    "runtimePromotionAllowed": false,
+    "stage1PromotionAllowed": "shadow_only_after_separate_gate",
+    "notes": [
+      "This is a live unpaid Pylon assignment lifecycle with public-safe refs.",
+      "It is initial retained Terminal-Bench evidence, not a leaderboard score.",
+      "The Probe closeout bundle records a retained service-readiness failure family while the Pylon work closeout was accepted as evidence work."
+    ]
+  }
+}

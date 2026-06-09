@@ -1,0 +1,142 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "openagents-autopilot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1,
+    },
+  },
+  "routes": [
+    {
+      "pattern": "openagents.com",
+      "custom_domain": true,
+    },
+    {
+      "pattern": "auth.openagents.com",
+      "custom_domain": true,
+    },
+    {
+      "pattern": "sites.openagents.com",
+      "custom_domain": true,
+    },
+  ],
+  "vars": {
+    "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
+    "OPENAUTH_CLIENT_ID": "openagents-web",
+    "OPENAUTH_ISSUER_URL": "https://auth.openagents.com",
+    "OPENAGENTS_APP_URL": "https://openagents.com",
+    "RESEND_FROM_EMAIL": "OpenAgents <chris+sites@openagents.com>",
+    "RESEND_REPLY_TO_EMAIL": "chris+sites@openagents.com",
+    "MDK_CHECKOUT_CONFIG_REF": "config.openagents.mdk.cloudflare_container",
+    "MDK_CHECKOUT_CREDENTIAL_BINDING_REF": "credential_binding.openagents.mdk.cloudflare_worker_binding",
+    "MDK_CHECKOUT_ENVIRONMENT": "production",
+    "MDK_CHECKOUT_PATH_BASE": "/checkout",
+    "MDK_CHECKOUT_PROVIDER_REF": "provider.openagents.mdk.cloudflare_container",
+    "MDK_CHECKOUT_ROUTE_KIND": "self_hosted_mdkd_sidecar",
+    "MDK_CHECKOUT_ROUTE_URL": "https://openagents.com/api/mdk",
+    "MDK_CHECKOUT_WEBHOOK_SOURCE": "sdk_node_control",
+    "SHC_CONTROL_API_URL": "http://23.182.128.195.sslip.io/v1/codex-runs",
+    "SHC_DISPATCH_MODE": "live",
+  },
+  "containers": [
+    {
+      "class_name": "MdkSidecarContainer",
+      "image": "../../services/mdk-sidecar/Dockerfile",
+      "image_build_context": "../../services/mdk-sidecar",
+      "instance_type": "basic",
+      "max_instances": 2,
+    },
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "AUTH_STORAGE",
+      "id": "d6b40d28e0a640bfb29d50c7afe458b1",
+      "preview_id": "02566e7567b6479ebdada57c93991383",
+    },
+  ],
+  "assets": {
+    "directory": "../../apps/web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true,
+  },
+  "dispatch_namespaces": [
+    {
+      "binding": "SITES_DISPATCH",
+      "namespace": "openagents-sites-production",
+    },
+  ],
+  "d1_databases": [
+    {
+      "binding": "OPENAGENTS_DB",
+      "database_name": "openagents-autopilot",
+      "database_id": "9644ea09-f682-4971-98de-e0c791cb67fb",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "openagents-autopilot-artifacts",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "RUNNER_EVENTS",
+        "queue": "openagents-autopilot-runner-events",
+      },
+      {
+        "binding": "ADJUTANT_ENRICHMENT_QUEUE",
+        "queue": "openagents-adjutant-enrichment-jobs",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "openagents-adjutant-enrichment-jobs",
+        "max_batch_size": 1,
+        "max_retries": 3,
+      },
+    ],
+  },
+  "triggers": {
+    "crons": ["* * * * *"],
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SYNC_ROOM",
+        "class_name": "SyncRoomDurableObject",
+      },
+      {
+        "name": "MDK_SIDECAR",
+        "class_name": "MdkSidecarContainer",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SyncRoomDurableObject"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["MdkSidecarContainer"],
+    },
+  ],
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@openagents/probe-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "probe": "./src/cli.ts"
+  },
+  "scripts": {
+    "probe": "bun src/cli.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@opentui/core": "0.3.4",
+    "diff": "^9.0.0",
+    "effect": "catalog:",
+    "marked": "^18.0.5"
+  }
+}

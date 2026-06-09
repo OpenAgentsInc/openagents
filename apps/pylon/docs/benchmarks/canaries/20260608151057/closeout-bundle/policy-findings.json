@@ -1,0 +1,5 @@
+{
+  "schemaRef": "probe.policy_findings_summary.v1",
+  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "policyFindings": []
+}

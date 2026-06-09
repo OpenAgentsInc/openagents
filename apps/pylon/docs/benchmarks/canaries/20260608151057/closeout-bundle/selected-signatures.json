@@ -1,0 +1,8 @@
+{
+  "schemaRef": "probe.selected_signatures_summary.v1",
+  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "registrySplitRef": "benchmark_split_manifest.terminal_bench_2.probe_gepa.stage_0_1.v1",
+  "selectedSignatureRefs": [
+    "program_signature.probe.benchmark.service_readiness.v1"
+  ]
+}

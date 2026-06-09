@@ -1,0 +1,429 @@
+import { clsx } from 'clsx'
+import type { Attribute, Html } from 'foldkit/html'
+import { html } from 'foldkit/html'
+
+import { eyebrowClass, kitFamily, metaClass, titleClass } from './primitives'
+import type { FormOption, ValidationState } from './primitives'
+
+export const compactButton = <Message>(input: {
+  label: string
+  variant?: 'ghost' | 'strong'
+  attrs?: ReadonlyArray<Attribute<Message>>
+}): Html => {
+  const h = html<Message>()
+
+  return h.button(
+    [
+      ...(input.attrs ?? []),
+      h.Type('button'),
+      h.Class(
+        clsx(
+          'min-h-8 cursor-pointer border border-[#333] bg-transparent px-2.5 font-[inherit] text-[0.8125rem] text-white/60 hover:bg-[#080808] hover:text-[#f1efe8]',
+          {
+            'border-[#f1efe8] bg-[#f1efe8] text-[#000] hover:bg-[#f1efe8] hover:text-[#000]':
+              input.variant === 'strong',
+          },
+        ),
+      ),
+    ],
+    [input.label],
+  )
+}
+
+export const inputClass =
+  'w-full min-w-0 border border-[#222] bg-[#030303] px-3 py-2.5 font-mono text-[0.8125rem] leading-[1.35] text-[#f1efe8] outline-none focus:border-[#ffb400] focus:ring-1 focus:ring-[#ffb400]'
+
+export const textareaClass = clsx(inputClass, 'min-h-32 resize-y')
+
+export const selectClass = inputClass
+
+export const inputGroup = <Message>(input: {
+  id: string
+  name: string
+  label: string
+  type?: string
+  value?: string
+  placeholder?: string
+  help?: string
+  className?: string
+  attrs?: ReadonlyArray<Attribute<Message>>
+}): Html => {
+  const h = html<Message>()
+
+  return h.label(
+    [
+      kitFamily<Message>('forms/input-groups'),
+      h.For(input.id),
+      h.Class('grid gap-1.5'),
+    ],
+    [
+      h.span([h.Class(eyebrowClass)], [input.label]),
+      h.input([
+        ...(input.attrs ?? []),
+        h.Id(input.id),
+        h.Name(input.name),
+        h.Type(input.type ?? 'text'),
+        ...(input.value === undefined ? [] : [h.Value(input.value)]),
+        ...(input.placeholder === undefined
+          ? []
+          : [h.Placeholder(input.placeholder)]),
+        h.Class(clsx(inputClass, input.className)),
+      ]),
+      input.help === undefined
+        ? null
+        : h.span([h.Class(metaClass)], [input.help]),
+    ],
+  )
+}
+
+const validationBorderClass = (state: ValidationState): string =>
+  clsx({
+    'border-[#222]': state === 'idle',
+    'border-[#2979ff]': state === 'validating',
+    'border-[#00c853]': state === 'valid',
+    'border-[#d32f2f]': state === 'invalid',
+  })
+
+const validationIndicator = <Message>(state: ValidationState): Html => {
+  const h = html<Message>()
+
+  if (state === 'validating') {
+    return h.span([h.Class('text-sm text-[#2979ff]')], ['...'])
+  }
+
+  if (state === 'valid') {
+    return h.span([h.Class('text-sm text-[#00c853]')], ['✓'])
+  }
+
+  return h.empty
+}
+
+export const validatedInputGroup = <Message>(input: {
+  id: string
+  name: string
+  label: string
+  state: ValidationState
+  type?: string
+  value?: string
+  placeholder?: string
+  error?: string
+  attrs?: ReadonlyArray<Attribute<Message>>
+}): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [kitFamily<Message>('forms/input-groups'), h.Class('grid gap-1')],
+    [
+      h.div(
+        [h.Class('flex items-center gap-2')],
+        [
+          h.label(
+            [
+              h.For(input.id),
+              h.Class('block text-sm font-medium text-white/60'),
+            ],
+            [input.label],
+          ),
+          validationIndicator<Message>(input.state),
+        ],
+      ),
+      inputGroup<Message>({
+        id: input.id,
+        name: input.name,
+        label: input.label,
+        ...(input.type === undefined ? {} : { type: input.type }),
+        ...(input.value === undefined ? {} : { value: input.value }),
+        ...(input.placeholder === undefined
+          ? {}
+          : { placeholder: input.placeholder }),
+        className: validationBorderClass(input.state),
+        attrs: [h.AriaLabel(input.label), ...(input.attrs ?? [])],
+      }),
+      input.error === undefined
+        ? null
+        : h.div([h.Class('text-sm text-[#d32f2f]')], [input.error]),
+    ],
+  )
+}
+
+export const textareaGroup = <Message>(input: {
+  id: string
+  name: string
+  label: string
+  value?: string
+  placeholder?: string
+  rows?: number
+  attrs?: ReadonlyArray<Attribute<Message>>
+}): Html => {
+  const h = html<Message>()
+
+  return h.label(
+    [
+      kitFamily<Message>('forms/textareas'),
+      h.For(input.id),
+      h.Class('grid gap-1.5'),
+    ],
+    [
+      h.span([h.Class(eyebrowClass)], [input.label]),
+      h.textarea(
+        [
+          ...(input.attrs ?? []),
+          h.Id(input.id),
+          h.Name(input.name),
+          ...(input.placeholder === undefined
+            ? []
+            : [h.Placeholder(input.placeholder)]),
+          ...(input.rows === undefined ? [] : [h.Rows(input.rows)]),
+          h.Class(textareaClass),
+        ],
+        [input.value ?? ''],
+      ),
+    ],
+  )
+}
+
+export const selectMenu = <Message>(input: {
+  id: string
+  name: string
+  label: string
+  options: ReadonlyArray<FormOption>
+}): Html => {
+  const h = html<Message>()
+
+  return h.label(
+    [
+      kitFamily<Message>('forms/select-menus'),
+      h.For(input.id),
+      h.Class('grid gap-1.5'),
+    ],
+    [
+      h.span([h.Class(eyebrowClass)], [input.label]),
+      h.select(
+        [h.Id(input.id), h.Name(input.name), h.Class(selectClass)],
+        input.options.map(option =>
+          h.option(
+            [
+              h.Value(option.value),
+              ...(option.checked === true ? [h.Selected(true)] : []),
+              ...(option.disabled === true ? [h.Disabled(true)] : []),
+            ],
+            [option.label],
+          ),
+        ),
+      ),
+    ],
+  )
+}
+
+export const checkboxList = <Message>(input: {
+  name: string
+  legend: string
+  options: ReadonlyArray<FormOption>
+}): Html => {
+  const h = html<Message>()
+
+  return h.fieldset(
+    [
+      kitFamily<Message>('forms/checkboxes'),
+      h.Class('m-0 grid gap-3 border-0 p-0'),
+    ],
+    [
+      h.legend([h.Class(eyebrowClass)], [input.legend]),
+      ...input.options.map((option, index) => {
+        const id = `${input.name}-${index}`
+
+        return h.label(
+          [
+            h.For(id),
+            h.Class('grid grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm'),
+          ],
+          [
+            h.span(
+              [h.Class('group inline-grid h-lh items-center text-sm')],
+              [
+                h.input([
+                  h.Id(id),
+                  h.Name(input.name),
+                  h.Type('checkbox'),
+                  h.Value(option.value),
+                  ...(option.checked === true ? [h.Checked(true)] : []),
+                  ...(option.disabled === true ? [h.Disabled(true)] : []),
+                  h.Class(
+                    'col-start-1 row-start-1 size-5 appearance-none border border-[#333] bg-[#000] checked:border-[#ffb400] checked:bg-[#ffb400] focus-visible:outline-2 focus-visible:outline-[#ffb400] disabled:border-white/10 disabled:bg-white/5 sm:size-4',
+                  ),
+                ]),
+              ],
+            ),
+            h.span(
+              [h.Class('grid gap-0.5')],
+              [
+                h.span([h.Class('text-white/70')], [option.label]),
+                option.detail === undefined
+                  ? null
+                  : h.span([h.Class(metaClass)], [option.detail]),
+              ],
+            ),
+          ],
+        )
+      }),
+    ],
+  )
+}
+
+export const radioGroup = <Message>(input: {
+  name: string
+  legend: string
+  options: ReadonlyArray<FormOption>
+}): Html => {
+  const h = html<Message>()
+
+  return h.fieldset(
+    [
+      kitFamily<Message>('forms/radio-groups'),
+      h.Class('m-0 grid gap-3 border-0 p-0'),
+    ],
+    [
+      h.legend([h.Class(eyebrowClass)], [input.legend]),
+      ...input.options.map((option, index) => {
+        const id = `${input.name}-${index}`
+
+        return h.label(
+          [
+            h.For(id),
+            h.Class('grid grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm'),
+          ],
+          [
+            h.span(
+              [h.Class('group inline-grid h-lh items-center text-sm')],
+              [
+                h.input([
+                  h.Id(id),
+                  h.Name(input.name),
+                  h.Type('radio'),
+                  h.Value(option.value),
+                  ...(option.checked === true ? [h.Checked(true)] : []),
+                  ...(option.disabled === true ? [h.Disabled(true)] : []),
+                  h.Class(
+                    'col-start-1 row-start-1 size-5 appearance-none rounded-full border border-[#333] bg-[#000] checked:border-[#ffb400] checked:bg-[#ffb400] focus-visible:outline-2 focus-visible:outline-[#ffb400] disabled:border-white/10 disabled:bg-white/5 sm:size-4',
+                  ),
+                ]),
+              ],
+            ),
+            h.span(
+              [h.Class('grid gap-0.5')],
+              [
+                h.span([h.Class('text-white/70')], [option.label]),
+                option.detail === undefined
+                  ? null
+                  : h.span([h.Class(metaClass)], [option.detail]),
+              ],
+            ),
+          ],
+        )
+      }),
+    ],
+  )
+}
+
+export const toggleRow = <Message>(input: {
+  id: string
+  name: string
+  label: string
+  detail?: string
+  checked?: boolean
+}): Html => {
+  const h = html<Message>()
+
+  return h.label(
+    [
+      kitFamily<Message>('forms/toggles'),
+      h.For(input.id),
+      h.Class(
+        'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border border-[#222] bg-[#010102] p-3',
+      ),
+    ],
+    [
+      h.span(
+        [h.Class('grid gap-1')],
+        [
+          h.span([h.Class(titleClass)], [input.label]),
+          input.detail === undefined
+            ? null
+            : h.span([h.Class(metaClass)], [input.detail]),
+        ],
+      ),
+      h.span(
+        [
+          h.Class(
+            'group relative inline-flex w-11 shrink-0 border border-[#333] bg-[#080808] p-0.5 has-checked:bg-[#ffb400] sm:w-9',
+          ),
+        ],
+        [
+          h.span(
+            [
+              h.Class(
+                'aspect-square w-1/2 bg-white transition-transform group-has-checked:translate-x-full',
+              ),
+            ],
+            [],
+          ),
+          h.input([
+            h.Id(input.id),
+            h.Name(input.name),
+            h.Type('checkbox'),
+            ...(input.checked === true ? [h.Checked(true)] : []),
+            h.Class(
+              'absolute inset-0 size-full appearance-none focus:outline-none',
+            ),
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
+export const comboboxList = <Message>(input: {
+  id: string
+  name: string
+  label: string
+  options: ReadonlyArray<FormOption>
+}): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [kitFamily<Message>('forms/comboboxes'), h.Class('grid gap-1.5')],
+    [
+      h.label([h.For(input.id), h.Class(eyebrowClass)], [input.label]),
+      h.input([
+        h.Id(input.id),
+        h.Name(input.name),
+        h.Type('text'),
+        h.Role('combobox'),
+        h.AriaExpanded(false),
+        h.Class(inputClass),
+      ]),
+      h.ul(
+        [
+          h.Role('listbox'),
+          h.Class('m-0 grid list-none border border-[#222] bg-[#010102] p-0'),
+        ],
+        input.options.map(option =>
+          h.li(
+            [
+              h.Role('option'),
+              h.Class(
+                'grid gap-0.5 border-b border-[#222] px-3 py-2 last:border-b-0',
+              ),
+            ],
+            [
+              h.span([h.Class(titleClass)], [option.label]),
+              option.detail === undefined
+                ? null
+                : h.span([h.Class(metaClass)], [option.detail]),
+            ],
+          ),
+        ),
+      ),
+    ],
+  )
+}

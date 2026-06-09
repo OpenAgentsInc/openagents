@@ -1,0 +1,479 @@
+import { Schema as S } from 'effect'
+
+import { PublicPylonStats } from './public-pylon-stats'
+
+export const PublicLaunchDashboardEndpoint = '/api/public/launch-dashboard'
+export const PublicLaunchDashboardSchemaVersion =
+  'openagents.public_launch_dashboard.v1'
+
+export const PublicLaunchDashboardStatus = S.Literals([
+  'red',
+  'yellow',
+  'green',
+])
+export type PublicLaunchDashboardStatus =
+  typeof PublicLaunchDashboardStatus.Type
+
+export class PublicLaunchDashboardRow extends S.Class<PublicLaunchDashboardRow>(
+  'PublicLaunchDashboardRow',
+)({
+  blockerRefs: S.Array(S.String),
+  evidenceRefs: S.Array(S.String),
+  promiseId: S.String,
+  promiseText: S.String,
+  safeCopy: S.String,
+  status: PublicLaunchDashboardStatus,
+  unsafeCopy: S.String,
+}) {}
+
+export class PublicLaunchDashboardProjection extends S.Class<PublicLaunchDashboardProjection>(
+  'PublicLaunchDashboardProjection',
+)({
+  blockerRefs: S.Array(S.String),
+  generatedAt: S.String,
+  greenCount: S.Int,
+  redCount: S.Int,
+  rows: S.Array(PublicLaunchDashboardRow),
+  schemaVersion: S.Literal(PublicLaunchDashboardSchemaVersion),
+  sourceRefs: S.Array(S.String),
+  staleEndpointRefs: S.Array(S.String),
+  status: PublicLaunchDashboardStatus,
+  yellowCount: S.Int,
+}) {}
+
+export class PublicLaunchDashboardUnsafe extends S.TaggedErrorClass<PublicLaunchDashboardUnsafe>()(
+  'PublicLaunchDashboardUnsafe',
+  {
+    reason: S.String,
+  },
+) {}
+
+type PromiseRowDefinition = Readonly<{
+  baseStatus: PublicLaunchDashboardStatus
+  blockerRefs: ReadonlyArray<string>
+  evidenceRefs: ReadonlyArray<string>
+  promiseId: string
+  promiseText: string
+  safeCopy: string
+  staleSensitive: boolean
+  unsafeCopy: string
+}>
+
+const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
+  {
+    baseStatus: 'yellow',
+    blockerRefs: [
+      'blocker.launch_dashboard.pylon_release.native_windows_wsl_unproven',
+    ],
+    evidenceRefs: [
+      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#new-pylon-release-tomorrow',
+      'package.npm.@openagentsinc/pylon.0.2.5',
+    ],
+    promiseId: 'pylon_release_tomorrow',
+    promiseText: 'Tomorrow a new version of Pylon releases.',
+    safeCopy:
+      'Pylon launcher v0.2.5 is published with macOS and Linux smoke evidence; native Windows and WSL remain unproven.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim a universal new Rust Pylon release works on every computer.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.model_training.remote_multi_device_missing',
+    ],
+    evidenceRefs: [
+      'docs/2026-06-08-qwen-remote-pylon-finetune-gate.md',
+      'docs/2026-06-08-probe-gepa-stage0-no-spend-campaign-gate.md',
+    ],
+    promiseId: 'first_real_model_training_run',
+    promiseText: 'Pylon starts the first real model-training run.',
+    safeCopy:
+      'Local and loopback training rehearsals exist, but no public remote multi-device model-training run is live.',
+    staleSensitive: true,
+    unsafeCopy:
+      'Do not claim the first public remote Pylon model-training run is live.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.five_revenue_streams.receipt_backed_streams_missing',
+    ],
+    evidenceRefs: [
+      'docs/2026-06-08-data-trace-marketplace-gate.md',
+      'docs/2026-06-08-signature-marketplace-revenue-gate.md',
+      'docs/2026-06-08-provider-capacity-marketplace-gate.md',
+    ],
+    promiseId: 'five_bitcoin_revenue_streams',
+    promiseText:
+      'Pylon stacks compute, data, Forum tips, referrals, and subscription/token-capacity arbitrage in one install.',
+    safeCopy:
+      'Forum tipping and several future revenue gates exist, but one-install multi-stream Bitcoin earning is not live.',
+    staleSensitive: true,
+    unsafeCopy:
+      'Do not claim one Pylon install creates five live Bitcoin revenue streams.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.compute_revenue.remote_gepa_qwen_marketplace_missing',
+    ],
+    evidenceRefs: [
+      'docs/2026-06-08-probe-gepa-paid-mode-campaign-ladder.md',
+      'docs/2026-06-08-qwen-remote-pylon-finetune-gate.md',
+    ],
+    promiseId: 'compute_revenue_modes',
+    promiseText:
+      'Compute revenue includes local model inference, GEPA optimization slices, and Qwen 3.6 fine-tuning on people’s devices.',
+    safeCopy:
+      'GEPA and Qwen gates exist, but public sellable local inference, paid full-network GEPA, and remote Qwen fine-tuning are not green.',
+    staleSensitive: true,
+    unsafeCopy:
+      'Do not claim live local-inference revenue, full-network GEPA revenue, or remote Qwen fine-tune revenue.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: ['blocker.launch_dashboard.data_revenue.settled_sale_missing'],
+    evidenceRefs: ['docs/2026-06-08-data-trace-marketplace-gate.md'],
+    promiseId: 'data_trace_revenue',
+    promiseText:
+      'Data revenue includes mining valuable local traces from Claude Code, Codex, and other agent work.',
+    safeCopy:
+      'Data trace marketplace language and gates exist; no public-safe settled trace sale is live.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim local traces are currently bought, valued, paid, or settled.',
+  },
+  {
+    baseStatus: 'yellow',
+    blockerRefs: [
+      'blocker.launch_dashboard.forum_tipping.operational_wallet_onboarding_incomplete',
+    ],
+    evidenceRefs: [
+      'docs/live/AGENTS.md#forum-rules',
+      'route:/api/forum/paid-actions/redeem',
+      'route:/api/forum/receipts/{receiptRef}/settlement-claims',
+    ],
+    promiseId: 'forum_content_tipping',
+    promiseText: 'Forum content tipping is like Stacker News for agents.',
+    safeCopy:
+      'Forum paid-action tipping and settlement-claim routes exist for recipient-ready agents, but wallet onboarding is still manual.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim every Forum post or creator has spendable settled sats.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.no_wallet_knowledge.receive_send_readiness_incomplete',
+    ],
+    evidenceRefs: [
+      'docs/live/AGENTS.md#pylon-registration-status-and-receipts',
+      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#money-dev-kit',
+    ],
+    promiseId: 'no_wallet_knowledge_bitcoin',
+    promiseText:
+      'Anyone can install Pylon without Bitcoin wallet knowledge, without loading bitcoin, and start turning a computer into bitcoin.',
+    safeCopy:
+      'Pylon can report public wallet-readiness refs, but send readiness and broad earning still require explicit wallet and receipt evidence.',
+    staleSensitive: true,
+    unsafeCopy:
+      'Do not claim no-wallet-knowledge installs immediately earn spendable Bitcoin.',
+  },
+  {
+    baseStatus: 'yellow',
+    blockerRefs: [
+      'blocker.launch_dashboard.site_referrals.revenue_stream_not_live',
+    ],
+    evidenceRefs: [
+      'route:/r/site/{publicSourceRef}',
+      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#referrals-from-autopilot-sites',
+    ],
+    promiseId: 'site_referral_bitcoin_stream',
+    promiseText:
+      'Autopilot Sites can carry built-in referral links and later pay referrers a Bitcoin stream when referred users become paying customers.',
+    safeCopy:
+      'Site referral capture records attribution; Bitcoin referral streaming is not live.',
+    staleSensitive: false,
+    unsafeCopy: 'Do not claim referral links pay Bitcoin streams now.',
+  },
+  {
+    baseStatus: 'yellow',
+    blockerRefs: [
+      'blocker.launch_dashboard.mdk.wallet_liquidity_and_hosted_payouts_incomplete',
+    ],
+    evidenceRefs: [
+      'docs/mdk',
+      'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md#money-dev-kit',
+    ],
+    promiseId: 'money_dev_kit_payments',
+    promiseText:
+      'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
+    safeCopy:
+      'OpenAgents uses MDK agent-wallet for small-sats and L402 flows, while hosted direct payout and some liquidity restore claims remain blocked.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
+  },
+  {
+    baseStatus: 'green',
+    blockerRefs: [],
+    evidenceRefs: [
+      'docs/live/AGENTS.md',
+      'route:/.well-known/openagents.json',
+      'route:/api/openapi.json',
+      'docs/2026-06-08-openagents-agent-sheet-route-coverage.md',
+    ],
+    promiseId: 'one_agent_instruction_sheet',
+    promiseText:
+      'OpenAgents should provide one agent instruction sheet with APIs and features that a human copies into an agent.',
+    safeCopy:
+      'The public AGENTS sheet, manifest, OpenAPI, rules, heartbeat, skill metadata, and route coverage gate are live.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not treat the sheet as broad write, spend, deploy, provider, moderation, payout, or settlement authority.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.model_gateway.no_public_paid_gateway',
+    ],
+    evidenceRefs: [
+      'route:/api/openapi.json',
+      'docs/2026-06-08-google-adc-gemini-agent-platform-auth-audit.md',
+    ],
+    promiseId: 'api_model_gateway_google_credits',
+    promiseText:
+      'OpenAgents is API-driven and may put Google Cloud credits behind an API or model gateway.',
+    safeCopy:
+      'OpenAgents exposes public APIs and Cloud evidence, but no public paid model gateway or Google-credit-backed inference product is live.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim a paid model gateway or Google-credit inference API is live.',
+  },
+  {
+    baseStatus: 'yellow',
+    blockerRefs: [
+      'blocker.launch_dashboard.agentic_labor.products_not_all_self_serve',
+    ],
+    evidenceRefs: [
+      'docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md',
+      'route:/api/agent/sites',
+    ],
+    promiseId: 'agentic_labor_products',
+    promiseText:
+      'The business model should avoid dumb base-inference resale and instead sell agentic labor/products.',
+    safeCopy:
+      'The product direction is agentic labor and Sites; not every labor/product flow is self-serve or settlement-backed.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim all agentic labor/product sales are live and settlement-backed.',
+  },
+  {
+    baseStatus: 'yellow',
+    blockerRefs: [
+      'blocker.launch_dashboard.pylon_cli_tui_background.probe_bundle_partial',
+    ],
+    evidenceRefs: [
+      'package.npm.@openagentsinc/pylon.0.2.5',
+      'docs/live/AGENTS.md#pylon-registration-status-and-receipts',
+    ],
+    promiseId: 'pylon_cli_tui_probe_background',
+    promiseText:
+      'Pylon is a script/CLI/TUI that includes Probe and is meant to run in the background.',
+    safeCopy:
+      'Pylon has launcher and background control-plane paths; Probe bundling and universal TUI behavior remain partial.',
+    staleSensitive: true,
+    unsafeCopy:
+      'Do not claim every Pylon install includes a complete Probe CLI/TUI background worker.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.control_center.multi_agent_marketplace_not_self_serve',
+    ],
+    evidenceRefs: [
+      'route:/api/operator/pylons/assignments',
+      'docs/2026-06-08-signature-marketplace-revenue-gate.md',
+    ],
+    promiseId: 'control_center_fanout_plugin_marketplace',
+    promiseText:
+      'Control center / Autopilot can fan out work to many agents and pull from a plugin marketplace.',
+    safeCopy:
+      'Operator assignment and marketplace gate surfaces exist, but self-serve multi-agent fanout plus plugin marketplace execution is not live.',
+    staleSensitive: true,
+    unsafeCopy:
+      'Do not claim a self-serve control center can fan out paid work to many agents from a live marketplace.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.signature_marketplace.settled_usage_missing',
+    ],
+    evidenceRefs: ['docs/2026-06-08-signature-marketplace-revenue-gate.md'],
+    promiseId: 'dspy_gepa_signature_monetization',
+    promiseText:
+      'DSPy/GEPA signatures and agent workflow components can be discoverable and monetizable.',
+    safeCopy:
+      'Signature validation and marketplace gates exist; usage metering, billing, revenue split, and settlement are not live.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim signatures or workflow components are generating settled revenue.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.subscription_capacity.self_serve_clearing_missing',
+    ],
+    evidenceRefs: ['docs/2026-06-08-provider-capacity-marketplace-gate.md'],
+    promiseId: 'chatgpt_claude_codex_capacity',
+    promiseText:
+      'ChatGPT subscription accounts can be connected through OpenAgents; Claude may come later; Codex/OpenCode auth can be reused or dedicated.',
+    safeCopy:
+      'Provider-account connection work exists, but self-serve capacity metering, ToS policy, pricing, assignment, and settlement are missing.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim ChatGPT, Claude, Codex, or OpenCode subscription capacity is monetized.',
+  },
+  {
+    baseStatus: 'yellow',
+    blockerRefs: [
+      'blocker.launch_dashboard.cursor_wallet_tipping.manual_wallet_claim_required',
+    ],
+    evidenceRefs: [
+      'docs/live/AGENTS.md',
+      'route:/api/agents/register',
+      'route:/api/forum/forums/{forumSlug}/topics',
+    ],
+    promiseId: 'cursor_agent_forum_wallet',
+    promiseText:
+      'Cursor can follow OpenAgents instructions, register/post on Forum, and later attach wallet/tipping.',
+    safeCopy:
+      'Cursor or another agent can read AGENTS, register, and post to open Forum routes; wallet/tip readiness still requires explicit MDK setup and claim flow.',
+    staleSensitive: false,
+    unsafeCopy:
+      'Do not claim every Cursor session automatically has wallet and tipping readiness.',
+  },
+  {
+    baseStatus: 'red',
+    blockerRefs: [
+      'blocker.launch_dashboard.venice_capacity.provider_policy_missing',
+    ],
+    evidenceRefs: ['docs/2026-06-08-provider-capacity-marketplace-gate.md'],
+    promiseId: 'venice_api_capacity_monetization',
+    promiseText:
+      'Venice API budget should be easy to monetize through Pylon/OpenAgents.',
+    safeCopy:
+      'Venice capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
+    staleSensitive: false,
+    unsafeCopy: 'Do not claim Venice API capacity monetization is live.',
+  },
+]
+
+const unsafeDashboardPattern =
+  /(bearer\s+[a-z0-9._-]{16,}|sk-[a-z0-9_-]{16,}|xox[baprs]-[a-z0-9-]{16,}|mnemonic\.[a-z0-9._-]+|preimage\.[a-z0-9._-]+)/i
+
+const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> => [
+  ...new Set(values.map(value => value.trim()).filter(value => value !== '')),
+]
+
+const pylonStatsFresh = (
+  pylonStats: PublicPylonStats | undefined,
+  nowUnixMs: number,
+): boolean =>
+  pylonStats === undefined ||
+  (pylonStats.available &&
+    pylonStats.asOfUnixMs !== null &&
+    nowUnixMs - pylonStats.asOfUnixMs <= 10 * 60 * 1000)
+
+const rowStatus = (
+  row: PromiseRowDefinition,
+  endpointStale: boolean,
+): PublicLaunchDashboardStatus =>
+  row.staleSensitive && endpointStale && row.baseStatus === 'green'
+    ? 'yellow'
+    : row.staleSensitive && endpointStale
+      ? row.baseStatus === 'red'
+        ? 'red'
+        : 'yellow'
+      : row.baseStatus
+
+const rowBlockerRefs = (
+  row: PromiseRowDefinition,
+  endpointStale: boolean,
+): ReadonlyArray<string> =>
+  unique([
+    ...row.blockerRefs,
+    ...(row.staleSensitive && endpointStale
+      ? ['blocker.launch_dashboard.endpoint_stale']
+      : []),
+  ])
+
+const assertPublicLaunchDashboardSafe = (
+  projection: PublicLaunchDashboardProjection,
+): PublicLaunchDashboardProjection => {
+  const serialized = JSON.stringify(projection)
+  if (unsafeDashboardPattern.test(serialized)) {
+    throw new PublicLaunchDashboardUnsafe({
+      reason:
+        'Public launch dashboard contains private or secret-shaped material.',
+    })
+  }
+
+  return projection
+}
+
+export const projectPublicLaunchDashboard = (input: {
+  readonly generatedAt: string
+  readonly nowUnixMs: number
+  readonly pylonStats?: PublicPylonStats
+}): PublicLaunchDashboardProjection => {
+  const endpointStale = !pylonStatsFresh(input.pylonStats, input.nowUnixMs)
+  const staleEndpointRefs = endpointStale
+    ? ['endpoint:/api/public/pylon-stats']
+    : []
+  const rows = publicLaunchDashboardRows.map(row => {
+    const status = rowStatus(row, endpointStale)
+
+    return new PublicLaunchDashboardRow({
+      blockerRefs: rowBlockerRefs(row, endpointStale),
+      evidenceRefs: row.evidenceRefs,
+      promiseId: row.promiseId,
+      promiseText: row.promiseText,
+      safeCopy: row.safeCopy,
+      status,
+      unsafeCopy: row.unsafeCopy,
+    })
+  })
+  const redCount = rows.filter(row => row.status === 'red').length
+  const yellowCount = rows.filter(row => row.status === 'yellow').length
+  const greenCount = rows.filter(row => row.status === 'green').length
+  const blockerRefs = unique(rows.flatMap(row => row.blockerRefs))
+  const status: PublicLaunchDashboardStatus =
+    redCount > 0 ? 'red' : yellowCount > 0 ? 'yellow' : 'green'
+
+  return assertPublicLaunchDashboardSafe(
+    new PublicLaunchDashboardProjection({
+      blockerRefs,
+      generatedAt: input.generatedAt,
+      greenCount,
+      redCount,
+      rows,
+      schemaVersion: PublicLaunchDashboardSchemaVersion,
+      sourceRefs: [
+        'docs/2026-06-08-chrisjuan-pylon-agentic-revenue-gap-audit.md',
+        'docs/live/AGENTS.md',
+        'route:/api/public/pylon-stats',
+        'route:/api/public/artanis/report',
+        'route:/api/forum/launch-status',
+      ],
+      staleEndpointRefs,
+      status,
+      yellowCount,
+    }),
+  )
+}
+
+export const publicLaunchDashboardPromiseIds = publicLaunchDashboardRows.map(
+  row => row.promiseId,
+)

@@ -1,0 +1,913 @@
+import type { AgentRunRecord, OmniEventRecord } from './omni-runs'
+import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import { sourceRefForTokenUsageEvent, tokenUsageFromEvent } from './token-usage'
+
+export const BILLING_CURRENCY = 'USD'
+export const INITIAL_TRIAL_CREDIT_CENTS = 1_000
+export const CONTAINER_RATE_CENTS_PER_MINUTE = 5
+export const CODEX_RATE_CENTS_PER_THOUSAND_TOKENS = 2
+export const MINIMUM_RUN_CREDIT_CENTS = CONTAINER_RATE_CENTS_PER_MINUTE
+
+export type BillingLedgerSource =
+  | 'trial_grant'
+  | 'coupon'
+  | 'credit_card_placeholder'
+  | 'stripe_checkout'
+  | 'container_usage'
+  | 'codex_usage'
+  | 'manual_adjustment'
+
+export type BillingLedgerEntry = Readonly<{
+  id: string
+  source: BillingLedgerSource
+  description: string
+  amountCents: number
+  amountFormatted: string
+  quantity: number | null
+  unit: string | null
+  createdAt: string
+}>
+
+export type BillingActiveRun = Readonly<{
+  id: string
+  title: string
+  status: string
+  accruedSeconds: number
+  estimatedDebitCents: number
+  estimatedDebitFormatted: string
+  startedAt: string | null
+}>
+
+export type BillingSummary = Readonly<{
+  currency: 'USD'
+  status: 'active' | 'suspended'
+  balanceCents: number
+  balanceFormatted: string
+  minimumRunCreditCents: number
+  minimumRunCreditFormatted: string
+  rates: Readonly<{
+    containerCentsPerMinute: number
+    codexCentsPerThousandTokens: number
+  }>
+  recentEntries: ReadonlyArray<BillingLedgerEntry>
+  activeRuns: ReadonlyArray<BillingActiveRun>
+}>
+
+export type BillingCreditExhaustionResult =
+  | Readonly<{
+      balanceCents: number
+      balanceFormatted: string
+      exhausted: false
+      newlySuspended: false
+    }>
+  | Readonly<{
+      balanceCents: number
+      balanceFormatted: string
+      exhausted: true
+      newlySuspended: boolean
+    }>
+
+export type OutOfCreditsNotificationReservation =
+  | Readonly<{
+      displayName: string
+      email: string
+      idempotencyKey: string
+      ok: true
+    }>
+  | Readonly<{
+      ok: false
+      reason: 'already_sent' | 'missing_email'
+    }>
+
+type BalanceRow = Readonly<{ balance_cents: number | null }>
+type AccountRow = Readonly<{ status: 'active' | 'suspended' }>
+type BillingContactRow = Readonly<{
+  display_name: string
+  primary_email: string | null
+}>
+type NotificationRow = Readonly<{ status: 'pending' | 'sent' | 'failed' }>
+type LedgerRow = Readonly<{
+  id: string
+  source: BillingLedgerSource
+  description: string
+  amount_cents: number
+  quantity: number | null
+  unit: string | null
+  created_at: string
+}>
+type ActiveRunRow = Readonly<{
+  id: string
+  goal: string
+  status: string
+  started_at: string | null
+  updated_at: string
+  last_billed_at: string | null
+}>
+type UsageCursorRow = Readonly<{
+  last_billed_at: string
+  total_billed_quantity: number
+}>
+
+export type BillingRuntime = Readonly<{
+  nowIso: () => string
+  randomId: (prefix: string) => string
+}>
+
+export const systemBillingRuntime: BillingRuntime = {
+  nowIso: currentIsoTimestamp,
+  randomId: compactRandomId,
+}
+
+const metadataJson = (value: unknown): string => JSON.stringify(value ?? {})
+
+const compactText = (value: string, maxLength: number): string => {
+  const compact = value.replace(/\s+/g, ' ').trim()
+
+  return compact.length <= maxLength
+    ? compact
+    : `${compact.slice(0, Math.max(0, maxLength - 3))}...`
+}
+
+export const formatUsdCents = (amountCents: number): string => {
+  const amount = Math.trunc(amountCents)
+  const sign = amount < 0 ? '-' : ''
+  const absolute = Math.abs(amount)
+
+  return `${sign}$${(absolute / 100).toFixed(2)}`
+}
+
+export const calculateContainerUsageDebitCents = (
+  seconds: number,
+  rateCentsPerMinute = CONTAINER_RATE_CENTS_PER_MINUTE,
+): number => {
+  const quantity = Math.max(0, Math.trunc(seconds))
+
+  if (quantity === 0 || rateCentsPerMinute <= 0) {
+    return 0
+  }
+
+  return Math.max(1, Math.ceil((quantity * rateCentsPerMinute) / 60))
+}
+
+export const calculateCodexUsageDebitCents = (
+  totalTokens: number,
+  rateCentsPerThousandTokens = CODEX_RATE_CENTS_PER_THOUSAND_TOKENS,
+): number => {
+  const quantity = Math.max(0, Math.trunc(totalTokens))
+
+  if (quantity === 0 || rateCentsPerThousandTokens <= 0) {
+    return 0
+  }
+
+  return Math.max(1, Math.ceil((quantity * rateCentsPerThousandTokens) / 1_000))
+}
+
+export const secondsBetweenIso = (startIso: string, endIso: string): number => {
+  const startMs = Date.parse(startIso)
+  const endMs = Date.parse(endIso)
+
+  if (
+    !Number.isFinite(startMs) ||
+    !Number.isFinite(endMs) ||
+    endMs <= startMs
+  ) {
+    return 0
+  }
+
+  return Math.max(0, Math.ceil((endMs - startMs) / 1_000))
+}
+
+export const normalizeCouponCode = (value: string): string =>
+  value.trim().toUpperCase().replace(/\s+/g, '-')
+
+export const shouldSuspendBillingBalance = (balanceCents: number): boolean =>
+  Math.trunc(balanceCents) <= 0
+
+const couponCreditCents = (couponCode: string): number | undefined => {
+  switch (normalizeCouponCode(couponCode)) {
+    case 'OPENAGENTS-TRIAL':
+      return 2_500
+    case 'FOUNDER-100':
+      return 10_000
+    case 'SHC-SMOKE':
+      return 1_000
+    default:
+      return undefined
+  }
+}
+
+export const ensureBillingAccount = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<void> => {
+  const now = runtime.nowIso()
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO billing_accounts
+          (user_id, currency, status, created_at, updated_at)
+         VALUES (?, ?, 'active', ?, ?)`,
+      )
+      .bind(userId, BILLING_CURRENCY, now, now),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO billing_ledger_entries
+          (id, user_id, team_id, run_id, source, description, amount_cents,
+           currency, quantity, unit, unit_rate_cents, metadata_json,
+           idempotency_key, created_at)
+         VALUES (?, ?, NULL, NULL, 'trial_grant', ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      )
+      .bind(
+        runtime.randomId('bill'),
+        userId,
+        'OpenAgents launch credits',
+        INITIAL_TRIAL_CREDIT_CENTS,
+        BILLING_CURRENCY,
+        INITIAL_TRIAL_CREDIT_CENTS,
+        'credit_cents',
+        metadataJson({ reason: 'initial_launch_credit' }),
+        `billing:trial:${userId}`,
+        now,
+      ),
+  ])
+}
+
+const readBalanceCents = async (
+  db: D1Database,
+  userId: string,
+): Promise<number> => {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(amount_cents), 0) AS balance_cents
+       FROM billing_ledger_entries
+       WHERE user_id = ?`,
+    )
+    .bind(userId)
+    .first<BalanceRow>()
+
+  return Math.trunc(Number(row?.balance_cents ?? 0))
+}
+
+const readAccountStatus = async (
+  db: D1Database,
+  userId: string,
+): Promise<'active' | 'suspended'> => {
+  const row = await db
+    .prepare(`SELECT status FROM billing_accounts WHERE user_id = ?`)
+    .bind(userId)
+    .first<AccountRow>()
+
+  return row?.status ?? 'active'
+}
+
+const readRecentLedgerEntries = async (
+  db: D1Database,
+  userId: string,
+): Promise<ReadonlyArray<BillingLedgerEntry>> => {
+  const rows = await db
+    .prepare(
+      `SELECT id, source, description, amount_cents, quantity, unit, created_at
+       FROM billing_ledger_entries
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT 12`,
+    )
+    .bind(userId)
+    .all<LedgerRow>()
+
+  return rows.results.map(row => ({
+    id: row.id,
+    source: row.source,
+    description: row.description,
+    amountCents: row.amount_cents,
+    amountFormatted: formatUsdCents(row.amount_cents),
+    quantity: row.quantity,
+    unit: row.unit,
+    createdAt: row.created_at,
+  }))
+}
+
+const readActiveRuns = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<ReadonlyArray<BillingActiveRun>> => {
+  const rows = await db
+    .prepare(
+      `SELECT r.id, r.goal, r.status, r.started_at, r.updated_at,
+              c.last_billed_at
+       FROM agent_runs r
+       LEFT JOIN billing_usage_cursors c
+         ON c.run_id = r.id AND c.meter = 'container_seconds'
+       WHERE r.user_id = ?
+         AND r.status IN ('queued', 'running', 'waiting_for_input')
+       ORDER BY r.updated_at DESC
+       LIMIT 20`,
+    )
+    .bind(userId)
+    .all<ActiveRunRow>()
+  const now = runtime.nowIso()
+
+  return rows.results.map(row => {
+    const start = row.last_billed_at ?? row.started_at
+    const accruedSeconds =
+      start === null
+        ? 0
+        : secondsBetweenIso(start, row.updated_at > now ? row.updated_at : now)
+    const estimatedDebitCents =
+      calculateContainerUsageDebitCents(accruedSeconds)
+
+    return {
+      id: row.id,
+      title: compactText(row.goal, 72) || row.id,
+      status: row.status,
+      accruedSeconds,
+      estimatedDebitCents,
+      estimatedDebitFormatted: formatUsdCents(-estimatedDebitCents),
+      startedAt: row.started_at,
+    }
+  })
+}
+
+export const readBillingSummary = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingSummary> => {
+  await ensureBillingAccount(db, userId, runtime)
+
+  const [status, balanceCents, recentEntries, activeRuns] = await Promise.all([
+    readAccountStatus(db, userId),
+    readBalanceCents(db, userId),
+    readRecentLedgerEntries(db, userId),
+    readActiveRuns(db, userId, runtime),
+  ])
+
+  return {
+    currency: BILLING_CURRENCY,
+    status,
+    balanceCents,
+    balanceFormatted: formatUsdCents(balanceCents),
+    minimumRunCreditCents: MINIMUM_RUN_CREDIT_CENTS,
+    minimumRunCreditFormatted: formatUsdCents(MINIMUM_RUN_CREDIT_CENTS),
+    rates: {
+      containerCentsPerMinute: CONTAINER_RATE_CENTS_PER_MINUTE,
+      codexCentsPerThousandTokens: CODEX_RATE_CENTS_PER_THOUSAND_TOKENS,
+    },
+    recentEntries,
+    activeRuns,
+  }
+}
+
+export const requireMinimumRunCredits = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<
+  | Readonly<{ ok: true; billing: BillingSummary }>
+  | Readonly<{ ok: false; billing: BillingSummary; message: string }>
+> => {
+  const billing = await readBillingSummary(db, userId, runtime)
+
+  if (
+    billing.status !== 'active' ||
+    billing.balanceCents < MINIMUM_RUN_CREDIT_CENTS
+  ) {
+    return {
+      ok: false,
+      billing,
+      message: `Add credits before launching Autopilot. Minimum launch balance is ${billing.minimumRunCreditFormatted}.`,
+    }
+  }
+
+  return { ok: true, billing }
+}
+
+export const applyManualBillingCredit = async (
+  db: D1Database,
+  input: Readonly<{
+    amountCents: number
+    idempotencyKey: string
+    reason: string
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingSummary> => {
+  await ensureBillingAccount(db, input.userId, runtime)
+
+  const amountCents = Math.max(1, Math.trunc(input.amountCents))
+  const now = runtime.nowIso()
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO billing_ledger_entries
+          (id, user_id, team_id, run_id, source, description, amount_cents,
+           currency, quantity, unit, unit_rate_cents, metadata_json,
+           idempotency_key, created_at)
+         VALUES (?, ?, NULL, NULL, 'manual_adjustment', ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      )
+      .bind(
+        runtime.randomId('bill'),
+        input.userId,
+        compactText(input.reason, 160) || 'Operator credit',
+        amountCents,
+        BILLING_CURRENCY,
+        amountCents,
+        'credit_cents',
+        metadataJson({ reason: input.reason }),
+        input.idempotencyKey,
+        now,
+      ),
+    db
+      .prepare(
+        `UPDATE billing_accounts
+         SET status = 'active',
+             updated_at = ?
+         WHERE user_id = ?`,
+      )
+      .bind(now, input.userId),
+  ])
+
+  return readBillingSummary(db, input.userId, runtime)
+}
+
+export const applyStripeCheckoutCredit = async (
+  db: D1Database,
+  input: Readonly<{
+    amountCents: number
+    packageId: string
+    sessionId: string
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingSummary> => {
+  await ensureBillingAccount(db, input.userId, runtime)
+
+  const amountCents = Math.max(1, Math.trunc(input.amountCents))
+  const now = runtime.nowIso()
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO billing_ledger_entries
+          (id, user_id, team_id, run_id, source, description, amount_cents,
+           currency, quantity, unit, unit_rate_cents, metadata_json,
+           idempotency_key, created_at)
+         VALUES (?, ?, NULL, NULL, 'stripe_checkout', ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      )
+      .bind(
+        runtime.randomId('bill'),
+        input.userId,
+        'Stripe credit purchase',
+        amountCents,
+        BILLING_CURRENCY,
+        amountCents,
+        'credit_cents',
+        metadataJson({
+          packageId: input.packageId,
+          sessionId: input.sessionId,
+        }),
+        `billing:stripe-checkout:${input.sessionId}`,
+        now,
+      ),
+    db
+      .prepare(
+        `UPDATE billing_accounts
+         SET status = 'active',
+             updated_at = ?
+         WHERE user_id = ?`,
+      )
+      .bind(now, input.userId),
+  ])
+
+  return readBillingSummary(db, input.userId, runtime)
+}
+
+export const suspendBillingAccountIfOutOfCredits = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingCreditExhaustionResult> => {
+  await ensureBillingAccount(db, userId, runtime)
+
+  const [balanceCents, status] = await Promise.all([
+    readBalanceCents(db, userId),
+    readAccountStatus(db, userId),
+  ])
+  const balanceFormatted = formatUsdCents(balanceCents)
+
+  if (!shouldSuspendBillingBalance(balanceCents)) {
+    return {
+      balanceCents,
+      balanceFormatted,
+      exhausted: false,
+      newlySuspended: false,
+    }
+  }
+
+  const now = runtime.nowIso()
+  const newlySuspended = status !== 'suspended'
+
+  if (newlySuspended) {
+    await db
+      .prepare(
+        `UPDATE billing_accounts
+         SET status = 'suspended',
+             updated_at = ?
+         WHERE user_id = ?`,
+      )
+      .bind(now, userId)
+      .run()
+  }
+
+  return {
+    balanceCents,
+    balanceFormatted,
+    exhausted: true,
+    newlySuspended,
+  }
+}
+
+export const reserveOutOfCreditsNotification = async (
+  db: D1Database,
+  input: Readonly<{ balanceCents: number; userId: string }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<OutOfCreditsNotificationReservation> => {
+  const existing = await db
+    .prepare(
+      `SELECT status
+       FROM billing_credit_notifications
+       WHERE user_id = ? AND kind = 'out_of_credits'`,
+    )
+    .bind(input.userId)
+    .first<NotificationRow>()
+
+  if (existing?.status === 'sent') {
+    return { ok: false, reason: 'already_sent' }
+  }
+
+  const contact = await db
+    .prepare(
+      `SELECT display_name, primary_email
+       FROM users
+       WHERE id = ?`,
+    )
+    .bind(input.userId)
+    .first<BillingContactRow>()
+  const email = contact?.primary_email?.trim()
+
+  if (email === undefined || email === '') {
+    return { ok: false, reason: 'missing_email' }
+  }
+
+  const displayName = contact?.display_name.trim() || 'there'
+  const idempotencyKey = `billing:out-of-credits:${input.userId}`
+  const now = runtime.nowIso()
+
+  if (existing === null) {
+    await db
+      .prepare(
+        `INSERT INTO billing_credit_notifications
+          (user_id, kind, email, display_name, balance_cents, status,
+           resend_email_id, error_message, idempotency_key, created_at,
+           updated_at)
+         VALUES (?, 'out_of_credits', ?, ?, ?, 'pending',
+           NULL, NULL, ?, ?, ?)`,
+      )
+      .bind(
+        input.userId,
+        email,
+        displayName,
+        input.balanceCents,
+        idempotencyKey,
+        now,
+        now,
+      )
+      .run()
+  } else {
+    await db
+      .prepare(
+        `UPDATE billing_credit_notifications
+         SET email = ?,
+             display_name = ?,
+             balance_cents = ?,
+             status = 'pending',
+             resend_email_id = NULL,
+             error_message = NULL,
+             idempotency_key = ?,
+             updated_at = ?
+         WHERE user_id = ? AND kind = 'out_of_credits'`,
+      )
+      .bind(
+        email,
+        displayName,
+        input.balanceCents,
+        idempotencyKey,
+        now,
+        input.userId,
+      )
+      .run()
+  }
+
+  return {
+    displayName,
+    email,
+    idempotencyKey,
+    ok: true,
+  }
+}
+
+export const markOutOfCreditsNotificationSent = async (
+  db: D1Database,
+  input: Readonly<{
+    resendEmailId: string | null
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<void> => {
+  const now = runtime.nowIso()
+
+  await db
+    .prepare(
+      `UPDATE billing_credit_notifications
+       SET status = 'sent',
+           resend_email_id = ?,
+           error_message = NULL,
+           updated_at = ?
+       WHERE user_id = ? AND kind = 'out_of_credits'`,
+    )
+    .bind(input.resendEmailId, now, input.userId)
+    .run()
+}
+
+export const markOutOfCreditsNotificationFailed = async (
+  db: D1Database,
+  input: Readonly<{
+    errorMessage: string
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<void> => {
+  const now = runtime.nowIso()
+
+  await db
+    .prepare(
+      `UPDATE billing_credit_notifications
+       SET status = 'failed',
+           error_message = ?,
+           updated_at = ?
+       WHERE user_id = ? AND kind = 'out_of_credits'`,
+    )
+    .bind(compactText(input.errorMessage, 500), now, input.userId)
+    .run()
+}
+
+export const redeemBillingCoupon = async (
+  db: D1Database,
+  input: Readonly<{ couponCode: string; userId: string }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<
+  | Readonly<{ ok: true; billing: BillingSummary; message: string }>
+  | Readonly<{
+      ok: false
+      billing: BillingSummary
+      error: string
+      message: string
+    }>
+> => {
+  const couponCode = normalizeCouponCode(input.couponCode)
+  await ensureBillingAccount(db, input.userId, runtime)
+  const existing = await db
+    .prepare(
+      `SELECT ledger_entry_id
+       FROM billing_coupon_redemptions
+       WHERE user_id = ? AND coupon_code = ?`,
+    )
+    .bind(input.userId, couponCode)
+    .first<Readonly<{ ledger_entry_id: string }>>()
+
+  if (existing !== null) {
+    return {
+      ok: false,
+      billing: await readBillingSummary(db, input.userId, runtime),
+      error: 'coupon_already_redeemed',
+      message: 'That coupon has already been redeemed on this account.',
+    }
+  }
+
+  const amountCents = couponCreditCents(couponCode)
+
+  if (amountCents === undefined) {
+    return {
+      ok: false,
+      billing: await readBillingSummary(db, input.userId, runtime),
+      error: 'invalid_coupon',
+      message: 'Coupon code not recognized.',
+    }
+  }
+
+  const now = runtime.nowIso()
+  const ledgerEntryId = runtime.randomId('bill')
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO billing_ledger_entries
+          (id, user_id, team_id, run_id, source, description, amount_cents,
+           currency, quantity, unit, unit_rate_cents, metadata_json,
+           idempotency_key, created_at)
+         VALUES (?, ?, NULL, NULL, 'coupon', ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      )
+      .bind(
+        ledgerEntryId,
+        input.userId,
+        `Coupon ${couponCode}`,
+        amountCents,
+        BILLING_CURRENCY,
+        amountCents,
+        'credit_cents',
+        metadataJson({ couponCode }),
+        `billing:coupon:${input.userId}:${couponCode}`,
+        now,
+      ),
+    db
+      .prepare(
+        `INSERT INTO billing_coupon_redemptions
+          (user_id, coupon_code, ledger_entry_id, redeemed_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .bind(input.userId, couponCode, ledgerEntryId, now),
+    db
+      .prepare(
+        `UPDATE billing_accounts
+         SET status = 'active',
+             updated_at = ?
+         WHERE user_id = ?`,
+      )
+      .bind(now, input.userId),
+  ])
+
+  return {
+    ok: true,
+    billing: await readBillingSummary(db, input.userId, runtime),
+    message: `${formatUsdCents(amountCents)} credit applied.`,
+  }
+}
+
+export const codexUsageDebitInsert = (
+  db: D1Database,
+  input: Readonly<{
+    event: OmniEventRecord
+    teamId: string | null
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): D1PreparedStatement | undefined => {
+  const usage = tokenUsageFromEvent(input.event)
+
+  if (usage === undefined) {
+    return undefined
+  }
+
+  const amountCents = calculateCodexUsageDebitCents(usage.totalTokens)
+
+  if (amountCents === 0) {
+    return undefined
+  }
+
+  const sourceRef = sourceRefForTokenUsageEvent(input.event)
+
+  return db
+    .prepare(
+      `INSERT OR IGNORE INTO billing_ledger_entries
+        (id, user_id, team_id, run_id, source, description, amount_cents,
+         currency, quantity, unit, unit_rate_cents, metadata_json,
+         idempotency_key, created_at)
+       VALUES (?, ?, ?, ?, 'codex_usage', ?, ?, ?, ?, 'tokens', ?, ?, ?, ?)`,
+    )
+    .bind(
+      runtime.randomId('bill'),
+      input.userId,
+      input.teamId,
+      input.event.parentId,
+      `Codex usage: ${usage.totalTokens.toLocaleString('en-US')} tokens`,
+      -amountCents,
+      BILLING_CURRENCY,
+      usage.totalTokens,
+      CODEX_RATE_CENTS_PER_THOUSAND_TOKENS,
+      metadataJson({
+        eventId: input.event.id,
+        model: usage.model,
+        provider: usage.provider,
+        source: input.event.source,
+        sourceRef,
+      }),
+      `billing:codex:${input.event.parentId}:${sourceRef}`,
+      input.event.createdAt,
+    )
+}
+
+const billUntilForRun = (run: AgentRunRecord): string | undefined => {
+  if (run.completedAt !== null) {
+    return run.completedAt
+  }
+
+  if (run.failedAt !== null) {
+    return run.failedAt
+  }
+
+  if (run.canceledAt !== null) {
+    return run.canceledAt
+  }
+
+  return run.status === 'running' || run.status === 'waiting_for_input'
+    ? run.updatedAt
+    : undefined
+}
+
+export const recordContainerUsageDebitForRun = async (
+  db: D1Database,
+  run: AgentRunRecord,
+  input: Readonly<{ billUntil?: string | undefined }> = {},
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<void> => {
+  if (run.startedAt === null) {
+    return
+  }
+
+  const billUntil = input.billUntil ?? billUntilForRun(run)
+
+  if (billUntil === undefined) {
+    return
+  }
+
+  await ensureBillingAccount(db, run.userId, runtime)
+
+  const cursor = await db
+    .prepare(
+      `SELECT last_billed_at, total_billed_quantity
+       FROM billing_usage_cursors
+       WHERE run_id = ? AND meter = 'container_seconds'`,
+    )
+    .bind(run.id)
+    .first<UsageCursorRow>()
+  const lastBilledAt = cursor?.last_billed_at ?? run.startedAt
+  const seconds = secondsBetweenIso(lastBilledAt, billUntil)
+  const amountCents = calculateContainerUsageDebitCents(seconds)
+
+  if (seconds === 0 || amountCents === 0) {
+    return
+  }
+
+  const now = runtime.nowIso()
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO billing_usage_cursors
+          (run_id, meter, user_id, team_id, last_billed_at,
+           total_billed_quantity, updated_at)
+         VALUES (?, 'container_seconds', ?, ?, ?, 0, ?)`,
+      )
+      .bind(run.id, run.userId, run.teamId, lastBilledAt, now),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO billing_ledger_entries
+          (id, user_id, team_id, run_id, source, description, amount_cents,
+           currency, quantity, unit, unit_rate_cents, metadata_json,
+           idempotency_key, created_at)
+         VALUES (?, ?, ?, ?, 'container_usage', ?, ?, ?, ?, 'seconds', ?, ?, ?, ?)`,
+      )
+      .bind(
+        runtime.randomId('bill'),
+        run.userId,
+        run.teamId,
+        run.id,
+        `Computer usage: ${seconds} seconds`,
+        -amountCents,
+        BILLING_CURRENCY,
+        seconds,
+        CONTAINER_RATE_CENTS_PER_MINUTE,
+        metadataJson({
+          backend: run.backend,
+          billedFrom: lastBilledAt,
+          billedUntil: billUntil,
+          runnerId: run.runnerId,
+        }),
+        `billing:container:${run.id}:${lastBilledAt}:${billUntil}`,
+        billUntil,
+      ),
+    db
+      .prepare(
+        `UPDATE billing_usage_cursors
+         SET last_billed_at = ?,
+             total_billed_quantity = total_billed_quantity + ?,
+             updated_at = ?
+         WHERE run_id = ? AND meter = 'container_seconds'`,
+      )
+      .bind(billUntil, seconds, now, run.id),
+  ])
+}

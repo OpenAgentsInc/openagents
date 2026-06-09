@@ -1,0 +1,63 @@
+{
+  "name": "@openagentsinc/pylon",
+  "version": "0.3.0-rc1",
+  "description": "Modern Pylon contributor node built on Bun, Effect, and OpenTUI",
+  "private": false,
+  "main": "src/index.ts",
+  "type": "module",
+  "packageManager": "bun@1.3.11",
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "effect": "4.0.0-beta.70",
+      "typescript": "^6.0.3"
+    }
+  },
+  "bin": {
+    "pylon": "src/index.ts"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "files": [
+    "src",
+    "packages/runtime/src",
+    "packages/runtime/package.json",
+    "docs/images/pylon.png",
+    "docs/*.md",
+    "docs/benchmarks",
+    "docs/probe-port",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenAgentsInc/pylon.git"
+  },
+  "scripts": {
+    "start": "bun src/index.ts",
+    "runtime": "bun --cwd packages/runtime src/cli.ts",
+    "runtime:test": "bun run --cwd packages/runtime test",
+    "smoke:default-start": "rm -f /tmp/pylon-default-start.log; perl -e 'alarm 3; $ENV{PYLON_DISABLE_OPENCODE_STARTUP}=1; exec @ARGV' bun src/index.ts > /tmp/pylon-default-start.log 2>&1; code=$?; if [ \"$code\" -ne 142 ] && [ \"$code\" -ne 0 ]; then cat /tmp/pylon-default-start.log; exit \"$code\"; fi; if rg -n 'TypeError|Effect\\.(fork|catchAll)|is not a function|\\[ERROR\\]' /tmp/pylon-default-start.log; then exit 1; fi; printf 'default startup reached persistent mode without startup API errors\\n'",
+    "smoke:dashboard": "bun src/index.ts --smoke-dashboard",
+    "smoke:wallet": "npx --yes @moneydevkit/agent-wallet@latest balance | bun -e 'const input = await new Response(Bun.stdin.stream()).text(); const json = JSON.parse(input); if (typeof json.balance_sats !== \"number\") { console.error(input.trim()); process.exit(1); } console.log(`wallet balance: ${json.balance_sats} sats`);'",
+    "smoke:install:local": "bash scripts/smoke-local-package-install.sh",
+    "test": "bun test",
+    "release:gate": "bash scripts/release-gate.sh"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.3.4",
+    "diff": "^9.0.0",
+    "marked": "^18.0.5",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0"
+  }
+}

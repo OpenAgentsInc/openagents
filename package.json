@@ -1,0 +1,43 @@
+{
+  "name": "openagents",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.11",
+  "workspaces": {
+    "packages": [
+      "apps/openagents.com",
+      "apps/openagents.com/apps/*",
+      "apps/openagents.com/packages/*",
+      "apps/openagents.com/services/*",
+      "apps/openagents.com/workers/*",
+      "apps/forum",
+      "apps/pylon",
+      "apps/pylon/packages/*",
+      "packages/probe",
+      "packages/probe/packages/*"
+    ],
+    "catalog": {
+      "effect": "4.0.0-beta.70",
+      "typescript": "^6.0.3"
+    }
+  },
+  "scripts": {
+    "dev:openagents.com": "bun run --cwd apps/openagents.com dev",
+    "dev:forum": "bun run --cwd apps/forum dev",
+    "dev:pylon": "bun run --cwd apps/pylon start",
+    "test": "bun run test:forum && bun run test:pylon && bun run test:probe",
+    "test:openagents.com": "bun run --cwd apps/openagents.com test",
+    "test:forum": "bun run --cwd apps/forum test",
+    "test:pylon": "bun run --cwd apps/pylon test",
+    "test:probe": "bun run --cwd packages/probe test",
+    "typecheck": "bun run typecheck:forum",
+    "typecheck:forum": "bun run --cwd apps/forum typecheck",
+    "prepare": "effect-language-service patch"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.86.2",
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}

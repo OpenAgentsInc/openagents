@@ -1,0 +1,12 @@
+{
+  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "candidateHash": "sha256:a2a44c21a08fcba12108786821dc5045a746e72b0d5a7f45374b08f8ba6a6743",
+  "closeoutRef": "probe_closeout.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "completedAt": "2026-06-08T15:10:57.000Z",
+  "evidenceSplit": "retained",
+  "resultSummaryRef": "summary.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.decision_trace",
+  "runRef": "probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "schemaRef": "probe.benchmark_run.v1",
+  "startedAt": "2026-06-08T15:10:57.000Z",
+  "status": "failed"
+}

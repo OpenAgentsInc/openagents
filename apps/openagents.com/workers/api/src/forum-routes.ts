@@ -1,0 +1,3513 @@
+import { Effect, Schema as S } from 'effect'
+
+import type { AgentRegistrationStore } from './agent-registration'
+import {
+  ForumContextKind,
+  type ForumHumanSessionActor,
+  ForumMethod,
+  type ForumModerationEventRow,
+  ForumMoneyAmount,
+  type ForumMoneyAmountType,
+  type ForumOperatorActor,
+  ForumPaidActionError,
+  ForumPaidActionKind,
+  type ForumPaidActionKindType,
+  type ForumPaidActionNonPayableDenial,
+  ForumPaidActionTarget,
+  type ForumPaidActionTargetType,
+  ForumParticipationWriteResponse,
+  type ForumPostRevisionRow,
+  ForumPublicProjectionUnsafe,
+  ForumReadAccessDenied,
+  type ForumReportRow,
+  ForumRouteParams,
+  ForumStorageError,
+  ForumValidationError,
+  type ForumWriteActionKind,
+  type ForumWritePolicyDecision,
+  ForumWritePolicyMaxLookupWindowSeconds,
+  type ForumWriterActorInput,
+  ForumWriterAuthFailure,
+  type ForumWriterGrant,
+  type ForumWriterScope,
+  authenticateForumAgentToken,
+  bookmarkForumTarget,
+  buildForumWriterContext,
+  claimForumTipSettlement,
+  createForumReplyPost,
+  createForumTopicWithFirstPost,
+  decodeForumPostListCursor,
+  editForumPostBody,
+  evaluateForumWritePolicy,
+  followForumActor,
+  forumLaunchGateStatus,
+  listForumModerationQueue,
+  listRecentForumWritesForActor,
+  lookupForumPaidActionChallenge,
+  lookupForumPaidActionReceipt,
+  previewForumPaidAction,
+  readForumAgentNotifications,
+  readForumAgentPublicProfile,
+  readForumBoardIndex,
+  readForumBookmarkByIdempotencyKey,
+  readForumContextActivity,
+  readForumCreatorEarnings,
+  readForumFollowByIdempotencyKey,
+  readForumModerationEventByIdempotencyKey,
+  readForumModerationItem,
+  readForumNotificationReadByIdempotencyKey,
+  readForumNotificationReadByNotificationId,
+  readForumPaidActionPrivatePayment,
+  readForumPostById,
+  readForumPostByIdempotencyKey,
+  readForumPostDetail,
+  readForumPostList,
+  readForumPostRevisionByIdempotencyKey,
+  readForumReportByIdempotencyKey,
+  readForumSummaryByRef,
+  readForumTipLeaderboards,
+  readForumTipReconciliation,
+  readForumTopicById,
+  readForumTopicByIdempotencyKey,
+  readForumTopicDetail,
+  readForumTopicList,
+  readForumWatchByIdempotencyKey,
+  recordForumModerationEvent,
+  recordForumNotificationRead,
+  recordForumReport,
+  redeemForumPaidAction,
+  searchForumPublicContent,
+  tombstoneForumPost,
+  updateForumPostModerationState,
+  updateForumReportStatus,
+  updateForumTopicModerationState,
+  upsertForumTipRecipientWallet,
+  watchForumTarget,
+} from './forum'
+import { ForumPostBodyTextMaxLength } from './forum-limits'
+import {
+  type ForumL402SigningBoundaryProvider,
+  verifyForumL402PaymentEvent,
+} from './forum/l402-payment-verification'
+import { ForumTipRecipientProviderClass } from './forum/schemas'
+import type { OpenAgentsHostedMdkClient } from './hosted-mdk-client'
+import {
+  methodNotAllowed,
+  noStoreJsonResponse,
+  serverError,
+} from './http/responses'
+import {
+  currentEpochMillis,
+  currentIsoTimestamp,
+  epochMillisToIsoTimestamp,
+  randomUuid,
+} from './runtime-primitives'
+
+type ForumRouteDependencies = Readonly<{
+  agentStore?: AgentRegistrationStore
+  hostedMdkClient?: OpenAgentsHostedMdkClient
+  l402SigningBoundary?: ForumL402SigningBoundaryProvider
+  makeId?: () => string
+  nowEpochMillis?: () => number
+  nowIso?: () => string
+  resolveModeratorActor?: (
+    request: Request,
+  ) => Promise<
+    | Readonly<{ _tag: 'Moderator'; actor: ForumOperatorActor }>
+    | Readonly<{ _tag: 'Forbidden'; reason: string }>
+    | undefined
+  >
+  resolveHumanActor?: (
+    request: Request,
+  ) => Promise<ForumHumanSessionActor | undefined>
+}>
+
+type ForumAgentWriterActor = Extract<
+  ForumWriterActorInput,
+  Readonly<{ _tag: 'Agent' }>
+>
+
+const ForumContextLinkBody = S.Struct({
+  contextId: S.Trim.check(S.isNonEmpty(), S.isMaxLength(160)),
+  contextKind: ForumContextKind,
+  contextSlug: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(120)))),
+  contextTitle: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(160)))),
+  publicUrl: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(400)))),
+  sourceRef: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(220)))),
+})
+type ForumContextLinkBody = typeof ForumContextLinkBody.Type
+
+const CreateForumTopicBody = S.Struct({
+  bodyText: S.Trim.check(
+    S.isNonEmpty(),
+    S.isMaxLength(ForumPostBodyTextMaxLength),
+  ),
+  context: S.optionalKey(S.NullOr(ForumContextLinkBody)),
+  paymentProofRef: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(300)))),
+  requestedSlug: S.optionalKey(
+    S.NullOr(
+      S.Trim.check(
+        S.isMinLength(3),
+        S.isMaxLength(80),
+        S.isPattern(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/),
+      ),
+    ),
+  ),
+  title: S.Trim.check(S.isMinLength(3), S.isMaxLength(160)),
+})
+
+const CreateForumReplyBody = S.Struct({
+  bodyText: S.Trim.check(
+    S.isNonEmpty(),
+    S.isMaxLength(ForumPostBodyTextMaxLength),
+  ),
+  context: S.optionalKey(S.NullOr(ForumContextLinkBody)),
+  parentPostId: S.optionalKey(S.NullOr(S.String)),
+  paymentProofRef: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(300)))),
+  quotePostId: S.optionalKey(S.NullOr(S.String)),
+})
+
+const EditForumPostBody = S.Struct({
+  bodyText: S.Trim.check(
+    S.isNonEmpty(),
+    S.isMaxLength(ForumPostBodyTextMaxLength),
+  ),
+})
+
+const TombstoneForumPostBody = S.Struct({
+  reason: S.optionalKey(
+    S.Literals(['author_request', 'duplicate', 'mistake', 'other']),
+  ),
+})
+
+const ForumReportReason = S.Literals([
+  'spam',
+  'unsafe',
+  'off_topic',
+  'private_data',
+  'payment_abuse',
+  'other',
+])
+type ForumReportReason = typeof ForumReportReason.Type
+
+const ReportForumTargetBody = S.Struct({
+  reason: ForumReportReason,
+})
+
+const ForumModerationReason = S.Literals([
+  'policy_reviewed',
+  'spam',
+  'unsafe',
+  'off_topic',
+  'duplicate',
+  'other',
+])
+type ForumModerationReason = typeof ForumModerationReason.Type
+
+const ForumModerationActionBody = S.Struct({
+  reason: S.optionalKey(ForumModerationReason),
+})
+
+const ForumPublicSafeRef = S.Trim.check(S.isNonEmpty(), S.isMaxLength(220))
+const ForumPublicSafeRefs = S.optionalKey(S.Array(ForumPublicSafeRef))
+
+const ForumTipRecipientWalletState = S.Literals([
+  'blocked',
+  'disabled',
+  'ready',
+])
+
+const ForumTipRecipientAdmissionBody = S.Struct({
+  actorRef: ForumPublicSafeRef,
+  caveatRefs: ForumPublicSafeRefs,
+  claimPolicyRefs: ForumPublicSafeRefs,
+  custodyPolicyRefs: ForumPublicSafeRefs,
+  disabledAt: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(80)))),
+  payoutTargetApprovalRef: S.optionalKey(S.NullOr(ForumPublicSafeRef)),
+  providerClass: ForumTipRecipientProviderClass,
+  readinessRefs: ForumPublicSafeRefs,
+  receiveCapabilityRef: ForumPublicSafeRef,
+  sourceRef: ForumPublicSafeRef,
+  state: ForumTipRecipientWalletState,
+  walletRef: ForumPublicSafeRef,
+})
+
+const ForumTipRecipientClaimBody = S.Struct({
+  caveatRefs: ForumPublicSafeRefs,
+  claimPolicyRefs: ForumPublicSafeRefs,
+  custodyPolicyRefs: ForumPublicSafeRefs,
+  payoutTargetApprovalRef: S.optionalKey(S.NullOr(ForumPublicSafeRef)),
+  providerClass: S.optionalKey(S.Literal('mdk_agent_wallet')),
+  readinessRefs: ForumPublicSafeRefs,
+  receiveCapabilityRef: ForumPublicSafeRef,
+  sourceRef: S.optionalKey(ForumPublicSafeRef),
+  walletRef: ForumPublicSafeRef,
+})
+
+const ForumPaidActionPreviewBody = S.Struct({
+  actionKind: ForumPaidActionKind,
+  method: ForumMethod,
+  path: S.Trim.check(S.isNonEmpty(), S.isMaxLength(400)),
+  requestBodyDigest: S.Trim.check(S.isNonEmpty(), S.isMaxLength(200)),
+  routeParams: S.optionalKey(ForumRouteParams),
+  spendCap: ForumMoneyAmount,
+  target: ForumPaidActionTarget,
+})
+
+const ForumPaidActionAliasPreviewBody = S.Struct({
+  requestBodyDigest: S.Trim.check(S.isNonEmpty(), S.isMaxLength(200)),
+  spendCap: ForumMoneyAmount,
+})
+
+const ForumPaidActionRedeemBody = S.Struct({
+  challengeId: S.Trim.check(S.isNonEmpty(), S.isMaxLength(160)),
+  l402ProofRef: S.Trim.check(S.isNonEmpty(), S.isMaxLength(300)),
+  method: ForumMethod,
+  path: S.Trim.check(S.isNonEmpty(), S.isMaxLength(400)),
+  requestBodyDigest: S.Trim.check(S.isNonEmpty(), S.isMaxLength(200)),
+  routeParams: S.optionalKey(ForumRouteParams),
+})
+
+const ForumPaidActionPrivatePaymentBody = S.Struct({
+  challengeId: S.Trim.check(S.isNonEmpty(), S.isMaxLength(160)),
+  method: ForumMethod,
+  path: S.Trim.check(S.isNonEmpty(), S.isMaxLength(400)),
+  requestBodyDigest: S.Trim.check(S.isNonEmpty(), S.isMaxLength(200)),
+  routeParams: S.optionalKey(ForumRouteParams),
+  spendCap: ForumMoneyAmount,
+})
+
+const ForumTipSettlementClaimBody = S.Struct({
+  settlementEvidenceRefs: S.Array(ForumPublicSafeRef),
+  settlementRef: ForumPublicSafeRef,
+  sourceRef: ForumPublicSafeRef,
+})
+
+const decodeParticipationWriteResponse = S.decodeUnknownSync(
+  ForumParticipationWriteResponse,
+)
+
+const badRequest = (reason: string) =>
+  noStoreJsonResponse({ error: 'bad_request', reason }, { status: 400 })
+
+const notFound = () =>
+  noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+
+const scopeDenied = () =>
+  noStoreJsonResponse(
+    { error: 'forbidden', reason: 'forum scope is not public' },
+    { status: 403 },
+  )
+
+const unauthorized = () =>
+  noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+
+const forbidden = (reason: string) =>
+  noStoreJsonResponse({ error: 'forbidden', reason }, { status: 403 })
+
+const locked = (reason: string) =>
+  noStoreJsonResponse({ error: 'locked', reason }, { status: 423 })
+
+const decodePathSegment = (value: string | undefined) => {
+  if (value === undefined) {
+    return undefined
+  }
+
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return undefined
+  }
+}
+
+const includeUnlisted = (url: URL): boolean =>
+  url.searchParams.get('include') === 'unlisted' ||
+  url.searchParams.get('includeUnlisted') === 'true' ||
+  url.searchParams.get('test') === 'void'
+
+const authorizeUnlistedDiscovery = (
+  request: Request,
+  dependencies: ForumRouteDependencies,
+): Effect.Effect<void, ForumWriterAuthFailure> =>
+  actorForRequest(request, dependencies).pipe(Effect.asVoid)
+
+const publicReadResponse = <A>(
+  effect: Effect.Effect<
+    A | null,
+    ForumStorageError | ForumReadAccessDenied | ForumValidationError
+  >,
+) =>
+  effect.pipe(
+    Effect.map(value =>
+      value === null ? notFound() : noStoreJsonResponse(value),
+    ),
+    Effect.catchTag('ForumReadAccessDenied', denial =>
+      Effect.succeed(
+        denial.denialKind === 'scope_denied' ? scopeDenied() : notFound(),
+      ),
+    ),
+    Effect.catchTag('ForumValidationError', error =>
+      Effect.succeed(badRequest(error.reason)),
+    ),
+    Effect.catchTag('ForumStorageError', () => Effect.succeed(serverError())),
+  )
+
+const publicSearchResponse = <A>(effect: Effect.Effect<A, ForumStorageError>) =>
+  effect.pipe(
+    Effect.map(value => noStoreJsonResponse(value)),
+    Effect.catchTag('ForumStorageError', () => Effect.succeed(serverError())),
+  )
+
+const publicListResponse = <A>(effect: Effect.Effect<A, ForumStorageError>) =>
+  effect.pipe(
+    Effect.map(value => noStoreJsonResponse(value)),
+    Effect.catchTag('ForumStorageError', () => Effect.succeed(serverError())),
+  )
+
+const readBearerToken = (request: Request): string | undefined => {
+  const authorization = request.headers.get('authorization')
+
+  if (authorization === null) {
+    return undefined
+  }
+
+  const [scheme, token] = authorization.split(' ')
+
+  return scheme?.toLowerCase() === 'bearer' && token !== undefined
+    ? token
+    : undefined
+}
+
+const idempotencyKeyFromRequest = (request: Request): string | undefined => {
+  const value = request.headers.get('Idempotency-Key')?.trim()
+
+  return value === undefined || value.length < 8 || value.length > 160
+    ? undefined
+    : value
+}
+
+const forumListLimitFromUrl = (url: URL): number | Response => {
+  const raw = url.searchParams.get('limit')
+
+  if (raw === null) {
+    return 50
+  }
+
+  const limit = Number(raw)
+
+  return Number.isSafeInteger(limit) && limit >= 1 && limit <= 100
+    ? limit
+    : badRequest('limit must be an integer between 1 and 100')
+}
+
+const slugify = (value: string, fallback: string): string => {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80)
+
+  return slug.length >= 3 ? slug : fallback
+}
+
+const refIdSegment = (value: string, fallback: string): string => {
+  const segment = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120)
+
+  return segment.length >= 3 ? segment : fallback
+}
+
+const defaultPublicProjection = (artifactRef: string) => ({
+  classificationCaveatRef: 'classification.public_forum_projection',
+  customerSafe: true,
+  dataClassification: 'public' as const,
+  excludedPrivateRefs: [],
+  publicSafe: true,
+  redactionPolicyRef: 'redaction.forum.public.v1',
+  safeArtifactRefs: [artifactRef],
+  safeReceiptRefs: [],
+  trustTier: 'reviewed' as const,
+})
+
+const ForumReportReasonRefs: Record<ForumReportReason, string> = {
+  off_topic: 'forum.report.reason.off_topic',
+  other: 'forum.report.reason.other',
+  payment_abuse: 'forum.report.reason.payment_abuse',
+  private_data: 'forum.report.reason.private_data',
+  spam: 'forum.report.reason.spam',
+  unsafe: 'forum.report.reason.unsafe',
+}
+
+const ForumModerationReasonRefs: Record<ForumModerationReason, string> = {
+  duplicate: 'forum.moderation.reason.duplicate',
+  off_topic: 'forum.moderation.reason.off_topic',
+  other: 'forum.moderation.reason.other',
+  policy_reviewed: 'forum.moderation.reason.policy_reviewed',
+  spam: 'forum.moderation.reason.spam',
+  unsafe: 'forum.moderation.reason.unsafe',
+}
+
+const reportReasonFromRef = (reasonRef: string): ForumReportReason => {
+  const match = Object.entries(ForumReportReasonRefs).find(
+    ([, ref]) => ref === reasonRef,
+  )
+
+  return match === undefined ? 'other' : (match[0] as ForumReportReason)
+}
+
+const revisionResultFromRow = (
+  revision: ForumPostRevisionRow,
+  post: unknown,
+  idempotent: boolean,
+) => ({
+  action: revision.action_kind,
+  idempotent,
+  post,
+  revisionRef: revision.id,
+})
+
+const reportResultFromRow = (report: ForumReportRow, idempotent: boolean) => ({
+  idempotent,
+  report: {
+    reason: reportReasonFromRef(report.reason_ref),
+    reportId: report.id,
+    status: report.status,
+    targetId: report.target_id,
+    targetKind: report.target_kind,
+  },
+})
+
+const moderationEventResultFromRow = (
+  event: ForumModerationEventRow,
+  idempotent: boolean,
+) => ({
+  idempotent,
+  moderationEvent: {
+    actionKind: event.action_kind,
+    eventId: event.id,
+    reasonRef: event.reason_ref,
+    reportId: event.report_id,
+    targetId: event.target_id,
+    targetKind: event.target_kind,
+  },
+})
+
+const contextLinksFromBody = (
+  context: ForumContextLinkBody | null | undefined,
+  input: Readonly<{
+    forumId: string
+    makeId: () => string
+    postId: string | null
+    targetKind: 'topic' | 'post'
+    topicId: string
+  }>,
+) => {
+  if (context === null || context === undefined) {
+    return []
+  }
+
+  const id = input.makeId()
+
+  return [
+    {
+      contextId: context.contextId,
+      contextKind: context.contextKind,
+      contextSlug: context.contextSlug ?? null,
+      contextTitle: context.contextTitle ?? null,
+      forumId: input.forumId,
+      id,
+      postId: input.targetKind === 'post' ? input.postId : null,
+      publicProjection: defaultPublicProjection(`artifact.forum.context.${id}`),
+      publicUrl: context.publicUrl ?? null,
+      sourceRef: context.sourceRef ?? null,
+      targetKind: input.targetKind,
+      topicId: input.topicId,
+    },
+  ]
+}
+
+const ForumPaidActionPriceByKind: Readonly<
+  Record<ForumPaidActionKindType, ForumMoneyAmountType>
+> = {
+  post_boost: { amount: 100, asset: 'sats' },
+  post_down_signal: { amount: 100, asset: 'sats' },
+  post_reply_fee: { amount: 25, asset: 'sats' },
+  post_reward: { amount: 100, asset: 'sats' },
+  report_fee: { amount: 25, asset: 'sats' },
+  topic_boost: { amount: 250, asset: 'sats' },
+  topic_create_fee: { amount: 100, asset: 'sats' },
+  topic_fund: { amount: 250, asset: 'sats' },
+}
+
+const paidActionPriceForKind = (
+  actionKind: ForumPaidActionKindType,
+): ForumMoneyAmountType => ForumPaidActionPriceByKind[actionKind]
+
+const paidActionTargetObjectKind = (
+  actionKind: ForumPaidActionKindType,
+): 'forum' | 'post' | 'topic' =>
+  actionKind === 'post_reward' ||
+  actionKind === 'post_boost' ||
+  actionKind === 'post_down_signal'
+    ? 'post'
+    : actionKind === 'topic_boost' ||
+        actionKind === 'topic_fund' ||
+        actionKind === 'post_reply_fee'
+      ? 'topic'
+      : 'forum'
+
+const actorRefForForumActor = (actor: ForumWriterActorInput): string =>
+  actor._tag === 'Agent'
+    ? `agent:${actor.session.user.id}`
+    : actor._tag === 'Human'
+      ? `user:${actor.session.userId}`
+      : `operator:${actor.operator.operatorId}`
+
+const actorSlugForForumActor = (actor: ForumWriterActorInput): string =>
+  actor._tag === 'Agent'
+    ? slugify(actor.session.user.displayName, actor.session.user.id)
+    : actor._tag === 'Human'
+      ? slugify(actor.session.login, actor.session.userId)
+      : slugify(actor.operator.slug, actor.operator.operatorId)
+
+const forumParticipationGrantForActor = (
+  actor: ForumWriterActorInput,
+  forumId: string,
+  nowEpochMillis: () => number,
+): ForumWriterGrant =>
+  ({
+    expiresAtEpochMillis: nowEpochMillis() + 1000 * 60 * 60,
+    forumIds: [forumId],
+    ownerUserId: actor._tag === 'Agent' ? actor.session.user.id : null,
+    scopes: [
+      'forum.bookmark',
+      'forum.follow',
+      'forum.notifications.read',
+      'forum.read',
+      'forum.watch',
+    ],
+    status: 'active',
+    teamId: null,
+  }) as unknown as ForumWriterGrant
+
+type ResolvedForumPaidActionTarget = Readonly<{
+  nonPayableDenial: ForumPaidActionNonPayableDenial | null
+  recipientActorRef: string | null
+  recipientReadinessRef: string | null
+  target: ForumPaidActionTargetType
+}>
+
+const resolveForumPaidActionTarget = (
+  db: D1Database,
+  actionKind: ForumPaidActionKindType,
+  target: ForumPaidActionTargetType,
+): Effect.Effect<
+  ResolvedForumPaidActionTarget | null,
+  ForumStorageError | ForumReadAccessDenied | ForumValidationError
+> =>
+  Effect.gen(function* () {
+    const targetKind = paidActionTargetObjectKind(actionKind)
+
+    if (targetKind === 'post') {
+      if (target.postId === null) {
+        return null
+      }
+
+      const postDetail = yield* readForumPostDetail(db, target.postId)
+
+      if (postDetail === null) {
+        return null
+      }
+
+      if (postDetail.post.state === 'tombstoned') {
+        return null
+      }
+
+      const topic = yield* readForumTopicById(db, postDetail.containingTopicId)
+
+      if (topic === null) {
+        return null
+      }
+
+      const recipientActorRef =
+        actionKind === 'post_down_signal'
+          ? null
+          : postDetail.post.author.actorRef
+      const recipientReadiness = postDetail.post.tipRecipientReadiness
+      const recipientReadinessRef =
+        recipientActorRef !== null && recipientReadiness.tippingAvailable
+          ? (recipientReadiness.readinessRefs[0] ?? null)
+          : null
+
+      return {
+        nonPayableDenial:
+          recipientActorRef !== null && !recipientReadiness.tippingAvailable
+            ? {
+                denialKind: 'recipient_not_ready',
+                denialRef:
+                  recipientReadiness.blockerRef ??
+                  `blocker.public.forum_tip_recipient.${recipientReadiness.state}`,
+                requiredPermission: null,
+              }
+            : null,
+        recipientActorRef,
+        recipientReadinessRef,
+        target: {
+          forumId: topic.forumId,
+          postId: postDetail.post.postId,
+          topicId: topic.topicId,
+        },
+      }
+    }
+
+    if (targetKind === 'topic') {
+      if (target.topicId === null) {
+        return null
+      }
+
+      const topicDetail = yield* readForumTopicDetail(db, target.topicId)
+
+      if (topicDetail === null) {
+        return null
+      }
+
+      return {
+        nonPayableDenial: null,
+        recipientActorRef:
+          actionKind === 'post_reply_fee'
+            ? null
+            : topicDetail.topic.author.actorRef,
+        recipientReadinessRef: null,
+        target: {
+          forumId: topicDetail.topic.forumId,
+          postId: null,
+          topicId: topicDetail.topic.topicId,
+        },
+      }
+    }
+
+    if (target.forumId === null) {
+      return null
+    }
+
+    const forum = yield* readForumSummaryByRef(db, target.forumId, {
+      allowUnlisted: true,
+    })
+
+    if (forum === null) {
+      return null
+    }
+
+    return {
+      nonPayableDenial: null,
+      recipientActorRef: null,
+      recipientReadinessRef: null,
+      target: {
+        forumId: forum.forumId,
+        postId: null,
+        topicId: null,
+      },
+    }
+  })
+
+const forumWriteGrantForActor = (
+  actor: ForumWriterActorInput,
+  forumId: string,
+  requiredScope: ForumWriterScope,
+  nowEpochMillis: () => number,
+): ForumWriterGrant | undefined => {
+  if (actor._tag === 'Agent') {
+    return {
+      expiresAtEpochMillis: nowEpochMillis() + 1000 * 60 * 60,
+      forumIds: [forumId],
+      ownerUserId: actor.session.user.id,
+      scopes: [requiredScope],
+      status: 'active',
+      teamId: null,
+    } as unknown as ForumWriterGrant
+  }
+
+  return undefined
+}
+
+const forumWriteRequiredScopeForForum = (
+  forumSlug: string,
+): ForumWriterScope =>
+  forumSlug === 'void' ? 'forum.void.write' : 'forum.write'
+
+const actorForRequest = (
+  request: Request,
+  dependencies: ForumRouteDependencies,
+): Effect.Effect<ForumWriterActorInput, ForumWriterAuthFailure> =>
+  Effect.gen(function* () {
+    const bearerToken = readBearerToken(request)
+
+    if (bearerToken !== undefined) {
+      if (dependencies.agentStore === undefined) {
+        return yield* new ForumWriterAuthFailure({
+          failureKind: 'under_scoped',
+          reason: 'Forum agent auth is not configured.',
+        })
+      }
+
+      return yield* authenticateForumAgentToken(
+        dependencies.agentStore,
+        bearerToken,
+      )
+    }
+
+    if (dependencies.resolveHumanActor !== undefined) {
+      const session = yield* Effect.tryPromise({
+        catch: error =>
+          new ForumWriterAuthFailure({
+            failureKind: 'malformed_credentials',
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        try: () => dependencies.resolveHumanActor!(request),
+      })
+
+      if (session !== undefined) {
+        return { _tag: 'Human' as const, session }
+      }
+    }
+
+    return yield* new ForumWriterAuthFailure({
+      failureKind: 'missing_credentials',
+      reason: 'Forum writes require an authenticated actor.',
+    })
+  })
+
+const agentForRequest = (
+  request: Request,
+  dependencies: ForumRouteDependencies,
+): Effect.Effect<ForumAgentWriterActor, ForumWriterAuthFailure> =>
+  Effect.gen(function* () {
+    const bearerToken = readBearerToken(request)
+
+    if (dependencies.agentStore === undefined) {
+      return yield* new ForumWriterAuthFailure({
+        failureKind: 'under_scoped',
+        reason: 'Forum agent auth is not configured.',
+      })
+    }
+
+    const actor = yield* authenticateForumAgentToken(
+      dependencies.agentStore,
+      bearerToken,
+      dependencies.nowIso ?? currentIsoTimestamp,
+    )
+
+    if (actor._tag !== 'Agent') {
+      return yield* new ForumWriterAuthFailure({
+        failureKind: 'under_scoped',
+        reason: 'Forum tip wallet claims require a registered agent token.',
+      })
+    }
+
+    return actor
+  })
+
+const moderatorForRequest = (
+  request: Request,
+  dependencies: ForumRouteDependencies,
+): Effect.Effect<ForumOperatorActor, ForumWriterAuthFailure> =>
+  Effect.gen(function* () {
+    if (dependencies.resolveModeratorActor === undefined) {
+      return yield* new ForumWriterAuthFailure({
+        failureKind: 'under_scoped',
+        reason: 'Forum moderation auth is not configured.',
+      })
+    }
+
+    const resolution = yield* Effect.tryPromise({
+      catch: error =>
+        new ForumWriterAuthFailure({
+          failureKind: 'malformed_credentials',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => dependencies.resolveModeratorActor!(request),
+    })
+
+    if (resolution === undefined) {
+      return yield* new ForumWriterAuthFailure({
+        failureKind: 'missing_credentials',
+        reason: 'Forum moderation requires a signed-in moderator.',
+      })
+    }
+
+    if (resolution._tag === 'Forbidden') {
+      return yield* new ForumWriterAuthFailure({
+        failureKind: 'under_scoped',
+        reason: resolution.reason,
+      })
+    }
+
+    return resolution.actor
+  })
+
+const decodeJsonBody = <A>(
+  request: Request,
+  decode: (body: unknown) => A,
+): Effect.Effect<A, ForumValidationError> =>
+  Effect.tryPromise({
+    catch: () =>
+      new ForumValidationError({ reason: 'request body is malformed' }),
+    try: () => request.json(),
+  }).pipe(
+    Effect.flatMap(body =>
+      Effect.try({
+        catch: error =>
+          new ForumValidationError({
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        try: () => decode(body),
+      }),
+    ),
+  )
+
+const decodeJsonBodyOrDefault = <A>(
+  request: Request,
+  decode: (body: unknown) => A,
+  fallback: A,
+): Effect.Effect<A, ForumValidationError> =>
+  request.headers.get('content-type') === null
+    ? Effect.succeed(fallback)
+    : decodeJsonBody(request, decode)
+
+const writeFailureResponse = (error: unknown) => {
+  if (error instanceof ForumWriterAuthFailure) {
+    return error.failureKind === 'missing_credentials' ||
+      error.failureKind === 'malformed_credentials'
+      ? unauthorized()
+      : forbidden(error.reason)
+  }
+
+  if (error instanceof ForumReadAccessDenied) {
+    return error.denialKind === 'scope_denied' ? scopeDenied() : notFound()
+  }
+
+  if (error instanceof ForumValidationError) {
+    return badRequest(error.reason)
+  }
+
+  if (error instanceof ForumStorageError) {
+    return serverError()
+  }
+
+  return serverError()
+}
+
+const ForumWritePolicyRecentPostLimit = 100
+
+const idempotencyConflictResponse = () =>
+  noStoreJsonResponse(
+    {
+      error: 'idempotency_key_conflict',
+      reason:
+        'Idempotency-Key already belongs to a different Forum write request.',
+    },
+    { status: 409 },
+  )
+
+const forumWritePolicyHeaders = (
+  decision: Exclude<ForumWritePolicyDecision, Readonly<{ _tag: 'Allowed' }>>,
+): Headers => {
+  const headers = new Headers({
+    'X-OpenAgents-Paid-Recovery': 'wait_only',
+    'X-OpenAgents-Recovery-Modes': 'wait, operator_review',
+    'X-OpenAgents-Spend-Cap-Required': 'true',
+  })
+
+  if (decision.denialKind === 'rate_limited') {
+    headers.set('RateLimit-Limit', String(decision.limit))
+    headers.set(
+      'RateLimit-Policy',
+      `${decision.limit};w=${decision.windowSeconds}`,
+    )
+    headers.set('RateLimit-Remaining', '0')
+    headers.set('RateLimit-Reset', String(decision.retryAfterSeconds))
+    headers.set('Retry-After', String(decision.retryAfterSeconds))
+    headers.set('X-OpenAgents-Payment-Preview-Required', 'true')
+  }
+
+  return headers
+}
+
+const forumWritePolicyDenialResponse = (
+  decision: Exclude<ForumWritePolicyDecision, Readonly<{ _tag: 'Allowed' }>>,
+) => {
+  if (decision.denialKind === 'duplicate_content') {
+    return noStoreJsonResponse(
+      {
+        actionKind: decision.actionKind,
+        duplicateWindowSeconds: decision.duplicateWindowSeconds,
+        error: 'forum_duplicate_content',
+        paidRecovery: 'wait_only',
+        reason: decision.reason,
+        recoveryModes: ['wait', 'operator_review'],
+      },
+      {
+        headers: forumWritePolicyHeaders(decision),
+        status: 409,
+      },
+    )
+  }
+
+  return noStoreJsonResponse(
+    {
+      actionKind: decision.actionKind,
+      error: 'forum_rate_limited',
+      paidRecovery: 'wait_only',
+      rateLimit: {
+        limit: decision.limit,
+        retryAfterSeconds: decision.retryAfterSeconds,
+        windowSeconds: decision.windowSeconds,
+      },
+      reason: decision.reason,
+      recoveryModes: ['wait', 'operator_review'],
+    },
+    {
+      headers: forumWritePolicyHeaders(decision),
+      status: 429,
+    },
+  )
+}
+
+const enforceForumWritePolicy = (
+  db: D1Database,
+  input: Readonly<{
+    actionKind: ForumWriteActionKind
+    actorRef: string
+    bodyText: string
+    nowEpochMillis: number
+  }>,
+) =>
+  Effect.gen(function* () {
+    const sinceIso = epochMillisToIsoTimestamp(
+      input.nowEpochMillis - ForumWritePolicyMaxLookupWindowSeconds * 1000,
+    )
+    const recentPosts = yield* listRecentForumWritesForActor(db, {
+      actorRef: input.actorRef,
+      limit: ForumWritePolicyRecentPostLimit,
+      sinceIso,
+    })
+    const decision = evaluateForumWritePolicy({
+      actionKind: input.actionKind,
+      bodyText: input.bodyText,
+      nowEpochMillis: input.nowEpochMillis,
+      recentPosts: recentPosts.map(post => ({
+        bodyText: post.body_text ?? '',
+        createdAt: post.created_at,
+        postNumber: post.post_number,
+      })),
+    })
+
+    return decision._tag === 'Allowed'
+      ? null
+      : forumWritePolicyDenialResponse(decision)
+  })
+
+const paidActionFailureResponse = (error: unknown) => {
+  if (error instanceof ForumWriterAuthFailure) {
+    return error.failureKind === 'missing_credentials' ||
+      error.failureKind === 'malformed_credentials'
+      ? unauthorized()
+      : forbidden(error.reason)
+  }
+
+  if (error instanceof ForumReadAccessDenied) {
+    return error.denialKind === 'scope_denied' ? scopeDenied() : notFound()
+  }
+
+  if (error instanceof ForumValidationError) {
+    return badRequest(error.reason)
+  }
+
+  if (error instanceof ForumPaidActionError) {
+    if (
+      error.kind === 'challenge_not_found' ||
+      error.kind === 'receipt_not_found'
+    ) {
+      return notFound()
+    }
+
+    if (
+      error.kind === 'challenge_expired' ||
+      error.kind === 'payment_provider_stale_challenge'
+    ) {
+      return noStoreJsonResponse(
+        { error: error.kind, reason: error.reason },
+        { status: 410 },
+      )
+    }
+
+    if (error.kind === 'recipient_not_ready') {
+      return noStoreJsonResponse(
+        { error: 'recipient_not_ready', reason: error.reason },
+        { status: 409 },
+      )
+    }
+
+    if (error.kind === 'recipient_actor_mismatch') {
+      return forbidden(error.reason)
+    }
+
+    if (error.kind === 'actor_mismatch' || error.kind === 'binding_mismatch') {
+      return noStoreJsonResponse(
+        { error: error.kind, reason: error.reason },
+        { status: 409 },
+      )
+    }
+
+    if (
+      error.kind === 'over_spend_cap' ||
+      error.kind === 'unsafe_payment_ref'
+    ) {
+      return badRequest(error.reason)
+    }
+
+    if (error.kind === 'payment_verification_failed') {
+      return noStoreJsonResponse(
+        { error: 'payment_verification_failed', reason: error.reason },
+        { status: 402 },
+      )
+    }
+
+    if (error.kind === 'payment_event_replayed') {
+      return noStoreJsonResponse(
+        { error: 'payment_event_replayed', reason: error.reason },
+        { status: 409 },
+      )
+    }
+
+    if (error.kind === 'settlement_claim_unavailable') {
+      return noStoreJsonResponse(
+        { error: 'settlement_claim_unavailable', reason: error.reason },
+        { status: 409 },
+      )
+    }
+
+    if (
+      error.kind === 'payment_provider_unconfigured' ||
+      error.kind === 'payment_provider_unavailable' ||
+      error.kind === 'payment_provider_rejected'
+    ) {
+      return noStoreJsonResponse(
+        { error: error.kind, reason: error.reason },
+        { status: error.kind === 'payment_provider_rejected' ? 502 : 503 },
+      )
+    }
+  }
+
+  if (error instanceof ForumPublicProjectionUnsafe) {
+    return badRequest(error.reason)
+  }
+
+  if (error instanceof ForumStorageError) {
+    return serverError()
+  }
+
+  return serverError()
+}
+
+const createTopicResponse = (
+  request: Request,
+  db: D1Database,
+  forumRef: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(CreateForumTopicBody),
+    )
+    const existingTopic = yield* readForumTopicByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingTopic !== null) {
+      const existingPost = yield* readForumPostById(
+        db,
+        existingTopic.firstPostId,
+      )
+
+      if (existingPost === null) {
+        return serverError()
+      }
+
+      if (
+        existingTopic.title !== body.title ||
+        (existingPost.bodyText ?? '') !== body.bodyText
+      ) {
+        return idempotencyConflictResponse()
+      }
+
+      return noStoreJsonResponse({
+        firstPost: existingPost,
+        idempotent: true,
+        receiptRefs: [],
+        topic: existingTopic,
+      })
+    }
+
+    const forum = yield* readForumSummaryByRef(db, forumRef, {
+      allowUnlisted: true,
+    })
+
+    if (forum === null) {
+      return notFound()
+    }
+
+    if (forum.locked) {
+      return locked('forum is locked')
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const requiredScope = forumWriteRequiredScopeForForum(forum.slug)
+    const grant = forumWriteGrantForActor(
+      actor,
+      forum.forumId,
+      requiredScope,
+      nowEpochMillis,
+    )
+    const writer = yield* buildForumWriterContext({
+      actor,
+      grant,
+      nowEpochMillis,
+      paymentProofRef: body.paymentProofRef ?? null,
+      requiredScope,
+      targetForumId: forum.forumId,
+      targetOwnerUserId: actor._tag === 'Agent' ? actor.session.user.id : null,
+      targetTeamId: null,
+    })
+    const writePolicyDenial = yield* enforceForumWritePolicy(db, {
+      actionKind: 'topic',
+      actorRef: writer.actor.actorRef,
+      bodyText: body.bodyText,
+      nowEpochMillis: nowEpochMillis(),
+    })
+
+    if (writePolicyDenial !== null) {
+      return writePolicyDenial
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const topicId = makeId()
+    const firstPostId = makeId()
+    const slug = body.requestedSlug ?? slugify(body.title, topicId.slice(0, 8))
+
+    const created = yield* createForumTopicWithFirstPost(db, {
+      actor: writer.actor,
+      bodyText: body.bodyText,
+      contextLinks: contextLinksFromBody(body.context ?? null, {
+        forumId: forum.forumId,
+        makeId,
+        postId: null,
+        targetKind: 'topic',
+        topicId,
+      }),
+      contentRef: `content.forum.post.${firstPostId}`,
+      firstPostId,
+      forumId: forum.forumId,
+      idempotencyKey,
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.topic.${topicId}`,
+      ),
+      slug,
+      title: body.title,
+      topicId,
+    })
+
+    return noStoreJsonResponse(
+      {
+        firstPost: created.firstPost,
+        idempotent: false,
+        receiptRefs: [],
+        topic: created.topic,
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const createReplyResponse = (
+  request: Request,
+  db: D1Database,
+  topicId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(CreateForumReplyBody),
+    )
+    const existingPost = yield* readForumPostByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingPost !== null) {
+      const existingTopic = yield* readForumTopicById(db, existingPost.topicId)
+
+      if (existingTopic === null) {
+        return serverError()
+      }
+
+      if (
+        (existingPost.bodyText ?? '') !== body.bodyText ||
+        existingPost.quotePostId !== (body.quotePostId ?? null)
+      ) {
+        return idempotencyConflictResponse()
+      }
+
+      return noStoreJsonResponse({
+        idempotent: true,
+        post: existingPost,
+        receiptRefs: [],
+        topic: existingTopic,
+      })
+    }
+
+    const topic = yield* readForumTopicById(db, topicId)
+
+    if (
+      topic === null ||
+      topic.state === 'archived' ||
+      topic.state === 'hidden'
+    ) {
+      return notFound()
+    }
+
+    if (topic.state === 'locked') {
+      return locked('topic is locked')
+    }
+
+    const forum = yield* readForumSummaryByRef(db, topic.forumId, {
+      allowUnlisted: true,
+    })
+
+    if (forum === null) {
+      return notFound()
+    }
+
+    if (forum.locked) {
+      return locked('forum is locked')
+    }
+
+    const quotePostId = body.quotePostId ?? null
+
+    if (quotePostId !== null) {
+      const quoted = yield* readForumPostDetail(db, quotePostId)
+
+      if (quoted === null) {
+        return notFound()
+      }
+
+      if (quoted.containingTopicId !== topic.topicId) {
+        return badRequest('quotePostId must belong to the target topic')
+      }
+
+      if (quoted.post.state === 'tombstoned') {
+        return badRequest('quotePostId cannot reference a tombstoned post')
+      }
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const requiredScope = forumWriteRequiredScopeForForum(forum.slug)
+    const grant = forumWriteGrantForActor(
+      actor,
+      forum.forumId,
+      requiredScope,
+      nowEpochMillis,
+    )
+    const writer = yield* buildForumWriterContext({
+      actor,
+      grant,
+      nowEpochMillis,
+      paymentProofRef: body.paymentProofRef ?? null,
+      requiredScope,
+      targetForumId: forum.forumId,
+      targetOwnerUserId: actor._tag === 'Agent' ? actor.session.user.id : null,
+      targetTeamId: null,
+    })
+    const writePolicyDenial = yield* enforceForumWritePolicy(db, {
+      actionKind: 'reply',
+      actorRef: writer.actor.actorRef,
+      bodyText: body.bodyText,
+      nowEpochMillis: nowEpochMillis(),
+    })
+
+    if (writePolicyDenial !== null) {
+      return writePolicyDenial
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const postId = makeId()
+    const post = yield* createForumReplyPost(db, {
+      actor: writer.actor,
+      bodyText: body.bodyText,
+      contextLinks: contextLinksFromBody(body.context ?? null, {
+        forumId: forum.forumId,
+        makeId,
+        postId,
+        targetKind: 'post',
+        topicId: topic.topicId,
+      }),
+      contentRef: `content.forum.post.${postId}`,
+      forumId: forum.forumId,
+      idempotencyKey,
+      parentPostId: body.parentPostId ?? topic.latestPostId,
+      postId,
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.post.${postId}`,
+      ),
+      quotePostId,
+      topicId: topic.topicId,
+    })
+    const updatedTopic = yield* readForumTopicById(db, topic.topicId)
+
+    return updatedTopic === null
+      ? serverError()
+      : noStoreJsonResponse(
+          { idempotent: false, post, receiptRefs: [], topic: updatedTopic },
+          { status: 201 },
+        )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const writerForForumResponse = (
+  request: Request,
+  dependencies: ForumRouteDependencies,
+  input: Readonly<{
+    forumId: string
+    forumSlug: string
+  }>,
+) =>
+  Effect.gen(function* () {
+    const actor = yield* actorForRequest(request, dependencies)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const requiredScope = forumWriteRequiredScopeForForum(input.forumSlug)
+    const grant = forumWriteGrantForActor(
+      actor,
+      input.forumId,
+      requiredScope,
+      nowEpochMillis,
+    )
+
+    return yield* buildForumWriterContext({
+      actor,
+      grant,
+      nowEpochMillis,
+      paymentProofRef: null,
+      requiredScope,
+      targetForumId: input.forumId,
+      targetOwnerUserId: actor._tag === 'Agent' ? actor.session.user.id : null,
+      targetTeamId: null,
+    })
+  })
+
+const readPostControlTarget = (db: D1Database, postId: string) =>
+  Effect.gen(function* () {
+    const postDetail = yield* readForumPostDetail(db, postId)
+
+    if (postDetail === null) {
+      return null
+    }
+
+    const topic = yield* readForumTopicById(db, postDetail.containingTopicId)
+
+    if (
+      topic === null ||
+      topic.state === 'hidden' ||
+      topic.state === 'archived'
+    ) {
+      return null
+    }
+
+    const forum = yield* readForumSummaryByRef(db, topic.forumId, {
+      allowUnlisted: true,
+    })
+
+    if (forum === null) {
+      return null
+    }
+
+    return { forum, postDetail, topic }
+  })
+
+const editPostResponse = (
+  request: Request,
+  db: D1Database,
+  postId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const existingRevision = yield* readForumPostRevisionByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingRevision !== null) {
+      const existingPost = yield* readForumPostById(
+        db,
+        existingRevision.post_id,
+      )
+
+      return existingPost === null
+        ? serverError()
+        : noStoreJsonResponse(
+            revisionResultFromRow(existingRevision, existingPost, true),
+          )
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(EditForumPostBody),
+    )
+    const target = yield* readPostControlTarget(db, postId)
+
+    if (target === null) {
+      return notFound()
+    }
+
+    if (target.topic.state === 'locked') {
+      return locked('topic is locked')
+    }
+
+    if (target.forum.locked) {
+      return locked('forum is locked')
+    }
+
+    if (
+      target.postDetail.post.state === 'hidden' ||
+      target.postDetail.post.state === 'held_for_review' ||
+      target.postDetail.post.state === 'tombstoned'
+    ) {
+      return notFound()
+    }
+
+    const writer = yield* writerForForumResponse(request, dependencies, {
+      forumId: target.forum.forumId,
+      forumSlug: target.forum.slug,
+    })
+
+    if (writer.actor.actorRef !== target.postDetail.post.author.actorRef) {
+      return forbidden('only the post author can edit this post')
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const revisionId = makeId()
+    const post = yield* editForumPostBody(db, {
+      actorRef: writer.actor.actorRef,
+      id: revisionId,
+      idempotencyKey,
+      nextBodyText: body.bodyText,
+      postId: target.postDetail.post.postId,
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.post_revision.${revisionId}`,
+      ),
+      reasonRef: null,
+    })
+
+    return noStoreJsonResponse(
+      {
+        action: 'edit',
+        idempotent: false,
+        post,
+        revisionRef: post.revisionRef ?? revisionId,
+      },
+      { status: 200 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const tombstonePostResponse = (
+  request: Request,
+  db: D1Database,
+  postId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const existingRevision = yield* readForumPostRevisionByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingRevision !== null) {
+      const existingPost = yield* readForumPostById(
+        db,
+        existingRevision.post_id,
+      )
+
+      return existingPost === null
+        ? serverError()
+        : noStoreJsonResponse(
+            revisionResultFromRow(existingRevision, existingPost, true),
+          )
+    }
+
+    const body = yield* decodeJsonBodyOrDefault(
+      request,
+      S.decodeUnknownSync(TombstoneForumPostBody),
+      {},
+    )
+    const target = yield* readPostControlTarget(db, postId)
+
+    if (target === null) {
+      return notFound()
+    }
+
+    if (target.topic.state === 'locked') {
+      return locked('topic is locked')
+    }
+
+    if (target.forum.locked) {
+      return locked('forum is locked')
+    }
+
+    if (
+      target.postDetail.post.state === 'hidden' ||
+      target.postDetail.post.state === 'held_for_review' ||
+      target.postDetail.post.state === 'tombstoned'
+    ) {
+      return notFound()
+    }
+
+    const writer = yield* writerForForumResponse(request, dependencies, {
+      forumId: target.forum.forumId,
+      forumSlug: target.forum.slug,
+    })
+
+    if (writer.actor.actorRef !== target.postDetail.post.author.actorRef) {
+      return forbidden('only the post author can tombstone this post')
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const revisionId = makeId()
+    const reason = body.reason ?? 'author_request'
+    const post = yield* tombstoneForumPost(db, {
+      actorRef: writer.actor.actorRef,
+      id: revisionId,
+      idempotencyKey,
+      postId: target.postDetail.post.postId,
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.post_revision.${revisionId}`,
+      ),
+      reasonRef: `forum.post.tombstone.${reason}`,
+    })
+
+    return noStoreJsonResponse({
+      action: 'tombstone',
+      idempotent: false,
+      post,
+      revisionRef: post.revisionRef ?? revisionId,
+    })
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const reportForumTargetResponse = (
+  request: Request,
+  db: D1Database,
+  target: Readonly<{
+    forumId: string
+    forumSlug: string
+    targetId: string
+    targetKind: 'topic' | 'post'
+  }>,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const existingReport = yield* readForumReportByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingReport !== null) {
+      return noStoreJsonResponse(reportResultFromRow(existingReport, true))
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ReportForumTargetBody),
+    )
+    const writer = yield* writerForForumResponse(request, dependencies, {
+      forumId: target.forumId,
+      forumSlug: target.forumSlug,
+    })
+    const makeId = dependencies.makeId ?? randomUuid
+    const reportId = makeId()
+    const reasonRef = ForumReportReasonRefs[body.reason]
+
+    yield* recordForumReport(db, {
+      id: reportId,
+      idempotencyKey,
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.report.${reportId}`,
+      ),
+      reasonRef,
+      reporterActorRef: writer.actor.actorRef,
+      targetId: target.targetId,
+      targetKind: target.targetKind,
+    })
+
+    return noStoreJsonResponse(
+      {
+        idempotent: false,
+        report: {
+          reason: body.reason,
+          reportId,
+          status: 'open',
+          targetId: target.targetId,
+          targetKind: target.targetKind,
+        },
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const moderationQueueResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    yield* moderatorForRequest(request, dependencies)
+
+    const url = new URL(request.url)
+    const limit = forumListLimitFromUrl(url)
+
+    if (limit instanceof Response) {
+      return limit
+    }
+
+    const items = yield* listForumModerationQueue(db, { limit })
+
+    return noStoreJsonResponse({
+      generatedAt: dependencies.nowIso?.() ?? currentIsoTimestamp(),
+      items,
+      pagination: {
+        cursor: null,
+        hasMore: false,
+        limit,
+        nextCursor: null,
+      },
+    })
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const moderationItemResponse = (
+  request: Request,
+  db: D1Database,
+  input: Readonly<{
+    itemId: string
+    itemKind: 'report' | 'post_review' | 'topic_review'
+  }>,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    yield* moderatorForRequest(request, dependencies)
+
+    const item = yield* readForumModerationItem(db, input)
+
+    return item === null ? notFound() : noStoreJsonResponse(item)
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const moderationActionResponse = (
+  request: Request,
+  db: D1Database,
+  input: Readonly<{
+    actionKind: string
+    reportId?: string | null
+    targetId: string
+    targetKind: 'post' | 'topic' | 'report'
+    update: () => Effect.Effect<unknown | null, ForumStorageError>
+  }>,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const existingEvent = yield* readForumModerationEventByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingEvent !== null) {
+      return noStoreJsonResponse(
+        moderationEventResultFromRow(existingEvent, true),
+      )
+    }
+
+    const moderator = yield* moderatorForRequest(request, dependencies)
+    const body = yield* decodeJsonBodyOrDefault(
+      request,
+      S.decodeUnknownSync(ForumModerationActionBody),
+      {},
+    )
+    const target = yield* input.update()
+
+    if (target === null) {
+      return notFound()
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const eventId = makeId()
+    const reason = body.reason ?? 'policy_reviewed'
+    yield* recordForumModerationEvent(db, {
+      actionKind: input.actionKind,
+      id: eventId,
+      idempotencyKey,
+      moderatorActorRef: `operator:${moderator.operatorId}`,
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.moderation_event.${eventId}`,
+      ),
+      reasonRef: ForumModerationReasonRefs[reason],
+      reportId: input.reportId ?? null,
+      targetId: input.targetId,
+      targetKind: input.targetKind,
+    })
+
+    return noStoreJsonResponse(
+      {
+        idempotent: false,
+        moderationEvent: {
+          actionKind: input.actionKind,
+          eventId,
+          reasonRef: ForumModerationReasonRefs[reason],
+          reportId: input.reportId ?? null,
+          targetId: input.targetId,
+          targetKind: input.targetKind,
+        },
+        target,
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const tipRecipientAdmissionResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const moderator = yield* moderatorForRequest(request, dependencies)
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumTipRecipientAdmissionBody),
+    )
+    const nowIso = dependencies.nowIso ?? currentIsoTimestamp
+    const walletId = `forum_tip_recipient_wallet.${refIdSegment(
+      body.actorRef,
+      'actor',
+    )}`
+    const disabledAt =
+      body.state === 'ready' ? null : (body.disabledAt ?? nowIso())
+    const tipRecipientReadiness = yield* upsertForumTipRecipientWallet(
+      db,
+      {
+        actorRef: body.actorRef,
+        caveatRefs: body.caveatRefs ?? [],
+        claimPolicyRefs: body.claimPolicyRefs ?? [],
+        custodyPolicyRefs: body.custodyPolicyRefs ?? [],
+        disabledAt,
+        id: walletId,
+        payoutTargetApprovalRef: body.payoutTargetApprovalRef ?? null,
+        providerClass: body.providerClass,
+        readinessRefs: body.readinessRefs ?? [],
+        receiveCapabilityRef: body.receiveCapabilityRef,
+        sourceRef: body.sourceRef,
+        state: body.state,
+        walletRef: body.walletRef,
+      },
+      { makeId: dependencies.makeId ?? randomUuid, nowIso },
+    )
+
+    return noStoreJsonResponse(
+      {
+        idempotencyKey,
+        idempotent: false,
+        moderatorActorRef: `operator:${moderator.operatorId}`,
+        tipRecipientReadiness,
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const tipRecipientWalletClaimResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const actor = yield* agentForRequest(request, dependencies)
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumTipRecipientClaimBody),
+    )
+    const nowIso = dependencies.nowIso ?? currentIsoTimestamp
+    const actorRef = actorRefForForumActor(actor)
+    const walletId = `forum_tip_recipient_wallet.${refIdSegment(
+      actorRef,
+      'agent',
+    )}.self_claim`
+    const tipRecipientReadiness = yield* upsertForumTipRecipientWallet(
+      db,
+      {
+        actorRef,
+        caveatRefs: [
+          'caveat.public.forum_tip_recipient.creator_settlement_pending',
+          ...(body.caveatRefs ?? []),
+        ],
+        claimPolicyRefs: [
+          'policy.public.forum_tip_recipient.agent_self_claimed',
+          ...(body.claimPolicyRefs ?? []),
+        ],
+        custodyPolicyRefs: [
+          'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
+          ...(body.custodyPolicyRefs ?? []),
+        ],
+        disabledAt: null,
+        id: walletId,
+        payoutTargetApprovalRef: body.payoutTargetApprovalRef ?? null,
+        providerClass: body.providerClass ?? 'mdk_agent_wallet',
+        readinessRefs: body.readinessRefs ?? [],
+        receiveCapabilityRef: body.receiveCapabilityRef,
+        sourceRef:
+          body.sourceRef ??
+          'source.public.forum_tip_recipient.agent_self_claim',
+        state: 'ready',
+        walletRef: body.walletRef,
+      },
+      { makeId: dependencies.makeId ?? randomUuid, nowIso },
+    )
+
+    return noStoreJsonResponse({ tipRecipientReadiness }, { status: 201 })
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const previewPaidActionResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumPaidActionPreviewBody),
+    )
+
+    if (body.method !== 'POST') {
+      return badRequest('Forum paid actions must bind POST method')
+    }
+
+    if (!body.path.startsWith('/api/forum/')) {
+      return badRequest('Forum paid action path must be under /api/forum')
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const resolved = yield* resolveForumPaidActionTarget(
+      db,
+      body.actionKind,
+      body.target,
+    )
+
+    if (resolved === null) {
+      return notFound()
+    }
+
+    const preview = yield* previewForumPaidAction(db, {
+      actionKind: body.actionKind,
+      actorRef: actorRefForForumActor(actor),
+      hostedMdkClient: dependencies.hostedMdkClient,
+      idempotencyKey,
+      method: body.method,
+      nonPayableDenial: resolved.nonPayableDenial,
+      path: body.path,
+      price: paidActionPriceForKind(body.actionKind),
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.paid_action.${body.actionKind}`,
+      ),
+      recipientActorRef: resolved.recipientActorRef,
+      recipientReadinessRef: resolved.recipientReadinessRef,
+      requestBodyDigest: body.requestBodyDigest,
+      routeParams: body.routeParams ?? {},
+      spendCap: body.spendCap,
+      target: resolved.target,
+    })
+
+    return noStoreJsonResponse(
+      preview,
+      preview.challenge?.l402 === null || preview.challenge?.l402 === undefined
+        ? undefined
+        : {
+            headers: {
+              'www-authenticate': preview.challenge.l402.wwwAuthenticate,
+            },
+          },
+    )
+  }).pipe(
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
+const previewAliasPaidActionResponse = (
+  request: Request,
+  db: D1Database,
+  input: Readonly<{
+    actionKind: ForumPaidActionKindType
+    routeParams: Readonly<Record<string, string>>
+    target: ForumPaidActionTargetType
+  }>,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumPaidActionAliasPreviewBody),
+    )
+    const actor = yield* actorForRequest(request, dependencies)
+    const resolved = yield* resolveForumPaidActionTarget(
+      db,
+      input.actionKind,
+      input.target,
+    )
+
+    if (resolved === null) {
+      return notFound()
+    }
+
+    const preview = yield* previewForumPaidAction(db, {
+      actionKind: input.actionKind,
+      actorRef: actorRefForForumActor(actor),
+      hostedMdkClient: dependencies.hostedMdkClient,
+      idempotencyKey,
+      method: 'POST',
+      nonPayableDenial: resolved.nonPayableDenial,
+      path: new URL(request.url).pathname,
+      price: paidActionPriceForKind(input.actionKind),
+      publicProjection: defaultPublicProjection(
+        `artifact.forum.paid_action.${input.actionKind}`,
+      ),
+      recipientActorRef: resolved.recipientActorRef,
+      recipientReadinessRef: resolved.recipientReadinessRef,
+      requestBodyDigest: body.requestBodyDigest,
+      routeParams: input.routeParams,
+      spendCap: body.spendCap,
+      target: resolved.target,
+    })
+
+    return noStoreJsonResponse(
+      preview,
+      preview.challenge?.l402 === null || preview.challenge?.l402 === undefined
+        ? undefined
+        : {
+            headers: {
+              'www-authenticate': preview.challenge.l402.wwwAuthenticate,
+            },
+          },
+    )
+  }).pipe(
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
+const privatePaidActionPaymentResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumPaidActionPrivatePaymentBody),
+    )
+    const actor = yield* actorForRequest(request, dependencies)
+    const signingBoundary =
+      dependencies.l402SigningBoundary === undefined
+        ? undefined
+        : yield* Effect.tryPromise({
+            catch: error =>
+              new ForumPaidActionError({
+                kind: 'payment_verification_failed',
+                reason:
+                  error instanceof Error
+                    ? error.message
+                    : 'Forum private L402 signer could not be loaded.',
+              }),
+            try: dependencies.l402SigningBoundary,
+          })
+
+    const response = yield* readForumPaidActionPrivatePayment(db, {
+      actorRef: actorRefForForumActor(actor),
+      challengeId: body.challengeId,
+      hostedMdkClient: dependencies.hostedMdkClient,
+      method: body.method,
+      path: body.path,
+      requestBodyDigest: body.requestBodyDigest,
+      routeParams: body.routeParams ?? {},
+      signingBoundary: signingBoundary ?? undefined,
+      spendCap: body.spendCap,
+    })
+
+    return noStoreJsonResponse(response)
+  }).pipe(
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
+const redeemPaidActionResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumPaidActionRedeemBody),
+    )
+    const actor = yield* actorForRequest(request, dependencies)
+    const challenge = yield* lookupForumPaidActionChallenge(
+      db,
+      body.challengeId,
+    )
+
+    if (challenge === null) {
+      return notFound()
+    }
+
+    const resolved = yield* resolveForumPaidActionTarget(
+      db,
+      challenge.actionKind,
+      challenge.target,
+    )
+
+    if (resolved === null) {
+      return notFound()
+    }
+
+    const paymentEvent = yield* verifyForumL402PaymentEvent({
+      challenge,
+      headers: request.headers,
+      l402ProofRef: body.l402ProofRef,
+      nowIso: dependencies.nowIso?.() ?? currentIsoTimestamp(),
+      signingBoundary: dependencies.l402SigningBoundary,
+    })
+
+    const redemption = yield* redeemForumPaidAction(db, {
+      actorRef: actorRefForForumActor(actor),
+      challengeId: body.challengeId,
+      idempotencyKey,
+      l402ProofRef: body.l402ProofRef,
+      method: body.method,
+      path: body.path,
+      paymentEvent,
+      recipientActorRef: resolved.recipientActorRef,
+      recipientReadinessRef: resolved.recipientReadinessRef,
+      requestBodyDigest: body.requestBodyDigest,
+      routeParams: body.routeParams ?? {},
+    })
+
+    return noStoreJsonResponse(redemption, {
+      status: redemption.replayed ? 200 : 201,
+    })
+  }).pipe(
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
+const receiptLookupResponse = (db: D1Database, receiptRef: string) =>
+  lookupForumPaidActionReceipt(db, receiptRef).pipe(
+    Effect.map(receipt =>
+      receipt === null ? notFound() : noStoreJsonResponse(receipt),
+    ),
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
+const claimTipSettlementResponse = (
+  request: Request,
+  db: D1Database,
+  receiptRef: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const actor = yield* agentForRequest(request, dependencies)
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumTipSettlementClaimBody),
+    )
+    const result = yield* claimForumTipSettlement(db, {
+      actorRef: actorRefForForumActor(actor),
+      idempotencyKey,
+      receiptRef,
+      settlementEvidenceRefs: body.settlementEvidenceRefs,
+      settlementRef: body.settlementRef,
+      sourceRef: body.sourceRef,
+    })
+
+    return noStoreJsonResponse(result, {
+      status: result.idempotent ? 200 : 201,
+    })
+  }).pipe(
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
+const creatorEarningsResponse = (
+  db: D1Database,
+  actorRef: string,
+  limit: number,
+  dependencies: ForumRouteDependencies,
+) =>
+  readForumCreatorEarnings(
+    db,
+    { actorRef, limit },
+    { nowIso: dependencies.nowIso ?? currentIsoTimestamp },
+  ).pipe(
+    Effect.map(noStoreJsonResponse),
+    Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+  )
+
+const tipLeaderboardsResponse = (
+  db: D1Database,
+  limit: number,
+  dependencies: ForumRouteDependencies,
+) =>
+  readForumTipLeaderboards(
+    db,
+    { limit },
+    { nowIso: dependencies.nowIso ?? currentIsoTimestamp },
+  ).pipe(
+    Effect.map(noStoreJsonResponse),
+    Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+  )
+
+const tipReconciliationResponse = (
+  request: Request,
+  db: D1Database,
+  limit: number,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    yield* moderatorForRequest(request, dependencies)
+
+    const url = new URL(request.url)
+    const actorRef = url.searchParams.get('actorRef')?.trim() || null
+
+    return yield* readForumTipReconciliation(
+      db,
+      { actorRef, limit },
+      { nowIso: dependencies.nowIso ?? currentIsoTimestamp },
+    ).pipe(Effect.map(noStoreJsonResponse))
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const agentProfileResponse = (db: D1Database, profileRef: string) =>
+  readForumAgentPublicProfile(db, profileRef).pipe(
+    Effect.map(profile =>
+      profile === null ? notFound() : noStoreJsonResponse({ profile }),
+    ),
+    Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+  )
+
+const watchForumResponse = (
+  request: Request,
+  db: D1Database,
+  input: Readonly<{
+    forumId: string
+    topicId: string | null
+    watchKind: 'forum' | 'topic'
+  }>,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const existing = yield* readForumWatchByIdempotencyKey(db, idempotencyKey)
+    const actor = yield* actorForRequest(request, dependencies)
+    const actorRef = actorRefForForumActor(actor)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const writer = yield* buildForumWriterContext({
+      actor,
+      grant: forumParticipationGrantForActor(
+        actor,
+        input.forumId,
+        nowEpochMillis,
+      ),
+      nowEpochMillis,
+      paymentProofRef: null,
+      requiredScope: 'forum.watch',
+      targetForumId: input.forumId,
+      targetOwnerUserId: null,
+      targetTeamId: null,
+    })
+
+    if (existing !== null) {
+      return noStoreJsonResponse(
+        decodeParticipationWriteResponse({
+          action: 'watch',
+          actorRef: writer.actor.actorRef,
+          id: existing.id,
+          idempotencyKey: existing.idempotency_key,
+          idempotent: true,
+          target: {
+            actorRef: null,
+            forumId: existing.forum_id,
+            postId: null,
+            topicId: existing.topic_id,
+          },
+        }),
+      )
+    }
+
+    const id = yield* watchForumTarget(db, {
+      actorRef,
+      forumId: input.forumId,
+      idempotencyKey,
+      topicId: input.topicId,
+      watchKind: input.watchKind,
+    })
+
+    return noStoreJsonResponse(
+      decodeParticipationWriteResponse({
+        action: 'watch',
+        actorRef: writer.actor.actorRef,
+        id,
+        idempotencyKey,
+        idempotent: false,
+        target: {
+          actorRef: null,
+          forumId: input.forumId,
+          postId: null,
+          topicId: input.topicId,
+        },
+      }),
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const bookmarkForumResponse = (
+  request: Request,
+  db: D1Database,
+  input: Readonly<{
+    bookmarkKind: 'post' | 'topic'
+    forumId: string
+    postId: string | null
+    topicId: string
+  }>,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const existing = yield* readForumBookmarkByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+    const actor = yield* actorForRequest(request, dependencies)
+    const actorRef = actorRefForForumActor(actor)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const writer = yield* buildForumWriterContext({
+      actor,
+      grant: forumParticipationGrantForActor(
+        actor,
+        input.forumId,
+        nowEpochMillis,
+      ),
+      nowEpochMillis,
+      paymentProofRef: null,
+      requiredScope: 'forum.bookmark',
+      targetForumId: input.forumId,
+      targetOwnerUserId: null,
+      targetTeamId: null,
+    })
+
+    if (existing !== null) {
+      return noStoreJsonResponse(
+        decodeParticipationWriteResponse({
+          action: 'bookmark',
+          actorRef: writer.actor.actorRef,
+          id: existing.id,
+          idempotencyKey: existing.idempotency_key,
+          idempotent: true,
+          target: {
+            actorRef: null,
+            forumId: input.forumId,
+            postId: existing.post_id,
+            topicId: existing.topic_id,
+          },
+        }),
+      )
+    }
+
+    const id = yield* bookmarkForumTarget(db, {
+      actorRef,
+      bookmarkKind: input.bookmarkKind,
+      idempotencyKey,
+      postId: input.postId,
+      topicId: input.topicId,
+    })
+
+    return noStoreJsonResponse(
+      decodeParticipationWriteResponse({
+        action: 'bookmark',
+        actorRef: writer.actor.actorRef,
+        id,
+        idempotencyKey,
+        idempotent: false,
+        target: {
+          actorRef: null,
+          forumId: input.forumId,
+          postId: input.postId,
+          topicId: input.topicId,
+        },
+      }),
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const followActorResponse = (
+  request: Request,
+  db: D1Database,
+  targetActorRef: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const targetProfile = yield* readForumAgentPublicProfile(db, targetActorRef)
+
+    if (targetProfile === null) {
+      return notFound()
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const actorRef = actorRefForForumActor(actor)
+
+    if (actorRef === targetProfile.actor.actorRef) {
+      return badRequest('agents cannot follow themselves')
+    }
+
+    const existing = yield* readForumFollowByIdempotencyKey(db, idempotencyKey)
+
+    if (existing !== null) {
+      return noStoreJsonResponse(
+        decodeParticipationWriteResponse({
+          action: 'follow',
+          actorRef,
+          id: existing.id,
+          idempotencyKey: existing.idempotency_key,
+          idempotent: true,
+          target: {
+            actorRef: existing.target_actor_ref,
+            forumId: null,
+            postId: null,
+            topicId: null,
+          },
+        }),
+      )
+    }
+
+    const id = yield* followForumActor(db, {
+      actorRef,
+      idempotencyKey,
+      targetActorRef: targetProfile.actor.actorRef,
+    })
+
+    return noStoreJsonResponse(
+      decodeParticipationWriteResponse({
+        action: 'follow',
+        actorRef,
+        id,
+        idempotencyKey,
+        idempotent: false,
+        target: {
+          actorRef: targetProfile.actor.actorRef,
+          forumId: null,
+          postId: null,
+          topicId: null,
+        },
+      }),
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const agentNotificationsResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const actor = yield* actorForRequest(request, dependencies)
+    const actorRef = actorRefForForumActor(actor)
+    const actorSlug = actorSlugForForumActor(actor)
+    const url = new URL(request.url)
+    const limitValue = Number(url.searchParams.get('limit') ?? '50')
+    const limit = Number.isFinite(limitValue) ? limitValue : 50
+    const generatedAt = dependencies.nowIso?.() ?? currentIsoTimestamp()
+    const notifications = yield* readForumAgentNotifications(db, {
+      actorRef,
+      actorSlug,
+      generatedAt,
+      limit,
+    })
+
+    return noStoreJsonResponse(notifications)
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const notificationReadResponseBody = (
+  input: Readonly<{
+    actorRef: string
+    id: string
+    idempotencyKey: string
+    idempotent: boolean
+    notificationId: string
+    readAt: string
+  }>,
+) => ({
+  actorRef: input.actorRef,
+  id: input.id,
+  idempotencyKey: input.idempotencyKey,
+  idempotent: input.idempotent,
+  notificationId: input.notificationId,
+  readAt: input.readAt,
+})
+
+const markAgentNotificationReadResponse = (
+  request: Request,
+  db: D1Database,
+  notificationId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const actorRef = actorRefForForumActor(actor)
+    const existingByKey = yield* readForumNotificationReadByIdempotencyKey(db, {
+      actorRef,
+      idempotencyKey,
+    })
+
+    if (existingByKey !== null) {
+      return existingByKey.notification_id === notificationId
+        ? noStoreJsonResponse(
+            notificationReadResponseBody({
+              actorRef: existingByKey.actor_ref,
+              id: existingByKey.id,
+              idempotencyKey: existingByKey.idempotency_key,
+              idempotent: true,
+              notificationId: existingByKey.notification_id,
+              readAt: existingByKey.read_at,
+            }),
+          )
+        : idempotencyConflictResponse()
+    }
+
+    const existingByNotification =
+      yield* readForumNotificationReadByNotificationId(db, {
+        actorRef,
+        notificationId,
+      })
+
+    if (existingByNotification !== null) {
+      return noStoreJsonResponse(
+        notificationReadResponseBody({
+          actorRef: existingByNotification.actor_ref,
+          id: existingByNotification.id,
+          idempotencyKey: existingByNotification.idempotency_key,
+          idempotent: true,
+          notificationId: existingByNotification.notification_id,
+          readAt: existingByNotification.read_at,
+        }),
+      )
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const readAt = dependencies.nowIso?.() ?? currentIsoTimestamp()
+    const recorded = yield* recordForumNotificationRead(db, {
+      actorRef,
+      id: makeId(),
+      idempotencyKey,
+      notificationId,
+      readAt,
+    })
+
+    return noStoreJsonResponse(recorded, { status: 201 })
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
+  routeForumRequest: (
+    request: Request,
+    db: D1Database,
+    requestDependencies: ForumRouteDependencies = dependencies,
+  ) => {
+    const url = new URL(request.url)
+
+    if (url.pathname === '/api/forum') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const shouldIncludeUnlisted = includeUnlisted(url)
+
+      return (
+        shouldIncludeUnlisted
+          ? authorizeUnlistedDiscovery(request, requestDependencies)
+          : Effect.void
+      ).pipe(
+        Effect.flatMap(() =>
+          publicReadResponse(
+            readForumBoardIndex(db, {
+              includeUnlisted: shouldIncludeUnlisted,
+            }),
+          ),
+        ),
+        Effect.catchTag('ForumWriterAuthFailure', () =>
+          Effect.succeed(unauthorized()),
+        ),
+      )
+    }
+
+    if (url.pathname === '/api/forum/search') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const query = url.searchParams.get('q')?.trim() ?? ''
+
+      if (query.length < 2 || query.length > 120) {
+        return Effect.succeed(
+          badRequest('q must be between 2 and 120 characters'),
+        )
+      }
+
+      const shouldIncludeUnlisted = includeUnlisted(url)
+
+      return (
+        shouldIncludeUnlisted
+          ? authorizeUnlistedDiscovery(request, requestDependencies)
+          : Effect.void
+      ).pipe(
+        Effect.flatMap(() =>
+          publicSearchResponse(
+            searchForumPublicContent(db, {
+              includeUnlisted: shouldIncludeUnlisted,
+              query,
+            }),
+          ),
+        ),
+        Effect.catchTag('ForumWriterAuthFailure', () =>
+          Effect.succeed(unauthorized()),
+        ),
+      )
+    }
+
+    if (url.pathname === '/api/forum/launch-status') {
+      return request.method === 'GET'
+        ? Effect.succeed(noStoreJsonResponse(forumLaunchGateStatus()))
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    if (url.pathname === '/api/forum/tip-leaderboards') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const limit = forumListLimitFromUrl(url)
+
+      if (limit instanceof Response) {
+        return Effect.succeed(limit)
+      }
+
+      return tipLeaderboardsResponse(db, limit, requestDependencies)
+    }
+
+    if (url.pathname === '/api/forum/moderation/tip-earnings') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const limit = forumListLimitFromUrl(url)
+
+      if (limit instanceof Response) {
+        return Effect.succeed(limit)
+      }
+
+      return tipReconciliationResponse(request, db, limit, requestDependencies)
+    }
+
+    if (url.pathname === '/api/forum/moderation/queue') {
+      return request.method === 'GET'
+        ? moderationQueueResponse(request, db, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const moderationReportMatch =
+      /^\/api\/forum\/moderation\/reports\/([^/]+)$/.exec(url.pathname)
+
+    if (moderationReportMatch !== null) {
+      const reportId = decodePathSegment(moderationReportMatch[1])
+
+      if (reportId === undefined) {
+        return Effect.succeed(badRequest('reportId is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? moderationItemResponse(
+            request,
+            db,
+            { itemId: reportId, itemKind: 'report' },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const moderationReportActionMatch =
+      /^\/api\/forum\/moderation\/reports\/([^/]+)\/(mark-reviewed|dismiss)$/.exec(
+        url.pathname,
+      )
+
+    if (moderationReportActionMatch !== null) {
+      const reportId = decodePathSegment(moderationReportActionMatch[1])
+      const actionSlug = decodePathSegment(moderationReportActionMatch[2])
+
+      if (reportId === undefined || actionSlug === undefined) {
+        return Effect.succeed(badRequest('report moderation path is malformed'))
+      }
+
+      const status = actionSlug === 'dismiss' ? 'dismissed' : 'resolved'
+
+      return request.method === 'POST'
+        ? moderationActionResponse(
+            request,
+            db,
+            {
+              actionKind: `moderator_${actionSlug.replace('-', '_')}_report`,
+              reportId,
+              targetId: reportId,
+              targetKind: 'report',
+              update: () => updateForumReportStatus(db, { reportId, status }),
+            },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const moderationPostMatch =
+      /^\/api\/forum\/moderation\/posts\/([^/]+)$/.exec(url.pathname)
+
+    if (moderationPostMatch !== null) {
+      const postId = decodePathSegment(moderationPostMatch[1])
+
+      if (postId === undefined) {
+        return Effect.succeed(badRequest('postId is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? moderationItemResponse(
+            request,
+            db,
+            { itemId: postId, itemKind: 'post_review' },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const moderationPostActionMatch =
+      /^\/api\/forum\/moderation\/posts\/([^/]+)\/(approve|hide)$/.exec(
+        url.pathname,
+      )
+
+    if (moderationPostActionMatch !== null) {
+      const postId = decodePathSegment(moderationPostActionMatch[1])
+      const actionSlug = decodePathSegment(moderationPostActionMatch[2])
+
+      if (postId === undefined || actionSlug === undefined) {
+        return Effect.succeed(badRequest('post moderation path is malformed'))
+      }
+
+      const state = actionSlug === 'hide' ? 'hidden' : 'visible'
+
+      return request.method === 'POST'
+        ? moderationActionResponse(
+            request,
+            db,
+            {
+              actionKind: `moderator_${actionSlug}_post`,
+              targetId: postId,
+              targetKind: 'post',
+              update: () =>
+                updateForumPostModerationState(db, { postId, state }),
+            },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const moderationTopicMatch =
+      /^\/api\/forum\/moderation\/topics\/([^/]+)$/.exec(url.pathname)
+
+    if (moderationTopicMatch !== null) {
+      const topicId = decodePathSegment(moderationTopicMatch[1])
+
+      if (topicId === undefined) {
+        return Effect.succeed(badRequest('topicId is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? moderationItemResponse(
+            request,
+            db,
+            { itemId: topicId, itemKind: 'topic_review' },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const moderationTopicActionMatch =
+      /^\/api\/forum\/moderation\/topics\/([^/]+)\/(lock|unlock|archive|hide)$/.exec(
+        url.pathname,
+      )
+
+    if (moderationTopicActionMatch !== null) {
+      const topicId = decodePathSegment(moderationTopicActionMatch[1])
+      const actionSlug = decodePathSegment(moderationTopicActionMatch[2])
+
+      if (topicId === undefined || actionSlug === undefined) {
+        return Effect.succeed(badRequest('topic moderation path is malformed'))
+      }
+
+      const state =
+        actionSlug === 'unlock'
+          ? 'open'
+          : actionSlug === 'archive'
+            ? 'archived'
+            : actionSlug === 'hide'
+              ? 'hidden'
+              : 'locked'
+
+      return request.method === 'POST'
+        ? moderationActionResponse(
+            request,
+            db,
+            {
+              actionKind: `moderator_${actionSlug}_topic`,
+              targetId: topicId,
+              targetKind: 'topic',
+              update: () =>
+                updateForumTopicModerationState(db, { state, topicId }),
+            },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const contextActivityMatch =
+      /^\/api\/forum\/contexts\/(site|workroom)\/([^/]+)\/activity$/.exec(
+        url.pathname,
+      )
+
+    if (contextActivityMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const contextKind = contextActivityMatch[1] as 'site' | 'workroom'
+      const contextId = decodePathSegment(contextActivityMatch[2])
+
+      if (contextId === undefined || contextId.trim().length === 0) {
+        return Effect.succeed(badRequest('context id is malformed'))
+      }
+
+      const limit = forumListLimitFromUrl(url)
+
+      if (limit instanceof Response) {
+        return Effect.succeed(limit)
+      }
+
+      return publicListResponse(
+        readForumContextActivity(db, {
+          contextId,
+          contextKind,
+          limit,
+        }),
+      )
+    }
+
+    if (url.pathname === '/api/forum/posts') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const limit = forumListLimitFromUrl(url)
+
+      if (limit instanceof Response) {
+        return Effect.succeed(limit)
+      }
+
+      const cursorRef = url.searchParams.get('cursor')?.trim() ?? null
+      const cursor =
+        cursorRef === null || cursorRef.length === 0
+          ? null
+          : decodeForumPostListCursor(cursorRef)
+
+      if (cursorRef !== null && cursor === null) {
+        return Effect.succeed(badRequest('cursor is malformed'))
+      }
+
+      const shouldIncludeUnlisted = includeUnlisted(url)
+      const forumRef =
+        url.searchParams.get('forumRef')?.trim() ??
+        url.searchParams.get('forumId')?.trim() ??
+        null
+      const topicId = url.searchParams.get('topicId')?.trim() ?? null
+
+      return (
+        shouldIncludeUnlisted
+          ? authorizeUnlistedDiscovery(request, requestDependencies)
+          : Effect.void
+      ).pipe(
+        Effect.flatMap(() =>
+          publicListResponse(
+            readForumPostList(db, {
+              cursor,
+              cursorRef,
+              forumRef,
+              includeUnlisted: shouldIncludeUnlisted,
+              limit,
+              topicId,
+            }),
+          ),
+        ),
+        Effect.catchTag('ForumWriterAuthFailure', () =>
+          Effect.succeed(unauthorized()),
+        ),
+      )
+    }
+
+    if (url.pathname === '/api/agents/notifications') {
+      return request.method === 'GET'
+        ? agentNotificationsResponse(request, db, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const agentNotificationReadMatch =
+      /^\/api\/agents\/notifications\/([^/]+)\/read$/.exec(url.pathname)
+
+    if (agentNotificationReadMatch !== null) {
+      const notificationId = decodePathSegment(agentNotificationReadMatch[1])
+
+      if (notificationId === undefined || notificationId.trim().length === 0) {
+        return Effect.succeed(badRequest('notification id is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? markAgentNotificationReadResponse(
+            request,
+            db,
+            notificationId,
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const agentProfileMatch = /^\/api\/agents\/profiles\/([^/]+)$/.exec(
+      url.pathname,
+    )
+
+    if (agentProfileMatch !== null) {
+      const profileRef = decodePathSegment(agentProfileMatch[1])
+
+      if (profileRef === undefined) {
+        return Effect.succeed(badRequest('agent profile ref is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? agentProfileResponse(db, profileRef)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    if (url.pathname === '/api/forum/paid-actions/preview') {
+      return request.method === 'POST'
+        ? previewPaidActionResponse(request, db, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    if (url.pathname === '/api/forum/tip-recipient-wallets/admissions') {
+      return request.method === 'POST'
+        ? tipRecipientAdmissionResponse(request, db, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    if (url.pathname === '/api/forum/tip-recipient-wallets/claims') {
+      return request.method === 'POST'
+        ? tipRecipientWalletClaimResponse(request, db, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    if (url.pathname === '/api/forum/paid-actions/private-payment') {
+      return request.method === 'POST'
+        ? privatePaidActionPaymentResponse(request, db, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    if (url.pathname === '/api/forum/paid-actions/redeem') {
+      return request.method === 'POST'
+        ? redeemPaidActionResponse(request, db, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const receiptSettlementClaimMatch =
+      /^\/api\/forum\/receipts\/([^/]+)\/settlement-claims$/.exec(url.pathname)
+
+    if (receiptSettlementClaimMatch !== null) {
+      const receiptRef = decodePathSegment(receiptSettlementClaimMatch[1])
+
+      if (receiptRef === undefined) {
+        return Effect.succeed(badRequest('receiptId is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? claimTipSettlementResponse(
+            request,
+            db,
+            receiptRef,
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const receiptMatch = /^\/api\/forum\/receipts\/([^/]+)$/.exec(url.pathname)
+
+    if (receiptMatch !== null) {
+      const receiptRef = decodePathSegment(receiptMatch[1])
+
+      if (receiptRef === undefined) {
+        return Effect.succeed(badRequest('receiptId is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? receiptLookupResponse(db, receiptRef)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const postPaidActionMatch =
+      /^\/api\/forum\/posts\/([^/]+)\/(rewards|boosts|endorsements|down-signals)$/.exec(
+        url.pathname,
+      )
+
+    if (postPaidActionMatch !== null) {
+      const postId = decodePathSegment(postPaidActionMatch[1])
+      const actionSlug = decodePathSegment(postPaidActionMatch[2])
+
+      if (postId === undefined || actionSlug === undefined) {
+        return Effect.succeed(badRequest('post paid action path is malformed'))
+      }
+
+      const actionKind =
+        actionSlug === 'down-signals'
+          ? 'post_down_signal'
+          : actionSlug === 'rewards'
+            ? 'post_reward'
+            : 'post_boost'
+
+      return request.method === 'POST'
+        ? previewAliasPaidActionResponse(
+            request,
+            db,
+            {
+              actionKind,
+              routeParams: { postId },
+              target: S.decodeUnknownSync(ForumPaidActionTarget)({
+                forumId: null,
+                postId,
+                topicId: null,
+              }),
+            },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const topicPaidActionMatch =
+      /^\/api\/forum\/topics\/([^/]+)\/(boosts|funds)$/.exec(url.pathname)
+
+    if (topicPaidActionMatch !== null) {
+      const topicId = decodePathSegment(topicPaidActionMatch[1])
+      const actionSlug = decodePathSegment(topicPaidActionMatch[2])
+
+      if (topicId === undefined || actionSlug === undefined) {
+        return Effect.succeed(badRequest('topic paid action path is malformed'))
+      }
+
+      const actionKind = actionSlug === 'funds' ? 'topic_fund' : 'topic_boost'
+
+      return request.method === 'POST'
+        ? previewAliasPaidActionResponse(
+            request,
+            db,
+            {
+              actionKind,
+              routeParams: { topicId },
+              target: S.decodeUnknownSync(ForumPaidActionTarget)({
+                forumId: null,
+                postId: null,
+                topicId,
+              }),
+            },
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const actorFollowMatch = /^\/api\/forum\/actors\/([^/]+)\/follows$/.exec(
+      url.pathname,
+    )
+
+    if (actorFollowMatch !== null) {
+      const actorRef = decodePathSegment(actorFollowMatch[1])
+
+      if (actorRef === undefined) {
+        return Effect.succeed(badRequest('actor ref is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? followActorResponse(request, db, actorRef, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const actorTipEarningsMatch =
+      /^\/api\/forum\/actors\/([^/]+)\/tip-earnings$/.exec(url.pathname)
+
+    if (actorTipEarningsMatch !== null) {
+      const actorRef = decodePathSegment(actorTipEarningsMatch[1])
+
+      if (actorRef === undefined) {
+        return Effect.succeed(badRequest('actor ref is malformed'))
+      }
+
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const limit = forumListLimitFromUrl(url)
+
+      if (limit instanceof Response) {
+        return Effect.succeed(limit)
+      }
+
+      return creatorEarningsResponse(db, actorRef, limit, requestDependencies)
+    }
+
+    const actorProfileMatch = /^\/api\/forum\/actors\/([^/]+)\/profile$/.exec(
+      url.pathname,
+    )
+
+    if (actorProfileMatch !== null) {
+      const actorRef = decodePathSegment(actorProfileMatch[1])
+
+      if (actorRef === undefined) {
+        return Effect.succeed(badRequest('actor ref is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? agentProfileResponse(db, actorRef)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const forumWatchMatch = /^\/api\/forum\/forums\/([^/]+)\/watches$/.exec(
+      url.pathname,
+    )
+
+    if (forumWatchMatch !== null) {
+      const forumRef = decodePathSegment(forumWatchMatch[1])
+
+      if (forumRef === undefined) {
+        return Effect.succeed(badRequest('forumId is malformed'))
+      }
+
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return readForumSummaryByRef(db, forumRef, { allowUnlisted: true }).pipe(
+        Effect.flatMap(forum =>
+          forum === null
+            ? Effect.succeed(notFound())
+            : watchForumResponse(
+                request,
+                db,
+                {
+                  forumId: forum.forumId,
+                  topicId: null,
+                  watchKind: 'forum',
+                },
+                requestDependencies,
+              ),
+        ),
+        Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+      )
+    }
+
+    const forumTopicsMatch = /^\/api\/forum\/forums\/([^/]+)\/topics$/.exec(
+      url.pathname,
+    )
+
+    if (forumTopicsMatch !== null) {
+      const forumRef = decodePathSegment(forumTopicsMatch[1])
+
+      if (forumRef === undefined) {
+        return Effect.succeed(badRequest('forumId is malformed'))
+      }
+
+      if (request.method === 'GET') {
+        return publicReadResponse(readForumTopicList(db, forumRef))
+      }
+
+      if (request.method === 'POST') {
+        return createTopicResponse(request, db, forumRef, requestDependencies)
+      }
+
+      return Effect.succeed(methodNotAllowed(['GET', 'POST']))
+    }
+
+    const forumMatch = /^\/api\/forum\/forums\/([^/]+)$/.exec(url.pathname)
+
+    if (forumMatch !== null) {
+      const forumRef = decodePathSegment(forumMatch[1])
+
+      if (forumRef === undefined) {
+        return Effect.succeed(badRequest('forumId is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? publicReadResponse(
+            readForumSummaryByRef(db, forumRef, { allowUnlisted: true }),
+          )
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const topicWatchMatch = /^\/api\/forum\/topics\/([^/]+)\/watches$/.exec(
+      url.pathname,
+    )
+
+    if (topicWatchMatch !== null) {
+      const topicId = decodePathSegment(topicWatchMatch[1])
+
+      if (topicId === undefined) {
+        return Effect.succeed(badRequest('topicId is malformed'))
+      }
+
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return readForumTopicDetail(db, topicId).pipe(
+        Effect.flatMap(detail =>
+          detail === null
+            ? Effect.succeed(notFound())
+            : watchForumResponse(
+                request,
+                db,
+                {
+                  forumId: detail.topic.forumId,
+                  topicId: detail.topic.topicId,
+                  watchKind: 'topic',
+                },
+                requestDependencies,
+              ),
+        ),
+        Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+      )
+    }
+
+    const topicBookmarkMatch =
+      /^\/api\/forum\/topics\/([^/]+)\/bookmarks$/.exec(url.pathname)
+
+    if (topicBookmarkMatch !== null) {
+      const topicId = decodePathSegment(topicBookmarkMatch[1])
+
+      if (topicId === undefined) {
+        return Effect.succeed(badRequest('topicId is malformed'))
+      }
+
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return readForumTopicDetail(db, topicId).pipe(
+        Effect.flatMap(detail =>
+          detail === null
+            ? Effect.succeed(notFound())
+            : bookmarkForumResponse(
+                request,
+                db,
+                {
+                  bookmarkKind: 'topic',
+                  forumId: detail.topic.forumId,
+                  postId: null,
+                  topicId: detail.topic.topicId,
+                },
+                requestDependencies,
+              ),
+        ),
+        Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+      )
+    }
+
+    const topicReportMatch = /^\/api\/forum\/topics\/([^/]+)\/reports$/.exec(
+      url.pathname,
+    )
+
+    if (topicReportMatch !== null) {
+      const topicId = decodePathSegment(topicReportMatch[1])
+
+      if (topicId === undefined) {
+        return Effect.succeed(badRequest('topicId is malformed'))
+      }
+
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return readForumTopicDetail(db, topicId).pipe(
+        Effect.flatMap(detail => {
+          if (detail === null) {
+            return Effect.succeed(notFound())
+          }
+
+          return readForumSummaryByRef(db, detail.topic.forumId, {
+            allowUnlisted: true,
+          }).pipe(
+            Effect.flatMap(forum =>
+              forum === null
+                ? Effect.succeed(notFound())
+                : reportForumTargetResponse(
+                    request,
+                    db,
+                    {
+                      forumId: forum.forumId,
+                      forumSlug: forum.slug,
+                      targetId: detail.topic.topicId,
+                      targetKind: 'topic',
+                    },
+                    requestDependencies,
+                  ),
+            ),
+          )
+        }),
+        Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+      )
+    }
+
+    const topicMatch = /^\/api\/forum\/topics\/([^/]+)$/.exec(url.pathname)
+
+    if (topicMatch !== null) {
+      const topicId = decodePathSegment(topicMatch[1])
+
+      if (topicId === undefined) {
+        return Effect.succeed(badRequest('topicId is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? publicReadResponse(readForumTopicDetail(db, topicId))
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const topicPostsMatch = /^\/api\/forum\/topics\/([^/]+)\/posts$/.exec(
+      url.pathname,
+    )
+
+    if (topicPostsMatch !== null) {
+      const topicId = decodePathSegment(topicPostsMatch[1])
+
+      if (topicId === undefined) {
+        return Effect.succeed(badRequest('topicId is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? createReplyResponse(request, db, topicId, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const postBookmarkMatch = /^\/api\/forum\/posts\/([^/]+)\/bookmarks$/.exec(
+      url.pathname,
+    )
+
+    if (postBookmarkMatch !== null) {
+      const postId = decodePathSegment(postBookmarkMatch[1])
+
+      if (postId === undefined) {
+        return Effect.succeed(badRequest('postId is malformed'))
+      }
+
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return readForumPostDetail(db, postId).pipe(
+        Effect.flatMap(detail =>
+          detail === null
+            ? Effect.succeed(notFound())
+            : readForumTopicById(db, detail.containingTopicId).pipe(
+                Effect.flatMap(topic =>
+                  topic === null
+                    ? Effect.succeed(serverError())
+                    : bookmarkForumResponse(
+                        request,
+                        db,
+                        {
+                          bookmarkKind: 'post',
+                          forumId: topic.forumId,
+                          postId: detail.post.postId,
+                          topicId: topic.topicId,
+                        },
+                        requestDependencies,
+                      ),
+                ),
+              ),
+        ),
+        Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+      )
+    }
+
+    const postReportMatch = /^\/api\/forum\/posts\/([^/]+)\/reports$/.exec(
+      url.pathname,
+    )
+
+    if (postReportMatch !== null) {
+      const postId = decodePathSegment(postReportMatch[1])
+
+      if (postId === undefined) {
+        return Effect.succeed(badRequest('postId is malformed'))
+      }
+
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return readPostControlTarget(db, postId).pipe(
+        Effect.flatMap(target =>
+          target === null || target.postDetail.post.state === 'tombstoned'
+            ? Effect.succeed(notFound())
+            : reportForumTargetResponse(
+                request,
+                db,
+                {
+                  forumId: target.forum.forumId,
+                  forumSlug: target.forum.slug,
+                  targetId: target.postDetail.post.postId,
+                  targetKind: 'post',
+                },
+                requestDependencies,
+              ),
+        ),
+        Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+      )
+    }
+
+    const postMatch = /^\/api\/forum\/posts\/([^/]+)$/.exec(url.pathname)
+
+    if (postMatch !== null) {
+      const postId = decodePathSegment(postMatch[1])
+
+      if (postId === undefined) {
+        return Effect.succeed(badRequest('postId is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? publicReadResponse(readForumPostDetail(db, postId))
+        : request.method === 'PATCH'
+          ? editPostResponse(request, db, postId, requestDependencies)
+          : request.method === 'DELETE'
+            ? tombstonePostResponse(request, db, postId, requestDependencies)
+            : Effect.succeed(methodNotAllowed(['GET', 'PATCH', 'DELETE']))
+    }
+
+    return undefined
+  },
+})

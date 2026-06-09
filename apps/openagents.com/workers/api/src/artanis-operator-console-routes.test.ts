@@ -1,0 +1,192 @@
+import { Effect } from 'effect'
+import { describe, expect, test } from 'vitest'
+
+import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
+import { runArtanisScheduledTick } from './artanis-scheduled-runner'
+import {
+  ArtanisPersistenceTestStore,
+  artanisPersistenceTestDb,
+} from './test/artanis-persistence-fixture'
+
+const nowIso = '2026-06-07T05:20:00.000Z'
+
+const executionContext = {
+  passThroughOnException: () => undefined,
+  props: {},
+  waitUntil: () => undefined,
+} satisfies ExecutionContext
+
+const seedStore = async () => {
+  const store = new ArtanisPersistenceTestStore()
+  const db = artanisPersistenceTestDb(store)
+
+  await Effect.runPromise(
+    runArtanisScheduledTick({
+      db,
+      enabled: true,
+      nowIso,
+      scheduleRef: 'cron.public.artanis.20260607T0520',
+    }),
+  )
+
+  return { db, store }
+}
+
+const route = (options: {
+  readonly adminToken?: boolean
+  readonly browserEmail?: string | undefined
+  readonly nowIso?: string | undefined
+}) =>
+  makeOperatorArtanisConsoleRoutes({
+    appendRefreshedSessionCookies: response => response,
+    currentEpochMillis: () => Date.parse(options.nowIso ?? nowIso),
+    isOpenAgentsAdminEmail: email => email === 'chris@openagents.com',
+    requireAdminApiToken: request =>
+      Promise.resolve(
+        options.adminToken === true &&
+          request.headers.get('authorization') === 'Bearer admin',
+      ),
+    requireBrowserSession: () =>
+      Promise.resolve(
+        options.browserEmail === undefined
+          ? undefined
+          : {
+              user: {
+                email: options.browserEmail,
+                userId: 'github:operator',
+              },
+            },
+      ),
+  }).routeOperatorArtanisConsoleRequest
+
+describe('Artanis operator console routes', () => {
+  test('requires operator authority before exposing Artanis evidence', async () => {
+    const { db } = await seedStore()
+    const request = new Request(
+      'https://openagents.com/api/operator/artanis/console',
+    )
+
+    const anonymous = await Effect.runPromise(
+      route({})(request, { OPENAGENTS_DB: db }, executionContext)!,
+    )
+    const nonAdmin = await Effect.runPromise(
+      route({ browserEmail: 'user@example.com' })(
+        request,
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+
+    expect(anonymous.status).toBe(401)
+    expect(nonAdmin.status).toBe(403)
+  })
+
+  test('projects persisted Artanis state for operator inspection only', async () => {
+    const { db } = await seedStore()
+    const request = new Request(
+      'https://openagents.com/api/operator/artanis/console',
+      { headers: { authorization: 'Bearer admin' } },
+    )
+    const response = await Effect.runPromise(
+      route({ adminToken: true })(
+        request,
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+    const body = await response.json() as Record<string, unknown>
+    const serialized = JSON.stringify(body)
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      agentId: 'agent_artanis',
+      status: {
+        healthState: 'stale',
+        lastTickRef: 'tick.public.artanis.cron_public_artanis_20260607T0520',
+        loopState: 'running',
+        pendingApprovalCount: 1,
+        runtimeState: 'running',
+      },
+      steering: {
+        supportedApprovalActions: expect.arrayContaining([
+          'approve_risky_action',
+          'reject_risky_action',
+        ]),
+        supportedGoalActions: expect.arrayContaining([
+          'create_goal',
+          'pause_goal',
+          'resume_goal',
+          'cancel_goal',
+          'reprioritize_goal',
+        ]),
+      },
+    })
+    expect(serialized).toContain('evidence.private.artanis')
+    expect(serialized).toContain('workroom.private.artanis')
+    expect(serialized).toContain('receipt.operator.artanis')
+    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serialized).not.toMatch(/\/Users\/|auth\.json|bearer [A-Za-z0-9._-]+|sk-[a-z0-9]/i)
+  })
+
+  test('allows admin bearer CLI access without a browser session', async () => {
+    const { db } = await seedStore()
+    const response = await Effect.runPromise(
+      route({ adminToken: true })(
+        new Request('https://openagents.com/api/operator/artanis/console', {
+          headers: { authorization: 'Bearer admin' },
+        }),
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+
+    await expect(response.json()).resolves.toMatchObject({
+      consoleRef: 'operator.artanis.console',
+    })
+  })
+
+  test('records operator approval actions as evidence without public leakage', async () => {
+    const { db } = await seedStore()
+    const gateRef = 'gate.public.artanis.l402_redemption_pending'
+    const response = await Effect.runPromise(
+      route({
+        adminToken: true,
+        nowIso: '2026-06-07T02:20:00.000Z',
+      })(
+        new Request(
+          `https://openagents.com/api/operator/artanis/approval-gates/${encodeURIComponent(gateRef)}/approve`,
+          {
+            headers: { authorization: 'Bearer admin' },
+            method: 'POST',
+          },
+        ),
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+    const body = await response.json() as Record<string, unknown>
+    const serialized = JSON.stringify(body)
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      approvalGates: {
+        gates: [
+          {
+            gateRef: `${gateRef}.approved`,
+            state: 'approved',
+            operatorReceiptRefs: expect.arrayContaining([
+              'receipt.operator.artanis.approve_gate_public_artanis_l402_redemption_pending',
+            ]),
+            authorityReceiptRefs: expect.arrayContaining([
+              'authority.public.artanis.operator_approve.gate_public_artanis_l402_redemption_pending',
+            ]),
+          },
+        ],
+      },
+    })
+    expect(serialized).toContain(
+      'caveat.public.operator_decision_not_execution_authority',
+    )
+    expect(serialized).not.toMatch(/\/Users\/|auth\.json|bearer [A-Za-z0-9._-]+|sk-[a-z0-9]/i)
+  })
+})

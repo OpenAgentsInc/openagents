@@ -1,8 +1,0 @@
----
-source: crates/wgpui/src/testing/snapshot_tests.rs
-expression: snapshot
----
-quads:
-  bounds: Bounds { origin: Point { x: 0.0, y: 0.0 }, size: Size { width: 240.0, height: 60.0 } }, background: Some(Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.95 }), border_width: 1
-text_runs:
-  origin: Point { x: 12.0, y: 26.0 }, glyphs: 8, font_size: 14

@@ -1,0 +1,19 @@
+{
+  "schemaRef": "probe.artifact_refs_summary.v1",
+  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "artifactManifestRefs": [
+    "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.probe_closeout_bundle",
+    "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.route_scorecard",
+    "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.verifier_result_refs"
+  ],
+  "partialArtifactRefs": [],
+  "proofBundleRefs": [
+    "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.no_spend_assignment_lifecycle",
+    "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.public_safe_redaction",
+    "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.terminal_bench_2.initial_evidence"
+  ],
+  "runStatus": "failed",
+  "verifierResultRefs": [
+    "verifier_result.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.initial_retained.service_readiness"
+  ]
+}

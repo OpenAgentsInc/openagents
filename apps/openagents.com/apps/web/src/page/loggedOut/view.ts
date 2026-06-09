@@ -1,0 +1,61 @@
+import { Match as M } from 'effect'
+import { Submodel } from 'foldkit'
+import type { Html } from 'foldkit/html'
+import { html } from 'foldkit/html'
+
+import { notFoundView } from '../../notFoundView'
+import { homeRouter } from '../../route'
+import * as Ui from '../../ui'
+import * as Blog from '../blog'
+import * as Docs from '../docs'
+import * as Forum from '../forum'
+import * as SiteCheckoutDemo from '../siteCheckoutDemo'
+import { Message } from './message'
+import { Model } from './model'
+import * as Home from './page/home'
+import * as Onboarding from './page/onboarding'
+import * as PublicAgent from './page/publicAgent'
+import * as Share from './page/share'
+
+export const view = Submodel.defineView<Model, Message>((model): Html => {
+  const h = html<Message>()
+
+  if (model.route._tag === 'Share') {
+    return Ui.pageShell<Message>([
+      h.keyed('div')(model.route._tag, [], [Share.view(model.shareProjection)]),
+    ])
+  }
+
+  return Ui.pageShell<Message>([
+    Ui.routeMain<Message>([
+      h.keyed('div')(
+        model.route._tag,
+        [],
+        [
+          M.value(model.route).pipe(
+            M.tagsExhaustive({
+              Home: () => Home.view(model.publicPylonStats),
+              Invite: () => notFoundView('/invite', homeRouter(), 'Go Home'),
+              Onboarding: () => Onboarding.view(model.onboarding),
+              Docs: route => Docs.view(route, { _tag: 'LoggedOut' }),
+              DocsPage: route => Docs.view(route, { _tag: 'LoggedOut' }),
+              Forum: route => Forum.view(route, { _tag: 'LoggedOut' }),
+              ForumForum: route => Forum.view(route, { _tag: 'LoggedOut' }),
+              ForumTopic: route => Forum.view(route, { _tag: 'LoggedOut' }),
+              ForumReceipt: route => Forum.view(route, { _tag: 'LoggedOut' }),
+              SiteCheckoutDemo: route =>
+                SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
+              SiteCheckoutDemoReturn: route =>
+                SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
+              Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
+              BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),
+              PublicAgent: route => PublicAgent.view(model, route.agentRef),
+              NotFound: ({ path }) =>
+                notFoundView(path, homeRouter(), 'Go Home'),
+            }),
+          ),
+        ],
+      ),
+    ]),
+  ])
+})

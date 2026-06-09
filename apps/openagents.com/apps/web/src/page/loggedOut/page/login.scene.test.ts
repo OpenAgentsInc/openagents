@@ -1,0 +1,198 @@
+import { Scene } from 'foldkit'
+import { describe, test } from 'vitest'
+
+import { LoggedOut } from '../../../model'
+import { HomeRoute, OnboardingRoute } from '../../../route'
+import { update } from '../../../update'
+import { view } from '../../../view'
+import { LoadedPublicPylonStats } from '../model'
+import * as Home from './home'
+
+describe('maintenance landing scene', () => {
+  test('root login button exposes a disabled loading state on click', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(HomeRoute())),
+      Scene.expect(
+        Scene.selector('[data-login-button="github"][onclick]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Log in with GitHub' }),
+      ).toExist(),
+    )
+  })
+
+  test('renders the waitlist landing message', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(HomeRoute())),
+      Scene.expect(Scene.text('Autopilot is a cloud coding agent.')).toExist(),
+      Scene.expect(
+        Scene.text('Now in beta! Get a free coding task back within 24 hours.'),
+      ).toExist(),
+      Scene.expect(Scene.text('Join the waitlist:')).not.toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Log in with GitHub' }),
+      ).toExist(),
+      Scene.expect(Scene.text('Episode 228: Free Autopilot')).not.toExist(),
+      Scene.expect(Scene.text('Launches June 4.')).not.toExist(),
+      Scene.expect(Scene.text("We'll be right back")).not.toExist(),
+    )
+  })
+
+  test('renders loaded homepage Pylon stats without payment claims', () => {
+    Scene.scene(
+      {
+        update,
+        view: () =>
+          Home.view(
+            LoadedPublicPylonStats({
+              stats: {
+                available: true,
+                asOfLabel: 'Just now',
+                asOfUnixMs: 1_780_927_200_000,
+                caveatRefs: [
+                  'caveat.public.pylon_stats_are_registration_heartbeat_only',
+                ],
+                error: null,
+                hostedNexusRelayUrl: null,
+                minimumClientVersion: '0.2.5',
+                nexusAcceptedWorkPayoutReceiptRefs: [],
+                nexusAcceptedWorkPayoutSatsPaid24h: null,
+                nexusAcceptedWorkPayoutSatsPaidTotal: null,
+                nexusAcceptedWorkSettlementGate: {
+                  blockerRefs: [
+                    'blocker.public.pylon_settlement.receipts_unavailable',
+                  ],
+                  caveatRefs: [
+                    'caveat.public.pylon_settlement.simulation_receipts_do_not_count',
+                    'caveat.public.pylon_settlement.payment_receipt_without_settlement_does_not_count',
+                    'caveat.public.pylon_settlement.duplicate_retries_count_once',
+                    'caveat.public.no_private_payment_material',
+                  ],
+                  gateRef:
+                    'gate.public.pylon.accepted_work_settlement_receipts.v1',
+                  publicPaidWorkTotalsAllowed: false,
+                  receiptBackedTotalsAvailable: false,
+                  settledReceiptRefs: [],
+                  sourceRefs: [
+                    'gate.public.pylon.accepted_work_settlement_receipts.v1',
+                    'route:/api/public/pylon-stats',
+                  ],
+                  state: 'unavailable',
+                  stateLabel:
+                    'Accepted-work settlement totals unavailable: Nexus/Pylon settlement receipt store unavailable.',
+                },
+                nexusPayoutSatsPaidTotal: null,
+                pylonSessionsOnlineNow: 4,
+                pylonsAssignmentReadyNow: 2,
+                pylonsByClientVersion: { 'openagents.pylon@0.2.5': 4 },
+                pylonsByResourceMode: { balanced: 4 },
+                pylonsOnlineNow: 4,
+                pylonsRegisteredTotal: 6,
+                pylonsSeen24h: 9,
+                pylonsWalletReadyNow: 3,
+                recentPylons: [],
+                sellablePylonsOnlineNow: 2,
+                earningLaunchGate: {
+                  blockedClaimRefs: [],
+                  blockerRefs: [],
+                  caveatRefs: [
+                    'caveat.public.pylon_online_is_not_paid_work',
+                    'caveat.public.wallet_ready_is_receive_readiness_not_send_ready',
+                    'caveat.public.assignment_ready_is_not_acceptance_or_settlement',
+                    'caveat.public.no_unconditional_earning_promise',
+                  ],
+                  gateRef: 'gate.public.pylon.earning_network_counters.v1',
+                  publicEarningCopyAllowed: true,
+                  requiredAssignmentReadyPylonsPresent: true,
+                  requiredOnlinePylonsPresent: true,
+                  requiredWalletReadyPylonsPresent: true,
+                  sourceRefs: ['route:/api/public/pylon-stats'],
+                  state: 'ready',
+                  stateLabel: 'Ready for bounded public earning copy',
+                },
+                sourceRefs: ['route:/api/public/pylon-stats'],
+                sourceUrl: 'https://openagents.com/api/public/pylon-stats',
+                status: 'live',
+                trainingAcceptedContributors: 0,
+                trainingAssignedContributors: 0,
+                trainingModelProgressContributors: 0,
+              },
+            }),
+          ),
+      },
+      Scene.with(LoggedOut.init(HomeRoute())),
+      Scene.expect(Scene.text('Live Pylons')).toExist(),
+      Scene.expect(Scene.text('Online now')).toExist(),
+      Scene.expect(Scene.text('Seen in 24h')).toExist(),
+      Scene.expect(Scene.text('Wallet ready')).toExist(),
+      Scene.expect(Scene.text('Earning gate')).toExist(),
+      Scene.expect(Scene.text('Ready')).toExist(),
+      Scene.expect(Scene.text('Version floor')).toExist(),
+      Scene.expect(Scene.text('v0.2.5+')).toExist(),
+      Scene.expect(Scene.text('Paid')).not.toExist(),
+      Scene.expect(Scene.text('Settled')).not.toExist(),
+    )
+  })
+
+  test('renders the compact public agent path', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(HomeRoute())),
+      Scene.expect(Scene.role('heading', { name: 'I am an Agent' })).toExist(),
+      Scene.expect(
+        Scene.role('textbox', { name: 'Copyable agent instruction' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Capability manifest' }),
+      ).toHaveAttr('href', '/.well-known/openagents.json'),
+      Scene.expect(Scene.role('link', { name: 'OpenAPI' })).toHaveAttr(
+        'href',
+        '/api/openapi.json',
+      ),
+      Scene.expect(Scene.role('link', { name: 'Public proof' })).toHaveAttr(
+        'href',
+        '/api/public/proof/otec',
+      ),
+    )
+  })
+
+  test('renders the onboarding landing page without replacing home', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(OnboardingRoute())),
+      Scene.expect(
+        Scene.role('heading', { name: 'Stop Babysitting Your AI' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Log in with GitHub' }),
+      ).toHaveAttr('href', '/login/github'),
+      Scene.expect(Scene.text('signup sequence')).not.toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Repository' })).not.toExist(),
+      Scene.expect(Scene.text('Funding amount')).not.toExist(),
+    )
+  })
+
+  test('renders the onboarding funding demo after the GitHub step', () => {
+    const model = LoggedOut.init(OnboardingRoute())
+
+    Scene.scene(
+      { update, view },
+      Scene.with({
+        ...model,
+        onboarding: {
+          ...model.onboarding,
+          step: 'funding',
+        },
+      }),
+      Scene.expect(
+        Scene.role('heading', { name: 'Fund your account' }),
+      ).toExist(),
+      Scene.expect(Scene.text('Funding amount')).toExist(),
+      Scene.expect(Scene.text('I have a coupon code')).toExist(),
+      Scene.expect(Scene.text('Credit order')).toExist(),
+      Scene.expect(Scene.text('signup sequence')).not.toExist(),
+    )
+  })
+})

@@ -1,0 +1,267 @@
+import { Effect } from 'effect'
+
+import { type RouteEffect, routeEffectOrResponse } from './http/route-effects'
+import type { Env as OpenAgentsEnv } from './index'
+
+type HttpResponse = globalThis.Response
+
+type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
+  handleGitHubWriteDisconnectApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    connectionRef: string,
+  ) => RouteEffect
+  handleProviderAccountDisconnectApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    providerAccountRef: string,
+  ) => RouteEffect
+  handleProviderAccountGrantIssueApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    providerAccountRef: string,
+  ) => RouteEffect
+  handleProviderAccountGrantResolveApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
+  handleGoogleGeminiGrantResolveApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
+  handleGoogleGeminiGenerateContentApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    model: string,
+  ) => RouteEffect
+  handleProviderAccountHealthApi: (
+    request: Request,
+    env: Bindings,
+    providerAccountRef: string,
+  ) => RouteEffect
+  handleProviderAccountsListApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => RouteEffect
+  handleProviderDeviceLoginConnectedApi: (
+    request: Request,
+    env: Bindings,
+    attemptId: string,
+  ) => RouteEffect
+  handleProviderDeviceLoginFailedApi: (
+    request: Request,
+    env: Bindings,
+    attemptId: string,
+  ) => RouteEffect
+  handleProviderDeviceLoginStartApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => RouteEffect
+  handleProviderDeviceLoginStatusApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    attemptId: string,
+  ) => RouteEffect
+}>
+
+export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
+  dependencies: ProviderAccountRouteDependencies<Bindings>,
+) => ({
+  routeProviderAccountRequest: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ): Effect.Effect<HttpResponse> | undefined => {
+    const url = new URL(request.url)
+
+    if (url.pathname === '/api/provider-accounts') {
+      return routeEffectOrResponse(
+        dependencies.handleProviderAccountsListApi(request, env, ctx),
+      )
+    }
+
+    if (
+      url.pathname === '/api/provider-accounts/chatgpt-codex/device-login/start'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handleProviderDeviceLoginStartApi(request, env, ctx),
+      )
+    }
+
+    if (
+      url.pathname === '/api/provider-accounts/chatgpt-codex/grants/resolve'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handleProviderAccountGrantResolveApi(request, env),
+      )
+    }
+
+    if (
+      url.pathname === '/api/provider-accounts/google-gemini/grants/resolve'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handleGoogleGeminiGrantResolveApi(request, env),
+      )
+    }
+
+    const googleGeminiGenerateMatch =
+      /^\/api\/provider-accounts\/google-gemini\/models\/([^/]+):streamGenerateContent$/.exec(
+        url.pathname,
+      )
+
+    if (googleGeminiGenerateMatch !== null) {
+      const model = googleGeminiGenerateMatch[1]
+
+      if (model !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleGoogleGeminiGenerateContentApi(
+            request,
+            env,
+            ctx,
+            model,
+          ),
+        )
+      }
+    }
+
+    const providerDeviceLoginConnectedMatch =
+      /^\/api\/provider-accounts\/chatgpt-codex\/device-login\/([^/]+)\/connected$/.exec(
+        url.pathname,
+      )
+
+    if (providerDeviceLoginConnectedMatch !== null) {
+      const attemptId = providerDeviceLoginConnectedMatch[1]
+
+      if (attemptId !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleProviderDeviceLoginConnectedApi(
+            request,
+            env,
+            attemptId,
+          ),
+        )
+      }
+    }
+
+    const providerDeviceLoginFailedMatch =
+      /^\/api\/provider-accounts\/chatgpt-codex\/device-login\/([^/]+)\/failed$/.exec(
+        url.pathname,
+      )
+
+    if (providerDeviceLoginFailedMatch !== null) {
+      const attemptId = providerDeviceLoginFailedMatch[1]
+
+      if (attemptId !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleProviderDeviceLoginFailedApi(
+            request,
+            env,
+            attemptId,
+          ),
+        )
+      }
+    }
+
+    const providerDeviceLoginStatusMatch =
+      /^\/api\/provider-accounts\/chatgpt-codex\/device-login\/([^/]+)$/.exec(
+        url.pathname,
+      )
+
+    if (providerDeviceLoginStatusMatch !== null) {
+      const attemptId = providerDeviceLoginStatusMatch[1]
+
+      if (attemptId !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleProviderDeviceLoginStatusApi(
+            request,
+            env,
+            ctx,
+            attemptId,
+          ),
+        )
+      }
+    }
+
+    const githubWriteDisconnectMatch =
+      /^\/api\/github-write\/connections\/([^/]+)\/disconnect$/.exec(
+        url.pathname,
+      )
+
+    if (githubWriteDisconnectMatch !== null) {
+      const connectionRef = githubWriteDisconnectMatch[1]
+
+      if (connectionRef !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleGitHubWriteDisconnectApi(
+            request,
+            env,
+            ctx,
+            connectionRef,
+          ),
+        )
+      }
+    }
+
+    const providerHealthMatch =
+      /^\/api\/provider-accounts\/([^/]+)\/health$/.exec(url.pathname)
+
+    if (providerHealthMatch !== null) {
+      const providerAccountRef = providerHealthMatch[1]
+
+      if (providerAccountRef !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleProviderAccountHealthApi(
+            request,
+            env,
+            providerAccountRef,
+          ),
+        )
+      }
+    }
+
+    const providerGrantIssueMatch =
+      /^\/api\/provider-accounts\/([^/]+)\/grants$/.exec(url.pathname)
+
+    if (providerGrantIssueMatch !== null) {
+      const providerAccountRef = providerGrantIssueMatch[1]
+
+      if (providerAccountRef !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleProviderAccountGrantIssueApi(
+            request,
+            env,
+            ctx,
+            providerAccountRef,
+          ),
+        )
+      }
+    }
+
+    const providerDisconnectMatch =
+      /^\/api\/provider-accounts\/([^/]+)\/disconnect$/.exec(url.pathname)
+
+    if (providerDisconnectMatch !== null) {
+      const providerAccountRef = providerDisconnectMatch[1]
+
+      if (providerAccountRef !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleProviderAccountDisconnectApi(
+            request,
+            env,
+            ctx,
+            providerAccountRef,
+          ),
+        )
+      }
+    }
+
+    return undefined
+  },
+})

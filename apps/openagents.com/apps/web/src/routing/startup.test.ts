@@ -1,0 +1,448 @@
+import { Option } from 'effect'
+import { describe, expect, test } from 'vitest'
+
+import {
+  authBootstrapFromSession,
+  completedOnboardingStatus,
+  incompleteOnboardingStatus,
+} from '../domain/session'
+import {
+  ChatRoute,
+  DemoOrderRoute,
+  DemoRoute,
+  DemoTeamFileRoute,
+  DemoTeamFilesRoute,
+  DemoTeamProjectChatRoute,
+  DemoThreadRoute,
+  ForumForumRoute,
+  ForumReceiptRoute,
+  HomeRoute,
+  InviteRoute,
+  MulletRoute,
+  NotFoundRoute,
+  OnboardingRoute,
+  OrderRoute,
+  PublicAgentRoute,
+  ShareRoute,
+  SiteCheckoutDemoReturnRoute,
+  SiteCheckoutDemoRoute,
+  TeamChatRoute,
+  TeamProjectChatRoute,
+} from '../route'
+import {
+  routeRequiresAuthBootstrap,
+  startupRouteForLoggedIn,
+  startupRouteForLoggedOut,
+} from './startup'
+
+const auth = authBootstrapFromSession({
+  email: 'chris@openagents.com',
+  name: 'Christopher David',
+  userId: 'github:14167547',
+})
+
+const authWithCoreTeam = {
+  ...auth,
+  teams: [
+    {
+      id: 'team_openagents_core',
+      name: 'OpenAgents Core Team',
+      slug: 'openagents-core-team',
+      role: 'owner',
+      members: [],
+    },
+  ],
+}
+
+const completeAuth = {
+  ...authWithCoreTeam,
+  onboarding: completedOnboardingStatus(),
+}
+
+const completeAdminAuth = {
+  ...completeAuth,
+  isAdmin: true,
+}
+
+const wrongAdminEmailAuth = {
+  ...authBootstrapFromSession({
+    email: 'admin@openagents.com',
+    name: 'Wrong Admin',
+    userId: 'github:wrong-admin',
+  }),
+  teams: authWithCoreTeam.teams,
+  onboarding: completedOnboardingStatus(),
+  isAdmin: true,
+}
+
+const incompleteAuth = {
+  ...authWithCoreTeam,
+  onboarding: incompleteOnboardingStatus(),
+}
+
+describe('startup route policy', () => {
+  test('keeps logged-out root visitors on the public homepage', () => {
+    expect(startupRouteForLoggedOut(HomeRoute())).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Home' },
+    })
+  })
+
+  test('keeps public agent pages public for every auth state', () => {
+    const publicRoute = PublicAgentRoute({ agentRef: 'artanis' })
+
+    expect(startupRouteForLoggedOut(publicRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: publicRoute,
+    })
+    expect(startupRouteForLoggedIn(publicRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: publicRoute,
+    })
+    expect(startupRouteForLoggedIn(publicRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: publicRoute,
+    })
+  })
+
+  test('keeps share pages public for every auth state', () => {
+    const shareRoute = ShareRoute({
+      shareId: '123e4567-e89b-42d3-a456-426614174000',
+    })
+
+    expect(startupRouteForLoggedOut(shareRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: shareRoute,
+    })
+    expect(startupRouteForLoggedIn(shareRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: shareRoute,
+    })
+    expect(startupRouteForLoggedIn(shareRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: shareRoute,
+    })
+  })
+
+  test('keeps Site checkout demo pages public for every auth state', () => {
+    const checkoutRoute = SiteCheckoutDemoRoute()
+    const returnRoute = SiteCheckoutDemoReturnRoute({
+      returnAction: 'success',
+    })
+
+    expect(startupRouteForLoggedOut(checkoutRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: checkoutRoute,
+    })
+    expect(startupRouteForLoggedIn(checkoutRoute, completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: checkoutRoute,
+    })
+    expect(startupRouteForLoggedIn(checkoutRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: checkoutRoute,
+    })
+    expect(startupRouteForLoggedOut(returnRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: returnRoute,
+    })
+    expect(startupRouteForLoggedIn(returnRoute, completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: returnRoute,
+    })
+  })
+
+  test('keeps Forum pages public for every auth state', () => {
+    const forumRoute = ForumForumRoute({ forumRef: 'void' })
+    const receiptRoute = ForumReceiptRoute({ receiptRef: 'receipt.forum.1' })
+
+    expect(startupRouteForLoggedOut(forumRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: forumRoute,
+    })
+    expect(startupRouteForLoggedIn(forumRoute, completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: forumRoute,
+    })
+    expect(startupRouteForLoggedIn(forumRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: forumRoute,
+    })
+    expect(startupRouteForLoggedOut(receiptRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: receiptRoute,
+    })
+  })
+
+  test('maps authenticated root visitors to order status', () => {
+    expect(startupRouteForLoggedIn(HomeRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('keeps the operator Autopilot shell on the explicit Autopilot route', () => {
+    expect(startupRouteForLoggedIn(ChatRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Chat' },
+    })
+  })
+
+  test('routes authenticated visitors without Core Team access to order status', () => {
+    expect(startupRouteForLoggedIn(HomeRoute(), auth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('redirects disabled project workrooms to order status', () => {
+    expect(
+      startupRouteForLoggedIn(
+        TeamProjectChatRoute({
+          projectRef: 'artanis',
+          teamRef: 'openagents-core-team',
+        }),
+        completeAuth,
+      ),
+    ).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.some({
+        _tag: 'StartupRedirectToDefaultLoggedInRoute',
+        href: '/order',
+      }),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('redirects authenticated visitors without Core Team access away from invite', () => {
+    expect(startupRouteForLoggedIn(InviteRoute(), auth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.some({
+        _tag: 'StartupRedirectToDefaultLoggedInRoute',
+        href: '/order',
+      }),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('keeps authenticated visitors without Core Team access on order status', () => {
+    expect(startupRouteForLoggedIn(OrderRoute(), auth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('redirects authenticated visitors without Core Team access away from workrooms', () => {
+    expect(startupRouteForLoggedIn(ChatRoute(), auth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.some({
+        _tag: 'StartupRedirectToOrder',
+        href: '/order',
+      }),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('keeps logged-out visitors away from the private mullet route', () => {
+    expect(startupRouteForLoggedOut(MulletRoute())).toMatchObject({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: {
+        _tag: 'Some',
+        value: { _tag: 'StartupRedirectToHome', href: '/' },
+      },
+      route: { _tag: 'Home' },
+    })
+  })
+
+  test('redirects non-admin users away from the private mullet route', () => {
+    expect(startupRouteForLoggedIn(MulletRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.some({
+        _tag: 'StartupRedirectToOrder',
+        href: '/order',
+      }),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('redirects wrong admin emails away from the private mullet route', () => {
+    expect(startupRouteForLoggedIn(MulletRoute(), wrongAdminEmailAuth)).toEqual(
+      {
+        _tag: 'LoggedInStartupRoute',
+        redirect: Option.some({
+          _tag: 'StartupRedirectToOrder',
+          href: '/order',
+        }),
+        route: { _tag: 'Order' },
+      },
+    )
+  })
+
+  test('allows chris@openagents.com to stay on the private mullet route', () => {
+    expect(startupRouteForLoggedIn(MulletRoute(), completeAdminAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Mullet' },
+    })
+  })
+
+  test('routes incomplete authenticated users through onboarding', () => {
+    expect(startupRouteForLoggedIn(HomeRoute(), incompleteAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.some({
+        _tag: 'StartupRedirectToOnboarding',
+        href: '/onboarding',
+      }),
+      route: { _tag: 'Onboarding' },
+    })
+  })
+
+  test('keeps incomplete authenticated users on onboarding', () => {
+    expect(startupRouteForLoggedIn(OnboardingRoute(), incompleteAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Onboarding' },
+    })
+  })
+
+  test('sends complete authenticated users away from onboarding', () => {
+    expect(startupRouteForLoggedIn(OnboardingRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.some({
+        _tag: 'StartupRedirectToDefaultLoggedInRoute',
+        href: '/order',
+      }),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('redirects logged-out app routes to the public homepage', () => {
+    expect(
+      startupRouteForLoggedOut(TeamChatRoute({ teamRef: 'openagents' })),
+    ).toMatchObject({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: {
+        _tag: 'Some',
+        value: { _tag: 'StartupRedirectToHome', href: '/' },
+      },
+      route: { _tag: 'Home' },
+    })
+  })
+
+  test('redirects the deleted login page route to the public homepage', () => {
+    expect(
+      startupRouteForLoggedOut(NotFoundRoute({ path: '/login' })),
+    ).toMatchObject({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: {
+        _tag: 'Some',
+        value: { _tag: 'StartupRedirectToHome', href: '/' },
+      },
+      route: { _tag: 'Home' },
+    })
+  })
+
+  test('redirects unknown public paths to the homepage', () => {
+    expect(
+      startupRouteForLoggedOut(NotFoundRoute({ path: '/f324f23f' })),
+    ).toMatchObject({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: {
+        _tag: 'Some',
+        value: { _tag: 'StartupRedirectToHome', href: '/' },
+      },
+      route: { _tag: 'Home' },
+    })
+  })
+
+  test('does not fetch auth bootstrap for public-only routes', () => {
+    expect(
+      routeRequiresAuthBootstrap(NotFoundRoute({ path: '/login/github' })),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(PublicAgentRoute({ agentRef: 'artanis' })),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        ShareRoute({ shareId: '123e4567-e89b-42d3-a456-426614174000' }),
+      ),
+    ).toBe(false)
+    expect(routeRequiresAuthBootstrap(SiteCheckoutDemoRoute())).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        SiteCheckoutDemoReturnRoute({ returnAction: 'status' }),
+      ),
+    ).toBe(false)
+  })
+
+  test('fetches auth bootstrap for product routes', () => {
+    expect(routeRequiresAuthBootstrap(HomeRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(ChatRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(InviteRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(OnboardingRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(OrderRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(MulletRoute())).toBe(true)
+    expect(
+      routeRequiresAuthBootstrap(TeamChatRoute({ teamRef: 'openagents' })),
+    ).toBe(true)
+    expect(
+      routeRequiresAuthBootstrap(
+        TeamProjectChatRoute({
+          projectRef: 'artanis',
+          teamRef: 'openagents',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  test('does not fetch auth bootstrap for the demo route namespace', () => {
+    expect(routeRequiresAuthBootstrap(DemoRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(DemoOrderRoute())).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        DemoThreadRoute({ threadId: 'pylon-release-demo' }),
+      ),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        DemoTeamProjectChatRoute({
+          teamRef: 'openagents-core-team',
+          projectRef: 'artanis',
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        DemoTeamFilesRoute({ teamRef: 'openagents-core-team' }),
+      ),
+    ).toBe(false)
+    expect(
+      routeRequiresAuthBootstrap(
+        DemoTeamFileRoute({
+          teamRef: 'openagents-core-team',
+          fileId: 'file_pylon_release_plan',
+        }),
+      ),
+    ).toBe(false)
+  })
+})

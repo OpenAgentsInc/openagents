@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mike M Counter Dashboard</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1016;
+        --panel: #151a22;
+        --panel-strong: #1c222c;
+        --line: #303846;
+        --line-soft: #232b36;
+        --text: #f4f7fb;
+        --muted: #98a5b8;
+        --quiet: #748093;
+        --blue: #6eb6ff;
+        --green: #6ee7b7;
+        --amber: #f8c66d;
+        --red: #ff8a8a;
+        --shadow: 0 18px 60px rgb(0 0 0 / 35%);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        min-height: 100%;
+        background:
+          linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 340px),
+          var(--bg);
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--text);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 2px;
+      }
+
+      .app {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px;
+        align-items: center;
+        padding: 22px;
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        background: rgb(21 26 34 / 86%);
+        box-shadow: var(--shadow);
+      }
+
+      .eyebrow {
+        margin: 0 0 6px;
+        color: var(--green);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(94px, 1fr));
+        gap: 10px;
+        min-width: min(100%, 420px);
+      }
+
+      .summary-item {
+        min-height: 74px;
+        padding: 12px;
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        background: var(--panel-strong);
+      }
+
+      .summary-label {
+        display: block;
+        color: var(--quiet);
+        font-size: 0.73rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .summary-value {
+        display: block;
+        margin-top: 8px;
+        font-variant-numeric: tabular-nums;
+        font-size: 1.35rem;
+        font-weight: 800;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        margin: 20px 0 14px;
+      }
+
+      .status {
+        min-height: 24px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .button {
+        min-height: 38px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--text);
+        font-weight: 750;
+      }
+
+      .button:hover {
+        border-color: #4b5b70;
+        background: #1b222d;
+      }
+
+      .button.primary {
+        border-color: #386f94;
+        background: #16405c;
+      }
+
+      .button.danger {
+        border-color: #754147;
+        color: #ffd1d1;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .counter {
+        container-type: inline-size;
+        min-height: 242px;
+        padding: 16px;
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .counter[data-tone="blue"] {
+        border-top: 3px solid var(--blue);
+      }
+
+      .counter[data-tone="green"] {
+        border-top: 3px solid var(--green);
+      }
+
+      .counter[data-tone="amber"] {
+        border-top: 3px solid var(--amber);
+      }
+
+      .counter[data-tone="red"] {
+        border-top: 3px solid var(--red);
+      }
+
+      .counter-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .label-input {
+        width: 100%;
+        min-width: 0;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        font-size: 1.05rem;
+        font-weight: 800;
+      }
+
+      .label-input:hover,
+      .label-input:focus {
+        border-color: var(--line);
+        background: rgb(255 255 255 / 4%);
+      }
+
+      .chip {
+        padding: 5px 8px;
+        border-radius: 999px;
+        color: var(--muted);
+        background: #10141c;
+        font-size: 0.74rem;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .number-wrap {
+        display: flex;
+        align-items: end;
+        min-height: 94px;
+        margin: 18px 0 14px;
+      }
+
+      .number {
+        display: block;
+        min-width: 5ch;
+        font-variant-numeric: tabular-nums;
+        font-size: clamp(3rem, 24cqw, 5.7rem);
+        font-weight: 900;
+        line-height: 0.9;
+        letter-spacing: 0;
+      }
+
+      .number.bump {
+        animation: bump 190ms ease-out;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .control {
+        min-height: 44px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #10151d;
+        color: var(--text);
+        font-size: 1.2rem;
+        font-weight: 900;
+      }
+
+      .control:hover {
+        border-color: #526279;
+        background: #1b2430;
+      }
+
+      .control.reset {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .counter-foot {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 14px;
+        color: var(--quiet);
+        font-size: 0.82rem;
+      }
+
+      @keyframes bump {
+        0% {
+          transform: translateY(4px);
+          opacity: 0.7;
+        }
+        100% {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .topbar {
+          grid-template-columns: 1fr;
+        }
+
+        .summary {
+          min-width: 0;
+        }
+
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 620px) {
+        .app {
+          width: min(100% - 20px, 460px);
+          padding-top: 14px;
+        }
+
+        .topbar {
+          padding: 16px;
+        }
+
+        h1 {
+          font-size: 2.35rem;
+        }
+
+        .summary {
+          grid-template-columns: 1fr;
+        }
+
+        .toolbar {
+          align-items: stretch;
+        }
+
+        .toolbar,
+        .toolbar-actions {
+          flex-direction: column;
+        }
+
+        .button {
+          width: 100%;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .counter {
+          min-height: 226px;
+        }
+
+        .status {
+          font-size: 1rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app" aria-labelledby="page-title">
+      <section class="topbar" aria-label="Dashboard summary">
+        <div>
+          <p class="eyebrow">OpenAgents Beta</p>
+          <h1 id="page-title">Counter Dashboard</h1>
+        </div>
+        <div class="summary" aria-live="polite">
+          <div class="summary-item">
+            <span class="summary-label">Total</span>
+            <span class="summary-value" id="total-value">0</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Highest</span>
+            <span class="summary-value" id="highest-value">0</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Changed</span>
+            <span class="summary-value" id="changed-value">0</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="toolbar">
+        <div class="status" id="status-text" role="status">
+          Dashboard ready.
+        </div>
+        <div class="toolbar-actions">
+          <button class="button primary" type="button" id="add-counter">
+            Add counter
+          </button>
+          <button class="button danger" type="button" id="reset-all">
+            Reset all
+          </button>
+        </div>
+      </div>
+
+      <section class="grid" id="counter-grid" aria-label="Counters"></section>
+    </main>
+
+    <script>
+      (() => {
+        const storageKey = "openagents.mike-m.counter-dashboard.v1";
+        const tones = ["blue", "green", "amber", "red"];
+        const defaults = [
+          { id: "leads", label: "Leads", value: 0 },
+          { id: "calls", label: "Calls", value: 0 },
+          { id: "follow-ups", label: "Follow-ups", value: 0 },
+          { id: "wins", label: "Wins", value: 0 },
+          { id: "bugs", label: "Bugs", value: 0 },
+          { id: "ideas", label: "Ideas", value: 0 },
+        ];
+
+        const grid = document.getElementById("counter-grid");
+        const totalValue = document.getElementById("total-value");
+        const highestValue = document.getElementById("highest-value");
+        const changedValue = document.getElementById("changed-value");
+        const statusText = document.getElementById("status-text");
+        const addCounter = document.getElementById("add-counter");
+        const resetAll = document.getElementById("reset-all");
+        const reduceMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+
+        let counters = readState();
+        let changedCount = 0;
+
+        function readState() {
+          try {
+            const raw = window.localStorage.getItem(storageKey);
+
+            if (!raw) {
+              return defaults.map(counter => ({ ...counter }));
+            }
+
+            const parsed = JSON.parse(raw);
+
+            if (!Array.isArray(parsed)) {
+              return defaults.map(counter => ({ ...counter }));
+            }
+
+            const valid = parsed
+              .filter(
+                item =>
+                  item &&
+                  typeof item.id === "string" &&
+                  typeof item.label === "string" &&
+                  Number.isFinite(item.value),
+              )
+              .map(item => ({
+                id: item.id.slice(0, 80),
+                label: item.label.slice(0, 48) || "Counter",
+                value: Math.trunc(item.value),
+              }));
+
+            return valid.length > 0
+              ? valid
+              : defaults.map(counter => ({ ...counter }));
+          } catch {
+            return defaults.map(counter => ({ ...counter }));
+          }
+        }
+
+        function writeState() {
+          window.localStorage.setItem(storageKey, JSON.stringify(counters));
+        }
+
+        function formatNumber(value) {
+          return new Intl.NumberFormat("en-US").format(value);
+        }
+
+        function setStatus(message) {
+          statusText.textContent = message;
+        }
+
+        function animateNumber(element, from, to) {
+          if (reduceMotion || from === to) {
+            element.textContent = formatNumber(to);
+            return;
+          }
+
+          const start = performance.now();
+          const duration = 260;
+
+          function tick(now) {
+            const elapsed = Math.min((now - start) / duration, 1);
+            const eased = 1 - Math.pow(1 - elapsed, 3);
+            const current = Math.round(from + (to - from) * eased);
+            element.textContent = formatNumber(current);
+
+            if (elapsed < 1) {
+              requestAnimationFrame(tick);
+            }
+          }
+
+          requestAnimationFrame(tick);
+        }
+
+        function pulse(element) {
+          if (reduceMotion) {
+            return;
+          }
+
+          element.classList.remove("bump");
+          void element.offsetWidth;
+          element.classList.add("bump");
+        }
+
+        function renderSummary(previousTotal = 0, previousHighest = 0) {
+          const total = counters.reduce((sum, counter) => sum + counter.value, 0);
+          const highest =
+            counters.length === 0
+              ? 0
+              : counters.reduce(
+                  (max, counter) => Math.max(max, counter.value),
+                  counters[0].value,
+                );
+
+          animateNumber(totalValue, previousTotal, total);
+          animateNumber(highestValue, previousHighest, highest);
+          changedValue.textContent = formatNumber(changedCount);
+        }
+
+        function render(options = {}) {
+          const previousValues = options.previousValues || new Map();
+          const changedId = options.changedId || null;
+          const previousTotal = Number(
+            totalValue.textContent.replace(/,/g, ""),
+          ) || 0;
+          const previousHighest = Number(
+            highestValue.textContent.replace(/,/g, ""),
+          ) || 0;
+
+          grid.innerHTML = "";
+          counters.forEach((counter, index) => {
+            const article = document.createElement("article");
+            article.className = "counter";
+            article.dataset.tone = tones[index % tones.length];
+            const previousValue = previousValues.has(counter.id)
+              ? previousValues.get(counter.id)
+              : counter.value;
+
+            article.innerHTML = `
+              <div class="counter-head">
+                <label>
+                  <span class="summary-label">Name</span>
+                  <input class="label-input" value="${escapeHtml(counter.label)}" aria-label="Counter name" />
+                </label>
+                <span class="chip">#${index + 1}</span>
+              </div>
+              <div class="number-wrap">
+                <span class="number" aria-live="polite">${formatNumber(previousValue)}</span>
+              </div>
+              <div class="controls">
+                <button class="control" type="button" data-action="decrement" aria-label="Decrease ${escapeAttribute(counter.label)}">-</button>
+                <button class="control" type="button" data-action="increment" aria-label="Increase ${escapeAttribute(counter.label)}">+</button>
+                <button class="control reset" type="button" data-action="reset" aria-label="Reset ${escapeAttribute(counter.label)}">Reset</button>
+              </div>
+              <div class="counter-foot">
+                <span>${counter.value === 0 ? "Ready" : "Active"}</span>
+                <span>${counter.value >= 0 ? "Positive" : "Negative"}</span>
+              </div>
+            `;
+
+            const input = article.querySelector(".label-input");
+            const number = article.querySelector(".number");
+
+            input.addEventListener("change", event => {
+              const nextLabel = event.target.value.trim().slice(0, 48);
+              counter.label = nextLabel || "Counter";
+              event.target.value = counter.label;
+              writeState();
+              render();
+              setStatus(`${counter.label} renamed.`);
+            });
+
+            article.addEventListener("click", event => {
+              const button = event.target.closest("button[data-action]");
+
+              if (!button) {
+                return;
+              }
+
+              const before = counter.value;
+
+              if (button.dataset.action === "increment") {
+                counter.value += 1;
+              }
+
+              if (button.dataset.action === "decrement") {
+                counter.value -= 1;
+              }
+
+              if (button.dataset.action === "reset") {
+                counter.value = 0;
+              }
+
+              changedCount += 1;
+              writeState();
+              render({
+                changedId: counter.id,
+                previousValues: new Map([[counter.id, before]]),
+              });
+              setStatus(`${counter.label} is ${formatNumber(counter.value)}.`);
+            });
+
+            grid.appendChild(article);
+
+            if (
+              previousValues.has(counter.id) &&
+              previousValue !== counter.value
+            ) {
+              animateNumber(number, previousValue, counter.value);
+
+              if (counter.id === changedId) {
+                pulse(number);
+              }
+            }
+          });
+
+          renderSummary(previousTotal, previousHighest);
+        }
+
+        function escapeHtml(value) {
+          return value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function escapeAttribute(value) {
+          return escapeHtml(value).replace(/'/g, "&#39;");
+        }
+
+        addCounter.addEventListener("click", () => {
+          const id = `counter-${Date.now().toString(36)}`;
+          counters.push({
+            id,
+            label: `Counter ${counters.length + 1}`,
+            value: 0,
+          });
+          changedCount += 1;
+          writeState();
+          render();
+          setStatus("Counter added.");
+        });
+
+        resetAll.addEventListener("click", () => {
+          const previousValues = new Map(
+            counters.map(counter => [counter.id, counter.value]),
+          );
+          counters = counters.map(counter => ({ ...counter, value: 0 }));
+          changedCount += 1;
+          writeState();
+          render({ changedId: "reset-all", previousValues });
+          setStatus("All counters reset.");
+        });
+
+        render();
+      })();
+    </script>
+  </body>
+</html>

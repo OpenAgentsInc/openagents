@@ -1,0 +1,346 @@
+import { notFound } from '@openagents/sync-worker'
+import { Effect } from 'effect'
+
+import { redirectResponse } from './http/responses'
+import { type RouteEffect, routeEffectOrResponse } from './http/route-effects'
+import { type ExactRoute, routeExact } from './http/router'
+import type { Env } from './index'
+import { OpenAgentsWorkerRequest } from './runtime'
+
+type OptionalEffectRoute = (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+) => Effect.Effect<Response> | undefined
+
+type WorkerRouteEnv = Parameters<OptionalEffectRoute>[1]
+
+type WorkerRouteDependencies = Readonly<{
+  cleanProductRouteRedirectLocation: (url: URL) => string | undefined
+  exactRoutes: ReadonlyArray<ExactRoute<Env>>
+  handleAssetRequest: (request: Request, env: WorkerRouteEnv) => RouteEffect
+  handleAppShellPage: (
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ) => RouteEffect
+  handleThreadPage: (
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+    threadId: string,
+  ) => RouteEffect
+  optionalUuid: (value: string | undefined) => string | undefined
+  routeAgentGoalRequest: OptionalEffectRoute
+  routeAgentOwnerClaimRequest: OptionalEffectRoute
+  routeAgentProposalRequest: OptionalEffectRoute
+  routeAgentSearchRequest: OptionalEffectRoute
+  routeAgentScopedGrantRequest: OptionalEffectRoute
+  routeAgentSiteRequest: OptionalEffectRoute
+  routeForumRequest: OptionalEffectRoute
+  routeImageGenerationRequest: OptionalEffectRoute
+  routeMulletRequest: OptionalEffectRoute
+  routeOmniRequest: OptionalEffectRoute
+  routeOnboardingRequest: OptionalEffectRoute
+  routeNexusPylonVisibilityRequest: OptionalEffectRoute
+  routePylonApiRequest: OptionalEffectRoute
+  routeSiteCommerceRequest: OptionalEffectRoute
+  routeSiteReferralInspectionRequest: OptionalEffectRoute
+  routeSiteReferralRequest: OptionalEffectRoute
+  routeOperatorAdjutantRequest: OptionalEffectRoute
+  routeOperatorArtanisConsoleRequest: OptionalEffectRoute
+  routeOperatorEmailInspectionRequest: OptionalEffectRoute
+  routeOperatorOrderTriageRequest: OptionalEffectRoute
+  routeOperatorPylonMarketplaceRequest: OptionalEffectRoute
+  routeOperatorProviderAccountRequest: OptionalEffectRoute
+  routeOperatorSitesRequest: OptionalEffectRoute
+  routeProviderAccountRequest: OptionalEffectRoute
+  routeShareRequest: OptionalEffectRoute
+  routeSyncRequest: (
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ) => Effect.Effect<Response>
+  routeTeamChatRequest: OptionalEffectRoute
+  routeThreadFileRequest: OptionalEffectRoute
+}>
+
+export const makeWorkerRouteRequest =
+  (dependencies: WorkerRouteDependencies) =>
+  (): Effect.Effect<Response, never, OpenAgentsWorkerRequest> =>
+    Effect.gen(function* () {
+      const { ctx, env, request, url } = yield* OpenAgentsWorkerRequest
+      const cleanProductRouteLocation =
+        dependencies.cleanProductRouteRedirectLocation(url)
+
+      if (cleanProductRouteLocation !== undefined) {
+        return redirectResponse(cleanProductRouteLocation)
+      }
+
+      const exactResponse = routeExact(
+        dependencies.exactRoutes,
+        url.pathname,
+        request,
+        env,
+        ctx,
+      )
+
+      if (exactResponse !== undefined) {
+        return yield* exactResponse
+      }
+
+      const teamChatResponse = dependencies.routeTeamChatRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (teamChatResponse !== undefined) {
+        return yield* teamChatResponse
+      }
+
+      const onboardingResponse = dependencies.routeOnboardingRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (onboardingResponse !== undefined) {
+        return yield* onboardingResponse
+      }
+
+      const imageGenerationResponse = dependencies.routeImageGenerationRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (imageGenerationResponse !== undefined) {
+        return yield* imageGenerationResponse
+      }
+
+      const threadFileResponse = dependencies.routeThreadFileRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (threadFileResponse !== undefined) {
+        return yield* threadFileResponse
+      }
+
+      const omniResponse = dependencies.routeOmniRequest(request, env, ctx)
+
+      if (omniResponse !== undefined) {
+        return yield* omniResponse
+      }
+
+      const providerAccountResponse = dependencies.routeProviderAccountRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (providerAccountResponse !== undefined) {
+        return yield* providerAccountResponse
+      }
+
+      const shareResponse = dependencies.routeShareRequest(request, env, ctx)
+
+      if (shareResponse !== undefined) {
+        return yield* shareResponse
+      }
+
+      const agentGoalResponse = dependencies.routeAgentGoalRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (agentGoalResponse !== undefined) {
+        return yield* agentGoalResponse
+      }
+
+      const agentOwnerClaimResponse = dependencies.routeAgentOwnerClaimRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (agentOwnerClaimResponse !== undefined) {
+        return yield* agentOwnerClaimResponse
+      }
+
+      const agentProposalResponse = dependencies.routeAgentProposalRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (agentProposalResponse !== undefined) {
+        return yield* agentProposalResponse
+      }
+
+      const agentSearchResponse = dependencies.routeAgentSearchRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (agentSearchResponse !== undefined) {
+        return yield* agentSearchResponse
+      }
+
+      const agentScopedGrantResponse =
+        dependencies.routeAgentScopedGrantRequest(request, env, ctx)
+
+      if (agentScopedGrantResponse !== undefined) {
+        return yield* agentScopedGrantResponse
+      }
+
+      const agentSiteResponse = dependencies.routeAgentSiteRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (agentSiteResponse !== undefined) {
+        return yield* agentSiteResponse
+      }
+
+      const siteCommerceResponse = dependencies.routeSiteCommerceRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (siteCommerceResponse !== undefined) {
+        return yield* siteCommerceResponse
+      }
+
+      const siteReferralResponse = dependencies.routeSiteReferralRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (siteReferralResponse !== undefined) {
+        return yield* siteReferralResponse
+      }
+
+      const siteReferralInspectionResponse =
+        dependencies.routeSiteReferralInspectionRequest(request, env, ctx)
+
+      if (siteReferralInspectionResponse !== undefined) {
+        return yield* siteReferralInspectionResponse
+      }
+
+      const pylonApiResponse = dependencies.routePylonApiRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (pylonApiResponse !== undefined) {
+        return yield* pylonApiResponse
+      }
+
+      const nexusPylonVisibilityResponse =
+        dependencies.routeNexusPylonVisibilityRequest(request, env, ctx)
+
+      if (nexusPylonVisibilityResponse !== undefined) {
+        return yield* nexusPylonVisibilityResponse
+      }
+
+      const operatorAdjutantResponse =
+        dependencies.routeOperatorAdjutantRequest(request, env, ctx)
+
+      if (operatorAdjutantResponse !== undefined) {
+        return yield* operatorAdjutantResponse
+      }
+
+      const operatorArtanisConsoleResponse =
+        dependencies.routeOperatorArtanisConsoleRequest(request, env, ctx)
+
+      if (operatorArtanisConsoleResponse !== undefined) {
+        return yield* operatorArtanisConsoleResponse
+      }
+
+      const operatorOrderTriageResponse =
+        dependencies.routeOperatorOrderTriageRequest(request, env, ctx)
+
+      if (operatorOrderTriageResponse !== undefined) {
+        return yield* operatorOrderTriageResponse
+      }
+
+      const operatorEmailInspectionResponse =
+        dependencies.routeOperatorEmailInspectionRequest(request, env, ctx)
+
+      if (operatorEmailInspectionResponse !== undefined) {
+        return yield* operatorEmailInspectionResponse
+      }
+
+      const operatorPylonMarketplaceResponse =
+        dependencies.routeOperatorPylonMarketplaceRequest(request, env, ctx)
+
+      if (operatorPylonMarketplaceResponse !== undefined) {
+        return yield* operatorPylonMarketplaceResponse
+      }
+
+      const operatorProviderAccountResponse =
+        dependencies.routeOperatorProviderAccountRequest(request, env, ctx)
+
+      if (operatorProviderAccountResponse !== undefined) {
+        return yield* operatorProviderAccountResponse
+      }
+
+      const operatorSitesResponse = dependencies.routeOperatorSitesRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (operatorSitesResponse !== undefined) {
+        return yield* operatorSitesResponse
+      }
+
+      const mulletResponse = dependencies.routeMulletRequest(request, env, ctx)
+
+      if (mulletResponse !== undefined) {
+        return yield* mulletResponse
+      }
+
+      const forumResponse = dependencies.routeForumRequest(request, env, ctx)
+
+      if (forumResponse !== undefined) {
+        return yield* forumResponse
+      }
+
+      const threadPageMatch = /^\/t\/([^/]+)$/.exec(url.pathname)
+
+      if (threadPageMatch !== null) {
+        const threadId = dependencies.optionalUuid(threadPageMatch[1])
+
+        if (threadId === undefined) {
+          return notFound()
+        }
+
+        return yield* routeEffectOrResponse(
+          dependencies.handleThreadPage(request, env, ctx, threadId),
+        )
+      }
+
+      if (url.pathname.startsWith('/api/')) {
+        return yield* dependencies.routeSyncRequest(request, env, ctx)
+      }
+
+      if (url.pathname.startsWith('/assets/')) {
+        return yield* routeEffectOrResponse(
+          dependencies.handleAssetRequest(request, env),
+        )
+      }
+
+      return yield* routeEffectOrResponse(
+        dependencies.handleAppShellPage(request, env, ctx),
+      )
+    })
