@@ -13,6 +13,7 @@ import {
   type AutopilotWorkStore,
   makeAutopilotWorkRoutes,
 } from './autopilot-work-routes'
+import type { PylonApiRegistrationRecord } from './pylon-api'
 
 class MemoryAutopilotWorkStore implements AutopilotWorkStore {
   readonly records = new Map<string, AutopilotWorkOrderRecord>()
@@ -104,6 +105,34 @@ const agentStoreForScopes = (
   touchAgentCredential: () => Promise.resolve(),
 })
 
+const pylonRegistration = (
+  override: Partial<PylonApiRegistrationRecord> = {},
+): PylonApiRegistrationRecord => ({
+  capabilityRefs: ['capability.pylon.assignment_ready'],
+  clientProtocolVersion: '0.2.5',
+  clientVersion: '0.2.5',
+  createdAt: '2026-06-09T17:25:00.000Z',
+  displayName: 'Requester Pylon',
+  id: 'pylon_registration_1',
+  latestCapacityRefs: ['capacity.pylon.assignment_ready'],
+  latestHeartbeatAt: '2026-06-09T17:29:30.000Z',
+  latestHeartbeatStatus: 'ready',
+  latestHealthRefs: ['health.pylon.ready'],
+  latestLoadRefs: ['load.pylon.available'],
+  latestResourceMode: 'balanced',
+  ownerAgentCredentialId: 'agent_credential_autopilot_work_test',
+  ownerAgentTokenPrefix: 'oa_agent',
+  ownerAgentUserId: 'agent_user_autopilot_work',
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.local.docs_agent',
+  resourceMode: 'balanced',
+  status: 'active',
+  updatedAt: '2026-06-09T17:29:30.000Z',
+  walletReady: true,
+  walletRef: 'wallet_ref.pylon.local.docs_agent',
+  ...override,
+})
+
 const route = async (
   store: MemoryAutopilotWorkStore,
   path: string,
@@ -112,17 +141,27 @@ const route = async (
     headers?: HeadersInit
     idempotencyKey?: string
     method?: string
+    pylonRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     scopes?: ReadonlyArray<string>
     token?: string
   }> = {},
 ) => {
   let counter = 0
-  const routes = makeAutopilotWorkRoutes<Record<string, unknown>>({
+  const dependencies = {
     agentStore: () => agentStoreForScopes(options.scopes),
     makeId: () => `autopilot_work_order.test_${++counter}`,
     makeStore: () => store,
     nowIso: () => '2026-06-09T17:30:00.000Z',
-  })
+    ...(options.pylonRegistrations === undefined
+      ? {}
+      : {
+          pylonRegistrations: () =>
+            Promise.resolve(options.pylonRegistrations ?? []),
+        }),
+  }
+  const routes = makeAutopilotWorkRoutes<Record<string, unknown>>(
+    dependencies,
+  )
   const body = options.body === undefined
     ? {}
     : { body: JSON.stringify(options.body) }
@@ -210,6 +249,22 @@ const responseJson = async (response: Response) =>
         status: string
       }> | null
       paymentChallengeRef: string | null
+      placementDecision?: Readonly<{
+        fallbackRunnerKind: string | null
+        pylonCandidates: ReadonlyArray<Readonly<{
+          assignmentReady: boolean
+          heartbeatFresh: boolean
+          ownerLinked: boolean
+          pylonRef: string
+          selected: boolean
+          versionCompatible: boolean
+          walletReady: boolean
+        }>>
+        reasonRefs: ReadonlyArray<string>
+        selectedPylonRef: string | null
+        selectedRunnerKind: string | null
+        source: string
+      }>
       placementPolicy?: Readonly<{
         allowedRunnerKinds: ReadonlyArray<string>
         auditable: boolean
@@ -448,6 +503,48 @@ describe('Autopilot work routes', () => {
         },
       ],
     })
+  })
+
+  test('selects an online compatible requester Pylon before fallback', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const response = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-pylon-placement',
+      pylonRegistrations: [
+        pylonRegistration({
+          ownerAgentUserId: 'other_agent',
+          pylonRef: 'pylon.other',
+        }),
+        pylonRegistration(),
+      ],
+    })
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(202)
+    expect(body.work?.placementDecision).toMatchObject({
+      fallbackRunnerKind: 'openagents_shc',
+      reasonRefs: [
+        'placement.selected.requester_pylon',
+        'placement.pylon.preferred_before_fallback',
+      ],
+      selectedPylonRef: 'pylon.local.docs_agent',
+      selectedRunnerKind: 'requester_pylon',
+      source: 'requester_pylon',
+    })
+    expect(body.work?.placementDecision?.pylonCandidates).toEqual([
+      expect.objectContaining({
+        ownerLinked: false,
+        selected: false,
+      }),
+      expect.objectContaining({
+        assignmentReady: true,
+        heartbeatFresh: true,
+        ownerLinked: true,
+        selected: true,
+        versionCompatible: true,
+        walletReady: true,
+      }),
+    ])
   })
 
   test('allows public read-only repository tasks to proceed', async () => {

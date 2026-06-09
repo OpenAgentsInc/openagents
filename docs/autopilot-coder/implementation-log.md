@@ -397,3 +397,34 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-014: Pylon Presence Placement Input
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4588`
+
+Status: implemented.
+
+Implemented:
+
+- Added `autopilot-work-placement-selector.ts`.
+- The selector evaluates Pylon registration facts:
+  - owner linkage
+  - heartbeat timestamp and status
+  - assignment-readiness capability ref
+  - wallet readiness
+  - client version compatibility
+  - latest resource mode
+- Added `placementDecision` to Autopilot work-order projections.
+- The placement decision selects an online compatible requester Pylon before
+  OpenAgents/cloud fallback.
+- When no compatible requester Pylon is available, the decision records the
+  fallback runner kind or a no-runner blocker.
+- Added optional Autopilot route dependency for Pylon registrations so current
+  deployments keep fallback behavior until the Pylon store is wired.
+- Updated OpenAPI summary text so agent-readable docs expose Pylon-aware
+  placement decisions.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

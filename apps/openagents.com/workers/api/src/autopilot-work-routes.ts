@@ -9,6 +9,10 @@ import {
   type AutopilotWorkAssignmentIntentProjection,
 } from './autopilot-work-assignment-planner'
 import {
+  type AutopilotPlacementDecisionProjection,
+  selectAutopilotPlacement,
+} from './autopilot-work-placement-selector'
+import {
   authenticateCustomerOrderAgentRequest,
 } from './customer-order-agent-auth'
 import {
@@ -22,6 +26,7 @@ import {
   parseOpenAgentsPaymentHeaders,
 } from './l402-payment-headers'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import type { PylonApiRegistrationRecord } from './pylon-api'
 import {
   type AutopilotWorkQuote,
   makeAutopilotWorkQuote,
@@ -201,6 +206,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   idempotent: boolean
   paymentChallenge: AutopilotWorkPaymentChallengeProjection | null
   paymentChallengeRef: string | null
+  placementDecision: AutopilotPlacementDecisionProjection
   placementPolicy: AutopilotWorkPlacementPolicyRecordProjection
   quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
@@ -259,6 +265,9 @@ type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
   makeId?: () => string
   makeStore: (env: Bindings) => AutopilotWorkStore
   nowIso?: () => string
+  pylonRegistrations?: (
+    env: Bindings,
+  ) => Promise<ReadonlyArray<PylonApiRegistrationRecord>>
 }>
 
 type AutopilotWorkRouteEnv = Readonly<Record<string, unknown>>
@@ -321,6 +330,24 @@ const routeNowIso = <Bindings>(
 const routeMakeId = <Bindings>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
 ): string => (dependencies.makeId ?? randomUuid)()
+
+const routePylonRegistrations = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  env: Bindings,
+): Effect.Effect<
+  ReadonlyArray<PylonApiRegistrationRecord>,
+  AutopilotWorkStoreError
+> =>
+  dependencies.pylonRegistrations === undefined
+    ? Effect.succeed([])
+    : Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        try: () => dependencies.pylonRegistrations?.(env) ?? Promise.resolve([]),
+      })
 
 const workOrderRefForId = (id: string): string =>
   id.startsWith('autopilot_work_order.')
@@ -736,6 +763,8 @@ const stateForRequest = (
 const projectionForRecord = (
   record: AutopilotWorkOrderRecord,
   idempotent: boolean,
+  nowIso: string,
+  pylonRegistrations: ReadonlyArray<PylonApiRegistrationRecord>,
 ): AutopilotWorkOrderProjection => {
   const work = {
     accessRequirements: accessRequirementsForRequest(record.request),
@@ -749,6 +778,12 @@ const projectionForRecord = (
     idempotent,
     paymentChallenge: paymentChallengeForRecord(record),
     paymentChallengeRef: record.paymentChallengeRef,
+    placementDecision: selectAutopilotPlacement({
+      nowIso,
+      ownerAgentUserId: record.agentUserId,
+      placementPolicy: record.request.placementPolicy,
+      pylonRegistrations,
+    }),
     placementPolicy: placementPolicyForRecord(record),
     quote: makeAutopilotWorkQuote(record.request),
     repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
@@ -864,6 +899,10 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     const nowIso = routeNowIso(dependencies)
+    const pylonRegistrations = yield* routePylonRegistrations(
+      dependencies,
+      env,
+    )
     const auth = yield* authenticateCustomerOrderAgentRequest(
       request,
       dependencies.agentStore(env),
@@ -898,7 +937,12 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
               }),
           })
       const record = paid ?? existing
-      const projection = projectionForRecord(record, true)
+      const projection = projectionForRecord(
+        record,
+        true,
+        nowIso,
+        pylonRegistrations,
+      )
 
       return record.state === 'payment_required'
         ? paymentRequiredResponse(record, projection)
@@ -934,6 +978,8 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     const projection = projectionForRecord(
       created.record,
       created.idempotent,
+      nowIso,
+      pylonRegistrations,
     )
 
     return created.record.state === 'payment_required'
@@ -957,6 +1003,10 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     const nowIso = routeNowIso(dependencies)
+    const pylonRegistrations = yield* routePylonRegistrations(
+      dependencies,
+      env,
+    )
     const auth = yield* authenticateCustomerOrderAgentRequest(
       request,
       dependencies.agentStore(env),
@@ -985,7 +1035,7 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     }
 
     return noStoreJsonResponse({
-      work: projectionForRecord(record, false),
+      work: projectionForRecord(record, false, nowIso, pylonRegistrations),
     })
   }).pipe(
     Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
