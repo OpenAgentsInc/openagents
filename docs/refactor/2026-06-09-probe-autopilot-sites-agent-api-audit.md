@@ -12,11 +12,14 @@ This audit maps the current OpenAgents systems against the desired next product
 shape:
 
 ```text
-agent or customer calls openagents.com with a batch of coding tasks
--> OpenAgents creates priced or free work orders
+user tells any capable agent "do this on Autopilot"
+-> that agent discovers/calls the OpenAgents Autopilot API
+-> OpenAgents creates a free, quoted, or paid work order
+-> OpenAgents asks for only the missing access, payment, or consent
 -> OpenAgents plans and fans out Probe/Pylon/runner assignments
 -> assignments run on approved infrastructure such as SHC, Pylons, user boxes,
-   cloud sandboxes, or later privacy-enhanced lanes
+   local Codex, cloud sandboxes, GCloud credits, TEEs, Maple AI, or later
+   privacy-enhanced lanes
 -> workers return redacted evidence, diffs, Sites, previews, tests, and receipts
 -> OpenAgents gates acceptance, payment, settlement, and public/forum reporting
 ```
@@ -29,6 +32,53 @@ The audit covers:
 - The new agent-first API and payment/fanout direction.
 - The requirement to fold existing Autopilot queue work into the new path and
   report public-safe status on the Forum.
+
+## Desired End State
+
+Autopilot should become the delegated coding-work endpoint for the OpenAgents
+network. A user should be able to tell their own agent, IDE agent, terminal
+agent, Pylon, or another agent-capable client:
+
+```text
+Do this on Autopilot.
+Delegate this to Autopilot.
+Have OpenAgents handle this.
+```
+
+The relevant agent should know, from OpenAgents discovery docs and capability
+manifests, how to submit the task to `openagents.com` without the user
+manually navigating the UI. The happy path is:
+
+1. The caller sends a typed work request to the Autopilot API.
+2. OpenAgents recognizes the caller, owner, repo, Pylon, or payment context if
+   available.
+3. If access is missing, OpenAgents returns a structured access request:
+   GitHub/repo grant, Pylon enrollment, secret-broker approval, privacy-tier
+   confirmation, operator approval, or customer review.
+4. If payment is required, OpenAgents returns an MDK checkout or L402 challenge
+   with stable pricing. Agent clients should be able to pay and retry.
+5. Once authorized and funded, OpenAgents chooses the lowest-friction allowed
+   placement: the user's local Pylon/Codex path first when available, then
+   OpenAgents SHC or cloud capacity, then paid privacy or premium lanes when
+   requested.
+6. OpenAgents launches one or more Probe-shaped workers, receives evidence,
+   gates acceptance, posts public-safe Forum progress where policy allows, and
+   settles eligible worker/provider/referral payments only after the relevant
+   acceptance gates clear.
+
+The product should be Pylon-first but not Pylon-only. Pylon should be the
+lowest-friction path when the user has it installed because it already gives
+OpenAgents presence, heartbeat, capability refs, local compute, wallet
+readiness, and future local secret boundaries. If the request comes from
+outside Pylon, the same API should still work: use existing owner-scoped agent
+auth when present, return access-required prompts when missing, and fall back
+to paid MDK/L402 entry when the user wants OpenAgents to supply the compute.
+
+This is the commercial loop: customers and agents pay OpenAgents through MDK
+checkout or L402 for coding work; OpenAgents uses local user compute,
+OpenAgents-owned capacity, cloud credits, or paid network capacity to perform
+the work; OpenAgents pays Pylons, providers, referrers, or contributors only
+from accepted-work and settlement ledgers, not from buyer checkout state alone.
 
 ## Source Set Reviewed
 
@@ -192,12 +242,16 @@ Current behavior:
 
 Gap:
 
+- There is no single "delegate to Autopilot" API contract that another agent
+  can call and then poll/stream until the work is done.
 - The API accepts one request string, not a typed batch of tasks with
   repository refs, privacy tier, placement constraints, acceptance criteria,
   budget, payment mode, forum-reporting policy, and per-task idempotency.
 - Creating an order does not automatically plan, lease, or launch network
   Probe assignments.
 - MDK checkout is not wired as the purchase path for software orders.
+- L402-style "pay this quoted amount, retry with proof, then launch" behavior
+  is not yet exposed for coding work orders.
 - Existing order queue records are not yet folded into a Probe-native task
   queue or Forum-reporting queue.
 
@@ -325,8 +379,14 @@ Current behavior:
 Gap:
 
 - Customer software-order checkout is not yet MDK-backed.
+- There is no production `POST /api/autopilot/work` or equivalent paid endpoint
+  where an unauthenticated or underfunded agent gets an HTTP 402 challenge,
+  pays with an agent wallet, and retries with `Authorization: L402
+  <token>:<preimage>`.
 - A buyer paying for an Autopilot coding task is not yet connected to
   assignment dispatch, accepted-work payout eligibility, and settlement.
+- Dynamic pricing for coding work has not been made deterministic across quote,
+  invoice/challenge creation, retry verification, and assignment launch.
 - Referral capture is attribution only; it does not create Bitcoin payout
   eligibility.
 - Hosted MDK direct programmatic payouts remain separately gated, and MDK is
@@ -402,6 +462,9 @@ Gap:
   broad availability across arbitrary user machines.
 - A Pylon can carry Probe runtime capability refs, but OpenAgents does not yet
   use a general scheduler to choose Pylons for customer coding orders.
+- Pylon is not yet treated as the preferred Autopilot execution context for
+  users who have a local machine, local Codex, local secrets, or local-only
+  placement policy available.
 
 ### 8. Pylon API And Assignment Lifecycle
 
@@ -439,6 +502,9 @@ Gap:
   not generalized.
 - The API does not yet assign arbitrary coding work from a customer order batch
   to Pylon-hosted Probe runtimes.
+- Heartbeat, wallet-readiness, and capability facts are not yet fed into a
+  product placement decision that says "use this user's Pylon first, otherwise
+  use OpenAgents/cloud capacity, otherwise ask for payment or access."
 
 ### 9. Forum Reporting Surface
 
@@ -500,17 +566,35 @@ Not built:
 - General secret-brokered paid coding tasks where customer secrets are exposed
   only to an approved worker lane.
 
-## Target API Contract That Is Missing
+## Target Autopilot Invocation Contract That Is Missing
 
-The current `/api/customer-orders` endpoint is the right seed, but the target
-needs a typed batch-work contract. A likely first version should be a new
-schema rather than overloading the single request string:
+The current `/api/customer-orders` endpoint is the right seed, but the product
+needs a typed invocation contract. A caller should be able to use one endpoint
+for "do this on Autopilot" and receive one of four durable outcomes:
+
+- `accepted_free_slice`: OpenAgents can start a bounded free/public-beta task.
+- `access_required`: the user must grant repo, secret, Pylon, privacy, or
+  operator access.
+- `payment_required`: OpenAgents returns an MDK checkout intent or L402
+  challenge.
+- `queued_or_running`: OpenAgents has accepted funding/access and created
+  task/assignment records.
+
+A likely first version should be a new schema rather than overloading the
+single request string:
 
 ```json
 {
-  "schema": "openagents.coding_work_order_batch.v1",
+  "schema": "openagents.autopilot_work_request.v1",
   "clientRequestRef": "client.example.20260609.001",
-  "mode": "free_slice_or_paid_quote",
+  "intent": "delegate_to_autopilot",
+  "mode": "free_slice_or_paid_quote_or_l402",
+  "caller": {
+    "kind": "registered_agent",
+    "agentId": "oa_agent_example",
+    "pylonId": "optional-pylon-id",
+    "agentWallet": "optional-mdk-agent-wallet-ref"
+  },
   "tasks": [
     {
       "taskRef": "task.repo.docs.001",
@@ -526,6 +610,12 @@ schema rather than overloading the single request string:
         "acceptance.customer.docs_updated",
         "acceptance.tests.pass"
       ],
+      "accessRequests": [
+        {
+          "kind": "github_repo_write",
+          "reason": "Required only if OpenAgents must open a branch or PR."
+        }
+      ],
       "forumReporting": {
         "mode": "public_safe_summary",
         "targetForumRef": "forum.product-promises"
@@ -534,15 +624,27 @@ schema rather than overloading the single request string:
   ],
   "placementPolicy": {
     "privacyTier": "public_beta",
-    "allowedRunnerKinds": ["shc", "pylon", "cloud_sandbox"],
+    "preferredRunnerKinds": ["requester_pylon", "openagents_shc"],
+    "allowedRunnerKinds": [
+      "requester_pylon",
+      "shc",
+      "pylon_network",
+      "cloud_sandbox",
+      "gcloud_credit",
+      "tee",
+      "maple_ai"
+    ],
     "disallowedRunnerKinds": [],
     "requiresSecretBroker": false,
+    "localOnlyAllowed": false,
     "publicTraceAllowed": true
   },
   "paymentPolicy": {
-    "buyerPaymentMode": "free_slice",
+    "buyerPaymentMode": "free_slice_or_mdk_checkout_or_l402",
     "maxSpendCents": 0,
-    "settlementMode": "no_worker_payout"
+    "quotedAmountCents": null,
+    "quoteRef": null,
+    "settlementMode": "no_worker_payout_until_accepted_work"
   }
 }
 ```
@@ -551,16 +653,46 @@ This schema should compile into durable records rather than prompt text:
 
 - one customer-visible order;
 - one or more task records;
+- one caller/access state record;
 - one placement policy record;
-- one payment/quote state;
+- one payment/quote/L402 state;
 - zero or more Probe/Pylon/runner assignments;
 - one Forum reporting policy;
 - one acceptance state machine;
 - one closeout bundle per assignment.
 
+The HTTP behavior should be explicit:
+
+- Authenticated and funded requests return `202 Accepted` with an order/run
+  projection and status URL.
+- Missing access returns a structured `403` or domain-level
+  `access_required` response with exactly the grant needed.
+- Paid requests that can be priced immediately may return HTTP `402` with an
+  MDK/L402 challenge: invoice, token, amount, currency, expiry, and retry
+  instructions.
+- The paid retry must use the L402 proof form, `Authorization: L402
+  <token>:<preimage>`, and must resolve to the same deterministic quote before
+  any assignment is launched.
+
 ## Required System To Bridge Current State To Target
 
-### 1. Order Batch Intake
+### 1. Autopilot Invocation Gateway
+
+Add an agent-readable Autopilot entrypoint for "do this on Autopilot."
+Candidate routes:
+
+- `POST /api/autopilot/work`
+- `GET /api/autopilot/work/{workOrderId}`
+- `GET /api/autopilot/work/{workOrderId}/events`
+
+The route should be documented in OpenAPI and the agent-facing discovery
+surface, with payment and retry semantics clear enough for non-OpenAgents
+agents to use it. If an unauthenticated or underfunded caller can pay for a
+public task without repo/private access, the route should support MDK checkout
+or L402. If repo access, secret access, or private placement is needed, it
+should return a structured access request before launching work.
+
+### 2. Order Batch Intake
 
 Add a typed batch intake route for agents. It should authenticate with either
 browser session or owner-granted registered-agent token, require
@@ -571,7 +703,7 @@ Do not add keyword routing to infer task kind or placement. Use an explicit
 typed `kind`, a modeled product selector, or a semantic planner whose decision
 is persisted as evidence.
 
-### 2. Order-To-Assignment Planner
+### 3. Order-To-Assignment Planner
 
 Add an internal service that converts batch tasks into assignment intents:
 
@@ -585,12 +717,13 @@ Add an internal service that converts batch tasks into assignment intents:
 The planner should record why a task is free, quote-required, paid, blocked,
 or needs human input. It should not launch workers directly.
 
-### 3. Placement And Lease Service
+### 4. Placement And Lease Service
 
 Create a backend-neutral placement service that can choose among:
 
 - SHC boxes;
-- Pylon-hosted Probe workers;
+- the requester's local Pylon or local Codex-backed Pylon;
+- Pylon-hosted Probe workers from the wider network;
 - Cloudflare Containers backup lanes;
 - GCloud/reference lanes;
 - future local-only, TEE, Maple AI, or other privacy lanes.
@@ -599,7 +732,13 @@ The input should be typed capability facts and placement policy refs, not
 prompt keywords. The output should be a lease offer with explicit trust,
 privacy, payment, expiration, callback, and closeout requirements.
 
-### 4. Probe Assignment Execution
+Pylon should be first in the placement order when it is online,
+capability-compatible, wallet/settlement state is acceptable for the selected
+payment mode, and the task can be performed within the user's local access
+boundary. This turns Pylon heartbeat and presence into product value rather
+than merely telemetry.
+
+### 5. Probe Assignment Execution
 
 Make Probe/Pylon the real worker for general coding tasks:
 
@@ -613,7 +752,7 @@ Make Probe/Pylon the real worker for general coding tasks:
 
 The same worker contract should run in SHC, Pylon, Containers, or other lanes.
 
-### 5. Payment And Settlement Integration
+### 6. Payment And Settlement Integration
 
 Separate three payment paths:
 
@@ -623,10 +762,14 @@ Separate three payment paths:
   gates clear.
 
 The immediate coding-work product should use MDK first for buyer-side agent
-checkout or L402 access. Worker payout should continue through Nexus/Treasury
-authority, not raw MDK checkout state.
+checkout or L402 access. The paid API contract should follow normal L402
+behavior: first request can return HTTP `402` with invoice/token metadata, the
+client pays, then retries with `Authorization: L402 <token>:<preimage>`.
+Dynamic prices must be deterministic between challenge creation and retry
+verification. Worker payout should continue through Nexus/Treasury authority,
+not raw MDK checkout state.
 
-### 6. Acceptance And Review
+### 7. Acceptance And Review
 
 Keep acceptance separate from worker completion:
 
@@ -642,7 +785,7 @@ Keep acceptance separate from worker completion:
 This matches the invariant boundary and prevents a Probe from declaring its
 own work accepted or payable.
 
-### 7. Forum Reporting And Queue Foldover
+### 8. Forum Reporting And Queue Foldover
 
 Add a Forum reporting bridge for Autopilot work:
 
@@ -671,15 +814,16 @@ The foldover should be dry-run first and produce a count of:
 | --- | --- | --- | --- |
 | Agent registration and home/check-in | Self-service agent tokens, home, manifest, OpenAPI | Broad scoped keys still gated | N/A |
 | Owner-granted agent authority | Customer-order and agent-Site grants | Self-service scoped key UX is limited | Broad deploy/spend/provider grants |
+| Autopilot invocation API | Customer-order and agent-Site seeds | No single "do this on Autopilot" route | Universal delegated work endpoint with access/payment prompts |
 | Customer order intake | `/api/customer-orders` create/list/read | Single request string, no batch schema | Automatic Probe fanout |
 | Autopilot goal/run substrate | Goals, runs, artifacts, callback history, operator runbooks | SHC-shaped and operator-administered | Fully automated work marketplace |
 | First-batch triage | Operator queue and assignment creation | Preflight/task packet only | Automatic launch from order |
 | Sites control plane | Projects, versions, deployments, runtime, events | Self-serve and existing-project build/import incomplete | Autonomous production deployment by agents |
 | Agent Sites API | Scoped create/session/preview/save/deploy-review | Deploy is request-only | Production deploy authority |
-| Site commerce/MDK | Manifest, checkout/L402 contracts, proof, bindings | Narrow live lanes, checkout evidence only | Software-order MDK checkout and payout loop |
+| Site commerce/MDK | Manifest, checkout/L402 contracts, proof, bindings | Narrow live lanes, checkout evidence only | Software-order MDK checkout/L402 revenue intake and payout loop |
 | Probe runtime | Assignment, grants, backends, telemetry, Blueprint, GEPA | No general live coding fleet path | Worker self-acceptance or payout authority, intentionally absent |
-| Pylon runtime | v0.3 rc, Probe runtime port, registration, heartbeat, no-spend assignment smoke | Paid work blocked without send-readiness | Broad stable earning network |
-| Pylon API | Registration, heartbeat, wallet readiness, controlled assignments | Not default Autopilot scheduler | Arbitrary coding task placement |
+| Pylon runtime | v0.3 rc, Probe runtime port, registration, heartbeat, no-spend assignment smoke | Paid work blocked without send-readiness | Broad stable earning network and local-first Autopilot execution |
+| Pylon API | Registration, heartbeat, wallet readiness, controlled assignments | Not default Autopilot scheduler | Arbitrary coding task placement from Autopilot orders |
 | Forum | Forum product, agents, paid actions, launch status | Probe GEPA summaries only for specific lane | Automatic order reporting/foldover |
 | Payment settlement | Pylon small-sats evidence and gates | Hosted direct payout disabled; order checkout missing | General accepted-work settlement marketplace |
 | Privacy placement | Redaction, secret refs, policy gates | No unified placement selector | Maple AI/TEE/private-worker integration |
@@ -690,23 +834,30 @@ The foldover should be dry-run first and produce a count of:
    `software_orders`, `adjutant_assignments`, Site projects, and fulfillment
    artifacts. Do not mutate records yet. Use it to decide which existing work
    can become public Forum summaries.
-2. **Define `coding_work_order_batch.v1`.** Add Effect Schema, OpenAPI, and
-   tests. Keep it contract-only before launch.
-3. **Add order-to-assignment planning.** Persist typed task and placement
-   decisions. Mark tasks `blocked`, `needs_quote`, `free_slice`, or
-   `ready_for_assignment`.
-4. **Wire no-spend Probe/Pylon assignment path.** Use Pylon `run-no-spend` and
+2. **Define `autopilot_work_request.v1`.** Add Effect Schema, OpenAPI, and
+   agent-readable docs for the "do this on Autopilot" endpoint. Include access,
+   payment, placement, event-stream, and status-response contracts before
+   launch.
+3. **Add MDK/L402 buyer revenue intake.** Start with deterministic quotes for
+   paid public tasks. Return HTTP `402` with invoice/token metadata, accept the
+   `Authorization: L402 <token>:<preimage>` retry, and persist buyer payment
+   evidence without treating it as worker payout authority.
+4. **Add order-to-assignment planning.** Persist typed task and placement
+   decisions. Mark tasks `blocked`, `access_required`, `payment_required`,
+   `free_slice`, `paid_ready`, or `ready_for_assignment`.
+5. **Make Pylon the preferred placement when available.** Feed Pylon heartbeat,
+   capability refs, wallet state, local Codex availability, and privacy policy
+   into the placement service before falling back to OpenAgents SHC, cloud,
+   GCloud credits, or other capacity.
+6. **Wire no-spend Probe/Pylon assignment path.** Use Pylon `run-no-spend` and
    Probe closeout refs for one small public task before paid work.
-5. **Add Forum reporting bridge.** Start with dry-run summaries, then
+7. **Add Forum reporting bridge.** Start with dry-run summaries, then
    operator-approved posts, then automatic posts only after redaction and
    idempotency gates pass.
-6. **Add buyer-side MDK checkout for paid order slices.** Treat checkout as
-   buyer payment evidence only. Do not connect it to worker settlement until
-   accepted-work receipts exist.
-7. **Add paid worker settlement ladder.** Reuse the Pylon paid-mode campaign
+8. **Add paid worker settlement ladder.** Reuse the Pylon paid-mode campaign
    ladder shape: payment receipts, closeout refs, settlement refs, send
    readiness, spend caps, and duplicate protection.
-8. **Add privacy placement tiers.** Start with `public_beta`, `openagents_shc`,
+9. **Add privacy placement tiers.** Start with `public_beta`, `openagents_shc`,
    and `customer_local_pylon`. Add TEE/Maple/private cloud only when concrete
    provider receipts and secret-boundary tests exist.
 
@@ -718,13 +869,15 @@ state, order feedback, fulfillment artifacts, Pylon APIs, Pylon runtime
 packaging, Probe runtime contracts, Forum APIs, public-safe projections, and
 payment/settlement gates.
 
-The missing product is the orchestrator between those pieces. Today an agent
-can create a work order, and operators can prepare or supervise fulfillment.
-Today Pylons and Probe-shaped runtimes can register, heartbeat, run no-spend
-smokes, and emit evidence in bounded lanes. What is not yet built is the single
-commercial API path that accepts a batch of coding tasks, prices them, chooses
-privacy-aware infrastructure, fans out Probe workers across SHC/Pylons/cloud,
-collects closeouts, gates acceptance, settles payments, and reports progress
-to the Forum.
+The missing product is the Autopilot invocation orchestrator between those
+pieces. Today an agent can create a work order, and operators can prepare or
+supervise fulfillment. Today Pylons and Probe-shaped runtimes can register,
+heartbeat, run no-spend smokes, and emit evidence in bounded lanes. What is
+not yet built is the single commercial API path that every capable agent can
+call when the user says "do this on Autopilot": accept the task, request only
+missing access, collect MDK/L402 payment when needed, prefer the user's Pylon
+or local Codex when available, fall back to OpenAgents or cloud capacity, fan
+out Probe workers across SHC/Pylons/cloud, collect closeouts, gate acceptance,
+settle payments, and report progress to the Forum.
 
 That should be the next implementation seam.
