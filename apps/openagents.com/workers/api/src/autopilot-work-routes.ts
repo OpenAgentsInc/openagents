@@ -242,13 +242,25 @@ export type AutopilotWorkOrderRecord = Readonly<{
 
 const AutopilotWorkExecutionCloseoutRecord = S.Struct({
   assignmentRefs: S.Array(S.String),
+  artifactRefs: S.optionalKey(S.Array(S.String)),
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  buildRefs: S.optionalKey(S.Array(S.String)),
   closeoutRefs: S.Array(S.String),
+  previewRefs: S.optionalKey(S.Array(S.String)),
   proofRefs: S.Array(S.String),
   resultRefs: S.Array(S.String),
   runnerKind: OpenAgentsAutopilotRunnerKind,
+  summaryRefs: S.optionalKey(S.Array(S.String)),
+  testRefs: S.optionalKey(S.Array(S.String)),
 })
 export type AutopilotWorkExecutionCloseoutRecord =
   typeof AutopilotWorkExecutionCloseoutRecord.Type
+
+export type AutopilotWorkerCloseoutIngestionInput = Readonly<{
+  assignment: PylonApiAssignmentRecord
+  body: Record<string, unknown>
+  nowIso: string
+}>
 
 export type AutopilotWorkExecutionCloseoutProjection =
   AutopilotWorkExecutionCloseoutRecord & Readonly<{
@@ -652,6 +664,18 @@ const publicSafeExecutionCloseoutRef = (value: string): boolean =>
 const allPublicSafeExecutionCloseoutRefs = (
   refs: ReadonlyArray<string>,
 ): boolean => refs.length > 0 && refs.every(publicSafeExecutionCloseoutRef)
+
+const optionalPublicSafeExecutionCloseoutRefs = (
+  refs: ReadonlyArray<string> | undefined,
+): boolean => refs === undefined || refs.every(publicSafeExecutionCloseoutRef)
+
+const publicSafeRefsFromBody = (
+  body: Record<string, unknown>,
+  key: string,
+): ReadonlyArray<string> =>
+  Array.isArray(body[key])
+    ? body[key].filter((ref): ref is string => typeof ref === 'string')
+    : []
 
 const buyerPaymentProofFromRequest = (
   request: Request,
@@ -1070,6 +1094,120 @@ const validateExecutionCloseoutForWork = (
   }
 
   return Effect.succeed(executionCloseout)
+}
+
+const codingAssignmentString = (
+  assignment: PylonApiAssignmentRecord,
+  key: string,
+): string | undefined => {
+  const value = assignment.codingAssignment?.[key]
+
+  return typeof value === 'string' ? value : undefined
+}
+
+const autopilotWorkOrderRefForAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): string | undefined =>
+  assignment.taskRefs.find(ref => ref.startsWith('autopilot_work_order.')) ??
+  codingAssignmentString(assignment, 'workOrderRef')
+
+const autopilotTaskRefForAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): string | undefined =>
+  codingAssignmentString(assignment, 'taskRef') ??
+  assignment.taskRefs.find(ref => ref.startsWith('task.'))
+
+const executionCloseoutFromPylonWorkerCloseout = (
+  input: Readonly<{
+    assignment: PylonApiAssignmentRecord
+    body: Record<string, unknown>
+    record: AutopilotWorkOrderRecord
+  }>,
+): Effect.Effect<AutopilotWorkExecutionCloseoutRecord, AutopilotWorkStoreError> => {
+  const workOrderRef = autopilotWorkOrderRefForAssignment(input.assignment)
+  const taskRef = autopilotTaskRefForAssignment(input.assignment)
+  const artifactRefs = publicSafeRefsFromBody(input.body, 'artifactRefs')
+  const blockerRefs = publicSafeRefsFromBody(input.body, 'blockerRefs')
+  const buildRefs = publicSafeRefsFromBody(input.body, 'buildRefs')
+  const closeoutRefs = publicSafeRefsFromBody(input.body, 'closeoutRefs')
+  const previewRefs = publicSafeRefsFromBody(input.body, 'previewRefs')
+  const proofRefs = publicSafeRefsFromBody(input.body, 'proofRefs')
+  const resultRefs = publicSafeRefsFromBody(input.body, 'resultRefs')
+  const summaryRefs = publicSafeRefsFromBody(input.body, 'summaryRefs')
+  const testRefs = publicSafeRefsFromBody(input.body, 'testRefs')
+  const executionCloseout: AutopilotWorkExecutionCloseoutRecord = {
+    assignmentRefs: [input.assignment.assignmentRef],
+    artifactRefs,
+    blockerRefs,
+    buildRefs,
+    closeoutRefs,
+    previewRefs,
+    proofRefs,
+    resultRefs,
+    runnerKind: 'requester_pylon',
+    summaryRefs,
+    testRefs,
+  }
+  const refsArePublicSafe =
+    allPublicSafeExecutionCloseoutRefs(executionCloseout.assignmentRefs) &&
+    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.artifactRefs) &&
+    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.blockerRefs) &&
+    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.buildRefs) &&
+    allPublicSafeExecutionCloseoutRefs(executionCloseout.closeoutRefs) &&
+    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.previewRefs) &&
+    allPublicSafeExecutionCloseoutRefs(executionCloseout.proofRefs) &&
+    allPublicSafeExecutionCloseoutRefs(executionCloseout.resultRefs) &&
+    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.summaryRefs) &&
+    optionalPublicSafeExecutionCloseoutRefs(executionCloseout.testRefs)
+  const refsMatch =
+    workOrderRef === input.record.workOrderRef &&
+    taskRef !== undefined &&
+    input.record.taskRefs.includes(taskRef) &&
+    input.assignment.ownerAgentUserId === input.record.agentUserId
+
+  if (!refsMatch || !refsArePublicSafe) {
+    return Effect.fail(
+      new AutopilotWorkStoreError({
+        kind: 'validation_error',
+        reason:
+          'Autopilot worker closeout must match the work order, task, assignment owner, and contain only public-safe closeout refs.',
+      }),
+    )
+  }
+
+  return Effect.succeed(executionCloseout)
+}
+
+export const recordAutopilotWorkerCloseoutFromPylon = async (
+  store: AutopilotWorkStore,
+  input: AutopilotWorkerCloseoutIngestionInput,
+): Promise<AutopilotWorkOrderRecord | undefined> => {
+  const workOrderRef = autopilotWorkOrderRefForAssignment(input.assignment)
+
+  if (workOrderRef === undefined) {
+    return undefined
+  }
+
+  const record = await store.readWorkOrder(workOrderRef)
+
+  if (record === undefined) {
+    return undefined
+  }
+
+  const executionCloseout = await Effect.runPromise(
+    executionCloseoutFromPylonWorkerCloseout({
+      assignment: input.assignment,
+      body: input.body,
+      record,
+    }),
+  )
+
+  return store.recordExecutionCloseout({
+    executionCloseout,
+    ownerUserId: record.ownerUserId,
+    updatedAt: input.nowIso,
+    workOrderRef: record.workOrderRef,
+  })
 }
 
 const maybeExecuteReadyWork = <Bindings extends AutopilotWorkRouteEnv>(

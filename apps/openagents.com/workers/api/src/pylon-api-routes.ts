@@ -8,6 +8,9 @@ import {
   authenticateProgrammaticAgent,
   sha256Hex,
 } from './agent-registration'
+import type {
+  AutopilotWorkerCloseoutIngestionInput,
+} from './autopilot-work-routes'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -55,6 +58,10 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
   makeId?: () => string
   makeStore: (env: Bindings) => PylonApiStore
   nowIso?: () => string
+  recordAutopilotWorkerCloseout?: (
+    env: Bindings,
+    input: AutopilotWorkerCloseoutIngestionInput,
+  ) => Promise<unknown>
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
 }>
 
@@ -857,6 +864,33 @@ const terminalAssignmentEventAllowed = (
   assignmentState === 'accepted_work' &&
   (eventKind === 'payment_receipt' || eventKind === 'settlement_status')
 
+const maybeRecordAutopilotWorkerCloseout = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    assignment: PylonApiAssignmentRecord
+    body: Record<string, unknown>
+    eventKind: PylonApiEventKind
+    nowIso: string
+  }>,
+): Effect.Effect<void, PylonApiStoreError> => {
+  const recordAutopilotWorkerCloseout =
+    dependencies.recordAutopilotWorkerCloseout
+
+  return input.eventKind !== 'worker_closeout' ||
+    recordAutopilotWorkerCloseout === undefined
+    ? Effect.void
+    : Effect.tryPromise({
+        catch: pylonApiStoreErrorFromUnknown,
+        try: () =>
+          recordAutopilotWorkerCloseout(env, {
+            assignment: input.assignment,
+            body: input.body,
+            nowIso: input.nowIso,
+          }),
+      }).pipe(Effect.asVoid)
+}
+
 const routeEvent = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   request: Request,
@@ -1004,6 +1038,14 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
                 nextAssignmentForEvent(assignment, eventResult.record, nowIso),
               ),
           })
+    if (storedAssignment !== undefined) {
+      yield* maybeRecordAutopilotWorkerCloseout(dependencies, env, {
+        assignment: storedAssignment,
+        body,
+        eventKind: input.eventKind,
+        nowIso,
+      })
+    }
     const nextRegistration = nextRegistrationForEvent(
       registration,
       eventResult.record,

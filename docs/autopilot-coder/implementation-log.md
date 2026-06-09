@@ -732,3 +732,36 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/pylon-api-routes.test.ts src/autopilot-coding-assignment.test.ts src/nexus-pylon-visibility-routes.test.ts src/artanis-pylon-proof-trace.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
 - `bun test --cwd apps/pylon tests/assignment.test.ts tests/live-worker-loop-smoke.test.ts`
+
+## OA-AUTO-023: Real Autopilot Worker Closeout And Artifact Ingestion
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4613`
+
+Status: implemented.
+
+Implemented:
+
+- Extended Autopilot execution closeout records to carry public-safe worker
+  artifact, blocker, build, preview, proof, result, summary, and test refs.
+- Added a Pylon worker-closeout ingestion helper that:
+  - infers the Autopilot `workOrderRef` and `taskRef` from the Pylon assignment
+    and normalized coding assignment payload;
+  - verifies the assignment owner matches the Autopilot agent user;
+  - validates that all projected closeout refs are public-safe;
+  - records the closeout through the Autopilot work store as `delivered`.
+- Wired the Pylon `worker_closeout` route to the Autopilot closeout ingester in
+  production.
+- Kept worker closeout separate from owner/customer acceptance, accepted-work
+  closeout, settlement, payout, deploy, spend, and Forum publication authority.
+- Added route coverage proving a Pylon worker closeout moves the Autopilot work
+  order to delivered and emits delivered events.
+- Added a redaction regression proving unsafe local-path-shaped closeout refs
+  are rejected before Autopilot delivery persistence.
+- Updated the Pylon runtime closeout contract to submit preview and summary
+  refs in addition to artifact/proof/build/test/result/blocker refs.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/pylon-api-routes.test.ts src/autopilot-coding-assignment.test.ts src/nexus-pylon-visibility-routes.test.ts src/artanis-pylon-proof-trace.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
+- `bun test --cwd apps/pylon tests/assignment.test.ts tests/live-worker-loop-smoke.test.ts`

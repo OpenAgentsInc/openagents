@@ -209,9 +209,11 @@ export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
   blockerRefs: PublicSafeRefs,
   buildRefs: PublicSafeRefs,
   closeoutRefs: PublicSafeRefs,
+  previewRefs: PublicSafeRefs,
   proofRefs: PublicSafeRefs,
   resultRefs: PublicSafeRefs,
   status: S.optionalKey(PylonEventStatus),
+  summaryRefs: PublicSafeRefs,
   testRefs: PublicSafeRefs,
 })
 export type PylonApiAssignmentWorkerCloseoutRequest =

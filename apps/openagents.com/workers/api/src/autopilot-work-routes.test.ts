@@ -14,6 +14,7 @@ import {
   type AutopilotWorkOrderRecord,
   type AutopilotWorkStore,
   makeAutopilotWorkRoutes,
+  recordAutopilotWorkerCloseoutFromPylon,
 } from './autopilot-work-routes'
 import type {
   PylonApiAssignmentRecord,
@@ -391,6 +392,9 @@ const pylonRoute = async (
     headers?: HeadersInit
     idempotencyKey?: string
     method?: string
+    recordAutopilotWorkerCloseout?: Parameters<
+      typeof makePylonApiRoutes<Record<string, unknown>>
+    >[0]['recordAutopilotWorkerCloseout']
     token?: string
   }> = {},
 ) => {
@@ -398,6 +402,12 @@ const pylonRoute = async (
     agentStore: () => agentStoreForScopes(),
     makeStore: () => store,
     nowIso: () => '2026-06-09T17:30:30.000Z',
+    ...(options.recordAutopilotWorkerCloseout === undefined
+      ? {}
+      : {
+          recordAutopilotWorkerCloseout:
+            options.recordAutopilotWorkerCloseout,
+        }),
   })
   const body = options.body === undefined
     ? {}
@@ -1000,6 +1010,181 @@ describe('Autopilot work routes', () => {
       assignmentRef,
       leaseState: 'active',
       state: 'accepted',
+    })
+  })
+
+  test('ingests Pylon worker closeout refs into delivered Autopilot work', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([
+      pylonRegistration({
+        pylonRef: 'pylon.production.docs_agent',
+      }),
+    ])
+    const assignmentRef =
+      'pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract'
+    const create = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-pylon-closeout',
+      pylonApiStore,
+    })
+
+    expect(create.status).toBe(202)
+
+    const accept = await pylonRoute(
+      pylonApiStore,
+      `/api/pylons/pylon.production.docs_agent/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.autopilot_pylon.accepted'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-autopilot-pylon-closeout',
+        method: 'POST',
+      },
+    )
+    const closeout = await pylonRoute(
+      pylonApiStore,
+      `/api/pylons/pylon.production.docs_agent/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          artifactRefs: ['artifact.public.autopilot_docs.patch_summary'],
+          blockerRefs: [],
+          buildRefs: ['build.public.autopilot_docs.not_required'],
+          closeoutRefs: ['closeout.public.autopilot_docs.worker_summary'],
+          previewRefs: ['preview.public.autopilot_docs.not_required'],
+          proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
+          resultRefs: ['result.public.autopilot_docs.delivered'],
+          status: 'closeout_submitted',
+          summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
+          testRefs: ['test.public.autopilot_docs.not_required'],
+        },
+        idempotencyKey: 'worker-closeout-autopilot-pylon',
+        method: 'POST',
+        recordAutopilotWorkerCloseout: (_env, input) =>
+          recordAutopilotWorkerCloseoutFromPylon(store, input),
+      },
+    )
+    const delivered = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const events = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/events',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const deliveredJson = await responseJson(delivered)
+    const eventsJson = await responseJson(events)
+    const closeoutJson = await responseJson(closeout)
+
+    expect(accept.status).toBe(201)
+    expect(closeout.status).toBe(201)
+    expect(closeoutJson.assignment).toMatchObject({
+      assignmentRef,
+      acceptedWorkRefs: [],
+      artifactRefs: ['artifact.public.autopilot_docs.patch_summary'],
+      closeoutRefs: ['closeout.public.autopilot_docs.worker_summary'],
+      proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
+      state: 'closeout_submitted',
+    })
+    expect(delivered.status).toBe(200)
+    expect(deliveredJson.work).toMatchObject({
+      executionCloseout: {
+        acceptedWorkAuthority: false,
+        artifactRefs: ['artifact.public.autopilot_docs.patch_summary'],
+        blockerRefs: [],
+        buildRefs: ['build.public.autopilot_docs.not_required'],
+        closeoutRefs: ['closeout.public.autopilot_docs.worker_summary'],
+        forumAutoPublishAllowed: false,
+        previewRefs: ['preview.public.autopilot_docs.not_required'],
+        proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
+        publicSafe: true,
+        resultRefs: ['result.public.autopilot_docs.delivered'],
+        runnerKind: 'requester_pylon',
+        summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
+        testRefs: ['test.public.autopilot_docs.not_required'],
+        workerPayoutAuthority: false,
+      },
+      nextAction: {
+        reasonRefs: ['next_action.review_delivered_work'],
+        state: 'delivered',
+      },
+      state: 'delivered',
+    })
+    expect(events.status).toBe(200)
+    expect(eventsJson.events).toEqual([
+      expect.objectContaining({ eventKind: 'queued' }),
+      expect.objectContaining({ eventKind: 'delivered' }),
+    ])
+  })
+
+  test('rejects unsafe Pylon worker closeout refs before Autopilot delivery persistence', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([
+      pylonRegistration({
+        pylonRef: 'pylon.production.docs_agent',
+      }),
+    ])
+    const assignmentRef =
+      'pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract'
+
+    await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-unsafe-pylon-closeout',
+      pylonApiStore,
+    })
+    await pylonRoute(
+      pylonApiStore,
+      `/api/pylons/pylon.production.docs_agent/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.autopilot_pylon.accepted'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-autopilot-pylon-unsafe-closeout',
+        method: 'POST',
+      },
+    )
+
+    const closeout = await pylonRoute(
+      pylonApiStore,
+      `/api/pylons/pylon.production.docs_agent/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          artifactRefs: ['artifact.public./Users/christopher/raw.patch'],
+          closeoutRefs: ['closeout.public.autopilot_docs.worker_summary'],
+          proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
+          resultRefs: ['result.public.autopilot_docs.delivered'],
+          status: 'closeout_submitted',
+        },
+        idempotencyKey: 'worker-closeout-autopilot-pylon-unsafe',
+        method: 'POST',
+        recordAutopilotWorkerCloseout: (_env, input) =>
+          recordAutopilotWorkerCloseoutFromPylon(store, input),
+      },
+    )
+    const recovered = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const recoveredJson = await responseJson(recovered)
+
+    expect(closeout.status).toBe(400)
+    expect(recovered.status).toBe(200)
+    expect(recoveredJson.work).toMatchObject({
+      executionCloseout: null,
+      state: 'queued_or_running',
     })
   })
 

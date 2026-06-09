@@ -89,9 +89,11 @@ export type AssignmentCloseout = {
   blockerRefs: string[]
   buildRefs: string[]
   closeoutRefs: string[]
+  previewRefs: string[]
   proofRefs: string[]
   receiptRefs: string[]
   resultRefs: string[]
+  summaryRefs: string[]
   testRefs: string[]
   redacted: true
   completedAt: string
@@ -548,9 +550,11 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       blockerRefs: ["blocker.assignment.progress_or_artifact_rejected"],
       buildRefs: [],
       closeoutRefs: [stableRef("assignment.closeout.failure", `${lease.leaseRef}:${status}`)],
+      previewRefs: [],
       proofRefs: [failureProofRef],
       receiptRefs: [acceptance.statusRef, ...psionicCloseoutReceiptRefs(lease, options)],
       resultRefs: [],
+      summaryRefs: [stableRef("assignment.summary.failure", `${lease.leaseRef}:${status}`)],
       testRefs: [],
       redacted: true,
       completedAt: observedAt,
@@ -570,6 +574,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     blockerRefs: [],
     buildRefs: [stableRef("assignment.build.not_required", lease.leaseRef)],
     closeoutRefs: [stableRef("assignment.closeout.summary", lease.leaseRef)],
+    previewRefs: [stableRef("assignment.preview.not_required", lease.leaseRef)],
     proofRefs: [proofRef],
     receiptRefs: [
       acceptance.statusRef,
@@ -578,6 +583,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       ...psionicCloseoutReceiptRefs(lease, options),
     ],
     resultRefs: [stableRef("assignment.result.public_safe", lease.assignmentRef)],
+    summaryRefs: [stableRef("assignment.summary.public_safe", lease.assignmentRef)],
     testRefs: [stableRef("assignment.test.not_required", lease.leaseRef)],
     redacted: true,
     completedAt: observedAt,

@@ -80,6 +80,7 @@ import { makeBillingApiHandlers } from './billing-routes'
 import {
   makeAutopilotWorkRoutes,
   makeD1AutopilotWorkStore,
+  recordAutopilotWorkerCloseoutFromPylon,
 } from './autopilot-work-routes'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
@@ -5378,6 +5379,11 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   makeStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  recordAutopilotWorkerCloseout: (env, input) =>
+    recordAutopilotWorkerCloseoutFromPylon(
+      makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+      input,
+    ),
   requireAdminApiToken,
 })
 
