@@ -18,27 +18,21 @@ execution authority.
 
 ## Signed Requests
 
-Presence requests currently include NIP-98-style headers:
+Presence requests now use strict NIP-98 HTTP auth:
 
 - `x-pylon-ref`
-- `x-nip98-pubkey`
-- `x-nip98-created-at`
-- `x-nip98-body-sha256`
-- `x-nip98-signature`
+- `Authorization: Nostr <base64-kind-27235-event>`
 
-The body hash is computed over the exact JSON request body. Link complete and
-refresh bodies also include their body hash as a field so endpoint handlers can
-validate request integrity before linking a Pylon identity.
+The NIP-98 event is signed by the local NIP-06 Pylon key derived from
+`identity.mnemonic`. The event uses kind `27235`, includes `u`, `method`, and
+`payload` tags, hashes the exact JSON request body with SHA-256 hex, and signs
+the event id with `secp256k1` Schnorr. The old Ed25519 `identity.json` signer
+and `x-nip98-*` custom headers are no longer used for Pylon Nostr-bound
+requests.
 
-These headers are not Nostr and should not survive as a NIP-98-labeled path.
-They are signed with the current local Pylon Ed25519 identity from
-`identity.json`, and `x-nip98-pubkey` carries the synthetic local `npub` value.
-The Nostr migration must replace this with
-`Authorization: Nostr <base64-kind-27235-event>` signed by the real NIP-06
-Pylon key, verifying method, URL, timestamp freshness, event id, Schnorr
-signature, and exact request-body hash. If a temporary local signed-request
-path remains for non-Nostr compatibility, it must be renamed so it does not use
-NIP-98 or `npub` terminology.
+Link complete and refresh bodies also include their body hash as a field so
+endpoint handlers can validate request integrity before linking a Pylon
+identity.
 
 ## CLI
 

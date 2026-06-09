@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises"
-import { createHash, sign } from "node:crypto"
+import { createHash } from "node:crypto"
 import type { BootstrapSummary } from "./bootstrap"
+import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity"
 import {
   assertPublicProjectionSafe,
   ensurePylonLocalState,
@@ -58,22 +58,22 @@ export async function createSignedHeaders(input: {
   url: string
   body: string
   pylonRef: string
-  identityPath: string
+  paths: BootstrapSummary["paths"]
   now?: Date
 }) {
-  const privateIdentity = JSON.parse(await readFile(input.identityPath, "utf8")) as { privateKeyPem: string; npub: string }
-  const createdAt = (input.now ?? new Date()).toISOString()
-  const bodyHash = sha256Base64Url(input.body)
-  const payload = [input.method.toUpperCase(), input.url, bodyHash, createdAt, input.pylonRef].join("\n")
-  const signature = sign(null, Buffer.from(payload), privateIdentity.privateKeyPem).toString("base64url")
+  const identity = await loadOrCreateNostrIdentity(input.paths)
+  const event = createNip98Event({
+    method: input.method,
+    url: input.url,
+    body: input.body,
+    identity,
+    now: input.now,
+  })
 
   return {
     "content-type": "application/json",
     "x-pylon-ref": input.pylonRef,
-    "x-nip98-pubkey": privateIdentity.npub,
-    "x-nip98-created-at": createdAt,
-    "x-nip98-body-sha256": bodyHash,
-    "x-nip98-signature": signature,
+    authorization: encodeNip98Authorization(event),
   }
 }
 
@@ -87,7 +87,7 @@ async function postJson(options: PresenceClientOptions, path: string, body: Json
     url,
     body: text,
     pylonRef: state.identity.pylonRef,
-    identityPath: state.paths.identity,
+    paths: state.paths,
     now: options.now?.(),
   })
   const response = await fetchImpl(url, { method: "POST", headers, body: text })
@@ -162,7 +162,7 @@ export async function completePylonLink(summary: BootstrapSummary, options: Pres
     pylonRef: state.identity.pylonRef,
     npub: state.identity.npub,
     publicKey: state.identity.publicKey,
-  }
+  } as const
   const body: PylonLinkRequest = {
     ...bodyWithoutHash,
     bodyHash: sha256Base64Url(JSON.stringify(bodyWithoutHash)),
@@ -186,7 +186,7 @@ export async function refreshPylonLink(summary: BootstrapSummary, options: Prese
     pylonRef: state.identity.pylonRef,
     npub: state.identity.npub,
     publicKey: state.identity.publicKey,
-  }
+  } as const
   const body: PylonLinkRequest = {
     ...bodyWithoutHash,
     bodyHash: sha256Base64Url(JSON.stringify(bodyWithoutHash)),

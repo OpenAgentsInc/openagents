@@ -22,7 +22,7 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>) {
 }
 
 describe("Pylon identity and public projection state", () => {
-  test("creates and reloads a persisted local identity without projecting private key material", async () => {
+  test("creates and reloads a persisted NIP-06 identity without projecting private key material", async () => {
     await withTempHome(async (home) => {
       const summary = createBootstrapSummary(
         parseBootstrapArgs(["--pylon-ref", "pylon.test.identity", "--display-name", "State Test"]),
@@ -41,7 +41,10 @@ describe("Pylon identity and public projection state", () => {
       expect(first.pylonRef).toBe("pylon.test.identity")
       expect(first.nodeLabel).toBe("state-test")
       expect(first.npub.startsWith("npub1")).toBe(true)
-      expect(rawIdentity).toContain("privateKeyPem")
+      expect(first.publicKey).toMatch(/^[0-9a-f]{64}$/)
+      expect(rawIdentity).not.toContain("privateKeyPem")
+      expect(rawIdentity).not.toContain("nsec")
+      expect(rawIdentity).not.toContain("mnemonic")
       expect(JSON.stringify(first)).not.toContain("privateKeyPem")
     })
   })
@@ -58,9 +61,12 @@ describe("Pylon identity and public projection state", () => {
 
       expect(projected.kind).toBe("status")
       expect(projected.state.identity.nodeLabel).toBe("status-test")
+      expect(projected.state.identity.publicKey).toMatch(/^[0-9a-f]{64}$/)
       expect(projected.state.runtime.lifecycle).toBe("offline")
       expect(projected.state.runtime.capabilityRefs).toEqual(["cap.gepa.retained.v1"])
       expect(JSON.stringify(projected)).not.toContain("privateKeyPem")
+      expect(JSON.stringify(projected)).not.toContain("nsec")
+      expect(JSON.stringify(projected)).not.toContain("mnemonic")
       expect(existsSync(state.paths.runtimeState)).toBe(true)
     })
   })
@@ -68,7 +74,12 @@ describe("Pylon identity and public projection state", () => {
   test("accepts safe identity, availability, heartbeat, inventory, and receipt projection shapes", () => {
     expect(() =>
       assertPublicProjectionSafe({
-        identity: { pylonRef: "pylon.public", npub: "npub1abc", publicKey: "pub", nodeLabel: "public" },
+        identity: {
+          pylonRef: "pylon.public",
+          npub: "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu",
+          publicKey: "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917",
+          nodeLabel: "public",
+        },
         admin: { operatorRef: "operator.public", approved: false },
         availability: { lifecycle: "assignment-ready", blockerRefs: [] },
         inventory: { cpuCores: 8, memoryGb: 32, backendRefs: ["backend.apple_fm.ready"] },

@@ -115,38 +115,26 @@ The current product-promise registry intentionally keeps Nostr claims scoped:
 - `protocol.bitcoin_nostr_agent_economy.v1` is yellow. Bitcoin and Nostr are
   the strategic direction, but only some live routes use those rails today.
 
-The current Pylon implementation has identity and signed-presence scaffolding:
+The current Pylon implementation now has real NIP-06 identity and NIP-98
+client signing:
 
-- `identity.json` stores local private identity material.
+- `identity.mnemonic` stores the local BIP39 NIP-06 mnemonic with private file
+  permissions.
+- `identity.json` stores public local identity metadata only.
 - `pylon status --json` projects only public identity fields such as `nodeId`,
-  `pylonRef`, `nodeLabel`, `publicKey`, `npub`, and `createdAt`.
-- Presence calls send `x-nip98-*` headers for registration, heartbeat, link
-  complete, and link refresh.
+  `pylonRef`, `nodeLabel`, 32-byte lowercase hex `publicKey`, valid NIP-19
+  `npub`, and `createdAt`.
+- Presence and tokenless assignment calls send strict NIP-98
+  `Authorization: Nostr <base64-kind-27235-event>` auth signed by the NIP-06
+  key.
 - Public projection guards reject private keys, wallet material, raw prompts,
   provider credentials, raw invoices, raw offers, preimages, and related secret
   shapes.
 
-However, the current Pylon identity is not a real Nostr identity:
-
-- `createPylonIdentity` uses Node `ed25519`, while NIP-01 uses Schnorr
-  signatures over `secp256k1`.
-- `publicKey` is base64url-encoded DER SPKI, not the 32-byte lowercase hex
-  public key required in Nostr events.
-- `npub` is generated as `npub1` plus a truncated hash, not NIP-19 bech32.
-- Presence headers are NIP-98-shaped, but they are not the NIP-98
-  `Authorization: Nostr <base64-kind-27235-event>` flow.
-- The fake server tests check the body hash and that a signature exists; they
-  do not verify a real Nostr event signature.
-
-This is useful local binding scaffolding, but it should be renamed or migrated
-before any public docs call it live Nostr identity.
-
-The implementation target is replacement for all Nostr-facing behavior. The
-current Ed25519 `identity.json` signer and synthetic `npub` must not be sent on
-any path labeled Nostr, NIP-98, relay event signing, Forum Nostr claim, or
-orange-check claim. If that local identity remains temporarily, it is only
-legacy local state for non-Nostr continuity while the NIP-06 identity replaces
-public signing and projection.
+This replaced the old Ed25519 `identity.json` signer and synthetic `npub` for
+Pylon Nostr-facing client behavior. Any remaining non-client endpoint work must
+continue to reject the old synthetic identity path on anything labeled Nostr,
+NIP-98, relay event signing, Forum Nostr claim, or orange-check claim.
 
 ### Rust Pylon NIP-06 compatibility finding
 
@@ -451,13 +439,17 @@ solve connection coordination plus colocated storage.
 ### Phase 0: keep claims honest
 
 - Keep current Nostr product promises red/yellow.
-- Do not call current Pylon `npub` a real Nostr identity in public copy.
-- Add a blocker ref for "current Pylon identity is not NIP-01/NIP-19
-  compatible" wherever launch or status copy needs it.
+- Do not call legacy synthetic `identity.json.npub` values real Nostr
+  identities in public copy.
+- Keep Nostr product claims scoped to implemented Pylon identity/client
+  signing, not Forum federation, orange-check, server binding, assignment
+  authority, settlement, or NIP-90 marketplace authority.
 
 ### Phase 1: replace current Nostr-facing identity with NIP-06
 
-- Replace the current Nostr-facing use of `identity.json` with a NIP-06 Pylon
+- Status: implemented for Pylon client identity and tokenless signed requests
+  in issue <https://github.com/OpenAgentsInc/openagents/issues/4622>.
+- Replaced the current Nostr-facing use of `identity.json` with a NIP-06 Pylon
   identity. Do not keep Ed25519-derived `publicKey` or synthetic `npub` in any
   public Nostr projection or NIP-98-labeled request.
 - Resolve historical Rust Pylon identity first:
@@ -483,7 +475,10 @@ solve connection coordination plus colocated storage.
 
 ### Phase 2: strict NIP-98 key binding
 
-- Replace the current `x-nip98-*` Ed25519 header flow for Nostr-bound
+- Status: Pylon client signing implemented; OpenAgents server-side verification
+  and binding endpoints remain to be implemented before accepting public Nostr
+  claims as product authority.
+- Replaced the current `x-nip98-*` Ed25519 header flow for Pylon tokenless
   endpoints. Do not supplement it with a parallel Nostr path while retaining
   synthetic NIP-98 headers.
 - Add an OpenAgents endpoint that accepts real NIP-98

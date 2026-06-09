@@ -310,7 +310,7 @@ async function postJson(options: AssignmentClientOptions, path: string, body: Js
           url,
           body: text,
           pylonRef: state.identity.pylonRef,
-          identityPath: state.paths.identity,
+          paths: state.paths,
           now: options.now?.(),
         })),
         "Idempotency-Key": idempotencyKey,
@@ -337,7 +337,7 @@ async function getJson(options: AssignmentClientOptions, path: string, state: Py
         url,
         body: "",
         pylonRef: state.identity.pylonRef,
-        identityPath: state.paths.identity,
+        paths: state.paths,
         now: options.now?.(),
       })
   const response = await fetchImpl(url, { method: "GET", headers })

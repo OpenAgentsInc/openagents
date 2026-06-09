@@ -12,6 +12,7 @@ import {
   sha256Base64Url,
   withPresenceRetry,
 } from "../src/presence"
+import { verifyNip98Authorization } from "../src/nostr-identity"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState } from "../src/state"
 
 const servers: ReturnType<typeof Bun.serve>[] = []
@@ -40,9 +41,18 @@ function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
       const body = text ? JSON.parse(text) : {}
       requests.push({ path: url.pathname, body, headers: request.headers })
 
-      expect(request.headers.get("x-nip98-body-sha256")).toBe(sha256Base64Url(text))
-      expect(request.headers.get("x-nip98-signature")).toBeTruthy()
+      const event = verifyNip98Authorization(request.headers.get("authorization"), {
+        method: request.method,
+        url: request.url,
+        body: text,
+        maxSkewSeconds: 300_000,
+      })
+      expect(request.headers.get("x-nip98-body-sha256")).toBeNull()
+      expect(request.headers.get("x-nip98-signature")).toBeNull()
+      expect(request.headers.get("x-nip98-pubkey")).toBeNull()
       expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
+      if (body.identity?.publicKey) expect(event.pubkey).toBe(body.identity.publicKey)
+      if (body.publicKey) expect(event.pubkey).toBe(body.publicKey)
 
       if (url.pathname.includes("/heartbeat") && heartbeatFailures > 0) {
         heartbeatFailures -= 1

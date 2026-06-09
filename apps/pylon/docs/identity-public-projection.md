@@ -9,29 +9,26 @@ Pylon resolves local state from `PYLON_HOME` or `~/.pylon`.
 The managed paths are:
 
 - `config.json` for public-safe bootstrap config;
-- `identity.json` for local identity material;
+- `identity.json` for public local identity metadata;
+- `identity.mnemonic` for the private NIP-06 mnemonic when an explicit
+  `PYLON_HOME` is selected;
 - `runtime-state.json` for lifecycle, resource mode, capability refs, and
   blocker refs;
 - `ledger.jsonl` reserved for later wallet/settlement events;
 - `cache/` and `cache/releases/` for release/update artifacts.
 
-`identity.json` contains local private key material and must not be projected
-or copied into public evidence. `pylon status --json` emits only the public
-identity fields: `nodeId`, `pylonRef`, `nodeLabel`, `publicKey`, `npub`, and
-`createdAt`.
+`identity.json` does not contain signing key material. It mirrors only public
+identity fields: `nodeId`, `pylonRef`, `nodeLabel`, the 32-byte lowercase hex
+Nostr `publicKey`, valid NIP-19 `npub`, and `createdAt`. The mnemonic, `nsec`,
+and private hex key stay in the private mnemonic file and must not be projected
+or copied into public evidence.
 
-## Nostr Compatibility Caveat
+## Nostr Identity
 
-The current v0.3 `identity.json` is a local Pylon bootstrap identity. It is not
-yet a real Nostr identity: the key is Ed25519, `publicKey` is DER material, and
-`npub` is a local synthetic value rather than a NIP-19 encoding.
-
-The Nostr migration target is replacement, not augmentation. After the NIP-06
-identity issue lands, `identity.json` must not be the source for any public
-Nostr pubkey, public `npub`, NIP-98 request signer, relay event signer, or
-orange-check/forum claim signer. If the file remains, it is only legacy local
-state for preserving non-Nostr continuity such as `pylonRef` until that state
-is migrated or retired.
+Pylon v0.3 now uses a real NIP-06 Nostr identity for public Nostr fields and
+signed Nostr-bound requests. `identity.json` is not the signer. It must not be
+used as the source for any private key, `nsec`, relay event signature, Forum
+Nostr claim signature, orange-check claim signature, or NIP-98 auth.
 
 The deprecated Rust Pylon that previously lived inside this repo used a real
 NIP-06 identity. It stored a BIP39 mnemonic at `identity.mnemonic`, defaulting
@@ -41,13 +38,13 @@ to `~/.openagents/pylon/identity.mnemonic`, with these compatibility inputs:
 - historical Pylon config `identity_path`;
 - `OPENAGENTS_PYLON_HOME/identity.mnemonic`.
 
-The new Nostr identity implementation must check those historical locations
-before creating any new key. When a valid mnemonic exists, it should derive the
-same account-zero NIP-06 key at `m/44'/1237'/0'/0/0` and project only public
-fields such as hex pubkey and valid `npub`. If no mnemonic exists, it should
-create a new mnemonic at the selected compatibility path with private file
-permissions and keep the mnemonic, `nsec`, and private hex material out of
-public projection.
+The current implementation checks those historical locations before creating
+any new key. When a valid mnemonic exists, it derives the same account-zero
+NIP-06 key at `m/44'/1237'/0'/0/0` and projects only public fields. If no
+mnemonic exists, it creates a new 12-word BIP39 English mnemonic at the
+selected compatibility path with private file permissions. Empty, invalid, or
+group/world-readable mnemonic files fail closed instead of silently
+regenerating a different identity.
 
 ## Lifecycle States
 

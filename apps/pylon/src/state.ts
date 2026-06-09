@@ -1,15 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
-import { createHash, generateKeyPairSync, randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { hostname } from "node:os"
 import { dirname } from "node:path"
 import type { BootstrapSummary } from "./bootstrap"
 import type { PylonHostInventoryProjection } from "./inventory"
+import { loadOrCreateNostrIdentity } from "./nostr-identity"
 
 export type PylonLifecycleState = "offline" | "online" | "paused" | "degraded" | "assignment-ready"
 
 export type PylonPaths = BootstrapSummary["paths"] & {
   identity: string
+  identityMnemonic: string
   runtimeState: string
   presenceState: string
   assignmentState: string
@@ -25,8 +27,8 @@ export type PylonIdentity = {
   createdAt: string
 }
 
-export type PylonPrivateIdentityRecord = PylonIdentity & {
-  privateKeyPem: string
+export type PylonIdentityRecord = PylonIdentity & {
+  legacyLocalNpub?: string
 }
 
 export type PylonRuntimeState = {
@@ -102,6 +104,7 @@ export function resolveStatePaths(paths: BootstrapSummary["paths"]): PylonPaths 
   return {
     ...paths,
     identity: `${paths.home}/identity.json`,
+    identityMnemonic: `${paths.home}/identity.mnemonic`,
     runtimeState: `${paths.home}/runtime-state.json`,
     presenceState: `${paths.home}/presence-state.json`,
     assignmentState: `${paths.home}/assignment-state.json`,
@@ -116,16 +119,13 @@ export async function ensureStateDirectories(paths: PylonPaths) {
   await mkdir(dirname(paths.ledger), { recursive: true })
 }
 
-export function createPylonIdentity(input: { nodeLabel?: string; pylonRef?: string; now?: Date } = {}) {
-  const keyPair = generateKeyPairSync("ed25519", {
-    publicKeyEncoding: { type: "spki", format: "der" },
-    privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  })
-  const publicKey = Buffer.from(keyPair.publicKey).toString("base64url")
+export async function createPylonIdentity(input: { paths: PylonPaths; nodeLabel?: string; pylonRef?: string; now?: Date }) {
+  const nostrIdentity = await loadOrCreateNostrIdentity(input.paths)
+  const publicKey = nostrIdentity.publicKey
   const nodeId = `pylon_${stableHash(publicKey)}`
   const nodeLabel = sanitizeLabel(input.nodeLabel ?? hostname())
   const pylonRef = input.pylonRef ?? `pylon.${stableHash(`${nodeLabel}:${publicKey}`, 20)}`
-  const npub = `npub1${stableHash(publicKey, 52)}`
+  const npub = nostrIdentity.npub
   const createdAt = (input.now ?? new Date()).toISOString()
 
   return {
@@ -135,13 +135,18 @@ export function createPylonIdentity(input: { nodeLabel?: string; pylonRef?: stri
     publicKey,
     npub,
     createdAt,
-    privateKeyPem: keyPair.privateKey,
-  } satisfies PylonPrivateIdentityRecord
+  } satisfies PylonIdentity
 }
 
-function publicIdentity(record: PylonPrivateIdentityRecord): PylonIdentity {
-  const { privateKeyPem: _privateKeyPem, ...identity } = record
-  return identity
+function publicIdentity(record: PylonIdentityRecord): PylonIdentity {
+  return {
+    nodeId: record.nodeId,
+    pylonRef: record.pylonRef,
+    nodeLabel: record.nodeLabel,
+    publicKey: record.publicKey,
+    npub: record.npub,
+    createdAt: record.createdAt,
+  }
 }
 
 async function readJsonFile<T>(path: string): Promise<T | null> {
@@ -151,10 +156,19 @@ async function readJsonFile<T>(path: string): Promise<T | null> {
 
 export async function loadOrCreateIdentity(paths: PylonPaths, input: { nodeLabel?: string; pylonRef?: string } = {}) {
   await ensureStateDirectories(paths)
-  const existing = await readJsonFile<PylonPrivateIdentityRecord>(paths.identity)
-  if (existing) return publicIdentity(existing)
-
-  const identity = createPylonIdentity(input)
+  const existing = await readJsonFile<PylonIdentityRecord>(paths.identity)
+  const nostrIdentity = await loadOrCreateNostrIdentity(paths)
+  const nodeLabel = sanitizeLabel(input.nodeLabel ?? existing?.nodeLabel ?? hostname())
+  const pylonRef = input.pylonRef ?? existing?.pylonRef ?? `pylon.${stableHash(`${nodeLabel}:${nostrIdentity.publicKey}`, 20)}`
+  const identity = {
+    nodeId: `pylon_${stableHash(nostrIdentity.publicKey)}`,
+    pylonRef,
+    nodeLabel,
+    publicKey: nostrIdentity.publicKey,
+    npub: nostrIdentity.npub,
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+    ...(existing?.npub && existing.npub !== nostrIdentity.npub ? { legacyLocalNpub: existing.npub } : {}),
+  } satisfies PylonIdentityRecord
   await writeFile(paths.identity, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 })
   return publicIdentity(identity)
 }

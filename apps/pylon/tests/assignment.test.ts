@@ -11,7 +11,8 @@ import {
   submitAssignmentCloseout,
   type PylonAssignmentLease,
 } from "../src/assignment"
-import { sendHeartbeat, sha256Base64Url } from "../src/presence"
+import { sendHeartbeat } from "../src/presence"
+import { verifyNip98Authorization } from "../src/nostr-identity"
 import { assertPublicProjectionSafe, ensurePylonLocalState, writePresenceState } from "../src/state"
 import { PSIONIC_QWEN_MODEL_REFS, type PsionicQwenModelAdmission } from "../packages/runtime/src/index"
 
@@ -57,8 +58,15 @@ function fakeAssignmentServer(input: { leases?: PylonAssignmentLease[]; rejectAc
           expect(request.headers.get("Idempotency-Key")).toContain("pylon.assignment.")
         }
       } else {
-        expect(request.headers.get("x-nip98-body-sha256")).toBe(sha256Base64Url(text))
-        expect(request.headers.get("x-nip98-signature")).toBeTruthy()
+        verifyNip98Authorization(request.headers.get("authorization"), {
+          method: request.method,
+          url: request.url,
+          body: text,
+          maxSkewSeconds: 300_000,
+        })
+        expect(request.headers.get("x-nip98-body-sha256")).toBeNull()
+        expect(request.headers.get("x-nip98-signature")).toBeNull()
+        expect(request.headers.get("x-nip98-pubkey")).toBeNull()
         if (body.pylonRef) {
           expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
         } else {
@@ -236,7 +244,7 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
-  test("legacy signed-header assignment polling still works for local harnesses", async () => {
+  test("NIP-98 assignment polling works for local harnesses without legacy custom signature headers", async () => {
     await withTempHome(async (home) => {
       const fake = fakeAssignmentServer()
       const summary = await readySummary(home)
@@ -249,8 +257,10 @@ describe("Pylon assignment lease flow", () => {
 
       const poll = fake.requests.find((request) => request.path.endsWith("/assignments"))
 
-      expect(poll?.headers.get("x-nip98-body-sha256")).toBe(sha256Base64Url(""))
-      expect(poll?.headers.get("x-nip98-signature")).toBeTruthy()
+      expect(poll?.headers.get("authorization")?.startsWith("Nostr ")).toBe(true)
+      expect(poll?.headers.get("x-nip98-body-sha256")).toBeNull()
+      expect(poll?.headers.get("x-nip98-signature")).toBeNull()
+      expect(poll?.headers.get("x-nip98-pubkey")).toBeNull()
     })
   })
 
