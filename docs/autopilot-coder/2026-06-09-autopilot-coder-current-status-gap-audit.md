@@ -5,7 +5,8 @@ Date: 2026-06-09
 Status: current repo audit after the OA-AUTO P0 issue flow, the hosted Gemini
 closeout bridge commit, OA-AUTO-019 production Pylon placement wiring, and
 OA-AUTO-020 durable Pylon assignment lease creation, and OA-AUTO-021 normalized
-coding assignment payload contract.
+coding assignment payload contract, and OA-AUTO-022 real no-spend requester
+Pylon worker closeout loop.
 This document is intentionally stricter than
 the implementation log: it distinguishes route-harness proof from a real paid
 agent doing real coding work.
@@ -30,17 +31,21 @@ It also cross-checks the current implementation surfaces those docs describe:
 - `apps/openagents.com/workers/api/src/autopilot-work-fallback-lease-adapter.ts`
 - `apps/openagents.com/workers/api/src/autopilot-coding-assignment.ts`
 - `apps/openagents.com/workers/api/src/l402-payment-headers.ts`
+- `apps/openagents.com/workers/api/src/pylon-api.ts`
+- `apps/openagents.com/workers/api/src/pylon-api-routes.ts`
+- `apps/pylon/src/assignment.ts`
 - `apps/openagents.com/workers/api/src/openagents-openapi.ts`
 - `apps/openagents.com/workers/api/src/openagents-capability-manifest.ts`
-- D1 migrations `0140` through `0144` for Autopilot work orders.
+- D1 migrations `0140` through `0146` for Autopilot work orders and Pylon
+  coding-assignment payload storage.
 - production Pylon API store wiring in `apps/openagents.com/workers/api/src/index.ts`.
 
 The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed, and
-the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-021` are also closed as
+the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-022` are also closed as
 of this audit. Those issues built the first Autopilot work-order spine plus the
 initial production Pylon placement, Pylon assignment lease, and normalized
-assignment-payload pieces. They did not, by themselves, build the full paid
-coding-agent product.
+assignment-payload pieces plus a bounded no-spend requester-Pylon closeout
+loop. They did not, by themselves, build the full paid coding-agent product.
 
 ## Executive Finding
 
@@ -58,6 +63,7 @@ registered-agent request
 -> buyer funding projection
 -> placement decision
 -> durable Pylon assignment lease or fallback lease intent
+-> requester Pylon no-spend acceptance/progress/artifact/worker-closeout refs
 -> optional injected hosted execution closeout
 -> delivered projection and delivered events
 ```
@@ -100,7 +106,7 @@ The closed P0 issue flow built the minimum typed orchestration spine:
 | Placement policy | Built | Privacy/runner preferences are persisted and projected. |
 | Pylon presence input | Built with production Pylon API store wiring | Placement can prefer a compatible requester Pylon from D1-backed Pylon registrations, heartbeats, version, capability, and wallet-readiness records. |
 | Local coding capability refs | Built | Placement can distinguish local coding-agent readiness without exposing local secrets. |
-| Pylon assignment synthesis and lease creation | Built | Ready requester-Pylon work creates a durable no-spend `pylon_api_assignments` lease, idempotent retries do not duplicate it, and the existing Pylon API can poll and accept it. |
+| Pylon assignment synthesis, lease creation, and no-spend worker closeout | Built | Ready requester-Pylon work creates a durable no-spend `pylon_api_assignments` lease, idempotent retries do not duplicate it, the Pylon API can poll and accept it, and the Pylon runtime can submit progress, artifact/proof refs, and a worker closeout. |
 | Fallback lease adapter | Built as intent projection | Ready work can become controlled SHC/cloud/hosted Gemini fallback lease intents. It is not yet real runner dispatch. |
 | Placement refusal/retry | Built | The API can return actionable retry/needs-input guidance instead of silent stalls. |
 | Hosted execution closeout bridge | Built in route harness | An injected hosted executor can return public-safe refs and move an order to delivered. It is not the production hosted executor. |
@@ -212,11 +218,11 @@ Current status by phase:
 | Payment request | Shape built | Needs real MDK checkout or real L402 challenge issuance for Autopilot work. |
 | Payment verification | Proof-ref acceptance built | Needs live payment verification, anti-replay, expiry, quote binding, and ledger linkage. |
 | Placement | Selector, production Pylon registration store wiring, Pylon lease creation, and intent projections built | Needs real worker execution and closeout recovery after assignment acceptance. |
-| Pylon local path | Lease creation, Pylon polling, and Pylon acceptance built | Needs worker execution, progress, artifact submission, and closeout ingestion. |
+| Pylon local path | Lease creation, Pylon polling, Pylon acceptance, progress submission, artifact/proof submission, and worker closeout built for no-spend public refs | Needs Autopilot work-order closeout ingestion/delivery projection from worker closeout, richer real repo edit/build/test artifacts, and later paid-mode policy. |
 | Hosted fallback path | Lease intent plus test executor hook built | Needs production executor binding and provider/runtime policy. |
 | SHC/cloud fallback path | Lease intent built | Needs production runner adapter and lease execution. |
-| Probe coding loop | Normalized coding assignment contract now exists; existing Probe/Pylon runtime pieces exist | Needs real worker execution path that consumes the payload and returns artifacts. |
-| Result ingestion | Public-safe closeout refs built for injected executor | Needs real diff/test/preview/log/artifact ingestion with redaction and operator-only evidence refs. |
+| Probe coding loop | Normalized coding assignment contract exists, and the Pylon no-spend loop consumes current assignment projections and returns public-safe refs | Needs richer real coding execution, repository checkout/patch/test adapters, and non-Pylon runner consumers. |
+| Result ingestion | Worker closeout refs are captured on Pylon assignment state; public-safe closeout refs are built for injected executor | Needs Autopilot work-order delivery projection from real worker closeout plus diff/test/preview/log/artifact ingestion with redaction and operator-only evidence refs. |
 | Acceptance | Not built for Autopilot work orders | Needs customer review, operator review, accepted-work state, and revision request API. |
 | GitHub writeback | Not built in Autopilot work path | Needs branch/commit/PR lane after repo grants and proof/test gates. |
 | Sites adapter | Existing Sites control plane exists | Needs Autopilot task adapter for `site_generation` and `site_adjustment`. |
@@ -322,7 +328,11 @@ Acceptance:
 Current acceptance state:
 
 - Built: durable assignment creation, idempotency, poll, and accept.
-- Still open: real worker progress, artifact/proof submission, and closeout.
+- Built by OA-AUTO-022 after this step: real no-spend worker progress,
+  artifact/proof submission, and worker closeout.
+- Still open: Autopilot work-order delivery projection from worker closeout,
+  customer review/acceptance, richer repo edit/build/test artifacts, and paid
+  mode.
 
 ### Step 4: Normalize the real coding assignment contract
 
@@ -360,6 +370,9 @@ Current acceptance state:
 
 ### Step 5: Implement the actual worker loop for one lane
 
+Status: implemented for the bounded requester-Pylon no-spend lane by
+OA-AUTO-022.
+
 Pick one first lane. The lowest-friction product path should be:
 
 1. requester Pylon/local coding agent for no-spend public work;
@@ -379,6 +392,19 @@ Acceptance:
 
 - A real worker, not an injected test function, produces a closeout for one
   public docs/test task.
+
+Current acceptance state:
+
+- Built: the Pylon runtime can poll a current OpenAgents assignment projection,
+  normalize the embedded coding assignment, accept the assignment, submit
+  progress, submit artifact/proof refs, and submit a public-safe worker
+  closeout.
+- Built: Worker-side Pylon assignment state records the worker closeout as
+  `closeout_submitted` and keeps it separate from operator accepted-work
+  closeout.
+- Still open: the closeout does not yet automatically move the Autopilot work
+  order into delivered state, and it does not yet perform a real repo
+  checkout/patch/test/PR workflow.
 
 ### Step 6: Add closeout ingestion for real artifacts
 
@@ -501,8 +527,8 @@ work."
 ### P0: Make the claim real
 
 1. Real Autopilot payment issuance and verification.
-2. One real worker loop that executes a public task.
-3. Real closeout ingestion from that worker.
+2. Autopilot work-order delivery projection from real Pylon worker closeout.
+3. Real closeout ingestion for richer diff/test/preview/build artifacts.
 4. Customer review/revision API.
 5. No-spend end-to-end smoke.
 6. Paid end-to-end smoke.
@@ -532,7 +558,8 @@ work."
 OpenAgents now has a serious Autopilot Coder control-plane skeleton, including
 typed requests, quotes, 402-shaped payment retry, placement, assignment intents,
 production Pylon placement input, durable no-spend Pylon assignment lease
-creation, a normalized coding assignment payload, and delivered closeout
-projection in a route harness; it still does not have a live paid path where a
-real agent pays, a real worker codes, artifacts are reviewed, and eligible
-workers/providers are settled.
+creation, a normalized coding assignment payload, a bounded requester-Pylon
+no-spend worker closeout loop, and delivered closeout projection in a route
+harness; it still does not have a live paid path where a real agent pays, a
+real worker produces accepted repo/Site changes, artifacts are reviewed, and
+eligible workers/providers are settled.

@@ -968,6 +968,25 @@ describe('Autopilot work routes', () => {
     expect(pollJson.assignments).toEqual([
       expect.objectContaining({
         assignmentRef,
+        codingAssignment: expect.objectContaining({
+          assignmentRef,
+          budget: expect.objectContaining({
+            paymentMode: 'unpaid_smoke',
+            workerPayoutAuthority: false,
+          }),
+          closeoutSchema: expect.objectContaining({
+            acceptedWorkAuthority: false,
+          }),
+          publicSafe: true,
+          runnerKind: 'requester_pylon',
+          schema: 'openagents.autopilot_coding_assignment.v1',
+          tracePolicy: expect.objectContaining({
+            rawPromptAllowed: false,
+            rawProviderPayloadAllowed: false,
+            rawRunnerLogAllowed: false,
+            rawSourceArchiveAllowed: false,
+          }),
+        }),
         leaseState: 'active',
         state: 'offered',
         taskRefs: [

@@ -52,32 +52,39 @@ function fakeAssignmentServer(input: { leases?: PylonAssignmentLease[]; rejectAc
       const body = text ? JSON.parse(text) : {}
       requests.push({ path: url.pathname, body, headers: request.headers })
 
-      expect(request.headers.get("x-nip98-body-sha256")).toBe(sha256Base64Url(text))
-      expect(request.headers.get("x-nip98-signature")).toBeTruthy()
-      if (body.pylonRef) {
-        expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
+      if (request.headers.get("authorization")?.startsWith("Bearer ")) {
+        if (request.method === "POST") {
+          expect(request.headers.get("Idempotency-Key")).toContain("pylon.assignment.")
+        }
       } else {
-        expect(request.headers.get("x-pylon-ref")).toBeTruthy()
+        expect(request.headers.get("x-nip98-body-sha256")).toBe(sha256Base64Url(text))
+        expect(request.headers.get("x-nip98-signature")).toBeTruthy()
+        if (body.pylonRef) {
+          expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
+        } else {
+          expect(request.headers.get("x-pylon-ref")).toBeTruthy()
+        }
       }
 
       if (url.pathname.includes("/heartbeat")) {
         return Response.json({ heartbeatRef: `heartbeat.${body.pylonRef}.${body.sequence}` })
       }
-      if (url.pathname.endsWith("/assignments/poll")) {
+      if (url.pathname.endsWith("/assignments")) {
         return Response.json({
           schema: "openagents.pylon.assignment_poll_response.v0.3",
-          leases: input.leases ?? [lease()],
+          assignments: input.leases ?? [lease()],
         })
       }
       if (url.pathname.endsWith("/accept")) {
+        const assignmentRef = decodeURIComponent(url.pathname.split("/").at(-2) ?? "")
         if (input.rejectAccept) {
           return Response.json({ statusRef: "assignment.rejected.fake", reasonRef: "reject.fake" }, { status: 409 })
         }
-        if (accepted.has(body.leaseRef)) {
+        if (accepted.has(assignmentRef)) {
           return Response.json({ statusRef: "assignment.duplicate.fake" }, { status: 409 })
         }
-        accepted.add(body.leaseRef)
-        return Response.json({ statusRef: `assignment.accepted.${body.leaseRef}` })
+        accepted.add(assignmentRef)
+        return Response.json({ statusRef: `assignment.accepted.${assignmentRef}` })
       }
       if (url.pathname.endsWith("/progress")) {
         if (input.cancelOnProgress) {
@@ -85,11 +92,17 @@ function fakeAssignmentServer(input: { leases?: PylonAssignmentLease[]; rejectAc
         }
         return Response.json({ progressRef: `assignment.progress.${body.leaseRef}.${body.sequence}` })
       }
+      if (url.pathname.endsWith("/artifacts")) {
+        expect(body.artifactRefs.length).toBeGreaterThan(0)
+        expect(body.proofRefs.length).toBeGreaterThan(0)
+        return Response.json({ artifactRef: `assignment.artifacts.${url.pathname.split("/").at(-2)}` })
+      }
       if (url.pathname.endsWith("/closeout")) {
         expect(body.paymentMode).toBe("no-spend")
         expect(body.settlementState).toBe("not_applicable")
         expect(body.payoutClaimAllowed).toBe(false)
         expect(body.redacted).toBe(true)
+        expect(body.closeoutRefs.length).toBeGreaterThan(0)
         return Response.json({ closeoutRef: `assignment.closeout.${body.leaseRef}` })
       }
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
@@ -141,11 +154,103 @@ describe("Pylon assignment lease flow", () => {
       expect(result.closeout.proofRefs[0].startsWith("assignment.proof.")).toBe(true)
       const pylonRef = fake.requests[0].body.pylonRef
       expect(fake.requests.map((request) => request.path).filter((path) => path.includes("/assignments/"))).toEqual([
-        `/api/pylons/${encodeURIComponent(pylonRef)}/assignments/poll`,
-        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/accept`,
+        `/api/pylons/${encodeURIComponent(pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/accept`,
         `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/progress`,
+        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/artifacts`,
         `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/closeout`,
       ])
+      expect(fake.requests.map((request) => request.path).filter((path) => path.endsWith("/assignments"))).toEqual([
+        `/api/pylons/${encodeURIComponent(pylonRef)}/assignments`,
+      ])
+    })
+  })
+
+  test("normalizes current OpenAgents Autopilot coding assignment projections", async () => {
+    await withTempHome(async (home) => {
+      const codingAssignment = {
+        assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract",
+        budget: {
+          paymentMode: "unpaid_smoke",
+        },
+        objective: {
+          objectiveRef: "objective.autopilot_work_order.test_1.task.autopilot_coder.docs_contract",
+        },
+        publicSafe: true,
+        requiredCapabilityRefs: ["cap.gepa.retained.v1"],
+        schema: "openagents.autopilot_coding_assignment.v1",
+      }
+      const fake = fakeAssignmentServer({
+        leases: [
+          {
+            assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract",
+            codingAssignment,
+            jobKind: "validation",
+            leaseExpiresInSeconds: 600,
+            state: "offered",
+            taskRefs: ["autopilot_work_order.test_1", "task.autopilot_coder.docs_contract"],
+          } as unknown as PylonAssignmentLease,
+        ],
+      })
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const leases = await pollAssignments(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(leases).toEqual([
+        expect.objectContaining({
+          assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract",
+          capabilityRefs: ["cap.gepa.retained.v1"],
+          codingAssignment,
+          goal: "objective.autopilot_work_order.test_1.task.autopilot_coder.docs_contract",
+          leaseRef: "pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract",
+          paymentMode: "no-spend",
+        }),
+      ])
+    })
+  })
+
+  test("polls, accepts, submits progress/proof refs, and closes a no-spend assignment with bearer auth", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer()
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const result = await runNoSpendAssignment(summary, {
+        agentToken: "oa_agent_test",
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected bearer no-spend assignment to run")
+      expect(fake.requests.find((request) => request.path.endsWith("/assignments"))?.headers.get("authorization")).toBe(
+        "Bearer oa_agent_test",
+      )
+      expect(fake.requests.find((request) => request.path.endsWith("/accept"))?.headers.get("Idempotency-Key")).toContain(
+        "pylon.assignment.",
+      )
+      expect(result.closeout.receiptRefs.some((ref) => ref.startsWith("assignment.artifacts."))).toBe(true)
+    })
+  })
+
+  test("legacy signed-header assignment polling still works for local harnesses", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer()
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      await pollAssignments(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      const poll = fake.requests.find((request) => request.path.endsWith("/assignments"))
+
+      expect(poll?.headers.get("x-nip98-body-sha256")).toBe(sha256Base64Url(""))
+      expect(poll?.headers.get("x-nip98-signature")).toBeTruthy()
     })
   })
 
@@ -332,8 +437,13 @@ describe("Pylon assignment lease flow", () => {
         settlementState: "not_applicable",
         payoutClaimAllowed: false,
         artifactRefs: [],
+        blockerRefs: ["blocker.assignment.timeout"],
+        buildRefs: [],
+        closeoutRefs: ["assignment.closeout.timeout"],
         proofRefs: ["assignment.proof.timeout"],
         receiptRefs: [],
+        resultRefs: [],
+        testRefs: [],
         redacted: true,
         completedAt: "2026-06-09T00:01:00.000Z",
       } as const

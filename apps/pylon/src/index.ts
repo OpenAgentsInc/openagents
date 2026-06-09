@@ -1116,7 +1116,8 @@ async function main() {
         throw new Error("assignment commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-      const clientOptions = { baseUrl }
+      const agentToken = options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN
+      const clientOptions = { ...(agentToken ? { agentToken } : {}), baseUrl }
       if (command === "poll") {
         const leases = await pollAssignments(summary, clientOptions)
         process.stdout.write(`${JSON.stringify({ leases }, null, 2)}\n`)

@@ -34,6 +34,7 @@ export type PylonAssignmentLease = {
   goal: string
   paymentMode: AssignmentPaymentMode
   capabilityRefs: string[]
+  codingAssignment?: AutopilotCodingAssignmentPayload
   backendRef?: string
   gepaRequirements?: PylonGepaAssignmentRequirements
   psionicQwenRequirements?: PylonPsionicQwenAssignmentRequirements
@@ -85,13 +86,19 @@ export type AssignmentCloseout = {
   settlementState: "not_applicable" | "pending" | "recorded" | "blocked"
   payoutClaimAllowed: boolean
   artifactRefs: string[]
+  blockerRefs: string[]
+  buildRefs: string[]
+  closeoutRefs: string[]
   proofRefs: string[]
   receiptRefs: string[]
+  resultRefs: string[]
+  testRefs: string[]
   redacted: true
   completedAt: string
 }
 
 export type AssignmentClientOptions = {
+  agentToken?: string
   baseUrl: string
   fetch?: typeof fetch
   now?: () => Date
@@ -107,9 +114,22 @@ type AssignmentStore = {
 }
 
 type JsonRecord = Record<string, unknown>
+type AutopilotCodingAssignmentPayload = Readonly<Record<string, unknown>>
+type PublicPylonAssignmentProjection = Readonly<{
+  assignmentRef?: unknown
+  codingAssignment?: unknown
+  jobKind?: unknown
+  leaseExpiresInSeconds?: unknown
+  state?: unknown
+  taskRefs?: unknown
+}>
 
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+}
+
+function safeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
 async function loadAssignmentStore(state: PylonLocalState): Promise<AssignmentStore> {
@@ -125,20 +145,87 @@ async function writeAssignmentStore(state: PylonLocalState, store: AssignmentSto
   await writeFile(state.paths.assignmentState, `${JSON.stringify(store, null, 2)}\n`)
 }
 
-function normalizePollResponse(value: unknown): PylonAssignmentLease[] {
+function isLegacyLease(value: unknown): value is PylonAssignmentLease {
+  const lease = value as PylonAssignmentLease
+  return (
+    lease?.schema === "openagents.pylon.assignment_lease.v0.3" &&
+    typeof lease.assignmentRef === "string" &&
+    typeof lease.leaseRef === "string" &&
+    typeof lease.goal === "string" &&
+    (lease.paymentMode === "no-spend" || lease.paymentMode === "paid") &&
+    Array.isArray(lease.capabilityRefs) &&
+    typeof lease.expiresAt === "string"
+  )
+}
+
+function codingAssignmentPaymentMode(codingAssignment: unknown): AssignmentPaymentMode {
+  const budget = (codingAssignment as { budget?: { paymentMode?: unknown } } | null)?.budget
+  return budget?.paymentMode === "buyer_funded" ? "paid" : "no-spend"
+}
+
+function codingAssignmentGoal(codingAssignment: unknown, fallback: string): string {
+  const objective = (codingAssignment as { objective?: { objectiveRef?: unknown } } | null)?.objective
+  return typeof objective?.objectiveRef === "string" ? objective.objectiveRef : fallback
+}
+
+function codingAssignmentCapabilityRefs(codingAssignment: unknown): string[] {
+  return safeStringArray(
+    (codingAssignment as { requiredCapabilityRefs?: unknown } | null)?.requiredCapabilityRefs,
+  )
+}
+
+function normalizeProjectedAssignment(
+  assignment: PublicPylonAssignmentProjection,
+  now: Date,
+): PylonAssignmentLease | null {
+  if (typeof assignment.assignmentRef !== "string") {
+    return null
+  }
+  const codingAssignment =
+    assignment.codingAssignment !== null &&
+    typeof assignment.codingAssignment === "object"
+      ? assignment.codingAssignment as AutopilotCodingAssignmentPayload
+      : undefined
+  const expiresInSeconds =
+    typeof assignment.leaseExpiresInSeconds === "number" &&
+    Number.isFinite(assignment.leaseExpiresInSeconds)
+      ? Math.max(0, assignment.leaseExpiresInSeconds)
+      : 15 * 60
+  const taskRef = safeStringArray(assignment.taskRefs)[0] ?? assignment.assignmentRef
+
+  return {
+    schema: "openagents.pylon.assignment_lease.v0.3",
+    assignmentRef: assignment.assignmentRef,
+    leaseRef: assignment.assignmentRef,
+    goal: codingAssignmentGoal(codingAssignment, taskRef),
+    paymentMode: codingAssignmentPaymentMode(codingAssignment),
+    capabilityRefs: codingAssignmentCapabilityRefs(codingAssignment),
+    ...(codingAssignment === undefined ? {} : { codingAssignment }),
+    expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
+  }
+}
+
+function normalizePollResponse(value: unknown, now: Date): PylonAssignmentLease[] {
   const response = value as AssignmentPollResponse
   const leases = response.leases ?? (response.assignment ? [response.assignment] : [])
-  return leases.filter((lease): lease is PylonAssignmentLease => {
-    return (
-      lease?.schema === "openagents.pylon.assignment_lease.v0.3" &&
-      typeof lease.assignmentRef === "string" &&
-      typeof lease.leaseRef === "string" &&
-      typeof lease.goal === "string" &&
-      (lease.paymentMode === "no-spend" || lease.paymentMode === "paid") &&
-      Array.isArray(lease.capabilityRefs) &&
-      typeof lease.expiresAt === "string"
-    )
-  })
+  const assignments = (value as { assignments?: unknown }).assignments
+
+  if (Array.isArray(assignments)) {
+    return assignments.flatMap((assignment) => {
+      if (isLegacyLease(assignment)) {
+        return [assignment]
+      }
+
+      const normalized = normalizeProjectedAssignment(
+        assignment as PublicPylonAssignmentProjection,
+        now,
+      )
+
+      return normalized === null ? [] : [normalized]
+    })
+  }
+
+  return leases.filter(isLegacyLease)
 }
 
 function hasRequiredCapabilities(state: PylonLocalState, lease: PylonAssignmentLease) {
@@ -208,15 +295,50 @@ async function postJson(options: AssignmentClientOptions, path: string, body: Js
   const fetchImpl = options.fetch ?? fetch
   const url = new URL(path, options.baseUrl).toString()
   const text = JSON.stringify(body)
-  const headers = await createSignedHeaders({
-    method: "POST",
-    url,
-    body: text,
-    pylonRef: state.identity.pylonRef,
-    identityPath: state.paths.identity,
-    now: options.now?.(),
-  })
+  const idempotencyKey = `pylon.assignment.${state.identity.pylonRef}.${stableRef("request", `${path}:${text}`)}`
+  const headers = options.agentToken
+    ? {
+        authorization: `Bearer ${options.agentToken}`,
+        "content-type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      }
+    : {
+        ...(await createSignedHeaders({
+          method: "POST",
+          url,
+          body: text,
+          pylonRef: state.identity.pylonRef,
+          identityPath: state.paths.identity,
+          now: options.now?.(),
+        })),
+        "Idempotency-Key": idempotencyKey,
+      }
   const response = await fetchImpl(url, { method: "POST", headers, body: text })
+  const responseText = await response.text()
+  const json = responseText.trim() ? (JSON.parse(responseText) as JsonRecord) : {}
+  assertPublicProjectionSafe(json)
+  if (!response.ok) {
+    throw new Error(`OpenAgents assignment request failed (${response.status}): ${responseText}`)
+  }
+  return json
+}
+
+async function getJson(options: AssignmentClientOptions, path: string, state: PylonLocalState) {
+  const fetchImpl = options.fetch ?? fetch
+  const url = new URL(path, options.baseUrl).toString()
+  const headers = options.agentToken
+    ? {
+        authorization: `Bearer ${options.agentToken}`,
+      }
+    : await createSignedHeaders({
+        method: "GET",
+        url,
+        body: "",
+        pylonRef: state.identity.pylonRef,
+        identityPath: state.paths.identity,
+        now: options.now?.(),
+      })
+  const response = await fetchImpl(url, { method: "GET", headers })
   const responseText = await response.text()
   const json = responseText.trim() ? (JSON.parse(responseText) as JsonRecord) : {}
   assertPublicProjectionSafe(json)
@@ -228,14 +350,12 @@ async function postJson(options: AssignmentClientOptions, path: string, body: Js
 
 export async function pollAssignments(summary: BootstrapSummary, options: AssignmentClientOptions) {
   const state = await ensurePylonLocalState(summary)
-  const body = {
-    schema: "openagents.pylon.assignment_poll.v0.3",
-    pylonRef: state.identity.pylonRef,
-    capabilityRefs: state.runtime.capabilityRefs,
-    lifecycle: state.runtime.lifecycle,
-  }
-  const response = await postJson(options, `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/assignments/poll`, body, state)
-  return normalizePollResponse(response)
+  const response = await getJson(
+    options,
+    `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/assignments`,
+    state,
+  )
+  return normalizePollResponse(response, options.now?.() ?? new Date())
 }
 
 export async function acceptAssignment(
@@ -272,12 +392,11 @@ export async function acceptAssignment(
   }
 
   const body = {
-    schema: "openagents.pylon.assignment_accept.v0.3",
-    pylonRef: state.identity.pylonRef,
-    assignmentRef: lease.assignmentRef,
-    leaseRef: lease.leaseRef,
-    paymentMode: lease.paymentMode,
-    acceptedAt: (options.now?.() ?? new Date()).toISOString(),
+    acceptanceRefs: [
+      stableRef("assignment.acceptance", `${lease.assignmentRef}:${lease.goal}`),
+    ],
+    accepted: true,
+    status: "accepted",
   }
   let response: JsonRecord
   try {
@@ -302,7 +421,7 @@ export async function acceptAssignment(
   store.leases[lease.leaseRef] = {
     assignmentRef: lease.assignmentRef,
     status: "accepted",
-    acceptedAt: body.acceptedAt,
+    acceptedAt: (options.now?.() ?? new Date()).toISOString(),
   }
   await writeAssignmentStore(state, store)
   return { ok: true, accepted: true, assignmentRef: lease.assignmentRef, leaseRef: lease.leaseRef, statusRef, blockerRefs: [] }
@@ -321,6 +440,33 @@ export async function submitAssignmentProgress(
     state,
   )
   return { progressRef: String(response.progressRef ?? stableRef("assignment.progress", `${progress.leaseRef}:${progress.sequence}`)) }
+}
+
+export async function submitAssignmentArtifacts(
+  summary: BootstrapSummary,
+  input: Readonly<{
+    artifactRefs: ReadonlyArray<string>
+    assignmentRef: string
+    leaseRef: string
+    proofRefs: ReadonlyArray<string>
+  }>,
+  options: AssignmentClientOptions,
+) {
+  const state = await ensurePylonLocalState(summary)
+  const response = await postJson(
+    options,
+    `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/assignments/${encodeURIComponent(input.leaseRef)}/artifacts`,
+    {
+      artifactRefs: [...input.artifactRefs],
+      proofRefs: [...input.proofRefs],
+      status: "submitted",
+      storageRefs: [
+        stableRef("assignment.storage", `${input.assignmentRef}:${input.leaseRef}`),
+      ],
+    },
+    state,
+  )
+  return { artifactRef: String(response.artifactRef ?? stableRef("assignment.artifacts", input.leaseRef)) }
 }
 
 export async function submitAssignmentCloseout(
@@ -373,8 +519,19 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     observedAt,
   }
   let progressReceipt: { progressRef: string }
+  let artifactReceipt: { artifactRef: string } | null = null
   try {
     progressReceipt = await submitAssignmentProgress(summary, progress, options)
+    artifactReceipt = await submitAssignmentArtifacts(
+      summary,
+      {
+        artifactRefs: [artifactRef],
+        assignmentRef: lease.assignmentRef,
+        leaseRef: lease.leaseRef,
+        proofRefs: [proofRef],
+      },
+      options,
+    )
   } catch (error) {
     const message = String(error)
     const status = message.includes("(410)") ? "cancelled" : message.includes("(408)") ? "timed-out" : "rejected"
@@ -388,8 +545,13 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       settlementState: "not_applicable",
       payoutClaimAllowed: false,
       artifactRefs: [],
+      blockerRefs: ["blocker.assignment.progress_or_artifact_rejected"],
+      buildRefs: [],
+      closeoutRefs: [stableRef("assignment.closeout.failure", `${lease.leaseRef}:${status}`)],
       proofRefs: [failureProofRef],
       receiptRefs: [acceptance.statusRef, ...psionicCloseoutReceiptRefs(lease, options)],
+      resultRefs: [],
+      testRefs: [],
       redacted: true,
       completedAt: observedAt,
     }
@@ -405,8 +567,18 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     settlementState: "not_applicable",
     payoutClaimAllowed: false,
     artifactRefs: [artifactRef],
+    blockerRefs: [],
+    buildRefs: [stableRef("assignment.build.not_required", lease.leaseRef)],
+    closeoutRefs: [stableRef("assignment.closeout.summary", lease.leaseRef)],
     proofRefs: [proofRef],
-    receiptRefs: [acceptance.statusRef, progressReceipt.progressRef, ...psionicCloseoutReceiptRefs(lease, options)],
+    receiptRefs: [
+      acceptance.statusRef,
+      progressReceipt.progressRef,
+      ...(artifactReceipt === null ? [] : [artifactReceipt.artifactRef]),
+      ...psionicCloseoutReceiptRefs(lease, options),
+    ],
+    resultRefs: [stableRef("assignment.result.public_safe", lease.assignmentRef)],
+    testRefs: [stableRef("assignment.test.not_required", lease.leaseRef)],
     redacted: true,
     completedAt: observedAt,
   }

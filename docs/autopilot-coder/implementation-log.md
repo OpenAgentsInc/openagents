@@ -688,3 +688,47 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-coding-assignment.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-assignment-planner.test.ts src/pylon-api-routes.test.ts src/autopilot-coding-assignment.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-022: Real No-Spend Pylon Worker Loop For Public Autopilot Tasks
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4610`
+
+Status: implemented.
+
+Implemented:
+
+- Added durable storage and projection support for the normalized Autopilot
+  coding assignment payload on `pylon_api_assignments`.
+- Embedded the normalized assignment payload in no-spend requester-Pylon
+  Autopilot assignments so Pylon clients can consume the same public-safe
+  contract that fallback lanes use.
+- Extended the Pylon assignment API with a worker closeout event separate from
+  operator accepted-work closeout:
+  - worker closeout can submit artifact, proof, build, test, result, blocker,
+    and closeout refs;
+  - worker closeout moves the assignment to `closeout_submitted`;
+  - worker closeout does not grant accepted-work, payout, settlement, deploy,
+    spend, or Forum autopublish authority.
+- Updated Pylon assignment polling to consume current OpenAgents assignment
+  projections, normalize the embedded coding assignment payload, and preserve
+  legacy local lease polling for harnesses.
+- Added bearer-token client support for registered-agent Pylon loops while
+  preserving the signed-header path for local harnesses.
+- Added bounded no-spend Pylon runtime execution that:
+  - polls a public assignment;
+  - accepts it after local admission checks;
+  - submits progress;
+  - submits artifact/proof refs;
+  - submits a public-safe worker closeout;
+  - records local closeout state without raw logs, local paths, wallet
+    material, provider payloads, or source archives.
+- Added proof-trace and visibility handling for `worker_closeout` events.
+- Kept the product boundary explicit: worker closeout is still not customer
+  acceptance, paid work verification, settlement eligibility, or deploy
+  authority.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/pylon-api-routes.test.ts src/autopilot-coding-assignment.test.ts src/nexus-pylon-visibility-routes.test.ts src/artanis-pylon-proof-trace.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
+- `bun test --cwd apps/pylon tests/assignment.test.ts tests/live-worker-loop-smoke.test.ts`

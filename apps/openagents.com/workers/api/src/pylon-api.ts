@@ -96,6 +96,7 @@ export const PylonApiEventKind = S.Literals([
   'registration',
   'settlement_status',
   'wallet_readiness',
+  'worker_closeout',
 ])
 export type PylonApiEventKind = typeof PylonApiEventKind.Type
 
@@ -122,6 +123,7 @@ export const PylonApiAssignmentState = S.Literals([
   'accepted_work',
   'blocked',
   'cancelled',
+  'closeout_submitted',
   'offered',
   'proof_submitted',
   'rejected',
@@ -202,6 +204,19 @@ export const PylonApiArtifactProofMetadataRequest = S.Struct({
 export type PylonApiArtifactProofMetadataRequest =
   typeof PylonApiArtifactProofMetadataRequest.Type
 
+export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
+  artifactRefs: PublicSafeRefs,
+  blockerRefs: PublicSafeRefs,
+  buildRefs: PublicSafeRefs,
+  closeoutRefs: PublicSafeRefs,
+  proofRefs: PublicSafeRefs,
+  resultRefs: PublicSafeRefs,
+  status: S.optionalKey(PylonEventStatus),
+  testRefs: PublicSafeRefs,
+})
+export type PylonApiAssignmentWorkerCloseoutRequest =
+  typeof PylonApiAssignmentWorkerCloseoutRequest.Type
+
 export const PylonApiPaymentReceiptRequest = S.Struct({
   paymentProofRefs: PublicSafeRefs,
   receiptRefs: PublicSafeRefs,
@@ -224,6 +239,7 @@ export const PylonApiCreateAssignmentRequest = S.Struct({
   assignmentRef: S.optionalKey(PublicSafeRef),
   campaignPaused: S.optionalKey(S.Boolean),
   campaignPolicyRefs: PublicSafeRefs,
+  codingAssignment: S.optionalKey(S.Record(S.String, S.Unknown)),
   campaignRef: S.optionalKey(PublicSafeRef),
   closeoutPathRefs: PublicSafeRefs,
   forumAutoPublishAllowed: S.optionalKey(S.Boolean),
@@ -300,6 +316,7 @@ export type PylonApiAssignmentRecord = Readonly<{
   artifactRefs: ReadonlyArray<string>
   assignmentRef: string
   closeoutRefs: ReadonlyArray<string>
+  codingAssignment: Record<string, unknown> | null
   createdAt: string
   id: string
   idempotencyKeyHash: string
@@ -352,6 +369,7 @@ export type PylonApiAssignmentProjection = Readonly<{
   artifactRefs: ReadonlyArray<string>
   assignmentRef: string
   closeoutRefs: ReadonlyArray<string>
+  codingAssignment: Record<string, unknown> | null
   createdAtDisplay: string
   jobKind: PylonApiAssignmentJobKind
   leaseExpiresInSeconds: number
@@ -468,6 +486,7 @@ type PylonApiAssignmentRow = Readonly<{
   artifact_refs_json: string
   assignment_ref: string
   closeout_refs_json: string
+  coding_assignment_json?: string | null
   created_at: string
   id: string
   idempotency_key_hash: string
@@ -488,6 +507,14 @@ const unsafePylonApiMaterialPattern =
   /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\/Users\/|\/home\/|access[_-]?token|auth\.json|balance[._-]?sats|bearer|channel[_-]?monitor|cookie|customer[_-]?(email|name|value)|email[_-]?(address|body)|entropy|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lntb|lnbcrt|lno1|lnurl|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof=)|payout[_-]?(address|destination|private|raw)|preimage|private[_-]?(artifact|channel|key|output|proof|wallet)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(artifact|auth|backup|balance|channel|invoice|liquidity|output|payload|payment|payout|prompt|proof|provider|runner|run[_-]?log|state|telemetry|webhook)|recovery[_-]?phrase|secret|seed[_-]?phrase|sk-[a-z0-9]|token|wallet[._-](key|material|mnemonic|payment|preimage|secret|seed))/i
 const exactBalanceRefPattern = /balance\.mdk_agent_wallet\.\d+\b/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+const safeFalseTracePolicyJsonReplacements: ReadonlyArray<
+  readonly [RegExp, string]
+> = [
+  [/"rawPromptAllowed":false/g, '"promptMaterialDenied":true'],
+  [/"rawProviderPayloadAllowed":false/g, '"modelRequestBodyDenied":true'],
+  [/"rawRunnerLogAllowed":false/g, '"runnerLogDenied":true'],
+  [/"rawSourceArchiveAllowed":false/g, '"sourceArchiveDenied":true'],
+]
 
 const uniqueRefs = (
   refs: ReadonlyArray<string> | undefined,
@@ -497,7 +524,10 @@ const uniqueRefs = (
   ].sort()
 
 export const pylonApiPayloadHasPrivateMaterial = (value: unknown): boolean => {
-  const json = JSON.stringify(value)
+  const json = safeFalseTracePolicyJsonReplacements.reduce(
+    (current, [pattern, replacement]) => current.replace(pattern, replacement),
+    JSON.stringify(value),
+  )
 
   return (
     containsProviderSecretMaterial(json) ||
@@ -614,6 +644,7 @@ export const publicPylonApiAssignmentProjection = (
   artifactRefs: uniqueRefs(record.artifactRefs),
   assignmentRef: record.assignmentRef,
   closeoutRefs: uniqueRefs(record.closeoutRefs),
+  codingAssignment: record.codingAssignment,
   createdAtDisplay: friendlyBlueprintMissionBriefingTime(
     record.createdAt,
     nowIso,
@@ -757,6 +788,7 @@ export const buildPylonApiAssignmentRecord = (
     assignmentRef:
       input.request.assignmentRef ?? `assignment.public.pylon_api.${id}`,
     closeoutRefs: [],
+    codingAssignment: input.request.codingAssignment ?? null,
     createdAt: input.nowIso,
     id: `pylon_api_assignment_${input.makeId()}`,
     idempotencyKeyHash: input.idempotencyKeyHash,
@@ -783,6 +815,18 @@ export const buildPylonApiAssignmentRecord = (
   }
 }
 
+const stringRefsFromEventBody = (
+  body: Record<string, unknown>,
+  key: string,
+  fallback: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const value = body[key]
+
+  return typeof value === 'object' && Array.isArray(value)
+    ? value.filter((ref): ref is string => typeof ref === 'string')
+    : fallback
+}
+
 export const nextAssignmentForEvent = (
   assignment: PylonApiAssignmentRecord,
   event: PylonApiEventRecord,
@@ -806,24 +850,45 @@ export const nextAssignmentForEvent = (
           ? {
               ...assignment,
               artifactRefs: uniqueRefs(
-                typeof body.artifactRefs === 'object' &&
-                  Array.isArray(body.artifactRefs)
-                  ? body.artifactRefs.filter(
-                      (ref): ref is string => typeof ref === 'string',
-                    )
-                  : assignment.artifactRefs,
+                stringRefsFromEventBody(
+                  body,
+                  'artifactRefs',
+                  assignment.artifactRefs,
+                ),
               ),
               proofRefs: uniqueRefs(
-                typeof body.proofRefs === 'object' &&
-                  Array.isArray(body.proofRefs)
-                  ? body.proofRefs.filter(
-                      (ref): ref is string => typeof ref === 'string',
-                    )
-                  : assignment.proofRefs,
+                stringRefsFromEventBody(body, 'proofRefs', assignment.proofRefs),
               ),
               state: 'proof_submitted',
               updatedAt: nowIso,
             }
+          : event.eventKind === 'worker_closeout'
+            ? {
+                ...assignment,
+                artifactRefs: uniqueRefs(
+                  stringRefsFromEventBody(
+                    body,
+                    'artifactRefs',
+                    assignment.artifactRefs,
+                  ),
+                ),
+                closeoutRefs: uniqueRefs(
+                  stringRefsFromEventBody(
+                    body,
+                    'closeoutRefs',
+                    assignment.closeoutRefs,
+                  ),
+                ),
+                proofRefs: uniqueRefs(
+                  stringRefsFromEventBody(
+                    body,
+                    'proofRefs',
+                    assignment.proofRefs,
+                  ),
+                ),
+                state: 'closeout_submitted',
+                updatedAt: nowIso,
+              }
           : {
               ...assignment,
               updatedAt: nowIso,
@@ -1023,6 +1088,7 @@ const rowToAssignment = (
   artifactRefs: parseJsonStringArray(row.artifact_refs_json),
   assignmentRef: row.assignment_ref,
   closeoutRefs: parseJsonStringArray(row.closeout_refs_json),
+  codingAssignment: parseJsonRecord(row.coding_assignment_json ?? '') ?? null,
   createdAt: row.created_at,
   id: row.id,
   idempotencyKeyHash: row.idempotency_key_hash,
@@ -1057,8 +1123,9 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
            task_refs_json, acceptance_criteria_refs_json,
            result_expectation_refs_json, artifact_refs_json, proof_refs_json,
            accepted_work_refs_json, rejection_refs_json, closeout_refs_json,
-           public_projection_json, created_at, updated_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           coding_assignment_json, public_projection_json, created_at,
+           updated_at, archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         record.id,
@@ -1077,6 +1144,9 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         JSON.stringify(record.acceptedWorkRefs),
         JSON.stringify(record.rejectionRefs),
         JSON.stringify(record.closeoutRefs),
+        record.codingAssignment === null
+          ? null
+          : JSON.stringify(record.codingAssignment),
         record.publicProjectionJson,
         record.createdAt,
         record.updatedAt,
@@ -1254,6 +1324,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
                 accepted_work_refs_json = ?,
                 rejection_refs_json = ?,
                 closeout_refs_json = ?,
+                coding_assignment_json = ?,
                 public_projection_json = ?,
                 updated_at = ?
           WHERE assignment_ref = ?
@@ -1267,6 +1338,9 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         JSON.stringify(record.acceptedWorkRefs),
         JSON.stringify(record.rejectionRefs),
         JSON.stringify(record.closeoutRefs),
+        record.codingAssignment === null
+          ? null
+          : JSON.stringify(record.codingAssignment),
         publicProjectionJson,
         record.updatedAt,
         record.assignmentRef,

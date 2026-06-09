@@ -305,6 +305,15 @@ const evidenceKeysForTraceEvent:
     registration: ['capabilityRefs', 'statusRefs'],
     settlement_status: ['settlementRefs', 'treasuryReceiptRefs'],
     wallet_readiness: ['balanceRefs', 'liquidityRefs', 'readinessRefs'],
+    worker_closeout: [
+      'artifactRefs',
+      'blockerRefs',
+      'buildRefs',
+      'closeoutRefs',
+      'proofRefs',
+      'resultRefs',
+      'testRefs',
+    ],
   }
 
 const traceEventKinds: ReadonlyArray<PylonApiEventRecord['eventKind']> = [
@@ -313,6 +322,7 @@ const traceEventKinds: ReadonlyArray<PylonApiEventRecord['eventKind']> = [
   'assignment_progress',
   'payment_receipt',
   'settlement_status',
+  'worker_closeout',
 ]
 
 const pylonEventToTraceEvent = (

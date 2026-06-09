@@ -19,13 +19,19 @@ import { makePylonApiRoutes } from './pylon-api-routes'
 
 type PylonRouteJson = Readonly<{
   assignment?: Readonly<{
+    acceptedWorkRefs?: ReadonlyArray<string>
     assignmentRef?: string
+    closeoutRefs?: ReadonlyArray<string>
+    codingAssignment?: Record<string, unknown> | null
     leaseState?: string
     state?: string
   }>
   assignments?: ReadonlyArray<
     Readonly<{
+      acceptedWorkRefs?: ReadonlyArray<string>
       assignmentRef?: string
+      closeoutRefs?: ReadonlyArray<string>
+      codingAssignment?: Record<string, unknown> | null
       leaseState?: string
       state?: string
     }>
@@ -938,6 +944,24 @@ describe('Pylon API routes', () => {
         tokenUserId: 'agent-one',
       },
     )
+    const workerCloseout = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/closeout',
+      {
+        body: {
+          artifactRefs: ['artifact.public.echo_manifest'],
+          buildRefs: ['build.public.echo_not_required'],
+          closeoutRefs: ['closeout.public.worker_echo_summary'],
+          proofRefs: ['proof.public.echo_result'],
+          resultRefs: ['result.public.echo_summary'],
+          status: 'closeout_submitted',
+          testRefs: ['test.public.echo_not_required'],
+        },
+        idempotencyKey: 'worker-closeout-echo',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
     const closeout = await route(
       store,
       '/api/operator/pylons/assignments/assignment.public.issue502.echo/closeout',
@@ -983,6 +1007,8 @@ describe('Pylon API routes', () => {
     const acceptReplayBody = await responseJson<PylonRouteJson>(acceptReplay)
     const progressBody = await responseJson<PylonRouteJson>(progress)
     const artifactsBody = await responseJson<PylonRouteJson>(artifacts)
+    const workerCloseoutBody =
+      await responseJson<PylonRouteJson>(workerCloseout)
     const closeoutBody = await responseJson<PylonRouteJson>(closeout)
     const paymentReceiptBody =
       await responseJson<PylonRouteJson>(paymentReceipt)
@@ -1010,6 +1036,12 @@ describe('Pylon API routes', () => {
     expect(progressBody.assignment?.state).toBe('running')
     expect(artifacts.status).toBe(201)
     expect(artifactsBody.assignment?.state).toBe('proof_submitted')
+    expect(workerCloseout.status).toBe(201)
+    expect(workerCloseoutBody.assignment).toMatchObject({
+      acceptedWorkRefs: [],
+      closeoutRefs: ['closeout.public.worker_echo_summary'],
+      state: 'closeout_submitted',
+    })
     expect(closeout.status).toBe(200)
     expect(closeoutBody.assignment?.state).toBe('accepted_work')
     expect(paymentReceipt.status).toBe(201)

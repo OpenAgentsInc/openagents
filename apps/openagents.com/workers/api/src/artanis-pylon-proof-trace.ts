@@ -20,6 +20,7 @@ export const ArtanisPylonProofTracePylonEventKind = S.Literals([
   'assignment_progress',
   'payment_receipt',
   'settlement_status',
+  'worker_closeout',
 ])
 export type ArtanisPylonProofTracePylonEventKind =
   typeof ArtanisPylonProofTracePylonEventKind.Type

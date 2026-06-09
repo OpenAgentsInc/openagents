@@ -5,6 +5,9 @@ import {
   sha256Hex,
 } from './agent-registration'
 import {
+  autopilotCodingAssignmentsForWork,
+} from './autopilot-coding-assignment'
+import {
   assignmentIntentsForWorkOrder,
   type AutopilotWorkAssignmentIntentProjection,
 } from './autopilot-work-assignment-planner'
@@ -59,6 +62,16 @@ import {
 } from './autopilot-work-request'
 
 type HttpResponse = globalThis.Response
+
+const errorReason = (error: unknown): string =>
+  typeof error === 'object' &&
+  error !== null &&
+  'reason' in error &&
+  typeof error.reason === 'string'
+    ? error.reason
+    : error instanceof Error
+      ? error.message
+      : String(error)
 
 export class AutopilotWorkStoreError extends S.TaggedErrorClass<AutopilotWorkStoreError>()(
   'AutopilotWorkStoreError',
@@ -1139,38 +1152,58 @@ const autopilotPylonAssignmentIdempotencyKey = (
 const pylonAssignmentRequestForIntent = (
   work: AutopilotWorkOrderProjection,
   intent: AutopilotPylonAssignmentIntentProjection,
-) => ({
-  acceptanceCriteriaRefs: intent.acceptanceCriteriaRefs,
-  assignmentRef: intent.assignmentRef,
-  campaignPaused: false,
-  campaignPolicyRefs: [
-    'policy.public.autopilot_coder.no_spend_pylon_assignment',
-  ],
-  campaignRef: `campaign.public.autopilot_coder.no_spend.${work.workOrderRef}`,
-  closeoutPathRefs: intent.closeoutPathRefs,
-  forumAutoPublishAllowed: false,
-  idempotencyRefs: [
-    `idempotency.public.${intent.assignmentRef}.autopilot_work_order`,
-  ],
-  jobKind: intent.jobKind,
-  leaseSeconds: 15 * 60,
-  noDuplicateAssignmentRefs: [
-    `dedupe.public.${intent.assignmentRef}.single_active_lease`,
-  ],
-  noForumAutoPublishRefs: intent.noForumAutoPublishRefs,
-  operatorPauseRefs: ['pause.public.autopilot_coder.no_operator_pause'],
-  paymentMode: intent.paymentMode,
-  pylonRef: intent.pylonRef,
-  requiredCapabilityRefs: intent.requiredCapabilityRefs,
-  resultExpectationRefs: intent.resultExpectationRefs,
-  rollbackRefs: intent.rollbackRefs,
-  selectionPolicyRefs: [
-    `placement_policy.${work.workOrderRef}`,
-    ...intent.selectionPolicyRefs,
-  ],
-  spendCapRefs: intent.spendCapRefs,
-  taskRefs: [work.workOrderRef, intent.taskRef],
-})
+) => {
+  const codingAssignment =
+    autopilotCodingAssignmentsForWork({
+      fallbackLeaseIntents: [],
+      funding: work.funding,
+      paymentChallengeRef: work.paymentChallengeRef,
+      pylonAssignmentIntents: [intent],
+      quote: work.quote,
+      tasks: work.tasks,
+      workOrderRef: work.workOrderRef,
+    })[0] ?? null
+  const codingAssignmentJson =
+    codingAssignment === null
+      ? null
+      : JSON.parse(JSON.stringify(codingAssignment)) as Record<string, unknown>
+
+  return {
+    acceptanceCriteriaRefs: intent.acceptanceCriteriaRefs,
+    assignmentRef: intent.assignmentRef,
+    campaignPaused: false,
+    campaignPolicyRefs: [
+      'policy.public.autopilot_coder.no_spend_pylon_assignment',
+    ],
+    campaignRef: `campaign.public.autopilot_coder.no_spend.${work.workOrderRef}`,
+    closeoutPathRefs: intent.closeoutPathRefs,
+    ...(codingAssignmentJson === null
+      ? {}
+      : { codingAssignment: codingAssignmentJson }),
+    forumAutoPublishAllowed: false,
+    idempotencyRefs: [
+      `idempotency.public.${intent.assignmentRef}.autopilot_work_order`,
+    ],
+    jobKind: intent.jobKind,
+    leaseSeconds: 15 * 60,
+    noDuplicateAssignmentRefs: [
+      `dedupe.public.${intent.assignmentRef}.single_active_lease`,
+    ],
+    noForumAutoPublishRefs: intent.noForumAutoPublishRefs,
+    operatorPauseRefs: ['pause.public.autopilot_coder.no_operator_pause'],
+    paymentMode: intent.paymentMode,
+    pylonRef: intent.pylonRef,
+    requiredCapabilityRefs: intent.requiredCapabilityRefs,
+    resultExpectationRefs: intent.resultExpectationRefs,
+    rollbackRefs: intent.rollbackRefs,
+    selectionPolicyRefs: [
+      `placement_policy.${work.workOrderRef}`,
+      ...intent.selectionPolicyRefs,
+    ],
+    spendCapRefs: intent.spendCapRefs,
+    taskRefs: [work.workOrderRef, intent.taskRef],
+  }
+}
 
 const createPylonAssignmentForIntent = async (
   input: Readonly<{
@@ -1267,7 +1300,7 @@ const maybeDispatchPylonAssignments = <Bindings extends AutopilotWorkRouteEnv>(
       catch: error =>
         new AutopilotWorkStoreError({
           kind: 'storage_error',
-          reason: error instanceof Error ? error.message : String(error),
+          reason: errorReason(error),
         }),
       try: () =>
         Promise.all(
@@ -1292,7 +1325,7 @@ const maybeDispatchPylonAssignments = <Bindings extends AutopilotWorkRouteEnv>(
       catch: error =>
         new AutopilotWorkStoreError({
           kind: 'storage_error',
-          reason: error instanceof Error ? error.message : String(error),
+          reason: errorReason(error),
         }),
       try: () =>
         dependencies.makeStore(env).recordPylonAssignmentDispatch({

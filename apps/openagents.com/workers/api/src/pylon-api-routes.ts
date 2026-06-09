@@ -20,6 +20,7 @@ import {
   PylonApiAssignmentAcceptanceRequest,
   PylonApiAssignmentCloseoutRequest,
   PylonApiAssignmentProgressRequest,
+  PylonApiAssignmentWorkerCloseoutRequest,
   type PylonApiAssignmentRecord,
   type PylonApiAssignmentState,
   PylonApiCreateAssignmentRequest,
@@ -174,6 +175,7 @@ const controlledDispatchOnlineStatuses = new Set([
 const duplicateBlockingAssignmentStates = new Set<PylonApiAssignmentState>([
   'accepted',
   'blocked',
+  'closeout_submitted',
   'offered',
   'proof_submitted',
   'running',
@@ -1213,7 +1215,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
     }
 
     const assignmentMatch =
-      /^\/api\/pylons\/([^/]+)\/assignments\/([^/]+)\/(accept|progress|artifacts|payment-receipts|settlement-status)$/.exec(
+      /^\/api\/pylons\/([^/]+)\/assignments\/([^/]+)\/(accept|progress|artifacts|closeout|payment-receipts|settlement-status)$/.exec(
         url.pathname,
       )
 
@@ -1236,23 +1238,29 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
                 fallbackStatus: 'running',
                 schema: PylonApiAssignmentProgressRequest,
               }
-            : action === 'artifacts'
-              ? {
-                  eventKind: 'artifact_proof_metadata' as const,
-                  fallbackStatus: 'submitted',
-                  schema: PylonApiArtifactProofMetadataRequest,
-                }
-              : action === 'payment-receipts'
+              : action === 'artifacts'
                 ? {
-                    eventKind: 'payment_receipt' as const,
-                    fallbackStatus: 'reported',
-                    schema: PylonApiPaymentReceiptRequest,
+                    eventKind: 'artifact_proof_metadata' as const,
+                    fallbackStatus: 'submitted',
+                    schema: PylonApiArtifactProofMetadataRequest,
                   }
-                : {
-                    eventKind: 'settlement_status' as const,
-                    fallbackStatus: 'reported',
-                    schema: PylonApiSettlementStatusRequest,
-                  }
+                : action === 'closeout'
+                  ? {
+                      eventKind: 'worker_closeout' as const,
+                      fallbackStatus: 'closeout_submitted',
+                      schema: PylonApiAssignmentWorkerCloseoutRequest,
+                    }
+                  : action === 'payment-receipts'
+                    ? {
+                        eventKind: 'payment_receipt' as const,
+                        fallbackStatus: 'reported',
+                        schema: PylonApiPaymentReceiptRequest,
+                      }
+                    : {
+                        eventKind: 'settlement_status' as const,
+                        fallbackStatus: 'reported',
+                        schema: PylonApiSettlementStatusRequest,
+                      }
 
       return routeEvent(dependencies, request, env, {
         assignmentRef: decodeURIComponent(assignmentMatch[2]!),

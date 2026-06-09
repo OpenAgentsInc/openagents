@@ -204,6 +204,7 @@ const acceptedAssignment: PylonApiAssignmentRecord = {
   artifactRefs: ['artifact.public.artanis_accepted_work_smoke'],
   assignmentRef: acceptedAssignmentRef,
   closeoutRefs: ['closeout.public.artanis_accepted_work_smoke'],
+  codingAssignment: null,
   createdAt: persistedNowIso,
   id: 'pylon_assignment_public_artanis_accepted_work_smoke',
   idempotencyKeyHash: 'hash.accepted_work.assignment',
