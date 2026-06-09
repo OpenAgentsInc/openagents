@@ -83,6 +83,7 @@ const route = async (
   path: string,
   options: Readonly<{
     body?: unknown
+    headers?: HeadersInit
     idempotencyKey?: string
     method?: string
     scopes?: ReadonlyArray<string>
@@ -102,6 +103,7 @@ const route = async (
   const request = new Request(`https://openagents.com${path}`, {
     ...body,
     headers: {
+      ...options.headers,
       ...(options.body === undefined
         ? {}
         : { 'content-type': 'application/json' }),
@@ -128,6 +130,14 @@ const route = async (
 const responseJson = async (response: Response) =>
   response.json() as Promise<Readonly<{
     error?: string
+    events?: ReadonlyArray<Readonly<{
+      eventKind: string
+      publicSafe: boolean
+      sequence: number
+      taskRefs: ReadonlyArray<string>
+      workOrderRef: string
+    }>>
+    nextAfter?: number
     work?: Readonly<{
       idempotent: boolean
       state: string
@@ -247,5 +257,82 @@ describe('Autopilot work routes', () => {
     )
 
     expect(read.status).toBe(401)
+  })
+
+  test('returns pollable work events without internal operator logs', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const create = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-events',
+    })
+    const createJson = await responseJson(create)
+    const events = await route(
+      store,
+      `/api/autopilot/work/${createJson.work?.workOrderRef}/events`,
+      { method: 'GET' },
+    )
+    const eventsJson = await responseJson(events)
+
+    expect(events.status).toBe(200)
+    expect(eventsJson.nextAfter).toBe(2)
+    expect(eventsJson.events).toEqual([
+      expect.objectContaining({
+        eventKind: 'queued',
+        publicSafe: true,
+        sequence: 1,
+        taskRefs: ['task.autopilot_coder.docs_contract'],
+        workOrderRef: 'autopilot_work_order.test_1',
+      }),
+      expect.objectContaining({
+        eventKind: 'needs_access',
+        publicSafe: true,
+        sequence: 2,
+        taskRefs: ['task.autopilot_coder.docs_contract'],
+        workOrderRef: 'autopilot_work_order.test_1',
+      }),
+    ])
+  })
+
+  test('supports event cursors and server-sent event formatting', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const create = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-event-stream',
+    })
+    const createJson = await responseJson(create)
+    const events = await route(
+      store,
+      `/api/autopilot/work/${createJson.work?.workOrderRef}/events?after=1`,
+      {
+        headers: { accept: 'text/event-stream' },
+        method: 'GET',
+      },
+    )
+    const body = await events.text()
+
+    expect(events.status).toBe(200)
+    expect(events.headers.get('content-type')).toContain('text/event-stream')
+    expect(body).toContain('id: 2')
+    expect(body).toContain('event: needs_access')
+    expect(body).not.toContain('id: 1')
+  })
+
+  test('requires read scope for work events', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const create = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-events-scope',
+    })
+    const createJson = await responseJson(create)
+    const events = await route(
+      store,
+      `/api/autopilot/work/${createJson.work?.workOrderRef}/events`,
+      {
+        method: 'GET',
+        scopes: ['customer_orders.write'],
+      },
+    )
+
+    expect(events.status).toBe(401)
   })
 })

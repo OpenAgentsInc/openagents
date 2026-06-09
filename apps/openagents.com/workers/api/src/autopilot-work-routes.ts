@@ -72,6 +72,27 @@ export type AutopilotWorkOrderProjection = Readonly<{
   workOrderRef: string
 }>
 
+export type AutopilotWorkEventKind =
+  | 'accepted'
+  | 'blocked'
+  | 'delivered'
+  | 'needs_access'
+  | 'payment_required'
+  | 'queued'
+  | 'running'
+  | 'settled'
+
+export type AutopilotWorkEventProjection = Readonly<{
+  eventKind: AutopilotWorkEventKind
+  eventRef: string
+  occurredAt: string
+  publicSafe: true
+  sequence: number
+  state: OpenAgentsAutopilotWorkStateType
+  taskRefs: ReadonlyArray<string>
+  workOrderRef: string
+}>
+
 export type AutopilotWorkStore = Readonly<{
   createWorkOrder: (
     record: AutopilotWorkOrderRecord,
@@ -213,6 +234,59 @@ const projectionForRecord = (
   workOrderRef: record.workOrderRef,
 })
 
+const terminalEventKindForState = (
+  state: OpenAgentsAutopilotWorkStateType,
+): AutopilotWorkEventKind | undefined => {
+  switch (state) {
+    case 'access_required':
+      return 'needs_access'
+    case 'blocked':
+    case 'invalid':
+      return 'blocked'
+    case 'delivered':
+      return 'delivered'
+    case 'payment_required':
+      return 'payment_required'
+    case 'queued_or_running':
+      return 'running'
+    case 'accepted_free_slice':
+      return undefined
+  }
+}
+
+const eventForRecord = (
+  record: AutopilotWorkOrderRecord,
+  eventKind: AutopilotWorkEventKind,
+  sequence: number,
+  occurredAt: string,
+): AutopilotWorkEventProjection => ({
+  eventKind,
+  eventRef: `event.${record.workOrderRef}.${sequence}`,
+  occurredAt,
+  publicSafe: true,
+  sequence,
+  state: record.state,
+  taskRefs: record.taskRefs,
+  workOrderRef: record.workOrderRef,
+})
+
+export const eventsForRecord = (
+  record: AutopilotWorkOrderRecord,
+): ReadonlyArray<AutopilotWorkEventProjection> => {
+  const events = [
+    eventForRecord(record, 'queued', 1, record.createdAt),
+  ]
+  const terminalKind = terminalEventKindForState(record.state)
+
+  if (terminalKind !== undefined) {
+    events.push(
+      eventForRecord(record, terminalKind, events.length + 1, record.updatedAt),
+    )
+  }
+
+  return events
+}
+
 const buildWorkOrderRecord = (
   input: Readonly<{
     agentCredentialId: string
@@ -352,8 +426,126 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
   )
 
+const parseAfterCursor = (request: Request): number => {
+  const url = new URL(request.url)
+  const headerCursor = request.headers.get('Last-Event-ID')
+  const queryCursor = url.searchParams.get('after')
+  const rawCursor = headerCursor === null || headerCursor === ''
+    ? queryCursor
+    : headerCursor
+
+  if (rawCursor === null || rawCursor === undefined || rawCursor === '') {
+    return 0
+  }
+
+  const cursor = Number(rawCursor)
+
+  return Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : 0
+}
+
+const eventStreamPayload = (
+  events: ReadonlyArray<AutopilotWorkEventProjection>,
+): string => {
+  const body = events
+    .map(event =>
+      [
+        `id: ${event.sequence}`,
+        `event: ${event.eventKind}`,
+        `data: ${JSON.stringify({ event })}`,
+        '',
+      ].join('\n'),
+    )
+    .join('\n')
+
+  return body === '' ? ': no events\n\n' : `${body}\n`
+}
+
+const eventStreamResponse = (
+  events: ReadonlyArray<AutopilotWorkEventProjection>,
+) =>
+  new globalThis.Response(eventStreamPayload(events), {
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': 'text/event-stream; charset=utf-8',
+      'x-accel-buffering': 'no',
+    },
+  })
+
+const wantsEventStream = (request: Request): boolean => {
+  const url = new URL(request.url)
+
+  return (
+    request.headers.get('accept')?.includes('text/event-stream') === true ||
+    url.searchParams.get('stream') === 'sse'
+  )
+}
+
+const readWorkOrderEvents = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  workOrderRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const auth = yield* authenticateCustomerOrderAgentRequest(
+      request,
+      dependencies.agentStore(env),
+      {
+        nowIso: () => nowIso,
+        requiredScope: 'customer_orders.read',
+      },
+    )
+    const record = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => dependencies.makeStore(env).readWorkOrder(workOrderRef),
+    })
+
+    if (record === undefined || record.ownerUserId !== auth.ownerUserId) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_work_not_found',
+          reason: 'Autopilot work order was not found.',
+        },
+        { status: 404 },
+      )
+    }
+
+    const after = parseAfterCursor(request)
+    const events = eventsForRecord(record).filter(
+      event => event.sequence > after,
+    )
+
+    if (wantsEventStream(request)) {
+      return eventStreamResponse(events)
+    }
+
+    return noStoreJsonResponse({
+      events,
+      nextAfter: events.length === 0
+        ? after
+        : events[events.length - 1]?.sequence ?? after,
+      workOrderRef: record.workOrderRef,
+    })
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
+      Effect.succeed(unauthorized())
+    ),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
 const workOrderRefFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/autopilot\/work\/([^/]+)$/.exec(pathname)
+
+  return match?.[1]
+}
+
+const workOrderEventsRefFromPath = (pathname: string): string | undefined => {
+  const match = /^\/api\/autopilot\/work\/([^/]+)\/events$/.exec(pathname)
 
   return match?.[1]
 }
@@ -373,6 +565,22 @@ export const makeAutopilotWorkRoutes = <
       return M.value(request.method).pipe(
         M.when('POST', () => createWorkOrder(dependencies, request, env)),
         M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
+      )
+    }
+
+    const workOrderEventsRef = workOrderEventsRefFromPath(url.pathname)
+
+    if (workOrderEventsRef !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('GET', () =>
+          readWorkOrderEvents(
+            dependencies,
+            request,
+            env,
+            workOrderEventsRef,
+          )
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
       )
     }
 

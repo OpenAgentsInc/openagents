@@ -56,3 +56,34 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-request.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-003: Autopilot Work Event Stream
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4577`
+
+Status: implemented.
+
+Implemented:
+
+- Added public-safe Autopilot work event projections for queued work and the
+  current terminal gate/state:
+  - `needs_access`
+  - `payment_required`
+  - `running`
+  - `delivered`
+  - `blocked`
+- Added the pollable route:
+  - `GET /api/autopilot/work/{workOrderRef}/events`
+- Added cursor recovery using `?after=` or `Last-Event-ID`.
+- Added server-sent event formatting when the caller sends
+  `Accept: text/event-stream` or `?stream=sse`.
+- Kept the event payload customer-safe: no raw prompt body, private repo data,
+  operator logs, invoices, secrets, or worker payout authority are exposed.
+- Added focused tests for JSON polling, cursor/SSE recovery, and read-scope
+  authorization.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-request.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
