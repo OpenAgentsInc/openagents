@@ -179,3 +179,33 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-007: Deterministic Coding-Work Quote Service
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4581`
+
+Status: implemented.
+
+Implemented:
+
+- Added a pure deterministic quote service in
+  `apps/openagents.com/workers/api/src/autopilot-work-quote.ts`.
+- Priced persisted request inputs across:
+  - public free-slice work;
+  - paid public work;
+  - requester/Pylon-local runner preferences;
+  - OpenAgents SHC and cloud runner preferences;
+  - privacy-tier, private-trace, and secret-broker requirements.
+- Preserved upstream persisted quotes when `quoteRef` and `quotedAmountCents`
+  are present.
+- Added `quote` to Autopilot work projections so create, idempotent replay,
+  status recovery, and payment challenge refs derive from the same stored
+  request.
+- Kept quote/payment separate from worker payout, acceptance, settlement, and
+  deploy authority.
+- Added focused quote service tests and route-level quote stability coverage.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-quote.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

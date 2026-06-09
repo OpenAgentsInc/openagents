@@ -152,6 +152,11 @@ const responseJson = async (response: Response) =>
       accessRequestRefs?: ReadonlyArray<string>
       idempotent: boolean
       paymentChallengeRef: string | null
+      quote?: Readonly<{
+        amountCents: number
+        paymentRequired: boolean
+        quoteRef: string
+      }>
       repositoryAuthorities?: ReadonlyArray<Readonly<{
         deployAuthority: boolean
         fullName: string
@@ -256,6 +261,53 @@ describe('Autopilot work routes', () => {
         writeAuthority: 'not_requested',
       }),
     ])
+  })
+
+  test('returns the same deterministic quote across create replay and detail', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      paymentPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+        quoteRef: null,
+        quotedAmountCents: null,
+      },
+    }
+    const first = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-paid-quote',
+    })
+    const replay = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'idempotent replay does not replace stored request' },
+      idempotencyKey: 'idem-autopilot-work-paid-quote',
+    })
+    const firstJson = await responseJson(first)
+    const replayJson = await responseJson(replay)
+    const detail = await route(
+      store,
+      `/api/autopilot/work/${firstJson.work?.workOrderRef}`,
+      { method: 'GET' },
+    )
+    const detailJson = await responseJson(detail)
+
+    expect(first.status).toBe(202)
+    expect(replay.status).toBe(200)
+    expect(firstJson.work).toMatchObject({
+      paymentChallengeRef:
+        'challenge.quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+      quote: {
+        amountCents: 6400,
+        paymentRequired: true,
+        quoteRef:
+          'quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+      },
+      state: 'payment_required',
+    })
+    expect(replayJson.work?.quote).toEqual(firstJson.work?.quote)
+    expect(detailJson.work?.quote).toEqual(firstJson.work?.quote)
+    expect(detailJson.work?.paymentChallengeRef).toBe(
+      firstJson.work?.paymentChallengeRef,
+    )
   })
 
   test('returns exact structured access requirements before launch', async () => {

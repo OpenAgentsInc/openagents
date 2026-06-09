@@ -15,6 +15,10 @@ import {
 import { readJsonObject } from './json-boundary'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
+  type AutopilotWorkQuote,
+  makeAutopilotWorkQuote,
+} from './autopilot-work-quote'
+import {
   type OpenAgentsAutopilotAccessRequestKind,
   OpenAgentsAutopilotWorkState,
   type OpenAgentsAutopilotWorkRequest,
@@ -109,6 +113,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   eventStreamRef: string
   idempotent: boolean
   paymentChallengeRef: string | null
+  quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
   state: OpenAgentsAutopilotWorkStateType
   statusUrlRef: string
@@ -341,12 +346,16 @@ const repositoryAuthoritiesForRequest = (
 
 const paymentChallengeRefForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
-): string | null =>
-  request.paymentPolicy.buyerPaymentMode === 'l402' ||
-  request.paymentPolicy.buyerPaymentMode === 'mdk_checkout' ||
-  request.paymentPolicy.buyerPaymentMode === 'paid_quote_required'
-    ? `challenge.autopilot_work.${request.clientRequestRef}`
+): string | null => {
+  const quote = makeAutopilotWorkQuote(request)
+
+  return quote.paymentRequired &&
+    (request.paymentPolicy.buyerPaymentMode === 'l402' ||
+      request.paymentPolicy.buyerPaymentMode === 'mdk_checkout' ||
+      request.paymentPolicy.buyerPaymentMode === 'paid_quote_required')
+    ? `challenge.${quote.quoteRef}`
     : null
+}
 
 const stateForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
@@ -373,6 +382,7 @@ const projectionForRecord = (
   eventStreamRef: record.eventStreamRef,
   idempotent,
   paymentChallengeRef: record.paymentChallengeRef,
+  quote: makeAutopilotWorkQuote(record.request),
   repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
   state: record.state,
   statusUrlRef: record.statusUrlRef,
