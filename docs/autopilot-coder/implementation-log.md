@@ -209,3 +209,33 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-quote.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-008: MDK Checkout And L402 Buyer Intake
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4582`
+
+Status: implemented.
+
+Implemented:
+
+- Added D1 migration `0141_autopilot_work_payment_proofs.sql` to persist
+  public-safe buyer payment proof refs on Autopilot work orders.
+- Added the durable `paid_ready` state.
+- Added payment challenge projections for payable work, including:
+  - L402 `WWW-Authenticate` challenge headers;
+  - MDK checkout intent/url refs;
+  - deterministic quote refs and amount cents.
+- Changed unpaid payable create/replay responses to return HTTP 402 while
+  preserving the durable work order and quote.
+- Verified idempotent paid retries:
+  - L402 proof via `X-OpenAgents-L402`;
+  - MDK checkout proof via `X-OpenAgents-MDK-Checkout-Proof`.
+- Promoted paid retries to `paid_ready` without treating buyer payment as
+  worker payout, acceptance, settlement, deploy, or public-claim authority.
+- Added focused route coverage for unpaid challenge, paid retry, and detail
+  recovery.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

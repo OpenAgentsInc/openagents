@@ -137,6 +137,7 @@ export const OpenAgentsAutopilotWorkState = S.Literals([
   'delivered',
   'invalid',
   'payment_required',
+  'paid_ready',
   'queued_or_running',
 ])
 export type OpenAgentsAutopilotWorkState =

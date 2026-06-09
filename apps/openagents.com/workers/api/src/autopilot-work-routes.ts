@@ -13,6 +13,10 @@ import {
   unauthorized,
 } from './http/responses'
 import { readJsonObject } from './json-boundary'
+import {
+  formatOpenAgentsL402WwwAuthenticate,
+  parseOpenAgentsPaymentHeaders,
+} from './l402-payment-headers'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
   type AutopilotWorkQuote,
@@ -85,11 +89,28 @@ export type AutopilotWorkRepositoryAuthorityProjection = Readonly<{
     | 'not_requested'
 }>
 
+export type AutopilotWorkBuyerPaymentProof = Readonly<{
+  proofRef: string
+  source: 'l402' | 'mdk_checkout'
+}>
+
+export type AutopilotWorkPaymentChallengeProjection = Readonly<{
+  amountCents: number
+  challengeRef: string
+  checkoutIntentRef: string | null
+  checkoutUrlRef: string | null
+  kind: 'l402' | 'mdk_checkout'
+  l402HeaderRef: string | null
+  quoteRef: string
+  status: 'paid_ready' | 'payment_required'
+}>
+
 export type AutopilotWorkOrderRecord = Readonly<{
   accessRequestRefs: ReadonlyArray<string>
   agentCredentialId: string
   agentUserId: string
   archivedAt: string | null
+  buyerPaymentProofRef: string | null
   clientRequestRef: string
   createdAt: string
   eventStreamRef: string
@@ -108,10 +129,12 @@ export type AutopilotWorkOrderRecord = Readonly<{
 export type AutopilotWorkOrderProjection = Readonly<{
   accessRequirements: ReadonlyArray<AutopilotWorkAccessRequirementProjection>
   accessRequestRefs: ReadonlyArray<string>
+  buyerPaymentProofRef: string | null
   clientRequestRef: string
   createdAt: string
   eventStreamRef: string
   idempotent: boolean
+  paymentChallenge: AutopilotWorkPaymentChallengeProjection | null
   paymentChallengeRef: string | null
   quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
@@ -147,6 +170,14 @@ export type AutopilotWorkStore = Readonly<{
   createWorkOrder: (
     record: AutopilotWorkOrderRecord,
   ) => Promise<Readonly<{ idempotent: boolean; record: AutopilotWorkOrderRecord }>>
+  recordBuyerPaymentProof: (
+    input: Readonly<{
+      buyerPaymentProofRef: string
+      ownerUserId: string
+      updatedAt: string
+      workOrderRef: string
+    }>,
+  ) => Promise<AutopilotWorkOrderRecord | undefined>
   readWorkOrder: (
     workOrderRef: string,
   ) => Promise<AutopilotWorkOrderRecord | undefined>
@@ -357,6 +388,129 @@ const paymentChallengeRefForRequest = (
     : null
 }
 
+const safePaymentProofRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
+
+const safeBuyerPaymentProofRef = (value: string | null): string | undefined =>
+  value !== null &&
+  safePaymentProofRefPattern.test(value) &&
+  !/(invoice|lnbc|lntb|lnbcrt|preimage|secret|token|wallet)/iu.test(value)
+    ? value
+    : undefined
+
+const buyerPaymentProofFromRequest = (
+  request: Request,
+  workRequest: OpenAgentsAutopilotWorkRequest,
+): AutopilotWorkBuyerPaymentProof | undefined => {
+  const quote = makeAutopilotWorkQuote(workRequest)
+
+  if (!quote.paymentRequired) {
+    return undefined
+  }
+
+  if (workRequest.paymentPolicy.buyerPaymentMode === 'l402') {
+    const parsed = (() => {
+      try {
+        return parseOpenAgentsPaymentHeaders(request.headers)
+      } catch {
+        return undefined
+      }
+    })()
+    const proofRef = safeBuyerPaymentProofRef(parsed?.proofRef ?? null)
+
+    return proofRef === undefined
+      ? undefined
+      : { proofRef, source: 'l402' }
+  }
+
+  if (workRequest.paymentPolicy.buyerPaymentMode === 'mdk_checkout') {
+    const proofRef = safeBuyerPaymentProofRef(
+      request.headers.get('x-openagents-mdk-checkout-proof'),
+    )
+
+    return proofRef === undefined
+      ? undefined
+      : { proofRef, source: 'mdk_checkout' }
+  }
+
+  return undefined
+}
+
+const paymentChallengeForRecord = (
+  record: AutopilotWorkOrderRecord,
+): AutopilotWorkPaymentChallengeProjection | null => {
+  const quote = makeAutopilotWorkQuote(record.request)
+
+  if (record.paymentChallengeRef === null || !quote.paymentRequired) {
+    return null
+  }
+
+  if (
+    record.request.paymentPolicy.buyerPaymentMode !== 'l402' &&
+    record.request.paymentPolicy.buyerPaymentMode !== 'mdk_checkout'
+  ) {
+    return null
+  }
+
+  const kind = record.request.paymentPolicy.buyerPaymentMode
+  const checkoutIntentRef = kind === 'mdk_checkout'
+    ? `checkout_intent.${quote.quoteRef}`
+    : null
+  const checkoutUrlRef = kind === 'mdk_checkout'
+    ? `checkout_url.${quote.quoteRef}`
+    : null
+  const l402HeaderRef = kind === 'l402'
+    ? 'WWW-Authenticate: L402'
+    : null
+
+  return {
+    amountCents: quote.amountCents,
+    challengeRef: record.paymentChallengeRef,
+    checkoutIntentRef,
+    checkoutUrlRef,
+    kind,
+    l402HeaderRef,
+    quoteRef: quote.quoteRef,
+    status: record.state === 'paid_ready' ? 'paid_ready' : 'payment_required',
+  }
+}
+
+const paymentRequiredResponse = (
+  record: AutopilotWorkOrderRecord,
+  projection: AutopilotWorkOrderProjection,
+): HttpResponse => {
+  const headers = new Headers()
+  const challenge = paymentChallengeForRecord(record)
+
+  if (
+    challenge !== null &&
+    record.request.paymentPolicy.buyerPaymentMode === 'l402'
+  ) {
+    headers.set(
+      'www-authenticate',
+      formatOpenAgentsL402WwwAuthenticate({
+        amount: {
+          amountMinorUnits: challenge.amountCents,
+          asset: 'usd',
+          denomination: 'usd_cent',
+        },
+        challengeRef: challenge.challengeRef,
+        docsRef: 'docs.autopilot.work.l402',
+        endpointRef: 'endpoint.autopilot.work',
+        expiresAt: record.updatedAt,
+        productId: 'product.autopilot.work',
+      }),
+    )
+  }
+
+  return noStoreJsonResponse(
+    {
+      error: 'payment_required',
+      work: projection,
+    },
+    { headers, status: 402 },
+  )
+}
+
 const stateForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): OpenAgentsAutopilotWorkStateType => {
@@ -377,10 +531,12 @@ const projectionForRecord = (
 ): AutopilotWorkOrderProjection => ({
   accessRequirements: accessRequirementsForRequest(record.request),
   accessRequestRefs: record.accessRequestRefs,
+  buyerPaymentProofRef: record.buyerPaymentProofRef,
   clientRequestRef: record.clientRequestRef,
   createdAt: record.createdAt,
   eventStreamRef: record.eventStreamRef,
   idempotent,
+  paymentChallenge: paymentChallengeForRecord(record),
   paymentChallengeRef: record.paymentChallengeRef,
   quote: makeAutopilotWorkQuote(record.request),
   repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
@@ -404,6 +560,8 @@ const terminalEventKindForState = (
       return 'delivered'
     case 'payment_required':
       return 'payment_required'
+    case 'paid_ready':
+      return 'running'
     case 'queued_or_running':
       return 'running'
     case 'accepted_free_slice':
@@ -463,6 +621,7 @@ const buildWorkOrderRecord = (
     agentCredentialId: input.agentCredentialId,
     agentUserId: input.agentUserId,
     archivedAt: null,
+    buyerPaymentProofRef: null,
     clientRequestRef: input.request.clientRequestRef,
     createdAt: input.nowIso,
     eventStreamRef: eventStreamRefForWorkOrder(workOrderRef),
@@ -502,13 +661,33 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     )
 
     if (existing !== undefined) {
-      return noStoreJsonResponse(
-        { work: projectionForRecord(existing, true) },
-        { status: 200 },
-      )
+      const proof = buyerPaymentProofFromRequest(request, existing.request)
+      const paid = proof === undefined
+        ? existing
+        : yield* Effect.tryPromise({
+            catch: error =>
+              new AutopilotWorkStoreError({
+                kind: 'storage_error',
+                reason: error instanceof Error ? error.message : String(error),
+              }),
+            try: () =>
+              dependencies.makeStore(env).recordBuyerPaymentProof({
+                buyerPaymentProofRef: proof.proofRef,
+                ownerUserId: auth.ownerUserId,
+                updatedAt: nowIso,
+                workOrderRef: existing.workOrderRef,
+              }),
+          })
+      const record = paid ?? existing
+      const projection = projectionForRecord(record, true)
+
+      return record.state === 'payment_required'
+        ? paymentRequiredResponse(record, projection)
+        : noStoreJsonResponse({ work: projection }, { status: 200 })
     }
 
     const workRequest = yield* decodeWorkRequest(request)
+    const proof = buyerPaymentProofFromRequest(request, workRequest)
     const record = buildWorkOrderRecord({
       agentCredentialId: auth.agent.credential.id,
       agentUserId: auth.agent.user.id,
@@ -518,19 +697,32 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       ownerUserId: auth.ownerUserId,
       request: workRequest,
     })
+    const recordWithProof = proof === undefined
+      ? record
+      : {
+          ...record,
+          buyerPaymentProofRef: proof.proofRef,
+          state: 'paid_ready' as const,
+        }
     const created = yield* Effect.tryPromise({
       catch: error =>
         new AutopilotWorkStoreError({
           kind: 'storage_error',
           reason: error instanceof Error ? error.message : String(error),
         }),
-      try: () => dependencies.makeStore(env).createWorkOrder(record),
+      try: () => dependencies.makeStore(env).createWorkOrder(recordWithProof),
     })
-
-    return noStoreJsonResponse(
-      { work: projectionForRecord(created.record, created.idempotent) },
-      { status: created.idempotent ? 200 : 202 },
+    const projection = projectionForRecord(
+      created.record,
+      created.idempotent,
     )
+
+    return created.record.state === 'payment_required'
+      ? paymentRequiredResponse(created.record, projection)
+      : noStoreJsonResponse(
+          { work: projection },
+          { status: created.idempotent ? 200 : 202 },
+        )
   }).pipe(
     Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
       Effect.succeed(unauthorized())
@@ -772,6 +964,10 @@ const recordFromRow = (
   agentUserId: String(row.agent_user_id),
   archivedAt:
     typeof row.archived_at === 'string' ? row.archived_at : null,
+  buyerPaymentProofRef:
+    typeof row.buyer_payment_proof_ref === 'string'
+      ? row.buyer_payment_proof_ref
+      : null,
   clientRequestRef: String(row.client_request_ref),
   createdAt: String(row.created_at),
   eventStreamRef: String(row.event_stream_ref),
@@ -826,13 +1022,14 @@ export const makeD1AutopilotWorkStore = (
           state,
           task_refs_json,
           access_request_refs_json,
+          buyer_payment_proof_ref,
           payment_challenge_ref,
           status_url_ref,
           event_stream_ref,
           created_at,
           updated_at,
           archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         record.id,
@@ -846,6 +1043,7 @@ export const makeD1AutopilotWorkStore = (
         record.state,
         JSON.stringify(record.taskRefs),
         JSON.stringify(record.accessRequestRefs),
+        record.buyerPaymentProofRef,
         record.paymentChallengeRef,
         record.statusUrlRef,
         record.eventStreamRef,
@@ -855,6 +1053,39 @@ export const makeD1AutopilotWorkStore = (
       .run()
 
     return { idempotent: false, record }
+  },
+  recordBuyerPaymentProof: async input => {
+    await db
+      .prepare(
+        `UPDATE autopilot_work_orders
+         SET buyer_payment_proof_ref = ?,
+             state = 'paid_ready',
+             updated_at = ?
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL`,
+      )
+      .bind(
+        input.buyerPaymentProofRef,
+        input.updatedAt,
+        input.workOrderRef,
+        input.ownerUserId,
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `SELECT *
+         FROM autopilot_work_orders
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(input.workOrderRef, input.ownerUserId)
+      .first<Record<string, unknown>>()
+
+    return row === null ? undefined : recordFromRow(row)
   },
   readWorkOrder: async workOrderRef => {
     const row = await db

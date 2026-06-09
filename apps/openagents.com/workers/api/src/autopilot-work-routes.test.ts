@@ -35,6 +35,32 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
   readWorkOrder = async (workOrderRef: string) =>
     this.records.get(workOrderRef)
 
+  recordBuyerPaymentProof = async (input: Readonly<{
+    buyerPaymentProofRef: string
+    ownerUserId: string
+    updatedAt: string
+    workOrderRef: string
+  }>) => {
+    const existing = this.records.get(input.workOrderRef)
+
+    if (existing === undefined || existing.ownerUserId !== input.ownerUserId) {
+      return undefined
+    }
+
+    const updated = {
+      ...existing,
+      buyerPaymentProofRef: input.buyerPaymentProofRef,
+      state: 'paid_ready' as const,
+      updatedAt: input.updatedAt,
+    }
+    const key = `${existing.ownerUserId}:${existing.idempotencyKeyHash}`
+
+    this.records.set(existing.workOrderRef, updated)
+    this.recordsByOwnerIdempotency.set(key, updated)
+
+    return updated
+  }
+
   readWorkOrderByIdempotency = async (
     ownerUserId: string,
     idempotencyKeyHash: string,
@@ -149,8 +175,16 @@ const responseJson = async (response: Response) =>
         status: string
         taskRef: string
       }>>
+      buyerPaymentProofRef?: string | null
       accessRequestRefs?: ReadonlyArray<string>
       idempotent: boolean
+      paymentChallenge?: Readonly<{
+        amountCents: number
+        challengeRef: string
+        kind: string
+        quoteRef: string
+        status: string
+      }> | null
       paymentChallengeRef: string | null
       quote?: Readonly<{
         amountCents: number
@@ -263,7 +297,7 @@ describe('Autopilot work routes', () => {
     ])
   })
 
-  test('returns the same deterministic quote across create replay and detail', async () => {
+  test('returns the same deterministic quote across payment challenge proof retry and detail', async () => {
     const store = new MemoryAutopilotWorkStore()
     const request = {
       ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
@@ -283,6 +317,15 @@ describe('Autopilot work routes', () => {
     })
     const firstJson = await responseJson(first)
     const replayJson = await responseJson(replay)
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'paid retry does not replace stored request' },
+      headers: {
+        'X-OpenAgents-L402':
+          'oa-l402-v1.autopilot_test:payment_proof.autopilot_work.test_1',
+      },
+      idempotencyKey: 'idem-autopilot-work-paid-quote',
+    })
+    const paidJson = await responseJson(paid)
     const detail = await route(
       store,
       `/api/autopilot/work/${firstJson.work?.workOrderRef}`,
@@ -290,9 +333,19 @@ describe('Autopilot work routes', () => {
     )
     const detailJson = await responseJson(detail)
 
-    expect(first.status).toBe(202)
-    expect(replay.status).toBe(200)
+    expect(first.status).toBe(402)
+    expect(first.headers.get('www-authenticate')).toContain('L402')
+    expect(replay.status).toBe(402)
     expect(firstJson.work).toMatchObject({
+      paymentChallenge: {
+        amountCents: 6400,
+        challengeRef:
+          'challenge.quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+        kind: 'l402',
+        quoteRef:
+          'quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+        status: 'payment_required',
+      },
       paymentChallengeRef:
         'challenge.quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
       quote: {
@@ -304,10 +357,68 @@ describe('Autopilot work routes', () => {
       state: 'payment_required',
     })
     expect(replayJson.work?.quote).toEqual(firstJson.work?.quote)
+    expect(paid.status).toBe(200)
+    expect(paidJson.work).toMatchObject({
+      buyerPaymentProofRef: 'payment_proof.autopilot_work.test_1',
+      paymentChallenge: {
+        status: 'paid_ready',
+      },
+      quote: firstJson.work?.quote,
+      state: 'paid_ready',
+    })
     expect(detailJson.work?.quote).toEqual(firstJson.work?.quote)
+    expect(detailJson.work?.buyerPaymentProofRef).toBe(
+      'payment_proof.autopilot_work.test_1',
+    )
     expect(detailJson.work?.paymentChallengeRef).toBe(
       firstJson.work?.paymentChallengeRef,
     )
+  })
+
+  test('accepts an MDK checkout proof retry for payable work', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      paymentPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+        buyerPaymentMode: 'mdk_checkout' as const,
+        quoteRef: null,
+        quotedAmountCents: null,
+      },
+    }
+    const first = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-mdk-checkout',
+    })
+    const firstJson = await responseJson(first)
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'paid retry does not replace stored request' },
+      headers: {
+        'X-OpenAgents-MDK-Checkout-Proof':
+          'checkout_proof.autopilot_work.test_1',
+      },
+      idempotencyKey: 'idem-autopilot-work-mdk-checkout',
+    })
+    const paidJson = await responseJson(paid)
+
+    expect(first.status).toBe(402)
+    expect(first.headers.get('www-authenticate')).toBeNull()
+    expect(firstJson.work?.paymentChallenge).toMatchObject({
+      amountCents: 6400,
+      checkoutIntentRef:
+        'checkout_intent.quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+      kind: 'mdk_checkout',
+      status: 'payment_required',
+    })
+    expect(paid.status).toBe(200)
+    expect(paidJson.work).toMatchObject({
+      buyerPaymentProofRef: 'checkout_proof.autopilot_work.test_1',
+      paymentChallenge: {
+        kind: 'mdk_checkout',
+        status: 'paid_ready',
+      },
+      state: 'paid_ready',
+    })
   })
 
   test('returns exact structured access requirements before launch', async () => {
