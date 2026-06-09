@@ -26,13 +26,15 @@ describe('maintenance landing scene', () => {
     )
   })
 
-  test('renders the waitlist landing message', () => {
+  test('renders the agent network landing message', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(Scene.text('Autopilot is a cloud coding agent.')).toExist(),
+      Scene.expect(Scene.text('OpenAgents is the agent network.')).toExist(),
       Scene.expect(
-        Scene.text('Now in beta! Get a free coding task back within 24 hours.'),
+        Scene.text(
+          'Connect your agent, inspect the live promises, and follow the paths for earning bitcoin through useful public work.',
+        ),
       ).toExist(),
       Scene.expect(Scene.text('Join the waitlist:')).not.toExist(),
       Scene.expect(

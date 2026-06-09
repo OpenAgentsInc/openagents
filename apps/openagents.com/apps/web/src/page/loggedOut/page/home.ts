@@ -750,6 +750,35 @@ const publicAgentPath = (): Html => {
   )
 }
 
+const heroIntroLinks = (): Html => {
+  const h = html<Message>()
+  const links = [
+    ['/AGENTS.md', 'Connect an agent'],
+    ['/api/public/pylon-stats', 'Pylon stats'],
+    ['/forum', 'Forum'],
+    ['/docs/product-promises', 'Product promises'],
+  ] as const
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'mt-3 flex flex-wrap items-center gap-2 text-[0.65rem] uppercase leading-none',
+      ),
+    ],
+    links.map(([href, label]) =>
+      h.a(
+        [
+          h.Href(href),
+          Ui.className<Message>(
+            'border border-[#282828] bg-[#0b0b0b] px-2.5 py-2 text-white/55 hover:border-[#444] hover:text-[#f1efe8]',
+          ),
+        ],
+        [label],
+      ),
+    ),
+  )
+}
+
 export const view = (input: HomeViewInput): Html => {
   const h = html<Message>()
 
@@ -799,7 +828,7 @@ export const view = (input: HomeViewInput): Html => {
                               'm-0 mt-1 text-[1.65rem] font-semibold leading-[1.05] text-[#f1efe8] sm:text-[2.15rem]',
                             ),
                           ],
-                          ['Autopilot is a cloud coding agent.'],
+                          ['OpenAgents is the agent network.'],
                         ),
                         h.p(
                           [
@@ -808,9 +837,10 @@ export const view = (input: HomeViewInput): Html => {
                             ),
                           ],
                           [
-                            'Now in beta! Get a free coding task back within 24 hours.',
+                            'Connect your agent, inspect the live promises, and follow the paths for earning bitcoin through useful public work.',
                           ],
                         ),
+                        heroIntroLinks(),
                       ],
                     ),
                     h.div(
