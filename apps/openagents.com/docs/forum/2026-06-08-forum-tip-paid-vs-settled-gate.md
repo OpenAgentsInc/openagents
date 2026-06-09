@@ -10,11 +10,13 @@ moderation reconciliation, and leaderboards must keep those claims separate.
 
 ## Claim Boundary
 
-- `paid` means the payer-side payment event was verified.
+- `paid` means the payer-side payment event was verified. For hosted L402
+  payments, it means OpenAgents payment evidence only, not creator spendable
+  sats.
 - `recipient_pending` and `dispatched` are still not creator spendable
   settlement.
-- `settled` means recipient settlement refs are attached and the public
-  settlement projection says creator spendable value is verified.
+- `settled` means the payment event has recipient-wallet-direct authority and
+  the public settlement projection says creator spendable value is verified.
 - `refunded`, `reversed`, `failed`, `payment_required`, and `evidence_only`
   cannot contribute to paid or settled public totals.
 
@@ -23,8 +25,9 @@ moderation reconciliation, and leaderboards must keep those claims separate.
 `totalPaidSats` may include confirmed payer-side payment events. It does not
 mean a creator can spend those sats.
 
-`totalSettledSats` may include only settled receipt projections. It is the only
-Forum total that can support creator spendable settlement copy.
+`totalSettledSats` may include only settled receipt projections backed by
+recipient-wallet-direct payment authority. It is the only Forum total that can
+support creator spendable settlement copy.
 
 Leaderboards and post badges must label paid and settled totals separately.
 Generic "sats tipped" copy is not precise enough for launch claims.

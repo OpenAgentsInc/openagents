@@ -26,6 +26,7 @@ const confirmedPaymentEvent: ForumPaymentEventProjectionType =
     receiptRef: 'receipt.forum.reward.1',
     recipientActorRef: 'actor.comunero',
     redactedEvidenceRef: 'evidence.payment.redacted_1',
+    settlementAuthority: 'buyer_payment_evidence_only',
     status: 'confirmed',
   })
 
@@ -60,27 +61,28 @@ describe('Forum tip settlement model', () => {
     })
   })
 
-  test('answers spendable creator value when MDK payment is confirmed', () => {
+  test('answers spendable creator value only for recipient-wallet settlement', () => {
     ForumTipSettlementStates.forEach(state => {
       const projection = forumTipSettlementProjectionForState(state)
 
       expect(projection.creatorReceivedSpendableValue).toBe(
-        state === 'paid' || state === 'settled',
+        state === 'settled',
       )
       expect(projection.recipientSettlementEvidence).toBe(
-        state === 'paid' || state === 'settled',
+        state === 'settled',
       )
     })
   })
 
   test('labels paid, pending, settled, refunded, and reversed claim boundaries explicitly', () => {
     expect(forumTipSettlementProjectionForState('paid')).toMatchObject({
-      creatorReceivedSpendableValue: true,
-      recipientSettlementEvidence: true,
-      settlementAuthority: 'recipient_wallet_direct',
+      creatorReceivedSpendableValue: false,
+      recipientSettlementEvidence: false,
+      settlementAuthority: 'buyer_payment_evidence_only',
       state: 'paid',
       wording: {
-        publicPage: 'Tip paid.',
+        publicPage:
+          'Payment is recorded for this Forum reward. Recipient wallet receipt is not yet verified.',
       },
     })
     expect(
@@ -127,10 +129,24 @@ describe('Forum tip settlement model', () => {
     ).toMatchObject({
       acceptedWorkPayoutEvidence: false,
       contentRewardEvidence: true,
+      creatorReceivedSpendableValue: false,
+      recipientSettlementEvidence: false,
+      settlementAuthority: 'buyer_payment_evidence_only',
+      state: 'paid',
+    })
+  })
+
+  test('settles only recipient-wallet-direct payment events', () => {
+    expect(
+      forumTipSettlementProjectionForReceipt({
+        ...confirmedPaymentEvent,
+        settlementAuthority: 'recipient_wallet_direct',
+      }),
+    ).toMatchObject({
       creatorReceivedSpendableValue: true,
       recipientSettlementEvidence: true,
       settlementAuthority: 'recipient_wallet_direct',
-      state: 'paid',
+      state: 'settled',
     })
   })
 

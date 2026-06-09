@@ -28,7 +28,11 @@ import {
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
-import { readJsonObject } from './json-boundary'
+import {
+  parseJsonStringArray,
+  parseJsonUnknown,
+  readJsonObject,
+} from './json-boundary'
 import {
   formatOpenAgentsL402WwwAuthenticate,
   parseOpenAgentsPaymentHeaders,
@@ -1245,7 +1249,7 @@ export const makeAutopilotWorkRoutes = <
   routeAutopilotWorkRequest: (
     request: Request,
     env: Bindings,
-  ): Effect.Effect<Response> | undefined => {
+  ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
 
     if (url.pathname === '/api/autopilot/work') {
@@ -1286,18 +1290,10 @@ export const makeAutopilotWorkRoutes = <
   },
 })
 
-const parseJsonArray = (value: string): ReadonlyArray<string> => {
-  const parsed = JSON.parse(value)
-
-  return Array.isArray(parsed)
-    ? parsed.filter(item => typeof item === 'string')
-    : []
-}
-
 const recordFromRow = (
   row: Readonly<Record<string, unknown>>,
 ): AutopilotWorkOrderRecord => ({
-  accessRequestRefs: parseJsonArray(String(row.access_request_refs_json)),
+  accessRequestRefs: parseJsonStringArray(String(row.access_request_refs_json)),
   agentCredentialId: String(row.agent_credential_id),
   agentUserId: String(row.agent_user_id),
   archivedAt:
@@ -1317,11 +1313,11 @@ const recordFromRow = (
       ? row.payment_challenge_ref
       : null,
   request: decodeOpenAgentsAutopilotWorkRequest(
-    JSON.parse(String(row.request_json)),
+    parseJsonUnknown(String(row.request_json)),
   ),
   state: S.decodeUnknownSync(OpenAgentsAutopilotWorkState)(row.state),
   statusUrlRef: String(row.status_url_ref),
-  taskRefs: parseJsonArray(String(row.task_refs_json)),
+  taskRefs: parseJsonStringArray(String(row.task_refs_json)),
   updatedAt: String(row.updated_at),
   workOrderRef: String(row.work_order_ref),
 })

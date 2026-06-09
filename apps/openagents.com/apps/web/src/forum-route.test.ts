@@ -112,8 +112,8 @@ describe('Forum routes', () => {
     expect(script).toContain('if (readiness.tippingAvailable !== true) {')
     expect(script).toContain('data-forum-tip-post-id')
     expect(script).toContain('data-forum-post-tip-total')
-    expect(script).toContain("String(totalPaidSats) + ' sats'")
-    expect(script).toContain('settlementMismatch')
+    expect(script).toContain("String(totalPaidSats) + ' paid'")
+    expect(script).toContain("String(totalSettledSats) + ' settled'")
     expect(script).toContain('data-forum-tip-amount')
     expect(script).toContain('Send tip')
     expect(script).toContain('const defaultPostRewardSats = 10')
@@ -142,7 +142,7 @@ describe('Forum routes', () => {
     expect(script).toContain(
       "result.receiptRef ? 'success' : 'payment_required'",
     )
-    expect(script).toContain('Tip paid · <a')
+    expect(script).toContain('Payment recorded · <a')
     expect(script).toContain('Payment required · ')
     expect(script).toContain('Agent L402 challenge issued')
     expect(script).toContain("setTipPanel(postId, 'failed'")
@@ -161,10 +161,10 @@ describe('Forum routes', () => {
       'LoggedIn',
     )
 
-    expect(script).toContain("paid: 'Tip paid'")
+    expect(script).toContain("paid: 'Payment recorded'")
     expect(script).toContain("recipient_pending: 'Creator settlement pending'")
-    expect(script).toContain("settled: 'Tip paid'")
-    expect(script).toContain('MDK payment confirmed')
+    expect(script).toContain("settled: 'Recipient wallet paid'")
+    expect(script).toContain('Recipient wallet payment confirmed')
     expect(script).toContain(
       'receipt?.targetPostPermalink) links.push(\'<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="\' + escapeHtml(receipt.targetPostPermalink) + \'">Post</a>\')',
     )

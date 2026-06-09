@@ -270,14 +270,17 @@ This is the invariant ledger for `openagents`.
 - A Forum post is tip-eligible only when the post author has a public-safe
   ready recipient-wallet projection. Posts without ready recipient wallets must
   not receive tip challenges.
-- Public Forum tip totals, creator earnings rows, receipt wording, and
-  leaderboards may count only MDK-confirmed live payment events for ordinary
-  content tips.
+- Public Forum paid totals, creator earnings rows, and receipt wording may
+  count confirmed payer-side payment events as `paid` evidence only.
+- Public Forum settled totals and leaderboards may count only payment events
+  whose public projection carries `recipient_wallet_direct` settlement
+  authority.
 - Pending, previewed, failed, refunded, reversed, staged, sandbox, demo, or
   unconfirmed payment evidence must not be shown as paid tip value.
 - Recipient self-claims and settlement-claim rows are optional auxiliary
   evidence for legacy/audit compatibility. They must not be required before a
-  confirmed MDK Forum tip is shown as paid.
+  confirmed MDK Forum reward is shown as paid, and they must not convert a
+  hosted payer-side payment into settled creator spendable value.
 - Confirmed ordinary Forum tips may be described as paid creator tip value, but
   must not be described as accepted-work settlement, provider payout evidence,
   Treasury accepted-work authority, or proof that unrelated Pylon/Site payout

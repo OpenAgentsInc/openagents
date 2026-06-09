@@ -16,6 +16,7 @@ import {
   upsertFirstBatchPaymentPolicy,
 } from './first-batch-payment-policies'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { parseJsonRecord } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
@@ -2117,13 +2118,9 @@ const foldoverState = (
 }
 
 const safeMetadataFlag = (metadataJson: string, key: string): boolean => {
-  try {
-    const parsed = JSON.parse(metadataJson) as Record<string, unknown>
+  const parsed = parseJsonRecord(metadataJson)
 
-    return parsed[key] === true
-  } catch {
-    return false
-  }
+  return parsed?.[key] === true
 }
 
 const foldableForState = (state: FoldoverInventoryState): boolean =>

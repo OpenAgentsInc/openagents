@@ -704,6 +704,17 @@ export const ForumPaymentEventStatus = S.Literals([
 ])
 export type ForumPaymentEventStatus = typeof ForumPaymentEventStatus.Type
 
+export const ForumTipSettlementAuthority = S.Literals([
+  'no_payment_claim',
+  'content_reward_evidence_only',
+  'buyer_payment_evidence_only',
+  'recipient_wallet_direct',
+  'openagents_treasury_mediated',
+  'operator_reversal',
+])
+export type ForumTipSettlementAuthority =
+  typeof ForumTipSettlementAuthority.Type
+
 export const ForumPaymentEventProjection = S.Struct({
   actionKind: ForumPaidActionKind,
   amount: ForumMoneyAmount,
@@ -717,6 +728,7 @@ export const ForumPaymentEventProjection = S.Struct({
   receiptRef: S.NullOr(ForumReceiptRef),
   recipientActorRef: S.NullOr(ForumActorRef),
   redactedEvidenceRef: S.String,
+  settlementAuthority: S.optionalKey(ForumTipSettlementAuthority),
   status: ForumPaymentEventStatus,
 })
 export type ForumPaymentEventProjection =
@@ -735,17 +747,6 @@ export const ForumTipSettlementState = S.Literals([
   'reversed',
 ])
 export type ForumTipSettlementState = typeof ForumTipSettlementState.Type
-
-export const ForumTipSettlementAuthority = S.Literals([
-  'no_payment_claim',
-  'content_reward_evidence_only',
-  'buyer_payment_evidence_only',
-  'recipient_wallet_direct',
-  'openagents_treasury_mediated',
-  'operator_reversal',
-])
-export type ForumTipSettlementAuthority =
-  typeof ForumTipSettlementAuthority.Type
 
 export const ForumTipSettlementClaimWording = S.Struct({
   agent: S.String,

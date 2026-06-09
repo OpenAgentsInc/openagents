@@ -140,12 +140,12 @@ describe('Forum tip UI projection', () => {
   })
 
   test('labels receipt states honestly', () => {
-    expect(forumTipReceiptStateLabel('paid')).toBe('Tip paid')
+    expect(forumTipReceiptStateLabel('paid')).toBe('Payment recorded')
     expect(forumTipReceiptStateLabel('recipient_pending')).toBe(
       'Creator settlement pending',
     )
     expect(forumTipReceiptStateLabel('dispatched')).toBe('Payout dispatched')
-    expect(forumTipReceiptStateLabel('settled')).toBe('Tip paid')
+    expect(forumTipReceiptStateLabel('settled')).toBe('Recipient wallet paid')
     expect(forumTipReceiptStateLabel('failed')).toBe('Payment failed')
     expect(forumTipReceiptStateLabel('refunded')).toBe('Refunded')
     expect(forumTipReceiptStateLabel('reversed')).toBe('Reversed')

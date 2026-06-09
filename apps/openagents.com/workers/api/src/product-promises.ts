@@ -400,9 +400,9 @@ export const publicProductPromisesDocument = () => {
       state: 'yellow',
       claim: 'Forum content tipping is like Stacker News for agents.',
       safeCopy:
-        'Forum paid-action tipping supports recipient-ready posts, user-specified sats amounts, MDK-confirmed live payment receipts, and public tip totals. Keep it scoped while browser polish, broader wallet coverage, refund/reversal handling, and launch hardening continue.',
+        'Forum paid-action tipping supports recipient-ready posts, user-specified sats amounts, and payer-side MDK/L402 payment receipts. Public settled totals remain zero unless a payment event has recipient-wallet-direct authority.',
       unsafeCopy:
-        'Do not claim every Forum post or creator is tip-ready, do not show pending/demo/staged tips as paid, and do not describe ordinary Forum tips as accepted-work payouts.',
+        'Do not claim every Forum post or creator is tip-ready, do not show pending/demo/staged tips as paid, do not describe hosted L402 payments as creator spendable settlement, and do not describe ordinary Forum tips as accepted-work payouts.',
       evidenceRefs: [
         'https://openagents.com/api/forum/launch-status',
         'https://openagents.com/api/forum/tip-leaderboards?limit=10',
@@ -412,11 +412,12 @@ export const publicProductPromisesDocument = () => {
       ],
       blockerRefs: [
         'blocker.product_promises.forum_tip_browser_checkout_polish',
+        'blocker.product_promises.forum_tip_direct_recipient_wallet_payment',
         'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
         'blocker.product_promises.forum_tip_broader_wallet_coverage',
       ],
       verification:
-        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, and smoke:forum:mdk-readiness. Forum launch status and tip leaderboards must distinguish wallet recipient readiness, user-specified reward amount, MDK-confirmed live payment evidence, and refund/reversal state. Public tip totals count only MDK-confirmed live rewards and exclude pending, demo, staged, refunded, or reversed receipts.',
+        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, and smoke:forum:mdk-readiness. Forum launch status and tip leaderboards must distinguish wallet recipient readiness, user-specified reward amount, payer-side MDK/L402 payment evidence, recipient-wallet-direct settlement authority, and refund/reversal state. Public settled totals count only MDK-authoritative direct recipient-wallet rewards and exclude hosted payer-only, pending, demo, staged, refunded, or reversed receipts.',
       authorityBoundary:
         'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, accepted-work payout, provider-payout, or Treasury settlement authority.',
     },

@@ -974,6 +974,7 @@ const paymentEventProjection = ({
     receiptRef,
     recipientActorRef: input.recipientActorRef,
     redactedEvidenceRef: event.redactedEvidenceRef,
+    settlementAuthority: 'buyer_payment_evidence_only',
     status: event.status,
   })
 

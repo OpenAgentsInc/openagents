@@ -177,7 +177,7 @@ const summarizeEarnings = (
     .reduce((sum, earning) => sum + earning.amount.amount, 0)
   const totalSettledSats = earnings
     .filter(earning => earning.amount.asset === 'sats')
-    .filter(earning => earning.paymentState === 'confirmed')
+    .filter(earning => earning.settlementState === 'settled')
     .reduce((sum, earning) => sum + earning.amount.amount, 0)
 
   return {
@@ -343,6 +343,7 @@ const readPostLeaderboardRows = (
                 END), 0) AS total_paid_sats,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND json_extract(pe.public_projection_json, '$.settlementAuthority') = 'recipient_wallet_direct'
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_settled_sats
@@ -396,6 +397,7 @@ const readCreatorLeaderboardRows = (
                 END), 0) AS total_paid_sats,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND json_extract(pe.public_projection_json, '$.settlementAuthority') = 'recipient_wallet_direct'
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_settled_sats

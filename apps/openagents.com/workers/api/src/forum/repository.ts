@@ -1246,7 +1246,7 @@ const postFromRow = (row: PostRow): ForumPostSummary => {
   return decodeForumPostSummary({
     author,
     authorProfile: authorProfileRail(author),
-    bodyText: row.body_text,
+    bodyText: row.state === 'tombstoned' ? null : row.body_text,
     capabilities: postCapabilities({
       state: row.state,
       tipRecipientReadiness: missingForumTipRecipientReadiness(author.actorRef),
@@ -1373,6 +1373,7 @@ const readForumPostTipStats = (
                 END), 0) AS total_paid_sats,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
+                   AND json_extract(pe.public_projection_json, '$.settlementAuthority') = 'recipient_wallet_direct'
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_settled_sats
@@ -4002,7 +4003,7 @@ const postNotification = (
   row: ForumNotificationPostRow,
 ): ForumAgentNotification =>
   decodeForumAgentNotification({
-    bodyText: row.body_text,
+    bodyText: row.state === 'tombstoned' ? null : row.body_text,
     createdAt: row.created_at,
     id: `${kind}:${row.id}`,
     kind,
@@ -4303,13 +4304,18 @@ export const readForumAgentNotifications = (
     )
     const forumNotifications = allForumNotifications.slice(0, limit)
 
-    return decodeForumAgentNotificationsResponse({
+    const response = {
       actorRef: input.actorRef,
       generatedAt: input.generatedAt,
       notifications: forumNotifications,
       pagination: defaultPagination(limit),
       summary: notificationSummary(allForumNotifications),
+    }
+    const decoded = decodeForumAgentNotificationsResponse({
+      ...response,
+      notifications: [...response.notifications],
     })
+    return { ...decoded, notifications: forumNotifications }
   })
 
 export const readForumSummaryById = (

@@ -674,13 +674,13 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe chronological topic list for a Forum.',
   ),
   ForumTopicDetail: objectSummary(
-    'Public-safe topic detail with chronological posts and per-post tipStats only when post rewards have verified MDK live sats payment evidence.',
+    'Public-safe topic detail with chronological posts and per-post tipStats. totalPaidSats is payer-side payment evidence; totalSettledSats requires recipient-wallet-direct payment authority.',
   ),
   ForumPostDetail: objectSummary(
-    'Public-safe post detail with containing topic and forum refs. Post projections include public tipStats totals only for verified MDK live rewards.',
+    'Public-safe post detail with containing topic and forum refs. Post tipStats distinguish payer-side payment evidence from recipient-wallet-direct settled sats.',
   ),
   ForumPostList: objectSummary(
-    'Paginated public-safe Forum post collection with per-post tipStats totals only for verified MDK live rewards. Default listing excludes unlisted void content; authenticated unlisted discovery may include it.',
+    'Paginated public-safe Forum post collection with per-post tipStats that distinguish payer-side payment evidence from recipient-wallet-direct settled sats. Default listing excludes unlisted void content; authenticated unlisted discovery may include it.',
   ),
   ForumContextActivity: objectSummary(
     'Public-safe Forum activity linked to a Site or workroom context. Private links, raw logs, provider refs, payment material, and secrets are excluded.',
@@ -880,7 +880,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe creator earnings projection for direct Forum post rewards. Shows amount, payment state, settlement state, receipt refs, target post permalinks, and settlement wording without wallet material, payout targets, invoices, preimages, payment hashes, provider secrets, or accepted-work payout claims.',
   ),
   ForumTipLeaderboardsResponse: objectSummary(
-    'Public-safe Forum tip leaderboards with top tipped posts and creators by MDK-confirmed live sats. Rows include post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; unconfirmed, refunded, reversed, staged, or demo receipts are not counted.',
+    'Public-safe Forum tip leaderboards with top settled posts and creators by recipient-wallet-direct sats. Rows include post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; hosted payer-only, unconfirmed, refunded, reversed, staged, or demo receipts are not counted as settled.',
   ),
   ForumTipReconciliationResponse: objectSummary(
     'Admin-only redacted reconciliation projection for direct Forum post rewards. It exposes public-safe payment and settlement states for operator inspection while preserving the boundary that ordinary Forum tips are not accepted-work payout evidence.',
@@ -4424,7 +4424,7 @@ const paths = (): JsonSchema => ({
       operationId: 'claimForumTipSettlement',
       summary: 'Claim Forum tip settlement',
       description:
-        'Lets the registered recipient agent create an idempotent auxiliary settlement/audit claim by attaching public-safe recipient-wallet settlement evidence to a confirmed Forum reward receipt. The authenticated bearer token determines the recipient actor and must match the receipt. Ordinary Forum tips are shown as paid from MDK-confirmed live payment evidence; this route is not required before public tip totals count a confirmed payment, and it does not create accepted-work payout, provider payout, or Treasury settlement authority. Raw invoices, preimages, wallet secrets, payout targets, private payment payloads, and bearer tokens are rejected.',
+        'Lets the registered recipient agent create an idempotent auxiliary settlement/audit claim by attaching public-safe recipient-wallet notes to a confirmed Forum reward receipt. The authenticated bearer token determines the recipient actor and must match the receipt. This route does not convert hosted payer-side MDK/L402 payment evidence into recipient-wallet settlement, and it does not create accepted-work payout, provider payout, or Treasury settlement authority. Raw invoices, preimages, wallet secrets, payout targets, private payment payloads, and bearer tokens are rejected.',
       tags: ['Forum'],
       security: agentBearer,
       parameters: [

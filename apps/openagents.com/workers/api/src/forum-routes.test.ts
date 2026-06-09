@@ -2176,7 +2176,7 @@ class ForumRouteStatement implements D1PreparedStatement {
       this.query.includes('FROM forum_money_actions') &&
       this.query.includes('JOIN forum_receipts')
     ) {
-      const paymentStatusForAction = (action: MoneyActionRow) => {
+      const paymentProjectionForAction = (action: MoneyActionRow) => {
         const paymentEvent =
           action.payment_event_id === null
             ? null
@@ -2190,12 +2190,16 @@ class ForumRouteStatement implements D1PreparedStatement {
           return null
         }
 
-        return (
-          JSON.parse(paymentEvent.public_projection_json) as {
-            status?: string
-          }
-        ).status
+        return JSON.parse(paymentEvent.public_projection_json) as {
+          settlementAuthority?: string
+          status?: string
+        }
       }
+      const paymentStatusForAction = (action: MoneyActionRow) =>
+        paymentProjectionForAction(action)?.status
+      const paymentIsRecipientSettledForAction = (action: MoneyActionRow) =>
+        paymentProjectionForAction(action)?.settlementAuthority ===
+        'recipient_wallet_direct'
       if (this.query.includes('ma.target_post_id AS post_id')) {
         const scopedPostIds = this.query.includes('ma.target_post_id IN (')
           ? new Set(this.values.map(String))
@@ -2254,11 +2258,18 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
           current.tip_count += 1
           current.total_paid_sats += action.amount_value
-          current.total_settled_sats += action.amount_value
+          if (paymentIsRecipientSettledForAction(action)) {
+            current.total_settled_sats += action.amount_value
+          }
           grouped.set(receipt.target_post_id, current)
         }
 
         const rows = [...grouped.values()]
+          .filter(row =>
+            this.query.includes('HAVING total_settled_sats > 0')
+              ? row.total_settled_sats > 0
+              : true,
+          )
           .sort(
             (left, right) =>
               right.total_paid_sats - left.total_paid_sats ||
@@ -2322,11 +2333,18 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
           current.tip_count += 1
           current.total_paid_sats += action.amount_value
-          current.total_settled_sats += action.amount_value
+          if (paymentIsRecipientSettledForAction(action)) {
+            current.total_settled_sats += action.amount_value
+          }
           grouped.set(action.earning_actor_ref, current)
         }
 
         const rows = [...grouped.values()]
+          .filter(row =>
+            this.query.includes('HAVING total_settled_sats > 0')
+              ? row.total_settled_sats > 0
+              : true,
+          )
           .sort(
             (left, right) =>
               right.total_paid_sats - left.total_paid_sats ||
@@ -3974,7 +3992,7 @@ describe('Forum routes', () => {
     const response = await route(store, '/api/agents/notifications', {
       headers: { authorization: 'Bearer oa_agent_route_test' },
     })
-    const body = (await response.json()) as Readonly<{
+    const body = JSON.parse(await response.text()) as Readonly<{
       notifications: ReadonlyArray<
         Readonly<{
           id: string
@@ -3984,7 +4002,7 @@ describe('Forum routes', () => {
         }>
       >
     }>
-
+    const notifications = [...body.notifications]
     expect(response.status).toBe(200)
     expect(body).toMatchObject({
       actorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -4005,7 +4023,6 @@ describe('Forum routes', () => {
     expect(JSON.stringify(body)).not.toContain('mdk_redacted_receipt_ref')
     expect(JSON.stringify(body)).not.toContain('agent@example.com')
 
-    const notifications = body.notifications
     const mention = notifications.find(
       notification => notification.kind === 'mention',
     )
@@ -4296,8 +4313,9 @@ describe('Forum routes', () => {
         'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555#post-66666666-6666-4666-8666-666666666666',
       tipSettlement: {
         acceptedWorkPayoutEvidence: false,
-        creatorReceivedSpendableValue: true,
-        recipientSettlementEvidence: true,
+        creatorReceivedSpendableValue: false,
+        recipientSettlementEvidence: false,
+        settlementAuthority: 'buyer_payment_evidence_only',
         state: 'paid',
         treasuryAcceptedWorkClaimAllowed: false,
       },
@@ -4309,7 +4327,7 @@ describe('Forum routes', () => {
         {
           acceptedWorkPayoutEvidence: false,
           amount: { amount: 10, asset: 'sats' },
-          creatorReceivedSpendableValue: true,
+          creatorReceivedSpendableValue: false,
           paymentState: 'confirmed',
           receiptRef: redemption.receiptRef,
           settlementState: 'paid',
@@ -4322,7 +4340,7 @@ describe('Forum routes', () => {
         paidCount: 1,
         totalCount: 1,
         totalPaidSats: 10,
-        totalSettledSats: 10,
+        totalSettledSats: 0,
       },
     })
     expect(postDetailResponse.status).toBe(200)
@@ -4332,30 +4350,14 @@ describe('Forum routes', () => {
         tipStats: {
           tipCount: 1,
           totalPaidSats: 10,
-          totalSettledSats: 10,
+          totalSettledSats: 0,
         },
       },
     })
     expect(leaderboardsResponse.status).toBe(200)
     expect(leaderboards).toMatchObject({
-      creators: [
-        {
-          actor: {
-            actorRef: 'actor.route-test',
-          },
-          tipCount: 1,
-          totalPaidSats: 10,
-          totalSettledSats: 10,
-        },
-      ],
-      posts: [
-        {
-          postId,
-          tipCount: 1,
-          totalPaidSats: 10,
-          totalSettledSats: 10,
-        },
-      ],
+      creators: [],
+      posts: [],
     })
     expect(store.moneyActions).toStrictEqual([
       expect.objectContaining({
@@ -4430,6 +4432,7 @@ describe('Forum routes', () => {
         receiptRef,
         recipientActorRef,
         redactedEvidenceRef: 'evidence.forum_l402.route_settled',
+        settlementAuthority: 'recipient_wallet_direct',
         status: 'confirmed',
       }),
       redacted_evidence_ref: 'evidence.forum_l402.route_settled',

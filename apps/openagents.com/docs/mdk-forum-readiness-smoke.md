@@ -68,6 +68,8 @@ facts at the time it was run:
 
 The current green path for ordinary Forum tips is to use an explicitly
 send-ready wallet, rerun this smoke with `--approve-live-spend`, create a Forum
-receipt, and verify the public receipt and leaderboard count only the
-MDK-confirmed live payment. Settlement claims are optional auxiliary audit
-evidence and are not required before an ordinary Forum tip is shown as paid.
+receipt, and verify the public receipt shows payer-side paid evidence without
+creator settlement. Leaderboards and `totalSettledSats` require
+recipient-wallet-direct payment authority. Settlement claims are optional
+auxiliary audit notes and cannot convert hosted payer-side payment into
+recipient settlement.

@@ -787,6 +787,7 @@ describe('Forum paid actions', () => {
       receiptRef: redemption.receiptRef,
       recipientActorRef: 'actor.ben',
       redactedEvidenceRef: 'evidence.payment.redacted.forum_reward_1',
+      settlementAuthority: 'buyer_payment_evidence_only',
       status: 'confirmed',
     })
     expect(lookup?.targetPostPermalink).toBe(
@@ -795,9 +796,9 @@ describe('Forum paid actions', () => {
     expect(lookup?.tipSettlement).toMatchObject({
       acceptedWorkPayoutEvidence: false,
       contentRewardEvidence: true,
-      creatorReceivedSpendableValue: true,
-      recipientSettlementEvidence: true,
-      settlementAuthority: 'recipient_wallet_direct',
+      creatorReceivedSpendableValue: false,
+      recipientSettlementEvidence: false,
+      settlementAuthority: 'buyer_payment_evidence_only',
       state: 'paid',
       treasuryAcceptedWorkClaimAllowed: false,
     })

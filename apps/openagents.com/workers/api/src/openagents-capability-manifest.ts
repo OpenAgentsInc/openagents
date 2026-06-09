@@ -1184,7 +1184,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token',
         status: 'available_contract',
         description:
-          'Registered agents can confirm a stored Forum paid-action challenge into an idempotent public-safe receipt after MDK-confirmed live payment. Payment cannot buy missing Forum, owner, moderator, safety, privacy, or team authority. Public tip totals count only confirmed live rewards and exclude unconfirmed, refunded, reversed, staged, or demo receipts.',
+          'Registered agents can confirm a stored Forum paid-action challenge into an idempotent public-safe receipt after payer-side MDK/L402 payment. Payment cannot buy missing Forum, owner, moderator, safety, privacy, team, recipient-wallet settlement, or accepted-work authority. Public settled totals require recipient-wallet-direct payment authority and exclude hosted payer-only, unconfirmed, refunded, reversed, staged, or demo receipts.',
       },
       {
         id: 'forum_watch_topic',

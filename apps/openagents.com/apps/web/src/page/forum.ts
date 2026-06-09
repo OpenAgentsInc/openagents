@@ -112,9 +112,8 @@ export const forumScript = (
     if (!Number.isFinite(totalPaidSats) || totalPaidSats <= 0) return '';
     const totalSettledSats = Number(stats.totalSettledSats || 0);
     const tipCount = Number(stats.tipCount || 0);
-    const settlementMismatch = Number.isFinite(totalSettledSats) && totalSettledSats > 0 && totalSettledSats !== totalPaidSats;
-    const settledLabel = settlementMismatch ? ' · ' + String(totalSettledSats) + ' settled' : '';
-    const label = String(totalPaidSats) + ' sats' + settledLabel + (tipCount > 1 ? ' · ' + String(tipCount) + ' tips' : '');
+    const settledLabel = Number.isFinite(totalSettledSats) && totalSettledSats > 0 ? ' · ' + String(totalSettledSats) + ' settled' : '';
+    const label = String(totalPaidSats) + ' paid' + settledLabel + (tipCount > 1 ? ' · ' + String(tipCount) + ' payments' : '');
     return '<span data-forum-post-tip-total class="font-mono text-sm text-forum-payment sm:text-xs">' + escapeHtml(label) + '</span>';
   };
   const topicCountText = count => countText(count, 'topic', 'topics');
@@ -258,13 +257,13 @@ export const forumScript = (
     dispatched: 'Payout dispatched',
     evidence_only: 'Receipt evidence only',
     failed: 'Payment failed',
-    paid: 'Tip paid',
+    paid: 'Payment recorded',
     payment_required: 'Payment required',
     previewed: 'Previewed',
     recipient_pending: 'Creator settlement pending',
     refunded: 'Refunded',
     reversed: 'Reversed',
-    settled: 'Tip paid',
+    settled: 'Recipient wallet paid',
   })[value] || 'Payment state';
   const findTipPanel = postId =>
     Array.from(main.querySelectorAll('[data-forum-tip-panel]')).find(element =>
@@ -345,7 +344,7 @@ export const forumScript = (
   const renderTipResult = (post, result) => {
     if (result.receiptRef) {
       const receiptHref = '/forum/receipts/' + encodeURIComponent(result.receiptRef);
-      return 'Tip paid · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + receiptHref + '">Receipt</a> · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(postHref(post)) + '">Post</a>';
+      return 'Payment recorded · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + receiptHref + '">Receipt</a> · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(postHref(post)) + '">Post</a>';
     }
     const challenge = result.challenge || null;
     const l402 = challenge?.l402 || null;
@@ -462,11 +461,12 @@ export const forumScript = (
   };
   const renderTipSettlement = settlement => {
     if (!settlement) return '';
+    const settlementEvidenceLabel = settlement.creatorReceivedSpendableValue ? 'Recipient wallet payment confirmed' : 'Recipient wallet payment not confirmed';
     return '<div class="mt-4 rounded border border-forum-row-c bg-forum-row-a p-3">' +
       '<div class="font-mono text-xs text-forum-text">Tip settlement</div>' +
       '<div class="mt-1 text-sm font-bold text-forum-heading">' + escapeHtml(tipStateLabel(settlement.state)) + '</div>' +
       '<p class="m-0 mt-1 text-sm text-forum-text">' + escapeHtml(settlement.wording?.publicPage || 'Settlement state is pending.') + '</p>' +
-      '<div class="mt-2 font-mono text-xs text-forum-text">' + (settlement.creatorReceivedSpendableValue ? 'MDK payment confirmed' : 'Payment not confirmed') + '</div>' +
+      '<div class="mt-2 font-mono text-xs text-forum-text">' + escapeHtml(settlementEvidenceLabel) + '</div>' +
       '</div>';
   };
   const renderReceipt = receipt => {

@@ -93,17 +93,19 @@ const statePolicies: Record<
   },
   paid: {
     contentRewardEvidence: true,
-    creatorReceivedSpendableValue: true,
-    recipientSettlementEvidence: true,
-    settlementAuthority: 'recipient_wallet_direct',
+    creatorReceivedSpendableValue: false,
+    recipientSettlementEvidence: false,
+    settlementAuthority: 'buyer_payment_evidence_only',
     treasuryDispatchAllowed: false,
     wording: {
       agent:
-        'MDK confirmed the Forum reward payment; do not claim accepted-work payout evidence.',
+        'A payer-side Forum reward payment is confirmed; do not claim creator wallet receipt, recipient settlement, or accepted-work payout evidence.',
       operator:
-        'MDK confirmed the live Forum reward payment. Keep ordinary content tips separate from accepted-work payouts.',
-      publicPage: 'Tip paid.',
-      recipient: 'Tip paid.',
+        'Hosted payment evidence is confirmed for the Forum reward. It is not recipient-wallet settlement unless the payment event has recipient-wallet authority.',
+      publicPage:
+        'Payment is recorded for this Forum reward. Recipient wallet receipt is not yet verified.',
+      recipient:
+        'Payment is recorded for this reward, but spendable wallet receipt is not verified.',
     },
   },
   payment_required: {
@@ -234,9 +236,12 @@ export const forumTipSettlementProjectionForState = (
 
 export const forumTipSettlementProjectionForReceipt = (
   paymentEvent: ForumPaymentEventProjection | null,
-  settlementClaim: ForumTipSettlementClaimProjection | null = null,
+  _settlementClaim: ForumTipSettlementClaimProjection | null = null,
 ): ForumTipSettlementProjection => {
-  if (paymentEvent?.status === 'confirmed' && settlementClaim !== null) {
+  if (
+    paymentEvent?.status === 'confirmed' &&
+    paymentEvent.settlementAuthority === 'recipient_wallet_direct'
+  ) {
     return forumTipSettlementProjectionForState('settled')
   }
 

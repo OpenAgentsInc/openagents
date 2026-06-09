@@ -127,11 +127,11 @@ export const forumTipReceiptStateLabel = (
     dispatched: 'Payout dispatched',
     evidence_only: 'Receipt evidence only',
     failed: 'Payment failed',
-    paid: 'Tip paid',
+    paid: 'Payment recorded',
     payment_required: 'Payment required',
     previewed: 'Previewed',
     recipient_pending: 'Creator settlement pending',
     refunded: 'Refunded',
     reversed: 'Reversed',
-    settled: 'Tip paid',
+    settled: 'Recipient wallet paid',
   })[state]
