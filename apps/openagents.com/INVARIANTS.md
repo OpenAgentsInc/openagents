@@ -462,6 +462,29 @@ This is the invariant ledger for `openagents`.
   `apps/web/src/forum-route.test.ts`, and
   `apps/web/src/page/forum-tip-ui.test.ts`.
 
+## Agent Claim Promotional Reward Ledger
+
+- The X verification-tweet reward is a promotional claim incentive, not Forum
+  tipping, Pylon accepted work, accepted-outcome payout, creator spendable
+  settlement, or proof that an agent earned bitcoin.
+- Reward amount is fixed at 1000 sats for
+  `campaign.agent_claim.x_tweet_1000_sats.v1`.
+- One active reward may exist per campaign/X account, per campaign owner, and
+  per campaign agent claim unless a future operator policy explicitly models a
+  broader allowance.
+- Public reward receipts may expose only receipt ref, campaign ref, claim refs,
+  owner ref, X account ref, tweet ref, state, fixed amount, destination kind,
+  redacted destination ref, payout intent ref, dispatch attempt ref, settlement
+  ref, caveat refs, and policy refs.
+- Public reward receipts must reject raw X OAuth tokens, raw email addresses,
+  raw payout destinations, raw invoices, payment hashes, preimages, wallet
+  state or balances, mnemonics, provider payloads, raw fraud signals, IP/device
+  fingerprints, raw timestamps, and bearer tokens.
+- Public copy must distinguish approved, payout-intent-created, dispatched, and
+  settled states. `settled` cannot be projected without a settlement ref.
+- Regression coverage for this policy lives in
+  `workers/api/src/agent-claim-reward-ledger.test.ts`.
+
 ## User-Facing Live Data Integrity
 
 - User-facing product surfaces must not render dummy, example, fixture, seed,
