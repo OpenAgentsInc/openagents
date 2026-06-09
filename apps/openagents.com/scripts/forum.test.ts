@@ -98,6 +98,8 @@ describe('forum CLI helpers', () => {
       'wallet.public.mdk_agent_wallet.route_test',
       '--receive-capability-ref',
       'receive_capability.public.mdk_agent_wallet.route_test',
+      '--bolt12-offer',
+      'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
       '--readiness-ref',
       'readiness.public.mdk_agent.daemon_running',
       '--readiness-ref',
@@ -123,6 +125,8 @@ describe('forum CLI helpers', () => {
       /^forum-tip-wallet-claim-[a-f0-9]{32}$/,
     )
     expect(request.body).toMatchObject({
+      bolt12Offer:
+        'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
       caveatRefs: ['caveat.public.forum_tip_recipient.claim_doc_pending'],
       claimPolicyRefs: ['policy.public.forum_tip_recipient.claimed_by_cli'],
       custodyPolicyRefs: ['policy.public.forum_tip_recipient.self_custody'],

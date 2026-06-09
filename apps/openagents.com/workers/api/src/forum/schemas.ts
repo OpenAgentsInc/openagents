@@ -216,10 +216,19 @@ export const ForumTipRecipientReadinessState = S.Literals([
 export type ForumTipRecipientReadinessState =
   typeof ForumTipRecipientReadinessState.Type
 
+export const ForumTipRecipientDirectPaymentInstruction = S.Struct({
+  bolt12Offer: S.String,
+  kind: S.Literal('bolt12_offer'),
+  settlementAuthority: S.Literal('recipient_wallet_direct'),
+})
+export type ForumTipRecipientDirectPaymentInstruction =
+  typeof ForumTipRecipientDirectPaymentInstruction.Type
+
 export const ForumTipRecipientReadiness = S.Struct({
   actorRef: ForumActorRef,
   blockerRef: S.NullOr(S.String),
   caveatRefs: S.Array(S.String),
+  directPayment: S.NullOr(ForumTipRecipientDirectPaymentInstruction),
   providerClass: S.NullOr(ForumTipRecipientProviderClass),
   readinessRefs: S.Array(S.String),
   sourceRef: S.String,

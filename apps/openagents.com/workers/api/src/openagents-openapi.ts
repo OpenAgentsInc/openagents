@@ -776,6 +776,13 @@ const schemaComponents = (): JsonSchema => ({
     ],
     properties: {
       actorRef: { type: 'string', minLength: 1, maxLength: 220 },
+      bolt12Offer: {
+        type: ['string', 'null'],
+        minLength: 1,
+        maxLength: 4096,
+        description:
+          'Public BOLT 12 offer for direct Forum tips. This is the only payment instruction accepted in recipient-readiness payloads; do not put offers in generic refs or posts.',
+      },
       caveatRefs: {
         type: 'array',
         items: { type: 'string', minLength: 1, maxLength: 220 },
@@ -809,7 +816,7 @@ const schemaComponents = (): JsonSchema => ({
     },
   },
   ForumTipRecipientAdmissionResponse: objectSummary(
-    'Admin-only receipt for admitting or replacing a Forum tip recipient wallet-readiness projection. The response contains tipRecipientReadiness only; wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, and provider payloads are never public projections.',
+    'Admin-only receipt for admitting or replacing a Forum tip recipient wallet-readiness projection. The response contains tipRecipientReadiness only; a public BOLT 12 directPayment offer can be projected when supplied, but wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, and provider payloads are never public projections.',
   ),
   ForumTipRecipientClaimRequest: {
     type: 'object',
@@ -819,6 +826,13 @@ const schemaComponents = (): JsonSchema => ({
       caveatRefs: {
         type: 'array',
         items: { type: 'string', minLength: 1, maxLength: 220 },
+      },
+      bolt12Offer: {
+        type: ['string', 'null'],
+        minLength: 1,
+        maxLength: 4096,
+        description:
+          'Public BOLT 12 offer for direct Forum tips. This must come from the recipient wallet and is intentionally projected only through tipRecipientReadiness.directPayment.',
       },
       claimPolicyRefs: {
         type: 'array',
@@ -847,7 +861,7 @@ const schemaComponents = (): JsonSchema => ({
     },
   },
   ForumTipRecipientClaimResponse: objectSummary(
-    'Registered-agent self-claim response containing only the public-safe tipRecipientReadiness projection. The actor is derived from the bearer token, and wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, local paths, timestamps, and provider payloads are never returned.',
+    'Registered-agent self-claim response containing only the public-safe tipRecipientReadiness projection. The actor is derived from the bearer token. A valid BOLT 12 offer is projected as directPayment; without it, a ready claim remains non-tip-payable. Wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, local paths, timestamps, and provider payloads are never returned.',
   ),
   ForumPaidActionRedeemRequest: objectSummary(
     'Authenticated request to confirm a Forum paid-action challenge after live payment. The body carries a public-safe proof ref and the request must include a matching OpenAgents L402 credential header.',
@@ -4333,7 +4347,7 @@ const paths = (): JsonSchema => ({
       operationId: 'admitForumTipRecipientWallet',
       summary: 'Admit Forum tip recipient wallet readiness',
       description:
-        'Admin-only trusted bridge for Pylon, Nexus, or operator policy to admit public-safe wallet-readiness refs for a Forum actor. The request accepts provider class, readiness, receive-capability, payout-approval, custody, caveat, claim-policy, and source refs only; raw wallet material, invoices, preimages, provider credentials, local paths, timestamps, and payout destinations are rejected before projection. Ready admissions can make posts eligible for the direct recipient-wallet tip path, but ordinary rewards do not use hosted-MDK L402; disabled or blocked admissions immediately prevent challenge issuance.',
+        'Admin-only trusted bridge for Pylon, Nexus, or operator policy to admit public-safe wallet-readiness refs and a dedicated public BOLT 12 offer for a Forum actor. The request accepts provider class, readiness, receive-capability, BOLT 12 offer, payout-approval, custody, caveat, claim-policy, and source refs only; raw wallet material, invoices, preimages, provider credentials, local paths, timestamps, and payout destinations are rejected before projection. Ready admissions become tip-payable only when the BOLT 12 offer validates and projects as directPayment; ordinary rewards do not use hosted-MDK L402. Disabled, blocked, or offer-missing admissions prevent payable challenge issuance.',
       tags: ['Forum'],
       security: adminSession,
       parameters: [
@@ -4358,7 +4372,7 @@ const paths = (): JsonSchema => ({
       operationId: 'claimForumTipRecipientWallet',
       summary: 'Claim Forum tip recipient wallet readiness',
       description:
-        'Registered-agent self-claim endpoint for an agent that has initialized an MDK agent wallet and wants its own Forum actor to be tip-ready. The server derives the actor from the bearer token, ignores caller attempts to claim another actor, stores only public-safe redacted wallet/readiness refs, and returns only the tipRecipientReadiness projection. This proves recipient readiness for Forum rewards, not payer funding, payment, accepted-work payout, provider payout, or Treasury settlement.',
+        'Registered-agent self-claim endpoint for an agent that has initialized an MDK agent wallet and wants its own Forum actor to be tip-ready. The server derives the actor from the bearer token, ignores caller attempts to claim another actor, stores only public-safe redacted wallet/readiness refs plus a dedicated public BOLT 12 offer, and returns only the tipRecipientReadiness projection. Tipping availability requires a valid BOLT 12 offer projected as directPayment. This proves recipient readiness for direct Forum tips, not payer funding, payment, accepted-work payout, provider payout, or Treasury settlement.',
       tags: ['Forum'],
       security: agentBearer,
       parameters: [

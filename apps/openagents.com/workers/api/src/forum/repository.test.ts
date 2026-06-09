@@ -181,6 +181,7 @@ type ReceiptRow = Readonly<{
 type TipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
+  bolt12_offer: string | null
   caveat_refs_json: string
   claim_policy_refs_json: string
   created_at: string
@@ -416,24 +417,25 @@ class ForumRepositoryStatement implements D1PreparedStatement {
       const row: TipRecipientWalletRow = {
         actor_ref: actorRef,
         archived_at: null,
-        caveat_refs_json: String(this.values[7]),
-        claim_policy_refs_json: String(this.values[9]),
-        created_at: String(this.values[13]),
-        custody_policy_refs_json: String(this.values[8]),
-        disabled_at: this.values[15] === null ? null : String(this.values[15]),
+        bolt12_offer: this.values[5] === null ? null : String(this.values[5]),
+        caveat_refs_json: String(this.values[8]),
+        claim_policy_refs_json: String(this.values[10]),
+        created_at: String(this.values[14]),
+        custody_policy_refs_json: String(this.values[9]),
+        disabled_at: this.values[16] === null ? null : String(this.values[16]),
         id: String(this.values[0]),
         payout_target_approval_ref:
-          this.values[5] === null ? null : String(this.values[5]),
+          this.values[6] === null ? null : String(this.values[6]),
         provider_class: this.values[2] as
           | 'external_lightning'
           | 'hosted_mdk'
           | 'mdk_agent_wallet',
-        public_projection_json: String(this.values[12]),
-        readiness_refs_json: String(this.values[6]),
+        public_projection_json: String(this.values[13]),
+        readiness_refs_json: String(this.values[7]),
         receive_capability_ref: String(this.values[4]),
-        source_ref: String(this.values[10]),
-        state: this.values[11] as 'ready' | 'disabled' | 'blocked',
-        updated_at: String(this.values[14]),
+        source_ref: String(this.values[11]),
+        state: this.values[12] as 'ready' | 'disabled' | 'blocked',
+        updated_at: String(this.values[15]),
         wallet_ref: String(this.values[3]),
       }
       const existingIndex = this.store.tipRecipientWallets.findIndex(
@@ -1056,6 +1058,8 @@ const readyTipRecipientWalletInput = (
   overrides: Partial<Parameters<typeof upsertForumTipRecipientWallet>[1]> = {},
 ): Parameters<typeof upsertForumTipRecipientWallet>[1] => ({
   actorRef: actor.actorRef,
+  bolt12Offer:
+    'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
   caveatRefs: ['caveat.public.forum_tip_recipient.claim_required'],
   claimPolicyRefs: ['policy.public.forum_tip_recipient.agent_claimed'],
   custodyPolicyRefs: ['policy.public.forum_tip_recipient.self_custody'],
@@ -1229,6 +1233,12 @@ describe('Forum repository foundation', () => {
     })
     expect(ready).toMatchObject({
       blockerRef: null,
+      directPayment: {
+        bolt12Offer:
+          'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+        kind: 'bolt12_offer',
+        settlementAuthority: 'recipient_wallet_direct',
+      },
       providerClass: 'mdk_agent_wallet',
       readinessRefs: ['readiness.public.forum_tip_recipient.receive_ready'],
       state: 'ready',
@@ -1236,18 +1246,30 @@ describe('Forum repository foundation', () => {
     })
     expect(postDetail?.post.tipRecipientReadiness).toMatchObject({
       blockerRef: null,
+      directPayment: {
+        kind: 'bolt12_offer',
+        settlementAuthority: 'recipient_wallet_direct',
+      },
       state: 'ready',
       tippingAvailable: true,
     })
     expect(topicPost).toBeDefined()
     expect(topicPost!.tipRecipientReadiness).toMatchObject({
       blockerRef: null,
+      directPayment: {
+        kind: 'bolt12_offer',
+        settlementAuthority: 'recipient_wallet_direct',
+      },
       state: 'ready',
       tippingAvailable: true,
     })
     expect(topicPost!.capabilities).toMatchObject({ canTip: true })
     expect(replyAfterReadinessClaim.tipRecipientReadiness).toMatchObject({
       blockerRef: null,
+      directPayment: {
+        kind: 'bolt12_offer',
+        settlementAuthority: 'recipient_wallet_direct',
+      },
       state: 'ready',
       tippingAvailable: true,
     })
@@ -1266,6 +1288,27 @@ describe('Forum repository foundation', () => {
     expect(JSON.stringify(topicDetail)).not.toContain(
       'receive_capability.public.forum_tip_recipient.ben',
     )
+  })
+
+  test('keeps ready recipient rows without BOLT 12 offers visible but not tip-payable', async () => {
+    const store = new ForumRepositoryStore()
+    const readiness = await Effect.runPromise(
+      upsertForumTipRecipientWallet(
+        forumRepositoryDb(store),
+        readyTipRecipientWalletInput({ bolt12Offer: null }),
+        runtime,
+      ),
+    )
+
+    expect(readiness).toMatchObject({
+      blockerRef: 'blocker.public.forum_tip_recipient.bolt12_offer_missing',
+      caveatRefs: expect.arrayContaining([
+        'caveat.public.forum_tip_recipient.bolt12_offer_missing',
+      ]),
+      directPayment: null,
+      state: 'ready',
+      tippingAvailable: false,
+    })
   })
 
   test('projects disabled and blocked recipient wallets as unavailable', async () => {
@@ -1315,6 +1358,18 @@ describe('Forum repository foundation', () => {
           forumRepositoryDb(store),
           readyTipRecipientWalletInput({
             readinessRefs: ['payment_hash=abc123'],
+          }),
+          runtime,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(ForumValidationError)
+
+    await expect(
+      Effect.runPromise(
+        upsertForumTipRecipientWallet(
+          forumRepositoryDb(store),
+          readyTipRecipientWalletInput({
+            bolt12Offer: 'lnbc1rawinvoice',
           }),
           runtime,
         ),

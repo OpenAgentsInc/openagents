@@ -220,6 +220,7 @@ const ForumModerationActionBody = S.Struct({
 
 const ForumPublicSafeRef = S.Trim.check(S.isNonEmpty(), S.isMaxLength(220))
 const ForumPublicSafeRefs = S.optionalKey(S.Array(ForumPublicSafeRef))
+const ForumBolt12Offer = S.Trim.check(S.isNonEmpty(), S.isMaxLength(4096))
 
 const ForumTipRecipientWalletState = S.Literals([
   'blocked',
@@ -229,6 +230,7 @@ const ForumTipRecipientWalletState = S.Literals([
 
 const ForumTipRecipientAdmissionBody = S.Struct({
   actorRef: ForumPublicSafeRef,
+  bolt12Offer: S.optionalKey(S.NullOr(ForumBolt12Offer)),
   caveatRefs: ForumPublicSafeRefs,
   claimPolicyRefs: ForumPublicSafeRefs,
   custodyPolicyRefs: ForumPublicSafeRefs,
@@ -243,6 +245,7 @@ const ForumTipRecipientAdmissionBody = S.Struct({
 })
 
 const ForumTipRecipientClaimBody = S.Struct({
+  bolt12Offer: S.optionalKey(S.NullOr(ForumBolt12Offer)),
   caveatRefs: ForumPublicSafeRefs,
   claimPolicyRefs: ForumPublicSafeRefs,
   custodyPolicyRefs: ForumPublicSafeRefs,
@@ -2075,6 +2078,7 @@ const tipRecipientAdmissionResponse = (
       db,
       {
         actorRef: body.actorRef,
+        bolt12Offer: body.bolt12Offer ?? null,
         caveatRefs: body.caveatRefs ?? [],
         claimPolicyRefs: body.claimPolicyRefs ?? [],
         custodyPolicyRefs: body.custodyPolicyRefs ?? [],
@@ -2129,6 +2133,7 @@ const tipRecipientWalletClaimResponse = (
       db,
       {
         actorRef,
+        bolt12Offer: body.bolt12Offer ?? null,
         caveatRefs: [
           'caveat.public.forum_tip_recipient.creator_settlement_pending',
           ...(body.caveatRefs ?? []),

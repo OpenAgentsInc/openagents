@@ -452,6 +452,7 @@ type AgentProfileRow = Readonly<{
 type ForumTipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
+  bolt12_offer: string | null
   caveat_refs_json: string
   claim_policy_refs_json: string
   created_at: string
@@ -636,6 +637,7 @@ export type ForumRepositoryError =
 
 export type ForumTipRecipientWalletInput = Readonly<{
   actorRef: string
+  bolt12Offer?: string | null | undefined
   caveatRefs?: ReadonlyArray<string> | undefined
   claimPolicyRefs?: ReadonlyArray<string> | undefined
   custodyPolicyRefs?: ReadonlyArray<string> | undefined
@@ -796,6 +798,7 @@ const tipRecipientWalletRecordFromRow = (
   row: ForumTipRecipientWalletRow,
 ): ForumTipRecipientWalletRecord => ({
   actorRef: row.actor_ref,
+  bolt12Offer: row.bolt12_offer,
   caveatRefs: parseJsonStringArray(row.caveat_refs_json),
   claimPolicyRefs: parseJsonStringArray(row.claim_policy_refs_json),
   custodyPolicyRefs: parseJsonStringArray(row.custody_policy_refs_json),
@@ -814,6 +817,7 @@ const tipRecipientWalletInputToRecord = (
   input: ForumTipRecipientWalletInput,
 ): ForumTipRecipientWalletRecord => ({
   actorRef: input.actorRef,
+  bolt12Offer: input.bolt12Offer ?? null,
   caveatRefs: input.caveatRefs ?? [],
   claimPolicyRefs: input.claimPolicyRefs ?? [],
   custodyPolicyRefs: input.custodyPolicyRefs ?? [],
@@ -1791,6 +1795,7 @@ export const upsertForumTipRecipientWallet = (
              provider_class,
              wallet_ref,
              receive_capability_ref,
+             bolt12_offer,
              payout_target_approval_ref,
              readiness_refs_json,
              caveat_refs_json,
@@ -1804,11 +1809,12 @@ export const upsertForumTipRecipientWallet = (
              disabled_at,
              archived_at
            )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
            ON CONFLICT(actor_ref) DO UPDATE SET
              provider_class = excluded.provider_class,
              wallet_ref = excluded.wallet_ref,
              receive_capability_ref = excluded.receive_capability_ref,
+             bolt12_offer = excluded.bolt12_offer,
              payout_target_approval_ref = excluded.payout_target_approval_ref,
              readiness_refs_json = excluded.readiness_refs_json,
              caveat_refs_json = excluded.caveat_refs_json,
@@ -1827,6 +1833,7 @@ export const upsertForumTipRecipientWallet = (
           record.providerClass,
           record.walletRef,
           record.receiveCapabilityRef,
+          record.bolt12Offer,
           record.payoutTargetApprovalRef,
           JSON.stringify(record.readinessRefs),
           JSON.stringify(record.caveatRefs),

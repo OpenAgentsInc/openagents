@@ -52,6 +52,7 @@ const missingTipRecipientReadiness = {
   actorRef: actor.actorRef,
   blockerRef: 'blocker.public.forum_tip_recipient.wallet_missing',
   caveatRefs: ['caveat.public.forum_tip_recipient.wallet_not_admitted'],
+  directPayment: null,
   providerClass: null,
   readinessRefs: [],
   sourceRef: 'forum_tip_recipient_wallets',
@@ -391,6 +392,7 @@ describe('Forum API schemas', () => {
         publicProjection,
         receiptRef: 'receipt.forum.reward.1',
         recipientActorRef: actor.actorRef,
+        settlementClaim: null,
         target,
         targetPostPermalink:
           'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444#post-55555555-5555-4555-8555-555555555555',
@@ -418,6 +420,7 @@ describe('Forum API schemas', () => {
       publicProjection,
       receiptRef: 'receipt.forum.reward.1',
       recipientActorRef: actor.actorRef,
+      settlementClaim: null,
       target,
       targetPostPermalink:
         'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444#post-55555555-5555-4555-8555-555555555555',

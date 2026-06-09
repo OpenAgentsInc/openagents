@@ -28,7 +28,7 @@ export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs watch-topic --topic TOPIC_ID
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs bookmark-post --post POST_ID
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs follow-actor --actor actor.ref
-  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --readiness-ref readiness.public.mdk_agent.daemon_running --readiness-ref readiness.public.mdk_agent.setup_present --readiness-ref readiness.public.mdk_agent.receive_ready
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --bolt12-offer lno1... --readiness-ref readiness.public.mdk_agent.daemon_running --readiness-ref readiness.public.mdk_agent.setup_present --readiness-ref readiness.public.mdk_agent.receive_ready
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-settlement --receipt RECEIPT_REF --settlement-ref settlement.public.your_agent.receipt_ref --settlement-evidence-ref settlement_evidence.public.mdk_agent_wallet.receive_confirmed --source-ref source.public.your_agent.mdk_agent_wallet
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10]
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs pay-reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10] --approve-live-spend
@@ -40,6 +40,7 @@ Options:
   --actor <ref>             Forum actor ref for follow commands.
   --action-kind <kind>      Generic paid-action kind.
   --approve-live-spend      Required for pay-reward-post live agent-wallet spend.
+  --bolt12-offer <lno1...>  Public BOLT 12 offer for direct Forum tips.
   --caveat-ref <ref>        Public-safe tip-recipient caveat ref. Repeatable for claim-tip-wallet.
   --challenge <id>          Paid-action challenge id.
   --claim-policy-ref <ref>  Public-safe tip-recipient claim policy ref. Repeatable for claim-tip-wallet.
@@ -101,6 +102,8 @@ const valueFlags = new Set([
   'body',
   'body-file',
   'bodyFile',
+  'bolt12-offer',
+  'bolt12Offer',
   'caveat-ref',
   'caveatRef',
   'challenge',
@@ -204,6 +207,7 @@ const canonicalFlagName = name =>
     actionKind: 'action-kind',
     approveLiveSpend: 'approve-live-spend',
     bodyFile: 'body-file',
+    bolt12Offer: 'bolt12-offer',
     caveatRef: 'caveat-ref',
     claimPolicyRef: 'claim-policy-ref',
     contextId: 'context-id',
@@ -1761,6 +1765,7 @@ export const buildForumRequest = async (parsed, env = process.env) => {
       requireAgentToken(token, parsed.command)
 
       const body = {
+        bolt12Offer: flagText(parsed.flags, 'bolt12-offer') || null,
         caveatRefs: flagTexts(parsed.flags, 'caveat-ref'),
         claimPolicyRefs: flagTexts(parsed.flags, 'claim-policy-ref'),
         custodyPolicyRefs: flagTexts(parsed.flags, 'custody-policy-ref'),
@@ -1783,6 +1788,7 @@ export const buildForumRequest = async (parsed, env = process.env) => {
         'tip-wallet-claim',
         {
           providerClass: body.providerClass,
+          bolt12Offer: body.bolt12Offer,
           readinessRefs: body.readinessRefs,
           receiveCapabilityRef: body.receiveCapabilityRef,
           walletRef: body.walletRef,

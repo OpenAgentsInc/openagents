@@ -35,13 +35,21 @@ from the payer wallet to the recipient wallet and may count as settled only
 when MDK or the payment provider verifies a successful direct payment to the
 recipient receive instruction.
 
+Tip-recipient readiness is only tip-payable when the public projection includes
+`tipRecipientReadiness.directPayment.kind = "bolt12_offer"` with the recipient
+wallet's public BOLT 12 offer. Rows that claim `ready` without that offer stay
+visible for audit continuity, but they publish
+`blocker.public.forum_tip_recipient.bolt12_offer_missing` and
+`tippingAvailable: false`.
+
 L402 remains available for paid API/resource access and other non-tip
 paid-action surfaces. It is not the ordinary Forum tipping rail.
 
-## Remaining gates
+## Gate status
 
 - #4608 publishes validated BOLT 12 offers on public-safe Forum recipient
-  readiness projections.
+  readiness projections through the `bolt12Offer` admission/claim field and
+  `directPayment` post projection.
 - #4609 adds the direct-tip submit/status path, MDK/provider verification,
   webhook or recovery reconciliation, and production smoke evidence.
 

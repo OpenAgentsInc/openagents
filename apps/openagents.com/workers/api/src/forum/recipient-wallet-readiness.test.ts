@@ -14,6 +14,7 @@ const readyRecord = (
   overrides: Partial<ForumTipRecipientWalletRecord> = {},
 ): ForumTipRecipientWalletRecord => ({
   actorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  bolt12Offer: 'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
   caveatRefs: ['caveat.public.forum_tip_recipient.claim_required'],
   claimPolicyRefs: ['policy.public.forum_tip_recipient.agent_claimed'],
   custodyPolicyRefs: ['policy.public.forum_tip_recipient.self_custody'],
@@ -38,6 +39,12 @@ describe('Forum tip recipient wallet readiness', () => {
     expect(projection).toMatchObject({
       actorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       blockerRef: null,
+      directPayment: {
+        bolt12Offer:
+          'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+        kind: 'bolt12_offer',
+        settlementAuthority: 'recipient_wallet_direct',
+      },
       providerClass: 'mdk_agent_wallet',
       readinessRefs: ['readiness.public.forum_tip_recipient.receive_ready'],
       state: 'ready',
@@ -54,6 +61,7 @@ describe('Forum tip recipient wallet readiness', () => {
       actorRef: 'actor.missing',
       blockerRef: 'blocker.public.forum_tip_recipient.wallet_missing',
       caveatRefs: ['caveat.public.forum_tip_recipient.wallet_not_admitted'],
+      directPayment: null,
       providerClass: null,
       readinessRefs: [],
       sourceRef: 'forum_tip_recipient_wallets',
@@ -110,5 +118,16 @@ describe('Forum tip recipient wallet readiness', () => {
         ForumTipRecipientWalletUnsafe,
       )
     }
+
+    expect(
+      forumTipRecipientWalletRecordHasPrivateMaterial(
+        readyRecord({ bolt12Offer: 'lnbc1privateinvoice' }),
+      ),
+    ).toBe(false)
+    expect(() =>
+      assertForumTipRecipientWalletRecordSafe(
+        readyRecord({ bolt12Offer: 'lnbc1privateinvoice' }),
+      ),
+    ).toThrow(ForumTipRecipientWalletUnsafe)
   })
 })
