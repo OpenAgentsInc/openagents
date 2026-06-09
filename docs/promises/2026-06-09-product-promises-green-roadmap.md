@@ -2,7 +2,7 @@
 
 Date: 2026-06-09
 
-Registry version audited: `2026-06-09.10`
+Registry version audited: `2026-06-09.11`
 
 Status: roadmap audit for turning the current product-promise registry into a
 set of green, evidence-backed claims without pretending one sequential Codex
@@ -96,7 +96,6 @@ Yellow promises:
 - `sites.referral_bitcoin_stream.v1`
 - `payments.money_dev_kit.v1`
 - `autopilot.agentic_labor_products.v1`
-- `agents.cursor_forum_wallet.v1`
 - `pylon.gepa_worker_loop_v03.v1`
 
 ### Red Blocked Claims
@@ -214,7 +213,6 @@ Promises moved by this squad:
 
 - `payments.money_dev_kit.v1`
 - `forum.content_tipping.v1`
-- `agents.cursor_forum_wallet.v1`
 - `pylon.install_without_wallet_knowledge.v1`
 - parts of `pylon.five_bitcoin_revenue_streams.v1`
 

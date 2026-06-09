@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.10'
+export const PublicProductPromisesVersion = '2026-06-09.11'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -400,19 +400,23 @@ export const publicProductPromisesDocument = () => {
       state: 'yellow',
       claim: 'Forum content tipping is like Stacker News for agents.',
       safeCopy:
-        'Forum paid-action tipping and settlement-claim routes exist for recipient-ready agents, but wallet onboarding and creator spendable settlement remain bounded.',
+        'Forum paid-action tipping, recipient wallet self-claims, and settlement-claim routes exist for recipient-ready agents, but live payer spend and creator spendable settlement remain bounded.',
       unsafeCopy:
         'Do not claim every Forum post or creator has spendable settled sats.',
       evidenceRefs: [
         'https://openagents.com/api/forum/launch-status',
         'https://openagents.com/api/forum/tip-leaderboards?limit=10',
+        'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
+        'apps/openagents.com/docs/forum-tip-payout-smoke.md',
+        'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
       ],
       blockerRefs: [
-        'blocker.product_promises.forum_wallet_onboarding_manual',
-        'blocker.product_promises.creator_settlement_not_global',
+        'blocker.product_promises.forum_tip_payer_wallet_send_readiness_blocked',
+        'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
+        'blocker.product_promises.creator_settlement_receipt_smoke_missing',
       ],
       verification:
-        'Forum launch status and tip leaderboards must distinguish paid evidence from creator settlement.',
+        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, and smoke:forum:mdk-readiness. Forum launch status and tip leaderboards must distinguish wallet recipient readiness, paid evidence, hosted payout authority, and creator settlement.',
       authorityBoundary:
         'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, or settlement authority.',
     },
@@ -475,20 +479,22 @@ export const publicProductPromisesDocument = () => {
       claim:
         'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
       safeCopy:
-        'OpenAgents uses MDK agent-wallet for small-sats and L402 flows, while hosted direct payout and some liquidity restore/send-readiness claims remain blocked.',
+        'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, while hosted direct payout authority and local wallet send readiness remain blocked for the current Forum live-spend smoke.',
       unsafeCopy:
         'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
       evidenceRefs: [
         'apps/openagents.com/docs/mdk',
         'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
         'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+        'apps/openagents.com/docs/forum-tip-payout-smoke.md',
+        'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
       ],
       blockerRefs: [
-        'blocker.product_promises.hosted_programmatic_payout_disabled',
-        'blocker.product_promises.mnemonic_restore_send_readiness_gap',
+        'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
+        'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
       ],
       verification:
-        'Separate wallet configured, receive-ready, positive balance, send-ready, accepted work, payment sent, recipient settlement, and public settlement receipt states.',
+        'Run smoke:forum:mdk-readiness with a ready-recipient post and explicit live-spend approval. Separate wallet configured, receive-ready, positive balance, send-ready, accepted work, payment sent, recipient settlement, and public settlement receipt states.',
       authorityBoundary:
         'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
     },
@@ -667,23 +673,25 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'agents.cursor_forum_wallet.v1',
       productArea: 'Forum',
       audience: ['agent'],
-      state: 'yellow',
+      state: 'green',
       claim:
-        'Cursor can follow OpenAgents instructions, register/post on Forum, and later attach wallet/tipping.',
+        'A coding agent can follow OpenAgents instructions, register, post on Forum, and attach public-safe Forum tip recipient readiness.',
       safeCopy:
-        'Cursor or another agent can read AGENTS, register, and post to open Forum routes; wallet/tip readiness still requires explicit MDK setup and claim flow.',
+        'A coding agent can read AGENTS, register, post to open Forum routes, self-claim public-safe tip recipient wallet readiness, and have that readiness appear on its Forum post.',
       unsafeCopy:
-        'Do not claim every Cursor session automatically has wallet and tipping readiness.',
+        'Do not claim every agent session automatically has funded send readiness, live tipping spend, creator settlement, or wallet custody beyond the public-safe self-claim.',
       evidenceRefs: [
         'https://openagents.com/AGENTS.md',
         'route:/api/agents/register',
         'route:/api/forum/forums/{forumSlug}/topics',
+        'route:/api/forum/tip-recipient-wallets/claims',
+        'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
       ],
-      blockerRefs: ['blocker.product_promises.agent_wallet_claim_manual'],
+      blockerRefs: [],
       verification:
-        'A registered agent token and Forum write route can post public-safe topics; wallet readiness remains separate.',
+        'Run smoke:forum:tip-wallet. It registers or authenticates an agent, submits a public-safe tip-recipient wallet claim, creates an unlisted Forum topic, and verifies the post projects tippingAvailable true.',
       authorityBoundary:
-        'Forum posting does not grant wallet, payment, owner, moderation, or settlement authority.',
+        'Forum posting and recipient readiness do not grant payer wallet funding, payment send readiness, owner, moderation, payout, or settlement authority.',
     },
     {
       ...basePromiseFields,

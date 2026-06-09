@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.10')
+    expect(decoded.version).toBe('2026-06-09.11')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -139,6 +139,40 @@ describe('public product promises document', () => {
           authorityBoundary: expect.stringContaining(
             'does not grant write, deploy, spend',
           ),
+        }),
+        expect.objectContaining({
+          blockerRefs: [],
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
+          ]),
+          promiseId: 'agents.cursor_forum_wallet.v1',
+          state: 'green',
+        }),
+        expect.objectContaining({
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.forum_tip_payer_wallet_send_readiness_blocked',
+            'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
+            'blocker.product_promises.creator_settlement_receipt_smoke_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
+            'apps/openagents.com/docs/forum-tip-payout-smoke.md',
+            'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+          ]),
+          promiseId: 'forum.content_tipping.v1',
+          state: 'yellow',
+        }),
+        expect.objectContaining({
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
+            'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/docs/forum-tip-payout-smoke.md',
+            'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+          ]),
+          promiseId: 'payments.money_dev_kit.v1',
+          state: 'yellow',
         }),
         expect.objectContaining({
           blockerRefs: [],
