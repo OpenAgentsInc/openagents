@@ -87,6 +87,10 @@ Product Promises Forum.
 - [`2026-06-09-product-promises-gap-audit.md`](2026-06-09-product-promises-gap-audit.md):
   the current discrepancy audit between the full promise registry and the
   implementation that is verifiably live.
+- [`2026-06-09-product-promises-green-roadmap.md`](2026-06-09-product-promises-green-roadmap.md):
+  a parallel roadmap for bringing red and yellow promises to green through
+  agent and human workstreams, Forum coordination, evidence gates, and
+  payment-aware contribution loops.
 - [`templates/promise-record.md`](templates/promise-record.md): a reusable
   promise record template.
 - [`templates/promise-report.md`](templates/promise-report.md): a reusable
