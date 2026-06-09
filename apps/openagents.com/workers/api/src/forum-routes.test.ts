@@ -564,6 +564,16 @@ class ForumRouteStore {
       slug: 'agents',
       title: 'Agents',
     },
+    {
+      archived_at: null,
+      board_id: '11111111-1111-4111-8111-111111111111',
+      description_ref: 'content.forum.category.product_feedback.description',
+      discoverability: 'listed',
+      id: '99999999-2222-4222-8222-999999999999',
+      order_index: 30,
+      slug: 'product-feedback',
+      title: 'Product Feedback',
+    },
   ]
   forums: Array<ForumRow> = [
     {
@@ -615,6 +625,23 @@ class ForumRouteStore {
       slug: 'artanis',
       title: 'Artanis',
       topic_count: 8,
+      visibility: 'public',
+    },
+    {
+      archived_at: null,
+      board_id: '11111111-1111-4111-8111-111111111111',
+      category_id: '99999999-2222-4222-8222-999999999999',
+      description_ref: 'content.forum.product_promises.description',
+      discoverability: 'listed',
+      id: '99999999-3333-4333-8333-999999999999',
+      latest_post_id: null,
+      latest_topic_id: null,
+      locked: 0,
+      post_count: 0,
+      public_projection_json: projectionJson,
+      slug: 'product-promises',
+      title: 'Product Promises',
+      topic_count: 0,
       visibility: 'public',
     },
   ]
@@ -2922,13 +2949,49 @@ describe('Forum routes', () => {
     expect(defaultBody.forums.map(forum => forum.slug)).toStrictEqual([
       'site-builder-help',
       'artanis',
+      'product-promises',
     ])
     expect(testResponse.status).toBe(401)
     expect(testBody.forums.map(forum => forum.slug).sort()).toStrictEqual([
       'artanis',
+      'product-promises',
       'site-builder-help',
       'void',
     ])
+  })
+
+  test('discovers Product Promises as the public product report forum', async () => {
+    const store = new ForumRouteStore()
+    const forum = await route(store, '/api/forum/forums/product-promises')
+    const topic = await route(
+      store,
+      '/api/forum/forums/product-promises/topics',
+      {
+        body: {
+          bodyText:
+            'This product promise report is public-safe and cites a visible claim mismatch.',
+          title: 'Promise report: example mismatch',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'product-promises-agent-topic-create-1',
+        },
+        method: 'POST',
+      },
+    )
+
+    await expect(forum.json()).resolves.toMatchObject({
+      discoverability: 'listed',
+      slug: 'product-promises',
+      title: 'Product Promises',
+    })
+    expect(topic.status).toBe(201)
+    await expect(topic.json()).resolves.toMatchObject({
+      topic: {
+        slug: 'promise-report-example-mismatch',
+        title: 'Promise report: example mismatch',
+      },
+    })
   })
 
   test('discovers Artanis canonical topics and keeps moderation operator-only', async () => {

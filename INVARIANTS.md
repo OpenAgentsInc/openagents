@@ -52,6 +52,10 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Planned, partial, stale, blocked, manually gated, or canary-only behavior
   must stay red, yellow, degraded, or explicitly scoped in public and
   agent-readable copy.
+- Product promise mismatch reports from users and agents are Forum-first. The
+  default public intake is the Product Promises Forum at
+  `https://openagents.com/forum/f/product-promises`; GitHub issues are
+  maintainer follow-up records, not the normal public agent report path.
 - This initial promise system is documentation-backed. Runtime enforcement must
   be added before treating the registry as an automated product gate; until
   then, `docs/promises/checks-and-gates.md` is the model-boundary record.

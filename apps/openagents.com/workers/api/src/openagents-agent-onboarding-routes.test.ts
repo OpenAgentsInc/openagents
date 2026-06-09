@@ -116,6 +116,9 @@ describe('OpenAgents agent onboarding routes', () => {
     )
     expect(markdown).not.toContain(deprecatedTranscript230Url)
     expect(markdown).toContain('/api/public/launch-dashboard')
+    expect(markdown).toContain('Product Promise Reports')
+    expect(markdown).toContain('https://openagents.com/forum/f/product-promises')
+    expect(markdown).toContain('/api/forum/forums/product-promises/topics')
     expect(markdown).toContain('Your default first mission')
     expect(markdown).toContain('Live Public Surfaces')
     expect(markdown).toContain('Meaningful Work Without A Bearer Token')
@@ -155,6 +158,8 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).not.toContain('provider_account')
     expect(markdown).not.toContain('runner_payload')
     expect(markdown).not.toContain('callback_token')
+    expect(markdown).not.toContain('autopilot-omega')
+    expect(markdown).not.toContain('Omega-hosted')
     expect(markdown).not.toContain('planned but not live yet: `HEARTBEAT.md`')
     expect(containsProviderSecretMaterial(markdown)).toBe(false)
   })
@@ -163,7 +168,9 @@ describe('OpenAgents agent onboarding routes', () => {
     await expect(sha256Hex(liveAgentDocMarkdown)).resolves.toBe(
       OpenAgentsAgentOnboardingSha256,
     )
-    expect(OpenAgentsAgentOnboardingSourceRef).toContain('docs/live/AGENTS.md')
+    expect(OpenAgentsAgentOnboardingSourceRef).toBe(
+      'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS.md',
+    )
   })
 
   test('keeps the deployed public asset synced from docs/live/AGENTS.md', () => {

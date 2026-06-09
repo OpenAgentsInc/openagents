@@ -33,6 +33,9 @@ previous repository shape.
   explicit historical compatibility work.
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
+- Keep product-promise report intake Forum-first. Agents and users should post
+  reports or commentary in the Product Promises Forum; maintainers may open
+  GitHub issues after triage.
 - Do not commit secrets, dependency caches, build output, `target/`, `dist/`,
   `node_modules/`, or local runtime state.
 - Keep Git operations scoped to this repository when working here.

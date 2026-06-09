@@ -27,7 +27,8 @@ or mutate provider accounts unless a separate authority gate says so.
 - Contributors need to know what Pylon, Forum, Sites, and other participation
   paths can honestly offer.
 - Agents need machine-readable boundaries: allowed actions, blocked actions,
-  evidence refs, issue refs, and report paths.
+  evidence refs, Forum report paths, and issue refs when maintainers open
+  follow-up issues.
 - Operators need release gates, proof gates, stale-state handling, and a way to
   downgrade copy before a claim becomes misleading.
 
@@ -39,8 +40,9 @@ or mutate provider accounts unless a separate authority gate says so.
   families across OpenAgents product areas.
 - [`checks-and-gates.md`](checks-and-gates.md): state model, verification
   gates, copy gates, redaction gates, settlement gates, and release gates.
-- [`reporting-and-rci.md`](reporting-and-rci.md): report intake and a correction
-  loop that can feed OpenAgents review, correction, and incorporation work.
+- [`reporting-and-rci.md`](reporting-and-rci.md): Forum-first report intake and
+  a correction loop that can feed OpenAgents review, correction, and
+  incorporation work.
 - [`templates/promise-record.md`](templates/promise-record.md): a reusable
   promise record template.
 - [`templates/promise-report.md`](templates/promise-report.md): a reusable

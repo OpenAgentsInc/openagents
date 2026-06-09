@@ -18,7 +18,7 @@ does not actually grant the authority implied by the claim.
 | Release gate | Package, platform, deploy, database, worker, migration, or install smoke evidence does not match the release claim. |
 | Route coverage gate | Launch-critical or product-critical routes are missing from `AGENTS.md`, manifest, OpenAPI, or agent instruction sheets. |
 | Regression gate | A fixed broken promise has no test, smoke, formal note, or explicit model-boundary exception. |
-| Reporting gate | Users and agents have no stable place to report a broken or misleading promise. |
+| Reporting gate | Users and agents have no stable Forum path or in-product Forum-backed flow to report a broken or misleading promise. |
 
 ## Red, Yellow, Green
 
@@ -66,7 +66,7 @@ Copy may pass when it:
 - states that a claim is planned, gated, blocked, partial, or canary-only;
 - names the exact green evidence and the exact scope it proves;
 - separates product availability from authority and settlement;
-- includes a report path for users or agents who observe a mismatch.
+- includes a Forum report path for users or agents who observe a mismatch.
 
 ## Verification Outputs
 

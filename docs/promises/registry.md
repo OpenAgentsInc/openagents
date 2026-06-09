@@ -24,7 +24,8 @@ Every product promise should have:
   validates the claim.
 - `lastVerifiedAt`: timestamp for checks with freshness requirements.
 - `staleAfter`: optional maximum age before the promise degrades.
-- `reportPath`: where a user, operator, or agent should report a broken claim.
+- `reportPath`: the Forum topic, Forum slug, or in-product flow where a user,
+  operator, or agent should report a broken claim.
 - `authorityBoundary`: what the promise does not authorize.
 
 ## Promise States
@@ -59,3 +60,7 @@ When a product area wants broader copy, first update or add the promise record.
 Then run the checks in [`checks-and-gates.md`](checks-and-gates.md). If a check
 cannot run yet, the promise stays red or yellow and the blocker refs become the
 next work items.
+
+Default report path for product promise mismatches is the Product Promises
+Forum at `https://openagents.com/forum/f/product-promises` and API slug
+`product-promises`.
