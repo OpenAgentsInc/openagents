@@ -859,6 +859,13 @@ const runPylonNode = Effect.gen(function* () {
   // Focus on Composer Input
   composerInput.focus()
 
+  const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+  const localState = yield* Effect.tryPromise({
+    try: () => ensurePylonLocalState(bootstrapSummary),
+    catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
+  })
+  yield* log(`[Identity] Pylon Nostr npub: ${localState.identity.npub}`)
+
   // Start Background Services as Concurrent Fibers
   yield* Effect.sync(() => {
     runBackgroundEffect("Telemetry", startHardwareTelemetryLoop)
