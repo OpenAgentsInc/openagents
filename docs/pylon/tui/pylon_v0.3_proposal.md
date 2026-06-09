@@ -24,16 +24,15 @@ The OpenTUI presentation layer is designed as an observational graphics console,
 +--------------------------------------------------------------------------------+
 |                             Pylon v0.3 Earning Node                            |
 +------------------------------------+-------------------------------------------+
-| [Telemetry & Resource Plane]       | [Active Workroom Execution Logs]          |
+| [Active Workroom Execution Logs]   | [Telemetry & Resource Plane]              |
 |                                    |                                           |
-| State: ACTIVE_IN_WORK              | 14:02:10 [Intake] New task received.       |
-| Warm Model: Gemma-4-9B-SFT         | 14:02:12 [Sandbox] Isolated environment   |
-| VRAM Load: 8.2 GB / 12.0 GB        |           warmup complete.                |
-| CPU Usage: 14%                     | 14:02:25 [Inference] Generating patch.     |
-| GPU Temp:  62C                     | 14:02:40 [Validator] Output matches       |
-|                                    |           CS336 test parameters.          |
-| Wallet Port: 3001 (OK)             | 14:02:45 [Settlement] Generating proof    |
-| Relay Latency: 42ms                |           and publishing receipt.         |
+| 14:02:10 [Intake] Task received.   | State: ACTIVE_IN_WORK                     |
+| 14:02:12 [Sandbox] Sandbox ready.  | Warm Model: Gemma-4-9B-SFT                |
+| 14:02:25 [Inference] Gen patch.    | VRAM Load: 8.2 GB / 12.0 GB               |
+| 14:02:40 [Validator] Test passed.  | CPU Usage: 14%                            |
+| 14:02:45 [Settlement] Proof done.  | GPU Temp:  62C                            |
+|                                    | Wallet Port: 3001 (OK)                    |
+|                                    | Relay Latency: 42ms                       |
 |                                    |                                           |
 +------------------------------------+-------------------------------------------+
 | [Earnings & Transaction Ledger]                                                |
@@ -46,13 +45,13 @@ The OpenTUI presentation layer is designed as an observational graphics console,
 +------------------------------------+-------------------------------------------+
 ```
 
-### 1. Telemetry & Resource Plane (Left Box)
-* **Components**: `BoxRenderable` wrapping a `TextTableRenderable`.
-* **Telemetry**: Tracks active model type, hardware thermals, active memory boundaries, wallet connection status, and network relay latency.
-
-### 2. Active Workroom Execution Logs (Right Box)
+### 1. Active Workroom Execution Logs (Left Box)
 * **Components**: `BoxRenderable` wrapping a `ScrollBoxRenderable` containing a streaming `MarkdownRenderable`.
 * **Telemetry**: Displays real-time status output from the background workspace sidecar (`oa-workroomd`). It displays current task intake, sandbox isolation setup, active inference, test suite validation progress, and receipt publication.
+
+### 2. Telemetry & Resource Plane (Right Box)
+* **Components**: `BoxRenderable` wrapping a `TextTableRenderable`.
+* **Telemetry**: Tracks active model type, hardware thermals, active memory boundaries, wallet connection status, and network relay latency.
 
 ### 3. Earnings & Transaction Ledger (Bottom Box)
 * **Components**: Horizontal-split `BoxRenderable` displaying current MDK wallet balance and a scrolling log list of recently settled Satoshis.
