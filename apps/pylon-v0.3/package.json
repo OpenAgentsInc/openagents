@@ -1,0 +1,18 @@
+{
+  "name": "@openagents/pylon-v0.3",
+  "version": "0.3.0",
+  "description": "Modern Pylon contributor node built on Bun, Effect, and OpenTUI",
+  "private": true,
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.3.4",
+    "effect": "^3.0.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0"
+  }
+}

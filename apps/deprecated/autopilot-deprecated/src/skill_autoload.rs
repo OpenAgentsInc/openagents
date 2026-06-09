@@ -22,12 +22,12 @@ const MANAGED_CAD_SKILLS: &[ManagedSkillSpec] = &[
     ManagedSkillSpec {
         name: "autopilot-cad-builder",
         raw_url: "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/skills/autopilot-cad-builder/SKILL.md",
-        embedded_skill_md: include_str!("../../../skills/autopilot-cad-builder/SKILL.md"),
+        embedded_skill_md: include_str!("../../../../skills/autopilot-cad-builder/SKILL.md"),
     },
     ManagedSkillSpec {
         name: "autopilot-pane-control",
         raw_url: "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/skills/autopilot-pane-control/SKILL.md",
-        embedded_skill_md: include_str!("../../../skills/autopilot-pane-control/SKILL.md"),
+        embedded_skill_md: include_str!("../../../../skills/autopilot-pane-control/SKILL.md"),
     },
 ];
 
@@ -35,12 +35,12 @@ const MANAGED_DATA_MARKET_SKILLS: &[ManagedSkillSpec] = &[
     ManagedSkillSpec {
         name: "autopilot-data-seller",
         raw_url: "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/skills/autopilot-data-seller/SKILL.md",
-        embedded_skill_md: include_str!("../../../skills/autopilot-data-seller/SKILL.md"),
+        embedded_skill_md: include_str!("../../../../skills/autopilot-data-seller/SKILL.md"),
     },
     ManagedSkillSpec {
         name: "autopilot-data-market-control",
         raw_url: "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/skills/autopilot-data-market-control/SKILL.md",
-        embedded_skill_md: include_str!("../../../skills/autopilot-data-market-control/SKILL.md"),
+        embedded_skill_md: include_str!("../../../../skills/autopilot-data-market-control/SKILL.md"),
     },
 ];
 

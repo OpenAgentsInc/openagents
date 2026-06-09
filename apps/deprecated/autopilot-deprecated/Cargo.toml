@@ -66,8 +66,8 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 axum = "0.8"
-autopilot-spacetime = { path = "../../crates/autopilot-spacetime" }
-codex-client = { path = "../../crates/codex-client" }
+autopilot-spacetime = { path = "../../../crates/autopilot-spacetime" }
+codex-client = { path = "../../../crates/codex-client" }
 psionic-data = { workspace = true }
 psionic-environments = { workspace = true }
 psionic-eval = { workspace = true, features = ["full"] }
@@ -83,18 +83,18 @@ psionic-runtime = { workspace = true }
 psionic-sandbox = { workspace = true }
 psionic-serve = { workspace = true }
 psionic-train = { workspace = true }
-openagents-cad = { path = "../../crates/cad" }
-openagents-compiled-agent = { path = "../../crates/openagents-compiled-agent" }
-openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
-openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
-openagents-spark = { path = "../../crates/spark" }
-nostr = { path = "../../crates/nostr/core" }
-nostr-client = { path = "../../crates/nostr/client" }
+openagents-cad = { path = "../../../crates/cad" }
+openagents-compiled-agent = { path = "../../../crates/openagents-compiled-agent" }
+openagents-kernel-core = { path = "../../../crates/openagents-kernel-core" }
+openagents-provider-substrate = { path = "../../../crates/openagents-provider-substrate" }
+openagents-spark = { path = "../../../crates/spark" }
+nostr = { path = "../../../crates/nostr/core" }
+nostr-client = { path = "../../../crates/nostr/client" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.32" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }
+wgpui = { path = "../../../crates/wgpui", default-features = false, features = ["desktop"] }
 wgpu = { workspace = true }
 winit = { workspace = true }
 pollster = { workspace = true }
