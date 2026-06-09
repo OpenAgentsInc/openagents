@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`233` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
+This directory contains machine-generated transcripts for episodes `001`-`234` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -21,7 +21,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 - Episodes [`166`](166.md)-[`182`](182.md): The series broadens into AI politics, overnight agents, payments APIs, Commander, wallets, Nostr clients, swarm inference, research review, and sensemaking.
 - Episodes [`183`](183.md)-[`198`](198.md): The product resets into Tauri, mobile sync, dashboards, Tricoder, web/mobile coding agents, Cursor study, and Autopilot foundations.
 - Episodes [`199`](199.md)-[`213`](213.md): Autopilot becomes the personal-agent surface while Pylon, Nexus, identity, Bitcoin, Open Moltbook, online agents, and agent markets converge.
-- Episodes [`214`](214.md)-[`233`](233.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, ocean-powered compute ambition, the Autopilot beta commercial wedge, Autopilot Sites, agent-directed market instructions, the OpenAgents Forum, energy and compute orchestration, and monorepo consolidation.
+- Episodes [`214`](214.md)-[`234`](234.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, ocean-powered compute ambition, the Autopilot beta commercial wedge, Autopilot Sites, agent-directed market instructions, the OpenAgents Forum, energy and compute orchestration, monorepo consolidation, and product promises.
 
 ## Complete Episode Index
 
@@ -313,7 +313,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-233 - OAPN launch, Psionic, distributed training, bounties, ocean power, Autopilot beta, Sites, Forum, Energy Orchestration, and Consolidation
+### 214-234 - OAPN launch, Psionic, distributed training, bounties, ocean power, Autopilot beta, Sites, Forum, Energy Orchestration, Consolidation, and Product Promises
 
 | Episode | Summary |
 | --- | --- |
@@ -337,13 +337,14 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`231` The Forum](231.md) | Launches the OpenAgents Forum as an old-school bulletin board rebuilt for agents, public discussion, Bitcoin-weighted moderation, and agent participation. |
 | [`232` The Energy Layer](232.md) | Explores the co-optimization of energy and compute, agentic inference flexibility, and the "accepted outcomes per kilowatt hour" metric. |
 | [`233` The Monorepo](233.md) | Details the consolidation of OpenAgents repositories into the single GitHub monorepo (`openagents`) using Bun, Effect, and Cloudflare Workers. |
+| [`234` Product Promises](234.md) | Introduces the Product Promises feature, designed to provide transparency and programmatic verification of live, gated, or withdrawn features. |
 
 ## Major Themes
 
 | Theme | What It Covers | Start With |
 | --- | --- | --- |
-| Open agents versus closed AI capture | OpenAgents is framed as an open alternative to lab-controlled agents, closed marketplaces, regulatory capture, and platform shutdown risk. | [`001`](001.md), [`047`](047.md), [`086`](086.md), [`101`](101.md), [`124`](124.md), [`150`](150.md), [`166`](166.md), [`181`](181.md), [`200`](200.md), [`204`](204.md), [`205`](205.md), [`220`](220.md), [`222`](222.md), [`226`](226.md), [`227`](227.md), [`230`](230.md), [`231`](231.md), [`232`](232.md), [`233`](233.md) |
-| Build in public and ship early | The series repeatedly ships rough software, public demos, live launches, beta access, and worse-is-better product loops instead of closed-lab secrecy. | [`002`](002.md), [`003`](003.md), [`004`](004.md), [`006`](006.md), [`008`](008.md), [`086`](086.md), [`092`](092.md), [`100`](100.md), [`119`](119.md), [`149`](149.md), [`183`](183.md), [`184`](184.md), [`214`](214.md), [`221`](221.md), [`226`](226.md), [`228`](228.md), [`229`](229.md), [`231`](231.md) |
+| Open agents versus closed AI capture | OpenAgents is framed as an open alternative to lab-controlled agents, closed marketplaces, regulatory capture, and platform shutdown risk. | [`001`](001.md), [`047`](047.md), [`086`](086.md), [`101`](101.md), [`124`](124.md), [`150`](150.md), [`166`](166.md), [`181`](181.md), [`200`](200.md), [`204`](204.md), [`205`](205.md), [`220`](220.md), [`222`](222.md), [`226`](226.md), [`227`](227.md), [`230`](230.md), [`231`](231.md), [`232`](232.md), [`233`](233.md), [`234`](234.md) |
+| Build in public and ship early | The series repeatedly ships rough software, public demos, live launches, beta access, and worse-is-better product loops instead of closed-lab secrecy. | [`002`](002.md), [`003`](003.md), [`004`](004.md), [`006`](006.md), [`008`](008.md), [`086`](086.md), [`092`](092.md), [`100`](100.md), [`119`](119.md), [`149`](149.md), [`183`](183.md), [`184`](184.md), [`214`](214.md), [`221`](221.md), [`226`](226.md), [`228`](228.md), [`229`](229.md), [`231`](231.md), [`234`](234.md) |
 | Agent first principles | Agents are treated as concrete software objects: users, chats, plans, actions, tasks, conversations, tools, memory, payments, and inspection logs. | [`005`](005.md), [`006`](006.md), [`007`](007.md), [`020`](020.md), [`033`](033.md), [`038`](038.md), [`040`](040.md), [`090`](090.md), [`132`](132.md), [`138`](138.md), [`199`](199.md), [`230`](230.md), [`231`](231.md) |
 | RAG, documents, and private knowledge | The first app arc builds PDF upload, retrieval, embeddings, pgvector search, chat-with-docs, and later generalizes this into codebase and knowledge graphs. | [`010`](010.md), [`011`](011.md), [`012`](012.md), [`013`](013.md), [`014`](014.md), [`015`](015.md), [`016`](016.md), [`017`](017.md), [`018`](018.md), [`019`](019.md), [`023`](023.md), [`046`](046.md), [`122`](122.md), [`155`](155.md) |
 | Faerie and GitHub coding agents | Episodes 020-032 are the first serious coding-agent loop: issue context, repo embeddings, plans, code edits, commits, PRs, test automation, and daemon behavior. | [`020`](020.md), [`021`](021.md), [`022`](022.md), [`023`](023.md), [`024`](024.md), [`025`](025.md), [`026`](026.md), [`027`](027.md), [`028`](028.md), [`029`](029.md), [`030`](030.md), [`031`](031.md), [`032`](032.md) |
@@ -354,7 +355,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | HTMX, Livewire, and streaming UX | The web app experiments with HTMX, SSE, Livewire, streaming plugin status, streaming model responses, and pragmatic UI stacks. | [`050`](050.md), [`051`](051.md), [`052`](052.md), [`078`](078.md), [`079`](079.md), [`080`](080.md), [`081`](081.md), [`133`](133.md), [`134`](134.md) |
 | Bitcoin, Lightning, L402, and agent payments | Payments move from flow-of-funds planning into L402, withdrawals, chat pricing, revenue share, Lightning addresses, wallets, and accepted-work payouts. | [`037`](037.md), [`042`](042.md), [`062`](062.md), [`063`](063.md), [`064`](064.md), [`070`](070.md), [`093`](093.md), [`095`](095.md), [`096`](096.md), [`097`](097.md), [`098`](098.md), [`099`](099.md), [`143`](143.md), [`153`](153.md), [`169`](169.md), [`171`](171.md), [`173`](173.md), [`207`](207.md), [`212`](212.md), [`213`](213.md), [`223`](223.md), [`230`](230.md), [`231`](231.md) |
 | Nostr identity, storage, and open protocols | Nostr appears as login, plugin registry, KV storage, data vending, client identity, NIP-90 jobs, NIP-DS data, and protocol-backed markets. | [`066`](066.md), [`082`](082.md), [`088`](088.md), [`140`](140.md), [`141`](141.md), [`142`](142.md), [`144`](144.md), [`147`](147.md), [`155`](155.md), [`177`](177.md), [`203`](203.md), [`209`](209.md), [`214`](214.md), [`215`](215.md), [`222`](222.md), [`230`](230.md) |
-| Open API and agent marketplace | The API, agent store, plugin store, revenue share, and market hub all point toward an economy where builders and agents can sell capabilities. | [`085`](085.md), [`092`](092.md), [`093`](093.md), [`098`](098.md), [`100`](100.md), [`102`](102.md), [`125`](125.md), [`141`](141.md), [`213`](213.md), [`214`](214.md), [`215`](215.md), [`225`](225.md), [`228`](228.md), [`230`](230.md), [`231`](231.md) |
+| Open API and agent marketplace | The API, agent store, plugin store, revenue share, and market hub all point toward an economy where builders and agents can sell capabilities. | [`085`](085.md), [`092`](092.md), [`093`](093.md), [`098`](098.md), [`100`](100.md), [`102`](102.md), [`125`](125.md), [`141`](141.md), [`213`](213.md), [`214`](214.md), [`215`](215.md), [`225`](225.md), [`228`](228.md), [`230`](230.md), [`231`](231.md), [`234`](234.md) |
 | Replacing ChatGPT and lab products | The product repeatedly targets replacement of ChatGPT, GPTs, Claude Code, Copilot, Cursor, Moltbook, and closed cloud agent workflows. | [`047`](047.md), [`067`](067.md), [`085`](085.md), [`089`](089.md), [`091`](091.md), [`101`](101.md), [`118`](118.md), [`124`](124.md), [`166`](166.md), [`190`](190.md), [`193`](193.md), [`197`](197.md), [`198`](198.md), [`204`](204.md), [`205`](205.md), [`209`](209.md), [`225`](225.md), [`229`](229.md), [`230`](230.md) |
 | AutoDev and coding-agent productization | The AutoDev arc takes coding agents from plans and repo indexes into HUDs, artifacts, Git diffs, memory, issue loops, benchmarks, and paid workflows. | [`103`](103.md), [`104`](104.md), [`106`](106.md), [`107`](107.md), [`108`](108.md), [`109`](109.md), [`110`](110.md), [`111`](111.md), [`112`](112.md), [`113`](113.md), [`114`](114.md), [`115`](115.md), [`117`](117.md), [`118`](118.md), [`119`](119.md), [`120`](120.md), [`121`](121.md), [`123`](123.md), [`156`](156.md), [`161`](161.md), [`162`](162.md), [`163`](163.md), [`218`](218.md), [`219`](219.md) |
 | Spatial, game-like, and HUD interfaces | The UI thesis expands beyond chat into HUDs, panes, 3D multiplayer, MMO metaphors, hand tracking, Commander, dashboards, and dense operator surfaces. | [`111`](111.md), [`116`](116.md), [`117`](117.md), [`170`](170.md), [`175`](175.md), [`176`](176.md), [`184`](184.md), [`188`](188.md), [`189`](189.md), [`193`](193.md), [`195`](195.md), [`196`](196.md), [`208`](208.md) |
@@ -393,7 +394,7 @@ The hardest product requirement is authority separation. The web app can compose
 
 ## Reading Paths
 
-**Project thesis:** [`001`](001.md) -> [`005`](005.md) -> [`047`](047.md) -> [`086`](086.md) -> [`100`](100.md) -> [`125`](125.md) -> [`141`](141.md) -> [`200`](200.md) -> [`214`](214.md) -> [`220`](220.md) -> [`226`](226.md) -> [`227`](227.md) -> [`228`](228.md) -> [`230`](230.md) -> [`231`](231.md).
+**Project thesis:** [`001`](001.md) -> [`005`](005.md) -> [`047`](047.md) -> [`086`](086.md) -> [`100`](100.md) -> [`125`](125.md) -> [`141`](141.md) -> [`200`](200.md) -> [`214`](214.md) -> [`220`](220.md) -> [`226`](226.md) -> [`227`](227.md) -> [`228`](228.md) -> [`230`](230.md) -> [`231`](231.md) -> [`234`](234.md).
 
 **Original RAG and document product:** [`010`](010.md) -> [`011`](011.md) -> [`012`](012.md) -> [`013`](013.md) -> [`014`](014.md) -> [`015`](015.md) -> [`016`](016.md) -> [`017`](017.md) -> [`018`](018.md) -> [`019`](019.md).
 
@@ -403,7 +404,7 @@ The hardest product requirement is authority separation. The web app can compose
 
 **Plugins, APIs, and agent store:** [`048`](048.md) -> [`049`](049.md) -> [`053`](053.md) -> [`054`](054.md) -> [`055`](055.md) -> [`058`](058.md) -> [`062`](062.md) -> [`063`](063.md) -> [`066`](066.md) -> [`070`](070.md) -> [`072`](072.md) -> [`085`](085.md) -> [`092`](092.md) -> [`102`](102.md).
 
-**Payments, wallets, and markets:** [`037`](037.md) -> [`042`](042.md) -> [`062`](062.md) -> [`064`](064.md) -> [`093`](093.md) -> [`095`](095.md) -> [`096`](096.md) -> [`097`](097.md) -> [`098`](098.md) -> [`099`](099.md) -> [`143`](143.md) -> [`153`](153.md) -> [`169`](169.md) -> [`173`](173.md) -> [`207`](207.md) -> [`212`](212.md) -> [`213`](213.md) -> [`214`](214.md) -> [`215`](215.md) -> [`223`](223.md) -> [`228`](228.md) -> [`230`](230.md) -> [`231`](231.md).
+**Payments, wallets, and markets:** [`037`](037.md) -> [`042`](042.md) -> [`062`](062.md) -> [`064`](064.md) -> [`093`](093.md) -> [`095`](095.md) -> [`096`](096.md) -> [`097`](097.md) -> [`098`](098.md) -> [`099`](099.md) -> [`143`](143.md) -> [`153`](153.md) -> [`169`](169.md) -> [`173`](173.md) -> [`207`](207.md) -> [`212`](212.md) -> [`213`](213.md) -> [`214`](214.md) -> [`215`](215.md) -> [`223`](223.md) -> [`228`](228.md) -> [`230`](230.md) -> [`231`](231.md) -> [`234`](234.md).
 
 **AutoDev and repo intelligence:** [`103`](103.md) -> [`107`](107.md) -> [`108`](108.md) -> [`110`](110.md) -> [`111`](111.md) -> [`112`](112.md) -> [`113`](113.md) -> [`114`](114.md) -> [`115`](115.md) -> [`117`](117.md) -> [`118`](118.md) -> [`119`](119.md) -> [`120`](120.md) -> [`121`](121.md) -> [`122`](122.md) -> [`123`](123.md) -> [`156`](156.md) -> [`160`](160.md) -> [`161`](161.md) -> [`162`](162.md) -> [`163`](163.md) -> [`218`](218.md) -> [`219`](219.md).
 
