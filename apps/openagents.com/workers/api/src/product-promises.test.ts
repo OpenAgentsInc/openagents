@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.7')
+    expect(decoded.version).toBe('2026-06-09.8')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -95,6 +95,38 @@ describe('public product promises document', () => {
     ).toBe(true)
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          promiseId: 'autopilot.mission_briefing.v1',
+          state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'autopilot.decision_queue.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'workrooms.source_authorized_business_objects.v1',
+          state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'mobile.voice_approval_companion.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'pylon.no_dark_capacity_accounting.v1',
+          state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'payments.accepted_outcome_economics.v1',
+          state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'energy.flexible_load_proof.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'proof.claim_upgrade_receipts.v1',
+          state: 'yellow',
+        }),
         expect.objectContaining({
           promiseId: 'repo.open_source_code_map.v1',
           state: 'green',

@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.7'
+export const PublicProductPromisesVersion = '2026-06-09.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -704,6 +704,218 @@ export const publicProductPromisesDocument = () => {
         'Requires Venice-specific provider schema, secret policy, assignment mode, metering, pricing, terms boundary, and settlement refs.',
       authorityBoundary:
         'A budget or API key is not a sellable capacity marketplace.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'autopilot.mission_briefing.v1',
+      productArea: 'Autopilot',
+      audience: ['agent', 'user', 'operator'],
+      state: 'red',
+      claim:
+        'Long-running Autopilot missions should return a mission briefing that shows what happened, what changed, what is blocked, what decision is needed, costs, risks, artifacts, receipts, and proof refs.',
+      safeCopy:
+        'Mission briefings are a target product surface. Do not claim every long-running mission has a complete briefing yet.',
+      unsafeCopy:
+        'Do not claim users can always understand any multi-hour mission in under two minutes with complete diffs, tests, costs, receipts, and next actions.',
+      evidenceRefs: [
+        'docs/promises/2026-06-09-product-promises-green-roadmap.md',
+        'apps/openagents.com/workers/api/src/agent-goal-routes.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.mission_briefing_projection_missing',
+        'blocker.product_promises.drilldown_artifact_refs_incomplete',
+        'blocker.product_promises.cost_risk_receipt_rollup_missing',
+      ],
+      verification:
+        'A green record requires at least one live mission with briefing JSON, decision-needed state, artifact refs, test refs, cost/risk summary, and public-safe proof refs.',
+      authorityBoundary:
+        'A briefing is review evidence. It does not approve code, deploy, spend, continue a mission, or publish proof without separate authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'autopilot.decision_queue.v1',
+      productArea: 'Autopilot',
+      audience: ['agent', 'user', 'operator'],
+      state: 'planned',
+      claim:
+        'Autopilot should expose a decision queue for continue, steer, provide context, rerun tests, retry with another account, stop, accept, or create a follow-up mission.',
+      safeCopy:
+        'Decision-queue actions are planned/scoped and must remain route-authorized and receipt-backed.',
+      unsafeCopy:
+        'Do not claim agents can freely continue, retry, spend, mutate repositories, or switch accounts from public docs.',
+      evidenceRefs: [
+        'docs/promises/2026-06-09-product-promises-green-roadmap.md',
+        'apps/openagents.com/workers/api/src/agent-goal-runtime.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.decision_queue_api_missing',
+        'blocker.product_promises.account_retry_authority_not_public',
+        'blocker.product_promises.receipt_backed_command_closeout_missing',
+      ],
+      verification:
+        'Green requires authenticated command APIs with explicit action enums, idempotency, owner approval where needed, receipt closeout, and UI projection.',
+      authorityBoundary:
+        'A visible decision does not grant account, repository, spend, deploy, or continuation authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'workrooms.source_authorized_business_objects.v1',
+      productArea: 'workrooms',
+      audience: ['user', 'agent', 'operator'],
+      state: 'red',
+      claim:
+        'Business workrooms should turn chat and files into source-authorized contacts, companies, tasks, decisions, documents, approvals, artifacts, and receipts.',
+      safeCopy:
+        'Source-authorized business workrooms are a roadmap target. Current public copy should not claim full CRM, legal, investor, support, or finance workrooms are live.',
+      unsafeCopy:
+        'Do not claim generated summaries become operational truth without connector source refs, human approval, and write receipts.',
+      evidenceRefs: [
+        'docs/promises/2026-06-09-product-promises-gap-audit.md',
+        'apps/openagents.com/workers/api/src/omni-support-project-ops-workrooms.ts',
+        'apps/openagents.com/workers/api/src/omni-crm-follow-up-workrooms.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.source_authority_model_not_green',
+        'blocker.product_promises.connector_read_receipts_missing',
+        'blocker.product_promises.approval_gated_business_writes_missing',
+      ],
+      verification:
+        'Green requires a live workroom kind with source refs, proposed updates, approvals, artifacts, closeout receipts, and public-safe proof.',
+      authorityBoundary:
+        'Workroom summaries are proposals until accepted by the authorized user or organization.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'mobile.voice_approval_companion.v1',
+      productArea: 'mobile and voice',
+      audience: ['user', 'agent'],
+      state: 'planned',
+      claim:
+        'Voice and mobile should let users inspect workrooms, review pending approvals, issue bounded commands, and see the same approval receipts without bypassing server-side policy.',
+      safeCopy:
+        'Voice/mobile approval is planned. Any current voice or mobile language must say approvals remain server-side and receipt-backed.',
+      unsafeCopy:
+        'Do not claim a voice transcript or mobile tap can directly mutate CRM, send email, create PRs, spend money, launch paid runners, or publish claims.',
+      evidenceRefs: [
+        'docs/promises/2026-06-09-product-promises-green-roadmap.md',
+        'apps/openagents.com/workers/api/src/omni-voice-session-evidence.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.mobile_projection_missing',
+        'blocker.product_promises.voice_command_approval_receipts_missing',
+        'blocker.product_promises.cross_device_workroom_sync_missing',
+      ],
+      verification:
+        'Green requires a voice command or mobile approval flow that records transcript/source refs, proposed action, approval decision, and matching workroom receipt.',
+      authorityBoundary:
+        'Voice transcripts are evidence of user intent, not final mutation, spend, deploy, or publication authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'pylon.no_dark_capacity_accounting.v1',
+      productArea: 'Pylon',
+      audience: ['operator', 'contributor', 'public'],
+      state: 'red',
+      claim:
+        'Pylon provider capacity should show registered, benchmarked, eligible, assigned, running, artifact-producing, accepted, paid, settled, and dark-capacity reasons.',
+      safeCopy:
+        'Pylon stats are live but no-dark-capacity accounting is not green.',
+      unsafeCopy:
+        'Do not claim all linked provider capacity is earning, useful, benchmarked, assigned, or settlement-ready.',
+      evidenceRefs: [
+        'https://openagents.com/api/public/pylon-stats',
+        'apps/openagents.com/workers/api/src/public-pylon-stats.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.provider_job_lifecycle_missing',
+        'blocker.product_promises.capacity_funnel_snapshots_missing',
+        'blocker.product_promises.dark_capacity_reason_taxonomy_missing',
+      ],
+      verification:
+        'Green requires public-safe provider capacity funnel snapshots and reason-coded idle/dark capacity for real registered Pylons.',
+      authorityBoundary:
+        'Capacity presence is not accepted work, payment, settlement, or withdrawal evidence.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'payments.accepted_outcome_economics.v1',
+      productArea: 'payments',
+      audience: ['user', 'operator', 'contributor'],
+      state: 'red',
+      claim:
+        'Every accepted outcome should distinguish buyer payment, accepted value, pending credit, payout intent, settlement attempt, reconciliation, and gross margin.',
+      safeCopy:
+        'Accepted-outcome economics are a required roadmap gate before broad payout or marketplace-margin claims go green.',
+      unsafeCopy:
+        'Do not collapse paid, accepted, payable, dispatched, confirmed, reconciled, settled, and gross-margin states into one claim.',
+      evidenceRefs: [
+        'docs/promises/2026-06-09-product-promises-gap-audit.md',
+        'apps/openagents.com/workers/api/src/pylon-accepted-work-payout-slo.ts',
+        'apps/openagents.com/workers/api/src/pylon-accepted-work-proof-links.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.settlement_state_machine_incomplete',
+        'blocker.product_promises.contributor_ledger_missing',
+        'blocker.product_promises.gross_margin_receipts_missing',
+      ],
+      verification:
+        'Green requires one accepted outcome with separate authorized, paid, accepted, pending payout, dispatched, confirmed, reconciled, and margin evidence.',
+      authorityBoundary:
+        'Payment evidence alone is not accepted-work payout or final settlement evidence.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'energy.flexible_load_proof.v1',
+      productArea: 'energy',
+      audience: ['operator', 'public'],
+      state: 'planned',
+      claim:
+        'OpenAgents should compare accepted outcomes, mining, grid service, AI-load smoothing, forward-purchased power capture, curtailment, reserve, and idle states with evidence labels.',
+      safeCopy:
+        'Flexible-load economics are planned/modeling work and must be labeled as modeled until measured operator proof exists.',
+      unsafeCopy:
+        'Do not claim grid-service revenue, AI-load smoothing revenue, avoided interconnection cost, or energy-market optimization without event proof and caveats.',
+      evidenceRefs: [
+        'docs/promises/2026-06-09-product-promises-green-roadmap.md',
+        'docs/promises/registry.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.energy_market_ingestion_missing',
+        'blocker.product_promises.work_class_flex_profiles_missing',
+        'blocker.product_promises.flexible_load_event_history_missing',
+        'blocker.product_promises.operator_proof_report_missing',
+      ],
+      verification:
+        'Green requires an operator report with measured or explicitly modeled dollars per MWh, evidence-state labels, and public-safe caveats.',
+      authorityBoundary:
+        'Energy models are operational estimates, not investment, grid, utility, or financial advice.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'proof.claim_upgrade_receipts.v1',
+      productArea: 'public proof',
+      audience: ['agent', 'user', 'operator', 'public'],
+      state: 'yellow',
+      claim:
+        'Public claims should upgrade only when required receipts exist, and sensitive work should route according to reusable policy rather than marketing copy or operator judgment.',
+      safeCopy:
+        'Product promises are versioned and evidence-linked today; automatic claim-upgrade receipts and enterprise policy proofs are still incomplete.',
+      unsafeCopy:
+        'Do not manually upgrade public claims to green without matching evidence, policy boundary, and receipt refs.',
+      evidenceRefs: [
+        'https://openagents.com/api/public/product-promises',
+        'https://openagents.com/promises',
+        'docs/promises/registry.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.claim_upgrade_receipt_service_missing',
+        'blocker.product_promises.policy_exception_receipts_missing',
+        'blocker.product_promises.enterprise_audit_panel_missing',
+      ],
+      verification:
+        'Green requires claim-upgrade receipts that bind claim ID, evidence refs, policy checks, reviewer or automated gate, timestamp, and downgrade path.',
+      authorityBoundary:
+        'A public proof page does not expose private data, bypass policy, or grant production authority.',
     },
     {
       ...basePromiseFields,
