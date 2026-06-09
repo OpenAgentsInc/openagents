@@ -457,3 +457,33 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-016: Pylon Assignment Synthesis
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4590`
+
+Status: implemented.
+
+Implemented:
+
+- Added `autopilot-work-pylon-assignment-synthesizer.ts`.
+- Converted ready Autopilot assignment intents into controlled Pylon assignment
+  intents when placement selects a requester Pylon.
+- Added `pylonAssignmentIntents` to work-order projections.
+- Synthesized no-spend Pylon assignment fields:
+  - `paymentMode: "unpaid_smoke"`
+  - `forumAutoPublishAllowed: false`
+  - `requiredCapabilityRefs`
+  - `spendCapRefs`
+  - `closeoutPathRefs`
+  - `resultExpectationRefs`
+  - `rollbackRefs`
+- Preserved the boundaries that Pylon closeout is not accepted-work,
+  settlement, payout, deploy, spend, or Forum autopublish authority.
+- Updated OpenAPI summary text so agent-readable docs expose controlled Pylon
+  assignment intents.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-pylon-assignment-synthesizer.test.ts src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

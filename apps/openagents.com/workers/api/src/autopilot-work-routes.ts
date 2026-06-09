@@ -13,6 +13,10 @@ import {
   selectAutopilotPlacement,
 } from './autopilot-work-placement-selector'
 import {
+  pylonAssignmentIntentsForAutopilotWork,
+  type AutopilotPylonAssignmentIntentProjection,
+} from './autopilot-work-pylon-assignment-synthesizer'
+import {
   authenticateCustomerOrderAgentRequest,
 } from './customer-order-agent-auth'
 import {
@@ -208,6 +212,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   paymentChallengeRef: string | null
   placementDecision: AutopilotPlacementDecisionProjection
   placementPolicy: AutopilotWorkPlacementPolicyRecordProjection
+  pylonAssignmentIntents: ReadonlyArray<AutopilotPylonAssignmentIntentProjection>
   quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
   state: OpenAgentsAutopilotWorkStateType
@@ -785,6 +790,7 @@ const projectionForRecord = (
       pylonRegistrations,
     }),
     placementPolicy: placementPolicyForRecord(record),
+    pylonAssignmentIntents: [],
     quote: makeAutopilotWorkQuote(record.request),
     repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
     state: record.state,
@@ -795,9 +801,17 @@ const projectionForRecord = (
     workOrderRef: record.workOrderRef,
   } satisfies AutopilotWorkOrderProjection
 
+  const assignmentIntents = assignmentIntentsForWorkOrder(work)
+
   return {
     ...work,
-    assignmentIntents: assignmentIntentsForWorkOrder(work),
+    assignmentIntents,
+    pylonAssignmentIntents: pylonAssignmentIntentsForAutopilotWork({
+      assignmentIntents,
+      placementDecision: work.placementDecision,
+      tasks: work.tasks,
+      workOrderRef: work.workOrderRef,
+    }),
   }
 }
 

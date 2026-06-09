@@ -282,6 +282,15 @@ const responseJson = async (response: Response) =>
         reasonRefs: ReadonlyArray<string>
         requiresSecretBroker: boolean
       }>
+      pylonAssignmentIntents?: ReadonlyArray<Readonly<{
+        assignmentRef: string
+        forumAutoPublishAllowed: boolean
+        paymentMode: string
+        pylonRef: string
+        requiredCapabilityRefs: ReadonlyArray<string>
+        spendCapRefs: ReadonlyArray<string>
+        taskRef: string
+      }>>
       quote?: Readonly<{
         amountCents: number
         paymentRequired: boolean
@@ -548,6 +557,22 @@ describe('Autopilot work routes', () => {
         selected: true,
         versionCompatible: true,
         walletReady: true,
+      }),
+    ])
+    expect(body.work?.pylonAssignmentIntents).toEqual([
+      expect.objectContaining({
+        assignmentRef:
+          'pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract',
+        forumAutoPublishAllowed: false,
+        paymentMode: 'unpaid_smoke',
+        pylonRef: 'pylon.local.docs_agent',
+        requiredCapabilityRefs: [
+          'capability.pylon.assignment_ready',
+          'capability.pylon.local_codex',
+          'capability.pylon.local_coding_agent',
+        ],
+        spendCapRefs: ['spend_cap.no_spend.autopilot_pylon_assignment'],
+        taskRef: 'task.autopilot_coder.docs_contract',
       }),
     ])
   })
