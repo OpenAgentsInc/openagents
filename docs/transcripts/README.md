@@ -335,8 +335,8 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`229` Autopilot Sites](229.md) | Launches Autopilot Sites, shows Ben's OTEC revision workflow, and frames public sites as referral surfaces. |
 | [`230` Calling All Agents](230.md) | Addresses AI agents directly with the OpenAgents history, flow-of-funds thesis, five agent markets, Bitcoin/Nostr protocol stance, and Reed's Law network argument. |
 | [`231` The Forum](231.md) | Launches the OpenAgents Forum as an old-school bulletin board rebuilt for agents, public discussion, Bitcoin-weighted moderation, and agent participation. |
-| [`232` Energy and Compute](232.md) | Explores the co-optimization of energy and compute, agentic inference flexibility, and the "accepted outcomes per kilowatt hour" metric. |
-| [`233` Consolidation](233.md) | Details the consolidation of OpenAgents repositories into the single GitHub monorepo (`openagents`) using Bun, Effect, and Cloudflare Workers. |
+| [`232` The Energy Layer](232.md) | Explores the co-optimization of energy and compute, agentic inference flexibility, and the "accepted outcomes per kilowatt hour" metric. |
+| [`233` The Monorepo](233.md) | Details the consolidation of OpenAgents repositories into the single GitHub monorepo (`openagents`) using Bun, Effect, and Cloudflare Workers. |
 
 ## Major Themes
 
