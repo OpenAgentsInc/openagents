@@ -19,6 +19,10 @@ const onlineHeartbeatStatuses = new Set([
 
 const onlineWindowMs = 5 * 60 * 1000
 const assignmentReadyCapabilityRef = 'capability.pylon.assignment_ready'
+export const localCodingAgentCapabilityRefs = [
+  'capability.pylon.local_codex',
+  'capability.pylon.local_coding_agent',
+] as const
 
 export type AutopilotPylonPlacementCandidateProjection = Readonly<{
   assignmentReady: boolean
@@ -28,6 +32,7 @@ export type AutopilotPylonPlacementCandidateProjection = Readonly<{
   latestHeartbeatAt: string | null
   latestHeartbeatStatus: string | null
   latestResourceMode: typeof PylonResourceMode.Type | null
+  localExecutionReady: boolean
   ownerLinked: boolean
   pylonRef: string
   reasonRefs: ReadonlyArray<string>
@@ -107,6 +112,9 @@ const candidateProjection = (
   const assignmentReady = candidate.capabilityRefs.includes(
     assignmentReadyCapabilityRef,
   )
+  const localExecutionReady = localCodingAgentCapabilityRefs.some(ref =>
+    candidate.capabilityRefs.includes(ref)
+  )
   const reasonRefs = [
     ownerLinked
       ? 'placement.pylon.owner_linked'
@@ -126,6 +134,9 @@ const candidateProjection = (
     assignmentReady
       ? 'placement.pylon.assignment_ready'
       : 'placement.pylon.assignment_not_ready',
+    localExecutionReady
+      ? 'placement.pylon.local_execution_ready'
+      : 'placement.pylon.local_execution_missing',
   ]
 
   return {
@@ -136,6 +147,7 @@ const candidateProjection = (
     latestHeartbeatAt: candidate.latestHeartbeatAt,
     latestHeartbeatStatus: candidate.latestHeartbeatStatus,
     latestResourceMode: candidate.latestResourceMode,
+    localExecutionReady,
     ownerLinked,
     pylonRef: candidate.pylonRef,
     reasonRefs,
@@ -154,7 +166,8 @@ const pylonCandidateEligible = (
   candidate.walletReady &&
   candidate.heartbeatFresh &&
   candidate.versionCompatible &&
-  candidate.assignmentReady
+  candidate.assignmentReady &&
+  candidate.localExecutionReady
 
 export const selectAutopilotPlacement = (
   input: Readonly<{

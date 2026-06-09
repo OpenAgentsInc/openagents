@@ -108,7 +108,10 @@ const agentStoreForScopes = (
 const pylonRegistration = (
   override: Partial<PylonApiRegistrationRecord> = {},
 ): PylonApiRegistrationRecord => ({
-  capabilityRefs: ['capability.pylon.assignment_ready'],
+  capabilityRefs: [
+    'capability.pylon.assignment_ready',
+    'capability.pylon.local_codex',
+  ],
   clientProtocolVersion: '0.2.5',
   clientVersion: '0.2.5',
   createdAt: '2026-06-09T17:25:00.000Z',
@@ -254,6 +257,7 @@ const responseJson = async (response: Response) =>
         pylonCandidates: ReadonlyArray<Readonly<{
           assignmentReady: boolean
           heartbeatFresh: boolean
+          localExecutionReady: boolean
           ownerLinked: boolean
           pylonRef: string
           selected: boolean
@@ -539,6 +543,7 @@ describe('Autopilot work routes', () => {
       expect.objectContaining({
         assignmentReady: true,
         heartbeatFresh: true,
+        localExecutionReady: true,
         ownerLinked: true,
         selected: true,
         versionCompatible: true,

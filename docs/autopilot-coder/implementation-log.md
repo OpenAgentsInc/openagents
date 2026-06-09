@@ -428,3 +428,32 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-015: Local Codex/Pylon Capability Model
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4589`
+
+Status: implemented.
+
+Implemented:
+
+- Added public-safe local coding-agent capability refs:
+  - `capability.pylon.local_codex`
+  - `capability.pylon.local_coding_agent`
+- Updated the Pylon placement selector so requester-local execution requires:
+  - owner-linked Pylon;
+  - fresh online heartbeat;
+  - compatible client version;
+  - wallet readiness;
+  - assignment readiness;
+  - local coding-agent readiness.
+- Added `localExecutionReady` to Pylon placement candidate projections.
+- Preserved secret boundaries: local capability is represented only by public
+  refs, never by local paths, tokens, provider credentials, or raw Codex state.
+- Added tests proving placement can distinguish requester-local execution from
+  OpenAgents/network/cloud fallback.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

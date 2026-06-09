@@ -6,7 +6,10 @@ import type { PylonApiRegistrationRecord } from './pylon-api'
 const registration = (
   override: Partial<PylonApiRegistrationRecord> = {},
 ): PylonApiRegistrationRecord => ({
-  capabilityRefs: ['capability.pylon.assignment_ready'],
+  capabilityRefs: [
+    'capability.pylon.assignment_ready',
+    'capability.pylon.local_codex',
+  ],
   clientProtocolVersion: '0.2.5',
   clientVersion: '0.2.5',
   createdAt: '2026-06-09T17:25:00.000Z',
@@ -71,6 +74,7 @@ describe('Autopilot work placement selector', () => {
       expect.objectContaining({
         assignmentReady: true,
         heartbeatFresh: true,
+        localExecutionReady: true,
         ownerLinked: true,
         selected: true,
         versionCompatible: true,
@@ -111,6 +115,33 @@ describe('Autopilot work placement selector', () => {
       selected: false,
       versionCompatible: false,
       walletReady: false,
+    })
+  })
+
+  test('distinguishes local execution capability from network capacity', () => {
+    const decision = selectAutopilotPlacement({
+      nowIso: '2026-06-09T17:30:00.000Z',
+      ownerAgentUserId: 'agent_user_autopilot_work',
+      placementPolicy,
+      pylonRegistrations: [
+        registration({
+          capabilityRefs: ['capability.pylon.assignment_ready'],
+        }),
+      ],
+    })
+
+    expect(decision).toMatchObject({
+      selectedPylonRef: null,
+      selectedRunnerKind: 'openagents_shc',
+      source: 'fallback',
+    })
+    expect(decision.pylonCandidates[0]).toMatchObject({
+      assignmentReady: true,
+      localExecutionReady: false,
+      reasonRefs: expect.arrayContaining([
+        'placement.pylon.local_execution_missing',
+      ]),
+      selected: false,
     })
   })
 })
