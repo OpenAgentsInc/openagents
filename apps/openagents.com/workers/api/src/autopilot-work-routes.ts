@@ -47,7 +47,11 @@ import {
   mintOpenAgentsL402Credential,
   verifyOpenAgentsL402Credential,
 } from './l402-credential-service'
-import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  randomUuid,
+} from './runtime-primitives'
 import type {
   BuyerPaymentChallengeRecord,
   BuyerPaymentLedgerAmount,
@@ -618,7 +622,7 @@ const cleanRefSegment = (value: string): string =>
   value.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 120)
 
 const addSecondsIso = (iso: string, seconds: number): string =>
-  new Date(new Date(iso).getTime() + seconds * 1000).toISOString()
+  isoTimestampAfterIso(iso, seconds * 1000)
 
 const autopilotQuoteAmount = (
   quote: AutopilotWorkQuote,
