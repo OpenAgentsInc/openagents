@@ -19,6 +19,7 @@ import {
   decodeUnknownWithSchema,
   optionalString,
   parseJsonRecord,
+  parseJsonStringArray,
 } from './json-boundary'
 import {
   currentIsoTimestamp,
@@ -35,12 +36,42 @@ const RejectAgentOwnerClaimRequest = S.Struct({
 
 type RejectAgentOwnerClaimRequest = typeof RejectAgentOwnerClaimRequest.Type
 
+const StartXOwnerClaimRequest = S.Struct({
+  xHandle: S.Trim.check(S.isNonEmpty(), S.isMaxLength(32)),
+})
+
+type StartXOwnerClaimRequest = typeof StartXOwnerClaimRequest.Type
+
+const VerifyXOwnerClaimRequest = S.Struct({
+  tweetUrl: S.Trim.check(S.isNonEmpty(), S.isMaxLength(500)),
+})
+
+type VerifyXOwnerClaimRequest = typeof VerifyXOwnerClaimRequest.Type
+
 type AgentOwnerClaimStatus =
   | 'pending'
   | 'approved'
   | 'rejected'
   | 'expired'
   | 'revoked'
+
+type XOwnerClaimState =
+  | 'pending_owner_session'
+  | 'pending_x_connection'
+  | 'pending_tweet'
+  | 'verified'
+  | 'approved'
+  | 'rejected'
+  | 'expired'
+  | 'revoked'
+
+type XVerificationTweetState =
+  | 'visible'
+  | 'deleted'
+  | 'hidden'
+  | 'edited'
+  | 'suspended'
+  | 'unavailable'
 
 export type AgentOwnerClaimRecord = Readonly<{
   id: string
@@ -64,6 +95,60 @@ export type AgentOwnerClaimRecord = Readonly<{
   rejectedReason: string | null
   createdAt: string
   updatedAt: string
+}>
+
+export type XOwnerClaimChallengeRecord = Readonly<{
+  id: string
+  agentClaimId: string
+  ownerUserId: string
+  agentUserId: string | null
+  xAccountRef: string
+  xHandle: string
+  nonce: string
+  requiredText: string
+  requiredUrl: string
+  state: XOwnerClaimState
+  receiptRef: string
+  tweetRef: string | null
+  tweetUrl: string | null
+  policyRefsJson: string
+  caveatRefsJson: string
+  rejectedReason: string | null
+  createdAt: string
+  expiresAt: string
+  verifiedAt: string | null
+  updatedAt: string
+}>
+
+type XOwnerClaimChallengeRow = Readonly<{
+  id: string
+  agent_claim_id: string
+  owner_user_id: string
+  agent_user_id: string | null
+  x_account_ref: string
+  x_handle: string
+  nonce: string
+  required_text: string
+  required_url: string
+  state: XOwnerClaimState
+  receipt_ref: string
+  tweet_ref: string | null
+  tweet_url: string | null
+  policy_refs_json: string
+  caveat_refs_json: string
+  rejected_reason: string | null
+  created_at: string
+  expires_at: string
+  verified_at: string | null
+  updated_at: string
+}>
+
+export type XVerificationTweetLookup = Readonly<{
+  authorHandle: string | null
+  htmlText: string | null
+  state: XVerificationTweetState
+  tweetRef: string
+  tweetUrl: string
 }>
 
 type AgentOwnerClaimRow = Readonly<{
@@ -121,6 +206,26 @@ export type AgentOwnerClaimStore = Readonly<{
     ownerUserId: string
     reason: string | null
   }) => Promise<AgentOwnerClaimRecord | undefined>
+  createXChallenge: (
+    record: XOwnerClaimChallengeRecord,
+  ) => Promise<XOwnerClaimChallengeRecord>
+  readActiveXChallengeByClaimId: (
+    claimId: string,
+  ) => Promise<XOwnerClaimChallengeRecord | undefined>
+  readXChallengeById: (
+    challengeId: string,
+  ) => Promise<XOwnerClaimChallengeRecord | undefined>
+  rejectXChallenge: (input: {
+    challengeId: string
+    now: string
+    reason: string
+  }) => Promise<XOwnerClaimChallengeRecord | undefined>
+  verifyXChallenge: (input: {
+    challengeId: string
+    now: string
+    tweetRef: string
+    tweetUrl: string
+  }) => Promise<XOwnerClaimChallengeRecord | undefined>
 }>
 
 type AgentOwnerClaimRouteDependencies<
@@ -138,6 +243,9 @@ type AgentOwnerClaimRouteDependencies<
   makeToken?: () => string
   makeUuid?: () => string
   nowIso?: () => string
+  resolveXVerificationTweet?: (
+    input: Readonly<{ tweetUrl: string }>,
+  ) => Promise<XVerificationTweetLookup>
   requireBrowserSession: (
     request: Request,
     env: Bindings,
@@ -169,6 +277,31 @@ const rowToClaim = (row: AgentOwnerClaimRow): AgentOwnerClaimRecord => ({
   updatedAt: row.updated_at,
 })
 
+const rowToXChallenge = (
+  row: XOwnerClaimChallengeRow,
+): XOwnerClaimChallengeRecord => ({
+  agentClaimId: row.agent_claim_id,
+  agentUserId: row.agent_user_id,
+  caveatRefsJson: row.caveat_refs_json,
+  createdAt: row.created_at,
+  expiresAt: row.expires_at,
+  id: row.id,
+  nonce: row.nonce,
+  ownerUserId: row.owner_user_id,
+  policyRefsJson: row.policy_refs_json,
+  receiptRef: row.receipt_ref,
+  rejectedReason: row.rejected_reason,
+  requiredText: row.required_text,
+  requiredUrl: row.required_url,
+  state: row.state,
+  tweetRef: row.tweet_ref,
+  tweetUrl: row.tweet_url,
+  updatedAt: row.updated_at,
+  verifiedAt: row.verified_at,
+  xAccountRef: row.x_account_ref,
+  xHandle: row.x_handle,
+})
+
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -195,11 +328,92 @@ const safeJsonObject = (value: string): Record<string, unknown> => {
   return parseJsonRecord(value) ?? {}
 }
 
+const publicStringArray = (value: string): ReadonlyArray<string> => {
+  return parseJsonStringArray(value)
+}
+
 const claimPagePath = (claimId: string): string =>
   `/agents/claims/${encodeURIComponent(claimId)}`
 
 const claimLoginPath = (claimId: string): string =>
   `/login/github?returnTo=${encodeURIComponent(claimPagePath(claimId))}`
+
+const normalizeXHandle = (value: string): string =>
+  value.trim().replace(/^@+/, '').toLowerCase()
+
+const xAccountRefForHandle = (value: string): string =>
+  `x:${normalizeXHandle(value)}`
+
+const tweetRefFromUrl = (value: string): string | undefined => {
+  const match = /\/status\/([0-9]+)/.exec(value)
+
+  return match?.[1] === undefined ? undefined : `x_tweet:${match[1]}`
+}
+
+const normalizeTweetUrl = (value: string): string | undefined => {
+  let url: URL
+
+  try {
+    url = new URL(value)
+  } catch {
+    return undefined
+  }
+
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, '')
+
+  if (hostname !== 'x.com' && hostname !== 'twitter.com') {
+    return undefined
+  }
+
+  const match = /^\/([^/]+)\/status\/([0-9]+)/.exec(url.pathname)
+
+  if (match === null) {
+    return undefined
+  }
+
+  return `https://x.com/${encodeURIComponent(match[1] ?? '')}/status/${
+    match[2] ?? ''
+  }`
+}
+
+const xClaimProjection = (record: XOwnerClaimChallengeRecord) => ({
+  agentClaimRef: record.agentClaimId,
+  agentUserRef:
+    record.agentUserId === null ? null : `agent:${record.agentUserId}`,
+  caveatRefs: publicStringArray(record.caveatRefsJson),
+  claimRef: record.id,
+  expiresAt: record.expiresAt,
+  nonce: record.nonce,
+  ownerRef: `owner:${record.ownerUserId}`,
+  policyRefs: publicStringArray(record.policyRefsJson),
+  rejectedReason: record.rejectedReason,
+  receiptRef: record.receiptRef,
+  requiredText: record.requiredText,
+  requiredUrl: record.requiredUrl,
+  state: record.state,
+  tweetRef: record.tweetRef,
+  tweetUrl: record.tweetUrl,
+  xAccountRef: record.xAccountRef,
+  xHandle: record.xHandle,
+})
+
+const xClaimChallengeResponse = (
+  record: XOwnerClaimChallengeRecord,
+  status = 200,
+) =>
+  noStoreJsonResponse(
+    {
+      xClaim: xClaimProjection(record),
+      verification: {
+        instructions: [
+          'Publish the required text from the exact X account.',
+          'Return with the public tweet URL and OpenAgents will verify the nonce, account, and required URL.',
+          'Do not send X OAuth tokens or private account material to this endpoint.',
+        ],
+      },
+    },
+    { status },
+  )
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, character => {
@@ -328,6 +542,21 @@ export const makeD1AgentOwnerClaimStore = (
       .first<AgentOwnerClaimRow>()
 
     return row === null ? undefined : rowToClaim(row)
+  }
+
+  const readXChallengeById = async (
+    challengeId: string,
+  ): Promise<XOwnerClaimChallengeRecord | undefined> => {
+    const row = await db
+      .prepare(
+        `SELECT *
+         FROM agent_owner_x_claim_challenges
+         WHERE id = ?`,
+      )
+      .bind(challengeId)
+      .first<XOwnerClaimChallengeRow>()
+
+    return row === null ? undefined : rowToXChallenge(row)
   }
 
   return {
@@ -459,6 +688,42 @@ export const makeD1AgentOwnerClaimStore = (
         )
         .run()
     },
+    createXChallenge: async record => {
+      await db
+        .prepare(
+          `INSERT INTO agent_owner_x_claim_challenges
+          (id, agent_claim_id, owner_user_id, agent_user_id, x_account_ref,
+           x_handle, nonce, required_text, required_url, state, receipt_ref,
+           tweet_ref, tweet_url, policy_refs_json, caveat_refs_json,
+           rejected_reason, created_at, expires_at, verified_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          record.id,
+          record.agentClaimId,
+          record.ownerUserId,
+          record.agentUserId,
+          record.xAccountRef,
+          record.xHandle,
+          record.nonce,
+          record.requiredText,
+          record.requiredUrl,
+          record.state,
+          record.receiptRef,
+          record.tweetRef,
+          record.tweetUrl,
+          record.policyRefsJson,
+          record.caveatRefsJson,
+          record.rejectedReason,
+          record.createdAt,
+          record.expiresAt,
+          record.verifiedAt,
+          record.updatedAt,
+        )
+        .run()
+
+      return (await readXChallengeById(record.id)) ?? record
+    },
     expireClaim: async (claimId, now) => {
       await db
         .prepare(
@@ -475,6 +740,37 @@ export const makeD1AgentOwnerClaimStore = (
       return readClaimById(claimId)
     },
     readClaimById,
+    readActiveXChallengeByClaimId: async claimId => {
+      const row = await db
+        .prepare(
+          `SELECT *
+           FROM agent_owner_x_claim_challenges
+           WHERE agent_claim_id = ?
+             AND state IN ('pending_owner_session', 'pending_x_connection', 'pending_tweet', 'verified', 'approved')
+           ORDER BY created_at DESC
+           LIMIT 1`,
+        )
+        .bind(claimId)
+        .first<XOwnerClaimChallengeRow>()
+
+      return row === null ? undefined : rowToXChallenge(row)
+    },
+    readXChallengeById,
+    rejectXChallenge: async input => {
+      await db
+        .prepare(
+          `UPDATE agent_owner_x_claim_challenges
+           SET state = 'rejected',
+               rejected_reason = ?,
+               updated_at = ?
+           WHERE id = ?
+             AND state IN ('pending_owner_session', 'pending_x_connection', 'pending_tweet')`,
+        )
+        .bind(input.reason, input.now, input.challengeId)
+        .run()
+
+      return readXChallengeById(input.challengeId)
+    },
     rejectClaim: async input => {
       await db
         .prepare(
@@ -497,6 +793,29 @@ export const makeD1AgentOwnerClaimStore = (
         .run()
 
       return readClaimById(input.claimId)
+    },
+    verifyXChallenge: async input => {
+      await db
+        .prepare(
+          `UPDATE agent_owner_x_claim_challenges
+           SET state = 'verified',
+               tweet_ref = ?,
+               tweet_url = ?,
+               verified_at = ?,
+               updated_at = ?
+           WHERE id = ?
+             AND state = 'pending_tweet'`,
+        )
+        .bind(
+          input.tweetRef,
+          input.tweetUrl,
+          input.now,
+          input.now,
+          input.challengeId,
+        )
+        .run()
+
+      return readXChallengeById(input.challengeId)
     },
   }
 }
@@ -633,6 +952,311 @@ const statusClaimResponse = async <
           }
         : null,
   })
+}
+
+const startXClaimResponse = async <
+  Session extends AgentOwnerClaimSession,
+  Bindings,
+>(
+  dependencies: AgentOwnerClaimRouteDependencies<Session, Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  claimId: string,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const session = await dependencies.requireBrowserSession(request, env, ctx)
+
+  if (session === undefined) {
+    return unauthorized()
+  }
+
+  const body = await request.json().catch(error => ({
+    parseError: errorMessage(error),
+  }))
+  let parsed: StartXOwnerClaimRequest
+
+  try {
+    parsed = decodeUnknownWithSchema(StartXOwnerClaimRequest, body)
+  } catch (error) {
+    return badRequest(errorMessage(error))
+  }
+
+  const store = dependencies.makeStore(env)
+  const claim = await store.readClaimById(claimId)
+
+  if (claim === undefined) {
+    return notFound()
+  }
+
+  const now = (dependencies.nowIso ?? currentIsoTimestamp)()
+  const current = await normalizeClaimStatus(store, claim, now)
+
+  if (
+    current.status !== 'approved' ||
+    current.ownerUserId !== session.user.userId
+  ) {
+    return noStoreJsonResponse(
+      { error: 'agent_owner_claim_not_approved_by_session_owner' },
+      { status: 403 },
+    )
+  }
+
+  const existing = await store.readActiveXChallengeByClaimId(current.id)
+
+  if (existing !== undefined) {
+    return xClaimChallengeResponse(existing)
+  }
+
+  const makeUuid = dependencies.makeUuid ?? randomUuid
+  const normalizedHandle = normalizeXHandle(parsed.xHandle)
+  const challengeId = `agent_x_claim_${makeUuid()}`
+  const nonce = `oa-x-${makeUuid().replaceAll('-', '').slice(0, 24)}`
+  const requiredUrl = `${dependencies.appOrigin(env)}${claimPagePath(current.id)}`
+  const requiredText = `OpenAgents claim ${current.id} ${nonce} ${requiredUrl}`
+  const record: XOwnerClaimChallengeRecord = {
+    agentClaimId: current.id,
+    agentUserId: current.agentUserId,
+    caveatRefsJson: JSON.stringify([
+      'caveat.public_claim.x_tweet_proof_only',
+      'caveat.public_claim.reward_dispatch_separate',
+    ]),
+    createdAt: now,
+    expiresAt: isoTimestampAfterIso(
+      now,
+      dependencies.claimTtlMs ?? CLAIM_TTL_MS,
+    ),
+    id: challengeId,
+    nonce,
+    ownerUserId: session.user.userId,
+    policyRefsJson: JSON.stringify([
+      'policy.public_identity_claim.x.v1',
+      'policy.public_identity_claim.one_x_account_per_campaign.v1',
+    ]),
+    receiptRef: `agent_x_claim_receipt_${challengeId}`,
+    rejectedReason: null,
+    requiredText,
+    requiredUrl,
+    state: 'pending_tweet',
+    tweetRef: null,
+    tweetUrl: null,
+    updatedAt: now,
+    verifiedAt: null,
+    xAccountRef: xAccountRefForHandle(normalizedHandle),
+    xHandle: normalizedHandle,
+  }
+
+  try {
+    return xClaimChallengeResponse(await store.createXChallenge(record), 201)
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return noStoreJsonResponse(
+        { error: 'agent_x_claim_conflict' },
+        { status: 409 },
+      )
+    }
+
+    return serverError()
+  }
+}
+
+const defaultResolveXVerificationTweet = async (
+  input: Readonly<{ tweetUrl: string }>,
+): Promise<XVerificationTweetLookup> => {
+  const normalizedUrl = normalizeTweetUrl(input.tweetUrl)
+  const tweetRef = tweetRefFromUrl(input.tweetUrl)
+
+  if (normalizedUrl === undefined || tweetRef === undefined) {
+    return {
+      authorHandle: null,
+      htmlText: null,
+      state: 'unavailable',
+      tweetRef: 'x_tweet:invalid',
+      tweetUrl: input.tweetUrl,
+    }
+  }
+
+  const url = new URL('https://publish.x.com/oembed')
+  url.searchParams.set('url', normalizedUrl)
+  url.searchParams.set('omit_script', '1')
+
+  const response = await fetch(url.toString())
+
+  if (!response.ok) {
+    return {
+      authorHandle: null,
+      htmlText: null,
+      state: response.status === 404 ? 'deleted' : 'unavailable',
+      tweetRef,
+      tweetUrl: normalizedUrl,
+    }
+  }
+
+  const payload = parseJsonRecord(await response.text())
+  const authorUrl = optionalString(payload?.author_url)
+  const authorHandle = (() => {
+    if (authorUrl === undefined) {
+      return null
+    }
+
+    try {
+      return normalizeXHandle(new URL(authorUrl).pathname.replace('/', ''))
+    } catch {
+      return null
+    }
+  })()
+
+  return {
+    authorHandle,
+    htmlText: optionalString(payload?.html) ?? null,
+    state: 'visible',
+    tweetRef,
+    tweetUrl: normalizedUrl,
+  }
+}
+
+const verifyXClaimResponse = async <
+  Session extends AgentOwnerClaimSession,
+  Bindings,
+>(
+  dependencies: AgentOwnerClaimRouteDependencies<Session, Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  claimId: string,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const session = await dependencies.requireBrowserSession(request, env, ctx)
+
+  if (session === undefined) {
+    return unauthorized()
+  }
+
+  const body = await request.json().catch(error => ({
+    parseError: errorMessage(error),
+  }))
+  let parsed: VerifyXOwnerClaimRequest
+
+  try {
+    parsed = decodeUnknownWithSchema(VerifyXOwnerClaimRequest, body)
+  } catch (error) {
+    return badRequest(errorMessage(error))
+  }
+
+  const normalizedTweetUrl = normalizeTweetUrl(parsed.tweetUrl)
+
+  if (normalizedTweetUrl === undefined) {
+    return badRequest('X verification tweet URL must be a public X status URL.')
+  }
+
+  const store = dependencies.makeStore(env)
+  const claim = await store.readClaimById(claimId)
+
+  if (claim === undefined) {
+    return notFound()
+  }
+
+  const challenge = await store.readActiveXChallengeByClaimId(claimId)
+
+  if (challenge === undefined) {
+    return noStoreJsonResponse(
+      { error: 'agent_x_claim_challenge_missing' },
+      { status: 404 },
+    )
+  }
+
+  const now = (dependencies.nowIso ?? currentIsoTimestamp)()
+
+  if (
+    claim.ownerUserId !== session.user.userId ||
+    challenge.ownerUserId !== session.user.userId
+  ) {
+    return noStoreJsonResponse(
+      { error: 'agent_x_claim_wrong_owner' },
+      { status: 403 },
+    )
+  }
+
+  if (challenge.expiresAt <= now) {
+    const expired = await store.rejectXChallenge({
+      challengeId: challenge.id,
+      now,
+      reason: 'X claim challenge expired before tweet verification.',
+    })
+
+    return xClaimChallengeResponse(expired ?? challenge, 409)
+  }
+
+  if (challenge.state === 'verified' || challenge.state === 'approved') {
+    return xClaimChallengeResponse(challenge)
+  }
+
+  const resolver =
+    dependencies.resolveXVerificationTweet ?? defaultResolveXVerificationTweet
+  const tweet = await resolver({ tweetUrl: normalizedTweetUrl })
+
+  if (tweet.state !== 'visible') {
+    const rejected = await store.rejectXChallenge({
+      challengeId: challenge.id,
+      now,
+      reason: `X verification tweet is ${tweet.state}.`,
+    })
+
+    return xClaimChallengeResponse(rejected ?? challenge, 409)
+  }
+
+  if (normalizeXHandle(tweet.authorHandle ?? '') !== challenge.xHandle) {
+    const rejected = await store.rejectXChallenge({
+      challengeId: challenge.id,
+      now,
+      reason:
+        'X verification tweet was not published by the challenged account.',
+    })
+
+    return xClaimChallengeResponse(rejected ?? challenge, 409)
+  }
+
+  const htmlText = tweet.htmlText ?? ''
+
+  if (
+    !htmlText.includes(challenge.nonce) ||
+    !htmlText.includes(challenge.requiredUrl)
+  ) {
+    const rejected = await store.rejectXChallenge({
+      challengeId: challenge.id,
+      now,
+      reason:
+        'X verification tweet is missing the required nonce or claim URL.',
+    })
+
+    return xClaimChallengeResponse(rejected ?? challenge, 409)
+  }
+
+  try {
+    const verified = await store.verifyXChallenge({
+      challengeId: challenge.id,
+      now,
+      tweetRef: tweet.tweetRef,
+      tweetUrl: tweet.tweetUrl,
+    })
+
+    return xClaimChallengeResponse(verified ?? challenge)
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return noStoreJsonResponse(
+        { error: 'agent_x_claim_duplicate_tweet_or_account' },
+        { status: 409 },
+      )
+    }
+
+    return serverError()
+  }
 }
 
 const approveClaimResponse = async <
@@ -1019,6 +1643,26 @@ export const makeAgentOwnerClaimRoutes = <
 
       return Effect.promise(() =>
         ownerClaimPageResponse(dependencies, request, env, claimId),
+      )
+    }
+
+    const xClaimActionMatch =
+      /^\/api\/agents\/claims\/([^/]+)\/x\/(challenge|verify)$/.exec(
+        url.pathname,
+      )
+
+    if (xClaimActionMatch !== null) {
+      const claimId = decodeURIComponent(xClaimActionMatch[1] ?? '')
+      const action = xClaimActionMatch[2]
+
+      if (action === 'challenge') {
+        return Effect.promise(() =>
+          startXClaimResponse(dependencies, request, env, ctx, claimId),
+        )
+      }
+
+      return Effect.promise(() =>
+        verifyXClaimResponse(dependencies, request, env, ctx, claimId),
       )
     }
 

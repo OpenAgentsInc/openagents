@@ -310,6 +310,9 @@ const schemaComponents = (): JsonSchema => ({
   AgentOwnerClaimResponse: objectSummary(
     'Public-safe self-service agent owner-claim response. The pending token is displayed once at claim creation and is not stored or redisplayed by OpenAgents.',
   ),
+  AgentOwnerXClaimResponse: objectSummary(
+    'Public-safe X owner-claim challenge and verification response. Includes nonce, required public text, X account ref, tweet ref, claim state, policy refs, caveat refs, and no X OAuth tokens or private payout material.',
+  ),
   AgentProposalResponse: objectSummary(
     'Public-safe no-token agent proposal response. Proposals are pending, untrusted review records and do not publish, order, deploy, email, connect repositories, or spend money by themselves.',
   ),
@@ -2237,6 +2240,48 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Approved agent owner claim.',
           '#/components/schemas/AgentOwnerClaimResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/claims/{claimId}/x/challenge': {
+    post: operation({
+      operationId: 'startAgentOwnerXClaimChallenge',
+      summary: 'Start X owner-claim verification',
+      description:
+        'Creates an owner-session-bound X verification tweet challenge for an approved agent owner claim. The response includes required nonce text and public claim URL only; it does not accept or expose X OAuth tokens and does not dispatch reward sats.',
+      tags: ['Agents'],
+      security: [{ browserSession: [] }],
+      parameters: [pathParam('claimId', 'Agent owner-claim identifier.')],
+      requestBody: jsonContent('#/components/schemas/AgentOwnerXClaimResponse'),
+      responses: {
+        '200': okJson(
+          'Existing active X claim challenge.',
+          '#/components/schemas/AgentOwnerXClaimResponse',
+        ),
+        '201': okJson(
+          'Created X claim challenge.',
+          '#/components/schemas/AgentOwnerXClaimResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/claims/{claimId}/x/verify': {
+    post: operation({
+      operationId: 'verifyAgentOwnerXClaimTweet',
+      summary: 'Verify X owner-claim tweet',
+      description:
+        'Verifies that the public X status URL is visible, authored by the challenged account, and contains the nonce plus claim URL. Deleted, hidden, edited, suspended, wrong-account, and nonce-mismatch proofs stay explicit failure states.',
+      tags: ['Agents'],
+      security: [{ browserSession: [] }],
+      parameters: [pathParam('claimId', 'Agent owner-claim identifier.')],
+      requestBody: jsonContent('#/components/schemas/AgentOwnerXClaimResponse'),
+      responses: {
+        '200': okJson(
+          'Verified X claim proof.',
+          '#/components/schemas/AgentOwnerXClaimResponse',
         ),
         ...errorResponses(),
       },

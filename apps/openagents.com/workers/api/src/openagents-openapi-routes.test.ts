@@ -111,6 +111,14 @@ describe('OpenAgents OpenAPI route', () => {
         .operationId,
     ).toBe('approveAgentOwnerClaim')
     expect(
+      operationAt(body, '/api/agents/claims/{claimId}/x/challenge', 'post')
+        .operationId,
+    ).toBe('startAgentOwnerXClaimChallenge')
+    expect(
+      operationAt(body, '/api/agents/claims/{claimId}/x/verify', 'post')
+        .operationId,
+    ).toBe('verifyAgentOwnerXClaimTweet')
+    expect(
       operationAt(body, '/api/agents/claims/{claimId}/reject', 'post')
         .operationId,
     ).toBe('rejectAgentOwnerClaim')
@@ -461,6 +469,14 @@ describe('OpenAgents OpenAPI route', () => {
         .security,
     ).toEqual([{ browserSession: [] }])
     expect(
+      operationAt(body, '/api/agents/claims/{claimId}/x/challenge', 'post')
+        .security,
+    ).toEqual([{ browserSession: [] }])
+    expect(
+      operationAt(body, '/api/agents/claims/{claimId}/x/verify', 'post')
+        .security,
+    ).toEqual([{ browserSession: [] }])
+    expect(
       operationAt(body, '/api/agents/claims/{claimId}/reject', 'post').security,
     ).toEqual([{ browserSession: [] }])
     expect(operationAt(body, '/api/agents/me', 'get').security).toEqual([
@@ -608,6 +624,7 @@ describe('OpenAgents OpenAPI route', () => {
         'ProgrammaticAgentMe',
         'ProgrammaticAgentHome',
         'AgentOwnerClaimResponse',
+        'AgentOwnerXClaimResponse',
         'AgentProposalResponse',
         'AgentHostedSearchRequest',
         'AgentHostedSearchResponse',

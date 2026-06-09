@@ -309,6 +309,18 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'browser_session',
+          href: 'https://openagents.com/api/agents/claims/{claimId}/x/challenge',
+          id: 'start_agent_owner_x_claim',
+          status: 'available',
+        }),
+        expect.objectContaining({
+          auth: 'browser_session',
+          href: 'https://openagents.com/api/agents/claims/{claimId}/x/verify',
+          id: 'verify_agent_owner_x_claim',
+          status: 'available',
+        }),
+        expect.objectContaining({
+          auth: 'browser_session',
           href: 'https://openagents.com/api/agents/claims/{claimId}/reject',
           id: 'reject_agent_owner_claim',
           status: 'available',

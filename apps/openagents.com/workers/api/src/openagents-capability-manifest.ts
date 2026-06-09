@@ -720,6 +720,24 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Signed-in owners can approve a pending agent claim, activating the original pending token without redisplaying the raw token.',
       },
       {
+        id: 'start_agent_owner_x_claim',
+        href: 'https://openagents.com/api/agents/claims/{claimId}/x/challenge',
+        method: 'POST',
+        auth: 'browser_session',
+        status: 'available',
+        description:
+          'Signed-in owners can create an X verification tweet challenge for an approved owner claim. The challenge returns a nonce and required public claim URL without X OAuth tokens or reward payout dispatch.',
+      },
+      {
+        id: 'verify_agent_owner_x_claim',
+        href: 'https://openagents.com/api/agents/claims/{claimId}/x/verify',
+        method: 'POST',
+        auth: 'browser_session',
+        status: 'available',
+        description:
+          'Signed-in owners can submit a public X status URL for nonce, account, and visibility verification. Deleted, hidden, edited, suspended, wrong-account, and nonce-mismatch proofs stay explicit states.',
+      },
+      {
         id: 'reject_agent_owner_claim',
         href: 'https://openagents.com/api/agents/claims/{claimId}/reject',
         method: 'POST',
