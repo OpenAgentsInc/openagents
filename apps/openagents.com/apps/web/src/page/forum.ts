@@ -112,10 +112,9 @@ export const forumScript = (
     if (!Number.isFinite(totalPaidSats) || totalPaidSats <= 0) return '';
     const totalSettledSats = Number(stats.totalSettledSats || 0);
     const tipCount = Number(stats.tipCount || 0);
-    const settledLabel = Number.isFinite(totalSettledSats) && totalSettledSats > 0
-      ? ' · ' + String(totalSettledSats) + ' settled'
-      : '';
-    const label = String(totalPaidSats) + ' sats paid' + settledLabel + (tipCount > 1 ? ' · ' + String(tipCount) + ' tips' : '');
+    const settlementMismatch = Number.isFinite(totalSettledSats) && totalSettledSats > 0 && totalSettledSats !== totalPaidSats;
+    const settledLabel = settlementMismatch ? ' · ' + String(totalSettledSats) + ' settled' : '';
+    const label = String(totalPaidSats) + ' sats' + settledLabel + (tipCount > 1 ? ' · ' + String(tipCount) + ' tips' : '');
     return '<span data-forum-post-tip-total class="font-mono text-sm text-forum-payment sm:text-xs">' + escapeHtml(label) + '</span>';
   };
   const topicCountText = count => countText(count, 'topic', 'topics');
@@ -251,7 +250,7 @@ export const forumScript = (
   const firstTipBlocker = () => state.launchStatus?.publicTipping?.remainingBeforeLiveTips?.[0] || 'payment verification';
   const tipGateStatusLabel = () => {
     const blocker = firstTipBlocker().toLowerCase();
-    if (blocker.includes('payer wallet')) return 'Tip payments pending';
+    if (blocker.includes('payer wallet')) return 'Tip setup pending';
     if (blocker.includes('smoke')) return 'Live smoke pending';
     return 'Self-serve tips pending';
   };
@@ -288,7 +287,10 @@ export const forumScript = (
     const readiness = post.tipRecipientReadiness || {};
     const postId = post.postId || '';
     const recipient = post.author?.displayName || 'creator';
+    const stats = post.tipStats || {};
+    const totalPaidSats = Number(stats.totalPaidSats || 0);
     if (!tipPostGateReady()) {
+      if (Number.isFinite(totalPaidSats) && totalPaidSats > 0) return '';
       return '<span data-forum-tip-state="gated" class="font-mono text-xs text-forum-text" title="' + escapeHtml(firstTipBlocker()) + '">' + escapeHtml(tipGateStatusLabel()) + '</span>';
     }
     if (readiness.tippingAvailable !== true) {

@@ -112,15 +112,15 @@ describe('Forum routes', () => {
     expect(script).toContain('if (readiness.tippingAvailable !== true) {')
     expect(script).toContain('data-forum-tip-post-id')
     expect(script).toContain('data-forum-post-tip-total')
-    expect(script).toContain('sats paid')
-    expect(script).toContain('settled')
+    expect(script).toContain("String(totalPaidSats) + ' sats'")
+    expect(script).toContain('settlementMismatch')
     expect(script).toContain('data-forum-tip-amount')
     expect(script).toContain('Send tip')
     expect(script).toContain('const defaultPostRewardSats = 10')
     expect(script).toContain(
       "const postRewardCaveat = 'Content reward; receipt separates payment from settlement.'",
     )
-    expect(script).toContain('Tip payments pending')
+    expect(script).toContain('Tip setup pending')
     expect(script).toContain('Live smoke pending')
     expect(script).toContain('Self-serve tips pending')
     expect(script).not.toContain('Payments gated')

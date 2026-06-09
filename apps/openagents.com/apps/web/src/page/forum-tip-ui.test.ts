@@ -42,7 +42,7 @@ describe('Forum tip UI projection', () => {
       buttonVisible: false,
       detail: 'Tip payer wallet onboarding',
       reason: 'launch_gated',
-      statusLabel: 'Tip payments pending',
+      statusLabel: 'Tip setup pending',
     })
   })
 

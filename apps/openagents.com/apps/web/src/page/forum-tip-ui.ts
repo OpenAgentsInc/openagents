@@ -65,7 +65,7 @@ const launchBlockerStatusLabel = (
   const blocker = firstLaunchBlocker(launchStatus).toLowerCase()
 
   if (blocker.includes('payer wallet')) {
-    return 'Tip payments pending'
+    return 'Tip setup pending'
   }
 
   if (blocker.includes('smoke')) {
