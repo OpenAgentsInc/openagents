@@ -487,3 +487,38 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-pylon-assignment-synthesizer.test.ts src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-017: SHC And Cloud Fallback Lease Adapter
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4591`
+
+Status: implemented.
+
+Implemented:
+
+- Added `autopilot-work-fallback-lease-adapter.ts`.
+- Converted ready Autopilot assignment intents into controlled fallback lease
+  intents when placement selects an approved fallback runner.
+- Covered the initial fallback lanes:
+  - `openagents_shc`
+  - `shc`
+  - `cloud_sandbox`
+  - `gcloud_credit`
+- Added `fallbackLeaseIntents` to work-order projections.
+- Preserved the same closeout and safety shape as Pylon assignment intents:
+  - `forumAutoPublishAllowed: false`
+  - explicit closeout path refs
+  - public-safe result expectation refs
+  - rollback refs that block deploy without owner acceptance
+  - spend caps separated from worker payout authority
+- Modeled funded fallback execution as `paymentMode: "buyer_funded"` without
+  granting worker payout, deploy, spend, or accepted-work authority.
+- Kept unpaid fallback work as `paymentMode: "unpaid_smoke"` for future smoke
+  paths.
+- Updated OpenAPI summary text so agent-readable docs expose controlled
+  SHC/cloud fallback lease intents.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-fallback-lease-adapter.test.ts src/autopilot-work-pylon-assignment-synthesizer.test.ts src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

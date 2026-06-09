@@ -234,6 +234,17 @@ const responseJson = async (response: Response) =>
       }>>
       buyerPaymentProofRef?: string | null
       accessRequestRefs?: ReadonlyArray<string>
+      fallbackLeaseIntents?: ReadonlyArray<Readonly<{
+        assignmentRef: string
+        fallbackLaneRef: string
+        forumAutoPublishAllowed: boolean
+        paymentMode: string
+        requiredCapabilityRefs: ReadonlyArray<string>
+        runnerKind: string
+        spendCapRefs: ReadonlyArray<string>
+        taskRef: string
+        workerPayoutAuthority: boolean
+      }>>
       funding?: Readonly<{
         buyerFundingState: string
         buyerPaymentProofRef: string | null
@@ -690,6 +701,7 @@ describe('Autopilot work routes', () => {
       },
       state: 'payment_required',
     })
+    expect(firstJson.work?.fallbackLeaseIntents).toEqual([])
     expect(replayJson.work?.quote).toEqual(firstJson.work?.quote)
     expect(paid.status).toBe(200)
     expect(paidJson.work).toMatchObject({
@@ -722,6 +734,23 @@ describe('Autopilot work routes', () => {
       quote: firstJson.work?.quote,
       state: 'paid_ready',
     })
+    expect(paidJson.work?.fallbackLeaseIntents).toEqual([
+      expect.objectContaining({
+        assignmentRef:
+          'fallback_assignment.autopilot_work_order.test_1.task.autopilot_coder.paid_test_repair',
+        fallbackLaneRef: 'fallback_lane.openagents.shc',
+        forumAutoPublishAllowed: false,
+        paymentMode: 'buyer_funded',
+        requiredCapabilityRefs: [
+          'capability.fallback.assignment_ready',
+          'capability.openagents.shc',
+        ],
+        runnerKind: 'openagents_shc',
+        spendCapRefs: ['spend_cap.buyer_funded.fallback_assignment'],
+        taskRef: 'task.autopilot_coder.paid_test_repair',
+        workerPayoutAuthority: false,
+      }),
+    ])
     expect(detailJson.work?.quote).toEqual(firstJson.work?.quote)
     expect(detailJson.work?.buyerPaymentProofRef).toBe(
       'payment_proof.autopilot_work.test_1',

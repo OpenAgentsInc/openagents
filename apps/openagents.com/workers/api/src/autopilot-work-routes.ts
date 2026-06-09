@@ -9,6 +9,10 @@ import {
   type AutopilotWorkAssignmentIntentProjection,
 } from './autopilot-work-assignment-planner'
 import {
+  fallbackLeaseIntentsForAutopilotWork,
+  type AutopilotFallbackLeaseIntentProjection,
+} from './autopilot-work-fallback-lease-adapter'
+import {
   type AutopilotPlacementDecisionProjection,
   selectAutopilotPlacement,
 } from './autopilot-work-placement-selector'
@@ -206,6 +210,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   clientRequestRef: string
   createdAt: string
   eventStreamRef: string
+  fallbackLeaseIntents: ReadonlyArray<AutopilotFallbackLeaseIntentProjection>
   funding: AutopilotWorkFundingProjection
   idempotent: boolean
   paymentChallenge: AutopilotWorkPaymentChallengeProjection | null
@@ -779,6 +784,7 @@ const projectionForRecord = (
     clientRequestRef: record.clientRequestRef,
     createdAt: record.createdAt,
     eventStreamRef: record.eventStreamRef,
+    fallbackLeaseIntents: [],
     funding: fundingForRecord(record),
     idempotent,
     paymentChallenge: paymentChallengeForRecord(record),
@@ -806,6 +812,12 @@ const projectionForRecord = (
   return {
     ...work,
     assignmentIntents,
+    fallbackLeaseIntents: fallbackLeaseIntentsForAutopilotWork({
+      assignmentIntents,
+      placementDecision: work.placementDecision,
+      tasks: work.tasks,
+      workOrderRef: work.workOrderRef,
+    }),
     pylonAssignmentIntents: pylonAssignmentIntentsForAutopilotWork({
       assignmentIntents,
       placementDecision: work.placementDecision,
