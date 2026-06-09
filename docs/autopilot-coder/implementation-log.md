@@ -336,3 +336,34 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-assignment-planner.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-012: Current Queue Dry-Run Inventory
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4586`
+
+Status: implemented.
+
+Implemented:
+
+- Added an operator-only dry-run inventory endpoint:
+  - `GET /api/operator/orders/triage/autopilot-foldover-inventory`
+- The report reads existing records without mutation and returns:
+  - `dryRun: true`
+  - `mutatesRecords: false`
+  - per-source inventory items
+  - aggregate counts by source kind, lifecycle state, and public/private
+    safety state
+- Covered the existing foldover sources:
+  - `software_orders`
+  - `adjutant_assignments`
+  - `site_projects`
+  - `site_builder_artifacts`
+- Classified records as `pending`, `running`, `stale`, or `delivered`.
+- Classified records as `public_safe` or `private_only`.
+- Added route coverage proving the endpoint reports old work and does not
+  mutate source records.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/operator-order-triage-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

@@ -213,6 +213,25 @@ type StoredPaymentPolicy = Readonly<{
   updated_at: string
 }>
 
+type StoredSiteBuilderSession = Readonly<{
+  archived_at: string | null
+  created_at: string
+  id: string
+  order_id: string | null
+  site_id: string | null
+  status: string
+  updated_at: string
+}>
+
+type StoredSiteBuilderArtifact = Readonly<{
+  archived_at: string | null
+  artifact_ref: string
+  created_at: string
+  id: string
+  metadata_json: string
+  session_id: string
+}>
+
 type StoredTriageRecord = Readonly<{
   id: string
   software_order_id: string
@@ -348,6 +367,27 @@ class OperatorOrderTriageDbStore {
   paymentPolicies: Array<StoredPaymentPolicy> = []
   runEvents: Array<StoredAgentRunEvent> = []
   runs: Array<StoredAgentRun> = []
+  siteBuilderArtifacts: Array<StoredSiteBuilderArtifact> = [
+    {
+      archived_at: null,
+      artifact_ref: 'artifact.site_builder.public_manifest',
+      created_at: '2026-06-04T10:35:00.000Z',
+      id: 'site_builder_artifact_public',
+      metadata_json: JSON.stringify({ publicSafe: true }),
+      session_id: 'site_builder_session_1',
+    },
+  ]
+  siteBuilderSessions: Array<StoredSiteBuilderSession> = [
+    {
+      archived_at: null,
+      created_at: '2026-06-04T10:31:00.000Z',
+      id: 'site_builder_session_1',
+      order_id: 'software_order_site',
+      site_id: 'site_project_1',
+      status: 'generated',
+      updated_at: '2026-06-04T10:35:00.000Z',
+    },
+  ]
   triageRecords: Array<StoredTriageRecord> = [
     {
       id: 'triage_fresh_site',
@@ -1177,6 +1217,121 @@ class OperatorOrderTriageStatement implements D1PreparedStatement {
       })
     }
 
+    if (this.query.includes('FROM software_orders')) {
+      const [limit] = this.values
+
+      return Promise.resolve({
+        meta: meta(),
+        results: this.store.orders
+          .filter(order => order.archived_at === null)
+          .sort((left, right) =>
+            right.updated_at.localeCompare(left.updated_at),
+          )
+          .slice(0, Number(limit ?? 100))
+          .map(order => ({
+            archived_at: order.archived_at,
+            created_at: order.created_at,
+            current_run_id: order.current_run_id,
+            id: order.id,
+            repository_private: null,
+            status: order.status,
+            updated_at: order.updated_at,
+            visibility: order.visibility,
+          })) as Array<T>,
+        success: true,
+      })
+    }
+
+    if (this.query.includes('FROM adjutant_assignments')) {
+      const [limit] = this.values
+
+      return Promise.resolve({
+        meta: meta(),
+        results: this.store.assignments
+          .filter(assignment => assignment.archived_at === null)
+          .sort((left, right) =>
+            String(right.updated_at ?? right.created_at).localeCompare(
+              String(left.updated_at ?? left.created_at),
+            ),
+          )
+          .slice(0, Number(limit ?? 100))
+          .map(assignment => ({
+            archived_at: assignment.archived_at,
+            completed_at: assignment.completed_at ?? null,
+            current_run_id: assignment.current_run_id ?? null,
+            id: assignment.id,
+            site_id: assignment.site_id ?? null,
+            software_order_id: assignment.software_order_id,
+            status: assignment.status,
+            updated_at: assignment.updated_at ?? assignment.created_at,
+            visibility: assignment.visibility ?? 'public',
+          })) as Array<T>,
+        success: true,
+      })
+    }
+
+    if (this.query.includes('FROM site_projects')) {
+      const [limit] = this.values
+
+      return Promise.resolve({
+        meta: meta(),
+        results: this.store.sites
+          .filter(site => site.archived_at === null)
+          .sort((left, right) =>
+            String(right.updated_at ?? right.created_at ?? '').localeCompare(
+              String(left.updated_at ?? left.created_at ?? ''),
+            ),
+          )
+          .slice(0, Number(limit ?? 100))
+          .map(site => ({
+            active_deployment_id: site.active_deployment_id ?? null,
+            active_version_id: site.active_version_id ?? null,
+            archived_at: site.archived_at,
+            id: site.id,
+            software_order_id: site.software_order_id,
+            status: site.status,
+            updated_at: site.updated_at ?? '2026-06-04T10:00:00.000Z',
+            visibility: site.visibility ?? 'public',
+          })) as Array<T>,
+        success: true,
+      })
+    }
+
+    if (this.query.includes('FROM site_builder_artifacts')) {
+      const [limit] = this.values
+
+      return Promise.resolve({
+        meta: meta(),
+        results: this.store.siteBuilderArtifacts
+          .flatMap(artifact => {
+            const session = this.store.siteBuilderSessions.find(
+              candidate =>
+                candidate.id === artifact.session_id &&
+                candidate.archived_at === null,
+            )
+
+            return artifact.archived_at !== null || session === undefined
+              ? []
+              : [{
+                  archived_at: artifact.archived_at,
+                  artifact_ref: artifact.artifact_ref,
+                  created_at: artifact.created_at,
+                  id: artifact.id,
+                  metadata_json: artifact.metadata_json,
+                  order_id: session.order_id,
+                  session_id: session.id,
+                  session_status: session.status,
+                  site_id: session.site_id,
+                }]
+          })
+          .sort((left, right) =>
+            right.created_at.localeCompare(left.created_at),
+          )
+          .slice(0, Number(limit ?? 100)) as Array<T>,
+        success: true,
+      })
+    }
+
     return Promise.reject(new Error(`Unexpected D1 all: ${this.query}`))
   }
 
@@ -1308,6 +1463,83 @@ describe('operator order triage routes', () => {
     })
     expect(JSON.stringify(body)).not.toContain('provider_account')
     expect(JSON.stringify(body)).not.toContain('auth_grant')
+  })
+
+  test('reports current queue foldover inventory without mutating records', async () => {
+    const store = new OperatorOrderTriageDbStore()
+    const before = {
+      artifacts: store.siteBuilderArtifacts.length,
+      assignments: store.assignments.length,
+      orders: store.orders.length,
+      sites: store.sites.length,
+    }
+    const response = await runRoute(
+      store,
+      '/api/operator/orders/triage/autopilot-foldover-inventory?limit=25',
+    )
+    const body = (await response.json()) as {
+      inventory: Readonly<{
+        dryRun: boolean
+        items: ReadonlyArray<Record<string, unknown>>
+        mutatesRecords: boolean
+        summary: Record<string, unknown>
+      }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('x-session-refreshed')).toBe('true')
+    expect(body.inventory).toMatchObject({
+      dryRun: true,
+      mutatesRecords: false,
+      summary: {
+        byPrivacyState: {
+          private_only: 0,
+          public_safe: 7,
+        },
+        bySourceKind: {
+          adjutant_assignment: 1,
+          site_builder_artifact: 1,
+          site_project: 1,
+          software_order: 4,
+        },
+        byState: {
+          delivered: 1,
+          pending: 0,
+          running: 0,
+          stale: 6,
+        },
+        foldable: 6,
+        total: 7,
+      },
+    })
+    expect(body.inventory.items).toContainEqual(
+      expect.objectContaining({
+        artifactRef: 'artifact.site_builder.public_manifest',
+        foldableIntoAutopilot: false,
+        privacyState: 'public_safe',
+        reasonRefs: [
+          'foldover.source.site_builder_artifact',
+          'foldover.state.delivered',
+          'foldover.privacy.public_safe',
+        ],
+        sourceKind: 'site_builder_artifact',
+        state: 'delivered',
+      }),
+    )
+    expect(body.inventory.items).toContainEqual(
+      expect.objectContaining({
+        assignmentId: 'assignment_1',
+        foldableIntoAutopilot: true,
+        sourceKind: 'adjutant_assignment',
+        state: 'stale',
+      }),
+    )
+    expect({
+      artifacts: store.siteBuilderArtifacts.length,
+      assignments: store.assignments.length,
+      orders: store.orders.length,
+      sites: store.sites.length,
+    }).toEqual(before)
   })
 
   test('updates triage and can move the customer-safe order status', async () => {

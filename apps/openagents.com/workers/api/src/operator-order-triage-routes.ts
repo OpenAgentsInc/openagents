@@ -488,6 +488,101 @@ type FirstBatchMonitorItem = Readonly<{
   }>
 }>
 
+type FoldoverInventorySourceKind =
+  | 'adjutant_assignment'
+  | 'site_builder_artifact'
+  | 'site_project'
+  | 'software_order'
+
+type FoldoverInventoryState =
+  | 'delivered'
+  | 'pending'
+  | 'running'
+  | 'stale'
+
+type FoldoverInventoryPrivacyState =
+  | 'private_only'
+  | 'public_safe'
+
+type FoldoverInventoryItem = Readonly<{
+  artifactRef: string | null
+  assignmentId: string | null
+  foldableIntoAutopilot: boolean
+  id: string
+  orderId: string | null
+  privacyState: FoldoverInventoryPrivacyState
+  reasonRefs: ReadonlyArray<string>
+  siteId: string | null
+  sourceKind: FoldoverInventorySourceKind
+  state: FoldoverInventoryState
+  status: string
+  updatedAt: string
+}>
+
+type FoldoverInventorySummary = Readonly<{
+  byPrivacyState: Readonly<Record<FoldoverInventoryPrivacyState, number>>
+  bySourceKind: Readonly<Record<FoldoverInventorySourceKind, number>>
+  byState: Readonly<Record<FoldoverInventoryState, number>>
+  foldable: number
+  privateOnly: number
+  publicSafe: number
+  total: number
+}>
+
+type FoldoverInventoryReport = Readonly<{
+  dryRun: true
+  generatedAt: string
+  items: ReadonlyArray<FoldoverInventoryItem>
+  mutatesRecords: false
+  summary: FoldoverInventorySummary
+}>
+
+type FoldoverSoftwareOrderRow = Readonly<{
+  archived_at: string | null
+  created_at: string
+  current_run_id: string | null
+  id: string
+  repository_private: number | null
+  status: string
+  updated_at: string
+  visibility: string
+}>
+
+type FoldoverAssignmentRow = Readonly<{
+  archived_at: string | null
+  completed_at: string | null
+  current_run_id: string | null
+  id: string
+  site_id: string | null
+  software_order_id: string | null
+  status: string
+  updated_at: string
+  visibility: string
+}>
+
+type FoldoverSiteRow = Readonly<{
+  active_deployment_id: string | null
+  active_version_id: string | null
+  archived_at: string | null
+  id: string
+  software_order_id: string | null
+  status: string
+  updated_at: string
+  visibility: string
+}>
+
+type FoldoverArtifactRow = Readonly<{
+  archived_at: string | null
+  artifact_ref: string
+  created_at: string
+  id: string
+  metadata_json: string
+  order_id: string | null
+  session_id: string
+  session_status: string
+  site_id: string | null
+}>
+
 const d1Effect = <A>(
   operation: string,
   run: () => Promise<A>,
@@ -1989,6 +2084,308 @@ const monitorFirstBatch = (
     return { monitor, summary: { ...base, total: monitor.length } }
   })
 
+const staleFoldoverThresholdSeconds = 24 * 60 * 60
+
+const foldoverState = (
+  status: string,
+  updatedAt: string,
+  nowIso: string,
+): FoldoverInventoryState => {
+  const activeState =
+    status === 'delivered' ||
+    status === 'complete' ||
+    status === 'approved' ||
+    status === 'generated' ||
+    status === 'saved'
+      ? 'delivered'
+      : status === 'agent_running' ||
+          status === 'running' ||
+          status === 'queued' ||
+          status === 'generating'
+        ? 'running'
+        : 'pending'
+
+  if (activeState !== 'delivered') {
+    const ageSeconds = secondsBetweenIso(updatedAt, nowIso)
+
+    if (ageSeconds !== null && ageSeconds > staleFoldoverThresholdSeconds) {
+      return 'stale'
+    }
+  }
+
+  return activeState
+}
+
+const safeMetadataFlag = (metadataJson: string, key: string): boolean => {
+  try {
+    const parsed = JSON.parse(metadataJson) as Record<string, unknown>
+
+    return parsed[key] === true
+  } catch {
+    return false
+  }
+}
+
+const foldableForState = (state: FoldoverInventoryState): boolean =>
+  state === 'pending' || state === 'running' || state === 'stale'
+
+const sourceReasonRef = (
+  sourceKind: FoldoverInventorySourceKind,
+  state: FoldoverInventoryState,
+  privacyState: FoldoverInventoryPrivacyState,
+): ReadonlyArray<string> => [
+  `foldover.source.${sourceKind}`,
+  `foldover.state.${state}`,
+  `foldover.privacy.${privacyState}`,
+]
+
+const readFoldoverSoftwareOrders = (
+  db: D1Database,
+  limit: number,
+): Effect.Effect<ReadonlyArray<FoldoverSoftwareOrderRow>, OrderTriageStorageError> =>
+  d1Effect('orderTriage.foldover.softwareOrders', () =>
+    db.prepare(
+      `SELECT id,
+              status,
+              visibility,
+              repository_private,
+              current_run_id,
+              created_at,
+              updated_at,
+              archived_at
+       FROM software_orders
+       WHERE archived_at IS NULL
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+    ).bind(limit).all<FoldoverSoftwareOrderRow>()
+  ).pipe(Effect.map(result => result.results ?? []))
+
+const readFoldoverAssignments = (
+  db: D1Database,
+  limit: number,
+): Effect.Effect<ReadonlyArray<FoldoverAssignmentRow>, OrderTriageStorageError> =>
+  d1Effect('orderTriage.foldover.assignments', () =>
+    db.prepare(
+      `SELECT id,
+              software_order_id,
+              site_id,
+              current_run_id,
+              status,
+              visibility,
+              updated_at,
+              completed_at,
+              archived_at
+       FROM adjutant_assignments
+       WHERE archived_at IS NULL
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+    ).bind(limit).all<FoldoverAssignmentRow>()
+  ).pipe(Effect.map(result => result.results ?? []))
+
+const readFoldoverSites = (
+  db: D1Database,
+  limit: number,
+): Effect.Effect<ReadonlyArray<FoldoverSiteRow>, OrderTriageStorageError> =>
+  d1Effect('orderTriage.foldover.sites', () =>
+    db.prepare(
+      `SELECT id,
+              software_order_id,
+              status,
+              visibility,
+              active_version_id,
+              active_deployment_id,
+              updated_at,
+              archived_at
+       FROM site_projects
+       WHERE archived_at IS NULL
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+    ).bind(limit).all<FoldoverSiteRow>()
+  ).pipe(Effect.map(result => result.results ?? []))
+
+const readFoldoverArtifacts = (
+  db: D1Database,
+  limit: number,
+): Effect.Effect<ReadonlyArray<FoldoverArtifactRow>, OrderTriageStorageError> =>
+  d1Effect('orderTriage.foldover.artifacts', () =>
+    db.prepare(
+      `SELECT a.id,
+              a.artifact_ref,
+              a.metadata_json,
+              a.created_at,
+              a.archived_at,
+              s.id AS session_id,
+              s.site_id,
+              s.order_id,
+              s.status AS session_status
+       FROM site_builder_artifacts a
+       INNER JOIN site_builder_sessions s
+          ON s.id = a.session_id
+       WHERE a.archived_at IS NULL
+         AND s.archived_at IS NULL
+       ORDER BY a.created_at DESC
+       LIMIT ?`,
+    ).bind(limit).all<FoldoverArtifactRow>()
+  ).pipe(Effect.map(result => result.results ?? []))
+
+const foldoverInventorySummary = (
+  items: ReadonlyArray<FoldoverInventoryItem>,
+): FoldoverInventorySummary => {
+  const byPrivacyState: Record<FoldoverInventoryPrivacyState, number> = {
+    private_only: 0,
+    public_safe: 0,
+  }
+  const bySourceKind: Record<FoldoverInventorySourceKind, number> = {
+    adjutant_assignment: 0,
+    site_builder_artifact: 0,
+    site_project: 0,
+    software_order: 0,
+  }
+  const byState: Record<FoldoverInventoryState, number> = {
+    delivered: 0,
+    pending: 0,
+    running: 0,
+    stale: 0,
+  }
+  let foldable = 0
+
+  for (const item of items) {
+    byPrivacyState[item.privacyState] += 1
+    bySourceKind[item.sourceKind] += 1
+    byState[item.state] += 1
+    foldable += item.foldableIntoAutopilot ? 1 : 0
+  }
+
+  return {
+    byPrivacyState,
+    bySourceKind,
+    byState,
+    foldable,
+    privateOnly: byPrivacyState.private_only,
+    publicSafe: byPrivacyState.public_safe,
+    total: items.length,
+  }
+}
+
+const foldoverInventory = (
+  db: D1Database,
+  runtime: OrderTriageRuntime,
+  limit: number,
+): Effect.Effect<FoldoverInventoryReport, OrderTriageStorageError> =>
+  Effect.gen(function* () {
+    const nowIso = runtime.nowIso()
+    const [
+      softwareOrders,
+      assignments,
+      sites,
+      artifacts,
+    ] = yield* Effect.all([
+      readFoldoverSoftwareOrders(db, limit),
+      readFoldoverAssignments(db, limit),
+      readFoldoverSites(db, limit),
+      readFoldoverArtifacts(db, limit),
+    ])
+
+    const softwareOrderItems = softwareOrders.map(row => {
+      const privacyState = row.visibility === 'public' && row.repository_private !== 1
+        ? 'public_safe'
+        : 'private_only'
+      const state = foldoverState(row.status, row.updated_at, nowIso)
+
+      return {
+        artifactRef: null,
+        assignmentId: null,
+        foldableIntoAutopilot: foldableForState(state),
+        id: row.id,
+        orderId: row.id,
+        privacyState,
+        reasonRefs: sourceReasonRef('software_order', state, privacyState),
+        siteId: null,
+        sourceKind: 'software_order',
+        state,
+        status: row.status,
+        updatedAt: row.updated_at,
+      } satisfies FoldoverInventoryItem
+    })
+    const assignmentItems = assignments.map(row => {
+      const privacyState = row.visibility === 'public'
+        ? 'public_safe'
+        : 'private_only'
+      const state = foldoverState(row.status, row.updated_at, nowIso)
+
+      return {
+        artifactRef: null,
+        assignmentId: row.id,
+        foldableIntoAutopilot: foldableForState(state),
+        id: row.id,
+        orderId: row.software_order_id,
+        privacyState,
+        reasonRefs: sourceReasonRef('adjutant_assignment', state, privacyState),
+        siteId: row.site_id,
+        sourceKind: 'adjutant_assignment',
+        state,
+        status: row.status,
+        updatedAt: row.updated_at,
+      } satisfies FoldoverInventoryItem
+    })
+    const siteItems = sites.map(row => {
+      const privacyState = row.visibility === 'public'
+        ? 'public_safe'
+        : 'private_only'
+      const state = foldoverState(row.status, row.updated_at, nowIso)
+
+      return {
+        artifactRef: row.active_version_id,
+        assignmentId: null,
+        foldableIntoAutopilot: foldableForState(state),
+        id: row.id,
+        orderId: row.software_order_id,
+        privacyState,
+        reasonRefs: sourceReasonRef('site_project', state, privacyState),
+        siteId: row.id,
+        sourceKind: 'site_project',
+        state,
+        status: row.status,
+        updatedAt: row.updated_at,
+      } satisfies FoldoverInventoryItem
+    })
+    const artifactItems = artifacts.map(row => {
+      const privacyState = safeMetadataFlag(row.metadata_json, 'publicSafe')
+        ? 'public_safe'
+        : 'private_only'
+      const state = foldoverState(row.session_status, row.created_at, nowIso)
+
+      return {
+        artifactRef: row.artifact_ref,
+        assignmentId: null,
+        foldableIntoAutopilot: foldableForState(state),
+        id: row.id,
+        orderId: row.order_id,
+        privacyState,
+        reasonRefs: sourceReasonRef('site_builder_artifact', state, privacyState),
+        siteId: row.site_id,
+        sourceKind: 'site_builder_artifact',
+        state,
+        status: row.session_status,
+        updatedAt: row.created_at,
+      } satisfies FoldoverInventoryItem
+    })
+    const items = [
+      ...softwareOrderItems,
+      ...assignmentItems,
+      ...siteItems,
+      ...artifactItems,
+    ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+
+    return {
+      dryRun: true,
+      generatedAt: nowIso,
+      items,
+      mutatesRecords: false,
+      summary: foldoverInventorySummary(items),
+    }
+  })
+
 export class OrderTriageService extends Context.Service<
   OrderTriageService,
   {
@@ -2014,6 +2411,9 @@ export class OrderTriageService extends Context.Service<
       | OperatorOrderTriageBadRequest
       | OrderTriageStorageError
     >
+    readonly foldoverInventory: (
+      limit: number,
+    ) => Effect.Effect<FoldoverInventoryReport, OrderTriageStorageError>
     readonly monitorFirstBatch: (
       limit: number,
     ) => Effect.Effect<
@@ -2074,6 +2474,11 @@ export class OrderTriageService extends Context.Service<
       ),
       listQueue: Effect.fn('OrderTriageService.listQueue')(limit =>
         readQueue(openAgentsDatabase(env), limit),
+      ),
+      foldoverInventory: Effect.fn(
+        'OrderTriageService.foldoverInventory',
+      )(limit =>
+        foldoverInventory(openAgentsDatabase(env), runtime, limit)
       ),
       monitorFirstBatch: Effect.fn('OrderTriageService.monitorFirstBatch')(
         limit =>
@@ -2463,6 +2868,36 @@ export const makeOperatorOrderTriageRoutes = <
       }),
     )
 
+  const foldoverInventoryRoute = (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) =>
+    runRoute(
+      env,
+      Effect.gen(function* () {
+        if (request.method !== 'GET') {
+          return methodNotAllowed(['GET'])
+        }
+
+        const session = yield* requireAdminSession(
+          dependencies,
+          request,
+          env,
+          ctx,
+        )
+        const triage = yield* OrderTriageService
+        const result = yield* triage.foldoverInventory(
+          numericLimit(new URL(request.url)),
+        )
+
+        return dependencies.appendRefreshedSessionCookies(
+          noStoreJsonResponse({ inventory: result }),
+          session,
+        )
+      }),
+    )
+
   return {
     routeOperatorOrderTriageRequest: (
       request: Request,
@@ -2484,6 +2919,13 @@ export const makeOperatorOrderTriageRoutes = <
         '/api/operator/orders/triage/first-batch/payment-policy'
       ) {
         return applyFirstBatchPaymentPolicyRoute(request, env, ctx)
+      }
+
+      if (
+        url.pathname ===
+        '/api/operator/orders/triage/autopilot-foldover-inventory'
+      ) {
+        return foldoverInventoryRoute(request, env, ctx)
       }
 
       if (
