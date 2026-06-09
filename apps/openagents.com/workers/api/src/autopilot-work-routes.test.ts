@@ -175,6 +175,21 @@ const responseJson = async (response: Response) =>
         status: string
         taskRef: string
       }>>
+      assignmentIntents?: ReadonlyArray<Readonly<{
+        accessState: string
+        assignmentIntentRef: string
+        assignmentKind: string
+        deployAuthority: boolean
+        paymentState: string
+        placementState: string
+        plannerReasonRefs: ReadonlyArray<string>
+        plannerState: string
+        readyForAssignment: boolean
+        spendAuthority: boolean
+        taskRef: string
+        workerPayoutEligible: boolean
+        workOrderRef: string
+      }>>
       buyerPaymentProofRef?: string | null
       accessRequestRefs?: ReadonlyArray<string>
       funding?: Readonly<{
@@ -336,6 +351,28 @@ describe('Autopilot work routes', () => {
     expect(response.status).toBe(202)
     expect(body.work).toMatchObject({
       state: 'access_required',
+      assignmentIntents: [
+        {
+          assignmentKind: 'repo_change',
+          plannerReasonRefs: [
+            'assignment.free_slice',
+            'assignment.ready_for_assignment',
+          ],
+          plannerState: 'free_slice',
+          readyForAssignment: true,
+          taskRef: 'task.autopilot_coder.docs_contract',
+        },
+        {
+          assignmentKind: 'test_repair',
+          plannerReasonRefs: [
+            'assignment.blocked.access_required',
+            'access_request.task.autopilot_coder.test_repair.github_repo_write',
+          ],
+          plannerState: 'access_required',
+          readyForAssignment: false,
+          taskRef: 'task.autopilot_coder.test_repair',
+        },
+      ],
       taskRefs: [
         'task.autopilot_coder.docs_contract',
         'task.autopilot_coder.test_repair',
@@ -456,6 +493,15 @@ describe('Autopilot work routes', () => {
     expect(first.headers.get('www-authenticate')).toContain('L402')
     expect(replay.status).toBe(402)
     expect(firstJson.work).toMatchObject({
+      assignmentIntents: [
+        {
+          assignmentKind: 'test_repair',
+          plannerReasonRefs: ['assignment.blocked.payment_required'],
+          plannerState: 'payment_required',
+          readyForAssignment: false,
+          taskRef: 'task.autopilot_coder.paid_test_repair',
+        },
+      ],
       funding: {
         buyerFundingState: 'payment_required',
         buyerPaymentProofRef: null,
@@ -488,6 +534,18 @@ describe('Autopilot work routes', () => {
     expect(replayJson.work?.quote).toEqual(firstJson.work?.quote)
     expect(paid.status).toBe(200)
     expect(paidJson.work).toMatchObject({
+      assignmentIntents: [
+        {
+          assignmentKind: 'test_repair',
+          plannerReasonRefs: [
+            'assignment.paid_ready',
+            'assignment.ready_for_assignment',
+          ],
+          plannerState: 'paid_ready',
+          readyForAssignment: true,
+          taskRef: 'task.autopilot_coder.paid_test_repair',
+        },
+      ],
       buyerPaymentProofRef: 'payment_proof.autopilot_work.test_1',
       funding: {
         buyerFundingState: 'funded',

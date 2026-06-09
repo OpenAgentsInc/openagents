@@ -300,3 +300,39 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-011: Order-To-Assignment Planner
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4585`
+
+Status: implemented.
+
+Implemented:
+
+- Added `autopilot-work-assignment-planner.ts` as a pure planner for typed
+  Autopilot task records.
+- Converted task kinds into assignment kinds:
+  - `repo_change`
+  - `site_generation`
+  - `site_adjustment`
+  - `test_repair`
+  - `research_and_patch`
+- Added `assignmentIntents` to work-order projections with planner state,
+  reason refs, task ref, repository ref, access/payment/placement state, and
+  explicit authority-denial fields.
+- Recorded planner reasons for:
+  - `access_required`
+  - `payment_required`
+  - `blocked`
+  - `free_slice`
+  - `paid_ready`
+  - `ready_for_assignment`
+- Preserved the boundary that assignment intent is not deploy, spend, accepted
+  work, payout, or settlement authority.
+- Updated OpenAPI summary text so agent-readable docs expose assignment
+  intents.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-assignment-planner.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

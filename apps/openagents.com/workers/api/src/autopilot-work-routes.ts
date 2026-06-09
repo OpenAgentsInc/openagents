@@ -5,6 +5,10 @@ import {
   sha256Hex,
 } from './agent-registration'
 import {
+  assignmentIntentsForWorkOrder,
+  type AutopilotWorkAssignmentIntentProjection,
+} from './autopilot-work-assignment-planner'
+import {
   authenticateCustomerOrderAgentRequest,
 } from './customer-order-agent-auth'
 import {
@@ -174,6 +178,7 @@ export type AutopilotWorkOrderRecord = Readonly<{
 export type AutopilotWorkOrderProjection = Readonly<{
   accessRequirements: ReadonlyArray<AutopilotWorkAccessRequirementProjection>
   accessRequestRefs: ReadonlyArray<string>
+  assignmentIntents: ReadonlyArray<AutopilotWorkAssignmentIntentProjection>
   buyerPaymentProofRef: string | null
   clientRequestRef: string
   createdAt: string
@@ -685,26 +690,34 @@ const stateForRequest = (
 const projectionForRecord = (
   record: AutopilotWorkOrderRecord,
   idempotent: boolean,
-): AutopilotWorkOrderProjection => ({
-  accessRequirements: accessRequirementsForRequest(record.request),
-  accessRequestRefs: record.accessRequestRefs,
-  buyerPaymentProofRef: record.buyerPaymentProofRef,
-  clientRequestRef: record.clientRequestRef,
-  createdAt: record.createdAt,
-  eventStreamRef: record.eventStreamRef,
-  funding: fundingForRecord(record),
-  idempotent,
-  paymentChallenge: paymentChallengeForRecord(record),
-  paymentChallengeRef: record.paymentChallengeRef,
-  quote: makeAutopilotWorkQuote(record.request),
-  repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
-  state: record.state,
-  statusUrlRef: record.statusUrlRef,
-  taskRefs: record.taskRefs,
-  tasks: taskRecordsForRecord(record),
-  updatedAt: record.updatedAt,
-  workOrderRef: record.workOrderRef,
-})
+): AutopilotWorkOrderProjection => {
+  const work = {
+    accessRequirements: accessRequirementsForRequest(record.request),
+    accessRequestRefs: record.accessRequestRefs,
+    assignmentIntents: [],
+    buyerPaymentProofRef: record.buyerPaymentProofRef,
+    clientRequestRef: record.clientRequestRef,
+    createdAt: record.createdAt,
+    eventStreamRef: record.eventStreamRef,
+    funding: fundingForRecord(record),
+    idempotent,
+    paymentChallenge: paymentChallengeForRecord(record),
+    paymentChallengeRef: record.paymentChallengeRef,
+    quote: makeAutopilotWorkQuote(record.request),
+    repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
+    state: record.state,
+    statusUrlRef: record.statusUrlRef,
+    taskRefs: record.taskRefs,
+    tasks: taskRecordsForRecord(record),
+    updatedAt: record.updatedAt,
+    workOrderRef: record.workOrderRef,
+  } satisfies AutopilotWorkOrderProjection
+
+  return {
+    ...work,
+    assignmentIntents: assignmentIntentsForWorkOrder(work),
+  }
+}
 
 const terminalEventKindForState = (
   state: OpenAgentsAutopilotWorkStateType,
