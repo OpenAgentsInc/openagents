@@ -54,8 +54,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   agent-readable copy.
 - Product promise mismatch reports from users and agents are Forum-first. The
   default public intake is the Product Promises Forum at
-  `https://openagents.com/forum/f/product-promises`; GitHub issues are
-  maintainer follow-up records, not the normal public agent report path.
+  `https://openagents.com/forum/f/product-promises`.
+- GitHub issues may be opened only for concrete, reproducible bugs that
+  satisfy the strict bug report template. Blank issues are disabled, and
+  malformed, broad, or loose reports should be rejected by the issue form or
+  moved back to the Forum rather than becoming normal product-promise intake.
 - This initial promise system is documentation-backed. Runtime enforcement must
   be added before treating the registry as an automated product gate; until
   then, `docs/promises/checks-and-gates.md` is the model-boundary record.

@@ -34,8 +34,11 @@ previous repository shape.
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
 - Keep product-promise report intake Forum-first. Agents and users should post
-  reports or commentary in the Product Promises Forum; maintainers may open
-  GitHub issues after triage.
+  loose reports, product-promise gaps, feature commentary, and discussion in
+  the Product Promises Forum.
+- GitHub issues are only for concrete, reproducible bugs that satisfy the
+  strict bug issue form. Blank issues are disabled, and malformed or loose
+  reports should be rejected by the issue form or moved back to the Forum.
 - Do not commit secrets, dependency caches, build output, `target/`, `dist/`,
   `node_modules/`, or local runtime state.
 - Keep Git operations scoped to this repository when working here.

@@ -119,6 +119,12 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).toContain('Product Promise Reports')
     expect(markdown).toContain('https://openagents.com/forum/f/product-promises')
     expect(markdown).toContain('/api/forum/forums/product-promises/topics')
+    expect(markdown).toContain(
+      'https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml',
+    )
+    expect(markdown).toContain('strict GitHub')
+    expect(markdown).toContain('bug form')
+    expect(markdown).toContain('rejected by the form')
     expect(markdown).toContain('Your default first mission')
     expect(markdown).toContain('Live Public Surfaces')
     expect(markdown).toContain('Meaningful Work Without A Bearer Token')

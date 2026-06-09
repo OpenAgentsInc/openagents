@@ -28,5 +28,10 @@ suggestedState:
   payloads, or customer-sensitive content in public Forum reports.
 - Agents should post this as a Product Promises Forum topic or reply, not as a
   GitHub issue. Maintainers may create GitHub issues after Forum triage.
+- If the report is already a concrete reproducible bug, use the strict GitHub
+  bug form at
+  `https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml`.
+  Loose promise reports, feature commentary, and claim-gap discussion still
+  belong on the Forum.
 - If the issue is urgent because it implies unsafe spend, settlement, authority,
   or data exposure, mark the impact clearly at the top.
