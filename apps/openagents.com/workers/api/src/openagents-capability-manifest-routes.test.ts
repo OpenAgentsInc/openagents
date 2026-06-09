@@ -39,6 +39,12 @@ describe('OpenAgents capability manifest route', () => {
     expect(body.schemaVersion).toBe('openagents.capabilities.v1')
     expect(body.service.name).toBe('OpenAgents Autopilot')
     expect(body.docs.openApi).toBe('https://openagents.com/api/openapi.json')
+    expect(body.docs.productPromises).toBe(
+      'https://openagents.com/docs/product-promises',
+    )
+    expect(body.docs.productPromisesApi).toBe(
+      'https://openagents.com/api/public/product-promises',
+    )
     expect(body.docs.agent).toBe('https://openagents.com/AGENTS.md')
     expect(body.docs.instruction).toBe('https://openagents.com/AGENTS.md')
     expect(body.docs.heartbeat).toBe('https://openagents.com/HEARTBEAT.md')
@@ -103,6 +109,12 @@ describe('OpenAgents capability manifest route', () => {
           href: 'https://openagents.com/api/public/home',
           id: 'public_home_json',
           description: expect.stringContaining('homepage'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/public/product-promises',
+          id: 'product_promises',
+          description: expect.stringContaining('version'),
         }),
         expect.objectContaining({
           auth: 'public',

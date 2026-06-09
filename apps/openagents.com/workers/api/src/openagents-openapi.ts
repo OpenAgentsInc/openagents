@@ -201,6 +201,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicHome: objectSummary(
     'Public-safe homepage JSON discovery document with canonical docs and live data endpoint refs for the public homepage.',
   ),
+  ProductPromises: objectSummary(
+    'Versioned public OpenAgents product-promise registry. Records classify claims as green, yellow, red, degraded, or planned and include evidence refs, verification guidance, report paths, and authority boundaries.',
+  ),
   PublicAdjutantActivity: objectSummary(
     'Public-safe Autopilot activity milestones and Site projections.',
   ),
@@ -1846,7 +1849,27 @@ const paths = (): JsonSchema => ({
       tags: ['Public Proof'],
       security: publicRead,
       responses: {
-        '200': okJson('Public homepage JSON.', '#/components/schemas/PublicHome'),
+        '200': okJson(
+          'Public homepage JSON.',
+          '#/components/schemas/PublicHome',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/product-promises': {
+    get: operation({
+      operationId: 'getPublicProductPromises',
+      summary: 'Read product promises',
+      description:
+        'Returns the versioned public OpenAgents product-promise registry for agents and users. Each promise record states what is live, scoped, gated, degraded, or planned, and includes evidence refs, verification guidance, report paths, and authority boundaries. Reports should include the registry version and promiseId so maintainers are not responding to an old claim version.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Product promises.',
+          '#/components/schemas/ProductPromises',
+        ),
         ...errorResponses(),
       },
     }),

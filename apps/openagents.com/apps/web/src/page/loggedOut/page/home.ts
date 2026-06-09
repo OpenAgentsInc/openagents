@@ -42,9 +42,7 @@ const forumLaunchStatusFromModel = (
 const forumTipLeaderboardsFromModel = (
   model: PublicForumTipLeaderboardsModel,
 ): PublicForumTipLeaderboards | null =>
-  model._tag === 'PublicForumTipLeaderboardsLoaded'
-    ? model.leaderboards
-    : null
+  model._tag === 'PublicForumTipLeaderboardsLoaded' ? model.leaderboards : null
 
 const modelStatusText = (
   model:
@@ -68,8 +66,7 @@ const modelErrorText = (
 ): string | null =>
   model._tag.endsWith('Failed') && 'error' in model ? model.error : null
 
-const panelClass =
-  'min-w-0 border border-[#242424] bg-[#050505] p-3 text-left'
+const panelClass = 'min-w-0 border border-[#242424] bg-[#050505] p-3 text-left'
 const panelTitleClass =
   'm-0 text-[0.72rem] font-semibold uppercase leading-none text-[#f1efe8]'
 const panelMetaClass = 'm-0 text-[0.68rem] leading-4 text-white/45'
@@ -175,9 +172,10 @@ const panelHeader = (input: {
           h.h2([Ui.className<Message>(panelTitleClass)], [input.title]),
           input.meta === undefined
             ? null
-            : h.p([Ui.className<Message>(`${panelMetaClass} mt-1`)], [
-                input.meta,
-              ]),
+            : h.p(
+                [Ui.className<Message>(`${panelMetaClass} mt-1`)],
+                [input.meta],
+              ),
         ],
       ),
       input.status === undefined
@@ -248,7 +246,11 @@ const endpointRow = (method: string, href: string, detail: string): Html => {
             [href],
           ),
           h.span(
-            [Ui.className<Message>('block text-[0.66rem] leading-4 text-white/38')],
+            [
+              Ui.className<Message>(
+                'block text-[0.66rem] leading-4 text-white/38',
+              ),
+            ],
             [detail],
           ),
         ],
@@ -291,6 +293,11 @@ const endpointManifestPanel = (): Html => {
         'GET',
         '/api/public/pylon-stats',
         'Pylon heartbeat and receipt-gated accepted-work counters.',
+      ),
+      endpointRow(
+        'GET',
+        '/api/public/product-promises',
+        'Versioned promise states: live, scoped, gated, degraded, and planned.',
       ),
       endpointRow(
         'GET',
@@ -389,11 +396,14 @@ const nostrRelayPanel = (model: PublicPylonStatsModel): Html => {
       h.div(
         [Ui.className<Message>('border-t border-[#1d1d1d] pt-2')],
         [
-          h.p([Ui.className<Message>(panelMetaClass)], [
-            relays.length === 0
-              ? 'No relay endpoint list is public in the current response.'
-              : relays.slice(0, 3).join(' | '),
-          ]),
+          h.p(
+            [Ui.className<Message>(panelMetaClass)],
+            [
+              relays.length === 0
+                ? 'No relay endpoint list is public in the current response.'
+                : relays.slice(0, 3).join(' | '),
+            ],
+          ),
         ],
       ),
     ],
@@ -523,8 +533,7 @@ const forumStatsPanel = (
           modelStatusText(launchModel) === 'Live'
             ? 'Live'
             : 'Partial',
-        tone:
-          modelStatusText(leaderboardModel) === 'Live' ? 'good' : 'muted',
+        tone: modelStatusText(leaderboardModel) === 'Live' ? 'good' : 'muted',
         title: 'Forum Stats',
       }),
       metricRow({
@@ -554,8 +563,7 @@ const forumStatsPanel = (
       metricRow({
         detail: 'Endpoint returned creator rows, not global forum totals.',
         label: 'Tip count',
-        value:
-          totals.tips === null ? 'Unavailable' : formatNumber(totals.tips),
+        value: totals.tips === null ? 'Unavailable' : formatNumber(totals.tips),
       }),
     ],
   )
@@ -624,26 +632,14 @@ const accountingPanel = (
 const copyBoundaryPanel = (): Html => {
   const h = html<Message>()
   const rows = [
-    [
-      'Tip sats paid',
-      'Payer-side payment evidence only.',
-    ],
-    [
-      'Tip sats settled',
-      'Creator settlement evidence only.',
-    ],
+    ['Tip sats paid', 'Payer-side payment evidence only.'],
+    ['Tip sats settled', 'Creator settlement evidence only.'],
     [
       'Accepted-work sats paid',
       'Receipt-backed Nexus/Treasury accepted-work payout evidence.',
     ],
-    [
-      'Revshare',
-      'Asset-bound ledger projection, not a withdrawal promise.',
-    ],
-    [
-      'Settlement gap',
-      'Paid sats not yet settlement-backed.',
-    ],
+    ['Revshare', 'Asset-bound ledger projection, not a withdrawal promise.'],
+    ['Settlement gap', 'Paid sats not yet settlement-backed.'],
   ] as const
 
   return h.section(
@@ -716,6 +712,24 @@ const publicAgentPath = (): Html => {
               ),
             ],
             ['OpenAPI'],
+          ),
+          h.a(
+            [
+              h.Href('/docs/product-promises'),
+              Ui.className<Message>(
+                'text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
+              ),
+            ],
+            ['Product promises'],
+          ),
+          h.a(
+            [
+              h.Href('/api/public/product-promises'),
+              Ui.className<Message>(
+                'text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
+              ),
+            ],
+            ['Promises JSON'],
           ),
           h.a(
             [

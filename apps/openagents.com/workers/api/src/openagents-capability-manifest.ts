@@ -30,6 +30,8 @@ export const OpenAgentsCapabilityManifest = S.Struct({
     website: S.String,
     roadmap: S.String,
     sitesPlan: S.String,
+    productPromises: S.String,
+    productPromisesApi: S.String,
     openApi: S.String,
     agent: S.String,
     instruction: S.String,
@@ -115,6 +117,8 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md',
       sitesPlan:
         'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites-plan.md',
+      productPromises: 'https://openagents.com/docs/product-promises',
+      productPromisesApi: 'https://openagents.com/api/public/product-promises',
       openApi: 'https://openagents.com/api/openapi.json',
       agent: OpenAgentsAgentOnboardingCanonicalUrl,
       instruction: OpenAgentsAgentOnboardingCanonicalUrl,
@@ -238,6 +242,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'public',
         description:
           'Agent-discoverable JSON index for the public homepage, including the live data endpoint refs behind the page.',
+      },
+      {
+        id: 'product_promises',
+        href: 'https://openagents.com/api/public/product-promises',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Versioned public product-promise registry for agents and users. Reports should include the registry version and promiseId so mismatches are tied to the current claim state.',
       },
       {
         id: 'omni_api_sdk_seed',

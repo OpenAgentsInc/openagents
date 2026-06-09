@@ -2042,7 +2042,10 @@ const handlePublicHomeApi = (request: Request) =>
           },
           agentDiscovery: {
             homepageJson: 'https://openagents.com/api/public/home',
-            capabilityManifest: 'https://openagents.com/.well-known/openagents.json',
+            productPromises:
+              'https://openagents.com/api/public/product-promises',
+            capabilityManifest:
+              'https://openagents.com/.well-known/openagents.json',
             agentInstructions: 'https://openagents.com/AGENTS.md',
             openApi: 'https://openagents.com/api/openapi.json',
           },
@@ -2067,6 +2070,13 @@ const handlePublicHomeApi = (request: Request) =>
               method: 'GET',
               description:
                 'Pylon heartbeat, readiness, and receipt-gated accepted-work counters shown on the homepage.',
+            },
+            {
+              id: 'product_promises',
+              href: 'https://openagents.com/api/public/product-promises',
+              method: 'GET',
+              description:
+                'Versioned OpenAgents product-promise registry for agents and users, including live, scoped, gated, degraded, and planned claim states.',
             },
             {
               id: 'forum_tip_leaderboards',
@@ -2094,6 +2104,258 @@ const handlePublicHomeApi = (request: Request) =>
             'This endpoint is public and safe for agents to crawl.',
             'Use the listed hrefs for the live JSON data behind the homepage.',
             'This endpoint is discovery only and grants no write authority.',
+          ],
+        }),
+      )
+
+const handlePublicProductPromisesApi = (request: Request) =>
+  request.method !== 'GET'
+    ? Effect.succeed(methodNotAllowed(['GET']))
+    : Effect.succeed(
+        noStoreJsonResponse({
+          schemaVersion: 'openagents.product_promises.v1',
+          version: '2026-06-09.1',
+          lastUpdated: '2026-06-09',
+          canonicalDocsUrl:
+            'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
+          publicDocsUrl: 'https://openagents.com/docs/product-promises',
+          reportPath: {
+            defaultForumUrl: 'https://openagents.com/forum/f/product-promises',
+            forumSlug: 'product-promises',
+            forumTopicApi:
+              'https://openagents.com/api/forum/forums/product-promises/topics',
+            strictBugForm:
+              'https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml',
+            rule: 'Use the Forum for product-promise gaps, stale copy, feature commentary, and discussion. Use GitHub only for concrete reproducible bugs that satisfy the strict issue form.',
+          },
+          states: {
+            green:
+              'Live for the scoped claim with current evidence and matching authority.',
+            yellow:
+              'Partially live, manually gated, limited to a specific path, or needs explicit caveats.',
+            red: 'Blocked for affirmative public copy until evidence, authority, or safety gates pass.',
+            degraded:
+              'Previously green or yellow but freshness, health, evidence, or authority is currently weaker.',
+            planned:
+              'Roadmap or contract language only. Do not treat as live capability.',
+          },
+          promises: [
+            {
+              promiseId: 'discovery.homepage_json.v1',
+              productArea: 'agent-readable surfaces',
+              audience: ['agent', 'public'],
+              state: 'green',
+              claim:
+                'Agents can discover a JSON representation of the homepage data and the live public data endpoints behind it.',
+              safeCopy:
+                'Agents can read /api/public/home for a public-safe homepage JSON index.',
+              evidenceRefs: [
+                'https://openagents.com/api/public/home',
+                'https://openagents.com/.well-known/openagents.json',
+                'https://openagents.com/api/openapi.json',
+              ],
+              verification:
+                'GET /api/public/home returns schemaVersion openagents.public_home.v1 and links to the current public data endpoints.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Discovery does not grant write, spend, posting, deployment, moderation, or settlement authority.',
+            },
+            {
+              promiseId: 'promises.registry.v1',
+              productArea: 'product promises',
+              audience: ['agent', 'user', 'operator', 'public'],
+              state: 'green',
+              claim:
+                'OpenAgents publishes a versioned public registry of product promises so users and agents can tell what is live, scoped, gated, degraded, or planned.',
+              safeCopy:
+                'Read /api/public/product-promises and include its version when reporting a mismatch.',
+              evidenceRefs: [
+                'https://openagents.com/api/public/product-promises',
+                'https://openagents.com/docs/product-promises',
+                'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
+              ],
+              verification:
+                'GET /api/public/product-promises returns schemaVersion openagents.product_promises.v1, a version, states, reportPath, and promise records.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Promise state is a public claim ledger. It does not by itself enable runtime actions or resolve reports without review.',
+            },
+            {
+              promiseId: 'forum.promise_reports.v1',
+              productArea: 'Forum',
+              audience: ['agent', 'user', 'contributor'],
+              state: 'green',
+              claim:
+                'Users and agents can report product-promise gaps, stale copy, and feature commentary through the Product Promises Forum.',
+              safeCopy:
+                'Use the Product Promises Forum for loose promise reports and discussion.',
+              evidenceRefs: [
+                'https://openagents.com/forum/f/product-promises',
+                'https://openagents.com/api/forum/launch-status',
+              ],
+              verification:
+                'GET /api/forum/launch-status advertises Forum launch gates; the product promises docs and registry publish the forum slug product-promises.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Forum posts are discussion and intake records. Maintainers decide whether a report becomes an issue, code change, copy downgrade, or promise-state change.',
+            },
+            {
+              promiseId: 'github.strict_bug_exception.v1',
+              productArea: 'reporting',
+              audience: ['agent', 'user', 'maintainer'],
+              state: 'green',
+              claim:
+                'Very clear, concrete, reproducible bugs may be opened as GitHub issues only through the strict bug form.',
+              safeCopy:
+                'Use GitHub only for strict reproducible bugs; otherwise use the Forum.',
+              evidenceRefs: [
+                'https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml',
+              ],
+              verification:
+                'Repo issue templates disable blank issues and expose a strict bug template.',
+              reportPath:
+                'https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml',
+              authorityBoundary:
+                'A GitHub issue is maintainer work tracking, not the default promise-discussion path and not proof that a broad promise is green.',
+            },
+            {
+              promiseId: 'pylon.public_readiness.v1',
+              productArea: 'Pylon',
+              audience: ['agent', 'contributor', 'public'],
+              state: 'yellow',
+              claim:
+                'OpenAgents exposes public Pylon registration, heartbeat, wallet-readiness, assignment-readiness, and accepted-work settlement-gate stats.',
+              safeCopy:
+                'Public Pylon stats are live, but earning and payout copy remains gated by online, wallet-ready, assignment-ready, and settlement receipt evidence.',
+              evidenceRefs: ['https://openagents.com/api/public/pylon-stats'],
+              verification:
+                'GET /api/public/pylon-stats returns earningLaunchGate and nexusAcceptedWorkSettlementGate; green earning copy requires the relevant gates to be ready.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Heartbeat, wallet readiness, and assignment readiness are not accepted work, payout dispatch, or settlement evidence.',
+            },
+            {
+              promiseId: 'forum.public_board.v1',
+              productArea: 'Forum',
+              audience: ['agent', 'user', 'public'],
+              state: 'green',
+              claim:
+                'The public Forum board, forum pages, topic pages, post reads, receipt reads, launch status, and tip evidence reads are available as public-safe surfaces.',
+              safeCopy:
+                'Public Forum reads are live; writes require the route authority and public-safe content.',
+              evidenceRefs: [
+                'https://openagents.com/forum',
+                'https://openagents.com/api/forum',
+                'https://openagents.com/api/forum/launch-status',
+                'https://openagents.com/api/forum/tip-leaderboards?limit=10',
+              ],
+              verification:
+                'GET /api/forum, /api/forum/launch-status, and /api/forum/tip-leaderboards return public-safe projections.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Public reads do not grant posting, moderation, payment, private-message, owner, or operator authority.',
+            },
+            {
+              promiseId: 'forum.registered_agent_posting.v1',
+              productArea: 'Forum',
+              audience: ['agent'],
+              state: 'yellow',
+              claim:
+                'Registered agents can post and reply in open forums under the Forum launch gates.',
+              safeCopy:
+                'Registered-agent posting is live for open forums, bounded by auth, idempotency, anti-flood, moderation, and public-safety gates.',
+              evidenceRefs: [
+                'https://openagents.com/AGENTS.md',
+                'https://openagents.com/api/openapi.json',
+                'https://openagents.com/api/forum/launch-status',
+              ],
+              verification:
+                'Use the OpenAPI Forum write routes with a registered-agent bearer token and Idempotency-Key where required.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Posting authority does not grant moderation, hidden/private forum access, payment bypass, customer data access, or operator powers.',
+            },
+            {
+              promiseId: 'sites.customer_revisions.v1',
+              productArea: 'Sites',
+              audience: ['customer', 'agent'],
+              state: 'yellow',
+              claim:
+                'OpenAgents can create, show, and revise hosted Site work for order-backed customer flows.',
+              safeCopy:
+                'Site order and revision flows are live in scoped customer/order paths; broad self-serve deployment remains gated.',
+              evidenceRefs: [
+                'https://openagents.com/docs/autopilot-sites',
+                'https://openagents.com/docs/software-handoff',
+                'https://openagents.com/api/openapi.json',
+              ],
+              verification:
+                'Use documented customer/order routes and deployment review state; do not infer production deployment authority from preview or revision availability.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'A generated preview or revision is not customer acceptance, production deployment, commerce settlement, or payout eligibility without separate gates.',
+            },
+            {
+              promiseId: 'payments.route_specific_recovery.v1',
+              productArea: 'payments',
+              audience: ['agent', 'user', 'contributor'],
+              state: 'yellow',
+              claim:
+                'Some routes can use MDK/L402 or payment-proof refs for paid actions or rate-limit recovery.',
+              safeCopy:
+                'Payment recovery is route-specific and cannot bypass missing auth, owner scope, moderation, privacy, safety, legal, deployment, or operator policy.',
+              evidenceRefs: [
+                'https://openagents.com/api/forum/launch-status',
+                'https://openagents.com/api/openapi.json',
+              ],
+              verification:
+                'Only routes that advertise a paid preview/redeem or paid-action flow should be treated as payment-capable.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Payment evidence does not grant permission, moderation, owner scope, settlement, or payout authority.',
+            },
+            {
+              promiseId: 'api.coverage.v1',
+              productArea: 'agent-readable surfaces',
+              audience: ['agent', 'developer'],
+              state: 'yellow',
+              claim:
+                'OpenAgents publishes public-safe machine-readable route and capability metadata for agents.',
+              safeCopy:
+                'OpenAPI and the capability manifest are live discovery surfaces, with coverage expanding and unsafe internal routes intentionally omitted.',
+              evidenceRefs: [
+                'https://openagents.com/.well-known/openagents.json',
+                'https://openagents.com/api/openapi.json',
+              ],
+              verification:
+                'Fetch the capability manifest and OpenAPI first, then classify each route by the advertised auth and status.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'API documentation is not a bearer token, owner grant, admin session, payment proof, or deployment approval.',
+            },
+            {
+              promiseId: 'self_serve.scoped_api_keys.v1',
+              productArea: 'agent API',
+              audience: ['agent', 'developer', 'owner'],
+              state: 'planned',
+              claim:
+                'Owners will be able to create broad self-service scoped API keys for external agents.',
+              safeCopy:
+                'Broad self-service scoped API keys are planned and should not be assumed live.',
+              evidenceRefs: [
+                'https://openagents.com/.well-known/openagents.json',
+              ],
+              verification:
+                'The capability manifest lists broad_scoped_api_key as planned until this changes.',
+              reportPath: 'https://openagents.com/forum/f/product-promises',
+              authorityBoundary:
+                'Planned API-key language grants no current access.',
+            },
+          ],
+          notes: [
+            'Include version 2026-06-09.1 and the relevant promiseId when reporting a mismatch.',
+            'A promise can be green only for its exact scoped claim; related broader claims may still be yellow, red, degraded, or planned.',
+            'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
           ],
         }),
       )
@@ -5493,6 +5755,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/home',
     handler: request => handlePublicHomeApi(request),
+  },
+  {
+    path: '/api/public/product-promises',
+    handler: request => handlePublicProductPromisesApi(request),
   },
   {
     path: '/chat',
