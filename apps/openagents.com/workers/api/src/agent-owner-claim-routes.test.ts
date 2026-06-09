@@ -137,6 +137,10 @@ class MemoryAgentOwnerClaimStore implements AgentOwnerClaimStore {
     return Promise.resolve(this.xChallenges.get(challengeId))
   }
 
+  readVerifiedPublicIdentityForAgentUserId() {
+    return Promise.resolve(undefined)
+  }
+
   rejectXChallenge(input: {
     challengeId: string
     now: string

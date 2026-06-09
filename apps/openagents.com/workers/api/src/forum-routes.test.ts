@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import type { VerifiedPublicIdentityClaim } from './agent-owner-claim-routes'
 import { makeForumRoutes } from './forum-routes'
 import { makeFakeOpenAgentsHostedMdkClient } from './hosted-mdk-client'
 import {
@@ -2856,10 +2857,22 @@ const testAgentStore = (profileMetadata: Record<string, unknown> = {}) => ({
   touchAgentCredential: () => Promise.resolve(),
 })
 
+const verifiedPublicIdentityClaim: VerifiedPublicIdentityClaim = {
+  agentClaimRef: 'agent_claim_route_test',
+  claimRef: 'agent_x_claim_route_test',
+  ownerUserId: 'github:route-owner',
+  provider: 'x',
+  receiptRef: 'agent_x_claim_receipt_route_test',
+  state: 'verified',
+  tweetRef: 'x_tweet:100',
+  xAccountRef: 'x:routeowner',
+}
+
 const route = async (
   store: ForumRouteStore,
   path: string,
   options: Readonly<{
+    agentClaimed?: boolean
     agentMetadata?: Record<string, unknown>
     body?: unknown
     headers?: HeadersInit
@@ -2889,6 +2902,14 @@ const route = async (
     makeId: () => store.nextId(),
     nowEpochMillis: () => 1_780_000_000_000,
     nowIso: () => '2026-06-05T20:00:00.000Z',
+    publicIdentityClaimStore: {
+      readVerifiedPublicIdentityForAgentUserId: () =>
+        Promise.resolve(
+          options.agentClaimed === false
+            ? undefined
+            : verifiedPublicIdentityClaim,
+        ),
+    },
     resolveModeratorActor: () =>
       Promise.resolve(
         options.moderator === undefined
@@ -5346,7 +5367,36 @@ describe('Forum routes', () => {
     expect(store.forums[1]?.post_count).toBe(1)
   })
 
-  test('creates listed-forum topics and replies with any registered agent token', async () => {
+  test('rejects listed-forum topic creation from an unclaimed agent token', async () => {
+    const store = new ForumRouteStore()
+    const response = await route(
+      store,
+      '/api/forum/forums/site-builder-help/topics',
+      {
+        agentClaimed: false,
+        body: {
+          bodyText: 'This unclaimed agent should not publish public speech.',
+          title: 'Unclaimed listed thread',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'listed-topic-unclaimed-1',
+        },
+        method: 'POST',
+      },
+    )
+    const body = (await response.json()) as Readonly<{
+      error: string
+      reason: string
+    }>
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('forbidden')
+    expect(body.reason).toBe('Forum write scope was not granted.')
+    expect(store.forums[0]?.topic_count).toBe(1)
+  })
+
+  test('creates listed-forum topics and replies with a claimed agent token', async () => {
     const store = new ForumRouteStore()
     const topicResponse = await route(
       store,
@@ -5388,6 +5438,50 @@ describe('Forum routes', () => {
     })
     expect(store.forums[0]?.topic_count).toBe(2)
     expect(store.forums[0]?.post_count).toBe(3)
+  })
+
+  test('rejects listed-forum replies from an unclaimed agent token', async () => {
+    const store = new ForumRouteStore()
+    const topicResponse = await route(
+      store,
+      '/api/forum/forums/site-builder-help/topics',
+      {
+        body: {
+          bodyText: 'Claimed agent creates the topic.',
+          title: 'Claimed starter thread',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'listed-topic-claimed-before-unclaimed-reply',
+        },
+        method: 'POST',
+      },
+    )
+    const topicBody = (await topicResponse.json()) as Readonly<{
+      topic: Readonly<{ topicId: string }>
+    }>
+    const replyResponse = await route(
+      store,
+      `/api/forum/topics/${topicBody.topic.topicId}/posts`,
+      {
+        agentClaimed: false,
+        body: { bodyText: 'Unclaimed public reply attempt.' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'listed-reply-unclaimed-1',
+        },
+        method: 'POST',
+      },
+    )
+    const body = (await replyResponse.json()) as Readonly<{
+      error: string
+      reason: string
+    }>
+
+    expect(replyResponse.status).toBe(403)
+    expect(body.error).toBe('forbidden')
+    expect(body.reason).toBe('Forum write scope was not granted.')
+    expect(store.forums[0]?.post_count).toBe(2)
   })
 
   test('rate-limits excessive agent topic creation without revoking posting authority', async () => {

@@ -151,6 +151,17 @@ export type XVerificationTweetLookup = Readonly<{
   tweetUrl: string
 }>
 
+export type VerifiedPublicIdentityClaim = Readonly<{
+  agentClaimRef: string
+  claimRef: string
+  ownerUserId: string
+  provider: 'x'
+  receiptRef: string
+  state: 'verified' | 'approved'
+  tweetRef: string
+  xAccountRef: string
+}>
+
 type AgentOwnerClaimRow = Readonly<{
   id: string
   claim_token_hash: string
@@ -215,6 +226,9 @@ export type AgentOwnerClaimStore = Readonly<{
   readXChallengeById: (
     challengeId: string,
   ) => Promise<XOwnerClaimChallengeRecord | undefined>
+  readVerifiedPublicIdentityForAgentUserId: (
+    agentUserId: string,
+  ) => Promise<VerifiedPublicIdentityClaim | undefined>
   rejectXChallenge: (input: {
     challengeId: string
     now: string
@@ -756,6 +770,34 @@ export const makeD1AgentOwnerClaimStore = (
       return row === null ? undefined : rowToXChallenge(row)
     },
     readXChallengeById,
+    readVerifiedPublicIdentityForAgentUserId: async agentUserId => {
+      const row = await db
+        .prepare(
+          `SELECT *
+           FROM agent_owner_x_claim_challenges
+           WHERE agent_user_id = ?
+             AND state IN ('verified', 'approved')
+           ORDER BY verified_at DESC, updated_at DESC
+           LIMIT 1`,
+        )
+        .bind(agentUserId)
+        .first<XOwnerClaimChallengeRow>()
+
+      if (row === null || row.tweet_ref === null) {
+        return undefined
+      }
+
+      return {
+        agentClaimRef: row.agent_claim_id,
+        claimRef: row.id,
+        ownerUserId: row.owner_user_id,
+        provider: 'x',
+        receiptRef: row.receipt_ref,
+        state: row.state === 'approved' ? 'approved' : 'verified',
+        tweetRef: row.tweet_ref,
+        xAccountRef: row.x_account_ref,
+      }
+    },
     rejectXChallenge: async input => {
       await db
         .prepare(

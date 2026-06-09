@@ -5788,6 +5788,9 @@ const routeRequest = makeWorkerRouteRequest({
       agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
       hostedMdkClient: hostedMdkClientForEnv(env),
       l402SigningBoundary: () => forumL402SigningBoundaryForEnv(env),
+      publicIdentityClaimStore: makeD1AgentOwnerClaimStore(
+        openAgentsDatabase(env),
+      ),
       resolveModeratorActor: async request => {
         const session = await requireBrowserSession(request, env, ctx)
 

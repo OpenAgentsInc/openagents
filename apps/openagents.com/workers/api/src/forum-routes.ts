@@ -1,5 +1,6 @@
 import { Effect, Schema as S } from 'effect'
 
+import type { VerifiedPublicIdentityClaim } from './agent-owner-claim-routes'
 import type { AgentRegistrationStore } from './agent-registration'
 import {
   ForumContextKind,
@@ -110,6 +111,11 @@ type ForumRouteDependencies = Readonly<{
   makeId?: () => string
   nowEpochMillis?: () => number
   nowIso?: () => string
+  publicIdentityClaimStore?: Readonly<{
+    readVerifiedPublicIdentityForAgentUserId: (
+      agentUserId: string,
+    ) => Promise<VerifiedPublicIdentityClaim | undefined>
+  }>
   resolveModeratorActor?: (
     request: Request,
   ) => Promise<
@@ -770,12 +776,17 @@ const forumWriteGrantForActor = (
   forumId: string,
   requiredScope: ForumWriterScope,
   nowEpochMillis: () => number,
+  publicIdentity: VerifiedPublicIdentityClaim | undefined = undefined,
 ): ForumWriterGrant | undefined => {
   if (actor._tag === 'Agent') {
+    if (publicIdentity === undefined) {
+      return undefined
+    }
+
     return {
       expiresAtEpochMillis: nowEpochMillis() + 1000 * 60 * 60,
       forumIds: [forumId],
-      ownerUserId: actor.session.user.id,
+      ownerUserId: publicIdentity.ownerUserId,
       scopes: [requiredScope],
       status: 'active',
       teamId: null,
@@ -783,6 +794,37 @@ const forumWriteGrantForActor = (
   }
 
   return undefined
+}
+
+const verifiedPublicIdentityForActor = (
+  actor: ForumWriterActorInput,
+  dependencies: ForumRouteDependencies,
+): Effect.Effect<
+  VerifiedPublicIdentityClaim | undefined,
+  ForumWriterAuthFailure
+> => {
+  if (actor._tag !== 'Agent') {
+    return Effect.sync((): VerifiedPublicIdentityClaim | undefined => undefined)
+  }
+
+  if (dependencies.publicIdentityClaimStore === undefined) {
+    return Effect.sync((): VerifiedPublicIdentityClaim | undefined => undefined)
+  }
+
+  return Effect.tryPromise({
+    catch: error =>
+      new ForumWriterAuthFailure({
+        failureKind: 'under_scoped',
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'Public identity claim could not be checked.',
+      }),
+    try: () =>
+      dependencies.publicIdentityClaimStore!.readVerifiedPublicIdentityForAgentUserId(
+        actor.session.user.id,
+      ),
+  })
 }
 
 const forumWriteRequiredScopeForForum = (
@@ -1227,11 +1269,16 @@ const createTopicResponse = (
     const actor = yield* actorForRequest(request, dependencies)
     const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
     const requiredScope = forumWriteRequiredScopeForForum(forum.slug)
+    const publicIdentity = yield* verifiedPublicIdentityForActor(
+      actor,
+      dependencies,
+    )
     const grant = forumWriteGrantForActor(
       actor,
       forum.forumId,
       requiredScope,
       nowEpochMillis,
+      publicIdentity,
     )
     const writer = yield* buildForumWriterContext({
       actor,
@@ -1240,7 +1287,8 @@ const createTopicResponse = (
       paymentProofRef: body.paymentProofRef ?? null,
       requiredScope,
       targetForumId: forum.forumId,
-      targetOwnerUserId: actor._tag === 'Agent' ? actor.session.user.id : null,
+      targetOwnerUserId:
+        actor._tag === 'Agent' ? (publicIdentity?.ownerUserId ?? null) : null,
       targetTeamId: null,
     })
     const writePolicyDenial = yield* enforceForumWritePolicy(db, {
@@ -1383,11 +1431,16 @@ const createReplyResponse = (
     const actor = yield* actorForRequest(request, dependencies)
     const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
     const requiredScope = forumWriteRequiredScopeForForum(forum.slug)
+    const publicIdentity = yield* verifiedPublicIdentityForActor(
+      actor,
+      dependencies,
+    )
     const grant = forumWriteGrantForActor(
       actor,
       forum.forumId,
       requiredScope,
       nowEpochMillis,
+      publicIdentity,
     )
     const writer = yield* buildForumWriterContext({
       actor,
@@ -1396,7 +1449,8 @@ const createReplyResponse = (
       paymentProofRef: body.paymentProofRef ?? null,
       requiredScope,
       targetForumId: forum.forumId,
-      targetOwnerUserId: actor._tag === 'Agent' ? actor.session.user.id : null,
+      targetOwnerUserId:
+        actor._tag === 'Agent' ? (publicIdentity?.ownerUserId ?? null) : null,
       targetTeamId: null,
     })
     const writePolicyDenial = yield* enforceForumWritePolicy(db, {
@@ -1455,11 +1509,16 @@ const writerForForumResponse = (
     const actor = yield* actorForRequest(request, dependencies)
     const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
     const requiredScope = forumWriteRequiredScopeForForum(input.forumSlug)
+    const publicIdentity = yield* verifiedPublicIdentityForActor(
+      actor,
+      dependencies,
+    )
     const grant = forumWriteGrantForActor(
       actor,
       input.forumId,
       requiredScope,
       nowEpochMillis,
+      publicIdentity,
     )
 
     return yield* buildForumWriterContext({
@@ -1469,7 +1528,8 @@ const writerForForumResponse = (
       paymentProofRef: null,
       requiredScope,
       targetForumId: input.forumId,
-      targetOwnerUserId: actor._tag === 'Agent' ? actor.session.user.id : null,
+      targetOwnerUserId:
+        actor._tag === 'Agent' ? (publicIdentity?.ownerUserId ?? null) : null,
       targetTeamId: null,
     })
   })
@@ -2079,7 +2139,10 @@ const previewAliasPaidActionResponse = (
       request,
       S.decodeUnknownSync(ForumPaidActionAliasPreviewBody),
     )
-    const amountError = forumPaidActionAmountError(input.actionKind, body.amount)
+    const amountError = forumPaidActionAmountError(
+      input.actionKind,
+      body.amount,
+    )
     if (amountError !== undefined) {
       return yield* new ForumValidationError({ reason: amountError })
     }
