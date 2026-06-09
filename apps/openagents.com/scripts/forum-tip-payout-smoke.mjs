@@ -85,6 +85,10 @@ const publicChallengeSummary = preview => {
       l402 !== null && typeof l402?.provider === 'string'
         ? l402.provider
         : null,
+    providerPayoutAuthority:
+      l402 !== null && typeof l402?.providerPayoutAuthority === 'boolean'
+        ? l402.providerPayoutAuthority
+        : null,
     recipientReadinessRef:
       typeof challenge.recipientReadinessRef === 'string'
         ? challenge.recipientReadinessRef

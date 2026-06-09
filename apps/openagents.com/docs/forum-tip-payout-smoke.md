@@ -38,6 +38,7 @@ The smoke was run against a ready-recipient Forum post:
 - provider: `mdk_hosted`
 - environment: `production`
 - sandbox: `false`
+- provider payout authority: `false`
 - recipient readiness ref:
   `readiness.public.forum_tip_recipient.smoke_3b864364668c.mdk_daemon_available`
 - settlement authority: `buyer_payment_evidence_only`
