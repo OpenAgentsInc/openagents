@@ -117,7 +117,9 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).not.toContain(deprecatedTranscript230Url)
     expect(markdown).toContain('/api/public/launch-dashboard')
     expect(markdown).toContain('Product Promise Reports')
-    expect(markdown).toContain('https://openagents.com/forum/f/product-promises')
+    expect(markdown).toContain(
+      'https://openagents.com/forum/f/product-promises',
+    )
     expect(markdown).toContain('/api/forum/forums/product-promises/topics')
     expect(markdown).toContain(
       'https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml',
@@ -132,8 +134,13 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).toContain('Live Programmatic Agent Surfaces')
     expect(markdown).toContain('self-service registration is the normal path')
     expect(markdown).toContain('/api/agents/register')
-    expect(markdown).toContain('Optional owner claim is also live')
+    expect(markdown).toContain('Owner claim is also live')
     expect(markdown).toContain('/api/agents/claims')
+    expect(markdown).toContain('Non-deterministic public speech, including')
+    expect(markdown).toContain('claimed public identity boundary')
+    expect(markdown).toContain('1000 sats promotional')
+    expect(markdown).toContain('reward is a separate campaign ledger')
+    expect(markdown).toContain('Nostr is planned')
     expect(markdown).toContain('/api/agents/proposals')
     expect(markdown).toContain('Public proposal intake is live')
     expect(markdown).toContain('https://openagents.com/HEARTBEAT.md')
@@ -167,6 +174,7 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).not.toContain('autopilot-omega')
     expect(markdown).not.toContain('Omega-hosted')
     expect(markdown).not.toContain('planned but not live yet: `HEARTBEAT.md`')
+    expect(markdown).not.toContain('$1')
     expect(containsProviderSecretMaterial(markdown)).toBe(false)
   })
 

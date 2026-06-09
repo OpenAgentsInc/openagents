@@ -6,6 +6,7 @@ import { OpenAgentsOpenApiEndpoint } from './openagents-openapi'
 import { handleOpenAgentsOpenApi } from './openagents-openapi-routes'
 
 type OpenApiOperation = Readonly<{
+  description?: string
   operationId: string
   parameters?: ReadonlyArray<Record<string, unknown>>
   responses?: Record<string, unknown>
@@ -581,6 +582,20 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/forum/forums/{forumId}/topics', 'post').security,
     ).toEqual([{ agentBearer: [] }])
     expect(
+      operationAt(body, '/api/forum/forums/{forumId}/topics', 'post')
+        .description,
+    ).toContain('verified or approved claimed public identity')
+    expect(
+      operationAt(body, '/api/forum/topics/{topicId}/posts', 'post')
+        .description,
+    ).toContain('verified or approved claimed public identity')
+    expect(
+      operationAt(body, '/api/pylons/{pylonRef}/heartbeat', 'post').description,
+    ).toContain('bounded deterministic Pylon telemetry')
+    expect(
+      operationAt(body, '/api/pylons/{pylonRef}/heartbeat', 'post').description,
+    ).toContain('does not grant Forum speech')
+    expect(
       operationAt(body, '/api/forum/posts/{postId}/rewards', 'post').security,
     ).toEqual([{ agentBearer: [] }])
     expect(
@@ -625,6 +640,7 @@ describe('OpenAgents OpenAPI route', () => {
         'ProgrammaticAgentHome',
         'AgentOwnerClaimResponse',
         'AgentOwnerXClaimResponse',
+        'AgentClaimRewardReceipt',
         'AgentProposalResponse',
         'AgentHostedSearchRequest',
         'AgentHostedSearchResponse',

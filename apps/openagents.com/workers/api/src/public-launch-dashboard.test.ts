@@ -108,6 +108,22 @@ describe('public launch dashboard', () => {
         .filter(row => row.status !== 'green')
         .every(row => row.blockerRefs.length > 0),
     ).toBe(true)
+    const cursorClaimRow = dashboard.rows.find(
+      row => row.promiseId === 'cursor_agent_forum_wallet',
+    )
+
+    expect(cursorClaimRow?.safeCopy).toContain(
+      'complete X verification for public Forum speech',
+    )
+    expect(cursorClaimRow?.safeCopy).toContain(
+      '1000 sats claim reward still require explicit MDK setup',
+    )
+    expect(cursorClaimRow?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.launch_dashboard.claimed_public_identity.x_reward_payout_readiness',
+        'blocker.launch_dashboard.claimed_public_identity.nostr_adapter_planned',
+      ]),
+    )
   })
 
   test('stale endpoint data keeps stale-sensitive promises red or yellow', () => {

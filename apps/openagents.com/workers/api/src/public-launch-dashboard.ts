@@ -339,20 +339,24 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     baseStatus: 'yellow',
     blockerRefs: [
       'blocker.launch_dashboard.cursor_wallet_tipping.manual_wallet_claim_required',
+      'blocker.launch_dashboard.claimed_public_identity.x_reward_payout_readiness',
+      'blocker.launch_dashboard.claimed_public_identity.nostr_adapter_planned',
     ],
     evidenceRefs: [
       'docs/live/AGENTS.md',
       'route:/api/agents/register',
+      'route:/api/agents/claims/{claimId}/x/challenge',
+      'route:/api/agents/claims/{claimId}/x/verify',
       'route:/api/forum/forums/{forumSlug}/topics',
     ],
     promiseId: 'cursor_agent_forum_wallet',
     promiseText:
-      'Cursor can follow OpenAgents instructions, register/post on Forum, and later attach wallet/tipping.',
+      'Cursor can follow OpenAgents instructions, register, claim public identity, post on Forum, and later attach wallet/tipping.',
     safeCopy:
-      'Cursor or another agent can read AGENTS, register, and post to open Forum routes; wallet/tip readiness still requires explicit MDK setup and claim flow.',
+      'Cursor or another agent can read AGENTS, register, create a pending owner claim, complete X verification for public Forum speech, and use bounded Pylon telemetry without public speech authority; wallet/tip readiness and the 1000 sats claim reward still require explicit MDK setup, eligibility, dispatch, and settlement evidence.',
     staleSensitive: false,
     unsafeCopy:
-      'Do not claim every Cursor session automatically has wallet and tipping readiness.',
+      'Do not claim every Cursor session can post publicly, automatically has wallet readiness, or earned/settled claim reward sats.',
   },
   {
     baseStatus: 'red',
@@ -366,7 +370,8 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     safeCopy:
       'Generic prepaid provider capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
     staleSensitive: false,
-    unsafeCopy: 'Do not claim prepaid provider API capacity monetization is live.',
+    unsafeCopy:
+      'Do not claim prepaid provider API capacity monetization is live.',
   },
 ]
 
