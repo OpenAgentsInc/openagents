@@ -30,6 +30,7 @@ export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs follow-actor --actor actor.ref
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --bolt12-offer lno1... --readiness-ref readiness.public.mdk_agent.daemon_running --readiness-ref readiness.public.mdk_agent.setup_present --readiness-ref readiness.public.mdk_agent.receive_ready
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-settlement --receipt RECEIPT_REF --settlement-ref settlement.public.your_agent.receipt_ref --settlement-evidence-ref settlement_evidence.public.mdk_agent_wallet.receive_confirmed --source-ref source.public.your_agent.mdk_agent_wallet
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs tip-post --post POST_ID --tip-amount 15 --approve-live-spend
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10]
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs pay-reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10] --approve-live-spend
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs redeem-paid-action --challenge CHALLENGE_ID --l402-proof-ref PUBLIC_PROOF_REF --l402-credential-header 'oa-l402-v1...:PUBLIC_PROOF_REF' --path /api/forum/posts/POST_ID/rewards --route-params-json '{"postId":"POST_ID"}'
@@ -66,6 +67,7 @@ Options:
   --spend-cap-amount <n>    Paid-action spend cap amount.
   --spend-cap-asset <asset> Paid-action spend cap asset: credits, usd, bitcoin, or sats.
   --reward-amount <n>       Optional sats amount for Forum post rewards.
+  --tip-amount <n>          Required sats amount for direct BOLT 12 Forum tips.
   --target-forum <id>       Generic paid-action forum target.
   --target-post <id>        Generic paid-action post target.
   --target-topic <id>       Generic paid-action topic target.
@@ -174,6 +176,8 @@ const valueFlags = new Set([
   'targetForum',
   'targetPost',
   'targetTopic',
+  'tip-amount',
+  'tipAmount',
   'title',
   'topic',
   'wallet-ref',
@@ -239,6 +243,7 @@ const canonicalFlagName = name =>
     targetForum: 'target-forum',
     targetPost: 'target-post',
     targetTopic: 'target-topic',
+    tipAmount: 'tip-amount',
     walletRef: 'wallet-ref',
     walletTimeoutMs: 'wallet-timeout-ms',
   })[name] || name
@@ -360,6 +365,7 @@ export const redactSecrets = value =>
   value
     .replace(/Bearer\s+[A-Za-z0-9._:-]+/g, 'Bearer <redacted>')
     .replace(/oa_agent_[A-Za-z0-9._:-]+/g, 'oa_agent_<redacted>')
+    .replace(/\blno1[A-Za-z0-9]+/gi, '<redacted_bolt12_offer>')
     .replace(/\b(?:lnbc|lntb|lntbs|lnbcrt)[A-Za-z0-9]+/gi, '<redacted_invoice>')
     .replace(/\boa-l402-v1\.[A-Za-z0-9._-]+/g, '<redacted_l402_credential>')
     .replace(/(l402-credential-header\s+)[^\s]+/gi, '$1<redacted>')
@@ -493,6 +499,43 @@ const optionalSatsAmountFromFlags = (flags, name) => {
   }
 }
 
+const requiredSatsAmountFromFlags = (flags, name) => {
+  const amount = optionalSatsAmountFromFlags(flags, name)
+
+  if (amount === undefined) {
+    throw new Error(`Missing required --${name}.`)
+  }
+
+  return amount
+}
+
+const directTipSpendCapFromFlags = (flags, amount) => {
+  const rawCapAmount = flagText(flags, 'spend-cap-amount')
+  const rawCapAsset = flagText(flags, 'spend-cap-asset')
+
+  if (rawCapAmount === undefined && rawCapAsset === undefined) {
+    return amount
+  }
+
+  if (rawCapAmount === undefined || rawCapAsset === undefined) {
+    throw new Error(
+      'Use both --spend-cap-amount and --spend-cap-asset, or omit both for tip-post.',
+    )
+  }
+
+  const spendCap = spendCapFromFlags(flags)
+
+  if (spendCap.asset !== 'sats') {
+    throw new Error('tip-post spend caps must be denominated in sats.')
+  }
+
+  if (spendCap.amount < amount.amount) {
+    throw new Error('--spend-cap-amount must be at least --tip-amount.')
+  }
+
+  return spendCap
+}
+
 const walletTimeoutMsFromFlags = flags => {
   const raw = flagText(flags, 'wallet-timeout-ms')
 
@@ -601,8 +644,8 @@ const walletCommandSpecs = {
   },
 }
 
-const walletSendCommandSpec = invoice => ({
-  args: [invoice],
+const walletSendCommandSpec = (destination, amount) => ({
+  args: amount === undefined ? [destination] : [destination, String(amount)],
   command: 'send',
   publicCommandRef: 'mdk_agent_wallet.send',
 })
@@ -755,6 +798,8 @@ const walletNetworkFromInitShow = parsed => {
 const looksLikeLightningInvoice = value =>
   /^(?:lnbc|lntb|lntbs|lnbcrt)[a-z0-9]+$/i.test(value)
 
+const looksLikeBolt12Offer = value => /^lno1[a-z0-9]+$/i.test(value)
+
 const cleanPublicRefSegment = value =>
   String(value)
     .replace(/[^A-Za-z0-9_-]+/g, '_')
@@ -851,6 +896,21 @@ const privateL402CredentialFromPreview = preview => {
 const paymentPreimageFromWalletOutput = value =>
   firstStringField(value, ['payment_preimage', 'paymentPreimage', 'preimage'])
 
+const walletPaymentIdentifierFromOutput = value =>
+  firstStringField(value, [
+    'payment_hash',
+    'paymentHash',
+    'payment_id',
+    'paymentId',
+    'payment_ref',
+    'paymentRef',
+    'hash',
+    'id',
+  ])
+
+const publicRefDigest = value =>
+  createHash('sha256').update(String(value)).digest('hex').slice(0, 32)
+
 const paidRewardResult = ({
   challenge = null,
   livePaymentAttempted = false,
@@ -869,6 +929,26 @@ const paidRewardResult = ({
   reasonRef,
   receipt,
   status,
+})
+
+const directTipResult = ({
+  livePaymentAttempted = false,
+  payment = null,
+  preflight = null,
+  reasonRef = null,
+  receipt = null,
+  status,
+  target = null,
+}) => ({
+  kind: 'forum_direct_bolt12_tip',
+  livePaymentAttempted,
+  payment,
+  preflight,
+  publicSafe: true,
+  reasonRef,
+  receipt,
+  status,
+  target,
 })
 
 const tipSettlementStateLabel = state =>
@@ -1152,8 +1232,8 @@ export const runForumWalletPreflight = async ({
   })
 }
 
-const runAgentWalletSendPayment = async ({ executor, invoice }) => {
-  const spec = walletSendCommandSpec(invoice)
+const runAgentWalletSendPayment = async ({ amount, destination, executor }) => {
+  const spec = walletSendCommandSpec(destination, amount)
   const result = await executor(spec)
   const parsed = parseWalletJson(spec, result)
 
@@ -1181,6 +1261,123 @@ const runAgentWalletSendPayment = async ({ executor, invoice }) => {
     parsed: parsed.parsed,
     status: 'paid',
   }
+}
+
+const directPaymentInstructionFromPostDetail = postDetail => {
+  const readiness = postDetail?.post?.tipRecipientReadiness
+  const directPayment = readiness?.directPayment
+
+  if (
+    readiness === null ||
+    typeof readiness !== 'object' ||
+    readiness.tippingAvailable !== true ||
+    directPayment === null ||
+    typeof directPayment !== 'object' ||
+    directPayment.kind !== 'bolt12_offer' ||
+    directPayment.settlementAuthority !== 'recipient_wallet_direct' ||
+    typeof directPayment.bolt12Offer !== 'string' ||
+    !looksLikeBolt12Offer(directPayment.bolt12Offer)
+  ) {
+    return null
+  }
+
+  return {
+    bolt12Offer: directPayment.bolt12Offer,
+    recipientActorRef:
+      typeof readiness.actorRef === 'string' ? readiness.actorRef : null,
+    targetPostPermalink:
+      typeof postDetail?.post?.permalink === 'string'
+        ? postDetail.post.permalink
+        : null,
+  }
+}
+
+const paymentModeFromWalletNetwork = walletNetwork =>
+  walletNetwork === 'signet'
+    ? 'signet'
+    : walletNetwork === 'testnet'
+      ? 'unknown'
+      : 'live'
+
+const directTipEvidenceFromWalletPayment = ({
+  amount,
+  parsed,
+  post,
+  status,
+  walletNetwork,
+}) => {
+  const paymentIdentifier =
+    walletPaymentIdentifierFromOutput(parsed) ??
+    JSON.stringify(redactedBody(parsed ?? {}))
+  const digest = publicRefDigest(
+    JSON.stringify({
+      amount,
+      paymentIdentifier,
+      post,
+      status,
+    }),
+  )
+
+  return {
+    externalRef: `external.public.mdk_agent_wallet.${digest}`,
+    paymentMode: paymentModeFromWalletNetwork(walletNetwork),
+    providerRef: 'provider.public.mdk_agent_wallet',
+    redactedEvidenceRef: `evidence.public.mdk_agent_wallet.${digest}`,
+    status,
+  }
+}
+
+const directTipEvidenceFromWalletBlocker = ({
+  amount,
+  blocker,
+  post,
+  status,
+  walletNetwork,
+}) => {
+  const digest = publicRefDigest(
+    JSON.stringify({
+      amount,
+      post,
+      reasonRef: blocker?.reasonRef ?? 'reason.public.agent_wallet_send',
+      status,
+    }),
+  )
+
+  return {
+    externalRef: `external.public.mdk_agent_wallet.${digest}`,
+    paymentMode: paymentModeFromWalletNetwork(walletNetwork),
+    providerRef: 'provider.public.mdk_agent_wallet',
+    redactedEvidenceRef: `evidence.public.mdk_agent_wallet.${digest}`,
+    status,
+  }
+}
+
+const submitDirectTipEvidence = async ({
+  amount,
+  baseUrl,
+  env,
+  evidence,
+  parsed,
+  post,
+  requestJson,
+}) => {
+  const request = authenticatedMutationRequest({
+    baseUrl,
+    body: {
+      amount,
+      paymentEvidence: evidence,
+    },
+    idempotencyKey: idempotencyKeyFor(parsed.flags, 'direct-tip', {
+      amount,
+      externalRef: evidence.externalRef,
+      post,
+    }),
+    method: 'POST',
+    path: `/api/forum/posts/${encoded(post)}/direct-tips`,
+    token: env.OPENAGENTS_AGENT_TOKEN,
+  })
+
+  return requestJson(request)
 }
 
 const confirmForumRewardPayment = async ({
@@ -2123,8 +2320,8 @@ export const runForumRewardPostPayment = async (
   }
 
   const walletPayment = await runAgentWalletSendPayment({
+    destination: privatePayment.invoice,
     executor: walletExecutor,
-    invoice: privatePayment.invoice,
   })
 
   if (walletPayment.status !== 'paid') {
@@ -2215,6 +2412,154 @@ export const runForumRewardPostPayment = async (
   })
 }
 
+export const runForumDirectTipPostPayment = async (
+  parsed,
+  env = process.env,
+  options = {},
+) => {
+  requireAgentToken(env.OPENAGENTS_AGENT_TOKEN, parsed.command)
+
+  const post = requireFlag(parsed.flags, 'post')
+  const amount = requiredSatsAmountFromFlags(parsed.flags, 'tip-amount')
+  const spendCap = directTipSpendCapFromFlags(parsed.flags, amount)
+  const timeoutMs = walletTimeoutMsFromFlags(parsed.flags)
+  const walletNetwork = walletNetworkFromFlags(parsed.flags, env)
+  const walletExecutor =
+    options.walletExecutor || createAgentWalletExecutor({ timeoutMs })
+  const requestJson =
+    options.requestJson || (request => jsonRequest(request, options.fetch))
+  const postRequest = await buildForumRequest(
+    {
+      command: 'post',
+      flags: parsed.flags,
+    },
+    env,
+  )
+  const postDetail = await requestJson(postRequest)
+  const directPayment = directPaymentInstructionFromPostDetail(postDetail)
+  const target = {
+    postId: post,
+    postLink: directPayment?.targetPostPermalink ?? null,
+    recipientActorRef: directPayment?.recipientActorRef ?? null,
+  }
+
+  if (directPayment === null) {
+    return directTipResult({
+      reasonRef: 'reason.public.forum_tip_recipient_bolt12_offer_missing',
+      status: 'blocked',
+      target,
+    })
+  }
+
+  const preflight = await runForumWalletPreflight({
+    executor: walletExecutor,
+    spendCap,
+    timeoutMs,
+    walletNetwork,
+  })
+
+  if (!preflight.ready) {
+    return directTipResult({
+      preflight,
+      reasonRef: preflight.blocker?.reasonRef ?? 'reason.public.wallet_blocked',
+      status: 'blocked',
+      target,
+    })
+  }
+
+  if (!liveSpendApproved(parsed.flags, env)) {
+    return directTipResult({
+      preflight,
+      reasonRef: 'reason.public.forum_tip_live_spend_not_approved',
+      status: 'blocked',
+      target,
+    })
+  }
+
+  const walletPayment = await runAgentWalletSendPayment({
+    amount: amount.amount,
+    destination: directPayment.bolt12Offer,
+    executor: walletExecutor,
+  })
+
+  if (walletPayment.status !== 'paid') {
+    const timedOut =
+      walletPayment.blocker?.reasonRef ===
+      'reason.public.agent_wallet_send_timeout'
+    const evidence = directTipEvidenceFromWalletBlocker({
+      amount,
+      blocker: walletPayment.blocker,
+      post,
+      status: timedOut ? 'observed' : 'failed',
+      walletNetwork,
+    })
+    const recorded = await submitDirectTipEvidence({
+      amount,
+      baseUrl: postRequest.baseUrl,
+      env,
+      evidence,
+      parsed,
+      post,
+      requestJson,
+    }).catch(() => null)
+
+    return directTipResult({
+      livePaymentAttempted: true,
+      payment: {
+        commandRef: 'mdk_agent_wallet.send',
+        evidenceRef: evidence.redactedEvidenceRef,
+        reasonRef:
+          walletPayment.blocker?.reasonRef ??
+          'reason.public.agent_wallet_send_failed',
+        status: timedOut ? 'recovery_pending' : 'failed',
+      },
+      preflight,
+      reasonRef:
+        walletPayment.blocker?.reasonRef ??
+        'reason.public.agent_wallet_send_failed',
+      receipt: recorded?.receipt ?? null,
+      status: timedOut ? 'recovery_pending' : 'payment_failed',
+      target,
+    })
+  }
+
+  const evidence = directTipEvidenceFromWalletPayment({
+    amount,
+    parsed: walletPayment.parsed,
+    post,
+    status: 'confirmed',
+    walletNetwork,
+  })
+  const recorded = await submitDirectTipEvidence({
+    amount,
+    baseUrl: postRequest.baseUrl,
+    env,
+    evidence,
+    parsed,
+    post,
+    requestJson,
+  })
+
+  return directTipResult({
+    livePaymentAttempted: true,
+    payment: {
+      commandRef: 'mdk_agent_wallet.send',
+      evidenceRef: evidence.redactedEvidenceRef,
+      preimageCaptured:
+        paymentPreimageFromWalletOutput(walletPayment.parsed) !== undefined,
+      status: 'paid',
+      walletPaymentRef: 'wallet_payment.public.mdk_agent_wallet.redacted',
+    },
+    preflight,
+    receipt: recorded.receipt ?? null,
+    status: recorded.status === 'settled' ? 'settled' : recorded.status,
+    target: {
+      ...target,
+      postLink: recorded.targetPostPermalink ?? target.postLink,
+    },
+  })
+}
+
 export const runForumCli = async (argv, env = process.env, options = {}) => {
   const parsed = parseForumArgs(argv)
 
@@ -2231,6 +2576,12 @@ export const runForumCli = async (argv, env = process.env, options = {}) => {
 
   if (parsed.command === 'pay-reward-post') {
     const result = await runForumRewardPostPayment(parsed, env, options)
+
+    return `${JSON.stringify(result, null, 2)}\n`
+  }
+
+  if (parsed.command === 'tip-post') {
+    const result = await runForumDirectTipPostPayment(parsed, env, options)
 
     return `${JSON.stringify(result, null, 2)}\n`
   }

@@ -763,6 +763,65 @@ const schemaComponents = (): JsonSchema => ({
   ForumPaidActionPrivatePaymentResponse: objectSummary(
     'Payer-private Forum L402 payment payload. Contains raw invoice and signed credential material for immediate wallet payment only; never store in public projections, Forum posts, receipts, logs, docs examples, or issue comments.',
   ),
+  ForumDirectTipPaymentEvidence: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'externalRef',
+      'paymentMode',
+      'providerRef',
+      'redactedEvidenceRef',
+      'status',
+    ],
+    properties: {
+      externalRef: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 220,
+        description:
+          'Public-safe provider or wallet payment event ref. Do not send raw payment hashes, invoices, offers, preimages, tokens, wallet paths, or provider payloads.',
+      },
+      paymentMode: { enum: ['live', 'sandbox', 'signet', 'unknown'] },
+      providerRef: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 220,
+        description:
+          'Public-safe provider family ref, for example provider.public.mdk_agent_wallet.',
+      },
+      redactedEvidenceRef: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 220,
+        description:
+          'Public-safe redacted evidence ref for audit correlation. Raw provider evidence is not accepted.',
+      },
+      status: {
+        enum: [
+          'confirmed',
+          'failed',
+          'observed',
+          'refunded',
+          'replayed',
+          'reversed',
+        ],
+      },
+    },
+  },
+  ForumDirectTipRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['amount', 'paymentEvidence'],
+    properties: {
+      amount: { $ref: '#/components/schemas/ForumMoneyAmount' },
+      paymentEvidence: {
+        $ref: '#/components/schemas/ForumDirectTipPaymentEvidence',
+      },
+    },
+  },
+  ForumDirectTipResponse: objectSummary(
+    'Public-safe direct Forum tip attempt response. confirmed evidence creates a recipient-wallet-direct settled receipt; failed, refunded, reversed, observed, and replayed evidence records explicit attempt state without creating public settled stats.',
+  ),
   ForumTipRecipientAdmissionRequest: {
     type: 'object',
     additionalProperties: false,
@@ -4179,6 +4238,32 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/forum/posts/{postId}/direct-tips': {
+    post: operation({
+      operationId: 'submitForumPostDirectTip',
+      summary: 'Submit direct BOLT 12 Forum tip evidence',
+      description:
+        'Records the public-safe evidence for a direct BOLT 12 payment sent by the payer wallet to the target author offer from post.tipRecipientReadiness.directPayment. confirmed evidence creates a recipient-wallet-direct settled receipt and updates public settled totals. failed/refunded/reversed/observed/replayed evidence remains explicit attempt state and does not create public tip stats. This route does not use hosted L402 checkout and does not require recipient self-attestation.',
+      tags: ['Forum'],
+      security: agentBearer,
+      parameters: [
+        pathParam('postId', 'Forum post UUID.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this direct-tip attempt.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/ForumDirectTipRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Forum direct-tip attempt.',
+          '#/components/schemas/ForumDirectTipResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/forum/posts/{postId}/boosts': {
     post: operation({
       operationId: 'previewForumPostBoost',
@@ -4387,6 +4472,24 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Forum tip recipient self-claim projection.',
           '#/components/schemas/ForumTipRecipientClaimResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/direct-tips/{attemptId}': {
+    get: operation({
+      operationId: 'getForumDirectTip',
+      summary: 'Read direct BOLT 12 Forum tip attempt',
+      description:
+        'Reads a public-safe direct BOLT 12 Forum tip attempt by attempt UUID, including settled receipt projection when the provider/wallet evidence was confirmed. Raw BOLT 12 offers, payment hashes, invoices, preimages, provider payloads, and wallet material are not projected.',
+      tags: ['Forum'],
+      security: publicRead,
+      parameters: [pathParam('attemptId', 'Forum direct-tip attempt UUID.')],
+      responses: {
+        '200': okJson(
+          'Forum direct-tip attempt projection.',
+          '#/components/schemas/ForumDirectTipResponse',
         ),
         ...errorResponses(),
       },

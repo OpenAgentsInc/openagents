@@ -28,6 +28,10 @@ import {
 import {
   type ForumL402Challenge,
   ForumL402Challenge as ForumL402ChallengeSchema,
+  type ForumDirectTipAttemptStatus,
+  type ForumDirectTipPaymentEvidence,
+  type ForumDirectTipResponse,
+  ForumDirectTipResponse as ForumDirectTipResponseSchema,
   type ForumL402PaymentChallenge,
   type ForumMoneyAmount,
   type ForumPaidActionKind,
@@ -160,6 +164,28 @@ export type ForumTipSettlementClaimInput = Readonly<{
   sourceRef: string
 }>
 
+export type ForumDirectTipSubmitInput = Readonly<{
+  amount: ForumMoneyAmount
+  idempotencyKey: string
+  payerActorRef: string
+  paymentEvidence: ForumDirectTipPaymentEvidence
+  post: Readonly<{
+    authorActorRef: string
+    postId: string
+    publicProjection: unknown
+    targetPostPermalink: string | null
+    topicId: string
+  }>
+  recipientReadiness: Readonly<{
+    directPayment: null | Readonly<{
+      bolt12Offer: string
+      kind: 'bolt12_offer'
+      settlementAuthority: 'recipient_wallet_direct'
+    }>
+    tippingAvailable: boolean
+  }>
+}>
+
 export type ForumVerifiedPaymentEventInput = Readonly<{
   externalRef: string
   paymentMode: ForumPaymentEventMode
@@ -253,6 +279,28 @@ type PaymentEventRow = Readonly<{
   provider_ref: string
 }>
 
+type DirectTipAttemptRow = Readonly<{
+  amount_sats: number
+  archived_at: string | null
+  created_at: string
+  external_ref: string
+  id: string
+  idempotency_key: string
+  payer_actor_ref: string
+  payment_event_id: string | null
+  payment_event_status: ForumPaymentEventStatus
+  payment_mode: 'live' | 'sandbox' | 'signet' | 'unknown'
+  provider_ref: string
+  receipt_ref: string | null
+  recipient_actor_ref: string
+  redacted_evidence_ref: string
+  status: ForumDirectTipAttemptStatus
+  target_post_id: string
+  target_post_permalink: string | null
+  target_topic_id: string
+  updated_at: string
+}>
+
 type SettlementClaimRow = Readonly<{
   archived_at: string | null
   id: string
@@ -281,6 +329,7 @@ export class ForumPaidActionError extends S.TaggedErrorClass<ForumPaidActionErro
       'receipt_not_found',
       'recipient_actor_mismatch',
       'recipient_not_ready',
+      'self_tip_blocked',
       'settlement_claim_unavailable',
       'storage_error',
       'unsafe_payment_ref',
@@ -299,6 +348,7 @@ const decodeRedeemResponse = S.decodeUnknownSync(
 const decodeReceiptLookup = S.decodeUnknownSync(
   ForumReceiptLookupResponseSchema,
 )
+const decodeDirectTipResponse = S.decodeUnknownSync(ForumDirectTipResponseSchema)
 const decodePaymentEventProjection = S.decodeUnknownSync(
   ForumPaymentEventProjectionSchema,
 )
@@ -604,6 +654,18 @@ const validateSettlementRefs = (
     }
   })
 
+const validatePaymentEventRefs = (
+  event: ForumVerifiedPaymentEventInput | ForumDirectTipPaymentEvidence,
+): Effect.Effect<void, ForumPaidActionError> =>
+  Effect.gen(function* () {
+    yield* validatePaymentEventRef('providerRef', event.providerRef)
+    yield* validatePaymentEventRef('externalRef', event.externalRef)
+    yield* validatePaymentEventRef(
+      'redactedEvidenceRef',
+      event.redactedEvidenceRef,
+    )
+  })
+
 const validateVerifiedPaymentEvent = (
   event: ForumVerifiedPaymentEventInput | null | undefined,
 ): Effect.Effect<void, ForumPaidActionError> =>
@@ -612,18 +674,58 @@ const validateVerifiedPaymentEvent = (
       return
     }
 
-    yield* validatePaymentEventRef('providerRef', event.providerRef)
-    yield* validatePaymentEventRef('externalRef', event.externalRef)
-    yield* validatePaymentEventRef(
-      'redactedEvidenceRef',
-      event.redactedEvidenceRef,
-    )
+    yield* validatePaymentEventRefs(event)
 
     if (event.status !== 'confirmed') {
       return yield* new ForumPaidActionError({
         kind: 'payment_verification_failed',
         reason:
           'Forum payment event must be confirmed before reward redemption can link it.',
+      })
+    }
+  })
+
+const directTipStatusForPaymentEvent = (
+  status: ForumPaymentEventStatus,
+): ForumDirectTipAttemptStatus =>
+  status === 'confirmed'
+    ? 'settled'
+    : status === 'failed' ||
+        status === 'refunded' ||
+        status === 'reversed'
+      ? 'failed'
+      : 'recovery_pending'
+
+const validateDirectTipSubmitInput = (
+  input: ForumDirectTipSubmitInput,
+): Effect.Effect<void, ForumPaidActionError | ForumPublicProjectionUnsafe> =>
+  Effect.gen(function* () {
+    yield* validateProjection(input.post.publicProjection)
+    yield* validatePaymentEventRefs(input.paymentEvidence)
+
+    if (input.amount.asset !== 'sats' || input.amount.amount <= 0) {
+      return yield* new ForumPaidActionError({
+        kind: 'over_spend_cap',
+        reason:
+          'Forum direct tips must be positive sats amounts selected by the payer.',
+      })
+    }
+
+    if (input.payerActorRef === input.post.authorActorRef) {
+      return yield* new ForumPaidActionError({
+        kind: 'self_tip_blocked',
+        reason: 'Forum direct tips cannot target a post by the same actor.',
+      })
+    }
+
+    if (
+      !input.recipientReadiness.tippingAvailable ||
+      input.recipientReadiness.directPayment?.kind !== 'bolt12_offer'
+    ) {
+      return yield* new ForumPaidActionError({
+        kind: 'recipient_not_ready',
+        reason:
+          'Forum direct tips require target author readiness with a public BOLT 12 offer.',
       })
     }
   })
@@ -994,6 +1096,65 @@ const paymentEventProjection = ({
     status: event.status,
   })
 
+const directTipPaymentEventProjection = ({
+  amount,
+  attemptId,
+  eventId,
+  input,
+  receiptRef,
+  runtime,
+}: Readonly<{
+  amount: ForumMoneyAmount
+  attemptId: string
+  eventId: string
+  input: ForumDirectTipSubmitInput
+  receiptRef: string | null
+  runtime: ForumPaidActionRuntime
+}>): ForumPaymentEventProjection =>
+  decodePaymentEventProjection({
+    actionKind: 'post_reward',
+    amount,
+    challengeId: attemptId,
+    createdAt: runtime.nowIso(),
+    externalRef: input.paymentEvidence.externalRef,
+    payerActorRef: input.payerActorRef,
+    paymentEventRef: eventId,
+    paymentMode: input.paymentEvidence.paymentMode,
+    providerRef: input.paymentEvidence.providerRef,
+    receiptRef,
+    recipientActorRef: input.post.authorActorRef,
+    redactedEvidenceRef: input.paymentEvidence.redactedEvidenceRef,
+    settlementAuthority: 'recipient_wallet_direct',
+    status: input.paymentEvidence.status,
+  })
+
+const directTipResponse = (
+  attempt: DirectTipAttemptRow,
+  receipt: ForumReceiptLookupResponse | null,
+  idempotent: boolean,
+): ForumDirectTipResponse =>
+  decodeDirectTipResponse({
+    amount: {
+      amount: attempt.amount_sats,
+      asset: 'sats',
+    },
+    attemptId: attempt.id,
+    idempotent,
+    payerActorRef: attempt.payer_actor_ref,
+    paymentEvidence: {
+      externalRef: attempt.external_ref,
+      paymentMode: attempt.payment_mode,
+      providerRef: attempt.provider_ref,
+      redactedEvidenceRef: attempt.redacted_evidence_ref,
+      status: attempt.payment_event_status,
+    },
+    postId: attempt.target_post_id,
+    receipt,
+    recipientActorRef: attempt.recipient_actor_ref,
+    status: attempt.status,
+    targetPostPermalink: attempt.target_post_permalink,
+  })
+
 const insertChallenge = (
   db: D1Database,
   input: ForumPaidActionPreviewInput,
@@ -1356,6 +1517,254 @@ const insertPaymentEvent = (
           paymentEventProjection({
             challenge,
             event,
+            eventId,
+            input,
+            receiptRef,
+            runtime,
+          }),
+        ),
+        runtime.nowIso(),
+      )
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const readDirectTipAttemptById = (
+  db: D1Database,
+  attemptId: string,
+): Effect.Effect<DirectTipAttemptRow | null, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.readDirectTipAttemptById', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM forum_direct_tip_attempts
+          WHERE id = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(attemptId)
+      .first<DirectTipAttemptRow>(),
+  )
+
+const readDirectTipAttemptByIdempotencyKey = (
+  db: D1Database,
+  idempotencyKey: string,
+): Effect.Effect<DirectTipAttemptRow | null, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.readDirectTipAttemptByIdempotencyKey', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM forum_direct_tip_attempts
+          WHERE idempotency_key = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(idempotencyKey)
+      .first<DirectTipAttemptRow>(),
+  )
+
+const readDirectTipAttemptByProviderExternal = (
+  db: D1Database,
+  providerRef: string,
+  externalRef: string,
+): Effect.Effect<DirectTipAttemptRow | null, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.readDirectTipAttemptByProviderExternal', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM forum_direct_tip_attempts
+          WHERE provider_ref = ?
+            AND external_ref = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(providerRef, externalRef)
+      .first<DirectTipAttemptRow>(),
+  )
+
+const insertDirectTipAttempt = (
+  db: D1Database,
+  input: ForumDirectTipSubmitInput,
+  attempt: Readonly<{
+    attemptId: string
+    paymentEventId: string | null
+    receiptRef: string | null
+    status: ForumDirectTipAttemptStatus
+  }>,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.insertDirectTipAttempt', () =>
+    db
+      .prepare(
+        `INSERT INTO forum_direct_tip_attempts (
+           id,
+           idempotency_key,
+           payer_actor_ref,
+           recipient_actor_ref,
+           target_topic_id,
+           target_post_id,
+           target_post_permalink,
+           amount_sats,
+           provider_ref,
+           external_ref,
+           redacted_evidence_ref,
+           payment_mode,
+           payment_event_status,
+           status,
+           receipt_ref,
+           payment_event_id,
+           created_at,
+           updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        attempt.attemptId,
+        input.idempotencyKey,
+        input.payerActorRef,
+        input.post.authorActorRef,
+        input.post.topicId,
+        input.post.postId,
+        input.post.targetPostPermalink,
+        input.amount.amount,
+        input.paymentEvidence.providerRef,
+        input.paymentEvidence.externalRef,
+        input.paymentEvidence.redactedEvidenceRef,
+        input.paymentEvidence.paymentMode,
+        input.paymentEvidence.status,
+        attempt.status,
+        attempt.receiptRef,
+        attempt.paymentEventId,
+        runtime.nowIso(),
+        runtime.nowIso(),
+      )
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const insertDirectTipReceipt = (
+  db: D1Database,
+  input: ForumDirectTipSubmitInput,
+  receiptId: string,
+  receiptRef: string,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.insertDirectTipReceipt', () =>
+    db
+      .prepare(
+        `INSERT INTO forum_receipts (
+           id,
+           receipt_ref,
+           action_kind,
+           target_forum_id,
+           target_topic_id,
+           target_post_id,
+           amount_asset,
+           amount_value,
+           recipient_actor_ref,
+           redacted_payment_ref,
+           public_projection_json,
+           created_at
+         )
+         VALUES (?, ?, 'post_reward', NULL, ?, ?, 'sats', ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        receiptId,
+        receiptRef,
+        input.post.topicId,
+        input.post.postId,
+        input.amount.amount,
+        input.post.authorActorRef,
+        input.paymentEvidence.redactedEvidenceRef,
+        JSON.stringify(
+          decodeForumPublicProjection(input.post.publicProjection),
+        ),
+        runtime.nowIso(),
+      )
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const insertDirectTipMoneyAction = (
+  db: D1Database,
+  input: ForumDirectTipSubmitInput,
+  moneyActionId: string,
+  paymentEventId: string | null,
+  receiptId: string | null,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.insertDirectTipMoneyAction', () =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO forum_money_actions (
+           id,
+           idempotency_key,
+           actor_ref,
+           action_kind,
+           target_forum_id,
+           target_topic_id,
+           target_post_id,
+           amount_asset,
+           amount_value,
+           payment_event_id,
+           receipt_id,
+           earning_actor_ref,
+           public_projection_json,
+           created_at
+         )
+         VALUES (?, ?, ?, 'post_reward', NULL, ?, ?, 'sats', ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        moneyActionId,
+        `direct-tip:${input.idempotencyKey}`,
+        input.payerActorRef,
+        input.post.topicId,
+        input.post.postId,
+        input.amount.amount,
+        paymentEventId,
+        receiptId,
+        input.post.authorActorRef,
+        JSON.stringify(
+          decodeForumPublicProjection(input.post.publicProjection),
+        ),
+        runtime.nowIso(),
+      )
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const insertDirectTipPaymentEvent = (
+  db: D1Database,
+  input: ForumDirectTipSubmitInput,
+  attemptId: string,
+  eventId: string,
+  moneyActionId: string,
+  receiptRef: string | null,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.insertDirectTipPaymentEvent', () =>
+    db
+      .prepare(
+        `INSERT INTO forum_payment_events (
+           id,
+           money_action_id,
+           provider_ref,
+           external_ref,
+           amount_asset,
+           amount_value,
+           redacted_evidence_ref,
+           public_projection_json,
+           created_at
+         )
+         VALUES (?, ?, ?, ?, 'sats', ?, ?, ?, ?)`,
+      )
+      .bind(
+        eventId,
+        moneyActionId,
+        input.paymentEvidence.providerRef,
+        input.paymentEvidence.externalRef,
+        input.amount.amount,
+        input.paymentEvidence.redactedEvidenceRef,
+        JSON.stringify(
+          directTipPaymentEventProjection({
+            amount: input.amount,
+            attemptId,
             eventId,
             input,
             receiptRef,
@@ -1830,6 +2239,163 @@ export const redeemForumPaidAction = (
       receiptRef,
       replayed: false,
     })
+  })
+
+const directTipReceiptForAttempt = (
+  db: D1Database,
+  attempt: DirectTipAttemptRow,
+): Effect.Effect<ForumReceiptLookupResponse | null, ForumPaidActionError> =>
+  attempt.receipt_ref === null
+    ? Effect.succeed(null)
+    : lookupForumPaidActionReceipt(db, attempt.receipt_ref)
+
+const directTipAttemptMatchesInput = (
+  attempt: DirectTipAttemptRow,
+  input: ForumDirectTipSubmitInput,
+): boolean =>
+  attempt.payer_actor_ref === input.payerActorRef &&
+  attempt.recipient_actor_ref === input.post.authorActorRef &&
+  attempt.target_post_id === input.post.postId &&
+  attempt.target_topic_id === input.post.topicId &&
+  attempt.amount_sats === input.amount.amount &&
+  attempt.provider_ref === input.paymentEvidence.providerRef &&
+  attempt.external_ref === input.paymentEvidence.externalRef &&
+  attempt.payment_mode === input.paymentEvidence.paymentMode &&
+  attempt.payment_event_status === input.paymentEvidence.status
+
+export const submitForumDirectTip = (
+  db: D1Database,
+  input: ForumDirectTipSubmitInput,
+  runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
+): Effect.Effect<
+  ForumDirectTipResponse,
+  ForumPaidActionError | ForumPublicProjectionUnsafe
+> =>
+  Effect.gen(function* () {
+    yield* validateDirectTipSubmitInput(input)
+
+    const existingByIdempotency = yield* readDirectTipAttemptByIdempotencyKey(
+      db,
+      input.idempotencyKey,
+    )
+
+    if (existingByIdempotency !== null) {
+      if (!directTipAttemptMatchesInput(existingByIdempotency, input)) {
+        return yield* new ForumPaidActionError({
+          kind: 'binding_mismatch',
+          reason:
+            'Idempotency-Key already belongs to a different Forum direct tip.',
+        })
+      }
+
+      const receipt = yield* directTipReceiptForAttempt(
+        db,
+        existingByIdempotency,
+      )
+
+      return directTipResponse(existingByIdempotency, receipt, true)
+    }
+
+    const existingByProvider = yield* readDirectTipAttemptByProviderExternal(
+      db,
+      input.paymentEvidence.providerRef,
+      input.paymentEvidence.externalRef,
+    )
+
+    if (existingByProvider !== null) {
+      return yield* new ForumPaidActionError({
+        kind: 'payment_event_replayed',
+        reason:
+          'Forum direct tip provider/external payment ref already belongs to another attempt.',
+      })
+    }
+
+    const existingPaymentEvent = yield* readPaymentEventByProviderExternal(
+      db,
+      input.paymentEvidence.providerRef,
+      input.paymentEvidence.externalRef,
+    )
+
+    if (existingPaymentEvent !== null) {
+      return yield* new ForumPaidActionError({
+        kind: 'payment_event_replayed',
+        reason:
+          'Forum payment event external ref was already linked to another receipt.',
+      })
+    }
+
+    const attemptId = runtime.makeChallengeId()
+    const attemptStatus = directTipStatusForPaymentEvent(
+      input.paymentEvidence.status,
+    )
+    const paymentEventId = runtime.makePaymentEventId()
+    const moneyActionId = runtime.makeMoneyActionId()
+    const receiptId =
+      attemptStatus === 'settled' ? runtime.makeReceiptId() : null
+    const receiptRef =
+      receiptId === null ? null : `receipt.forum.direct_tip.${attemptId}`
+
+    if (receiptId !== null && receiptRef !== null) {
+      yield* insertDirectTipReceipt(db, input, receiptId, receiptRef, runtime)
+    }
+
+    yield* insertDirectTipMoneyAction(
+      db,
+      input,
+      moneyActionId,
+      paymentEventId,
+      receiptId,
+      runtime,
+    )
+    yield* insertDirectTipPaymentEvent(
+      db,
+      input,
+      attemptId,
+      paymentEventId,
+      moneyActionId,
+      receiptRef,
+      runtime,
+    )
+    yield* insertDirectTipAttempt(
+      db,
+      input,
+      {
+        attemptId,
+        paymentEventId,
+        receiptRef,
+        status: attemptStatus,
+      },
+      runtime,
+    )
+
+    const storedAttempt = yield* readDirectTipAttemptById(db, attemptId)
+
+    if (storedAttempt === null) {
+      return yield* new ForumPaidActionError({
+        kind: 'receipt_not_found',
+        reason: 'Forum direct tip attempt was not found after insert.',
+      })
+    }
+
+    const receipt = yield* directTipReceiptForAttempt(db, storedAttempt)
+
+    return directTipResponse(storedAttempt, receipt, false)
+  })
+
+export const lookupForumDirectTip = (
+  db: D1Database,
+  attemptId: string,
+): Effect.Effect<ForumDirectTipResponse | null, ForumPaidActionError> =>
+  Effect.gen(function* () {
+    const attempt = yield* readDirectTipAttemptById(db, attemptId)
+
+    if (attempt === null) {
+      return null
+    }
+
+    const receipt = yield* directTipReceiptForAttempt(db, attempt)
+
+    return directTipResponse(attempt, receipt, true)
   })
 
 const settlementClaimResponse = (

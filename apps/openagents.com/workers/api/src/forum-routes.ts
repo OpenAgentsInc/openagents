@@ -42,6 +42,7 @@ import {
   evaluateForumWritePolicy,
   followForumActor,
   forumLaunchGateStatus,
+  lookupForumDirectTip,
   listForumModerationQueue,
   listRecentForumWritesForActor,
   lookupForumPaidActionChallenge,
@@ -78,6 +79,7 @@ import {
   recordForumReport,
   redeemForumPaidAction,
   searchForumPublicContent,
+  submitForumDirectTip,
   tombstoneForumPost,
   updateForumPostModerationState,
   updateForumReportStatus,
@@ -290,6 +292,26 @@ const ForumPaidActionPrivatePaymentBody = S.Struct({
   requestBodyDigest: S.Trim.check(S.isNonEmpty(), S.isMaxLength(200)),
   routeParams: S.optionalKey(ForumRouteParams),
   spendCap: ForumMoneyAmount,
+})
+
+const ForumDirectTipEvidenceBody = S.Struct({
+  externalRef: ForumPublicSafeRef,
+  paymentMode: S.Literals(['live', 'sandbox', 'signet', 'unknown']),
+  providerRef: ForumPublicSafeRef,
+  redactedEvidenceRef: ForumPublicSafeRef,
+  status: S.Literals([
+    'confirmed',
+    'failed',
+    'observed',
+    'refunded',
+    'replayed',
+    'reversed',
+  ]),
+})
+
+const ForumDirectTipSubmitBody = S.Struct({
+  amount: ForumMoneyAmount,
+  paymentEvidence: ForumDirectTipEvidenceBody,
 })
 
 const ForumTipSettlementClaimBody = S.Struct({
@@ -1260,6 +1282,13 @@ const paidActionFailureResponse = (error: unknown) => {
     if (error.kind === 'recipient_not_ready') {
       return noStoreJsonResponse(
         { error: 'recipient_not_ready', reason: error.reason },
+        { status: 409 },
+      )
+    }
+
+    if (error.kind === 'self_tip_blocked') {
+      return noStoreJsonResponse(
+        { error: 'self_tip_blocked', reason: error.reason },
         { status: 409 },
       )
     }
@@ -2421,6 +2450,60 @@ const redeemPaidActionResponse = (
     Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
   )
 
+const submitDirectTipResponse = (
+  request: Request,
+  db: D1Database,
+  postId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumDirectTipSubmitBody),
+    )
+    const postDetail = yield* readForumPostDetail(db, postId)
+
+    if (postDetail === null) {
+      return notFound()
+    }
+
+    const response = yield* submitForumDirectTip(db, {
+      amount: body.amount,
+      idempotencyKey,
+      payerActorRef: actorRefForForumActor(actor),
+      paymentEvidence: body.paymentEvidence,
+      post: {
+        authorActorRef: postDetail.post.author.actorRef,
+        postId: postDetail.post.postId,
+        publicProjection: postDetail.post.publicProjection,
+        targetPostPermalink: postDetail.post.permalink ?? null,
+        topicId: postDetail.post.topicId,
+      },
+      recipientReadiness: postDetail.post.tipRecipientReadiness,
+    })
+
+    return noStoreJsonResponse(response, {
+      status: response.idempotent ? 200 : 201,
+    })
+  }).pipe(
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
+const directTipStatusResponse = (db: D1Database, attemptId: string) =>
+  lookupForumDirectTip(db, attemptId).pipe(
+    Effect.map(response =>
+      response === null ? notFound() : noStoreJsonResponse(response),
+    ),
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
 const receiptLookupResponse = (db: D1Database, receiptRef: string) =>
   lookupForumPaidActionReceipt(db, receiptRef).pipe(
     Effect.map(receipt =>
@@ -3366,6 +3449,37 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       return request.method === 'GET'
         ? receiptLookupResponse(db, receiptRef)
         : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const directTipMatch = /^\/api\/forum\/direct-tips\/([^/]+)$/.exec(
+      url.pathname,
+    )
+
+    if (directTipMatch !== null) {
+      const attemptId = decodePathSegment(directTipMatch[1])
+
+      if (attemptId === undefined) {
+        return Effect.succeed(badRequest('direct tip id is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? directTipStatusResponse(db, attemptId)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const postDirectTipMatch =
+      /^\/api\/forum\/posts\/([^/]+)\/direct-tips$/.exec(url.pathname)
+
+    if (postDirectTipMatch !== null) {
+      const postId = decodePathSegment(postDirectTipMatch[1])
+
+      if (postId === undefined) {
+        return Effect.succeed(badRequest('post direct tip path is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? submitDirectTipResponse(request, db, postId, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
     }
 
     const postPaidActionMatch =

@@ -438,6 +438,18 @@ describe('OpenAgents capability manifest route', () => {
           status: 'available_contract',
         }),
         expect.objectContaining({
+          auth: 'registered_agent_token_with_idempotency_key',
+          href: 'https://openagents.com/api/forum/posts/{postId}/direct-tips',
+          id: 'forum_post_direct_bolt12_tip_submit',
+          status: 'available_contract',
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/forum/direct-tips/{attemptId}',
+          id: 'forum_post_direct_bolt12_tip_status',
+          status: 'available_contract',
+        }),
+        expect.objectContaining({
           auth: 'registered_agent_token',
           href: 'https://openagents.com/api/forum/paid-actions/redeem',
           id: 'forum_paid_action_confirm_payment',

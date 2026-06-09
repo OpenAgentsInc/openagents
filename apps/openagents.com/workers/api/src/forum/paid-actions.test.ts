@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -11,9 +13,11 @@ import {
   ForumPublicProjection,
   ForumPublicProjectionUnsafe,
   ForumTipPreviewRateLimit,
+  lookupForumDirectTip,
   lookupForumPaidActionReceipt,
   previewForumPaidAction,
   redeemForumPaidAction,
+  submitForumDirectTip,
 } from './index'
 
 type ChallengeRow = Readonly<{
@@ -94,7 +98,7 @@ type MoneyActionRow = Readonly<{
   earning_actor_ref: string | null
   id: string
   payment_event_id: string | null
-  receipt_id: string
+  receipt_id: string | null
 }>
 
 type PaymentEventRow = Readonly<{
@@ -110,8 +114,37 @@ type PaymentEventRow = Readonly<{
   redacted_evidence_ref: string
 }>
 
+type DirectTipAttemptRow = Readonly<{
+  amount_sats: number
+  archived_at: string | null
+  created_at: string
+  external_ref: string
+  id: string
+  idempotency_key: string
+  payer_actor_ref: string
+  payment_event_id: string | null
+  payment_event_status:
+    | 'confirmed'
+    | 'failed'
+    | 'observed'
+    | 'refunded'
+    | 'replayed'
+    | 'reversed'
+  payment_mode: 'live' | 'sandbox' | 'signet' | 'unknown'
+  provider_ref: string
+  receipt_ref: string | null
+  recipient_actor_ref: string
+  redacted_evidence_ref: string
+  status: 'settled' | 'failed' | 'recovery_pending'
+  target_post_id: string
+  target_post_permalink: string | null
+  target_topic_id: string
+  updated_at: string
+}>
+
 class ForumPaidActionStore {
   challenges: Array<ChallengeRow> = []
+  directTipAttempts: Array<DirectTipAttemptRow> = []
   redemptions: Array<RedemptionRow> = []
   receipts: Array<ReceiptRow> = []
   moneyActions: Array<MoneyActionRow> = []
@@ -163,6 +196,52 @@ class ForumPaidActionStatement implements D1PreparedStatement {
           item =>
             item.idempotency_key === idempotencyKey &&
             item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (
+      this.query.includes('FROM forum_direct_tip_attempts') &&
+      this.query.includes('idempotency_key = ?')
+    ) {
+      const idempotencyKey = String(this.values[0])
+      const row =
+        this.store.directTipAttempts.find(
+          item =>
+            item.idempotency_key === idempotencyKey &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (
+      this.query.includes('FROM forum_direct_tip_attempts') &&
+      this.query.includes('provider_ref = ?') &&
+      this.query.includes('external_ref = ?')
+    ) {
+      const providerRef = String(this.values[0])
+      const externalRef = String(this.values[1])
+      const row =
+        this.store.directTipAttempts.find(
+          item =>
+            item.provider_ref === providerRef &&
+            item.external_ref === externalRef &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (
+      this.query.includes('FROM forum_direct_tip_attempts') &&
+      this.query.includes('id = ?')
+    ) {
+      const attemptId = String(this.values[0])
+      const row =
+        this.store.directTipAttempts.find(
+          item => item.id === attemptId && item.archived_at === null,
         ) ?? null
 
       return Promise.resolve(row as T | null)
@@ -223,6 +302,7 @@ class ForumPaidActionStatement implements D1PreparedStatement {
               ...receipt,
               payment_event_projection_json:
                 paymentEvent?.public_projection_json ?? null,
+              settlement_claim_projection_json: null,
             }
 
       return Promise.resolve(row as T | null)
@@ -332,6 +412,29 @@ class ForumPaidActionStatement implements D1PreparedStatement {
       return Promise.resolve({ success: true } as D1Result<T>)
     }
 
+    if (
+      this.query.includes('INSERT INTO forum_receipts') &&
+      this.query.includes("VALUES (?, ?, 'post_reward', NULL")
+    ) {
+      this.store.receipts.push({
+        action_kind: 'post_reward',
+        amount_asset: 'sats',
+        amount_value: Number(this.values[4]),
+        archived_at: null,
+        created_at: String(this.values[8]),
+        id: String(this.values[0]),
+        public_projection_json: String(this.values[7]),
+        receipt_ref: String(this.values[1]),
+        recipient_actor_ref: String(this.values[5]),
+        redacted_payment_ref: String(this.values[6]),
+        target_forum_id: null,
+        target_post_id: String(this.values[3]),
+        target_topic_id: String(this.values[2]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
     if (this.query.includes('INSERT INTO forum_receipts')) {
       this.store.receipts.push({
         action_kind: this.values[2] as ForumPaidActionKindType,
@@ -355,6 +458,53 @@ class ForumPaidActionStatement implements D1PreparedStatement {
       return Promise.resolve({ success: true } as D1Result<T>)
     }
 
+    if (this.query.includes('INSERT INTO forum_direct_tip_attempts')) {
+      this.store.directTipAttempts.push({
+        amount_sats: Number(this.values[7]),
+        archived_at: null,
+        created_at: String(this.values[16]),
+        external_ref: String(this.values[9]),
+        id: String(this.values[0]),
+        idempotency_key: String(this.values[1]),
+        payer_actor_ref: String(this.values[2]),
+        payment_event_id:
+          this.values[15] === null ? null : String(this.values[15]),
+        payment_event_status:
+          this.values[12] as DirectTipAttemptRow['payment_event_status'],
+        payment_mode: this.values[11] as DirectTipAttemptRow['payment_mode'],
+        provider_ref: String(this.values[8]),
+        receipt_ref: this.values[14] === null ? null : String(this.values[14]),
+        recipient_actor_ref: String(this.values[3]),
+        redacted_evidence_ref: String(this.values[10]),
+        status: this.values[13] as DirectTipAttemptRow['status'],
+        target_post_id: String(this.values[5]),
+        target_post_permalink:
+          this.values[6] === null ? null : String(this.values[6]),
+        target_topic_id: String(this.values[4]),
+        updated_at: String(this.values[17]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (
+      this.query.includes('INSERT OR IGNORE INTO forum_money_actions') &&
+      this.query.includes("VALUES (?, ?, ?, 'post_reward', NULL")
+    ) {
+      this.store.moneyActions.push({
+        action_kind: 'post_reward',
+        amount_asset: 'sats',
+        amount_value: Number(this.values[5]),
+        earning_actor_ref: String(this.values[8]),
+        id: String(this.values[0]),
+        payment_event_id:
+          this.values[6] === null ? null : String(this.values[6]),
+        receipt_id: this.values[7] === null ? null : String(this.values[7]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
     if (this.query.includes('INSERT OR IGNORE INTO forum_money_actions')) {
       this.store.moneyActions.push({
         action_kind: this.values[3] as ForumPaidActionKindType,
@@ -365,7 +515,27 @@ class ForumPaidActionStatement implements D1PreparedStatement {
         id: String(this.values[0]),
         payment_event_id:
           this.values[9] === null ? null : String(this.values[9]),
-        receipt_id: String(this.values[10]),
+        receipt_id: this.values[10] === null ? null : String(this.values[10]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (
+      this.query.includes('INSERT INTO forum_payment_events') &&
+      this.query.includes("VALUES (?, ?, ?, ?, 'sats'")
+    ) {
+      this.store.paymentEvents.push({
+        amount_asset: 'sats',
+        amount_value: Number(this.values[4]),
+        archived_at: null,
+        created_at: String(this.values[7]),
+        external_ref: String(this.values[3]),
+        id: String(this.values[0]),
+        money_action_id: String(this.values[1]),
+        provider_ref: String(this.values[2]),
+        public_projection_json: String(this.values[6]),
+        redacted_evidence_ref: String(this.values[5]),
       })
 
       return Promise.resolve({ success: true } as D1Result<T>)
@@ -560,6 +730,39 @@ const verifiedPaymentEvent = (
   ...overrides,
 })
 
+const directTipInput = (
+  overrides: Partial<Parameters<typeof submitForumDirectTip>[1]> = {},
+): Parameters<typeof submitForumDirectTip>[1] => ({
+  amount: { amount: 15, asset: 'sats' },
+  idempotencyKey: 'forum:direct-tip:post:1:actor.alice',
+  payerActorRef: 'actor.alice',
+  paymentEvidence: {
+    externalRef: 'external.payment.redacted.direct_tip_1',
+    paymentMode: 'live',
+    providerRef: 'provider.mdk_agent_wallet.redacted',
+    redactedEvidenceRef: 'evidence.payment.redacted.direct_tip_1',
+    status: 'confirmed',
+  },
+  post: {
+    authorActorRef: 'actor.ben',
+    postId: '55555555-5555-4555-8555-555555555555',
+    publicProjection,
+    targetPostPermalink:
+      'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444#post-55555555-5555-4555-8555-555555555555',
+    topicId: '44444444-4444-4444-8444-444444444444',
+  },
+  recipientReadiness: {
+    directPayment: {
+      bolt12Offer:
+        'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+      kind: 'bolt12_offer',
+      settlementAuthority: 'recipient_wallet_direct',
+    },
+    tippingAvailable: true,
+  },
+  ...overrides,
+})
+
 const storedChallenge = (
   overrides: Partial<ChallengeRow> = {},
 ): ChallengeRow => ({
@@ -607,6 +810,27 @@ const createChallenge = async (store: ForumPaidActionStore) =>
   )
 
 describe('Forum paid actions', () => {
+  test('direct tip attempts migration defines idempotency, provider, receipt, and status indexes', () => {
+    const migration = readFileSync(
+      new URL(
+        '../../migrations/0146_forum_direct_tip_attempts.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+
+    expect(migration).toContain(
+      'CREATE TABLE IF NOT EXISTS forum_direct_tip_attempts',
+    )
+    expect(migration).toContain('idempotency_key TEXT NOT NULL UNIQUE')
+    expect(migration).toContain('UNIQUE (provider_ref, external_ref)')
+    expect(migration).toContain(
+      'receipt_ref TEXT REFERENCES forum_receipts(receipt_ref) ON DELETE SET NULL',
+    )
+    expect(migration).toContain('idx_forum_direct_tip_attempts_status')
+    expect(migration).toContain('idx_forum_direct_tip_attempts_target')
+  })
+
   test('blocks ordinary post rewards from the hosted L402 challenge path', async () => {
     const store = new ForumPaidActionStore()
     const preview = await Effect.runPromise(
@@ -634,6 +858,136 @@ describe('Forum paid actions', () => {
       },
     })
     expect(store.challenges).toHaveLength(0)
+  })
+
+  test('records a confirmed BOLT 12 direct tip as settled recipient-wallet evidence', async () => {
+    const store = new ForumPaidActionStore()
+    const response = await Effect.runPromise(
+      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+    )
+
+    expect(response.status).toBe('settled')
+    expect(response.receipt?.receiptRef).toBe(
+      'receipt.forum.direct_tip.77777777-7777-4777-8777-777777777777',
+    )
+    expect(response.receipt?.tipSettlement).toMatchObject({
+      creatorReceivedSpendableValue: true,
+      settlementAuthority: 'recipient_wallet_direct',
+      state: 'settled',
+    })
+    expect(response.receipt?.paymentEvent).toMatchObject({
+      actionKind: 'post_reward',
+      amount: { amount: 15, asset: 'sats' },
+      externalRef: 'external.payment.redacted.direct_tip_1',
+      payerActorRef: 'actor.alice',
+      recipientActorRef: 'actor.ben',
+      settlementAuthority: 'recipient_wallet_direct',
+      status: 'confirmed',
+    })
+    expect(store.challenges).toHaveLength(0)
+    expect(store.receipts).toHaveLength(1)
+    expect(store.paymentEvents).toHaveLength(1)
+  })
+
+  test('returns direct tips idempotently for the same payer, post, amount, and provider ref', async () => {
+    const store = new ForumPaidActionStore()
+    const first = await Effect.runPromise(
+      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+    )
+    const second = await Effect.runPromise(
+      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+    )
+
+    expect(second.idempotent).toBe(true)
+    expect(second.attemptId).toBe(first.attemptId)
+    expect(second.receipt?.receiptRef).toBe(first.receipt?.receiptRef)
+    expect(store.receipts).toHaveLength(1)
+    expect(store.paymentEvents).toHaveLength(1)
+  })
+
+  test('records failed direct-tip send evidence without a public receipt', async () => {
+    const store = new ForumPaidActionStore()
+    const response = await Effect.runPromise(
+      submitForumDirectTip(
+        paidActionDb(store),
+        directTipInput({
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.direct_tip_failed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef: 'evidence.payment.redacted.direct_tip_failed',
+            status: 'failed',
+          },
+        }),
+        runtime,
+      ),
+    )
+
+    expect(response.status).toBe('failed')
+    expect(response.receipt).toBe(null)
+    expect(store.directTipAttempts).toHaveLength(1)
+    expect(store.moneyActions).toHaveLength(1)
+    expect(store.moneyActions[0]?.receipt_id).toBe(null)
+    expect(store.paymentEvents).toHaveLength(1)
+  })
+
+  test('looks up a direct-tip attempt status without requiring an L402 challenge', async () => {
+    const store = new ForumPaidActionStore()
+    const response = await Effect.runPromise(
+      submitForumDirectTip(
+        paidActionDb(store),
+        directTipInput({
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.direct_tip_observed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.direct_tip_observed',
+            status: 'observed',
+          },
+        }),
+        runtime,
+      ),
+    )
+    const lookup = await Effect.runPromise(
+      lookupForumDirectTip(paidActionDb(store), response.attemptId),
+    )
+
+    expect(lookup).toMatchObject({
+      attemptId: response.attemptId,
+      receipt: null,
+      status: 'recovery_pending',
+    })
+  })
+
+  test('blocks duplicate direct-tip provider events and self tips', async () => {
+    const store = new ForumPaidActionStore()
+
+    await Effect.runPromise(
+      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+    )
+    await expect(
+      Effect.runPromise(
+        submitForumDirectTip(
+          paidActionDb(store),
+          directTipInput({
+            idempotencyKey: 'forum:direct-tip:post:1:actor.alice:duplicate',
+          }),
+          runtime,
+        ),
+      ),
+    ).rejects.toMatchObject({ kind: 'payment_event_replayed' })
+    await expect(
+      Effect.runPromise(
+        submitForumDirectTip(
+          paidActionDb(new ForumPaidActionStore()),
+          directTipInput({
+            payerActorRef: 'actor.ben',
+          }),
+          runtime,
+        ),
+      ),
+    ).rejects.toMatchObject({ kind: 'self_tip_blocked' })
   })
 
   test('creates an unpaid L402 challenge for a configured non-tip paid action', async () => {

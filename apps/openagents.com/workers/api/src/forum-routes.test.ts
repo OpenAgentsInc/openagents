@@ -164,7 +164,7 @@ type MoneyActionRow = Readonly<{
   earning_actor_ref: string | null
   id: string
   payment_event_id: string | null
-  receipt_id: string
+  receipt_id: string | null
 }>
 
 type PaymentEventRow = Readonly<{
@@ -178,6 +178,34 @@ type PaymentEventRow = Readonly<{
   provider_ref: string
   public_projection_json: string
   redacted_evidence_ref: string
+}>
+
+type DirectTipAttemptRow = Readonly<{
+  amount_sats: number
+  archived_at: string | null
+  created_at: string
+  external_ref: string
+  id: string
+  idempotency_key: string
+  payer_actor_ref: string
+  payment_event_id: string | null
+  payment_event_status:
+    | 'confirmed'
+    | 'failed'
+    | 'observed'
+    | 'refunded'
+    | 'replayed'
+    | 'reversed'
+  payment_mode: 'live' | 'sandbox' | 'signet' | 'unknown'
+  provider_ref: string
+  receipt_ref: string | null
+  recipient_actor_ref: string
+  redacted_evidence_ref: string
+  status: 'settled' | 'failed' | 'recovery_pending'
+  target_post_id: string
+  target_post_permalink: string | null
+  target_topic_id: string
+  updated_at: string
 }>
 
 type TipSettlementClaimRow = Readonly<{
@@ -923,6 +951,7 @@ class ForumRouteStore {
     },
   ]
   challenges: Array<ChallengeRow> = []
+  directTipAttempts: Array<DirectTipAttemptRow> = []
   redemptions: Array<RedemptionRow> = []
   receipts: Array<ReceiptRow> = []
   moneyActions: Array<MoneyActionRow> = []
@@ -1160,6 +1189,52 @@ class ForumRouteStatement implements D1PreparedStatement {
           item =>
             item.idempotency_key === idempotencyKey &&
             item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (
+      this.query.includes('FROM forum_direct_tip_attempts') &&
+      this.query.includes('idempotency_key = ?')
+    ) {
+      const idempotencyKey = String(this.values[0])
+      const row =
+        this.store.directTipAttempts.find(
+          item =>
+            item.idempotency_key === idempotencyKey &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (
+      this.query.includes('FROM forum_direct_tip_attempts') &&
+      this.query.includes('provider_ref = ?') &&
+      this.query.includes('external_ref = ?')
+    ) {
+      const providerRef = String(this.values[0])
+      const externalRef = String(this.values[1])
+      const row =
+        this.store.directTipAttempts.find(
+          item =>
+            item.provider_ref === providerRef &&
+            item.external_ref === externalRef &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (
+      this.query.includes('FROM forum_direct_tip_attempts') &&
+      this.query.includes('id = ?')
+    ) {
+      const attemptId = String(this.values[0])
+      const row =
+        this.store.directTipAttempts.find(
+          item => item.id === attemptId && item.archived_at === null,
         ) ?? null
 
       return Promise.resolve(row as T | null)
@@ -1474,6 +1549,29 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve({ success: true } as D1Result<T>)
     }
 
+    if (
+      this.query.includes('INSERT INTO forum_receipts') &&
+      this.query.includes("VALUES (?, ?, 'post_reward', NULL")
+    ) {
+      this.store.receipts.push({
+        action_kind: 'post_reward',
+        amount_asset: 'sats',
+        amount_value: Number(this.values[4]),
+        archived_at: null,
+        created_at: String(this.values[8]),
+        id: String(this.values[0]),
+        public_projection_json: String(this.values[7]),
+        receipt_ref: String(this.values[1]),
+        recipient_actor_ref: String(this.values[5]),
+        redacted_payment_ref: String(this.values[6]),
+        target_forum_id: null,
+        target_post_id: String(this.values[3]),
+        target_topic_id: String(this.values[2]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
     if (this.query.includes('INSERT INTO forum_receipts')) {
       this.store.receipts.push({
         action_kind: String(this.values[2]),
@@ -1497,6 +1595,53 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve({ success: true } as D1Result<T>)
     }
 
+    if (this.query.includes('INSERT INTO forum_direct_tip_attempts')) {
+      this.store.directTipAttempts.push({
+        amount_sats: Number(this.values[7]),
+        archived_at: null,
+        created_at: String(this.values[16]),
+        external_ref: String(this.values[9]),
+        id: String(this.values[0]),
+        idempotency_key: String(this.values[1]),
+        payer_actor_ref: String(this.values[2]),
+        payment_event_id:
+          this.values[15] === null ? null : String(this.values[15]),
+        payment_event_status:
+          this.values[12] as DirectTipAttemptRow['payment_event_status'],
+        payment_mode: this.values[11] as DirectTipAttemptRow['payment_mode'],
+        provider_ref: String(this.values[8]),
+        receipt_ref: this.values[14] === null ? null : String(this.values[14]),
+        recipient_actor_ref: String(this.values[3]),
+        redacted_evidence_ref: String(this.values[10]),
+        status: this.values[13] as DirectTipAttemptRow['status'],
+        target_post_id: String(this.values[5]),
+        target_post_permalink:
+          this.values[6] === null ? null : String(this.values[6]),
+        target_topic_id: String(this.values[4]),
+        updated_at: String(this.values[17]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (
+      this.query.includes('INSERT OR IGNORE INTO forum_money_actions') &&
+      this.query.includes("VALUES (?, ?, ?, 'post_reward', NULL")
+    ) {
+      this.store.moneyActions.push({
+        action_kind: 'post_reward',
+        amount_asset: 'sats',
+        amount_value: Number(this.values[5]),
+        earning_actor_ref: String(this.values[8]),
+        id: String(this.values[0]),
+        payment_event_id:
+          this.values[6] === null ? null : String(this.values[6]),
+        receipt_id: this.values[7] === null ? null : String(this.values[7]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
     if (this.query.includes('INSERT OR IGNORE INTO forum_money_actions')) {
       this.store.moneyActions.push({
         action_kind: String(this.values[3]),
@@ -1507,7 +1652,27 @@ class ForumRouteStatement implements D1PreparedStatement {
         id: String(this.values[0]),
         payment_event_id:
           this.values[9] === null ? null : String(this.values[9]),
-        receipt_id: String(this.values[10]),
+        receipt_id: this.values[10] === null ? null : String(this.values[10]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (
+      this.query.includes('INSERT INTO forum_payment_events') &&
+      this.query.includes("VALUES (?, ?, ?, ?, 'sats'")
+    ) {
+      this.store.paymentEvents.push({
+        amount_asset: 'sats',
+        amount_value: Number(this.values[4]),
+        archived_at: null,
+        created_at: String(this.values[7]),
+        external_ref: String(this.values[3]),
+        id: String(this.values[0]),
+        money_action_id: String(this.values[1]),
+        provider_ref: String(this.values[2]),
+        public_projection_json: String(this.values[6]),
+        redacted_evidence_ref: String(this.values[5]),
       })
 
       return Promise.resolve({ success: true } as D1Result<T>)
@@ -3232,7 +3397,10 @@ describe('Forum routes', () => {
       store,
       '/api/forum/posts/66666666-6666-4666-8666-666666666666',
     )
-    const body = await response.json()
+    const body = (await response.json()) as {
+      attemptId: string
+      receipt: { receiptRef: string }
+    }
 
     expect(response.status).toBe(200)
     expect(body).toMatchObject({
@@ -4261,6 +4429,173 @@ describe('Forum routes', () => {
       creators: [],
       posts: [],
     })
+  })
+
+  test('submits and reads a BOLT 12 direct Forum tip without L402', async () => {
+    const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(readyTipRecipientWalletRow())
+    const postId = '66666666-6666-4666-8666-666666666666'
+    const response = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}/direct-tips`,
+      {
+        body: {
+          amount: { amount: 15, asset: 'sats' },
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.route_direct_tip_1',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.route_direct_tip_1',
+            status: 'confirmed',
+          },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'forum-direct-tip-route-1',
+        },
+        method: 'POST',
+      },
+    )
+    const body = (await response.json()) as {
+      attemptId: string
+      receipt: { receiptRef: string }
+    }
+
+    expect(response.status).toBe(201)
+    expect(body).toMatchObject({
+      amount: { amount: 15, asset: 'sats' },
+      idempotent: false,
+      payerActorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      postId,
+      receipt: {
+        amount: { amount: 15, asset: 'sats' },
+        paymentEvent: {
+          externalRef: 'external.payment.redacted.route_direct_tip_1',
+          paymentMode: 'live',
+          providerRef: 'provider.mdk_agent_wallet.redacted',
+          settlementAuthority: 'recipient_wallet_direct',
+          status: 'confirmed',
+        },
+        tipSettlement: {
+          creatorReceivedSpendableValue: true,
+          settlementAuthority: 'recipient_wallet_direct',
+          state: 'settled',
+        },
+      },
+      recipientActorRef: 'actor.route-test',
+      status: 'settled',
+    })
+    expect(store.challenges).toHaveLength(0)
+    expect(store.directTipAttempts).toHaveLength(1)
+    expect(store.receipts).toHaveLength(1)
+    expect(store.paymentEvents).toHaveLength(1)
+
+    const lookupResponse = await route(
+      store,
+      `/api/forum/direct-tips/${encodeURIComponent(body.attemptId)}`,
+    )
+    const lookup = await lookupResponse.json()
+
+    expect(lookupResponse.status).toBe(200)
+    expect(lookup).toMatchObject({
+      attemptId: body.attemptId,
+      receipt: {
+        receiptRef: body.receipt.receiptRef,
+      },
+      status: 'settled',
+    })
+  })
+
+  test('keeps direct-tip failure explicit without public receipt stats', async () => {
+    const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(readyTipRecipientWalletRow())
+    const postId = '66666666-6666-4666-8666-666666666666'
+    const response = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}/direct-tips`,
+      {
+        body: {
+          amount: { amount: 15, asset: 'sats' },
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.route_direct_tip_failed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.route_direct_tip_failed',
+            status: 'failed',
+          },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'forum-direct-tip-route-failed',
+        },
+        method: 'POST',
+      },
+    )
+    const body = await response.json()
+    const postDetailResponse = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}`,
+    )
+    const postDetail = (await postDetailResponse.json()) as {
+      post: {
+        tipStats: {
+          tipCount: number
+          totalPaidSats: number
+          totalSettledSats: number
+        }
+      }
+    }
+
+    expect(response.status).toBe(201)
+    expect(body).toMatchObject({
+      receipt: null,
+      status: 'failed',
+    })
+    expect(store.directTipAttempts).toHaveLength(1)
+    expect(store.receipts).toHaveLength(0)
+    expect(postDetail.post.tipStats).toStrictEqual({
+      tipCount: 0,
+      totalPaidSats: 0,
+      totalSettledSats: 0,
+    })
+  })
+
+  test('rejects direct Forum tips when the target author has no BOLT 12 offer', async () => {
+    const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(
+      readyTipRecipientWalletRow({ bolt12_offer: null }),
+    )
+    const response = await route(
+      store,
+      '/api/forum/posts/66666666-6666-4666-8666-666666666666/direct-tips',
+      {
+        body: {
+          amount: { amount: 15, asset: 'sats' },
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.route_direct_tip_no_offer',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.route_direct_tip_no_offer',
+            status: 'confirmed',
+          },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'forum-direct-tip-route-no-offer',
+        },
+        method: 'POST',
+      },
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'recipient_not_ready',
+    })
+    expect(store.receipts).toHaveLength(0)
+    expect(store.paymentEvents).toHaveLength(0)
   })
 
   test('blocks custom-amount rewards from the old hosted L402 path', async () => {

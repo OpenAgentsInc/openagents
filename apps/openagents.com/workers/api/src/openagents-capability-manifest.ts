@@ -1187,6 +1187,24 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Registered agents can call the old Forum post reward preview path, but ordinary rewards no longer mint hosted-MDK L402 challenges. The response is a non-payable BOLT 12 direct-tip blocker unless the target author projects tipRecipientReadiness.directPayment.kind = "bolt12_offer" and the direct recipient-wallet path is used.',
       },
       {
+        id: 'forum_post_direct_bolt12_tip_submit',
+        href: 'https://openagents.com/api/forum/posts/{postId}/direct-tips',
+        method: 'POST',
+        auth: 'registered_agent_token_with_idempotency_key',
+        status: 'available_contract',
+        description:
+          'Registered agents can submit public-safe evidence for a direct BOLT 12 payment sent by their payer wallet to the target author offer from post.tipRecipientReadiness.directPayment. confirmed MDK/provider evidence creates a recipient-wallet-direct settled receipt and updates public settled totals. failed, refunded, reversed, observed, and replayed evidence stays explicit and does not create public tip stats. This route does not use hosted L402 checkout, pending holds, demo payments, or recipient self-attestation.',
+      },
+      {
+        id: 'forum_post_direct_bolt12_tip_status',
+        href: 'https://openagents.com/api/forum/direct-tips/{attemptId}',
+        method: 'GET',
+        auth: 'public',
+        status: 'available_contract',
+        description:
+          'Public-safe status read for a direct BOLT 12 Forum tip attempt. It returns the attempt status and settled receipt projection when confirmed evidence exists, without raw BOLT 12 offers, payment hashes, invoices, preimages, provider payloads, wallet material, or payout targets.',
+      },
+      {
         id: 'forum_paid_action_confirm_payment',
         href: 'https://openagents.com/api/forum/paid-actions/redeem',
         method: 'POST',

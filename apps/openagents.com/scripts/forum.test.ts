@@ -1116,6 +1116,261 @@ describe('forum CLI helpers', () => {
     expect(output).not.toContain('oa-l402-v1.private_token')
   })
 
+  test('tip-post pays a ready post BOLT 12 offer and records direct settlement evidence', async () => {
+    const walletExecutor = readyWalletExecutor()
+    const requestJson = vi.fn(async request => {
+      if (request.path === '/api/forum/posts/post_1') {
+        return {
+          post: {
+            permalink: 'https://openagents.com/forum/t/topic_1#post-post_1',
+            postId: 'post_1',
+            tipRecipientReadiness: {
+              actorRef: 'actor.recipient',
+              directPayment: {
+                bolt12Offer:
+                  'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+                kind: 'bolt12_offer',
+                settlementAuthority: 'recipient_wallet_direct',
+              },
+              state: 'ready',
+              tippingAvailable: true,
+            },
+          },
+        }
+      }
+
+      if (request.path === '/api/forum/posts/post_1/direct-tips') {
+        expect(request.body.amount).toStrictEqual({ amount: 15, asset: 'sats' })
+        expect(request.body.paymentEvidence).toMatchObject({
+          paymentMode: 'live',
+          providerRef: 'provider.public.mdk_agent_wallet',
+          status: 'confirmed',
+        })
+        expect(request.body.paymentEvidence.externalRef).toMatch(
+          /^external\.public\.mdk_agent_wallet\.[a-f0-9]{32}$/,
+        )
+        expect(request.body.paymentEvidence.redactedEvidenceRef).toMatch(
+          /^evidence\.public\.mdk_agent_wallet\.[a-f0-9]{32}$/,
+        )
+        expect(JSON.stringify(request)).not.toContain('payment_hash_raw')
+        expect(JSON.stringify(request)).not.toContain('private_preimage')
+        expect(JSON.stringify(request)).not.toContain('lno1qpzry9')
+
+        return {
+          amount: { amount: 15, asset: 'sats' },
+          attemptId: '77777777-7777-4777-8777-777777777777',
+          idempotent: false,
+          payerActorRef: 'agent:payer',
+          paymentEvidence: request.body.paymentEvidence,
+          postId: 'post_1',
+          receipt: {
+            receiptRef: 'receipt.forum.direct.1',
+            tipSettlement: {
+              creatorReceivedSpendableValue: true,
+              state: 'settled',
+            },
+          },
+          recipientActorRef: 'actor.recipient',
+          status: 'settled',
+          targetPostPermalink:
+            'https://openagents.com/forum/t/topic_1#post-post_1',
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+    walletExecutor.mockImplementation(async commandSpec => {
+      if (commandSpec.command === 'send') {
+        expect(commandSpec.args).toEqual([
+          'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+          '15',
+        ])
+
+        return {
+          exitCode: 0,
+          stdout:
+            '{"payment_hash":"payment_hash_raw","preimage":"private_preimage"}',
+        }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+
+    const output = await forumCli.runForumCli(
+      [
+        'tip-post',
+        '--post',
+        'post_1',
+        '--tip-amount',
+        '15',
+        '--approve-live-spend',
+      ],
+      {
+        OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123',
+      },
+      {
+        requestJson,
+        walletExecutor,
+      },
+    )
+    const body = JSON.parse(output)
+
+    expect(body).toMatchObject({
+      kind: 'forum_direct_bolt12_tip',
+      livePaymentAttempted: true,
+      payment: {
+        commandRef: 'mdk_agent_wallet.send',
+        preimageCaptured: true,
+        status: 'paid',
+      },
+      receipt: {
+        receiptRef: 'receipt.forum.direct.1',
+        tipSettlement: {
+          creatorReceivedSpendableValue: true,
+          state: 'settled',
+        },
+      },
+      status: 'settled',
+      target: {
+        postId: 'post_1',
+        postLink: 'https://openagents.com/forum/t/topic_1#post-post_1',
+        recipientActorRef: 'actor.recipient',
+      },
+    })
+    expect(output).not.toContain('lno1qpzry9')
+    expect(output).not.toContain('payment_hash_raw')
+    expect(output).not.toContain('private_preimage')
+  })
+
+  test('tip-post blocks before wallet spend when the post has no BOLT 12 offer', async () => {
+    const walletExecutor = readyWalletExecutor()
+    const requestJson = vi.fn(async request => {
+      expect(request.path).toBe('/api/forum/posts/post_1')
+
+      return {
+        post: {
+          permalink: 'https://openagents.com/forum/t/topic_1#post-post_1',
+          postId: 'post_1',
+          tipRecipientReadiness: {
+            actorRef: 'actor.recipient',
+            directPayment: null,
+            state: 'ready',
+            tippingAvailable: false,
+          },
+        },
+      }
+    })
+
+    const output = await forumCli.runForumCli(
+      [
+        'tip-post',
+        '--post',
+        'post_1',
+        '--tip-amount',
+        '15',
+        '--approve-live-spend',
+      ],
+      {
+        OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123',
+      },
+      {
+        requestJson,
+        walletExecutor,
+      },
+    )
+    const body = JSON.parse(output)
+
+    expect(body.status).toBe('blocked')
+    expect(body.reasonRef).toBe(
+      'reason.public.forum_tip_recipient_bolt12_offer_missing',
+    )
+    expect(walletExecutor).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'send' }),
+    )
+  })
+
+  test('tip-post records failed wallet sends without creating a public receipt', async () => {
+    const walletExecutor = readyWalletExecutor()
+    const requestJson = vi.fn(async request => {
+      if (request.path === '/api/forum/posts/post_1') {
+        return {
+          post: {
+            permalink: 'https://openagents.com/forum/t/topic_1#post-post_1',
+            postId: 'post_1',
+            tipRecipientReadiness: {
+              actorRef: 'actor.recipient',
+              directPayment: {
+                bolt12Offer:
+                  'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+                kind: 'bolt12_offer',
+                settlementAuthority: 'recipient_wallet_direct',
+              },
+              state: 'ready',
+              tippingAvailable: true,
+            },
+          },
+        }
+      }
+
+      if (request.path === '/api/forum/posts/post_1/direct-tips') {
+        expect(request.body.paymentEvidence.status).toBe('failed')
+
+        return {
+          amount: { amount: 15, asset: 'sats' },
+          attemptId: '77777777-7777-4777-8777-777777777777',
+          idempotent: false,
+          payerActorRef: 'agent:payer',
+          paymentEvidence: request.body.paymentEvidence,
+          postId: 'post_1',
+          receipt: null,
+          recipientActorRef: 'actor.recipient',
+          status: 'failed',
+          targetPostPermalink:
+            'https://openagents.com/forum/t/topic_1#post-post_1',
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+    walletExecutor.mockImplementation(async commandSpec => {
+      if (commandSpec.command === 'send') {
+        return {
+          exitCode: 1,
+          stdout: '{"error":"insufficient balance"}',
+        }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+
+    const output = await forumCli.runForumCli(
+      [
+        'tip-post',
+        '--post',
+        'post_1',
+        '--tip-amount',
+        '15',
+        '--approve-live-spend',
+      ],
+      {
+        OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123',
+      },
+      {
+        requestJson,
+        walletExecutor,
+      },
+    )
+    const body = JSON.parse(output)
+
+    expect(body.status).toBe('payment_failed')
+    expect(body.receipt).toBeNull()
+    expect(body.payment).toMatchObject({
+      commandRef: 'mdk_agent_wallet.send',
+      reasonRef: 'reason.public.agent_wallet_send_failed',
+      status: 'failed',
+    })
+  })
+
   test('builds authenticated unlisted search only when requested', async () => {
     const parsed = forumCli.parseForumArgs([
       'search',

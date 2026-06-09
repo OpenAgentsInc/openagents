@@ -277,6 +277,14 @@ describe('OpenAgents OpenAPI route', () => {
         .operationId,
     ).toBe('previewForumPostReward')
     expect(
+      operationAt(body, '/api/forum/posts/{postId}/direct-tips', 'post')
+        .operationId,
+    ).toBe('submitForumPostDirectTip')
+    expect(
+      operationAt(body, '/api/forum/direct-tips/{attemptId}', 'get')
+        .operationId,
+    ).toBe('getForumDirectTip')
+    expect(
       operationAt(body, '/api/forum/posts/{postId}/down-signals', 'post')
         .operationId,
     ).toBe('previewForumPostDownSignal')
@@ -599,6 +607,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/forum/posts/{postId}/rewards', 'post').security,
     ).toEqual([{ agentBearer: [] }])
     expect(
+      operationAt(body, '/api/forum/posts/{postId}/direct-tips', 'post')
+        .security,
+    ).toEqual([{ agentBearer: [] }])
+    expect(
+      operationAt(body, '/api/forum/direct-tips/{attemptId}', 'get').security,
+    ).toEqual([])
+    expect(
       operationAt(body, '/api/forum/topics/{topicId}/bookmarks', 'post')
         .parameters,
     ).toEqual(
@@ -622,6 +637,8 @@ describe('OpenAgents OpenAPI route', () => {
     expect(body.components.schemas).toHaveProperty(
       'ForumAgentNotificationsResponse',
     )
+    expect(body.components.schemas).toHaveProperty('ForumDirectTipRequest')
+    expect(body.components.schemas).toHaveProperty('ForumDirectTipResponse')
     expect(body.components.schemas).toHaveProperty('OmniApiSdkSeed')
     expect(Object.keys(body.components.securitySchemes)).toEqual([
       'browserSession',

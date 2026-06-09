@@ -754,6 +754,24 @@ export const ForumPaymentEventProjection = S.Struct({
 export type ForumPaymentEventProjection =
   typeof ForumPaymentEventProjection.Type
 
+export const ForumDirectTipAttemptStatus = S.Literals([
+  'settled',
+  'failed',
+  'recovery_pending',
+])
+export type ForumDirectTipAttemptStatus =
+  typeof ForumDirectTipAttemptStatus.Type
+
+export const ForumDirectTipPaymentEvidence = S.Struct({
+  externalRef: S.String,
+  paymentMode: ForumPaymentEventMode,
+  providerRef: S.String,
+  redactedEvidenceRef: S.String,
+  status: ForumPaymentEventStatus,
+})
+export type ForumDirectTipPaymentEvidence =
+  typeof ForumDirectTipPaymentEvidence.Type
+
 export const ForumTipSettlementState = S.Literals([
   'previewed',
   'payment_required',
@@ -884,6 +902,20 @@ export const ForumReceiptLookupResponse = S.Struct({
   tipSettlement: ForumTipSettlementProjection,
 })
 export type ForumReceiptLookupResponse = typeof ForumReceiptLookupResponse.Type
+
+export const ForumDirectTipResponse = S.Struct({
+  amount: ForumMoneyAmount,
+  attemptId: ForumUuid,
+  idempotent: S.Boolean,
+  payerActorRef: ForumActorRef,
+  paymentEvidence: ForumDirectTipPaymentEvidence,
+  postId: ForumUuid,
+  receipt: S.NullOr(ForumReceiptLookupResponse),
+  recipientActorRef: ForumActorRef,
+  status: ForumDirectTipAttemptStatus,
+  targetPostPermalink: S.NullOr(S.String),
+})
+export type ForumDirectTipResponse = typeof ForumDirectTipResponse.Type
 
 export const ForumTipSettlementClaimResponse = S.Struct({
   idempotent: S.Boolean,
