@@ -198,17 +198,20 @@ const schemaComponents = (): JsonSchema => ({
   OpenAgentsCompanionMetadata: objectSummary(
     'Compact OpenAgents companion package metadata with file URLs, API base, required tools, and trigger phrases.',
   ),
+  PublicHome: objectSummary(
+    'Public-safe homepage JSON discovery document with canonical docs and live data endpoint refs for the public homepage.',
+  ),
   PublicAdjutantActivity: objectSummary(
     'Public-safe Autopilot activity milestones and Site projections.',
   ),
   PublicArtanisReport: objectSummary(
-    'Public-safe Artanis report aggregator with autonomous loop state, Omega-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 Omega release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, artifacts, blockers, and caveats.',
+    'Public-safe Artanis report aggregator with autonomous loop state, OpenAgents-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, artifacts, blockers, and caveats.',
   ),
   PublicOtecProof: objectSummary(
     'Public-safe OTEC proof closeout projection with claim state and caveats.',
   ),
   PublicPylonStats: objectSummary(
-    'Public-safe Omega Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
+    'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
   ),
   PublicLaunchDashboard: objectSummary(
     'Public-safe red/yellow/green launch dashboard for every transcript promise. Rows include promise text, status, evidence refs, blocker refs, safe copy, and unsafe copy boundaries.',
@@ -1825,11 +1828,25 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicPylonStats',
       summary: 'Read public Pylon stats',
       description:
-        'Returns bounded public Omega Pylon API registration and heartbeat metrics for v0.2.5+ Pylons plus receipt-backed accepted-work settlement totals when public Nexus/Pylon settlement receipts prove real bitcoin movement. The earningLaunchGate blocks public earning copy until online, wallet-ready, and assignment-ready counters are nonzero. The nexusAcceptedWorkSettlementGate blocks public paid-work totals unless settled public receipt refs are present, excludes simulations and payment-only receipts, dedupes retries by payout intent, and keeps unavailable receipt storage distinct from zero settled receipts. Online stats do not prove assignment acceptance, paid work, payout, or settlement.',
+        'Returns bounded public OpenAgents Pylon API registration and heartbeat metrics for v0.2.5+ Pylons plus receipt-backed accepted-work settlement totals when public Nexus/Pylon settlement receipts prove real bitcoin movement. The earningLaunchGate blocks public earning copy until online, wallet-ready, and assignment-ready counters are nonzero. The nexusAcceptedWorkSettlementGate blocks public paid-work totals unless settled public receipt refs are present, excludes simulations and payment-only receipts, dedupes retries by payout intent, and keeps unavailable receipt storage distinct from zero settled receipts. Online stats do not prove assignment acceptance, paid work, payout, or settlement.',
       tags: ['Public Proof'],
       security: publicRead,
       responses: {
         '200': okJson('Pylon stats.', '#/components/schemas/PublicPylonStats'),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/home': {
+    get: operation({
+      operationId: 'getPublicHome',
+      summary: 'Read public homepage JSON index',
+      description:
+        'Returns a public-safe JSON index for the OpenAgents homepage. Agents can use it to discover the machine-readable data endpoints behind the page, including the capability manifest, OpenAPI document, Pylon stats, Forum tip leaderboards, Forum launch status, and public activity projection. This endpoint grants no write authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson('Public homepage JSON.', '#/components/schemas/PublicHome'),
         ...errorResponses(),
       },
     }),
@@ -1874,7 +1891,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicArtanisReport',
       summary: 'Read public Artanis report',
       description:
-        'Returns the public-safe Artanis report aggregator for loop state, Omega-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 Omega release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, public blockers, artifacts, and caveats.',
+        'Returns the public-safe Artanis report aggregator for loop state, OpenAgents-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, public blockers, artifacts, and caveats.',
       tags: ['Public Proof'],
       security: publicRead,
       responses: {
@@ -2426,7 +2443,7 @@ const paths = (): JsonSchema => ({
       operationId: 'acceptPylonAssignment',
       summary: 'Accept Pylon assignment',
       description:
-        'Records owned Pylon assignment acceptance. The record is status/proof input only; assignment dispatch authority still comes from Omega/Nexus policy gates.',
+        'Records owned Pylon assignment acceptance. The record is status/proof input only; assignment dispatch authority still comes from OpenAgents/Nexus policy gates.',
       tags: ['Pylon'],
       security: agentBearer,
       parameters: [
@@ -2534,7 +2551,7 @@ const paths = (): JsonSchema => ({
       operationId: 'recordPylonSettlementStatus',
       summary: 'Record Pylon settlement status',
       description:
-        'Records owned Pylon settlement status refs. Settlement truth still depends on Omega/Nexus treasury reconciliation and policy gates.',
+        'Records owned Pylon settlement status refs. Settlement truth still depends on OpenAgents/Nexus treasury reconciliation and policy gates.',
       tags: ['Pylon'],
       security: agentBearer,
       parameters: [

@@ -112,9 +112,9 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
     docs: {
       website: 'https://openagents.com',
       roadmap:
-        'https://github.com/OpenAgentsInc/autopilot-omega/blob/main/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md',
+        'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md',
       sitesPlan:
-        'https://github.com/OpenAgentsInc/autopilot-omega/blob/main/docs/sites-plan.md',
+        'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites-plan.md',
       openApi: 'https://openagents.com/api/openapi.json',
       agent: OpenAgentsAgentOnboardingCanonicalUrl,
       instruction: OpenAgentsAgentOnboardingCanonicalUrl,
@@ -232,6 +232,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe machine-readable API documentation. Coverage is expanding and may intentionally omit unsafe internal routes.',
       },
       {
+        id: 'public_home_json',
+        href: 'https://openagents.com/api/public/home',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Agent-discoverable JSON index for the public homepage, including the live data endpoint refs behind the page.',
+      },
+      {
         id: 'omni_api_sdk_seed',
         href: 'https://openagents.com/api/omni/sdk-seed',
         method: 'GET',
@@ -261,7 +269,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'Public-safe Omega Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Includes minimum client version, registered, wallet-ready, assignment-ready, resource-mode, client-version, accepted-work settlement gate, public receipt refs, caveat, and source refs. Accepted-work sats require public settlement receipts with real bitcoin movement; simulations, payment-only receipts, and duplicate retries do not count. Online stats are not accepted-work, payout, or settlement evidence.',
+          'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Includes minimum client version, registered, wallet-ready, assignment-ready, resource-mode, client-version, accepted-work settlement gate, public receipt refs, caveat, and source refs. Accepted-work sats require public settlement receipts with real bitcoin movement; simulations, payment-only receipts, and duplicate retries do not count. Online stats are not accepted-work, payout, or settlement evidence.',
       },
       {
         id: 'public_launch_dashboard',
@@ -537,7 +545,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       },
       {
         id: 'generated_site_payment_smoke_runbook',
-        href: 'https://github.com/OpenAgentsInc/autopilot-omega/blob/main/docs/sites/2026-06-07-generated-site-payment-smoke-runbook.md',
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites/2026-06-07-generated-site-payment-smoke-runbook.md',
         method: 'GET',
         auth: 'public',
         description:
@@ -545,7 +553,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       },
       {
         id: 'agent_surface_gap_analysis',
-        href: 'https://github.com/OpenAgentsInc/autopilot-omega/blob/main/docs/2026-06-05-openagents-agent-surface-gap-analysis.md',
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/2026-06-05-openagents-agent-surface-gap-analysis.md',
         method: 'GET',
         auth: 'public',
         description:
@@ -565,7 +573,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'Public-safe Artanis report aggregator for autonomous loop state, Omega-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 Omega release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, artifacts, blockers, and caveats. It does not expose private /autopilot workroom evidence or grant action authority.',
+          'Public-safe Artanis report aggregator for autonomous loop state, OpenAgents-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, artifacts, blockers, and caveats. It does not expose private /autopilot workroom evidence or grant action authority.',
       },
       {
         id: 'operator_nexus_pylon_dashboard',
@@ -855,7 +863,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token_owner_with_idempotency_key',
         status: 'available_owned',
         description:
-          'The owning registered agent can record settlement status refs. Settlement truth still depends on Omega/Nexus treasury reconciliation and policy gates.',
+          'The owning registered agent can record settlement status refs. Settlement truth still depends on OpenAgents/Nexus treasury reconciliation and policy gates.',
       },
       {
         id: 'submit_customer_order',
@@ -909,7 +917,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'public_with_idempotency_key',
         status: 'gated',
         description:
-          'Generated Sites can request an Omega-hosted checkout intent for a catalog-backed product or paid action. The Worker path is live when an MDK-compatible route sidecar is configured, otherwise it returns missing-configuration state; it does not expose MDK merchant credentials or settle payout.',
+          'Generated Sites can request an OpenAgents-hosted checkout intent for a catalog-backed product or paid action. The Worker path is live when an MDK-compatible route sidecar is configured, otherwise it returns missing-configuration state; it does not expose MDK merchant credentials or settle payout.',
       },
       {
         id: 'site_checkout_return_read',

@@ -2007,8 +2007,96 @@ const handleHomePage = async (
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  return handleAppShellPage(request, env, ctx)
+  const shellResponse = await handleAppShellPage(request, env, ctx)
+  const headers = new Headers(shellResponse.headers)
+  headers.append(
+    'Link',
+    '<https://openagents.com/api/public/home>; rel="alternate"; type="application/json"; title="OpenAgents homepage JSON"',
+  )
+  headers.append(
+    'Link',
+    '<https://openagents.com/.well-known/openagents.json>; rel="service-desc"; type="application/json"; title="OpenAgents capability manifest"',
+  )
+  headers.set(
+    'X-OpenAgents-Homepage-Json',
+    'https://openagents.com/api/public/home',
+  )
+
+  return new Response(shellResponse.body, {
+    headers,
+    status: shellResponse.status,
+    statusText: shellResponse.statusText,
+  })
 }
+
+const handlePublicHomeApi = (request: Request) =>
+  request.method !== 'GET'
+    ? Effect.succeed(methodNotAllowed(['GET']))
+    : Effect.succeed(
+        noStoreJsonResponse({
+          schemaVersion: 'openagents.public_home.v1',
+          page: {
+            canonicalUrl: 'https://openagents.com/',
+            htmlUrl: 'https://openagents.com/',
+            title: 'OpenAgents',
+          },
+          agentDiscovery: {
+            homepageJson: 'https://openagents.com/api/public/home',
+            capabilityManifest: 'https://openagents.com/.well-known/openagents.json',
+            agentInstructions: 'https://openagents.com/AGENTS.md',
+            openApi: 'https://openagents.com/api/openapi.json',
+          },
+          homepageData: [
+            {
+              id: 'capability_manifest',
+              href: 'https://openagents.com/.well-known/openagents.json',
+              method: 'GET',
+              description:
+                'Machine-readable OpenAgents capability manifest for agents and operators.',
+            },
+            {
+              id: 'openapi',
+              href: 'https://openagents.com/api/openapi.json',
+              method: 'GET',
+              description:
+                'Machine-readable OpenAPI contract for public-safe API routes.',
+            },
+            {
+              id: 'pylon_stats',
+              href: 'https://openagents.com/api/public/pylon-stats',
+              method: 'GET',
+              description:
+                'Pylon heartbeat, readiness, and receipt-gated accepted-work counters shown on the homepage.',
+            },
+            {
+              id: 'forum_tip_leaderboards',
+              href: 'https://openagents.com/api/forum/tip-leaderboards?limit=10',
+              method: 'GET',
+              description:
+                'Public Forum tip paid and settled evidence rows shown on the homepage.',
+            },
+            {
+              id: 'forum_launch_status',
+              href: 'https://openagents.com/api/forum/launch-status',
+              method: 'GET',
+              description:
+                'Forum posting, moderation/reporting, and tipping launch gates shown on the homepage.',
+            },
+            {
+              id: 'public_adjutant_activity',
+              href: 'https://openagents.com/api/public/adjutant/activity',
+              method: 'GET',
+              description:
+                'Public Autopilot activity projection linked from the homepage.',
+            },
+          ],
+          notes: [
+            'This endpoint is public and safe for agents to crawl.',
+            'Use the listed hrefs for the live JSON data behind the homepage.',
+            'This endpoint is discovery only and grants no write authority.',
+          ],
+        }),
+      )
 
 const handleThreadPage = async (
   request: Request,
@@ -5401,6 +5489,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleHomePage(request, env, ctx)),
+  },
+  {
+    path: '/api/public/home',
+    handler: request => handlePublicHomeApi(request),
   },
   {
     path: '/chat',

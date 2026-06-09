@@ -100,6 +100,12 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
+          href: 'https://openagents.com/api/public/home',
+          id: 'public_home_json',
+          description: expect.stringContaining('homepage'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
           href: 'https://openagents.com/api/omni/sdk-seed',
           id: 'omni_api_sdk_seed',
           description: expect.stringContaining('generated SDKs'),
@@ -112,7 +118,7 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
-          href: 'https://github.com/OpenAgentsInc/autopilot-omega/blob/main/docs/sites/2026-06-07-generated-site-payment-smoke-runbook.md',
+          href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites/2026-06-07-generated-site-payment-smoke-runbook.md',
           id: 'generated_site_payment_smoke_runbook',
           description: expect.stringContaining('fake-provider smoke'),
         }),
