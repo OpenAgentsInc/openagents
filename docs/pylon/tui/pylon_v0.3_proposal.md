@@ -37,9 +37,9 @@ The OpenTUI presentation layer is designed as an observational graphics console,
 |                                    |                                           |
 +------------------------------------+-------------------------------------------+
 | [Earnings & Transaction Ledger]                                                |
-|                                    | Rank: COURIER  (Next: OPERATOR in 24k)    |
+|                                    |                                           |
 | Live Balance: 142,520 Sats         |                                           |
-|                                    | [=====================>                  ] |
+|                                    |                                           |
 | Recent Payments:                   |                                           |
 | - 14:02:45: +450 Sats  (Job #4931) |                                           |
 | - 13:41:10: +200 Sats  (Job #4912) |                                           |
@@ -55,7 +55,7 @@ The OpenTUI presentation layer is designed as an observational graphics console,
 * **Telemetry**: Displays real-time status output from the background workspace sidecar (`oa-workroomd`). It displays current task intake, sandbox isolation setup, active inference, test suite validation progress, and receipt publication.
 
 ### 3. Earnings & Transaction Ledger (Bottom Box)
-* **Components**: Horizontal-split `BoxRenderable` displaying current MDK wallet balance, a scrolling list of recently settled Satoshis, and active rank progression (using the `STACKER_RANKS` scale) with a visual progress bar.
+* **Components**: Horizontal-split `BoxRenderable` displaying current MDK wallet balance and a scrolling log list of recently settled Satoshis.
 
 ---
 
