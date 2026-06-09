@@ -14,3 +14,5 @@ Forum reporting.
   harness proof and a full live paid coding-agent flow.
 - `implementation-log.md`: running issue-by-issue implementation notes for the
   Autopilot coder backlog.
+- `no-spend-e2e-smoke.md`: documented command and retained-evidence checks for
+  the public no-spend Autopilot Coder smoke.

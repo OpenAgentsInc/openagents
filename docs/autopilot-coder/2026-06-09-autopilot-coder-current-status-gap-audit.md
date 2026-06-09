@@ -8,6 +8,8 @@ OA-AUTO-020 durable Pylon assignment lease creation, and OA-AUTO-021 normalized
 coding assignment payload contract, and OA-AUTO-022 real no-spend requester
 Pylon worker closeout loop, and OA-AUTO-023 Autopilot delivery ingestion from
 Pylon worker closeouts, and OA-AUTO-024 customer review/revision API.
+It also includes OA-AUTO-025, the documented public no-spend Autopilot Coder
+smoke command.
 This document is intentionally stricter than
 the implementation log: it distinguishes route-harness proof from a real paid
 agent doing real coding work.
@@ -43,13 +45,13 @@ It also cross-checks the current implementation surfaces those docs describe:
 - production Pylon API store wiring in `apps/openagents.com/workers/api/src/index.ts`.
 
 The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed, and
-the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-024` are also closed as
+the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-025` are also closed as
 of this audit. Those issues built the first Autopilot work-order spine plus the
 initial production Pylon placement, Pylon assignment lease, and normalized
 assignment-payload pieces plus a bounded no-spend requester-Pylon closeout
 loop, Autopilot delivery ingestion from that closeout, and the owner-granted
-review/revision API. They did not, by themselves, build the full paid
-coding-agent product.
+review/revision API plus a documented no-spend smoke. They did not, by
+themselves, build the full paid coding-agent product.
 
 ## Executive Finding
 
@@ -235,6 +237,7 @@ Current status by phase:
 | Forum reporting | Not built for Autopilot work orders | Needs redacted lifecycle renderer and idempotent posting bridge. |
 | Settlement | Explicitly blocked | Needs accepted-work payout eligibility and settlement bridge. |
 | Production smoke | Not done | Needs a real no-spend smoke and a real paid smoke. |
+| No-spend smoke | Built as CI-safe command | Needs staging/live production run with real deployed credentials when that environment is ready. |
 
 ## What Changed Since The Original Audit
 
@@ -545,6 +548,17 @@ Required smokes:
    - real closeout ingested;
    - customer-safe delivered projection visible.
 
+Status: implemented as a CI-safe command by OA-AUTO-025:
+
+```sh
+bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:no-spend
+```
+
+The smoke drives the route-level no-spend path and scans retained projections
+for private paths, wallet/payment material, provider payloads, raw prompts,
+raw logs, raw source archives, secret material, and forbidden
+hosted-infrastructure wording.
+
 2. Paid public task:
    - registered or anonymous-paid agent submits task;
    - real MDK or L402 payment is issued and paid;
@@ -562,9 +576,9 @@ work."
 ### P0: Make the claim real
 
 1. Real Autopilot payment issuance and verification.
-2. No-spend end-to-end smoke.
-3. Real Autopilot payment issuance and verification.
-4. Paid end-to-end smoke.
+2. Real Autopilot payment issuance and verification.
+3. Paid end-to-end smoke.
+4. Staging/live no-spend smoke against deployed credentials.
 5. Richer diff/blob/build-log ingestion and operator-only evidence storage.
 6. Accepted-work payout eligibility and settlement bridge.
 
@@ -596,7 +610,7 @@ production Pylon placement input, durable no-spend Pylon assignment lease
 creation, a normalized coding assignment payload, a bounded requester-Pylon
 no-spend worker closeout loop, delivered closeout projection in a route
 harness, and Autopilot delivered projection from real Pylon worker closeout
-refs, plus owner-granted customer review states; it still does not have a live
-paid path where a real agent pays, a real worker produces accepted repo/Site
-changes, artifacts are paid-settlement eligible, and eligible workers/providers
-are settled.
+refs, owner-granted customer review states, and a documented no-spend smoke
+command; it still does not have a live paid path where a real agent pays, a
+real worker produces accepted repo/Site changes, artifacts are paid-settlement
+eligible, and eligible workers/providers are settled.

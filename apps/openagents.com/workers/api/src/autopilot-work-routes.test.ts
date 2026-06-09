@@ -1381,6 +1381,83 @@ describe('Autopilot work routes', () => {
     ])
   })
 
+  test('no-spend Autopilot Coder end-to-end smoke retains public-safe evidence refs', async () => {
+    const { pylonApiStore, store } = await createDeliveredPylonBackedWork()
+    const review = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public.no_spend_smoke.customer_accepts'],
+        },
+        idempotencyKey: 'smoke-no-spend-autopilot-coder-review',
+        method: 'POST',
+        pylonApiStore,
+      },
+    )
+    const detail = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const events = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/events',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const reviewJson = await responseJson(review)
+    const detailJson = await responseJson(detail)
+    const eventsJson = await responseJson(events)
+    const retainedProjection = JSON.stringify({
+      detail: detailJson,
+      events: eventsJson,
+      review: reviewJson,
+    })
+
+    expect(review.status).toBe(201)
+    expect(detail.status).toBe(200)
+    expect(events.status).toBe(200)
+    expect(detailJson.work).toMatchObject({
+      executionCloseout: {
+        artifactRefs: ['artifact.public.autopilot_docs.patch_summary'],
+        buildRefs: ['build.public.autopilot_docs.not_required'],
+        closeoutRefs: ['closeout.public.autopilot_docs.worker_summary'],
+        previewRefs: ['preview.public.autopilot_docs.not_required'],
+        proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
+        resultRefs: ['result.public.autopilot_docs.delivered'],
+        summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
+        testRefs: ['test.public.autopilot_docs.not_required'],
+        workerPayoutAuthority: false,
+      },
+      funding: {
+        buyerFundingState: 'not_required',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
+      reviewDecision: {
+        action: 'accept',
+        decisionRefs: ['review.public.no_spend_smoke.customer_accepts'],
+        settlementAuthority: false,
+        workerPayoutAuthority: false,
+      },
+      state: 'accepted',
+    })
+    expect(eventsJson.events).toEqual([
+      expect.objectContaining({ eventKind: 'queued' }),
+      expect.objectContaining({ eventKind: 'accepted' }),
+    ])
+    expect(retainedProjection).not.toMatch(
+      /\/Users\/|\/home\/|bearer|invoice|lnbc|lntb|lnbcrt|mnemonic|payment[_-]?preimage|payout[_-]?(address|destination|target)|provider[_-]?(payload|token)|raw[_-]?(prompt|runner|run[_-]?log|source[_-]?archive)|secret:\/\/|secret[_-]?(key|token|value|material)|webhook[_-]?secret|sk-[a-z0-9]|wallet[_-]?(material|mnemonic|secret)|Google Cloud|\bcredits?\b/i,
+    )
+  })
+
   test('supports delivered-work request-changes and reject review decisions', async () => {
     const revision = await createDeliveredPylonBackedWork()
     const revisionReview = await route(

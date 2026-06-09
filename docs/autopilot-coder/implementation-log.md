@@ -800,3 +800,31 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-025: No-Spend Autopilot Coder End-To-End Smoke
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4616`
+
+Status: implemented.
+
+Implemented:
+
+- Added `apps/openagents.com/workers/api` script
+  `smoke:autopilot-coder:no-spend`.
+- Added a named smoke test that drives the no-spend path through route calls:
+  - public Autopilot work submission;
+  - requester Pylon placement;
+  - durable Pylon assignment creation;
+  - Pylon assignment acceptance;
+  - worker closeout submission;
+  - Autopilot delivered detail/event recovery;
+  - owner-granted review acceptance.
+- Added retained projection redaction scanning for private paths,
+  wallet/payment material, provider payloads, raw prompts/logs/source archives,
+  secret material, and forbidden hosted-infrastructure wording.
+- Documented the smoke command and expected no-spend authority boundaries in
+  `docs/autopilot-coder/no-spend-e2e-smoke.md`.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:no-spend`
