@@ -24,7 +24,18 @@ import {
   AutopilotWorkStoreError,
   makeAutopilotWorkRoutes,
   recordAutopilotWorkerCloseoutFromPylon,
+  verifyAutopilotL402PaymentProofFromBuyerLedger,
 } from './autopilot-work-routes'
+import type {
+  BuyerPaymentChallengeRecord,
+  BuyerPaymentEntitlementRecord,
+  BuyerPaymentLedgerStore,
+  BuyerPaymentReceiptRecord,
+  BuyerPaymentReconciliationEventRecord,
+  BuyerPaymentRedemptionRecord,
+  BuyerPaymentSpendLimitRecord,
+  BuyerPaymentCreditDebitRecord,
+} from './buyer-payment-ledger'
 import type {
   PylonApiAssignmentRecord,
   PylonApiEventRecord,
@@ -299,6 +310,77 @@ class MemoryPylonApiStore implements PylonApiStore {
   }
 }
 
+class MemoryBuyerPaymentLedgerStore implements BuyerPaymentLedgerStore {
+  readonly challenges = new Map<string, BuyerPaymentChallengeRecord>()
+  readonly challengesByIdempotency = new Map<string, BuyerPaymentChallengeRecord>()
+  readonly creditDebits = new Map<string, BuyerPaymentCreditDebitRecord>()
+  readonly entitlements = new Map<string, BuyerPaymentEntitlementRecord>()
+  readonly receipts = new Map<string, BuyerPaymentReceiptRecord>()
+  readonly reconciliations = new Map<string, BuyerPaymentReconciliationEventRecord>()
+  readonly redemptions = new Map<string, BuyerPaymentRedemptionRecord>()
+  readonly spendLimits = new Map<string, BuyerPaymentSpendLimitRecord>()
+
+  createChallenge = async (record: BuyerPaymentChallengeRecord) => {
+    this.challenges.set(record.challengeRef, record)
+    this.challengesByIdempotency.set(record.idempotencyKeyHash, record)
+  }
+
+  createCreditDebit = async (record: BuyerPaymentCreditDebitRecord) => {
+    this.creditDebits.set(record.debitRef, record)
+  }
+
+  createReceiptEntitlementBundle = async (input: {
+    entitlement: BuyerPaymentEntitlementRecord
+    receipt: BuyerPaymentReceiptRecord
+  }) => {
+    this.entitlements.set(input.entitlement.entitlementRef, input.entitlement)
+    this.receipts.set(input.receipt.receiptRef, input.receipt)
+  }
+
+  createReconciliationEvent = async (
+    record: BuyerPaymentReconciliationEventRecord,
+  ) => {
+    this.reconciliations.set(record.receiptRef ?? record.eventRef, record)
+  }
+
+  createRedemptionBundle = async (input: {
+    entitlement: BuyerPaymentEntitlementRecord
+    receipt: BuyerPaymentReceiptRecord
+    redemption: BuyerPaymentRedemptionRecord
+  }) => {
+    await this.createReceiptEntitlementBundle(input)
+    this.redemptions.set(input.redemption.challengeRef, input.redemption)
+  }
+
+  createSpendLimit = async (record: BuyerPaymentSpendLimitRecord) => {
+    this.spendLimits.set(record.spendLimitRef, record)
+  }
+
+  readChallengeByIdempotencyKeyHash = async (idempotencyKeyHash: string) =>
+    this.challengesByIdempotency.get(idempotencyKeyHash)
+
+  readEntitlementByRef = async (entitlementRef: string) =>
+    this.entitlements.get(entitlementRef)
+
+  readReceiptByRef = async (receiptRef: string) => this.receipts.get(receiptRef)
+
+  readReconciliationEventByReceiptRef = async (receiptRef: string) =>
+    this.reconciliations.get(receiptRef)
+
+  readReconciliationEventByProviderEvent = async (
+    providerRef: string,
+    externalEventRef: string,
+  ) =>
+    [...this.reconciliations.values()].find(
+      event =>
+        event.providerRef === providerRef &&
+        event.externalEventRef === externalEventRef,
+    )
+
+  readRedemptionByChallengeRef = async (challengeRef: string) =>
+    this.redemptions.get(challengeRef)
+}
+
 const agentToken = `${AGENT_TOKEN_PREFIX}autopilot-work-test`
 const autopilotL402SigningSecret = 'autopilot-work-route-test-l402-secret'
 
@@ -344,6 +426,94 @@ const decodeAutopilotL402Payload = (
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
 
   return JSON.parse(atob(padded)) as OpenAgentsL402CredentialPayload
+}
+
+const recordMatchedAutopilotLedgerPayment = async (
+  ledger: MemoryBuyerPaymentLedgerStore,
+  input: Readonly<{
+    credential: string | null
+    proofRef: string
+  }>,
+) => {
+  const credentialPayload = decodeAutopilotL402Payload(input.credential ?? '')
+  const challenge = ledger.challenges.get(credentialPayload.challengeRef)
+
+  if (challenge === undefined) {
+    throw new Error('Autopilot L402 challenge was not persisted.')
+  }
+
+  const refSuffix = input.proofRef.replace(/[^A-Za-z0-9_]+/g, '_')
+  const receiptRef = `receipt.autopilot_work.${refSuffix}`
+  const entitlementRef = `entitlement.autopilot_work.${refSuffix}`
+
+  await ledger.createRedemptionBundle({
+    entitlement: {
+      actorRef: challenge.actorRef,
+      archivedAt: null,
+      challengeRef: challenge.challengeRef,
+      consumedAt: null,
+      createdAt: '2026-06-09T17:31:00.000Z',
+      entitlementRef,
+      expiresAt: '2026-06-10T17:31:00.000Z',
+      id: `buyer_payment_entitlement_autopilot_work_${refSuffix}`,
+      ownerUserId: challenge.ownerUserId,
+      productId: challenge.productId,
+      receiptRef,
+      scopeRefs: credentialPayload.entitlementScopeRefs,
+      status: 'active',
+      surface: challenge.surface,
+    },
+    receipt: {
+      actorRef: challenge.actorRef,
+      amount: challenge.price,
+      archivedAt: null,
+      challengeRef: challenge.challengeRef,
+      createdAt: '2026-06-09T17:31:00.000Z',
+      entitlementRef,
+      id: `buyer_payment_receipt_autopilot_work_${refSuffix}`,
+      metadataRefs: [`metadata.autopilot_work.${refSuffix}`],
+      ownerUserId: challenge.ownerUserId,
+      productId: challenge.productId,
+      publicProjectionJson: '{}',
+      receiptRef,
+      redactedPaymentRef: input.proofRef,
+      status: 'issued',
+      surface: challenge.surface,
+    },
+    redemption: {
+      actorRef: challenge.actorRef,
+      archivedAt: null,
+      challengeRef: challenge.challengeRef,
+      createdAt: '2026-06-09T17:31:00.000Z',
+      entitlementRef,
+      id: `buyer_payment_redemption_autopilot_work_${refSuffix}`,
+      idempotencyKeyHash: `hash.autopilot_work.${refSuffix}`,
+      metadataRefs: [`metadata.autopilot_work.${refSuffix}`],
+      proofRef: input.proofRef,
+      receiptRef,
+      redemptionRef: `redemption.autopilot_work.${refSuffix}`,
+      replayed: 0,
+      status: 'redeemed',
+    },
+  })
+  await ledger.createReconciliationEvent({
+    archivedAt: null,
+    challengeRef: challenge.challengeRef,
+    createdAt: '2026-06-09T17:31:01.000Z',
+    eventRef: `reconciliation.autopilot_work.${refSuffix}`,
+    externalEventRef: `external_event.mdk.autopilot_work.${refSuffix}`,
+    id: `buyer_payment_reconciliation_autopilot_work_${refSuffix}`,
+    idempotencyKeyHash: `hash.reconciliation.autopilot_work.${refSuffix}`,
+    metadataRefs: [`metadata.autopilot_work.${refSuffix}`],
+    productId: challenge.productId,
+    providerRef: 'provider.mdk.hosted',
+    publicProjectionJson: '{}',
+    receiptRef,
+    resultRef: 'result.reconciliation.matched',
+    status: 'matched',
+  })
+
+  return { challenge, credentialPayload, entitlementRef, receiptRef }
 }
 
 const agentStoreForScopes = (
@@ -418,6 +588,7 @@ const route = async (
   path: string,
   options: Readonly<{
     body?: unknown
+    buyerPaymentLedgerStore?: BuyerPaymentLedgerStore
     headers?: HeadersInit
     idempotencyKey?: string
     executeReadyWork?: AutopilotWorkExecutor
@@ -429,6 +600,9 @@ const route = async (
     ownerUserId?: string
     scopes?: ReadonlyArray<string>
     token?: string
+    verifyL402PaymentProof?: (
+      input: AutopilotWorkL402PaymentVerificationInput,
+    ) => Promise<AutopilotWorkL402PaymentVerificationResult | null>
   }> = {},
 ) => {
   let counter = 0
@@ -439,10 +613,17 @@ const route = async (
     makeStore: () => store,
     nowIso: () => options.nowIso ?? '2026-06-09T17:30:00.000Z',
     l402SigningBoundary: () => autopilotL402SigningBoundary(),
+    ...(options.buyerPaymentLedgerStore === undefined
+      ? {}
+      : {
+          makeBuyerPaymentLedgerStore: () =>
+            options.buyerPaymentLedgerStore as BuyerPaymentLedgerStore,
+        }),
     verifyL402PaymentProof: (
       _env: Record<string, unknown>,
       input: AutopilotWorkL402PaymentVerificationInput,
     ) =>
+      options.verifyL402PaymentProof?.(input) ??
       verifyAutopilotL402PaymentProof(input),
     ...(options.executeReadyWork === undefined
       ? {}
@@ -1529,6 +1710,7 @@ describe('Autopilot work routes', () => {
 
   test('paid Autopilot Coder end-to-end smoke keeps settlement blocked after verified delivery and review', async () => {
     const store = new MemoryAutopilotWorkStore()
+    const buyerPaymentLedgerStore = new MemoryBuyerPaymentLedgerStore()
     const pylonApiStore = new MemoryPylonApiStore([
       pylonRegistration({
         pylonRef: 'pylon.production.paid_agent',
@@ -1554,14 +1736,24 @@ describe('Autopilot work routes', () => {
       'pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.paid_test_repair'
     const first = await route(store, '/api/autopilot/work', {
       body: request,
+      buyerPaymentLedgerStore,
       idempotencyKey: 'idem-autopilot-coder-paid-smoke',
       pylonApiStore,
+      verifyL402PaymentProof: input =>
+        verifyAutopilotL402PaymentProofFromBuyerLedger(
+          buyerPaymentLedgerStore,
+          input,
+        ),
     })
     const firstJson = await responseJson(first)
     const proofRef = 'payment_proof.autopilot_work.paid_smoke'
-    verifiedAutopilotProofRefs.add(proofRef)
+    await recordMatchedAutopilotLedgerPayment(buyerPaymentLedgerStore, {
+      credential: first.headers.get('x-openagents-l402-credential'),
+      proofRef,
+    })
     const paid = await route(store, '/api/autopilot/work', {
       body: { ignored: 'paid retry uses stored request' },
+      buyerPaymentLedgerStore,
       headers: {
         'X-OpenAgents-L402': authorizeAutopilotL402(
           first.headers.get('x-openagents-l402-credential'),
@@ -1570,6 +1762,11 @@ describe('Autopilot work routes', () => {
       },
       idempotencyKey: 'idem-autopilot-coder-paid-smoke',
       pylonApiStore,
+      verifyL402PaymentProof: input =>
+        verifyAutopilotL402PaymentProofFromBuyerLedger(
+          buyerPaymentLedgerStore,
+          input,
+        ),
     })
     const paidJson = await responseJson(paid)
     const assignment = await pylonRoute(
@@ -2119,6 +2316,95 @@ describe('Autopilot work routes', () => {
     expect(detailJson.work?.paymentChallengeRef).toBe(
       firstJson.work?.paymentChallengeRef,
     )
+  })
+
+  test('persists L402 challenges and verifies paid retries through the buyer payment ledger', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const buyerPaymentLedgerStore = new MemoryBuyerPaymentLedgerStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      paymentPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+        quoteRef: null,
+        quotedAmountCents: null,
+      },
+    }
+    const first = await route(store, '/api/autopilot/work', {
+      body: request,
+      buyerPaymentLedgerStore,
+      idempotencyKey: 'idem-autopilot-work-ledger-paid-quote',
+      verifyL402PaymentProof: input =>
+        verifyAutopilotL402PaymentProofFromBuyerLedger(
+          buyerPaymentLedgerStore,
+          input,
+        ),
+    })
+    const credential = first.headers.get('x-openagents-l402-credential')
+    const credentialPayload = decodeAutopilotL402Payload(credential ?? '')
+    const challenge = buyerPaymentLedgerStore.challenges.get(
+      credentialPayload.challengeRef,
+    )
+    const proofRef = 'payment_proof.autopilot_work.ledger_matched'
+    const unredeemedRetry = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      buyerPaymentLedgerStore,
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(credential, proofRef),
+      },
+      idempotencyKey: 'idem-autopilot-work-ledger-paid-quote',
+      verifyL402PaymentProof: input =>
+        verifyAutopilotL402PaymentProofFromBuyerLedger(
+          buyerPaymentLedgerStore,
+          input,
+        ),
+    })
+
+    expect(first.status).toBe(402)
+    expect(challenge).toMatchObject({
+      challengeRef: credentialPayload.challengeRef,
+      path: '/api/autopilot/work',
+      price: {
+        amountMinorUnits: 6400,
+        asset: 'usd',
+        denomination: 'usd_cent',
+      },
+      productId: 'product.autopilot.work',
+      status: 'issued',
+      surface: 'agent_api',
+    })
+    expect(unredeemedRetry.status).toBe(400)
+
+    await recordMatchedAutopilotLedgerPayment(buyerPaymentLedgerStore, {
+      credential,
+      proofRef,
+    })
+
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      buyerPaymentLedgerStore,
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(credential, proofRef),
+      },
+      idempotencyKey: 'idem-autopilot-work-ledger-paid-quote',
+      verifyL402PaymentProof: input =>
+        verifyAutopilotL402PaymentProofFromBuyerLedger(
+          buyerPaymentLedgerStore,
+          input,
+        ),
+    })
+    const paidJson = await responseJson(paid)
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work).toMatchObject({
+      buyerPaymentProofRef: proofRef,
+      funding: {
+        buyerFundingState: 'funded',
+        buyerPaymentProofRef: proofRef,
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
+      state: 'paid_ready',
+    })
   })
 
   test('rejects malformed, unverified, expired, mismatched, and replayed L402 retries', async () => {

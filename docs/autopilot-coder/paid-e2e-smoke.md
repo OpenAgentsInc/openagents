@@ -26,11 +26,12 @@ handlers and the Pylon assignment API:
     forbidden hosted-infrastructure wording.
 
 This is a CI-safe paid-route smoke. It uses the same signed L402 credential
-contract and verifier hook as the route, but the verifier is deterministic test
-infrastructure and no external payment movement occurs.
+contract and buyer-payment ledger verifier as production wiring. The test
+records a public-safe matched ledger redemption bundle, then proves the route
+will not fund work until that ledger state exists.
 
 The staging/live paid smoke is still required before the product can honestly
 claim that an agent can pay for Autopilot coding work end to end. That later
 smoke must use a deployed endpoint, a real MDK/L402 verifier, an agent wallet
 or checkout flow, live registered-agent credentials, and a real worker
-execution lane.
+execution lane. No external payment movement occurs in the CI-safe smoke.

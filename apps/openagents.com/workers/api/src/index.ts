@@ -81,6 +81,7 @@ import {
   makeAutopilotWorkRoutes,
   makeD1AutopilotWorkStore,
   recordAutopilotWorkerCloseoutFromPylon,
+  verifyAutopilotL402PaymentProofFromBuyerLedger,
 } from './autopilot-work-routes'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
@@ -5144,8 +5145,15 @@ const agentSearchRoutes = makeAgentSearchRoutes({
 const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   l402SigningBoundary: env => forumL402SigningBoundaryForEnv(env),
+  makeBuyerPaymentLedgerStore: env =>
+    makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
   makePylonApiStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
   makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+  verifyL402PaymentProof: (env, input) =>
+    verifyAutopilotL402PaymentProofFromBuyerLedger(
+      makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
+      input,
+    ),
 })
 
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({

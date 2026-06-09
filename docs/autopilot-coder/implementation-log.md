@@ -935,3 +935,35 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:no-spend`
 - `bun test --cwd apps/pylon tests/assignment.test.ts tests/live-worker-loop-smoke.test.ts`
+
+## Epic #4620: Paid Work Payment Verification Path
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4620`
+
+Status: complete for the repo-level paid route verification contract; staging
+or live external payment movement remains a deployment/integration smoke gap.
+
+Implemented:
+
+- Persist L402 buyer-payment challenges on Autopilot `402` responses when the
+  buyer-payment ledger store is configured.
+- Added `verifyAutopilotL402PaymentProofFromBuyerLedger`, which accepts paid
+  retries only when the buyer-payment ledger has:
+  - a redeemed record for the signed challenge;
+  - the same public-safe proof ref supplied by the paying agent;
+  - an issued receipt;
+  - an active entitlement covering the signed L402 scopes;
+  - matching product, challenge, and amount refs;
+  - a matched reconciliation event.
+- Wired the production Autopilot route to the D1 buyer-payment ledger verifier.
+- Upgraded the paid Autopilot Coder smoke to use the ledger verifier instead
+  of a proof-ref allowlist.
+- Kept buyer payment separate from worker payout, accepted-work, settlement,
+  deploy, spend, and Forum publication authority.
+- Updated the paid L402 boundary, paid smoke docs, and current audit.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:paid`
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/buyer-payment-ledger.test.ts src/l402-credential-service.test.ts src/l402-payment-headers.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

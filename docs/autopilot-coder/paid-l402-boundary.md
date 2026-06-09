@@ -12,9 +12,21 @@ stored work order, quote amount, request digest, owner/agent scope refs,
 endpoint/product refs, and a 15-minute expiry.
 
 Funding is fail-closed. The route verifies the signed credential first, then
-calls an explicit payment verifier. A signed credential or public-safe proof ref
-alone does not move work to `paid_ready`.
+calls an explicit payment verifier. Production wiring now points that verifier
+at the buyer-payment ledger:
 
-Current live gap: Autopilot does not yet wire a production MDK/L402 verifier
-that checks external payment movement, and MDK checkout-mode work remains
-payment-required until checkout creation and reconciliation are connected.
+- the `402` path persists a buyer-payment challenge when the ledger is
+  configured;
+- the paid retry must match a redeemed ledger record for the same challenge;
+- the redemption must point at an issued receipt and active entitlement;
+- the entitlement must cover the signed L402 scope refs;
+- the receipt amount/product/challenge must match the credential and quote;
+- the receipt must have a matched reconciliation event.
+
+A signed credential or public-safe proof ref alone does not move work to
+`paid_ready`.
+
+Current live gap: a deployed MDK/L402 reconciler still has to write the
+Autopilot ledger redemption/receipt/entitlement/reconciliation rows from real
+external payment movement, and MDK checkout-mode work remains payment-required
+until checkout creation and reconciliation are connected.

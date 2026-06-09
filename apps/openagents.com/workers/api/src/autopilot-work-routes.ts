@@ -54,6 +54,7 @@ import {
 } from './runtime-primitives'
 import type {
   BuyerPaymentChallengeRecord,
+  BuyerPaymentLedgerStore,
   BuyerPaymentLedgerAmount,
 } from './buyer-payment-ledger'
 import type {
@@ -466,6 +467,7 @@ type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
   l402SigningBoundary?: (
     env: Bindings,
   ) => Promise<OpenAgentsL402SigningBoundary | null>
+  makeBuyerPaymentLedgerStore?: (env: Bindings) => BuyerPaymentLedgerStore
   makeId?: () => string
   makePylonApiStore?: (env: Bindings) => AutopilotPylonApiStore
   makeStore: (env: Bindings) => AutopilotWorkStore
@@ -708,6 +710,87 @@ export type AutopilotWorkL402PaymentVerificationResult = Readonly<{
   paymentProofRef: string
   verifierRef: string
 }>
+
+const amountsMatch = (
+  left: BuyerPaymentLedgerAmount,
+  right: BuyerPaymentLedgerAmount,
+): boolean =>
+  left.amountMinorUnits === right.amountMinorUnits &&
+  left.asset === right.asset &&
+  left.denomination === right.denomination
+
+export const verifyAutopilotL402PaymentProofFromBuyerLedger = async (
+  store: BuyerPaymentLedgerStore,
+  input: AutopilotWorkL402PaymentVerificationInput,
+): Promise<AutopilotWorkL402PaymentVerificationResult | null> => {
+  const redemption = await store.readRedemptionByChallengeRef(
+    input.credentialPayload.challengeRef,
+  )
+
+  if (
+    redemption === undefined ||
+    redemption.status !== 'redeemed' ||
+    redemption.replayed !== 0 ||
+    redemption.proofRef !== input.paymentProofRef
+  ) {
+    return null
+  }
+
+  const [receipt, entitlement] = await Promise.all([
+    store.readReceiptByRef(redemption.receiptRef),
+    store.readEntitlementByRef(redemption.entitlementRef),
+  ])
+
+  if (
+    receipt === undefined ||
+    entitlement === undefined ||
+    receipt.status !== 'issued' ||
+    entitlement.status !== 'active' ||
+    receipt.challengeRef !== input.credentialPayload.challengeRef ||
+    entitlement.challengeRef !== input.credentialPayload.challengeRef ||
+    receipt.receiptRef !== redemption.receiptRef ||
+    entitlement.receiptRef !== redemption.receiptRef ||
+    receipt.entitlementRef !== redemption.entitlementRef ||
+    receipt.productId !== input.credentialPayload.productId ||
+    entitlement.productId !== input.credentialPayload.productId ||
+    !amountsMatch(receipt.amount, input.credentialPayload.amount) ||
+    !amountsMatch(
+      autopilotQuoteAmount(input.quote),
+      input.credentialPayload.amount,
+    )
+  ) {
+    return null
+  }
+
+  const entitlementScopes = new Set(entitlement.scopeRefs)
+
+  if (
+    !input.credentialPayload.entitlementScopeRefs.every(scopeRef =>
+      entitlementScopes.has(scopeRef)
+    )
+  ) {
+    return null
+  }
+
+  const reconciliation = await store.readReconciliationEventByReceiptRef(
+    receipt.receiptRef,
+  )
+
+  if (
+    reconciliation === undefined ||
+    reconciliation.status !== 'matched' ||
+    reconciliation.receiptRef !== receipt.receiptRef ||
+    reconciliation.challengeRef !== input.credentialPayload.challengeRef ||
+    reconciliation.productId !== input.credentialPayload.productId
+  ) {
+    return null
+  }
+
+  return {
+    paymentProofRef: redemption.proofRef,
+    verifierRef: reconciliation.eventRef,
+  }
+}
 
 const accessRequestRefsForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
@@ -1145,6 +1228,29 @@ const paymentRequiredResponse = <Bindings extends AutopilotWorkRouteEnv>(
     challenge !== null &&
     input.record.request.paymentPolicy.buyerPaymentMode === 'l402'
   ) {
+    if (dependencies.makeBuyerPaymentLedgerStore !== undefined) {
+      const buyerPaymentChallenge = yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: errorReason(error),
+          }),
+        try: () => autopilotBuyerPaymentChallengeRecord(input.record),
+      })
+
+      yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: errorReason(error),
+          }),
+        try: () =>
+          dependencies
+            .makeBuyerPaymentLedgerStore?.(env)
+            .createChallenge(buyerPaymentChallenge) ?? Promise.resolve(),
+      })
+    }
+
     headers.set(
       'www-authenticate',
       formatOpenAgentsL402WwwAuthenticate({

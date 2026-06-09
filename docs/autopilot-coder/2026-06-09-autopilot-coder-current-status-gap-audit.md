@@ -10,8 +10,9 @@ Pylon worker closeout loop, and OA-AUTO-023 Autopilot delivery ingestion from
 Pylon worker closeouts, and OA-AUTO-024 customer review/revision API.
 It also includes OA-AUTO-025, the documented public no-spend Autopilot Coder
 smoke command, OA-AUTO-026, the signed/verifier-gated L402 retry path, and
-OA-AUTO-027, the CI-safe paid Autopilot Coder route smoke, and the #4619
-epic closeout for the real no-spend Pylon execution path.
+OA-AUTO-027, the CI-safe paid Autopilot Coder route smoke, the #4619
+epic closeout for the real no-spend Pylon execution path, and the #4620
+buyer-payment-ledger verifier wiring for paid Autopilot work.
 This document is intentionally stricter than
 the implementation log: it distinguishes route-harness proof from a real paid
 agent doing real coding work.
@@ -49,7 +50,9 @@ It also cross-checks the current implementation surfaces those docs describe:
 The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed, and
 the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-027` are also closed as
 of this audit. Epic #4619 is also complete for the no-spend Pylon route
-contract. Those issues built the first Autopilot work-order spine plus the
+contract. The #4620 repo-contract work now wires paid Autopilot work to the
+buyer-payment ledger verifier. Those issues built the first Autopilot
+work-order spine plus the
 initial production Pylon placement, Pylon assignment lease, and normalized
 assignment-payload pieces plus a bounded no-spend requester-Pylon closeout
 loop, Autopilot delivery ingestion from that closeout, and the owner-granted
@@ -110,7 +113,7 @@ The closed P0 issue flow built the minimum typed orchestration spine:
 | Access requirements | Built | Missing repo/customer/operator/privacy/Pylon/secret-broker needs are projected as typed requirements instead of implicit text. |
 | Repository authority projection | Built | Public read can proceed; write/branch/PR authority is explicit and not silently granted. |
 | Deterministic quote | Built | Persisted request inputs produce stable quote refs and amounts. |
-| Buyer proof intake | Partially built | L402 retries are now signed, quote-bound, expiry-checked, and verifier-gated before an order can move to funded. MDK checkout retry remains fail-closed until checkout reconciliation is wired. |
+| Buyer proof intake | Partially built | L402 retries are now signed, quote-bound, expiry-checked, persisted as buyer-payment challenges, and verifier-gated against buyer-payment ledger redemption/receipt/entitlement/reconciliation state before an order can move to funded. MDK checkout retry remains fail-closed until checkout reconciliation is wired. |
 | Funding vs payout | Built | Buyer payment proof and worker payout eligibility remain separate. |
 | Typed task records | Built | A work order can contain independently projected tasks. |
 | Assignment planner | Built | Tasks become assignment intents with ready/blocked/payment/access planner state. |
@@ -151,14 +154,17 @@ What is built:
   - owner/agent/work-order scope refs;
   - challenge expiry;
   - the payment proof ref supplied by the agent.
-- The route then calls an explicit payment verifier dependency. If the verifier
-  is missing or rejects the proof, the order does not move to funded.
+- The route then calls an explicit payment verifier dependency. Production now
+  wires that verifier to the buyer-payment ledger. If the ledger redemption,
+  receipt, entitlement, or matched reconciliation is missing or mismatched, the
+  order does not move to funded.
 - Route coverage now exercises unpaid, malformed, unverified, expired,
   mismatched, verified, and idempotent replay cases.
 - The paid Autopilot Coder smoke now exercises the route-level payable path:
   `402`, signed retry, verifier-approved proof ref, funded work projection,
   Pylon assignment, worker closeout, delivered projection, owner review, and
-  blocked settlement/payout authority.
+  blocked settlement/payout authority. The verifier in that smoke is the
+  buyer-payment ledger verifier, not a proof-ref allowlist.
 - MDK checkout proof retry is fail-closed; a header ref no longer funds a work
   order without a real checkout verifier.
 
@@ -167,17 +173,19 @@ What is not built or not proven:
 - No real Lightning invoice is generated for Autopilot work.
 - No real MDK checkout session is created for Autopilot work in this route.
 - No agent wallet pays a real challenge in the Autopilot route test.
-- The paid smoke uses deterministic test verification; it does not prove
+- The paid smoke records a matched ledger redemption bundle in test; it does
+  not prove external payment movement.
+- The production Autopilot route verifies ledger state, but the deployed
+  MDK/L402 reconciler still has to create those ledger rows from actual
   external payment movement.
-- The production Autopilot route does not yet wire a live MDK/L402 payment
-  verifier that checks actual external payment movement.
 - No live production registered-agent request has completed the paid flow.
 
 Therefore the current exact claim is:
 
 ```text
 Autopilot work verifies signed, quote-bound L402 retry credentials and requires
-a payment verifier before moving payable work to funded.
+buyer-payment ledger redemption/receipt/entitlement/reconciliation proof before
+moving payable work to funded.
 ```
 
 The current exact non-claim is:
@@ -248,7 +256,7 @@ Current status by phase:
 | Auth and owner grant | Built for registered-agent customer-order scopes | Needs unauthenticated or anonymous-paid entry path, plus smoother owner grant prompts. |
 | Request intake | Built for typed public-safe work requests | Needs production wiring and better examples for real agents, plus private/secret-broker modes later. |
 | Payment request | L402 challenge issuance built for configured signing boundary; MDK checkout intent still planned | Needs hosted checkout creation for checkout mode and production agent docs for the private credential header. |
-| Payment verification | L402 signed retry verification, verifier hook, and CI-safe paid smoke built | Needs live MDK/L402 verifier wiring, agent-wallet smoke, and ledger linkage. |
+| Payment verification | L402 signed retry verification, buyer-payment ledger verifier wiring, and CI-safe paid smoke built | Needs deployed MDK/L402 reconciliation, agent-wallet or checkout smoke, and external payment movement. |
 | Placement | Selector, production Pylon registration store wiring, Pylon lease creation, and intent projections built | Needs real worker execution and closeout recovery after assignment acceptance. |
 | Pylon local path | Lease creation, Pylon polling, Pylon acceptance, progress submission, artifact/proof submission, worker closeout, and Autopilot delivered projection built for no-spend and CI-safe buyer-funded public refs | Needs richer real repo edit/build/test artifacts and live paid-mode policy. |
 | Hosted fallback path | Lease intent plus test executor hook built | Needs production executor binding and provider/runtime policy. |
@@ -292,15 +300,21 @@ user asked for.
 
 ### Step 1: Replace proof-ref-only payment with real Autopilot payment issuance
 
-Status: partially implemented by OA-AUTO-026.
+Status: partially implemented by OA-AUTO-026 and #4620 ledger-verifier wiring.
 
 Built:
 
 - Signed Autopilot L402 credential issuance for configured signing boundaries.
+- Buyer-payment challenge persistence on L402 `402` responses when the ledger
+  is configured.
 - Deterministic quote, work-order, owner/caller, request-digest, amount,
   expiry, endpoint, product, and scope binding.
 - Paid retry verification against the signed credential and stored work order.
 - Explicit payment verifier hook that fails closed when missing or rejected.
+- Production verifier wiring to the buyer-payment ledger. A paid retry must
+  have a redeemed challenge, issued receipt, active entitlement covering the
+  L402 scopes, matching amount/product/challenge refs, and a matched
+  reconciliation event.
 - Route coverage for unpaid, malformed, unverified, expired, mismatched,
   verified, and idempotent replay cases.
 - MDK checkout proof retries remain payment-required until a real checkout
@@ -308,13 +322,12 @@ Built:
 
 Still required:
 
-- Proof verification that checks the challenge was actually paid, not just that
-  the signed credential and public-safe proof ref are well formed.
+- Deployed reconciler proof that writes ledger rows from actual payment
+  movement, not from test setup.
 - MDK checkout intent creation/reconciliation for checkout mode.
-- Buyer payment ledger linkage.
 - Sandbox or staging agent-wallet smoke against the deployed endpoint.
-- CI-safe route-level paid smoke is built by OA-AUTO-027, but it uses a
-  deterministic verifier instead of real payment movement.
+- CI-safe route-level paid smoke is built by OA-AUTO-027 and now uses the
+  buyer-payment ledger verifier, but it still does not move external funds.
 
 Acceptance:
 
@@ -615,17 +628,19 @@ credentials.
    - customer reviews;
    - settlement remains blocked or proceeds according to policy.
 
-Status: implemented as a CI-safe route command by OA-AUTO-027:
+Status: implemented as a CI-safe route command by OA-AUTO-027 and upgraded by
+#4620 ledger-verifier wiring:
 
 ```sh
 bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:paid
 ```
 
 The smoke drives the payable route path through signed L402 retry,
-verifier-approved funding, requester-Pylon assignment, Pylon closeout,
-delivered projection, owner review, and retained-projection redaction checks.
-It does not prove live external payment movement, a deployed MDK/L402 verifier,
-or a production coding worker doing repository edits.
+buyer-payment-ledger-verified funding, requester-Pylon assignment, Pylon
+closeout, delivered projection, owner review, and retained-projection
+redaction checks. It does not prove live external payment movement, a deployed
+MDK/L402 reconciler writing ledger rows, or a production coding worker doing
+repository edits.
 
 Only after these smokes pass should public copy say "pay and Autopilot does the
 work."
@@ -634,7 +649,7 @@ work."
 
 ### P0: Make the claim real
 
-1. Live MDK/L402 payment verifier wiring for Autopilot work.
+1. Deployed MDK/L402 reconciliation into the Autopilot buyer-payment ledger.
 2. MDK checkout intent creation and reconciliation for checkout-mode work.
 3. Staging/live paid smoke with external payment movement and real worker execution.
 4. Staging/live no-spend smoke against deployed credentials.
