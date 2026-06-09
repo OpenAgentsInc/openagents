@@ -174,6 +174,7 @@ const route = async (
     executeReadyWork?: AutopilotWorkExecutor
     method?: string
     pylonRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
+    pylonStoreRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     scopes?: ReadonlyArray<string>
     token?: string
   }> = {},
@@ -197,6 +198,14 @@ const route = async (
       : {
           pylonRegistrations: () =>
             Promise.resolve(options.pylonRegistrations ?? []),
+        }),
+    ...(options.pylonStoreRegistrations === undefined
+      ? {}
+      : {
+          makePylonApiStore: () => ({
+            listRegistrations: () =>
+              Promise.resolve(options.pylonStoreRegistrations ?? []),
+          }),
         }),
   }
   const routes = makeAutopilotWorkRoutes<Record<string, unknown>>(
@@ -641,6 +650,55 @@ describe('Autopilot work routes', () => {
           'capability.pylon.local_coding_agent',
         ],
         spendCapRefs: ['spend_cap.no_spend.autopilot_pylon_assignment'],
+        taskRef: 'task.autopilot_coder.docs_contract',
+      }),
+    ])
+  })
+
+  test('selects requester Pylon from the production Pylon store dependency', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const response = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-production-pylon-placement',
+      pylonStoreRegistrations: [
+        pylonRegistration({
+          capabilityRefs: ['capability.pylon.assignment_ready'],
+          pylonRef: 'pylon.missing_local_agent',
+        }),
+        pylonRegistration({
+          pylonRef: 'pylon.production.docs_agent',
+        }),
+      ],
+    })
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(202)
+    expect(body.work?.placementDecision).toMatchObject({
+      fallbackRunnerKind: 'openagents_shc',
+      selectedPylonRef: 'pylon.production.docs_agent',
+      selectedRunnerKind: 'requester_pylon',
+      source: 'requester_pylon',
+    })
+    expect(body.work?.placementDecision?.pylonCandidates).toEqual([
+      expect.objectContaining({
+        localExecutionReady: false,
+        pylonRef: 'pylon.missing_local_agent',
+        selected: false,
+      }),
+      expect.objectContaining({
+        assignmentReady: true,
+        heartbeatFresh: true,
+        localExecutionReady: true,
+        ownerLinked: true,
+        pylonRef: 'pylon.production.docs_agent',
+        selected: true,
+        versionCompatible: true,
+        walletReady: true,
+      }),
+    ])
+    expect(body.work?.pylonAssignmentIntents).toEqual([
+      expect.objectContaining({
+        pylonRef: 'pylon.production.docs_agent',
         taskRef: 'task.autopilot_coder.docs_contract',
       }),
     ])

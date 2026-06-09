@@ -5142,6 +5142,7 @@ const agentSearchRoutes = makeAgentSearchRoutes({
 
 const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  makePylonApiStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
   makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
 })
 

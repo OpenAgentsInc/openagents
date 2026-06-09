@@ -1,0 +1,515 @@
+# Autopilot Coder Current Status And Gap Audit
+
+Date: 2026-06-09
+
+Status: current repo audit after the OA-AUTO P0 issue flow, the hosted Gemini
+closeout bridge commit, and OA-AUTO-019 production Pylon placement wiring.
+This document is intentionally stricter than
+the implementation log: it distinguishes route-harness proof from a real paid
+agent doing real coding work.
+
+## Scope Read
+
+This audit is based on the current `docs/autopilot-coder/` folder:
+
+- `README.md`
+- `implementation-log.md`
+- `2026-06-09-probe-autopilot-sites-agent-api-audit.md`
+
+It also cross-checks the current implementation surfaces those docs describe:
+
+- `apps/openagents.com/workers/api/src/autopilot-work-request.ts`
+- `apps/openagents.com/workers/api/src/autopilot-work-routes.ts`
+- `apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts`
+- `apps/openagents.com/workers/api/src/autopilot-work-quote.ts`
+- `apps/openagents.com/workers/api/src/autopilot-work-assignment-planner.ts`
+- `apps/openagents.com/workers/api/src/autopilot-work-placement-selector.ts`
+- `apps/openagents.com/workers/api/src/autopilot-work-pylon-assignment-synthesizer.ts`
+- `apps/openagents.com/workers/api/src/autopilot-work-fallback-lease-adapter.ts`
+- `apps/openagents.com/workers/api/src/l402-payment-headers.ts`
+- `apps/openagents.com/workers/api/src/openagents-openapi.ts`
+- `apps/openagents.com/workers/api/src/openagents-capability-manifest.ts`
+- D1 migrations `0140` through `0144` for Autopilot work orders.
+- production Pylon API store wiring in `apps/openagents.com/workers/api/src/index.ts`.
+
+The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed as of
+this audit. Those issues built the first Autopilot work-order spine. They did
+not, by themselves, build the full paid coding-agent product.
+
+## Executive Finding
+
+The current implementation proves an Autopilot work-order state machine, not a
+full commercial coding-agent loop.
+
+The repo can now do this in tests and route harnesses:
+
+```text
+registered-agent request
+-> typed Autopilot work order
+-> deterministic quote
+-> 402 payment-required response for payable L402 work
+-> public-safe proof-header retry
+-> buyer funding projection
+-> placement decision
+-> Pylon assignment intent or fallback lease intent
+-> optional injected hosted execution closeout
+-> delivered projection and delivered events
+```
+
+The repo cannot yet honestly claim this:
+
+```text
+user tells any agent "do this on Autopilot"
+-> agent discovers the live API
+-> agent pays a real L402 or MDK checkout
+-> OpenAgents verifies real payment
+-> OpenAgents launches a real coding worker
+-> worker edits/builds/tests
+-> OpenAgents ingests real artifacts
+-> customer accepts or requests changes
+-> OpenAgents settles eligible workers/providers
+-> Forum/public surfaces report only safe status
+```
+
+That second loop is still the target product.
+
+## What The Issue Flow Actually Built
+
+The closed P0 issue flow built the minimum typed orchestration spine:
+
+| Area | Current status | What it proves |
+| --- | --- | --- |
+| Work request schema | Built in `autopilot-work-request.ts` | Public-safe typed work requests can be decoded and unsafe prompt/private/secret-shaped values are rejected. |
+| Invocation routes | Built in `autopilot-work-routes.ts` | `POST /api/autopilot/work`, detail reads, idempotency, registered-agent auth, and D1 persistence exist. |
+| Event route | Built | Callers can poll or stream public-safe queued, payment, running, delivered, access, and blocked state signals. |
+| Agent docs | Built | The route is represented in agent-facing docs/OpenAPI/capability surfaces. |
+| Access requirements | Built | Missing repo/customer/operator/privacy/Pylon/secret-broker needs are projected as typed requirements instead of implicit text. |
+| Repository authority projection | Built | Public read can proceed; write/branch/PR authority is explicit and not silently granted. |
+| Deterministic quote | Built | Persisted request inputs produce stable quote refs and amounts. |
+| Buyer proof intake | Partially built | Public-safe L402/MDK proof refs can mark an order funded. This is not live payment verification. |
+| Funding vs payout | Built | Buyer payment proof and worker payout eligibility remain separate. |
+| Typed task records | Built | A work order can contain independently projected tasks. |
+| Assignment planner | Built | Tasks become assignment intents with ready/blocked/payment/access planner state. |
+| Queue inventory | Built | Existing queue surfaces can be dry-run inventoried for foldover. |
+| Placement policy | Built | Privacy/runner preferences are persisted and projected. |
+| Pylon presence input | Built with production Pylon API store wiring | Placement can prefer a compatible requester Pylon from D1-backed Pylon registrations, heartbeats, version, capability, and wallet-readiness records. |
+| Local coding capability refs | Built | Placement can distinguish local coding-agent readiness without exposing local secrets. |
+| Pylon assignment synthesis | Built as intent projection | Ready work can become controlled no-spend Pylon assignment intents. It is not yet a live assignment lease created by the scheduler. |
+| Fallback lease adapter | Built as intent projection | Ready work can become controlled SHC/cloud/hosted Gemini fallback lease intents. It is not yet real runner dispatch. |
+| Placement refusal/retry | Built | The API can return actionable retry/needs-input guidance instead of silent stalls. |
+| Hosted execution closeout bridge | Built in route harness | An injected hosted executor can return public-safe refs and move an order to delivered. It is not the production hosted executor. |
+
+The important phrase is "intent projection" for several of these. A projection
+is a controlled plan or offer shape. It is not a worker having accepted a
+lease, run tools, modified a repo, created a Site, or produced verified
+artifacts.
+
+## The L402 Reality Check
+
+The current Autopilot route does not prove a full L402 payment.
+
+What is built:
+
+- `paymentRequiredResponse` returns HTTP `402` for payable L402 work.
+- The response includes a public-safe `WWW-Authenticate: L402` header.
+- `parseOpenAgentsPaymentHeaders` can parse:
+  - `Authorization: L402 <credential>:<public-safe-proof-ref>`;
+  - `Authorization: LSAT ...`;
+  - `X-OpenAgents-L402: <credential>:<public-safe-proof-ref>`.
+- The Autopilot route tests use `X-OpenAgents-L402` with a public-safe proof
+  ref and verify that the order becomes funded.
+- MDK checkout proof retry is similarly represented by a public-safe header ref.
+
+What is not built or not proven:
+
+- No real Lightning invoice is generated for Autopilot work.
+- No real MDK checkout session is created for Autopilot work.
+- No agent wallet pays a real challenge in the Autopilot route test.
+- No preimage/hash settlement is verified by the Autopilot work route.
+- No live production registered-agent request has completed the paid flow.
+- The route accepts a proof ref after safety checks; it does not currently
+  verify external payment movement for Autopilot work.
+
+Therefore the current exact claim is:
+
+```text
+Autopilot work route harness verifies the L402-shaped challenge and proof-retry
+state transition.
+```
+
+The current exact non-claim is:
+
+```text
+Autopilot has a completed live L402 paid coding-agent flow.
+```
+
+## Hosted Gemini Reality Check
+
+The hosted Gemini lane is also only partially proven.
+
+What is built:
+
+- `hosted_gemini` is a typed runner kind.
+- Quotes can include hosted Gemini placement cost.
+- Placement can select `hosted_gemini` as fallback.
+- Fallback lease intents can target `fallback_lane.openagents.hosted_gemini`.
+- A route dependency hook, `executeReadyWork`, can be injected in tests.
+- If the injected executor returns public-safe assignment, closeout, proof, and
+  result refs for the selected hosted Gemini assignment, the order moves to
+  `delivered`.
+- Delivered orders project:
+  - `state: "delivered"`;
+  - `nextAction.state: "delivered"`;
+  - public-safe execution closeout refs;
+  - queued and delivered events;
+  - no worker payout authority;
+  - no accepted-work authority;
+  - no deploy/spend authority;
+  - no Forum autopublish authority.
+
+What is not built or not proven:
+
+- No production hosted Gemini executor binding is installed.
+- No model/provider request is made by the Autopilot worker route.
+- No real coding agent session is started from this lane.
+- No repo checkout, patch, test run, Site build, or artifact upload happens
+  through this lane.
+- No usage meter, budget ledger, or provider policy enforcement exists for this
+  Autopilot lane.
+- No live production smoke proves a real hosted Gemini worker did real work.
+
+The test executor proves the state-machine seam where a real executor should
+plug in. It does not prove the executor exists.
+
+## Current End-To-End Product Status
+
+The desired user-facing end state is:
+
+```text
+"Do this on Autopilot"
+-> OpenAgents API receives a typed work request
+-> missing access or payment is requested with minimal friction
+-> work runs on the best allowed runner
+-> real artifacts are returned
+-> review/acceptance gates run
+-> payment and settlement gates run
+-> safe status is visible to the user and, where allowed, the Forum
+```
+
+Current status by phase:
+
+| Phase | Current status | Gap to desired product |
+| --- | --- | --- |
+| Agent discovery | Mostly built | Needs refreshed docs/examples that say exactly which parts are live, and a real agent smoke that follows them. |
+| Auth and owner grant | Built for registered-agent customer-order scopes | Needs unauthenticated or anonymous-paid entry path, plus smoother owner grant prompts. |
+| Request intake | Built for typed public-safe work requests | Needs production wiring and better examples for real agents, plus private/secret-broker modes later. |
+| Payment request | Shape built | Needs real MDK checkout or real L402 challenge issuance for Autopilot work. |
+| Payment verification | Proof-ref acceptance built | Needs live payment verification, anti-replay, expiry, quote binding, and ledger linkage. |
+| Placement | Selector, production Pylon registration store wiring, and intent projections built | Needs actual scheduler decisions and durable assignment lease creation. |
+| Pylon local path | Intent projection built | Needs Autopilot-to-Pylon lease creation, Pylon polling, acceptance, execution, progress, artifact submission, and closeout ingestion. |
+| Hosted fallback path | Lease intent plus test executor hook built | Needs production executor binding and provider/runtime policy. |
+| SHC/cloud fallback path | Lease intent built | Needs production runner adapter and lease execution. |
+| Probe coding loop | Existing Probe/Pylon runtime pieces exist | Needs normalized Autopilot coding assignment contract and real worker execution path. |
+| Result ingestion | Public-safe closeout refs built for injected executor | Needs real diff/test/preview/log/artifact ingestion with redaction and operator-only evidence refs. |
+| Acceptance | Not built for Autopilot work orders | Needs customer review, operator review, accepted-work state, and revision request API. |
+| GitHub writeback | Not built in Autopilot work path | Needs branch/commit/PR lane after repo grants and proof/test gates. |
+| Sites adapter | Existing Sites control plane exists | Needs Autopilot task adapter for `site_generation` and `site_adjustment`. |
+| Forum reporting | Not built for Autopilot work orders | Needs redacted lifecycle renderer and idempotent posting bridge. |
+| Settlement | Explicitly blocked | Needs accepted-work payout eligibility and settlement bridge. |
+| Production smoke | Not done | Needs a real no-spend smoke and a real paid smoke. |
+
+## What Changed Since The Original Audit
+
+The older audit in this folder correctly identified the target system, but it
+now contains stale rows that say there is no `POST /api/autopilot/work`
+contract, no event stream, no quote service, no placement model, and no
+fallback lease shape. Those are now built.
+
+The implementation log is more current: `OA-AUTO-001` through `OA-AUTO-018`
+are implemented, and the hosted execution closeout bridge was added after
+those issues.
+
+The difference between "we did the issue flow" and "the product works" is:
+
+- The issue flow built contracts, projections, state transitions, and tests.
+- It did not build live payment movement.
+- It did not build live worker dispatch.
+- It did not build real coding execution.
+- It did not build acceptance/revision.
+- It did not build settlement.
+- It did not build Forum reporting.
+- It did not run the two required product smokes.
+
+That is why the system is substantially closer, but still not the thing the
+user asked for.
+
+## Exact Remaining Build Plan
+
+### Step 1: Replace proof-ref-only payment with real Autopilot payment issuance
+
+Build:
+
+- Autopilot-specific MDK checkout intent creation, or a real L402 challenge
+  issuance path, for `POST /api/autopilot/work`.
+- Durable quote binding across:
+  - request hash;
+  - amount;
+  - challenge/checkout ref;
+  - expiry;
+  - owner/caller ref;
+  - work order ref.
+- Proof verification that checks the challenge was actually paid, not just that
+  a public-safe proof ref was supplied.
+- Idempotent paid retry semantics.
+
+Acceptance:
+
+- A test agent can submit payable public Autopilot work, receive a real payment
+  challenge, pay it with an agent wallet or MDK checkout flow, retry, and have
+  the Worker verify the paid challenge before moving to funded.
+
+### Step 2: Wire production Pylon placement input into Autopilot work routes
+
+Status: implemented by OA-AUTO-019.
+
+Build:
+
+- Replace the test-only `pylonRegistrations` dependency with production reads
+  from the Pylon registration/heartbeat store.
+- Select requester Pylon when:
+  - owner linkage matches;
+  - heartbeat is fresh;
+  - client version is compatible;
+  - assignment-ready capability exists;
+  - local coding-agent capability exists;
+  - wallet readiness is sufficient for the selected payment mode.
+- Return `needs_input` when the user should install/restart/connect Pylon.
+
+Acceptance:
+
+- A real registered agent tied to an owner with an online compatible Pylon gets
+  `selectedRunnerKind: "requester_pylon"` without manual dependency injection.
+
+Remaining gap after this step:
+
+- Production placement now reads the Pylon API store, but selected Pylon
+  placement still produces assignment intents until the scheduler creates
+  durable leases in the next step.
+
+### Step 3: Convert Pylon assignment intents into real Pylon assignment leases
+
+Build:
+
+- Autopilot scheduler transition from `pylonAssignmentIntents` to durable
+  Pylon assignment records.
+- Lease expiry, duplicate prevention, cancellation, and stale-run recovery.
+- Pylon poll/accept/progress/artifact/closeout flow linked back to the
+  Autopilot work order.
+
+Acceptance:
+
+- One no-spend public Autopilot task creates a Pylon assignment, a Pylon polls
+  it, accepts it, reports progress, submits artifact/proof refs, and closes it.
+
+### Step 4: Normalize the real coding assignment contract
+
+Build:
+
+- A single assignment payload shared by requester Pylon, SHC, cloud sandbox,
+  hosted Gemini, and later privacy lanes.
+- Fields for:
+  - objective;
+  - repo refs;
+  - branch/write/PR authority refs;
+  - allowed tools;
+  - auth refs;
+  - acceptance criteria;
+  - budget and timeout;
+  - public/private trace policy;
+  - closeout schema.
+- Redaction checks for prompts, local paths, provider payloads, invoices,
+  wallet material, private repos, and secrets.
+
+Acceptance:
+
+- The same Autopilot work order can be leased to Pylon or fallback lanes using
+  one normalized payload.
+
+### Step 5: Implement the actual worker loop for one lane
+
+Pick one first lane. The lowest-friction product path should be:
+
+1. requester Pylon/local coding agent for no-spend public work;
+2. hosted Gemini fallback for paid public work;
+3. SHC/cloud fallback after that.
+
+Build:
+
+- Worker checkout/setup.
+- Tool execution boundary.
+- Patch/Site artifact production.
+- Test/build command execution.
+- Public-safe closeout generation.
+- Operator-only evidence retention.
+
+Acceptance:
+
+- A real worker, not an injected test function, produces a closeout for one
+  public docs/test task.
+
+### Step 6: Add closeout ingestion for real artifacts
+
+Build:
+
+- Ingest:
+  - diff refs;
+  - test refs;
+  - preview refs;
+  - build refs;
+  - blocker refs;
+  - artifact refs;
+  - safe summary refs.
+- Store private evidence separately from public projection.
+- Preserve no self-acceptance: worker closeout is not accepted work.
+
+Acceptance:
+
+- Delivered Autopilot work shows useful customer-safe result refs, and private
+  material does not appear in API projections, events, docs, issue comments, or
+  Forum posts.
+
+### Step 7: Add customer review and revision API
+
+Build:
+
+- Owner or owner-granted agent can:
+  - accept delivered work;
+  - reject delivered work;
+  - request changes;
+  - ask for a follow-up task.
+- Keep accepted-work authority separate from worker completion.
+
+Acceptance:
+
+- A delivered task can move to accepted or revision-required without DB edits.
+
+### Step 8: Add GitHub and Sites delivery adapters
+
+Build:
+
+- GitHub:
+  - branch creation;
+  - commit refs;
+  - PR refs;
+  - tests/proofs attached;
+  - only after write/branch/PR grants exist.
+- Sites:
+  - map `site_generation` and `site_adjustment` tasks to existing Site project,
+    builder session, version, preview, save, and deploy-review records.
+
+Acceptance:
+
+- Repo-change work can deliver a PR.
+- Site work can deliver a preview or saved version.
+- Production deploy remains owner/operator gated.
+
+### Step 9: Add Forum reporting bridge
+
+Build:
+
+- Forum reporting policy per order/task:
+  - private;
+  - public-safe summary;
+  - campaign topic;
+  - operator-approved only.
+- Redacted summary renderer.
+- Idempotent topic/reply posting.
+- Queue foldover report from existing work.
+
+Acceptance:
+
+- One public-safe Autopilot work order gets a Forum lifecycle topic/update
+  without exposing private source, raw prompts, provider logs, payment secrets,
+  invoices, or local paths.
+
+### Step 10: Add settlement and payout eligibility
+
+Build:
+
+- Accepted-work to payout candidate bridge.
+- Worker/provider/referrer payout policy.
+- Duplicate prevention.
+- Spend caps.
+- Settlement receipts.
+- Reconciliation states.
+
+Acceptance:
+
+- Buyer payment alone cannot pay anyone.
+- Delivered work alone cannot pay anyone.
+- Accepted work with eligible payment mode can create payout eligibility.
+- Settlement requires actual settlement receipt refs.
+
+### Step 11: Run the two product smokes
+
+Required smokes:
+
+1. No-spend public task:
+   - registered agent submits task;
+   - requester Pylon selected;
+   - real Pylon accepts and runs;
+   - real closeout ingested;
+   - customer-safe delivered projection visible.
+
+2. Paid public task:
+   - registered or anonymous-paid agent submits task;
+   - real MDK or L402 payment is issued and paid;
+   - payment is verified;
+   - real worker executes;
+   - closeout is ingested;
+   - customer reviews;
+   - settlement remains blocked or proceeds according to policy.
+
+Only after these smokes pass should public copy say "pay and Autopilot does the
+work."
+
+## Updated Priority List
+
+### P0: Make the claim real
+
+1. Real Autopilot payment issuance and verification.
+2. Real Pylon assignment lease creation from Autopilot work.
+3. One real worker loop that executes a public task.
+4. Real closeout ingestion from that worker.
+5. Customer review/revision API.
+6. No-spend end-to-end smoke.
+7. Paid end-to-end smoke.
+
+### P1: Make it useful across product surfaces
+
+1. GitHub writeback lane.
+2. Autopilot Sites task adapter.
+3. Hosted Gemini production executor binding.
+4. SHC/cloud runner adapter.
+5. Forum reporting bridge.
+6. Stale assignment/retry/recovery policy.
+7. Operator dashboard slices.
+
+### P2: Make it a marketplace
+
+1. Accepted-work payout eligibility.
+2. Pylon paid-mode settlement ladder generalized to Autopilot work.
+3. Provider/runtime cost accounting.
+4. Privacy-tier compiler.
+5. Secret-brokered task mode.
+6. TEE and Maple AI lane adapters.
+7. Referrer/signature/data contribution payout bridges.
+
+## Current Truth In One Sentence
+
+OpenAgents now has a serious Autopilot Coder control-plane skeleton, including
+typed requests, quotes, 402-shaped payment retry, placement, assignment intents,
+production Pylon placement input, and delivered closeout projection in a route
+harness; it still does not have a live paid path where a real agent pays, a
+real worker codes, artifacts are reviewed, and eligible workers/providers are
+settled.

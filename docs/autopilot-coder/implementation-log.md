@@ -585,3 +585,31 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-fallback-lease-adapter.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-019: Production Pylon Placement Store Wiring
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4614`
+
+Status: implemented.
+
+Implemented:
+
+- Added a production Pylon API store dependency to Autopilot work routes.
+- Wired the live Worker route factory to
+  `makeD1PylonApiStore(openAgentsDatabase(env))`.
+- Kept the route-level test injection for selector fixtures, but changed the
+  production default path from an empty Pylon list to
+  `listRegistrations(1000)`.
+- Preserved the existing placement selector policy over production records:
+  owner linkage, active status, wallet readiness, fresh heartbeat, compatible
+  client version, assignment readiness, and local coding-agent capability.
+- Added route coverage proving an online compatible requester Pylon is selected
+  through the production-store dependency without the test-only
+  `pylonRegistrations` injection.
+- Preserved public-safe projection shape: no local paths, tokens, wallet
+  material, provider payloads, or raw machine state.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-placement-selector.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

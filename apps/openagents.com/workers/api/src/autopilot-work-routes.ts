@@ -38,7 +38,10 @@ import {
   parseOpenAgentsPaymentHeaders,
 } from './l402-payment-headers'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
-import type { PylonApiRegistrationRecord } from './pylon-api'
+import type {
+  PylonApiRegistrationRecord,
+  PylonApiStore,
+} from './pylon-api'
 import {
   type AutopilotWorkQuote,
   makeAutopilotWorkQuote,
@@ -332,6 +335,9 @@ type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
     input: Parameters<AutopilotWorkExecutor>[0],
   ) => ReturnType<AutopilotWorkExecutor>
   makeId?: () => string
+  makePylonApiStore?: (
+    env: Bindings,
+  ) => Pick<PylonApiStore, 'listRegistrations'>
   makeStore: (env: Bindings) => AutopilotWorkStore
   nowIso?: () => string
   pylonRegistrations?: (
@@ -407,9 +413,8 @@ const routePylonRegistrations = <Bindings extends AutopilotWorkRouteEnv>(
   ReadonlyArray<PylonApiRegistrationRecord>,
   AutopilotWorkStoreError
 > =>
-  dependencies.pylonRegistrations === undefined
-    ? Effect.succeed([])
-    : Effect.tryPromise({
+  dependencies.pylonRegistrations !== undefined
+    ? Effect.tryPromise({
         catch: error =>
           new AutopilotWorkStoreError({
             kind: 'storage_error',
@@ -417,6 +422,18 @@ const routePylonRegistrations = <Bindings extends AutopilotWorkRouteEnv>(
           }),
         try: () => dependencies.pylonRegistrations?.(env) ?? Promise.resolve([]),
       })
+    : dependencies.makePylonApiStore === undefined
+      ? Effect.succeed([])
+      : Effect.tryPromise({
+          catch: error =>
+            new AutopilotWorkStoreError({
+              kind: 'storage_error',
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+          try: () =>
+            dependencies.makePylonApiStore?.(env).listRegistrations(1000) ??
+            Promise.resolve([]),
+        })
 
 const workOrderRefForId = (id: string): string =>
   id.startsWith('autopilot_work_order.')
