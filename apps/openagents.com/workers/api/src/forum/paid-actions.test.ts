@@ -17,6 +17,7 @@ import {
   lookupForumPaidActionReceipt,
   previewForumPaidAction,
   redeemForumPaidAction,
+  reconcileForumDirectTipWebhook,
   submitForumDirectTip,
 } from './index'
 
@@ -98,6 +99,7 @@ type MoneyActionRow = Readonly<{
   earning_actor_ref: string | null
   id: string
   payment_event_id: string | null
+  public_projection_json: string
   receipt_id: string | null
 }>
 
@@ -142,9 +144,35 @@ type DirectTipAttemptRow = Readonly<{
   updated_at: string
 }>
 
+type DirectTipWebhookEventRow = Readonly<{
+  amount_sats: number
+  archived_at: string | null
+  delivery_count: number
+  direct_tip_attempt_id: string
+  event_body_digest_ref: string
+  external_ref: string
+  first_seen_at: string
+  id: string
+  last_seen_at: string
+  payment_event_status:
+    | 'confirmed'
+    | 'failed'
+    | 'observed'
+    | 'refunded'
+    | 'replayed'
+    | 'reversed'
+  provider_event_ref: string
+  provider_ref: string
+  reconciliation_result: string
+  reconciliation_status: 'settled' | 'failed' | 'recovery_pending'
+  redacted_evidence_ref: string
+  signature_binding_ref: string
+}>
+
 class ForumPaidActionStore {
   challenges: Array<ChallengeRow> = []
   directTipAttempts: Array<DirectTipAttemptRow> = []
+  directTipWebhookEvents: Array<DirectTipWebhookEventRow> = []
   redemptions: Array<RedemptionRow> = []
   receipts: Array<ReceiptRow> = []
   moneyActions: Array<MoneyActionRow> = []
@@ -242,6 +270,28 @@ class ForumPaidActionStatement implements D1PreparedStatement {
       const row =
         this.store.directTipAttempts.find(
           item => item.id === attemptId && item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM forum_direct_tip_webhook_events')) {
+      const providerEventRef = String(this.values[0])
+      const row =
+        this.store.directTipWebhookEvents.find(
+          item =>
+            item.provider_event_ref === providerEventRef &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM forum_money_actions')) {
+      const paymentEventId = String(this.values[0])
+      const row =
+        this.store.moneyActions.find(
+          item => item.payment_event_id === paymentEventId,
         ) ?? null
 
       return Promise.resolve(row as T | null)
@@ -499,6 +549,7 @@ class ForumPaidActionStatement implements D1PreparedStatement {
         id: String(this.values[0]),
         payment_event_id:
           this.values[6] === null ? null : String(this.values[6]),
+        public_projection_json: String(this.values[9]),
         receipt_id: this.values[7] === null ? null : String(this.values[7]),
       })
 
@@ -515,6 +566,7 @@ class ForumPaidActionStatement implements D1PreparedStatement {
         id: String(this.values[0]),
         payment_event_id:
           this.values[9] === null ? null : String(this.values[9]),
+        public_projection_json: String(this.values[12]),
         receipt_id: this.values[10] === null ? null : String(this.values[10]),
       })
 
@@ -571,6 +623,109 @@ class ForumPaidActionStatement implements D1PreparedStatement {
         receipt_id: this.values[6] === null ? null : String(this.values[6]),
         replayed: 0,
       })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('INSERT INTO forum_direct_tip_webhook_events')) {
+      this.store.directTipWebhookEvents.push({
+        amount_sats: Number(this.values[5]),
+        archived_at: null,
+        delivery_count: 1,
+        direct_tip_attempt_id: String(this.values[2]),
+        event_body_digest_ref: String(this.values[8]),
+        external_ref: String(this.values[4]),
+        first_seen_at: String(this.values[12]),
+        id: String(this.values[0]),
+        last_seen_at: String(this.values[13]),
+        payment_event_status:
+          this.values[6] as DirectTipWebhookEventRow['payment_event_status'],
+        provider_event_ref: String(this.values[1]),
+        provider_ref: String(this.values[3]),
+        reconciliation_result: String(this.values[11]),
+        reconciliation_status:
+          this.values[10] as DirectTipWebhookEventRow['reconciliation_status'],
+        redacted_evidence_ref: String(this.values[7]),
+        signature_binding_ref: String(this.values[9]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_direct_tip_webhook_events')) {
+      const providerEventRef = String(this.values[1])
+      const row = this.store.directTipWebhookEvents.find(
+        item => item.provider_event_ref === providerEventRef,
+      )
+
+      if (row !== undefined) {
+        const index = this.store.directTipWebhookEvents.indexOf(row)
+        this.store.directTipWebhookEvents[index] = {
+          ...row,
+          delivery_count: row.delivery_count + 1,
+          last_seen_at: String(this.values[0]),
+        }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_money_actions')) {
+      const receiptId = String(this.values[0])
+      const moneyActionId = String(this.values[1])
+      const row = this.store.moneyActions.find(item => item.id === moneyActionId)
+
+      if (row !== undefined) {
+        const index = this.store.moneyActions.indexOf(row)
+        this.store.moneyActions[index] = { ...row, receipt_id: receiptId }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_payment_events')) {
+      const paymentEventId = String(this.values[4])
+      const row = this.store.paymentEvents.find(
+        item => item.id === paymentEventId,
+      )
+
+      if (row !== undefined) {
+        const index = this.store.paymentEvents.indexOf(row)
+        this.store.paymentEvents[index] = {
+          ...row,
+          external_ref: String(this.values[1]),
+          provider_ref: String(this.values[0]),
+          public_projection_json: String(this.values[3]),
+          redacted_evidence_ref: String(this.values[2]),
+        }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_direct_tip_attempts')) {
+      const attemptId = String(this.values[8])
+      const row = this.store.directTipAttempts.find(
+        item => item.id === attemptId,
+      )
+
+      if (row !== undefined) {
+        const index = this.store.directTipAttempts.indexOf(row)
+        this.store.directTipAttempts[index] = {
+          ...row,
+          external_ref: String(this.values[1]),
+          payment_event_status:
+            this.values[4] as DirectTipAttemptRow['payment_event_status'],
+          payment_mode: this.values[3] as DirectTipAttemptRow['payment_mode'],
+          provider_ref: String(this.values[0]),
+          receipt_ref:
+            row.receipt_ref ??
+            (this.values[6] === null ? null : String(this.values[6])),
+          redacted_evidence_ref: String(this.values[2]),
+          status: this.values[5] as DirectTipAttemptRow['status'],
+          updated_at: String(this.values[7]),
+        }
+      }
 
       return Promise.resolve({ success: true } as D1Result<T>)
     }
@@ -831,6 +986,27 @@ describe('Forum paid actions', () => {
     expect(migration).toContain('idx_forum_direct_tip_attempts_target')
   })
 
+  test('direct tip webhook migration defines provider-event replay storage', () => {
+    const migration = readFileSync(
+      new URL(
+        '../../migrations/0147_forum_direct_tip_webhook_events.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+
+    expect(migration).toContain(
+      'CREATE TABLE IF NOT EXISTS forum_direct_tip_webhook_events',
+    )
+    expect(migration).toContain('provider_event_ref TEXT NOT NULL UNIQUE')
+    expect(migration).toContain(
+      'direct_tip_attempt_id TEXT NOT NULL REFERENCES forum_direct_tip_attempts(id)',
+    )
+    expect(migration).toContain(
+      'idx_forum_direct_tip_webhook_events_attempt',
+    )
+  })
+
   test('blocks ordinary post rewards from the hosted L402 challenge path', async () => {
     const store = new ForumPaidActionStore()
     const preview = await Effect.runPromise(
@@ -958,6 +1134,162 @@ describe('Forum paid actions', () => {
       receipt: null,
       status: 'recovery_pending',
     })
+  })
+
+  test('promotes a recovery-pending direct tip from a verified MDK webhook', async () => {
+    const store = new ForumPaidActionStore()
+    const pending = await Effect.runPromise(
+      submitForumDirectTip(
+        paidActionDb(store),
+        directTipInput({
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.direct_tip_observed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.direct_tip_observed',
+            status: 'observed',
+          },
+        }),
+        runtime,
+      ),
+    )
+    const reconciled = await Effect.runPromise(
+      reconcileForumDirectTipWebhook(
+        paidActionDb(store),
+        {
+          amount: { amount: 15, asset: 'sats' },
+          attemptId: pending.attemptId,
+          eventBodyDigestRef: 'sha256:forum_mdk_webhook.test.digest',
+          paymentEvidence: {
+            externalRef: 'external.payment.mdk_webhook.test.evt_1',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_webhook.test',
+            redactedEvidenceRef: 'evidence.payment.mdk_webhook.test.evt_1',
+            status: 'confirmed',
+          },
+          providerEventRef: 'provider_event.mdk.test.evt_1',
+          signatureBindingRef: 'binding.forum.mdk.test',
+        },
+        runtime,
+      ),
+    )
+
+    expect(reconciled).toMatchObject({
+      attemptId: pending.attemptId,
+      idempotent: false,
+      receipt: {
+        amount: { amount: 15, asset: 'sats' },
+        paymentEvent: {
+          externalRef: 'external.payment.mdk_webhook.test.evt_1',
+          providerRef: 'provider.mdk_webhook.test',
+          settlementAuthority: 'recipient_wallet_direct',
+          status: 'confirmed',
+        },
+        tipSettlement: {
+          creatorReceivedSpendableValue: true,
+          settlementAuthority: 'recipient_wallet_direct',
+          state: 'settled',
+        },
+      },
+      status: 'settled',
+    })
+    expect(store.directTipAttempts[0]?.status).toBe('settled')
+    expect(store.directTipWebhookEvents).toHaveLength(1)
+    expect(store.receipts).toHaveLength(1)
+    expect(store.moneyActions[0]?.receipt_id).toBe(
+      '88888888-8888-4888-8888-888888888888',
+    )
+  })
+
+  test('replays duplicate direct-tip webhooks without duplicating receipts', async () => {
+    const store = new ForumPaidActionStore()
+    const pending = await Effect.runPromise(
+      submitForumDirectTip(
+        paidActionDb(store),
+        directTipInput({
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.direct_tip_observed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.direct_tip_observed',
+            status: 'observed',
+          },
+        }),
+        runtime,
+      ),
+    )
+    const input = {
+      amount: { amount: 15, asset: 'sats' } as const,
+      attemptId: pending.attemptId,
+      eventBodyDigestRef: 'sha256:forum_mdk_webhook.test.digest',
+      paymentEvidence: {
+        externalRef: 'external.payment.mdk_webhook.test.evt_2',
+        paymentMode: 'live' as const,
+        providerRef: 'provider.mdk_webhook.test',
+        redactedEvidenceRef: 'evidence.payment.mdk_webhook.test.evt_2',
+        status: 'confirmed' as const,
+      },
+      providerEventRef: 'provider_event.mdk.test.evt_2',
+      signatureBindingRef: 'binding.forum.mdk.test',
+    }
+    const first = await Effect.runPromise(
+      reconcileForumDirectTipWebhook(paidActionDb(store), input, runtime),
+    )
+    const second = await Effect.runPromise(
+      reconcileForumDirectTipWebhook(paidActionDb(store), input, runtime),
+    )
+
+    expect(first.idempotent).toBe(false)
+    expect(second.idempotent).toBe(true)
+    expect(second.receipt?.receiptRef).toBe(first.receipt?.receiptRef)
+    expect(store.receipts).toHaveLength(1)
+    expect(store.directTipWebhookEvents[0]?.delivery_count).toBe(2)
+  })
+
+  test('rejects direct-tip webhook amount mismatch before settlement', async () => {
+    const store = new ForumPaidActionStore()
+    const pending = await Effect.runPromise(
+      submitForumDirectTip(
+        paidActionDb(store),
+        directTipInput({
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.direct_tip_observed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.direct_tip_observed',
+            status: 'observed',
+          },
+        }),
+        runtime,
+      ),
+    )
+
+    await expect(
+      Effect.runPromise(
+        reconcileForumDirectTipWebhook(
+          paidActionDb(store),
+          {
+            amount: { amount: 16, asset: 'sats' },
+            attemptId: pending.attemptId,
+            eventBodyDigestRef: 'sha256:forum_mdk_webhook.test.digest',
+            paymentEvidence: {
+              externalRef: 'external.payment.mdk_webhook.test.evt_3',
+              paymentMode: 'live',
+              providerRef: 'provider.mdk_webhook.test',
+              redactedEvidenceRef: 'evidence.payment.mdk_webhook.test.evt_3',
+              status: 'confirmed',
+            },
+            providerEventRef: 'provider_event.mdk.test.evt_3',
+            signatureBindingRef: 'binding.forum.mdk.test',
+          },
+          runtime,
+        ),
+      ),
+    ).rejects.toMatchObject({ kind: 'binding_mismatch' })
+    expect(store.receipts).toHaveLength(0)
   })
 
   test('blocks duplicate direct-tip provider events and self tips', async () => {
@@ -1089,6 +1421,7 @@ describe('Forum paid actions', () => {
         earning_actor_ref: 'actor.ben',
         id: '99999999-9999-4999-8999-999999999999',
         payment_event_id: null,
+        public_projection_json: JSON.stringify(publicProjection),
         receipt_id: '88888888-8888-4888-8888-888888888888',
       },
     ])

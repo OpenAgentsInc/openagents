@@ -73,14 +73,29 @@ There are two separate webhook/event concepts already in the repo:
   intent status, creates receipts/entitlements when appropriate, and stores a
   public-safe reconciliation projection.
 
-Forum does not yet have the equivalent durable webhook reconciliation route.
-Forum has durable challenges, payment events, receipts, and public projections,
-but it relies on the payer-side redeem/recovery path to write the Forum ledger.
+Forum now has a direct-tip MDK webhook reconciliation route for BOLT 12
+recipient-wallet tips:
+
+```text
+POST /api/forum/paid-actions/mdk/webhooks
+```
+
+That route verifies the configured MDK webhook source, maps the provider event
+to an existing `forum_direct_tip_attempts` row, rejects mismatched amount,
+asset, signature, or unmapped attempts, stores replay metadata in
+`forum_direct_tip_webhook_events`, and promotes confirmed events to the same
+recipient-wallet-direct settled receipt projection used by direct payer
+evidence.
+
+The old hosted-MDK/L402 Forum reward path is no longer the ordinary tip path.
+It remains compatibility/non-tip paid-action infrastructure. Ordinary Forum
+post tips must use the direct BOLT 12 path and a ready target author offer.
 
 ## Recommendation
 
-Add a Forum MDK webhook reconciliation lane. It should not replace the current
-redeem path; it should make the current path idempotent and resilient.
+Keep the Forum MDK webhook reconciliation lane and use it to make the direct
+BOLT 12 tip path idempotent and resilient. It should not revive hosted L402 for
+ordinary post tips.
 
 Recommended route:
 
@@ -88,36 +103,32 @@ Recommended route:
 POST /api/forum/paid-actions/mdk/webhooks
 ```
 
-Recommended behavior:
+Implemented behavior for direct tips:
 
 1. Verify the exact MDK webhook source using the same source-specific approach
    as `site-mdk-webhooks.ts`.
 2. Decode only public-safe fields needed for reconciliation:
-   `checkoutRef`, `challengeId` or mapped checkout id, status, amount, provider
-   event id, and occurred-at timestamp.
-3. Look up the existing `forum_l402_challenges` row by checkout/challenge
-   mapping.
-4. Reject events whose amount, asset, action kind, method/path binding, target
-   post, or recipient actor do not match the stored challenge.
-5. Insert or update `forum_payment_events` idempotently using a stable provider
-   event key.
-6. Create the same receipt projection that `redeem-paid-action` creates when
-   the event is confirmed.
-7. If the payer later redeems the L402 credential, return the existing receipt
-   rather than creating a duplicate.
-8. If the webhook arrives before the private credential/redeem path, keep the
-   receipt visible only when the event is verified and mapped to a stored Forum
-   challenge.
+   direct-tip attempt id, status, sats amount, provider event id, occurred-at
+   timestamp, signature binding ref, and event-body digest ref.
+3. Look up the existing `forum_direct_tip_attempts` row by attempt id.
+4. Reject events whose amount, asset, signature, or provider-event binding does
+   not match the stored direct-tip attempt.
+5. Insert `forum_direct_tip_webhook_events` idempotently using a stable
+   provider-event ref and increment duplicate delivery counts.
+6. Update the existing direct-tip payment event projection and direct-tip
+   attempt status.
+7. Create the recipient-wallet-direct settled receipt only when the webhook
+   status is confirmed.
+8. Keep failed, refunded, reversed, observed, and replayed events explicit
+   without creating public settled tip stats.
 
 ## Data model additions
 
-The current Forum tables can support most of this, but the implementation
-should add explicit webhook replay storage:
+The implementation added explicit webhook replay storage:
 
 - provider event ref;
 - provider source;
-- challenge id;
-- checkout ref;
+- direct-tip attempt id;
 - status;
 - amount and asset;
 - event body digest ref;
@@ -136,13 +147,12 @@ The Forum tipping promise should only be considered fully green after these
 checks pass:
 
 - one live 15-sat or smaller tip succeeds without timeout recovery;
-- one live tip succeeds where the CLI exits before redeem, and the webhook
-  reconciles the Forum receipt;
+- one live tip succeeds where the payer CLI exits before local recovery, and
+  the webhook reconciles the Forum receipt;
 - duplicate webhook delivery does not duplicate receipts or tip totals;
-- webhook-before-redeem and redeem-before-webhook ordering both converge to one
-  receipt;
-- bad signature, wrong amount, wrong target, wrong actor, and stale challenge
-  events are rejected;
+- duplicate webhook delivery converges to one receipt;
+- bad signature, wrong amount, wrong target/unmapped attempt, and unsafe
+  provider-event refs are rejected;
 - public post stats, receipt lookup, leaderboards, and `/promises` all reflect
   the same paid totals;
 - tests prove no raw invoices, preimages, wallet material, MDK credentials, or
@@ -150,7 +160,9 @@ checks pass:
 
 ## Decision
 
-Yes, Forum should add webhook reconciliation. The current payer redeem path is
-useful and should remain, but it should not be the only way a confirmed MDK
-payment reaches the Forum ledger. MDK should remain the source of payment truth;
-Forum should store a verified, deduped, public-safe projection of that truth.
+Forum now has webhook reconciliation for direct BOLT 12 tip attempts. MDK should
+remain the source of payment truth; Forum stores a verified, deduped,
+public-safe projection of that truth. The remaining work is smooth live smoke:
+prove a funded payer wallet can tip independent ready recipients without timeout
+recovery and that the callback path keeps public post stats, receipts, and
+product promises aligned.

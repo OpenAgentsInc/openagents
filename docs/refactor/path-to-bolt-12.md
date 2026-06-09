@@ -366,19 +366,19 @@ The endpoint must make the boundary explicit:
 Direct BOLT12 tips need an OpenAgents confirmation step because OpenAgents
 cannot infer post intent from money movement alone.
 
-Possible confirmation models:
+Implemented confirmation models:
 
 1. Payer submits a public-safe payment result ref after paying the offer.
-2. Recipient sidecar/webhook reports a payment event with a payer note or
-   OpenAgents intent ref.
-3. OpenAgents creates a short-lived tip intent first, embeds a public-safe
-   intent ref in the payer note, and accepts the recipient event only when the
-   amount and intent match.
+2. MDK/provider webhook reconciliation can promote an existing direct-tip
+   attempt to a settled recipient-wallet-direct receipt when a confirmed event
+   maps to the attempt id and sats amount.
 
-Recommended model: short-lived OpenAgents tip intents with payer note intent
-refs. That preserves the current invariant that public tips are action-bound
-and idempotent. The BOLT 12 offer is reusable, but each Forum tip still has a
-typed OpenAgents intent and receipt.
+Current model: every Forum tip has a typed OpenAgents direct-tip attempt and
+receipt. The BOLT 12 offer is reusable, but public Forum stats update only from
+an OpenAgents attempt whose public-safe payer evidence or verified MDK webhook
+evidence confirms the payment. `forum_direct_tip_webhook_events` stores
+provider-event replay metadata and duplicate deliveries increment replay count
+instead of duplicating receipts.
 
 ### Phase 6: BIP 353 / Social Integration
 
@@ -411,29 +411,31 @@ This should be a receive-method variant, not a separate tipping system.
 
 ## Product-Promise Impact
 
-No current product promise should say "Forum tipping uses BOLT 12" or "agents
-have reusable BOLT 12 tip jars" until the migration gates pass.
+Current product promises may say Forum has a BOLT 12 direct-tip contract, but
+must keep `forum.content_tipping.v1` yellow until the live smooth-payment gates
+pass.
 
 The promise can honestly say:
 
-- Forum tipping currently uses OpenAgents/MDK hosted payment confirmation over
-  BOLT11 invoices.
-- Public Forum tip totals count only recipient-settled live rewards.
-- BOLT 12 reusable receive offers are the planned next receive-method lane.
-- BOLT 12 will be green only after OpenAgents has a retained live smoke for
-  offer creation, offer payment, recipient event handling, OpenAgents receipt
+- Forum ordinary post tips use the direct BOLT 12 recipient-wallet contract,
+  not hosted L402 checkout.
+- Public Forum tip totals count only confirmed recipient-wallet-direct receipts.
+- Failed, refunded, reversed, observed, and replayed events remain explicit
+  attempts and do not create public settled stats.
+- BOLT 12 will be green only after OpenAgents has retained live smoke for a
+  funded payer wallet tipping at least two independent ready recipients,
+  provider/webhook confirmation or documented recovery, OpenAgents receipt
   binding, public-safe projection, and settlement evidence.
 
 ## Recommended Next Work
 
-1. Add a red/yellow product-promise row for BOLT 12 reusable receive offers.
-2. Add a sidecar-only smoke script that creates a variable BOLT12 offer and
-   pays it for 10 sats between two local MDK wallet homes.
-3. Add a redacted smoke output schema and fixture under
-   `apps/openagents.com/workers/api/src` tests.
-4. Add `/api/forum/posts/{postId}/tip-target` as a no-spend read endpoint with
-   current `bolt11_l402_current` and future `bolt12_offer` method
-   discriminants.
-5. Keep live Forum public totals unchanged until direct BOLT12 tip receipts
-   produce the same or stronger settlement evidence than the current path.
-
+1. Fund or locate a production payer wallet and run strict live direct-tip
+   smoke against at least two independent ready recipients.
+2. Add a strict smoke command that fails when timeout recovery is needed and a
+   diagnostic mode that records recovery as a blocker.
+3. Keep `forum.content_tipping.v1` yellow until smooth live smoke passes and
+   public post stats/receipt refs agree with the API.
+4. Extend webhook/recovery docs if MDK publishes a more specific standalone
+   agent-wallet webhook contract.
+5. Add human-readable payment instruction support, such as BIP 353, only after
+   raw BOLT 12 offer tipping remains stable.

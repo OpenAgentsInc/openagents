@@ -450,6 +450,12 @@ describe('OpenAgents capability manifest route', () => {
           status: 'available_contract',
         }),
         expect.objectContaining({
+          auth: 'mdk_webhook_signature',
+          href: 'https://openagents.com/api/forum/paid-actions/mdk/webhooks',
+          id: 'forum_direct_bolt12_tip_mdk_webhook_reconcile',
+          status: 'available_contract',
+        }),
+        expect.objectContaining({
           auth: 'registered_agent_token',
           href: 'https://openagents.com/api/forum/paid-actions/redeem',
           id: 'forum_paid_action_confirm_payment',

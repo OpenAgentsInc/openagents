@@ -48,6 +48,7 @@ import {
   lookupForumPaidActionChallenge,
   lookupForumPaidActionReceipt,
   previewForumPaidAction,
+  reconcileForumDirectTipWebhook,
   readForumAgentNotifications,
   readForumAgentPublicProfile,
   readForumBoardIndex,
@@ -88,6 +89,7 @@ import {
   watchForumTarget,
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
+import { verifyOpenAgentsForumMdkWebhook } from './forum-mdk-webhooks'
 import {
   type ForumL402SigningBoundaryProvider,
   verifyForumL402PaymentEvent,
@@ -97,6 +99,7 @@ import {
   ForumTipRecipientProviderClass,
 } from './forum/schemas'
 import type { OpenAgentsHostedMdkClient } from './hosted-mdk-client'
+import type { OpenAgentsSiteMdkWebhookConfig } from './site-mdk-webhooks'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -114,6 +117,7 @@ type ForumRouteDependencies = Readonly<{
   agentStore?: AgentRegistrationStore
   hostedMdkClient?: OpenAgentsHostedMdkClient
   l402SigningBoundary?: ForumL402SigningBoundaryProvider
+  mdkWebhookConfig?: OpenAgentsSiteMdkWebhookConfig | undefined
   makeId?: () => string
   nowEpochMillis?: () => number
   nowIso?: () => string
@@ -2504,6 +2508,81 @@ const directTipStatusResponse = (db: D1Database, attemptId: string) =>
     Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
   )
 
+const directTipMdkWebhookResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const body = yield* Effect.tryPromise({
+      catch: error =>
+        new ForumPaidActionError({
+          kind: 'payment_verification_failed',
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Forum MDK webhook body could not be read.',
+        }),
+      try: () => request.text(),
+    })
+    const nowIso = dependencies.nowIso?.() ?? currentIsoTimestamp()
+    const verification = yield* Effect.tryPromise({
+      catch: error =>
+        new ForumPaidActionError({
+          kind: 'payment_verification_failed',
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Forum MDK webhook could not be verified.',
+        }),
+      try: () =>
+        verifyOpenAgentsForumMdkWebhook({
+          body,
+          config: dependencies.mdkWebhookConfig,
+          headers: request.headers,
+          nowIso,
+        }),
+    })
+
+    if (verification._tag === 'Invalid') {
+      return noStoreJsonResponse(
+        {
+          error: `mdk_webhook_${verification.reason}`,
+          message: 'The Forum MDK webhook could not be verified.',
+        },
+        {
+          status:
+            verification.reason === 'missing_configuration'
+              ? 503
+              : verification.reason === 'invalid_signature'
+                ? 401
+                : 400,
+        },
+      )
+    }
+
+    const result = yield* reconcileForumDirectTipWebhook(db, {
+      amount: verification.event.amount,
+      attemptId: verification.event.attemptId,
+      eventBodyDigestRef: verification.event.eventBodyDigestRef,
+      paymentEvidence: {
+        externalRef: verification.event.externalRef,
+        paymentMode: verification.event.paymentMode,
+        providerRef: verification.event.providerRef,
+        redactedEvidenceRef: verification.event.redactedEvidenceRef,
+        status: verification.event.status,
+      },
+      providerEventRef: verification.event.providerEventRef,
+      signatureBindingRef: verification.event.signatureBindingRef,
+    })
+
+    return noStoreJsonResponse(result, {
+      status: result.idempotent ? 200 : 201,
+    })
+  }).pipe(
+    Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
+  )
+
 const receiptLookupResponse = (db: D1Database, receiptRef: string) =>
   lookupForumPaidActionReceipt(db, receiptRef).pipe(
     Effect.map(receipt =>
@@ -3479,6 +3558,12 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
       return request.method === 'POST'
         ? submitDirectTipResponse(request, db, postId, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    if (url.pathname === '/api/forum/paid-actions/mdk/webhooks') {
+      return request.method === 'POST'
+        ? directTipMdkWebhookResponse(request, db, requestDependencies)
         : Effect.succeed(methodNotAllowed(['POST']))
     }
 

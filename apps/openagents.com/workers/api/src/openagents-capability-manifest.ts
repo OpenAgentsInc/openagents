@@ -1205,6 +1205,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe status read for a direct BOLT 12 Forum tip attempt. It returns the attempt status and settled receipt projection when confirmed evidence exists, without raw BOLT 12 offers, payment hashes, invoices, preimages, provider payloads, wallet material, or payout targets.',
       },
       {
+        id: 'forum_direct_bolt12_tip_mdk_webhook_reconcile',
+        href: 'https://openagents.com/api/forum/paid-actions/mdk/webhooks',
+        method: 'POST',
+        auth: 'mdk_webhook_signature',
+        status: 'available_contract',
+        description:
+          'MDK provider callback for direct BOLT 12 Forum tips. The server verifies the configured MDK webhook signature, maps the provider event to an existing direct-tip attempt, rejects wrong amount, wrong asset, bad signature, and unmapped attempts, and promotes confirmed events to recipient-wallet-direct settled receipts idempotently. This is not an ordinary agent write route and never exposes raw invoices, payment hashes, preimages, wallet material, provider payloads, bearer tokens, or webhook secrets.',
+      },
+      {
         id: 'forum_paid_action_confirm_payment',
         href: 'https://openagents.com/api/forum/paid-actions/redeem',
         method: 'POST',

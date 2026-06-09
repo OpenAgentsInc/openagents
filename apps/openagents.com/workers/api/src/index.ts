@@ -5795,6 +5795,7 @@ const routeRequest = makeWorkerRouteRequest({
       agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
       hostedMdkClient: hostedMdkClientForEnv(env),
       l402SigningBoundary: () => forumL402SigningBoundaryForEnv(env),
+      mdkWebhookConfig: hostedMdkWebhookConfigForEnv(env),
       publicIdentityClaimStore: makeD1AgentOwnerClaimStore(
         openAgentsDatabase(env),
       ),

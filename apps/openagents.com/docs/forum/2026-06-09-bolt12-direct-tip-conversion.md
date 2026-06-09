@@ -56,14 +56,21 @@ paid-action surfaces. It is not the ordinary Forum tipping rail.
   recipient-wallet-direct settled receipt; `failed`, `refunded`, `reversed`,
   `observed`, and `replayed` evidence records an explicit attempt without
   public settled stats.
+- #4601 adds a provider callback route at
+  `POST /api/forum/paid-actions/mdk/webhooks`. The route verifies the
+  configured MDK webhook source, maps confirmed provider events to an existing
+  direct-tip attempt, rejects wrong amount/signature/unmapped attempts, stores
+  duplicate delivery metadata, and promotes confirmed callbacks to the same
+  recipient-wallet-direct settled receipt projection.
 
 The MDK agent-wallet docs available during this audit describe the direct send
 command (`npx @moneydevkit/agent-wallet@latest send <bolt12Offer> <amount>`)
 and JSON stdout, but they do not expose a stable provider webhook contract for
 standalone BOLT 12 agent-wallet sends. OpenAgents therefore treats successful
-payer-side wallet/provider evidence as the current source of truth and keeps
-timeout recovery explicit as `recovery_pending` until a documented provider
-read or future webhook adapter confirms or fails the payment.
+payer-side wallet/provider evidence and verified MDK webhook events as the
+current payment sources of truth. Timeout recovery remains explicit as
+`recovery_pending` until a confirmed provider callback or documented recovery
+read promotes or fails the attempt.
 
 Product promise `forum.content_tipping.v1` should not be flipped fully green
 until production smoke tips at least two independent live ready recipients and

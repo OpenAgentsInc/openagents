@@ -32,6 +32,8 @@ import {
   type ForumDirectTipPaymentEvidence,
   type ForumDirectTipResponse,
   ForumDirectTipResponse as ForumDirectTipResponseSchema,
+  type ForumDirectTipWebhookReconciliation,
+  ForumDirectTipWebhookReconciliation as ForumDirectTipWebhookReconciliationSchema,
   type ForumL402PaymentChallenge,
   type ForumMoneyAmount,
   type ForumPaidActionKind,
@@ -186,6 +188,15 @@ export type ForumDirectTipSubmitInput = Readonly<{
   }>
 }>
 
+export type ForumDirectTipWebhookReconciliationInput = Readonly<{
+  amount: ForumMoneyAmount
+  attemptId: string
+  eventBodyDigestRef: string
+  paymentEvidence: ForumDirectTipPaymentEvidence
+  providerEventRef: string
+  signatureBindingRef: string
+}>
+
 export type ForumVerifiedPaymentEventInput = Readonly<{
   externalRef: string
   paymentMode: ForumPaymentEventMode
@@ -279,6 +290,13 @@ type PaymentEventRow = Readonly<{
   provider_ref: string
 }>
 
+type MoneyActionRow = Readonly<{
+  id: string
+  payment_event_id: string | null
+  public_projection_json: string
+  receipt_id: string | null
+}>
+
 type DirectTipAttemptRow = Readonly<{
   amount_sats: number
   archived_at: string | null
@@ -299,6 +317,25 @@ type DirectTipAttemptRow = Readonly<{
   target_post_permalink: string | null
   target_topic_id: string
   updated_at: string
+}>
+
+type DirectTipWebhookEventRow = Readonly<{
+  amount_sats: number
+  archived_at: string | null
+  delivery_count: number
+  direct_tip_attempt_id: string
+  event_body_digest_ref: string
+  external_ref: string
+  first_seen_at: string
+  id: string
+  last_seen_at: string
+  payment_event_status: ForumPaymentEventStatus
+  provider_event_ref: string
+  provider_ref: string
+  reconciliation_result: string
+  reconciliation_status: ForumDirectTipAttemptStatus
+  redacted_evidence_ref: string
+  signature_binding_ref: string
 }>
 
 type SettlementClaimRow = Readonly<{
@@ -349,6 +386,9 @@ const decodeReceiptLookup = S.decodeUnknownSync(
   ForumReceiptLookupResponseSchema,
 )
 const decodeDirectTipResponse = S.decodeUnknownSync(ForumDirectTipResponseSchema)
+const decodeDirectTipWebhookReconciliation = S.decodeUnknownSync(
+  ForumDirectTipWebhookReconciliationSchema,
+)
 const decodePaymentEventProjection = S.decodeUnknownSync(
   ForumPaymentEventProjectionSchema,
 )
@@ -1128,6 +1168,38 @@ const directTipPaymentEventProjection = ({
     status: input.paymentEvidence.status,
   })
 
+const directTipWebhookPaymentEventProjection = ({
+  amount,
+  attempt,
+  eventId,
+  paymentEvidence,
+  receiptRef,
+  runtime,
+}: Readonly<{
+  amount: ForumMoneyAmount
+  attempt: DirectTipAttemptRow
+  eventId: string
+  paymentEvidence: ForumDirectTipPaymentEvidence
+  receiptRef: string | null
+  runtime: ForumPaidActionRuntime
+}>): ForumPaymentEventProjection =>
+  decodePaymentEventProjection({
+    actionKind: 'post_reward',
+    amount,
+    challengeId: attempt.id,
+    createdAt: runtime.nowIso(),
+    externalRef: paymentEvidence.externalRef,
+    payerActorRef: attempt.payer_actor_ref,
+    paymentEventRef: eventId,
+    paymentMode: paymentEvidence.paymentMode,
+    providerRef: paymentEvidence.providerRef,
+    receiptRef,
+    recipientActorRef: attempt.recipient_actor_ref,
+    redactedEvidenceRef: paymentEvidence.redactedEvidenceRef,
+    settlementAuthority: 'recipient_wallet_direct',
+    status: paymentEvidence.status,
+  })
+
 const directTipResponse = (
   attempt: DirectTipAttemptRow,
   receipt: ForumReceiptLookupResponse | null,
@@ -1581,6 +1653,42 @@ const readDirectTipAttemptByProviderExternal = (
       .first<DirectTipAttemptRow>(),
   )
 
+const readDirectTipWebhookEventByProviderEventRef = (
+  db: D1Database,
+  providerEventRef: string,
+): Effect.Effect<DirectTipWebhookEventRow | null, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.readDirectTipWebhookEventByProviderEventRef', () =>
+    db
+      .prepare(
+        `SELECT *
+           FROM forum_direct_tip_webhook_events
+          WHERE provider_event_ref = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(providerEventRef)
+      .first<DirectTipWebhookEventRow>(),
+  )
+
+const readMoneyActionByPaymentEventId = (
+  db: D1Database,
+  paymentEventId: string,
+): Effect.Effect<MoneyActionRow | null, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.readMoneyActionByPaymentEventId', () =>
+    db
+      .prepare(
+        `SELECT id,
+                payment_event_id,
+                receipt_id,
+                public_projection_json
+           FROM forum_money_actions
+          WHERE payment_event_id = ?
+          LIMIT 1`,
+      )
+      .bind(paymentEventId)
+      .first<MoneyActionRow>(),
+  )
+
 const insertDirectTipAttempt = (
   db: D1Database,
   input: ForumDirectTipSubmitInput,
@@ -1772,6 +1880,214 @@ const insertDirectTipPaymentEvent = (
           }),
         ),
         runtime.nowIso(),
+      )
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const insertDirectTipWebhookEvent = (
+  db: D1Database,
+  input: ForumDirectTipWebhookReconciliationInput,
+  status: ForumDirectTipAttemptStatus,
+  reconciliationResult: string,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.insertDirectTipWebhookEvent', () =>
+    db
+      .prepare(
+        `INSERT INTO forum_direct_tip_webhook_events (
+           id,
+           provider_event_ref,
+           direct_tip_attempt_id,
+           provider_ref,
+           external_ref,
+           amount_sats,
+           payment_event_status,
+           redacted_evidence_ref,
+           event_body_digest_ref,
+           signature_binding_ref,
+           reconciliation_status,
+           reconciliation_result,
+           first_seen_at,
+           last_seen_at,
+           delivery_count
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      )
+      .bind(
+        runtime.makePaymentEventId(),
+        input.providerEventRef,
+        input.attemptId,
+        input.paymentEvidence.providerRef,
+        input.paymentEvidence.externalRef,
+        input.amount.amount,
+        input.paymentEvidence.status,
+        input.paymentEvidence.redactedEvidenceRef,
+        input.eventBodyDigestRef,
+        input.signatureBindingRef,
+        status,
+        reconciliationResult,
+        runtime.nowIso(),
+        runtime.nowIso(),
+      )
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const updateDirectTipWebhookEventReplay = (
+  db: D1Database,
+  providerEventRef: string,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.updateDirectTipWebhookEventReplay', () =>
+    db
+      .prepare(
+        `UPDATE forum_direct_tip_webhook_events
+            SET delivery_count = delivery_count + 1,
+                last_seen_at = ?
+          WHERE provider_event_ref = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(runtime.nowIso(), providerEventRef)
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const insertDirectTipReceiptFromAttempt = (
+  db: D1Database,
+  attempt: DirectTipAttemptRow,
+  paymentEvidence: ForumDirectTipPaymentEvidence,
+  moneyAction: MoneyActionRow,
+  receiptId: string,
+  receiptRef: string,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.insertDirectTipReceiptFromAttempt', () =>
+    db
+      .prepare(
+        `INSERT INTO forum_receipts (
+           id,
+           receipt_ref,
+           action_kind,
+           target_forum_id,
+           target_topic_id,
+           target_post_id,
+           amount_asset,
+           amount_value,
+           recipient_actor_ref,
+           redacted_payment_ref,
+           public_projection_json,
+           created_at
+         )
+         VALUES (?, ?, 'post_reward', NULL, ?, ?, 'sats', ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        receiptId,
+        receiptRef,
+        attempt.target_topic_id,
+        attempt.target_post_id,
+        attempt.amount_sats,
+        attempt.recipient_actor_ref,
+        paymentEvidence.redactedEvidenceRef,
+        moneyAction.public_projection_json,
+        runtime.nowIso(),
+      )
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const updateDirectTipMoneyActionReceipt = (
+  db: D1Database,
+  moneyActionId: string,
+  receiptId: string,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.updateDirectTipMoneyActionReceipt', () =>
+    db
+      .prepare(
+        `UPDATE forum_money_actions
+            SET receipt_id = ?
+          WHERE id = ?`,
+      )
+      .bind(receiptId, moneyActionId)
+      .run(),
+  ).pipe(Effect.asVoid)
+
+const updateDirectTipPaymentEventFromWebhook = (
+  db: D1Database,
+  attempt: DirectTipAttemptRow,
+  paymentEvidence: ForumDirectTipPaymentEvidence,
+  receiptRef: string | null,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  Effect.gen(function* () {
+    const paymentEventId = attempt.payment_event_id
+
+    if (paymentEventId === null) {
+      return
+    }
+
+    yield* d1Effect(
+      'forumPaidActions.updateDirectTipPaymentEventFromWebhook',
+      () =>
+        db
+          .prepare(
+            `UPDATE forum_payment_events
+                SET provider_ref = ?,
+                    external_ref = ?,
+                    redacted_evidence_ref = ?,
+                    public_projection_json = ?
+              WHERE id = ?
+                AND archived_at IS NULL`,
+          )
+          .bind(
+            paymentEvidence.providerRef,
+            paymentEvidence.externalRef,
+            paymentEvidence.redactedEvidenceRef,
+            JSON.stringify(
+              directTipWebhookPaymentEventProjection({
+                amount: { amount: attempt.amount_sats, asset: 'sats' },
+                attempt,
+                eventId: paymentEventId,
+                paymentEvidence,
+                receiptRef,
+                runtime,
+              }),
+            ),
+            paymentEventId,
+          )
+          .run(),
+    ).pipe(Effect.asVoid)
+  })
+
+const updateDirectTipAttemptFromWebhook = (
+  db: D1Database,
+  attemptId: string,
+  paymentEvidence: ForumDirectTipPaymentEvidence,
+  status: ForumDirectTipAttemptStatus,
+  receiptRef: string | null,
+  runtime: ForumPaidActionRuntime,
+): Effect.Effect<void, ForumPaidActionError> =>
+  d1Effect('forumPaidActions.updateDirectTipAttemptFromWebhook', () =>
+    db
+      .prepare(
+        `UPDATE forum_direct_tip_attempts
+            SET provider_ref = ?,
+                external_ref = ?,
+                redacted_evidence_ref = ?,
+                payment_mode = ?,
+                payment_event_status = ?,
+                status = ?,
+                receipt_ref = COALESCE(receipt_ref, ?),
+                updated_at = ?
+          WHERE id = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(
+        paymentEvidence.providerRef,
+        paymentEvidence.externalRef,
+        paymentEvidence.redactedEvidenceRef,
+        paymentEvidence.paymentMode,
+        paymentEvidence.status,
+        status,
+        receiptRef,
+        runtime.nowIso(),
+        attemptId,
       )
       .run(),
   ).pipe(Effect.asVoid)
@@ -2396,6 +2712,194 @@ export const lookupForumDirectTip = (
     const receipt = yield* directTipReceiptForAttempt(db, attempt)
 
     return directTipResponse(attempt, receipt, true)
+  })
+
+export const reconcileForumDirectTipWebhook = (
+  db: D1Database,
+  input: ForumDirectTipWebhookReconciliationInput,
+  runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
+): Effect.Effect<ForumDirectTipWebhookReconciliation, ForumPaidActionError> =>
+  Effect.gen(function* () {
+    yield* validatePaymentEventRefs(input.paymentEvidence)
+    yield* validatePaymentEventRef('providerEventRef', input.providerEventRef)
+    yield* validatePaymentEventRef(
+      'eventBodyDigestRef',
+      input.eventBodyDigestRef,
+    )
+    yield* validatePaymentEventRef(
+      'signatureBindingRef',
+      input.signatureBindingRef,
+    )
+
+    if (input.amount.asset !== 'sats' || input.amount.amount <= 0) {
+      return yield* new ForumPaidActionError({
+        kind: 'over_spend_cap',
+        reason: 'Forum direct-tip webhooks must reconcile positive sats amounts.',
+      })
+    }
+
+    const attempt = yield* readDirectTipAttemptById(db, input.attemptId)
+
+    if (attempt === null) {
+      return yield* new ForumPaidActionError({
+        kind: 'challenge_not_found',
+        reason: 'Forum direct tip attempt was not found for MDK webhook.',
+      })
+    }
+
+    if (attempt.amount_sats !== input.amount.amount) {
+      return yield* new ForumPaidActionError({
+        kind: 'binding_mismatch',
+        reason: 'Forum direct tip webhook amount does not match the attempt.',
+      })
+    }
+
+    const existingWebhook = yield* readDirectTipWebhookEventByProviderEventRef(
+      db,
+      input.providerEventRef,
+    )
+
+    if (existingWebhook !== null) {
+      if (
+        existingWebhook.direct_tip_attempt_id !== input.attemptId ||
+        existingWebhook.amount_sats !== input.amount.amount ||
+        existingWebhook.provider_ref !== input.paymentEvidence.providerRef ||
+        existingWebhook.external_ref !== input.paymentEvidence.externalRef
+      ) {
+        return yield* new ForumPaidActionError({
+          kind: 'payment_event_replayed',
+          reason:
+            'Forum MDK webhook provider event ref already belongs to another direct tip.',
+        })
+      }
+
+      yield* updateDirectTipWebhookEventReplay(
+        db,
+        input.providerEventRef,
+        runtime,
+      )
+
+      const refreshedAttempt =
+        (yield* readDirectTipAttemptById(db, input.attemptId)) ?? attempt
+      const receipt = yield* directTipReceiptForAttempt(db, refreshedAttempt)
+
+      return decodeDirectTipWebhookReconciliation({
+        amount: input.amount,
+        attemptId: input.attemptId,
+        eventBodyDigestRef: existingWebhook.event_body_digest_ref,
+        idempotent: true,
+        paymentEvidence: {
+          externalRef: existingWebhook.external_ref,
+          paymentMode: refreshedAttempt.payment_mode,
+          providerRef: existingWebhook.provider_ref,
+          redactedEvidenceRef: existingWebhook.redacted_evidence_ref,
+          status: existingWebhook.payment_event_status,
+        },
+        receipt,
+        reconciliationRef: existingWebhook.id,
+        signatureBindingRef: existingWebhook.signature_binding_ref,
+        status: refreshedAttempt.status,
+      })
+    }
+
+    const existingPaymentEvent = yield* readPaymentEventByProviderExternal(
+      db,
+      input.paymentEvidence.providerRef,
+      input.paymentEvidence.externalRef,
+    )
+
+    if (
+      existingPaymentEvent !== null &&
+      existingPaymentEvent.id !== attempt.payment_event_id
+    ) {
+      return yield* new ForumPaidActionError({
+        kind: 'payment_event_replayed',
+        reason:
+          'Forum direct-tip webhook payment ref already belongs to another payment event.',
+      })
+    }
+
+    const status = directTipStatusForPaymentEvent(input.paymentEvidence.status)
+    let receiptRef = attempt.receipt_ref
+
+    if (status === 'settled' && receiptRef === null) {
+      if (attempt.payment_event_id === null) {
+        return yield* new ForumPaidActionError({
+          kind: 'receipt_not_found',
+          reason:
+            'Forum direct-tip webhook could not locate the original payment event.',
+        })
+      }
+
+      const moneyAction = yield* readMoneyActionByPaymentEventId(
+        db,
+        attempt.payment_event_id,
+      )
+
+      if (moneyAction === null) {
+        return yield* new ForumPaidActionError({
+          kind: 'receipt_not_found',
+          reason:
+            'Forum direct-tip webhook could not locate the original money action.',
+        })
+      }
+
+      const receiptId = runtime.makeReceiptId()
+      receiptRef = `receipt.forum.direct_tip.${attempt.id}`
+      yield* insertDirectTipReceiptFromAttempt(
+        db,
+        attempt,
+        input.paymentEvidence,
+        moneyAction,
+        receiptId,
+        receiptRef,
+        runtime,
+      )
+      yield* updateDirectTipMoneyActionReceipt(db, moneyAction.id, receiptId)
+    }
+
+    yield* updateDirectTipPaymentEventFromWebhook(
+      db,
+      attempt,
+      input.paymentEvidence,
+      receiptRef,
+      runtime,
+    )
+    yield* updateDirectTipAttemptFromWebhook(
+      db,
+      attempt.id,
+      input.paymentEvidence,
+      status,
+      receiptRef,
+      runtime,
+    )
+    yield* insertDirectTipWebhookEvent(
+      db,
+      input,
+      status,
+      status === 'settled' ? 'receipt_settled' : 'attempt_recorded',
+      runtime,
+    )
+
+    const storedAttempt =
+      (yield* readDirectTipAttemptById(db, attempt.id)) ?? attempt
+    const receipt = yield* directTipReceiptForAttempt(db, storedAttempt)
+    const webhook = yield* readDirectTipWebhookEventByProviderEventRef(
+      db,
+      input.providerEventRef,
+    )
+
+    return decodeDirectTipWebhookReconciliation({
+      amount: input.amount,
+      attemptId: input.attemptId,
+      eventBodyDigestRef: input.eventBodyDigestRef,
+      idempotent: false,
+      paymentEvidence: input.paymentEvidence,
+      receipt,
+      reconciliationRef: webhook?.id ?? input.providerEventRef,
+      signatureBindingRef: input.signatureBindingRef,
+      status,
+    })
   })
 
 const settlementClaimResponse = (

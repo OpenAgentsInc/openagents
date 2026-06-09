@@ -164,6 +164,7 @@ type MoneyActionRow = Readonly<{
   earning_actor_ref: string | null
   id: string
   payment_event_id: string | null
+  public_projection_json: string
   receipt_id: string | null
 }>
 
@@ -206,6 +207,31 @@ type DirectTipAttemptRow = Readonly<{
   target_post_permalink: string | null
   target_topic_id: string
   updated_at: string
+}>
+
+type DirectTipWebhookEventRow = Readonly<{
+  amount_sats: number
+  archived_at: string | null
+  delivery_count: number
+  direct_tip_attempt_id: string
+  event_body_digest_ref: string
+  external_ref: string
+  first_seen_at: string
+  id: string
+  last_seen_at: string
+  payment_event_status:
+    | 'confirmed'
+    | 'failed'
+    | 'observed'
+    | 'refunded'
+    | 'replayed'
+    | 'reversed'
+  provider_event_ref: string
+  provider_ref: string
+  reconciliation_result: string
+  reconciliation_status: 'settled' | 'failed' | 'recovery_pending'
+  redacted_evidence_ref: string
+  signature_binding_ref: string
 }>
 
 type TipSettlementClaimRow = Readonly<{
@@ -456,12 +482,38 @@ const forumHostedMdkClient = () =>
   )
 
 const forumL402SigningSecret = 'forum-route-test-l402-secret'
+const forumMdkWebhookSecret = 'forum-route-test-mdk-webhook-secret'
 
 const forumL402SigningBoundary = () =>
   makeOpenAgentsL402HmacSigningBoundary({
     secretKeyMaterial: forumL402SigningSecret,
     signerRef: 'binding.forum.route.mdk.sandbox',
   })
+
+const signStandardWebhook = async (
+  secret: string,
+  id: string,
+  timestamp: string,
+  body: string,
+): Promise<string> => {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { hash: 'SHA-256', name: 'HMAC' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(`${id}.${timestamp}.${body}`),
+  )
+
+  return [...new Uint8Array(signature)]
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 class ForumRouteStore {
   private idCounter = 0
@@ -952,6 +1004,7 @@ class ForumRouteStore {
   ]
   challenges: Array<ChallengeRow> = []
   directTipAttempts: Array<DirectTipAttemptRow> = []
+  directTipWebhookEvents: Array<DirectTipWebhookEventRow> = []
   redemptions: Array<RedemptionRow> = []
   receipts: Array<ReceiptRow> = []
   moneyActions: Array<MoneyActionRow> = []
@@ -1235,6 +1288,31 @@ class ForumRouteStatement implements D1PreparedStatement {
       const row =
         this.store.directTipAttempts.find(
           item => item.id === attemptId && item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM forum_direct_tip_webhook_events')) {
+      const providerEventRef = String(this.values[0])
+      const row =
+        this.store.directTipWebhookEvents.find(
+          item =>
+            item.provider_event_ref === providerEventRef &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (
+      this.query.includes('FROM forum_money_actions') &&
+      this.query.includes('payment_event_id = ?')
+    ) {
+      const paymentEventId = String(this.values[0])
+      const row =
+        this.store.moneyActions.find(
+          item => item.payment_event_id === paymentEventId,
         ) ?? null
 
       return Promise.resolve(row as T | null)
@@ -1636,6 +1714,7 @@ class ForumRouteStatement implements D1PreparedStatement {
         id: String(this.values[0]),
         payment_event_id:
           this.values[6] === null ? null : String(this.values[6]),
+        public_projection_json: String(this.values[9]),
         receipt_id: this.values[7] === null ? null : String(this.values[7]),
       })
 
@@ -1652,6 +1731,7 @@ class ForumRouteStatement implements D1PreparedStatement {
         id: String(this.values[0]),
         payment_event_id:
           this.values[9] === null ? null : String(this.values[9]),
+        public_projection_json: String(this.values[12]),
         receipt_id: this.values[10] === null ? null : String(this.values[10]),
       })
 
@@ -1739,6 +1819,109 @@ class ForumRouteStatement implements D1PreparedStatement {
         receipt_id: this.values[6] === null ? null : String(this.values[6]),
         replayed: 0,
       })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('INSERT INTO forum_direct_tip_webhook_events')) {
+      this.store.directTipWebhookEvents.push({
+        amount_sats: Number(this.values[5]),
+        archived_at: null,
+        delivery_count: 1,
+        direct_tip_attempt_id: String(this.values[2]),
+        event_body_digest_ref: String(this.values[8]),
+        external_ref: String(this.values[4]),
+        first_seen_at: String(this.values[12]),
+        id: String(this.values[0]),
+        last_seen_at: String(this.values[13]),
+        payment_event_status:
+          this.values[6] as DirectTipWebhookEventRow['payment_event_status'],
+        provider_event_ref: String(this.values[1]),
+        provider_ref: String(this.values[3]),
+        reconciliation_result: String(this.values[11]),
+        reconciliation_status:
+          this.values[10] as DirectTipWebhookEventRow['reconciliation_status'],
+        redacted_evidence_ref: String(this.values[7]),
+        signature_binding_ref: String(this.values[9]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_direct_tip_webhook_events')) {
+      const providerEventRef = String(this.values[1])
+      const row = this.store.directTipWebhookEvents.find(
+        item => item.provider_event_ref === providerEventRef,
+      )
+
+      if (row !== undefined) {
+        const index = this.store.directTipWebhookEvents.indexOf(row)
+        this.store.directTipWebhookEvents[index] = {
+          ...row,
+          delivery_count: row.delivery_count + 1,
+          last_seen_at: String(this.values[0]),
+        }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_money_actions')) {
+      const receiptId = String(this.values[0])
+      const moneyActionId = String(this.values[1])
+      const row = this.store.moneyActions.find(item => item.id === moneyActionId)
+
+      if (row !== undefined) {
+        const index = this.store.moneyActions.indexOf(row)
+        this.store.moneyActions[index] = { ...row, receipt_id: receiptId }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_payment_events')) {
+      const paymentEventId = String(this.values[4])
+      const row = this.store.paymentEvents.find(
+        item => item.id === paymentEventId,
+      )
+
+      if (row !== undefined) {
+        const index = this.store.paymentEvents.indexOf(row)
+        this.store.paymentEvents[index] = {
+          ...row,
+          external_ref: String(this.values[1]),
+          provider_ref: String(this.values[0]),
+          public_projection_json: String(this.values[3]),
+          redacted_evidence_ref: String(this.values[2]),
+        }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_direct_tip_attempts')) {
+      const attemptId = String(this.values[8])
+      const row = this.store.directTipAttempts.find(
+        item => item.id === attemptId,
+      )
+
+      if (row !== undefined) {
+        const index = this.store.directTipAttempts.indexOf(row)
+        this.store.directTipAttempts[index] = {
+          ...row,
+          external_ref: String(this.values[1]),
+          payment_event_status:
+            this.values[4] as DirectTipAttemptRow['payment_event_status'],
+          payment_mode: this.values[3] as DirectTipAttemptRow['payment_mode'],
+          provider_ref: String(this.values[0]),
+          receipt_ref:
+            row.receipt_ref ??
+            (this.values[6] === null ? null : String(this.values[6])),
+          redacted_evidence_ref: String(this.values[2]),
+          status: this.values[5] as DirectTipAttemptRow['status'],
+          updated_at: String(this.values[7]),
+        }
+      }
 
       return Promise.resolve({ success: true } as D1Result<T>)
     }
@@ -3024,6 +3207,11 @@ const route = async (
     hostedMdkClient: forumHostedMdkClient(),
     l402SigningBoundary: forumL402SigningBoundary,
     makeId: () => store.nextId(),
+    mdkWebhookConfig: {
+      bindingRef: 'binding.forum.route.mdk.webhook',
+      secret: forumMdkWebhookSecret,
+      source: 'dashboard_standard_webhooks',
+    },
     nowEpochMillis: () => 1_780_000_000_000,
     nowIso: () => '2026-06-05T20:00:00.000Z',
     publicIdentityClaimStore: {
@@ -4562,6 +4750,200 @@ describe('Forum routes', () => {
     })
   })
 
+  test('reconciles recovery-pending direct tips from signed MDK webhook events', async () => {
+    const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(readyTipRecipientWalletRow())
+    const postId = '66666666-6666-4666-8666-666666666666'
+    const pendingResponse = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}/direct-tips`,
+      {
+        body: {
+          amount: { amount: 15, asset: 'sats' },
+          paymentEvidence: {
+            externalRef: 'external.payment.redacted.route_direct_tip_observed',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.route_direct_tip_observed',
+            status: 'observed',
+          },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'forum-direct-tip-route-observed',
+        },
+        method: 'POST',
+      },
+    )
+    const pending = (await pendingResponse.json()) as { attemptId: string }
+    const webhookBody = JSON.stringify({
+      amountSats: 15,
+      attemptId: pending.attemptId,
+      createdAt: '2026-06-05T20:00:01.000Z',
+      id: 'evt_forum_direct_tip_paid_1',
+      status: 'paid',
+      type: 'payment.succeeded',
+    })
+    const signature = await signStandardWebhook(
+      forumMdkWebhookSecret,
+      'evt_forum_direct_tip_paid_1',
+      '1780000001',
+      webhookBody,
+    )
+    const webhookResponse = await route(
+      store,
+      '/api/forum/paid-actions/mdk/webhooks',
+      {
+        body: JSON.parse(webhookBody),
+        headers: {
+          'webhook-id': 'evt_forum_direct_tip_paid_1',
+          'webhook-signature': signature,
+          'webhook-timestamp': '1780000001',
+        },
+        method: 'POST',
+      },
+    )
+    const replayResponse = await route(
+      store,
+      '/api/forum/paid-actions/mdk/webhooks',
+      {
+        body: JSON.parse(webhookBody),
+        headers: {
+          'webhook-id': 'evt_forum_direct_tip_paid_1',
+          'webhook-signature': signature,
+          'webhook-timestamp': '1780000001',
+        },
+        method: 'POST',
+      },
+    )
+    const webhook = await webhookResponse.json()
+    const replay = await replayResponse.json()
+    const postDetailResponse = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}`,
+    )
+    const postDetail = (await postDetailResponse.json()) as {
+      post: {
+        tipStats: {
+          tipCount: number
+          totalPaidSats: number
+          totalSettledSats: number
+        }
+      }
+    }
+
+    expect(pendingResponse.status).toBe(201)
+    expect(webhookResponse.status).toBe(201)
+    expect(replayResponse.status).toBe(200)
+    expect(webhook).toMatchObject({
+      attemptId: pending.attemptId,
+      idempotent: false,
+      receipt: {
+        amount: { amount: 15, asset: 'sats' },
+        paymentEvent: {
+          providerRef: 'provider.mdk_webhook.dashboard_standard_webhooks',
+          settlementAuthority: 'recipient_wallet_direct',
+          status: 'confirmed',
+        },
+      },
+      status: 'settled',
+    })
+    expect(replay).toMatchObject({
+      attemptId: pending.attemptId,
+      idempotent: true,
+      status: 'settled',
+    })
+    expect(store.directTipWebhookEvents[0]?.delivery_count).toBe(2)
+    expect(store.receipts).toHaveLength(1)
+    expect(postDetail.post.tipStats).toStrictEqual({
+      tipCount: 1,
+      totalPaidSats: 15,
+      totalSettledSats: 15,
+    })
+  })
+
+  test('rejects direct-tip MDK webhooks with an invalid signature', async () => {
+    const store = new ForumRouteStore()
+    const response = await route(store, '/api/forum/paid-actions/mdk/webhooks', {
+      body: {
+        amountSats: 15,
+        attemptId: 'aaaaaaaa-1111-4111-8111-000000000001',
+        id: 'evt_forum_direct_tip_bad_sig',
+        status: 'paid',
+      },
+      headers: {
+        'webhook-id': 'evt_forum_direct_tip_bad_sig',
+        'webhook-signature': 'bad-signature',
+        'webhook-timestamp': '1780000001',
+      },
+      method: 'POST',
+    })
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'mdk_webhook_invalid_signature',
+    })
+    expect(store.directTipWebhookEvents).toHaveLength(0)
+  })
+
+  test('rejects direct-tip MDK webhooks whose amount does not match the attempt', async () => {
+    const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(readyTipRecipientWalletRow())
+    const postId = '66666666-6666-4666-8666-666666666666'
+    const pendingResponse = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}/direct-tips`,
+      {
+        body: {
+          amount: { amount: 15, asset: 'sats' },
+          paymentEvidence: {
+            externalRef:
+              'external.payment.redacted.route_direct_tip_wrong_amount',
+            paymentMode: 'live',
+            providerRef: 'provider.mdk_agent_wallet.redacted',
+            redactedEvidenceRef:
+              'evidence.payment.redacted.route_direct_tip_wrong_amount',
+            status: 'observed',
+          },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'forum-direct-tip-route-wrong-amount',
+        },
+        method: 'POST',
+      },
+    )
+    const pending = (await pendingResponse.json()) as { attemptId: string }
+    const webhookBody = JSON.stringify({
+      amountSats: 16,
+      attemptId: pending.attemptId,
+      id: 'evt_forum_direct_tip_wrong_amount',
+      status: 'paid',
+    })
+    const signature = await signStandardWebhook(
+      forumMdkWebhookSecret,
+      'evt_forum_direct_tip_wrong_amount',
+      '1780000001',
+      webhookBody,
+    )
+    const response = await route(store, '/api/forum/paid-actions/mdk/webhooks', {
+      body: JSON.parse(webhookBody),
+      headers: {
+        'webhook-id': 'evt_forum_direct_tip_wrong_amount',
+        'webhook-signature': signature,
+        'webhook-timestamp': '1780000001',
+      },
+      method: 'POST',
+    })
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'binding_mismatch',
+    })
+    expect(store.receipts).toHaveLength(0)
+  })
+
   test('rejects direct Forum tips when the target author has no BOLT 12 offer', async () => {
     const store = new ForumRouteStore()
     store.tipRecipientWallets.push(
@@ -4658,6 +5040,7 @@ describe('Forum routes', () => {
       earning_actor_ref: recipientActorRef,
       id: 'money-action-route-settled',
       payment_event_id: 'payment-event-route-settled',
+      public_projection_json: projectionJson,
       receipt_id: 'receipt-route-settled',
     })
     store.paymentEvents.push({
@@ -4928,6 +5311,7 @@ describe('Forum routes', () => {
         earning_actor_ref: 'actor.route-test',
         id: 'money-action-refunded',
         payment_event_id: 'payment-event-refunded',
+        public_projection_json: projectionJson,
         receipt_id: 'receipt-refunded',
       },
       {
@@ -4937,6 +5321,7 @@ describe('Forum routes', () => {
         earning_actor_ref: 'actor.route-test',
         id: 'money-action-reversed',
         payment_event_id: 'payment-event-reversed',
+        public_projection_json: projectionJson,
         receipt_id: 'receipt-reversed',
       },
     )

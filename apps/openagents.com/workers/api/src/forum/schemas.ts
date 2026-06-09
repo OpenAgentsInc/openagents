@@ -772,6 +772,20 @@ export const ForumDirectTipPaymentEvidence = S.Struct({
 export type ForumDirectTipPaymentEvidence =
   typeof ForumDirectTipPaymentEvidence.Type
 
+export const ForumDirectTipWebhookReconciliation = S.Struct({
+  amount: ForumMoneyAmount,
+  attemptId: ForumUuid,
+  eventBodyDigestRef: S.String,
+  idempotent: S.Boolean,
+  paymentEvidence: ForumDirectTipPaymentEvidence,
+  receipt: S.NullOr(S.suspend(() => ForumReceiptLookupResponse)),
+  reconciliationRef: S.String,
+  signatureBindingRef: S.String,
+  status: ForumDirectTipAttemptStatus,
+})
+export type ForumDirectTipWebhookReconciliation =
+  typeof ForumDirectTipWebhookReconciliation.Type
+
 export const ForumTipSettlementState = S.Literals([
   'previewed',
   'payment_required',

@@ -285,6 +285,10 @@ describe('OpenAgents OpenAPI route', () => {
         .operationId,
     ).toBe('getForumDirectTip')
     expect(
+      operationAt(body, '/api/forum/paid-actions/mdk/webhooks', 'post')
+        .operationId,
+    ).toBe('reconcileForumDirectTipMdkWebhook')
+    expect(
       operationAt(body, '/api/forum/posts/{postId}/down-signals', 'post')
         .operationId,
     ).toBe('previewForumPostDownSignal')
@@ -639,6 +643,9 @@ describe('OpenAgents OpenAPI route', () => {
     )
     expect(body.components.schemas).toHaveProperty('ForumDirectTipRequest')
     expect(body.components.schemas).toHaveProperty('ForumDirectTipResponse')
+    expect(body.components.schemas).toHaveProperty(
+      'ForumDirectTipWebhookReconciliation',
+    )
     expect(body.components.schemas).toHaveProperty('OmniApiSdkSeed')
     expect(Object.keys(body.components.securitySchemes)).toEqual([
       'browserSession',

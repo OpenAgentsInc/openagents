@@ -1,4 +1,4 @@
-import { Effect, Match as M, Schema as S } from 'effect'
+import { Effect, Exit, Match as M, Schema as S } from 'effect'
 
 import {
   type AgentRegistrationStore,
@@ -1352,7 +1352,7 @@ export const recordAutopilotWorkerCloseoutFromPylon = async (
     return undefined
   }
 
-  const executionCloseout = await Effect.runPromise(
+  const executionCloseoutExit = await Effect.runPromiseExit(
     executionCloseoutFromPylonWorkerCloseout({
       assignment: input.assignment,
       body: input.body,
@@ -1360,8 +1360,12 @@ export const recordAutopilotWorkerCloseoutFromPylon = async (
     }),
   )
 
+  if (Exit.isFailure(executionCloseoutExit)) {
+    return undefined
+  }
+
   return store.recordExecutionCloseout({
-    executionCloseout,
+    executionCloseout: executionCloseoutExit.value,
     ownerUserId: record.ownerUserId,
     updatedAt: input.nowIso,
     workOrderRef: record.workOrderRef,

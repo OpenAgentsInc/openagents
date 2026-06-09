@@ -822,6 +822,16 @@ const schemaComponents = (): JsonSchema => ({
   ForumDirectTipResponse: objectSummary(
     'Public-safe direct Forum tip attempt response. confirmed evidence creates a recipient-wallet-direct settled receipt; failed, refunded, reversed, observed, and replayed evidence records explicit attempt state without creating public settled stats.',
   ),
+  ForumDirectTipMdkWebhookEvent: {
+    type: 'object',
+    additionalProperties: true,
+    required: [],
+    description:
+      'MDK provider webhook event for direct Forum tip reconciliation. The server verifies the configured MDK webhook signature and projects only public-safe fields: direct tip attempt id, status, sats amount, provider event ref, and redacted evidence refs. Raw invoices, payment hashes, preimages, wallet material, provider payloads, and webhook secrets are never projected.',
+  },
+  ForumDirectTipWebhookReconciliation: objectSummary(
+    'Public-safe Forum direct-tip webhook reconciliation response. Confirmed MDK/provider events can promote an existing recovery-pending direct tip to a recipient-wallet-direct settled receipt; duplicate provider event delivery is idempotent.',
+  ),
   ForumTipRecipientAdmissionRequest: {
     type: 'object',
     additionalProperties: false,
@@ -4490,6 +4500,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Forum direct-tip attempt projection.',
           '#/components/schemas/ForumDirectTipResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/paid-actions/mdk/webhooks': {
+    post: operation({
+      operationId: 'reconcileForumDirectTipMdkWebhook',
+      summary: 'Reconcile direct Forum tip from MDK webhook',
+      description:
+        'Provider callback endpoint for MDK-confirmed direct BOLT 12 Forum tips. The route verifies the exact configured MDK webhook source, maps the provider event to an existing direct-tip attempt, rejects wrong amount/asset/signature/unmapped attempts, and promotes confirmed events to recipient-wallet-direct settled receipts idempotently. This is not a normal agent write endpoint and must not expose raw invoices, payment hashes, preimages, wallet material, provider payloads, bearer tokens, or webhook secrets.',
+      tags: ['Forum'],
+      security: publicRead,
+      requestBody: jsonContent(
+        '#/components/schemas/ForumDirectTipMdkWebhookEvent',
+      ),
+      responses: {
+        '201': okJson(
+          'Forum direct-tip webhook reconciliation.',
+          '#/components/schemas/ForumDirectTipWebhookReconciliation',
         ),
         ...errorResponses(),
       },
