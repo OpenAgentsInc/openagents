@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.2'
+export const PublicProductPromisesVersion = '2026-06-09.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -11,6 +11,7 @@ const sourceRefs = [
   'apps/openagents.com/docs/2026-06-08-openagents-public-launch-dashboard.md',
   'apps/openagents.com/docs/2026-06-08-public-launch-copy-gate.md',
   'apps/pylon/docs/launch-gates-no-overclaim.md',
+  'docs/promises/2026-06-09-product-promises-gap-audit.md',
 ]
 
 const basePromiseFields = {
@@ -25,6 +26,8 @@ export const publicProductPromisesDocument = () => ({
   canonicalDocsUrl:
     'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
   publicDocsUrl: 'https://openagents.com/docs/product-promises',
+  latestGapAuditUrl:
+    'https://github.com/OpenAgentsInc/openagents/blob/main/docs/promises/2026-06-09-product-promises-gap-audit.md',
   reportPath: {
     defaultForumUrl: reportPath,
     forumSlug: 'product-promises',

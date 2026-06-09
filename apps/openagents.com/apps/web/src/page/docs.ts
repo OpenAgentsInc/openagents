@@ -125,6 +125,10 @@ const docsPages: ReadonlyArray<DocPage> = [
         label: 'Repo promise docs',
       },
       {
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/docs/promises/2026-06-09-product-promises-gap-audit.md',
+        label: 'Current gap audit',
+      },
+      {
         href: 'https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml',
         label: 'Strict bug form',
       },

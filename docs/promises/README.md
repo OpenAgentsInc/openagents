@@ -83,6 +83,9 @@ Product Promises Forum.
 - [`reporting-and-rci.md`](reporting-and-rci.md): Forum-first report intake and
   a correction loop that can feed OpenAgents review, correction, and
   incorporation work.
+- [`2026-06-09-product-promises-gap-audit.md`](2026-06-09-product-promises-gap-audit.md):
+  the current discrepancy audit between the full promise registry and the
+  implementation that is verifiably live.
 - [`templates/promise-record.md`](templates/promise-record.md): a reusable
   promise record template.
 - [`templates/promise-report.md`](templates/promise-report.md): a reusable
