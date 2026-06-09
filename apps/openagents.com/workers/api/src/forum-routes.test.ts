@@ -6,9 +6,7 @@ import { makeForumRoutes } from './forum-routes'
 import { makeFakeOpenAgentsHostedMdkClient } from './hosted-mdk-client'
 import {
   makeOpenAgentsL402HmacSigningBoundary,
-  mintOpenAgentsL402Credential,
 } from './l402-credential-service'
-import { formatOpenAgentsXOpenAgentsL402 } from './l402-payment-headers'
 
 type BoardRow = Readonly<{
   archived_at: string | null
@@ -433,76 +431,6 @@ const forumL402SigningBoundary = () =>
     secretKeyMaterial: forumL402SigningSecret,
     signerRef: 'binding.forum.route.mdk.sandbox',
   })
-
-const cleanRefSegment = (value: string): string =>
-  value.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 120)
-
-const forumL402CredentialHeader = async (
-  challenge: Readonly<{
-    actionKind: string
-    challengeId: string
-    expiresAt: string
-    l402: Readonly<{
-      credentialRef: string
-      endpointRef: string
-      entitlementScopeRefs: ReadonlyArray<string>
-      paymentHashRef: string | null
-      replayNonceRef: string
-    }>
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
-    path: string
-    price: Readonly<{ amount: number; asset: 'credits' | 'sats' | 'usd' }>
-    requestBodyDigest: string
-  }>,
-  proofRef: string,
-) => {
-  const signer = await forumL402SigningBoundary()
-  const amount =
-    challenge.price.asset === 'sats'
-      ? {
-          amountMinorUnits: challenge.price.amount * 1000,
-          asset: 'bitcoin' as const,
-          denomination: 'bitcoin_millisatoshi' as const,
-        }
-      : challenge.price.asset === 'usd'
-        ? {
-            amountMinorUnits: challenge.price.amount,
-            asset: 'usd' as const,
-            denomination: 'usd_cent' as const,
-          }
-        : {
-            amountMinorUnits: challenge.price.amount,
-            asset: 'credits' as const,
-            denomination: 'credit' as const,
-          }
-  const envelope = await mintOpenAgentsL402Credential(
-    {
-      amount,
-      challengeRef: `challenge.forum_l402.${cleanRefSegment(challenge.challengeId)}`,
-      credentialRef: challenge.l402.credentialRef,
-      endpointRef: challenge.l402.endpointRef,
-      entitlementScopeRefs: [...challenge.l402.entitlementScopeRefs],
-      expiresAt: challenge.expiresAt,
-      idempotencyKeyHash: `sha256:forum_paid_action:${cleanRefSegment(challenge.challengeId)}`,
-      issuedAt: '2026-06-05T20:00:00.000Z',
-      method: challenge.method,
-      path: challenge.path,
-      paymentHashRef:
-        challenge.l402.paymentHashRef ??
-        `payment_hash.redacted.${cleanRefSegment(challenge.challengeId)}`,
-      productId: `product.forum.${cleanRefSegment(challenge.actionKind)}.single`,
-      replayNonceRef: challenge.l402.replayNonceRef,
-      requestBodyDigest: challenge.requestBodyDigest,
-      version: 'oa-l402-v1',
-    },
-    signer,
-  )
-
-  return formatOpenAgentsXOpenAgentsL402({
-    credential: envelope.credential,
-    proofRef,
-  })
-}
 
 class ForumRouteStore {
   private idCounter = 0
@@ -3406,13 +3334,15 @@ describe('Forum routes', () => {
     )
     expect(preview.status).toBe(200)
     expect(previewBody).toMatchObject({
-      paymentRequired: true,
+      challenge: null,
+      paymentRequired: false,
       writeDenial: {
         denialKind: 'payment_required',
-        payable: true,
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
       },
     })
-    expect(store.challenges).toHaveLength(1)
+    expect(store.challenges).toHaveLength(0)
     expect(JSON.stringify(detailBody)).not.toContain('wallet.public.pylon')
     expect(JSON.stringify(detailBody)).not.toContain(
       'receive_capability.public.pylon',
@@ -4238,7 +4168,7 @@ describe('Forum routes', () => {
     expect(store.watches).toHaveLength(0)
   })
 
-  test('previews, confirms, and reads a public-safe Forum reward receipt', async () => {
+  test('blocks the old hosted L402 path for ordinary Forum rewards', async () => {
     const store = new ForumRouteStore()
     store.tipRecipientWallets.push(readyTipRecipientWalletRow())
     const postId = '66666666-6666-4666-8666-666666666666'
@@ -4254,83 +4184,6 @@ describe('Forum routes', () => {
       },
       method: 'POST',
     })
-    const preview = (await previewResponse.json()) as Readonly<{
-      challenge: Readonly<{
-        actionKind: 'post_reward'
-        challengeId: string
-        expiresAt: string
-        l402: Readonly<{
-          credentialRef: string
-          endpointRef: string
-          entitlementScopeRefs: ReadonlyArray<string>
-          paymentHashRef: string | null
-          replayNonceRef: string
-        }>
-        method: 'POST'
-        path: string
-        price: Readonly<{ amount: number; asset: 'sats' }>
-        requestBodyDigest: string
-      }>
-      paymentRequired: boolean
-    }>
-    const paymentProofRef = 'payment_proof.public.forum_reward.route_1'
-    const proofRefOnlyRedeem = await route(
-      store,
-      '/api/forum/paid-actions/redeem',
-      {
-        body: {
-          challengeId: preview.challenge.challengeId,
-          l402ProofRef: paymentProofRef,
-          method: 'POST',
-          path,
-          requestBodyDigest: 'sha256:forum-reward-body',
-          routeParams: { postId },
-        },
-        headers: {
-          authorization: 'Bearer oa_agent_route_test',
-          'idempotency-key': 'forum-paid-reward-redeem-1',
-        },
-        method: 'POST',
-      },
-    )
-    const l402Credential = await forumL402CredentialHeader(
-      preview.challenge,
-      paymentProofRef,
-    )
-    const redeemResponse = await route(
-      store,
-      '/api/forum/paid-actions/redeem',
-      {
-        body: {
-          challengeId: preview.challenge.challengeId,
-          l402ProofRef: paymentProofRef,
-          method: 'POST',
-          path,
-          requestBodyDigest: 'sha256:forum-reward-body',
-          routeParams: { postId },
-        },
-        headers: {
-          authorization: 'Bearer oa_agent_route_test',
-          'idempotency-key': 'forum-paid-reward-redeem-1',
-          'x-openagents-l402': l402Credential,
-        },
-        method: 'POST',
-      },
-    )
-    const redemption = (await redeemResponse.json()) as Readonly<{
-      receiptRef: string
-      replayed: boolean
-    }>
-    const receiptResponse = await route(
-      store,
-      `/api/forum/receipts/${encodeURIComponent(redemption.receiptRef)}`,
-    )
-    const receipt = await receiptResponse.json()
-    const earningsResponse = await route(
-      store,
-      '/api/forum/actors/actor.route-test/tip-earnings',
-    )
-    const earnings = await earningsResponse.json()
     const postDetailResponse = await route(
       store,
       `/api/forum/posts/${encodeURIComponent(postId)}`,
@@ -4343,33 +4196,46 @@ describe('Forum routes', () => {
     const leaderboards = await leaderboardsResponse.json()
 
     expect(previewResponse.status).toBe(200)
-    expect(previewResponse.headers.get('www-authenticate')).toContain('L402')
-    expect(preview).toMatchObject({
-      challenge: {
-        actionKind: 'post_reward',
+    expect(previewResponse.headers.get('www-authenticate')).toBeNull()
+    await expect(previewResponse.json()).resolves.toStrictEqual({
+      challenge: null,
+      entitlementRef: null,
+      paymentRequired: false,
+      writeDenial: {
         actorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        l402: {
-          credentialRef: expect.stringContaining('credential.forum_l402'),
-          endpointRef: 'endpoint.forum_paid_action.post_reward',
-          environment: 'sandbox',
-          implementationState: 'fake_provider_contract',
-          invoiceRef: expect.stringContaining('mdk_invoice.redacted'),
-          provider: 'mdk_hosted',
-          providerMode: 'hosted_mdk',
-          sandbox: true,
-        },
-        path,
-        price: { amount: 10, asset: 'sats' },
-        recipientActorRef: 'actor.route-test',
-        recipientReadinessRef:
-          'readiness.public.forum_tip_recipient.receive_ready',
-        target: {
-          postId,
-          topicId: '55555555-5555-4555-8555-555555555555',
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
+        requiredPermission: null,
+      },
+    })
+    expect(store.challenges).toHaveLength(0)
+    expect(store.receipts).toHaveLength(0)
+    expect(store.moneyActions).toHaveLength(0)
+    expect(store.paymentEvents).toHaveLength(0)
+    expect(postDetailResponse.status).toBe(200)
+    expect(postDetail).toMatchObject({
+      post: {
+        postId,
+        tipStats: {
+          tipCount: 0,
+          totalPaidSats: 0,
+          totalSettledSats: 0,
         },
       },
-      paymentRequired: true,
     })
+    expect(leaderboardsResponse.status).toBe(200)
+    expect(leaderboards).toMatchObject({
+      creators: [],
+      posts: [],
+    })
+  })
+
+  test('blocks custom-amount rewards from the old hosted L402 path', async () => {
+    const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(readyTipRecipientWalletRow())
+    const postId = '66666666-6666-4666-8666-666666666666'
+    const path = `/api/forum/posts/${postId}/rewards`
     const customAmountPreviewResponse = await route(store, path, {
       body: {
         amount: { amount: 15, asset: 'sats' },
@@ -4382,103 +4248,18 @@ describe('Forum routes', () => {
       },
       method: 'POST',
     })
-    const customAmountPreview = await customAmountPreviewResponse.json()
+
     expect(customAmountPreviewResponse.status).toBe(200)
-    expect(customAmountPreview).toMatchObject({
-      challenge: {
-        actionKind: 'post_reward',
-        price: { amount: 15, asset: 'sats' },
-      },
-      paymentRequired: true,
-    })
-    expect(proofRefOnlyRedeem.status).toBe(402)
-    await expect(proofRefOnlyRedeem.json()).resolves.toMatchObject({
-      error: 'payment_verification_failed',
-    })
-    expect(redeemResponse.status).toBe(201)
-    expect(redemption.replayed).toBe(false)
-    expect(receiptResponse.status).toBe(200)
-    expect(receipt).toMatchObject({
-      actionKind: 'post_reward',
-      amount: { amount: 10, asset: 'sats' },
-      paymentEvent: {
-        externalRef: expect.stringContaining('external.forum_l402'),
-        paymentMode: 'sandbox',
-        providerRef: 'provider.forum.route.mdk.sandbox',
-        redactedEvidenceRef: expect.stringContaining('evidence.forum_l402'),
-        status: 'confirmed',
-      },
-      receiptRef: redemption.receiptRef,
-      recipientActorRef: 'actor.route-test',
-      target: { postId },
-      targetPostPermalink:
-        'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555#post-66666666-6666-4666-8666-666666666666',
-      tipSettlement: {
-        acceptedWorkPayoutEvidence: false,
-        creatorReceivedSpendableValue: false,
-        recipientSettlementEvidence: false,
-        settlementAuthority: 'buyer_payment_evidence_only',
-        state: 'paid',
-        treasuryAcceptedWorkClaimAllowed: false,
+    await expect(customAmountPreviewResponse.json()).resolves.toMatchObject({
+      challenge: null,
+      paymentRequired: false,
+      writeDenial: {
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
       },
     })
-    expect(earningsResponse.status).toBe(200)
-    expect(earnings).toMatchObject({
-      actorRef: 'actor.route-test',
-      earnings: [
-        {
-          acceptedWorkPayoutEvidence: false,
-          amount: { amount: 10, asset: 'sats' },
-          creatorReceivedSpendableValue: false,
-          paymentState: 'confirmed',
-          receiptRef: redemption.receiptRef,
-          settlementState: 'paid',
-          target: { postId },
-          targetPostPermalink:
-            'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555#post-66666666-6666-4666-8666-666666666666',
-        },
-      ],
-      summary: {
-        paidCount: 1,
-        totalCount: 1,
-        totalPaidSats: 10,
-        totalSettledSats: 0,
-      },
-    })
-    expect(postDetailResponse.status).toBe(200)
-    expect(postDetail).toMatchObject({
-      post: {
-        postId,
-        tipStats: {
-          tipCount: 1,
-          totalPaidSats: 10,
-          totalSettledSats: 0,
-        },
-      },
-    })
-    expect(leaderboardsResponse.status).toBe(200)
-    expect(leaderboards).toMatchObject({
-      creators: [],
-      posts: [],
-    })
-    expect(store.moneyActions).toStrictEqual([
-      expect.objectContaining({
-        action_kind: 'post_reward',
-        amount_asset: 'sats',
-        amount_value: 10,
-        earning_actor_ref: 'actor.route-test',
-        payment_event_id: expect.any(String),
-      }),
-    ])
-    expect(store.paymentEvents).toHaveLength(1)
-    expect(JSON.stringify(receipt)).not.toContain('lnbc')
-    expect(JSON.stringify(receipt)).not.toContain('preimage')
-    expect(JSON.stringify(receipt)).not.toContain(l402Credential)
-    expect(JSON.stringify(earnings)).not.toContain('lnbc')
-    expect(JSON.stringify(earnings)).not.toContain('preimage')
-    expect(JSON.stringify(earnings)).not.toContain(l402Credential)
-    expect(JSON.stringify(preview)).not.toContain('mnemonic')
-    expect(JSON.stringify(preview)).not.toContain('payment_preimage')
+    expect(store.challenges).toHaveLength(0)
   })
 
   test('lets the receipt recipient claim spendable settlement evidence', async () => {
@@ -4892,14 +4673,14 @@ describe('Forum routes', () => {
     expect(JSON.stringify(body)).not.toContain('payout_target.raw')
   })
 
-  test('returns private Forum reward payment payload only to the challenge actor', async () => {
+  test('returns private non-tip Forum payment payload only to the challenge actor', async () => {
     const store = new ForumRouteStore()
     store.tipRecipientWallets.push(readyTipRecipientWalletRow())
     const postId = '66666666-6666-4666-8666-666666666666'
-    const path = `/api/forum/posts/${postId}/rewards`
+    const path = `/api/forum/posts/${postId}/boosts`
     const previewResponse = await route(store, path, {
       body: {
-        requestBodyDigest: 'sha256:forum-reward-private-payment-body',
+        requestBodyDigest: 'sha256:forum-boost-private-payment-body',
         spendCap: { amount: 100, asset: 'sats' },
       },
       headers: {
@@ -4919,7 +4700,7 @@ describe('Forum routes', () => {
           challengeId: preview.challenge.challengeId,
           method: 'POST',
           path,
-          requestBodyDigest: 'sha256:forum-reward-private-payment-body',
+          requestBodyDigest: 'sha256:forum-boost-private-payment-body',
           routeParams: { postId },
           spendCap: { amount: 100, asset: 'sats' },
         },
@@ -4960,7 +4741,7 @@ describe('Forum routes', () => {
           challengeId: preview.challenge.challengeId,
           method: 'POST',
           path,
-          requestBodyDigest: 'sha256:forum-reward-private-payment-body',
+          requestBodyDigest: 'sha256:forum-boost-private-payment-body',
           routeParams: { postId },
           spendCap: { amount: 100, asset: 'sats' },
         },
@@ -4977,14 +4758,14 @@ describe('Forum routes', () => {
     })
   })
 
-  test('rejects malformed Forum reward L402 credentials before receipt creation', async () => {
+  test('rejects malformed non-tip Forum L402 credentials before receipt creation', async () => {
     const store = new ForumRouteStore()
     store.tipRecipientWallets.push(readyTipRecipientWalletRow())
     const postId = '66666666-6666-4666-8666-666666666666'
-    const path = `/api/forum/posts/${postId}/rewards`
+    const path = `/api/forum/posts/${postId}/boosts`
     const previewResponse = await route(store, path, {
       body: {
-        requestBodyDigest: 'sha256:forum-reward-body-invalid-l402',
+        requestBodyDigest: 'sha256:forum-boost-body-invalid-l402',
         spendCap: { amount: 100, asset: 'sats' },
       },
       headers: {
@@ -5006,7 +4787,7 @@ describe('Forum routes', () => {
           l402ProofRef: paymentProofRef,
           method: 'POST',
           path,
-          requestBodyDigest: 'sha256:forum-reward-body-invalid-l402',
+          requestBodyDigest: 'sha256:forum-boost-body-invalid-l402',
           routeParams: { postId },
         },
         headers: {
@@ -5100,7 +4881,7 @@ describe('Forum routes', () => {
     expect(store.challenges).toHaveLength(0)
   })
 
-  test('rate-limits new Forum reward challenges while preserving spend caps', async () => {
+  test('keeps repeated Forum reward previews blocked before L402 challenge creation', async () => {
     const store = new ForumRouteStore()
     store.tipRecipientWallets.push(readyTipRecipientWalletRow())
     const postId = '66666666-6666-4666-8666-666666666666'
@@ -5122,10 +4903,13 @@ describe('Forum routes', () => {
         },
       )
       await expect(response.json()).resolves.toMatchObject({
-        challenge: {
-          actionKind: 'post_reward',
+        challenge: null,
+        paymentRequired: false,
+        writeDenial: {
+          denialKind: 'payment_required',
+          denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+          payable: false,
         },
-        paymentRequired: true,
       })
     }
 
@@ -5158,13 +4942,13 @@ describe('Forum routes', () => {
       challenge: null,
       paymentRequired: false,
       writeDenial: {
-        denialKind: 'rate_limited',
-        denialRef: 'policy.public.forum_tip.rate_limited',
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
         payable: false,
       },
     })
     expect(overCap.status).toBe(400)
-    expect(store.challenges).toHaveLength(6)
+    expect(store.challenges).toHaveLength(0)
   })
 
   test('previews down-signals without assigning author earnings', async () => {

@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { makeFakeOpenAgentsHostedMdkClient } from '../hosted-mdk-client'
 import {
   ForumPaidActionError,
+  type ForumPaidActionKindType,
   type ForumPaidActionPreviewInput,
   type ForumPaidActionRuntime,
   ForumPaidActionTarget as ForumPaidActionTargetSchema,
@@ -16,7 +17,7 @@ import {
 } from './index'
 
 type ChallengeRow = Readonly<{
-  action_kind: 'post_reward'
+  action_kind: ForumPaidActionKindType
   actor_ref: string
   archived_at: string | null
   created_at: string
@@ -71,7 +72,7 @@ type RedemptionRow = Readonly<{
 }>
 
 type ReceiptRow = Readonly<{
-  action_kind: 'post_reward'
+  action_kind: ForumPaidActionKindType
   amount_asset: 'sats'
   amount_value: number
   archived_at: string | null
@@ -87,7 +88,7 @@ type ReceiptRow = Readonly<{
 }>
 
 type MoneyActionRow = Readonly<{
-  action_kind: 'post_reward'
+  action_kind: ForumPaidActionKindType
   amount_asset: 'sats'
   amount_value: number
   earning_actor_ref: string | null
@@ -267,7 +268,7 @@ class ForumPaidActionStatement implements D1PreparedStatement {
         )
       ) {
         this.store.challenges.push({
-          action_kind: this.values[3] as 'post_reward',
+          action_kind: this.values[3] as ForumPaidActionKindType,
           actor_ref: String(this.values[2]),
           archived_at: null,
           created_at: String(this.values[33]),
@@ -333,7 +334,7 @@ class ForumPaidActionStatement implements D1PreparedStatement {
 
     if (this.query.includes('INSERT INTO forum_receipts')) {
       this.store.receipts.push({
-        action_kind: this.values[2] as 'post_reward',
+        action_kind: this.values[2] as ForumPaidActionKindType,
         amount_asset: this.values[6] as 'sats',
         amount_value: Number(this.values[7]),
         archived_at: null,
@@ -356,7 +357,7 @@ class ForumPaidActionStatement implements D1PreparedStatement {
 
     if (this.query.includes('INSERT OR IGNORE INTO forum_money_actions')) {
       this.store.moneyActions.push({
-        action_kind: this.values[3] as 'post_reward',
+        action_kind: this.values[3] as ForumPaidActionKindType,
         amount_asset: this.values[7] as 'sats',
         amount_value: Number(this.values[8]),
         earning_actor_ref:
@@ -486,22 +487,6 @@ const countingForumHostedMdkClient = () => {
   }
 }
 
-const simulationRuntime = (
-  prefix: string,
-  nowIso: string,
-): ForumPaidActionRuntime => ({
-  challengeTtlMs: 10 * 60_000,
-  makeChallengeId: () => `${prefix}-challenge`,
-  makeEntitlementRef: challengeId => `forum_entitlement:${challengeId}`,
-  makeMoneyActionId: () => `${prefix}-money-action`,
-  makePaymentEventId: () => `${prefix}-payment-event`,
-  makeReceiptId: () => `${prefix}-receipt-id`,
-  makeReceiptRef: challengeId => `receipt.forum.${challengeId}`,
-  makeRedemptionId: () => `${prefix}-redemption`,
-  nowIso: () => nowIso,
-  nowMillis: () => Date.parse(nowIso),
-})
-
 const publicProjection = S.decodeUnknownSync(ForumPublicProjection)({
   classificationCaveatRef: 'classification.public_forum_payment_projection',
   customerSafe: true,
@@ -523,13 +508,13 @@ const paidActionTarget = S.decodeUnknownSync(ForumPaidActionTargetSchema)({
 const previewInput = (
   overrides: Partial<ForumPaidActionPreviewInput> = {},
 ): ForumPaidActionPreviewInput => ({
-  actionKind: 'post_reward',
+  actionKind: 'post_boost',
   actorRef: 'actor.alice',
   hostedMdkClient: forumHostedMdkClient(),
-  idempotencyKey: 'forum:reward:post:1:actor.alice',
+  idempotencyKey: 'forum:boost:post:1:actor.alice',
   method: 'POST',
   nonPayableDenial: null,
-  path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
+  path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/boosts',
   price: { amount: 100, asset: 'sats' },
   publicProjection,
   recipientActorRef: 'actor.ben',
@@ -552,7 +537,7 @@ const redeemInput = (
   idempotencyKey: 'forum:reward:post:1:actor.alice:redeem',
   l402ProofRef: 'mdk_payment_proof_forum_reward_1',
   method: 'POST' as const,
-  path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
+  path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/boosts',
   recipientActorRef: 'actor.ben',
   recipientReadinessRef: 'readiness.public.forum_tip_recipient.ben',
   requestBodyDigest: 'sha256:reward-body',
@@ -578,7 +563,7 @@ const verifiedPaymentEvent = (
 const storedChallenge = (
   overrides: Partial<ChallengeRow> = {},
 ): ChallengeRow => ({
-  action_kind: 'post_reward',
+  action_kind: 'post_boost',
   actor_ref: 'actor.alice',
   archived_at: null,
   created_at: '2026-06-05T20:00:00.000Z',
@@ -586,8 +571,8 @@ const storedChallenge = (
   id: 'prior-tip-challenge',
   idempotency_key: 'prior-tip-challenge',
   l402_credential_ref: 'credential.forum_l402.prior',
-  l402_endpoint_ref: 'endpoint.forum_paid_action.post_reward',
-  l402_entitlement_scope_refs_json: '["entitlement.forum.post_reward.single"]',
+  l402_endpoint_ref: 'endpoint.forum_paid_action.post_boost',
+  l402_entitlement_scope_refs_json: '["entitlement.forum.post_boost.single"]',
   l402_replay_nonce_ref: 'replay_nonce.forum_l402.prior',
   l402_www_authenticate: 'L402 challenge_ref="challenge.forum_l402.prior"',
   mdk_checkout_launch_path: null,
@@ -600,7 +585,7 @@ const storedChallenge = (
   mdk_provider_ref: 'provider.mdk_l402.redacted',
   mdk_sandbox: 1,
   method: 'POST',
-  path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
+  path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/boosts',
   price_asset: 'sats',
   price_value: 100,
   public_projection_json: JSON.stringify(publicProjection),
@@ -622,7 +607,36 @@ const createChallenge = async (store: ForumPaidActionStore) =>
   )
 
 describe('Forum paid actions', () => {
-  test('creates an unpaid L402 challenge for a configured paid action', async () => {
+  test('blocks ordinary post rewards from the hosted L402 challenge path', async () => {
+    const store = new ForumPaidActionStore()
+    const preview = await Effect.runPromise(
+      previewForumPaidAction(
+        paidActionDb(store),
+        previewInput({
+          actionKind: 'post_reward',
+          idempotencyKey: 'forum:reward:post:1:actor.alice',
+          path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
+        }),
+        runtime,
+      ),
+    )
+
+    expect(preview).toStrictEqual({
+      challenge: null,
+      entitlementRef: null,
+      paymentRequired: false,
+      writeDenial: {
+        actorRef: 'actor.alice',
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
+        requiredPermission: null,
+      },
+    })
+    expect(store.challenges).toHaveLength(0)
+  })
+
+  test('creates an unpaid L402 challenge for a configured non-tip paid action', async () => {
     const store = new ForumPaidActionStore()
     const preview = await createChallenge(store)
 
@@ -635,26 +649,28 @@ describe('Forum paid actions', () => {
       },
     })
     expect(preview.challenge).toMatchObject({
-      actionKind: 'post_reward',
+      actionKind: 'post_boost',
       actorRef: 'actor.alice',
       challengeId: '77777777-7777-4777-8777-777777777777',
       expiresAt: '2026-06-05T20:10:00.000Z',
       l402: {
-        checkoutRef:
-          'mdk_checkout.product_forum_post_reward_single_sha256_forum_paid_action_forum_reward_post_1_actor_alice',
+        checkoutRef: expect.stringContaining(
+          'product_forum_post_boost_single',
+        ),
         credentialRef:
           'credential.forum_l402.77777777-7777-4777-8777-777777777777',
-        endpointRef: 'endpoint.forum_paid_action.post_reward',
+        endpointRef: 'endpoint.forum_paid_action.post_boost',
         environment: 'sandbox',
         implementationState: 'fake_provider_contract',
-        invoiceRef:
-          'mdk_invoice.redacted.product_forum_post_reward_single_sha256_forum_paid_action_forum_reward_post_1_actor_alice',
+        invoiceRef: expect.stringContaining(
+          'product_forum_post_boost_single',
+        ),
         provider: 'mdk_hosted',
         providerMode: 'hosted_mdk',
         sandbox: true,
         settlementAuthority: 'buyer_payment_evidence_only',
       },
-      path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
+      path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/boosts',
       price: { amount: 100, asset: 'sats' },
       recipientActorRef: 'actor.ben',
       recipientReadinessRef: 'readiness.public.forum_tip_recipient.ben',
@@ -713,7 +729,7 @@ describe('Forum paid actions', () => {
     expect(store.receipts).toHaveLength(1)
     expect(store.moneyActions).toStrictEqual([
       {
-        action_kind: 'post_reward',
+        action_kind: 'post_boost',
         amount_asset: 'sats',
         amount_value: 100,
         earning_actor_ref: 'actor.ben',
@@ -723,7 +739,7 @@ describe('Forum paid actions', () => {
       },
     ])
     expect(lookup).toMatchObject({
-      actionKind: 'post_reward',
+      actionKind: 'post_boost',
       amount: { amount: 100, asset: 'sats' },
       paymentEvent: null,
       receiptRef: redemption.receiptRef,
@@ -776,7 +792,7 @@ describe('Forum paid actions', () => {
       '66666666-6666-4666-8666-666666666666',
     )
     expect(lookup?.paymentEvent).toMatchObject({
-      actionKind: 'post_reward',
+      actionKind: 'post_boost',
       amount: { amount: 100, asset: 'sats' },
       challengeId,
       externalRef: 'external.payment.redacted.forum_reward_1',
@@ -894,7 +910,7 @@ describe('Forum paid actions', () => {
     expect(store.paymentEvents).toHaveLength(0)
   })
 
-  test('simulates two registered agents tipping each other through post rewards', async () => {
+  test('does not let post rewards use L402 even when both recipients are ready', async () => {
     const store = new ForumPaidActionStore()
     const aliceToBenTarget = S.decodeUnknownSync(ForumPaidActionTargetSchema)({
       forumId: '33333333-3333-4333-8333-333333333333',
@@ -914,6 +930,7 @@ describe('Forum paid actions', () => {
       previewForumPaidAction(
         paidActionDb(store),
         previewInput({
+          actionKind: 'post_reward',
           actorRef: 'agent:alice',
           idempotencyKey: 'simulation:forum:post_reward:alice_to_ben:preview',
           path: aliceToBenPath,
@@ -923,31 +940,14 @@ describe('Forum paid actions', () => {
           routeParams: { postId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
           target: aliceToBenTarget,
         }),
-        simulationRuntime('alice-to-ben', '2026-06-06T15:00:00.000Z'),
-      ),
-    )
-    const aliceToBenRedemption = await Effect.runPromise(
-      redeemForumPaidAction(
-        paidActionDb(store),
-        {
-          actorRef: 'agent:alice',
-          challengeId: aliceToBenPreview.challenge?.challengeId ?? '',
-          idempotencyKey: 'simulation:forum:post_reward:alice_to_ben:redeem',
-          l402ProofRef: 'mdk_payment_proof_forum_reward_alice_to_ben',
-          method: 'POST',
-          path: aliceToBenPath,
-          recipientActorRef: 'agent:ben',
-          recipientReadinessRef: 'readiness.public.forum_tip_recipient.ben',
-          requestBodyDigest: 'sha256:simulation-alice-to-ben',
-          routeParams: { postId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
-        },
-        simulationRuntime('alice-to-ben', '2026-06-06T15:01:00.000Z'),
+        runtime,
       ),
     )
     const benToAlicePreview = await Effect.runPromise(
       previewForumPaidAction(
         paidActionDb(store),
         previewInput({
+          actionKind: 'post_reward',
           actorRef: 'agent:ben',
           idempotencyKey: 'simulation:forum:post_reward:ben_to_alice:preview',
           path: benToAlicePath,
@@ -957,103 +957,33 @@ describe('Forum paid actions', () => {
           routeParams: { postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
           target: benToAliceTarget,
         }),
-        simulationRuntime('ben-to-alice', '2026-06-06T15:02:00.000Z'),
+        runtime,
       ),
     )
-    const benToAliceRedemption = await Effect.runPromise(
-      redeemForumPaidAction(
-        paidActionDb(store),
-        {
-          actorRef: 'agent:ben',
-          challengeId: benToAlicePreview.challenge?.challengeId ?? '',
-          idempotencyKey: 'simulation:forum:post_reward:ben_to_alice:redeem',
-          l402ProofRef: 'mdk_payment_proof_forum_reward_ben_to_alice',
-          method: 'POST',
-          path: benToAlicePath,
-          recipientActorRef: 'agent:alice',
-          recipientReadinessRef: 'readiness.public.forum_tip_recipient.alice',
-          requestBodyDigest: 'sha256:simulation-ben-to-alice',
-          routeParams: { postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
-        },
-        simulationRuntime('ben-to-alice', '2026-06-06T15:03:00.000Z'),
-      ),
-    )
-    const aliceToBenReceipt = await Effect.runPromise(
-      lookupForumPaidActionReceipt(
-        paidActionDb(store),
-        aliceToBenRedemption.receiptRef,
-      ),
-    )
-    const benToAliceReceipt = await Effect.runPromise(
-      lookupForumPaidActionReceipt(
-        paidActionDb(store),
-        benToAliceRedemption.receiptRef,
-      ),
-    )
-    const receiptNotifications = store.receipts.map(receipt => ({
-      kind: 'receipt',
-      recipientActorRef: receipt.recipient_actor_ref,
-      receiptRef: receipt.receipt_ref,
-    }))
 
     expect(aliceToBenPreview).toMatchObject({
-      challenge: {
+      challenge: null,
+      paymentRequired: false,
+      writeDenial: {
         actorRef: 'agent:alice',
-        price: { amount: 100, asset: 'sats' },
-        target: { postId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
       },
-      paymentRequired: true,
     })
     expect(benToAlicePreview).toMatchObject({
-      challenge: {
+      challenge: null,
+      paymentRequired: false,
+      writeDenial: {
         actorRef: 'agent:ben',
-        price: { amount: 100, asset: 'sats' },
-        target: { postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
       },
-      paymentRequired: true,
     })
-    expect(aliceToBenReceipt).toMatchObject({
-      actionKind: 'post_reward',
-      amount: { amount: 100, asset: 'sats' },
-      receiptRef: aliceToBenRedemption.receiptRef,
-      recipientActorRef: 'agent:ben',
-    })
-    expect(benToAliceReceipt).toMatchObject({
-      actionKind: 'post_reward',
-      amount: { amount: 100, asset: 'sats' },
-      receiptRef: benToAliceRedemption.receiptRef,
-      recipientActorRef: 'agent:alice',
-    })
-    expect(store.moneyActions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          amount_asset: 'sats',
-          amount_value: 100,
-          earning_actor_ref: 'agent:ben',
-          receipt_id: 'alice-to-ben-receipt-id',
-        }),
-        expect.objectContaining({
-          amount_asset: 'sats',
-          amount_value: 100,
-          earning_actor_ref: 'agent:alice',
-          receipt_id: 'ben-to-alice-receipt-id',
-        }),
-      ]),
-    )
-    expect(receiptNotifications).toEqual(
-      expect.arrayContaining([
-        {
-          kind: 'receipt',
-          receiptRef: aliceToBenRedemption.receiptRef,
-          recipientActorRef: 'agent:ben',
-        },
-        {
-          kind: 'receipt',
-          receiptRef: benToAliceRedemption.receiptRef,
-          recipientActorRef: 'agent:alice',
-        },
-      ]),
-    )
+    expect(store.challenges).toHaveLength(0)
+    expect(store.receipts).toHaveLength(0)
+    expect(store.moneyActions).toHaveLength(0)
     expect(JSON.stringify(store)).not.toContain('lnbc')
     expect(JSON.stringify(store)).not.toContain('preimage')
     expect(JSON.stringify(store)).not.toContain('mnemonic')
@@ -1183,6 +1113,8 @@ describe('Forum paid actions', () => {
         previewForumPaidAction(
           paidActionDb(store),
           previewInput({
+            actionKind: 'post_reward',
+            path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
             recipientReadinessRef: null,
           }),
           runtime,
@@ -1201,7 +1133,9 @@ describe('Forum paid actions', () => {
       previewForumPaidAction(
         paidActionDb(store),
         previewInput({
+          actionKind: 'post_reward',
           actorRef: 'actor.ben',
+          path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
           recipientActorRef: 'actor.ben',
           recipientReadinessRef: 'readiness.public.forum_tip_recipient.ben',
         }),
@@ -1224,7 +1158,7 @@ describe('Forum paid actions', () => {
     expect(store.challenges).toHaveLength(0)
   })
 
-  test('rate-limits new post reward challenge issuance while preserving idempotent replay', async () => {
+  test('does not replay prior post reward L402 challenges', async () => {
     const store = new ForumPaidActionStore()
     store.challenges.push(
       ...Array.from({ length: ForumTipPreviewRateLimit.limit }, (_, index) =>
@@ -1238,7 +1172,9 @@ describe('Forum paid actions', () => {
       previewForumPaidAction(
         paidActionDb(store),
         previewInput({
+          actionKind: 'post_reward',
           idempotencyKey: 'forum:reward:post:rate-limited',
+          path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
         }),
         runtime,
       ),
@@ -1247,7 +1183,9 @@ describe('Forum paid actions', () => {
       previewForumPaidAction(
         paidActionDb(store),
         previewInput({
+          actionKind: 'post_reward',
           idempotencyKey: 'prior-tip-challenge-0',
+          path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
         }),
         runtime,
       ),
@@ -1257,36 +1195,46 @@ describe('Forum paid actions', () => {
       challenge: null,
       paymentRequired: false,
       writeDenial: {
-        denialKind: 'rate_limited',
-        denialRef: 'policy.public.forum_tip.rate_limited',
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
         payable: false,
       },
     })
     expect(replay).toMatchObject({
-      challenge: {
-        challengeId: 'prior-tip-challenge-0',
+      challenge: null,
+      paymentRequired: false,
+      writeDenial: {
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
       },
-      paymentRequired: true,
     })
     expect(store.challenges).toHaveLength(ForumTipPreviewRateLimit.limit)
   })
 
-  test('refuses reward challenge issuance without hosted MDK configuration', async () => {
+  test('does not require hosted MDK configuration for the blocked post reward L402 path', async () => {
     const store = new ForumPaidActionStore()
 
-    await expect(
-      Effect.runPromise(
-        previewForumPaidAction(
-          paidActionDb(store),
-          previewInput({
-            hostedMdkClient: undefined,
-          }),
-          runtime,
-        ),
+    const preview = await Effect.runPromise(
+      previewForumPaidAction(
+        paidActionDb(store),
+        previewInput({
+          actionKind: 'post_reward',
+          hostedMdkClient: undefined,
+          path: '/api/forum/posts/55555555-5555-4555-8555-555555555555/rewards',
+        }),
+        runtime,
       ),
-    ).rejects.toMatchObject({
-      _tag: 'ForumPaidActionError',
-      kind: 'payment_provider_unconfigured',
+    )
+
+    expect(preview).toMatchObject({
+      challenge: null,
+      paymentRequired: false,
+      writeDenial: {
+        denialKind: 'payment_required',
+        denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+        payable: false,
+      },
     })
     expect(store.challenges).toHaveLength(0)
   })

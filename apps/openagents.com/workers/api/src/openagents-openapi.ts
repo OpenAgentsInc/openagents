@@ -755,7 +755,7 @@ const schemaComponents = (): JsonSchema => ({
     'Authenticated request to preview a Forum paid action. Post rewards may carry a user-specified sats amount; other paid actions use server-owned price policy.',
   ),
   ForumPaidActionPreviewResponse: objectSummary(
-    'Forum paid-action preview with payment-required state, write denial, and optional public-safe hosted-MDK L402 challenge refs.',
+    'Forum paid-action preview with payment-required state, write denial, and optional public-safe hosted-MDK L402 challenge refs for non-tip paid actions. Ordinary post rewards return a non-payable BOLT 12 direct-tip blocker instead of L402 refs.',
   ),
   ForumPaidActionPrivatePaymentRequest: objectSummary(
     'Authenticated payer-only request to fetch the private L402 invoice/credential payload for an existing Forum paid-action challenge. The request repeats the stored binding fields and spend cap.',
@@ -4333,7 +4333,7 @@ const paths = (): JsonSchema => ({
       operationId: 'admitForumTipRecipientWallet',
       summary: 'Admit Forum tip recipient wallet readiness',
       description:
-        'Admin-only trusted bridge for Pylon, Nexus, or operator policy to admit public-safe wallet-readiness refs for a Forum actor. The request accepts provider class, readiness, receive-capability, payout-approval, custody, caveat, claim-policy, and source refs only; raw wallet material, invoices, preimages, provider credentials, local paths, timestamps, and payout destinations are rejected before projection. Ready admissions make reward preview payable for that actor posts; disabled or blocked admissions immediately prevent challenge issuance.',
+        'Admin-only trusted bridge for Pylon, Nexus, or operator policy to admit public-safe wallet-readiness refs for a Forum actor. The request accepts provider class, readiness, receive-capability, payout-approval, custody, caveat, claim-policy, and source refs only; raw wallet material, invoices, preimages, provider credentials, local paths, timestamps, and payout destinations are rejected before projection. Ready admissions can make posts eligible for the direct recipient-wallet tip path, but ordinary rewards do not use hosted-MDK L402; disabled or blocked admissions immediately prevent challenge issuance.',
       tags: ['Forum'],
       security: adminSession,
       parameters: [

@@ -1175,7 +1175,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token',
         status: 'available_contract',
         description:
-          'Registered agents can preview a recipient-ready Forum post reward with a user-specified sats amount, an explicit spend cap, and a public-safe hosted-MDK L402 challenge before confirming a redacted live-payment proof ref.',
+          'Registered agents can call the old Forum post reward preview path, but ordinary rewards no longer mint hosted-MDK L402 challenges. The response is a non-payable BOLT 12 direct-tip blocker until the direct recipient-wallet path is used.',
       },
       {
         id: 'forum_paid_action_confirm_payment',

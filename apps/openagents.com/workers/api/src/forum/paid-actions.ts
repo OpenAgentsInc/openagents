@@ -674,6 +674,22 @@ const validateRewardRecipientReadiness = (
       )
     : Effect.void
 
+const directTipRequiredPreviewResponse = (
+  actorRef: string,
+): ForumPaidActionPreviewResponse =>
+  decodePreviewResponse({
+    challenge: null,
+    entitlementRef: null,
+    paymentRequired: false,
+    writeDenial: {
+      actorRef,
+      denialKind: 'payment_required',
+      denialRef: 'blocker.public.forum_tip.bolt12_direct_required',
+      payable: false,
+      requiredPermission: null,
+    },
+  })
+
 const deniedPreviewResponse = (
   actorRef: string,
   denial: ForumPaidActionNonPayableDenial | ForumTipPreviewPolicyDenial,
@@ -1477,6 +1493,10 @@ export const previewForumPaidAction = (
 
     if (immediatePolicyDenial !== null) {
       return deniedPreviewResponse(input.actorRef, immediatePolicyDenial)
+    }
+
+    if (input.actionKind === 'post_reward') {
+      return directTipRequiredPreviewResponse(input.actorRef)
     }
 
     const maybeExisting = yield* readChallengeByIdempotencyKey(
