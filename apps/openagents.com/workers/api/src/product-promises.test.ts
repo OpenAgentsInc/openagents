@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.9')
+    expect(decoded.version).toBe('2026-06-09.10')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -139,6 +139,14 @@ describe('public product promises document', () => {
           authorityBoundary: expect.stringContaining(
             'does not grant write, deploy, spend',
           ),
+        }),
+        expect.objectContaining({
+          blockerRefs: [],
+          evidenceRefs: expect.arrayContaining([
+            'apps/pylon/docs/live-worker-loop-smoke.md',
+          ]),
+          promiseId: 'pylon.cli_tui_probe_background.v1',
+          state: 'green',
         }),
       ]),
     )

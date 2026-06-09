@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.9'
+export const PublicProductPromisesVersion = '2026-06-09.10'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -106,13 +106,14 @@ export const publicProductPromisesDocument = () => {
     pylonV03Refs: [
       'apps/pylon/package.json',
       'apps/pylon/README.md',
+      'apps/pylon/docs/live-worker-loop-smoke.md',
       'apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md',
       'apps/pylon/docs/launch-gates-no-overclaim.md',
     ],
     caveats: [
       'Pylon v0.3 is a release candidate, not stable 0.3.0.',
       'macOS and Linux are the first supported operator platforms for the v0.3 launch path.',
-      'Pylon v0.3 local release gates exist, but the live OpenAgents network path still needs endpoint smokes and fresh public evidence before broad earning claims go green.',
+      'Pylon v0.3 local release gates and a no-spend live worker-loop smoke exist, but broad earning, paid assignment, settlement, and stable-release claims still need fresh public evidence before they go green.',
       'Qwen/training, sellable local inference, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned.',
       'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
       'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
@@ -566,25 +567,24 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.cli_tui_probe_background.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'agent'],
-      state: 'yellow',
+      state: 'green',
       claim:
         'Pylon is a script/CLI/TUI that includes Probe and is meant to run in the background.',
       safeCopy:
-        'Pylon v0.3 has a Bun/Effect/OpenTUI CLI/TUI and includes the former Probe runtime, but the live OpenAgents worker loop is still gated.',
+        'Pylon v0.3 has a Bun/Effect/OpenTUI CLI/TUI, includes the former Probe runtime, and has a passed no-spend live worker-loop smoke against OpenAgents.',
       unsafeCopy:
-        'Do not claim every Pylon install includes a complete paid Probe background worker on the live network.',
+        'Do not turn the passed no-spend worker-loop smoke into a claim that every Pylon install can run paid work, settle payouts, or satisfy the whole v0.3 release gate.',
       evidenceRefs: [
         'apps/pylon/README.md',
         'apps/pylon/packages/runtime/src/index.ts',
+        'apps/pylon/docs/live-worker-loop-smoke.md',
         'apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md',
       ],
-      blockerRefs: [
-        'blocker.product_promises.live_worker_loop_endpoint_smoke_missing',
-      ],
+      blockerRefs: [],
       verification:
-        'apps/pylon local tests and release gates cover rc surfaces; live endpoint smokes are still needed before broad network claims.',
+        'apps/pylon local tests cover the CLI/runtime smoke, and the 2026-06-09 production smoke registered, heartbeated, reported wallet readiness, created/read an unpaid assignment, accepted it, submitted progress/artifact refs, and closed it through the operator route.',
       authorityBoundary:
-        'Local runtime availability does not authorize paid assignments, settlement, or provider mutation.',
+        'This green claim is limited to the CLI/TUI/Probe runtime and no-spend live worker-loop event path; it does not authorize paid assignments, settlement, wallet send readiness, Windows/WSL, or provider mutation.',
     },
     {
       ...basePromiseFields,

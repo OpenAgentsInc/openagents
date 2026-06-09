@@ -2,7 +2,7 @@
 
 Date: 2026-06-09
 
-Registry version audited: `2026-06-09.4`
+Registry version audited: `2026-06-09.10`
 
 Status: roadmap audit for turning the current product-promise registry into a
 set of green, evidence-backed claims without pretending one sequential Codex
@@ -14,8 +14,8 @@ OpenAgents now has enough public surface area that the product-promise list is
 no longer just copy discipline. It is a work program. The current live registry
 has 24 promise records:
 
-- green: 3
-- yellow: 10
+- green: 4
+- yellow: 9
 - red: 10
 - withdrawn: 1
 
@@ -60,6 +60,7 @@ These should stay boring and well-guarded:
 - `discovery.homepage_json.v1`
 - `promises.registry.v1`
 - `agents.one_instruction_sheet.v1`
+- `pylon.cli_tui_probe_background.v1`
 
 Work required:
 
@@ -95,7 +96,6 @@ Yellow promises:
 - `sites.referral_bitcoin_stream.v1`
 - `payments.money_dev_kit.v1`
 - `autopilot.agentic_labor_products.v1`
-- `pylon.cli_tui_probe_background.v1`
 - `agents.cursor_forum_wallet.v1`
 - `pylon.gepa_worker_loop_v03.v1`
 
@@ -167,22 +167,21 @@ Responsibilities:
 - keep Windows and unsupported platform copy scoped until proven;
 - persist Pylon identity, config, background state, update state, and public
   status refs;
-- connect live assignment leases, acceptance, progress, artifact refs,
-  closeout, stale handling, and public stats;
+- keep live assignment leases, acceptance, progress, artifact refs, closeout,
+  stale handling, and public stats covered by repeatable smokes;
 - keep local no-spend smokes separate from live paid evidence.
 
 Promises moved by this squad:
 
 - `pylon.v03_release_candidate.v1`
 - `pylon.release_tomorrow.v1`
-- `pylon.cli_tui_probe_background.v1`
 - `pylon.gepa_worker_loop_v03.v1`
 - part of `pylon.compute_revenue_modes.v1`
 
 Green exits:
 
 - stable v0.3.0 release exists with install evidence;
-- one registered Pylon can complete a no-spend live assignment loop;
+- the existing no-spend live assignment loop smoke stays repeatable;
 - one registered Pylon can complete a paid small-sats assignment loop;
 - `/api/public/pylon-stats` distinguishes online, wallet-ready,
   assignment-ready, accepted, paid, and settled states;

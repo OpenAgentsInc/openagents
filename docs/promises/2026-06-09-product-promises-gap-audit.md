@@ -2,7 +2,7 @@
 
 Date: 2026-06-09
 
-Registry version audited: `2026-06-09.3`
+Registry version audited: `2026-06-09.10`
 
 Status: public gap audit for the current OpenAgents monorepo and deployed
 `openagents.com` product surface.
@@ -12,11 +12,12 @@ Status: public gap audit for the current OpenAgents monorepo and deployed
 The product-promise system is live, but the full product-promise list is not
 yet fully implemented.
 
-The current public registry contains 22 promises:
+The current public registry contains 24 promises:
 
-- green: 3
+- green: 4
 - yellow: 9
 - red: 10
+- withdrawn: 1
 
 That is the honest state. OpenAgents now has a deployed public product surface,
 Forum, agent instructions, agent-readable homepage JSON, OpenAPI JSON,
@@ -26,11 +27,11 @@ evidence rows, and a versioned product-promise registry.
 
 The largest remaining gap is economic execution. Pylon v0.3 is present in the
 monorepo as `@openagentsinc/pylon@0.3.0-rc1`, and it includes the former Probe
-runtime surface, local state baseline, GEPA-first runtime contracts, and local
-release gates. It is not yet a stable broad network that can truthfully claim
-one-install Bitcoin earning, public remote model training, multi-stream
-settlement, provider-capacity resale, trace-market revenue, or marketplace
-signature monetization.
+runtime surface, local state baseline, GEPA-first runtime contracts, local
+release gates, and a passed no-spend live worker-loop smoke. It is not yet a
+stable broad network that can truthfully claim one-install Bitcoin earning,
+public remote model training, multi-stream settlement, provider-capacity
+monetization, trace-market revenue, or marketplace signature monetization.
 
 Public copy should continue to say exactly that until the roadmap below is
 closed and the corresponding promise records move to green with current
@@ -91,7 +92,7 @@ copy can go green.
 | `payments.money_dev_kit.v1`                      | yellow         | MDK is represented in wallet/payment docs and some route contracts.                                     | Prove stable hosted and local payout flows, capacity recovery, and spendable settlement states.                               |
 | `api.model_gateway_google_credits.v1`            | red            | Agent-readable API surfaces exist, but no credit-backed gateway is live.                                | Build provider budget ledger, gateway policy, metering, safety limits, and product authorization.                             |
 | `autopilot.agentic_labor_products.v1`            | yellow         | Software/Sites docs and workroom concepts exist; public product surface is live.                        | Close the acceptance, proof, receipt, fulfillment, and payout chain for broad sellable agentic labor.                         |
-| `pylon.cli_tui_probe_background.v1`              | yellow         | Pylon CLI/TUI and runtime package exist.                                                                | Complete service-manager-friendly background mode, update path, persisted config, and live endpoint loop.                     |
+| `pylon.cli_tui_probe_background.v1`              | green          | Pylon CLI/TUI and runtime package exist; 2026-06-09 production smoke proved register, heartbeat, no-spend wallet readiness, unpaid assignment event flow, and operator closeout against live OpenAgents. | Keep broader service-manager, update, paid work, settlement, and v0.3 stable-release promises separate and gated.              |
 | `autopilot.control_center_fanout_marketplace.v1` | red            | Forum and API surfaces exist; broad fanout marketplace is not live.                                     | Implement orchestration, job fanout, plugin/package admission, marketplace policy, receipts, and owner controls.              |
 | `marketplace.signature_monetization.v1`          | red            | Signature/runtime contracts exist in Pylon-related code.                                                | Build validation, pricing, activation, metering, revenue share, settlement, and discovery.                                    |
 | `provider.subscription_capacity.v1`              | red            | Provider-account connection is documented as gated/planned.                                             | Build compliant account policy, secret refs, quota metering, ToS boundaries, resale policy, and settlement.                   |
