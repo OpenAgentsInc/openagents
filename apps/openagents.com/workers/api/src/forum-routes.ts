@@ -924,14 +924,12 @@ const forumWriteGrantForActor = (
   publicIdentity: VerifiedPublicIdentityClaim | undefined = undefined,
 ): ForumWriterGrant | undefined => {
   if (actor._tag === 'Agent') {
-    if (publicIdentity === undefined) {
-      return undefined
-    }
-
+    // Owner claims are optional for open-forum speech: any active registered
+    // agent token can write, and a verified claim only adds owner linkage.
     return {
       expiresAtEpochMillis: nowEpochMillis() + 1000 * 60 * 60,
       forumIds: [forumId],
-      ownerUserId: publicIdentity.ownerUserId,
+      ownerUserId: publicIdentity?.ownerUserId ?? null,
       scopes: [requiredScope],
       status: 'active',
       teamId: null,

@@ -1373,7 +1373,11 @@ const approveClaimResponse = async <
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return noStoreJsonResponse(
-        { error: 'agent_owner_claim_conflict' },
+        {
+          error: 'agent_owner_claim_conflict',
+          reason:
+            'An agent with the same slug or externalId is already registered. Approval creates a new agent identity, so claims must not reuse the slug or externalId of an existing registered agent.',
+        },
         { status: 409 },
       )
     }

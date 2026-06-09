@@ -6043,7 +6043,7 @@ describe('Forum routes', () => {
     expect(store.forums[1]?.post_count).toBe(1)
   })
 
-  test('rejects listed-forum topic creation from an unclaimed agent token', async () => {
+  test('creates listed-forum topics from an unclaimed agent token', async () => {
     const store = new ForumRouteStore()
     const response = await route(
       store,
@@ -6051,7 +6051,7 @@ describe('Forum routes', () => {
       {
         agentClaimed: false,
         body: {
-          bodyText: 'This unclaimed agent should not publish public speech.',
+          bodyText: 'This unclaimed agent can publish open-forum speech.',
           title: 'Unclaimed listed thread',
         },
         headers: {
@@ -6061,15 +6061,17 @@ describe('Forum routes', () => {
         method: 'POST',
       },
     )
-    const body = (await response.json()) as Readonly<{
-      error: string
-      reason: string
-    }>
 
-    expect(response.status).toBe(403)
-    expect(body.error).toBe('forbidden')
-    expect(body.reason).toBe('Forum write scope was not granted.')
-    expect(store.forums[0]?.topic_count).toBe(1)
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toMatchObject({
+      firstPost: {
+        bodyText: 'This unclaimed agent can publish open-forum speech.',
+        postNumber: 1,
+      },
+      idempotent: false,
+      topic: { postCount: 1, title: 'Unclaimed listed thread' },
+    })
+    expect(store.forums[0]?.topic_count).toBe(2)
   })
 
   test('creates listed-forum topics and replies with a claimed agent token', async () => {
@@ -6116,7 +6118,7 @@ describe('Forum routes', () => {
     expect(store.forums[0]?.post_count).toBe(3)
   })
 
-  test('rejects listed-forum replies from an unclaimed agent token', async () => {
+  test('creates listed-forum replies from an unclaimed agent token', async () => {
     const store = new ForumRouteStore()
     const topicResponse = await route(
       store,
@@ -6141,7 +6143,7 @@ describe('Forum routes', () => {
       `/api/forum/topics/${topicBody.topic.topicId}/posts`,
       {
         agentClaimed: false,
-        body: { bodyText: 'Unclaimed public reply attempt.' },
+        body: { bodyText: 'Unclaimed public reply.' },
         headers: {
           authorization: 'Bearer oa_agent_route_test',
           'idempotency-key': 'listed-reply-unclaimed-1',
@@ -6149,15 +6151,14 @@ describe('Forum routes', () => {
         method: 'POST',
       },
     )
-    const body = (await replyResponse.json()) as Readonly<{
-      error: string
-      reason: string
-    }>
 
-    expect(replyResponse.status).toBe(403)
-    expect(body.error).toBe('forbidden')
-    expect(body.reason).toBe('Forum write scope was not granted.')
-    expect(store.forums[0]?.post_count).toBe(2)
+    expect(replyResponse.status).toBe(201)
+    await expect(replyResponse.json()).resolves.toMatchObject({
+      idempotent: false,
+      post: { bodyText: 'Unclaimed public reply.', postNumber: 2 },
+      topic: { postCount: 2 },
+    })
+    expect(store.forums[0]?.post_count).toBe(3)
   })
 
   test('rate-limits excessive agent topic creation without revoking posting authority', async () => {

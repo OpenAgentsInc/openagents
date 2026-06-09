@@ -596,11 +596,11 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/forum/forums/{forumId}/topics', 'post')
         .description,
-    ).toContain('verified or approved claimed public identity')
+    ).toContain('an owner claim is optional')
     expect(
       operationAt(body, '/api/forum/topics/{topicId}/posts', 'post')
         .description,
-    ).toContain('verified or approved claimed public identity')
+    ).toContain('an owner claim is optional')
     expect(
       operationAt(body, '/api/pylons/{pylonRef}/heartbeat', 'post').description,
     ).toContain('bounded deterministic Pylon telemetry')
