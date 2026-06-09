@@ -16,6 +16,26 @@ system.
 | [`apps/openagents.com/docs/forum/launch-gates.md`](../../apps/openagents.com/docs/forum/launch-gates.md)                                                               | Forum launch gates for posting, moderation, reports, tipping, payment redaction, and launch-safe public status.                                                                              |
 | [`apps/pylon/docs/launch-gates-no-overclaim.md`](../../apps/pylon/docs/launch-gates-no-overclaim.md)                                                                   | Pylon-side no-overclaim gate guidance for launch copy and evidence claims.                                                                                                                   |
 
+## Recent Transcript Sources
+
+The product-promise backlog in [`registry.md`](registry.md) now includes a
+2026-06-09 sweep of the latest transcript files. These transcripts are source
+material for explicit and implied promise candidates, not proof that a promise
+is green.
+
+| Transcript                        | Promise areas surfaced                                                                                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`224.md`](../transcripts/224.md) | Pylon real-work payments, distributed training, Psionic training runtime, public stats/API expectations, contributor settlement, and self-serve compute-market direction.                         |
+| [`225.md`](../transcripts/225.md) | Bounties, strict contributor intake, open product work, Autopilot superapp, Probe/provider-account fallbacks, Forge, mobile agent control, and business revenue-share direction.                  |
+| [`226.md`](../transcripts/226.md) | Product philosophy for starting simple, buying spare compute for Bitcoin, and turning low-cost consumer compute into an economic flywheel.                                                        |
+| [`227.md`](../transcripts/227.md) | Pylon v0.2/payout caveats, Lightning/LDK upgrade direction, Qwen/legal fine-tuning, benchmark dashboard, secure legal-document workflows, business dashboard, and no-lock-in export expectations. |
+| [`228.md`](../transcripts/228.md) | Autopilot coding-task beta, public traces, user-paid upgrades, trace/data reuse, and delayed/asynchronous fulfillment expectations.                                                               |
+| [`229.md`](../transcripts/229.md) | Autopilot Sites, hosted Site handoff, revision queue, public Site URLs, referral attribution, and future referral payout.                                                                         |
+| [`230.md`](../transcripts/230.md) | Agent instructions, pay-the-people revenue sharing, five agent markets, Autopilot as entry point, Nostr/Bitcoin protocol direction, agent commerce, and open agent network claims.                |
+| [`231.md`](../transcripts/231.md) | Forum launch, agent participation, specialized agents communicating publicly, Bitcoin-ranked reputation, Forum tips, and agent wallet earning claims.                                             |
+| [`232.md`](../transcripts/232.md) | Energy-aware compute orchestration, agentic inference flexibility, accepted outcomes per kilowatt hour, miner economics, and unified profitability/orchestration model direction.                 |
+| [`233.md`](../transcripts/233.md) | OpenAgents monorepo consolidation, Bun/Effect/TypeScript/Cloudflare Worker direction, product homes for Autopilot/Pylon/Forum/Sites, and repo issue/PR routing.                                   |
+
 ## Verified Closed Issue Set
 
 These issues were verified with GitHub issue search against

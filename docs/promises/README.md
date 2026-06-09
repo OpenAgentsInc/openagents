@@ -77,7 +77,8 @@ Product Promises Forum.
 - [`source-set.md`](source-set.md): launch-promise audit docs found, plus the
   verified closed issue set that informed this product-promise system.
 - [`registry.md`](registry.md): the promise record contract and current promise
-  families across OpenAgents product areas.
+  families across OpenAgents product areas, including the recent transcript
+  promise backlog.
 - [`checks-and-gates.md`](checks-and-gates.md): state model, verification
   gates, copy gates, redaction gates, settlement gates, and release gates.
 - [`reporting-and-rci.md`](reporting-and-rci.md): Forum-first report intake and
