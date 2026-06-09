@@ -9,8 +9,15 @@ import {
   OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES,
 } from './autopilot-work-request'
 import {
+  type OpenAgentsL402CredentialPayload,
+  makeOpenAgentsL402HmacSigningBoundary,
+} from './l402-credential-service'
+import { formatOpenAgentsPaymentCredentialPair } from './l402-payment-headers'
+import {
   type AutopilotWorkExecutor,
   type AutopilotWorkExecutionCloseoutRecord,
+  type AutopilotWorkL402PaymentVerificationInput,
+  type AutopilotWorkL402PaymentVerificationResult,
   type AutopilotWorkOrderRecord,
   type AutopilotWorkReviewDecisionRecord,
   type AutopilotWorkStore,
@@ -159,6 +166,13 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
       return undefined
     }
 
+    if (
+      existing.state !== 'payment_required' ||
+      existing.buyerPaymentProofRef !== null
+    ) {
+      return existing
+    }
+
     const updated = {
       ...existing,
       buyerPaymentProofRef: input.buyerPaymentProofRef,
@@ -286,6 +300,51 @@ class MemoryPylonApiStore implements PylonApiStore {
 }
 
 const agentToken = `${AGENT_TOKEN_PREFIX}autopilot-work-test`
+const autopilotL402SigningSecret = 'autopilot-work-route-test-l402-secret'
+
+const autopilotL402SigningBoundary = () =>
+  makeOpenAgentsL402HmacSigningBoundary({
+    secretKeyMaterial: autopilotL402SigningSecret,
+    signerRef: 'binding.autopilot.route.mdk.sandbox',
+  })
+
+const verifiedAutopilotProofRefs = new Set<string>()
+
+const verifyAutopilotL402PaymentProof = async (
+  input: AutopilotWorkL402PaymentVerificationInput,
+): Promise<AutopilotWorkL402PaymentVerificationResult | null> =>
+  verifiedAutopilotProofRefs.has(input.paymentProofRef)
+    ? {
+        paymentProofRef: input.paymentProofRef,
+        verifierRef: 'verifier.autopilot_l402.route_test',
+      }
+    : null
+
+const authorizeAutopilotL402 = (
+  credential: string | null,
+  proofRef: string,
+): string => {
+  if (credential === null) {
+    throw new Error('Autopilot L402 credential header was not minted.')
+  }
+
+  return formatOpenAgentsPaymentCredentialPair({ credential, proofRef })
+}
+
+const decodeAutopilotL402Payload = (
+  credential: string,
+): OpenAgentsL402CredentialPayload => {
+  const [, payloadBase64Url] = credential.split('.')
+
+  if (payloadBase64Url === undefined) {
+    throw new Error('Autopilot L402 credential payload is missing.')
+  }
+
+  const normalized = payloadBase64Url.replaceAll('-', '+').replaceAll('_', '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+
+  return JSON.parse(atob(padded)) as OpenAgentsL402CredentialPayload
+}
 
 const agentStoreForScopes = (
   scopes: ReadonlyArray<string> = [
@@ -363,6 +422,7 @@ const route = async (
     idempotencyKey?: string
     executeReadyWork?: AutopilotWorkExecutor
     method?: string
+    nowIso?: string
     pylonApiStore?: PylonApiStore
     pylonRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     pylonStoreRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
@@ -377,7 +437,13 @@ const route = async (
     agentStore: () => agentStoreForScopes(options.scopes, options.ownerUserId),
     makeId: () => `autopilot_work_order.test_${++counter}`,
     makeStore: () => store,
-    nowIso: () => '2026-06-09T17:30:00.000Z',
+    nowIso: () => options.nowIso ?? '2026-06-09T17:30:00.000Z',
+    l402SigningBoundary: () => autopilotL402SigningBoundary(),
+    verifyL402PaymentProof: (
+      _env: Record<string, unknown>,
+      input: AutopilotWorkL402PaymentVerificationInput,
+    ) =>
+      verifyAutopilotL402PaymentProof(input),
     ...(options.executeReadyWork === undefined
       ? {}
       : {
@@ -1710,11 +1776,15 @@ describe('Autopilot work routes', () => {
     })
     const firstJson = await responseJson(first)
     const replayJson = await responseJson(replay)
+    const paidProofRef = 'payment_proof.autopilot_work.test_1'
+    verifiedAutopilotProofRefs.add(paidProofRef)
     const paid = await route(store, '/api/autopilot/work', {
       body: { ignored: 'paid retry does not replace stored request' },
       headers: {
-        'X-OpenAgents-L402':
-          'oa-l402-v1.autopilot_test:payment_proof.autopilot_work.test_1',
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          first.headers.get('x-openagents-l402-credential'),
+          paidProofRef,
+        ),
       },
       idempotencyKey: 'idem-autopilot-work-paid-quote',
     })
@@ -1728,6 +1798,22 @@ describe('Autopilot work routes', () => {
 
     expect(first.status).toBe(402)
     expect(first.headers.get('www-authenticate')).toContain('L402')
+    expect(first.headers.get('x-openagents-l402-credential')).toMatch(
+      /^oa-l402-v1\./,
+    )
+    expect(decodeAutopilotL402Payload(
+      first.headers.get('x-openagents-l402-credential') ?? '',
+    )).toMatchObject({
+      amount: {
+        amountMinorUnits: 6400,
+        asset: 'usd',
+        denomination: 'usd_cent',
+      },
+      challengeRef:
+        'challenge.quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+      endpointRef: 'endpoint.autopilot.work',
+      productId: 'product.autopilot.work',
+    })
     expect(replay.status).toBe(402)
     expect(firstJson.work).toMatchObject({
       assignmentIntents: [
@@ -1753,7 +1839,10 @@ describe('Autopilot work routes', () => {
         amountCents: 6400,
         challengeRef:
           'challenge.quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+        expiresAt: '2026-06-09T17:45:00.000Z',
         kind: 'l402',
+        l402CredentialRef:
+          'credential.autopilot_work.autopilot_work_order_test_1',
         quoteRef:
           'quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
         status: 'payment_required',
@@ -1828,6 +1917,124 @@ describe('Autopilot work routes', () => {
     )
   })
 
+  test('rejects malformed, unverified, expired, mismatched, and replayed L402 retries', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      paymentPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+        quoteRef: null,
+        quotedAmountCents: null,
+      },
+    }
+    const first = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-l402-negative',
+    })
+    const credential = first.headers.get('x-openagents-l402-credential')
+    const unpaidRetry = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      idempotencyKey: 'idem-autopilot-work-l402-negative',
+    })
+    const malformedRetry = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      headers: {
+        'X-OpenAgents-L402': 'not-a-real-credential:payment_proof.autopilot_work.negative',
+      },
+      idempotencyKey: 'idem-autopilot-work-l402-negative',
+    })
+    const unverifiedRetry = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          credential,
+          'payment_proof.autopilot_work.unverified',
+        ),
+      },
+      idempotencyKey: 'idem-autopilot-work-l402-negative',
+    })
+    const expiredRetry = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          credential,
+          'payment_proof.autopilot_work.expired',
+        ),
+      },
+      idempotencyKey: 'idem-autopilot-work-l402-negative',
+      nowIso: '2026-06-09T17:46:00.000Z',
+    })
+    const secondStore = new MemoryAutopilotWorkStore()
+    const second = await route(secondStore, '/api/autopilot/work', {
+      body: {
+        ...request,
+        clientRequestRef: 'client.example.20260609.mismatch',
+      },
+      idempotencyKey: 'idem-autopilot-work-l402-mismatch',
+    })
+    const verifiedMismatchProof = 'payment_proof.autopilot_work.mismatch'
+    verifiedAutopilotProofRefs.add(verifiedMismatchProof)
+    const mismatchedCredentialRetry = await route(secondStore, '/api/autopilot/work', {
+      body: { ignored: true },
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          credential,
+          verifiedMismatchProof,
+        ),
+      },
+      idempotencyKey: 'idem-autopilot-work-l402-mismatch',
+    })
+    const verifiedProofRef = 'payment_proof.autopilot_work.negative'
+    verifiedAutopilotProofRefs.add(verifiedProofRef)
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(credential, verifiedProofRef),
+      },
+      idempotencyKey: 'idem-autopilot-work-l402-negative',
+    })
+    const replayedPaid = await route(store, '/api/autopilot/work', {
+      body: { ignored: true },
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(credential, verifiedProofRef),
+      },
+      idempotencyKey: 'idem-autopilot-work-l402-negative',
+    })
+    const paidJson = await responseJson(paid)
+    const replayedPaidJson = await responseJson(replayedPaid)
+
+    expect(first.status).toBe(402)
+    expect(unpaidRetry.status).toBe(402)
+    expect(malformedRetry.status).toBe(402)
+    expect(unverifiedRetry.status).toBe(400)
+    expect(await responseJson(unverifiedRetry)).toMatchObject({
+      error: 'autopilot_work_validation_error',
+      reason: 'Autopilot L402 payment proof was not verified.',
+    })
+    expect(expiredRetry.status).toBe(400)
+    expect(await responseJson(expiredRetry)).toMatchObject({
+      error: 'autopilot_work_validation_error',
+      reason: 'reason.l402_credential.expired',
+    })
+    expect(second.status).toBe(402)
+    expect(mismatchedCredentialRetry.status).toBe(400)
+    expect(await responseJson(mismatchedCredentialRetry)).toMatchObject({
+      error: 'autopilot_work_validation_error',
+      reason: 'reason.l402_credential.resource_mismatch',
+    })
+    expect(paid.status).toBe(200)
+    expect(replayedPaid.status).toBe(200)
+    expect(paidJson.work).toMatchObject({
+      buyerPaymentProofRef: verifiedProofRef,
+      funding: {
+        buyerFundingState: 'funded',
+        buyerPaymentProofRef: verifiedProofRef,
+      },
+      state: 'paid_ready',
+    })
+    expect(replayedPaidJson.work?.buyerPaymentProofRef).toBe(verifiedProofRef)
+  })
+
   test('projects a funded hosted Gemini fallback lease without execution authority', async () => {
     const store = new MemoryAutopilotWorkStore()
     const request = {
@@ -1865,11 +2072,16 @@ describe('Autopilot work routes', () => {
       pylonRegistrations: [],
     })
     const firstJson = await responseJson(first)
+    const paidProofRef =
+      'payment_proof.autopilot_work.hosted_gemini_smoke'
+    verifiedAutopilotProofRefs.add(paidProofRef)
     const paid = await route(store, '/api/autopilot/work', {
       body: { ignored: 'paid retry does not replace stored request' },
       headers: {
-        'X-OpenAgents-L402':
-          'oa-l402-v1.autopilot_test:payment_proof.autopilot_work.hosted_gemini_smoke',
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          first.headers.get('x-openagents-l402-credential'),
+          paidProofRef,
+        ),
       },
       idempotencyKey: 'idem-autopilot-work-hosted-gemini-smoke',
       pylonRegistrations: [],
@@ -1990,12 +2202,17 @@ describe('Autopilot work routes', () => {
       pylonRegistrations: [],
     })
     const firstJson = await responseJson(first)
+    const paidProofRef =
+      'payment_proof.autopilot_work.hosted_gemini_closeout'
+    verifiedAutopilotProofRefs.add(paidProofRef)
     const paid = await route(store, '/api/autopilot/work', {
       body: { ignored: 'paid retry does not replace stored request' },
       executeReadyWork,
       headers: {
-        'X-OpenAgents-L402':
-          'oa-l402-v1.autopilot_test:payment_proof.autopilot_work.hosted_gemini_closeout',
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          first.headers.get('x-openagents-l402-credential'),
+          paidProofRef,
+        ),
       },
       idempotencyKey: 'idem-autopilot-work-hosted-gemini-closeout',
       pylonRegistrations: [],
@@ -2096,7 +2313,7 @@ describe('Autopilot work routes', () => {
     ])
   })
 
-  test('accepts an MDK checkout proof retry for payable work', async () => {
+  test('keeps MDK checkout proof retries payment-required until checkout verification is wired', async () => {
     const store = new MemoryAutopilotWorkStore()
     const request = {
       ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
@@ -2139,21 +2356,21 @@ describe('Autopilot work routes', () => {
       settlementEligible: false,
       workerPayoutEligible: false,
     })
-    expect(paid.status).toBe(200)
+    expect(paid.status).toBe(402)
     expect(paidJson.work).toMatchObject({
-      buyerPaymentProofRef: 'checkout_proof.autopilot_work.test_1',
+      buyerPaymentProofRef: null,
       funding: {
-        buyerFundingState: 'funded',
-        fundedAmountCents: 6400,
-        settlementBlockedReasonRef: 'settlement.accepted_work_required',
+        buyerFundingState: 'payment_required',
+        fundedAmountCents: 0,
+        settlementBlockedReasonRef: 'settlement.buyer_payment_required',
         settlementEligible: false,
         workerPayoutEligible: false,
       },
       paymentChallenge: {
         kind: 'mdk_checkout',
-        status: 'paid_ready',
+        status: 'payment_required',
       },
-      state: 'paid_ready',
+      state: 'payment_required',
     })
   })
 

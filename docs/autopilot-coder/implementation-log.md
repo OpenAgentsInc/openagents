@@ -828,3 +828,39 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:no-spend`
+
+## OA-AUTO-026: Signed L402 Payment Issuance And Verification Gate
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4617`
+
+Status: implemented for the signed L402 route boundary; live external payment
+movement remains a separate verifier/smoke gap.
+
+Implemented:
+
+- Replaced Autopilot L402 proof-ref-only funding with signed credential
+  verification against the stored work order.
+- Derived the Autopilot L402 challenge from durable work-order state:
+  - quote amount and currency;
+  - challenge ref;
+  - request-body digest;
+  - owner, agent, and work-order scope refs;
+  - endpoint and product refs;
+  - 15-minute expiry.
+- Added private `x-openagents-l402-credential` issuance on `402` responses
+  when the MDK route signing boundary is configured.
+- Added an explicit payment verifier hook that fails closed when missing or
+  rejected; a signed credential alone no longer funds payable work.
+- Kept MDK checkout proof headers payment-required until checkout creation and
+  reconciliation are wired.
+- Tightened payment persistence so only unpaid `payment_required` work can move
+  to `paid_ready`.
+- Wired the production Autopilot route to the existing MDK route signing
+  boundary while leaving live proof verification unconfigured/fail-closed.
+- Added route coverage for unpaid, malformed, unverified, expired, mismatched,
+  verified, and idempotent replay L402 retries.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

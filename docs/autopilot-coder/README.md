@@ -16,3 +16,5 @@ Forum reporting.
   Autopilot coder backlog.
 - `no-spend-e2e-smoke.md`: documented command and retained-evidence checks for
   the public no-spend Autopilot Coder smoke.
+- `paid-l402-boundary.md`: current signed L402 retry contract and remaining
+  live verifier gap for paid Autopilot Coder work.

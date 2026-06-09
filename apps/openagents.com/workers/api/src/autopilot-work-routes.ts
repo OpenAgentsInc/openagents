@@ -40,7 +40,18 @@ import {
   formatOpenAgentsL402WwwAuthenticate,
   parseOpenAgentsPaymentHeaders,
 } from './l402-payment-headers'
+import {
+  type OpenAgentsL402CredentialPayload,
+  type OpenAgentsL402SigningBoundary,
+  l402PayloadFromBuyerPaymentChallenge,
+  mintOpenAgentsL402Credential,
+  verifyOpenAgentsL402Credential,
+} from './l402-credential-service'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import type {
+  BuyerPaymentChallengeRecord,
+  BuyerPaymentLedgerAmount,
+} from './buyer-payment-ledger'
 import type {
   PylonApiAssignmentRecord,
   PylonApiRegistrationRecord,
@@ -140,7 +151,9 @@ export type AutopilotWorkPaymentChallengeProjection = Readonly<{
   challengeRef: string
   checkoutIntentRef: string | null
   checkoutUrlRef: string | null
+  expiresAt: string
   kind: 'l402' | 'mdk_checkout'
+  l402CredentialRef: string | null
   l402HeaderRef: string | null
   quoteRef: string
   status: 'paid_ready' | 'payment_required'
@@ -446,6 +459,9 @@ type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
     env: Bindings,
     input: Parameters<AutopilotWorkExecutor>[0],
   ) => ReturnType<AutopilotWorkExecutor>
+  l402SigningBoundary?: (
+    env: Bindings,
+  ) => Promise<OpenAgentsL402SigningBoundary | null>
   makeId?: () => string
   makePylonApiStore?: (env: Bindings) => AutopilotPylonApiStore
   makeStore: (env: Bindings) => AutopilotWorkStore
@@ -453,6 +469,10 @@ type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
   pylonRegistrations?: (
     env: Bindings,
   ) => Promise<ReadonlyArray<PylonApiRegistrationRecord>>
+  verifyL402PaymentProof?: (
+    env: Bindings,
+    input: AutopilotWorkL402PaymentVerificationInput,
+  ) => Promise<AutopilotWorkL402PaymentVerificationResult | null>
 }>
 
 type AutopilotWorkRouteEnv = Readonly<Record<string, unknown>>
@@ -589,6 +609,101 @@ const statusUrlRefForWorkOrder = (workOrderRef: string): string =>
 
 const eventStreamRefForWorkOrder = (workOrderRef: string): string =>
   `events.${workOrderRef}`
+
+const AutopilotWorkL402ChallengeTtlSeconds = 15 * 60
+const AutopilotWorkL402EndpointRef = 'endpoint.autopilot.work'
+const AutopilotWorkL402ProductId = 'product.autopilot.work'
+
+const cleanRefSegment = (value: string): string =>
+  value.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 120)
+
+const addSecondsIso = (iso: string, seconds: number): string =>
+  new Date(new Date(iso).getTime() + seconds * 1000).toISOString()
+
+const autopilotQuoteAmount = (
+  quote: AutopilotWorkQuote,
+): BuyerPaymentLedgerAmount => ({
+  amountMinorUnits: quote.amountCents,
+  asset: 'usd',
+  denomination: 'usd_cent',
+})
+
+const autopilotWorkRequestBodyDigest = (
+  record: AutopilotWorkOrderRecord,
+): Promise<string> => sha256Hex(JSON.stringify(record.request))
+
+const autopilotL402CredentialRef = (
+  record: AutopilotWorkOrderRecord,
+): string => `credential.autopilot_work.${cleanRefSegment(record.workOrderRef)}`
+
+const autopilotL402PaymentHashRef = (
+  record: AutopilotWorkOrderRecord,
+): string => `payment_hash.redacted.autopilot_work.${cleanRefSegment(record.workOrderRef)}`
+
+const autopilotL402ReplayNonceRef = (
+  record: AutopilotWorkOrderRecord,
+): string => `replay_nonce.autopilot_work.${cleanRefSegment(record.workOrderRef)}`
+
+const autopilotL402EntitlementScopeRefs = (
+  record: AutopilotWorkOrderRecord,
+): ReadonlyArray<string> => [
+  `scope.autopilot_work.${cleanRefSegment(record.workOrderRef)}`,
+  `scope.autopilot_owner.${cleanRefSegment(record.ownerUserId)}`,
+  `scope.autopilot_agent.${cleanRefSegment(record.agentUserId)}`,
+  makeAutopilotWorkQuote(record.request).quoteRef,
+]
+
+const autopilotBuyerPaymentChallengeRecord = async (
+  record: AutopilotWorkOrderRecord,
+): Promise<BuyerPaymentChallengeRecord> => {
+  const quote = makeAutopilotWorkQuote(record.request)
+  const price = autopilotQuoteAmount(quote)
+
+  return {
+    actorRef: `agent.${cleanRefSegment(record.agentUserId)}`,
+    archivedAt: null,
+    challengeRef:
+      record.paymentChallengeRef ?? `challenge.${quote.quoteRef}`,
+    createdAt: record.createdAt,
+    expiresAt: addSecondsIso(
+      record.createdAt,
+      AutopilotWorkL402ChallengeTtlSeconds,
+    ),
+    id: `buyer_payment_challenge.${cleanRefSegment(record.workOrderRef)}`,
+    idempotencyKeyHash: record.idempotencyKeyHash,
+    metadataRefs: [
+      `metadata.autopilot_work.${cleanRefSegment(record.workOrderRef)}`,
+      quote.quoteRef,
+    ],
+    method: 'POST',
+    ownerUserId: record.ownerUserId,
+    path: '/api/autopilot/work',
+    price,
+    productId: AutopilotWorkL402ProductId,
+    publicProjectionJson: JSON.stringify({
+      amountCents: quote.amountCents,
+      challengeRef: record.paymentChallengeRef,
+      quoteRef: quote.quoteRef,
+      workOrderRef: record.workOrderRef,
+    }),
+    requestBodyDigest: await autopilotWorkRequestBodyDigest(record),
+    spendCap: price,
+    status: 'issued',
+    surface: 'agent_api',
+  }
+}
+
+export type AutopilotWorkL402PaymentVerificationInput = Readonly<{
+  credentialPayload: OpenAgentsL402CredentialPayload
+  paymentProofRef: string
+  quote: AutopilotWorkQuote
+  workOrderRef: string
+}>
+
+export type AutopilotWorkL402PaymentVerificationResult = Readonly<{
+  paymentProofRef: string
+  verifierRef: string
+}>
 
 const accessRequestRefsForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
@@ -795,43 +910,154 @@ const reviewDecisionProjectionForRecord = (
         workerPayoutAuthority: false,
       }
 
-const buyerPaymentProofFromRequest = (
-  request: Request,
-  workRequest: OpenAgentsAutopilotWorkRequest,
-): AutopilotWorkBuyerPaymentProof | undefined => {
-  const quote = makeAutopilotWorkQuote(workRequest)
+const verifyBuyerPaymentProofFromRequest = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    nowIso: string
+    request: Request
+    record: AutopilotWorkOrderRecord
+  }>,
+): Effect.Effect<AutopilotWorkBuyerPaymentProof | undefined, AutopilotWorkStoreError> =>
+  Effect.gen(function* () {
+    const quote = makeAutopilotWorkQuote(input.record.request)
 
-  if (!quote.paymentRequired) {
-    return undefined
-  }
+    if (!quote.paymentRequired || input.record.buyerPaymentProofRef !== null) {
+      return undefined
+    }
 
-  if (workRequest.paymentPolicy.buyerPaymentMode === 'l402') {
-    const parsed = (() => {
+    if (input.record.request.paymentPolicy.buyerPaymentMode === 'l402') {
+      const parsed = (() => {
       try {
-        return parseOpenAgentsPaymentHeaders(request.headers)
+        return parseOpenAgentsPaymentHeaders(input.request.headers)
       } catch {
         return undefined
       }
     })()
-    const proofRef = safeBuyerPaymentProofRef(parsed?.proofRef ?? null)
+      const paymentProofRef = safeBuyerPaymentProofRef(parsed?.proofRef ?? null)
 
-    return proofRef === undefined
-      ? undefined
-      : { proofRef, source: 'l402' }
-  }
+      if (
+        parsed?.credential === undefined ||
+        parsed.credential === null ||
+        paymentProofRef === undefined
+      ) {
+        return undefined
+      }
 
-  if (workRequest.paymentPolicy.buyerPaymentMode === 'mdk_checkout') {
-    const proofRef = safeBuyerPaymentProofRef(
-      request.headers.get('x-openagents-mdk-checkout-proof'),
-    )
+      const signer = yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: errorReason(error),
+          }),
+        try: () =>
+          dependencies.l402SigningBoundary?.(env) ?? Promise.resolve(null),
+      })
 
-    return proofRef === undefined
-      ? undefined
-      : { proofRef, source: 'mdk_checkout' }
-  }
+      if (signer === null) {
+        return yield* new AutopilotWorkStoreError({
+          kind: 'validation_error',
+          reason: 'Autopilot L402 payment verifier is not configured.',
+        })
+      }
 
-  return undefined
-}
+      const challenge = yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: errorReason(error),
+          }),
+        try: () => autopilotBuyerPaymentChallengeRecord(input.record),
+      })
+      const verification = yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'validation_error',
+            reason: errorReason(error),
+          }),
+        try: () =>
+          verifyOpenAgentsL402Credential(parsed.credential ?? '', signer, {
+            amount: challenge.price,
+            challengeRef: challenge.challengeRef,
+            endpointRef: AutopilotWorkL402EndpointRef,
+            entitlementScopeRefs: autopilotL402EntitlementScopeRefs(
+              input.record,
+            ),
+            method: challenge.method,
+            nowIso: input.nowIso,
+            path: challenge.path,
+            paymentProofRef,
+            productId: challenge.productId,
+            requestBodyDigest: challenge.requestBodyDigest,
+            requirePaymentProof: true,
+          }),
+      })
+
+      if (verification.status !== 'valid' || verification.payload === null) {
+        return yield* new AutopilotWorkStoreError({
+          kind: 'validation_error',
+          reason: verification.reasonRef,
+        })
+      }
+
+      const credentialPayload = verification.payload
+
+      if (
+        credentialPayload.credentialRef !==
+          autopilotL402CredentialRef(input.record) ||
+        credentialPayload.replayNonceRef !==
+          autopilotL402ReplayNonceRef(input.record)
+      ) {
+        return yield* new AutopilotWorkStoreError({
+          kind: 'validation_error',
+          reason:
+            'Autopilot L402 credential does not match the stored work-order challenge.',
+        })
+      }
+
+      const proofVerification = yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'validation_error',
+            reason: errorReason(error),
+          }),
+        try: () =>
+          dependencies.verifyL402PaymentProof?.(env, {
+            credentialPayload,
+            paymentProofRef,
+            quote,
+            workOrderRef: input.record.workOrderRef,
+          }) ?? Promise.resolve(null),
+      })
+
+      if (proofVerification === null) {
+        return yield* new AutopilotWorkStoreError({
+          kind: 'validation_error',
+          reason: 'Autopilot L402 payment proof was not verified.',
+        })
+      }
+
+      const verifiedProofRef = safeBuyerPaymentProofRef(
+        proofVerification.paymentProofRef,
+      )
+
+      if (verifiedProofRef === undefined) {
+        return yield* new AutopilotWorkStoreError({
+          kind: 'validation_error',
+          reason:
+            'Autopilot L402 payment verifier returned an unsafe proof ref.',
+        })
+      }
+
+      return { proofRef: verifiedProofRef, source: 'l402' }
+    }
+
+    if (input.record.request.paymentPolicy.buyerPaymentMode === 'mdk_checkout') {
+      return undefined
+    }
+
+    return undefined
+  })
 
 const paymentChallengeForRecord = (
   record: AutopilotWorkOrderRecord,
@@ -865,7 +1091,14 @@ const paymentChallengeForRecord = (
     challengeRef: record.paymentChallengeRef,
     checkoutIntentRef,
     checkoutUrlRef,
+    expiresAt: addSecondsIso(
+      record.createdAt,
+      AutopilotWorkL402ChallengeTtlSeconds,
+    ),
     kind,
+    l402CredentialRef: kind === 'l402'
+      ? autopilotL402CredentialRef(record)
+      : null,
     l402HeaderRef,
     quoteRef: quote.quoteRef,
     status: record.buyerPaymentProofRef === null
@@ -874,16 +1107,39 @@ const paymentChallengeForRecord = (
   }
 }
 
-const paymentRequiredResponse = (
+const mintAutopilotL402CredentialForRecord = async (
   record: AutopilotWorkOrderRecord,
-  projection: AutopilotWorkOrderProjection,
-): HttpResponse => {
+  signer: OpenAgentsL402SigningBoundary,
+): Promise<string> => {
+  const challenge = await autopilotBuyerPaymentChallengeRecord(record)
+  const payload = l402PayloadFromBuyerPaymentChallenge({
+    challenge,
+    credentialRef: autopilotL402CredentialRef(record),
+    endpointRef: AutopilotWorkL402EndpointRef,
+    entitlementScopeRefs: autopilotL402EntitlementScopeRefs(record),
+    issuedAt: record.createdAt,
+    paymentHashRef: autopilotL402PaymentHashRef(record),
+    replayNonceRef: autopilotL402ReplayNonceRef(record),
+  })
+  const envelope = await mintOpenAgentsL402Credential(payload, signer)
+
+  return envelope.credential
+}
+
+const paymentRequiredResponse = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    projection: AutopilotWorkOrderProjection
+    record: AutopilotWorkOrderRecord
+  }>,
+): Effect.Effect<HttpResponse, AutopilotWorkStoreError> => Effect.gen(function* () {
   const headers = new Headers()
-  const challenge = paymentChallengeForRecord(record)
+  const challenge = paymentChallengeForRecord(input.record)
 
   if (
     challenge !== null &&
-    record.request.paymentPolicy.buyerPaymentMode === 'l402'
+    input.record.request.paymentPolicy.buyerPaymentMode === 'l402'
   ) {
     headers.set(
       'www-authenticate',
@@ -896,20 +1152,43 @@ const paymentRequiredResponse = (
         challengeRef: challenge.challengeRef,
         docsRef: 'docs.autopilot.work.l402',
         endpointRef: 'endpoint.autopilot.work',
-        expiresAt: record.updatedAt,
+        expiresAt: challenge.expiresAt,
         productId: 'product.autopilot.work',
       }),
     )
+    const signer = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: errorReason(error),
+        }),
+      try: () =>
+        dependencies.l402SigningBoundary?.(env) ?? Promise.resolve(null),
+    })
+
+    if (signer !== null) {
+      const credential = yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: errorReason(error),
+          }),
+        try: () => mintAutopilotL402CredentialForRecord(input.record, signer),
+      })
+
+      headers.set('x-openagents-l402-credential', credential)
+      headers.set('x-openagents-l402-proof-format', 'public-safe-ref')
+    }
   }
 
   return noStoreJsonResponse(
     {
       error: 'payment_required',
-      work: projection,
+      work: input.projection,
     },
     { headers, status: 402 },
   )
-}
+})
 
 const fundingForRecord = (
   record: AutopilotWorkOrderRecord,
@@ -1766,15 +2045,25 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     )
 
     if (existing !== undefined) {
-      const proof = buyerPaymentProofFromRequest(request, existing.request)
+      const proof = yield* verifyBuyerPaymentProofFromRequest(
+        dependencies,
+        env,
+        {
+          nowIso,
+          record: existing,
+          request,
+        },
+      )
       const paid = proof === undefined
         ? existing
         : yield* Effect.tryPromise({
             catch: error =>
-              new AutopilotWorkStoreError({
-                kind: 'storage_error',
-                reason: error instanceof Error ? error.message : String(error),
-              }),
+              error instanceof AutopilotWorkStoreError
+                ? error
+                : new AutopilotWorkStoreError({
+                    kind: 'storage_error',
+                    reason: errorReason(error),
+                  }),
             try: () =>
               dependencies.makeStore(env).recordBuyerPaymentProof({
                 buyerPaymentProofRef: proof.proofRef,
@@ -1812,12 +2101,14 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       )
 
       return dispatchedRecord.state === 'payment_required'
-        ? paymentRequiredResponse(dispatchedRecord, projection)
+        ? yield* paymentRequiredResponse(dependencies, env, {
+            projection,
+            record: dispatchedRecord,
+          })
         : noStoreJsonResponse({ work: projection }, { status: 200 })
     }
 
     const workRequest = yield* decodeWorkRequest(request)
-    const proof = buyerPaymentProofFromRequest(request, workRequest)
     const record = buildWorkOrderRecord({
       agentCredentialId: auth.agent.credential.id,
       agentUserId: auth.agent.user.id,
@@ -1827,6 +2118,15 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       ownerUserId: auth.ownerUserId,
       request: workRequest,
     })
+    const proof = yield* verifyBuyerPaymentProofFromRequest(
+      dependencies,
+      env,
+      {
+        nowIso,
+        record,
+        request,
+      },
+    )
     const recordWithProof = proof === undefined
       ? record
       : {
@@ -1870,7 +2170,10 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     )
 
     return dispatchedRecord.state === 'payment_required'
-      ? paymentRequiredResponse(dispatchedRecord, projection)
+      ? yield* paymentRequiredResponse(dependencies, env, {
+          projection,
+          record: dispatchedRecord,
+        })
       : noStoreJsonResponse(
           { work: projection },
           { status: created.idempotent ? 200 : 202 },
@@ -2521,7 +2824,9 @@ export const makeD1AutopilotWorkStore = (
              updated_at = ?
          WHERE work_order_ref = ?
            AND owner_user_id = ?
-           AND archived_at IS NULL`,
+           AND archived_at IS NULL
+           AND state = 'payment_required'
+           AND buyer_payment_proof_ref IS NULL`,
       )
       .bind(
         input.buyerPaymentProofRef,
