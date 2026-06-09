@@ -121,6 +121,9 @@ describe('public launch dashboard', () => {
     expect(cursorClaimRow?.blockerRefs).toEqual(
       expect.arrayContaining([
         'blocker.launch_dashboard.claimed_public_identity.x_reward_payout_readiness',
+        'blocker.launch_dashboard.claimed_public_identity.reward_policy_terms_required',
+        'blocker.launch_dashboard.claimed_public_identity.reward_abuse_review_required',
+        'blocker.launch_dashboard.claimed_public_identity.reward_compliance_review_required',
         'blocker.launch_dashboard.claimed_public_identity.nostr_adapter_planned',
       ]),
     )

@@ -1,5 +1,9 @@
 import { Schema as S } from 'effect'
 
+import {
+  AGENT_CLAIM_REWARD_REQUIRED_CAVEAT_REFS,
+  AGENT_CLAIM_REWARD_REQUIRED_POLICY_REFS,
+} from './agent-claim-reward-policy'
 import { parseJsonStringArray } from './json-boundary'
 
 export const AGENT_CLAIM_X_REWARD_CAMPAIGN_REF =
@@ -145,10 +149,7 @@ export const createPendingAgentClaimRewardRecord = (
   agentClaimRef: input.agentClaimRef,
   amountSats: AGENT_CLAIM_X_REWARD_AMOUNT_SATS,
   campaignRef: AGENT_CLAIM_X_REWARD_CAMPAIGN_REF,
-  caveatRefsJson: JSON.stringify([
-    'caveat.agent_claim_reward.promotional_not_earned_work',
-    'caveat.agent_claim_reward.settlement_separate',
-  ]),
+  caveatRefsJson: JSON.stringify(AGENT_CLAIM_REWARD_REQUIRED_CAVEAT_REFS),
   createdAt: input.now,
   destinationKind: input.destinationKind ?? 'unknown',
   dispatchAttemptRef: null,
@@ -156,12 +157,7 @@ export const createPendingAgentClaimRewardRecord = (
   idempotencyKey: input.idempotencyKey,
   ownerRef: input.ownerRef,
   payoutIntentRef: null,
-  policyRefsJson: JSON.stringify([
-    'policy.agent_claim_reward.one_x_account_per_campaign.v1',
-    'policy.agent_claim_reward.one_owner_per_campaign.v1',
-    'policy.agent_claim_reward.budget_cap.v1',
-    'policy.agent_claim_reward.legal_gate.v1',
-  ]),
+  policyRefsJson: JSON.stringify(AGENT_CLAIM_REWARD_REQUIRED_POLICY_REFS),
   redactedDestinationRef: input.redactedDestinationRef ?? null,
   rejectionReason: null,
   settlementRef: null,

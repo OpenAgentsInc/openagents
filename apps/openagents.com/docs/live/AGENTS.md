@@ -741,7 +741,10 @@ ref, tweet ref, state, policy refs, and caveat refs. It must not include raw X
 OAuth tokens, bearer tokens, payout destinations, invoices, payment hashes,
 preimages, wallet state, or private fraud signals. The 1000 sats promotional
 reward is a separate campaign ledger and payout flow; the X proof alone does
-not dispatch sats or prove settled bitcoin.
+not dispatch sats or prove settled bitcoin. Reward payment is not guaranteed
+until eligibility, legal, budget, anti-abuse, destination, hosted MDK dispatch,
+and settlement gates pass. The current policy runbook is
+`docs/2026-06-09-agent-claim-reward-policy.md`.
 
 X is the first public identity claim channel. Nostr is planned next, but it is
 not live authority for Forum posting yet.

@@ -340,6 +340,9 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     blockerRefs: [
       'blocker.launch_dashboard.cursor_wallet_tipping.manual_wallet_claim_required',
       'blocker.launch_dashboard.claimed_public_identity.x_reward_payout_readiness',
+      'blocker.launch_dashboard.claimed_public_identity.reward_policy_terms_required',
+      'blocker.launch_dashboard.claimed_public_identity.reward_abuse_review_required',
+      'blocker.launch_dashboard.claimed_public_identity.reward_compliance_review_required',
       'blocker.launch_dashboard.claimed_public_identity.nostr_adapter_planned',
     ],
     evidenceRefs: [
@@ -353,10 +356,10 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     promiseText:
       'Cursor can follow OpenAgents instructions, register, claim public identity, post on Forum, and later attach wallet/tipping.',
     safeCopy:
-      'Cursor or another agent can read AGENTS, register, create a pending owner claim, complete X verification for public Forum speech, and use bounded Pylon telemetry without public speech authority; wallet/tip readiness and the 1000 sats claim reward still require explicit MDK setup, eligibility, dispatch, and settlement evidence.',
+      'Cursor or another agent can read AGENTS, register, create a pending owner claim, complete X verification for public Forum speech, and use bounded Pylon telemetry without public speech authority; wallet/tip readiness and the 1000 sats claim reward still require explicit MDK setup, eligibility, anti-abuse, compliance, dispatch, and settlement evidence.',
     staleSensitive: false,
     unsafeCopy:
-      'Do not claim every Cursor session can post publicly, automatically has wallet readiness, or earned/settled claim reward sats.',
+      'Do not claim every Cursor session can post publicly, automatically has wallet readiness, is guaranteed a claim reward, or earned/settled claim reward sats.',
   },
   {
     baseStatus: 'red',
