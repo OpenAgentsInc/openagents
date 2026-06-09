@@ -555,3 +555,33 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-fallback-lease-adapter.test.ts src/autopilot-work-pylon-assignment-synthesizer.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## 2026-06-09: Hosted Gemini Execution Closeout Bridge
+
+Status: implemented in the Worker route harness.
+
+Implemented:
+
+- Added a durable `execution_closeout_json` column for Autopilot work orders.
+- Added a route dependency hook for ready hosted Gemini work execution.
+- Preserved the production default that no hosted work is executed unless a
+  real executor binding is installed.
+- Added public-safe execution closeout refs to the work-order projection:
+  assignment refs, closeout refs, proof refs, result refs, and runner kind.
+- Moved delivered work to `state: "delivered"` with
+  `nextAction.state: "delivered"` and queued/delivered event projection.
+- Ensured delivered tasks no longer synthesize fresh assignment or fallback
+  lease intents.
+- Preserved authority boundaries:
+  - accepted-work authority remains false;
+  - worker payout authority remains false;
+  - deploy and spend authority remain false;
+  - Forum autopublish remains false;
+  - settlement still requires a later accepted-work path.
+- Updated the hosted Gemini product-promise and launch-dashboard copy to say
+  the route harness is verified while the public paid product remains red.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-fallback-lease-adapter.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

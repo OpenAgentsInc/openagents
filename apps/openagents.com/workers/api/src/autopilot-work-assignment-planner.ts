@@ -12,6 +12,7 @@ export type AutopilotWorkAssignmentKind =
 export type AutopilotWorkAssignmentPlannerState =
   | 'access_required'
   | 'blocked'
+  | 'delivered'
   | 'free_slice'
   | 'paid_ready'
   | 'payment_required'
@@ -69,6 +70,10 @@ const plannerStateForTask = (
     return 'blocked'
   }
 
+  if (task.lifecycleState === 'delivered') {
+    return 'delivered'
+  }
+
   if (task.lifecycleState === 'ready_for_assignment') {
     return task.paymentState === 'funded' ? 'paid_ready' : 'free_slice'
   }
@@ -90,6 +95,8 @@ const plannerReasonRefsForTask = (
       ]
     case 'blocked':
       return ['assignment.blocked.lifecycle_blocked']
+    case 'delivered':
+      return ['assignment.delivered']
     case 'free_slice':
       return [
         'assignment.free_slice',

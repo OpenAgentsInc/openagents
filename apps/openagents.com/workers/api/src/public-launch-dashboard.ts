@@ -237,16 +237,18 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     baseStatus: 'red',
     blockerRefs: [
       'blocker.launch_dashboard.model_gateway.no_public_paid_gateway',
+      'blocker.launch_dashboard.hosted_gemini.production_binding_missing',
     ],
     evidenceRefs: [
       'route:/api/openapi.json',
       'docs/2026-06-08-google-adc-gemini-agent-platform-auth-audit.md',
+      'test:workers/api/src/autopilot-work-routes.test.ts',
     ],
     promiseId: 'api_hosted_gemini',
     promiseText:
       'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
     safeCopy:
-      'OpenAgents exposes public APIs and provider evidence, but no public paid hosted Gemini inference product is live.',
+      'Autopilot has a tested paid hosted Gemini closeout bridge, but no public paid hosted Gemini inference product is live.',
     staleSensitive: false,
     unsafeCopy:
       'Do not claim a paid hosted Gemini inference API is live.',

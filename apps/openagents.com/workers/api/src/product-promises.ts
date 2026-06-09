@@ -532,7 +532,7 @@ export const publicProductPromisesDocument = () => {
       claim:
         'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
       safeCopy:
-        'OpenAgents exposes public APIs and provider evidence, but no public paid hosted Gemini inference product is live.',
+        'OpenAgents can verify paid Autopilot delegation through a hosted Gemini closeout bridge in the route harness, but no public paid hosted Gemini inference product is live.',
       unsafeCopy:
         'Do not claim a paid hosted Gemini inference API is live.',
       evidenceRefs: [
@@ -543,10 +543,10 @@ export const publicProductPromisesDocument = () => {
       ],
       blockerRefs: [
         'blocker.product_promises.public_paid_model_gateway_missing',
-        'blocker.product_promises.hosted_gemini_autopilot_executor_missing',
+        'blocker.product_promises.production_hosted_gemini_executor_binding_missing',
       ],
       verification:
-        'A local Autopilot route smoke can price and project a buyer-funded hosted_gemini fallback lease intent. A live hosted Gemini claim still needs a registered-agent production smoke, executor dispatch, billing, entitlement, provider policy, quota, metering, closeout, and settlement refs.',
+        'A local Autopilot route smoke can price a hosted_gemini request, return L402, accept a paid retry, run an injected hosted executor, persist a public-safe delivered closeout, and expose delivered events. A live hosted Gemini claim still needs a registered-agent production smoke, executor binding, billing, entitlement, provider policy, quota, metering, and settlement refs.',
       authorityBoundary:
         'API-driven product surfaces are not generic provider-capacity resale authority.',
     },
@@ -856,7 +856,7 @@ export const publicProductPromisesDocument = () => {
       audience: ['user', 'operator', 'contributor'],
       state: 'red',
       claim:
-        'Every accepted outcome should distinguish buyer payment, accepted value, pending credit, payout intent, settlement attempt, reconciliation, and gross margin.',
+        'Every accepted outcome should distinguish buyer payment, accepted value, pending balance adjustment, payout intent, settlement attempt, reconciliation, and gross margin.',
       safeCopy:
         'Accepted-outcome economics are a required roadmap gate before broad payout or marketplace-margin claims go green.',
       unsafeCopy:

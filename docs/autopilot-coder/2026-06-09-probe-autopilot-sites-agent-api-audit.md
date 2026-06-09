@@ -125,7 +125,7 @@ Episode 228 describes Autopilot as the public cloud coding wedge:
 - users go to `openagents.com`, log in with GitHub, choose or type a repo, and
   describe coding work;
 - the first small slice is free or public-beta funded;
-- ambitious work should move into paid credits or checkout;
+- ambitious work should move into paid checkout;
 - public work and traces can be visible because the free beta is meant to
   generate public proof and useful learning data;
 - private repos and private execution are future or gated support;
@@ -149,7 +149,7 @@ Episode 229 extends the same Autopilot wedge into Sites:
 - the demo flow included order queue, revision feedback, and public Site
   discovery/referral;
 - the referral loop is intended to let humans or agents discover a Site and
-  later credit the Site owner if referred users become paying customers.
+  later compensate the Site owner if referred users become paying customers.
 
 The current code and docs support the operator-supervised version of this flow,
 not the fully self-serve parity claim. Site projects, versions, deployments,
@@ -979,22 +979,31 @@ What was exercised:
 - Local route harness coverage now submits a paid `hosted_gemini` Autopilot
   work request for the `api.hosted_gemini.v1` promise audit target.
 - The first request returns the deterministic L402 payment challenge.
-- The paid retry records buyer payment proof and projects:
+- The paid retry without an execution binding records buyer payment proof and
+  projects the controlled fallback lease:
   - `selectedRunnerKind: "hosted_gemini"`;
   - `fallbackLaneRef: "fallback_lane.openagents.hosted_gemini"`;
   - `paymentMode: "buyer_funded"`;
+- The paid retry with an injected hosted execution binding persists a
+  public-safe delivered closeout and projects:
+  - `state: "delivered"`;
+  - `nextAction.state: "delivered"`;
+  - retained assignment, closeout, proof, and result refs;
+  - queued and delivered pollable events;
   - no Pylon assignment intent;
   - no worker payout, deploy, spend, accepted-work, or Forum autopublish
     authority.
 
 Current blocker:
 
-The route still stops at a controlled fallback lease intent. It does not start
-a hosted Gemini worker, materialize a per-run provider grant, meter usage into
-the hosted-model budget ledger, ingest a closeout, run acceptance, or produce
-settlement/public-reporting evidence. The missing bridge is the executor that
-turns `fallbackLeaseIntents` into a real hosted Gemini run and feeds the
-closeout back into the Autopilot state machine.
+The route state machine no longer stops at a controlled fallback lease intent
+in CI. It can now verify request -> L402 -> paid retry -> hosted executor
+closeout -> delivered projection with public-safe refs. Production still does
+not start a live hosted Gemini worker by default, materialize a per-run
+provider grant, meter usage into the hosted-model budget ledger, run acceptance,
+or produce settlement/public-reporting evidence. The remaining bridge is the
+production executor binding and accounting policy that turn the tested
+injection point into a live hosted runner path.
 
 ## Recommended Implementation Order
 

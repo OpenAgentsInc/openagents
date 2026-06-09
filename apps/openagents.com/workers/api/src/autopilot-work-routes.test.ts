@@ -9,6 +9,8 @@ import {
   OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES,
 } from './autopilot-work-request'
 import {
+  type AutopilotWorkExecutor,
+  type AutopilotWorkExecutionCloseoutRecord,
   type AutopilotWorkOrderRecord,
   type AutopilotWorkStore,
   makeAutopilotWorkRoutes,
@@ -35,6 +37,32 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
 
   readWorkOrder = async (workOrderRef: string) =>
     this.records.get(workOrderRef)
+
+  recordExecutionCloseout = async (input: Readonly<{
+    executionCloseout: AutopilotWorkExecutionCloseoutRecord
+    ownerUserId: string
+    updatedAt: string
+    workOrderRef: string
+  }>) => {
+    const existing = this.records.get(input.workOrderRef)
+
+    if (existing === undefined || existing.ownerUserId !== input.ownerUserId) {
+      return undefined
+    }
+
+    const updated = {
+      ...existing,
+      executionCloseout: input.executionCloseout,
+      state: 'delivered' as const,
+      updatedAt: input.updatedAt,
+    }
+    const key = `${existing.ownerUserId}:${existing.idempotencyKeyHash}`
+
+    this.records.set(existing.workOrderRef, updated)
+    this.recordsByOwnerIdempotency.set(key, updated)
+
+    return updated
+  }
 
   recordBuyerPaymentProof = async (input: Readonly<{
     buyerPaymentProofRef: string
@@ -143,6 +171,7 @@ const route = async (
     body?: unknown
     headers?: HeadersInit
     idempotencyKey?: string
+    executeReadyWork?: AutopilotWorkExecutor
     method?: string
     pylonRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     scopes?: ReadonlyArray<string>
@@ -155,6 +184,14 @@ const route = async (
     makeId: () => `autopilot_work_order.test_${++counter}`,
     makeStore: () => store,
     nowIso: () => '2026-06-09T17:30:00.000Z',
+    ...(options.executeReadyWork === undefined
+      ? {}
+      : {
+          executeReadyWork: (
+            _env: Record<string, unknown>,
+            input: Parameters<AutopilotWorkExecutor>[0],
+          ) => options.executeReadyWork?.(input) ?? Promise.resolve(undefined),
+        }),
     ...(options.pylonRegistrations === undefined
       ? {}
       : {
@@ -234,6 +271,17 @@ const responseJson = async (response: Response) =>
       }>>
       buyerPaymentProofRef?: string | null
       accessRequestRefs?: ReadonlyArray<string>
+      executionCloseout?: Readonly<{
+        acceptedWorkAuthority: boolean
+        assignmentRefs: ReadonlyArray<string>
+        closeoutRefs: ReadonlyArray<string>
+        forumAutoPublishAllowed: boolean
+        proofRefs: ReadonlyArray<string>
+        publicSafe: boolean
+        resultRefs: ReadonlyArray<string>
+        runnerKind: string
+        workerPayoutAuthority: boolean
+      }> | null
       fallbackLeaseIntents?: ReadonlyArray<Readonly<{
         assignmentRef: string
         fallbackLaneRef: string
@@ -937,6 +985,167 @@ describe('Autopilot work routes', () => {
       }),
     ])
     expect(paidJson.work?.pylonAssignmentIntents).toEqual([])
+    expect(paidJson.work?.executionCloseout).toBeNull()
+  })
+
+  test('delivers a paid hosted Gemini work order through the execution closeout bridge', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      clientRequestRef: 'client.example.20260609.hosted_gemini_closeout',
+      paymentPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+        maxSpendCents: 5000,
+        quoteRef: null,
+        quotedAmountCents: null,
+      },
+      placementPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].placementPolicy,
+        allowedRunnerKinds: ['hosted_gemini'] as const,
+        preferredRunnerKinds: ['hosted_gemini'] as const,
+        privacyTier: 'cloud_allowed' as const,
+        publicTraceAllowed: true,
+      },
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].tasks[0],
+          acceptanceCriteriaRefs: [
+            'acceptance.audit.updated_with_hosted_gemini_closeout',
+          ],
+          kind: 'research_and_patch' as const,
+          objective:
+            'Audit the hosted Gemini product promise and return a public-safe closeout.',
+          taskRef: 'task.product_promise_docs_hosted_gemini_closeout',
+        },
+      ],
+    }
+    const executeReadyWork: AutopilotWorkExecutor = async ({ work }) => ({
+      assignmentRefs: work.fallbackLeaseIntents.map(
+        intent => intent.assignmentRef,
+      ),
+      closeoutRefs: work.fallbackLeaseIntents.flatMap(intent => [
+        `closeout.${intent.assignmentRef}.public_safe_summary_delivered`,
+        `closeout.${intent.assignmentRef}.tests_or_blocker_retained`,
+      ]),
+      proofRefs: work.fallbackLeaseIntents.map(
+        intent => `proof.${intent.assignmentRef}.route_harness`,
+      ),
+      resultRefs: work.fallbackLeaseIntents.flatMap(
+        intent => intent.resultExpectationRefs,
+      ),
+      runnerKind: 'hosted_gemini',
+    })
+    const first = await route(store, '/api/autopilot/work', {
+      body: request,
+      executeReadyWork,
+      idempotencyKey: 'idem-autopilot-work-hosted-gemini-closeout',
+      pylonRegistrations: [],
+    })
+    const firstJson = await responseJson(first)
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'paid retry does not replace stored request' },
+      executeReadyWork,
+      headers: {
+        'X-OpenAgents-L402':
+          'oa-l402-v1.autopilot_test:payment_proof.autopilot_work.hosted_gemini_closeout',
+      },
+      idempotencyKey: 'idem-autopilot-work-hosted-gemini-closeout',
+      pylonRegistrations: [],
+    })
+    const paidJson = await responseJson(paid)
+    const detail = await route(
+      store,
+      `/api/autopilot/work/${firstJson.work?.workOrderRef}`,
+      { method: 'GET' },
+    )
+    const detailJson = await responseJson(detail)
+    const events = await route(
+      store,
+      `/api/autopilot/work/${firstJson.work?.workOrderRef}/events`,
+      { method: 'GET' },
+    )
+    const eventsJson = await responseJson(events)
+
+    expect(first.status).toBe(402)
+    expect(firstJson.work?.state).toBe('payment_required')
+    expect(paid.status).toBe(200)
+    expect(paidJson.work).toMatchObject({
+      buyerPaymentProofRef:
+        'payment_proof.autopilot_work.hosted_gemini_closeout',
+      executionCloseout: {
+        acceptedWorkAuthority: false,
+        assignmentRefs: [
+          'fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_closeout',
+        ],
+        closeoutRefs: [
+          'closeout.fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_closeout.public_safe_summary_delivered',
+          'closeout.fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_closeout.tests_or_blocker_retained',
+        ],
+        forumAutoPublishAllowed: false,
+        proofRefs: [
+          'proof.fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_closeout.route_harness',
+        ],
+        publicSafe: true,
+        resultRefs: [
+          'result.fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_closeout.public_safe_closeout',
+        ],
+        runnerKind: 'hosted_gemini',
+        workerPayoutAuthority: false,
+      },
+      funding: {
+        buyerFundingState: 'funded',
+        fundedAmountCents: 3700,
+        settlementBlockedReasonRef: 'settlement.accepted_work_required',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
+      nextAction: {
+        callerActionRefs: ['caller.review_autopilot_closeout'],
+        reasonRefs: ['next_action.review_delivered_work'],
+        retryAfterSeconds: null,
+        state: 'delivered',
+      },
+      paymentChallenge: {
+        status: 'paid_ready',
+      },
+      placementDecision: {
+        selectedRunnerKind: 'hosted_gemini',
+        source: 'fallback',
+      },
+      state: 'delivered',
+      tasks: [
+        {
+          lifecycleState: 'delivered',
+          placementState: 'delivered',
+          taskRef: 'task.product_promise_docs_hosted_gemini_closeout',
+        },
+      ],
+    })
+    expect(paidJson.work?.assignmentIntents).toEqual([
+      expect.objectContaining({
+        plannerReasonRefs: ['assignment.delivered'],
+        plannerState: 'delivered',
+        readyForAssignment: false,
+      }),
+    ])
+    expect(paidJson.work?.fallbackLeaseIntents).toEqual([])
+    expect(detail.status).toBe(200)
+    expect(detailJson.work?.executionCloseout).toEqual(
+      paidJson.work?.executionCloseout,
+    )
+    expect(events.status).toBe(200)
+    expect(eventsJson.events).toEqual([
+      expect.objectContaining({
+        eventKind: 'queued',
+        publicSafe: true,
+        sequence: 1,
+      }),
+      expect.objectContaining({
+        eventKind: 'delivered',
+        publicSafe: true,
+        sequence: 2,
+      }),
+    ])
   })
 
   test('accepts an MDK checkout proof retry for payable work', async () => {
