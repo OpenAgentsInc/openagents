@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.6'
+export const PublicProductPromisesVersion = '2026-06-09.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -24,7 +24,43 @@ const basePromiseFields = {
   sourceRefs,
 }
 
-export const publicProductPromisesDocument = () => ({
+const summarizePromiseVerification = (
+  promises: ReadonlyArray<{
+    blockerRefs: ReadonlyArray<string>
+    evidenceRefs: ReadonlyArray<string>
+    promiseId: string
+    state: string
+  }>,
+) => {
+  const blockedPromises = promises.filter(promise =>
+    ['degraded', 'planned', 'red', 'yellow'].includes(promise.state),
+  )
+  const uniqueBlockers = [
+    ...new Set(promises.flatMap(promise => promise.blockerRefs)),
+  ].sort()
+
+  return {
+    blockedPromiseCount: blockedPromises.length,
+    evidenceRefCount: promises.reduce(
+      (count, promise) => count + promise.evidenceRefs.length,
+      0,
+    ),
+    promiseCount: promises.length,
+    promisesWithBlockersCount: promises.filter(
+      promise => promise.blockerRefs.length > 0,
+    ).length,
+    topBlockedPromises: blockedPromises.slice(0, 10).map(promise => ({
+      blockerRefs: promise.blockerRefs,
+      promiseId: promise.promiseId,
+      state: promise.state,
+    })),
+    uniqueBlockerCount: uniqueBlockers.length,
+    uniqueBlockers: uniqueBlockers.slice(0, 20),
+  }
+}
+
+export const publicProductPromisesDocument = () => {
+  const document = {
   schemaVersion: PublicProductPromisesSchemaVersion,
   version: PublicProductPromisesVersion,
   lastUpdated: '2026-06-09',
@@ -704,4 +740,10 @@ export const publicProductPromisesDocument = () => ({
     'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
   ],
-})
+}
+
+  return {
+    ...document,
+    verificationSummary: summarizePromiseVerification(document.promises),
+  }
+}

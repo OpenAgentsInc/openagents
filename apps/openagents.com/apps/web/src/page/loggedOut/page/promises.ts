@@ -392,11 +392,110 @@ const caveatPanel = (promises: PublicProductPromises | null): Html => {
   )
 }
 
-const promiseCard = (promise: PublicProductPromise): Html => {
+const detailList = (title: string, items: ReadonlyArray<string>): Html => {
   const h = html<Message>()
 
+  return h.div(
+    [Ui.className<Message>('border-t border-[#1d1d1d] pt-3')],
+    [
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 text-[0.62rem] font-semibold uppercase leading-none text-white/34',
+          ),
+        ],
+        [title],
+      ),
+      items.length === 0
+        ? h.p(
+            [
+              Ui.className<Message>(
+                'm-0 mt-2 text-[0.68rem] leading-5 text-white/42',
+              ),
+            ],
+            ['None listed.'],
+          )
+        : h.ul(
+            [Ui.className<Message>('m-0 mt-2 grid gap-1 p-0')],
+            items.slice(0, 6).map(item =>
+              h.li(
+                [
+                  Ui.className<Message>(
+                    'list-none break-words text-[0.68rem] leading-5 text-white/50',
+                  ),
+                ],
+                [item],
+              ),
+            ),
+          ),
+    ],
+  )
+}
+
+const blockerSummaryPanel = (promises: PublicProductPromises | null): Html => {
+  const h = html<Message>()
+  const summary = promises?.verificationSummary
+  const blockers = summary?.uniqueBlockers.slice(0, 8) ?? []
+
+  return h.section(
+    [Ui.className<Message>(panelClass)],
+    [
+      panelHeader({
+        meta: 'At-a-glance blocker and evidence inventory from the live JSON.',
+        status:
+          summary === undefined
+            ? 'Loading'
+            : `${summary.promisesWithBlockersCount} with blockers`,
+        title: 'Blockers And Evidence',
+        tone:
+          summary === undefined
+            ? 'muted'
+            : summary.promisesWithBlockersCount > 0
+              ? 'warn'
+              : 'good',
+      }),
+      metricRow({
+        detail: 'Yellow, red, degraded, or planned records.',
+        label: 'Not green',
+        tone:
+          summary === undefined || summary.blockedPromiseCount === 0
+            ? 'muted'
+            : 'warn',
+        value: summary === undefined ? '-' : String(summary.blockedPromiseCount),
+      }),
+      metricRow({
+        detail: 'Unique blocker refs across the registry.',
+        label: 'Unique blockers',
+        tone:
+          summary === undefined || summary.uniqueBlockerCount === 0
+            ? 'muted'
+            : 'warn',
+        value: summary === undefined ? '-' : String(summary.uniqueBlockerCount),
+      }),
+      metricRow({
+        detail: 'Evidence refs attached to promise records.',
+        label: 'Evidence refs',
+        tone: summary === undefined ? 'muted' : 'good',
+        value: summary === undefined ? '-' : String(summary.evidenceRefCount),
+      }),
+      detailList('Top blocker refs', blockers),
+    ],
+  )
+}
+
+const promiseCard = (promise: PublicProductPromise): Html => {
+  const h = html<Message>()
+  const blockerPreview =
+    promise.blockerRefs.length === 0
+      ? 'No blockers listed for this scoped claim.'
+      : promise.blockerRefs.slice(0, 2).join(', ')
+  const evidencePreview =
+    promise.evidenceRefs.length === 0
+      ? 'No evidence refs listed.'
+      : promise.evidenceRefs.slice(0, 2).join(', ')
+
   return h.article(
-    [Ui.className<Message>(`${panelClass} flex min-h-[15rem] flex-col gap-3`)],
+    [Ui.className<Message>(`${panelClass} flex min-h-[18rem] flex-col gap-3`)],
     [
       h.div(
         [
@@ -459,6 +558,52 @@ const promiseCard = (promise: PublicProductPromise): Html => {
         [
           metricChip('Evidence', promise.evidenceRefs.length),
           metricChip('Blockers', promise.blockerRefs.length),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.p(
+            [
+              Ui.className<Message>(
+                `m-0 text-[0.68rem] leading-5 ${
+                  promise.blockerRefs.length === 0
+                    ? 'text-[#9ad6b7]/75'
+                    : 'text-[#f3c27a]/80'
+                }`,
+              ),
+            ],
+            [`Blocked by: ${blockerPreview}`],
+          ),
+          h.p(
+            [Ui.className<Message>('m-0 text-[0.68rem] leading-5 text-white/45')],
+            [`Evidence: ${evidencePreview}`],
+          ),
+        ],
+      ),
+      h.details(
+        [Ui.className<Message>('mt-1 border-t border-[#1d1d1d] pt-3')],
+        [
+          h.summary(
+            [
+              Ui.className<Message>(
+                'cursor-pointer text-[0.66rem] font-semibold uppercase leading-none text-white/50 hover:text-[#f1efe8]',
+              ),
+            ],
+            ['Evidence, blockers, and gates'],
+          ),
+          h.div(
+            [Ui.className<Message>('mt-3 grid gap-3')],
+            [
+              detailList('Blockers', promise.blockerRefs),
+              detailList('Evidence', promise.evidenceRefs),
+              detailList('Source refs', promise.sourceRefs),
+              detailList('Audience', promise.audience),
+              detailList('Verification', [promise.verification]),
+              detailList('Authority boundary', [promise.authorityBoundary]),
+              detailList('Unsafe copy', [promise.unsafeCopy]),
+            ],
+          ),
         ],
       ),
     ],
@@ -564,6 +709,14 @@ export const view = (model: PublicProductPromisesModel): Html => {
           ),
         ],
         [statePanel(promises), areaPanel(promises), caveatPanel(promises)],
+      ),
+      html<Message>().section(
+        [
+          Ui.className<Message>(
+            `${sectionClass} grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)]`,
+          ),
+        ],
+        [blockerSummaryPanel(promises)],
       ),
       promiseGrid(promises),
     ],

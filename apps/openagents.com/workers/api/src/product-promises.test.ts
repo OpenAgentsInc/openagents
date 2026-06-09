@@ -28,6 +28,12 @@ const ProductPromise = S.Struct({
   verification: S.String,
 })
 
+const ProductPromiseBlockedSummary = S.Struct({
+  blockerRefs: S.Array(S.String),
+  promiseId: S.String,
+  state: S.String,
+})
+
 const ProductPromisesDocument = S.Struct({
   canonicalDocsUrl: S.String,
   currentMonorepoStatus: S.Struct({
@@ -52,6 +58,15 @@ const ProductPromisesDocument = S.Struct({
   schemaVersion: S.String,
   sourceRefs: S.Array(S.String),
   states: S.Record(S.String, S.String),
+  verificationSummary: S.Struct({
+    blockedPromiseCount: S.Int,
+    evidenceRefCount: S.Int,
+    promiseCount: S.Int,
+    promisesWithBlockersCount: S.Int,
+    topBlockedPromises: S.Array(ProductPromiseBlockedSummary),
+    uniqueBlockerCount: S.Int,
+    uniqueBlockers: S.Array(S.String),
+  }),
   version: S.String,
 })
 
@@ -61,12 +76,20 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.6')
+    expect(decoded.version).toBe('2026-06-09.7')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
+    expect(decoded.verificationSummary.promiseCount).toBe(
+      decoded.promises.length,
+    )
+    expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
+    expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
+    expect(decoded.verificationSummary.topBlockedPromises.length).toBeGreaterThan(
+      0,
+    )
     expect(
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)

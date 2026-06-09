@@ -328,6 +328,26 @@ export const PublicProductPromise = S.Struct({
 })
 export type PublicProductPromise = typeof PublicProductPromise.Type
 
+export const PublicProductPromiseBlockedSummary = S.Struct({
+  blockerRefs: S.Array(S.String),
+  promiseId: S.String,
+  state: S.String,
+})
+export type PublicProductPromiseBlockedSummary =
+  typeof PublicProductPromiseBlockedSummary.Type
+
+export const PublicProductPromisesVerificationSummary = S.Struct({
+  blockedPromiseCount: S.Int,
+  evidenceRefCount: S.Int,
+  promiseCount: S.Int,
+  promisesWithBlockersCount: S.Int,
+  topBlockedPromises: S.Array(PublicProductPromiseBlockedSummary),
+  uniqueBlockerCount: S.Int,
+  uniqueBlockers: S.Array(S.String),
+})
+export type PublicProductPromisesVerificationSummary =
+  typeof PublicProductPromisesVerificationSummary.Type
+
 export const PublicProductPromises = S.Struct({
   canonicalDocsUrl: S.String,
   currentMonorepoStatus: S.Struct({
@@ -352,6 +372,7 @@ export const PublicProductPromises = S.Struct({
   schemaVersion: S.String,
   sourceRefs: S.Array(S.String),
   states: S.Record(S.String, S.String),
+  verificationSummary: PublicProductPromisesVerificationSummary,
   version: S.String,
 })
 export type PublicProductPromises = typeof PublicProductPromises.Type
