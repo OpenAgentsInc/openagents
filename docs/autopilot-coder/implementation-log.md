@@ -864,3 +864,40 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-027: Paid Autopilot Coder End-To-End Smoke
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4618`
+
+Status: implemented as a CI-safe paid route smoke; live external payment
+movement remains part of the real paid-work epic.
+
+Implemented:
+
+- Added `apps/openagents.com/workers/api` script
+  `smoke:autopilot-coder:paid`.
+- Added a named smoke test that drives the payable public path through route
+  calls and the Pylon API:
+  - payable Autopilot work submission;
+  - signed L402 `402` challenge;
+  - verifier-approved paid retry with the same idempotency key;
+  - funded work projection;
+  - requester Pylon assignment recovery;
+  - Pylon assignment acceptance;
+  - worker closeout submission;
+  - Autopilot delivered detail/event recovery;
+  - owner-granted review acceptance.
+- Projected funded Pylon coding assignments as
+  `payable_pending_settlement`, while the normalized coding assignment budget
+  still exposes `buyer_funded` without granting worker payout authority.
+- Kept settlement, payout, deploy, spend, and Forum publication authority
+  blocked after buyer funding, worker closeout, and customer acceptance.
+- Added retained projection redaction scanning for private paths,
+  wallet/payment material, provider payloads, raw prompts/logs/source archives,
+  secret material, and forbidden hosted-infrastructure wording.
+- Documented the smoke command and its live-payment limitation in
+  `docs/autopilot-coder/paid-e2e-smoke.md`.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:paid`

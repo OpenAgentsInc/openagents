@@ -11,7 +11,7 @@ export type AutopilotPylonAssignmentIntentProjection = Readonly<{
   forumAutoPublishAllowed: false
   jobKind: PylonApiAssignmentJobKind
   noForumAutoPublishRefs: ReadonlyArray<string>
-  paymentMode: 'unpaid_smoke'
+  paymentMode: 'payable_pending_settlement' | 'unpaid_smoke'
   pylonRef: string
   requiredCapabilityRefs: ReadonlyArray<string>
   resultExpectationRefs: ReadonlyArray<string>
@@ -72,7 +72,9 @@ export const pylonAssignmentIntentsForAutopilotWork = (
         noForumAutoPublishRefs: [
           `forum_autopublish_disabled.${assignmentRef}`,
         ],
-        paymentMode: 'unpaid_smoke',
+        paymentMode: task?.paymentState === 'funded'
+          ? 'payable_pending_settlement'
+          : 'unpaid_smoke',
         pylonRef,
         requiredCapabilityRefs: [
           'capability.pylon.assignment_ready',
@@ -85,7 +87,9 @@ export const pylonAssignmentIntentsForAutopilotWork = (
           `rollback.${assignmentRef}.no_deploy_without_owner_acceptance`,
         ],
         selectionPolicyRefs: input.placementDecision.reasonRefs,
-        spendCapRefs: ['spend_cap.no_spend.autopilot_pylon_assignment'],
+        spendCapRefs: task?.paymentState === 'funded'
+          ? ['spend_cap.buyer_funded.autopilot_pylon_assignment']
+          : ['spend_cap.no_spend.autopilot_pylon_assignment'],
         taskRef: assignment.taskRef,
       }
     })

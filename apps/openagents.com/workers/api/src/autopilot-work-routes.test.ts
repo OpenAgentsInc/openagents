@@ -817,6 +817,9 @@ const responseJson = async (response: Response) =>
   }>>
 
 describe('Autopilot work routes', () => {
+  const retainedProjectionPrivateMaterialPattern =
+    /\/Users\/|\/home\/|bearer|invoice|lnbc|lntb|lnbcrt|mnemonic|payment[_-]?preimage(?=[:=._/-]|$)|payout[_-]?(address|destination|target)(?=[:=._/-]|$)|provider[_-]?(payload|token)(?=[:=._/-]|$)|raw[_-]?(prompt|runner|run[_-]?log|source[_-]?archive)(?=[:=._/-]|$)|secret:\/\/|secret[_-]?(key|token|value|material)(?=[:=._/-]|$)|webhook[_-]?secret(?=[:=._/-]|$)|sk-[a-z0-9]|wallet[_-]?(material|mnemonic|secret)(?=[:=._/-]|$)|Google Cloud|\bcredits?\b/i
+
   test('creates and recovers the same work projection with an idempotency key', async () => {
     const store = new MemoryAutopilotWorkStore()
     const request = {
@@ -1520,7 +1523,208 @@ describe('Autopilot work routes', () => {
       expect.objectContaining({ eventKind: 'accepted' }),
     ])
     expect(retainedProjection).not.toMatch(
-      /\/Users\/|\/home\/|bearer|invoice|lnbc|lntb|lnbcrt|mnemonic|payment[_-]?preimage|payout[_-]?(address|destination|target)|provider[_-]?(payload|token)|raw[_-]?(prompt|runner|run[_-]?log|source[_-]?archive)|secret:\/\/|secret[_-]?(key|token|value|material)|webhook[_-]?secret|sk-[a-z0-9]|wallet[_-]?(material|mnemonic|secret)|Google Cloud|\bcredits?\b/i,
+      retainedProjectionPrivateMaterialPattern,
+    )
+  })
+
+  test('paid Autopilot Coder end-to-end smoke keeps settlement blocked after verified delivery and review', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([
+      pylonRegistration({
+        pylonRef: 'pylon.production.paid_agent',
+      }),
+    ])
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      clientRequestRef: 'client.example.20260609.paid_smoke',
+      paymentPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+        quoteRef: null,
+        quotedAmountCents: null,
+      },
+      placementPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].placementPolicy,
+        allowedRunnerKinds: ['requester_pylon'] as const,
+        preferredRunnerKinds: ['requester_pylon'] as const,
+        privacyTier: 'public_beta' as const,
+        publicTraceAllowed: true,
+      },
+    }
+    const assignmentRef =
+      'pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.paid_test_repair'
+    const first = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-coder-paid-smoke',
+      pylonApiStore,
+    })
+    const firstJson = await responseJson(first)
+    const proofRef = 'payment_proof.autopilot_work.paid_smoke'
+    verifiedAutopilotProofRefs.add(proofRef)
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'paid retry uses stored request' },
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          first.headers.get('x-openagents-l402-credential'),
+          proofRef,
+        ),
+      },
+      idempotencyKey: 'idem-autopilot-coder-paid-smoke',
+      pylonApiStore,
+    })
+    const paidJson = await responseJson(paid)
+    const assignment = await pylonRoute(
+      pylonApiStore,
+      '/api/pylons/pylon.production.paid_agent/assignments',
+      { method: 'GET' },
+    )
+    const assignmentJson = await assignment.json() as {
+      assignments?: Array<{
+        assignmentRef: string
+        codingAssignment?: { budget?: { paymentMode?: string } }
+        paymentMode?: string
+      }>
+    }
+    await pylonRoute(
+      pylonApiStore,
+      `/api/pylons/pylon.production.paid_agent/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.autopilot_paid_smoke.accepted'],
+          accepted: true,
+        },
+        idempotencyKey: `accept-${assignmentRef}`,
+        method: 'POST',
+      },
+    )
+    await pylonRoute(
+      pylonApiStore,
+      `/api/pylons/pylon.production.paid_agent/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          artifactRefs: ['artifact.public.autopilot_paid_smoke.patch_summary'],
+          buildRefs: ['build.public.autopilot_paid_smoke.not_required'],
+          closeoutRefs: ['closeout.public.autopilot_paid_smoke.worker_summary'],
+          previewRefs: ['preview.public.autopilot_paid_smoke.not_required'],
+          proofRefs: ['proof.public.autopilot_paid_smoke.worker_closeout'],
+          resultRefs: ['result.public.autopilot_paid_smoke.delivered'],
+          status: 'closeout_submitted',
+          summaryRefs: ['summary.public.autopilot_paid_smoke.customer_safe'],
+          testRefs: ['test.public.autopilot_paid_smoke.not_required'],
+        },
+        idempotencyKey: `closeout-${assignmentRef}`,
+        method: 'POST',
+        recordAutopilotWorkerCloseout: (_env, input) =>
+          recordAutopilotWorkerCloseoutFromPylon(store, input),
+      },
+    )
+    const detail = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const review = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/review',
+      {
+        body: {
+          action: 'accept',
+          decisionRefs: ['review.public.autopilot_paid_smoke.customer_accepts'],
+        },
+        idempotencyKey: 'review-autopilot-coder-paid-smoke',
+        method: 'POST',
+        pylonApiStore,
+      },
+    )
+    const events = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/events',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const detailJson = await responseJson(detail)
+    const reviewJson = await responseJson(review)
+    const eventsJson = await responseJson(events)
+    const retainedProjection = JSON.stringify({
+      assignment: assignmentJson,
+      detail: detailJson,
+      events: eventsJson,
+      first: firstJson,
+      paid: paidJson,
+      review: reviewJson,
+    })
+
+    expect(first.status).toBe(402)
+    expect(firstJson.work).toMatchObject({
+      funding: {
+        buyerFundingState: 'payment_required',
+        settlementBlockedReasonRef: 'settlement.buyer_payment_required',
+      },
+      state: 'payment_required',
+    })
+    expect(paid.status).toBe(200)
+    expect(paidJson.work).toMatchObject({
+      buyerPaymentProofRef: proofRef,
+      funding: {
+        buyerFundingState: 'funded',
+        buyerPaymentProofRef: proofRef,
+        settlementBlockedReasonRef: 'settlement.accepted_work_required',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
+      state: 'queued_or_running',
+    })
+    expect(assignmentJson.assignments).toEqual([
+      expect.objectContaining({
+        assignmentRef,
+        codingAssignment: expect.objectContaining({
+          budget: expect.objectContaining({
+            paymentMode: 'buyer_funded',
+            workerPayoutAuthority: false,
+          }),
+        }),
+      }),
+    ])
+    expect(detailJson.work).toMatchObject({
+      executionCloseout: {
+        acceptedWorkAuthority: false,
+        artifactRefs: ['artifact.public.autopilot_paid_smoke.patch_summary'],
+        closeoutRefs: ['closeout.public.autopilot_paid_smoke.worker_summary'],
+        forumAutoPublishAllowed: false,
+        proofRefs: ['proof.public.autopilot_paid_smoke.worker_closeout'],
+        publicSafe: true,
+        resultRefs: ['result.public.autopilot_paid_smoke.delivered'],
+        workerPayoutAuthority: false,
+      },
+      funding: {
+        buyerFundingState: 'funded',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
+      state: 'delivered',
+    })
+    expect(review.status).toBe(201)
+    expect(reviewJson.work).toMatchObject({
+      reviewDecision: {
+        action: 'accept',
+        acceptedWorkAuthority: false,
+        deployAuthority: false,
+        forumAutoPublishAllowed: false,
+        settlementAuthority: false,
+        workerPayoutAuthority: false,
+      },
+      state: 'accepted',
+    })
+    expect(eventsJson.events).toEqual([
+      expect.objectContaining({ eventKind: 'queued' }),
+      expect.objectContaining({ eventKind: 'accepted' }),
+    ])
+    expect(retainedProjection).not.toMatch(
+      retainedProjectionPrivateMaterialPattern,
     )
   })
 

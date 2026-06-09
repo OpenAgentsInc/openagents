@@ -366,7 +366,10 @@ const authRefsForTask = (
 const paymentModeForIntent = (
   intent: AutopilotFallbackLeaseIntentProjection | AutopilotPylonAssignmentIntentProjection,
 ): OpenAgentsAutopilotCodingAssignmentPaymentMode =>
-  intent.paymentMode === 'buyer_funded' ? 'buyer_funded' : 'unpaid_smoke'
+  intent.paymentMode === 'buyer_funded' ||
+  intent.paymentMode === 'payable_pending_settlement'
+    ? 'buyer_funded'
+    : 'unpaid_smoke'
 
 const codingAssignmentForIntent = (
   input: Readonly<{

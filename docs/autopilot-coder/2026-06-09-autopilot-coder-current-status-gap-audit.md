@@ -9,7 +9,8 @@ coding assignment payload contract, and OA-AUTO-022 real no-spend requester
 Pylon worker closeout loop, and OA-AUTO-023 Autopilot delivery ingestion from
 Pylon worker closeouts, and OA-AUTO-024 customer review/revision API.
 It also includes OA-AUTO-025, the documented public no-spend Autopilot Coder
-smoke command, and OA-AUTO-026, the signed/verifier-gated L402 retry path.
+smoke command, OA-AUTO-026, the signed/verifier-gated L402 retry path, and
+OA-AUTO-027, the CI-safe paid Autopilot Coder route smoke.
 This document is intentionally stricter than
 the implementation log: it distinguishes route-harness proof from a real paid
 agent doing real coding work.
@@ -40,19 +41,19 @@ It also cross-checks the current implementation surfaces those docs describe:
 - `apps/pylon/src/assignment.ts`
 - `apps/openagents.com/workers/api/src/openagents-openapi.ts`
 - `apps/openagents.com/workers/api/src/openagents-capability-manifest.ts`
-- D1 migrations `0140` through `0146` for Autopilot work orders and Pylon
+- D1 migrations `0140` through `0147` for Autopilot work orders and Pylon
   coding-assignment payload storage.
 - production Pylon API store wiring in `apps/openagents.com/workers/api/src/index.ts`.
 
 The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed, and
-the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-026` are also closed as
+the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-027` are also closed as
 of this audit. Those issues built the first Autopilot work-order spine plus the
 initial production Pylon placement, Pylon assignment lease, and normalized
 assignment-payload pieces plus a bounded no-spend requester-Pylon closeout
 loop, Autopilot delivery ingestion from that closeout, and the owner-granted
-review/revision API plus a documented no-spend smoke and signed L402 retry
-verification. They did not, by themselves, build the full paid coding-agent
-product.
+review/revision API plus documented no-spend and paid-route smokes and signed
+L402 retry verification. They did not, by themselves, build the full paid
+coding-agent product.
 
 ## Executive Finding
 
@@ -66,11 +67,11 @@ registered-agent request
 -> typed Autopilot work order
 -> deterministic quote
 -> 402 payment-required response for payable L402 work
--> public-safe proof-header retry
+-> signed L402 proof-header retry accepted by a verifier hook
 -> buyer funding projection
 -> placement decision
 -> durable Pylon assignment lease or fallback lease intent
--> requester Pylon no-spend acceptance/progress/artifact/worker-closeout refs
+-> requester Pylon no-spend or buyer-funded assignment acceptance/progress/artifact/worker-closeout refs
 -> Autopilot work order delivered projection from worker closeout refs
 -> owner/customer review can accept, reject, or request changes
 -> optional injected hosted execution closeout
@@ -116,6 +117,7 @@ The closed P0 issue flow built the minimum typed orchestration spine:
 | Pylon presence input | Built with production Pylon API store wiring | Placement can prefer a compatible requester Pylon from D1-backed Pylon registrations, heartbeats, version, capability, and wallet-readiness records. |
 | Local coding capability refs | Built | Placement can distinguish local coding-agent readiness without exposing local secrets. |
 | Pylon assignment synthesis, lease creation, no-spend worker closeout, and delivery ingestion | Built | Ready requester-Pylon work creates a durable no-spend `pylon_api_assignments` lease, idempotent retries do not duplicate it, the Pylon API can poll and accept it, the Pylon runtime can submit progress/artifact/proof refs and a worker closeout, and that closeout can move the Autopilot work order to delivered. |
+| Paid Pylon route smoke | Built as CI-safe route smoke | Payable work can receive a signed L402 challenge, retry through a verifier-approved proof ref, create a buyer-funded requester-Pylon assignment payload, accept/closeout through the Pylon API, deliver the work order, and accept review while settlement/payout stay blocked. |
 | Fallback lease adapter | Built as intent projection | Ready work can become controlled SHC/cloud/hosted Gemini fallback lease intents. It is not yet real runner dispatch. |
 | Placement refusal/retry | Built | The API can return actionable retry/needs-input guidance instead of silent stalls. |
 | Hosted execution closeout bridge | Built in route harness | An injected hosted executor can return public-safe refs and move an order to delivered. It is not the production hosted executor. |
@@ -151,6 +153,10 @@ What is built:
   is missing or rejects the proof, the order does not move to funded.
 - Route coverage now exercises unpaid, malformed, unverified, expired,
   mismatched, verified, and idempotent replay cases.
+- The paid Autopilot Coder smoke now exercises the route-level payable path:
+  `402`, signed retry, verifier-approved proof ref, funded work projection,
+  Pylon assignment, worker closeout, delivered projection, owner review, and
+  blocked settlement/payout authority.
 - MDK checkout proof retry is fail-closed; a header ref no longer funds a work
   order without a real checkout verifier.
 
@@ -159,6 +165,8 @@ What is not built or not proven:
 - No real Lightning invoice is generated for Autopilot work.
 - No real MDK checkout session is created for Autopilot work in this route.
 - No agent wallet pays a real challenge in the Autopilot route test.
+- The paid smoke uses deterministic test verification; it does not prove
+  external payment movement.
 - The production Autopilot route does not yet wire a live MDK/L402 payment
   verifier that checks actual external payment movement.
 - No live production registered-agent request has completed the paid flow.
@@ -238,9 +246,9 @@ Current status by phase:
 | Auth and owner grant | Built for registered-agent customer-order scopes | Needs unauthenticated or anonymous-paid entry path, plus smoother owner grant prompts. |
 | Request intake | Built for typed public-safe work requests | Needs production wiring and better examples for real agents, plus private/secret-broker modes later. |
 | Payment request | L402 challenge issuance built for configured signing boundary; MDK checkout intent still planned | Needs hosted checkout creation for checkout mode and production agent docs for the private credential header. |
-| Payment verification | L402 signed retry verification and verifier hook built | Needs live MDK/L402 verifier wiring, agent-wallet smoke, and ledger linkage. |
+| Payment verification | L402 signed retry verification, verifier hook, and CI-safe paid smoke built | Needs live MDK/L402 verifier wiring, agent-wallet smoke, and ledger linkage. |
 | Placement | Selector, production Pylon registration store wiring, Pylon lease creation, and intent projections built | Needs real worker execution and closeout recovery after assignment acceptance. |
-| Pylon local path | Lease creation, Pylon polling, Pylon acceptance, progress submission, artifact/proof submission, worker closeout, and Autopilot delivered projection built for no-spend public refs | Needs richer real repo edit/build/test artifacts, customer review, and later paid-mode policy. |
+| Pylon local path | Lease creation, Pylon polling, Pylon acceptance, progress submission, artifact/proof submission, worker closeout, and Autopilot delivered projection built for no-spend and CI-safe buyer-funded public refs | Needs richer real repo edit/build/test artifacts and live paid-mode policy. |
 | Hosted fallback path | Lease intent plus test executor hook built | Needs production executor binding and provider/runtime policy. |
 | SHC/cloud fallback path | Lease intent built | Needs production runner adapter and lease execution. |
 | Probe coding loop | Normalized coding assignment contract exists, and the Pylon no-spend loop consumes current assignment projections and returns public-safe refs | Needs richer real coding execution, repository checkout/patch/test adapters, and non-Pylon runner consumers. |
@@ -250,8 +258,9 @@ Current status by phase:
 | Sites adapter | Existing Sites control plane exists | Needs Autopilot task adapter for `site_generation` and `site_adjustment`. |
 | Forum reporting | Not built for Autopilot work orders | Needs redacted lifecycle renderer and idempotent posting bridge. |
 | Settlement | Explicitly blocked | Needs accepted-work payout eligibility and settlement bridge. |
-| Production smoke | Not done | Needs a real no-spend smoke and a real paid smoke. |
+| Production smoke | CI-safe no-spend and paid-route smokes built | Needs staging/live no-spend and paid smokes against deployed credentials and real payment verification. |
 | No-spend smoke | Built as CI-safe command | Needs staging/live production run with real deployed credentials when that environment is ready. |
+| Paid smoke | Built as CI-safe command | Needs staging/live run with external payment movement, live verifier, and real worker execution. |
 
 ## What Changed Since The Original Audit
 
@@ -268,12 +277,11 @@ The difference between "we did the issue flow" and "the product works" is:
 
 - The issue flow built contracts, projections, state transitions, and tests.
 - It did not build live payment movement.
-- It did not build live worker dispatch.
+- It did not build live paid worker dispatch.
 - It did not build real coding execution.
-- It did not build acceptance/revision.
 - It did not build settlement.
 - It did not build Forum reporting.
-- It did not run the two required product smokes.
+- It did not run the two required staging/live product smokes.
 
 That is why the system is substantially closer, but still not the thing the
 user asked for.
@@ -303,6 +311,8 @@ Still required:
 - MDK checkout intent creation/reconciliation for checkout mode.
 - Buyer payment ledger linkage.
 - Sandbox or staging agent-wallet smoke against the deployed endpoint.
+- CI-safe route-level paid smoke is built by OA-AUTO-027, but it uses a
+  deterministic verifier instead of real payment movement.
 
 Acceptance:
 
@@ -401,7 +411,7 @@ Current acceptance state:
 ### Step 5: Implement the actual worker loop for one lane
 
 Status: implemented for the bounded requester-Pylon no-spend lane by
-OA-AUTO-022.
+OA-AUTO-022, with CI-safe buyer-funded route coverage added by OA-AUTO-027.
 
 Pick one first lane. The lowest-friction product path should be:
 
@@ -436,7 +446,8 @@ Current acceptance state:
   Autopilot work order into delivered state with public-safe artifact, blocker,
   build, preview, proof, result, summary, and test refs.
 - Still open: it does not yet perform a real repo checkout/patch/test/PR
-  workflow.
+  workflow, and the buyer-funded smoke still uses deterministic payment
+  verification.
 
 ### Step 6: Add closeout ingestion for real artifacts
 
@@ -589,6 +600,18 @@ hosted-infrastructure wording.
    - customer reviews;
    - settlement remains blocked or proceeds according to policy.
 
+Status: implemented as a CI-safe route command by OA-AUTO-027:
+
+```sh
+bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:paid
+```
+
+The smoke drives the payable route path through signed L402 retry,
+verifier-approved funding, requester-Pylon assignment, Pylon closeout,
+delivered projection, owner review, and retained-projection redaction checks.
+It does not prove live external payment movement, a deployed MDK/L402 verifier,
+or a production coding worker doing repository edits.
+
 Only after these smokes pass should public copy say "pay and Autopilot does the
 work."
 
@@ -598,7 +621,7 @@ work."
 
 1. Live MDK/L402 payment verifier wiring for Autopilot work.
 2. MDK checkout intent creation and reconciliation for checkout-mode work.
-3. Paid end-to-end smoke.
+3. Staging/live paid smoke with external payment movement and real worker execution.
 4. Staging/live no-spend smoke against deployed credentials.
 5. Richer diff/blob/build-log ingestion and operator-only evidence storage.
 6. Accepted-work payout eligibility and settlement bridge.
