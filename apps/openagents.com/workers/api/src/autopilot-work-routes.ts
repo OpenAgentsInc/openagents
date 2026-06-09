@@ -1166,7 +1166,9 @@ const pylonAssignmentRequestForIntent = (
   const codingAssignmentJson =
     codingAssignment === null
       ? null
-      : JSON.parse(JSON.stringify(codingAssignment)) as Record<string, unknown>
+      : (parseJsonUnknown(
+          JSON.stringify(codingAssignment),
+        ) as Record<string, unknown>)
 
   return {
     acceptanceCriteriaRefs: intent.acceptanceCriteriaRefs,
