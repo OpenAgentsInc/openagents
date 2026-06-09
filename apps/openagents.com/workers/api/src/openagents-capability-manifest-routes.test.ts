@@ -45,6 +45,27 @@ describe('OpenAgents capability manifest route', () => {
     expect(body.docs.productPromisesApi).toBe(
       'https://openagents.com/api/public/product-promises',
     )
+    expect(body.docs.sourceCode).toBe(
+      'https://github.com/OpenAgentsInc/openagents',
+    )
+    expect(body.docs.liveSiteSource).toBe(
+      'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com',
+    )
+    expect(body.docs.workerSource).toBe(
+      'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/workers/api',
+    )
+    expect(body.docs.webSource).toBe(
+      'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/apps/web',
+    )
+    expect(body.docs.productPromiseSource).toBe(
+      'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
+    )
+    expect(body.docs.pylonSource).toBe(
+      'https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon',
+    )
+    expect(body.docs.probeSource).toBe(
+      'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
+    )
     expect(body.docs.agent).toBe('https://openagents.com/AGENTS.md')
     expect(body.docs.instruction).toBe('https://openagents.com/AGENTS.md')
     expect(body.docs.heartbeat).toBe('https://openagents.com/HEARTBEAT.md')

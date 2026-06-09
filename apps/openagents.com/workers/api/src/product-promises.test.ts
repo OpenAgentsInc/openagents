@@ -61,11 +61,31 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.5')
+    expect(decoded.version).toBe('2026-06-09.6')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
+    expect(decoded.sourceRefs).toContain(
+      'https://github.com/OpenAgentsInc/openagents',
+    )
     expect(decoded.promises.length).toBeGreaterThan(0)
     expect(
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)
+    expect(decoded.promises).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          promiseId: 'repo.open_source_code_map.v1',
+          state: 'green',
+          evidenceRefs: expect.arrayContaining([
+            'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/workers/api',
+            'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/apps/web',
+            'https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon',
+            'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
+          ]),
+          authorityBoundary: expect.stringContaining(
+            'does not grant write, deploy, spend',
+          ),
+        }),
+      ]),
+    )
   })
 })

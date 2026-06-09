@@ -32,6 +32,14 @@ export const OpenAgentsCapabilityManifest = S.Struct({
     sitesPlan: S.String,
     productPromises: S.String,
     productPromisesApi: S.String,
+    sourceCode: S.String,
+    liveSiteSource: S.String,
+    workerSource: S.String,
+    webSource: S.String,
+    publicDocsSource: S.String,
+    productPromiseSource: S.String,
+    pylonSource: S.String,
+    probeSource: S.String,
     openApi: S.String,
     agent: S.String,
     instruction: S.String,
@@ -119,6 +127,21 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites-plan.md',
       productPromises: 'https://openagents.com/docs/product-promises',
       productPromisesApi: 'https://openagents.com/api/public/product-promises',
+      sourceCode: 'https://github.com/OpenAgentsInc/openagents',
+      liveSiteSource:
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com',
+      workerSource:
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/workers/api',
+      webSource:
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/apps/web',
+      publicDocsSource:
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/docs/live',
+      productPromiseSource:
+        'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
+      pylonSource:
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon',
+      probeSource:
+        'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
       openApi: 'https://openagents.com/api/openapi.json',
       agent: OpenAgentsAgentOnboardingCanonicalUrl,
       instruction: OpenAgentsAgentOnboardingCanonicalUrl,

@@ -1,11 +1,15 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.5'
+export const PublicProductPromisesVersion = '2026-06-09.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
 const sourceRefs = [
+  'https://github.com/OpenAgentsInc/openagents',
+  'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com',
+  'https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon',
+  'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
   'apps/openagents.com/docs/2026-06-08-pylon-agentic-revenue-gap-audit.md',
   'apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md',
   'apps/openagents.com/docs/2026-06-08-openagents-public-launch-dashboard.md',
@@ -55,7 +59,7 @@ export const publicProductPromisesDocument = () => ({
   currentMonorepoStatus: {
     status: 'work_in_progress',
     summary:
-      'The openagents monorepo now contains the deployed openagents.com Worker/app, Forum surfaces, docs/promises, packages/probe, and apps/pylon. The live Cloudflare deployment is served from apps/openagents.com. Pylon v0.3 code is present under apps/pylon as @openagentsinc/pylon@0.3.0-rc1, but public product copy must still distinguish local rc gates from live network evidence.',
+      'The openagents monorepo now contains the deployed openagents.com Worker/app, Forum surfaces, docs/promises, packages/probe, and apps/pylon. The live Cloudflare deployment is served from apps/openagents.com, and the public code map in this registry points agents to the public source trees behind those shipped surfaces. Pylon v0.3 code is present under apps/pylon as @openagentsinc/pylon@0.3.0-rc1, but public product copy must still distinguish local rc gates from live network evidence.',
     liveDeploymentRefs: [
       'https://openagents.com',
       'https://openagents.com/docs/product-promises',
@@ -75,9 +79,38 @@ export const publicProductPromisesDocument = () => ({
       'Pylon v0.3 local release gates exist, but the live OpenAgents network path still needs endpoint smokes and fresh public evidence before broad earning claims go green.',
       'Qwen/training, sellable local inference, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned.',
       'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
+      'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
     ],
   },
   promises: [
+    {
+      ...basePromiseFields,
+      promiseId: 'repo.open_source_code_map.v1',
+      productArea: 'source transparency',
+      audience: ['agent', 'user', 'operator', 'public'],
+      state: 'green',
+      claim:
+        'The code currently shipped for the public OpenAgents site and core public product surfaces is open source and findable in the public openagents monorepo.',
+      safeCopy:
+        'Use the public code map to find the live site, Worker/API, web UI, public docs, Pylon, Probe, and product-promise source in the OpenAgentsInc/openagents repository.',
+      unsafeCopy:
+        'Do not claim secrets, production data, Cloudflare account resources, wallet material, customer-private workroom content, provider credentials, or third-party service internals are public.',
+      evidenceRefs: [
+        'https://github.com/OpenAgentsInc/openagents',
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com',
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/workers/api',
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/apps/web',
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/docs/live',
+        'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
+        'https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon',
+        'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
+      ],
+      blockerRefs: [],
+      verification:
+        'Fetch /api/public/product-promises and /.well-known/openagents.json, then follow sourceCode/liveSiteSource/workerSource/webSource/productPromiseSource/pylonSource/probeSource to the public GitHub tree.',
+      authorityBoundary:
+        'Open-source source availability is a transparency claim only. It does not grant write, deploy, spend, moderation, data-access, settlement, or account authority, and it does not make any separate feature green.',
+    },
     {
       ...basePromiseFields,
       promiseId: 'discovery.homepage_json.v1',
@@ -668,6 +701,7 @@ export const publicProductPromisesDocument = () => ({
     'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
     'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
     'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and capacity-market claims remain gated.',
+    'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
   ],
 })

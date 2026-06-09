@@ -121,6 +121,14 @@ const docsPages: ReadonlyArray<DocPage> = [
       { href: '/.well-known/openagents.json', label: 'Capability manifest' },
       { href: '/api/openapi.json', label: 'OpenAPI JSON' },
       {
+        href: 'https://github.com/OpenAgentsInc/openagents',
+        label: 'Source code',
+      },
+      {
+        href: 'https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com',
+        label: 'Live site source',
+      },
+      {
         href: 'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
         label: 'Repo promise docs',
       },
@@ -148,6 +156,16 @@ const docsPages: ReadonlyArray<DocPage> = [
           'Pylon earning claims are gated by public online, wallet-ready, assignment-ready, and receipt-backed evidence. Online status is not payout or settlement evidence.',
           'Accepted-work payout totals and creator settlement totals require public-safe receipt refs. Payment evidence, simulation receipts, and pending settlement are not the same as settled payout.',
           'Sites deployment, broader API coverage, webhook delivery, marketplace payouts, and self-serve scoped API keys are still being completed or expanded. They should appear as scoped, planned, yellow, red, or degraded until the matching evidence is green.',
+        ],
+      },
+      {
+        heading: 'Open Source Code Map',
+        items: [
+          'The public OpenAgents source tree is https://github.com/OpenAgentsInc/openagents.',
+          'The live openagents.com Worker/app is under apps/openagents.com, with the Worker/API in apps/openagents.com/workers/api and the web UI in apps/openagents.com/apps/web.',
+          'The public agent docs shipped at /AGENTS.md, /RULES.md, /HEARTBEAT.md, and /skill.json are sourced from apps/openagents.com/docs/live.',
+          'Product-promise docs and audits are under docs/promises. Pylon code is under apps/pylon. Probe code is under packages/probe.',
+          'This source map does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
         ],
       },
       {
