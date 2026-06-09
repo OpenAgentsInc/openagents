@@ -211,6 +211,31 @@ const responseJson = async (response: Response) =>
       }>>
       state: string
       taskRefs: ReadonlyArray<string>
+      tasks?: ReadonlyArray<Readonly<{
+        acceptanceCriteriaRefs: ReadonlyArray<string>
+        accessRequirements: ReadonlyArray<Readonly<{
+          accessRequestRef: string
+          grantAction: string
+          kind: string
+          ownerActionRef: string
+          reasonRef: string
+          requiredBeforeLaunch: boolean
+          status: string
+          taskRef: string
+        }>>
+        accessState: string
+        kind: string
+        lifecycleState: string
+        paymentState: string
+        placementState: string
+        repository: Readonly<{
+          branch: string
+          fullName: string
+          provider: string
+          visibility: string
+        }> | null
+        taskRef: string
+      }>>
       workOrderRef: string
     }>
   }>>
@@ -276,6 +301,84 @@ describe('Autopilot work routes', () => {
 
     expect(response.status).toBe(400)
     expect(body.error).toBe('autopilot_work_validation_error')
+  })
+
+  test('projects independent typed task records for batch requests', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [],
+          taskRef: 'task.autopilot_coder.docs_contract',
+        },
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [
+            {
+              kind: 'github_repo_write' as const,
+              reasonRef: 'reason.repo_write_required',
+            },
+          ],
+          acceptanceCriteriaRefs: ['acceptance.patch_tests_pass'],
+          kind: 'test_repair' as const,
+          taskRef: 'task.autopilot_coder.test_repair',
+        },
+      ],
+    }
+    const response = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-task-records',
+    })
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(202)
+    expect(body.work).toMatchObject({
+      state: 'access_required',
+      taskRefs: [
+        'task.autopilot_coder.docs_contract',
+        'task.autopilot_coder.test_repair',
+      ],
+      tasks: [
+        {
+          acceptanceCriteriaRefs: [
+            'acceptance.docs.updated',
+            'acceptance.tests.contract',
+          ],
+          accessRequirements: [],
+          accessState: 'satisfied',
+          kind: 'code_change',
+          lifecycleState: 'ready_for_assignment',
+          paymentState: 'not_required',
+          placementState: 'ready_for_assignment',
+          taskRef: 'task.autopilot_coder.docs_contract',
+        },
+        {
+          acceptanceCriteriaRefs: ['acceptance.patch_tests_pass'],
+          accessRequirements: [
+            {
+              accessRequestRef:
+                'access_request.task.autopilot_coder.test_repair.github_repo_write',
+              grantAction: 'connect_github_repository',
+              kind: 'github_repo_write',
+              ownerActionRef:
+                'owner_action.task.autopilot_coder.test_repair.github_repo_write',
+              reasonRef: 'reason.repo_write_required',
+              requiredBeforeLaunch: true,
+              status: 'missing',
+              taskRef: 'task.autopilot_coder.test_repair',
+            },
+          ],
+          accessState: 'missing_required_access',
+          kind: 'test_repair',
+          lifecycleState: 'access_required',
+          paymentState: 'not_required',
+          placementState: 'blocked_on_access',
+          taskRef: 'task.autopilot_coder.test_repair',
+        },
+      ],
+    })
   })
 
   test('allows public read-only repository tasks to proceed', async () => {

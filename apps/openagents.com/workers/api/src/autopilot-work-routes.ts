@@ -118,6 +118,38 @@ export type AutopilotWorkFundingProjection = Readonly<{
   workerPayoutEligible: false
 }>
 
+export type AutopilotWorkTaskAccessState =
+  | 'missing_required_access'
+  | 'satisfied'
+
+export type AutopilotWorkTaskLifecycleState =
+  | 'access_required'
+  | 'blocked'
+  | 'delivered'
+  | 'payment_required'
+  | 'queued_or_running'
+  | 'ready_for_assignment'
+
+export type AutopilotWorkTaskPlacementState =
+  | 'blocked'
+  | 'blocked_on_access'
+  | 'blocked_on_payment'
+  | 'delivered'
+  | 'queued_or_running'
+  | 'ready_for_assignment'
+
+export type AutopilotWorkTaskRecordProjection = Readonly<{
+  acceptanceCriteriaRefs: ReadonlyArray<string>
+  accessRequirements: ReadonlyArray<AutopilotWorkAccessRequirementProjection>
+  accessState: AutopilotWorkTaskAccessState
+  kind: OpenAgentsAutopilotWorkRequest['tasks'][number]['kind']
+  lifecycleState: AutopilotWorkTaskLifecycleState
+  paymentState: AutopilotWorkFundingProjection['buyerFundingState']
+  placementState: AutopilotWorkTaskPlacementState
+  repository: OpenAgentsAutopilotWorkRequest['tasks'][number]['repository'] | null
+  taskRef: string
+}>
+
 export type AutopilotWorkOrderRecord = Readonly<{
   accessRequestRefs: ReadonlyArray<string>
   agentCredentialId: string
@@ -155,6 +187,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   state: OpenAgentsAutopilotWorkStateType
   statusUrlRef: string
   taskRefs: ReadonlyArray<string>
+  tasks: ReadonlyArray<AutopilotWorkTaskRecordProjection>
   updatedAt: string
   workOrderRef: string
 }>
@@ -328,32 +361,35 @@ const accessGrantActionForKind = (
   }
 }
 
+const accessRequirementsForTask = (
+  task: OpenAgentsAutopilotWorkRequest['tasks'][number],
+): ReadonlyArray<AutopilotWorkAccessRequirementProjection> =>
+  task.accessRequests
+    .filter(
+      accessRequest =>
+        !isAccessRequestSatisfiedByRepositoryPolicy(task, accessRequest.kind),
+    )
+    .map(accessRequest => {
+      const accessRequestRef =
+        `access_request.${task.taskRef}.${accessRequest.kind}`
+
+      return {
+        accessRequestRef,
+        grantAction: accessGrantActionForKind(accessRequest.kind),
+        kind: accessRequest.kind,
+        ownerActionRef:
+          `owner_action.${task.taskRef}.${accessRequest.kind}`,
+        reasonRef: accessRequest.reasonRef,
+        requiredBeforeLaunch: true,
+        status: 'missing',
+        taskRef: task.taskRef,
+      }
+    })
+
 const accessRequirementsForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): ReadonlyArray<AutopilotWorkAccessRequirementProjection> =>
-  request.tasks.flatMap(task =>
-    task.accessRequests
-      .filter(
-        accessRequest =>
-          !isAccessRequestSatisfiedByRepositoryPolicy(task, accessRequest.kind),
-      )
-      .map(accessRequest => {
-        const accessRequestRef =
-          `access_request.${task.taskRef}.${accessRequest.kind}`
-
-        return {
-          accessRequestRef,
-          grantAction: accessGrantActionForKind(accessRequest.kind),
-          kind: accessRequest.kind,
-          ownerActionRef:
-            `owner_action.${task.taskRef}.${accessRequest.kind}`,
-          reasonRef: accessRequest.reasonRef,
-          requiredBeforeLaunch: true,
-          status: 'missing',
-          taskRef: task.taskRef,
-        }
-      })
-  )
+  request.tasks.flatMap(task => accessRequirementsForTask(task))
 
 const repositoryAuthoritiesForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
@@ -554,6 +590,84 @@ const fundingForRecord = (
   }
 }
 
+const lifecycleStateForTask = (
+  record: AutopilotWorkOrderRecord,
+  taskAccessRequirements: ReadonlyArray<AutopilotWorkAccessRequirementProjection>,
+  funding: AutopilotWorkFundingProjection,
+): AutopilotWorkTaskLifecycleState => {
+  if (taskAccessRequirements.length > 0) {
+    return 'access_required'
+  }
+
+  if (funding.buyerFundingState === 'payment_required') {
+    return 'payment_required'
+  }
+
+  switch (record.state) {
+    case 'blocked':
+    case 'invalid':
+      return 'blocked'
+    case 'delivered':
+      return 'delivered'
+    case 'queued_or_running':
+      return 'queued_or_running'
+    case 'accepted_free_slice':
+    case 'paid_ready':
+      return 'ready_for_assignment'
+    case 'access_required':
+    case 'payment_required':
+      return 'ready_for_assignment'
+  }
+}
+
+const placementStateForLifecycle = (
+  lifecycleState: AutopilotWorkTaskLifecycleState,
+): AutopilotWorkTaskPlacementState => {
+  switch (lifecycleState) {
+    case 'access_required':
+      return 'blocked_on_access'
+    case 'payment_required':
+      return 'blocked_on_payment'
+    case 'blocked':
+      return 'blocked'
+    case 'delivered':
+      return 'delivered'
+    case 'queued_or_running':
+      return 'queued_or_running'
+    case 'ready_for_assignment':
+      return 'ready_for_assignment'
+  }
+}
+
+const taskRecordsForRecord = (
+  record: AutopilotWorkOrderRecord,
+): ReadonlyArray<AutopilotWorkTaskRecordProjection> => {
+  const funding = fundingForRecord(record)
+
+  return record.request.tasks.map(task => {
+    const accessRequirements = accessRequirementsForTask(task)
+    const lifecycleState = lifecycleStateForTask(
+      record,
+      accessRequirements,
+      funding,
+    )
+
+    return {
+      acceptanceCriteriaRefs: task.acceptanceCriteriaRefs,
+      accessRequirements,
+      accessState: accessRequirements.length === 0
+        ? 'satisfied'
+        : 'missing_required_access',
+      kind: task.kind,
+      lifecycleState,
+      paymentState: funding.buyerFundingState,
+      placementState: placementStateForLifecycle(lifecycleState),
+      repository: task.repository ?? null,
+      taskRef: task.taskRef,
+    }
+  })
+}
+
 const stateForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): OpenAgentsAutopilotWorkStateType => {
@@ -587,6 +701,7 @@ const projectionForRecord = (
   state: record.state,
   statusUrlRef: record.statusUrlRef,
   taskRefs: record.taskRefs,
+  tasks: taskRecordsForRecord(record),
   updatedAt: record.updatedAt,
   workOrderRef: record.workOrderRef,
 })

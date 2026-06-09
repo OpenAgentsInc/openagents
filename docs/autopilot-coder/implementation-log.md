@@ -268,3 +268,35 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-010: Typed Task Records Under A Work Order
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4584`
+
+Status: implemented.
+
+Implemented:
+
+- Added typed `tasks` records to Autopilot work-order projections.
+- Each task record now exposes:
+  - `taskRef`
+  - `kind`
+  - `repository`
+  - `acceptanceCriteriaRefs`
+  - task-scoped `accessRequirements`
+  - `accessState`
+  - `paymentState`
+  - `placementState`
+  - `lifecycleState`
+- Kept top-level `taskRefs` and aggregate access/payment fields for backward
+  compatibility.
+- Derived per-task states independently from the persisted work request and
+  order funding state, so a batch can contain ready tasks and access-blocked
+  tasks at the same time.
+- Updated OpenAPI summary text so agent-readable docs advertise typed task
+  records.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
