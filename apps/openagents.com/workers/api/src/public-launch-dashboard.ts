@@ -357,16 +357,16 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
   {
     baseStatus: 'red',
     blockerRefs: [
-      'blocker.launch_dashboard.venice_capacity.provider_policy_missing',
+      'blocker.launch_dashboard.prepaid_provider_capacity.provider_policy_missing',
     ],
     evidenceRefs: ['docs/2026-06-08-provider-capacity-marketplace-gate.md'],
-    promiseId: 'venice_api_capacity_monetization',
+    promiseId: 'prepaid_provider_capacity_monetization',
     promiseText:
-      'Venice API budget should be easy to monetize through Pylon/OpenAgents.',
+      'Prepaid provider API budgets should be possible to monetize through Pylon/OpenAgents once provider policy, metering, assignment, and settlement are proven.',
     safeCopy:
-      'Venice capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
+      'Generic prepaid provider capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
     staleSensitive: false,
-    unsafeCopy: 'Do not claim Venice API capacity monetization is live.',
+    unsafeCopy: 'Do not claim prepaid provider API capacity monetization is live.',
   },
 ]
 

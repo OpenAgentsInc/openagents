@@ -4,7 +4,7 @@ import { Schema as S } from 'effect'
 export const ProviderCapacityMarketplaceProvider = S.Literals([
   'chatgpt_codex',
   'claude',
-  'venice',
+  'prepaid_provider',
 ])
 export type ProviderCapacityMarketplaceProvider =
   typeof ProviderCapacityMarketplaceProvider.Type
@@ -100,7 +100,7 @@ const decodeGate = S.decodeUnknownSync(ProviderCapacityMarketplaceGate)
 const providerLabel: Record<ProviderCapacityMarketplaceProvider, string> = {
   chatgpt_codex: 'ChatGPT/Codex',
   claude: 'Claude',
-  venice: 'Venice',
+  prepaid_provider: 'Prepaid provider',
 }
 
 const supportedProvider = new Set<ProviderCapacityMarketplaceProvider>([

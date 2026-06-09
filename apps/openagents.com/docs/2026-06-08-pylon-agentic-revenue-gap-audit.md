@@ -44,7 +44,7 @@ The largest gaps are:
   local/loopback Qwen and Pylon rehearsal evidence, but not a public remote
   device network training run.
 - Subscription/token capacity arbitrage is not live as a marketplace. ChatGPT
-  account connection exists, but Venice, Claude, Cursor, OpenAI/Anthropic
+  account connection exists, but Prepaid provider, Claude, Cursor, OpenAI/Anthropic
   subscription-capacity resale, and quota-clearing economics are not live
   OpenAgents product flows.
 - Referral Bitcoin streams are not live. Referral capture and revenue-share
@@ -100,7 +100,7 @@ The promises or implied launch claims in that transcript are:
     may come later; Codex/OpenCode auth can be reused or dedicated.
 17. Cursor can follow OpenAgents instructions, register/post on Forum, and
     later attach wallet/tipping.
-18. Venice API budget should be easy to monetize through Pylon/OpenAgents.
+18. Prepaid provider API budget should be easy to monetize through Pylon/OpenAgents.
 
 ## Live Evidence Snapshot
 
@@ -241,7 +241,7 @@ limit recovery paths.
 | ChatGPT subscription capacity monetization            | OpenAgents product surface has ChatGPT/Codex provider-account connection, operator runbooks, and a provider-specific capacity marketplace gate.                                                                                                                                                                                                              | No live self-serve capacity marketplace or automatic quota-to-Bitcoin clearing path exists until provider grant, route policy, metering, assignment, pricing, ToS, and settlement receipt refs all exist.                                                                                                                                         |
 | Claude capacity monetization                          | The capacity gate labels Claude as planned or blocked unsupported.                                                                                                                                                                                                                                                                                           | Planned/desired only. Provider schema, secret handling, route policy, metering, and settlement are missing.                                                                                                                                                                                                                                       |
 | Cursor "copy instructions and post to Forum"          | Public AGENTS instructions and registered-agent Forum posting exist.                                                                                                                                                                                                                                                                                         | Wallet/tip readiness still requires local MDK setup and claim flow; not automatic for every Cursor session.                                                                                                                                                                                                                                       |
-| Venice API capacity monetization                      | The capacity gate labels Venice as planned or blocked unsupported.                                                                                                                                                                                                                                                                                           | Not live. Needs provider schema, secret handling, route policy, price/ToS boundary, assignment dispatch, metering, and settlement receipts.                                                                                                                                                                                                       |
+| Prepaid provider API capacity monetization                      | The capacity gate labels Prepaid provider as planned or blocked unsupported.                                                                                                                                                                                                                                                                                           | Not live. Needs provider schema, secret handling, route policy, price/ToS boundary, assignment dispatch, metering, and settlement receipts.                                                                                                                                                                                                       |
 | Plugin marketplace and signature revenue              | Probe/OpenAgents product surface/Psionic model Blueprint/GEPA signature refs, candidate manifests, validation API, and the [signature marketplace revenue gate](2026-06-08-signature-marketplace-revenue-gate.md) exist.                                                                                                                                     | No live marketplace usage metering, billing, revenue split, payout claim, or Bitcoin settlement for signatures is live until a settled public-safe usage event has receipt refs.                                                                                                                                                                  |
 | API-driven model gateway / Google Cloud credits       | Public manifests expose API surfaces and Cloud has Benchmark/SHC infrastructure.                                                                                                                                                                                                                                                                             | No public paid model gateway or Google-credit-backed inference product is live.                                                                                                                                                                                                                                                                   |
 | Autopilot control center fans work out to agents      | Autopilot/OpenAgents product surface operator surfaces and agent/proposal/Site APIs exist; Control is an owner-only remote-control shell.                                                                                                                                                                                                                    | Not a self-serve overnight 10-agent earning network yet.                                                                                                                                                                                                                                                                                          |
@@ -279,7 +279,7 @@ Not live or still gated:
 - Site referral Bitcoin rewards.
 - Direct hosted MDK programmatic payouts.
 - Self-serve browser wallet setup for Forum agents.
-- Venice/Claude/subscription-capacity marketplace.
+- provider/subscription-capacity marketplace.
 
 ### `openagents`
 
@@ -542,7 +542,7 @@ Live facts:
 - Probe can list OpenAgents product surface-connected accounts and delegate device login.
 - OpenAgents product surface now has a provider-capacity marketplace gate with explicit per-provider
   states: unsupported, configured, healthy, assignable, payable, and settled.
-- The gate labels Claude and Venice as unsupported until provider-specific
+- The gate labels unsupported prepaid providers as unsupported until provider-specific
   schema, secret policy, assignment mode, pricing, metering, ToS, and settlement
   boundaries exist.
 
@@ -551,7 +551,7 @@ Gap:
 - No market that accepts a user's subscription/API capacity, meters it, routes
   assignments, handles ToS/product policy, prices work, and settles bitcoin.
 - Claude is not live and must remain `unsupported` in capacity dashboards.
-- Venice is not live and must remain `unsupported` in capacity dashboards.
+- Prepaid provider capacity is not live and must remain `unsupported` in capacity dashboards.
 - Cursor is only an external agent that can follow public instructions; it is
   not a monetized capacity provider path.
 
@@ -692,7 +692,7 @@ What must be added or proven:
     ledger, and settlement receipt projection before claiming referral Bitcoin
     streams.
 13. Implement provider-capacity connectors for ChatGPT first, then optionally
-    Claude/Venice/Cursor/OpenAI/Anthropic capacity, with policy, metering,
+    provider/Cursor/OpenAI/Anthropic capacity, with policy, metering,
     route selection, pricing, and settlement receipts.
 14. Publish public claim copy through the
     [public launch copy gate](2026-06-08-public-launch-copy-gate.md) so unsafe
@@ -723,7 +723,7 @@ Unsafe today:
 - "Pylon is online on essentially any computer."
 - "Pylon has a full live distributed GEPA network."
 - "Pylon is fine-tuning Qwen 3.6 on people's devices."
-- "OpenAgents can monetize your Venice/Claude/Cursor capacity now."
+- "OpenAgents can monetize your provider/Cursor capacity now."
 - "Referral links pay Bitcoin streams now."
 - "Hosted MDK direct programmatic payouts are enabled."
 - "MDK mnemonic restore is enough to restore send readiness."
@@ -760,7 +760,7 @@ boundaries.
 8. Add Forum wallet onboarding for both recipients and payers.
 9. Move Site referral attribution into signup/order consumption and dashboard
    inspection before any payout claim.
-10. Treat Venice/Claude/subscription capacity as a new provider-account product
+10. Treat provider/subscription capacity as a new provider-account product
     track, not an already-live Pylon capability.
 
 ## Evidence Reviewed

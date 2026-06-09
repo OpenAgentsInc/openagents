@@ -24,7 +24,7 @@ The denylist covers affirmative claims for:
 - broad Pylon earning;
 - full GEPA network live;
 - Qwen 3.6 remote fine-tuning live;
-- Venice or Claude provider capacity live;
+- provider capacity marketplace live;
 - referral sats streams;
 - hosted MDK direct payouts;
 - creator spendable settlement;

@@ -224,11 +224,11 @@ const phraseRules: ReadonlyArray<PhraseRule> = [
   },
   {
     pattern:
-      /\b(?:venice|claude)\b[^.!?\n]{0,100}\b(?:capacity|provider|quota)\b[^.!?\n]{0,100}\b(?:live|marketplace|earning|sellable|paid)\b|\bcapacity marketplace\b[^.!?\n]{0,100}\b(?:venice|claude)\b[^.!?\n]{0,100}\b(?:live|enabled|paid)\b/i,
+      /\bprovider\b[^.!?\n]{0,100}\b(?:capacity|quota)\b[^.!?\n]{0,100}\b(?:live|marketplace|earning|sellable|paid)\b|\bcapacity marketplace\b[^.!?\n]{0,100}\bprovider\b[^.!?\n]{0,100}\b(?:live|enabled|paid)\b/i,
     policy: phrasePolicy({
       claimKind: 'provider_capacity_live',
       description:
-        'Venice/Claude capacity marketplace copy requires provider capacity settlement evidence.',
+        'Provider capacity marketplace copy requires provider capacity settlement evidence.',
       phraseRef: 'phrase.public_launch.provider_capacity_live',
       requiredGateRefs: [PublicLaunchCopyGateRefs.providerCapacity],
       safeCopy:

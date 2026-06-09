@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.8'
+export const PublicProductPromisesVersion = '2026-06-09.9'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -647,7 +647,7 @@ export const publicProductPromisesDocument = () => {
       safeCopy:
         'Provider-account connection work exists, and Pylon v0.3 carries provider/runtime contracts, but self-serve capacity metering, ToS policy, pricing, assignment, and settlement are missing.',
       unsafeCopy:
-        'Do not claim ChatGPT, Claude, Codex, OpenCode, Venice, or Cursor subscription capacity is monetized.',
+        'Do not claim ChatGPT, Claude, Codex, OpenCode, Cursor, or generic prepaid provider capacity is monetized.',
       evidenceRefs: [
         'apps/openagents.com/docs/2026-06-08-provider-capacity-marketplace-gate.md',
         'apps/pylon/packages/runtime/src/contracts/provider-account.ts',
@@ -687,21 +687,22 @@ export const publicProductPromisesDocument = () => {
     },
     {
       ...basePromiseFields,
-      promiseId: 'provider.venice_capacity_monetization.v1',
+      promiseId: 'provider.prepaid_capacity_monetization.v1',
       productArea: 'provider capacity',
       audience: ['contributor', 'operator'],
       state: 'red',
       claim:
-        'Venice API budget should be easy to monetize through Pylon/OpenAgents.',
+        'Prepaid provider API budgets should be possible to monetize through Pylon/OpenAgents once provider policy, metering, assignment, and settlement are proven.',
       safeCopy:
-        'Venice capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
-      unsafeCopy: 'Do not claim Venice API capacity monetization is live.',
+        'Generic prepaid provider capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
+      unsafeCopy:
+        'Do not claim prepaid provider API capacity monetization is live.',
       evidenceRefs: [
         'apps/openagents.com/docs/2026-06-08-provider-capacity-marketplace-gate.md',
       ],
-      blockerRefs: ['blocker.product_promises.venice_provider_policy_missing'],
+      blockerRefs: ['blocker.product_promises.prepaid_provider_policy_missing'],
       verification:
-        'Requires Venice-specific provider schema, secret policy, assignment mode, metering, pricing, terms boundary, and settlement refs.',
+        'Requires provider-specific schema, secret policy, assignment mode, metering, pricing, terms boundary, and settlement refs.',
       authorityBoundary:
         'A budget or API key is not a sellable capacity marketplace.',
     },

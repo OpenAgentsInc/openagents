@@ -96,7 +96,7 @@ describe('public launch dashboard', () => {
       ['dspy_gepa_signature_monetization', 'red'],
       ['chatgpt_claude_codex_capacity', 'red'],
       ['cursor_agent_forum_wallet', 'yellow'],
-      ['venice_api_capacity_monetization', 'red'],
+      ['prepaid_provider_capacity_monetization', 'red'],
     ])
     expect(dashboard.redCount).toBe(10)
     expect(dashboard.yellowCount).toBe(7)

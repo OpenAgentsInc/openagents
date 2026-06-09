@@ -115,7 +115,7 @@ Red promises:
 - `autopilot.control_center_fanout_marketplace.v1`
 - `marketplace.signature_monetization.v1`
 - `provider.subscription_capacity.v1`
-- `provider.venice_capacity_monetization.v1`
+- `provider.prepaid_capacity_monetization.v1`
 
 ## Parallel Workstreams
 
@@ -355,7 +355,7 @@ Responsibilities:
 Promises moved by this squad:
 
 - `provider.subscription_capacity.v1`
-- `provider.venice_capacity_monetization.v1`
+- `provider.prepaid_capacity_monetization.v1`
 - `api.model_gateway_google_credits.v1`
 - parts of `pylon.five_bitcoin_revenue_streams.v1`
 
@@ -573,7 +573,7 @@ Candidate promises to review for narrowing before implementation:
 
 - `api.model_gateway_google_credits.v1`
 - `provider.subscription_capacity.v1`
-- `provider.venice_capacity_monetization.v1`
+- `provider.prepaid_capacity_monetization.v1`
 - parts of `pylon.five_bitcoin_revenue_streams.v1`
 
 ## Immediate Next Actions

@@ -135,7 +135,7 @@ describe('public launch copy gate', () => {
       ],
       [
         'provider_capacity_live',
-        'Venice provider capacity marketplace is live for paid capacity.',
+        'Provider capacity marketplace is live for paid capacity.',
       ],
       [
         'referral_sats_stream_live',

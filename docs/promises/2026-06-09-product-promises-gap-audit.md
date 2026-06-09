@@ -96,7 +96,7 @@ copy can go green.
 | `marketplace.signature_monetization.v1`          | red            | Signature/runtime contracts exist in Pylon-related code.                                                | Build validation, pricing, activation, metering, revenue share, settlement, and discovery.                                    |
 | `provider.subscription_capacity.v1`              | red            | Provider-account connection is documented as gated/planned.                                             | Build compliant account policy, secret refs, quota metering, ToS boundaries, resale policy, and settlement.                   |
 | `agents.cursor_forum_wallet.v1`                  | yellow         | Agents can read instructions, register, and post to open Forum routes.                                  | Wallet/tipping attachment needs explicit MDK setup, claim flow, and spendable settlement proof.                               |
-| `provider.venice_capacity_monetization.v1`       | red            | No live capacity monetization flow is implemented.                                                      | Add provider adapter, budget ledger, metering, buyer route, payout policy, and receipts.                                      |
+| `provider.prepaid_capacity_monetization.v1`       | red            | No live capacity monetization flow is implemented.                                                      | Add provider adapter, budget ledger, metering, buyer route, payout policy, and receipts.                                      |
 | `pylon.gepa_worker_loop_v03.v1`                  | yellow         | GEPA-first runtime contracts exist in Pylon.                                                            | Wire the live worker loop: leases, acceptance, progress, artifacts, closeout, payment, stale handling, and public stats.      |
 
 ## Roadmap Issue Set
@@ -211,7 +211,7 @@ Exit criteria:
   entitlement.
 - Product policy and provider terms boundaries are explicit.
 - Capacity sales generate receipts and settlement state.
-- Venice and subscription-capacity promises stay red until their own adapter
+- prepaid provider and subscription-capacity promises stay red until their own adapter
   evidence exists.
 
 ### P1: Agentic Labor Fulfillment Chain

@@ -139,7 +139,7 @@ describe('Provider capacity marketplace gate', () => {
     )
   })
 
-  test('labels Claude and Venice as planned or blocked unsupported providers', () => {
+  test('labels unsupported prepaid providers as planned or blocked unsupported providers', () => {
     expect(
       projectProviderCapacityMarketplaceGate({
         pricingMode: 'agentic_work',
@@ -155,16 +155,16 @@ describe('Provider capacity marketplace gate', () => {
 
     expect(
       projectProviderCapacityMarketplaceGate({
-        meteringReceiptRefs: ['meter.public.provider_capacity.venice_001'],
+        meteringReceiptRefs: ['meter.public.provider_capacity.prepaid_provider_001'],
         pricingMode: 'agentic_work',
-        provider: 'venice',
-        providerGrantRefs: ['grant.public.provider_capacity.venice_001'],
+        provider: 'prepaid_provider',
+        providerGrantRefs: ['grant.public.provider_capacity.prepaid_provider_001'],
       }),
     ).toMatchObject({
       assignmentDispatchAllowed: false,
       connectorState: 'unsupported',
       marketableCapacityCopyAllowed: false,
-      providerLabel: 'Venice',
+      providerLabel: 'Prepaid provider',
       sellableCapacityListed: false,
       state: 'blocked_unsupported',
     })

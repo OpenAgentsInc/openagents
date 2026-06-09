@@ -316,7 +316,7 @@ This is the invariant ledger for `openagents`.
 - ChatGPT/Codex account connection is not resale authorization and must not be
   described as a live subscription-capacity marketplace by itself.
 - Provider capacity monetization claims are provider-specific. ChatGPT/Codex is
-  the first modeled provider; Claude and Venice must remain planned or blocked
+  the first modeled provider; unsupported prepaid providers must remain planned or blocked
   until provider schemas, secret handling, route policy, metering, pricing, ToS
   boundaries, dispatch, assignment receipts, and settlement receipts exist for
   that provider.
@@ -593,7 +593,7 @@ This is the invariant ledger for `openagents`.
   matching claim gate is green and the surface carries matching public evidence
   refs.
 - The unsafe phrase policy covers broad Pylon earning, full GEPA network live,
-  Qwen 3.6 remote fine-tuning live, Venice/Claude provider-capacity marketplace
+  Qwen 3.6 remote fine-tuning live, provider provider-capacity marketplace
   live, referral sats streams, hosted MDK direct payouts, creator spendable
   settlement, and unbounded Artanis autonomy.
 - Stale health blocks unsafe launch copy even when an evidence gate otherwise

@@ -11,7 +11,7 @@ provider-specific launch gate.
 
 The gate keeps ChatGPT/Codex account connection, provider grant readiness,
 route policy, metering, dispatch, pricing, ToS boundaries, assignment receipts,
-and Bitcoin settlement receipts separate. It also labels Claude and Venice as
+and Bitcoin settlement receipts separate. It also labels unsupported prepaid providers as
 planned or blocked rather than implying support.
 
 ## Provider Posture
@@ -21,7 +21,7 @@ provider-account connection flow. That connection is necessary evidence, but it
 is not resale authorization and does not make unused subscription capacity
 marketable by itself.
 
-Claude and Venice remain unsupported in this gate. If no evidence exists, they
+Unsupported prepaid provider capacity remains unsupported in this gate. If no evidence exists, they
 project as `planned_unsupported`. If someone attempts to attach grant, metering,
 dispatch, assignment, pricing, ToS, or settlement refs before provider-specific
 schemas and secret handling exist, they project as `blocked_unsupported`.
