@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.4'
+export const PublicProductPromisesVersion = '2026-06-09.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -26,6 +26,7 @@ export const publicProductPromisesDocument = () => ({
   lastUpdated: '2026-06-09',
   canonicalDocsUrl:
     'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
+  sourceRefs,
   publicDocsUrl: 'https://openagents.com/docs/product-promises',
   latestGapAuditUrl:
     'https://github.com/OpenAgentsInc/openagents/blob/main/docs/promises/2026-06-09-product-promises-gap-audit.md',

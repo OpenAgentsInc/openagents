@@ -246,7 +246,7 @@ const hero = (model: PublicProductPromisesModel): Html => {
               h.h1(
                 [
                   Ui.className<Message>(
-                    'm-0 mt-4 max-w-4xl text-[clamp(2.4rem,8vw,7.2rem)] font-semibold leading-[0.92] tracking-normal text-[#f1efe8]',
+                    'm-0 mt-4 max-w-3xl text-[clamp(2.25rem,5vw,4.75rem)] font-semibold leading-[0.96] tracking-normal text-[#f1efe8]',
                   ),
                 ],
                 ['Product promises'],

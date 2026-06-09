@@ -2,7 +2,11 @@ import { Scene } from 'foldkit'
 import { describe, test } from 'vitest'
 
 import { LoggedOut } from '../../../model'
-import { HomeRoute, OnboardingRoute } from '../../../route'
+import {
+  HomeRoute,
+  OnboardingRoute,
+  ProductPromisesRoute,
+} from '../../../route'
 import { update } from '../../../update'
 import { view } from '../../../view'
 import {
@@ -43,6 +47,20 @@ describe('maintenance landing scene', () => {
       Scene.expect(Scene.text('Episode 228: Free Autopilot')).not.toExist(),
       Scene.expect(Scene.text('Launches June 4.')).not.toExist(),
       Scene.expect(Scene.text("We'll be right back")).not.toExist(),
+    )
+  })
+
+  test('renders the product promises page through the top-level public shell', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(ProductPromisesRoute())),
+      Scene.expect(
+        Scene.role('heading', { name: 'Product promises' }),
+      ).toExist(),
+      Scene.expect(Scene.text('Human-readable promise ledger')).toExist(),
+      Scene.expect(
+        Scene.text('Autopilot is a cloud coding agent.'),
+      ).not.toExist(),
     )
   })
 

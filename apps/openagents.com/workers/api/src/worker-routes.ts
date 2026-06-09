@@ -65,6 +65,67 @@ type WorkerRouteDependencies = Readonly<{
   routeThreadFileRequest: OptionalEffectRoute
 }>
 
+const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
+  /^\/$/,
+  /^\/adjutant$/,
+  /^\/admin$/,
+  /^\/agents\/[^/]+$/,
+  /^\/artanis$/,
+  /^\/autopilot$/,
+  /^\/billing$/,
+  /^\/blog(?:\/[^/]+)?$/,
+  /^\/demo(?:\/.*)?$/,
+  /^\/docs(?:\/[^/]+)?$/,
+  /^\/forum(?:\/.*)?$/,
+  /^\/images$/,
+  /^\/mullet$/,
+  /^\/onboarding$/,
+  /^\/order$/,
+  /^\/orders\/[^/]+$/,
+  /^\/promises$/,
+  /^\/settings(?:\/[^/]+)?$/,
+  /^\/share\/[^/]+$/,
+  /^\/sites\/demo-checkout(?:\/[^/]+)?$/,
+  /^\/stats$/,
+  /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/,
+  /^\/t\/[^/]+$/,
+  /^\/usage$/,
+]
+
+const acceptsDocument = (request: Request): boolean => {
+  const accept = request.headers.get('accept')?.toLowerCase() ?? ''
+
+  return accept === '' || accept.includes('text/html') || accept.includes('*/*')
+}
+
+const pathLooksLikeFile = (pathname: string): boolean =>
+  /\/[^/]+\.[A-Za-z0-9]{1,12}$/.test(pathname)
+
+export const shouldRedirectUnknownDocumentToHome = (
+  request: Request,
+  pathname: string,
+): boolean => {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return false
+  }
+
+  if (!acceptsDocument(request) || pathLooksLikeFile(pathname)) {
+    return false
+  }
+
+  if (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/assets/') ||
+    pathname.startsWith('/auth/') ||
+    pathname.startsWith('/checkout') ||
+    pathname.startsWith('/openagents-agent-claim')
+  ) {
+    return false
+  }
+
+  return !knownDocumentPathPatterns.some(pattern => pattern.test(pathname))
+}
+
 export const makeWorkerRouteRequest =
   (dependencies: WorkerRouteDependencies) =>
   (): Effect.Effect<Response, never, OpenAgentsWorkerRequest> =>
@@ -338,6 +399,10 @@ export const makeWorkerRouteRequest =
         return yield* routeEffectOrResponse(
           dependencies.handleAssetRequest(request, env),
         )
+      }
+
+      if (shouldRedirectUnknownDocumentToHome(request, url.pathname)) {
+        return redirectResponse('/')
       }
 
       return yield* routeEffectOrResponse(
