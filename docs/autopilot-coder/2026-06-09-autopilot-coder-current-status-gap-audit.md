@@ -4,7 +4,8 @@ Date: 2026-06-09
 
 Status: current repo audit after the OA-AUTO P0 issue flow, the hosted Gemini
 closeout bridge commit, OA-AUTO-019 production Pylon placement wiring, and
-OA-AUTO-020 durable Pylon assignment lease creation.
+OA-AUTO-020 durable Pylon assignment lease creation, and OA-AUTO-021 normalized
+coding assignment payload contract.
 This document is intentionally stricter than
 the implementation log: it distinguishes route-harness proof from a real paid
 agent doing real coding work.
@@ -27,15 +28,19 @@ It also cross-checks the current implementation surfaces those docs describe:
 - `apps/openagents.com/workers/api/src/autopilot-work-placement-selector.ts`
 - `apps/openagents.com/workers/api/src/autopilot-work-pylon-assignment-synthesizer.ts`
 - `apps/openagents.com/workers/api/src/autopilot-work-fallback-lease-adapter.ts`
+- `apps/openagents.com/workers/api/src/autopilot-coding-assignment.ts`
 - `apps/openagents.com/workers/api/src/l402-payment-headers.ts`
 - `apps/openagents.com/workers/api/src/openagents-openapi.ts`
 - `apps/openagents.com/workers/api/src/openagents-capability-manifest.ts`
 - D1 migrations `0140` through `0144` for Autopilot work orders.
 - production Pylon API store wiring in `apps/openagents.com/workers/api/src/index.ts`.
 
-The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed as of
-this audit. Those issues built the first Autopilot work-order spine. They did
-not, by themselves, build the full paid coding-agent product.
+The GitHub issue flow for `OA-AUTO-001` through `OA-AUTO-018` is closed, and
+the follow-on P0 issues `OA-AUTO-019` through `OA-AUTO-021` are also closed as
+of this audit. Those issues built the first Autopilot work-order spine plus the
+initial production Pylon placement, Pylon assignment lease, and normalized
+assignment-payload pieces. They did not, by themselves, build the full paid
+coding-agent product.
 
 ## Executive Finding
 
@@ -210,7 +215,7 @@ Current status by phase:
 | Pylon local path | Lease creation, Pylon polling, and Pylon acceptance built | Needs worker execution, progress, artifact submission, and closeout ingestion. |
 | Hosted fallback path | Lease intent plus test executor hook built | Needs production executor binding and provider/runtime policy. |
 | SHC/cloud fallback path | Lease intent built | Needs production runner adapter and lease execution. |
-| Probe coding loop | Existing Probe/Pylon runtime pieces exist | Needs normalized Autopilot coding assignment contract and real worker execution path. |
+| Probe coding loop | Normalized coding assignment contract now exists; existing Probe/Pylon runtime pieces exist | Needs real worker execution path that consumes the payload and returns artifacts. |
 | Result ingestion | Public-safe closeout refs built for injected executor | Needs real diff/test/preview/log/artifact ingestion with redaction and operator-only evidence refs. |
 | Acceptance | Not built for Autopilot work orders | Needs customer review, operator review, accepted-work state, and revision request API. |
 | GitHub writeback | Not built in Autopilot work path | Needs branch/commit/PR lane after repo grants and proof/test gates. |
@@ -226,9 +231,9 @@ now contains stale rows that say there is no `POST /api/autopilot/work`
 contract, no event stream, no quote service, no placement model, and no
 fallback lease shape. Those are now built.
 
-The implementation log is more current: `OA-AUTO-001` through `OA-AUTO-018`
-are implemented, and the hosted execution closeout bridge was added after
-those issues.
+The implementation log is more current: `OA-AUTO-001` through `OA-AUTO-021`
+are implemented, and the hosted execution closeout bridge was added after the
+first issue sequence.
 
 The difference between "we did the issue flow" and "the product works" is:
 
@@ -321,6 +326,8 @@ Current acceptance state:
 
 ### Step 4: Normalize the real coding assignment contract
 
+Status: implemented by OA-AUTO-021.
+
 Build:
 
 - A single assignment payload shared by requester Pylon, SHC, cloud sandbox,
@@ -342,6 +349,14 @@ Acceptance:
 
 - The same Autopilot work order can be leased to Pylon or fallback lanes using
   one normalized payload.
+
+Current acceptance state:
+
+- Built: shared requester-Pylon/fallback assignment schema, work-order mapping,
+  public-safe ref-only objective/repository/authority/budget/trace/closeout
+  fields, and unsafe fixture rejection.
+- Still open: real workers must consume this payload and submit closeout
+  artifacts in OA-AUTO-022 and later closeout-ingestion work.
 
 ### Step 5: Implement the actual worker loop for one lane
 
@@ -517,6 +532,7 @@ work."
 OpenAgents now has a serious Autopilot Coder control-plane skeleton, including
 typed requests, quotes, 402-shaped payment retry, placement, assignment intents,
 production Pylon placement input, durable no-spend Pylon assignment lease
-creation, and delivered closeout projection in a route harness; it still does
-not have a live paid path where a real agent pays, a real worker codes,
-artifacts are reviewed, and eligible workers/providers are settled.
+creation, a normalized coding assignment payload, and delivered closeout
+projection in a route harness; it still does not have a live paid path where a
+real agent pays, a real worker codes, artifacts are reviewed, and eligible
+workers/providers are settled.

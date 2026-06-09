@@ -649,3 +649,42 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-assignment-planner.test.ts src/pylon-api-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-021: Normalized Autopilot Coding Assignment Payload
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4612`
+
+Status: implemented.
+
+Implemented:
+
+- Added `openagents.autopilot_coding_assignment.v1` in
+  `apps/openagents.com/workers/api/src/autopilot-coding-assignment.ts`.
+- Defined the shared requester-Pylon, fallback, SHC/cloud, hosted Gemini, and
+  future privacy-lane assignment payload with:
+  - ref-only objective;
+  - task kind;
+  - public GitHub repository refs;
+  - branch/write/PR/deploy/read/spend authority refs;
+  - allowed tool kinds;
+  - auth refs;
+  - acceptance criteria refs;
+  - budget, quote, payment challenge, spend-cap, timeout, and settlement mode;
+  - trace policy that explicitly forbids raw prompts, provider payloads,
+    runner logs, and source archives;
+  - closeout schema for diffs, test/blocker evidence, result refs, and
+    no-self-acceptance.
+- Added mapping from current Autopilot task records plus requester-Pylon and
+  fallback assignment intents into the normalized assignment payload.
+- Kept the payload public-safe: private repositories are rejected until a
+  private/secret-broker lane is modeled, and unsafe local paths, raw prompts,
+  provider payloads, payment material, wallet material, source archives, and
+  secrets are rejected before decode or projection.
+- Added tests for requester-Pylon mapping, fallback mapping, unsafe fixture
+  rejection, and private repository rejection.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-coding-assignment.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-assignment-planner.test.ts src/pylon-api-routes.test.ts src/autopilot-coding-assignment.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
