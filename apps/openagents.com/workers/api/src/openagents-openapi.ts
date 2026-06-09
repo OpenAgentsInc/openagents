@@ -1368,6 +1368,7 @@ const requestSchemas = (): JsonSchema => ({
       displayName: { type: 'string', minLength: 1, maxLength: 120 },
       slug: { type: 'string', minLength: 3, maxLength: 80 },
       externalId: { type: 'string', minLength: 1, maxLength: 200 },
+      bolt12Offer: { type: 'string', minLength: 1, maxLength: 4096 },
       metadata: {
         type: 'object',
         additionalProperties: true,

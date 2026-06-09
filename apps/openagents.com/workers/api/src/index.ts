@@ -4651,6 +4651,41 @@ export const handleProgrammaticAgentRegistration = async (
       parsed,
     )
 
+    if (parsed.bolt12Offer !== undefined && parsed.bolt12Offer !== null) {
+      // Automatically register the tip wallet so the user doesn't have to call claim-tip-wallet
+      const { upsertForumTipRecipientWallet } = await import('./forum/repository')
+      const db = openAgentsDatabase(env)
+      
+      await Effect.runPromise(
+        upsertForumTipRecipientWallet(db, {
+          actorRef: `agent:${registration.user.id}`,
+          bolt12Offer: parsed.bolt12Offer,
+          caveatRefs: [
+            'caveat.public.forum_tip_recipient.creator_settlement_pending',
+          ],
+          claimPolicyRefs: [
+            'policy.public.forum_tip_recipient.agent_registration_auto_claimed',
+          ],
+          custodyPolicyRefs: [
+            'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
+          ],
+          disabledAt: null,
+          id: `forum_tip_recipient_wallet.user_${registration.user.id}.auto_claim`,
+          payoutTargetApprovalRef: null,
+          providerClass: 'mdk_agent_wallet',
+          readinessRefs: [
+            'readiness.public.mdk_agent.daemon_running',
+            'readiness.public.mdk_agent.receive_ready',
+            'readiness.public.mdk_agent.setup_present'
+          ],
+          receiveCapabilityRef: `receive_capability.public.auto_${registration.user.id}.redacted`,
+          sourceRef: 'source.public.forum_tip_recipient.agent_registration_auto_claim',
+          state: 'ready',
+          walletRef: `wallet.public.auto_${registration.user.id}.redacted`
+        })
+      )
+    }
+
     return withAgentRateLimitHeaders(
       jsonResponse(registration, { status: 201 }),
     )

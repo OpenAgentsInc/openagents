@@ -21,6 +21,12 @@ export const ProgrammaticAgentRegistrationRequest = S.Struct({
     NonEmptyTrimmedString.check(S.isPattern(SIMPLE_EMAIL_PATTERN)),
   ),
   metadata: S.optionalKey(S.Record(S.String, S.Unknown)),
+  bolt12Offer: S.optionalKey(
+    TrimmedString.check(
+      S.isMaxLength(4096),
+      S.isPattern(/^lno1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{16,4092}$/i),
+    ),
+  ),
 })
 
 export type ProgrammaticAgentRegistrationRequest =
