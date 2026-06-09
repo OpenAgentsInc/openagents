@@ -239,3 +239,32 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-009: Buyer Funding Versus Worker Payout Authority
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4583`
+
+Status: implemented.
+
+Implemented:
+
+- Added a `funding` projection to Autopilot work-order responses.
+- Represented buyer funding separately from worker payout authority with:
+  - `buyerFundingState`
+  - `buyerPaymentProofRef`
+  - `fundedAmountCents`
+  - `quoteRef`
+  - `settlementBlockedReasonRef`
+  - `settlementEligible: false`
+  - `workerPayoutEligible: false`
+- Kept free/no-worker-payout work in `not_required` funding state.
+- Kept unpaid payable work in `payment_required` funding state.
+- Promoted paid L402/MDK retries to `funded` while still blocking settlement
+  on `settlement.accepted_work_required`.
+- Updated OpenAPI summary text so agent-readable docs expose the funding
+  projection.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

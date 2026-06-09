@@ -105,6 +105,19 @@ export type AutopilotWorkPaymentChallengeProjection = Readonly<{
   status: 'paid_ready' | 'payment_required'
 }>
 
+export type AutopilotWorkFundingProjection = Readonly<{
+  buyerFundingState: 'funded' | 'not_required' | 'payment_required'
+  buyerPaymentProofRef: string | null
+  fundedAmountCents: number
+  quoteRef: string
+  settlementBlockedReasonRef:
+    | 'settlement.accepted_work_required'
+    | 'settlement.buyer_payment_required'
+    | 'settlement.no_worker_payout_mode'
+  settlementEligible: false
+  workerPayoutEligible: false
+}>
+
 export type AutopilotWorkOrderRecord = Readonly<{
   accessRequestRefs: ReadonlyArray<string>
   agentCredentialId: string
@@ -133,6 +146,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   clientRequestRef: string
   createdAt: string
   eventStreamRef: string
+  funding: AutopilotWorkFundingProjection
   idempotent: boolean
   paymentChallenge: AutopilotWorkPaymentChallengeProjection | null
   paymentChallengeRef: string | null
@@ -511,6 +525,35 @@ const paymentRequiredResponse = (
   )
 }
 
+const fundingForRecord = (
+  record: AutopilotWorkOrderRecord,
+): AutopilotWorkFundingProjection => {
+  const quote = makeAutopilotWorkQuote(record.request)
+  const buyerFundingState = !quote.paymentRequired
+    ? 'not_required'
+    : record.buyerPaymentProofRef === null
+      ? 'payment_required'
+      : 'funded'
+  const settlementBlockedReasonRef =
+    record.request.paymentPolicy.settlementMode === 'no_worker_payout'
+      ? 'settlement.no_worker_payout_mode'
+      : buyerFundingState === 'payment_required'
+        ? 'settlement.buyer_payment_required'
+        : 'settlement.accepted_work_required'
+
+  return {
+    buyerFundingState,
+    buyerPaymentProofRef: record.buyerPaymentProofRef,
+    fundedAmountCents: buyerFundingState === 'funded'
+      ? quote.amountCents
+      : 0,
+    quoteRef: quote.quoteRef,
+    settlementBlockedReasonRef,
+    settlementEligible: false,
+    workerPayoutEligible: false,
+  }
+}
+
 const stateForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): OpenAgentsAutopilotWorkStateType => {
@@ -535,6 +578,7 @@ const projectionForRecord = (
   clientRequestRef: record.clientRequestRef,
   createdAt: record.createdAt,
   eventStreamRef: record.eventStreamRef,
+  funding: fundingForRecord(record),
   idempotent,
   paymentChallenge: paymentChallengeForRecord(record),
   paymentChallengeRef: record.paymentChallengeRef,

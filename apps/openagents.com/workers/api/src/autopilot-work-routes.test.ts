@@ -177,6 +177,15 @@ const responseJson = async (response: Response) =>
       }>>
       buyerPaymentProofRef?: string | null
       accessRequestRefs?: ReadonlyArray<string>
+      funding?: Readonly<{
+        buyerFundingState: string
+        buyerPaymentProofRef: string | null
+        fundedAmountCents: number
+        quoteRef: string
+        settlementBlockedReasonRef: string
+        settlementEligible: boolean
+        workerPayoutEligible: boolean
+      }>
       idempotent: boolean
       paymentChallenge?: Readonly<{
         amountCents: number
@@ -281,6 +290,13 @@ describe('Autopilot work routes', () => {
     expect(body.work).toMatchObject({
       accessRequirements: [],
       accessRequestRefs: [],
+      funding: {
+        buyerFundingState: 'not_required',
+        fundedAmountCents: 0,
+        settlementBlockedReasonRef: 'settlement.no_worker_payout_mode',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
       paymentChallengeRef: null,
       state: 'accepted_free_slice',
     })
@@ -337,6 +353,16 @@ describe('Autopilot work routes', () => {
     expect(first.headers.get('www-authenticate')).toContain('L402')
     expect(replay.status).toBe(402)
     expect(firstJson.work).toMatchObject({
+      funding: {
+        buyerFundingState: 'payment_required',
+        buyerPaymentProofRef: null,
+        fundedAmountCents: 0,
+        quoteRef:
+          'quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+        settlementBlockedReasonRef: 'settlement.buyer_payment_required',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
       paymentChallenge: {
         amountCents: 6400,
         challengeRef:
@@ -360,6 +386,16 @@ describe('Autopilot work routes', () => {
     expect(paid.status).toBe(200)
     expect(paidJson.work).toMatchObject({
       buyerPaymentProofRef: 'payment_proof.autopilot_work.test_1',
+      funding: {
+        buyerFundingState: 'funded',
+        buyerPaymentProofRef: 'payment_proof.autopilot_work.test_1',
+        fundedAmountCents: 6400,
+        quoteRef:
+          'quote.autopilot_work.client.example.20260609.002.6400.openagents.autopilot_work_quote.v1',
+        settlementBlockedReasonRef: 'settlement.accepted_work_required',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
       paymentChallenge: {
         status: 'paid_ready',
       },
@@ -370,6 +406,7 @@ describe('Autopilot work routes', () => {
     expect(detailJson.work?.buyerPaymentProofRef).toBe(
       'payment_proof.autopilot_work.test_1',
     )
+    expect(detailJson.work?.funding).toEqual(paidJson.work?.funding)
     expect(detailJson.work?.paymentChallengeRef).toBe(
       firstJson.work?.paymentChallengeRef,
     )
@@ -410,9 +447,24 @@ describe('Autopilot work routes', () => {
       kind: 'mdk_checkout',
       status: 'payment_required',
     })
+    expect(firstJson.work?.funding).toMatchObject({
+      buyerFundingState: 'payment_required',
+      buyerPaymentProofRef: null,
+      fundedAmountCents: 0,
+      settlementBlockedReasonRef: 'settlement.buyer_payment_required',
+      settlementEligible: false,
+      workerPayoutEligible: false,
+    })
     expect(paid.status).toBe(200)
     expect(paidJson.work).toMatchObject({
       buyerPaymentProofRef: 'checkout_proof.autopilot_work.test_1',
+      funding: {
+        buyerFundingState: 'funded',
+        fundedAmountCents: 6400,
+        settlementBlockedReasonRef: 'settlement.accepted_work_required',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
       paymentChallenge: {
         kind: 'mdk_checkout',
         status: 'paid_ready',
