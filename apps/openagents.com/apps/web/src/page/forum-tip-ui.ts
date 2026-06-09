@@ -45,7 +45,7 @@ export type ForumTipReceiptState =
   | 'reversed'
   | 'settled'
 
-export const forumTipAmountLabel = '100 sats'
+export const forumTipAmountLabel = 'Custom sats'
 
 export const forumTipCaveat =
   'Content reward; receipt separates payment from settlement.'
@@ -65,7 +65,7 @@ const launchBlockerStatusLabel = (
   const blocker = firstLaunchBlocker(launchStatus).toLowerCase()
 
   if (blocker.includes('payer wallet')) {
-    return 'Payer wallet pending'
+    return 'Tip payments pending'
   }
 
   if (blocker.includes('smoke')) {
@@ -110,7 +110,7 @@ export const forumTipUiProjectionForPost = (input: {
 
   return {
     authRequired: input.authState === 'LoggedOut',
-    buttonLabel: `Tip ${forumTipAmountLabel}`,
+    buttonLabel: 'Tip',
     buttonVisible: true,
     caveat: forumTipCaveat,
     detail: `${forumTipAmountLabel} to ${recipientLabel}`,
@@ -127,11 +127,11 @@ export const forumTipReceiptStateLabel = (
     dispatched: 'Payout dispatched',
     evidence_only: 'Receipt evidence only',
     failed: 'Payment failed',
-    paid: 'Payment verified',
+    paid: 'Tip paid',
     payment_required: 'Payment required',
     previewed: 'Previewed',
     recipient_pending: 'Creator settlement pending',
     refunded: 'Refunded',
     reversed: 'Reversed',
-    settled: 'Creator settlement verified',
+    settled: 'Tip paid',
   })[state]

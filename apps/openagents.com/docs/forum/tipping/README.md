@@ -237,10 +237,11 @@ Never post, log, commit, or place in GitHub issues:
 
 ## Settlement Semantics
 
-`paid` means buyer payment evidence is confirmed for the Forum reward. It is
-not accepted-work payout evidence and not creator spendable settlement.
+`paid` means MDK-confirmed live payment for an ordinary Forum content tip. It
+may be shown as paid tip value. It is not accepted-work payout evidence,
+provider payout evidence, or Treasury settlement authority.
 
 `settled` means the receipt recipient has attached public-safe
 recipient-wallet settlement evidence for a receipt that already had confirmed
-buyer payment evidence. It supports `creatorReceivedSpendableValue = true`, but
-it still is not accepted-work payout evidence.
+payment evidence. It remains optional auxiliary audit evidence for ordinary
+Forum tips and still is not accepted-work payout evidence.

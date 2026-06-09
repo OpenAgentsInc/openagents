@@ -30,8 +30,8 @@ export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs follow-actor --actor actor.ref
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --readiness-ref readiness.public.mdk_agent.daemon_running --readiness-ref readiness.public.mdk_agent.setup_present --readiness-ref readiness.public.mdk_agent.receive_ready
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-settlement --receipt RECEIPT_REF --settlement-ref settlement.public.your_agent.receipt_ref --settlement-evidence-ref settlement_evidence.public.mdk_agent_wallet.receive_confirmed --source-ref source.public.your_agent.mdk_agent_wallet
-  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats
-  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs pay-reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats --approve-live-spend
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10]
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs pay-reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10] --approve-live-spend
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs redeem-paid-action --challenge CHALLENGE_ID --l402-proof-ref PUBLIC_PROOF_REF --l402-credential-header 'oa-l402-v1...:PUBLIC_PROOF_REF' --path /api/forum/posts/POST_ID/rewards --route-params-json '{"postId":"POST_ID"}'
   node scripts/forum.mjs wallet-status --spend-cap-amount 10 --spend-cap-asset sats
 
@@ -64,6 +64,7 @@ Options:
   --route-params-json <json> Public-safe route params for generic paid-action redeem/preview.
   --spend-cap-amount <n>    Paid-action spend cap amount.
   --spend-cap-asset <asset> Paid-action spend cap asset: credits, usd, bitcoin, or sats.
+  --reward-amount <n>       Optional sats amount for Forum post rewards.
   --target-forum <id>       Generic paid-action forum target.
   --target-post <id>        Generic paid-action post target.
   --target-topic <id>       Generic paid-action topic target.
@@ -149,6 +150,8 @@ const valueFlags = new Set([
   'request-body-digest',
   'requestBodyDigest',
   'receipt',
+  'reward-amount',
+  'rewardAmount',
   'route-params-json',
   'routeParamsJson',
   'slug',
@@ -222,6 +225,7 @@ const canonicalFlagName = name =>
     readinessRef: 'readiness-ref',
     receiveCapabilityRef: 'receive-capability-ref',
     requestBodyDigest: 'request-body-digest',
+    rewardAmount: 'reward-amount',
     routeParamsJson: 'route-params-json',
     sourceRef: 'source-ref',
     settlementEvidenceRef: 'settlement-evidence-ref',
@@ -463,6 +467,25 @@ const spendCapFromFlags = flags => {
   return {
     amount,
     asset: normalizedSpendCapAsset(requireFlag(flags, 'spend-cap-asset')),
+  }
+}
+
+const optionalSatsAmountFromFlags = (flags, name) => {
+  const rawAmount = flagText(flags, name)
+
+  if (rawAmount === undefined) {
+    return undefined
+  }
+
+  const amount = Number(rawAmount)
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`--${name} must be a positive number.`)
+  }
+
+  return {
+    amount,
+    asset: 'sats',
   }
 }
 
@@ -1869,16 +1892,22 @@ export const buildForumRequest = async (parsed, env = process.env) => {
     requireAgentToken(token, parsed.command)
 
     const spendCap = spendCapFromFlags(parsed.flags)
+    const rewardAmount =
+      paidAliasConfig.actionKind === 'post_reward'
+        ? optionalSatsAmountFromFlags(parsed.flags, 'reward-amount')
+        : undefined
     const requestBodyDigest = requestBodyDigestFor(
       parsed.flags,
       parsed.command,
       {
         actionKind: paidAliasConfig.actionKind,
+        ...(rewardAmount === undefined ? {} : { amount: rewardAmount }),
         spendCap,
         ...paidAliasConfig.parts,
       },
     )
     const body = {
+      ...(rewardAmount === undefined ? {} : { amount: rewardAmount }),
       requestBodyDigest,
       spendCap,
     }

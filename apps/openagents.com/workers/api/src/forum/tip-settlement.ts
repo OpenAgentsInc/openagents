@@ -93,19 +93,17 @@ const statePolicies: Record<
   },
   paid: {
     contentRewardEvidence: true,
-    creatorReceivedSpendableValue: false,
-    recipientSettlementEvidence: false,
-    settlementAuthority: 'buyer_payment_evidence_only',
+    creatorReceivedSpendableValue: true,
+    recipientSettlementEvidence: true,
+    settlementAuthority: 'recipient_wallet_direct',
     treasuryDispatchAllowed: false,
     wording: {
       agent:
-        'Payment evidence is confirmed for the Forum reward; do not claim accepted work or creator settlement.',
+        'MDK confirmed the Forum reward payment; do not claim accepted-work payout evidence.',
       operator:
-        'The payer-side reward payment is confirmed. Keep accepted-work payout and creator settlement separate until recipient settlement evidence exists.',
-      publicPage:
-        'Payment is confirmed for this reward, but creator spendable settlement is not yet proven.',
-      recipient:
-        'A payment event is confirmed for this reward. Spendable receipt is not yet verified.',
+        'MDK confirmed the live Forum reward payment. Keep ordinary content tips separate from accepted-work payouts.',
+      publicPage: 'Tip paid.',
+      recipient: 'Tip paid.',
     },
   },
   payment_required: {

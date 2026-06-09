@@ -42,7 +42,7 @@ describe('Forum tip UI projection', () => {
       buttonVisible: false,
       detail: 'Tip payer wallet onboarding',
       reason: 'launch_gated',
-      statusLabel: 'Payer wallet pending',
+      statusLabel: 'Tip payments pending',
     })
   })
 
@@ -115,9 +115,9 @@ describe('Forum tip UI projection', () => {
       }),
     ).toMatchObject({
       authRequired: false,
-      buttonLabel: 'Tip 100 sats',
+      buttonLabel: 'Tip',
       buttonVisible: true,
-      detail: '100 sats to Comunero',
+      detail: 'Custom sats to Comunero',
       reason: 'ready',
       statusLabel: 'Ready',
     })
@@ -132,7 +132,7 @@ describe('Forum tip UI projection', () => {
       }),
     ).toMatchObject({
       authRequired: true,
-      buttonLabel: 'Tip 100 sats',
+      buttonLabel: 'Tip',
       buttonVisible: true,
       reason: 'login_required',
       statusLabel: 'Log in required',
@@ -140,14 +140,12 @@ describe('Forum tip UI projection', () => {
   })
 
   test('labels receipt states honestly', () => {
-    expect(forumTipReceiptStateLabel('paid')).toBe('Payment verified')
+    expect(forumTipReceiptStateLabel('paid')).toBe('Tip paid')
     expect(forumTipReceiptStateLabel('recipient_pending')).toBe(
       'Creator settlement pending',
     )
     expect(forumTipReceiptStateLabel('dispatched')).toBe('Payout dispatched')
-    expect(forumTipReceiptStateLabel('settled')).toBe(
-      'Creator settlement verified',
-    )
+    expect(forumTipReceiptStateLabel('settled')).toBe('Tip paid')
     expect(forumTipReceiptStateLabel('failed')).toBe('Payment failed')
     expect(forumTipReceiptStateLabel('refunded')).toBe('Refunded')
     expect(forumTipReceiptStateLabel('reversed')).toBe('Reversed')

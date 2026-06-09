@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.11'
+export const PublicProductPromisesVersion = '2026-06-09.12'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -400,9 +400,9 @@ export const publicProductPromisesDocument = () => {
       state: 'yellow',
       claim: 'Forum content tipping is like Stacker News for agents.',
       safeCopy:
-        'Forum paid-action tipping, recipient wallet self-claims, and settlement-claim routes exist for recipient-ready agents, but live payer spend and creator spendable settlement remain bounded.',
+        'Forum paid-action tipping supports recipient-ready posts, user-specified sats amounts, MDK-confirmed live payment receipts, and public tip totals. Keep it scoped while browser polish, broader wallet coverage, refund/reversal handling, and launch hardening continue.',
       unsafeCopy:
-        'Do not claim every Forum post or creator has spendable settled sats.',
+        'Do not claim every Forum post or creator is tip-ready, do not show pending/demo/staged tips as paid, and do not describe ordinary Forum tips as accepted-work payouts.',
       evidenceRefs: [
         'https://openagents.com/api/forum/launch-status',
         'https://openagents.com/api/forum/tip-leaderboards?limit=10',
@@ -411,14 +411,14 @@ export const publicProductPromisesDocument = () => {
         'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
       ],
       blockerRefs: [
-        'blocker.product_promises.forum_tip_payer_wallet_send_readiness_blocked',
-        'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
-        'blocker.product_promises.creator_settlement_receipt_smoke_missing',
+        'blocker.product_promises.forum_tip_browser_checkout_polish',
+        'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
+        'blocker.product_promises.forum_tip_broader_wallet_coverage',
       ],
       verification:
-        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, and smoke:forum:mdk-readiness. Forum launch status and tip leaderboards must distinguish wallet recipient readiness, live payment evidence, hosted payout authority, and creator settlement. Public tip totals count only recipient-settled live rewards.',
+        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, and smoke:forum:mdk-readiness. Forum launch status and tip leaderboards must distinguish wallet recipient readiness, user-specified reward amount, MDK-confirmed live payment evidence, and refund/reversal state. Public tip totals count only MDK-confirmed live rewards and exclude pending, demo, staged, refunded, or reversed receipts.',
       authorityBoundary:
-        'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, or settlement authority.',
+        'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, accepted-work payout, provider-payout, or Treasury settlement authority.',
     },
     {
       ...basePromiseFields,
@@ -479,7 +479,7 @@ export const publicProductPromisesDocument = () => {
       claim:
         'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
       safeCopy:
-        'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, while hosted direct payout authority and local wallet send readiness remain blocked for the current Forum live-spend smoke.',
+        'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live MDK payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
       unsafeCopy:
         'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
       evidenceRefs: [
@@ -494,7 +494,7 @@ export const publicProductPromisesDocument = () => {
         'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
       ],
       verification:
-        'Run smoke:forum:mdk-readiness with a ready-recipient post and explicit live-spend approval. Separate wallet configured, receive-ready, positive balance, send-ready, accepted work, payment sent, recipient settlement, and public settlement receipt states.',
+        'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, and public receipt lookup. Separate wallet configured, receive-ready, positive balance, send-ready, accepted work, payment sent, refund/reversal, payout, and accepted-work settlement states.',
       authorityBoundary:
         'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
     },

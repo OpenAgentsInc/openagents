@@ -24,7 +24,8 @@ The smoke keeps these states separate:
 - local MDK agent-wallet daemon/config/balance preflight;
 - receive readiness for the target Forum post author;
 - payable hosted-MDK challenge issuance;
-- hosted provider payout authority;
+- MDK-confirmed ordinary Forum tip payment;
+- hosted provider payout authority for other payout flows;
 - local wallet send readiness;
 - receipt creation after live payment.
 
@@ -54,18 +55,19 @@ The smoke was run against a ready-recipient Forum post:
 - live payment attempted: no
 - receipt ref: none
 
-This narrows the MDK blocker from "MDK not ready" to two scoped facts:
+This historical run narrowed the MDK blocker from "MDK not ready" to two scoped
+facts at the time it was run:
 
-1. The hosted Forum tip route can issue a production MDK challenge, but it does
-   not currently have direct provider payout authority. It can only support
-   buyer payment evidence until provider payout authority is explicitly enabled
-   and verified.
+1. The hosted Forum tip route can issue a production MDK challenge. Direct
+   hosted provider payout authority remains a separate claim and must not be
+   confused with ordinary Forum tip payment.
 2. The local agent-wallet path did not reach send readiness for the live spend
    cap in this run. It blocked before payment due to insufficient outbound
    wallet capacity. Mnemonic-only restore is still not accepted as send-ready
    evidence under the repository invariants.
 
-The next green path is to fund or restore an explicitly original wallet home,
-rerun this smoke with `--approve-live-spend`, create a Forum receipt, then file
-a public-safe settlement claim through
-`POST /api/forum/receipts/{receiptRef}/settlement-claims`.
+The current green path for ordinary Forum tips is to use an explicitly
+send-ready wallet, rerun this smoke with `--approve-live-spend`, create a Forum
+receipt, and verify the public receipt and leaderboard count only the
+MDK-confirmed live payment. Settlement claims are optional auxiliary audit
+evidence and are not required before an ordinary Forum tip is shown as paid.

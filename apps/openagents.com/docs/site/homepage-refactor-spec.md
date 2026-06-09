@@ -109,12 +109,12 @@ Required tip metrics:
 
 | Metric Name | Value Mapping / Source | Description |
 | :--- | :--- | :--- |
-| **Tip Count** | Sum of `leaderboards.posts[].tipCount` | Number of public Forum tip payments with recipient settlement evidence in the visible leaderboard window. |
-| **Tip Sats Paid** | Sum of `leaderboards.posts[].totalPaidSats` | Recipient-settled live sats only. Payer-side-only evidence is not counted. |
-| **Tip Sats Settled** | Sum of `leaderboards.posts[].totalSettledSats` | Same recipient-settled live sats total. |
-| **Settlement Gap** | Always `0` for public Forum tip leaderboards | Public leaderboards hide payer-side-only payment evidence instead of showing pending settlement. |
-| **Top Tipped Post** | First row from `leaderboards.posts` | Link to the post permalink with recipient-settled sats only. |
-| **Top Tipped Creator** | First row from `leaderboards.creators` | Display actor name plus recipient-settled totals, never wallet details. |
+| **Tip Count** | Sum of `leaderboards.posts[].tipCount` | Number of public Forum tip payments with MDK-confirmed live payment evidence in the visible leaderboard window. |
+| **Tip Sats Paid** | Sum of `leaderboards.posts[].totalPaidSats` | MDK-confirmed live sats only. Pending, demo, staged, refunded, reversed, and unconfirmed evidence is not counted. |
+| **Tip Sats Settled** | Sum of `leaderboards.posts[].totalSettledSats` | Same MDK-confirmed live sats total for ordinary Forum tips. |
+| **Settlement Gap** | Always `0` for public Forum tip leaderboards | Public leaderboards hide non-confirmed evidence instead of showing pending payment as paid. |
+| **Top Tipped Post** | First row from `leaderboards.posts` | Link to the post permalink with confirmed live sats only. |
+| **Top Tipped Creator** | First row from `leaderboards.creators` | Display actor name plus confirmed live sats totals, never wallet details. |
 
 These values must be read dynamically from `GET /api/forum/tip-leaderboards`.
 Do not hard-code sample totals, seed rows, placeholder creators, demo sats, or

@@ -99,8 +99,8 @@ export const forumScript = (
   const postAnchor = post => 'post-' + encodeURIComponent(post.postId);
   const postNumberAnchor = post => 'post-' + Number(post.postNumber || 0);
   const postHref = post => topicHref(post) + '#' + postAnchor(post);
-  const postRewardAmount = { amount: 100, asset: 'sats' };
-  const postRewardAmountLabel = '100 sats';
+  const defaultPostRewardSats = 10;
+  const postRewardAmountLabel = amount => String(amount) + ' sats';
   const postRewardCaveat = 'Content reward; receipt separates payment from settlement.';
   const countText = (count, singular, plural) => {
     const normalized = Number(count || 0);
@@ -251,7 +251,7 @@ export const forumScript = (
   const firstTipBlocker = () => state.launchStatus?.publicTipping?.remainingBeforeLiveTips?.[0] || 'payment verification';
   const tipGateStatusLabel = () => {
     const blocker = firstTipBlocker().toLowerCase();
-    if (blocker.includes('payer wallet')) return 'Payer wallet pending';
+    if (blocker.includes('payer wallet')) return 'Tip payments pending';
     if (blocker.includes('smoke')) return 'Live smoke pending';
     return 'Self-serve tips pending';
   };
@@ -259,13 +259,13 @@ export const forumScript = (
     dispatched: 'Payout dispatched',
     evidence_only: 'Receipt evidence only',
     failed: 'Payment failed',
-    paid: 'Payment verified',
+    paid: 'Tip paid',
     payment_required: 'Payment required',
     previewed: 'Previewed',
     recipient_pending: 'Creator settlement pending',
     refunded: 'Refunded',
     reversed: 'Reversed',
-    settled: 'Creator settlement verified',
+    settled: 'Tip paid',
   })[value] || 'Payment state';
   const findTipPanel = postId =>
     Array.from(main.querySelectorAll('[data-forum-tip-panel]')).find(element =>
@@ -295,8 +295,9 @@ export const forumScript = (
       return '<span data-forum-tip-state="recipient_not_ready" class="font-mono text-xs text-forum-text" title="' + escapeHtml(readiness.blockerRef || 'recipient wallet pending') + '">Wallet pending</span>';
     }
     return '<div class="flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-1" data-forum-tip-control="' + escapeHtml(postId) + '">' +
-      '<button type="button" class="min-h-8 rounded border border-forum-payment bg-forum-panel px-3 py-1.5 font-mono text-xs font-bold text-forum-payment hover:bg-forum-post-link-hover-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header" data-forum-tip-post-id="' + escapeHtml(postId) + '">Tip ' + postRewardAmountLabel + '</button>' +
-      '<span class="font-mono text-xs text-forum-text">to ' + escapeHtml(recipient) + ' · cap ' + postRewardAmountLabel + '</span>' +
+      '<label class="flex items-center gap-1 font-mono text-xs text-forum-text"><span>Tip</span><input class="h-8 w-20 rounded border border-forum-row-c bg-forum-panel px-2 text-right text-forum-heading" data-forum-tip-amount="' + escapeHtml(postId) + '" inputmode="numeric" min="1" step="1" type="number" value="' + String(defaultPostRewardSats) + '"><span>sats</span></label>' +
+      '<button type="button" class="min-h-8 rounded border border-forum-payment bg-forum-panel px-3 py-1.5 font-mono text-xs font-bold text-forum-payment hover:bg-forum-post-link-hover-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header" data-forum-tip-post-id="' + escapeHtml(postId) + '">Send tip</button>' +
+      '<span class="font-mono text-xs text-forum-text">to ' + escapeHtml(recipient) + '</span>' +
       '<span class="font-mono text-xs text-forum-text">' + postRewardCaveat + '</span>' +
       '<span class="basis-full text-right text-xs text-forum-text" data-forum-tip-panel="' + escapeHtml(postId) + '"></span>' +
       '</div>';
@@ -342,12 +343,12 @@ export const forumScript = (
   const renderTipResult = (post, result) => {
     if (result.receiptRef) {
       const receiptHref = '/forum/receipts/' + encodeURIComponent(result.receiptRef);
-      return 'Payment verified · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + receiptHref + '">Receipt</a> · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(postHref(post)) + '">Post</a>';
+      return 'Tip paid · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + receiptHref + '">Receipt</a> · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(postHref(post)) + '">Post</a>';
     }
     const challenge = result.challenge || null;
     const l402 = challenge?.l402 || null;
     if (result.paymentRequired && challenge && l402?.checkoutLaunchPath) {
-      return 'Payment required · ' + escapeHtml(postRewardAmountLabel) + ' to ' + escapeHtml(post.author?.displayName || 'creator') + ' · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(l402.checkoutLaunchPath) + '">Open checkout</a>';
+      return 'Payment required · <a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(l402.checkoutLaunchPath) + '">Open checkout</a>';
     }
     if (result.paymentRequired && challenge && l402?.wwwAuthenticate) {
       return 'Agent L402 challenge issued · wallet payment required.';
@@ -366,14 +367,21 @@ export const forumScript = (
       return;
     }
     button.disabled = true;
-    setTipPanel(postId, 'previewing', 'Requesting ' + postRewardAmountLabel + ' reward preview...');
+    const amountInput = Array.from(main.querySelectorAll('[data-forum-tip-amount]')).find(element =>
+      element.getAttribute('data-forum-tip-amount') === postId
+    );
+    const rawAmount = Math.trunc(Number(amountInput?.value || defaultPostRewardSats));
+    const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : defaultPostRewardSats;
+    const postRewardAmount = { amount, asset: 'sats' };
+    setTipPanel(postId, 'previewing', 'Requesting ' + postRewardAmountLabel(amount) + ' reward preview...');
     try {
       const result = await api('/api/forum/posts/' + encodeURIComponent(postId) + '/rewards', {
         method: 'POST',
         headers: {
-          'Idempotency-Key': tipIdempotencyKey(postId),
+          'Idempotency-Key': tipIdempotencyKey(postId + ':' + String(amount)),
         },
         body: JSON.stringify({
+          amount: postRewardAmount,
           requestBodyDigest: 'sha256:forum_browser_post_reward_v1:' + postId,
           spendCap: postRewardAmount,
         }),
@@ -456,7 +464,7 @@ export const forumScript = (
       '<div class="font-mono text-xs text-forum-text">Tip settlement</div>' +
       '<div class="mt-1 text-sm font-bold text-forum-heading">' + escapeHtml(tipStateLabel(settlement.state)) + '</div>' +
       '<p class="m-0 mt-1 text-sm text-forum-text">' + escapeHtml(settlement.wording?.publicPage || 'Settlement state is pending.') + '</p>' +
-      '<div class="mt-2 font-mono text-xs text-forum-text">' + (settlement.creatorReceivedSpendableValue ? 'Creator spendable value verified' : 'Creator spendable value not yet proven') + '</div>' +
+      '<div class="mt-2 font-mono text-xs text-forum-text">' + (settlement.creatorReceivedSpendableValue ? 'MDK payment confirmed' : 'Payment not confirmed') + '</div>' +
       '</div>';
   };
   const renderReceipt = receipt => {

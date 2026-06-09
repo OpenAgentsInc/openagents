@@ -2195,11 +2195,6 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
         ).status
       }
-      const hasSettlementClaim = (receipt: ReceiptRow) =>
-        this.store.tipSettlementClaims.some(
-          item => item.receipt_id === receipt.id && item.archived_at === null,
-        )
-
       if (this.query.includes('ma.target_post_id AS post_id')) {
         const scopedPostIds = this.query.includes('ma.target_post_id IN (')
           ? new Set(this.values.map(String))
@@ -2235,9 +2230,8 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
 
           const status = paymentStatusForAction(action)
-          const settled = hasSettlementClaim(receipt)
 
-          if (status !== 'confirmed' || !settled) {
+          if (status !== 'confirmed') {
             continue
           }
 
@@ -2306,9 +2300,8 @@ class ForumRouteStatement implements D1PreparedStatement {
           }
 
           const status = paymentStatusForAction(action)
-          const settled = hasSettlementClaim(receipt)
 
-          if (status !== 'confirmed' || !settled) {
+          if (status !== 'confirmed') {
             continue
           }
 
@@ -4237,6 +4230,27 @@ describe('Forum routes', () => {
       },
       paymentRequired: true,
     })
+    const customAmountPreviewResponse = await route(store, path, {
+      body: {
+        amount: { amount: 15, asset: 'sats' },
+        requestBodyDigest: 'sha256:forum-reward-body-custom-amount',
+        spendCap: { amount: 15, asset: 'sats' },
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'forum-paid-reward-preview-custom-amount',
+      },
+      method: 'POST',
+    })
+    const customAmountPreview = await customAmountPreviewResponse.json()
+    expect(customAmountPreviewResponse.status).toBe(200)
+    expect(customAmountPreview).toMatchObject({
+      challenge: {
+        actionKind: 'post_reward',
+        price: { amount: 15, asset: 'sats' },
+      },
+      paymentRequired: true,
+    })
     expect(proofRefOnlyRedeem.status).toBe(402)
     await expect(proofRefOnlyRedeem.json()).resolves.toMatchObject({
       error: 'payment_verification_failed',
@@ -4261,7 +4275,8 @@ describe('Forum routes', () => {
         'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555#post-66666666-6666-4666-8666-666666666666',
       tipSettlement: {
         acceptedWorkPayoutEvidence: false,
-        creatorReceivedSpendableValue: false,
+        creatorReceivedSpendableValue: true,
+        recipientSettlementEvidence: true,
         state: 'paid',
         treasuryAcceptedWorkClaimAllowed: false,
       },
@@ -4273,7 +4288,7 @@ describe('Forum routes', () => {
         {
           acceptedWorkPayoutEvidence: false,
           amount: { amount: 10, asset: 'sats' },
-          creatorReceivedSpendableValue: false,
+          creatorReceivedSpendableValue: true,
           paymentState: 'confirmed',
           receiptRef: redemption.receiptRef,
           settlementState: 'paid',
@@ -4285,8 +4300,8 @@ describe('Forum routes', () => {
       summary: {
         paidCount: 1,
         totalCount: 1,
-        totalPaidSats: 0,
-        totalSettledSats: 0,
+        totalPaidSats: 10,
+        totalSettledSats: 10,
       },
     })
     expect(postDetailResponse.status).toBe(200)
@@ -4294,16 +4309,32 @@ describe('Forum routes', () => {
       post: {
         postId,
         tipStats: {
-          tipCount: 0,
-          totalPaidSats: 0,
-          totalSettledSats: 0,
+          tipCount: 1,
+          totalPaidSats: 10,
+          totalSettledSats: 10,
         },
       },
     })
     expect(leaderboardsResponse.status).toBe(200)
     expect(leaderboards).toMatchObject({
-      creators: [],
-      posts: [],
+      creators: [
+        {
+          actor: {
+            actorRef: 'actor.route-test',
+          },
+          tipCount: 1,
+          totalPaidSats: 10,
+          totalSettledSats: 10,
+        },
+      ],
+      posts: [
+        {
+          postId,
+          tipCount: 1,
+          totalPaidSats: 10,
+          totalSettledSats: 10,
+        },
+      ],
     })
     expect(store.moneyActions).toStrictEqual([
       expect.objectContaining({

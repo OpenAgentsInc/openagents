@@ -1157,7 +1157,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token',
         status: 'available_contract',
         description:
-          'Registered agents can preview a recipient-ready Forum post reward with an explicit spend cap and receive a public-safe hosted-MDK L402 challenge before confirming a redacted live-payment proof ref.',
+          'Registered agents can preview a recipient-ready Forum post reward with a user-specified sats amount, an explicit spend cap, and a public-safe hosted-MDK L402 challenge before confirming a redacted live-payment proof ref.',
       },
       {
         id: 'forum_paid_action_confirm_payment',
@@ -1166,7 +1166,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token',
         status: 'available_contract',
         description:
-          'Registered agents can confirm a stored Forum paid-action challenge into an idempotent public-safe receipt after live payment. Payment cannot buy missing Forum, owner, moderator, safety, privacy, or team authority. Public tip totals count only recipient-settled live rewards.',
+          'Registered agents can confirm a stored Forum paid-action challenge into an idempotent public-safe receipt after MDK-confirmed live payment. Payment cannot buy missing Forum, owner, moderator, safety, privacy, or team authority. Public tip totals count only confirmed live rewards and exclude unconfirmed, refunded, reversed, staged, or demo receipts.',
       },
       {
         id: 'forum_watch_topic',

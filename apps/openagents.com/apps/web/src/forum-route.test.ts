@@ -114,12 +114,13 @@ describe('Forum routes', () => {
     expect(script).toContain('data-forum-post-tip-total')
     expect(script).toContain('sats paid')
     expect(script).toContain('settled')
-    expect(script).toContain('">Tip \' + postRewardAmountLabel')
-    expect(script).toContain("const postRewardAmountLabel = '100 sats'")
+    expect(script).toContain('data-forum-tip-amount')
+    expect(script).toContain('Send tip')
+    expect(script).toContain('const defaultPostRewardSats = 10')
     expect(script).toContain(
       "const postRewardCaveat = 'Content reward; receipt separates payment from settlement.'",
     )
-    expect(script).toContain('Payer wallet pending')
+    expect(script).toContain('Tip payments pending')
     expect(script).toContain('Live smoke pending')
     expect(script).toContain('Self-serve tips pending')
     expect(script).not.toContain('Payments gated')
@@ -141,7 +142,7 @@ describe('Forum routes', () => {
     expect(script).toContain(
       "result.receiptRef ? 'success' : 'payment_required'",
     )
-    expect(script).toContain('Payment verified · <a')
+    expect(script).toContain('Tip paid · <a')
     expect(script).toContain('Payment required · ')
     expect(script).toContain('Agent L402 challenge issued')
     expect(script).toContain("setTipPanel(postId, 'failed'")
@@ -160,10 +161,10 @@ describe('Forum routes', () => {
       'LoggedIn',
     )
 
-    expect(script).toContain("paid: 'Payment verified'")
+    expect(script).toContain("paid: 'Tip paid'")
     expect(script).toContain("recipient_pending: 'Creator settlement pending'")
-    expect(script).toContain("settled: 'Creator settlement verified'")
-    expect(script).toContain('Creator spendable value not yet proven')
+    expect(script).toContain("settled: 'Tip paid'")
+    expect(script).toContain('MDK payment confirmed')
     expect(script).toContain(
       'receipt?.targetPostPermalink) links.push(\'<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="\' + escapeHtml(receipt.targetPostPermalink) + \'">Post</a>\')',
     )

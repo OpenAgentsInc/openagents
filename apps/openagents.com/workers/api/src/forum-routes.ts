@@ -246,6 +246,7 @@ const ForumTipRecipientClaimBody = S.Struct({
 
 const ForumPaidActionPreviewBody = S.Struct({
   actionKind: ForumPaidActionKind,
+  amount: S.optionalKey(ForumMoneyAmount),
   method: ForumMethod,
   path: S.Trim.check(S.isNonEmpty(), S.isMaxLength(400)),
   requestBodyDigest: S.Trim.check(S.isNonEmpty(), S.isMaxLength(200)),
@@ -255,6 +256,7 @@ const ForumPaidActionPreviewBody = S.Struct({
 })
 
 const ForumPaidActionAliasPreviewBody = S.Struct({
+  amount: S.optionalKey(ForumMoneyAmount),
   requestBodyDigest: S.Trim.check(S.isNonEmpty(), S.isMaxLength(200)),
   spendCap: ForumMoneyAmount,
 })
@@ -549,6 +551,52 @@ const ForumPaidActionPriceByKind: Readonly<
 const paidActionPriceForKind = (
   actionKind: ForumPaidActionKindType,
 ): ForumMoneyAmountType => ForumPaidActionPriceByKind[actionKind]
+
+const postRewardPriceForBody = (
+  actionKind: ForumPaidActionKindType,
+  amount: ForumMoneyAmountType | undefined,
+): ForumMoneyAmountType => {
+  if (amount === undefined) {
+    return paidActionPriceForKind(actionKind)
+  }
+
+  if (actionKind !== 'post_reward') {
+    return paidActionPriceForKind(actionKind)
+  }
+
+  if (
+    amount.asset !== 'sats' ||
+    !Number.isFinite(amount.amount) ||
+    amount.amount <= 0
+  ) {
+    return paidActionPriceForKind(actionKind)
+  }
+
+  return amount
+}
+
+const forumPaidActionAmountError = (
+  actionKind: ForumPaidActionKindType,
+  amount: ForumMoneyAmountType | undefined,
+): string | undefined => {
+  if (amount === undefined) {
+    return undefined
+  }
+
+  if (actionKind !== 'post_reward') {
+    return 'custom amount is only supported for Forum post rewards'
+  }
+
+  if (
+    amount.asset !== 'sats' ||
+    !Number.isFinite(amount.amount) ||
+    amount.amount <= 0
+  ) {
+    return 'Forum post reward amount must be a positive sats amount'
+  }
+
+  return undefined
+}
 
 const paidActionTargetObjectKind = (
   actionKind: ForumPaidActionKindType,
@@ -1960,6 +2008,11 @@ const previewPaidActionResponse = (
       return badRequest('Forum paid action path must be under /api/forum')
     }
 
+    const amountError = forumPaidActionAmountError(body.actionKind, body.amount)
+    if (amountError !== undefined) {
+      return yield* new ForumValidationError({ reason: amountError })
+    }
+
     const actor = yield* actorForRequest(request, dependencies)
     const resolved = yield* resolveForumPaidActionTarget(
       db,
@@ -1979,7 +2032,7 @@ const previewPaidActionResponse = (
       method: body.method,
       nonPayableDenial: resolved.nonPayableDenial,
       path: body.path,
-      price: paidActionPriceForKind(body.actionKind),
+      price: postRewardPriceForBody(body.actionKind, body.amount),
       publicProjection: defaultPublicProjection(
         `artifact.forum.paid_action.${body.actionKind}`,
       ),
@@ -2026,6 +2079,11 @@ const previewAliasPaidActionResponse = (
       request,
       S.decodeUnknownSync(ForumPaidActionAliasPreviewBody),
     )
+    const amountError = forumPaidActionAmountError(input.actionKind, body.amount)
+    if (amountError !== undefined) {
+      return yield* new ForumValidationError({ reason: amountError })
+    }
+
     const actor = yield* actorForRequest(request, dependencies)
     const resolved = yield* resolveForumPaidActionTarget(
       db,
@@ -2045,7 +2103,7 @@ const previewAliasPaidActionResponse = (
       method: 'POST',
       nonPayableDenial: resolved.nonPayableDenial,
       path: new URL(request.url).pathname,
-      price: paidActionPriceForKind(input.actionKind),
+      price: postRewardPriceForBody(input.actionKind, body.amount),
       publicProjection: defaultPublicProjection(
         `artifact.forum.paid_action.${input.actionKind}`,
       ),

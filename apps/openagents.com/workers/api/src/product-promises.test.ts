@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.11')
+    expect(decoded.version).toBe('2026-06-09.12')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -150,9 +150,9 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.forum_tip_payer_wallet_send_readiness_blocked',
-            'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
-            'blocker.product_promises.creator_settlement_receipt_smoke_missing',
+            'blocker.product_promises.forum_tip_browser_checkout_polish',
+            'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
+            'blocker.product_promises.forum_tip_broader_wallet_coverage',
           ]),
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',

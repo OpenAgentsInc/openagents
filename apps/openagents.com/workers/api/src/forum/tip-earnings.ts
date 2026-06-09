@@ -173,11 +173,11 @@ const summarizeEarnings = (
 ): ForumCreatorEarningsSummary => {
   const totalPaidSats = earnings
     .filter(earning => earning.amount.asset === 'sats')
-    .filter(earning => earning.tipSettlement.creatorReceivedSpendableValue)
+    .filter(earning => earning.paymentState === 'confirmed')
     .reduce((sum, earning) => sum + earning.amount.amount, 0)
   const totalSettledSats = earnings
     .filter(earning => earning.amount.asset === 'sats')
-    .filter(earning => earning.tipSettlement.creatorReceivedSpendableValue)
+    .filter(earning => earning.paymentState === 'confirmed')
     .reduce((sum, earning) => sum + earning.amount.amount, 0)
 
   return {
@@ -250,7 +250,6 @@ const readEarningRows = (
                      WHERE ma.action_kind = 'post_reward'
                        AND ma.earning_actor_ref IS NOT NULL
                        AND json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                       AND sc.id IS NOT NULL
                        AND ma.archived_at IS NULL`
   const scopedQuery =
     input.actorRef === null
@@ -282,9 +281,6 @@ const countEarningRows = (
                       JOIN forum_payment_events pe
                         ON pe.id = ma.payment_event_id
                        AND pe.archived_at IS NULL
-                      JOIN forum_tip_settlement_claims sc
-                        ON sc.receipt_id = r.id
-                       AND sc.archived_at IS NULL
                      WHERE ma.action_kind = 'post_reward'
                        AND ma.earning_actor_ref IS NOT NULL
                        AND json_extract(pe.public_projection_json, '$.status') = 'confirmed'
@@ -338,18 +334,15 @@ const readPostLeaderboardRows = (
                 p.actor_json AS actor_json,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN 1
                 END) AS tip_count,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_paid_sats,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_settled_sats
@@ -394,18 +387,15 @@ const readCreatorLeaderboardRows = (
         `SELECT p.actor_json AS actor_json,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN 1
                 END) AS tip_count,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_paid_sats,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_settled_sats

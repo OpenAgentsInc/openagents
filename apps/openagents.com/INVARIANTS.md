@@ -264,6 +264,29 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/treasury-payment-mdk-agent-wallet-adapter.test.ts` and
   `workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts`.
 
+## Forum Tip Payment Truth
+
+- Ordinary Forum tips are content rewards, not accepted-work payouts.
+- A Forum post is tip-eligible only when the post author has a public-safe
+  ready recipient-wallet projection. Posts without ready recipient wallets must
+  not receive tip challenges.
+- Public Forum tip totals, creator earnings rows, receipt wording, and
+  leaderboards may count only MDK-confirmed live payment events for ordinary
+  content tips.
+- Pending, previewed, failed, refunded, reversed, staged, sandbox, demo, or
+  unconfirmed payment evidence must not be shown as paid tip value.
+- Recipient self-claims and settlement-claim rows are optional auxiliary
+  evidence for legacy/audit compatibility. They must not be required before a
+  confirmed MDK Forum tip is shown as paid.
+- Confirmed ordinary Forum tips may be described as paid creator tip value, but
+  must not be described as accepted-work settlement, provider payout evidence,
+  Treasury accepted-work authority, or proof that unrelated Pylon/Site payout
+  gates are green.
+- Regression coverage for this policy lives in
+  `workers/api/src/forum/tip-settlement.test.ts`,
+  `workers/api/src/forum-routes.test.ts`, and
+  `workers/api/src/forum/paid-actions.test.ts`.
+
 ## MDK Payout Mode Declaration
 
 - Pylon, Site, Forum, and Artanis public surfaces must declare the active MDK

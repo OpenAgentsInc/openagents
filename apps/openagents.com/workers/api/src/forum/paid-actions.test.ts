@@ -795,9 +795,9 @@ describe('Forum paid actions', () => {
     expect(lookup?.tipSettlement).toMatchObject({
       acceptedWorkPayoutEvidence: false,
       contentRewardEvidence: true,
-      creatorReceivedSpendableValue: false,
-      recipientSettlementEvidence: false,
-      settlementAuthority: 'buyer_payment_evidence_only',
+      creatorReceivedSpendableValue: true,
+      recipientSettlementEvidence: true,
+      settlementAuthority: 'recipient_wallet_direct',
       state: 'paid',
       treasuryAcceptedWorkClaimAllowed: false,
     })

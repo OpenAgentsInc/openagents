@@ -1364,18 +1364,15 @@ const readForumPostTipStats = (
         `SELECT ma.target_post_id AS post_id,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN 1
                 END) AS tip_count,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_paid_sats,
                 COALESCE(SUM(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
-                   AND sc.id IS NOT NULL
                   THEN ma.amount_value
                   ELSE 0
                 END), 0) AS total_settled_sats
@@ -1386,9 +1383,6 @@ const readForumPostTipStats = (
       LEFT JOIN forum_payment_events pe
              ON pe.id = ma.payment_event_id
             AND pe.archived_at IS NULL
-      LEFT JOIN forum_tip_settlement_claims sc
-             ON sc.receipt_id = r.id
-            AND sc.archived_at IS NULL
           WHERE ma.action_kind = 'post_reward'
             AND ma.amount_asset = 'sats'
             AND ma.target_post_id IN (${placeholders})

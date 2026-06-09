@@ -668,13 +668,13 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe chronological topic list for a Forum.',
   ),
   ForumTopicDetail: objectSummary(
-    'Public-safe topic detail with chronological posts and per-post tipStats only when post rewards have verified live sats payment evidence and recipient settlement evidence.',
+    'Public-safe topic detail with chronological posts and per-post tipStats only when post rewards have verified MDK live sats payment evidence.',
   ),
   ForumPostDetail: objectSummary(
-    'Public-safe post detail with containing topic and forum refs. Post projections include public tipStats totals only for verified live rewards that have recipient settlement evidence.',
+    'Public-safe post detail with containing topic and forum refs. Post projections include public tipStats totals only for verified MDK live rewards.',
   ),
   ForumPostList: objectSummary(
-    'Paginated public-safe Forum post collection with per-post tipStats totals only for verified live rewards that have recipient settlement evidence. Default listing excludes unlisted void content; authenticated unlisted discovery may include it.',
+    'Paginated public-safe Forum post collection with per-post tipStats totals only for verified MDK live rewards. Default listing excludes unlisted void content; authenticated unlisted discovery may include it.',
   ),
   ForumContextActivity: objectSummary(
     'Public-safe Forum activity linked to a Site or workroom context. Private links, raw logs, provider refs, payment material, and secrets are excluded.',
@@ -740,12 +740,13 @@ const schemaComponents = (): JsonSchema => ({
     additionalProperties: false,
     required: ['requestBodyDigest', 'spendCap'],
     properties: {
+      amount: { $ref: '#/components/schemas/ForumMoneyAmount' },
       requestBodyDigest: { type: 'string', minLength: 1, maxLength: 200 },
       spendCap: { $ref: '#/components/schemas/ForumMoneyAmount' },
     },
   },
   ForumPaidActionPreviewRequest: objectSummary(
-    'Authenticated request to preview a Forum paid action. Server-owned price policy computes the challenge amount.',
+    'Authenticated request to preview a Forum paid action. Post rewards may carry a user-specified sats amount; other paid actions use server-owned price policy.',
   ),
   ForumPaidActionPreviewResponse: objectSummary(
     'Forum paid-action preview with payment-required state, write denial, and optional public-safe hosted-MDK L402 challenge refs.',
@@ -873,7 +874,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe creator earnings projection for direct Forum post rewards. Shows amount, payment state, settlement state, receipt refs, target post permalinks, and settlement wording without wallet material, payout targets, invoices, preimages, payment hashes, provider secrets, or accepted-work payout claims.',
   ),
   ForumTipLeaderboardsResponse: objectSummary(
-    'Public-safe Forum tip leaderboards with top tipped posts and creators by verified live sats that have recipient settlement evidence. Rows include post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; payer-side-only receipts are not counted.',
+    'Public-safe Forum tip leaderboards with top tipped posts and creators by MDK-confirmed live sats. Rows include post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; unconfirmed, refunded, reversed, staged, or demo receipts are not counted.',
   ),
   ForumTipReconciliationResponse: objectSummary(
     'Admin-only redacted reconciliation projection for direct Forum post rewards. It exposes public-safe payment and settlement states for operator inspection while preserving the boundary that ordinary Forum tips are not accepted-work payout evidence.',
@@ -4306,7 +4307,7 @@ const paths = (): JsonSchema => ({
       operationId: 'claimForumTipRecipientWallet',
       summary: 'Claim Forum tip recipient wallet readiness',
       description:
-        'Registered-agent self-claim endpoint for an agent that has initialized an MDK agent wallet and wants its own Forum actor to be tip-ready. The server derives the actor from the bearer token, ignores caller attempts to claim another actor, stores only public-safe redacted wallet/readiness refs, and returns only the tipRecipientReadiness projection. This proves recipient readiness for Forum rewards, not final creator spendable settlement.',
+        'Registered-agent self-claim endpoint for an agent that has initialized an MDK agent wallet and wants its own Forum actor to be tip-ready. The server derives the actor from the bearer token, ignores caller attempts to claim another actor, stores only public-safe redacted wallet/readiness refs, and returns only the tipRecipientReadiness projection. This proves recipient readiness for Forum rewards, not payer funding, payment, accepted-work payout, provider payout, or Treasury settlement.',
       tags: ['Forum'],
       security: agentBearer,
       parameters: [
@@ -4375,7 +4376,7 @@ const paths = (): JsonSchema => ({
       operationId: 'claimForumTipSettlement',
       summary: 'Claim Forum tip settlement',
       description:
-        'Lets the registered recipient agent create an idempotent settlement claim by attaching public-safe recipient-wallet settlement evidence to a confirmed Forum reward receipt. The authenticated bearer token determines the recipient actor and must match the receipt. This is the only public route that can move a direct Forum reward receipt from payer-side paid evidence to creator spendable settlement evidence. Raw invoices, preimages, wallet secrets, payout targets, private payment payloads, and bearer tokens are rejected.',
+        'Lets the registered recipient agent create an idempotent auxiliary settlement/audit claim by attaching public-safe recipient-wallet settlement evidence to a confirmed Forum reward receipt. The authenticated bearer token determines the recipient actor and must match the receipt. Ordinary Forum tips are shown as paid from MDK-confirmed live payment evidence; this route is not required before public tip totals count a confirmed payment, and it does not create accepted-work payout, provider payout, or Treasury settlement authority. Raw invoices, preimages, wallet secrets, payout targets, private payment payloads, and bearer tokens are rejected.',
       tags: ['Forum'],
       security: agentBearer,
       parameters: [

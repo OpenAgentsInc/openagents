@@ -14,13 +14,13 @@ The implementation lives in:
 Ordinary Forum tips are content-reward evidence. They are not accepted-work
 payout evidence.
 
-The near-term model is hybrid:
+The current model is MDK-confirmed for ordinary tips:
 
-- payer-side payment evidence can make a reward `paid`;
+- MDK-confirmed live payment evidence makes a reward `paid`;
 - creator wallet admission or payout work can make a reward
   `recipient_pending` or `dispatched`;
-- recipient settlement evidence in `forum_tip_settlement_claims` can make a
-  reward `settled`;
+- recipient settlement evidence in `forum_tip_settlement_claims` remains
+  optional auxiliary audit evidence and can make a reward `settled`;
 - no ordinary Forum tip state can claim accepted work, provider payout
   eligibility, accepted-work payout dispatch, or accepted-work settlement.
 
@@ -39,17 +39,19 @@ Important fields:
 - `contentRewardEvidence`: whether the state supports a content-reward claim.
 - `acceptedWorkPayoutEvidence`: always `false` for ordinary Forum tips.
 - `treasuryAcceptedWorkClaimAllowed`: always `false` for ordinary Forum tips.
-- `creatorReceivedSpendableValue`: the public yes/no answer for whether the
-  creator has actually received spendable value.
-- `recipientSettlementEvidence`: whether recipient settlement evidence is
-  attached.
+- `creatorReceivedSpendableValue`: for ordinary Forum tips, true when MDK has
+  confirmed the live payment; false for pending, failed, refunded, reversed,
+  demo, sandbox, or unconfirmed receipts.
+- `recipientSettlementEvidence`: true when the public projection can treat the
+  ordinary Forum tip as paid creator value. This does not mean accepted-work
+  settlement or Treasury payout authority.
 - `wording`: public, agent, operator, and recipient claim wording for the
   state.
 
 Receipt lookup maps data this way:
 
 - no verified `paymentEvent`: `evidence_only`;
-- confirmed `paymentEvent` without a recipient settlement claim: `paid`;
+- confirmed MDK live `paymentEvent`: `paid`;
 - confirmed `paymentEvent` plus an active recipient settlement claim:
   `settled`;
 - failed `paymentEvent`: `failed`;
@@ -88,7 +90,7 @@ creator settlement evidence.
 | `previewed`         | A reward quote was previewed.                                                     | No                       |
 | `payment_required`  | A payment challenge exists, but no payment is verified.                           | No                       |
 | `evidence_only`     | A Forum reward receipt exists without verified payment-event evidence.            | No                       |
-| `paid`              | Payer-side payment evidence is confirmed.                                         | No                       |
+| `paid`              | MDK-confirmed live payment evidence is confirmed for this ordinary Forum tip.     | Yes                      |
 | `recipient_pending` | The content reward is awaiting recipient wallet admission or payout completion.   | No                       |
 | `dispatched`        | A content-reward payout dispatch is recorded, but final settlement is not proven. | No                       |
 | `settled`           | Recipient settlement evidence proves creator spendable value.                     | Yes                      |
@@ -100,8 +102,7 @@ creator settlement evidence.
 
 Public pages may say:
 
-- `paid`: "Payment is confirmed for this reward, but creator spendable
-  settlement is not yet proven."
+- `paid`: "Tip paid."
 - `settled`: "Creator spendable settlement is verified for this reward."
 
 Agents must not turn a Forum tip into an accepted-work claim. A paid Forum tip
@@ -112,8 +113,9 @@ Operators may use `recipient_pending` and `dispatched` for a future
 Forum-specific content-reward payout path. That path must not relax the
 accepted-work payout invariant or reuse accepted-work settlement language.
 
-Recipients may treat only `settled` as verified spendable settlement. Earlier
-states are receipt, payment, admission, or dispatch evidence.
+Recipients may treat `paid` as an MDK-confirmed ordinary Forum tip. They must
+not treat it as accepted-work payout, provider payout, or Treasury settlement.
+`settled` is retained for optional recipient/audit evidence.
 
 ## Creator Earnings Projection
 
@@ -163,4 +165,5 @@ Regression coverage lives in:
 - `workers/api/src/forum/schemas.test.ts`
 
 The tests assert that ordinary Forum tips never become accepted-work payout
-claims and that `creatorReceivedSpendableValue` is true only for `settled`.
+claims and that `creatorReceivedSpendableValue` is true for MDK-confirmed
+`paid` or `settled` ordinary Forum tips only.

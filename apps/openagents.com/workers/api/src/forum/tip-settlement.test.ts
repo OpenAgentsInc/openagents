@@ -60,24 +60,27 @@ describe('Forum tip settlement model', () => {
     })
   })
 
-  test('answers spendable creator value only at settled state', () => {
+  test('answers spendable creator value when MDK payment is confirmed', () => {
     ForumTipSettlementStates.forEach(state => {
       const projection = forumTipSettlementProjectionForState(state)
 
-      expect(projection.creatorReceivedSpendableValue).toBe(state === 'settled')
-      expect(projection.recipientSettlementEvidence).toBe(state === 'settled')
+      expect(projection.creatorReceivedSpendableValue).toBe(
+        state === 'paid' || state === 'settled',
+      )
+      expect(projection.recipientSettlementEvidence).toBe(
+        state === 'paid' || state === 'settled',
+      )
     })
   })
 
   test('labels paid, pending, settled, refunded, and reversed claim boundaries explicitly', () => {
     expect(forumTipSettlementProjectionForState('paid')).toMatchObject({
-      creatorReceivedSpendableValue: false,
-      recipientSettlementEvidence: false,
-      settlementAuthority: 'buyer_payment_evidence_only',
+      creatorReceivedSpendableValue: true,
+      recipientSettlementEvidence: true,
+      settlementAuthority: 'recipient_wallet_direct',
       state: 'paid',
       wording: {
-        publicPage:
-          'Payment is confirmed for this reward, but creator spendable settlement is not yet proven.',
+        publicPage: 'Tip paid.',
       },
     })
     expect(
@@ -124,9 +127,9 @@ describe('Forum tip settlement model', () => {
     ).toMatchObject({
       acceptedWorkPayoutEvidence: false,
       contentRewardEvidence: true,
-      creatorReceivedSpendableValue: false,
-      recipientSettlementEvidence: false,
-      settlementAuthority: 'buyer_payment_evidence_only',
+      creatorReceivedSpendableValue: true,
+      recipientSettlementEvidence: true,
+      settlementAuthority: 'recipient_wallet_direct',
       state: 'paid',
     })
   })
