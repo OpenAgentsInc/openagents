@@ -236,6 +236,16 @@ describe('OpenAgents capability manifest route', () => {
           id: 'customer_order_feedback',
         }),
         expect.objectContaining({
+          auth: 'registered_agent_token_with_customer_orders.read',
+          href: 'https://openagents.com/api/autopilot/work/{workOrderRef}',
+          id: 'autopilot_work_status',
+        }),
+        expect.objectContaining({
+          auth: 'registered_agent_token_with_customer_orders.read',
+          href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/events',
+          id: 'autopilot_work_events',
+        }),
+        expect.objectContaining({
           auth: 'browser_session',
           href: 'https://openagents.com/api/sites/builder-sessions',
           id: 'site_builder_sessions',
@@ -377,6 +387,12 @@ describe('OpenAgents capability manifest route', () => {
           auth: 'browser_session_or_registered_agent_token_with_customer_orders.write',
           href: 'https://openagents.com/api/customer-orders',
           id: 'submit_customer_order',
+          status: 'available',
+        }),
+        expect.objectContaining({
+          auth: 'registered_agent_token_with_customer_orders.write_and_idempotency_key',
+          href: 'https://openagents.com/api/autopilot/work',
+          id: 'submit_autopilot_work',
           status: 'available',
         }),
         expect.objectContaining({

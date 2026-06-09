@@ -201,6 +201,17 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/agents/notifications', 'get').operationId,
     ).toBe('listAgentNotifications')
+    expect(operationAt(body, '/api/autopilot/work', 'post').operationId).toBe(
+      'createAutopilotWork',
+    )
+    expect(
+      operationAt(body, '/api/autopilot/work/{workOrderRef}', 'get')
+        .operationId,
+    ).toBe('getAutopilotWork')
+    expect(
+      operationAt(body, '/api/autopilot/work/{workOrderRef}/events', 'get')
+        .operationId,
+    ).toBe('listAutopilotWorkEvents')
     expect(operationAt(body, '/api/auth/session', 'get').operationId).toBe(
       'getAuthSession',
     )

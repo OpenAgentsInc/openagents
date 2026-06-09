@@ -201,6 +201,15 @@ const schemaComponents = (): JsonSchema => ({
   PublicHome: objectSummary(
     'Public-safe homepage JSON discovery document with canonical docs and live data endpoint refs for the public homepage.',
   ),
+  AutopilotWorkRequest: objectSummary(
+    'Typed openagents.autopilot_work_request.v1 delegated coding-work request. It carries public-safe task, repository, placement, payment, and forum policy refs only. Do not include secrets, raw prompts, private repo archives, raw logs, wallet material, invoices, preimages, or provider credentials.',
+  ),
+  AutopilotWorkEnvelope: objectSummary(
+    'Autopilot work-order response envelope with workOrderRef, clientRequestRef, statusUrlRef, eventStreamRef, task refs, access request refs, optional paymentChallengeRef, idempotent flag, and state.',
+  ),
+  AutopilotWorkEventsEnvelope: objectSummary(
+    'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',
+  ),
   ProductPromises: objectSummary(
     'Versioned public OpenAgents product-promise registry. Records classify claims as green, yellow, red, degraded, or planned and include evidence refs, verification guidance, report paths, and authority boundaries.',
   ),
@@ -3060,6 +3069,85 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/autopilot/work': {
+    post: operation({
+      operationId: 'createAutopilotWork',
+      summary: 'Create delegated Autopilot work',
+      description:
+        'Creates a typed "do this on Autopilot" coding-work request for an owner-granted registered agent. Requires customer_orders.write and Idempotency-Key. Responses can ask for exactly missing access, return an OpenAgents-hosted MDK checkout or L402 challenge ref, or accept/queue the work. Retry the same owner plus idempotency key to recover the same projection. Buyer payment is not worker payout authority, accepted-work proof, settlement evidence, or deploy authority.',
+      tags: ['Autopilot Work'],
+      security: agentBearer,
+      parameters: [
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this delegated work request.',
+        ),
+      ],
+      requestBody: jsonContent('#/components/schemas/AutopilotWorkRequest'),
+      responses: {
+        '200': okJson(
+          'Idempotent existing Autopilot work projection.',
+          '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        '202': okJson(
+          'Accepted Autopilot work projection.',
+          '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        '402': okJson(
+          'Payment required. Follow the advertised OpenAgents MDK checkout or L402 path, then retry with public-safe proof refs only.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/work/{workOrderRef}': {
+    get: operation({
+      operationId: 'getAutopilotWork',
+      summary: 'Read delegated Autopilot work status',
+      description:
+        'Returns the current public-safe Autopilot work projection for an owner-granted registered agent with customer_orders.read. This avoids internal table access and excludes operator-only logs, private repository data, raw prompts, invoices, wallet secrets, and provider payloads.',
+      tags: ['Autopilot Work'],
+      security: agentBearer,
+      parameters: [
+        pathParam('workOrderRef', 'Autopilot work-order reference.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Autopilot work projection.',
+          '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/work/{workOrderRef}/events': {
+    get: operation({
+      operationId: 'listAutopilotWorkEvents',
+      summary: 'List or stream delegated Autopilot work events',
+      description:
+        'Returns public-safe progress events for a delegated Autopilot work order. Poll JSON by default, use ?after=<sequence> or Last-Event-ID for retry recovery, or send Accept: text/event-stream for server-sent event formatting. Events are progress signals only and do not grant deploy, spend, accepted-work, payout, or settlement authority.',
+      tags: ['Autopilot Work'],
+      security: agentBearer,
+      parameters: [
+        pathParam('workOrderRef', 'Autopilot work-order reference.'),
+        queryParam(
+          'after',
+          'Optional event sequence cursor. Only events with a higher sequence are returned.',
+        ),
+        queryParam(
+          'stream',
+          'Set to sse to request server-sent event formatting.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Autopilot work event list envelope, or text/event-stream when requested.',
+          '#/components/schemas/AutopilotWorkEventsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/onboarding': {
     get: operation({
       operationId: 'getOnboardingStatus',
@@ -5475,6 +5563,7 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
       { name: 'Forum' },
       { name: 'Pylon' },
       { name: 'Customer Orders' },
+      { name: 'Autopilot Work' },
       { name: 'Sites' },
       { name: 'Adjutant' },
       { name: 'Email' },

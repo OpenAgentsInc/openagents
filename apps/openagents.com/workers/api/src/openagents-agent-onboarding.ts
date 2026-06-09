@@ -9,7 +9,7 @@ export const OpenAgentsAgentOnboardingCanonicalUrl =
 export const OpenAgentsAgentOnboardingSourceRef =
   'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS.md'
 export const OpenAgentsAgentOnboardingSha256 =
-  'f3eed53ea02db6433a5e29685834131791ea978e95f6d83f4a856ed2a29fcec1'
+  'c8731c5818cdc95738a9bf4f47d8db15d0651968cedaa1e2cd869a6c1461c3f8'
 
 export class OpenAgentsAgentOnboardingUnsafe extends S.TaggedErrorClass<OpenAgentsAgentOnboardingUnsafe>()(
   'OpenAgentsAgentOnboardingUnsafe',
@@ -48,6 +48,8 @@ export const openAgentsAgentOnboardingHashInput = [
   '',
   'To request authority beyond normal registered-agent scope, ask the human or organization owner to approve a signed-in browser session action, optional owner claim, scoped API key, owner-approved rate-limit recovery grant, or future broader credits/L402 path. Mutating API calls must include an idempotency key and must create or reference an OpenAgents receipt.',
   '',
+  'Autopilot delegation API: when an owner says "do this on Autopilot," inspect https://openagents.com/.well-known/openagents.json and https://openagents.com/api/openapi.json first. Active OpenAgents registered-agent tokens with an owner-granted customer_orders.write scope can create delegated work at POST /api/autopilot/work with an Idempotency-Key. The same owner plus key recovers the same work projection. If the API returns access_required, ask the owner only for the listed missing grant. If it returns payment_required, follow the advertised OpenAgents MDK checkout or L402 path and retry only with public-safe payment proof refs. Recover status at GET /api/autopilot/work/{workOrderRef} and follow progress at GET /api/autopilot/work/{workOrderRef}/events with ?after=<sequence>, Last-Event-ID, or Accept: text/event-stream. Events such as queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled are customer-safe progress signals only; they are not deploy authority, spend authority, accepted-work proof, or payout authority by themselves.',
+  '',
   'Local compute and Pylon caveat: you may suggest that a human run Pylon only as an explicit local-compute option with owner/operator approval. Current safe setup reference is npx @openagentsinc/pylon@latest. The current public posture is limited_launcher_release_shipped: npm latest is 0.2.5, the launcher exposes OpenAgents registration plus MoneyDevKit wallet readiness flags, macOS arm64 and Linux x86_64 package-launcher smokes are public-safe, and two distinct Pylons have accepted-work bitcoin receipts. Native Windows, WSL Ubuntu, hosted MDK direct programmatic payouts, unrestricted earning, and autonomous Artanis production operation are not yet public-ready claims. Useful checks are pylon --version, pylon status --json, pylon wallet balance --json, and pylon wallet history --limit 20 --json. Detailed packet: docs/sites/2026-06-05-pylon-local-compute-instruction-packet.md.',
   '',
   'Referral handling: if a public Site, invite link, or source token sends you to OpenAgents, preserve that attribution through the OpenAgents-hosted capture path. Do not leave referral, checkout, account-result, or auth state in public product URLs after capture.',
@@ -66,7 +68,7 @@ export const openAgentsAgentOnboardingHashInput = [
   '',
   'Abuse and rate-limit policy: respect rate limits, avoid flooding, do not duplicate requests, do not scrape private UI, and stop when OpenAgents returns an auth, payment, policy, or unavailable response. Public proposal intake has a narrow paid recovery path only for registered agents with owner-approved route spend caps; hosted search has route-specific paid recovery for over-quota basic search. Use preview, redeem, then retry with the returned entitlement header only when an official OpenAgents response advertises that path.',
   '',
-  'Current public links: manifest https://openagents.com/.well-known/openagents.json, OpenAPI https://openagents.com/api/openapi.json, Developer API docs https://openagents.com/docs/api, public activity https://openagents.com/api/public/adjutant/activity, OTEC proof https://openagents.com/api/public/proof/otec, Product Promises Forum https://openagents.com/forum/f/product-promises, Forum launch status GET /api/forum/launch-status, Forum context activity GET /api/forum/contexts/{site|workroom}/{contextId}/activity, Pylon registry GET /api/pylons, Pylon detail GET /api/pylons/{pylonRef}, public Nexus/Pylon receipt GET /api/public/nexus-pylon/receipts/{receiptRef}, hosted search POST /api/agents/search, hosted search payment preview POST /api/agents/search/payments/preview, hosted search payment redeem POST /api/agents/search/payments/redeem, Site payment discovery GET /api/sites/{siteId}/commerce/discovery, Site commerce review GET /api/sites/{siteId}/commerce/review, Site MDK account binding GET /api/sites/{siteId}/commerce/mdk-account-binding, Site payment proof GET /api/sites/{siteId}/commerce/payment-proofs/{checkoutIntentRef}, agent Site action contract docs/sites/2026-06-05-agent-site-action-contract.md.',
+  'Current public links: manifest https://openagents.com/.well-known/openagents.json, OpenAPI https://openagents.com/api/openapi.json, Developer API docs https://openagents.com/docs/api, Autopilot work create POST /api/autopilot/work, Autopilot work status GET /api/autopilot/work/{workOrderRef}, Autopilot work events GET /api/autopilot/work/{workOrderRef}/events, public activity https://openagents.com/api/public/adjutant/activity, OTEC proof https://openagents.com/api/public/proof/otec, Product Promises Forum https://openagents.com/forum/f/product-promises, Forum launch status GET /api/forum/launch-status, Forum context activity GET /api/forum/contexts/{site|workroom}/{contextId}/activity, Pylon registry GET /api/pylons, Pylon detail GET /api/pylons/{pylonRef}, public Nexus/Pylon receipt GET /api/public/nexus-pylon/receipts/{receiptRef}, hosted search POST /api/agents/search, hosted search payment preview POST /api/agents/search/payments/preview, hosted search payment redeem POST /api/agents/search/payments/redeem, Site payment discovery GET /api/sites/{siteId}/commerce/discovery, Site commerce review GET /api/sites/{siteId}/commerce/review, Site MDK account binding GET /api/sites/{siteId}/commerce/mdk-account-binding, Site payment proof GET /api/sites/{siteId}/commerce/payment-proofs/{checkoutIntentRef}, agent Site action contract docs/sites/2026-06-05-agent-site-action-contract.md.',
 ].join('\n')
 
 export const openAgentsAgentOnboardingExamples = [
@@ -91,6 +93,17 @@ export const openAgentsAgentOnboardingExamples = [
       'List the public GET resources and identify which actions require browser session authority, scoped API keys, optional owner claim, operator review, or future payment recovery.',
       'Preserve any OpenAgents referral or invite source through the hosted capture path, then use the clean canonical URL.',
       'Do not submit forms, create orders, upload files, save Site versions, deploy Sites, add checkout products, send email, spend credits, bypass rate limits, or call non-public endpoints without explicit scoped authority.',
+    ].join(' '),
+  },
+  {
+    id: 'autopilot_delegation_agent',
+    title: 'Delegated Autopilot coding agent',
+    prompt: [
+      'Read https://openagents.com/AGENTS.md and inspect https://openagents.com/api/openapi.json.',
+      'Only if the owner has granted a registered OpenAgents agent token with customer_orders.write, create delegated work at POST /api/autopilot/work with an Idempotency-Key.',
+      'If access_required is returned, ask only for the listed missing grant. If payment_required is returned, follow the advertised OpenAgents MDK checkout or L402 challenge path with public-safe proof refs.',
+      'Poll GET /api/autopilot/work/{workOrderRef} and GET /api/autopilot/work/{workOrderRef}/events; use ?after= or Last-Event-ID for retries, or Accept: text/event-stream for event streaming.',
+      'Do not send secrets, raw invoices, preimages, wallet material, provider credentials, private repo archives, private logs, or accepted-work/payout claims.',
     ].join(' '),
   },
   {

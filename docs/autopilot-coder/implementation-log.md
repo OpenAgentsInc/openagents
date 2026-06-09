@@ -87,3 +87,31 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-request.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-004: Agent-Readable Autopilot Docs
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4578`
+
+Status: implemented.
+
+Implemented:
+
+- Added Autopilot delegated-work discovery to the live `/AGENTS.md` guidance
+  and synced the public asset copy.
+- Updated the exported `/AGENTS.md` sha256 used by the capability manifest.
+- Added generated onboarding guidance and a delegated Autopilot coding-agent
+  example prompt.
+- Added `submit_autopilot_work`, `autopilot_work_status`, and
+  `autopilot_work_events` entries to `/.well-known/openagents.json`.
+- Added OpenAPI schemas and operations for:
+  - `POST /api/autopilot/work`
+  - `GET /api/autopilot/work/{workOrderRef}`
+  - `GET /api/autopilot/work/{workOrderRef}/events`
+- Documented idempotency, status recovery, SSE/event cursor recovery, MDK/L402
+  payment handling, and the boundary that buyer payment is not deploy,
+  accepted-work, payout, or settlement authority.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/openagents-capability-manifest-routes.test.ts src/openagents-openapi-routes.test.ts src/openagents-agent-onboarding-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
