@@ -8,6 +8,7 @@ import path from "node:path";
 import {
   assertTrustedReleaseAuthor,
   bootstrapInstalledPylon,
+  buildOpenAgentsPylonLaunchEvidenceBundle,
   buildAssetNames,
   createTelemetryClient,
   DEFAULT_UPDATE_CHECK_INTERVAL_MS,
@@ -1532,6 +1533,23 @@ describe("@openagentsinc/pylon bootstrap", () => {
         status: "online",
       }),
     );
+    expect(summary.openAgentsLaunchEvidence).toEqual(
+      expect.objectContaining({
+        assignmentWorkerLoopReady: false,
+        earningClaimAllowed: false,
+        mdkWalletReadinessReady: false,
+        platformInstallCoverageReady: false,
+        status: "blocked",
+      }),
+    );
+    expect(summary.openAgentsLaunchEvidence.blockerRefs).toEqual(
+      expect.arrayContaining([
+        "blocker.public.pylon.mdk_wallet_readiness_missing",
+        "blocker.public.pylon.worker_loop_missing.assignment_poll",
+        "blocker.public.pylon.platform_smoke_missing.native_windows_x86_64",
+        "blocker.public.pylon.platform_smoke_missing.wsl_ubuntu_x86_64",
+      ]),
+    );
     expect(statuses).toContain("Registering Pylon with OpenAgents");
     expect(statuses).toContain("Sending OpenAgents Pylon heartbeat");
   });
@@ -1555,6 +1573,33 @@ describe("@openagentsinc/pylon bootstrap", () => {
         openAgentsApiBase: "https://openagents.example.test",
         openAgentsAgentToken: "oa_agent_secret",
         openAgentsPylonRef: "pylon.test.mdk",
+        openAgentsPlatformInstallRefs: {
+          linux_x86_64: ["platform_smoke.public.pylon.linux_x86_64"],
+          macos_arm64: ["platform_smoke.public.pylon.macos_arm64"],
+          native_windows_x86_64: [
+            "platform_smoke.public.pylon.native_windows_x86_64",
+          ],
+          wsl_ubuntu_x86_64: [
+            "platform_smoke.public.pylon.wsl_ubuntu_x86_64",
+          ],
+        },
+        openAgentsWorkerLoopRefs: {
+          assignment_accept: [
+            "worker_loop.public.pylon.assignment_accept_submit",
+          ],
+          assignment_poll: [
+            "worker_loop.public.pylon.assignment_lease_poll",
+          ],
+          assignment_progress: [
+            "worker_loop.public.pylon.assignment_progress_submit",
+          ],
+          artifact_proof: [
+            "worker_loop.public.pylon.artifact_proof_submit",
+          ],
+          closeout: [
+            "worker_loop.public.pylon.accepted_work_closeout_observed",
+          ],
+        },
         openAgentsMdkWalletHome: "/tmp/private/mdk-home",
         openAgentsMdkWalletPort: 3457,
         openAgentsMdkReceiveAmountSats: 21,
@@ -1675,6 +1720,28 @@ describe("@openagentsinc/pylon bootstrap", () => {
     expect(JSON.stringify(summary.openAgentsMdkWallet)).not.toContain(
       "lnbc21n1privateinvoice",
     );
+    expect(summary.openAgentsLaunchEvidence).toEqual(
+      expect.objectContaining({
+        assignmentWorkerLoopReady: true,
+        earningClaimAllowed: true,
+        mdkWalletReadinessReady: true,
+        platformInstallCoverageReady: true,
+        sendReadinessClaimed: false,
+        status: "ready",
+      }),
+    );
+    expect(summary.openAgentsLaunchEvidence.publicEvidenceRefs).toEqual(
+      expect.arrayContaining([
+        "platform_smoke.public.pylon.native_windows_x86_64",
+        "platform_smoke.public.pylon.wsl_ubuntu_x86_64",
+        "readiness.public.mdk_agent_wallet_send_readiness_not_claimed",
+        "worker_loop.public.pylon.assignment_lease_poll",
+        "worker_loop.public.pylon.accepted_work_closeout_observed",
+      ]),
+    );
+    expect(JSON.stringify(summary.openAgentsLaunchEvidence)).not.toContain(
+      "private-payment-hash",
+    );
     expect(
       processCalls.find(
         (call) =>
@@ -1686,6 +1753,23 @@ describe("@openagentsinc/pylon bootstrap", () => {
       HOME: "/tmp/private/mdk-home",
       MDK_WALLET_PORT: "3457",
     }));
+  });
+
+  test("buildOpenAgentsPylonLaunchEvidenceBundle rejects private launch refs", () => {
+    expect(() =>
+      buildOpenAgentsPylonLaunchEvidenceBundle({
+        workerLoopRefs: {
+          assignment_poll: ["raw_invoice.lnbc21n1private"],
+        },
+      }),
+    ).toThrow(/private, wallet, payment/);
+    expect(() =>
+      buildOpenAgentsPylonLaunchEvidenceBundle({
+        platformInstallRefs: {
+          macos_arm64: ["/Users/private/pylon-smoke.json"],
+        },
+      }),
+    ).toThrow(/private, wallet, payment/);
   });
 
   test("resolveOpenAgentsPylonRef prefers explicit refs and otherwise hashes stable identity", () => {

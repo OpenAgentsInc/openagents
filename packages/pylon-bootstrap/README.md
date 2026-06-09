@@ -168,6 +168,31 @@ It does not submit the mnemonic, wallet config, raw receive invoice, payment
 hash, preimage, exact wallet balance, wallet home path, or private destination
 material to OpenAgents.
 
+## Launch evidence bundle
+
+The JSON bootstrap summary includes `openAgentsLaunchEvidence`. This is a
+public-safe launch gate for Omega and operator dashboards. It records:
+
+- install evidence for the resolved `pylon-v...` release and local target;
+- registration and heartbeat refs when `--register-openagents` is used;
+- MDK receive-readiness refs when `--setup-mdk-wallet` is used;
+- required platform smoke refs for macOS arm64, Linux x86_64, native Windows
+  x86_64, and WSL Ubuntu x86_64;
+- required assignment worker-loop refs for polling leases, accepting,
+  reporting progress, submitting artifact/proof refs, and accepted-work
+  closeout;
+- launcher-copy refs that keep receive readiness, send readiness, assignment
+  execution, payout, and settlement as separate claims.
+
+If any required ref is missing, `openAgentsLaunchEvidence.status` is `blocked`
+and `earningClaimAllowed` is `false`. The launcher does not claim MDK send
+readiness by itself; `sendReadinessClaimed` remains `false` unless a later
+operator gate supplies separate send-readiness evidence.
+
+The bundle rejects raw invoices, payment hashes, preimages, mnemonics, wallet
+paths, payout targets, provider secrets, customer data, raw logs, and raw
+timestamps.
+
 Set `OPENAGENTS_DISABLE_TELEMETRY=1` to disable installer telemetry, or
 `OPENAGENTS_TELEMETRY_URL=http://127.0.0.1:8000/api/telemetry/events` to point
 the launcher at a non-production telemetry endpoint.

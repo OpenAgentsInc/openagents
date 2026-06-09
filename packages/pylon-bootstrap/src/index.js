@@ -1957,6 +1957,171 @@ export async function setupMdkWalletReadinessForOpenAgentsPylon(
   };
 }
 
+const LAUNCH_EVIDENCE_SCHEMA_VERSION = "openagents.pylon.launch_evidence.v1";
+const PYLON_WORKER_LOOP_STEP_REFS = {
+  assignment_poll: "worker_loop.public.pylon.assignment_lease_poll",
+  assignment_accept: "worker_loop.public.pylon.assignment_accept_submit",
+  assignment_progress: "worker_loop.public.pylon.assignment_progress_submit",
+  artifact_proof: "worker_loop.public.pylon.artifact_proof_submit",
+  closeout: "worker_loop.public.pylon.accepted_work_closeout_observed",
+};
+const PYLON_PLATFORM_INSTALL_TARGET_REFS = {
+  linux_x86_64: "platform_smoke.public.pylon.linux_x86_64",
+  macos_arm64: "platform_smoke.public.pylon.macos_arm64",
+  native_windows_x86_64: "platform_smoke.public.pylon.native_windows_x86_64",
+  wsl_ubuntu_x86_64: "platform_smoke.public.pylon.wsl_ubuntu_x86_64",
+};
+
+const launchEvidenceSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,220}$/;
+const launchEvidenceUnsafeRefPattern =
+  /(@|\/Users\/|\/home\/|access[_-]?token|bearer|cookie|customer|email|invoice|lnbc|lntb|lnbcrt|lno1|lnurl|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage|raw|secret)|payout[_-]?(address|destination|raw)|preimage|private[_-]?(key|wallet|path)|provider[_-]?(credential|secret|token)|raw[_-]?(auth|invoice|log|payment|payload|payout|state)|recovery[_-]?phrase|secret|seed[_-]?phrase|sk-[a-z0-9]|token|wallet[._-]?(config|key|material|mnemonic|preimage|secret|seed|state))/i;
+const launchEvidenceTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+
+function uniquePublicRefs(refs = []) {
+  return [...new Set(refs.map((ref) => String(ref).trim()).filter(Boolean))].sort();
+}
+
+function assertLaunchEvidenceRefs(label, refs = []) {
+  const unsafe = uniquePublicRefs(refs).find(
+    (ref) =>
+      !launchEvidenceSafeRefPattern.test(ref) ||
+      launchEvidenceUnsafeRefPattern.test(ref) ||
+      launchEvidenceTimestampPattern.test(ref),
+  );
+
+  if (unsafe) {
+    throw new Error(
+      `${label} contains private, wallet, payment, payout, provider, customer, raw log, or timestamp material.`,
+    );
+  }
+}
+
+function refsFromObjectValues(record = {}) {
+  return Object.values(record).flatMap((value) =>
+    Array.isArray(value) ? value : [value],
+  );
+}
+
+function buildPlatformCoverage(platformInstallRefs = {}) {
+  return Object.fromEntries(
+    Object.keys(PYLON_PLATFORM_INSTALL_TARGET_REFS).map((target) => {
+      const refs = uniquePublicRefs(platformInstallRefs[target] ?? []);
+      return [target, { evidenceRefs: refs, ready: refs.length > 0 }];
+    }),
+  );
+}
+
+function buildWorkerLoopCoverage(workerLoopRefs = {}) {
+  return Object.fromEntries(
+    Object.keys(PYLON_WORKER_LOOP_STEP_REFS).map((step) => {
+      const refs = uniquePublicRefs(workerLoopRefs[step] ?? []);
+      return [step, { evidenceRefs: refs, ready: refs.length > 0 }];
+    }),
+  );
+}
+
+function coverageBlockers(prefix, coverage) {
+  return Object.entries(coverage)
+    .filter(([, value]) => !value.ready)
+    .map(([key]) => `blocker.public.pylon.${prefix}_missing.${key}`);
+}
+
+export function buildOpenAgentsPylonLaunchEvidenceBundle({
+  install = null,
+  registration = null,
+  mdkWallet = null,
+  workerLoopRefs = {},
+  platformInstallRefs = {},
+  launcherCopyRefs = [],
+  redactionRefs = ["redaction.public.pylon.launcher_public_refs_only"],
+} = {}) {
+  assertLaunchEvidenceRefs(
+    "Pylon worker-loop launch evidence refs",
+    refsFromObjectValues(workerLoopRefs),
+  );
+  assertLaunchEvidenceRefs(
+    "Pylon platform launch evidence refs",
+    refsFromObjectValues(platformInstallRefs),
+  );
+  assertLaunchEvidenceRefs("Pylon launcher copy refs", launcherCopyRefs);
+  assertLaunchEvidenceRefs("Pylon redaction refs", redactionRefs);
+
+  const installRef = install?.tagName
+    ? `install.public.pylon.${String(install.tagName).replace(/[^A-Za-z0-9_.:/-]+/g, "_")}.${install?.target?.os ?? "unknown"}_${install?.target?.arch ?? "unknown"}`
+    : null;
+  const registrationRefs = registration?.pylonRef
+    ? [
+        `registration.public.pylon.${registration.pylonRef}`,
+        `heartbeat.public.pylon.${registration.pylonRef}.${registration.status ?? "unknown"}`,
+      ]
+    : [];
+  const walletRefs = mdkWallet?.walletReady
+    ? [
+        mdkWallet.walletRef,
+        mdkWallet.receiveRef,
+        mdkWallet.payoutTargetRef,
+        mdkWallet.balanceReadinessRef,
+        "readiness.public.mdk_agent_wallet_receive_ready",
+        "readiness.public.mdk_agent_wallet_send_readiness_not_claimed",
+      ]
+    : [];
+  const platformCoverage = buildPlatformCoverage(platformInstallRefs);
+  const workerLoopCoverage = buildWorkerLoopCoverage(workerLoopRefs);
+  const blockerRefs = uniquePublicRefs([
+    ...(installRef ? [] : ["blocker.public.pylon.install_missing"]),
+    ...(registrationRefs.length > 0
+      ? []
+      : ["blocker.public.pylon.registration_heartbeat_missing"]),
+    ...(walletRefs.length > 0
+      ? []
+      : ["blocker.public.pylon.mdk_wallet_readiness_missing"]),
+    ...coverageBlockers("platform_smoke", platformCoverage),
+    ...coverageBlockers("worker_loop", workerLoopCoverage),
+    ...(launcherCopyRefs.length > 0
+      ? []
+      : ["blocker.public.pylon.launcher_copy_boundary_missing"]),
+  ]);
+
+  assertLaunchEvidenceRefs("Pylon generated install refs", installRef ? [installRef] : []);
+  assertLaunchEvidenceRefs("Pylon generated registration refs", registrationRefs);
+  assertLaunchEvidenceRefs("Pylon generated wallet refs", walletRefs);
+
+  const bundle = {
+    schemaVersion: LAUNCH_EVIDENCE_SCHEMA_VERSION,
+    status: blockerRefs.length === 0 ? "ready" : "blocked",
+    earningClaimAllowed: blockerRefs.length === 0,
+    assignmentWorkerLoopReady: Object.values(workerLoopCoverage).every(
+      (entry) => entry.ready,
+    ),
+    platformInstallCoverageReady: Object.values(platformCoverage).every(
+      (entry) => entry.ready,
+    ),
+    mdkWalletReadinessReady: walletRefs.length > 0,
+    sendReadinessClaimed: false,
+    publicEvidenceRefs: uniquePublicRefs([
+      ...(installRef ? [installRef] : []),
+      ...registrationRefs,
+      ...walletRefs,
+      ...refsFromObjectValues(workerLoopRefs),
+      ...refsFromObjectValues(platformInstallRefs),
+      ...launcherCopyRefs,
+      ...redactionRefs,
+    ]),
+    blockerRefs,
+    platformCoverage,
+    workerLoopCoverage,
+    launcherCopyRefs: uniquePublicRefs(launcherCopyRefs),
+    redactionRefs: uniquePublicRefs(redactionRefs),
+  };
+
+  assertLaunchEvidenceRefs(
+    "Pylon public evidence bundle refs",
+    bundle.publicEvidenceRefs,
+  );
+
+  return bundle;
+}
+
 export async function ensureReleaseInstall(
   options = {},
   {
@@ -2438,6 +2603,20 @@ export async function bootstrapInstalledPylon(
       diagnostic_status: diagnosticResult?.status ?? null,
     });
 
+    const openAgentsLaunchEvidence =
+      buildOpenAgentsPylonLaunchEvidenceBundle({
+        install: options,
+        registration: openAgentsRegistration,
+        mdkWallet: openAgentsMdkWallet,
+        workerLoopRefs: options.openAgentsWorkerLoopRefs ?? {},
+        platformInstallRefs: options.openAgentsPlatformInstallRefs ?? {},
+        launcherCopyRefs: [
+          "copy.public.pylon.launcher_registers_when_explicit",
+          "copy.public.pylon.wallet_readiness_receive_only",
+          "copy.public.pylon.assignment_worker_loop_requires_separate_refs",
+        ],
+      });
+
     return {
       version: options.version,
       tagName: options.tagName ?? `pylon-v${options.version}`,
@@ -2455,6 +2634,7 @@ export async function bootstrapInstalledPylon(
       inventory,
       openAgentsRegistration,
       openAgentsMdkWallet,
+      openAgentsLaunchEvidence,
       model,
       download,
       diagnostic,
@@ -2821,6 +3001,16 @@ export function renderBootstrapSummary(summary) {
     : 0;
   lines.push(`Status state: ${statusState}`);
   lines.push(`Inventory rows: ${inventoryRows}`);
+  if (summary.openAgentsLaunchEvidence) {
+    lines.push(
+      `OpenAgents launch evidence: ${summary.openAgentsLaunchEvidence.status}`,
+    );
+    if (summary.openAgentsLaunchEvidence.blockerRefs?.length > 0) {
+      lines.push(
+        `OpenAgents launch blockers: ${summary.openAgentsLaunchEvidence.blockerRefs.join(", ")}`,
+      );
+    }
+  }
 
   if (summary.download) {
     const result =
