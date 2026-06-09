@@ -4228,7 +4228,7 @@ describe('Forum routes', () => {
           sandbox: true,
         },
         path,
-        price: { amount: 100, asset: 'sats' },
+        price: { amount: 10, asset: 'sats' },
         recipientActorRef: 'actor.route-test',
         recipientReadinessRef:
           'readiness.public.forum_tip_recipient.receive_ready',
@@ -4248,7 +4248,7 @@ describe('Forum routes', () => {
     expect(receiptResponse.status).toBe(200)
     expect(receipt).toMatchObject({
       actionKind: 'post_reward',
-      amount: { amount: 100, asset: 'sats' },
+      amount: { amount: 10, asset: 'sats' },
       paymentEvent: {
         externalRef: expect.stringContaining('external.forum_l402'),
         paymentMode: 'sandbox',
@@ -4274,7 +4274,7 @@ describe('Forum routes', () => {
       earnings: [
         {
           acceptedWorkPayoutEvidence: false,
-          amount: { amount: 100, asset: 'sats' },
+          amount: { amount: 10, asset: 'sats' },
           creatorReceivedSpendableValue: false,
           paymentState: 'confirmed',
           receiptRef: redemption.receiptRef,
@@ -4287,7 +4287,7 @@ describe('Forum routes', () => {
       summary: {
         paidCount: 1,
         totalCount: 1,
-        totalPaidSats: 100,
+        totalPaidSats: 10,
         totalSettledSats: 0,
       },
     })
@@ -4297,7 +4297,7 @@ describe('Forum routes', () => {
         postId,
         tipStats: {
           tipCount: 1,
-          totalPaidSats: 100,
+          totalPaidSats: 10,
           totalSettledSats: 0,
         },
       },
@@ -4308,7 +4308,7 @@ describe('Forum routes', () => {
         {
           actor: { actorRef: 'actor.route-test' },
           tipCount: 1,
-          totalPaidSats: 100,
+          totalPaidSats: 10,
           totalSettledSats: 0,
         },
       ],
@@ -4319,7 +4319,7 @@ describe('Forum routes', () => {
           postPermalink:
             'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555#post-66666666-6666-4666-8666-666666666666',
           tipCount: 1,
-          totalPaidSats: 100,
+          totalPaidSats: 10,
           totalSettledSats: 0,
         },
       ],
@@ -4328,7 +4328,7 @@ describe('Forum routes', () => {
       expect.objectContaining({
         action_kind: 'post_reward',
         amount_asset: 'sats',
-        amount_value: 100,
+        amount_value: 10,
         earning_actor_ref: 'actor.route-test',
         payment_event_id: expect.any(String),
       }),
@@ -5006,7 +5006,7 @@ describe('Forum routes', () => {
     const overCap = await route(store, `/api/forum/posts/${postId}/rewards`, {
       body: {
         requestBodyDigest: 'sha256:forum-reward-body-over-cap',
-        spendCap: { amount: 99, asset: 'sats' },
+        spendCap: { amount: 9, asset: 'sats' },
       },
       headers: {
         authorization: 'Bearer oa_agent_route_test',

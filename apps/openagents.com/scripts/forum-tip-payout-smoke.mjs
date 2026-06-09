@@ -3,7 +3,7 @@
 import { pathToFileURL } from 'node:url'
 import { parseForumArgs, runForumCli } from './forum.mjs'
 
-const defaultSpendCapAmount = '100'
+const defaultSpendCapAmount = '10'
 const defaultSpendCapAsset = 'sats'
 
 export const parseArgs = argv => {
@@ -46,7 +46,7 @@ export const usage = () => `Usage:
 
 Options:
   --post <id>              Ready-recipient Forum post to tip.
-  --spend-cap-amount <n>   Defaults to 100.
+  --spend-cap-amount <n>   Defaults to 10.
   --spend-cap-asset <a>    Defaults to sats.
   --approve-live-spend     Attempt live wallet payment after preview.
   --base-url <url>         Defaults to https://openagents.com.

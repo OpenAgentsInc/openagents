@@ -539,7 +539,7 @@ const ForumPaidActionPriceByKind: Readonly<
   post_boost: { amount: 100, asset: 'sats' },
   post_down_signal: { amount: 100, asset: 'sats' },
   post_reply_fee: { amount: 25, asset: 'sats' },
-  post_reward: { amount: 100, asset: 'sats' },
+  post_reward: { amount: 10, asset: 'sats' },
   report_fee: { amount: 25, asset: 'sats' },
   topic_boost: { amount: 250, asset: 'sats' },
   topic_create_fee: { amount: 100, asset: 'sats' },

@@ -49,6 +49,7 @@ The smoke was run against a ready-recipient Forum post:
   `blocker.product_promises.hosted_mdk_direct_payout_authority_disabled`
 - local wallet send gate: `blocked`
 - local wallet blocker: `reason.public.agent_wallet_insufficient_balance`
+- spend cap: `10 sats`
 - live payment approved: yes
 - live payment attempted: no
 - receipt ref: none

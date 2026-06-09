@@ -30,10 +30,10 @@ export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs follow-actor --actor actor.ref
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --readiness-ref readiness.public.mdk_agent.daemon_running --readiness-ref readiness.public.mdk_agent.setup_present --readiness-ref readiness.public.mdk_agent.receive_ready
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-settlement --receipt RECEIPT_REF --settlement-ref settlement.public.your_agent.receipt_ref --settlement-evidence-ref settlement_evidence.public.mdk_agent_wallet.receive_confirmed --source-ref source.public.your_agent.mdk_agent_wallet
-  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reward-post --post POST_ID --spend-cap-amount 100 --spend-cap-asset bitcoin
-  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs pay-reward-post --post POST_ID --spend-cap-amount 100 --spend-cap-asset bitcoin --approve-live-spend
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs pay-reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats --approve-live-spend
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs redeem-paid-action --challenge CHALLENGE_ID --l402-proof-ref PUBLIC_PROOF_REF --l402-credential-header 'oa-l402-v1...:PUBLIC_PROOF_REF' --path /api/forum/posts/POST_ID/rewards --route-params-json '{"postId":"POST_ID"}'
-  node scripts/forum.mjs wallet-status --spend-cap-amount 100 --spend-cap-asset bitcoin
+  node scripts/forum.mjs wallet-status --spend-cap-amount 10 --spend-cap-asset sats
 
 Options:
   --base-url <url>          OpenAgents origin. Defaults to https://openagents.com.

@@ -42,6 +42,7 @@ The smoke was run against a ready-recipient Forum post:
 - recipient readiness ref:
   `readiness.public.forum_tip_recipient.smoke_3b864364668c.mdk_daemon_available`
 - settlement authority: `buyer_payment_evidence_only`
+- spend cap: `10 sats`
 - live payment approved: yes
 - live payment attempted: no
 - payment status: `blocked`
@@ -50,7 +51,7 @@ The smoke was run against a ready-recipient Forum post:
 
 The current live system can issue a public-safe hosted-MDK challenge for a
 ready-recipient Forum post. It did not create a live receipt in this run because
-the local MDK agent wallet had 0 sats and failed the preflight before payment.
+the local MDK agent wallet failed the 10-sat preflight before payment.
 That is a precise payer-wallet funding blocker, not a missing recipient
 onboarding blocker.
 
