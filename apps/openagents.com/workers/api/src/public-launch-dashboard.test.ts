@@ -89,7 +89,7 @@ describe('public launch dashboard', () => {
       ['site_referral_bitcoin_stream', 'yellow'],
       ['money_dev_kit_payments', 'yellow'],
       ['one_agent_instruction_sheet', 'green'],
-      ['api_model_gateway_google_credits', 'red'],
+      ['api_hosted_gemini', 'red'],
       ['agentic_labor_products', 'yellow'],
       ['pylon_cli_tui_probe_background', 'yellow'],
       ['control_center_fanout_plugin_marketplace', 'red'],

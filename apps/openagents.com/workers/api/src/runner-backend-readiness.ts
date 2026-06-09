@@ -89,11 +89,11 @@ export const runnerBackendReadinessCheck = (
       : input.config.policy === 'shc_primary_only'
         ? 'SHC primary runner is ready; backup lanes are not enabled.'
         : containerReady && gcloudReady
-          ? 'SHC primary, Container backup, and GCloud reference lanes are ready for this workload.'
+          ? 'SHC primary, Container backup, and reference lanes are ready for this workload.'
           : containerReady
             ? 'SHC primary and Container backup lanes are ready for this low-to-medium trust workload.'
             : gcloudReady
-              ? 'SHC primary and GCloud reference lanes are ready; Container backup is not eligible for this workload.'
+              ? 'SHC primary and reference lanes are ready; Container backup is not eligible for this workload.'
               : 'SHC primary is ready; backup and reference lanes are not fully ready.'
 
   return {

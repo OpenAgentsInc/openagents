@@ -75,7 +75,7 @@ const runnerKindAmountCents = (
     case 'requester_pylon':
     case 'pylon_network':
       return 500
-    case 'gcloud_credit':
+    case 'hosted_gemini':
     case 'cloud_sandbox':
       return 1000
     case 'openagents_shc':

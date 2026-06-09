@@ -18,7 +18,7 @@ user tells any capable agent "do this on Autopilot"
 -> OpenAgents asks for only the missing access, payment, or consent
 -> OpenAgents plans and fans out Probe/Pylon/runner assignments
 -> assignments run on approved infrastructure such as SHC, Pylons, user boxes,
-   local Codex, cloud sandboxes, GCloud credits, TEEs, Maple AI, or later
+   local Codex, hosted Gemini, cloud sandboxes, TEEs, Maple AI, or later
    privacy-enhanced lanes
 -> workers return redacted evidence, diffs, Sites, previews, tests, and receipts
 -> OpenAgents gates acceptance, payment, settlement, and public/forum reporting
@@ -76,7 +76,7 @@ to paid MDK/L402 entry when the user wants OpenAgents to supply the compute.
 
 This is the commercial loop: customers and agents pay OpenAgents through MDK
 checkout or L402 for coding work; OpenAgents uses local user compute,
-OpenAgents-owned capacity, cloud credits, or paid network capacity to perform
+OpenAgents-owned hosted capacity or paid network capacity to perform
 the work; OpenAgents pays Pylons, providers, referrers, or contributors only
 from accepted-work and settlement ledgers, not from buyer checkout state alone.
 
@@ -551,7 +551,8 @@ Built or partially built:
 - Pylon public-safe projections and wallet material redaction.
 - Data trace, provider capacity, signature marketplace, generated Site
   checkout, and public launch copy gates.
-- Runner backend docs for SHC primary, Cloudflare Containers backup, and GCloud
+- Runner backend docs for SHC primary, Cloudflare Containers backup, and hosted
+  model lanes
   reference lanes.
 
 Not built:
@@ -583,7 +584,7 @@ Forum reporting.
 | Work request schema | `customer_orders` store request text, quotes, free-slice fields, provider-account flags | Typed work request with tasks, repo refs, acceptance criteria, placement policy, privacy tier, budget, payment mode, idempotency, and forum reporting | Existing order text is too unstructured to drive safe automatic planning and placement |
 | Order-to-assignment planning | Agent goals, Adjutant assignments, first-batch triage, SHC-oriented runbooks | Internal planner turns each task into typed assignment intents without launching until access/payment/placement gates clear | No persistent planner decisions, no typed task table, no quote/access/blocked/ready state per task |
 | Pylon-first execution | Pylon registration, heartbeat, wallet readiness, assignment poll/accept/progress/artifacts, no-spend smoke | If the user has Pylon or local Codex available, Autopilot prefers that local path before OpenAgents or cloud capacity | Heartbeat/capability facts are not yet consumed by Autopilot placement; no local Codex capability model; no customer-order-to-Pylon assignment synthesis |
-| Wider Probe/Pylon network execution | Probe runtime contracts, Pylon runtime package, assignment leasing APIs | Autopilot fans work out to approved SHC, requester Pylon, Pylon network, cloud, GCloud credit, TEE, or Maple AI lanes according to policy | No generalized scheduler, lease offer model, or backend-neutral runner adapter for coding tasks |
+| Wider Probe/Pylon network execution | Probe runtime contracts, Pylon runtime package, assignment leasing APIs | Autopilot fans work out to approved SHC, requester Pylon, Pylon network, hosted Gemini, cloud, TEE, or Maple AI lanes according to policy | No generalized scheduler, lease offer model, or backend-neutral runner adapter for coding tasks |
 | Probe coding-worker loop | Probe can materialize grants, run bounded runtime pieces, emit redacted evidence shapes and telemetry | Probe executes normalized coding assignments, produces diffs/tests/previews/closeouts, scrubs per-run material, and submits results to the order state machine | Probe plumbing exists, but arbitrary customer coding tasks are not executed end-to-end through it |
 | Buyer payment intake | Site MDK/L402 contracts, buyer payment ledger, Forum paid actions, payment proof, site checkout intents | Coding work can return deterministic MDK checkout or HTTP 402 L402 challenge, accept paid retry, and start funded work | No coding-order quote service, no `withPayment`/L402 route for Autopilot work, no stable quote verification across retry |
 | Worker/provider settlement | Pylon settlement gates, small-sats evidence, paid-mode campaign ladder docs | OpenAgents pays Pylons/providers/referrers only after accepted work, receipts, spend caps, duplicate checks, and settlement authority pass | Buyer payment is not linked to accepted-work ledger; paid Pylon work remains gated; hosted direct payout still disabled |
@@ -672,7 +673,7 @@ single request string:
       "shc",
       "pylon_network",
       "cloud_sandbox",
-      "gcloud_credit",
+      "hosted_gemini",
       "tee",
       "maple_ai"
     ],
@@ -767,7 +768,7 @@ Create a backend-neutral placement service that can choose among:
 - the requester's local Pylon or local Codex-backed Pylon;
 - Pylon-hosted Probe workers from the wider network;
 - Cloudflare Containers backup lanes;
-- GCloud/reference lanes;
+- hosted-model/reference lanes;
 - future local-only, TEE, Maple AI, or other privacy lanes.
 
 The input should be typed capability facts and placement policy refs, not
@@ -880,7 +881,7 @@ created. The IDs are stable references for turning the audit into tickets.
 | OA-AUTO-014 | Feed Pylon presence into placement | Use Pylon heartbeat, capability refs, wallet readiness, version, assignment readiness, and owner linkage as placement inputs | A requester with an online compatible Pylon is selected before OpenAgents/cloud fallback |
 | OA-AUTO-015 | Model local Codex/Pylon capability | Add capability refs for local Codex or equivalent local coding agent inside Pylon without exposing local secrets | Placement can distinguish "requester has local execution" from "use network/cloud capacity" |
 | OA-AUTO-016 | Synthesize Pylon assignments from Autopilot tasks | Convert `ready_for_assignment` tasks into controlled Pylon assignment leases with no Forum autopublish and explicit closeout requirements | A no-spend Autopilot repo/doc task can be leased, accepted, progressed, and closed by Pylon |
-| OA-AUTO-017 | Add SHC/cloud fallback lease adapter | Create the same lease shape for OpenAgents SHC and cloud/GCloud fallback lanes | If no requester Pylon is online, a public paid task can be routed to an approved fallback lane |
+| OA-AUTO-017 | Add SHC/cloud fallback lease adapter | Create the same lease shape for OpenAgents SHC, hosted Gemini, and cloud fallback lanes | If no requester Pylon is online, a public paid task can be routed to an approved fallback lane |
 | OA-AUTO-018 | Add placement refusal and retry states | Record why no runner was available, when to retry, and whether the caller must pay, relax privacy, or add a Pylon | The API returns actionable `blocked` or `needs_input` states instead of silent queue stalls |
 
 ### P1: Probe Runtime And Result Ingestion
@@ -920,7 +921,7 @@ created. The IDs are stable references for turning the audit into tickets.
 | --- | --- | --- | --- |
 | OA-AUTO-035 | Link accepted work to payout eligibility | Connect accepted closeouts to payout candidate records while preserving buyer payment, accepted work, and settlement as separate states | A paid worker cannot be paid before accepted work and cannot be paid twice |
 | OA-AUTO-036 | Generalize Pylon paid-mode ladder | Apply payment receipts, closeout refs, settlement refs, send readiness, spend caps, stale wallet checks, and duplicate protection to Autopilot tasks | A small paid Pylon task can settle through the approved ladder with auditable receipts |
-| OA-AUTO-037 | Add provider/cloud cost accounting | Track OpenAgents SHC, cloud, GCloud credit, TEE, Maple AI, and other capacity costs by assignment | Quote, margin, and settlement reports can reconcile buyer revenue to execution cost |
+| OA-AUTO-037 | Add provider/cloud cost accounting | Track OpenAgents SHC, hosted Gemini, cloud, TEE, Maple AI, and other capacity costs by assignment | Quote, margin, and settlement reports can reconcile buyer revenue to execution cost |
 | OA-AUTO-038 | Add referrer/signature/data contributor payout bridges | Convert referral, signature, or data contribution evidence into payout candidates only after their independent gates clear | Revenue-share claims remain blocked unless contribution and settlement evidence exists |
 | OA-AUTO-039 | Add marketplace capacity policy | Decide when to use internal capacity, user local compute, Pylon network, or paid providers based on privacy, price, SLA, and capability | Autopilot can scale beyond OpenAgents-owned workers without ad hoc routing |
 
@@ -965,6 +966,36 @@ created. The IDs are stable references for turning the audit into tickets.
 | Payment settlement | Pylon small-sats evidence and gates | Hosted direct payout disabled; order checkout missing | General accepted-work settlement marketplace |
 | Privacy placement | Redaction, secret refs, policy gates | No unified placement selector | Maple AI/TEE/private-worker integration |
 
+## 2026-06-09 Hosted Gemini Autopilot Smoke Result
+
+Requested smoke: use the Autopilot API path to delegate a low-priority
+product-promise audit through the hosted Gemini lane.
+
+What was exercised:
+
+- Live unauthenticated `POST /api/autopilot/work` with a public-safe hosted
+  Gemini work request returned `401 unauthorized`, which is correct for the
+  current registered-agent-token contract.
+- Local route harness coverage now submits a paid `hosted_gemini` Autopilot
+  work request for the `api.hosted_gemini.v1` promise audit target.
+- The first request returns the deterministic L402 payment challenge.
+- The paid retry records buyer payment proof and projects:
+  - `selectedRunnerKind: "hosted_gemini"`;
+  - `fallbackLaneRef: "fallback_lane.openagents.hosted_gemini"`;
+  - `paymentMode: "buyer_funded"`;
+  - no Pylon assignment intent;
+  - no worker payout, deploy, spend, accepted-work, or Forum autopublish
+    authority.
+
+Current blocker:
+
+The route still stops at a controlled fallback lease intent. It does not start
+a hosted Gemini worker, materialize a per-run provider grant, meter usage into
+the hosted-model budget ledger, ingest a closeout, run acceptance, or produce
+settlement/public-reporting evidence. The missing bridge is the executor that
+turns `fallbackLeaseIntents` into a real hosted Gemini run and feeds the
+closeout back into the Autopilot state machine.
+
 ## Recommended Implementation Order
 
 1. **Inventory and fold the current queue.** Add a dry-run operator report over
@@ -985,7 +1016,7 @@ created. The IDs are stable references for turning the audit into tickets.
 5. **Make Pylon the preferred placement when available.** Feed Pylon heartbeat,
    capability refs, wallet state, local Codex availability, and privacy policy
    into the placement service before falling back to OpenAgents SHC, cloud,
-   GCloud credits, or other capacity.
+   hosted Gemini, or other capacity.
 6. **Wire no-spend Probe/Pylon assignment path.** Use Pylon `run-no-spend` and
    Probe closeout refs for one small public task before paid work.
 7. **Add Forum reporting bridge.** Start with dry-run summaries, then

@@ -90,7 +90,7 @@ copy can go green.
 | `pylon.install_without_wallet_knowledge.v1`      | red            | Pylon and MDK-related code/docs exist.                                                                  | Make wallet setup, receive readiness, send readiness, payout target admission, and no-wallet-knowledge UX pass live smokes.   |
 | `sites.referral_bitcoin_stream.v1`               | yellow         | Referral capture and Site commerce contracts exist.                                                     | Convert referral attribution into payout eligibility, settlement, reporting, and public-safe receipts.                        |
 | `payments.money_dev_kit.v1`                      | yellow         | MDK hosted checkout and agent-wallet route contracts exist; the Forum route can issue a production challenge. | Prove hosted direct payout authority or local send-ready payment, capacity recovery, and spendable settlement states.          |
-| `api.model_gateway_google_credits.v1`            | red            | Agent-readable API surfaces exist, but no credit-backed gateway is live.                                | Build provider budget ledger, gateway policy, metering, safety limits, and product authorization.                             |
+| `api.hosted_gemini.v1`            | red            | Agent-readable API surfaces exist, but no paid hosted Gemini product is live.                           | Build hosted-model budget ledger, gateway policy, metering, safety limits, and product authorization.                         |
 | `autopilot.agentic_labor_products.v1`            | yellow         | Software/Sites docs and workroom concepts exist; public product surface is live.                        | Close the acceptance, proof, receipt, fulfillment, and payout chain for broad sellable agentic labor.                         |
 | `pylon.cli_tui_probe_background.v1`              | green          | Pylon CLI/TUI and runtime package exist; 2026-06-09 production smoke proved register, heartbeat, no-spend wallet readiness, unpaid assignment event flow, and operator closeout against live OpenAgents. | Keep broader service-manager, update, paid work, settlement, and v0.3 stable-release promises separate and gated.              |
 | `autopilot.control_center_fanout_marketplace.v1` | red            | Forum and API surfaces exist; broad fanout marketplace is not live.                                     | Implement orchestration, job fanout, plugin/package admission, marketplace policy, receipts, and owner controls.              |
@@ -248,7 +248,7 @@ Exit criteria:
 
 - Gateway routes are scoped by owner or product authority.
 - Budget, spend, rate limits, and provider credentials are server-side.
-- Public docs distinguish OpenAgents API availability from provider credit
+- Public docs distinguish OpenAgents API availability from provider-capacity
   resale or giveaway.
 - Receipts and usage records support audit without exposing credentials.
 

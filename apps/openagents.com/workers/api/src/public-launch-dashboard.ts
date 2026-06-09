@@ -242,14 +242,14 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
       'route:/api/openapi.json',
       'docs/2026-06-08-google-adc-gemini-agent-platform-auth-audit.md',
     ],
-    promiseId: 'api_model_gateway_google_credits',
+    promiseId: 'api_hosted_gemini',
     promiseText:
-      'OpenAgents is API-driven and may put Google Cloud credits behind an API or model gateway.',
+      'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
     safeCopy:
-      'OpenAgents exposes public APIs and Cloud evidence, but no public paid model gateway or Google-credit-backed inference product is live.',
+      'OpenAgents exposes public APIs and provider evidence, but no public paid hosted Gemini inference product is live.',
     staleSensitive: false,
     unsafeCopy:
-      'Do not claim a paid model gateway or Google-credit inference API is live.',
+      'Do not claim a paid hosted Gemini inference API is live.',
   },
   {
     baseStatus: 'yellow',

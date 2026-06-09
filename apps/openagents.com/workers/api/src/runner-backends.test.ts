@@ -43,7 +43,7 @@ describe('OpenAgents runner backend schemas and projections', () => {
     expect(record.dispatchStatus).toBe('blocked')
   })
 
-  test('supports SHC and GCloud backend kinds without changing dispatch policy', () => {
+  test('supports SHC and reference backend kinds without changing dispatch policy', () => {
     expect(
       S.decodeUnknownSync(OpenAgentsRunnerBackendRecordSchema)(
         backend({

@@ -27,7 +27,7 @@ export type AutopilotFallbackLeaseIntentProjection = Readonly<{
 
 const fallbackRunnerKinds = new Set<OpenAgentsAutopilotRunnerKind>([
   'cloud_sandbox',
-  'gcloud_credit',
+  'hosted_gemini',
   'openagents_shc',
   'shc',
 ])
@@ -51,8 +51,8 @@ const fallbackLaneRefForRunner = (
   switch (runnerKind) {
     case 'cloud_sandbox':
       return 'fallback_lane.openagents.cloud_sandbox'
-    case 'gcloud_credit':
-      return 'fallback_lane.openagents.gcloud_credit'
+    case 'hosted_gemini':
+      return 'fallback_lane.openagents.hosted_gemini'
     case 'openagents_shc':
       return 'fallback_lane.openagents.shc'
     case 'shc':
@@ -74,10 +74,10 @@ const requiredCapabilityRefsForRunner = (
         'capability.fallback.assignment_ready',
         'capability.openagents.cloud_sandbox',
       ]
-    case 'gcloud_credit':
+    case 'hosted_gemini':
       return [
         'capability.fallback.assignment_ready',
-        'capability.openagents.gcloud_credit',
+        'capability.openagents.hosted_gemini',
       ]
     case 'openagents_shc':
       return [

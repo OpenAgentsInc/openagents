@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.12'
+export const PublicProductPromisesVersion = '2026-06-09.13'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -525,27 +525,30 @@ export const publicProductPromisesDocument = () => {
     },
     {
       ...basePromiseFields,
-      promiseId: 'api.model_gateway_google_credits.v1',
+      promiseId: 'api.hosted_gemini.v1',
       productArea: 'agent API',
       audience: ['agent', 'developer'],
       state: 'red',
       claim:
-        'OpenAgents is API-driven and may put Google Cloud credits behind an API or model gateway.',
+        'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
       safeCopy:
-        'OpenAgents exposes public APIs and provider evidence, but no public paid model gateway or Google-credit-backed inference product is live.',
+        'OpenAgents exposes public APIs and provider evidence, but no public paid hosted Gemini inference product is live.',
       unsafeCopy:
-        'Do not claim a paid model gateway or Google-credit inference API is live.',
+        'Do not claim a paid hosted Gemini inference API is live.',
       evidenceRefs: [
         'https://openagents.com/api/openapi.json',
         'apps/openagents.com/docs/2026-06-08-google-adc-gemini-agent-platform-auth-audit.md',
+        'apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts',
+        'docs/autopilot-coder/2026-06-09-probe-autopilot-sites-agent-api-audit.md',
       ],
       blockerRefs: [
         'blocker.product_promises.public_paid_model_gateway_missing',
+        'blocker.product_promises.hosted_gemini_autopilot_executor_missing',
       ],
       verification:
-        'A future gateway claim needs route, billing, entitlement, provider policy, quota, and settlement refs.',
+        'A local Autopilot route smoke can price and project a buyer-funded hosted_gemini fallback lease intent. A live hosted Gemini claim still needs a registered-agent production smoke, executor dispatch, billing, entitlement, provider policy, quota, metering, closeout, and settlement refs.',
       authorityBoundary:
-        'API-driven product surfaces are not generic provider-credit resale authority.',
+        'API-driven product surfaces are not generic provider-capacity resale authority.',
     },
     {
       ...basePromiseFields,

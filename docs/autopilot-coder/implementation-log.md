@@ -503,7 +503,7 @@ Implemented:
   - `openagents_shc`
   - `shc`
   - `cloud_sandbox`
-  - `gcloud_credit`
+  - `hosted_gemini`
 - Added `fallbackLeaseIntents` to work-order projections.
 - Preserved the same closeout and safety shape as Pylon assignment intents:
   - `forumAutoPublishAllowed: false`

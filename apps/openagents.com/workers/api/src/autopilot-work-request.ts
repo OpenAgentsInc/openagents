@@ -101,7 +101,7 @@ export type OpenAgentsAutopilotPrivacyTier =
 
 export const OpenAgentsAutopilotRunnerKind = S.Literals([
   'cloud_sandbox',
-  'gcloud_credit',
+  'hosted_gemini',
   'maple_ai',
   'openagents_shc',
   'pylon_network',

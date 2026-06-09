@@ -94,7 +94,7 @@ describe('runner backend readiness', () => {
     })
   })
 
-  test('keeps sensitive work off Container backup and reports missing GCloud approval', () => {
+  test('keeps sensitive work off Container backup and reports missing reference approval', () => {
     const check = runnerBackendReadinessCheck({
       callbackStatus: 'ok',
       config: {

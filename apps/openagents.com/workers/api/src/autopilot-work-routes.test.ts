@@ -832,6 +832,113 @@ describe('Autopilot work routes', () => {
     )
   })
 
+  test('projects a funded hosted Gemini fallback lease without execution authority', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      clientRequestRef: 'client.example.20260609.hosted_gemini_smoke',
+      paymentPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+        maxSpendCents: 5000,
+        quoteRef: null,
+        quotedAmountCents: null,
+      },
+      placementPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].placementPolicy,
+        allowedRunnerKinds: ['hosted_gemini'] as const,
+        preferredRunnerKinds: ['hosted_gemini'] as const,
+        privacyTier: 'cloud_allowed' as const,
+        publicTraceAllowed: true,
+      },
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].tasks[0],
+          acceptanceCriteriaRefs: [
+            'acceptance.audit.updated_with_hosted_gemini_smoke_result',
+          ],
+          kind: 'research_and_patch' as const,
+          objective:
+            'Audit the red hosted Gemini product promise and return a public-safe documentation patch.',
+          taskRef: 'task.product_promise_docs_hosted_gemini_smoke',
+        },
+      ],
+    }
+    const first = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-hosted-gemini-smoke',
+      pylonRegistrations: [],
+    })
+    const firstJson = await responseJson(first)
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'paid retry does not replace stored request' },
+      headers: {
+        'X-OpenAgents-L402':
+          'oa-l402-v1.autopilot_test:payment_proof.autopilot_work.hosted_gemini_smoke',
+      },
+      idempotencyKey: 'idem-autopilot-work-hosted-gemini-smoke',
+      pylonRegistrations: [],
+    })
+    const paidJson = await responseJson(paid)
+
+    expect(first.status).toBe(402)
+    expect(firstJson.work).toMatchObject({
+      fallbackLeaseIntents: [],
+      funding: {
+        buyerFundingState: 'payment_required',
+        settlementBlockedReasonRef: 'settlement.buyer_payment_required',
+        workerPayoutEligible: false,
+      },
+      placementDecision: {
+        selectedRunnerKind: 'hosted_gemini',
+        source: 'fallback',
+      },
+      quote: {
+        amountCents: 3700,
+        paymentRequired: true,
+      },
+      state: 'payment_required',
+    })
+    expect(paid.status).toBe(200)
+    expect(paidJson.work).toMatchObject({
+      buyerPaymentProofRef:
+        'payment_proof.autopilot_work.hosted_gemini_smoke',
+      funding: {
+        buyerFundingState: 'funded',
+        fundedAmountCents: 3700,
+        settlementBlockedReasonRef: 'settlement.accepted_work_required',
+        settlementEligible: false,
+        workerPayoutEligible: false,
+      },
+      nextAction: {
+        callerActionRefs: [],
+        state: 'ready',
+      },
+      placementDecision: {
+        selectedRunnerKind: 'hosted_gemini',
+        source: 'fallback',
+      },
+      state: 'paid_ready',
+    })
+    expect(paidJson.work?.fallbackLeaseIntents).toEqual([
+      expect.objectContaining({
+        assignmentRef:
+          'fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_smoke',
+        fallbackLaneRef: 'fallback_lane.openagents.hosted_gemini',
+        forumAutoPublishAllowed: false,
+        paymentMode: 'buyer_funded',
+        requiredCapabilityRefs: [
+          'capability.fallback.assignment_ready',
+          'capability.openagents.hosted_gemini',
+        ],
+        runnerKind: 'hosted_gemini',
+        spendCapRefs: ['spend_cap.buyer_funded.fallback_assignment'],
+        taskRef: 'task.product_promise_docs_hosted_gemini_smoke',
+        workerPayoutAuthority: false,
+      }),
+    ])
+    expect(paidJson.work?.pylonAssignmentIntents).toEqual([])
+  })
+
   test('accepts an MDK checkout proof retry for payable work', async () => {
     const store = new MemoryAutopilotWorkStore()
     const request = {

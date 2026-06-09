@@ -110,7 +110,7 @@ Red promises:
 - `pylon.compute_revenue_modes.v1`
 - `pylon.data_trace_revenue.v1`
 - `pylon.install_without_wallet_knowledge.v1`
-- `api.model_gateway_google_credits.v1`
+- `api.hosted_gemini.v1`
 - `autopilot.control_center_fanout_marketplace.v1`
 - `marketplace.signature_monetization.v1`
 - `provider.subscription_capacity.v1`
@@ -353,7 +353,7 @@ Promises moved by this squad:
 
 - `provider.subscription_capacity.v1`
 - `provider.prepaid_capacity_monetization.v1`
-- `api.model_gateway_google_credits.v1`
+- `api.hosted_gemini.v1`
 - parts of `pylon.five_bitcoin_revenue_streams.v1`
 
 Green exits:
@@ -568,7 +568,7 @@ Withdraw or narrow a promise when:
 
 Candidate promises to review for narrowing before implementation:
 
-- `api.model_gateway_google_credits.v1`
+- `api.hosted_gemini.v1`
 - `provider.subscription_capacity.v1`
 - `provider.prepaid_capacity_monetization.v1`
 - parts of `pylon.five_bitcoin_revenue_streams.v1`

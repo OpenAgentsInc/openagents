@@ -138,7 +138,7 @@ describe('runner failover staging rollout policy', () => {
     ])
   })
 
-  test('never routes sensitive work to Container and uses explicit GCloud reference when ready', () => {
+  test('never routes sensitive work to Container and uses explicit reference lane when ready', () => {
     const gcloudDecision = decideOpenAgentsRunnerFailover(
       input({
         gcloudReady: true,
