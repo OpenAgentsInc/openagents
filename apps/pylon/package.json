@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/pylon-v0.3",
+  "name": "@openagents/pylon",
   "version": "0.3.0",
   "description": "Modern Pylon contributor node built on Bun, Effect, and OpenTUI",
   "private": true,
