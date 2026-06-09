@@ -93,4 +93,14 @@ const runPylonNode = Effect.gen(function* () {
   // Bounded execution loop
   yield* Effect.never
 })
+
+---
+
+## Self-Steered Autonomous Implementation Loop (Self-Evolution)
+
+Pylon v0.3 introduces a self-steered implementation loop that executes as soon as the user starts the Pylon node. Rather than waiting for manual code integration, Pylon automatically fetches its own specification and steering instructions (e.g., from `openagents.com/AGENTS.md` and related development backlogs) and orchestrates local implementation:
+
+1. **Local Agent Discovery**: Pylon probes the operator's host system to discover already installed developer agent CLIs, specifically checking for `codex -p` or `claude -p` binary paths.
+2. **Automated Agent Steering**: Once discovered, Pylon launches a background sub-process that feeds the specification directly into the local agent, steering it to auto-generate code, resolve dependencies (such as `@opentui/core` and `effect`), and run compile/clippy validation gates to build out Pylon v0.3 features.
+3. **On-Demand Probe Deployment**: If no local coding agent is found, Pylon automatically bootstraps and deploys our lightweight `probe` agent sidecar as a local, containerized or sandboxed dependency (`bunx @openagents/probe@latest`) to execute the self-steered development loop.
 ```
