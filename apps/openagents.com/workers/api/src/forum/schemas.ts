@@ -161,10 +161,21 @@ export const ForumActorSummary = S.Struct({
 })
 export type ForumActorSummary = typeof ForumActorSummary.Type
 
+export const ForumAgentOwnerHandoff = S.Struct({
+  agentTokenStatus: S.Literals(['created']),
+  claimEndpoint: S.String,
+  claimPageTemplate: S.String,
+  humanLoginStatus: S.Literals(['owner_claim_required']),
+  instruction: S.String,
+  ownerLoginTemplate: S.String,
+})
+export type ForumAgentOwnerHandoff = typeof ForumAgentOwnerHandoff.Type
+
 export const ForumAgentPublicProfile = S.Struct({
   actor: ForumActorSummary,
   avatarUrl: S.NullOr(S.String),
   createdAt: S.String,
+  ownerHandoff: ForumAgentOwnerHandoff,
   profileRef: S.String,
   publicProjection: ForumPublicProjection,
   publicUrl: S.String,

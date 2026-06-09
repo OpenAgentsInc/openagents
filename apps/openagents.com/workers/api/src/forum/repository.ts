@@ -1013,6 +1013,17 @@ const descriptionTextFromRef = (descriptionRef: string | null): string | null =>
     : `${label.charAt(0).toUpperCase()}${label.slice(1)}.`
 }
 
+const agentOwnerHandoff = {
+  agentTokenStatus: 'created' as const,
+  claimEndpoint: 'https://openagents.com/api/agents/claims',
+  claimPageTemplate: 'https://openagents.com/agents/claims/{claimId}',
+  humanLoginStatus: 'owner_claim_required' as const,
+  instruction:
+    'An agent bearer token exists, but no human owner login account has been created for this agent unless an owner claim is approved. Create a pending owner claim, give the human owner the returned claimUrl, and tell them to sign in through the ownerLoginTemplate URL with the concrete claimId.',
+  ownerLoginTemplate:
+    'https://openagents.com/login/github?returnTo=/agents/claims/{claimId}',
+}
+
 const agentProfileFromRow = (
   row: AgentProfileRow,
   stats: typeof actorStatsDefault,
@@ -1029,6 +1040,7 @@ const agentProfileFromRow = (
       },
       avatarUrl: row.avatar_url,
       createdAt: row.created_at,
+      ownerHandoff: agentOwnerHandoff,
       profileRef: `agent_profile:${row.user_id}`,
       publicProjection: decodeForumPublicProjection({
         classificationCaveatRef: 'classification.public_agent_profile',
@@ -1063,6 +1075,7 @@ const snapshotProfileFromActor = (
       actor,
       avatarUrl: null,
       createdAt,
+      ownerHandoff: agentOwnerHandoff,
       profileRef: `forum_actor_snapshot:${actor.actorRef}`,
       publicProjection: decodeForumPublicProjection({
         classificationCaveatRef: 'classification.public_forum_actor_snapshot',
@@ -1611,6 +1624,8 @@ const readActorStats = (
 const normalizeAgentProfileRef = (profileRef: string): string =>
   profileRef.startsWith('agent:')
     ? profileRef.slice('agent:'.length)
+    : profileRef.startsWith('agent_profile:')
+      ? profileRef.slice('agent_profile:'.length)
     : profileRef
 
 export const readForumAgentPublicProfile = (
@@ -1669,13 +1684,16 @@ export const readForumAgentPublicProfile = (
                 AND forum_forums.archived_at IS NULL
                 AND forum_forums.visibility = 'public'
                 AND forum_forums.discoverability IN ('listed', 'unlisted')
-              WHERE forum_posts.actor_ref = ?
+              WHERE (
+                    forum_posts.actor_ref = ?
+                 OR json_extract(forum_posts.actor_json, '$.slug') = ?
+              )
                 AND forum_posts.archived_at IS NULL
                 AND forum_posts.state IN ('visible', 'edited')
               ORDER BY forum_posts.created_at DESC
               LIMIT 1`,
           )
-          .bind(profileRef)
+          .bind(profileRef, normalized)
           .first<
             Readonly<{
               actor_json: string
@@ -1697,6 +1715,17 @@ export const readForumAgentPublicProfile = (
         objectKind: 'post',
         objectRef: profileRef,
       })
+    }
+
+    if (actor.actorRef !== profileRef && actor.actorRef !== normalized) {
+      const registeredProfile = yield* readForumAgentPublicProfile(
+        db,
+        actor.actorRef,
+      )
+
+      if (registeredProfile !== null) {
+        return registeredProfile
+      }
     }
 
     const stats = yield* readActorStats(db, actor.actorRef)

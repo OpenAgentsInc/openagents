@@ -1345,15 +1345,24 @@ class ForumRouteStatement implements D1PreparedStatement {
 
     if (
       this.query.includes('forum_posts.actor_json AS actor_json') &&
-      this.query.includes('WHERE forum_posts.actor_ref = ?')
+      this.query.includes('forum_posts.actor_ref = ?')
     ) {
       const actorRef = String(this.values[0])
+      const actorSlug = String(this.values[1] ?? this.values[0])
       const row =
         this.store.posts.find(
-          item =>
-            JSON.parse(item.actor_json).actorRef === actorRef &&
-            item.archived_at === null &&
-            (item.state === 'visible' || item.state === 'edited'),
+          item => {
+            const actor = JSON.parse(item.actor_json) as {
+              actorRef: string
+              slug: string
+            }
+
+            return (
+              (actor.actorRef === actorRef || actor.slug === actorSlug) &&
+              item.archived_at === null &&
+              (item.state === 'visible' || item.state === 'edited')
+            )
+          },
         ) ?? null
 
       return Promise.resolve(
@@ -3837,15 +3846,67 @@ describe('Forum routes', () => {
 
   test('reads public-safe agent profiles without credential or email material', async () => {
     const store = new ForumRouteStore()
+    const visibleSlugAgentId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const visibleSlugActorJson = JSON.stringify({
+      actorId: visibleSlugAgentId,
+      actorRef: `agent:${visibleSlugAgentId}`,
+      displayName: 'Visible Slug',
+      groupRefs: ['agents'],
+      isAgent: true,
+      slug: 'visible-slug',
+    })
+    store.agentProfiles.push({
+      avatar_url: null,
+      created_at: '2026-06-05T21:00:00.000Z',
+      display_name: 'Visible Slug Agent',
+      slug: 'visible-slug-agent',
+      updated_at: '2026-06-05T21:00:00.000Z',
+      user_id: visibleSlugAgentId,
+    })
+    store.posts.push({
+      actor_json: visibleSlugActorJson,
+      archived_at: null,
+      body_text: 'Visible slug agent introduction.',
+      content_ref: 'content.forum.visible_slug_agent.introduction',
+      created_at: '2026-06-05T21:00:00.000Z',
+      forum_id: '33333333-3333-4333-8333-333333333333',
+      id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+      idempotency_key: 'seed-visible-slug-agent-post',
+      parent_post_id: null,
+      post_number: 2,
+      public_projection_json: projectionJson,
+      quote_post_id: null,
+      receipt_refs_json: '[]',
+      revision_ref: null,
+      state: 'visible',
+      topic_id: '55555555-5555-4555-8555-555555555555',
+      updated_at: '2026-06-05T21:00:00.000Z',
+    })
     const profileResponse = await route(
       store,
       '/api/agents/profiles/route-test-agent',
     )
+    const visibleSlugProfileResponse = await route(
+      store,
+      '/api/agents/profiles/visible-slug',
+    )
+    const agentProfileRefResponse = await route(
+      store,
+      `/api/agents/profiles/${encodeURIComponent(`agent_profile:${visibleSlugAgentId}`)}`,
+    )
+    const browserProfileResponse = await route(
+      store,
+      `/forum/u/${visibleSlugAgentId}/visible-slug-agent`,
+    )
+    const redirectResponse = await route(store, '/agents/visible-slug')
     const snapshotResponse = await route(
       store,
       `/api/forum/actors/${encodeURIComponent('actor.route-test')}/profile`,
     )
     const profile = await profileResponse.json()
+    const visibleSlugProfile = await visibleSlugProfileResponse.json()
+    const agentProfileRef = await agentProfileRefResponse.json()
+    const browserProfile = await browserProfileResponse.text()
     const snapshot = await snapshotResponse.json()
 
     expect(profileResponse.status).toBe(200)
@@ -3861,6 +3922,47 @@ describe('Forum routes', () => {
         verificationState: 'registered_agent',
       },
     })
+    expect(visibleSlugProfileResponse.status).toBe(200)
+    expect(visibleSlugProfile).toMatchObject({
+      profile: {
+        actor: {
+          actorRef: `agent:${visibleSlugAgentId}`,
+          displayName: 'Visible Slug Agent',
+          slug: 'visible-slug-agent',
+        },
+        ownerHandoff: {
+          agentTokenStatus: 'created',
+          claimEndpoint: 'https://openagents.com/api/agents/claims',
+          humanLoginStatus: 'owner_claim_required',
+          ownerLoginTemplate:
+            'https://openagents.com/login/github?returnTo=/agents/claims/{claimId}',
+        },
+        publicUrl: `https://openagents.com/forum/u/${visibleSlugAgentId}/visible-slug-agent`,
+        source: 'agent_profile',
+      },
+    })
+    expect(agentProfileRefResponse.status).toBe(200)
+    expect(agentProfileRef).toMatchObject({
+      profile: {
+        actor: {
+          actorRef: `agent:${visibleSlugAgentId}`,
+          slug: 'visible-slug-agent',
+        },
+      },
+    })
+    expect(browserProfileResponse.status).toBe(200)
+    expect(browserProfileResponse.headers.get('content-type')).toContain(
+      'text/html',
+    )
+    expect(browserProfile).toContain('data-agent-profile-page')
+    expect(browserProfile).toContain('Visible Slug Agent')
+    expect(browserProfile).toContain(
+      'https://openagents.com/login/github?returnTo=/agents/claims/CLAIM_ID',
+    )
+    expect(redirectResponse.status).toBe(302)
+    expect(redirectResponse.headers.get('location')).toBe(
+      `https://openagents.com/forum/u/${visibleSlugAgentId}/visible-slug-agent`,
+    )
     expect(snapshotResponse.status).toBe(200)
     expect(snapshot).toMatchObject({
       profile: {

@@ -90,11 +90,15 @@ import {
   type ForumL402SigningBoundaryProvider,
   verifyForumL402PaymentEvent,
 } from './forum/l402-payment-verification'
-import { ForumTipRecipientProviderClass } from './forum/schemas'
+import {
+  type ForumAgentPublicProfile,
+  ForumTipRecipientProviderClass,
+} from './forum/schemas'
 import type { OpenAgentsHostedMdkClient } from './hosted-mdk-client'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
+  redirectResponse,
   serverError,
 } from './http/responses'
 import {
@@ -326,6 +330,118 @@ const decodePathSegment = (value: string | undefined) => {
   } catch {
     return undefined
   }
+}
+
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+
+const htmlResponse = (html: string) =>
+  new Response(html, {
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': 'text/html; charset=utf-8',
+    },
+  })
+
+const renderAgentProfilePage = (profile: ForumAgentPublicProfile): string => {
+  const apiUrl = `https://openagents.com/api/agents/profiles/${encodeURIComponent(profile.actor.slug)}`
+  const ownerClaimUrl = profile.ownerHandoff.claimPageTemplate.replace(
+    '{claimId}',
+    'CLAIM_ID',
+  )
+  const ownerLoginUrl = profile.ownerHandoff.ownerLoginTemplate.replace(
+    '{claimId}',
+    'CLAIM_ID',
+  )
+  const stats = [
+    ['Posts', profile.stats.postCount],
+    ['Topics', profile.stats.topicCount],
+    ['Receipts', profile.stats.receiptCount],
+    ['Followers', profile.stats.followerCount],
+  ]
+    .map(
+      ([label, value]) =>
+        `<div class="metric"><dt>${escapeHtml(String(label))}</dt><dd>${escapeHtml(String(value))}</dd></div>`,
+    )
+    .join('')
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(profile.actor.displayName)} - OpenAgents</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #000; color: #f1efe8; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    a { color: #f1efe8; text-decoration-color: rgba(241,239,232,.38); text-underline-offset: 4px; }
+    main { width: min(100% - 32px, 1040px); margin: 8vh auto; }
+    header { border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 28px; }
+    .eyebrow { color: rgba(241,239,232,.42); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    h1 { font-size: clamp(42px, 9vw, 118px); line-height: .92; margin: 18px 0; font-weight: 700; letter-spacing: 0; }
+    p { color: rgba(241,239,232,.68); line-height: 1.65; max-width: 760px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 18px; margin-top: 28px; }
+    section { border: 1px solid rgba(255,255,255,.12); padding: 18px; }
+    h2 { margin: 0 0 14px; font-size: 14px; text-transform: uppercase; color: rgba(241,239,232,.72); }
+    dl { margin: 0; }
+    .row, .metric { display: grid; grid-template-columns: 10rem 1fr; gap: 16px; border-top: 1px solid rgba(255,255,255,.1); padding: 12px 0; }
+    .row:first-child, .metric:first-child { border-top: 0; }
+    dt { color: rgba(241,239,232,.42); text-transform: uppercase; font-size: 12px; }
+    dd { margin: 0; color: rgba(241,239,232,.86); overflow-wrap: anywhere; }
+    code { color: #fff; }
+    @media (max-width: 780px) { main { margin: 24px auto; } .grid { grid-template-columns: 1fr; } h1 { font-size: clamp(40px, 18vw, 84px); } .row, .metric { grid-template-columns: 1fr; gap: 6px; } }
+  </style>
+</head>
+<body>
+  <main data-agent-profile-page>
+    <header>
+      <div class="eyebrow">OpenAgents profile</div>
+      <h1>${escapeHtml(profile.actor.displayName)}</h1>
+      <p>${escapeHtml(profile.actor.isAgent ? 'Registered agent identity.' : 'Forum participant profile.')} Agent-facing JSON is available from <a href="${escapeHtml(apiUrl)}">${escapeHtml(apiUrl)}</a>.</p>
+    </header>
+    <div class="grid">
+      <section>
+        <h2>Identity</h2>
+        <dl>
+          <div class="row"><dt>Actor</dt><dd><code>${escapeHtml(profile.actor.actorRef)}</code></dd></div>
+          <div class="row"><dt>Slug</dt><dd>${escapeHtml(profile.actor.slug)}</dd></div>
+          <div class="row"><dt>Source</dt><dd>${escapeHtml(profile.source)}</dd></div>
+          <div class="row"><dt>Verification</dt><dd>${escapeHtml(profile.verificationState)}</dd></div>
+          <div class="row"><dt>Updated</dt><dd>${escapeHtml(profile.updatedAt)}</dd></div>
+        </dl>
+      </section>
+      <section>
+        <h2>Forum stats</h2>
+        <dl>${stats}</dl>
+      </section>
+      <section>
+        <h2>Owner handoff</h2>
+        <p>${escapeHtml(profile.ownerHandoff.instruction)}</p>
+        <dl>
+          <div class="row"><dt>Agent token</dt><dd>${escapeHtml(profile.ownerHandoff.agentTokenStatus)}</dd></div>
+          <div class="row"><dt>Human login</dt><dd>${escapeHtml(profile.ownerHandoff.humanLoginStatus)}</dd></div>
+          <div class="row"><dt>Create claim</dt><dd><code>${escapeHtml(profile.ownerHandoff.claimEndpoint)}</code></dd></div>
+          <div class="row"><dt>Claim page</dt><dd><code>${escapeHtml(ownerClaimUrl)}</code></dd></div>
+          <div class="row"><dt>Owner login</dt><dd><code>${escapeHtml(ownerLoginUrl)}</code></dd></div>
+        </dl>
+      </section>
+      <section>
+        <h2>Links</h2>
+        <dl>
+          <div class="row"><dt>Canonical</dt><dd><a href="${escapeHtml(profile.publicUrl)}">${escapeHtml(profile.publicUrl)}</a></dd></div>
+          <div class="row"><dt>API</dt><dd><a href="${escapeHtml(apiUrl)}">${escapeHtml(apiUrl)}</a></dd></div>
+          <div class="row"><dt>Forum</dt><dd><a href="https://openagents.com/forum">https://openagents.com/forum</a></dd></div>
+        </dl>
+      </section>
+    </div>
+  </main>
+</body>
+</html>`
 }
 
 const includeUnlisted = (url: URL): boolean =>
@@ -2398,6 +2514,22 @@ const agentProfileResponse = (db: D1Database, profileRef: string) =>
     Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
   )
 
+const agentProfilePageResponse = (db: D1Database, profileRef: string) =>
+  readForumAgentPublicProfile(db, profileRef).pipe(
+    Effect.map(profile =>
+      profile === null ? notFound() : htmlResponse(renderAgentProfilePage(profile)),
+    ),
+    Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+  )
+
+const agentProfileRedirectResponse = (db: D1Database, profileRef: string) =>
+  readForumAgentPublicProfile(db, profileRef).pipe(
+    Effect.map(profile =>
+      profile === null ? notFound() : redirectResponse(profile.publicUrl),
+    ),
+    Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
+  )
+
 const watchForumResponse = (
   request: Request,
   db: D1Database,
@@ -2747,6 +2879,41 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
     requestDependencies: ForumRouteDependencies = dependencies,
   ) => {
     const url = new URL(request.url)
+    const forumAgentProfilePageMatch =
+      /^\/forum\/u\/([^/]+)\/([^/]+)$/.exec(url.pathname)
+
+    if (forumAgentProfilePageMatch !== null) {
+      const actorId = decodePathSegment(forumAgentProfilePageMatch[1])
+
+      if (actorId === undefined || actorId.trim().length === 0) {
+        return Effect.succeed(badRequest('agent profile actor id is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? agentProfilePageResponse(db, actorId)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const registeredAgentProfileRedirectMatch = /^\/agents\/([^/]+)$/.exec(
+      url.pathname,
+    )
+
+    if (registeredAgentProfileRedirectMatch !== null) {
+      const profileRef = decodePathSegment(registeredAgentProfileRedirectMatch[1])
+      const reservedPublicAgentRefs = new Set(['adjutant', 'artanis'])
+
+      if (
+        profileRef === undefined ||
+        profileRef.trim().length === 0 ||
+        reservedPublicAgentRefs.has(profileRef)
+      ) {
+        return undefined
+      }
+
+      return request.method === 'GET'
+        ? agentProfileRedirectResponse(db, profileRef)
+        : Effect.succeed(methodNotAllowed(['GET']))
+    }
 
     if (url.pathname === '/api/forum') {
       if (request.method !== 'GET') {
