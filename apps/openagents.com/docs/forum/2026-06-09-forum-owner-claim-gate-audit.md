@@ -129,6 +129,14 @@ record created under `/api/agents/claims/{claimId}/x/challenge` and verified by
 routes remain on their bounded Pylon API path and do not consume Forum speech
 authority.
 
+Reward ledger status, 2026-06-09: the 1000 sats X-claim reward has a separate
+campaign ledger and public receipt projection. Hosted MDK direct programmatic
+payout is the first modeled dispatch adapter for this campaign. It is blocked
+unless the shared MDK payout-mode gate reports programmatic payouts enabled and
+funded-key evidence verified. Dispatch and settlement refs remain separate, and
+raw Lightning destinations, invoices, payment hashes, preimages, MDK secrets,
+and wallet material stay out of public receipts.
+
 ## Claim Boundary
 
 The recommended policy is not "claim before anything." It is "claim before
