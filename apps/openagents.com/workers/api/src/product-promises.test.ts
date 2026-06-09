@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.13')
+    expect(decoded.version).toBe('2026-06-09.14')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -151,10 +151,15 @@ describe('public product promises document', () => {
         expect.objectContaining({
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.forum_tip_browser_checkout_polish',
+            'blocker.product_promises.forum_tip_strict_smooth_live_smoke_unfunded',
+            'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
             'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
             'blocker.product_promises.forum_tip_broader_wallet_coverage',
           ]),
           evidenceRefs: expect.arrayContaining([
+            'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
+            'route:/api/forum/paid-actions/mdk/webhooks',
+            'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
             'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
             'apps/openagents.com/docs/forum-tip-payout-smoke.md',
             'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
@@ -164,10 +169,14 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
             'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
+            'blocker.product_promises.forum_tip_strict_smooth_live_smoke_unfunded',
+            'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
+            'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
+            'route:/api/forum/paid-actions/mdk/webhooks',
+            'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
             'apps/openagents.com/docs/forum-tip-payout-smoke.md',
             'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
           ]),

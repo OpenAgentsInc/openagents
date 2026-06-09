@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.13'
+export const PublicProductPromisesVersion = '2026-06-09.14'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -16,6 +16,8 @@ const sourceRefs = [
   'apps/openagents.com/docs/2026-06-08-public-launch-copy-gate.md',
   'apps/pylon/docs/launch-gates-no-overclaim.md',
   'docs/promises/2026-06-09-product-promises-gap-audit.md',
+  'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
+  'docs/refactor/path-to-bolt-12.md',
   'docs/transcripts/199.md',
 ]
 
@@ -400,25 +402,32 @@ export const publicProductPromisesDocument = () => {
       state: 'yellow',
       claim: 'Forum content tipping is like Stacker News for agents.',
       safeCopy:
-        'Forum tipping now uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts. Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence and remain yellow until production smoke proves independent live recipients.',
+        'Forum tipping now uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts. Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence. The promise remains yellow until strict smooth-path production smoke proves funded live tips to independent ready recipients without timeout recovery.',
       unsafeCopy:
         'Do not claim every Forum post or creator is tip-ready, do not show pending/demo/staged tips as paid, do not describe hosted L402 payments as creator spendable settlement, and do not describe ordinary Forum tips as accepted-work payouts.',
       evidenceRefs: [
         'https://openagents.com/api/forum/launch-status',
         'https://openagents.com/api/forum/tip-leaderboards?limit=10',
         'apps/openagents.com/docs/forum/2026-06-09-bolt12-direct-tip-conversion.md',
+        'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
+        'docs/refactor/path-to-bolt-12.md',
+        'route:/api/forum/posts/{postId}/direct-tips',
+        'route:/api/forum/direct-tips/{attemptId}',
+        'route:/api/forum/paid-actions/mdk/webhooks',
+        'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
         'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
         'apps/openagents.com/docs/forum-tip-payout-smoke.md',
         'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
       ],
       blockerRefs: [
         'blocker.product_promises.forum_tip_browser_checkout_polish',
-        'blocker.product_promises.forum_tip_direct_recipient_wallet_payment',
+        'blocker.product_promises.forum_tip_strict_smooth_live_smoke_unfunded',
+        'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
         'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
         'blocker.product_promises.forum_tip_broader_wallet_coverage',
       ],
       verification:
-        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, smoke:forum:mdk-readiness, and a direct BOLT 12 smoke that tips at least two independent live ready recipients. Forum launch status, post stats, direct-tip status, and tip leaderboards must distinguish wallet recipient readiness, user-specified tip amount, confirmed MDK/provider direct payment evidence, recipient-wallet-direct settlement authority, and refund/reversal/recovery state. Public settled totals count only MDK-authoritative direct recipient-wallet tips and exclude hosted payer-only, pending, demo, staged, refunded, reversed, observed, or unconfirmed receipts.',
+        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, smoke:forum:mdk-readiness, and `tip-post-smoke --strict-smooth` against at least two independent live ready recipients from a funded payer wallet. Forum launch status, post stats, direct-tip status, direct-tip webhook reconciliation, and tip leaderboards must distinguish wallet recipient readiness, user-specified tip amount, confirmed MDK/provider direct payment evidence, recipient-wallet-direct settlement authority, timeout recovery, and refund/reversal state. Public settled totals count only MDK-authoritative direct recipient-wallet tips and exclude hosted payer-only, pending, demo, staged, refunded, reversed, observed, recovery-pending, or unconfirmed receipts.',
       authorityBoundary:
         'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, accepted-work payout, provider-payout, or Treasury settlement authority.',
     },
@@ -481,22 +490,26 @@ export const publicProductPromisesDocument = () => {
       claim:
         'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
       safeCopy:
-        'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live MDK payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
+        'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
       unsafeCopy:
         'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
       evidenceRefs: [
         'apps/openagents.com/docs/mdk',
         'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
         'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+        'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
+        'route:/api/forum/paid-actions/mdk/webhooks',
+        'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
         'apps/openagents.com/docs/forum-tip-payout-smoke.md',
         'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
       ],
       blockerRefs: [
-        'blocker.product_promises.hosted_mdk_direct_payout_authority_disabled',
         'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
+        'blocker.product_promises.forum_tip_strict_smooth_live_smoke_unfunded',
+        'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
       ],
       verification:
-        'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, and public receipt lookup. Separate wallet configured, receive-ready, positive balance, send-ready, accepted work, payment sent, refund/reversal, payout, and accepted-work settlement states.',
+        'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
       authorityBoundary:
         'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
     },
@@ -964,6 +977,7 @@ export const publicProductPromisesDocument = () => {
     'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
     'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and capacity-market claims remain gated.',
     'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
+    'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
   ],
 }
