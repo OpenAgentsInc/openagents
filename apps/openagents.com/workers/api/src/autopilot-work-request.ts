@@ -64,6 +64,8 @@ export type OpenAgentsAutopilotRepositoryVisibility =
 export const OpenAgentsAutopilotAccessRequestKind = S.Literals([
   'customer_review',
   'github_account_link',
+  'github_branch_write',
+  'github_pull_request',
   'github_repo_read',
   'github_repo_write',
   'operator_review',

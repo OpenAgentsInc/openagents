@@ -151,3 +151,31 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-006: Repository Access Grants For Work Requests
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4580`
+
+Status: implemented.
+
+Implemented:
+
+- Added explicit access kinds for branch write and pull request authority:
+  - `github_branch_write`
+  - `github_pull_request`
+- Added `repositoryAuthorities` to Autopilot work projections so callers can
+  see read/write/PR authority state per task without internal tables.
+- Treated public GitHub `github_repo_read` requests as satisfied by public
+  repository visibility, allowing public read-only tasks to proceed.
+- Kept branch/write/PR work blocked as `access_required` until owner approval
+  is represented by explicit access grants.
+- Preserved authority boundaries in the projection:
+  - `deployAuthority: false`
+  - `spendAuthority: false`
+- Updated event tests so `needs_access` events are generated only for explicit
+  write-gated work, not public read-only work.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

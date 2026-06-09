@@ -149,8 +149,18 @@ const responseJson = async (response: Response) =>
         status: string
         taskRef: string
       }>>
+      accessRequestRefs?: ReadonlyArray<string>
       idempotent: boolean
       paymentChallengeRef: string | null
+      repositoryAuthorities?: ReadonlyArray<Readonly<{
+        deployAuthority: boolean
+        fullName: string
+        pullRequestAuthority: string
+        readAuthority: string
+        spendAuthority: boolean
+        taskRef: string
+        writeAuthority: string
+      }>>
       state: string
       taskRefs: ReadonlyArray<string>
       workOrderRef: string
@@ -218,6 +228,34 @@ describe('Autopilot work routes', () => {
 
     expect(response.status).toBe(400)
     expect(body.error).toBe('autopilot_work_validation_error')
+  })
+
+  test('allows public read-only repository tasks to proceed', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const response = await route(store, '/api/autopilot/work', {
+      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      idempotencyKey: 'idem-autopilot-work-public-read',
+    })
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(202)
+    expect(body.work).toMatchObject({
+      accessRequirements: [],
+      accessRequestRefs: [],
+      paymentChallengeRef: null,
+      state: 'accepted_free_slice',
+    })
+    expect(body.work?.repositoryAuthorities).toEqual([
+      expect.objectContaining({
+        deployAuthority: false,
+        fullName: 'OpenAgentsInc/openagents',
+        pullRequestAuthority: 'not_requested',
+        readAuthority: 'public_read_available',
+        spendAuthority: false,
+        taskRef: 'task.autopilot_coder.docs_contract',
+        writeAuthority: 'not_requested',
+      }),
+    ])
   })
 
   test('returns exact structured access requirements before launch', async () => {
@@ -316,6 +354,59 @@ describe('Autopilot work routes', () => {
     expect(body.work?.paymentChallengeRef).toBeNull()
   })
 
+  test('blocks branch and pull request work until owner approval', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [
+            {
+              kind: 'github_branch_write',
+              reasonRef: 'access.github.branch_write',
+            },
+            {
+              kind: 'github_pull_request',
+              reasonRef: 'access.github.pull_request',
+            },
+          ],
+        },
+      ],
+    }
+    const response = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-branch-pr',
+    })
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(202)
+    expect(body.work?.state).toBe('access_required')
+    expect(body.work?.accessRequirements).toEqual([
+      expect.objectContaining({
+        grantAction: 'authorize_github_branch',
+        kind: 'github_branch_write',
+        requiredBeforeLaunch: true,
+        status: 'missing',
+      }),
+      expect.objectContaining({
+        grantAction: 'authorize_github_pull_request',
+        kind: 'github_pull_request',
+        requiredBeforeLaunch: true,
+        status: 'missing',
+      }),
+    ])
+    expect(body.work?.repositoryAuthorities).toEqual([
+      expect.objectContaining({
+        deployAuthority: false,
+        pullRequestAuthority: 'owner_grant_required',
+        readAuthority: 'public_read_available',
+        spendAuthority: false,
+        writeAuthority: 'owner_grant_required',
+      }),
+    ])
+  })
+
   test('requires a registered agent grant for create and read', async () => {
     const create = await route(
       new MemoryAutopilotWorkStore(),
@@ -369,7 +460,20 @@ describe('Autopilot work routes', () => {
   test('returns pollable work events without internal operator logs', async () => {
     const store = new MemoryAutopilotWorkStore()
     const create = await route(store, '/api/autopilot/work', {
-      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      body: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+        tasks: [
+          {
+            ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+            accessRequests: [
+              {
+                kind: 'github_repo_write',
+                reasonRef: 'access.github.repo_write',
+              },
+            ],
+          },
+        ],
+      },
       idempotencyKey: 'idem-autopilot-work-events',
     })
     const createJson = await responseJson(create)
@@ -403,7 +507,20 @@ describe('Autopilot work routes', () => {
   test('supports event cursors and server-sent event formatting', async () => {
     const store = new MemoryAutopilotWorkStore()
     const create = await route(store, '/api/autopilot/work', {
-      body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      body: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+        tasks: [
+          {
+            ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+            accessRequests: [
+              {
+                kind: 'github_repo_write',
+                reasonRef: 'access.github.repo_write',
+              },
+            ],
+          },
+        ],
+      },
       idempotencyKey: 'idem-autopilot-work-event-stream',
     })
     const createJson = await responseJson(create)

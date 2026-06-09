@@ -40,6 +40,8 @@ export class AutopilotWorkStoreError extends S.TaggedErrorClass<AutopilotWorkSto
 export type AutopilotWorkStoreErrorKind = AutopilotWorkStoreError['kind']
 
 export type AutopilotWorkAccessGrantAction =
+  | 'authorize_github_branch'
+  | 'authorize_github_pull_request'
   | 'connect_github_account'
   | 'connect_github_repository'
   | 'configure_secret_broker'
@@ -58,6 +60,25 @@ export type AutopilotWorkAccessRequirementProjection = Readonly<{
   requiredBeforeLaunch: true
   status: 'missing'
   taskRef: string
+}>
+
+export type AutopilotWorkRepositoryAuthorityProjection = Readonly<{
+  branch: string
+  deployAuthority: false
+  fullName: string
+  provider: 'github'
+  pullRequestAuthority:
+    | 'owner_grant_required'
+    | 'not_requested'
+  readAuthority:
+    | 'owner_grant_required'
+    | 'public_read_available'
+  spendAuthority: false
+  taskRef: string
+  visibility: 'internal' | 'private' | 'public'
+  writeAuthority:
+    | 'owner_grant_required'
+    | 'not_requested'
 }>
 
 export type AutopilotWorkOrderRecord = Readonly<{
@@ -88,6 +109,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   eventStreamRef: string
   idempotent: boolean
   paymentChallengeRef: string | null
+  repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
   state: OpenAgentsAutopilotWorkStateType
   statusUrlRef: string
   taskRefs: ReadonlyArray<string>
@@ -211,11 +233,21 @@ const eventStreamRefForWorkOrder = (workOrderRef: string): string =>
 const accessRequestRefsForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): ReadonlyArray<string> =>
-  request.tasks.flatMap(task =>
-    task.accessRequests.map(accessRequest =>
-      `access_request.${task.taskRef}.${accessRequest.kind}`
-    )
+  accessRequirementsForRequest(request).map(
+    requirement => requirement.accessRequestRef,
   )
+
+const hasAccessRequestKind = (
+  task: OpenAgentsAutopilotWorkRequest['tasks'][number],
+  kind: OpenAgentsAutopilotAccessRequestKind,
+): boolean =>
+  task.accessRequests.some(accessRequest => accessRequest.kind === kind)
+
+const isAccessRequestSatisfiedByRepositoryPolicy = (
+  task: OpenAgentsAutopilotWorkRequest['tasks'][number],
+  kind: OpenAgentsAutopilotAccessRequestKind,
+): boolean =>
+  kind === 'github_repo_read' && task.repository?.visibility === 'public'
 
 const accessGrantActionForKind = (
   kind: OpenAgentsAutopilotAccessRequestKind,
@@ -226,6 +258,10 @@ const accessGrantActionForKind = (
       return 'customer_review'
     case 'github_account_link':
       return 'connect_github_account'
+    case 'github_branch_write':
+      return 'authorize_github_branch'
+    case 'github_pull_request':
+      return 'authorize_github_pull_request'
     case 'github_repo_read':
     case 'github_repo_write':
       return 'connect_github_repository'
@@ -246,22 +282,61 @@ const accessRequirementsForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): ReadonlyArray<AutopilotWorkAccessRequirementProjection> =>
   request.tasks.flatMap(task =>
-    task.accessRequests.map(accessRequest => {
-      const accessRequestRef =
-        `access_request.${task.taskRef}.${accessRequest.kind}`
+    task.accessRequests
+      .filter(
+        accessRequest =>
+          !isAccessRequestSatisfiedByRepositoryPolicy(task, accessRequest.kind),
+      )
+      .map(accessRequest => {
+        const accessRequestRef =
+          `access_request.${task.taskRef}.${accessRequest.kind}`
 
-      return {
-        accessRequestRef,
-        grantAction: accessGrantActionForKind(accessRequest.kind),
-        kind: accessRequest.kind,
-        ownerActionRef:
-          `owner_action.${task.taskRef}.${accessRequest.kind}`,
-        reasonRef: accessRequest.reasonRef,
-        requiredBeforeLaunch: true,
-        status: 'missing',
-        taskRef: task.taskRef,
-      }
-    })
+        return {
+          accessRequestRef,
+          grantAction: accessGrantActionForKind(accessRequest.kind),
+          kind: accessRequest.kind,
+          ownerActionRef:
+            `owner_action.${task.taskRef}.${accessRequest.kind}`,
+          reasonRef: accessRequest.reasonRef,
+          requiredBeforeLaunch: true,
+          status: 'missing',
+          taskRef: task.taskRef,
+        }
+      })
+  )
+
+const repositoryAuthoritiesForRequest = (
+  request: OpenAgentsAutopilotWorkRequest,
+): ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection> =>
+  request.tasks.flatMap(task =>
+    task.repository === undefined
+      ? []
+      : [
+          {
+            branch: task.repository.branch,
+            deployAuthority: false,
+            fullName: task.repository.fullName,
+            provider: task.repository.provider,
+            pullRequestAuthority: hasAccessRequestKind(
+              task,
+              'github_pull_request',
+            )
+              ? 'owner_grant_required'
+              : 'not_requested',
+            readAuthority:
+              task.repository.visibility === 'public'
+                ? 'public_read_available'
+                : 'owner_grant_required',
+            spendAuthority: false,
+            taskRef: task.taskRef,
+            visibility: task.repository.visibility,
+            writeAuthority:
+              hasAccessRequestKind(task, 'github_repo_write') ||
+              hasAccessRequestKind(task, 'github_branch_write')
+                ? 'owner_grant_required'
+                : 'not_requested',
+          },
+        ]
   )
 
 const paymentChallengeRefForRequest = (
@@ -276,7 +351,7 @@ const paymentChallengeRefForRequest = (
 const stateForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): OpenAgentsAutopilotWorkStateType => {
-  if (request.tasks.some(task => task.accessRequests.length > 0)) {
+  if (accessRequirementsForRequest(request).length > 0) {
     return 'access_required'
   }
 
@@ -298,6 +373,7 @@ const projectionForRecord = (
   eventStreamRef: record.eventStreamRef,
   idempotent,
   paymentChallengeRef: record.paymentChallengeRef,
+  repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
   state: record.state,
   statusUrlRef: record.statusUrlRef,
   taskRefs: record.taskRefs,
