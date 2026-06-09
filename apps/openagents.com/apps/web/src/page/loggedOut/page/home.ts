@@ -355,12 +355,16 @@ const pubkeyRows = (stats: PublicPylonStats | null): ReadonlyArray<string> =>
     .map(pylon => pylon.nostrPubkeyShort)
     .filter((value, index, values) => values.indexOf(value) === index) ?? []
 
-const nostrRelayPanel = (model: PublicPylonStatsModel): Html => {
+const nostrRelayPanel = (model: PublicPylonStatsModel): Html | null => {
   const h = html<Message>()
   const stats = statsFromModel(model)
   const relays = relayRows(stats)
   const pubkeys = pubkeyRows(stats)
   const error = modelErrorText(model)
+
+  if (stats !== null && relays.length === 0) {
+    return null
+  }
 
   return h.section(
     [Ui.className<Message>(panelClass)],
@@ -821,7 +825,9 @@ export const view = (input: HomeViewInput): Html => {
                 ),
                 endpointManifestPanel(),
                 taskDispatchPanel(),
-                nostrRelayPanel(input.publicPylonStats),
+                ...[nostrRelayPanel(input.publicPylonStats)].filter(
+                  (panel): panel is Html => panel !== null,
+                ),
                 publicAgentPath(),
               ],
             ),
