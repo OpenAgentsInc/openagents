@@ -20,6 +20,28 @@ or copied into public evidence. `pylon status --json` emits only the public
 identity fields: `nodeId`, `pylonRef`, `nodeLabel`, `publicKey`, `npub`, and
 `createdAt`.
 
+## Nostr Compatibility Caveat
+
+The current v0.3 `identity.json` is a local Pylon bootstrap identity. It is not
+yet a real Nostr identity: the key is Ed25519, `publicKey` is DER material, and
+`npub` is a local synthetic value rather than a NIP-19 encoding.
+
+The deprecated Rust Pylon that previously lived inside this repo used a real
+NIP-06 identity. It stored a BIP39 mnemonic at `identity.mnemonic`, defaulting
+to `~/.openagents/pylon/identity.mnemonic`, with these compatibility inputs:
+
+- `OPENAGENTS_IDENTITY_MNEMONIC_PATH` for direct mnemonic-file override;
+- historical Pylon config `identity_path`;
+- `OPENAGENTS_PYLON_HOME/identity.mnemonic`.
+
+The new Nostr identity implementation must check those historical locations
+before creating any new key. When a valid mnemonic exists, it should derive the
+same account-zero NIP-06 key at `m/44'/1237'/0'/0/0` and project only public
+fields such as hex pubkey and valid `npub`. If no mnemonic exists, it should
+create a new mnemonic at the selected compatibility path with private file
+permissions and keep the mnemonic, `nsec`, and private hex material out of
+public projection.
+
 ## Lifecycle States
 
 The v0.3 local runtime recognizes:

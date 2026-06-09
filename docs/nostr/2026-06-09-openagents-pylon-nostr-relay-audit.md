@@ -17,6 +17,10 @@ Inputs reviewed:
 - `apps/pylon/src/state.ts`
 - `apps/pylon/src/presence.ts`
 - `apps/pylon/tests/presence.test.ts`
+- historical in-repo Rust Pylon at commit
+  `5f5b920793c0619f6fccd262ed5df8915f43bccf`
+  (`apps/deprecated/pylon` before the Bun/Effect rebuild)
+- historical in-repo Nostr crate at the same commit (`crates/nostr/core`)
 - `apps/openagents.com/workers/api/src/forum-routes.ts`
 - `apps/openagents.com/workers/api/src/forum/recipient-wallet-readiness.ts`
 - `docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md`
@@ -136,6 +140,48 @@ However, the current Pylon identity is not a real Nostr identity:
 
 This is useful local binding scaffolding, but it should be renamed or migrated
 before any public docs call it live Nostr identity.
+
+### Rust Pylon NIP-06 compatibility finding
+
+The prior Rust Pylon that lived in this repo before the Bun/Effect rebuild did
+use real Nostr identity material. The relevant historical source is commit
+`5f5b920793c0619f6fccd262ed5df8915f43bccf`, especially:
+
+- `apps/deprecated/pylon/src/lib.rs`;
+- `apps/deprecated/pylon/src/wallet_runtime.rs`;
+- `crates/nostr/core/src/identity.rs`;
+- `crates/nostr/core/src/nip06.rs`.
+
+That implementation stored a BIP39 mnemonic at the configured
+`identity_path`. The default config set `identity_path` to
+`$OPENAGENTS_PYLON_HOME/identity.mnemonic`, where `OPENAGENTS_PYLON_HOME`
+defaulted to `~/.openagents/pylon`. The shared Nostr crate also exposed
+`OPENAGENTS_IDENTITY_MNEMONIC_PATH` as a direct mnemonic-file override and
+defaulted to `~/.openagents/pylon/identity.mnemonic`.
+
+The old derivation matched NIP-06 account zero:
+
+```text
+m/44'/1237'/0'/0/0
+```
+
+It produced a 32-byte Nostr public key, valid NIP-19 `npub`, valid `nsec`, and
+hex private/public key material. The old runtime wrote the mnemonic with
+0600 permissions, loaded it instead of regenerating when present, failed closed
+on invalid or empty files, and used the same identity path for wallet entropy
+derivation in at least one wallet-runtime path. Backup and restore code could
+optionally include or restore the identity mnemonic, with explicit secret
+redaction tests around mnemonic leakage.
+
+Current Pylon should therefore treat the historical mnemonic file as the
+compatibility source of truth before minting any new Nostr key. Existing users
+may already have `~/.openagents/pylon/identity.mnemonic`, a configured
+`OPENAGENTS_PYLON_HOME`, a historical config `identity_path`, or an
+`OPENAGENTS_IDENTITY_MNEMONIC_PATH` override. The migration should reuse that
+mnemonic and derive the same `npub`. If no historical mnemonic exists, the
+new implementation should create a new NIP-06 mnemonic at the historical path
+or an explicitly configured replacement path, with 0600 permissions and no
+private material in public status output.
 
 ## Where Nostr Helps
 
@@ -257,6 +303,10 @@ For OpenAgents, the practical Pylon bundle should be small:
 ### Pylon identity bundle
 
 - NIP-01: event format, `secp256k1` Schnorr signatures, ids, filters.
+- NIP-06: mnemonic-based compatibility with the deprecated Rust Pylon. Use it
+  for migration and local Pylon identity continuity even though upstream marks
+  it `unrecommended`; do not present the mnemonic as a social-login recovery
+  mechanism or wallet authority.
 - NIP-19: valid `npub`, `nsec`, `nprofile`, `nevent`, and `naddr` encodings.
 - NIP-21: `nostr:` links on public Pylon and agent profile pages.
 - NIP-98: HTTP auth for binding Pylon registration and Forum claim requests to
@@ -400,15 +450,26 @@ solve connection coordination plus colocated storage.
 
 ### Phase 1: real Pylon Nostr key material
 
-- Add a Nostr identity record beside the existing local identity record, not by
-  mutating the existing Ed25519 identity in place.
-- Generate or import a `secp256k1` private key.
+- Add a NIP-06 Nostr identity record beside the existing local identity record,
+  not by mutating the existing Ed25519 identity in place.
+- Resolve historical Rust Pylon identity first:
+  `OPENAGENTS_IDENTITY_MNEMONIC_PATH`, historical config `identity_path`,
+  `OPENAGENTS_PYLON_HOME/identity.mnemonic`, then
+  `~/.openagents/pylon/identity.mnemonic`.
+- Reuse any valid existing mnemonic and derive account-zero NIP-06 key material
+  from `m/44'/1237'/0'/0/0`; do not overwrite or regenerate silently.
+- If no mnemonic exists, create a new BIP39 English mnemonic at the selected
+  compatibility path with 0600 permissions.
 - Store only public fields in projections: hex pubkey, valid `npub`, relay
   hints, created-at, rotation refs, and binding refs.
-- Keep private key material local and encrypted where possible. Never send it
-  to OpenAgents.
+- Keep mnemonic, `nsec`, and private hex material local and encrypted where
+  possible. Never send them to OpenAgents.
 - Add migration code that treats existing fake `npub` values as legacy local
   ids, not Nostr ids.
+- Preserve `pylonRef` and current `PYLON_HOME` local runtime paths unless the
+  operator explicitly migrates them. The NIP-06 identity path is compatibility
+  input, not an instruction to move every v0.3 state file back under
+  `~/.openagents/pylon`.
 
 ### Phase 2: strict NIP-98 key binding
 
@@ -490,6 +551,7 @@ that Nostr already secures assignments, payments, or Forum authority.
 
 - NIPs README: `projects/repos/nips/README.md`
 - NIP-01: `projects/repos/nips/01.md`
+- NIP-06: `projects/repos/nips/06.md`
 - NIP-11: `projects/repos/nips/11.md`
 - NIP-19: `projects/repos/nips/19.md`
 - NIP-22: `projects/repos/nips/22.md`
