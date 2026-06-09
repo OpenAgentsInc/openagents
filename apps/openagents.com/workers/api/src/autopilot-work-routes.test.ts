@@ -139,7 +139,18 @@ const responseJson = async (response: Response) =>
     }>>
     nextAfter?: number
     work?: Readonly<{
+      accessRequirements?: ReadonlyArray<Readonly<{
+        accessRequestRef: string
+        grantAction: string
+        kind: string
+        ownerActionRef: string
+        reasonRef: string
+        requiredBeforeLaunch: boolean
+        status: string
+        taskRef: string
+      }>>
       idempotent: boolean
+      paymentChallengeRef: string | null
       state: string
       taskRefs: ReadonlyArray<string>
       workOrderRef: string
@@ -207,6 +218,102 @@ describe('Autopilot work routes', () => {
 
     expect(response.status).toBe(400)
     expect(body.error).toBe('autopilot_work_validation_error')
+  })
+
+  test('returns exact structured access requirements before launch', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [
+            {
+              kind: 'github_account_link',
+              reasonRef: 'access.github.account_link',
+            },
+            {
+              kind: 'repository_selection',
+              reasonRef: 'access.repository.selection',
+            },
+            {
+              kind: 'github_repo_write',
+              reasonRef: 'access.github.repo_write',
+            },
+            {
+              kind: 'pylon_enrollment',
+              reasonRef: 'access.pylon.enrollment',
+            },
+            {
+              kind: 'secret_broker',
+              reasonRef: 'access.broker.required',
+            },
+            {
+              kind: 'privacy_tier_confirmation',
+              reasonRef: 'access.privacy.confirmation',
+            },
+            {
+              kind: 'customer_review',
+              reasonRef: 'access.customer.review',
+            },
+            {
+              kind: 'operator_review',
+              reasonRef: 'access.operator.review',
+            },
+          ],
+        },
+      ],
+    }
+    const response = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-access-required',
+    })
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(202)
+    expect(body.work?.state).toBe('access_required')
+    expect(body.work?.accessRequirements).toEqual([
+      expect.objectContaining({
+        accessRequestRef:
+          'access_request.task.autopilot_coder.docs_contract.github_account_link',
+        grantAction: 'connect_github_account',
+        kind: 'github_account_link',
+        reasonRef: 'access.github.account_link',
+        requiredBeforeLaunch: true,
+        status: 'missing',
+        taskRef: 'task.autopilot_coder.docs_contract',
+      }),
+      expect.objectContaining({
+        grantAction: 'select_repository',
+        kind: 'repository_selection',
+        reasonRef: 'access.repository.selection',
+      }),
+      expect.objectContaining({
+        grantAction: 'connect_github_repository',
+        kind: 'github_repo_write',
+      }),
+      expect.objectContaining({
+        grantAction: 'enroll_pylon',
+        kind: 'pylon_enrollment',
+      }),
+      expect.objectContaining({
+        grantAction: 'configure_secret_broker',
+        kind: 'secret_broker',
+      }),
+      expect.objectContaining({
+        grantAction: 'confirm_privacy_tier',
+        kind: 'privacy_tier_confirmation',
+      }),
+      expect.objectContaining({
+        grantAction: 'customer_review',
+        kind: 'customer_review',
+      }),
+      expect.objectContaining({
+        grantAction: 'operator_review',
+        kind: 'operator_review',
+      }),
+    ])
+    expect(body.work?.paymentChallengeRef).toBeNull()
   })
 
   test('requires a registered agent grant for create and read', async () => {

@@ -115,3 +115,39 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/openagents-capability-manifest-routes.test.ts src/openagents-openapi-routes.test.ts src/openagents-agent-onboarding-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-005: Structured Access-Required Responses
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4579`
+
+Status: implemented.
+
+Implemented:
+
+- Added missing access request kinds for:
+  - `customer_review`
+  - `github_account_link`
+  - `repository_selection`
+- Added typed `accessRequirements` to Autopilot work projections with:
+  - `accessRequestRef`
+  - `taskRef`
+  - `kind`
+  - `grantAction`
+  - `reasonRef`
+  - `ownerActionRef`
+  - `status: "missing"`
+  - `requiredBeforeLaunch: true`
+- Mapped missing GitHub, repository, Pylon, secret broker, privacy,
+  customer-review, and operator-review requirements to exact owner/operator
+  actions.
+- Preserved the gate: requests with missing access stay in `access_required`,
+  emit no buyer payment challenge, and do not move into queued/running work.
+- Tightened the unsafe-value scanner so typed access-kind enum values such as
+  `secret_broker` are allowed while arbitrary secret-shaped strings remain
+  rejected.
+- Added focused regression coverage for the full missing-access projection.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

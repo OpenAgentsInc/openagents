@@ -15,6 +15,7 @@ import {
 import { readJsonObject } from './json-boundary'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
+  type OpenAgentsAutopilotAccessRequestKind,
   OpenAgentsAutopilotWorkState,
   type OpenAgentsAutopilotWorkRequest,
   type OpenAgentsAutopilotWorkState as OpenAgentsAutopilotWorkStateType,
@@ -38,6 +39,27 @@ export class AutopilotWorkStoreError extends S.TaggedErrorClass<AutopilotWorkSto
 
 export type AutopilotWorkStoreErrorKind = AutopilotWorkStoreError['kind']
 
+export type AutopilotWorkAccessGrantAction =
+  | 'connect_github_account'
+  | 'connect_github_repository'
+  | 'configure_secret_broker'
+  | 'confirm_privacy_tier'
+  | 'customer_review'
+  | 'enroll_pylon'
+  | 'operator_review'
+  | 'select_repository'
+
+export type AutopilotWorkAccessRequirementProjection = Readonly<{
+  accessRequestRef: string
+  grantAction: AutopilotWorkAccessGrantAction
+  kind: OpenAgentsAutopilotAccessRequestKind
+  ownerActionRef: string
+  reasonRef: string
+  requiredBeforeLaunch: true
+  status: 'missing'
+  taskRef: string
+}>
+
 export type AutopilotWorkOrderRecord = Readonly<{
   accessRequestRefs: ReadonlyArray<string>
   agentCredentialId: string
@@ -59,6 +81,7 @@ export type AutopilotWorkOrderRecord = Readonly<{
 }>
 
 export type AutopilotWorkOrderProjection = Readonly<{
+  accessRequirements: ReadonlyArray<AutopilotWorkAccessRequirementProjection>
   accessRequestRefs: ReadonlyArray<string>
   clientRequestRef: string
   createdAt: string
@@ -194,6 +217,53 @@ const accessRequestRefsForRequest = (
     )
   )
 
+const accessGrantActionForKind = (
+  kind: OpenAgentsAutopilotAccessRequestKind,
+): AutopilotWorkAccessGrantAction => {
+  switch (kind) {
+    case 'customer_review':
+    case 'site_deploy_review':
+      return 'customer_review'
+    case 'github_account_link':
+      return 'connect_github_account'
+    case 'github_repo_read':
+    case 'github_repo_write':
+      return 'connect_github_repository'
+    case 'operator_review':
+      return 'operator_review'
+    case 'privacy_tier_confirmation':
+      return 'confirm_privacy_tier'
+    case 'pylon_enrollment':
+      return 'enroll_pylon'
+    case 'repository_selection':
+      return 'select_repository'
+    case 'secret_broker':
+      return 'configure_secret_broker'
+  }
+}
+
+const accessRequirementsForRequest = (
+  request: OpenAgentsAutopilotWorkRequest,
+): ReadonlyArray<AutopilotWorkAccessRequirementProjection> =>
+  request.tasks.flatMap(task =>
+    task.accessRequests.map(accessRequest => {
+      const accessRequestRef =
+        `access_request.${task.taskRef}.${accessRequest.kind}`
+
+      return {
+        accessRequestRef,
+        grantAction: accessGrantActionForKind(accessRequest.kind),
+        kind: accessRequest.kind,
+        ownerActionRef:
+          `owner_action.${task.taskRef}.${accessRequest.kind}`,
+        reasonRef: accessRequest.reasonRef,
+        requiredBeforeLaunch: true,
+        status: 'missing',
+        taskRef: task.taskRef,
+      }
+    })
+  )
+
 const paymentChallengeRefForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): string | null =>
@@ -221,6 +291,7 @@ const projectionForRecord = (
   record: AutopilotWorkOrderRecord,
   idempotent: boolean,
 ): AutopilotWorkOrderProjection => ({
+  accessRequirements: accessRequirementsForRequest(record.request),
   accessRequestRefs: record.accessRequestRefs,
   clientRequestRef: record.clientRequestRef,
   createdAt: record.createdAt,

@@ -62,11 +62,14 @@ export type OpenAgentsAutopilotRepositoryVisibility =
   typeof OpenAgentsAutopilotRepositoryVisibility.Type
 
 export const OpenAgentsAutopilotAccessRequestKind = S.Literals([
+  'customer_review',
+  'github_account_link',
   'github_repo_read',
   'github_repo_write',
   'operator_review',
   'privacy_tier_confirmation',
   'pylon_enrollment',
+  'repository_selection',
   'secret_broker',
   'site_deploy_review',
 ])
@@ -253,6 +256,13 @@ const scanForUnsafeValue = (
   path: ReadonlyArray<string> = [],
 ): string | undefined => {
   if (typeof value === 'string') {
+    if (
+      path.at(-1) === 'kind' &&
+      path.some(segment => segment === 'accessRequests')
+    ) {
+      return undefined
+    }
+
     return unsafeValuePattern.test(value)
       ? path.join('.') || '<root>'
       : undefined
