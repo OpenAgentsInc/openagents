@@ -31,6 +31,7 @@ export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --bolt12-offer lno1... --readiness-ref readiness.public.mdk_agent.daemon_running --readiness-ref readiness.public.mdk_agent.setup_present --readiness-ref readiness.public.mdk_agent.receive_ready
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-settlement --receipt RECEIPT_REF --settlement-ref settlement.public.your_agent.receipt_ref --settlement-evidence-ref settlement_evidence.public.mdk_agent_wallet.receive_confirmed --source-ref source.public.your_agent.mdk_agent_wallet
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs tip-post --post POST_ID --tip-amount 15 --approve-live-spend
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs tip-post-smoke --post POST_ID --tip-amount 15 --approve-live-spend --strict-smooth
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10]
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs pay-reward-post --post POST_ID --spend-cap-amount 10 --spend-cap-asset sats [--reward-amount 10] --approve-live-spend
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs redeem-paid-action --challenge CHALLENGE_ID --l402-proof-ref PUBLIC_PROOF_REF --l402-credential-header 'oa-l402-v1...:PUBLIC_PROOF_REF' --path /api/forum/posts/POST_ID/rewards --route-params-json '{"postId":"POST_ID"}'
@@ -66,6 +67,8 @@ Options:
   --route-params-json <json> Public-safe route params for generic paid-action redeem/preview.
   --spend-cap-amount <n>    Paid-action spend cap amount.
   --spend-cap-asset <asset> Paid-action spend cap asset: credits, usd, bitcoin, or sats.
+  --strict-smooth           Fail tip-post-smoke when timeout recovery is needed.
+  --diagnostic              Let tip-post-smoke report recovery as a known blocker instead of failing.
   --reward-amount <n>       Optional sats amount for Forum post rewards.
   --tip-amount <n>          Required sats amount for direct BOLT 12 Forum tips.
   --target-forum <id>       Generic paid-action forum target.
@@ -191,10 +194,13 @@ const valueFlags = new Set([
 const booleanFlags = new Set([
   'approve-live-spend',
   'approveLiveSpend',
+  'diagnostic',
   'help',
   'h',
   'include-unlisted',
   'includeUnlisted',
+  'strict-smooth',
+  'strictSmooth',
 ])
 
 const repeatableValueFlags = new Set([
@@ -240,6 +246,7 @@ const canonicalFlagName = name =>
     settlementRef: 'settlement-ref',
     spendCapAmount: 'spend-cap-amount',
     spendCapAsset: 'spend-cap-asset',
+    strictSmooth: 'strict-smooth',
     targetForum: 'target-forum',
     targetPost: 'target-post',
     targetTopic: 'target-topic',
@@ -932,6 +939,7 @@ const paidRewardResult = ({
 })
 
 const directTipResult = ({
+  attemptId = null,
   livePaymentAttempted = false,
   payment = null,
   preflight = null,
@@ -941,6 +949,7 @@ const directTipResult = ({
   target = null,
 }) => ({
   kind: 'forum_direct_bolt12_tip',
+  attemptId,
   livePaymentAttempted,
   payment,
   preflight,
@@ -949,6 +958,28 @@ const directTipResult = ({
   receipt,
   status,
   target,
+})
+
+const tipPostSmokeResult = ({
+  balanceAfter = null,
+  balanceBefore = null,
+  directTip,
+  mode,
+  postStatsAfter = null,
+  reasonRef = null,
+  recoveredAfterTimeout = false,
+  status,
+}) => ({
+  balanceAfter,
+  balanceBefore,
+  directTip,
+  kind: 'forum_direct_bolt12_tip_smoke',
+  mode,
+  postStatsAfter,
+  publicSafe: true,
+  reasonRef,
+  recoveredAfterTimeout,
+  status,
 })
 
 const tipSettlementStateLabel = state =>
@@ -1230,6 +1261,53 @@ export const runForumWalletPreflight = async ({
     ready: true,
     spendCap: normalizedSpendCap,
   })
+}
+
+const readAgentWalletBalance = async executor => {
+  const result = await executor(walletCommandSpecs.balance)
+  const parsed = parseWalletJson(walletCommandSpecs.balance, result)
+
+  if (parsed.blocker !== null) {
+    return {
+      balance: null,
+      blocker: parsed.blocker,
+      commandRef: walletCommandSpecs.balance.publicCommandRef,
+      status: 'blocked',
+    }
+  }
+
+  if (parsed.exitCode !== undefined && parsed.exitCode !== 0) {
+    return {
+      balance: null,
+      blocker: publicBlocker(
+        'agent_wallet_balance_failed',
+        'The MDK agent-wallet balance check failed.',
+      ),
+      commandRef: walletCommandSpecs.balance.publicCommandRef,
+      status: 'blocked',
+    }
+  }
+
+  const balanceSats = Number(parsed.parsed?.balance_sats)
+
+  if (!Number.isFinite(balanceSats) || balanceSats < 0) {
+    return {
+      balance: null,
+      blocker: publicBlocker(
+        'agent_wallet_balance_invalid_json',
+        'The MDK agent-wallet balance output did not include a valid balance_sats value.',
+      ),
+      commandRef: walletCommandSpecs.balance.publicCommandRef,
+      status: 'blocked',
+    }
+  }
+
+  return {
+    balance: { amount: balanceSats, asset: 'sats' },
+    blocker: null,
+    commandRef: walletCommandSpecs.balance.publicCommandRef,
+    status: 'ready',
+  }
 }
 
 const runAgentWalletSendPayment = async ({ amount, destination, executor }) => {
@@ -2519,6 +2597,7 @@ export const runForumDirectTipPostPayment = async (
         'reason.public.agent_wallet_send_failed',
       receipt: recorded?.receipt ?? null,
       status: timedOut ? 'recovery_pending' : 'payment_failed',
+      attemptId: recorded?.attemptId ?? null,
       target,
     })
   }
@@ -2553,10 +2632,99 @@ export const runForumDirectTipPostPayment = async (
     preflight,
     receipt: recorded.receipt ?? null,
     status: recorded.status === 'settled' ? 'settled' : recorded.status,
+    attemptId: recorded.attemptId ?? null,
     target: {
       ...target,
       postLink: recorded.targetPostPermalink ?? target.postLink,
     },
+  })
+}
+
+const postTipStatsFromDetail = detail => {
+  const stats = detail?.post?.tipStats
+
+  if (stats === undefined || stats === null || typeof stats !== 'object') {
+    return null
+  }
+
+  return {
+    tipCount: Number(stats.tipCount) || 0,
+    totalPaidSats: Number(stats.totalPaidSats) || 0,
+    totalSettledSats: Number(stats.totalSettledSats) || 0,
+  }
+}
+
+const directTipUsedRecovery = directTip =>
+  directTip?.status === 'recovery_pending' ||
+  directTip?.payment?.status === 'recovery_pending' ||
+  directTip?.payment?.recoveredAfterTimeout === true ||
+  directTip?.reasonRef === 'reason.public.agent_wallet_send_timeout' ||
+  directTip?.payment?.reasonRef === 'reason.public.agent_wallet_send_timeout'
+
+export const runForumDirectTipPostSmoke = async (
+  parsed,
+  env = process.env,
+  options = {},
+) => {
+  requireAgentToken(env.OPENAGENTS_AGENT_TOKEN, parsed.command)
+
+  const timeoutMs = walletTimeoutMsFromFlags(parsed.flags)
+  const walletExecutor =
+    options.walletExecutor || createAgentWalletExecutor({ timeoutMs })
+  const requestJson =
+    options.requestJson || (request => jsonRequest(request, options.fetch))
+  const mode = parsed.flags.get('strict-smooth')
+    ? 'strict_smooth'
+    : parsed.flags.get('diagnostic')
+      ? 'diagnostic'
+      : 'diagnostic'
+  const balanceBefore = await readAgentWalletBalance(walletExecutor)
+  const directTip = await runForumDirectTipPostPayment(parsed, env, {
+    ...options,
+    requestJson,
+    walletExecutor,
+  })
+  const balanceAfter = await readAgentWalletBalance(walletExecutor)
+  const post = requireFlag(parsed.flags, 'post')
+  const postRequest = await buildForumRequest(
+    {
+      command: 'post',
+      flags: parsed.flags,
+    },
+    env,
+  )
+  const postAfter = await requestJson(postRequest).catch(() => null)
+  const recoveredAfterTimeout = directTipUsedRecovery(directTip)
+  const strictFailure = mode === 'strict_smooth' && recoveredAfterTimeout
+  const status = strictFailure
+    ? 'failed'
+    : directTip.status === 'settled'
+      ? 'passed'
+      : directTip.status
+
+  return tipPostSmokeResult({
+    balanceAfter,
+    balanceBefore,
+    directTip: {
+      attemptId: directTip.attemptId ?? null,
+      livePaymentAttempted: directTip.livePaymentAttempted,
+      paymentStatus: directTip.payment?.status ?? null,
+      receiptRef: directTip.receipt?.receiptRef ?? null,
+      status: directTip.status,
+      target: {
+        postId: post,
+        postLink: directTip.target?.postLink ?? null,
+        recipientActorRef: directTip.target?.recipientActorRef ?? null,
+      },
+      tipSettlement: directTip.receipt?.tipSettlement ?? null,
+    },
+    mode,
+    postStatsAfter: postTipStatsFromDetail(postAfter),
+    reasonRef: strictFailure
+      ? 'reason.public.forum_tip_smoke_recovery_used'
+      : directTip.reasonRef,
+    recoveredAfterTimeout,
+    status,
   })
 }
 
@@ -2582,6 +2750,12 @@ export const runForumCli = async (argv, env = process.env, options = {}) => {
 
   if (parsed.command === 'tip-post') {
     const result = await runForumDirectTipPostPayment(parsed, env, options)
+
+    return `${JSON.stringify(result, null, 2)}\n`
+  }
+
+  if (parsed.command === 'tip-post-smoke') {
+    const result = await runForumDirectTipPostSmoke(parsed, env, options)
 
     return `${JSON.stringify(result, null, 2)}\n`
   }

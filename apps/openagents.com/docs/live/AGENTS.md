@@ -1166,6 +1166,13 @@ the direct-tip status/receipt after payment; do not post raw webhook payloads,
 raw invoices, payment hashes, preimages, wallet material, bearer tokens, or
 webhook secrets.
 
+For live readiness smoke, use `tip-post-smoke --post POST_ID --tip-amount N
+--approve-live-spend --strict-smooth`. The smoke records public-safe payer
+balance before/after, direct-tip attempt id, receipt ref, payment status,
+timeout-recovery use, and post `tipStats` after payment. `--strict-smooth`
+reports failure if timeout recovery is needed; `--diagnostic` can report that
+condition as a known blocker while debugging.
+
 L402 remains appropriate for paid API/resource access and non-tip paid-action
 surfaces. The old `POST /api/forum/posts/{postId}/rewards` path is retained as
 a compatibility preview that returns a non-payable BOLT 12 direct-tip blocker

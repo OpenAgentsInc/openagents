@@ -148,6 +148,9 @@ Forum projections.
 The Forum tipping promise should only be considered fully green after these
 checks pass:
 
+- `node scripts/forum.mjs tip-post-smoke --post POST_ID --tip-amount 15
+  --approve-live-spend --strict-smooth` passes from a funded production payer
+  wallet against independent ready recipients;
 - one live 15-sat or smaller tip succeeds without timeout recovery;
 - one live tip succeeds where the payer CLI exits before local recovery, and
   the webhook reconciles the Forum receipt;
@@ -168,4 +171,6 @@ remain the source of payment truth; Forum stores a verified, deduped,
 public-safe projection of that truth. The remaining work is smooth live smoke:
 prove a funded payer wallet can tip independent ready recipients without timeout
 recovery and that the callback path keeps public post stats, receipts, and
-product promises aligned.
+product promises aligned. The strict smoke command is implemented as the public
+operator gate, but it does not make the promise green until it is run
+successfully with live spend.

@@ -433,8 +433,10 @@ The promise can honestly say:
 
 1. Fund or locate a production payer wallet and run strict live direct-tip
    smoke against at least two independent ready recipients.
-2. Add a strict smoke command that fails when timeout recovery is needed and a
-   diagnostic mode that records recovery as a blocker.
+2. Use `tip-post-smoke --strict-smooth` as the smooth-path gate. The command
+   records payer balance before/after, direct-tip receipt state, post
+   `tipStats`, and whether timeout recovery was needed; diagnostic mode can
+   keep recovery visible as a blocker while debugging.
 3. Keep `forum.content_tipping.v1` yellow until smooth live smoke passes and
    public post stats/receipt refs agree with the API.
 4. Extend webhook/recovery docs if MDK publishes a more specific standalone
