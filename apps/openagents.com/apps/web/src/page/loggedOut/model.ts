@@ -204,8 +204,7 @@ export const PublicForumLaunchGateState = S.Literals([
   'planned',
   'ready',
 ])
-export type PublicForumLaunchGateState =
-  typeof PublicForumLaunchGateState.Type
+export type PublicForumLaunchGateState = typeof PublicForumLaunchGateState.Type
 
 export const PublicForumLaunchGateSeverity = S.Literals([
   'required',
@@ -300,8 +299,62 @@ export const PublicForumTipLeaderboards = S.Struct({
   generatedAt: S.String,
   posts: S.Array(PublicForumTipLeaderboardPost),
 })
-export type PublicForumTipLeaderboards =
-  typeof PublicForumTipLeaderboards.Type
+export type PublicForumTipLeaderboards = typeof PublicForumTipLeaderboards.Type
+
+export const PublicProductPromiseState = S.Literals([
+  'degraded',
+  'green',
+  'planned',
+  'red',
+  'withdrawn',
+  'yellow',
+])
+export type PublicProductPromiseState = typeof PublicProductPromiseState.Type
+
+export const PublicProductPromise = S.Struct({
+  audience: S.Array(S.String),
+  authorityBoundary: S.String,
+  blockerRefs: S.Array(S.String),
+  claim: S.String,
+  evidenceRefs: S.Array(S.String),
+  productArea: S.String,
+  promiseId: S.String,
+  reportPath: S.String,
+  safeCopy: S.String,
+  sourceRefs: S.Array(S.String),
+  state: PublicProductPromiseState,
+  unsafeCopy: S.String,
+  verification: S.String,
+})
+export type PublicProductPromise = typeof PublicProductPromise.Type
+
+export const PublicProductPromises = S.Struct({
+  canonicalDocsUrl: S.String,
+  currentMonorepoStatus: S.Struct({
+    caveats: S.Array(S.String),
+    liveDeploymentRefs: S.Array(S.String),
+    pylonV03Refs: S.Array(S.String),
+    status: S.String,
+    summary: S.String,
+  }),
+  latestGapAuditUrl: S.String,
+  lastUpdated: S.String,
+  notes: S.Array(S.String),
+  promises: S.Array(PublicProductPromise),
+  publicDocsUrl: S.String,
+  reportPath: S.Struct({
+    defaultForumUrl: S.String,
+    forumSlug: S.String,
+    forumTopicApi: S.String,
+    rule: S.String,
+    strictBugForm: S.String,
+  }),
+  schemaVersion: S.String,
+  sourceRefs: S.Array(S.String),
+  states: S.Record(S.String, S.String),
+  version: S.String,
+})
+export type PublicProductPromises = typeof PublicProductPromises.Type
 
 export const PublicArtanisReportLoopState = S.Literals([
   'blocked',
@@ -703,10 +756,7 @@ export const PublicPylonStatsModel = S.Union([
 ])
 export type PublicPylonStatsModel = typeof PublicPylonStatsModel.Type
 
-export const IdlePublicForumLaunchStatus = ts(
-  'PublicForumLaunchStatusIdle',
-  {},
-)
+export const IdlePublicForumLaunchStatus = ts('PublicForumLaunchStatusIdle', {})
 export const LoadingPublicForumLaunchStatus = ts(
   'PublicForumLaunchStatusLoading',
   {},
@@ -760,6 +810,25 @@ export const PublicForumTipLeaderboardsModel = S.Union([
 ])
 export type PublicForumTipLeaderboardsModel =
   typeof PublicForumTipLeaderboardsModel.Type
+
+export const IdlePublicProductPromises = ts('PublicProductPromisesIdle', {})
+export const LoadingPublicProductPromises = ts(
+  'PublicProductPromisesLoading',
+  {},
+)
+export const LoadedPublicProductPromises = ts('PublicProductPromisesLoaded', {
+  promises: PublicProductPromises,
+})
+export const FailedPublicProductPromises = ts('PublicProductPromisesFailed', {
+  error: S.String,
+})
+export const PublicProductPromisesModel = S.Union([
+  IdlePublicProductPromises,
+  LoadingPublicProductPromises,
+  LoadedPublicProductPromises,
+  FailedPublicProductPromises,
+])
+export type PublicProductPromisesModel = typeof PublicProductPromisesModel.Type
 
 export const IdlePublicArtanisReport = ts('PublicArtanisReportIdle', {})
 export const LoadingPublicArtanisReport = ts('PublicArtanisReportLoading', {})
@@ -826,6 +895,7 @@ export const Model = ts('LoggedOut', {
   publicPylonStats: PublicPylonStatsModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
+  publicProductPromises: PublicProductPromisesModel,
   shareProjection: ShareProjectionModel,
 })
 
@@ -861,6 +931,10 @@ export const init = (route: LoggedOutRoute): Model =>
       route._tag === 'Home'
         ? LoadingPublicForumTipLeaderboards()
         : IdlePublicForumTipLeaderboards(),
+    publicProductPromises:
+      route._tag === 'ProductPromises'
+        ? LoadingPublicProductPromises()
+        : IdlePublicProductPromises(),
     shareProjection:
       route._tag === 'Share'
         ? LoadingShareProjection({ shareId: route.shareId })

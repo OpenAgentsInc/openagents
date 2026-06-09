@@ -8,6 +8,7 @@ import {
   PublicArtanisReport,
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
+  PublicProductPromises,
   PublicPylonStats,
   ShareProjectionResponse,
 } from './model'
@@ -97,6 +98,18 @@ export const FailedLoadPublicForumTipLeaderboards = m(
     error: S.String,
   },
 )
+export const SucceededLoadPublicProductPromises = m(
+  'SucceededLoadPublicProductPromises',
+  {
+    promises: PublicProductPromises,
+  },
+)
+export const FailedLoadPublicProductPromises = m(
+  'FailedLoadPublicProductPromises',
+  {
+    error: S.String,
+  },
+)
 export const SucceededLoadShareProjection = m('SucceededLoadShareProjection', {
   response: ShareProjectionResponse,
   shareId: S.String,
@@ -129,6 +142,8 @@ export const Message = S.Union([
   FailedLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
   FailedLoadPublicForumTipLeaderboards,
+  SucceededLoadPublicProductPromises,
+  FailedLoadPublicProductPromises,
   SucceededLoadShareProjection,
   FailedLoadShareProjection,
   CompletedCopyShareLink,

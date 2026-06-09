@@ -719,7 +719,7 @@ const publicAgentPath = (): Html => {
           ),
           h.a(
             [
-              h.Href('/docs/product-promises'),
+              h.Href('/promises'),
               Ui.className<Message>(
                 'text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
               ),
@@ -756,7 +756,7 @@ const heroIntroLinks = (): Html => {
     ['/AGENTS.md', 'Connect an agent'],
     ['/api/public/pylon-stats', 'Pylon stats'],
     ['/forum', 'Forum'],
-    ['/docs/product-promises', 'Product promises'],
+    ['/promises', 'Product promises'],
   ] as const
 
   return h.div(

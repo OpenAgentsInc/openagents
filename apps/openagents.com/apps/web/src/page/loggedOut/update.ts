@@ -9,6 +9,7 @@ import {
   FailedLoadPublicArtanisReport,
   FailedLoadPublicForumLaunchStatus,
   FailedLoadPublicForumTipLeaderboards,
+  FailedLoadPublicProductPromises,
   FailedLoadPublicPylonStats,
   FailedLoadShareProjection,
   Message,
@@ -17,6 +18,7 @@ import {
   SucceededLoadPublicArtanisReport,
   SucceededLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
+  SucceededLoadPublicProductPromises,
   SucceededLoadPublicPylonStats,
   SucceededLoadShareProjection,
 } from './message'
@@ -26,6 +28,7 @@ import {
   FailedPublicArtanisReport,
   FailedPublicForumLaunchStatus,
   FailedPublicForumTipLeaderboards,
+  FailedPublicProductPromises,
   FailedPublicPylonStats,
   FailedShareProjection,
   LoadedPublicAdjutantActivity,
@@ -33,6 +36,7 @@ import {
   LoadedPublicArtanisReport,
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
+  LoadedPublicProductPromises,
   LoadedPublicPylonStats,
   LoadedShareProjection,
   Model,
@@ -41,6 +45,7 @@ import {
   PublicArtanisReport,
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
+  PublicProductPromises,
   PublicPylonStats,
   ShareProjectionResponse,
 } from './model'
@@ -65,6 +70,11 @@ class PublicForumLaunchStatusLoadError extends S.TaggedErrorClass<PublicForumLau
 
 class PublicForumTipLeaderboardsLoadError extends S.TaggedErrorClass<PublicForumTipLeaderboardsLoadError>()(
   'PublicForumTipLeaderboardsLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicProductPromisesLoadError extends S.TaggedErrorClass<PublicProductPromisesLoadError>()(
+  'PublicProductPromisesLoadError',
   { error: S.Defect },
 ) {}
 
@@ -342,6 +352,45 @@ export const LoadPublicForumTipLeaderboards = Command.define(
   ),
 )
 
+export const LoadPublicProductPromises = Command.define(
+  'LoadPublicProductPromises',
+  SucceededLoadPublicProductPromises,
+  FailedLoadPublicProductPromises,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/public/product-promises', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicProductPromisesLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicProductPromisesLoadError({
+        error: `Product promises returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicProductPromisesLoadError({ error }),
+    })
+    const decoded = yield* S.decodeUnknownEffect(PublicProductPromises)(payload)
+
+    return SucceededLoadPublicProductPromises({ promises: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicProductPromises({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
 export const LoadShareProjection = Command.define(
   'LoadShareProjection',
   { shareId: S.String },
@@ -440,31 +489,33 @@ export const initialCommands = (
           LoadPublicForumLaunchStatus(),
           LoadPublicForumTipLeaderboards(),
         ]
-      : model.route._tag === 'PublicAgent'
-        ? model.route.agentRef === 'artanis'
-          ? [
-              LoadPublicAgentGoal({
-                agentId: publicAgentIdForRef(model.route.agentRef),
-                agentRef: model.route.agentRef,
-              }),
-              LoadPublicArtanisReport(),
-              LoadPublicPylonStats(),
-            ]
-          : model.route.agentRef === 'adjutant'
+      : model.route._tag === 'ProductPromises'
+        ? [LoadPublicProductPromises()]
+        : model.route._tag === 'PublicAgent'
+          ? model.route.agentRef === 'artanis'
             ? [
                 LoadPublicAgentGoal({
                   agentId: publicAgentIdForRef(model.route.agentRef),
                   agentRef: model.route.agentRef,
                 }),
-                LoadPublicAdjutantActivity(),
+                LoadPublicArtanisReport(),
+                LoadPublicPylonStats(),
               ]
-            : [
-                LoadPublicAgentGoal({
-                  agentId: publicAgentIdForRef(model.route.agentRef),
-                  agentRef: model.route.agentRef,
-                }),
-              ]
-        : []
+            : model.route.agentRef === 'adjutant'
+              ? [
+                  LoadPublicAgentGoal({
+                    agentId: publicAgentIdForRef(model.route.agentRef),
+                    agentRef: model.route.agentRef,
+                  }),
+                  LoadPublicAdjutantActivity(),
+                ]
+              : [
+                  LoadPublicAgentGoal({
+                    agentId: publicAgentIdForRef(model.route.agentRef),
+                    agentRef: model.route.agentRef,
+                  }),
+                ]
+          : []
 
 const fundingAmountFromInput = (value: string): number => {
   const parsed = Number.parseInt(value, 10)
@@ -612,6 +663,19 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         evo(model, {
           publicForumTipLeaderboards: () =>
             FailedPublicForumTipLeaderboards({ error }),
+        }),
+        [],
+      ],
+      SucceededLoadPublicProductPromises: ({ promises }) => [
+        evo(model, {
+          publicProductPromises: () =>
+            LoadedPublicProductPromises({ promises }),
+        }),
+        [],
+      ],
+      FailedLoadPublicProductPromises: ({ error }) => [
+        evo(model, {
+          publicProductPromises: () => FailedPublicProductPromises({ error }),
         }),
         [],
       ],

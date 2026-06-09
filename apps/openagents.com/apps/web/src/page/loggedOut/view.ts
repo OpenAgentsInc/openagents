@@ -14,6 +14,7 @@ import { Message } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
 import * as Onboarding from './page/onboarding'
+import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
 import * as Share from './page/share'
 
@@ -44,6 +45,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Onboarding: () => Onboarding.view(model.onboarding),
               Docs: route => Docs.view(route, { _tag: 'LoggedOut' }),
               DocsPage: route => Docs.view(route, { _tag: 'LoggedOut' }),
+              ProductPromises: () => Promises.view(model.publicProductPromises),
               Forum: route => Forum.view(route, { _tag: 'LoggedOut' }),
               ForumForum: route => Forum.view(route, { _tag: 'LoggedOut' }),
               ForumTopic: route => Forum.view(route, { _tag: 'LoggedOut' }),

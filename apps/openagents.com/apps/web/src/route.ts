@@ -23,6 +23,7 @@ export const PersonalFileRoute = r('PersonalFile', { fileId: S.String })
 export const ThreadRoute = r('Thread', { threadId: S.String })
 export const DocsRoute = r('Docs')
 export const DocsPageRoute = r('DocsPage', { slug: S.String })
+export const ProductPromisesRoute = r('ProductPromises')
 export const ForumRoute = r('Forum')
 export const ForumForumRoute = r('ForumForum', { forumRef: S.String })
 export const ForumTopicRoute = r('ForumTopic', { topicId: S.String })
@@ -72,6 +73,7 @@ export type PersonalFileRoute = typeof PersonalFileRoute.Type
 export type ThreadRoute = typeof ThreadRoute.Type
 export type DocsRoute = typeof DocsRoute.Type
 export type DocsPageRoute = typeof DocsPageRoute.Type
+export type ProductPromisesRoute = typeof ProductPromisesRoute.Type
 export type ForumRoute = typeof ForumRoute.Type
 export type ForumForumRoute = typeof ForumForumRoute.Type
 export type ForumTopicRoute = typeof ForumTopicRoute.Type
@@ -106,6 +108,7 @@ export const LoggedOutRoute = S.Union([
   OnboardingRoute,
   DocsRoute,
   DocsPageRoute,
+  ProductPromisesRoute,
   ForumRoute,
   ForumForumRoute,
   ForumTopicRoute,
@@ -167,6 +170,7 @@ export const AppRoute = S.Union([
   ThreadRoute,
   DocsRoute,
   DocsPageRoute,
+  ProductPromisesRoute,
   ForumRoute,
   ForumForumRoute,
   ForumTopicRoute,
@@ -254,6 +258,10 @@ export const docsPageRouter = pipe(
   literal('docs'),
   slash(string('slug')),
   Route.mapTo(DocsPageRoute),
+)
+export const productPromisesRouter = pipe(
+  literal('promises'),
+  Route.mapTo(ProductPromisesRoute),
 )
 export const forumRouter = pipe(literal('forum'), Route.mapTo(ForumRoute))
 export const forumForumRouter = pipe(
@@ -360,6 +368,7 @@ const routeParser = Route.oneOf(
   demoThreadRouter,
   demoOrderRouter,
   demoRouter,
+  productPromisesRouter,
   docsPageRouter,
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,
