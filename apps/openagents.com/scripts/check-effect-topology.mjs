@@ -6,6 +6,7 @@ import { join } from 'node:path'
 
 const OMEGA_EFFECT_VERSION = '4.0.0-beta.70'
 const FOLDKIT_EFFECT_EXCEPTION_VERSION = '4.0.0-beta.66'
+const ISOLATED_NOSTR_RELAY_EFFECT_VERSION = '3.19.8'
 const EFFECT_CF_VERSION = '0.13.1'
 const EFFECT_VITEST_DEFERRED_NOTE =
   '@effect/vitest@0.29.0 peers on effect ^3.21.0 and vitest ^3.2.0; keep it out until it supports the repo Effect line.'
@@ -96,10 +97,30 @@ const effectSections = effectWhyOutput
 
 const observedVersions = effectSections.map(section => section.version)
 
-const unexpectedVersions = observedVersions.filter(
-  version =>
-    version !== OMEGA_EFFECT_VERSION &&
-    version !== FOLDKIT_EFFECT_EXCEPTION_VERSION,
+const requiredIsolatedNostrRelayPullers = [
+  '@openagents/nostr-relay@workspace',
+  'nostr-effect@0.0.12',
+]
+
+const allowedEffectSection = section => {
+  if (
+    section.version === OMEGA_EFFECT_VERSION ||
+    section.version === FOLDKIT_EFFECT_EXCEPTION_VERSION
+  ) {
+    return true
+  }
+
+  if (section.version !== ISOLATED_NOSTR_RELAY_EFFECT_VERSION) {
+    return false
+  }
+
+  return requiredIsolatedNostrRelayPullers.every(puller =>
+    section.body.includes(puller),
+  )
+}
+
+const unexpectedEffectSections = effectSections.filter(
+  section => !allowedEffectSection(section),
 )
 
 const omegaSection = effectSections.find(
@@ -117,6 +138,10 @@ const trackedInstalledVersions = [
   ['foldkit', '0.102.1'],
   ['@foldkit/devtools-mcp', '0.9.0'],
   ['@foldkit/vite-plugin', '0.7.0'],
+  [
+    'isolated @openagents/nostr-relay effect line',
+    `${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} via nostr-effect@0.0.12 only`,
+  ],
   [
     '@effect/platform-browser',
     foldkitEffectAligned
@@ -200,9 +225,9 @@ const lockProblems = lockExpectations
 
 const problems = [
   ...directVersionProblems,
-  ...unexpectedVersions.map(
-    version =>
-      `Unexpected installed Effect runtime line ${version}; allowed lines are ${OMEGA_EFFECT_VERSION} and the temporary Foldkit exception ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
+  ...unexpectedEffectSections.map(
+    section =>
+      `Unexpected installed Effect runtime line ${section.version}; allowed lines are ${OMEGA_EFFECT_VERSION}, the temporary Foldkit exception ${FOLDKIT_EFFECT_EXCEPTION_VERSION}, and isolated @openagents/nostr-relay via nostr-effect@0.0.12 on ${ISOLATED_NOSTR_RELAY_EFFECT_VERSION}`,
   ),
   ...(omegaSection === undefined
     ? [
@@ -218,6 +243,16 @@ const problems = [
       `Foldkit Effect exception ${FOLDKIT_EFFECT_EXCEPTION_VERSION} is missing expected puller ${puller}`,
   ),
   ...lockProblems,
+  ...effectSections
+    .filter(section => section.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION)
+    .flatMap(section =>
+      requiredIsolatedNostrRelayPullers
+        .filter(puller => !section.body.includes(puller))
+        .map(
+          puller =>
+            `Isolated Nostr relay Effect line ${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} is missing expected puller ${puller}`,
+        ),
+    ),
   ...effectVitestReferences.map(
     entry =>
       `${entry.path} ${entry.section}.${entry.name} is ${entry.version}; ${EFFECT_VITEST_DEFERRED_NOTE}`,
@@ -233,6 +268,9 @@ console.log(
     : `Temporary Foldkit exception: effect@${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
 )
 console.log(`effect-cf line: effect-cf@${EFFECT_CF_VERSION}`)
+console.log(
+  `Isolated Nostr relay line: effect@${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} via nostr-effect@0.0.12 only`,
+)
 console.log(`@effect/vitest deferred: ${EFFECT_VITEST_DEFERRED_NOTE}`)
 console.log('')
 console.log('Tracked installed package versions:')

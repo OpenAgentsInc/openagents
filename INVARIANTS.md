@@ -18,6 +18,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   query routing, retrieval routing, or tool selection.
 - Shared runtime contracts belong in `packages/*`. App-specific UI, Worker,
   CLI, or deployment composition belongs in `apps/*`.
+- The `openagents.com` deploy topology guard must keep the main product,
+  Worker, shared packages, and Foldkit runtime on the tracked Effect v4 line.
+  A separate isolated app may carry an older third-party Effect dependency only
+  when the guard names that exact package chain, documents the exception, and
+  prevents it from becoming OpenAgents.com runtime, settlement, payout, Forum,
+  Pylon assignment, or product-promise authority. The current isolated
+  exception is `apps/nostr-relay` through `nostr-effect@0.0.12` only.
 
 ## Product Surface Ownership
 
