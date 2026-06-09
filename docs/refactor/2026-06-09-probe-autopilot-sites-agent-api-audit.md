@@ -566,6 +566,48 @@ Not built:
 - General secret-brokered paid coding tasks where customer secrets are exposed
   only to an approved worker lane.
 
+## Specific Gap Analysis: Current Monorepo Ready State Vs End State
+
+The monorepo is ready for a supervised, operator-assisted version of the
+Autopilot idea. It is not yet ready for the desired "tell any agent to do this
+on Autopilot and the system handles the rest" product. The missing work is not
+one feature; it is the orchestration layer that joins already-built identity,
+orders, Pylon presence, Probe runtime contracts, Sites, payment primitives, and
+Forum reporting.
+
+| Capability | Ready in the monorepo today | Desired end state | Specific gap |
+| --- | --- | --- | --- |
+| Universal Autopilot invocation | Agent registration, `/api/agents/home`, capability manifest, OpenAPI, `POST /api/customer-orders`, agent Site routes | Any capable agent can call one Autopilot endpoint for "do this" and get a durable work order, status URL, event stream, access request, or payment request | No `POST /api/autopilot/work` contract, no single status/event model, no agent-readable paid retry contract for coding work |
+| Agent/client discovery | `/.well-known/openagents.json`, `/AGENTS.md`, `/api/openapi.json`, capability manifest | External agents discover the Autopilot delegation flow, auth modes, L402 payment flow, Pylon hints, polling/events, and error recovery | Discovery surfaces list pieces, but not one canonical delegated-work capability with examples and state machine |
+| Owner and agent authority | Registered agent credentials and owner-granted `customer_orders` / `agent_sites` scopes | Autopilot asks only for missing authority: repo read/write, branch/PR, secret broker, local Pylon, private placement, operator approval | No unified `access_required` response shape, no grant flow per missing capability, no private-repo/secret broker launch path |
+| Work request schema | `customer_orders` store request text, quotes, free-slice fields, provider-account flags | Typed work request with tasks, repo refs, acceptance criteria, placement policy, privacy tier, budget, payment mode, idempotency, and forum reporting | Existing order text is too unstructured to drive safe automatic planning and placement |
+| Order-to-assignment planning | Agent goals, Adjutant assignments, first-batch triage, SHC-oriented runbooks | Internal planner turns each task into typed assignment intents without launching until access/payment/placement gates clear | No persistent planner decisions, no typed task table, no quote/access/blocked/ready state per task |
+| Pylon-first execution | Pylon registration, heartbeat, wallet readiness, assignment poll/accept/progress/artifacts, no-spend smoke | If the user has Pylon or local Codex available, Autopilot prefers that local path before OpenAgents or cloud capacity | Heartbeat/capability facts are not yet consumed by Autopilot placement; no local Codex capability model; no customer-order-to-Pylon assignment synthesis |
+| Wider Probe/Pylon network execution | Probe runtime contracts, Pylon runtime package, assignment leasing APIs | Autopilot fans work out to approved SHC, requester Pylon, Pylon network, cloud, GCloud credit, TEE, or Maple AI lanes according to policy | No generalized scheduler, lease offer model, or backend-neutral runner adapter for coding tasks |
+| Probe coding-worker loop | Probe can materialize grants, run bounded runtime pieces, emit redacted evidence shapes and telemetry | Probe executes normalized coding assignments, produces diffs/tests/previews/closeouts, scrubs per-run material, and submits results to the order state machine | Probe plumbing exists, but arbitrary customer coding tasks are not executed end-to-end through it |
+| Buyer payment intake | Site MDK/L402 contracts, buyer payment ledger, Forum paid actions, payment proof, site checkout intents | Coding work can return deterministic MDK checkout or HTTP 402 L402 challenge, accept paid retry, and start funded work | No coding-order quote service, no `withPayment`/L402 route for Autopilot work, no stable quote verification across retry |
+| Worker/provider settlement | Pylon settlement gates, small-sats evidence, paid-mode campaign ladder docs | OpenAgents pays Pylons/providers/referrers only after accepted work, receipts, spend caps, duplicate checks, and settlement authority pass | Buyer payment is not linked to accepted-work ledger; paid Pylon work remains gated; hosted direct payout still disabled |
+| Autopilot Sites delegation | Site projects, versions, deployments, events, runtime store, feedback, scoped agent Site create/session/preview/save/deploy-review | A delegated Autopilot task can create or revise a Site, return previews, request customer review, and promote only through gated deployment authority | Site flow is operator-supervised; autonomous production deploy remains request-only; existing-project import/self-serve gaps remain |
+| Forum reporting and queue foldover | Forum routes, agent posting, paid actions, public-safe Probe GEPA summaries, Product Promise reporting norm | Public-safe Autopilot orders get Forum topics and lifecycle updates; existing queue work is dry-run folded and reported where allowed | No order-to-Forum bridge, no foldover job, no redaction/idempotency gate for customer order progress updates |
+| Privacy and placement policy | Redaction patterns, secret refs, provider-account boundaries, Pylon public-safe projections, launch gates | Request can declare `public_beta`, `openagents_shc`, `customer_local_pylon`, `local_only`, `tee`, `maple_ai`, `cloud_allowed`, or secret-broker requirements | No unified privacy tier selector, placement compiler, TEE/Maple integration, or secret-brokered paid coding task path |
+| API observability and recovery | Runs, artifacts, callbacks, Pylon events, Forum status pieces | Caller can poll or stream queued/running/needs-input/delivered/accepted/blocked/settled states and recover idempotently | No unified Autopilot work event stream, no client retry/recovery contract, no single closeout projection |
+| Public claim safety | Launch claim ledgers, invariants, Forum-first product mismatch reporting | Public UI can say exactly what is live: free slice, paid task intake, Pylon-local execution, settlement, privacy lanes, Sites support | Claims must remain gated until the new orchestrator has evidence; no public "magic Autopilot" claim is currently supportable |
+
+The ready pieces should be reused rather than replaced. The key build is a
+narrow Autopilot orchestration spine:
+
+```text
+autopilot_work_request
+-> access/payment decision
+-> typed task records
+-> placement decision
+-> Probe/Pylon assignment leases
+-> evidence and closeout ingestion
+-> acceptance/review
+-> settlement eligibility
+-> Forum/public-safe reporting
+```
+
 ## Target Autopilot Invocation Contract That Is Missing
 
 The current `/api/customer-orders` endpoint is the right seed, but the product
@@ -807,6 +849,101 @@ The foldover should be dry-run first and produce a count of:
 - Site orders with revision history;
 - records eligible for public Forum summaries;
 - records that must remain private or operator-only.
+
+## Implementation Issue List
+
+This is a planning issue list, not proof that GitHub issues have already been
+created. The IDs are stable references for turning the audit into tickets.
+
+### P0: Minimum "Do This On Autopilot" Product
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-001 | Define `openagents.autopilot_work_request.v1` | Add Effect Schema, request/response fixtures, durable state enum, and validation for caller, tasks, placement, payment, access, and forum reporting | Invalid prompt-only or private/secret-shaped requests are rejected; valid public free-slice and paid examples parse |
+| OA-AUTO-002 | Add Autopilot invocation routes | Add `POST /api/autopilot/work`, `GET /api/autopilot/work/{id}`, and idempotent request handling backed by durable records | A registered agent can create a work request and recover the same projection with the same idempotency key |
+| OA-AUTO-003 | Add Autopilot work event stream | Add pollable or streaming events for `queued`, `needs_access`, `payment_required`, `running`, `delivered`, `accepted`, `blocked`, and `settled` | A client can follow an order without reading internal tables or operator-only logs |
+| OA-AUTO-004 | Publish agent-readable Autopilot docs | Update OpenAPI, capability manifest, `/AGENTS.md`, and `/.well-known/openagents.json` with the delegated-work route, auth, L402, status, and retry examples | A non-OpenAgents agent can discover how to submit, pay, and poll without using the UI |
+| OA-AUTO-005 | Add structured `access_required` responses | Model missing GitHub, repo, Pylon, secret-broker, privacy, customer-review, and operator-review access as typed response items | The API asks for exactly the missing grant and does not launch work before it is satisfied |
+| OA-AUTO-006 | Add repository access grants for work requests | Connect GitHub/repo read, branch, write, and PR authority to Autopilot work records without granting broad deploy/spend authority | Public read-only tasks can proceed; branch/PR tasks block until owner approval |
+| OA-AUTO-007 | Add deterministic coding-work quote service | Price public free-slice, paid public, Pylon-local, OpenAgents SHC, cloud, and privacy-tier requests from persisted inputs | The same request produces the same quote across create, payment challenge, retry, and launch |
+| OA-AUTO-008 | Add MDK checkout and L402 buyer intake for coding work | Return MDK checkout intent or HTTP 402 L402 challenge for payable tasks and verify retry proofs before work launch | A paid public task can be submitted by an agent wallet, paid, retried, and moved to `paid_ready` |
+| OA-AUTO-009 | Persist buyer payment evidence separately from payout authority | Link checkout/L402 proof to order funding state without marking worker payout eligible | Buyer payment can fund the order, but settlement remains blocked until accepted work exists |
+| OA-AUTO-010 | Add typed task records under a work order | Split the request into per-task records with kind, repo, acceptance criteria, access state, payment state, placement state, and lifecycle | Batch requests can contain multiple tasks and each task can progress independently |
+| OA-AUTO-011 | Add order-to-assignment planner | Convert typed tasks into assignment intents such as `repo_change`, `site_generation`, `site_adjustment`, `test_repair`, and `research_and_patch` | Planner records why a task is `blocked`, `access_required`, `payment_required`, `free_slice`, `paid_ready`, or `ready_for_assignment` |
+| OA-AUTO-012 | Add current queue dry-run inventory | Report existing `software_orders`, Adjutant assignments, Site projects, and artifacts by pending/running/stale/delivered/public-safe/private-only state | Operator can see exactly what old work can be folded into Autopilot without mutating records |
+
+### P0: Pylon-First Placement And No-Spend Execution
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-013 | Define placement policy records | Persist `privacyTier`, preferred runner kinds, allowed/disallowed runner kinds, local-only flag, public-trace flag, and secret-broker requirement | Placement decisions are auditable and do not depend on prompt keywords |
+| OA-AUTO-014 | Feed Pylon presence into placement | Use Pylon heartbeat, capability refs, wallet readiness, version, assignment readiness, and owner linkage as placement inputs | A requester with an online compatible Pylon is selected before OpenAgents/cloud fallback |
+| OA-AUTO-015 | Model local Codex/Pylon capability | Add capability refs for local Codex or equivalent local coding agent inside Pylon without exposing local secrets | Placement can distinguish "requester has local execution" from "use network/cloud capacity" |
+| OA-AUTO-016 | Synthesize Pylon assignments from Autopilot tasks | Convert `ready_for_assignment` tasks into controlled Pylon assignment leases with no Forum autopublish and explicit closeout requirements | A no-spend Autopilot repo/doc task can be leased, accepted, progressed, and closed by Pylon |
+| OA-AUTO-017 | Add SHC/cloud fallback lease adapter | Create the same lease shape for OpenAgents SHC and cloud/GCloud fallback lanes | If no requester Pylon is online, a public paid task can be routed to an approved fallback lane |
+| OA-AUTO-018 | Add placement refusal and retry states | Record why no runner was available, when to retry, and whether the caller must pay, relax privacy, or add a Pylon | The API returns actionable `blocked` or `needs_input` states instead of silent queue stalls |
+
+### P1: Probe Runtime And Result Ingestion
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-019 | Normalize the Probe coding assignment contract | Define the task payload Probe/Pylon receives: objective, repo refs, allowed tools, auth refs, acceptance criteria, budget, and closeout schema | The same assignment contract can run on requester Pylon, SHC, cloud, or future privacy lanes |
+| OA-AUTO-020 | Materialize and scrub per-run auth | Ensure repo tokens, provider tokens, secret refs, and local credentials are available only inside approved runner boundaries and are scrubbed after closeout | Closeout refs contain no raw tokens, secrets, local paths, invoices, or provider payloads |
+| OA-AUTO-021 | Add Probe closeout ingestion | Ingest diffs, test refs, preview refs, logs, tool refs, and redacted evidence into the Autopilot work state machine | A delivered task has a customer-safe closeout projection and operator-only evidence refs |
+| OA-AUTO-022 | Add build/test/proof hooks | Run bounded checks for repo changes and Site changes, store refs, and mark failures as retryable or delivered-with-failures | Acceptance review can see test status without trusting worker prose |
+| OA-AUTO-023 | Add retry and multi-worker competition policy | Decide when to reassign failed/stale tasks, run multiple probes, or choose the best closeout | Duplicate worker attempts cannot double-spend, double-post, or self-accept |
+
+### P1: Acceptance, Review, GitHub, And Sites
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-024 | Add Autopilot acceptance state machine | Separate worker completion, test/proof, customer review, operator review, GitHub/Site activation, accepted outcome, payout eligibility, and settlement | No worker can mark its own task accepted or payable |
+| OA-AUTO-025 | Add customer review API | Let owner or owner-granted agent approve, request changes, reject, or ask for follow-up on a delivered closeout | Delivered work can move to accepted or revision-required without operator DB edits |
+| OA-AUTO-026 | Add operator review gate | Keep private repos, paid settlement, deploy, and public claim promotion behind explicit operator or policy gates where required | Sensitive work cannot publish, deploy, or pay solely from worker output |
+| OA-AUTO-027 | Add GitHub branch/PR writeback lane | Create branch, commit, and PR refs only after repo authority exists and tests/proofs are attached | Repo-change tasks can deliver a PR while read-only tasks remain evidence-only |
+| OA-AUTO-028 | Add Autopilot Sites task adapter | Route `site_generation` and `site_adjustment` tasks into existing Site project/session/version/preview records | A delegated work request can create or revise a Site and return a preview status |
+| OA-AUTO-029 | Add Site production-deploy request gate | Convert delivered Site work into deploy-review requests while keeping production deploy authority separate | Agents can request deploy; only approved owner/operator flow activates production |
+| OA-AUTO-030 | Add Site referral and commerce linkage for Autopilot-created Sites | Connect generated Sites to referral capture and payment discovery without treating referrals as payout authority | Site referrals are attributable, but payout remains blocked until separate gates clear |
+
+### P1: Forum Reporting And Queue Foldover
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-031 | Add Autopilot Forum reporting policy | Store per-order and per-task forum reporting mode: private, public-safe summary, campaign topic, or operator-approved only | Private work never leaks; public beta work can opt into visible progress |
+| OA-AUTO-032 | Add redacted Forum summary renderer | Render queued/running/needs-input/delivered/accepted/blocked/settled updates from public refs only | Forum posts contain no private repo data, raw prompts, provider logs, local paths, invoices, or secrets |
+| OA-AUTO-033 | Add Forum posting bridge | Create and update Forum topics/replies idempotently from approved Autopilot lifecycle events | A public-safe order gets one topic and deterministic updates without duplicate posts |
+| OA-AUTO-034 | Add one-time queue foldover job | Dry-run and then operator-approve migration/reporting for old software orders, Adjutant assignments, Site revisions, and fulfillment artifacts | Old queue work is visible, closed, or intentionally private; no existing task is silently lost |
+
+### P2: Paid Worker Settlement And Marketplace Scaling
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-035 | Link accepted work to payout eligibility | Connect accepted closeouts to payout candidate records while preserving buyer payment, accepted work, and settlement as separate states | A paid worker cannot be paid before accepted work and cannot be paid twice |
+| OA-AUTO-036 | Generalize Pylon paid-mode ladder | Apply payment receipts, closeout refs, settlement refs, send readiness, spend caps, stale wallet checks, and duplicate protection to Autopilot tasks | A small paid Pylon task can settle through the approved ladder with auditable receipts |
+| OA-AUTO-037 | Add provider/cloud cost accounting | Track OpenAgents SHC, cloud, GCloud credit, TEE, Maple AI, and other capacity costs by assignment | Quote, margin, and settlement reports can reconcile buyer revenue to execution cost |
+| OA-AUTO-038 | Add referrer/signature/data contributor payout bridges | Convert referral, signature, or data contribution evidence into payout candidates only after their independent gates clear | Revenue-share claims remain blocked unless contribution and settlement evidence exists |
+| OA-AUTO-039 | Add marketplace capacity policy | Decide when to use internal capacity, user local compute, Pylon network, or paid providers based on privacy, price, SLA, and capability | Autopilot can scale beyond OpenAgents-owned workers without ad hoc routing |
+
+### P2: Privacy, Secret Management, And Premium Lanes
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-040 | Add privacy-tier compiler | Compile `public_beta`, `openagents_shc`, `customer_local_pylon`, `local_only`, `cloud_allowed`, `tee`, and `maple_ai` into placement constraints | A task cannot run on a runner disallowed by its privacy policy |
+| OA-AUTO-041 | Add secret-brokered task mode | Store secret refs, approval events, runner eligibility, and scrub requirements without exposing raw secrets to order text or Forum | Secret-using tasks launch only on approved lanes and closeout is redacted |
+| OA-AUTO-042 | Add TEE receipt adapter | Model TEE runner identity, attestation, execution receipt refs, and failure modes | A TEE-priced task cannot claim TEE execution without an attestation ref |
+| OA-AUTO-043 | Add Maple AI or equivalent privacy lane adapter | Integrate privacy-provider capability, quote, lease, and receipt refs behind the same placement abstraction | Maple/privacy lane work is selectable only when concrete provider receipts exist |
+| OA-AUTO-044 | Add private-repo and private-trace policy tests | Test that private repo names, prompts, diffs, logs, invoices, tokens, and local paths do not enter public projections | Public Forum/UI projections stay clean under private task fixtures |
+
+### P2: Product Readiness, QA, And Claims
+
+| ID | Issue | Build | Acceptance check |
+| --- | --- | --- | --- |
+| OA-AUTO-045 | Add end-to-end no-spend smoke | Exercise agent request, access-free public task, Pylon-first placement, Probe/Pylon closeout, review, and Forum summary in staging | One public task completes without payment or manual DB edits |
+| OA-AUTO-046 | Add end-to-end paid L402 smoke | Exercise agent request, HTTP 402 challenge, agent-wallet payment, paid retry, assignment launch, closeout, acceptance, and funded order projection | One paid task moves from `payment_required` to delivered with buyer proof attached |
+| OA-AUTO-047 | Add stale-run and recovery tests | Cover idempotent retries, stale assignments, worker failure, quote expiry, payment retry, and duplicate closeout submission | Failed workers and client retries do not corrupt order state |
+| OA-AUTO-048 | Add operator dashboard slices | Show Autopilot work queue, access-required tasks, payment-required tasks, runner placement, stale assignments, delivered work, and settlement candidates | Operators can manage the system without database spelunking |
+| OA-AUTO-049 | Update public launch copy and claim ledger | Promote only the parts proven by smoke tests: agent delegation, free slice, paid intake, Pylon local execution, Sites, settlement, or privacy lanes | Public copy does not claim unavailable automation, payout, privacy, or deploy authority |
+| OA-AUTO-050 | Add migration notes and runbooks | Document deploy order, rollback, env vars, MDK secrets, Pylon requirements, Forum foldover, and staged launch gates | Another operator can launch or pause the feature from docs without guessing |
 
 ## System Status Matrix
 
