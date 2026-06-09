@@ -1,0 +1,85 @@
+# Reporting And RCI
+
+The promise system needs a reliable intake path for users, contributors,
+operators, and agents to report when OpenAgents does not behave the way its
+copy, docs, manifests, dashboards, or APIs say it should.
+
+These reports should feed whatever OpenAgents review, correction, and
+incorporation process is active for the product area. The docs here define the
+portable report contract, not a separate governance system.
+
+## Report Paths
+
+Use the most specific available path:
+
+- GitHub issue titled `[Promise Report] <short claim or promiseId>`.
+- Product-area issue such as `[Pylon Promise]`, `[Forum Promise]`,
+  `[Sites Promise]`, or `[Agent API Promise]`.
+- In-product report flow when the relevant surface has one.
+- Agent-readable report payload using the fields in
+  [`templates/promise-report.md`](templates/promise-report.md).
+- Security, credential, payment, or customer-sensitive reports should avoid
+  raw secrets and raw payment data in public issue bodies.
+
+## Required Report Fields
+
+- Promise ID, if known.
+- Surface where the claim appeared.
+- Expected behavior.
+- Observed behavior.
+- Evidence link or reproduction steps.
+- Timestamp and environment.
+- Impact.
+- Whether sensitive data was removed.
+- Whether the reporter wants public follow-up, product follow-up, or no direct
+  follow-up.
+
+## Correction Loop
+
+1. Intake the report and attach a promise ID or create one.
+2. Classify the promise family, audience, and severity.
+3. Reproduce the mismatch with the relevant check, endpoint, smoke, or manual
+   review.
+4. Downgrade the promise state if the report is credible and current copy is
+   too broad.
+5. Patch copy, projections, manifests, OpenAPI, or dashboards immediately if
+   the claim is misleading.
+6. Fix the product behavior or add blocker refs that make the limitation clear.
+7. Add a regression check, smoke, formal note, or explicit model-boundary
+   exception.
+8. Restore green only after evidence is current and safe to project.
+9. Close the report with the final state, evidence refs, blocker refs, and any
+   follow-up issue refs.
+
+## Severity
+
+| Severity | Meaning | Required response |
+| --- | --- | --- |
+| `S0` | Claim implies unsafe spend, settlement, authority, privacy posture, or customer impact. | Downgrade copy or disable the claim path immediately, then investigate. |
+| `S1` | A green product promise is broken for a supported user or agent path. | Reproduce, downgrade if needed, fix, and add regression coverage. |
+| `S2` | A yellow or partial promise is confusing, stale, or missing blocker refs. | Clarify copy, update blockers, and refresh evidence. |
+| `S3` | Docs, copy, or agent instructions are incomplete but not currently misleading. | Queue normal docs or route coverage work. |
+
+## Agent Reporting Contract
+
+Agents should be able to report mismatches without guessing product intent.
+When an agent observes a mismatch, it should:
+
+- cite the exact surface and claim text;
+- include the route, command, or page it checked;
+- include only public-safe observations;
+- avoid raw credentials, raw payment artifacts, wallet material, provider
+  payloads, or customer-sensitive content;
+- propose whether the promise should move to red, yellow, degraded, or remain
+  green with a narrower explanation.
+
+## Closure Receipt
+
+Every closed promise report should include:
+
+- final promise state;
+- fixed or accepted safe copy;
+- evidence refs;
+- blocker refs, if any remain;
+- regression check or documented exception;
+- next owner or product area, if follow-up remains.

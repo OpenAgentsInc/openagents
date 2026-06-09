@@ -16,6 +16,8 @@ previous repository shape.
   Pylon repository.
 - `packages/probe/` owns the Probe runtime imported from the standalone Probe
   repository.
+- `docs/promises/` owns product-promise records, launch-promise source sets,
+  verification gates, copy gates, and user/agent report templates.
 - `docs/refactor/` owns migration plans, cutover notes, and architectural
   cleanup records for this repo reset.
 
@@ -29,6 +31,8 @@ previous repository shape.
   Foldkit where `apps/openagents.com` already uses it.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
   explicit historical compatibility work.
+- Route new user-facing and agent-facing product claim systems through
+  `docs/promises/` before broadening copy.
 - Do not commit secrets, dependency caches, build output, `target/`, `dist/`,
   `node_modules/`, or local runtime state.
 - Keep Git operations scoped to this repository when working here.

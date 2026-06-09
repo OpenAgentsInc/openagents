@@ -62,6 +62,8 @@ accepted with an evidence trail.
   surface.
 - `apps/pylon/`: Pylon contributor app imported from the standalone Pylon repo.
 - `packages/probe/`: Probe runtime imported from the standalone Probe repo.
+- `docs/promises/`: product-promise records, launch-promise source set,
+  evidence gates, copy gates, and reporting templates.
 - `docs/transcripts/`: retained transcript archive from the prior repo.
 - `docs/refactor/`: refactor plans and cutover notes.
 

@@ -40,3 +40,18 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Secrets, wallet material, raw prompts, private repo content, provider
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
+
+## Product Promise Claims
+
+- User-facing and agent-facing product claims belong in the product-promises
+  system under `docs/promises/` before copy broadens beyond implementation
+  notes.
+- A product promise is green only when its evidence refs, authority boundary,
+  projection safety, freshness, and copy gate are all satisfied for the exact
+  claim being made.
+- Planned, partial, stale, blocked, manually gated, or canary-only behavior
+  must stay red, yellow, degraded, or explicitly scoped in public and
+  agent-readable copy.
+- This initial promise system is documentation-backed. Runtime enforcement must
+  be added before treating the registry as an automated product gate; until
+  then, `docs/promises/checks-and-gates.md` is the model-boundary record.
