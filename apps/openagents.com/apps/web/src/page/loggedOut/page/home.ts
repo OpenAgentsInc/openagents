@@ -259,19 +259,6 @@ const endpointRow = (method: string, href: string, detail: string): Html => {
   )
 }
 
-const codeBlock = (code: string): Html => {
-  const h = html<Message>()
-
-  return h.pre(
-    [
-      Ui.className<Message>(
-        'm-0 overflow-x-auto border-t border-[#1d1d1d] bg-black p-3 text-[0.67rem] leading-5 text-white/55',
-      ),
-    ],
-    [h.code([], [code])],
-  )
-}
-
 const endpointManifestPanel = (): Html => {
   const h = html<Message>()
 
@@ -314,27 +301,6 @@ const endpointManifestPanel = (): Html => {
         '/api/public/adjutant/activity',
         'Public Autopilot activity projection.',
       ),
-    ],
-  )
-}
-
-const taskDispatchPanel = (): Html => {
-  const curl = [
-    'curl -X POST https://openagents.com/api/agents/goals \\',
-    '  -H "Authorization: Bearer $OPENAGENTS_AGENT_TOKEN" \\',
-    '  -H "Content-Type: application/json" \\',
-    '  -d \'{"objective":"Audit docs/refactor and report blockers","tokenBudget":12000}\'',
-  ].join('\n')
-
-  return html<Message>().section(
-    [Ui.className<Message>(panelClass)],
-    [
-      panelHeader({
-        meta: 'Task dispatch is token-bound. Public docs do not grant write authority.',
-        status: 'Token',
-        title: 'cURL Task Dispatch',
-      }),
-      codeBlock(curl),
     ],
   )
 }
@@ -854,7 +820,6 @@ export const view = (input: HomeViewInput): Html => {
                   ],
                 ),
                 endpointManifestPanel(),
-                taskDispatchPanel(),
                 ...[nostrRelayPanel(input.publicPylonStats)].filter(
                   (panel): panel is Html => panel !== null,
                 ),
