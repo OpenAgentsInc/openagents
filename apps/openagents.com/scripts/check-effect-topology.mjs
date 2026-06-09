@@ -10,19 +10,6 @@ const EFFECT_CF_VERSION = '0.13.1'
 const EFFECT_VITEST_DEFERRED_NOTE =
   '@effect/vitest@0.29.0 peers on effect ^3.21.0 and vitest ^3.2.0; keep it out until it supports the repo Effect line.'
 
-const trackedInstalledVersions = [
-  ['effect', OMEGA_EFFECT_VERSION],
-  ['effect-cf', EFFECT_CF_VERSION],
-  ['foldkit', '0.102.1'],
-  ['@foldkit/devtools-mcp', '0.9.0'],
-  ['@foldkit/vite-plugin', '0.7.0'],
-  [
-    '@effect/platform-browser',
-    `${OMEGA_EFFECT_VERSION} direct, ${FOLDKIT_EFFECT_EXCEPTION_VERSION} via Foldkit`,
-  ],
-  ['@effect/vitest', 'not installed'],
-]
-
 const workspaceRoots = ['apps', 'workers', 'packages']
 
 const packageJsonPaths = [
@@ -122,6 +109,22 @@ const omegaSection = effectSections.find(
 const foldkitExceptionSection = effectSections.find(
   section => section.version === FOLDKIT_EFFECT_EXCEPTION_VERSION,
 )
+const foldkitEffectAligned = foldkitExceptionSection === undefined
+
+const trackedInstalledVersions = [
+  ['effect', OMEGA_EFFECT_VERSION],
+  ['effect-cf', EFFECT_CF_VERSION],
+  ['foldkit', '0.102.1'],
+  ['@foldkit/devtools-mcp', '0.9.0'],
+  ['@foldkit/vite-plugin', '0.7.0'],
+  [
+    '@effect/platform-browser',
+    foldkitEffectAligned
+      ? `${OMEGA_EFFECT_VERSION} direct and via resolved Foldkit peer tree`
+      : `${OMEGA_EFFECT_VERSION} direct, ${FOLDKIT_EFFECT_EXCEPTION_VERSION} via Foldkit`,
+  ],
+  ['@effect/vitest', 'not installed'],
+]
 
 const requiredOmegaPullers = [
   '@openagents/api-worker@workspace',
@@ -146,7 +149,9 @@ const missingOmegaPullers =
     : requiredOmegaPullers.filter(puller => !omegaSection.body.includes(puller))
 
 const missingFoldkitExceptionPullers =
-  foldkitExceptionSection === undefined
+  foldkitEffectAligned
+    ? []
+    : foldkitExceptionSection === undefined
     ? requiredFoldkitExceptionPullers
     : requiredFoldkitExceptionPullers.filter(
         puller => !foldkitExceptionSection.body.includes(puller),
@@ -171,18 +176,22 @@ const lockExpectations = [
     description: `Foldkit peerDependencies.effect is ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
     pattern: `"effect": "${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
   },
-  {
-    description: `Foldkit nested platform browser is ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
-    pattern: `"foldkit/@effect/platform-browser": ["@effect/platform-browser@${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
-  },
-  {
-    description: `@foldkit/devtools-mcp uses ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
-    pattern: `"@foldkit/devtools-mcp/effect": ["effect@${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
-  },
-  {
-    description: `@foldkit/vite-plugin uses ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
-    pattern: `"@foldkit/vite-plugin/effect": ["effect@${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
-  },
+  ...(foldkitEffectAligned
+    ? []
+    : [
+        {
+          description: `Foldkit nested platform browser is ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
+          pattern: `"foldkit/@effect/platform-browser": ["@effect/platform-browser@${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
+        },
+        {
+          description: `@foldkit/devtools-mcp uses ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
+          pattern: `"@foldkit/devtools-mcp/effect": ["effect@${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
+        },
+        {
+          description: `@foldkit/vite-plugin uses ${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
+          pattern: `"@foldkit/vite-plugin/effect": ["effect@${FOLDKIT_EFFECT_EXCEPTION_VERSION}"`,
+        },
+      ]),
 ]
 
 const lockProblems = lockExpectations
@@ -198,11 +207,6 @@ const problems = [
   ...(omegaSection === undefined
     ? [
         `Missing required Omega/effect-cf Effect runtime line ${OMEGA_EFFECT_VERSION}`,
-      ]
-    : []),
-  ...(foldkitExceptionSection === undefined
-    ? [
-        `Missing expected temporary Foldkit Effect exception ${FOLDKIT_EFFECT_EXCEPTION_VERSION}; remove the exception from this checker if Foldkit has aligned.`,
       ]
     : []),
   ...missingOmegaPullers.map(
@@ -224,7 +228,9 @@ console.log('Effect topology report')
 console.log('')
 console.log(`Omega/effect-cf line: effect@${OMEGA_EFFECT_VERSION}`)
 console.log(
-  `Temporary Foldkit exception: effect@${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
+  foldkitEffectAligned
+    ? `Foldkit Effect line: aligned to effect@${OMEGA_EFFECT_VERSION}`
+    : `Temporary Foldkit exception: effect@${FOLDKIT_EFFECT_EXCEPTION_VERSION}`,
 )
 console.log(`effect-cf line: effect-cf@${EFFECT_CF_VERSION}`)
 console.log(`@effect/vitest deferred: ${EFFECT_VITEST_DEFERRED_NOTE}`)
