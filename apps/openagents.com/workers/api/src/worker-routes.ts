@@ -31,6 +31,7 @@ type WorkerRouteDependencies = Readonly<{
     threadId: string,
   ) => RouteEffect
   optionalUuid: (value: string | undefined) => string | undefined
+  routeAutopilotWorkRequest: OptionalEffectRoute
   routeAgentGoalRequest: OptionalEffectRoute
   routeAgentOwnerClaimRequest: OptionalEffectRoute
   routeAgentProposalRequest: OptionalEffectRoute
@@ -168,6 +169,16 @@ export const makeWorkerRouteRequest =
 
       if (onboardingResponse !== undefined) {
         return yield* onboardingResponse
+      }
+
+      const autopilotWorkResponse = dependencies.routeAutopilotWorkRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (autopilotWorkResponse !== undefined) {
+        return yield* autopilotWorkResponse
       }
 
       const imageGenerationResponse = dependencies.routeImageGenerationRequest(

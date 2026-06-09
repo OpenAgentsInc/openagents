@@ -28,3 +28,31 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-request.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-002: Autopilot Invocation Routes
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4576`
+
+Status: implemented.
+
+Implemented:
+
+- Added D1 migration `0140_autopilot_work_orders.sql` for durable Autopilot
+  work-order records keyed by owner and idempotency hash.
+- Added `apps/openagents.com/workers/api/src/autopilot-work-routes.ts` with:
+  - `POST /api/autopilot/work`
+  - `GET /api/autopilot/work/{workOrderRef}`
+  - registered-agent bearer authentication through the existing customer-order
+    grant path;
+  - required `Idempotency-Key` handling for create;
+  - idempotent replay returning the original projection;
+  - D1-backed store and in-memory-testable route factory.
+- Wired the route family into the Worker dispatcher.
+- Added focused tests in
+  `apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts`.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-request.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

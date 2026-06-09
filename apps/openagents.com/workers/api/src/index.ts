@@ -77,6 +77,10 @@ import {
   suspendBillingAccountIfOutOfCredits,
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
+import {
+  makeAutopilotWorkRoutes,
+  makeD1AutopilotWorkStore,
+} from './autopilot-work-routes'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
@@ -5136,6 +5140,11 @@ const agentSearchRoutes = makeAgentSearchRoutes({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
 })
 
+const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
@@ -5764,6 +5773,8 @@ const routeRequest = makeWorkerRouteRequest({
       handleThreadPage(request, env, ctx, threadId),
     ),
   optionalUuid,
+  routeAutopilotWorkRequest:
+    autopilotWorkRoutes.routeAutopilotWorkRequest,
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
