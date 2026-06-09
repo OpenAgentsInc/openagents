@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.3'
+export const PublicProductPromisesVersion = '2026-06-09.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -12,6 +12,7 @@ const sourceRefs = [
   'apps/openagents.com/docs/2026-06-08-public-launch-copy-gate.md',
   'apps/pylon/docs/launch-gates-no-overclaim.md',
   'docs/promises/2026-06-09-product-promises-gap-audit.md',
+  'docs/transcripts/199.md',
 ]
 
 const basePromiseFields = {
@@ -47,6 +48,8 @@ export const publicProductPromisesDocument = () => ({
       'Previously green or yellow but freshness, health, evidence, or authority is currently weaker.',
     planned:
       'Roadmap or contract language only. Do not treat as live capability.',
+    withdrawn:
+      'Historical source material only. Do not use as current product copy.',
   },
   currentMonorepoStatus: {
     status: 'work_in_progress',
@@ -70,6 +73,7 @@ export const publicProductPromisesDocument = () => ({
       'macOS and Linux are the first supported operator platforms for the v0.3 launch path.',
       'Pylon v0.3 local release gates exist, but the live OpenAgents network path still needs endpoint smokes and fresh public evidence before broad earning claims go green.',
       'Qwen/training, sellable local inference, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned.',
+      'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
     ],
   },
   promises: [
@@ -118,6 +122,54 @@ export const publicProductPromisesDocument = () => ({
         'GET /api/public/product-promises returns schemaVersion, version, states, reportPath, sourceRefs, currentMonorepoStatus, and promise records.',
       authorityBoundary:
         'Promise state is a public claim ledger. It does not by itself enable runtime actions or resolve reports without review.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'autopilot.historical_claude_code_mechsuit.v1',
+      productArea: 'Autopilot',
+      audience: ['agent', 'user', 'public'],
+      state: 'withdrawn',
+      claim:
+        'Episode 199 framed Autopilot as a Claude Code-first mech-suit around an agent SDK port and overnight coding-loop experiments.',
+      safeCopy:
+        'Treat Episode 199 Claude Code-first mech-suit language as historical source material only.',
+      unsafeCopy:
+        'Do not advertise OpenAgents as a current Claude Code-first mech-suit product.',
+      evidenceRefs: [
+        'https://github.com/OpenAgentsInc/openagents/blob/main/docs/transcripts/199.md',
+        'https://github.com/OpenAgentsInc/openagents/blob/main/docs/promises/registry.md',
+      ],
+      blockerRefs: ['blocker.product_promises.stale_launch_framing_withdrawn'],
+      verification:
+        'Public docs and product copy should route current coding-agent runtime claims through Codex-oriented Autopilot/Probe/Pylon records instead of this historical framing.',
+      authorityBoundary:
+        'Historical transcript language does not authorize current product positioning, provider dependency, runtime support, or deployment claims.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'autopilot.codex_probe_pylon_successor.v1',
+      productArea: 'Autopilot',
+      audience: ['agent', 'user', 'operator'],
+      state: 'yellow',
+      claim:
+        'The useful parts of the historical coding-agent wrapper idea are now represented by the current Codex-oriented Autopilot/Probe/Pylon runtime direction.',
+      safeCopy:
+        'OpenAgents coding-agent runtime work is Codex-oriented where applicable, with Probe/Pylon carrying relevant runtime and provider-account ideas under current gates.',
+      unsafeCopy:
+        'Do not claim the old Claude Code-first launch framing is the current implementation, or that the current Codex/Probe/Pylon path is fully green.',
+      evidenceRefs: [
+        'apps/pylon/README.md',
+        'packages/probe',
+        'apps/openagents.com/docs/probe/2026-06-07-first-party-probe-runtime-audit.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.current_codex_path_needs_evidence',
+        'blocker.product_promises.live_probe_pylon_runtime_gates_incomplete',
+      ],
+      verification:
+        'Requires current Codex-backed task path evidence, Probe/Pylon runtime smokes, public docs, and live assignment/closeout evidence before green copy.',
+      authorityBoundary:
+        'A successor direction does not imply broad provider support, unattended writes, payment settlement, or live marketplace authority.',
     },
     {
       ...basePromiseFields,
@@ -613,6 +665,7 @@ export const publicProductPromisesDocument = () => ({
   notes: [
     `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
     'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
+    'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
     'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and capacity-market claims remain gated.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
   ],

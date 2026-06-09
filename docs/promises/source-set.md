@@ -19,12 +19,16 @@ system.
 ## Recent Transcript Sources
 
 The product-promise backlog in [`registry.md`](registry.md) now includes a
-2026-06-09 sweep of transcript files from Episode 200 onward. These transcripts
-are source material for explicit and implied promise candidates, not proof that
-a promise is green.
+2026-06-09 sweep of transcript files from Episode 199 onward. Episode 199 is
+included as historical launch framing with an explicit caveat: the old Claude
+Code-first mech-suit direction is not current public positioning. Current
+implementation work should be understood as Codex-oriented, with applicable
+ideas folded into Probe/Pylon. These transcripts are source material for
+explicit and implied promise candidates, not proof that a promise is green.
 
 | Transcript                        | Promise areas surfaced                                                                                                                                                                            |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`199.md`](../transcripts/199.md) | Historical Autopilot launch framing, autonomous coding loop claims, old Claude Code-first mech-suit direction, Codex successor framing, Probe/Pylon folding, agent learning, and paid skills.     |
 | [`200.md`](../transcripts/200.md) | Autonomous agents that learn from long-lived work, repeated task completion, approval loops, high-level objective handling, and explicit risks around autonomy and lock-in.                       |
 | [`201.md`](../transcripts/201.md) | Issue-to-PR Autopilot loops, agents learning from other agents, local model evaluation, task execution traces, and economic incentives for productive software work.                              |
 | [`202.md`](../transcripts/202.md) | Skill marketplaces, royalties for reusable agent assets, agent groups that form around tasks, Nostr-like distribution, and agent-created products that other agents can buy or reuse.             |
