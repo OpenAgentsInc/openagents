@@ -47,12 +47,16 @@ describe('Autopilot Pylon assignment synthesizer', () => {
     const intents = pylonAssignmentIntentsForAutopilotWork({
       assignmentIntents: [readyAssignment],
       placementDecision: {
+        availabilityState: 'selected',
+        callerActionRefs: [],
         fallbackRunnerKind: 'openagents_shc',
         pylonCandidates: [],
         reasonRefs: [
           'placement.selected.requester_pylon',
           'placement.pylon.preferred_before_fallback',
         ],
+        refusalReasonRefs: [],
+        retryAfterSeconds: null,
         selectedPylonRef: 'pylon.local.docs_agent',
         selectedRunnerKind: 'requester_pylon',
         source: 'requester_pylon',
@@ -104,9 +108,13 @@ describe('Autopilot Pylon assignment synthesizer', () => {
       pylonAssignmentIntentsForAutopilotWork({
         assignmentIntents: [readyAssignment],
         placementDecision: {
+          availabilityState: 'selected',
+          callerActionRefs: [],
           fallbackRunnerKind: 'openagents_shc',
           pylonCandidates: [],
           reasonRefs: ['placement.selected.fallback'],
+          refusalReasonRefs: [],
+          retryAfterSeconds: null,
           selectedPylonRef: null,
           selectedRunnerKind: 'openagents_shc',
           source: 'fallback',

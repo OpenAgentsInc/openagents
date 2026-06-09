@@ -149,6 +149,13 @@ export type AutopilotWorkPlacementPolicyRecordProjection = Readonly<{
   requiresSecretBroker: boolean
 }>
 
+export type AutopilotWorkNextActionProjection = Readonly<{
+  callerActionRefs: ReadonlyArray<string>
+  reasonRefs: ReadonlyArray<string>
+  retryAfterSeconds: number | null
+  state: 'blocked' | 'needs_input' | 'payment_required' | 'ready' | 'retry_later'
+}>
+
 export type AutopilotWorkTaskAccessState =
   | 'missing_required_access'
   | 'satisfied'
@@ -213,6 +220,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   fallbackLeaseIntents: ReadonlyArray<AutopilotFallbackLeaseIntentProjection>
   funding: AutopilotWorkFundingProjection
   idempotent: boolean
+  nextAction: AutopilotWorkNextActionProjection
   paymentChallenge: AutopilotWorkPaymentChallengeProjection | null
   paymentChallengeRef: string | null
   placementDecision: AutopilotPlacementDecisionProjection
@@ -756,6 +764,38 @@ const taskRecordsForRecord = (
   })
 }
 
+const nextActionForRecord = (
+  funding: AutopilotWorkFundingProjection,
+  placementDecision: AutopilotPlacementDecisionProjection,
+): AutopilotWorkNextActionProjection => {
+  if (funding.buyerFundingState === 'payment_required') {
+    return {
+      callerActionRefs: ['caller.pay_autopilot_quote'],
+      reasonRefs: ['next_action.payment_required'],
+      retryAfterSeconds: null,
+      state: 'payment_required',
+    }
+  }
+
+  if (placementDecision.source === 'none_available') {
+    return {
+      callerActionRefs: placementDecision.callerActionRefs,
+      reasonRefs: placementDecision.refusalReasonRefs,
+      retryAfterSeconds: placementDecision.retryAfterSeconds,
+      state: placementDecision.availabilityState === 'retry_later'
+        ? 'retry_later'
+        : 'needs_input',
+    }
+  }
+
+  return {
+    callerActionRefs: [],
+    reasonRefs: ['next_action.ready_for_assignment'],
+    retryAfterSeconds: null,
+    state: 'ready',
+  }
+}
+
 const stateForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): OpenAgentsAutopilotWorkStateType => {
@@ -776,6 +816,13 @@ const projectionForRecord = (
   nowIso: string,
   pylonRegistrations: ReadonlyArray<PylonApiRegistrationRecord>,
 ): AutopilotWorkOrderProjection => {
+  const funding = fundingForRecord(record)
+  const placementDecision = selectAutopilotPlacement({
+    nowIso,
+    ownerAgentUserId: record.agentUserId,
+    placementPolicy: record.request.placementPolicy,
+    pylonRegistrations,
+  })
   const work = {
     accessRequirements: accessRequirementsForRequest(record.request),
     accessRequestRefs: record.accessRequestRefs,
@@ -785,16 +832,12 @@ const projectionForRecord = (
     createdAt: record.createdAt,
     eventStreamRef: record.eventStreamRef,
     fallbackLeaseIntents: [],
-    funding: fundingForRecord(record),
+    funding,
     idempotent,
+    nextAction: nextActionForRecord(funding, placementDecision),
     paymentChallenge: paymentChallengeForRecord(record),
     paymentChallengeRef: record.paymentChallengeRef,
-    placementDecision: selectAutopilotPlacement({
-      nowIso,
-      ownerAgentUserId: record.agentUserId,
-      placementPolicy: record.request.placementPolicy,
-      pylonRegistrations,
-    }),
+    placementDecision,
     placementPolicy: placementPolicyForRecord(record),
     pylonAssignmentIntents: [],
     quote: makeAutopilotWorkQuote(record.request),

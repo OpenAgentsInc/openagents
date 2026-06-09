@@ -522,3 +522,36 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-fallback-lease-adapter.test.ts src/autopilot-work-pylon-assignment-synthesizer.test.ts src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## OA-AUTO-018: Placement Refusal And Retry States
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4592`
+
+Status: implemented.
+
+Implemented:
+
+- Added placement availability fields to placement decisions:
+  - `availabilityState`
+  - `callerActionRefs`
+  - `refusalReasonRefs`
+  - `retryAfterSeconds`
+- Added retry guidance for owner-linked Pylons that are otherwise eligible but
+  have stale heartbeat state.
+- Added needs-input guidance for local-only or Pylon-only policies with no
+  eligible requester Pylon.
+- Added work-order `nextAction` so the API can surface:
+  - `payment_required` when the caller must pay first;
+  - `needs_input` when the caller must add or restart a Pylon or relax privacy
+    or runner policy;
+  - `retry_later` when a retry window is appropriate;
+  - `ready` when placement and funding are not blocking assignment.
+- Preserved the separation between buyer payment, placement, worker payout,
+  accepted-work, deploy, spend, and public-claim authority.
+- Updated OpenAPI summary text so agent-readable docs expose placement refusal
+  and retry state.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts src/autopilot-work-fallback-lease-adapter.test.ts src/autopilot-work-pylon-assignment-synthesizer.test.ts src/autopilot-work-request.test.ts src/autopilot-work-assignment-planner.test.ts src/autopilot-work-quote.test.ts src/l402-payment-headers.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

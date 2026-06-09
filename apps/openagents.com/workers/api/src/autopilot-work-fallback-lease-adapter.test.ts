@@ -47,12 +47,16 @@ describe('Autopilot fallback lease adapter', () => {
     const intents = fallbackLeaseIntentsForAutopilotWork({
       assignmentIntents: [paidReadyAssignment],
       placementDecision: {
+        availabilityState: 'selected',
+        callerActionRefs: [],
         fallbackRunnerKind: 'openagents_shc',
         pylonCandidates: [],
         reasonRefs: [
           'placement.selected.fallback',
           'placement.fallback.openagents_shc',
         ],
+        refusalReasonRefs: [],
+        retryAfterSeconds: null,
         selectedPylonRef: null,
         selectedRunnerKind: 'openagents_shc',
         source: 'fallback',
@@ -105,9 +109,13 @@ describe('Autopilot fallback lease adapter', () => {
       fallbackLeaseIntentsForAutopilotWork({
         assignmentIntents: [paidReadyAssignment],
         placementDecision: {
+          availabilityState: 'selected',
+          callerActionRefs: [],
           fallbackRunnerKind: 'openagents_shc',
           pylonCandidates: [],
           reasonRefs: ['placement.selected.requester_pylon'],
+          refusalReasonRefs: [],
+          retryAfterSeconds: null,
           selectedPylonRef: 'pylon.local.docs_agent',
           selectedRunnerKind: 'requester_pylon',
           source: 'requester_pylon',

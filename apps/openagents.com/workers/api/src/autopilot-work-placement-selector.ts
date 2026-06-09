@@ -43,8 +43,12 @@ export type AutopilotPylonPlacementCandidateProjection = Readonly<{
 }>
 
 export type AutopilotPlacementDecisionProjection = Readonly<{
+  availabilityState: 'needs_input' | 'retry_later' | 'selected'
+  callerActionRefs: ReadonlyArray<string>
   fallbackRunnerKind: OpenAgentsAutopilotRunnerKind | null
   reasonRefs: ReadonlyArray<string>
+  refusalReasonRefs: ReadonlyArray<string>
+  retryAfterSeconds: number | null
   selectedPylonRef: string | null
   selectedRunnerKind: OpenAgentsAutopilotRunnerKind | null
   source: 'fallback' | 'none_available' | 'requester_pylon'
@@ -169,6 +173,78 @@ const pylonCandidateEligible = (
   candidate.assignmentReady &&
   candidate.localExecutionReady
 
+const pylonCandidateCanRetry = (
+  candidate: AutopilotPylonPlacementCandidateProjection,
+): boolean =>
+  candidate.ownerLinked &&
+  candidate.status === 'active' &&
+  candidate.walletReady &&
+  candidate.assignmentReady &&
+  candidate.localExecutionReady &&
+  candidate.versionCompatible &&
+  !candidate.heartbeatFresh
+
+const noneAvailableCallerActionRefs = (
+  policy: OpenAgentsAutopilotPlacementPolicy,
+  candidates: ReadonlyArray<AutopilotPylonPlacementCandidateProjection>,
+): ReadonlyArray<string> => {
+  const refs = new Set<string>()
+
+  if (
+    policy.localOnlyAllowed ||
+    runnerKindAllowed(policy, 'requester_pylon') ||
+    runnerKindAllowed(policy, 'pylon_network')
+  ) {
+    refs.add('caller.add_or_restart_pylon')
+  }
+
+  if (candidates.some(pylonCandidateCanRetry)) {
+    refs.add('caller.retry_after_pylon_heartbeat')
+  }
+
+  if (
+    policy.localOnlyAllowed ||
+    policy.allowedRunnerKinds.every(
+      runnerKind =>
+        runnerKind === 'requester_pylon' ||
+        runnerKind === 'pylon_network',
+    )
+  ) {
+    refs.add('caller.relax_privacy_or_runner_policy')
+  }
+
+  if (refs.size === 0) {
+    refs.add('caller.contact_operator_for_runner_capacity')
+  }
+
+  return [...refs]
+}
+
+const noneAvailableRefusalReasonRefs = (
+  policy: OpenAgentsAutopilotPlacementPolicy,
+  candidates: ReadonlyArray<AutopilotPylonPlacementCandidateProjection>,
+): ReadonlyArray<string> => {
+  const refs = new Set<string>(['placement.blocked.no_compatible_runner'])
+
+  if (policy.localOnlyAllowed) {
+    refs.add('placement.blocked.local_only_without_eligible_pylon')
+  }
+
+  if (candidates.length === 0) {
+    refs.add('placement.blocked.no_pylon_candidates')
+  }
+
+  if (candidates.some(candidate => candidate.ownerLinked)) {
+    refs.add('placement.blocked.owner_pylon_not_eligible')
+  }
+
+  if (candidates.some(pylonCandidateCanRetry)) {
+    refs.add('placement.retry.pylon_heartbeat_expected')
+  }
+
+  return [...refs]
+}
+
 export const selectAutopilotPlacement = (
   input: Readonly<{
     nowIso: string
@@ -189,6 +265,8 @@ export const selectAutopilotPlacement = (
 
   if (selectedPylon !== null) {
     return {
+      availabilityState: 'selected',
+      callerActionRefs: [],
       fallbackRunnerKind: firstFallbackRunnerKind(input.placementPolicy),
       pylonCandidates: candidates.map(candidate => ({
         ...candidate,
@@ -198,6 +276,8 @@ export const selectAutopilotPlacement = (
         'placement.selected.requester_pylon',
         'placement.pylon.preferred_before_fallback',
       ],
+      refusalReasonRefs: [],
+      retryAfterSeconds: null,
       selectedPylonRef: selectedPylon.pylonRef,
       selectedRunnerKind: 'requester_pylon',
       source: 'requester_pylon',
@@ -207,16 +287,31 @@ export const selectAutopilotPlacement = (
   const fallbackRunnerKind = input.placementPolicy.localOnlyAllowed
     ? null
     : firstFallbackRunnerKind(input.placementPolicy)
+  const refusalReasonRefs = fallbackRunnerKind === null
+    ? noneAvailableRefusalReasonRefs(input.placementPolicy, candidates)
+    : []
+  const callerActionRefs = fallbackRunnerKind === null
+    ? noneAvailableCallerActionRefs(input.placementPolicy, candidates)
+    : []
+  const availabilityState = fallbackRunnerKind !== null
+    ? 'selected'
+    : candidates.some(pylonCandidateCanRetry)
+      ? 'retry_later'
+      : 'needs_input'
 
   return {
+    availabilityState,
+    callerActionRefs,
     fallbackRunnerKind,
     pylonCandidates: candidates,
     reasonRefs: fallbackRunnerKind === null
-      ? ['placement.blocked.no_compatible_runner']
+      ? refusalReasonRefs
       : [
           'placement.selected.fallback',
           `placement.fallback.${fallbackRunnerKind}`,
         ],
+    refusalReasonRefs,
+    retryAfterSeconds: availabilityState === 'retry_later' ? 300 : null,
     selectedPylonRef: null,
     selectedRunnerKind: fallbackRunnerKind,
     source: fallbackRunnerKind === null ? 'none_available' : 'fallback',

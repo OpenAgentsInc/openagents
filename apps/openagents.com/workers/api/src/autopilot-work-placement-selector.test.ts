@@ -144,4 +144,71 @@ describe('Autopilot work placement selector', () => {
       selected: false,
     })
   })
+
+  test('records retry guidance when an owner Pylon is eligible except heartbeat freshness', () => {
+    const decision = selectAutopilotPlacement({
+      nowIso: '2026-06-09T17:30:00.000Z',
+      ownerAgentUserId: 'agent_user_autopilot_work',
+      placementPolicy: {
+        ...placementPolicy,
+        allowedRunnerKinds: ['requester_pylon'],
+        localOnlyAllowed: true,
+        preferredRunnerKinds: ['requester_pylon'],
+      },
+      pylonRegistrations: [
+        registration({
+          latestHeartbeatAt: '2026-06-09T17:00:00.000Z',
+          latestHeartbeatStatus: 'offline',
+        }),
+      ],
+    })
+
+    expect(decision).toMatchObject({
+      availabilityState: 'retry_later',
+      callerActionRefs: [
+        'caller.add_or_restart_pylon',
+        'caller.retry_after_pylon_heartbeat',
+        'caller.relax_privacy_or_runner_policy',
+      ],
+      fallbackRunnerKind: null,
+      refusalReasonRefs: [
+        'placement.blocked.no_compatible_runner',
+        'placement.blocked.local_only_without_eligible_pylon',
+        'placement.blocked.owner_pylon_not_eligible',
+        'placement.retry.pylon_heartbeat_expected',
+      ],
+      retryAfterSeconds: 300,
+      selectedRunnerKind: null,
+      source: 'none_available',
+    })
+  })
+
+  test('records needs-input guidance when local-only placement has no Pylon', () => {
+    const decision = selectAutopilotPlacement({
+      nowIso: '2026-06-09T17:30:00.000Z',
+      ownerAgentUserId: 'agent_user_autopilot_work',
+      placementPolicy: {
+        ...placementPolicy,
+        allowedRunnerKinds: ['requester_pylon'],
+        localOnlyAllowed: true,
+        preferredRunnerKinds: ['requester_pylon'],
+      },
+      pylonRegistrations: [],
+    })
+
+    expect(decision).toMatchObject({
+      availabilityState: 'needs_input',
+      callerActionRefs: [
+        'caller.add_or_restart_pylon',
+        'caller.relax_privacy_or_runner_policy',
+      ],
+      refusalReasonRefs: [
+        'placement.blocked.no_compatible_runner',
+        'placement.blocked.local_only_without_eligible_pylon',
+        'placement.blocked.no_pylon_candidates',
+      ],
+      retryAfterSeconds: null,
+      source: 'none_available',
+    })
+  })
 })

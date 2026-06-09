@@ -255,6 +255,12 @@ const responseJson = async (response: Response) =>
         workerPayoutEligible: boolean
       }>
       idempotent: boolean
+      nextAction?: Readonly<{
+        callerActionRefs: ReadonlyArray<string>
+        reasonRefs: ReadonlyArray<string>
+        retryAfterSeconds: number | null
+        state: string
+      }>
       paymentChallenge?: Readonly<{
         amountCents: number
         challengeRef: string
@@ -264,6 +270,8 @@ const responseJson = async (response: Response) =>
       }> | null
       paymentChallengeRef: string | null
       placementDecision?: Readonly<{
+        availabilityState: string
+        callerActionRefs: ReadonlyArray<string>
         fallbackRunnerKind: string | null
         pylonCandidates: ReadonlyArray<Readonly<{
           assignmentReady: boolean
@@ -276,6 +284,8 @@ const responseJson = async (response: Response) =>
           walletReady: boolean
         }>>
         reasonRefs: ReadonlyArray<string>
+        refusalReasonRefs: ReadonlyArray<string>
+        retryAfterSeconds: number | null
         selectedPylonRef: string | null
         selectedRunnerKind: string | null
         source: string
@@ -586,6 +596,67 @@ describe('Autopilot work routes', () => {
         taskRef: 'task.autopilot_coder.docs_contract',
       }),
     ])
+  })
+
+  test('returns actionable placement needs-input when no runner is available', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      placementPolicy: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].placementPolicy,
+        allowedRunnerKinds: ['requester_pylon'] as const,
+        localOnlyAllowed: true,
+        preferredRunnerKinds: ['requester_pylon'] as const,
+        privacyTier: 'local_only' as const,
+        publicTraceAllowed: false,
+      },
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [],
+        },
+      ],
+    }
+    const response = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-placement-needs-input',
+      pylonRegistrations: [],
+    })
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(202)
+    expect(body.work?.funding?.buyerFundingState).toBe('not_required')
+    expect(body.work?.placementDecision).toMatchObject({
+      availabilityState: 'needs_input',
+      callerActionRefs: [
+        'caller.add_or_restart_pylon',
+        'caller.relax_privacy_or_runner_policy',
+      ],
+      fallbackRunnerKind: null,
+      refusalReasonRefs: [
+        'placement.blocked.no_compatible_runner',
+        'placement.blocked.local_only_without_eligible_pylon',
+        'placement.blocked.no_pylon_candidates',
+      ],
+      retryAfterSeconds: null,
+      selectedRunnerKind: null,
+      source: 'none_available',
+    })
+    expect(body.work?.nextAction).toEqual({
+      callerActionRefs: [
+        'caller.add_or_restart_pylon',
+        'caller.relax_privacy_or_runner_policy',
+      ],
+      reasonRefs: [
+        'placement.blocked.no_compatible_runner',
+        'placement.blocked.local_only_without_eligible_pylon',
+        'placement.blocked.no_pylon_candidates',
+      ],
+      retryAfterSeconds: null,
+      state: 'needs_input',
+    })
+    expect(body.work?.fallbackLeaseIntents).toEqual([])
+    expect(body.work?.pylonAssignmentIntents).toEqual([])
   })
 
   test('allows public read-only repository tasks to proceed', async () => {
