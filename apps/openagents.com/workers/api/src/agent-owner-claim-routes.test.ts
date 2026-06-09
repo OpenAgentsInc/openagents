@@ -894,4 +894,149 @@ describe('agent owner claim routes', () => {
       'oa_agent_pending_owner_claim_token',
     )
   })
+
+  test('rejects a second verified claim for the same X account', async () => {
+    const store = new MemoryAgentOwnerClaimStore()
+    await createClaim(store, {
+      makeUuid: makeUuidFactory([
+        'claim-2',
+        'user-2',
+        'credential-2',
+        'identity-2',
+      ]),
+    })
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-2/approve',
+        { method: 'POST' },
+      ),
+      {
+        makeUuid: makeUuidFactory(['user-2', 'credential-2', 'identity-2']),
+        nowIso: () => '2026-06-06T00:05:00.000Z',
+        session,
+      },
+    )
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-2/x/challenge',
+        {
+          body: JSON.stringify({ xHandle: '@Owner' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['x-1', 'nonce-1']),
+        nowIso: () => '2026-06-06T00:06:00.000Z',
+        session,
+      },
+    )
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-2/x/verify',
+        {
+          body: JSON.stringify({
+            tweetUrl: 'https://x.com/owner/status/100',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        nowIso: () => '2026-06-06T00:07:00.000Z',
+        resolveXVerificationTweet: () =>
+          Promise.resolve({
+            authorHandle: 'owner',
+            htmlText:
+              'OpenAgents claim agent_claim_claim-2 oa-x-nonce1 https://openagents.com/agents/claims/agent_claim_claim-2',
+            state: 'visible',
+            tweetRef: 'x_tweet:100',
+            tweetUrl: 'https://x.com/owner/status/100',
+          }),
+        session,
+      },
+    )
+
+    await createClaim(store, {
+      makeUuid: makeUuidFactory([
+        'claim-3',
+        'user-3',
+        'credential-3',
+        'identity-3',
+      ]),
+    })
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-3/approve',
+        { method: 'POST' },
+      ),
+      {
+        makeUuid: makeUuidFactory(['user-3', 'credential-3', 'identity-3']),
+        nowIso: () => '2026-06-06T00:08:00.000Z',
+        session,
+      },
+    )
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-3/x/challenge',
+        {
+          body: JSON.stringify({ xHandle: 'owner' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['x-2', 'nonce-2']),
+        nowIso: () => '2026-06-06T00:09:00.000Z',
+        session,
+      },
+    )
+
+    const duplicateResponse = await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-3/x/verify',
+        {
+          body: JSON.stringify({
+            tweetUrl: 'https://x.com/owner/status/101',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        nowIso: () => '2026-06-06T00:10:00.000Z',
+        resolveXVerificationTweet: () =>
+          Promise.resolve({
+            authorHandle: 'owner',
+            htmlText:
+              'OpenAgents claim agent_claim_claim-3 oa-x-nonce2 https://openagents.com/agents/claims/agent_claim_claim-3',
+            state: 'visible',
+            tweetRef: 'x_tweet:101',
+            tweetUrl: 'https://x.com/owner/status/101',
+          }),
+        session,
+      },
+    )
+    const body = (await duplicateResponse.json()) as { error: string }
+    const verifiedOwnerClaims = Array.from(store.xChallenges.values()).filter(
+      challenge =>
+        challenge.xAccountRef === 'x:owner' &&
+        ['verified', 'approved'].includes(challenge.state),
+    )
+
+    expect(duplicateResponse.status).toBe(409)
+    expect(body.error).toBe('agent_x_claim_duplicate_tweet_or_account')
+    expect(verifiedOwnerClaims).toHaveLength(1)
+    expect(store.xChallenges.get('agent_x_claim_x-2')).toMatchObject({
+      state: 'pending_tweet',
+      tweetRef: null,
+      xAccountRef: 'x:owner',
+    })
+  })
 })
