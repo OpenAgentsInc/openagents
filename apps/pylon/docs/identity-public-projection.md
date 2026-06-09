@@ -26,6 +26,13 @@ The current v0.3 `identity.json` is a local Pylon bootstrap identity. It is not
 yet a real Nostr identity: the key is Ed25519, `publicKey` is DER material, and
 `npub` is a local synthetic value rather than a NIP-19 encoding.
 
+The Nostr migration target is replacement, not augmentation. After the NIP-06
+identity issue lands, `identity.json` must not be the source for any public
+Nostr pubkey, public `npub`, NIP-98 request signer, relay event signer, or
+orange-check/forum claim signer. If the file remains, it is only legacy local
+state for preserving non-Nostr continuity such as `pylonRef` until that state
+is migrated or retired.
+
 The deprecated Rust Pylon that previously lived inside this repo used a real
 NIP-06 identity. It stored a BIP39 mnemonic at `identity.mnemonic`, defaulting
 to `~/.openagents/pylon/identity.mnemonic`, with these compatibility inputs:

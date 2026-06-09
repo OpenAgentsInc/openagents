@@ -30,12 +30,15 @@ The body hash is computed over the exact JSON request body. Link complete and
 refresh bodies also include their body hash as a field so endpoint handlers can
 validate request integrity before linking a Pylon identity.
 
-These headers are not yet strict NIP-98. They are signed with the current local
-Pylon Ed25519 identity from `identity.json`, and `x-nip98-pubkey` carries the
-synthetic local `npub` value. The Nostr migration should replace or supplement
-this with `Authorization: Nostr <base64-kind-27235-event>` signed by the real
-NIP-06 Pylon key, verifying method, URL, timestamp freshness, event id,
-Schnorr signature, and exact request-body hash.
+These headers are not Nostr and should not survive as a NIP-98-labeled path.
+They are signed with the current local Pylon Ed25519 identity from
+`identity.json`, and `x-nip98-pubkey` carries the synthetic local `npub` value.
+The Nostr migration must replace this with
+`Authorization: Nostr <base64-kind-27235-event>` signed by the real NIP-06
+Pylon key, verifying method, URL, timestamp freshness, event id, Schnorr
+signature, and exact request-body hash. If a temporary local signed-request
+path remains for non-Nostr compatibility, it must be renamed so it does not use
+NIP-98 or `npub` terminology.
 
 ## CLI
 

@@ -141,6 +141,13 @@ However, the current Pylon identity is not a real Nostr identity:
 This is useful local binding scaffolding, but it should be renamed or migrated
 before any public docs call it live Nostr identity.
 
+The implementation target is replacement for all Nostr-facing behavior. The
+current Ed25519 `identity.json` signer and synthetic `npub` must not be sent on
+any path labeled Nostr, NIP-98, relay event signing, Forum Nostr claim, or
+orange-check claim. If that local identity remains temporarily, it is only
+legacy local state for non-Nostr continuity while the NIP-06 identity replaces
+public signing and projection.
+
 ### Rust Pylon NIP-06 compatibility finding
 
 The prior Rust Pylon that lived in this repo before the Bun/Effect rebuild did
@@ -448,10 +455,11 @@ solve connection coordination plus colocated storage.
 - Add a blocker ref for "current Pylon identity is not NIP-01/NIP-19
   compatible" wherever launch or status copy needs it.
 
-### Phase 1: real Pylon Nostr key material
+### Phase 1: replace current Nostr-facing identity with NIP-06
 
-- Add a NIP-06 Nostr identity record beside the existing local identity record,
-  not by mutating the existing Ed25519 identity in place.
+- Replace the current Nostr-facing use of `identity.json` with a NIP-06 Pylon
+  identity. Do not keep Ed25519-derived `publicKey` or synthetic `npub` in any
+  public Nostr projection or NIP-98-labeled request.
 - Resolve historical Rust Pylon identity first:
   `OPENAGENTS_IDENTITY_MNEMONIC_PATH`, historical config `identity_path`,
   `OPENAGENTS_PYLON_HOME/identity.mnemonic`, then
@@ -470,9 +478,14 @@ solve connection coordination plus colocated storage.
   operator explicitly migrates them. The NIP-06 identity path is compatibility
   input, not an instruction to move every v0.3 state file back under
   `~/.openagents/pylon`.
+- If a temporary local signed-request path remains for non-Nostr compatibility,
+  rename it so it does not use NIP-98 or `npub` terminology.
 
 ### Phase 2: strict NIP-98 key binding
 
+- Replace the current `x-nip98-*` Ed25519 header flow for Nostr-bound
+  endpoints. Do not supplement it with a parallel Nostr path while retaining
+  synthetic NIP-98 headers.
 - Add an OpenAgents endpoint that accepts real NIP-98
   `Authorization: Nostr ...` requests.
 - Validate kind `27235`, exact URL, HTTP method, timestamp freshness, raw body
