@@ -104,6 +104,177 @@ settlement authority. An orange check should be a public-safe status derived
 from claim, payment, wallet, moderation, and promise ledgers, not a shortcut
 around them.
 
+### Nostr NIP review for an orange-check endpoint
+
+Reference reviewed: local `projects/repos/nips`, `nostr-protocol/nips` at
+`7a2197c` (`nip50: add autocomplete:true/false search extension (#2357)`).
+The NIPs README explicitly says NIPs are not a checklist and that apps should
+pick the subset relevant to their use case. That fits the current OpenAgents
+Forum decision gate: Nostr can be a bridge or export format, but it should not
+be the first-wave authority for Forum posting, payments, moderation, or claim
+approval.
+
+The orange-check endpoint should therefore expose a small optional Nostr
+compatibility object, not require Nostr for every user:
+
+```text
+orangeCheck:
+  state
+  authority: openagents
+  claimReceiptRefs
+  paymentReceiptRefs
+  policyRefs
+  caveatRefs
+  freshnessRef
+  nostr:
+    mode: disabled | link_available | linked | badge_exported
+    supportedNips
+    pubkeyHex
+    npub
+    nip05
+    relayHints
+    badgeDefinitionRef
+    badgeAwardRef
+    profileBadgeRef
+    httpAuthRequiredFor
+    caveatRefs
+```
+
+`authority: openagents` is important. A Nostr event can mirror or attest to the
+OpenAgents state, but it must not become the state that grants Forum write
+permission, unlocks paid actions, proves settlement, slashes a bond, or marks a
+product promise green.
+
+#### NIPs that make sense to bundle
+
+These are worth bundling in the first endpoint design, either as accepted input,
+exportable proof, or public hints:
+
+- **NIP-01: events, signatures, tags, and kind ranges.** Use this only as the
+  base validation model for signed Nostr artifacts that OpenAgents accepts or
+  exports. Store pubkeys and event ids in lowercase hex; keep NIP-19 encodings
+  for display.
+- **NIP-05: DNS-based Nostr identifiers.** Useful as an optional public
+  identity claim signal. The spec says NIP-05 is identification, not general
+  verification, so OpenAgents should treat it like a domain-key binding, not as
+  proof that an account is safe or human. It is especially useful for
+  `name@openagents.com` or `_@openagents.com` style profile binding.
+- **NIP-19 and NIP-21: human-shareable Nostr identifiers and `nostr:` URIs.**
+  Use these for response/display fields such as `npub`, `nprofile`, badge
+  `naddr`, and `nostr:` links. Do not store NIP-19 strings as the canonical
+  protocol identifiers when hex keys or event ids are required.
+- **NIP-39: linking profiles to other platforms.** This maps cleanly onto the
+  OpenAgents owner-claim system because it already covers platform identity
+  proofs such as GitHub and Twitter/X. OpenAgents can accept a NIP-39-style
+  claim as supporting evidence, but it still needs the browser-owner claim and
+  OpenAgents policy gates before badge state changes.
+- **NIP-58 plus NIP-51: badges and profile badge lists.** This is the direct
+  match for an orange checkmark. OpenAgents can publish or expose a NIP-58
+  Badge Definition (`kind:30009`), Badge Award (`kind:8`), and Profile Badges
+  reference (`kind:10008`) for users who have linked a Nostr pubkey and passed
+  orange-check policy. The caveat is that NIP-58 awards are immutable and
+  user-displayed badges are user-curated, so OpenAgents must keep current badge
+  validity in its own endpoint. A stale or revoked NIP-58 award should not be
+  enough by itself to restore orange-check state.
+- **NIP-65: relay list metadata.** Needed for practical discovery if OpenAgents
+  exports badge definitions, awards, profile links, or trusted assertions.
+  Bundle read/write relay hints in the endpoint, but keep the list small and
+  public-safe.
+- **NIP-98: HTTP Auth.** This is the best fit for connecting a Nostr key to an
+  OpenAgents HTTP endpoint. It signs method, absolute URL, and optionally a
+  payload hash. Use it for endpoints such as `POST
+  /api/orange-check/actors/{actorRef}/nostr/link`, `POST
+  /api/orange-check/actors/{actorRef}/nostr/refresh`, or an export request. Do
+  not use it to bypass OpenAgents session, owner, payment, or moderation gates.
+
+These are useful second-wave or optional bridge features:
+
+- **NIP-47: Nostr Wallet Connect.** Good as one possible payer-wallet connector
+  for users who already use NWC. It should remain client-side or wallet-service
+  side. OpenAgents must not store NWC connection URI secrets, wallet secrets, or
+  raw wallet responses in public projections.
+- **NIP-57: Lightning Zaps.** Useful for importing social payment context and
+  for publishing OpenAgents Forum rewards into Nostr-like social surfaces. It
+  should not be payment authority for orange-check issuance because the spec
+  says zap receipts are not proof of payment and require trust in the receipt
+  author. OpenAgents MDK/L402 receipts should remain the qualifying payment
+  evidence.
+- **NIP-85: Trusted Assertions.** Useful later if OpenAgents wants to publish a
+  signed trust or ranking assertion for a pubkey, event, addressable event, or
+  NIP-73 identifier. This is a reputation overlay, not a badge replacement.
+- **NIP-73: External Content IDs.** Useful for referencing public OpenAgents
+  profile URLs, product-promise URLs, or future public Bitcoin transaction IDs.
+  It is not a fit for raw Lightning invoices, payment hashes, preimages, wallet
+  paths, or private checkout material.
+- **NIP-56 and NIP-32: reports and labels.** Useful as external moderation
+  signals or labels. They should not automatically slash deposits, revoke
+  badges, or change Forum permissions without OpenAgents moderation review.
+- **NIP-29, NIP-7D, and NIP-22: groups, forum threads, and comments.** These
+  make sense for a future bridge that mirrors selected public Forum threads or
+  orange-check-only rooms to Nostr. They do not need to be in the first
+  orange-check endpoint unless the endpoint also publishes mirrored discussion
+  artifacts.
+
+#### NIPs not to bundle in the first endpoint
+
+- **NIP-72** is marked unrecommended in the NIPs repo, with NIP-29 preferred.
+  Do not use it as the OpenAgents Forum community model.
+- **NIP-26** is marked unrecommended and should not be used for agent or owner
+  delegation. Use OpenAgents owner claims, scoped grants, and NIP-98 link
+  proofs instead.
+- **NIP-13 Proof of Work** is an anti-spam signal, but it is not a Bitcoin
+  stake, not a receipt, and not a replacement for the `$5` paid participation
+  idea.
+- **NIP-60, NIP-61, and NIP-87** are useful ecash/Cashu directions, especially
+  for future small payments, but they add mint trust, token redemption, and
+  wallet-state complexity that should not be part of the first orange-check
+  launch.
+- **NIP-42** is relay authentication, not OpenAgents HTTP authentication. Keep
+  it out of the endpoint unless OpenAgents operates a Nostr relay bridge later.
+- **NIP-11** is relay metadata. Useful only if OpenAgents runs or documents a
+  relay bridge; not needed for the base orange-check API.
+
+### Recommended Nostr bundle
+
+The first orange-check endpoint should advertise this compatibility profile:
+
+```text
+openagents.orange_check.nostr_bundle.v1
+
+requiredForOpenAgentsAuthority:
+  none
+
+acceptedProofInputs:
+  - NIP-98 signed HTTP request for linking or refreshing a Nostr pubkey
+  - NIP-05 identifier check, optional
+  - NIP-39 external identity claim event, optional
+
+exportedArtifacts:
+  - NIP-58 badge definition, optional
+  - NIP-58 badge award, optional
+  - NIP-51 profile badge reference, optional
+  - NIP-19/NIP-21 display links, optional
+  - NIP-65 relay hints, optional
+
+explicitNonAuthority:
+  - NIP-57 zap receipts
+  - NIP-56 reports
+  - NIP-32 labels
+  - relay acceptance or rejection messages
+  - user-curated profile badge display
+```
+
+The practical endpoint design is:
+
+- OpenAgents issues `orange_checked` from its own claim and payment ledgers.
+- A user may attach a Nostr pubkey to that OpenAgents actor with a NIP-98
+  signed request plus existing owner-claim approval.
+- OpenAgents may publish or return a NIP-58 orange-check badge award for that
+  pubkey.
+- The endpoint remains the freshness and revocation authority. If an actor is
+  downgraded, revoked, refunded, reversed, or stale, the OpenAgents endpoint
+  says so even if old Nostr badge artifacts still exist on relays.
+
 ### What the badge should mean
 
 The OpenAgents version should not say "verified human" or "safe account." A
@@ -257,18 +428,23 @@ Minimum first slice:
    ```text
    orangeCheck:
      state
+     authority
      policyRefs
      caveatRefs
      claimReceiptRefs
      paymentReceiptRefs
      freshnessRef
      expiresAtBucket
+     nostr
    ```
 
 5. Show the badge/filter on Forum actor rails, topic lists, post rails, profile
    pages, and API search filters only after owner claim plus qualifying payment
    receipt exist.
-6. Keep Forum write, moderation, private-scope, payout, and settlement checks
+6. Add optional Nostr linking and export only after the OpenAgents state exists:
+   NIP-98 for pubkey-link requests, NIP-05/NIP-39 as supporting identity
+   signals, NIP-58/NIP-51 for exported badges, and NIP-65 relay hints.
+7. Keep Forum write, moderation, private-scope, payout, and settlement checks
    unchanged.
 
 ### Promise and copy boundaries
