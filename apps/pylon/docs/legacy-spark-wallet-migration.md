@@ -6,6 +6,7 @@ Issues:
 
 - [#4672](https://github.com/OpenAgentsInc/openagents/issues/4672)
 - [#4685](https://github.com/OpenAgentsInc/openagents/issues/4685)
+- [#4686](https://github.com/OpenAgentsInc/openagents/issues/4686)
 
 Pylon v0.2.5 included a `pylon wallet migrate-spark` compatibility path for
 old Spark/Breez wallet balances. Some users can still have old spendable
@@ -14,6 +15,11 @@ during initialization with `Missing Breez API key`.
 
 The current v0.3 behavior must not recommend a spend command after only seeing
 old balance history. It first projects a public-safe preflight.
+
+This release exposes the migration as a CLI JSON flow. It does not yet ship a
+graphical wallet migration screen. The CLI projection includes a
+`guidedRecovery` object with the user-facing answer, destination readiness,
+consent state, next-step summary, and public-safe secret-handling refs.
 
 ## Commands
 
@@ -59,6 +65,18 @@ plan and reruns with `--yes --execute`.
 
 ## Breez / Spark Credential Behavior
 
+User-facing answer: normal users should not manually add or paste a Breez API
+key into support channels to recover an old Spark balance. If the helper says
+`Missing Breez API key` and the user still has the 12-word recovery phrase, use
+the local recovery flow on the user's machine:
+
+```sh
+pylon wallet migrate-spark --mnemonic-recovery --destination-invoice-ready
+```
+
+Pylon will keep returning `state: "consent-required"` until the destination is
+prepared and the user explicitly reruns with `--yes --execute`.
+
 If the helper reports `Missing Breez API key` and the user has not selected
 local mnemonic recovery, Pylon returns:
 
@@ -84,6 +102,18 @@ destination invoice is prepared, Pylon sets:
 Destination readiness remains load-bearing. `--mnemonic-recovery` is not send
 readiness and does not prove outbound capacity; the new MDK destination must be
 prepared before any migration can execute.
+
+The guided projection uses:
+
+- `guidedRecovery.localRecoveryAvailable` to show that local recovery is a
+  supported path for the detected old balance;
+- `guidedRecovery.localRecoverySelected` to show whether the local recovery
+  path was selected for this preflight;
+- `guidedRecovery.destinationState` to separate destination preparation from
+  old balance detection;
+- `guidedRecovery.consentState` to make the explicit consent step visible;
+- `guidedRecovery.nextStepSummary` for concise CLI copy without exposing
+  private material.
 
 ## Public-Safe Evidence
 

@@ -63,9 +63,21 @@ export type LegacySparkMigrationPreflight = {
   explicitConsentRequired: boolean
   migrationRecommended: boolean
   blockerRefs: string[]
+  guidedRecovery: LegacySparkMigrationGuidedRecovery
   nextActionRefs: string[]
   publicReceiptRefs: string[]
   contentRedacted: true
+}
+
+export type LegacySparkMigrationGuidedRecovery = {
+  schema: "openagents.pylon.legacy_spark_guided_recovery.v0.3"
+  userFacingAnswer: string
+  localRecoveryAvailable: boolean
+  localRecoverySelected: boolean
+  destinationState: "ready" | "not-ready"
+  consentState: "required" | "accepted"
+  nextStepSummary: string
+  secretHandlingRefs: string[]
 }
 
 export type LegacySparkMigrationOptions = {
@@ -204,6 +216,52 @@ function safeLegacySparkMigration(
 ): LegacySparkMigrationPreflight {
   assertPublicProjectionSafe(projection)
   return projection
+}
+
+function buildLegacySparkGuidedRecovery(input: {
+  consentGiven: boolean
+  destinationInvoiceReady: boolean
+  identityMnemonicPresent: boolean
+  legacyBalanceDetected: boolean
+  mnemonicBackedRecoveryReady: boolean
+  mnemonicRecoveryAvailable: boolean
+  missingBreezCredential: boolean
+  state: LegacySparkMigrationState
+}): LegacySparkMigrationGuidedRecovery {
+  const localRecoveryAvailable =
+    input.legacyBalanceDetected &&
+    (input.identityMnemonicPresent || input.mnemonicRecoveryAvailable || input.missingBreezCredential)
+  const localRecoverySelected = input.mnemonicBackedRecoveryReady
+  const userFacingAnswer = input.missingBreezCredential
+    ? "No manual Breez credential is expected for normal recovery. Use the local recovery flow with the 12-word recovery phrase on this machine, then prepare the new wallet destination and consent before funds move."
+    : "Use the local migration preflight first. Pylon will show destination readiness and require explicit consent before funds move."
+  const nextStepSummary =
+    input.state === "migrated"
+      ? "Migration completed with public-safe receipt refs only."
+      : !input.legacyBalanceDetected
+        ? "No spendable old Spark balance was detected."
+        : !input.destinationInvoiceReady
+          ? "Prepare the new wallet destination, then rerun the migration preflight."
+          : !localRecoverySelected && input.missingBreezCredential
+            ? "Rerun with local recovery selected so the old helper does not block on a missing Breez credential."
+            : !input.consentGiven
+              ? "Review the local recovery plan, then rerun with explicit consent to execute."
+              : "Execute only after the destination is ready and the local recovery plan has been reviewed."
+
+  return {
+    schema: "openagents.pylon.legacy_spark_guided_recovery.v0.3",
+    userFacingAnswer,
+    localRecoveryAvailable,
+    localRecoverySelected,
+    destinationState: input.destinationInvoiceReady ? "ready" : "not-ready",
+    consentState: input.consentGiven ? "accepted" : "required",
+    nextStepSummary,
+    secretHandlingRefs: [
+      "policy.wallet.legacy_spark.local_only_recovery_phrase",
+      "policy.wallet.legacy_spark.no_support_channel_secrets",
+      "policy.wallet.legacy_spark.public_receipts_only",
+    ],
+  }
 }
 
 function buildSendReadinessPreflight(input: {
@@ -465,6 +523,16 @@ export async function preflightLegacySparkMigration(
     explicitConsentRequired: !consentGiven,
     migrationRecommended: ready && !consentGiven,
     blockerRefs,
+    guidedRecovery: buildLegacySparkGuidedRecovery({
+      consentGiven,
+      destinationInvoiceReady,
+      identityMnemonicPresent,
+      legacyBalanceDetected,
+      mnemonicBackedRecoveryReady,
+      mnemonicRecoveryAvailable,
+      missingBreezCredential,
+      state,
+    }),
     nextActionRefs: ready
       ? [
           ...(recoveryMode === "local-recovery"

@@ -123,6 +123,14 @@ describe("MDK wallet readiness and ledger", () => {
         migrationRecommended: false,
         recoveryMode: "unavailable",
       })
+      expect(preflight.guidedRecovery).toMatchObject({
+        localRecoveryAvailable: true,
+        localRecoverySelected: false,
+        destinationState: "not-ready",
+        consentState: "required",
+      })
+      expect(preflight.guidedRecovery.userFacingAnswer).toContain("No manual Breez credential")
+      expect(preflight.guidedRecovery.nextStepSummary).toContain("Prepare the new wallet destination")
       expect(preflight.blockerRefs).toContain("blocker.wallet.legacy_spark.breez_api_key_missing")
       expect(preflight.blockerRefs).toContain("blocker.wallet.legacy_spark.helper_init_failed")
       expect(preflight.nextActionRefs).toContain(
@@ -161,6 +169,13 @@ describe("MDK wallet readiness and ledger", () => {
         migrationRecommended: true,
         recoveryMode: "local-recovery",
       })
+      expect(preflight.guidedRecovery).toMatchObject({
+        localRecoveryAvailable: true,
+        localRecoverySelected: true,
+        destinationState: "ready",
+        consentState: "required",
+      })
+      expect(preflight.guidedRecovery.nextStepSummary).toContain("explicit consent")
       expect(preflight.blockerRefs).not.toContain("blocker.wallet.legacy_spark.breez_api_key_missing")
       expect(preflight.nextActionRefs).toEqual([
         "action.wallet.legacy_spark.review_private_local_recovery_plan",
@@ -233,6 +248,12 @@ describe("MDK wallet readiness and ledger", () => {
       state: "migrated",
       explicitConsentRequired: false,
       recoveryMode: "local-recovery",
+    })
+    expect(migrated.guidedRecovery).toMatchObject({
+      localRecoverySelected: true,
+      destinationState: "ready",
+      consentState: "accepted",
+      nextStepSummary: "Migration completed with public-safe receipt refs only.",
     })
     expect(migrated.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.legacy_spark_migration\.[a-f0-9]{24}$/)
     assertPublicProjectionSafe(migrated)
