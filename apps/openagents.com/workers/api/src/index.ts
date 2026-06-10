@@ -340,6 +340,7 @@ import type { ContainerPathFetch } from './http/container-fetch'
 import {
   TREASURY_SERVICE_TOKEN_HEADER,
   handleOperatorTreasuryFundingDestinationApi,
+  handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryStatusApi,
   handlePublicTreasuryLaunchStatusApi,
 } from './treasury-routes'
@@ -488,14 +489,17 @@ const fetchMdkTreasuryPath = (
     environment.MDK_TREASURY_SERVICE_TOKEN,
   )
 
-  return path =>
+  return (path, init) =>
     getContainer(namespace, MDK_TREASURY_INSTANCE_NAME).fetch(
       new Request(`http://mdk-treasury${path}`, {
-        headers:
-          serviceToken === undefined
+        ...(init?.body === undefined ? {} : { body: init.body }),
+        headers: {
+          'content-type': 'application/json',
+          ...(serviceToken === undefined
             ? {}
-            : { [TREASURY_SERVICE_TOKEN_HEADER]: serviceToken },
-        method: 'GET',
+            : { [TREASURY_SERVICE_TOKEN_HEADER]: serviceToken }),
+        },
+        method: init?.method ?? 'GET',
       }),
     )
 }
@@ -6043,6 +6047,15 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/operator/treasury/funding-destination',
     handler: (request, env) =>
       handleOperatorTreasuryFundingDestinationApi(request, {
+        fetchTreasury: fetchMdkTreasuryPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+      }),
+  },
+  {
+    path: '/api/operator/treasury/payout',
+    handler: (request, env) =>
+      handleOperatorTreasuryPayoutApi(request, {
         fetchTreasury: fetchMdkTreasuryPath(env),
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),

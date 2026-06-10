@@ -188,6 +188,29 @@ Operator-side (bounded actions):
    evidence `agents.x_claim_reward.v1` has been waiting on: record it on
    #4626 and propose the transition with a receipt.
 
+## Live state and payout policy (updated 2026-06-10, post-launch)
+
+The treasury shipped and funded the same day:
+
+- Container live as `openagents-mdk-treasury-20260610-2`, state `configured`
+  (issues #4698 closed, #4699/#4700 open).
+- Secrets generated and backed up per the workspace secrets convention; no
+  MDK dashboard key was needed (the platform accepts a self-generated wallet
+  id as `mdkApiKey`, the agent-wallet pattern).
+- First funding: 500 sats from the local edge payer wallet over the BOLT11
+  JIT rail (10 sats LSP fee) -> 490 sats balance, 480 spendable. Revenue-scale
+  funding remains #4700's dashboard payout hop.
+- Owner payout policy (2026-06-10): payouts go through
+  `POST /api/operator/treasury/payout`, which pays in full when
+  `maxSendableSat` covers the intended amount and otherwise falls back to
+  **10% of the current spendable, floored** (intended 1000 against 990
+  spendable pays 99; successive payouts take 10% of the then-current
+  spendable). Below 10 sats spendable the route refuses with
+  `treasury_depleted`. Policy code and tests: `treasuryPayoutPlan` in
+  `workers/api/src/treasury-routes.ts`.
+- The single Artanis-facing operating contract for all of this is
+  `docs/artanis/treasury-runbook.md`.
+
 ## Authority note
 
 This document changes no policy. Dispatch approval, dashboard payout clicks,

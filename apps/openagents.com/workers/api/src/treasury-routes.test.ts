@@ -3,8 +3,10 @@ import { describe, expect, test } from 'vitest'
 
 import {
   handleOperatorTreasuryFundingDestinationApi,
+  handleOperatorTreasuryPayoutApi,
   handleOperatorTreasuryStatusApi,
   handlePublicTreasuryLaunchStatusApi,
+  treasuryPayoutPlan,
 } from './treasury-routes'
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> =>
@@ -230,5 +232,134 @@ describe('operator treasury funding destination', () => {
     )
 
     expect(response.status).toBe(503)
+  })
+})
+
+describe('treasury payout plan policy', () => {
+  test('pays the full amount when spendable covers it', () => {
+    expect(
+      treasuryPayoutPlan({ intendedAmountSat: 1000, maxSendableSat: 1500 }),
+    ).toEqual({ kind: 'full', paidAmountSat: 1000 })
+  })
+
+  test('falls back to 10% of spendable when it cannot cover the payout', () => {
+    expect(
+      treasuryPayoutPlan({ intendedAmountSat: 1000, maxSendableSat: 990 }),
+    ).toEqual({ kind: 'fractional_fallback_10pct', paidAmountSat: 99 })
+  })
+
+  test('applies 10% of the then-current spendable on successive payouts', () => {
+    const first = treasuryPayoutPlan({
+      intendedAmountSat: 1000,
+      maxSendableSat: 480,
+    })
+    expect(first).toEqual({
+      kind: 'fractional_fallback_10pct',
+      paidAmountSat: 48,
+    })
+    const second = treasuryPayoutPlan({
+      intendedAmountSat: 1000,
+      maxSendableSat: 432,
+    })
+    expect(second).toEqual({
+      kind: 'fractional_fallback_10pct',
+      paidAmountSat: 43,
+    })
+  })
+
+  test('reports depleted when 10% rounds below one sat', () => {
+    expect(
+      treasuryPayoutPlan({ intendedAmountSat: 1000, maxSendableSat: 9 }),
+    ).toEqual({ kind: 'depleted' })
+    expect(
+      treasuryPayoutPlan({ intendedAmountSat: 1000, maxSendableSat: null }),
+    ).toEqual({ kind: 'depleted' })
+  })
+})
+
+describe('operator treasury payout', () => {
+  const payoutRequest = (body: unknown) =>
+    new Request('https://openagents.com/api/operator/treasury/payout', {
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+
+  test('requires the admin api token', async () => {
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({ amountSat: 1000, destination: 'lno1x' }),
+        {
+          fetchTreasury: () => Promise.resolve(jsonResponse(200, {})),
+          requireAdminApiToken: () => Promise.resolve(false),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  test('applies the fractional fallback against live spendable balance', async () => {
+    const paid: Array<{ amountSat: number; destination: string }> = []
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({ amountSat: 1000, destination: 'lno1recipient' }),
+        {
+          fetchTreasury: (path, init) => {
+            if (path === '/balance') {
+              return Promise.resolve(
+                jsonResponse(200, { balanceSat: 990, maxSendableSat: 990 }),
+              )
+            }
+
+            if (path === '/pay' && init?.method === 'POST') {
+              paid.push(JSON.parse(init.body ?? '{}'))
+
+              return Promise.resolve(
+                jsonResponse(200, {
+                  paymentId: 'pay_1',
+                  status: 'succeeded',
+                }),
+              )
+            }
+
+            return Promise.resolve(jsonResponse(404, { error: 'not_found' }))
+          },
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      intendedAmountSat: number
+      paidAmountSat: number
+      policyApplied: string
+      status: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.policyApplied).toBe('fractional_fallback_10pct')
+    expect(body.intendedAmountSat).toBe(1000)
+    expect(body.paidAmountSat).toBe(99)
+    expect(body.status).toBe('succeeded')
+    expect(paid).toEqual([{ amountSat: 99, destination: 'lno1recipient' }])
+  })
+
+  test('refuses with 409 when the treasury is depleted', async () => {
+    const response = await run(
+      handleOperatorTreasuryPayoutApi(
+        payoutRequest({ amountSat: 1000, destination: 'lno1recipient' }),
+        {
+          fetchTreasury: () =>
+            Promise.resolve(
+              jsonResponse(200, { balanceSat: 9, maxSendableSat: 9 }),
+            ),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(409)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('treasury_depleted')
   })
 })

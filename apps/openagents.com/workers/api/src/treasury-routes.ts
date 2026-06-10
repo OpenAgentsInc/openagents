@@ -229,3 +229,199 @@ export const handleOperatorTreasuryFundingDestinationApi = (
     }),
   )
 }
+
+// Owner payout policy (2026-06-10): a payout that exceeds the treasury's
+// spendable balance is not refused outright - it falls back to 10% of the
+// current spendable amount (floored), so a depleted treasury pays out in a
+// decaying series instead of stalling. Basis is maxSendableSat, the
+// fee-buffered honest spendable figure.
+export const TREASURY_FRACTIONAL_FALLBACK_DIVISOR = 10
+
+export const treasuryPayoutPlan = (input: {
+  intendedAmountSat: number
+  maxSendableSat: number | null
+}):
+  | { kind: 'full'; paidAmountSat: number }
+  | { kind: 'fractional_fallback_10pct'; paidAmountSat: number }
+  | { kind: 'depleted' } => {
+  if (input.maxSendableSat === null || input.maxSendableSat <= 0) {
+    return { kind: 'depleted' }
+  }
+
+  if (input.maxSendableSat >= input.intendedAmountSat) {
+    return { kind: 'full', paidAmountSat: input.intendedAmountSat }
+  }
+
+  const fallback = Math.floor(
+    input.maxSendableSat / TREASURY_FRACTIONAL_FALLBACK_DIVISOR,
+  )
+
+  return fallback < 1
+    ? { kind: 'depleted' }
+    : { kind: 'fractional_fallback_10pct', paidAmountSat: fallback }
+}
+
+const balancePayload = (payload: unknown): { maxSendableSat: number | null } | null => {
+  if (typeof payload !== 'object' || payload === null) {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+  const value = record.maxSendableSat
+
+  return value === null || typeof value === 'number'
+    ? { maxSendableSat: value as number | null }
+    : null
+}
+
+export const handleOperatorTreasuryPayoutApi = (
+  request: Request,
+  dependencies: TreasuryRouteDependencies,
+) => {
+  if (request.method !== 'POST') {
+    return Effect.succeed(methodNotAllowed(['POST']))
+  }
+
+  return Effect.tryPromise({
+    catch: () => false,
+    try: () => dependencies.requireAdminApiToken(request),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(false)),
+    Effect.flatMap(authorized => {
+      if (!authorized) {
+        return Effect.succeed(
+          noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+        )
+      }
+
+      const fetchTreasury = dependencies.fetchTreasury
+
+      if (fetchTreasury === undefined) {
+        return Effect.succeed(
+          noStoreJsonResponse(
+            { error: 'treasury_unprovisioned' },
+            { status: 503 },
+          ),
+        )
+      }
+
+      return Effect.tryPromise({
+        catch: () => null,
+        try: async (): Promise<Response> => {
+          let body: { amountSat?: unknown; destination?: unknown } = {}
+
+          try {
+            body = (await request.json()) as typeof body
+          } catch {
+            return noStoreJsonResponse(
+              { error: 'invalid_json_body' },
+              { status: 400 },
+            )
+          }
+
+          const destination =
+            typeof body.destination === 'string' ? body.destination.trim() : ''
+          const intendedAmountSat = Number(body.amountSat)
+
+          if (destination === '') {
+            return noStoreJsonResponse(
+              { error: 'destination_required' },
+              { status: 400 },
+            )
+          }
+
+          if (!Number.isInteger(intendedAmountSat) || intendedAmountSat <= 0) {
+            return noStoreJsonResponse(
+              { error: 'amount_sat_must_be_positive_integer' },
+              { status: 400 },
+            )
+          }
+
+          const balanceResponse = await fetchTreasury('/balance')
+
+          if (!balanceResponse.ok) {
+            return noStoreJsonResponse(
+              { error: 'treasury_balance_unavailable' },
+              { status: 503 },
+            )
+          }
+
+          const balance = balancePayload(await balanceResponse.json())
+
+          if (balance === null) {
+            return noStoreJsonResponse(
+              { error: 'treasury_balance_unavailable' },
+              { status: 503 },
+            )
+          }
+
+          const plan = treasuryPayoutPlan({
+            intendedAmountSat,
+            maxSendableSat: balance.maxSendableSat,
+          })
+
+          if (plan.kind === 'depleted') {
+            return noStoreJsonResponse(
+              {
+                error: 'treasury_depleted',
+                intendedAmountSat,
+                maxSendableSat: balance.maxSendableSat,
+              },
+              { status: 409 },
+            )
+          }
+
+          const payResponse = await fetchTreasury('/pay', {
+            body: JSON.stringify({
+              amountSat: plan.paidAmountSat,
+              destination,
+            }),
+            method: 'POST',
+          })
+          const payResult = (await payResponse.json()) as Record<
+            string,
+            unknown
+          >
+
+          if (!payResponse.ok) {
+            return noStoreJsonResponse(
+              {
+                error: 'treasury_pay_failed',
+                intendedAmountSat,
+                paidAmountSat: null,
+                policyApplied: plan.kind,
+                reason: payResult.error ?? null,
+              },
+              { status: 502 },
+            )
+          }
+
+          return noStoreJsonResponse({
+            intendedAmountSat,
+            paidAmountSat: plan.paidAmountSat,
+            paymentId: payResult.paymentId ?? null,
+            policyApplied: plan.kind,
+            status: payResult.status ?? null,
+          })
+        },
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed(
+            noStoreJsonResponse(
+              { error: 'treasury_payout_failed' },
+              { status: 502 },
+            ),
+          ),
+        ),
+        Effect.map(response =>
+          response === null
+            ? noStoreJsonResponse(
+                { error: 'treasury_payout_failed' },
+                { status: 502 },
+              )
+            : response,
+        ),
+      )
+    }),
+  )
+}
