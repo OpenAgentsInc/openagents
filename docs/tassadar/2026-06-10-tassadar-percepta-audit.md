@@ -154,8 +154,32 @@ complete **program-to-weights compiler architecture**, not just a demo:
 - **A C toolchain end to end**: clang wasm32 → Wasm MVP decoder → token
   prefix, with an auto-injected C runtime (`runtime.h`); examples include
   hello (printf), long addition, Collatz, Fibonacci (sscanf/printf), the
-  Hungarian matcher, and the Sudoku solver from the post. A second post,
-  "Constructing the LLM Computer," is announced as coming.
+  Hungarian matcher, and the Sudoku solver from the post.
+
+The companion construction post, **"Constructing an LLM-Computer"**
+(Percepta Research Team, 2026-03-25), has since published the full theory
+behind this repo and an in-browser demo (C compiled and executed inside a
+transformer entirely client-side). It names the abstractions the repo
+implements: the **Append-only Lookup Machine (ALM)** — five exact integer
+primitives (keyed read/write, cumulative sum, product, conditional,
+linear combination), Turing complete, with the defining append-only
+restriction; **CALM**, the language over it, compiling to the
+LookUp/ReGLU **gate graph**; the **MILP backend** as
+scheduling-plus-register-allocation (four-phase layers, precedence/type/
+co-location constraints, peak-liveness minimization for d_model,
+interval-coloring slot reuse, stale-slot subtraction in the additive
+residual stream); the greedy-decoding correctness guarantee (the next
+execution token always scores strictly highest); and the specialization
+math (2N shared ReGLU step-function neurons, O(N) d_ffn growth per baked
+program). It also states their caveats plainly — a Wasm subset with
+lowering, memory growing with tokens, and "orders of magnitude slower
+than a conventional computer" — and announces four directions: weight-
+programming toolkits, **formal verification of transformer logic**,
+faster constructions, and **injecting programmatic logic into the
+training loop of large language models** (the hybrid, now explicitly on
+the originators' roadmap). Full concept notes and the Tassadar mapping
+live in `2026-06-10-percepta-constructing-llm-computer-notes.md` in this
+folder.
 
 **How we would use and learn from it** (read-only reference per workspace
 policy — study and port ideas, never vendor):
@@ -650,7 +674,8 @@ disclosure flow's own gates.
   manifest (hello/addition/collatz/fibonacci/min_cost_matching/sudoku)
 - Web (for the compiled-vs-trained research lineage):
   Percepta, "Can LLMs Be Computers?" (percepta.ai/blog, 2026-03-11, full
-  text) and the announced follow-up "Constructing the LLM Computer";
+  text) and the published companion "Constructing an LLM-Computer"
+  (2026-03-25, full text; concept notes in this folder);
   Lindner et al., "Tracr: Compiled Transformers as a
   Laboratory for Interpretability" (arXiv:2301.05062, DeepMind/ETH —
   RASP-to-weights compilation with zero training); Weiss et al., "Thinking

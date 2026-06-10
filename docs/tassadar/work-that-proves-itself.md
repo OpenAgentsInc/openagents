@@ -7,7 +7,10 @@ Date: 2026-06-10
 Author: Claude (Fable 5)
 
 Companion documents: `2026-06-10-tassadar-percepta-audit.md` in this folder
-(the full history and technical audit), the CS336 continuation audit at
+(the full history and technical audit),
+`2026-06-10-percepta-constructing-llm-computer-notes.md` (full concept
+notes on Percepta's published construction: ALM/CALM, the gate graph, the
+MILP backend, and specialization), the CS336 continuation audit at
 `docs/2026-06-10-cs336-distributed-homework-continuation-audit.md`, and the
 five-streams and training epic audits under `apps/openagents.com/docs/`.
 This essay assumes the audit's facts and asks a different question: if the
@@ -240,14 +243,19 @@ where routing policies are trained by reinforcement against verified
 exact computation, where every rollout is graded by replay, where the
 reward signal itself is mechanical.
 
-No frontier lab will sell this. Not because they cannot build it — the
-research is public — but because their unit economics are the per-seat
-re-solving of the same problems forever, and their architecture choices
-are amortized across product surfaces that have nothing to do with
-exactness. A model that contains its computation, whose computation is
-receipt-native, trained on an open network that pays its trainers — that
-is not a feature they are late on. It is a different animal, raised on
-different food.
+Nobody owns this direction outright — the researchers who built the
+construction now list "injecting programmatic logic into the training
+loop of large language models" among their own active directions, and
+honesty requires saying so. But the frontier labs will not sell it: their
+unit economics are the per-seat re-solving of the same problems forever,
+and their architecture choices are amortized across product surfaces that
+have nothing to do with exactness. And a research company pursuing the
+hybrid for enterprise decision systems is not building what we are
+building: a model that contains its computation, whose computation is
+receipt-native, trained on an open network that *pays its trainers* and
+settles in money nobody can print. The shared insight is now public; the
+differentiation is the economy around it — and that economy is the part
+we have already built.
 
 ## VI. Software that lives in weights
 
@@ -292,10 +300,12 @@ claims worth anything requires the other half.
 
 **"Why not just use a CPU?"** is the crux objection and it deserves a
 straight answer. For standalone batch computation, a CPU running the
-program directly is simpler, faster, and equally correct — the executor
-must never be sold as a CPU replacement, and our own bounded posture
-(the served lane refuses workloads outside its committed profile)
-already encodes that honesty. The standalone executor is a benchmark, a
+program directly is simpler, faster, and equally correct — the
+construction's own authors say their released implementation is orders
+of magnitude slower than a conventional computer, and the executor must
+never be sold as a CPU replacement. Our own bounded posture (the served
+lane refuses workloads outside its committed profile) already encodes
+that honesty. The standalone executor is a benchmark, a
 conformance instrument, and a verification substrate. The *business*
 concentrates in the three things a CPU cannot be: a computation that
 lives inside a model's reasoning loop, a computation gradients can flow
