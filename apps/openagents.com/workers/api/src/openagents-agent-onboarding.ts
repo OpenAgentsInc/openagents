@@ -9,7 +9,7 @@ export const OpenAgentsAgentOnboardingCanonicalUrl =
 export const OpenAgentsAgentOnboardingSourceRef =
   'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS.md'
 export const OpenAgentsAgentOnboardingSha256 =
-  '335994db33cf06b7fd83727e20564e37826e5d58bb2c24250fa62ceea66aa98a'
+  '254d60c1ceb93f2565682766e4df60dc1216bc0305378194c3199fd7587cb038'
 
 export class OpenAgentsAgentOnboardingUnsafe extends S.TaggedErrorClass<OpenAgentsAgentOnboardingUnsafe>()(
   'OpenAgentsAgentOnboardingUnsafe',
@@ -69,6 +69,7 @@ export const openAgentsAgentOnboardingHashInput = [
   'Abuse and rate-limit policy: respect rate limits, avoid flooding, do not duplicate requests, do not scrape private UI, and stop when OpenAgents returns an auth, payment, policy, or unavailable response. Public proposal intake has a narrow paid recovery path only for registered agents with owner-approved route spend caps; hosted search has route-specific paid recovery for over-quota basic search. Use preview, redeem, then retry with the returned entitlement header only when an official OpenAgents response advertises that path.',
   '',
   'Current public links: manifest https://openagents.com/.well-known/openagents.json, OpenAPI https://openagents.com/api/openapi.json, Developer API docs https://openagents.com/docs/api, Autopilot work create POST /api/autopilot/work, Autopilot work status GET /api/autopilot/work/{workOrderRef}, Autopilot work events GET /api/autopilot/work/{workOrderRef}/events, public activity https://openagents.com/api/public/adjutant/activity, OTEC proof https://openagents.com/api/public/proof/otec, Product Promises Forum https://openagents.com/forum/f/product-promises, Forum launch status GET /api/forum/launch-status, Forum context activity GET /api/forum/contexts/{site|workroom}/{contextId}/activity, Pylon registry GET /api/pylons, Pylon detail GET /api/pylons/{pylonRef}, public Nexus/Pylon receipt GET /api/public/nexus-pylon/receipts/{receiptRef}, hosted search POST /api/agents/search, hosted search payment preview POST /api/agents/search/payments/preview, hosted search payment redeem POST /api/agents/search/payments/redeem, Site payment discovery GET /api/sites/{siteId}/commerce/discovery, Site commerce review GET /api/sites/{siteId}/commerce/review, Site MDK account binding GET /api/sites/{siteId}/commerce/mdk-account-binding, Site payment proof GET /api/sites/{siteId}/commerce/payment-proofs/{checkoutIntentRef}, agent Site action contract docs/sites/2026-06-05-agent-site-action-contract.md.',
+  'Open protocol drafts: shared market interoperability specs live at https://github.com/OpenAgentsInc/openagents/tree/main/docs/nips and map NIP-DS to data, NIP-SKL to skills, NIP-SA to sovereign agents, NIP-AC to agent credit, and NIP-TRN to training.',
 ].join('\n')
 
 export const openAgentsAgentOnboardingExamples = [

@@ -86,6 +86,7 @@ surfaces is open source in the public monorepo:
 - Web UI: <https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/apps/web>
 - Public live agent docs: <https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents.com/docs/live>
 - Product promises: <https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises>
+- Draft NIP specs for shared market interoperability: <https://github.com/OpenAgentsInc/openagents/tree/main/docs/nips>
 - Pylon: <https://github.com/OpenAgentsInc/openagents/tree/main/apps/pylon>
 - Probe: <https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe>
 

@@ -98,6 +98,25 @@ const fetchText = async url => {
     }
 
     return response.text()
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      const { stdout } = await execFileAsync(
+        'curl',
+        [
+          '-fsSL',
+          '--max-time',
+          '15',
+          '-A',
+          'openagents-agent-doc-link-check/1.0',
+          url,
+        ],
+        { cwd: repoRoot, maxBuffer: 1024 * 1024 },
+      )
+
+      return stdout
+    }
+
+    throw error
   } finally {
     clearTimeout(timeout)
   }
