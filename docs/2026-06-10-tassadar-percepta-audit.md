@@ -105,6 +105,94 @@ essay "The Free Computer" makes the economic argument that compiled CPU
 execution is effectively free relative to attention-driven generation.
 Psionic's `HullCache`/`HullKVCache` naming is a direct lineage marker.
 
+### The Reference In Hand: `Percepta-Core/transformer-vm`
+
+Percepta's own implementation is now cloned at
+`projects/repos/transformer-vm` (manifest-tracked, Apache-2.0), and the
+repo contains substantially more than the blog post shows — it is a
+complete **program-to-weights compiler architecture**, not just a demo:
+
+- **A computation-graph DSL as the compiler IR**
+  (`transformer_vm/graph/core.py`): five primitive dimension types —
+  `InputDimension`, `ReGLUDimension` (`ReLU(b) * a`), `PersistDimension`
+  (materialize into a residual slot), `LookUpDimension` (attention
+  retrieval from token history), `CumSumDimension` (cumulative sum via
+  attention averaging) — composing into a DAG, with `reglu`/`stepglu`
+  helpers building all conditional logic. Programs are authored against
+  this IR; the transformer is the compile target.
+- **A 35-opcode Wasm machine over that IR**
+  (`wasm/interpreter.py`): byte-level arithmetic with carry propagation;
+  stack, memory, locals, cursor, and call depth tracked via attention
+  lookups and cumulative sums. A **lowering pass**
+  (`compilation/lower.py`) rewrites MUL/DIV/AND/OR/XOR/SHL/SHR into the
+  supported core — a deliberately small trusted base plus lowering, the
+  same shape as a real compiler backend.
+- **An MILP scheduler** (`scheduler/milp.py`): gate-to-layer assignment
+  posed as mixed-integer optimization that *minimizes d_model* under a
+  4-phase layer structure (attention / persist / FFN / persist) —
+  compiling the DAG into the smallest transformer that holds it. Weight
+  construction is fully **analytical** (`model/weights.py`); nothing is
+  trained.
+- **Two execution modes**: the universal interpreter (program bytecode in
+  the input prefix; instruction-fetch heads look opcodes up — one model
+  runs any program), and the **First Futamura projection**
+  (`wasm-specialize`): the program is baked into the FFN weights and the
+  prefix disappears — a per-program specialized model emitted as a weights
+  binary. The "programs into weights" future the blog gestures at already
+  has working public tooling.
+- **A triple-reference correctness harness**: `wasm-eval` runs the
+  computation graph directly with exact arithmetic (no weights),
+  `wasm-reference` executes the Wasm directly, and `wasm-run` runs the
+  transformer — three independent routes that must agree, which is
+  precisely psionic's CPU/reference-linear/hull-cache parity discipline
+  arrived at independently.
+- **The performance substrate**: `attention/hull2d_cht.h` — a convex-hull-
+  trick 2D hull with O(log n) insert *and* query, pybind11-bound, plus a
+  standard O(n) cache kept as the honest baseline; and a standalone C++
+  inference engine (`model/transformer.cpp`) with BLAS/Accelerate and
+  sparse head projection at ~30K tok/s.
+- **A C toolchain end to end**: clang wasm32 → Wasm MVP decoder → token
+  prefix, with an auto-injected C runtime (`runtime.h`); examples include
+  hello (printf), long addition, Collatz, Fibonacci (sscanf/printf), the
+  Hungarian matcher, and the Sudoku solver from the post. A second post,
+  "Constructing the LLM Computer," is announced as coming.
+
+**How we would use and learn from it** (read-only reference per workspace
+policy — study and port ideas, never vendor):
+
+1. **Conformance cross-validation for Tassadar.** Same C programs, same
+   expected traces: compiling transformer-vm's example set through
+   Tassadar's lane and matching traces against `wasm-reference` output
+   gives Tassadar an *external* conformance bar, exactly the role
+   Stanford's `adapters.py` files play for the CS336 ports. Divergences
+   become precise bug reports on either side.
+2. **The compiler architecture is the port target.** Psionic has compiled
+   executor bundles; what transformer-vm demonstrates is the *general*
+   pipeline — graph IR → MILP layer scheduling → analytical weights — that
+   turns one-off constructions into a compiler. A Rust port of the
+   five-primitive IR and the scheduling pass (the MILP is small; pulp →
+   any Rust MILP/CP-SAT binding) is the highest-leverage study item.
+3. **The Futamura specializer is the weight-module factory.** The
+   marketplace implication (#6 below) needs exactly this tool: program in,
+   digest-pinned specialized weights binary out. transformer-vm proves the
+   tooling shape; the psionic port would emit it as a signed, replayable
+   artifact.
+4. **Profile alignment.** Psionic's `core_i32_v2` Wasm profile and
+   transformer-vm's 35-opcode-plus-lowering core should be compared
+   opcode-by-opcode; converging the semantic windows (or documenting the
+   exact diff) makes cross-validation in (1) clean and keeps our refusal
+   surfaces honest.
+5. **The CHT hull as a benchmark bar.** Psionic's retained hull-cache
+   numbers (≥1.69× over reference-linear, ≤2.55× gap to CPU) and
+   transformer-vm's O(log n)-insert CHT at ~30K tok/s are different
+   metrics on different stacks; porting their incremental-hull approach
+   and publishing a same-workload comparison is an honest A2-class
+   kernels task.
+6. **Pipeline hygiene worth copying as-is**: the manifest-driven example
+   suite, the auto-built C++ engine, CI on every push, and keeping the
+   brute-force cache in-tree as the permanent baseline — all match the
+   receipt-shaped benchmark discipline psionic already wants.
+
 The public OpenAgents framing is on the record in two transcripts:
 
 - Episode 216 (`docs/transcripts/216.md`): "Psion is also going to be an
@@ -469,7 +557,10 @@ implementing a named algorithm, digest-pinned, conformance-tested — is a
 verifiable by replay before purchase clears. Weight compilation as
 "training beyond gradient descent" also creates a homework class that
 needs no GPUs at all: compiling, conformance-testing, and auditing
-weight-modules is CPU work.
+weight-modules is CPU work. The tooling shape already exists publicly:
+transformer-vm's `wasm-specialize` (First Futamura projection) takes a
+program and emits a specialized weights binary — the weight-module
+factory, awaiting a Rust port and a digest-pinned artifact wrapper.
 
 **7. Honest differentiation, honestly bounded.** Percepta is a venture
 company aiming at sequential decision systems in healthcare, supply
@@ -549,11 +640,18 @@ disclosure flow's own gates.
   (`49a1d193` → `fcd3cd0a`)
 - `projects/repos/llm-as-computer` (public Percepta validation: README,
   ISA, benchmark refs)
+- `projects/repos/transformer-vm` (Percepta-Core, Apache-2.0,
+  manifest-tracked): README, `graph/core.py` (five-primitive IR),
+  `wasm/interpreter.py` (35-opcode machine), `compilation/lower.py`,
+  `scheduler/milp.py` (d_model-minimizing gate-to-layer MILP),
+  `model/weights.py` (analytical construction), `specialize.py` (Futamura
+  projection), `attention/hull2d_cht.h` + `hull_cache.py` +
+  `standard_cache.py`, `model/transformer.cpp` (C++ engine), examples
+  manifest (hello/addition/collatz/fibonacci/min_cost_matching/sudoku)
 - Web (for the compiled-vs-trained research lineage):
-  Percepta, "Can LLMs Be Computers?" (percepta.ai/blog, 2026-03-11) and
-  `Percepta-Core/transformer-vm` (Wasm interpreter compiled into weights;
-  four attention heads for a minimal executor; 2D convex-hull KV cache,
-  O(log t) steps); Lindner et al., "Tracr: Compiled Transformers as a
+  Percepta, "Can LLMs Be Computers?" (percepta.ai/blog, 2026-03-11, full
+  text) and the announced follow-up "Constructing the LLM Computer";
+  Lindner et al., "Tracr: Compiled Transformers as a
   Laboratory for Interpretability" (arXiv:2301.05062, DeepMind/ETH —
   RASP-to-weights compilation with zero training); Weiss et al., "Thinking
   Like Transformers" (RASP, 2021); Pérez et al., "Attention is
