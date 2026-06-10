@@ -372,6 +372,12 @@ import {
   recordViralAgentFunnelEvent,
 } from './viral-agent-funnel'
 import { makeWorkerRouteRequest } from './worker-routes'
+import {
+  makeD1XClaimRewardTreasuryDispatchStore,
+  readXClaimRewardTreasuryDispatchConfig,
+  runXClaimRewardTreasuryDispatchScheduled,
+  xClaimRewardDispatchDayStartIso,
+} from './x-claim-reward-treasury-dispatcher'
 
 export type Env = WorkerBindings & OpenAgentsWorkerConfigEnv
 
@@ -6304,6 +6310,20 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       handleOperatorTreasuryStatusApi(request, {
         fetchTreasury: fetchMdkTreasuryPath(env),
+        readRewardDispatchStats: () => {
+          const nowIso = currentIsoTimestamp()
+          const dispatchConfig = readXClaimRewardTreasuryDispatchConfig(
+            env,
+            nowIso,
+          )
+
+          return makeD1XClaimRewardTreasuryDispatchStore(
+            openAgentsDatabase(env),
+          ).readDispatchStats(
+            xClaimRewardDispatchDayStartIso(nowIso),
+            dispatchConfig,
+          )
+        },
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
       }),
@@ -7008,6 +7028,16 @@ export default {
           makeId: randomUuid,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           payFromBuffer: tipsBufferPayFnForEnv(env),
+        }),
+      ),
+      observedEffect(
+        'XClaimRewardTreasuryDispatcher.runTick',
+        runXClaimRewardTreasuryDispatchScheduled(openAgentsDatabase(env), {
+          config: readXClaimRewardTreasuryDispatchConfig(
+            env,
+            epochMillisToIsoTimestamp(event.scheduledTime),
+          ),
+          fetchTreasury: fetchMdkTreasuryPath(env),
         }),
       ),
       observedEffect(

@@ -46,16 +46,25 @@ dependency wiring as its other operator actions.
    or from any external wallet). Fresh-receiver lesson encoded here: BOLT11
    worked where BOLT12 failed, so both rails are always served. Never paste
    either value into Forum posts, issues, or docs.
-4. `POST /api/operator/treasury/payout` — the ONLY way Artanis pays anyone.
-   Body: `{ destination, amountSat }` where `destination` is the recipient's
-   BOLT12 offer / BOLT11 invoice / LNURL / lightning address and `amountSat`
-   is the intended payout. The route applies the owner payout policy below
-   and returns `{ intendedAmountSat, paidAmountSat, policyApplied,
-   paymentId, status }`.
+4. `POST /api/operator/treasury/payout` — the operator/Artanis direct payout
+   path. Body: `{ destination, amountSat }` where `destination` is the
+   recipient's BOLT12 offer / BOLT11 invoice / LNURL / lightning address and
+   `amountSat` is the intended payout. The route applies the owner payout
+   policy below and returns `{ intendedAmountSat, paidAmountSat,
+   policyApplied, paymentId, status }`.
+5. Scheduled X-claim dispatcher — the Worker-internal path for already
+   operator-approved `x_claim_reward_ledger` rows in `dispatch_requested`.
+   It is controlled by `TREASURY_DISPATCH_ENABLED`, which defaults off. When
+   enabled, it resolves the agent's registered BOLT12 offer from the
+   tip-recipient wallet store, claims one row by moving it to `dispatched`,
+   calls the treasury container, stores the private treasury payment id for
+   later polling, and records only public-safe dispatch/settlement refs.
+   Pending payments are polled on later ticks; rows are never re-paid.
 
-Do not call the container's raw `/pay` surface from new code; the payout
-route is the policy boundary. Raw `/pay` stays reserved for the worker's own
-plumbing.
+Do not call the container's raw `/pay` surface from arbitrary new code. The
+operator payout route and the scheduled X-claim dispatcher are the two modeled
+Worker-side policy boundaries; raw `/pay` stays reserved for those internal
+paths.
 
 ## Owner payout policy: 10% fractional fallback
 
@@ -104,8 +113,11 @@ trail until topped up or the operator closes it explicitly.
   owner decision first — propose, do not spend.
 - No payout may be triggered from unauthenticated or agent-bearer surfaces;
   admin-token gating is load-bearing.
-- The fractional policy is not a budget: per-run and per-day caps from the
-  #4699 dispatcher still apply on top of it once that lands.
+- The fractional policy is not a budget: the #4699 dispatcher applies
+  `TREASURY_DISPATCH_PER_RUN_REWARD_CAP` (default 1) and
+  `TREASURY_DISPATCH_DAILY_SATS_CAP` (default 5000) on top of treasury
+  spendability. It also skips new sends unless `maxSendableSat` covers the
+  1000-sat reward plus the configured liquidity buffer.
 
 ## Public treasury page and donations
 
@@ -138,5 +150,6 @@ as the machine-readable source.
   `configured`.
 - First funding: 500 sats from the local edge payer wallet over BOLT11
   (10 sats LSP JIT fee) -> 490 sats balance, 480 spendable.
-- Spendable is below the 1000-sat reward threshold; first real reward
-  dispatch waits on #4700 revenue funding or another top-up.
+- Worker-side X-claim dispatch code is landed and covered by no-spend tests,
+  but `TREASURY_DISPATCH_ENABLED` defaults off. First real reward dispatch
+  still waits on operator enablement plus enough treasury spendability.

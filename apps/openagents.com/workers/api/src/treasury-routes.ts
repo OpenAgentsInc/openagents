@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import type { XClaimRewardTreasuryDispatchStats } from './x-claim-reward-treasury-dispatcher'
 
 export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
 
@@ -15,6 +16,7 @@ export type TreasuryRouteDependencies = Readonly<{
         settled: boolean
       }) => Promise<void>)
     | undefined
+  readRewardDispatchStats?: () => Promise<XClaimRewardTreasuryDispatchStats>
   requireAdminApiToken: (request: Request) => Promise<boolean>
 }>
 
@@ -127,6 +129,19 @@ const readTreasuryBalance = (
     },
   }).pipe(Effect.catch(() => Effect.succeed(null)))
 
+const readRewardDispatchStats = (
+  dependencies: TreasuryRouteDependencies,
+): Effect.Effect<XClaimRewardTreasuryDispatchStats | null> => {
+  const reader = dependencies.readRewardDispatchStats
+
+  return reader === undefined
+    ? Effect.succeed(null)
+    : Effect.tryPromise({
+        catch: () => null,
+        try: () => reader(),
+      }).pipe(Effect.catch(() => Effect.succeed(null)))
+}
+
 export const handleOperatorTreasuryStatusApi = (
   request: Request,
   dependencies: TreasuryRouteDependencies,
@@ -159,11 +174,14 @@ export const handleOperatorTreasuryStatusApi = (
       const fetchTreasury = dependencies.fetchTreasury
 
       return Effect.flatMap(readTreasuryHealth(fetchTreasury), health =>
-        Effect.map(
-          health !== null && treasuryState(health) === 'configured'
-            ? readTreasuryBalance(fetchTreasury)
-            : Effect.succeed(null),
-          balance =>
+        Effect.all({
+          balance:
+            health !== null && treasuryState(health) === 'configured'
+              ? readTreasuryBalance(fetchTreasury)
+              : Effect.succeed(null),
+          rewardDispatch: readRewardDispatchStats(dependencies),
+        }).pipe(
+          Effect.map(({ balance, rewardDispatch }) =>
             noStoreJsonResponse({
               balance,
               configured:
@@ -174,9 +192,11 @@ export const handleOperatorTreasuryStatusApi = (
                       mnemonic: health.mnemonicConfigured,
                       serviceToken: health.serviceTokenConfigured,
                     },
+              ...(rewardDispatch === null ? {} : { rewardDispatch }),
               service: dependencies.serviceLabel ?? 'mdk_treasury',
               state: treasuryState(health),
             }),
+          ),
         ),
       )
     }),

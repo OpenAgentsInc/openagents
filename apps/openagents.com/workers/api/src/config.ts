@@ -65,6 +65,11 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   SHC_CONTROL_API_URL?: string | undefined
   SHC_DISPATCH_MODE?: string | undefined
   SHC_RUNNER_CALLBACK_TOKEN?: string | undefined
+  TREASURY_DISPATCH_DAILY_SATS_CAP?: string | undefined
+  TREASURY_DISPATCH_ENABLED?: string | undefined
+  TREASURY_DISPATCH_LIQUIDITY_BUFFER_SATS?: string | undefined
+  TREASURY_DISPATCH_PAYMENT_TIMEOUT_SECS?: string | undefined
+  TREASURY_DISPATCH_PER_RUN_REWARD_CAP?: string | undefined
 }>
 
 export const OpenAgentsAppUrl = S.String.pipe(S.brand('OpenAgentsAppUrl'))

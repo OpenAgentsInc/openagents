@@ -219,6 +219,7 @@ export type XClaimRewardRecord = Readonly<{
   receiptRef: string
   state: XClaimRewardState
   stateReasonRef: string | null
+  treasuryPaymentId: string | null
   updatedAt: string
   xAccountRef: string
 }>
@@ -665,6 +666,7 @@ export const makeD1AgentOwnerClaimStore = (
     receiptRef: String(row.receipt_ref),
     state: String(row.state) as XClaimRewardState,
     stateReasonRef: (row.state_reason_ref as string | null) ?? null,
+    treasuryPaymentId: (row.treasury_payment_id as string | null) ?? null,
     updatedAt: String(row.updated_at),
     xAccountRef: String(row.x_account_ref),
   })
@@ -700,8 +702,8 @@ export const makeD1AgentOwnerClaimStore = (
           `INSERT OR IGNORE INTO x_claim_reward_ledger (
             id, challenge_id, claim_id, owner_user_id, agent_user_id,
             x_account_ref, amount_sats, state, state_reason_ref, receipt_ref,
-            evidence_refs_json, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            evidence_refs_json, treasury_payment_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           record.id,
@@ -715,6 +717,7 @@ export const makeD1AgentOwnerClaimStore = (
           record.stateReasonRef,
           record.receiptRef,
           JSON.stringify(record.evidenceRefs),
+          record.treasuryPaymentId,
           record.createdAt,
           record.updatedAt,
         )
@@ -1600,6 +1603,7 @@ const verifyXClaimResponse = async <
       stateReasonRef: budgetExhausted
         ? 'reason.public.x_claim_reward_campaign_budget_exhausted'
         : null,
+      treasuryPaymentId: null,
       updatedAt: now,
     })
 

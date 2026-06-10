@@ -193,7 +193,9 @@ Operator-side (bounded actions):
 The treasury shipped and funded the same day:
 
 - Container live as `openagents-mdk-treasury-20260610-2`, state `configured`
-  (issues #4698 closed, #4699/#4700 open).
+  (issue #4698 closed; #4699 now has a Worker-side dispatcher behind
+  `TREASURY_DISPATCH_ENABLED=false` by default; #4700 remains the revenue
+  funding hop).
 - Secrets generated and backed up per the workspace secrets convention; no
   MDK dashboard key was needed (the platform accepts a self-generated wallet
   id as `mdkApiKey`, the agent-wallet pattern).
@@ -210,6 +212,12 @@ The treasury shipped and funded the same day:
   `workers/api/src/treasury-routes.ts`.
 - The single Artanis-facing operating contract for all of this is
   `docs/artanis/treasury-runbook.md`.
+- #4699 dispatcher shape: scheduled Worker tick, one approved reward row per
+  run by default, 5000 sats per UTC day by default, liquidity preflight before
+  new sends, private treasury payment id stored for pending-poll idempotency,
+  and public-safe operator status stats only. This is still no-spend code
+  until the operator explicitly enables the flag and records a live dispatch
+  smoke.
 
 ## Authority note
 
