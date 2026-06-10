@@ -58,3 +58,14 @@ worker, with a dated settled receipt - receipts cited, nothing
 generalized. "Paid Pylon work settles Bitcoin" and "Pylons sell compute
 capacity live" remain blocked as general copy; release notes must use
 the scoped line above, never the general ones.
+
+## Local Claude Agent bridge copy (issues #4717-#4720)
+
+Until `pylon.local_claude_agent_bridge.v1` carries real-device receipts,
+the ONLY allowed copy for the lane is presence copy: the SDK dependency,
+readiness probe, and `capability.pylon.local_claude_agent` declaration
+exist. "Pylon commands your local Claude", "your Claude does coding work
+through Pylon", and any executed-assignment claim remain blocked until
+the #4720 bounded real-task smoke has live receipts. Branding rule in
+all copy: "Claude Agent" / "your local Claude" / "Powered by Claude" -
+never "Claude Code" (Anthropic branding terms).

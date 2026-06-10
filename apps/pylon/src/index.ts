@@ -2,6 +2,11 @@
 
 import { readFile } from "node:fs/promises"
 import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagents/tassadar-executor"
+import {
+  loadClaudeAgentConfig,
+  probeClaudeAgentReadiness,
+  withClaudeAgentCapability,
+} from "./claude-agent"
 import { claimTipReadiness, readBalance, setTipPreferences, sweepStatus, tipPost } from "./tips"
 import {
   ARTANIS_FORUM_SLUG,
@@ -1510,10 +1515,16 @@ async function main() {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
       if (command === "go-online" || command === "online") {
+        const claudeAgentReadiness = await probeClaudeAgentReadiness({
+          config: await loadClaudeAgentConfig(summary),
+        })
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
-          capabilityRefs: [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF, PYLON_LABOR_CAPABILITY_REF, TASSADAR_EXECUTOR_CAPABILITY_REF])],
+          capabilityRefs: withClaudeAgentCapability(
+            [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF, PYLON_LABOR_CAPABILITY_REF, TASSADAR_EXECUTOR_CAPABILITY_REF])],
+            claudeAgentReadiness,
+          ),
           blockerRefs: state.runtime.blockerRefs.filter((ref) => ref !== "blocker.assignment.lifecycle_offline"),
         }
         await writeRuntimeState(state.paths, nextRuntime)
@@ -1521,6 +1532,10 @@ async function main() {
           ok: true,
           lifecycle: nextRuntime.lifecycle,
           capabilityRefs: nextRuntime.capabilityRefs,
+          claudeAgent: {
+            state: claudeAgentReadiness.state,
+            credentialSourceRef: claudeAgentReadiness.credentialSourceRef,
+          },
           relayUrls: relaysFromEnv(Bun.env),
           policy: policyFromEnv(Bun.env),
           stateRef: "state.public.pylon.nip90_provider.online",
