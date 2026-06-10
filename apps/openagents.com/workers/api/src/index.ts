@@ -211,6 +211,7 @@ import {
   type OperatorTargetUser,
   readOperatorTargetUser,
 } from './operator-targets'
+import { makeCheckoutPageRoutes } from './checkout-page-routes'
 import { publicProductPromisesDocument } from './product-promises'
 import {
   handleOperatorPromiseTransitionApi,
@@ -5175,6 +5176,10 @@ const agentGoalRoutes = makeAgentGoalRoutes({
   requireBrowserSession,
 })
 
+const checkoutPageRoutes = makeCheckoutPageRoutes<WorkerBindings>({
+  hostedMdkClient: env => hostedMdkClientForEnv(env),
+})
+
 const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   appOrigin: getAppOrigin,
@@ -5873,6 +5878,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
+  routeCheckoutPageRequest: (request, env) =>
+    checkoutPageRoutes.routeCheckoutPageRequest(request, env),
   routeAgentProposalRequest: agentProposalRoutes.routeAgentProposalRequest,
   routeAgentSearchRequest: agentSearchRoutes.routeAgentSearchRequest,
   routeAgentScopedGrantRequest:
