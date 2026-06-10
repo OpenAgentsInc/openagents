@@ -32,6 +32,9 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   MDK_CHECKOUT_WEBHOOK_SOURCE?: string | undefined
   MDK_WEBHOOK_SECRET?: string | undefined
   MDK_MNEMONIC?: string | undefined
+  MDK_TIPS_BUFFER_ACCESS_TOKEN?: string | undefined
+  MDK_TIPS_BUFFER_MNEMONIC?: string | undefined
+  MDK_TIPS_BUFFER_SERVICE_TOKEN?: string | undefined
   MDK_TREASURY_ACCESS_TOKEN?: string | undefined
   MDK_TREASURY_MNEMONIC?: string | undefined
   MDK_TREASURY_SERVICE_TOKEN?: string | undefined

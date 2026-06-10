@@ -6,6 +6,7 @@ import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
 
 export type TreasuryRouteDependencies = Readonly<{
+  serviceLabel?: string
   fetchTreasury?: ContainerPathFetch | undefined
   recordPayoutTransaction?:
     | ((input: {
@@ -90,7 +91,7 @@ export const handlePublicTreasuryLaunchStatusApi = (
       noStoreJsonResponse({
         authorityBoundary: TREASURY_AUTHORITY_BOUNDARY,
         policyRefs: TREASURY_POLICY_REFS,
-        service: 'mdk_treasury',
+        service: dependencies.serviceLabel ?? 'mdk_treasury',
         state: 'unprovisioned',
       }),
     )
@@ -108,7 +109,7 @@ export const handlePublicTreasuryLaunchStatusApi = (
               serviceToken: health.serviceTokenConfigured,
             },
       policyRefs: TREASURY_POLICY_REFS,
-      service: 'mdk_treasury',
+      service: dependencies.serviceLabel ?? 'mdk_treasury',
       state: treasuryState(health),
     }),
   )
@@ -173,7 +174,7 @@ export const handleOperatorTreasuryStatusApi = (
                       mnemonic: health.mnemonicConfigured,
                       serviceToken: health.serviceTokenConfigured,
                     },
-              service: 'mdk_treasury',
+              service: dependencies.serviceLabel ?? 'mdk_treasury',
               state: treasuryState(health),
             }),
         ),

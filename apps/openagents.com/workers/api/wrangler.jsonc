@@ -68,6 +68,13 @@
       "instance_type": "basic",
       "max_instances": 1,
     },
+    {
+      "class_name": "MdkTipsBufferContainer",
+      "image": "../../services/mdk-tips-buffer/Dockerfile",
+      "image_build_context": "../../services/mdk-tips-buffer",
+      "instance_type": "basic",
+      "max_instances": 1,
+    },
   ],
   "kv_namespaces": [
     {
@@ -138,6 +145,10 @@
         "name": "MDK_TREASURY",
         "class_name": "MdkTreasuryContainer",
       },
+      {
+        "name": "MDK_TIPS_BUFFER",
+        "class_name": "MdkTipsBufferContainer",
+      },
     ],
   },
   "migrations": [
@@ -152,6 +163,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["MdkTreasuryContainer"],
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["MdkTipsBufferContainer"],
     },
   ],
   "env": {

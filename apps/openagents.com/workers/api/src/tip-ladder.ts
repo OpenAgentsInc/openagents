@@ -4,10 +4,13 @@ import {
   type LedgerStatement,
   type PayInPlan,
   createPayInStatements,
+  markPayInFailedStatements,
+  markPayInForwardingStatements,
   markPayInPaidStatements,
   readAgentBalance,
   runLedgerStatements,
 } from './payments-ledger'
+import type { BufferPayFn } from './tips-sweep'
 
 // The tip receive ladder (issue #4706; design:
 // docs/payments/reliable-tips.md §2). A tip never fails; only its form
@@ -187,6 +190,8 @@ export const executeTipLadder = (
     senderRef: string
     recipientRef: string
     recipientHasRegisteredOffer: boolean
+    recipientBolt12Offer: string | null
+    payFromBuffer: BufferPayFn | null
     tipsBufferConfigured: boolean
     postId: string
     idempotencyKey: string
@@ -226,12 +231,133 @@ export const executeTipLadder = (
       }
     }
 
-    // The direct rung needs the tips buffer (#4708) to pay the
-    // recipient's offer from the sender's debited balance. Until that
-    // container is live, the decision function never returns
-    // direct_bolt12 (tipsBufferConfigured is false), and if it does in
-    // the future, the direct attempt's failure falls back to credited
-    // here - the tip still never fails.
+    // The direct rung: the sender's balance is debited and the tips
+    // buffer (#4708) pays the recipient's registered offer over BOLT 12.
+    // A failed direct attempt refunds atomically and falls back to the
+    // credited rung - the tip still never fails.
+    if (
+      decision.kind === 'direct_bolt12' &&
+      input.payFromBuffer !== null &&
+      input.recipientBolt12Offer !== null
+    ) {
+      const amountMsat = input.amountSat * 1000
+      const directPayInId = input.makeId()
+      const directFundingLegId = input.makeId()
+      const directPayoutLegId = input.makeId()
+
+      yield* Effect.tryPromise({
+        catch: error =>
+          new TipLadderError(
+            'ledger_batch_failed',
+            error instanceof Error ? error.message : String(error),
+          ),
+        try: () =>
+          runLedgerStatements(db, [
+            ...createPayInStatements(
+              {
+                contextRef: `forum.post.${input.postId}`,
+                costMsat: amountMsat,
+                genesisId: null,
+                idempotencyKey: input.idempotencyKey,
+                legs: [
+                  {
+                    amountMsat,
+                    direction: 'in',
+                    externalRef: null,
+                    kind: 'balance',
+                    legId: directFundingLegId,
+                    partyRef: input.senderRef,
+                  },
+                  {
+                    amountMsat,
+                    direction: 'out',
+                    externalRef: 'forum.tip_recipient_claim',
+                    kind: 'lightning',
+                    legId: directPayoutLegId,
+                    partyRef: input.recipientRef,
+                  },
+                ],
+                payInId: directPayInId,
+                payInType: 'tip',
+                payerRef: input.senderRef,
+                rung: 'direct_bolt12',
+              },
+              input.nowIso,
+            ),
+            ...markPayInForwardingStatements(directPayInId, input.nowIso),
+          ]),
+      })
+
+      const payResult = yield* Effect.promise(() =>
+        input.payFromBuffer!({
+          amountSat: input.amountSat,
+          bolt12Offer: input.recipientBolt12Offer!,
+        }),
+      )
+
+      if (payResult.ok) {
+        yield* Effect.tryPromise({
+          catch: error =>
+            new TipLadderError(
+              'ledger_batch_failed',
+              error instanceof Error ? error.message : String(error),
+            ),
+          try: () =>
+            runLedgerStatements(db, [
+              ...markPayInPaidStatements(
+                { balancePayoutLegs: [], payInId: directPayInId },
+                input.nowIso,
+              ),
+              {
+                params: [payResult.paymentRef, directPayoutLegId],
+                sql: `UPDATE pay_in_legs
+                      SET external_ref = external_ref || '|' || ?
+                      WHERE id = ?`,
+              },
+            ]),
+        })
+
+        return {
+          amountSat: input.amountSat,
+          kind: 'tipped' as const,
+          ladderReason: 'direct_settled',
+          payInId: directPayInId,
+          rung: 'direct_bolt12' as const,
+          senderBalanceMsatAfter: senderBalanceMsat - amountMsat,
+        }
+      }
+
+      yield* Effect.tryPromise({
+        catch: error =>
+          new TipLadderError(
+            'ledger_batch_failed',
+            error instanceof Error ? error.message : String(error),
+          ),
+        try: () =>
+          runLedgerStatements(
+            db,
+            markPayInFailedStatements(
+              {
+                balanceFundingLegs: [
+                  {
+                    amountMsat,
+                    legId: directFundingLegId,
+                    partyRef: input.senderRef,
+                    refundLegId: input.makeId(),
+                  },
+                ],
+                failureReason: `direct_pay_failed:${payResult.reason}`.slice(
+                  0,
+                  120,
+                ),
+                payInId: directPayInId,
+              },
+              input.nowIso,
+            ),
+          ),
+      })
+    }
+
     const ladderReason =
       decision.kind === 'credited' ? decision.reason : 'direct_attempt_failed'
 
@@ -240,7 +366,10 @@ export const executeTipLadder = (
       {
         amountSat: input.amountSat,
         fundingLegId: input.makeId(),
-        idempotencyKey: input.idempotencyKey,
+        idempotencyKey:
+          ladderReason === 'direct_attempt_failed'
+            ? `${input.idempotencyKey}:credited_fallback`
+            : input.idempotencyKey,
         ladderReason,
         payInId,
         payoutLegId: input.makeId(),

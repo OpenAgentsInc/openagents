@@ -254,6 +254,43 @@ export const runTipsSweepTick = async (
   }
 }
 
+// Backing invariant (issue #4708): sum of all agent balances must not
+// exceed the buffer wallet's balance. Checked every tick; a violation
+// raises (captured by the scheduled observer) instead of passing
+// silently.
+export const checkTipsBufferBackingInvariant = async (
+  db: D1Database,
+  fetchBufferBalance: () => Promise<number | null>,
+): Promise<
+  Readonly<{
+    ok: boolean
+    agentBalancesSat: number
+    bufferBalanceSat: number | null
+  }>
+> => {
+  const row = await db
+    .prepare(
+      'SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances',
+    )
+    .first()
+  const agentBalancesSat = Math.ceil(
+    Number((row as { total?: unknown } | null)?.total ?? 0) / 1000,
+  )
+  const bufferBalanceSat = await fetchBufferBalance()
+
+  const ok = bufferBalanceSat === null
+    ? agentBalancesSat === 0
+    : agentBalancesSat <= bufferBalanceSat
+
+  if (!ok) {
+    throw new Error(
+      `tips_buffer_backing_violated: agent balances ${agentBalancesSat} sat exceed buffer ${bufferBalanceSat ?? 'unconfigured'} sat`,
+    )
+  }
+
+  return { agentBalancesSat, bufferBalanceSat, ok }
+}
+
 export const runTipsSweepScheduled = (
   db: D1Database,
   deps: Readonly<{

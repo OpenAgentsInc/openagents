@@ -50,7 +50,7 @@ import { makeAgentSiteRoutes } from './agent-site-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
-import { runTipsSweepScheduled } from './tips-sweep'
+import { type BufferPayFn, checkTipsBufferBackingInvariant, runTipsSweepScheduled } from './tips-sweep'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -507,6 +507,122 @@ const fetchMdkTreasuryPath = (
         method: init?.method ?? 'GET',
       }),
     )
+}
+
+const TIPS_BUFFER_SERVICE_TOKEN_HEADER = 'x-tips-buffer-service-token'
+const MDK_TIPS_BUFFER_INSTANCE_NAME = 'openagents-mdk-tips-buffer-20260610-1'
+
+const mdkTipsBufferContainerEnvVars = (
+  environment: OpenAgentsWorkerConfigEnv,
+): Record<string, string> => {
+  const accessToken = optionalMdkContainerSecret(
+    environment.MDK_TIPS_BUFFER_ACCESS_TOKEN,
+  )
+  const mnemonic = optionalMdkContainerSecret(
+    environment.MDK_TIPS_BUFFER_MNEMONIC,
+  )
+  const serviceToken = optionalMdkContainerSecret(
+    environment.MDK_TIPS_BUFFER_SERVICE_TOKEN,
+  )
+
+  return {
+    ...(accessToken === undefined
+      ? {}
+      : { MDK_TIPS_BUFFER_ACCESS_TOKEN: accessToken }),
+    ...(mnemonic === undefined ? {} : { MDK_TIPS_BUFFER_MNEMONIC: mnemonic }),
+    ...(serviceToken === undefined
+      ? {}
+      : { MDK_TIPS_BUFFER_SERVICE_TOKEN: serviceToken }),
+  }
+}
+
+export class MdkTipsBufferContainer extends Container<Env> {
+  override defaultPort = 8080
+  override sleepAfter = '30m'
+  override pingEndpoint = 'localhost:8080/healthz'
+
+  constructor(ctx: DurableObjectState<{}>, environment: Env) {
+    super(ctx, environment)
+    this.envVars = mdkTipsBufferContainerEnvVars(environment)
+    this.labels = {
+      service: 'openagents-mdk-tips-buffer',
+    }
+  }
+}
+
+const fetchMdkTipsBufferPath = (
+  environment: Env,
+): ContainerPathFetch | undefined => {
+  const namespace = (
+    environment as {
+      MDK_TIPS_BUFFER?: DurableObjectNamespace<MdkTipsBufferContainer>
+    }
+  ).MDK_TIPS_BUFFER
+
+  if (
+    namespace === undefined ||
+    optionalMdkContainerSecret(environment.MDK_TIPS_BUFFER_MNEMONIC) ===
+      undefined
+  ) {
+    return undefined
+  }
+
+  const serviceToken = optionalMdkContainerSecret(
+    environment.MDK_TIPS_BUFFER_SERVICE_TOKEN,
+  )
+
+  return (path, init) =>
+    getContainer(namespace, MDK_TIPS_BUFFER_INSTANCE_NAME).fetch(
+      new Request(`http://mdk-tips-buffer${path}`, {
+        ...(init?.body === undefined ? {} : { body: init.body }),
+        headers: {
+          'content-type': 'application/json',
+          ...(serviceToken === undefined
+            ? {}
+            : { [TIPS_BUFFER_SERVICE_TOKEN_HEADER]: serviceToken }),
+        },
+        method: init?.method ?? 'GET',
+      }),
+    )
+}
+
+const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
+  const fetchBuffer = fetchMdkTipsBufferPath(environment)
+
+  if (fetchBuffer === undefined) {
+    return null
+  }
+
+  return async ({ amountSat, bolt12Offer }) => {
+    try {
+      const response = await fetchBuffer('/pay', {
+        body: JSON.stringify({ amountSat, destination: bolt12Offer }),
+        method: 'POST',
+      })
+      const result = (await response.json()) as {
+        error?: string
+        paymentId?: string
+        status?: string
+      }
+
+      if (!response.ok || result.status !== 'succeeded') {
+        return {
+          ok: false as const,
+          reason: String(result.error ?? result.status ?? response.status),
+        }
+      }
+
+      return {
+        ok: true as const,
+        paymentRef: `payment.tips_buffer.${String(result.paymentId ?? '').slice(0, 12)}`,
+      }
+    } catch (error) {
+      return {
+        ok: false as const,
+        reason: error instanceof Error ? error.message.slice(0, 80) : 'fetch_failed',
+      }
+    }
+  }
 }
 
 const fetchMdkSidecarRequest = async (request: Request, environment: Env) => {
@@ -6058,6 +6174,26 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
+    path: '/api/operator/tips-buffer/status',
+    handler: (request, env) =>
+      handleOperatorTreasuryStatusApi(request, {
+        fetchTreasury: fetchMdkTipsBufferPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        serviceLabel: 'mdk_tips_buffer',
+      }),
+  },
+  {
+    path: '/api/operator/tips-buffer/funding-destination',
+    handler: (request, env) =>
+      handleOperatorTreasuryFundingDestinationApi(request, {
+        fetchTreasury: fetchMdkTipsBufferPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        serviceLabel: 'mdk_tips_buffer',
+      }),
+  },
+  {
     path: '/api/operator/treasury/payout',
     handler: (request, env) =>
       handleOperatorTreasuryPayoutApi(request, {
@@ -6263,6 +6399,7 @@ const routeRequest = makeWorkerRouteRequest({
   routeAgentSiteRequest: agentSiteRoutes.routeAgentSiteRequest,
   routeForumRequest: (request, env, ctx) =>
     forumRoutes.routeForumRequest(request, openAgentsDatabase(env), {
+      tipsBufferPay: tipsBufferPayFnForEnv(env),
       agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
       hostedMdkClient: hostedMdkClientForEnv(env),
       l402SigningBoundary: () => forumL402SigningBoundaryForEnv(env),
@@ -6620,10 +6757,29 @@ export default {
         runTipsSweepScheduled(openAgentsDatabase(env), {
           makeId: randomUuid,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-          // The buffer payer activates with the tips buffer container
-          // (#4708); until then every tick records a typed skip.
-          payFromBuffer: null,
+          payFromBuffer: tipsBufferPayFnForEnv(env),
         }),
+      ),
+      observedEffect(
+        'TipsBuffer.backingInvariant',
+        Effect.promise(() =>
+          checkTipsBufferBackingInvariant(openAgentsDatabase(env), async () => {
+            const fetchBuffer = fetchMdkTipsBufferPath(env)
+            if (fetchBuffer === undefined) {
+              return null
+            }
+            try {
+              const response = await fetchBuffer('/balance')
+              const body = (await response.json()) as {
+                maxSendableSat?: number
+                balanceSat?: number
+              }
+              return Number(body.maxSendableSat ?? body.balanceSat ?? 0)
+            } catch {
+              return null
+            }
+          }),
+        ),
       ),
     ])
   },

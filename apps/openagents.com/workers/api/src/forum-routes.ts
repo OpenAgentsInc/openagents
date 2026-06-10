@@ -127,6 +127,7 @@ import {
 import { TipLadderError, executeTipLadder } from './tip-ladder'
 
 type ForumRouteDependencies = Readonly<{
+  tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
   agentStore?: AgentRegistrationStore
   hostedMdkClient?: OpenAgentsHostedMdkClient
   l402SigningBoundary?: ForumL402SigningBoundaryProvider
@@ -2705,19 +2706,22 @@ const tipLadderResponse = (
     const makeId = dependencies.makeId ?? randomUuid
     const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
 
+    const directPayment =
+      readiness.directPayment as { bolt12Offer?: string } | null
+    const tipsBufferPay = dependencies.tipsBufferPay ?? null
+
     const result = yield* executeTipLadder(db, {
       amountSat: body.amountSat,
       idempotencyKey,
       makeId,
       nowIso,
+      payFromBuffer: tipsBufferPay,
       postId: postDetail.post.postId,
+      recipientBolt12Offer: directPayment?.bolt12Offer ?? null,
       recipientHasRegisteredOffer,
       recipientRef: postDetail.post.author.actorRef,
       senderRef: actorRefForForumActor(actor),
-      // The direct rung activates when the tips buffer (#4708) is live;
-      // until then every above-threshold tip lands on the credited rung
-      // with the reason recorded.
-      tipsBufferConfigured: false,
+      tipsBufferConfigured: tipsBufferPay !== null,
     }).pipe(
       Effect.catch((error: TipLadderError) =>
         Effect.succeed({
