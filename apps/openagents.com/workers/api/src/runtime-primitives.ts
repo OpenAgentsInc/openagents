@@ -27,6 +27,13 @@ export const utcStartOfDayIsoTimestamp = (timestamp: string): string => {
   return date.toISOString()
 }
 
+export const utcStartOfHourIsoTimestamp = (timestamp: string): string => {
+  const date = new Date(timestamp)
+  date.setUTCMinutes(0, 0, 0)
+
+  return date.toISOString()
+}
+
 export const isoTimestampAfter = (date: Date, milliseconds: number): string =>
   epochMillisToIsoTimestamp(date.getTime() + milliseconds)
 

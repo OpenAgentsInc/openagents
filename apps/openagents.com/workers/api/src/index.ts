@@ -256,6 +256,7 @@ import {
   compactRandomId,
   currentDate,
   currentIsoTimestamp,
+  epochMillisToIsoTimestamp,
   isoTimestampAfter,
   randomUuid,
 } from './runtime-primitives'
@@ -4464,7 +4465,7 @@ const recordPylonCapacityFunnelSnapshotsScheduled = (
     catch: () => 'pylon_capacity_funnel_snapshot_failed' as const,
     try: () =>
       recordPylonCapacityFunnelSnapshots({
-        nowIso: new Date(scheduledTime).toISOString(),
+        nowIso: epochMillisToIsoTimestamp(scheduledTime),
         snapshotStore: makeD1PylonCapacityFunnelSnapshotStore(db),
         store: makeD1PylonApiStore(db),
       }),

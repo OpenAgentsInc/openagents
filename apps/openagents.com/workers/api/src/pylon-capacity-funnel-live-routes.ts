@@ -7,7 +7,12 @@ import {
 } from './autopilot-work-placement-selector'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { safeJsonRecord } from './json-boundary'
-import { currentIsoTimestamp } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  utcStartOfDayIsoTimestamp,
+  utcStartOfHourIsoTimestamp,
+} from './runtime-primitives'
 import {
   type PylonApiAssignmentRecord,
   type PylonApiProviderJobLifecycleRecord,
@@ -339,36 +344,19 @@ const snapshotCaveatRefs = [
 const bucketStartFor = (
   nowIso: string,
   bucketKind: PylonCapacityFunnelSnapshotBucketKind,
-): string => {
-  const date = new Date(nowIso)
-
-  if (!Number.isFinite(date.getTime())) {
-    return nowIso
-  }
-
-  date.setUTCMinutes(0, 0, 0)
-
-  if (bucketKind === 'daily') {
-    date.setUTCHours(0, 0, 0, 0)
-  }
-
-  return date.toISOString()
-}
+): string =>
+  bucketKind === 'daily'
+    ? utcStartOfDayIsoTimestamp(nowIso)
+    : utcStartOfHourIsoTimestamp(nowIso)
 
 const retentionCutoffFor = (
   nowIso: string,
   bucketKind: PylonCapacityFunnelSnapshotBucketKind,
-): string => {
-  const date = new Date(nowIso)
-  const retentionMs =
-    bucketKind === 'hourly' ? hourlyRetentionMs : dailyRetentionMs
-
-  if (!Number.isFinite(date.getTime())) {
-    return nowIso
-  }
-
-  return new Date(date.getTime() - retentionMs).toISOString()
-}
+): string =>
+  isoTimestampAfterIso(
+    nowIso,
+    -(bucketKind === 'hourly' ? hourlyRetentionMs : dailyRetentionMs),
+  )
 
 const snapshotIdFor = (
   bucketKind: PylonCapacityFunnelSnapshotBucketKind,
