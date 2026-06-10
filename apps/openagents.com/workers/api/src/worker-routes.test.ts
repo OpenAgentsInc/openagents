@@ -15,6 +15,21 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps public training run document routes in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/training/runs'),
+        '/training/runs',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/training/runs/run.cs336.a1.demo'),
+        '/training/runs/run.cs336.a1.demo',
+      ),
+    ).toBe(false)
+  })
+
   test('redirects unknown direct browser document paths to the homepage', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(
