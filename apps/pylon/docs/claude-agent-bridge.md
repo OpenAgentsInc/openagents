@@ -93,7 +93,12 @@ Optional `claudeAgent` section in the Pylon config file
 
 ## Current status
 
-The probe, capability declaration, and config surface exist (#4718).
-The executor gate (#4719) and the dispatch work class plus the
-packaged-binary bounded real-task smoke (#4720) are required before any
-copy can claim a Pylon executed coding work with a local Claude.
+The probe, capability declaration, config surface, bounded executor gate,
+dispatch work class, and CI-safe packaged-binary smoke are built and merged
+(#4718, #4719, #4720). The promise remains yellow because the live-device leg
+has not run yet: an operator-credentialed contributor machine must go online
+with `capability.pylon.local_claude_agent`, execute the deployed
+`claude_agent_task` assignment with the real Claude Agent SDK and user-owned
+credentials, and post public-safe assignment, closeout, result, dispatch, and
+redaction-scan refs. Until those receipts exist, product copy must keep saying
+the bridge is implemented but not proven live in production.
