@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.7'
+export const PublicProductPromisesVersion = '2026-06-10.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -16,6 +16,8 @@ const sourceRefs = [
   'apps/openagents.com/docs/2026-06-08-public-launch-copy-gate.md',
   'apps/pylon/docs/launch-gates-no-overclaim.md',
   'docs/promises/2026-06-09-product-promises-gap-audit.md',
+  'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+  'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
   'docs/transcripts/199.md',
@@ -119,6 +121,7 @@ export const publicProductPromisesDocument = () => {
       'Qwen/training, sellable local inference, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned.',
       'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
       'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
+      'The full training-pipeline program (the training.* promises) is planned scope from docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md; no Psion model rung above the retained tri-host rehearsal exists, and no pipeline stage is live as a broadly paid network workload.',
     ],
   },
   promises: [
@@ -310,13 +313,15 @@ export const publicProductPromisesDocument = () => {
       evidenceRefs: [
         'apps/openagents.com/docs/2026-06-08-qwen-remote-pylon-finetune-gate.md',
         'apps/pylon/docs/2026-06-09-pylon-psionic-ml-connection-audit.md',
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
       ],
       blockerRefs: [
         'blocker.product_promises.remote_multi_device_training_missing',
         'blocker.product_promises.qwen_training_postponed_after_gepa',
       ],
       verification:
-        'Requires public remote worker, shard, merge/eval/admission, payment, settlement, and projection refs before green copy.',
+        'Requires public remote worker, shard, merge/eval/admission, payment, settlement, and projection refs before green copy. The honest green path is the model ladder’s R2 rung (training.model_ladder.v1): network pretraining windows on real contributor devices with commitment-backed verification, paid closeouts, and a published economics gate against a rented-cluster comparator.',
       authorityBoundary:
         'GEPA/text optimization and local loopback rehearsals are not neural-network training on public contributor devices.',
     },
@@ -368,6 +373,7 @@ export const publicProductPromisesDocument = () => {
         'apps/pylon/docs/gepa-capability-envelope.md',
         'apps/pylon/docs/2026-06-09-pylon-qwen35-local-inference-roadmap.md',
         'apps/openagents.com/docs/2026-06-08-probe-gepa-paid-mode-campaign-ladder.md',
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
       ],
       blockerRefs: [
         'blocker.product_promises.live_gepa_network_missing',
@@ -889,6 +895,7 @@ export const publicProductPromisesDocument = () => {
       evidenceRefs: [
         'docs/promises/2026-06-09-product-promises-green-roadmap.md',
         'docs/promises/registry.md',
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
       ],
       blockerRefs: [
         'blocker.product_promises.energy_market_ingestion_missing',
@@ -897,7 +904,7 @@ export const publicProductPromisesDocument = () => {
         'blocker.product_promises.operator_proof_report_missing',
       ],
       verification:
-        'Green requires an operator report with measured or explicitly modeled dollars per MWh, evidence-state labels, and public-safe caveats.',
+        'Green requires an operator report with measured or explicitly modeled dollars per MWh, evidence-state labels, and public-safe caveats. A planned evidence path is the training marathon’s scheduled curtailment drill (training.marathon_operations.v1): shed part of the fleet on schedule, resume from sealed checkpoints, publish the receipt.',
       authorityBoundary:
         'Energy models are operational estimates, not investment, grid, utility, or financial advice.',
     },
@@ -1009,6 +1016,241 @@ export const publicProductPromisesDocument = () => {
     },
     {
       ...basePromiseFields,
+      promiseId: 'training.full_pipeline_program.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'agent', 'public'],
+      state: 'planned',
+      claim:
+        'OpenAgents will operate a full owned LLM training pipeline — data refinery, ablation system, architecture derisking, marathon operations, post-training, and infrastructure measurement — as paid, verified homework on the Pylon network.',
+      safeCopy:
+        'A written buildout plan exists (docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md) extending the CS336 program (#4673-#4684) with the Smol Training Playbook as operational reference; psionic holds bounded CS336 reference lanes and a retained tri-host pretraining rehearsal. No full pipeline stage is live as a broadly paid network workload.',
+      unsafeCopy:
+        'Do not claim OpenAgents currently operates an end-to-end training pipeline, trains world-class or frontier-class models, or that the network is training models for buyers.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
+        'https://github.com/OpenAgentsInc/psionic/tree/main/docs/smol',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.training_pipeline_rails_incomplete',
+      ],
+      verification:
+        'This umbrella promise tracks the program; each workstream and ladder rung carries its own training.* promise with its own evidence. Green requires every workstream promise at green or yellow plus at least one ladder rung completed end to end with public receipts.',
+      authorityBoundary:
+        'A written plan grants no capability, training, payout, or settlement authority, and does not move any other promise. Internal pipeline demand is plumbing proof, not market proof.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.ablation_system.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'agent'],
+      state: 'planned',
+      claim:
+        'Training decisions run through a receipted ablation system: one-delta manifests, a validated evaluation suite, and a public derisking ledger.',
+      safeCopy:
+        'Psionic has a bounded ablation tool inside the actual-pretraining baseline bundle. The manifest-enforced one-change-at-a-time harness, the eval-suite reproduction gate, ablation runs as dispatched homework, and the public ablation ledger are planned.',
+      unsafeCopy:
+        'Do not claim training decisions are currently ablation-receipted, or cite the Smol Training Playbook’s measurements as OpenAgents results.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.ablation_harness_missing',
+        'blocker.product_promises.eval_suite_reproduction_missing',
+        'blocker.product_promises.ablation_ledger_projection_missing',
+      ],
+      verification:
+        'Gate zero: reproduce published scores for at least one open reference model through the owned eval harness with a receipt. Green requires the harness mechanically refusing multi-delta manifests, ablation cells dispatched and verified as homework (seeded replication), and a public derisking-ledger projection of baselines, deltas, and verdicts.',
+      authorityBoundary:
+        'An ablation verdict is training-decision evidence only; it grants no capability claim, no public copy upgrade, and no dispatch or spend authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.data_refinery_corpus.v1',
+      productArea: 'data',
+      audience: ['contributor', 'operator', 'public'],
+      state: 'planned',
+      claim:
+        'Pretraining corpora are produced by an owned data refinery over public crawl-class sources, processed as paid CPU homework with provenance and transform digests, mixture ablations, a multi-stage curriculum, decontamination receipts, and eval-delta payment for data quality.',
+      safeCopy:
+        'The A4 deterministic refinery core landed in psionic (PII masking, Gopher quality rules, exact and MinHash dedup) and the live a4_eval_delta leaderboard serves an honest empty state. Psion’s current corpus is a frozen bounded mixture; crawl-scale acquisition, paid shard homework, corpus provenance receipts, decontamination receipts, and eval-delta payment remain planned.',
+      unsafeCopy:
+        'Do not claim a crawl-scale receipted corpus exists, that contributors are currently paid for data-refinery work, or that data quality is paid on measured eval delta.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'apps/openagents.com/docs/2026-06-08-data-trace-marketplace-gate.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4680',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.crawl_scale_corpus_missing',
+        'blocker.product_promises.corpus_provenance_receipts_missing',
+        'blocker.product_promises.eval_delta_payment_missing',
+      ],
+      verification:
+        'Green requires refinery shards dispatched as paid homework with deterministic-recompute verification, every shard carrying source-provenance and transform digests, mixture/annealing ablation receipts, decontamination receipts against the eval suite, and at least one eval-delta payment computed from a fixed reference model.',
+      authorityBoundary:
+        'Refinery output is corpus material, not a dataset sale; the data-market promises govern selling, and privacy rules forbid publishing raw crawl or contributor content.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.model_ladder.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'public'],
+      state: 'planned',
+      claim:
+        'Psion models train up a receipt-gated ladder — R0 tri-host rehearsal, R1 operator-scale full rehearsal, R2 network pretraining with paid verified windows, R3 1B-class, R4 3B-class — each rung re-running the whole pipeline behind an engineering gate and an economics gate.',
+      safeCopy:
+        'R0 exists: a retained tri-host 12-step rehearsal (3,992 train tokens at 2.74 effective tokens per second) recorded in psionic’s actual-pretraining runbook. No rung above R0 has started. Rung promises are written before each run and transition only on receipts; no rung is scheduled against a date.',
+      unsafeCopy:
+        'Do not claim any Psion rung above R0 is trained, in progress, or scheduled, do not present the ladder as a commitment to reach R4, and do not present R0 rehearsal throughput as network training capability.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.r1_full_rehearsal_missing',
+        'blocker.product_promises.rung_economics_gate_format_missing',
+      ],
+      verification:
+        'Each rung requires the prior rung’s closeout receipt plus a published economics gate (all-in cost per accepted training outcome, contributor payout against opportunity floor, verification overhead) with modeled/measured/settled provenance labels. R2 is the honest green path for pylon.first_real_model_training_run.v1 and must compare against a rented-cluster fallback, not a vacuum. A rung whose economics gate fails twice is recorded here, not papered over.',
+      authorityBoundary:
+        'The ladder is sequencing discipline, not capability. Rung receipts prove the scoped rung only; they grant no claim about larger models, network scale, or buyer demand.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.marathon_operations.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator'],
+      state: 'planned',
+      claim:
+        'Long training runs operate with marathon discipline: preflight qualification, monitoring against a reference trajectory, loss-spike triage with window rewind, durable checkpoint-sealed windows, standby contributors, written restart criteria, and a schedulable curtailment drill.',
+      safeCopy:
+        'Psionic’s actual-pretraining lane has local hardware qualification, checkpoint/resume drills, and continue/hold/restart checkpoint decisions. Durable remote checkpoint storage bound into the window seal, standby-Pylon dispatch, public run monitoring against a prior rung’s eval series, restart-decision receipts, and the scheduled curtailment drill are planned.',
+      unsafeCopy:
+        'Do not claim multi-day or multi-week network training runs are operationally supported, or that training load is proven dispatchable/curtailable for grid value.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4673',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.durable_checkpoint_seal_missing',
+        'blocker.product_promises.standby_dispatch_missing',
+        'blocker.product_promises.curtailment_drill_missing',
+      ],
+      verification:
+        'Green requires a window sealed only on durable content-addressed checkpoint storage, a standby contributor promoted into a live run, one restart-or-continue decision recorded as a receipt, and a scheduled drill that sheds part of the fleet on time, resumes from checkpoints, and publishes the receipt — the same drill that becomes evidence for energy.flexible_load_proof.v1.',
+      authorityBoundary:
+        'Marathon machinery is run-operations authority only; it does not move energy, payout, or settlement promises, and a drill receipt is not a grid-services revenue claim.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.post_training_arc.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'agent'],
+      state: 'planned',
+      claim:
+        'Psion checkpoints receive a full post-training arc — mid-training, instruct SFT with an owned versioned chat template, preference optimization, and GRPO-class RL with verifier rewards and overlong-completion penalties — with rollout generation and reward grading as paid network homework and a vibe-test artifact gating each closeout.',
+      safeCopy:
+        'Psionic holds bounded lanes: legal SFT/DPO/GRPO CLI smokes and the CS336 A5 alignment reference math with committed tests. The general instruct lane, owned chat template with generation masking, preference-data and rollout homework, decontaminated post-training evals, and vibe-test closeout artifacts are planned. Hybrid reasoning modes are explicitly deferred.',
+      unsafeCopy:
+        'Do not claim instruct or reasoning Psion models exist, that post-training runs as paid homework, or that any fine-tuning service is live.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4682',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_CS336_A5_REFERENCE_LANE.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.instruct_sft_lane_missing',
+        'blocker.product_promises.preference_rollout_homework_missing',
+        'blocker.product_promises.vibe_test_artifact_missing',
+      ],
+      verification:
+        'Green requires one Psion checkpoint carried through mid-training, SFT, and at least one preference-optimization stage on the owned stack, with rollout/grading work dispatched and verified as homework, decontamination receipts, GRPO reward shaping including the overlong-completion penalty, and a reviewed vibe-test transcript artifact in the closeout.',
+      authorityBoundary:
+        'Post-training receipts prove the scoped arc on the scoped checkpoint only; they are not a model-quality, buyer-demand, or service-availability claim.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.verification_classes.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'agent'],
+      state: 'planned',
+      claim:
+        'Every training-pipeline stage carries a named pluggable verification class — deterministic_recompute, seeded_replication, freivalds_merkle, statistical_cross_check, exact_trace_replay — routed to the cheapest sufficient supply, with weak devices as paid validators.',
+      safeCopy:
+        'Psionic ships an exact_trace_replay reference implementation and the executor-trace homework wiring has passing no-spend smokes; the per-stage verification map is written in the pipeline plan. The Worker-side pluggable class registry, challenge queues, and the paid weak-device validator lane remain in flight (#4674, #4676), and the April-era aggregate-only validation compromise must be re-decided per class in writing.',
+      unsafeCopy:
+        'Do not claim training work is currently verified end to end on paid assignments, or that validator work is currently earning contributors bitcoin.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'apps/openagents.com/workers/api/src/tassadar-executor-trace-homework.test.ts',
+        'https://github.com/OpenAgentsInc/openagents/issues/4674',
+        'https://github.com/OpenAgentsInc/openagents/issues/4676',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.verification_class_registry_missing',
+        'blocker.product_promises.aggregate_only_policy_redecision_missing',
+      ],
+      verification:
+        'Green requires the pluggable class registry live with at least three classes exercised on real dispatched work, commitment-then-challenge flow for matrix work (Merkle-committed matrices plus Freivalds checks), a paid weak-device validator closeout, and a written per-class decision on aggregate-only versus per-contribution sampling.',
+      authorityBoundary:
+        'Verification verdicts are acceptance evidence only; they do not settle payouts, upgrade promises, or authorize dispatch, and per-class numeric tolerance contracts do not weaken the Tassadar exact lane’s separate exactness posture.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.device_capability_dataset.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'public'],
+      state: 'planned',
+      claim:
+        'Benchmark homework produces a public device-capability dataset across heterogeneous contributor hardware — matmul throughput, memory bandwidth, attention-kernel performance, sustained-versus-burst thermals — that honestly prices what each machine can earn.',
+      safeCopy:
+        'Capability envelopes, the live capacity funnel with dark-capacity reason codes, and psionic-collectives quantized collective benchmarking exist. The paid benchmark homework kind, statistical cross-check verification across same-class devices, and the public dataset projection are planned (#4681).',
+      unsafeCopy:
+        'Do not claim a public device-capability dataset exists, that benchmark homework currently pays, or quote per-device earning estimates without measured receipts.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'route:/api/public/pylon-capacity-funnel',
+        'https://github.com/OpenAgentsInc/openagents/issues/4681',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.benchmark_homework_kind_missing',
+        'blocker.product_promises.device_dataset_projection_missing',
+      ],
+      verification:
+        'Green requires benchmark assignments dispatched and paid across at least two distinct device classes, statistical cross-check verification with replication sampling, continuous thermal-throttle detection feeding the funnel reason codes, and a public dataset projection with provenance labels.',
+      authorityBoundary:
+        'Benchmark receipts price capability; they are not assignment, earning, payment, or settlement guarantees for any device.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'proof.demand_provenance.v1',
+      productArea: 'public proof',
+      audience: ['agent', 'operator', 'public'],
+      state: 'planned',
+      claim:
+        'Every revenue-bearing public number carries demand provenance — internal versus external dollars — as strictly as modeled versus measured versus settled, under the rule: no external dollar, no demand claim.',
+      safeCopy:
+        'Provenance discipline already exists for promise states and settlement evidence, and the training program explicitly labels its own internal demand (ablations, sweeps, corpus work, conformance runs) as plumbing proof rather than market proof. A typed internal/external split on revenue-bearing projections is planned.',
+      unsafeCopy:
+        'Do not present first-party or internally-dispatched demand as market demand, and do not aggregate internal and external revenue into one undifferentiated public number.',
+      evidenceRefs: [
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'docs/promises/2026-06-09-product-promises-gap-audit.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.demand_provenance_projection_missing',
+      ],
+      verification:
+        'Green requires revenue-bearing public projections (stats, leaderboards, run pages, economics gates) to carry a typed internal/external demand field, with at least one surface serving real split data and a copy gate forbidding unlabeled aggregates.',
+      authorityBoundary:
+        'Demand provenance is a labeling discipline; it does not validate any revenue claim by itself and grants no settlement or reporting authority.',
+    },
+    {
+      ...basePromiseFields,
       promiseId: 'compute.tassadar_executor_poc.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'operator'],
@@ -1023,6 +1265,7 @@ export const publicProductPromisesDocument = () => {
         'apps/openagents.com/workers/api/src/tassadar-executor-trace-homework.test.ts',
         'docs/tassadar/README.md',
         'docs/tassadar/2026-06-10-psionic-alm-compiler-design-speculation.md',
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'https://github.com/OpenAgentsInc/psionic/blob/main/docs/TASSADAR_ALM_TRACE_REPLAY.md',
         'https://github.com/OpenAgentsInc/psionic/blob/main/docs/TASSADAR_ALM_WASM_INTERPRETER.md',
       ],
@@ -1045,6 +1288,9 @@ export const publicProductPromisesDocument = () => {
     'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
     'The five-streams implementation plan is tracked in GitHub issues #4635-#4653 (rails, compute, data, labor, referrals, stacking smoke, tips polish); the lane map and binding delegation contract live in apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md.',
     'Owner decision 2026-06-10: the Tassadar research lane previously held no registry promise by design. The owner approved one scoped exception: compute.tassadar_executor_poc.v1, a bounded proof-of-concept promise for executor-trace work on real Pylons. All other Tassadar publication gates remain closed; the research essay is docs/tassadar/README.md.',
+    'The full training-pipeline buildout plan is docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md. The training.* promises represent its workstreams (ablation system, data refinery, model ladder, marathon operations, post-training arc, verification classes, device-capability dataset); all enter as planned. Model-ladder rungs gain their own promise records before each run; no rung above the R0 tri-host rehearsal exists or is scheduled against a date.',
+    'Demand-provenance rule (proof.demand_provenance.v1): internal or first-party demand — including the training pipeline’s own ablations, sweeps, and corpus work — is plumbing proof, not market proof. No external dollar, no demand claim; revenue-bearing public numbers must carry an internal/external split alongside modeled/measured/settled provenance.',
+    'The Smol Training Playbook chapters mirrored at psionic docs/smol guide the pipeline’s operational shape; its measurements (MFU, bandwidth, mixture ratios) are external priors on other hardware, never OpenAgents claims.',
     'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
     'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',

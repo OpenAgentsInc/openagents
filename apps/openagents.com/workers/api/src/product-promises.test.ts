@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-10.7')
+    expect(decoded.version).toBe('2026-06-10.8')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -121,6 +121,28 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'energy.flexible_load_proof.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'training.full_pipeline_program.v1',
+          state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.model_ladder.v1',
+          state: 'planned',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.r1_full_rehearsal_missing',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.verification_classes.v1',
+          state: 'planned',
+        }),
+        expect.objectContaining({
+          promiseId: 'proof.demand_provenance.v1',
           state: 'planned',
         }),
         expect.objectContaining({
