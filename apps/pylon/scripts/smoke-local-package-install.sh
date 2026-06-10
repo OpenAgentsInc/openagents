@@ -26,6 +26,16 @@ if [[ -z "$nip90_tarball" || ! -f "$workspace_root/packages/nip90/$nip90_tarball
   exit 1
 fi
 
+cd "$workspace_root/packages/tassadar-executor"
+tassadar_pack_output="$(bun pm pack)"
+tassadar_tarball="$(printf '%s\n' "$tassadar_pack_output" | awk '/openagents-tassadar-executor-.*\.tgz$/ {print $1}' | tail -1)"
+
+if [[ -z "$tassadar_tarball" || ! -f "$workspace_root/packages/tassadar-executor/$tassadar_tarball" ]]; then
+  printf 'failed to locate packed @openagents/tassadar-executor tarball\n' >&2
+  printf '%s\n' "$tassadar_pack_output" >&2
+  exit 1
+fi
+
 cd "$tmp_dir"
 cat > package.json <<EOF
 {
@@ -36,7 +46,8 @@ cat > package.json <<EOF
     "@openagentsinc/pylon": "file:$repo_root/$tarball"
   },
   "overrides": {
-    "@openagents/nip90": "file:$workspace_root/packages/nip90/$nip90_tarball"
+    "@openagents/nip90": "file:$workspace_root/packages/nip90/$nip90_tarball",
+    "@openagents/tassadar-executor": "file:$workspace_root/packages/tassadar-executor/$tassadar_tarball"
   }
 }
 EOF
