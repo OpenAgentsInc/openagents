@@ -109,3 +109,42 @@ Immediately after the smoke, a cache-busted public stats read returned:
 No operator spend was approved, no admin assignment dispatch token was present,
 no paid GEPA assignment was created, no settlement receipt exists, no transition
 receipt was recorded, and no registry edit was made.
+
+## Recheck: 2026-06-10 12:09 UTC
+
+Command:
+
+```bash
+cd apps/pylon
+PYLON_LIVE_SMOKE_CREATE_ASSIGNMENT=false bun run smoke:live-worker-loop
+```
+
+Result:
+
+- status: `partial`
+- pylon ref: `pylon.codex.live_smoke.20260610120934`
+- passed steps: `smoke.pylon.register`, `smoke.pylon.heartbeat`,
+  `smoke.pylon.wallet_readiness`, `smoke.pylon.assignments_read`
+- skipped: `skip.pylon.assignment_create.admin_token_missing`
+- blocker: `blocker.pylon.live_worker_loop.no_assignment_available`
+
+The smoke exited with code 2 because the no-admin-token path is partial by
+design.
+
+Immediately after the smoke, a cache-busted public stats read returned:
+
+```json
+{
+  "pylonsOnlineNow": 1,
+  "sellablePylonsOnlineNow": 1,
+  "pylonsWalletReadyNow": 1,
+  "pylonsAssignmentReadyNow": 1,
+  "nip90MarketSettlementStats.compute.jobsSettledTotal": 0,
+  "nip90MarketSettlementStats.compute.satsSettledTotal": 0,
+  "nip90MarketSettlementStats.compute.receiptRefs": []
+}
+```
+
+No operator spend was approved, no admin assignment dispatch token was present,
+no paid GEPA assignment was created, no settlement receipt exists, no transition
+receipt was recorded, and no registry edit was made.
