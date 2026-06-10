@@ -3,6 +3,16 @@
 import { readFile } from "node:fs/promises"
 import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagents/tassadar-executor"
 import { claimTipReadiness, readBalance, setTipPreferences, sweepStatus, tipPost } from "./tips"
+import {
+  ARTANIS_FORUM_SLUG,
+  appendMemory,
+  composeAskArtanisBody,
+  forumPostTopic,
+  forumReadTopic,
+  forumReply,
+  readMemories,
+  resolveModelAdapter,
+} from "./agent-surface"
 import { Effect, Console } from "effect"
 import {
   createCliRenderer,
@@ -1181,6 +1191,105 @@ async function main() {
       return
     } catch (error) {
       process.stderr.write(`Pylon presence failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "forum" || args[0] === "memories" || args[0] === "ask-artanis") {
+    try {
+      const surfaceArgs = args[0] === "ask-artanis" ? args.slice(2) : args.slice(args[0] === "forum" ? 2 : 1)
+      const options = parseKeyValueOptions(surfaceArgs)
+      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const state = await ensurePylonLocalState(summary)
+      const networkOptions = {
+        agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        baseUrl: baseUrl ?? "https://openagents.com",
+      }
+      if (args[0] === "memories") {
+        const entries = await readMemories(summary.paths.home)
+        process.stdout.write(`${JSON.stringify({ count: entries.length, memories: entries }, null, 2)}\n`)
+        return
+      }
+      if (args[0] === "forum") {
+        const sub = args[1]
+        if (sub === "read") {
+          const topicId = args[2]
+          if (!topicId) throw new Error("usage: pylon forum read <topic-id>")
+          const topic = await forumReadTopic(networkOptions, topicId)
+          process.stdout.write(`${JSON.stringify(topic, null, 2)}\n`)
+          return
+        }
+        if (sub === "post") {
+          const forumSlug = stringPsionicOption(options, "forum") ?? ARTANIS_FORUM_SLUG
+          const title = stringPsionicOption(options, "title")
+          const body = stringPsionicOption(options, "body")
+          if (!title || !body) throw new Error("usage: pylon forum post --title T --body B [--forum slug]")
+          const result = await forumPostTopic(networkOptions, { bodyText: body, forumSlug, title })
+          await appendMemory(summary.paths.home, {
+            at: new Date().toISOString(),
+            kind: "forum_post",
+            refs: { topicId: (result.topic as { topicId?: string } | undefined)?.topicId ?? null },
+            summary: `posted forum topic: ${title.slice(0, 80)}`,
+          })
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+          return
+        }
+        if (sub === "reply") {
+          const topicId = args[2]
+          const body = stringPsionicOption(options, "body")
+          if (!topicId || !body) throw new Error("usage: pylon forum reply <topic-id> --body B")
+          const result = await forumReply(networkOptions, { bodyText: body, topicId })
+          await appendMemory(summary.paths.home, {
+            at: new Date().toISOString(),
+            kind: "forum_reply",
+            refs: { topicId },
+            summary: `replied in topic ${topicId.slice(0, 12)}`,
+          })
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+          return
+        }
+        throw new Error("usage: pylon forum post|read|reply ...")
+      }
+      // ask-artanis
+      const question = args[1]
+      if (!question || question.startsWith("--")) {
+        throw new Error('usage: pylon ask-artanis "your question" [--base-url URL]')
+      }
+      const inventory = await discoverHostInventory({ env: Bun.env })
+      const memories = await readMemories(summary.paths.home, 10)
+      const adapter = resolveModelAdapter(Bun.env)
+      const composed = await composeAskArtanisBody(
+        {
+          deviceContext: {
+            backends: (inventory as { backends?: unknown }).backends ?? null,
+            capabilityRefs: state.runtime.capabilityRefs,
+            platform: (inventory as { platform?: unknown }).platform ?? null,
+            pylonRef: state.identity.pylonRef,
+          },
+          memories,
+          pylonRef: state.identity.pylonRef,
+          question,
+        },
+        adapter,
+      )
+      const title = `Pylon device question: ${question.slice(0, 80)}`
+      const result = await forumPostTopic(networkOptions, {
+        bodyText: composed.bodyText,
+        forumSlug: stringPsionicOption(options, "forum") ?? ARTANIS_FORUM_SLUG,
+        title,
+      })
+      await appendMemory(summary.paths.home, {
+        at: new Date().toISOString(),
+        kind: "ask_artanis",
+        refs: { composedBy: composed.composedBy, topicId: (result.topic as { topicId?: string } | undefined)?.topicId ?? null },
+        summary: `asked artanis: ${question.slice(0, 80)}`,
+      })
+      process.stdout.write(`${JSON.stringify({ composedBy: composed.composedBy, result }, null, 2)}\n`)
+      return
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1
       return
     }
