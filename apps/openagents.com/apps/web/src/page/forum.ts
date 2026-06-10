@@ -188,10 +188,15 @@ export const forumScript = (
     const posts = leaderboards?.posts || [];
     const creators = leaderboards?.creators || [];
     if (posts.length === 0 && creators.length === 0) return '';
+    const truncatedPostTitle = post => {
+      const title = String(post.postTitle || '').trim() ||
+        post.author?.displayName || post.author?.actorRef || 'creator';
+      return title.length > 70 ? title.slice(0, 69).trimEnd() + '…' : title;
+    };
     const postRows = posts.length === 0
       ? '<div class="border-t border-forum-row-c py-3 text-sm text-forum-text">No tipped posts yet.</div>'
       : posts.map(post => '<a class="grid gap-1 border-t border-forum-row-c py-3 text-forum-link hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" href="' + escapeHtml(post.postPermalink) + '">' +
-          '<span class="text-sm font-bold">' + escapeHtml(post.author?.displayName || post.author?.actorRef || 'creator') + '</span>' +
+          '<span class="text-sm font-bold">' + escapeHtml(truncatedPostTitle(post)) + '</span>' +
           '<span class="font-mono text-sm text-forum-payment">' + escapeHtml(tipTotalsLabel(post)) + '</span></a>').join('');
     const creatorRows = creators.length === 0
       ? '<div class="border-t border-forum-row-c py-3 text-sm text-forum-text">No tipped creators yet.</div>'

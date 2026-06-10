@@ -51,6 +51,7 @@ type CountRow = Readonly<{ count: number | null }>
 type ForumTipLeaderboardPostRow = Readonly<{
   actor_json: string
   post_id: string
+  post_subject: string | null
   tip_count: number | null
   topic_id: string
   total_paid_sats: number | null
@@ -303,6 +304,7 @@ const postLeaderboardFromRow = (
     author: actorFromJson(row.actor_json),
     postId: row.post_id,
     postPermalink: forumPostPublicUrl(row.topic_id, row.post_id),
+    postTitle: row.post_subject ?? null,
     tipCount: Math.max(0, Number(row.tip_count ?? 0)),
     topicId: row.topic_id,
     totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
@@ -332,6 +334,7 @@ const readPostLeaderboardRows = (
         `SELECT ma.target_post_id AS post_id,
                 ma.target_topic_id AS topic_id,
                 p.actor_json AS actor_json,
+                p.subject AS post_subject,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
                   THEN 1
@@ -366,7 +369,7 @@ const readPostLeaderboardRows = (
             AND ma.target_post_id IS NOT NULL
             AND ma.target_topic_id IS NOT NULL
             AND ma.archived_at IS NULL
-          GROUP BY ma.target_post_id, ma.target_topic_id, p.actor_json
+          GROUP BY ma.target_post_id, ma.target_topic_id, p.actor_json, p.subject
          HAVING total_settled_sats > 0
           ORDER BY total_settled_sats DESC, tip_count DESC, ma.target_post_id ASC
           LIMIT ?`,

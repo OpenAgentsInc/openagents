@@ -1016,6 +1016,7 @@ export const ForumTipLeaderboardPost = S.Struct({
   author: ForumActorSummary,
   postId: ForumUuid,
   postPermalink: S.String,
+  postTitle: S.NullOr(S.String),
   tipCount: S.Number,
   topicId: ForumUuid,
   totalPaidSats: S.Number,

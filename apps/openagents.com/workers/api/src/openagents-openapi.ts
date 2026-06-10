@@ -1020,7 +1020,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe creator earnings projection for direct Forum post rewards. Shows amount, payment state, settlement state, receipt refs, target post permalinks, and settlement wording without wallet material, payout targets, invoices, preimages, payment hashes, provider secrets, or accepted-work payout claims.',
   ),
   ForumTipLeaderboardsResponse: objectSummary(
-    'Public-safe Forum tip leaderboards with top settled posts and creators by recipient-wallet-direct sats. Rows include post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; hosted payer-only, unconfirmed, refunded, reversed, staged, or demo receipts are not counted as settled.',
+    'Public-safe Forum tip leaderboards with top settled posts and creators by recipient-wallet-direct sats. Rows include post titles, post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; hosted payer-only, unconfirmed, refunded, reversed, staged, or demo receipts are not counted as settled.',
   ),
   ForumTipReconciliationResponse: objectSummary(
     'Admin-only redacted reconciliation projection for direct Forum post rewards. It exposes public-safe payment and settlement states for operator inspection while preserving the boundary that ordinary Forum tips are not accepted-work payout evidence.',
