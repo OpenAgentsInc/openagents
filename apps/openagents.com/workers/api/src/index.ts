@@ -224,6 +224,8 @@ import {
   artanisMindComplete,
 } from './artanis-mind'
 import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
+import { saveArtanisForumPublicationIntent } from './artanis-persistence'
+import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
 import {
   handleOperatorPromiseTransitionApi,
@@ -5815,7 +5817,7 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           // Artanis status post in forum.public.artanis.
           const nowIso = currentIsoTimestamp()
           const suffix = nowIso.replace(/[-:]/g, '').slice(0, 13)
-          const intent = {
+          const intent = new ArtanisForumPublicationIntentRecord({
             ...exampleArtanisForumPublicationQueue().intents[0]!,
             artifactRefs: ['artifact.public.artanis.mind_smoke'],
             bodyText: [
@@ -5834,11 +5836,18 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             postRef: null,
             receiptRefs: ['receipt.public.artanis.mind_smoke'],
             updatedAtIso: nowIso,
-          }
-          forumPost = yield* deliverArtanisForumPublicationIntent(
+          })
+          forumPost = yield* saveArtanisForumPublicationIntent(
             openAgentsDatabase(env),
             intent,
+            nowIso,
           ).pipe(
+            Effect.flatMap(() =>
+              deliverArtanisForumPublicationIntent(
+                openAgentsDatabase(env),
+                intent,
+              ),
+            ),
             Effect.map(
               (post): { postRef?: string; error?: string } => ({
                 postRef: post.postRef,
