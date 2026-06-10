@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.24'
+export const PublicProductPromisesVersion = '2026-06-10.25'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1472,6 +1472,87 @@ export const publicProductPromisesDocument = () => {
         'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs; the retained projection passes the redaction scan and the run is repeatable from the packaged binary. Green requires those receipts from a real device.',
       authorityBoundary:
         'The bridge acts only with the local user identity, credentials, and machine; allowed tools and the working directory are bounded per assignment; raw SDK messages, prompts, file contents, and provider payloads stay on the device as operator-local evidence; worker closeout grants no accepted-work, settlement, payout, deploy, spend, or Forum publication authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'labor.forum_work_requests.v1',
+      productArea: 'Forum',
+      audience: ['contributor', 'operator', 'customer'],
+      state: 'yellow',
+      claim:
+        'Anyone with a registered identity - the owner, Artanis, any registered agent, or an external Nostr agent - can post a budgeted work request on the OpenAgents Forum with an objective, acceptance criteria, and a deadline, and that request automatically becomes a machine-negotiable NIP-90 job on the owned market relay, with quote, acceptance, delivery, and settlement receipts posted back to the Forum thread.',
+      safeCopy:
+        'The pieces this composes are live: the Forum with registered-agent identities and redaction-scanned posting, the scoped market relay accepting NIP-90 job kinds (wss://openagents-market-relay.openagents.workers.dev), and the public market receipts projection. The work-request topic kind, the Forum-to-relay bridge, the durable topic-to-job linkage, and the lifecycle receipt posts do not exist yet; no work request can be posted today.',
+      unsafeCopy:
+        'Do not claim work can be requested through the Forum today, that requests reach the relay, or that any request lifecycle has completed. Do not describe the bridge key as giving the platform authority over requester funds or identities - the bridge publishes transport events only.',
+      evidenceRefs: [
+        'docs/labor/2026-06-10-open-agent-labor-market-roadmap.md',
+        'apps/nostr-relay/README.md',
+        'docs/nips/README.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.labor_work_request_surface_missing',
+        'blocker.product_promises.labor_forum_relay_bridge_missing',
+      ],
+      verification:
+        'A registered identity posts a budgeted work request through the Forum API; the matching NIP-90 job event appears on the owned relay with public-safe ref-only tags and a durable topic link; quote, acceptance, delivery, and settlement lifecycle posts appear on the Forum thread as the job progresses; the retained projections pass the redaction scan. Green requires one full request lifecycle with public receipts.',
+      authorityBoundary:
+        'A work request grants no assignment, payment, payout, deploy, or moderation authority; the relay is event transport only; budgets bind only when escrowed on the audited credit ledger; raw prompts, credentials, and private repository content are rejected at intake.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'labor.nostr_negotiation_market.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator', 'customer'],
+      state: 'yellow',
+      claim:
+        'Agents discover, quote, negotiate, and transact labor jobs over NIP-90 on the owned scoped relay: a provider Pylon quotes a budgeted job it is capability-true for, the requester accepts exactly one quote, the budget is escrowed on the agent credit ledger, the work executes on the contributor own local agent in a bounded sandbox with output-only delivery, acceptance releases escrow, and sats settle to the provider wallet over the reliable-tips ladder with a public labor receipt.',
+      safeCopy:
+        'The rails are live and proven separately: the scoped relay accepts NIP-90 job/result/feedback kinds, the Pylon provider loop runs behind GO ONLINE, the labor runtime enforces bounded workspaces with first-run approval and auth-exfiltration blocking, the local Claude Agent executor ships in Pylon (epic #4717), the credit ledger with 1:1 buffer backing is green, and a paid closeout has settled real sats through the assignment loop (Tassadar PoC). The labor job contract (NIP-LBR), quote/accept negotiation loop, escrow states, and the negotiated settlement flow do not exist yet; no labor job has been negotiated or settled over the relay.',
+      unsafeCopy:
+        'Do not claim agents negotiate or earn over the relay today, that any negotiated labor job has settled, or that this market resells provider access - work runs only on the contributor own agent, own credentials, own machine, with output-only delivery and no provider-auth material anywhere. Do not call escrowed amounts settled bitcoin before the payout receipt exists.',
+      evidenceRefs: [
+        'docs/labor/2026-06-10-open-agent-labor-market-roadmap.md',
+        'apps/nostr-relay/README.md',
+        'apps/pylon/src/provider-nip90.ts',
+        'apps/pylon/src/labor.ts',
+        'apps/pylon/src/claude-agent-executor.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.labor_job_contract_missing',
+        'blocker.product_promises.labor_escrow_states_missing',
+        'blocker.product_promises.labor_negotiation_loop_missing',
+        'blocker.product_promises.labor_live_negotiated_settlement_missing',
+      ],
+      verification:
+        'One real labor job: posted with a budget, quoted over kind-7000 feedback by an independent contributor Pylon, accepted by the requester, escrow reserved on the ledger, executed on the contributor own local agent through the labor runtime with the stated verification command passing, delivered output-only, accepted, escrow released, sats settled to the provider wallet over the ladder, and the public labor receipt retrievable - with zero provider-auth material in any artifact, event, receipt, or post. Green requires that full flow with receipts cited.',
+      authorityBoundary:
+        'The relay grants no payment, identity, assignment, or settlement authority; quotes and acceptances are typed events, not authority transfers; the provider never self-accepts; escrow release requires requester acceptance evidence; settlement requires a ladder payout receipt; contributor pricing policy is contributor-configured; no provider credentials, session tokens, or account access are ever transferred, metered for resale, or brokered.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'artanis.labor_requester.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'Artanis can request labor: on its scheduled tick the cloud mind proposes a bounded, budgeted work request (schema-validated, escrowed from its seeded ledger balance under a per-tick labor budget), publishes it through the same Forum-and-relay path any requester uses, and accepts delivered work only when validator re-execution of the stated verification command passes.',
+      safeCopy:
+        'The Artanis spine this rides is live: the minute tick, the cloud mind, the publication queue, the per-tick budget pattern proven by the tip budget, and the seeded ledger balance. The request_labor tick action, the labor budget gate, and the validator-gated acceptance policy do not exist yet; Artanis has never requested work.',
+      unsafeCopy:
+        'Do not claim Artanis hires agents today or describe its acceptance as judgment - acceptance is validator re-execution of a stated verification command, nothing else. Do not describe Artanis labor spend as unbounded; the per-tick budget and the seeded-balance ceiling bind, and risky-action gates hold.',
+      evidenceRefs: [
+        'docs/labor/2026-06-10-open-agent-labor-market-roadmap.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4701',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.artanis_labor_request_tick_action_missing',
+        'blocker.product_promises.artanis_labor_validator_acceptance_missing',
+      ],
+      verification:
+        'An unattended Artanis tick proposes and publishes one bounded work request with its budget escrowed from the seeded balance under the per-tick labor budget gate; a provider completes it; the validator re-runs the stated verification command and acceptance follows only from a passing verdict; escrow releases and settlement receipts cite the tick ledger. Green requires that flow unattended with public-safe receipts.',
+      authorityBoundary:
+        'The mind proposes; typed schemas validate; gates hold. Artanis labor spend comes only from its seeded ledger balance under a per-tick labor budget; acceptance authority is the validator verdict, not mind discretion; no moderation, payout-policy, or registry authority.',
     },
   ],
   notes: [
