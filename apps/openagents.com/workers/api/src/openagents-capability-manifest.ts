@@ -299,6 +299,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe proof closeout for the OTEC Site order, including caveats, claim state, agent instruction card, and first-Site agent challenges.',
       },
       {
+        id: 'public_pylon_capacity_funnel',
+        href: 'https://openagents.com/api/public/pylon-capacity-funnel',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe Pylon capacity funnel counts from registered through settled, plus dark-capacity counts grouped by a typed reason taxonomy. Counts only, no device identifiers or owner linkage. Paid/settled stay zero until settlement receipts exist. Read-only capacity accounting; grants no assignment, payout, or settlement authority.',
+      },
+      {
         id: 'public_pylon_stats',
         href: 'https://openagents.com/api/public/pylon-stats',
         method: 'GET',

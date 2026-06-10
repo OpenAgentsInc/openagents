@@ -9,7 +9,7 @@ import type {
   OpenAgentsAutopilotRunnerKind,
 } from './autopilot-work-request'
 
-const onlineHeartbeatStatuses = new Set([
+export const onlineHeartbeatStatuses = new Set([
   'available',
   'healthy',
   'idle',
@@ -18,7 +18,7 @@ const onlineHeartbeatStatuses = new Set([
 ])
 
 const onlineWindowMs = 5 * 60 * 1000
-const assignmentReadyCapabilityRef = 'capability.pylon.assignment_ready'
+export const assignmentReadyCapabilityRef = 'capability.pylon.assignment_ready'
 export const localCodingAgentCapabilityRefs = [
   'capability.pylon.local_codex',
   'capability.pylon.local_coding_agent',
@@ -55,7 +55,7 @@ export type AutopilotPlacementDecisionProjection = Readonly<{
   pylonCandidates: ReadonlyArray<AutopilotPylonPlacementCandidateProjection>
 }>
 
-const heartbeatFresh = (
+export const pylonHeartbeatFresh = (
   latestHeartbeatAt: string | null,
   nowIso: string,
 ): boolean => {
@@ -108,7 +108,7 @@ const candidateProjection = (
   const heartbeatOnline = onlineHeartbeatStatuses.has(
     (candidate.latestHeartbeatStatus ?? '').trim().toLowerCase(),
   )
-  const fresh = heartbeatFresh(candidate.latestHeartbeatAt, nowIso)
+  const fresh = pylonHeartbeatFresh(candidate.latestHeartbeatAt, nowIso)
   const versionCompatible = pylonClientVersionMeetsMinimum(
     candidate.clientVersion,
     PUBLIC_PYLON_STATS_MINIMUM_CLIENT_VERSION,

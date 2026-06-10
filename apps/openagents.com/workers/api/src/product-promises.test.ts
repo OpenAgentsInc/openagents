@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.16')
+    expect(decoded.version).toBe('2026-06-09.17')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -113,7 +113,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'pylon.no_dark_capacity_accounting.v1',
-          state: 'red',
+          state: 'yellow',
         }),
         expect.objectContaining({
           promiseId: 'payments.accepted_outcome_economics.v1',

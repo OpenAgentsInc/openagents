@@ -210,6 +210,9 @@ const schemaComponents = (): JsonSchema => ({
   AutopilotWorkEventsEnvelope: objectSummary(
     'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',
   ),
+  PublicPylonCapacityFunnel: objectSummary(
+    'Public-safe Pylon capacity funnel: stage counts from registered through settled plus dark-capacity counts by typed reason. Counts only, no device identifiers. Read-only capacity accounting; grants no assignment, payout, or settlement authority.',
+  ),
   AutopilotWorkMissionBriefingEnvelope: objectSummary(
     'Public-safe Autopilot Mission Briefing envelope: event rollup, changed artifact/result refs, blocked access requirements and blocker refs, running state, waiting decision, cost rollup, and grouped drill-down refs. A briefing is a read projection and grants no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
   ),
@@ -3254,6 +3257,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Autopilot work projection.',
           '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/pylon-capacity-funnel': {
+    get: operation({
+      operationId: 'getPublicPylonCapacityFunnel',
+      summary: 'Read public Pylon capacity funnel',
+      description:
+        'Returns public-safe Pylon capacity funnel counts: registered, benchmarked, eligible, assigned, running, artifact-producing, accepted, paid, and settled stages, plus dark-capacity counts grouped by a typed reason taxonomy (never_heartbeated, stale_heartbeat, version_incompatible, capability_missing, wallet_not_ready, assignment_declined, assignment_expired, closeout_missing, no_assignments_offered). Counts only; no device identifiers, owner linkage, or wallet detail. Paid and settled stages remain zero until the settlement system reports receipts. Read-only capacity accounting with no assignment, payout, or settlement authority.',
+      tags: ['Pylon'],
+      security: [],
+      responses: {
+        '200': okJson(
+          'Public Pylon capacity funnel counts.',
+          '#/components/schemas/PublicPylonCapacityFunnel',
         ),
         ...errorResponses(),
       },

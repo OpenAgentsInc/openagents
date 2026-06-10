@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.16'
+export const PublicProductPromisesVersion = '2026-06-09.17'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -842,24 +842,26 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.no_dark_capacity_accounting.v1',
       productArea: 'Pylon',
       audience: ['operator', 'contributor', 'public'],
-      state: 'red',
+      state: 'yellow',
       claim:
         'Pylon provider capacity should show registered, benchmarked, eligible, assigned, running, artifact-producing, accepted, paid, settled, and dark-capacity reasons.',
       safeCopy:
-        'Pylon stats are live but no-dark-capacity accounting is not green.',
+        'A live public capacity funnel at GET /api/public/pylon-capacity-funnel counts registered Pylons through the funnel stages and reason-codes dark capacity with a typed taxonomy (never heartbeated, stale heartbeat, version incompatible, capability missing, wallet not ready, assignment declined, assignment expired, closeout missing, no assignments offered). Paid and settled stages stay zero until settlement receipts exist, and historical snapshots are not yet retained.',
       unsafeCopy:
-        'Do not claim all linked provider capacity is earning, useful, benchmarked, assigned, or settlement-ready.',
+        'Do not claim all linked provider capacity is earning, useful, benchmarked, assigned, or settlement-ready, and do not present funnel counts as payment or settlement evidence.',
       evidenceRefs: [
+        'route:/api/public/pylon-capacity-funnel',
+        'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live.ts',
+        'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live.test.ts',
         'https://openagents.com/api/public/pylon-stats',
         'apps/openagents.com/workers/api/src/public-pylon-stats.ts',
       ],
       blockerRefs: [
         'blocker.product_promises.provider_job_lifecycle_missing',
         'blocker.product_promises.capacity_funnel_snapshots_missing',
-        'blocker.product_promises.dark_capacity_reason_taxonomy_missing',
       ],
       verification:
-        'Green requires public-safe provider capacity funnel snapshots and reason-coded idle/dark capacity for real registered Pylons.',
+        'Run the pylon-capacity-funnel-live tests: every dark-capacity taxonomy reason must be reachable from synthetic store records and the public route must expose counts only. Green additionally requires retained historical funnel snapshots and provider job-lifecycle records for real registered Pylons.',
       authorityBoundary:
         'Capacity presence is not accepted work, payment, settlement, or withdrawal evidence.',
     },
