@@ -10,6 +10,10 @@ describe("Pylon launch gate copy guards", () => {
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.v0_3.rc_package")?.state).toBe("allowed")
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.optional_local_qwen_inference")?.state).toBe("allowed")
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.paid_qwen_inference")?.state).toBe("blocked")
+    expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.psionic_training_boundary")?.state).toBe(
+      "blocked",
+    )
+    expect(matrix.supportsTraining).toBe(false)
     expect(matrix.gates.find((gate) => gate.claimRef === "claim.pylon.v0_3.stable")?.state).toBe("blocked")
     assertLaunchCopyAllowed("@openagentsinc/pylon@0.3.0-rc1 is the v0.3 release candidate.")
     assertPublicProjectionSafe(matrix)

@@ -166,6 +166,10 @@ The runtime includes:
   consent, macOS/Linux machine checks, release/model manifest verification,
   SHA-256 verification, and digest-addressed cache placement. This is never
   part of startup or default package installation.
+- Psionic training-boundary contracts for signed training release manifests,
+  digest-verified artifacts, healthy sidecar lifecycle projection, and signed
+  worker receipt import. `supportsTraining` remains false until that complete
+  boundary is real. See `docs/psionic-training-boundary.md`.
 - Provider-neutral LLM message/request/tool/usage contracts.
 - Blueprint signature lookup, tool-menu planning, Action Submission boundaries,
   and contribution release gates.

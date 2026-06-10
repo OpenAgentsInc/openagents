@@ -1,4 +1,5 @@
 import { assertPublicProjectionSafe } from "./state"
+import type { PsionicTrainingBoundaryProjection } from "./psionic-training-boundary"
 
 export type LaunchClaimState = "allowed" | "blocked" | "planned"
 
@@ -51,6 +52,13 @@ export const launchClaimGates: LaunchClaimGate[] = [
     blockerRefs: ["blocker.copy.qwen_training_postponed"],
   },
   {
+    claimRef: "claim.pylon.psionic_training_boundary",
+    publicPhrase: "Pylon can verify Psionic training manifests, artifacts, sidecar health, and worker receipts",
+    state: "blocked",
+    requiredEvidenceRefs: ["evidence.psionic.training_boundary"],
+    blockerRefs: ["blocker.copy.psionic_training_boundary_not_real"],
+  },
+  {
     claimRef: "claim.pylon.optional_local_qwen_inference",
     publicPhrase: "Pylon can use optional local Qwen3.5 inference when the Psionic backend, model, and tool-call gates pass",
     state: "allowed",
@@ -91,12 +99,25 @@ const unsafePhrasePatterns = [
   /data revenue .* live/i,
 ]
 
-export function projectLaunchGateMatrix() {
+export function projectLaunchGateMatrix(input: { psionicTrainingBoundary?: PsionicTrainingBoundaryProjection } = {}) {
+  const supportsTraining = input.psionicTrainingBoundary?.supportsTraining === true
+  const gates = launchClaimGates.map((gate) =>
+    gate.claimRef === "claim.pylon.psionic_training_boundary" && supportsTraining
+      ? {
+          ...gate,
+          state: "allowed" as const,
+          requiredEvidenceRefs: input.psionicTrainingBoundary?.evidenceRefs ?? gate.requiredEvidenceRefs,
+          blockerRefs: [],
+        }
+      : gate,
+  )
   const projection = {
     schema: "openagents.pylon.launch_gate_matrix.v0.3",
     packageName: "@openagentsinc/pylon",
     version: "0.3.0-rc1",
-    gates: launchClaimGates,
+    supportsTraining,
+    psionicTrainingBoundaryRef: supportsTraining ? "boundary.pylon.psionic_training.ready.v0_3" : null,
+    gates,
   }
   assertPublicProjectionSafe(projection)
   return projection
