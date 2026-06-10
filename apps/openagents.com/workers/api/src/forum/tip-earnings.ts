@@ -297,6 +297,9 @@ const countEarningRows = (
   ).pipe(Effect.map(row => Math.max(0, Number(row?.count ?? 0))))
 }
 
+const publicTextIsUnsafe = (value: string): boolean =>
+  containsProviderSecretMaterial(value) || privateMaterialPattern.test(value)
+
 export const safeLeaderboardPostTitle = (
   subject: string | null,
 ): string | null => {
@@ -304,17 +307,24 @@ export const safeLeaderboardPostTitle = (
     return null
   }
 
-  return containsProviderSecretMaterial(subject) ||
-    privateMaterialPattern.test(subject)
-    ? null
-    : subject
+  return publicTextIsUnsafe(subject) ? null : subject
 }
+
+export const safeActorSummary = (
+  actor: ForumActorSummary,
+): ForumActorSummary =>
+  publicTextIsUnsafe(actor.displayName)
+    ? {
+        ...actor,
+        displayName: publicTextIsUnsafe(actor.slug) ? 'agent' : actor.slug,
+      }
+    : actor
 
 const postLeaderboardFromRow = (
   row: ForumTipLeaderboardPostRow,
 ): ForumTipLeaderboardPost =>
   decodeTipLeaderboardPost({
-    author: actorFromJson(row.actor_json),
+    author: safeActorSummary(actorFromJson(row.actor_json)),
     postId: row.post_id,
     postPermalink: forumPostPublicUrl(row.topic_id, row.post_id),
     postTitle: safeLeaderboardPostTitle(row.post_subject ?? null),
@@ -328,7 +338,7 @@ const creatorLeaderboardFromRow = (
   row: ForumTipLeaderboardCreatorRow,
 ): ForumTipLeaderboardCreator =>
   decodeTipLeaderboardCreator({
-    actor: actorFromJson(row.actor_json),
+    actor: safeActorSummary(actorFromJson(row.actor_json)),
     tipCount: Math.max(0, Number(row.tip_count ?? 0)),
     totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
     totalSettledSats: Math.max(0, Number(row.total_settled_sats ?? 0)),
@@ -447,13 +457,29 @@ const readCreatorLeaderboardRows = (
       .all<ForumTipLeaderboardCreatorRow>(),
   ).pipe(Effect.map(result => result.results ?? []))
 
+// Arbitrary public content (titles, names, slugs) is sanitized per-field at
+// row construction; the projection-wide throwing scan below must only fire
+// for structural fields (refs, ids, evidence), where unsafe content means a
+// real leak rather than a user who typed "@" or "mnemonic". Stripping these
+// keys from the probe keeps user content from 500ing whole endpoints.
+const arbitraryPublicContentKeys = new Set([
+  'displayName',
+  'postTitle',
+  'slug',
+])
+
+const structuralProjectionProbe = (value: unknown): string =>
+  JSON.stringify(value, (key, probed: unknown) =>
+    arbitraryPublicContentKeys.has(key) ? undefined : probed,
+  )
+
 const assertProjectionSafe = (
   value:
     | ForumCreatorEarningsResponse
     | ForumTipLeaderboardsResponse
     | ForumTipReconciliationResponse,
 ): void => {
-  const json = JSON.stringify(value)
+  const json = structuralProjectionProbe(value)
 
   if (
     containsProviderSecretMaterial(json) ||
@@ -469,7 +495,7 @@ export const forumTipEarningsProjectionHasPrivateMaterial = (
     | ForumTipLeaderboardsResponse
     | ForumTipReconciliationResponse,
 ): boolean => {
-  const json = JSON.stringify(value)
+  const json = structuralProjectionProbe(value)
 
   return (
     containsProviderSecretMaterial(json) || privateMaterialPattern.test(json)
