@@ -104,6 +104,7 @@ export const verifyTassadarWindow = async (
     const claimed = input.claimedRows[offset]
     const matches =
       actual !== undefined &&
+      claimed !== undefined &&
       actual.length === claimed.length &&
       actual.every((value: bigint, column: number) => value === claimed[column])
     if (!matches) {

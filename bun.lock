@@ -152,6 +152,7 @@
         "@openagents/provider-account-schema": "workspace:*",
         "@openagents/sync-schema": "workspace:*",
         "@openagents/sync-worker": "workspace:*",
+        "@openagents/tassadar-executor": "workspace:*",
         "@openauthjs/openauth": "^0.4.3",
         "@orpc/client": "1.14.5",
         "arctic": "^2.2.2",

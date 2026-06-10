@@ -42,6 +42,7 @@
     "effect-cf": "0.13.1",
     "hono": "^4.12.23",
     "nostr-effect": "github:OpenAgentsInc/nostr-effect#e6582ef",
-    "stripe": "^22.2.0"
+    "stripe": "^22.2.0",
+    "@openagents/tassadar-executor": "workspace:*"
   }
 }

@@ -172,7 +172,7 @@ export const executeTassadarNumericModel = async (
   plan.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
   const stepOutputs: bigint[][] = []
   for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
-    const fields = steps[stepIndex]
+    const fields = steps[stepIndex] ?? []
     if (fields.length !== model.input_field_count) {
       throw new TassadarNumericExecutionError({
         detail: `step supplies ${fields.length} fields, expected ${model.input_field_count}`,
@@ -183,20 +183,20 @@ export const executeTassadarNumericModel = async (
     const residual = new Array<number>(model.slot_count).fill(0)
     for (const [, kind, index] of plan) {
       if (kind === 1) {
-        const row = model.wiring[index]
+        const row = model.wiring[index]!
         let total = row.bias
         if (row.input_field !== null) {
-          total += fields[row.input_field]
+          total += fields[row.input_field] ?? 0
         }
         for (const [coefficient, slot] of row.terms) {
-          total += coefficient * residual[slot]
+          total += coefficient * (residual[slot] ?? 0)
         }
         residual[row.out_slot] = checkWindow(total, stepIndex)
       } else if (kind === 0) {
-        const row = model.attention[index]
+        const row = model.attention[index]!
         if ("keyed_read" in row) {
           const { channel, query_slot, out_slot } = row.keyed_read
-          const query = residual[query_slot]
+          const query = residual[query_slot] ?? 0
           const channelPoints = points.get(channel) ?? []
           // Hard-max over parabolic scores 2qk - k^2; exact ties
           // (duplicate keys) break to the latest write order.
@@ -224,25 +224,25 @@ export const executeTassadarNumericModel = async (
         } else {
           const { channel, value_slot, out_slot } = row.cum_sum
           const total = checkWindow(
-            (accumulators.get(channel) ?? 0) + residual[value_slot],
+            (accumulators.get(channel) ?? 0) + (residual[value_slot] ?? 0),
             stepIndex,
           )
           accumulators.set(channel, total)
           residual[out_slot] = total
         }
       } else {
-        const row = model.ffn[index]
-        const gated = Math.max(residual[row.gate_slot], 0)
+        const row = model.ffn[index]!
+        const gated = Math.max(residual[row.gate_slot] ?? 0, 0)
         residual[row.out_slot] = checkWindow(
-          residual[row.value_slot] * gated,
+          (residual[row.value_slot] ?? 0) * gated,
           stepIndex,
         )
       }
     }
     for (const write of model.writes) {
-      pushPoint(write.channel, residual[write.key_slot], residual[write.value_slot])
+      pushPoint(write.channel, residual[write.key_slot] ?? 0, residual[write.value_slot] ?? 0)
     }
-    stepOutputs.push(model.output_slots.map((slot) => BigInt(Math.trunc(residual[slot]))))
+    stepOutputs.push(model.output_slots.map((slot) => BigInt(Math.trunc(residual[slot] ?? 0))))
   }
   const chunks: Uint8Array[] = [
     textBytes("tassadar_alm_trace|"),
@@ -270,7 +270,7 @@ export const collectInterpreterOutputs = (
 ): Readonly<{ outputs: ReadonlyArray<bigint>; halted: boolean }> => {
   const outputs = stepOutputs
     .filter((row) => row[0] === 1n)
-    .map((row) => row[1])
+    .map((row) => row[1] ?? 0n)
   const last = stepOutputs[stepOutputs.length - 1]
-  return { halted: last !== undefined && last[4] >= 1n, outputs }
+  return { halted: last !== undefined && (last[4] ?? 0n) >= 1n, outputs }
 }

@@ -216,6 +216,10 @@ import {
 import { makeCheckoutPageRoutes } from './checkout-page-routes'
 import { publicProductPromisesDocument } from './product-promises'
 import {
+  TassadarReplayRequest,
+  runTassadarReplayValidation,
+} from './tassadar-replay-validator'
+import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
   lastVerifiedAtByPromise,
@@ -5675,6 +5679,45 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       handleOperatorPromiseTransitionApi(request, {
         requireAdminApiToken: () => requireAdminApiToken(request, env),
         store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/tassadar/replay',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'POST') {
+          return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
+            headers: { 'content-type': 'application/json' },
+            status: 405,
+          })
+        }
+        if (!(await requireAdminApiToken(request, env))) {
+          return new Response(JSON.stringify({ error: 'unauthorized' }), {
+            headers: { 'content-type': 'application/json' },
+            status: 401,
+          })
+        }
+        try {
+          const body = S.decodeUnknownSync(TassadarReplayRequest)(
+            await request.json(),
+          )
+          const verdict = await runTassadarReplayValidation(body)
+          return new Response(JSON.stringify({ verdict }), {
+            headers: {
+              'cache-control': 'no-store',
+              'content-type': 'application/json',
+            },
+            status: 200,
+          })
+        } catch (error) {
+          return new Response(
+            JSON.stringify({
+              error: 'bad_request',
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+            { headers: { 'content-type': 'application/json' }, status: 400 },
+          )
+        }
       }),
   },
   {
