@@ -173,6 +173,65 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("executes runtime-gate coding assignment and reports only public-safe refs", async () => {
+    await withTempHome(async (home) => {
+      const codingAssignment = {
+        assignmentRef: "pylon_assignment.public.runtime_gate.fixture_repair",
+        budget: {
+          paymentMode: "unpaid_smoke",
+        },
+        objective: {
+          objectiveRef: "objective.public.pylon_runtime_gate.fixture_repair",
+        },
+        publicSafe: true,
+        requiredCapabilityRefs: ["cap.gepa.retained.v1"],
+        runtimeGate: {
+          agentKind: "codex_cli_or_fixture",
+          fixtureRef: "fixture.public.pylon.codex_runtime.sum_repair.v1",
+          schema: "openagents.pylon.runtime_gate.v0.3",
+        },
+        schema: "openagents.autopilot_coding_assignment.v1",
+      }
+      const fake = fakeAssignmentServer({
+        leases: [
+          lease({
+            assignmentRef: "pylon_assignment.public.runtime_gate.fixture_repair",
+            codingAssignment,
+            goal: "objective.public.pylon_runtime_gate.fixture_repair",
+            leaseRef: "lease.public.runtime_gate.fixture_repair",
+          }),
+        ],
+      })
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected runtime gate assignment to run")
+      expect(result.progress.artifactRefs[0].startsWith("artifact.pylon.runtime_gate.fixture_patch.")).toBe(true)
+      expect(result.progress.proofRefs[0].startsWith("proof.pylon.runtime_gate.test_passed.")).toBe(true)
+      expect(result.closeout.artifactRefs).toEqual(result.progress.artifactRefs)
+      expect(result.closeout.proofRefs).toEqual(result.progress.proofRefs)
+      expect(result.closeout.buildRefs[0].startsWith("command.pylon.runtime_gate.bun_test.")).toBe(true)
+      expect(result.closeout.receiptRefs.some((ref) => ref.startsWith("run.pylon.runtime_gate."))).toBe(true)
+      expect(result.closeout.resultRefs).toEqual(["result.public.pylon_runtime_gate.fixture_repair_passed"])
+      expect(result.closeout.summaryRefs).toEqual(["summary.public.pylon_runtime_gate.fixture_repair_passed"])
+      expect(result.closeout.testRefs).toEqual(result.closeout.buildRefs)
+      const serverBodies = JSON.stringify(fake.requests.map((request) => request.body))
+      expect(serverBodies).not.toContain(home)
+      expect(serverBodies).not.toContain("/Users/")
+      expect(serverBodies).not.toContain(".cache")
+      expect(serverBodies).not.toContain("sum.ts")
+      expect(serverBodies).not.toContain("left + right")
+      expect(serverBodies).not.toContain("oa_agent")
+      assertPublicProjectionSafe(result.closeout)
+    })
+  })
+
   test("normalizes current OpenAgents Autopilot coding assignment projections", async () => {
     await withTempHome(async (home) => {
       const codingAssignment = {

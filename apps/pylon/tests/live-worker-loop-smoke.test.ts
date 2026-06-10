@@ -37,9 +37,13 @@ describe("live worker loop smoke", () => {
 
   test("runs the full no-spend live contract when admin assignment dispatch is available", async () => {
     const paths: string[] = []
+    const bodies: unknown[] = []
     const fetch: typeof globalThis.fetch = async (request, init) => {
       const url = new URL(request instanceof Request ? request.url : String(request))
       paths.push(`${init?.method ?? "GET"} ${url.pathname}`)
+      if (typeof init?.body === "string" && init.body.trim()) {
+        bodies.push(JSON.parse(init.body))
+      }
 
       if (url.pathname.endsWith("/assignments")) {
         return jsonResponse({
@@ -69,6 +73,17 @@ describe("live worker loop smoke", () => {
     expect(result.blockerRefs).toEqual([])
     expect(result.assignmentRef).toBe("assignment.public.live_worker_loop_smoke.test")
     expect(result.stepRefs).toContain("smoke.pylon.operator_closeout")
+    expect(bodies.find((body) => (body as { jobKind?: unknown }).jobKind === "validation")).toMatchObject({
+      acceptanceCriteriaRefs: ["acceptance.public.pylon_runtime_gate.bounded_fixture_test_passes"],
+      codingAssignment: {
+        runtimeGate: {
+          fixtureRef: "fixture.public.pylon.codex_runtime.sum_repair.v1",
+          schema: "openagents.pylon.runtime_gate.v0.3",
+        },
+      },
+      resultExpectationRefs: ["result.public.pylon_runtime_gate.fixture_repair_passed"],
+      taskRefs: ["task.public.pylon_runtime_gate.fixture_repair"],
+    })
     expect(paths).toEqual([
       "POST /api/pylons/register",
       "POST /api/pylons/pylon.test.live_smoke/heartbeat",

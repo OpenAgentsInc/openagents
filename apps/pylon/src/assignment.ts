@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs"
-import { readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { join } from "node:path"
 import { createHash } from "node:crypto"
 import type { BootstrapSummary } from "./bootstrap"
 import { createSignedHeaders } from "./presence"
@@ -117,6 +118,11 @@ type AssignmentStore = {
 
 type JsonRecord = Record<string, unknown>
 type AutopilotCodingAssignmentPayload = Readonly<Record<string, unknown>>
+type RuntimeGatePayload = Readonly<{
+  agentKind: "codex_cli_or_fixture"
+  fixtureRef: "fixture.public.pylon.codex_runtime.sum_repair.v1"
+  schema: "openagents.pylon.runtime_gate.v0.3"
+}>
 type PublicPylonAssignmentProjection = Readonly<{
   assignmentRef?: unknown
   codingAssignment?: unknown
@@ -132,6 +138,141 @@ function stableRef(prefix: string, value: string) {
 
 function safeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function runtimeGatePayloadFrom(codingAssignment: unknown): RuntimeGatePayload | null {
+  const runtimeGate = (codingAssignment as { runtimeGate?: unknown } | null)?.runtimeGate
+  if (runtimeGate === null || typeof runtimeGate !== "object") return null
+  const payload = runtimeGate as RuntimeGatePayload
+  return (
+    payload.schema === "openagents.pylon.runtime_gate.v0.3" &&
+    payload.agentKind === "codex_cli_or_fixture" &&
+    payload.fixtureRef === "fixture.public.pylon.codex_runtime.sum_repair.v1"
+  )
+    ? payload
+    : null
+}
+
+async function runCommand(input: {
+  args: string[]
+  cwd: string
+}): Promise<{ exitCode: number; stderrBytes: number; stdoutBytes: number }> {
+  const proc = Bun.spawn(input.args, {
+    cwd: input.cwd,
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).arrayBuffer(),
+    new Response(proc.stderr).arrayBuffer(),
+    proc.exited,
+  ])
+
+  return {
+    exitCode,
+    stderrBytes: stderr.byteLength,
+    stdoutBytes: stdout.byteLength,
+  }
+}
+
+async function executeRuntimeGate(
+  state: PylonLocalState,
+  lease: PylonAssignmentLease,
+  now: Date,
+) {
+  const runtimeGate = runtimeGatePayloadFrom(lease.codingAssignment)
+
+  if (runtimeGate === null) {
+    return null
+  }
+
+  const workspaceRef = stableRef("workspace.pylon.runtime_gate", lease.leaseRef)
+  const workspace = join(state.paths.cache, "runtime-gates", workspaceRef)
+
+  await mkdir(workspace, { recursive: true })
+  await writeFile(
+    join(workspace, "package.json"),
+    `${JSON.stringify({
+      private: true,
+      scripts: {
+        test: "bun test sum.test.ts",
+      },
+      type: "module",
+    }, null, 2)}\n`,
+  )
+  await writeFile(
+    join(workspace, "sum.ts"),
+    "export const sum = (left: number, right: number) => left - right\n",
+  )
+  await writeFile(
+    join(workspace, "sum.test.ts"),
+    [
+      'import { describe, expect, test } from "bun:test"',
+      'import { sum } from "./sum"',
+      "",
+      'describe("sum fixture", () => {',
+      '  test("adds two numbers", () => {',
+      "    expect(sum(2, 3)).toBe(5)",
+      "  })",
+      "})",
+      "",
+    ].join("\n"),
+  )
+  await writeFile(
+    join(workspace, "sum.ts"),
+    "export const sum = (left: number, right: number) => left + right\n",
+  )
+
+  const command = await runCommand({
+    args: ["bun", "test", "sum.test.ts"],
+    cwd: workspace,
+  })
+  const commandRef = stableRef(
+    "command.pylon.runtime_gate.bun_test",
+    `${lease.leaseRef}:${command.exitCode}:${command.stdoutBytes}:${command.stderrBytes}`,
+  )
+  const runRef = stableRef(
+    "run.pylon.runtime_gate",
+    `${lease.leaseRef}:${runtimeGate.fixtureRef}:${now.toISOString()}`,
+  )
+  const artifactRef = stableRef(
+    "artifact.pylon.runtime_gate.fixture_patch",
+    `${lease.assignmentRef}:${runtimeGate.fixtureRef}:sum_plus`,
+  )
+  const proofRef = stableRef(
+    "proof.pylon.runtime_gate.test_passed",
+    `${artifactRef}:${commandRef}`,
+  )
+
+  if (command.exitCode !== 0) {
+    return {
+      artifactRefs: [artifactRef],
+      blockerRefs: ["blocker.assignment.runtime_gate_test_failed"],
+      buildRefs: [commandRef],
+      message: "Bounded runtime gate fixture repair failed its public-safe test command.",
+      previewRefs: [workspaceRef],
+      proofRefs: [proofRef],
+      resultRefs: ["result.public.pylon_runtime_gate.failed"],
+      runRefs: [runRef],
+      status: "rejected" as const,
+      summaryRefs: ["summary.public.pylon_runtime_gate.fixture_repair_failed"],
+      testRefs: [commandRef],
+    }
+  }
+
+  return {
+    artifactRefs: [artifactRef],
+    blockerRefs: [],
+    buildRefs: [commandRef],
+    message: "Bounded runtime gate fixture repair executed and verified by the local Pylon runtime.",
+    previewRefs: [workspaceRef],
+    proofRefs: [proofRef],
+    resultRefs: ["result.public.pylon_runtime_gate.fixture_repair_passed"],
+    runRefs: [runRef],
+    status: "accepted" as const,
+    summaryRefs: ["summary.public.pylon_runtime_gate.fixture_repair_passed"],
+    testRefs: [commandRef],
+  }
 }
 
 async function loadAssignmentStore(state: PylonLocalState): Promise<AssignmentStore> {
@@ -506,18 +647,21 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     return { ok: false, acceptance }
   }
 
-  const observedAt = (options.now?.() ?? new Date()).toISOString()
-  const artifactRef = stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)
-  const proofRef = stableRef("assignment.proof", `${lease.leaseRef}:${artifactRef}`)
+  const state = await ensurePylonLocalState(summary)
+  const observedAtDate = options.now?.() ?? new Date()
+  const observedAt = observedAtDate.toISOString()
+  const runtimeGate = await executeRuntimeGate(state, lease, observedAtDate)
+  const artifactRefs = runtimeGate?.artifactRefs ?? [stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)]
+  const proofRefs = runtimeGate?.proofRefs ?? [stableRef("assignment.proof", `${lease.leaseRef}:${artifactRefs[0]}`)]
   const progress: AssignmentProgress = {
     schema: "openagents.pylon.assignment_progress.v0.3",
     assignmentRef: lease.assignmentRef,
     leaseRef: lease.leaseRef,
     sequence: 1,
     status: "proof-ready",
-    message: "No-spend assignment executed in bounded local Pylon runtime.",
-    artifactRefs: [artifactRef],
-    proofRefs: [proofRef],
+    message: runtimeGate?.message ?? "No-spend assignment executed in bounded local Pylon runtime.",
+    artifactRefs,
+    proofRefs,
     observedAt,
   }
   let progressReceipt: { progressRef: string }
@@ -527,10 +671,10 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     artifactReceipt = await submitAssignmentArtifacts(
       summary,
       {
-        artifactRefs: [artifactRef],
+        artifactRefs,
         assignmentRef: lease.assignmentRef,
         leaseRef: lease.leaseRef,
-        proofRefs: [proofRef],
+        proofRefs,
       },
       options,
     )
@@ -566,31 +710,40 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     schema: "openagents.pylon.assignment_closeout.v0.3",
     assignmentRef: lease.assignmentRef,
     leaseRef: lease.leaseRef,
-    status: "accepted",
+    status: runtimeGate?.status ?? "accepted",
     paymentMode: "no-spend",
     settlementState: "not_applicable",
     payoutClaimAllowed: false,
-    artifactRefs: [artifactRef],
-    blockerRefs: [],
-    buildRefs: [stableRef("assignment.build.not_required", lease.leaseRef)],
+    artifactRefs,
+    blockerRefs: runtimeGate?.blockerRefs ?? [],
+    buildRefs: runtimeGate?.buildRefs ?? [stableRef("assignment.build.not_required", lease.leaseRef)],
     closeoutRefs: [stableRef("assignment.closeout.summary", lease.leaseRef)],
-    previewRefs: [stableRef("assignment.preview.not_required", lease.leaseRef)],
-    proofRefs: [proofRef],
+    previewRefs: runtimeGate?.previewRefs ?? [stableRef("assignment.preview.not_required", lease.leaseRef)],
+    proofRefs,
     receiptRefs: [
       acceptance.statusRef,
       progressReceipt.progressRef,
       ...(artifactReceipt === null ? [] : [artifactReceipt.artifactRef]),
+      ...(runtimeGate?.runRefs ?? []),
       ...psionicCloseoutReceiptRefs(lease, options),
     ],
-    resultRefs: [stableRef("assignment.result.public_safe", lease.assignmentRef)],
-    summaryRefs: [stableRef("assignment.summary.public_safe", lease.assignmentRef)],
-    testRefs: [stableRef("assignment.test.not_required", lease.leaseRef)],
+    resultRefs: runtimeGate?.resultRefs ?? [stableRef("assignment.result.public_safe", lease.assignmentRef)],
+    summaryRefs: runtimeGate?.summaryRefs ?? [stableRef("assignment.summary.public_safe", lease.assignmentRef)],
+    testRefs: runtimeGate?.testRefs ?? [stableRef("assignment.test.not_required", lease.leaseRef)],
     redacted: true,
     completedAt: observedAt,
   }
   assertPublicProjectionSafe(closeout)
   const closeoutReceipt = await submitAssignmentCloseout(summary, closeout, options)
-  return { ok: true, lease, acceptance, progress, closeout, progressReceipt, closeoutReceipt }
+  return {
+    ok: closeout.status === "accepted",
+    lease,
+    acceptance,
+    progress,
+    closeout,
+    progressReceipt,
+    closeoutReceipt,
+  }
 }
 
 function psionicAdmissionFromCapabilityRefs(capabilityRefs: string[]): PsionicQwenModelAdmission {
