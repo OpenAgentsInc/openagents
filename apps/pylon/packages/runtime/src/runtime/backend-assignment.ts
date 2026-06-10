@@ -3,14 +3,23 @@ import { AppleFmBackendError, makeAppleFmClient, type AppleFmPlainTextCompletion
 import { APPLE_FM_BACKEND_KIND } from "../backends/apple-fm/contract";
 import { GeminiClientError, makeGeminiClient, type GeminiCompleteResult } from "../backends/gemini/client";
 import { GEMINI_BACKEND_KIND } from "../backends/gemini/contract";
+import { makePsionicQwenClient, PsionicQwenClientError, type PsionicQwenCompleteResult } from "../backends/psionic-qwen/client";
+import { PSIONIC_QWEN_BACKEND_KIND } from "../backends/psionic-qwen/contract";
 import {
   assignmentSelectsGeminiBackend,
+  assignmentSelectsPsionicQwenBackend,
   requireAppleFmAssignmentBackend,
   requireGeminiAssignmentBackend,
+  requirePsionicQwenAssignmentBackend,
   selectedAssignmentBackendProfileId,
   type ProbeRunAssignment,
 } from "../contracts/assignment";
 import { type AppleFmBackendAvailabilityReceipt, type AppleFmBackendFailureReceipt } from "../backends/apple-fm/receipts";
+import {
+  type PsionicQwenAvailabilityReceipt,
+  type PsionicQwenFailureReceipt,
+  type PsionicQwenTranscriptReceipt,
+} from "../backends/psionic-qwen/receipts";
 import {
   authorizeRunnerForAssignment,
   type ProbeRunnerAssignmentProof,
@@ -34,7 +43,7 @@ export const ProbeBackendRunEvent = S.Struct({
   kind: S.Literals(["probe_backend_run_started", "probe_backend_run_finished", "probe_backend_run_failed"]),
   assignmentId: S.String,
   runnerSessionId: S.String,
-  backendKind: S.Literals([APPLE_FM_BACKEND_KIND, GEMINI_BACKEND_KIND]),
+  backendKind: S.Literals([APPLE_FM_BACKEND_KIND, GEMINI_BACKEND_KIND, PSIONIC_QWEN_BACKEND_KIND]),
   profileId: S.String,
   model: S.String,
   observedAt: S.String,
@@ -56,10 +65,10 @@ export interface ProbeBackendAssignmentRunInput {
 export interface ProbeBackendAssignmentRunResult {
   readonly assignmentId: string;
   readonly runnerSessionId: string;
-  readonly backendKind: typeof APPLE_FM_BACKEND_KIND | typeof GEMINI_BACKEND_KIND;
+  readonly backendKind: typeof APPLE_FM_BACKEND_KIND | typeof GEMINI_BACKEND_KIND | typeof PSIONIC_QWEN_BACKEND_KIND;
   readonly profileId: string;
   readonly authRequired: false;
-  readonly completion: AppleFmPlainTextCompletion | GeminiCompleteResult;
+  readonly completion: AppleFmPlainTextCompletion | GeminiCompleteResult | PsionicQwenCompleteResult;
   readonly events: ReadonlyArray<ProbeBackendRunEvent>;
 }
 
@@ -81,7 +90,15 @@ export class ProbeBackendAssignmentError extends S.TaggedErrorClass<ProbeBackend
 export function runProbeBackendAssignment(
   input: ProbeBackendAssignmentRunInput,
 ): Effect.Effect<ProbeBackendAssignmentRunResult, ProbeBackendAssignmentRunError> {
-  return assignmentSelectsGeminiBackend(input.assignment) ? runGeminiBackendAssignment(input) : runAppleFmBackendAssignment(input);
+  if (assignmentSelectsGeminiBackend(input.assignment)) {
+    return runGeminiBackendAssignment(input);
+  }
+
+  if (assignmentSelectsPsionicQwenBackend(input.assignment)) {
+    return runPsionicQwenBackendAssignment(input);
+  }
+
+  return runAppleFmBackendAssignment(input);
 }
 
 function runAppleFmBackendAssignment(
@@ -266,6 +283,114 @@ function runGeminiBackendAssignment(
   });
 }
 
+function runPsionicQwenBackendAssignment(
+  input: ProbeBackendAssignmentRunInput,
+): Effect.Effect<ProbeBackendAssignmentRunResult, ProbeBackendAssignmentRunError> {
+  return Effect.gen(function* () {
+    yield* authorizeRunnerForAssignment(input.runner, input.proof, input.assignment, input.now);
+    const backend = yield* requirePsionicQwenAssignmentBackend(input.assignment).pipe(
+      Effect.mapError(
+        (error) =>
+          new ProbeBackendAssignmentError({
+            reason: error.reason,
+            events: [],
+          }),
+      ),
+    );
+    const client = yield* makePsionicQwenClient({
+      profileId: selectedAssignmentBackendProfileId(backend),
+      explicitBaseUrl: input.trustedBackendBaseUrl,
+      env: input.env,
+      fetch: input.fetch,
+      now: input.now,
+    }).pipe(
+      Effect.mapError(
+        (error) =>
+          new ProbeBackendAssignmentError({
+            reason: error.reason,
+            events: [],
+          }),
+      ),
+    );
+    const observedAt = (input.now ?? new Date()).toISOString();
+    const started = backendEvent({
+      kind: "probe_backend_run_started",
+      assignment: input.assignment,
+      backendKind: PSIONIC_QWEN_BACKEND_KIND,
+      profileId: client.profile.id,
+      model: client.profile.model,
+      observedAt,
+    });
+    const readiness = yield* client.doctor();
+
+    if (!readiness.ready) {
+      const failed = backendEvent({
+        kind: "probe_backend_run_failed",
+        assignment: input.assignment,
+        backendKind: PSIONIC_QWEN_BACKEND_KIND,
+        profileId: client.profile.id,
+        model: client.profile.model,
+        observedAt,
+        receipt: readiness.receipt,
+      });
+
+      return yield* Effect.fail(
+        new ProbeBackendAssignmentError({
+          reason: readiness.message ?? `Psionic Qwen backend is ${readiness.status}`,
+          receipt: readiness.receipt,
+          events: [started, failed],
+        }),
+      );
+    }
+
+    const completion = yield* client.complete({
+      request: makeProbeLlmRequest({
+        model: { provider: "psionic", model: client.profile.model },
+        prompt: input.assignment.goal,
+        generation: { maxTokens: 1024, temperature: 0 },
+      }),
+      maxModelRoundTrips: 1,
+    }).pipe(
+      Effect.mapError((error: PsionicQwenClientError) => {
+        const failed = backendEvent({
+          kind: "probe_backend_run_failed",
+          assignment: input.assignment,
+          backendKind: PSIONIC_QWEN_BACKEND_KIND,
+          profileId: client.profile.id,
+          model: client.profile.model,
+          observedAt,
+          receipt: error.receipt,
+        });
+
+        return new ProbeBackendAssignmentError({
+          reason: error.reason,
+          receipt: error.receipt,
+          events: [started, failed],
+        });
+      }),
+    );
+    const finished = backendEvent({
+      kind: "probe_backend_run_finished",
+      assignment: input.assignment,
+      backendKind: PSIONIC_QWEN_BACKEND_KIND,
+      profileId: client.profile.id,
+      model: client.profile.model,
+      observedAt,
+      receipt: completion.receipt,
+    });
+
+    return {
+      assignmentId: input.assignment.assignmentId,
+      runnerSessionId: input.assignment.runnerSessionId,
+      backendKind: PSIONIC_QWEN_BACKEND_KIND,
+      profileId: client.profile.id,
+      authRequired: false,
+      completion,
+      events: [started, finished],
+    };
+  });
+}
+
 function recordAssignmentAppleFmTokenUsage(
   input: ProbeBackendAssignmentRunInput,
   completion: AppleFmPlainTextCompletion,
@@ -318,7 +443,7 @@ function recordAssignmentGeminiTokenUsage(
 function backendEvent(input: {
   readonly kind: ProbeBackendRunEvent["kind"];
   readonly assignment: ProbeRunAssignment;
-  readonly backendKind: typeof APPLE_FM_BACKEND_KIND | typeof GEMINI_BACKEND_KIND;
+  readonly backendKind: typeof APPLE_FM_BACKEND_KIND | typeof GEMINI_BACKEND_KIND | typeof PSIONIC_QWEN_BACKEND_KIND;
   readonly profileId: string;
   readonly model: string;
   readonly observedAt: string;
@@ -326,7 +451,10 @@ function backendEvent(input: {
     | AppleFmBackendAvailabilityReceipt
     | AppleFmBackendFailureReceipt
     | AppleFmPlainTextCompletion["receipt"]
-    | GeminiCompleteResult["receipt"];
+    | GeminiCompleteResult["receipt"]
+    | PsionicQwenAvailabilityReceipt
+    | PsionicQwenFailureReceipt
+    | PsionicQwenTranscriptReceipt;
 }): ProbeBackendRunEvent {
   return {
     kind: input.kind,

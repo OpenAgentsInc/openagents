@@ -28,6 +28,8 @@ pylon runtime backend gemini smoke
 pylon backend gemini complete --prompt "Summarize the current task."
 pylon backend psionic doctor --json
 pylon psionic doctor --json
+pylon psionic smoke --json
+bun run smoke:psionic-qwen -- --base-url http://127.0.0.1:8080
 pylon psionic install --channel rc --manifest-url <release-manifest-url> --yes
 pylon psionic models install qwen35-0_8b-q8_0 --manifest-url <model-manifest-url> --yes
 pylon apple-fm status
@@ -110,9 +112,11 @@ The runtime includes:
   runner identity, and OpenAgents product surface grant/account contracts.
 - Psionic Qwen3.5 attach-only backend discovery and doctor support with
   `PYLON_PSIONIC_BASE_URL` / `PROBE_PSIONIC_BASE_URL`, 0.8B and 2B model-row
-  refs, and redacted availability receipts. See
-  `docs/2026-06-09-pylon-qwen35-local-inference-roadmap.md`; this is not a
-  training, bundled-model, startup auto-download, or paid-capacity claim.
+  refs, assignment-runner admission, typed unattached refusal, and redacted
+  availability/transcript/tool-call receipts. See
+  `docs/2026-06-09-pylon-qwen35-local-inference-roadmap.md` and
+  `docs/psionic-qwen-live-smoke.md`; this is not a training, bundled-model,
+  startup auto-download, or paid-capacity claim.
 
 ## GEPA Capability Envelope
 

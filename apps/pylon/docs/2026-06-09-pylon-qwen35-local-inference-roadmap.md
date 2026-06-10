@@ -8,8 +8,9 @@ profile and doctor surface are implemented for issue #13. The
 OpenAI-compatible chat/completions client, tool-call loop, streaming
 `delta.tool_calls` parser, round-trip guard, and redacted transcript/tool-call
 receipts are implemented for issue #11. The 0.8B/2B model-row admission and
-selection gates are implemented for issue #12. Installer flow and assignment
-gating remain tracked separately.
+selection gates are implemented for issue #12. The #4665 pass adds
+assignment-runner routing for `psionic_qwen35`, typed unattached refusal, and
+the committed live smoke/runbook in `docs/psionic-qwen-live-smoke.md`.
 
 ## Source Material Read
 

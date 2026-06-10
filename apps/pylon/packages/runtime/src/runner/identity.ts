@@ -1,10 +1,12 @@
 import { Effect, Schema as S } from "effect";
 import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract";
 import { PROBE_GEMINI_BACKEND_CAPABILITY } from "../backends/gemini/contract";
+import { PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY } from "../backends/psionic-qwen/contract";
 import {
   assignmentRequiresProviderGrant,
   assignmentSelectsAppleFmBackend,
   assignmentSelectsGeminiBackend,
+  assignmentSelectsPsionicQwenBackend,
   validateProbeAssignmentBlueprintScope,
   validateProbeAssignmentProjection,
   type ProbeRunAssignment,
@@ -22,6 +24,7 @@ export const ProbeRunnerKind = S.Literals(["local", "shc", "pylon", "sandbox"]);
 export type ProbeRunnerKind = typeof ProbeRunnerKind.Type;
 export { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract";
 export { PROBE_GEMINI_BACKEND_CAPABILITY } from "../backends/gemini/contract";
+export { PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY } from "../backends/psionic-qwen/contract";
 
 export const ProbeRunnerIdentity = S.Struct({
   runnerId: S.String,
@@ -148,6 +151,10 @@ export function requiredRunnerCapabilitiesForAssignment(assignment: ProbeRunAssi
 
   if (assignmentSelectsGeminiBackend(assignment)) {
     capabilities.push(PROBE_GEMINI_BACKEND_CAPABILITY);
+  }
+
+  if (assignmentSelectsPsionicQwenBackend(assignment)) {
+    capabilities.push(PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY);
   }
 
   return capabilities;
