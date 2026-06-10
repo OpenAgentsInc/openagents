@@ -198,6 +198,17 @@ describe('app link routing', () => {
     expect(forumCommands[0]?.args).toEqual({
       href: 'https://openagents.com/forum/t/1f4e8c11-2330-403f-aa4b-82dd1a673e9f',
     })
+
+    const [, trainingRunsCommands] = update(
+      LoggedIn.init(ChatRoute(), authWithTeam),
+      internalRequest('/training/runs/run.cs336.a1.demo'),
+    )
+
+    expect(trainingRunsCommands).toHaveLength(1)
+    expect(trainingRunsCommands[0]?.name).toBe('LoadExternal')
+    expect(trainingRunsCommands[0]?.args).toEqual({
+      href: 'https://openagents.com/training/runs/run.cs336.a1.demo',
+    })
   })
 
   test('loads public API and agent document links through document navigation', () => {

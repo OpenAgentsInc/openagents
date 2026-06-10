@@ -115,7 +115,9 @@ const shouldLoadDocument = (pathname: string): boolean =>
   pathname === '/blog' ||
   pathname.startsWith('/blog/') ||
   pathname === '/forum' ||
-  pathname.startsWith('/forum/')
+  pathname.startsWith('/forum/') ||
+  pathname === '/training/runs' ||
+  pathname.startsWith('/training/runs/')
 
 type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
