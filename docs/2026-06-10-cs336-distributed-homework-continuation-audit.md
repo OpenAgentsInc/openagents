@@ -254,8 +254,10 @@ non-students); students submit (model-size, data, compute) configs under an
 API-key budget, get loss results back, and fit scaling laws (IsoFLOP
 curves) to pick the best model under a fixed budget.
 
-**Psionic status:** nothing ported yet, and the port surface is small
-(scaling-law fitting + a run planner). The big work is not the math — it is
+**Psionic status:** the analysis core landed 2026-06-10
+(`psionic#1103`, lane `psion_cs336_a3_scaling_reference_v1`: IsoFLOP sweep
+planner + Chinchilla approach-2 fit with synthetic-recovery proof). The
+big work is not the math — it is
 that **our worker training-run authority becomes the training API**, and
 the Pylon network replaces Stanford's cluster. Scaling sweeps are
 embarrassingly parallel small runs at varied (N, D) — the single
@@ -277,8 +279,11 @@ exact line dedup, MinHash document dedup. The leaderboard twist: students
 train a **fixed** staff model on their filtered data — data quality is
 measured by downstream eval delta, holding training constant.
 
-**Psionic status:** not ported (psionic-data owns the A1 BPE only). This
-assignment is the seed of the owned data refinery, and it overlaps two
+**Psionic status:** the deterministic core landed 2026-06-10
+(`psionic#1102`, lane `psion_cs336_a4_data_refinery_reference_v1`: PII
+masking, Gopher rules, exact + MinHash dedup; HTML extraction and
+model-backed classifiers remain planned). This assignment is the seed of
+the owned data refinery, and it overlaps two
 things already in motion: the data-market stream (epic 1: #4643–#4645 —
 the redaction tool and NIP-DS sale path) and Episode 215's promise to pay
 for data work. The A4 port gives the data market its quality machinery:
@@ -302,9 +307,11 @@ group-normalized rewards, policy-gradient loss, microbatch aggregation,
 parsing, per-instance DPO loss. GRPO-style reasoning RL on math tasks, with
 an optional safety/DPO supplement.
 
-**Psionic status:** not ported as a CS336 lane (adjacent ambitions exist;
-the `reasoning-from-scratch`, `tinker-cookbook`, and Nous reference lanes
-cover the same ground). The network fit is strong: **GRPO rollout
+**Psionic status:** the math core landed 2026-06-10 (`psionic#1101`,
+lane `psion_cs336_a5_alignment_reference_v1`: GRPO/GSPO losses,
+group-normalized rewards, aggregation, DPO, tokenization layout, bounded
+eval parsers; model-coupled execution remains with the training
+boundary). The network fit is strong: **GRPO rollout
 generation is pure inference** — every pylon that can serve kind 5050 can
 generate rollouts; reward scoring (GSM8K answer checking) is cheap
 deterministic CPU work; only the policy-gradient update needs the training
