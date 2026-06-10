@@ -1,9 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import {
-  ArtanisMindGatewayCandidates,
-  artanisMindComplete,
-} from './artanis-mind'
+import { artanisMindComplete } from './artanis-mind'
 
 const geminiOk = JSON.stringify({
   candidates: [{ content: { parts: [{ text: 'verify capability and heartbeat' }] } }],
@@ -27,7 +24,7 @@ describe('artanis cloud mind', () => {
     expect('error' in result).toBe(false)
     if ('error' in result) return
     expect(result.servedVia).toBe('cloudflare_ai_gateway')
-    expect(result.gatewayId).toBe(ArtanisMindGatewayCandidates[0])
+    expect(result.gatewayId).toBe('openagents-ai-gateway')
     expect(result.text).toContain('verify')
   })
 

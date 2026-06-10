@@ -14,12 +14,7 @@
 export const ArtanisMindModelDefault = 'gemini-2.5-flash'
 export const ArtanisMindGatewayProvider = 'google-ai-studio'
 export const ArtanisMindAccountId = '54fac8b750a29fdda9f2fa0f0afaed90'
-export const ArtanisMindGatewayCandidates = [
-  'openagents',
-  'openagents-autopilot',
-  'artanis',
-  'openagents-ai',
-] as const
+export const ArtanisMindGatewayCandidates = ['openagents-ai-gateway'] as const
 
 export type ArtanisMindServedVia =
   | 'cloudflare_ai_gateway'
@@ -62,6 +57,7 @@ export const artanisMindComplete = async (input: Readonly<{
   apiKey: string
   fetchImpl?: typeof fetch
   gatewayId?: string | undefined
+  gatewayToken?: string | undefined
   model?: string | undefined
   prompt: string
   system: string
@@ -81,6 +77,9 @@ export const artanisMindComplete = async (input: Readonly<{
       headers: {
         'content-type': 'application/json',
         'x-goog-api-key': input.apiKey,
+        ...(input.gatewayToken === undefined
+          ? {}
+          : { 'cf-aig-authorization': `Bearer ${input.gatewayToken}` }),
       },
       method: 'POST',
     })

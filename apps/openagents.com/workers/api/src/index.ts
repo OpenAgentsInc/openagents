@@ -5785,9 +5785,13 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         const prompt =
           body.prompt ??
           'State in one sentence what the Artanis administrator should verify before dispatching executor-trace work to an idle Pylon.'
+        const gatewayToken = (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN
         const result = await artanisMindComplete({
           apiKey,
           ...(body.gatewayId === undefined ? {} : { gatewayId: body.gatewayId }),
+          ...(gatewayToken === undefined || gatewayToken === ''
+            ? {}
+            : { gatewayToken }),
           ...(body.model === undefined ? {} : { model: body.model }),
           prompt,
           system: ArtanisMindSmokeSystem,
@@ -5799,34 +5803,42 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         const artanisToken = (env as { ARTANIS_AGENT_TOKEN?: string })
           .ARTANIS_AGENT_TOKEN
         if (body.forumPost === true && artanisToken !== undefined) {
-          const post = await fetch(
-            'https://openagents.com/api/forum/forums/tassadar/topics',
-            {
-              body: JSON.stringify({
-                bodyText: [
-                  'Automated update from the Artanis cloud mind running inside the OpenAgents worker.',
-                  `Inference served via ${result.servedVia}${result.gatewayId === null ? '' : ` (gateway ${result.gatewayId})`}, model ${result.model}.`,
-                  `Decision sample: ${result.text.slice(0, 400)}`,
-                  'Boundary: the mind proposes; typed schemas validate; approval gates hold. - Artanis (automated)',
-                ].join('\n\n'),
-                title: `Artanis cloud mind production smoke ${currentIsoTimestamp().slice(0, 16)}`,
-              }),
-              headers: {
-                Authorization: `Bearer ${artanisToken}`,
-                'Content-Type': 'application/json',
-                'Idempotency-Key': `artanis-mind-smoke-${currentIsoTimestamp().slice(0, 13)}`,
+          try {
+            const post = await fetch(
+              `${new URL(request.url).origin}/api/forum/forums/tassadar/topics`,
+              {
+                body: JSON.stringify({
+                  bodyText: [
+                    'Automated update from the Artanis cloud mind running inside the OpenAgents worker.',
+                    `Inference served via ${result.servedVia}${result.gatewayId === null ? '' : ` (gateway ${result.gatewayId})`}, model ${result.model}.`,
+                    `Decision sample: ${result.text.slice(0, 400)}`,
+                    'Boundary: the mind proposes; typed schemas validate; approval gates hold. - Artanis (automated)',
+                  ].join('\n\n'),
+                  title: `Artanis cloud mind production smoke ${currentIsoTimestamp().slice(0, 16)}`,
+                }),
+                headers: {
+                  Authorization: `Bearer ${artanisToken}`,
+                  'Content-Type': 'application/json',
+                  'Idempotency-Key': `artanis-mind-smoke-${currentIsoTimestamp().slice(0, 13)}`,
+                },
+                method: 'POST',
               },
-              method: 'POST',
-            },
-          )
-          const payload = (await post.json()) as {
-            error?: string
-            topic?: { topicId?: string }
+            )
+            const payload = (await post.json()) as {
+              error?: string
+              topic?: { topicId?: string }
+            }
+            forumPost =
+              payload.topic?.topicId === undefined
+                ? { error: payload.error ?? `status_${post.status}` }
+                : { topicId: payload.topic.topicId }
+          } catch (error) {
+            forumPost = {
+              error: `forum_post_failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`.slice(0, 160),
+            }
           }
-          forumPost =
-            payload.topic?.topicId === undefined
-              ? { error: payload.error ?? `status_${post.status}` }
-              : { topicId: payload.topic.topicId }
         }
         return noStoreJsonResponse({
           forumPost,
