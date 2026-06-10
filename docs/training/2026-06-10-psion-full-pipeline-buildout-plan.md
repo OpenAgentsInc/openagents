@@ -22,7 +22,10 @@ work items go to the psionic tracker; monorepo work items extend the
 ## 1. Why This Plan Exists
 
 The CS336 program gives us the curriculum: A1–A5 ported into owned Rust and
-run as paid, verified homework. What it does not give us is the
+run as paid, verified work. ("Homework" was always a tongue-in-cheek CS336
+reference — we are doing the course's homework — and it stays scoped to those
+CS336 lanes. Everywhere else this plan calls the dispatched units what they
+are: real paid work.) What it does not give us is the
 *operational* shape of a real training organization — the part the smol
 playbook documents bluntly: 100+ ablations consuming 161k of 437k total GPU
 hours, a full restart at 1T tokens from a tensor-parallel seeding bug,
@@ -44,7 +47,7 @@ practice and what we still lack:
    a checklist of failure modes (throughput collapse, loss spikes, seeding
    bugs). Our network adds new ones (volunteer churn, heterogeneous
    numerics). The verification economy is our native answer, but it has to
-   be wired into every stage, not just homework matrices.
+   be wired into every stage, not just committed training matrices.
 
 One structural advantage is worth stating once, without hype: the playbook
 team needed a fixed 384-H100 Slurm reservation and a spare node. Our
@@ -169,7 +172,7 @@ time, where latency can be traded for capacity and cost. The market
 already prices this: frontier labs sell batch APIs at ~50% discounts for
 24-hour turnaround.
 
-Training homework is the limiting case of latency-tolerant work, and that
+Training work is the limiting case of latency-tolerant work, and that
 has a capital-structure consequence the corpus has begun to quantify:
 when revenue is latency-tolerant, the *optimal hardware point shifts
 down*. Modeled facility economics show consumer-tier GPUs reaching
@@ -205,7 +208,7 @@ moves, and the training pipeline implements or feeds every one:
    This is why training work can be verified at ~1000× less than the cost
    of redoing it.
 3. **Downshift** — route verification to zero-floor supply. Validator
-   work as paid homework for weak devices (#4676) migrates dollars of
+   work as paid assignments for weak devices (#4676) migrates dollars of
    review into cents of replay.
 4. **Price** — classify outcomes by how cheaply and how soon correctness
    can be known, and route to the cheapest sufficient effort rung.
@@ -235,14 +238,14 @@ load can credibly curtail during rare stress hours* — and that mining
 proved the operating model: interruptible, mobile, indifferent to where
 its buyer lives. The strategic question is what else can run that way.
 
-Training homework on this pipeline is built to qualify. A sealed-window
+Training work on this pipeline is built to qualify. A sealed-window
 architecture with checkpoint-on-interrupt is curtailment-compatible by
 construction: stop the window, the prefix is the state, resume anywhere.
 The dispatch rule for any compatible watt — run accepted work if it beats
 the floor; else mine if positive; else curtail if grid value beats both;
 else idle — slots training windows in as a second floor above idle for
 CPU-rich, GPU-poor fleets: always available (we are our own first buyer
-of conformance runs, sweeps, and verification homework), always
+of conformance runs, sweeps, and verification work), always
 verifiable, therefore always payable without trust. Floors are not for
 getting rich per hour; they are for keeping a fleet alive, enrolled, and
 warm between higher-margin assignments — and for generating the
@@ -375,7 +378,7 @@ comparable receipts.
 
 **Monorepo side (owns dispatch + the ledger projection):**
 
-- Ablation runs as a homework kind: small fixed-budget training runs are
+- Ablation runs as a dispatched work kind: small fixed-budget training runs are
   exactly the A3-sweep shape (#4679) — embarrassingly parallel, cheap per
   cell, verifiable by seeded replication. The ablation system and the
   scaling-sweep system are one system with two report formats.
@@ -396,7 +399,7 @@ current corpus is a frozen bounded mixture (`psion_corpus_tokenized@v1`).
 A real ladder run needs tokens in the 10B–1T range depending on rung.
 Plan: build the refinery as a *pipeline over public crawl-class sources*
 (FineWeb-class English web, Stack-class code, FineMath-class math — all
-permissively available), processed as paid CPU homework on the long-tail
+permissively available), processed as paid CPU work on the long-tail
 fleet (WARC extraction, language ID, quality classification, MinHash dedup
 — the playbook's own stages, the course's own adapter surface). The
 monorepo dispatches shards and records receipts; psionic owns the
@@ -447,7 +450,7 @@ Bounded, because the playbook's advice is to *not* be clever here:
   decay when you decide you're done, match cosine performance — is the
   schedule shape that fits elastic capacity. Adopt as default after one
   confirming ablation; this also keeps every long run *resumable into a
-  longer run*, which compounds with the homework-window model.
+  longer run*, which compounds with the window-based dispatch model.
 - **Deferred explicitly:** MoE (load-balancing machinery, all-to-all
   traffic — the worst collective for weak interconnects, per the
   playbook's own measurements), Muon-class optimizers (promising,
@@ -474,7 +477,7 @@ marathon is an orchestration problem:
 actual-lane already does hardware qualification (GPU/memory/thermal/ECC
 checks), checkpoint/resume drills, and run-shape admission. The playbook
 adds: stress-test before launch (they found 2 throttling GPUs; we have
-device benchmark homework #4681 — same instrument, paid), automate evals
+device benchmark assignments, #4681 — same instrument, paid), automate evals
 on every checkpoint (psionic has checkpoint-eval decisions; the monorepo
 needs the projection), and config sanity gates.
 
@@ -549,11 +552,11 @@ SFT/DPO/GRPO CLI lanes, A5 alignment math, #4682); what's missing is the
 3. **Preference optimization:** DPO first (psionic's Bradley–Terry lane
    exists), APO-class variants by ablation later. Preference *data
    generation is inference, which the network sells*: strong-vs-weak pair
-   generation and on-policy grading are rollout homework — the same kind
+   generation and on-policy grading are rollout work — the same kind
    5050-class work A5 already defines.
 4. **RL/RLVR:** GRPO with verifier rewards is the network-native choice —
-   rollouts are paid inference homework, reward checking is deterministic
-   CPU homework, and only the update step needs the training boundary
+   rollouts are paid inference work, reward checking is deterministic
+   CPU work, and only the update step needs the training boundary
    (#4682's framing, confirmed by the playbook). One playbook warning
    adopted now: length-reward hacking is real; bring their overlong-
    completion penalty into the GRPO lane's reward shaping from day one.
@@ -584,7 +587,7 @@ more heterogeneous, which makes measurement *more* load-bearing, and we
 already decided to sell it as a product:
 
 - **Device-capability dataset (#4681) is the roofline program.** Benchmark
-  homework measures per-device matmul throughput, memory bandwidth,
+  assignments measure per-device matmul throughput, memory bandwidth,
   attention-kernel performance, and sustained-vs-burst thermals
   (playbook: one throttling GPU collapsed a 14-node collective — on a
   volunteer network, throttle detection must be continuous, and it
@@ -660,7 +663,7 @@ classes):
 | Device benchmarks | throughput probes | statistical_cross_check (same-class devices) |
 | Rollout generation (PO/RL) | inference | seeded_replication + reward-distribution checks |
 | Reward grading | verifier scoring | deterministic_recompute |
-| Executor homework | Tassadar traces | exact_trace_replay (#4684) |
+| Executor work | Tassadar traces | exact_trace_replay (#4684) |
 
 The aggregate-only-validation compromise from the April era is re-decided
 per class here, in writing, when #4674 lands — not inherited silently.
@@ -688,7 +691,7 @@ Phases, each gated by receipts, layered onto the existing issue set:
    operator-owned — dispatch *is* the rehearsal.
 3. **R2 rung (network pretraining):** contributor windows with
    freivalds_merkle verification and paid closeouts (#4676 weak-device
-   validator lane live); A3 sweeps (#4679) and A4 data homework (#4680)
+   validator lane live); A3 sweeps (#4679) and A4 data-refinery work (#4680)
    running as standing work classes; device-capability dataset (#4681)
    public. This rung is the honest green path for
    `pylon.first_real_model_training_run.v1`, and the first rung whose
@@ -696,17 +699,17 @@ Phases, each gated by receipts, layered onto the existing issue set:
    fallback.
 4. **R3 rung + post-training in anger:** instruct Psion with the full
    post-training arc (#4682 generalized beyond legal), preference-data
-   and rollout homework as standing inference work, leaderboards (#4683)
+   and rollout generation as standing inference work, leaderboards (#4683)
    spanning every stage — and the first rung where external-facing
    products (specialized models, fine-tuning, grader services) are
    realistic, under the no-external-dollar-no-demand-claim rule.
-5. **Continuous:** Tassadar exact-replay homework (#4684) runs alongside
+5. **Continuous:** Tassadar exact-replay work (#4684) runs alongside
    from the moment #4674 lands — it needs no training capability and is
    the always-available, verification-perfect floor workload; the
    `compute.tassadar_executor_poc.v1` promise resolves on its own track.
 
 Proposed new issues (to file after review, monorepo side unless noted):
-ablation-ledger projection + homework kind; durable checkpoint-seal
+ablation-ledger projection + dispatched work kind; durable checkpoint-seal
 storage in the window lifecycle; corpus-provenance receipts on the data
 rails; decontamination receipts; standby-Pylon dispatcher feature;
 vibe-test artifact in post-training closeouts; per-rung economics-gate
@@ -735,7 +738,7 @@ length-penalty reward shaping, remote checkpoint backup target.
   *their* measurements on *their* hardware; we cite them as priors to be
   replaced by our own receipts, never as our claims.
 - Tassadar/hybrid work stays behind its own disclosure flow; this plan
-  touches it only at the bundle-format seam and the #4684 homework class.
+  touches it only at the bundle-format seam and the #4684 work class.
 
 ## Sources
 

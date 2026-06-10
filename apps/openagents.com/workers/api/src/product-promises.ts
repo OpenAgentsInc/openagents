@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.8'
+export const PublicProductPromisesVersion = '2026-06-10.9'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1021,7 +1021,7 @@ export const publicProductPromisesDocument = () => {
       audience: ['contributor', 'operator', 'agent', 'public'],
       state: 'planned',
       claim:
-        'OpenAgents will operate a full owned LLM training pipeline — data refinery, ablation system, architecture derisking, marathon operations, post-training, and infrastructure measurement — as paid, verified homework on the Pylon network.',
+        'OpenAgents will operate a full owned LLM training pipeline — data refinery, ablation system, architecture derisking, marathon operations, post-training, and infrastructure measurement — as paid, verified work on the Pylon network.',
       safeCopy:
         'A written buildout plan exists (docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md) extending the CS336 program (#4673-#4684) with the Smol Training Playbook as operational reference; psionic holds bounded CS336 reference lanes and a retained tri-host pretraining rehearsal. No full pipeline stage is live as a broadly paid network workload.',
       unsafeCopy:
@@ -1049,7 +1049,7 @@ export const publicProductPromisesDocument = () => {
       claim:
         'Training decisions run through a receipted ablation system: one-delta manifests, a validated evaluation suite, and a public derisking ledger.',
       safeCopy:
-        'Psionic has a bounded ablation tool inside the actual-pretraining baseline bundle. The manifest-enforced one-change-at-a-time harness, the eval-suite reproduction gate, ablation runs as dispatched homework, and the public ablation ledger are planned.',
+        'Psionic has a bounded ablation tool inside the actual-pretraining baseline bundle. The manifest-enforced one-change-at-a-time harness, the eval-suite reproduction gate, ablation runs as dispatched paid work, and the public ablation ledger are planned.',
       unsafeCopy:
         'Do not claim training decisions are currently ablation-receipted, or cite the Smol Training Playbook’s measurements as OpenAgents results.',
       evidenceRefs: [
@@ -1062,7 +1062,7 @@ export const publicProductPromisesDocument = () => {
         'blocker.product_promises.ablation_ledger_projection_missing',
       ],
       verification:
-        'Gate zero: reproduce published scores for at least one open reference model through the owned eval harness with a receipt. Green requires the harness mechanically refusing multi-delta manifests, ablation cells dispatched and verified as homework (seeded replication), and a public derisking-ledger projection of baselines, deltas, and verdicts.',
+        'Gate zero: reproduce published scores for at least one open reference model through the owned eval harness with a receipt. Green requires the harness mechanically refusing multi-delta manifests, ablation cells dispatched and verified as paid assignments (seeded replication), and a public derisking-ledger projection of baselines, deltas, and verdicts.',
       authorityBoundary:
         'An ablation verdict is training-decision evidence only; it grants no capability claim, no public copy upgrade, and no dispatch or spend authority.',
     },
@@ -1073,9 +1073,9 @@ export const publicProductPromisesDocument = () => {
       audience: ['contributor', 'operator', 'public'],
       state: 'planned',
       claim:
-        'Pretraining corpora are produced by an owned data refinery over public crawl-class sources, processed as paid CPU homework with provenance and transform digests, mixture ablations, a multi-stage curriculum, decontamination receipts, and eval-delta payment for data quality.',
+        'Pretraining corpora are produced by an owned data refinery over public crawl-class sources, processed as paid CPU work with provenance and transform digests, mixture ablations, a multi-stage curriculum, decontamination receipts, and eval-delta payment for data quality.',
       safeCopy:
-        'The A4 deterministic refinery core landed in psionic (PII masking, Gopher quality rules, exact and MinHash dedup) and the live a4_eval_delta leaderboard serves an honest empty state. Psion’s current corpus is a frozen bounded mixture; crawl-scale acquisition, paid shard homework, corpus provenance receipts, decontamination receipts, and eval-delta payment remain planned.',
+        'The A4 deterministic refinery core landed in psionic (PII masking, Gopher quality rules, exact and MinHash dedup) and the live a4_eval_delta leaderboard serves an honest empty state. Psion’s current corpus is a frozen bounded mixture; crawl-scale acquisition, paid shard assignments, corpus provenance receipts, decontamination receipts, and eval-delta payment remain planned.',
       unsafeCopy:
         'Do not claim a crawl-scale receipted corpus exists, that contributors are currently paid for data-refinery work, or that data quality is paid on measured eval delta.',
       evidenceRefs: [
@@ -1089,7 +1089,7 @@ export const publicProductPromisesDocument = () => {
         'blocker.product_promises.eval_delta_payment_missing',
       ],
       verification:
-        'Green requires refinery shards dispatched as paid homework with deterministic-recompute verification, every shard carrying source-provenance and transform digests, mixture/annealing ablation receipts, decontamination receipts against the eval suite, and at least one eval-delta payment computed from a fixed reference model.',
+        'Green requires refinery shards dispatched as paid assignments with deterministic-recompute verification, every shard carrying source-provenance and transform digests, mixture/annealing ablation receipts, decontamination receipts against the eval suite, and at least one eval-delta payment computed from a fixed reference model.',
       authorityBoundary:
         'Refinery output is corpus material, not a dataset sale; the data-market promises govern selling, and privacy rules forbid publishing raw crawl or contributor content.',
     },
@@ -1152,11 +1152,11 @@ export const publicProductPromisesDocument = () => {
       audience: ['contributor', 'operator', 'agent'],
       state: 'planned',
       claim:
-        'Psion checkpoints receive a full post-training arc — mid-training, instruct SFT with an owned versioned chat template, preference optimization, and GRPO-class RL with verifier rewards and overlong-completion penalties — with rollout generation and reward grading as paid network homework and a vibe-test artifact gating each closeout.',
+        'Psion checkpoints receive a full post-training arc — mid-training, instruct SFT with an owned versioned chat template, preference optimization, and GRPO-class RL with verifier rewards and overlong-completion penalties — with rollout generation and reward grading as paid network work and a vibe-test artifact gating each closeout.',
       safeCopy:
-        'Psionic holds bounded lanes: legal SFT/DPO/GRPO CLI smokes and the CS336 A5 alignment reference math with committed tests. The general instruct lane, owned chat template with generation masking, preference-data and rollout homework, decontaminated post-training evals, and vibe-test closeout artifacts are planned. Hybrid reasoning modes are explicitly deferred.',
+        'Psionic holds bounded lanes: legal SFT/DPO/GRPO CLI smokes and the CS336 A5 alignment reference math with committed tests. The general instruct lane, owned chat template with generation masking, preference-data and rollout work kinds, decontaminated post-training evals, and vibe-test closeout artifacts are planned. Hybrid reasoning modes are explicitly deferred.',
       unsafeCopy:
-        'Do not claim instruct or reasoning Psion models exist, that post-training runs as paid homework, or that any fine-tuning service is live.',
+        'Do not claim instruct or reasoning Psion models exist, that post-training runs as paid network work, or that any fine-tuning service is live.',
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'https://github.com/OpenAgentsInc/openagents/issues/4682',
@@ -1164,11 +1164,11 @@ export const publicProductPromisesDocument = () => {
       ],
       blockerRefs: [
         'blocker.product_promises.instruct_sft_lane_missing',
-        'blocker.product_promises.preference_rollout_homework_missing',
+        'blocker.product_promises.preference_rollout_work_missing',
         'blocker.product_promises.vibe_test_artifact_missing',
       ],
       verification:
-        'Green requires one Psion checkpoint carried through mid-training, SFT, and at least one preference-optimization stage on the owned stack, with rollout/grading work dispatched and verified as homework, decontamination receipts, GRPO reward shaping including the overlong-completion penalty, and a reviewed vibe-test transcript artifact in the closeout.',
+        'Green requires one Psion checkpoint carried through mid-training, SFT, and at least one preference-optimization stage on the owned stack, with rollout/grading work dispatched and verified as paid assignments, decontamination receipts, GRPO reward shaping including the overlong-completion penalty, and a reviewed vibe-test transcript artifact in the closeout.',
       authorityBoundary:
         'Post-training receipts prove the scoped arc on the scoped checkpoint only; they are not a model-quality, buyer-demand, or service-availability claim.',
     },
@@ -1181,7 +1181,7 @@ export const publicProductPromisesDocument = () => {
       claim:
         'Every training-pipeline stage carries a named pluggable verification class — deterministic_recompute, seeded_replication, freivalds_merkle, statistical_cross_check, exact_trace_replay — routed to the cheapest sufficient supply, with weak devices as paid validators.',
       safeCopy:
-        'Psionic ships an exact_trace_replay reference implementation and the executor-trace homework wiring has passing no-spend smokes; the per-stage verification map is written in the pipeline plan. The Worker-side pluggable class registry, challenge queues, and the paid weak-device validator lane remain in flight (#4674, #4676), and the April-era aggregate-only validation compromise must be re-decided per class in writing.',
+        'Psionic ships an exact_trace_replay reference implementation and the executor-trace dispatch wiring has passing no-spend smokes; the per-stage verification map is written in the pipeline plan. The Worker-side pluggable class registry, challenge queues, and the paid weak-device validator lane remain in flight (#4674, #4676), and the April-era aggregate-only validation compromise must be re-decided per class in writing.',
       unsafeCopy:
         'Do not claim training work is currently verified end to end on paid assignments, or that validator work is currently earning contributors bitcoin.',
       evidenceRefs: [
@@ -1206,18 +1206,18 @@ export const publicProductPromisesDocument = () => {
       audience: ['contributor', 'operator', 'public'],
       state: 'planned',
       claim:
-        'Benchmark homework produces a public device-capability dataset across heterogeneous contributor hardware — matmul throughput, memory bandwidth, attention-kernel performance, sustained-versus-burst thermals — that honestly prices what each machine can earn.',
+        'Benchmark assignments produce a public device-capability dataset across heterogeneous contributor hardware — matmul throughput, memory bandwidth, attention-kernel performance, sustained-versus-burst thermals — that honestly prices what each machine can earn.',
       safeCopy:
-        'Capability envelopes, the live capacity funnel with dark-capacity reason codes, and psionic-collectives quantized collective benchmarking exist. The paid benchmark homework kind, statistical cross-check verification across same-class devices, and the public dataset projection are planned (#4681).',
+        'Capability envelopes, the live capacity funnel with dark-capacity reason codes, and psionic-collectives quantized collective benchmarking exist. The paid benchmark work kind, statistical cross-check verification across same-class devices, and the public dataset projection are planned (#4681).',
       unsafeCopy:
-        'Do not claim a public device-capability dataset exists, that benchmark homework currently pays, or quote per-device earning estimates without measured receipts.',
+        'Do not claim a public device-capability dataset exists, that benchmark work currently pays, or quote per-device earning estimates without measured receipts.',
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'route:/api/public/pylon-capacity-funnel',
         'https://github.com/OpenAgentsInc/openagents/issues/4681',
       ],
       blockerRefs: [
-        'blocker.product_promises.benchmark_homework_kind_missing',
+        'blocker.product_promises.benchmark_work_kind_missing',
         'blocker.product_promises.device_dataset_projection_missing',
       ],
       verification:
