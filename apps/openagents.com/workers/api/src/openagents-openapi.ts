@@ -3336,6 +3336,29 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/operator/agents/scoped-grants': {
+    post: operation({
+      operationId: 'operatorCreateAgentScopedGrant',
+      summary: 'Operator-issue an owner-bound agent scoped grant',
+      description:
+        'Admin-token-gated operator path for creating an owner-bound scoped grant when a browser session is impractical (automation, runbooks). Requires an explicit ownerUserId - normally the owner linked by an approved agent claim - plus agentUserId, grantKind, and scopes, with the same validation, dedupe, and receipt behavior as the owner browser route. Operator issuance is recorded on the receipt.',
+      tags: ['Agents'],
+      security: adminSession,
+      parameters: [
+        requiredIdempotencyHeader('Stable idempotency key for this grant.'),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/CreateAgentScopedGrantRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Created grant with receipt.',
+          '#/components/schemas/AgentScopedGrantMutationResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/operator/product-promises/transitions': {
     post: operation({
       operationId: 'recordProductPromiseTransition',

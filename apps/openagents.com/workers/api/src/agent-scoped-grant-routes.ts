@@ -141,6 +141,10 @@ type AgentScopedGrantRouteDependencies<
   makeStore: (env: Bindings) => AgentScopedGrantStore
   makeUuid?: () => string
   nowIso?: () => string
+  requireAdminApiToken?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<boolean>
   requireBrowserSession: (
     request: Request,
     env: Bindings,
@@ -558,6 +562,34 @@ const createGrantResponse = async <
     return badRequest('Grant request cannot contain provider secret material.')
   }
 
+  return applyCreateGrant(dependencies, env, {
+    agentUserId,
+    body,
+    grantKind,
+    idempotencyKey,
+    ownerUserId: session.user.userId,
+    wrapResponse: response =>
+      dependencies.appendRefreshedSessionCookies(response, session),
+  })
+}
+
+const applyCreateGrant = async <
+  Session extends AgentScopedGrantSession,
+  Bindings,
+>(
+  dependencies: AgentScopedGrantRouteDependencies<Session, Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    agentUserId: string
+    body: Record<string, unknown>
+    grantKind: AgentScopedGrantKind
+    idempotencyKey: string
+    ownerUserId: string
+    wrapResponse?: (response: Response) => Response
+  }>,
+) => {
+  const { agentUserId, body, grantKind, idempotencyKey, ownerUserId } = input
+  const wrapResponse = input.wrapResponse ?? (response => response)
   const scopesResult = normalizedScopes(
     grantKind,
     stringArrayFromUnknown(body.scopes),
@@ -583,15 +615,14 @@ const createGrantResponse = async <
 
   const store = dependencies.makeStore(env)
   const idempotencyKeyHash = await sha256Hex(
-    `${session.user.userId}\n${idempotencyKey}`,
+    `${ownerUserId}\n${idempotencyKey}`,
   )
   const existingReceipt =
     await store.readReceiptByIdempotencyKeyHash(idempotencyKeyHash)
 
   if (existingReceipt !== undefined) {
-    return dependencies.appendRefreshedSessionCookies(
+    return wrapResponse(
       receiptResponse({ ...existingReceipt, status: 'idempotent_replay' }),
-      session,
     )
   }
 
@@ -606,7 +637,7 @@ const createGrantResponse = async <
     expiresAt,
     grantKind,
     nowIso,
-    ownerUserId: session.user.userId,
+    ownerUserId,
     scopes,
     target,
   })
@@ -628,14 +659,14 @@ const createGrantResponse = async <
       ? {
           expiresAt,
           grantId,
-          ownerUserId: session.user.userId,
+          ownerUserId,
           scopes,
           status: 'active',
         }
       : {
           expiresAt,
           grantId,
-          ownerUserId: session.user.userId,
+          ownerUserId,
           scopes,
           status: 'active',
           ...target,
@@ -652,7 +683,7 @@ const createGrantResponse = async <
     grantKind,
     id: receiptId,
     idempotencyKeyHash,
-    ownerUserId: session.user.userId,
+    ownerUserId,
     reason: optionalString(body.reason) ?? null,
     receiptRef: `agent_scoped_grant_receipt_${grantId}`,
     scopesJson: safeJson(scopes),
@@ -664,19 +695,18 @@ const createGrantResponse = async <
     await store.updateAgentMetadata(agent.userId, safeJson(nextMetadata), nowIso)
     const savedReceipt = await store.createReceipt(receipt)
 
-    return dependencies.appendRefreshedSessionCookies(
+    return wrapResponse(
       noStoreJsonResponse(
         {
           agent: agentProjection(
             { ...agent, profileMetadataJson: safeJson(nextMetadata) },
-            session.user.userId,
+            ownerUserId,
           ),
           grant: grantProjection(grantKind, grant),
           receipt: receiptProjection(savedReceipt),
         },
         { status: 201 },
       ),
-      session,
     )
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -688,6 +718,65 @@ const createGrantResponse = async <
 
     return serverError()
   }
+}
+
+const operatorCreateGrantResponse = async <
+  Session extends AgentScopedGrantSession,
+  Bindings,
+>(
+  dependencies: AgentScopedGrantRouteDependencies<Session, Bindings>,
+  request: Request,
+  env: Bindings,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  if (
+    dependencies.requireAdminApiToken === undefined ||
+    !(await dependencies.requireAdminApiToken(request, env))
+  ) {
+    return unauthorized()
+  }
+
+  const idempotencyKey = idempotencyKeyFromRequest(request)
+
+  if (idempotencyKey instanceof Response) {
+    return idempotencyKey
+  }
+
+  const body = await readJsonObject(request).catch(error =>
+    jsonRecordValue({ error: errorMessage(error) }),
+  )
+  const agentUserId = optionalString(body.agentUserId)
+  const grantKind = grantKindFromBody(body.grantKind)
+  const ownerUserId = optionalString(body.ownerUserId)
+
+  if (agentUserId === undefined) {
+    return badRequest('agentUserId is required.')
+  }
+
+  if (ownerUserId === undefined) {
+    return badRequest(
+      'ownerUserId is required for operator-issued grants; use the owner linked by an approved agent claim.',
+    )
+  }
+
+  if (grantKind === undefined) {
+    return badRequest('grantKind must be customer_orders or agent_sites.')
+  }
+
+  if (containsProviderSecretMaterial(safeJson(body))) {
+    return badRequest('Grant request cannot contain provider secret material.')
+  }
+
+  return applyCreateGrant(dependencies, env, {
+    agentUserId,
+    body,
+    grantKind,
+    idempotencyKey,
+    ownerUserId,
+  })
 }
 
 const revokeGrantResponse = async <
@@ -1055,6 +1144,12 @@ export const makeAgentScopedGrantRoutes = <
     if (url.pathname === '/agents/scoped-grants') {
       return Effect.promise(() =>
         scopedGrantPageResponse(dependencies, request, env, ctx),
+      )
+    }
+
+    if (url.pathname === '/api/operator/agents/scoped-grants') {
+      return Effect.promise(() =>
+        operatorCreateGrantResponse(dependencies, request, env),
       )
     }
 

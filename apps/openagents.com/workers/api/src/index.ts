@@ -5215,6 +5215,7 @@ const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>({
 })
 
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
   makeStore: env => makeD1AgentScopedGrantStore(openAgentsDatabase(env)),

@@ -176,8 +176,10 @@ const makeUuidFactory = () => {
 const makeRoutes = (
   store: MemoryAgentScopedGrantStore,
   session: TestSession | undefined = ownerSession,
+  adminToken = false,
 ) =>
   makeAgentScopedGrantRoutes<TestSession, { store: MemoryAgentScopedGrantStore }>({
+    requireAdminApiToken: () => Promise.resolve(adminToken),
     appOrigin: () => 'https://openagents.com',
     appendRefreshedSessionCookies: response => {
       response.headers.set('x-test-session-refreshed', 'true')
@@ -194,8 +196,9 @@ const runRoute = async (
   store: MemoryAgentScopedGrantStore,
   request: Request,
   session: TestSession | undefined = ownerSession,
+  adminToken = false,
 ): Promise<Response> => {
-  const effect = makeRoutes(store, session).routeAgentScopedGrantRequest(
+  const effect = makeRoutes(store, session, adminToken).routeAgentScopedGrantRequest(
     request,
     { store },
     {} as ExecutionContext,
@@ -238,6 +241,67 @@ const createGrant = (
   )
 
 describe('agent scoped grant routes', () => {
+  test('lets an operator with the admin token issue an owner-bound grant', async () => {
+    const store = makeStore()
+    const operatorRequest = (idempotencyKey: string) =>
+      new Request('https://openagents.com/api/operator/agents/scoped-grants', {
+        body: JSON.stringify({
+          agentUserId: 'agent-1',
+          grantKind: 'customer_orders',
+          ownerUserId: 'owner-1',
+          reason: 'operator-issued for live smoke',
+          scopes: ['customer_orders.read', 'customer_orders.write'],
+        }),
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': idempotencyKey,
+        },
+        method: 'POST',
+      })
+    const denied = await runRoute(
+      store,
+      operatorRequest('operator-grant-1'),
+      undefined,
+      false,
+    )
+    const created = await runRoute(
+      store,
+      operatorRequest('operator-grant-1'),
+      undefined,
+      true,
+    )
+    const createdBody = (await created.json()) as {
+      grant: { ownerUserId: string; scopes: ReadonlyArray<string> }
+      receipt: { ownerUserId: string }
+    }
+    const missingOwner = await runRoute(
+      store,
+      new Request('https://openagents.com/api/operator/agents/scoped-grants', {
+        body: JSON.stringify({
+          agentUserId: 'agent-1',
+          grantKind: 'customer_orders',
+          scopes: ['customer_orders.read'],
+        }),
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'operator-grant-2',
+        },
+        method: 'POST',
+      }),
+      undefined,
+      true,
+    )
+
+    expect(denied.status).toBe(401)
+    expect(created.status).toBe(201)
+    expect(createdBody.grant).toMatchObject({
+      ownerUserId: 'owner-1',
+      scopes: ['customer_orders.read', 'customer_orders.write'],
+    })
+    expect(createdBody.receipt.ownerUserId).toBe('owner-1')
+    expect(missingOwner.status).toBe(400)
+  })
+
   test('lets an owner grant customer-order scopes to a registered agent', async () => {
     const store = makeStore()
     const response = await createGrant(store)
