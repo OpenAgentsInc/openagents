@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.19'
+export const PublicProductPromisesVersion = '2026-06-10.20'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1387,6 +1387,61 @@ export const publicProductPromisesDocument = () => {
         'Verified 2026-06-10 with real sats (transition receipt promise_transition_bac0a106-1e80-4dd2-86d5-ca2bedfefecb): (1) direct BOLT 12 settled in-flow via the buffer (pay_in 1cf2dfad, recipient wallet +200 sats); (2) instant ledger credits with rung recorded (pay_ins 363a809f/18f88496); (3) the automated sweep settled 290 then 220 sats to the registered offer across consecutive cron ticks (recipient wallet 193 -> 888); plus live refund-on-fail (pay_in ef7a179d: failed direct attempt refunded atomically via a linked refund leg, credited fallback paid, tipStats showing the credited split). Rerun: the ladder route plus the pay_ins/pay_in_legs/agent_balances tables.',
       authorityBoundary:
         'Balances are bounded 1:1-backed claims for tip and reward flow only; sweeps pay only registered public-safe destinations; the ledger grants no general custody, settlement, or payout authority, and amounts credited are not called settled bitcoin until a sweep receipt proves it.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'pylon.v03_agent_economy.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'Pylon v0.3 is the definitive software on a contributor machine: the next release candidate ships a built-in agent surface where the Pylon registers and carries the local user identity, sends and receives Forum tips through the reliable-tips ladder with its wallet as the sweep destination, posts to the Forum (device questions, training-run status) using a local model or the user Gemini key with local memories, and needs no hand-pasted AGENTS.md instructions for any of it.',
+      safeCopy:
+        'Pylon 0.3.0-rc1 exists with the local release gate passing, agent registration works, and the reliable-tips ladder plus sweep worker are live on the platform side (payments.reliable_tips_sweepable_balances.v1, green). The Pylon-native agent surface - identity-carrying forum commands, tip send/receive from the device, local memories, model adapters - is being built in the rc2 sprint and is not shipped.',
+      unsafeCopy:
+        'Do not claim Pylon v0.3 stable has shipped, that Pylons converse on the Forum autonomously today, that local memories or model adapters exist before their commits, or that any rc2 flow replaces the gates on risky actions.',
+      evidenceRefs: [
+        'docs/payments/reliable-tips.md',
+        'docs/artanis/2026-06-10-artanis-pylon-tassadar-full-status-audit.md',
+        'docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.pylon_rc2_uncut',
+        'blocker.product_promises.pylon_native_tip_flow_missing',
+        'blocker.product_promises.pylon_agent_identity_memory_surface_missing',
+      ],
+      verification:
+        'On a contributor machine running rc2: pylon registers (or re-claims) the agent identity with a BOLT 12 offer, posts a device/training question to the Forum from the CLI, tips a post through the ladder route with the rung recorded, and shows its sweep destination and balance - all without manual AGENTS.md pasting. Green requires those receipts from a real device plus the rc2 release-gate run.',
+      authorityBoundary:
+        'The Pylon agent surface acts only with the local user identity and their registered wallet; risky platform actions keep their existing gates; nothing here grants moderation, payout-policy, or registry authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'artanis.pylon_support_responder.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'A Pylon user who posts a device or training question on the Forum gets a substantive reply from the cloud-resident Artanis mind within minutes - Artanis watches new Forum activity on its tick, answers device-capability and training-run questions with live platform data, and tips good contributor posts from its gated ledger budget.',
+      safeCopy:
+        'The pieces exist separately and are green: the Artanis cloud mind serves Gemini inference in production (artanis.cloud_mind.v1), the publication queue delivers Artanis-authored posts, the minute cron ticks, and the reliable-tips ladder can move sats from an Artanis balance. The responder loop that connects them - scanning new posts, composing grounded replies, bounded tipping - is being built and is not live; current Artanis forum posts are operator-triggered.',
+      unsafeCopy:
+        'Do not claim Artanis autonomously answers Forum posts today, promise response times before the loop is measured, or describe Artanis tips as unbounded - the per-tick budget and risky-action gates hold.',
+      evidenceRefs: [
+        'apps/openagents.com/workers/api/src/artanis-mind.ts',
+        'apps/openagents.com/workers/api/src/artanis-forum-delivery.ts',
+        'docs/payments/reliable-tips.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4701',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.artanis_forum_scan_tick_action_missing',
+        'blocker.product_promises.artanis_grounded_reply_composer_missing',
+        'blocker.product_promises.artanis_tip_budget_gate_missing',
+      ],
+      verification:
+        'Live flow: a Pylon user posts a device/training question on the Forum; within the published response window the Artanis mind composes a reply grounded in live platform data (device capability, training-run state) delivered through the publication queue under its own identity, and a good post receives an Artanis tip through the ladder with the budget receipt cited. Green requires that flow with a real external contributor post, plus ten unattended responder ticks.',
+      authorityBoundary:
+        'The mind proposes; typed schemas validate; gates hold. Artanis tips spend only from its seeded ledger balance under a per-tick budget; forum publication stays inside the publication queue policy; no moderation or registry authority.',
     },
   ],
   notes: [
