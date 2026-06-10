@@ -5763,42 +5763,48 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/operator/artanis/mind/smoke',
     handler: (request, env) =>
-      Effect.promise(async () => {
+      Effect.gen(function* () {
         if (request.method !== 'POST') {
           return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
         }
-        if (!(await requireAdminApiToken(request, env))) {
+        const authorized = yield* Effect.promise(() =>
+          requireAdminApiToken(request, env),
+        )
+        if (!authorized) {
           return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
         }
         const apiKey = (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY
         if (apiKey === undefined || apiKey === '') {
           return noStoreJsonResponse({ error: 'gemini_api_key_missing' }, { status: 503 })
         }
-        let body: {
-          forumPost?: boolean
-          gatewayId?: string
-          model?: string
-          prompt?: string
-        } = {}
-        try {
-          body = (await request.json()) as typeof body
-        } catch {
-          body = {}
-        }
+        const body = yield* Effect.promise(async () => {
+          try {
+            return (await request.json()) as {
+              forumPost?: boolean
+              gatewayId?: string
+              model?: string
+              prompt?: string
+            }
+          } catch {
+            return {}
+          }
+        })
         const prompt =
           body.prompt ??
           'State in one sentence what the Artanis administrator should verify before dispatching executor-trace work to an idle Pylon.'
         const gatewayToken = (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN
-        const result = await artanisMindComplete({
-          apiKey,
-          ...(body.gatewayId === undefined ? {} : { gatewayId: body.gatewayId }),
-          ...(gatewayToken === undefined || gatewayToken === ''
-            ? {}
-            : { gatewayToken }),
-          ...(body.model === undefined ? {} : { model: body.model }),
-          prompt,
-          system: ArtanisMindSmokeSystem,
-        })
+        const result = yield* Effect.promise(() =>
+          artanisMindComplete({
+            apiKey,
+            ...(body.gatewayId === undefined ? {} : { gatewayId: body.gatewayId }),
+            ...(gatewayToken === undefined || gatewayToken === ''
+              ? {}
+              : { gatewayToken }),
+            ...(body.model === undefined ? {} : { model: body.model }),
+            prompt,
+            system: ArtanisMindSmokeSystem,
+          }),
+        )
         if ('error' in result) {
           return noStoreJsonResponse(result, { status: 502 })
         }
@@ -5829,27 +5835,23 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             receiptRefs: ['receipt.public.artanis.mind_smoke'],
             updatedAtIso: nowIso,
           }
-          const delivered: { postRef?: string; error?: string } =
-            await Effect.runPromise(
-              deliverArtanisForumPublicationIntent(
-                openAgentsDatabase(env),
-                intent,
-              ).pipe(
-                Effect.map(
-                  (post): { postRef?: string; error?: string } => ({
-                    postRef: post.postRef,
-                  }),
-                ),
-                Effect.catch(error =>
-                  Effect.succeed({
-                    error: `forum_delivery_failed: ${String(
-                      (error as { reason?: string }).reason ?? error,
-                    )}`.slice(0, 160),
-                  }),
-                ),
-              ),
-            )
-          forumPost = delivered
+          forumPost = yield* deliverArtanisForumPublicationIntent(
+            openAgentsDatabase(env),
+            intent,
+          ).pipe(
+            Effect.map(
+              (post): { postRef?: string; error?: string } => ({
+                postRef: post.postRef,
+              }),
+            ),
+            Effect.catch(error =>
+              Effect.succeed({
+                error: `forum_delivery_failed: ${String(
+                  (error as { reason?: string }).reason ?? error,
+                )}`.slice(0, 160),
+              }),
+            ),
+          )
         }
         return noStoreJsonResponse({
           forumPost,
