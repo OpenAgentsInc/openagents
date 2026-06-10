@@ -136,6 +136,22 @@
         "@moneydevkit/core": "0.19.0",
       },
     },
+    "apps/openagents.com/services/mdk-tips-buffer": {
+      "name": "@openagents/mdk-tips-buffer",
+      "version": "0.1.0",
+      "dependencies": {
+        "@moneydevkit/core": "0.19.0",
+        "@moneydevkit/lightning-js": "0.1.84",
+      },
+    },
+    "apps/openagents.com/services/mdk-treasury": {
+      "name": "@openagents/mdk-treasury",
+      "version": "0.1.0",
+      "dependencies": {
+        "@moneydevkit/core": "0.19.0",
+        "@moneydevkit/lightning-js": "0.1.84",
+      },
+    },
     "apps/openagents.com/workers/api": {
       "name": "@openagents/api-worker",
       "version": "0.1.0",
@@ -165,7 +181,7 @@
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",
-      "version": "0.3.0-rc1",
+      "version": "0.3.0-rc2",
       "bin": {
         "pylon": "src/index.ts",
       },
@@ -516,6 +532,10 @@
     "@openagents/forum": ["@openagents/forum@workspace:apps/forum"],
 
     "@openagents/mdk-sidecar": ["@openagents/mdk-sidecar@workspace:apps/openagents.com/services/mdk-sidecar"],
+
+    "@openagents/mdk-tips-buffer": ["@openagents/mdk-tips-buffer@workspace:apps/openagents.com/services/mdk-tips-buffer"],
+
+    "@openagents/mdk-treasury": ["@openagents/mdk-treasury@workspace:apps/openagents.com/services/mdk-treasury"],
 
     "@openagents/mullet-schema": ["@openagents/mullet-schema@workspace:apps/openagents.com/packages/mullet-schema"],
 

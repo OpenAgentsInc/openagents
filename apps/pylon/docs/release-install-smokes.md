@@ -23,14 +23,10 @@ project, and verifies:
 
 ## CI Release Gate
 
-The Pylon release gate workflow is staged at
-`apps/pylon/docs/ci/release-gate.yml` because the current GitHub token cannot
-create `.github/workflows/*` files without `workflow` scope. An operator with
-workflow scope should move that exact file to
-`.github/workflows/pylon-release-gate.yml`.
-
-Once moved, it runs for pull requests and `main` pushes that touch
-`apps/pylon/**` or the workflow itself, plus manual `workflow_dispatch` runs.
+The Pylon release gate workflow lives at
+`.github/workflows/pylon-release-gate.yml`. It runs for pull requests and
+`main` pushes that touch `apps/pylon/**` or the workflow itself, plus manual
+`workflow_dispatch` runs.
 
 The workflow runs on both `ubuntu-latest` and `macos-latest`:
 
