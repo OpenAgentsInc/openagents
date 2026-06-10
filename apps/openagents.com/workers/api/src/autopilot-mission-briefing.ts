@@ -39,6 +39,7 @@ export type AutopilotMissionBriefingProjection = Readonly<{
   drilldown: ReadonlyArray<AutopilotMissionBriefingDrilldownGroup>
   generatedAt: string
   kind: 'autopilot_mission_briefing'
+  promiseRef: AutopilotWorkOrderProjection['promiseRef']
   publicSafe: true
   state: AutopilotWorkOrderProjection['state']
   whatChanged: Readonly<{
@@ -117,6 +118,7 @@ export const missionBriefingForWorkOrder = (
     ],
     generatedAt: nowIso,
     kind: 'autopilot_mission_briefing',
+    promiseRef: work.promiseRef,
     publicSafe: true,
     state: work.state,
     whatChanged: {

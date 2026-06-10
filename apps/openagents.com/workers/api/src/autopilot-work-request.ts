@@ -213,6 +213,14 @@ export class OpenAgentsAutopilotPaymentPolicy extends S.Class<OpenAgentsAutopilo
   settlementMode: OpenAgentsAutopilotSettlementMode,
 }) {}
 
+export class OpenAgentsAutopilotPromiseRef extends S.Class<OpenAgentsAutopilotPromiseRef>(
+  'OpenAgentsAutopilotPromiseRef',
+)({
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  promiseId: S.String,
+  registryVersion: S.String,
+}) {}
+
 export class OpenAgentsAutopilotWorkRequest extends S.Class<OpenAgentsAutopilotWorkRequest>(
   'OpenAgentsAutopilotWorkRequest',
 )({
@@ -222,6 +230,7 @@ export class OpenAgentsAutopilotWorkRequest extends S.Class<OpenAgentsAutopilotW
   mode: OpenAgentsAutopilotWorkRequestMode,
   paymentPolicy: OpenAgentsAutopilotPaymentPolicy,
   placementPolicy: OpenAgentsAutopilotPlacementPolicy,
+  promiseRef: S.optionalKey(OpenAgentsAutopilotPromiseRef),
   schema: OpenAgentsAutopilotWorkRequestSchemaVersion,
   tasks: S.Array(OpenAgentsAutopilotTaskRequest),
 }) {}
@@ -458,6 +467,42 @@ export const assertOpenAgentsAutopilotWorkRequest = (
   request.tasks.forEach(assertTask)
   assertPlacementPolicy(request.placementPolicy)
   assertPaymentPolicy(request.paymentPolicy)
+  assertPromiseRef(request.promiseRef)
+}
+
+const promiseIdPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)*\.v\d+$/
+const registryVersionPattern = /^\d{4}-\d{2}-\d{2}(\.\d+)?$/
+
+const assertPromiseRef = (
+  promiseRef: OpenAgentsAutopilotPromiseRef | undefined,
+): void => {
+  if (promiseRef === undefined) {
+    return
+  }
+
+  if (!promiseIdPattern.test(promiseRef.promiseId)) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason:
+        'promiseRef.promiseId must be a dotted promise id ending in a version segment, like autopilot.mission_briefing.v1.',
+    })
+  }
+
+  if (!registryVersionPattern.test(promiseRef.registryVersion)) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason:
+        'promiseRef.registryVersion must be a registry version like 2026-06-09.17.',
+    })
+  }
+
+  for (const blockerRef of promiseRef.blockerRefs ?? []) {
+    assertSafeRef('promiseRef blockerRef', blockerRef)
+
+    if (!blockerRef.startsWith('blocker.')) {
+      throw new OpenAgentsAutopilotWorkRequestUnsafe({
+        reason: 'promiseRef blockerRefs must be blocker.* registry refs.',
+      })
+    }
+  }
 }
 
 export const decodeOpenAgentsAutopilotWorkRequest = (

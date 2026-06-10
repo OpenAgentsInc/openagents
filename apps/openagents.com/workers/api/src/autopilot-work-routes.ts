@@ -345,6 +345,11 @@ export type AutopilotWorkOrderProjection = Readonly<{
   placementDecision: AutopilotPlacementDecisionProjection
   placementPolicy: AutopilotWorkPlacementPolicyRecordProjection
   pylonAssignmentIntents: ReadonlyArray<AutopilotPylonAssignmentIntentProjection>
+  promiseRef: Readonly<{
+    blockerRefs: ReadonlyArray<string>
+    promiseId: string
+    registryVersion: string
+  }> | null
   quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
   reviewDecision: AutopilotWorkReviewDecisionProjection | null
@@ -383,6 +388,9 @@ export type AutopilotWorkStore = Readonly<{
   createWorkOrder: (
     record: AutopilotWorkOrderRecord,
   ) => Promise<Readonly<{ idempotent: boolean; record: AutopilotWorkOrderRecord }>>
+  listWorkOrdersForOwner: (
+    input: Readonly<{ limit: number; ownerUserId: string }>,
+  ) => Promise<ReadonlyArray<AutopilotWorkOrderRecord>>
   recordPylonAssignmentDispatch: (
     input: Readonly<{
       ownerUserId: string
@@ -1577,6 +1585,14 @@ const projectionForRecord = (
     paymentChallengeRef: record.paymentChallengeRef,
     placementDecision,
     placementPolicy: placementPolicyForRecord(record),
+    promiseRef:
+      record.request.promiseRef === undefined
+        ? null
+        : {
+            blockerRefs: record.request.promiseRef.blockerRefs ?? [],
+            promiseId: record.request.promiseRef.promiseId,
+            registryVersion: record.request.promiseRef.registryVersion,
+          },
     pylonAssignmentIntents: [],
     quote: makeAutopilotWorkQuote(record.request),
     repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
@@ -2663,6 +2679,74 @@ const workOrderReviewRefFromPath = (pathname: string): string | undefined => {
   return match?.[1]
 }
 
+const promiseIdQueryPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)*\.v\d+$/
+
+const listWorkOrders = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  url: URL,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const promiseId = url.searchParams.get('promiseId') ?? ''
+
+    if (!promiseIdQueryPattern.test(promiseId)) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_work_list_requires_promise_id',
+          reason:
+            'List recovery requires a promiseId query parameter shaped like autopilot.mission_briefing.v1.',
+        },
+        { status: 400 },
+      )
+    }
+
+    const nowIso = routeNowIso(dependencies)
+    const auth = yield* authenticateCustomerOrderAgentRequest(
+      request,
+      dependencies.agentStore(env),
+      {
+        nowIso: () => nowIso,
+        requiredScope: 'customer_orders.read',
+      },
+    )
+    const records = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        dependencies.makeStore(env).listWorkOrdersForOwner({
+          limit: 200,
+          ownerUserId: auth.ownerUserId,
+        }),
+    })
+    const matching = records.filter(
+      record => record.request.promiseRef?.promiseId === promiseId,
+    )
+
+    return noStoreJsonResponse({
+      promiseId,
+      workOrders: matching.map(record => ({
+        createdAt: record.createdAt,
+        promiseRef: {
+          blockerRefs: record.request.promiseRef?.blockerRefs ?? [],
+          promiseId: record.request.promiseRef?.promiseId ?? promiseId,
+          registryVersion: record.request.promiseRef?.registryVersion ?? null,
+        },
+        state: record.state,
+        updatedAt: record.updatedAt,
+        workOrderRef: record.workOrderRef,
+      })),
+    })
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
+      Effect.succeed(unauthorized())
+    ),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
 export const makeAutopilotWorkRoutes = <
   Bindings extends AutopilotWorkRouteEnv,
 >(
@@ -2677,7 +2761,10 @@ export const makeAutopilotWorkRoutes = <
     if (url.pathname === '/api/autopilot/work') {
       return M.value(request.method).pipe(
         M.when('POST', () => createWorkOrder(dependencies, request, env)),
-        M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
+        M.when('GET', () =>
+          listWorkOrders(dependencies, request, env, url)
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['GET', 'POST']))),
       )
     }
 
@@ -2860,6 +2947,21 @@ export const makeD1AutopilotWorkStore = (
       .run()
 
     return { idempotent: false, record }
+  },
+  listWorkOrdersForOwner: async input => {
+    const rows = await db
+      .prepare(
+        `SELECT *
+         FROM autopilot_work_orders
+         WHERE owner_user_id = ?
+           AND archived_at IS NULL
+         ORDER BY created_at DESC
+         LIMIT ?`,
+      )
+      .bind(input.ownerUserId, input.limit)
+      .all<Record<string, unknown>>()
+
+    return (rows.results ?? []).map(recordFromRow)
   },
   recordPylonAssignmentDispatch: async input => {
     await db

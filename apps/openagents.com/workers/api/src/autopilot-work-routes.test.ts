@@ -66,6 +66,13 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
   readWorkOrder = async (workOrderRef: string) =>
     this.records.get(workOrderRef)
 
+  listWorkOrdersForOwner = async (
+    input: Readonly<{ limit: number; ownerUserId: string }>,
+  ) =>
+    [...this.records.values()]
+      .filter(record => record.ownerUserId === input.ownerUserId)
+      .slice(0, input.limit)
+
   recordPylonAssignmentDispatch = async (input: Readonly<{
     ownerUserId: string
     updatedAt: string
@@ -1071,6 +1078,92 @@ describe('Autopilot work routes', () => {
 
     expect(detail.status).toBe(200)
     expect(detailJson.work).toEqual(firstJson.work)
+  })
+
+  test('carries promiseRef through projections, briefing, and the list filter', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const request = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      promiseRef: {
+        blockerRefs: ['blocker.product_promises.drilldown_artifact_refs_incomplete'],
+        promiseId: 'autopilot.mission_briefing.v1',
+        registryVersion: '2026-06-09.17',
+      },
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [],
+        },
+      ],
+    }
+    const created = await route(store, '/api/autopilot/work', {
+      body: request,
+      idempotencyKey: 'idem-autopilot-work-promise-ref',
+    })
+    const createdJson = await responseJson(created)
+    const workOrderRef = createdJson.work?.workOrderRef
+    const detail = await route(store, `/api/autopilot/work/${workOrderRef}`, {
+      method: 'GET',
+    })
+    const detailJson = await responseJson(detail)
+    const briefing = await route(
+      store,
+      `/api/autopilot/work/${workOrderRef}/briefing`,
+      { method: 'GET' },
+    )
+    const briefingJson = (await briefing.json()) as Readonly<{
+      briefing: Readonly<{ promiseRef: Readonly<{ promiseId: string }> | null }>
+    }>
+    const listed = await route(
+      store,
+      '/api/autopilot/work?promiseId=autopilot.mission_briefing.v1',
+      { method: 'GET' },
+    )
+    const listedJson = (await listed.json()) as Readonly<{
+      promiseId: string
+      workOrders: ReadonlyArray<Readonly<{ workOrderRef: string }>>
+    }>
+    const listedOther = await route(
+      store,
+      '/api/autopilot/work?promiseId=forum.content_tipping.v1',
+      { method: 'GET' },
+    )
+    const listedOtherJson = (await listedOther.json()) as Readonly<{
+      workOrders: ReadonlyArray<unknown>
+    }>
+    const malformed = await route(
+      store,
+      '/api/autopilot/work?promiseId=DROP%20TABLE',
+      { method: 'GET' },
+    )
+    const rejected = await route(store, '/api/autopilot/work', {
+      body: {
+        ...request,
+        promiseRef: { promiseId: 'not a promise id', registryVersion: 'nope' },
+      },
+      idempotencyKey: 'idem-autopilot-work-promise-ref-bad',
+    })
+
+    expect(created.status).toBe(202)
+    expect(detailJson.work).toMatchObject({
+      promiseRef: {
+        blockerRefs: [
+          'blocker.product_promises.drilldown_artifact_refs_incomplete',
+        ],
+        promiseId: 'autopilot.mission_briefing.v1',
+        registryVersion: '2026-06-09.17',
+      },
+    })
+    expect(briefingJson.briefing.promiseRef).toMatchObject({
+      promiseId: 'autopilot.mission_briefing.v1',
+    })
+    expect(listed.status).toBe(200)
+    expect(listedJson.workOrders).toEqual([
+      expect.objectContaining({ workOrderRef }),
+    ])
+    expect(listedOtherJson.workOrders).toEqual([])
+    expect(malformed.status).toBe(400)
+    expect(rejected.status).toBe(400)
   })
 
   test('requires idempotency on create', async () => {

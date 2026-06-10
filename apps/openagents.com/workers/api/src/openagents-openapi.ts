@@ -213,6 +213,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicPylonCapacityFunnel: objectSummary(
     'Public-safe Pylon capacity funnel: stage counts from registered through settled plus dark-capacity counts by typed reason. Counts only, no device identifiers. Read-only capacity accounting; grants no assignment, payout, or settlement authority.',
   ),
+  AutopilotWorkPromiseListEnvelope: objectSummary(
+    'Public-safe list of owner work-order summaries that carry a promiseRef for the requested promiseId: workOrderRef, state, promiseRef, createdAt, updatedAt. Listing grants no review, settlement, or registry-transition authority.',
+  ),
   AutopilotWorkMissionBriefingEnvelope: objectSummary(
     'Public-safe Autopilot Mission Briefing envelope: event rollup, changed artifact/result refs, blocked access requirements and blocker refs, running state, waiting decision, cost rollup, and grouped drill-down refs. A briefing is a read projection and grants no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
   ),
@@ -3212,6 +3215,27 @@ const paths = (): JsonSchema => ({
     }),
   },
   '/api/autopilot/work': {
+    get: operation({
+      operationId: 'listAutopilotWorkByPromise',
+      summary: 'List delegated Autopilot work for a promise',
+      description:
+        'Returns public-safe work-order summaries for the authenticated owner filtered by promiseId. Work orders may carry an optional promiseRef ({promiseId, blockerRefs, registryVersion}) linking them to a product-promise registry record; accepted work orders found through this filter can serve as promise-transition evidence, though registry state changes remain maintainer actions. Requires customer_orders.read.',
+      tags: ['Autopilot Work'],
+      security: agentBearer,
+      parameters: [
+        queryParam(
+          'promiseId',
+          'Required product-promise id, like autopilot.mission_briefing.v1.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Work-order summaries targeting the promise.',
+          '#/components/schemas/AutopilotWorkPromiseListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
     post: operation({
       operationId: 'createAutopilotWork',
       summary: 'Create delegated Autopilot work',
