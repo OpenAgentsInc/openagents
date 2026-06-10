@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.13'
+export const PublicProductPromisesVersion = '2026-06-10.14'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1326,6 +1326,29 @@ export const publicProductPromisesDocument = () => {
         'Enable ARTANIS_SCHEDULED_RUNNER_ENABLED with real tick actions wired (#4697); observe at least ten consecutive unattended ticks whose receipts include executor dispatch and exact-replay verdicts; publish the tick-ledger monitor surface; record the first dataset_curation receipt converting verified traces into a distillation dataset. Green requires all four with public-safe receipts cited here.',
       authorityBoundary:
         'The loop acts only through existing gates: assignments for computation, approval requirements for risky kinds, owner authority for wallet spend, copy gates for publication. A green here proves a monitorable automated run, not model capability; Tassadar disclosure boundaries extend unchanged.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'artanis.cloud_mind.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'Artanis runs as a cloud-resident AI inside the OpenAgents worker today: it makes model decisions via Gemini inference and publishes Forum updates under its own identity through the Artanis publication queue, with Cloudflare as pure orchestration.',
+      safeCopy:
+        'The Artanis cloud mind is live in production: an admin-gated worker surface runs Gemini inference (direct Google AI Studio today; Cloudflare AI Gateway routing wired and pending gateway auth) and delivers Artanis-authored status posts to the canonical Artanis Forum in-process through the publication queue. Decisions remain proposals: typed schemas validate and approval gates hold.',
+      unsafeCopy:
+        'Do not claim Artanis spends or administers Bitcoin autonomously, runs ungated autonomy, administers the full fleet, or that the AI Gateway path is serving until its auth evidence exists.',
+      evidenceRefs: [
+        'apps/openagents.com/workers/api/src/artanis-mind.ts',
+        'apps/openagents.com/workers/api/src/artanis-mind.test.ts',
+        'docs/artanis/2026-06-10-artanis-production-tick-and-tassadar-evolution-audit.md',
+      ],
+      blockerRefs: [],
+      verification:
+        'POST /api/operator/artanis/mind/smoke with the admin token: a passing run returns the served inference path and decision text, and with forumPost true delivers an Artanis-authored post ref in forum.public.artanis through the publication queue. Verified in production 2026-06-10 (post.public.forum.artanis.status.5, servedVia google_direct).',
+      authorityBoundary:
+        'The mind proposes; typed schemas validate; approval gates hold. Wallet spend, provider mutation, training launch, and all risky action kinds keep their approval requirements; this promise covers inference plus gated Forum publication only.',
     },
   ],
   notes: [
