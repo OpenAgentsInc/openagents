@@ -93,7 +93,8 @@ export const sweepCreateStatements = (
 
 export type BufferPayResult =
   | Readonly<{ ok: true; paymentRef: string }>
-  | Readonly<{ ok: false; reason: string }>
+  | Readonly<{ ok: false; pending: true; paymentId: string }>
+  | Readonly<{ ok: false; pending?: false; reason: string }>
 
 export type BufferPayFn = (
   input: Readonly<{ bolt12Offer: string; amountSat: number }>,
@@ -220,6 +221,18 @@ export const runTipsSweepTick = async (
         },
       ])
       settled += 1
+    } else if (payResult.pending === true) {
+      // #4710: a pending buffer payment HOLDS the debit in forwarding.
+      // The reconciliation pass polls the buffer until the outcome is
+      // known; refunding now risks paying the recipient twice.
+      await runLedgerStatements(db, [
+        {
+          params: [`pending:${payResult.paymentId}`, plan.payoutLegId],
+          sql: `UPDATE pay_in_legs
+                SET external_ref = external_ref || '|' || ?
+                WHERE id = ?`,
+        },
+      ])
     } else {
       await runLedgerStatements(
         db,
@@ -289,6 +302,148 @@ export const checkTipsBufferBackingInvariant = async (
   }
 
   return { agentBalancesSat, bufferBalanceSat, ok }
+}
+
+// #4710: reconcile forwarding pay-ins whose buffer payment outcome was
+// unknown at send time. completed -> paid (ref stamped); failed ->
+// refund, and for ladder tips also pay the credited fallback so the tip
+// still never fails; still-pending -> wait for the next tick.
+export const reconcileForwardingBufferPayments = async (
+  db: D1Database,
+  deps: Readonly<{
+    fetchBufferPaymentStatus: (
+      paymentId: string,
+    ) => Promise<'succeeded' | 'failed' | 'pending'>
+    makeId: () => string
+    nowIso: string
+  }>,
+): Promise<Readonly<{ settled: number; refunded: number; waiting: number }>> => {
+  const rows = (
+    (
+      await db
+        .prepare(
+          `SELECT p.id AS pay_in_id, p.pay_in_type, p.payer_ref, p.cost_msat,
+                  p.context_ref, p.idempotency_key,
+                  l.id AS leg_id, l.external_ref,
+                  fin.id AS funding_leg_id, fin.party_ref AS funding_party_ref
+             FROM pay_ins p
+             JOIN pay_in_legs l
+               ON l.pay_in_id = p.id AND l.kind = 'lightning'
+              AND l.direction = 'out' AND l.external_ref LIKE '%|pending:%'
+        LEFT JOIN pay_in_legs fin
+               ON fin.pay_in_id = p.id AND fin.kind = 'balance'
+              AND fin.direction = 'in' AND fin.refund_of_leg_id IS NULL
+            WHERE p.state = 'forwarding'
+            LIMIT 10`,
+        )
+        .all()
+    ).results ?? []
+  ) as Array<Record<string, unknown>>
+
+  let settled = 0
+  let refunded = 0
+  let waiting = 0
+
+  for (const row of rows) {
+    const externalRef = String(row.external_ref)
+    const paymentId = externalRef.slice(
+      externalRef.indexOf('|pending:') + '|pending:'.length,
+    )
+    const status = await deps.fetchBufferPaymentStatus(paymentId)
+
+    if (status === 'pending') {
+      waiting += 1
+      continue
+    }
+
+    const payInId = String(row.pay_in_id)
+    if (status === 'succeeded') {
+      await runLedgerStatements(db, [
+        ...markPayInPaidStatements(
+          { balancePayoutLegs: [], payInId },
+          deps.nowIso,
+        ),
+        {
+          params: [
+            `payment.tips_buffer.${paymentId.slice(0, 12)}`,
+            String(row.leg_id),
+          ],
+          sql: `UPDATE pay_in_legs
+                SET external_ref = external_ref || '|' || ?
+                WHERE id = ?`,
+        },
+      ])
+      settled += 1
+      continue
+    }
+
+    // failed: refund the funding debit...
+    const fundingLegId = row.funding_leg_id
+    const fundingPartyRef = row.funding_party_ref
+    if (fundingLegId !== null && fundingPartyRef !== null) {
+      await runLedgerStatements(
+        db,
+        markPayInFailedStatements(
+          {
+            balanceFundingLegs: [
+              {
+                amountMsat: Number(row.cost_msat),
+                legId: String(fundingLegId),
+                partyRef: String(fundingPartyRef),
+                refundLegId: deps.makeId(),
+              },
+            ],
+            failureReason: 'buffer_pay_failed_after_forwarding',
+            payInId,
+          },
+          deps.nowIso,
+        ),
+      )
+      refunded += 1
+
+      // ...and for ladder tips, the recipient still gets paid: the
+      // credited fallback rides the same ledger, so the tip never fails.
+      if (
+        String(row.pay_in_type) === 'tip' &&
+        String(row.context_ref ?? '').startsWith('forum.post.')
+      ) {
+        const recipientRow = (await db
+          .prepare(
+            `SELECT party_ref FROM pay_in_legs
+              WHERE pay_in_id = ? AND kind = 'lightning' AND direction = 'out'`,
+          )
+          .bind(payInId)
+          .first()) as { party_ref: string } | null
+        if (recipientRow !== null) {
+          const fallbackPayInId = deps.makeId()
+          const fundingLeg = deps.makeId()
+          const payoutLeg = deps.makeId()
+          const amountMsat = Number(row.cost_msat)
+          const postId = String(row.context_ref).replace('forum.post.', '')
+          const { creditedTipStatements } = await import('./tip-ladder')
+          await runLedgerStatements(
+            db,
+            creditedTipStatements(
+              {
+                amountSat: Math.floor(amountMsat / 1000),
+                fundingLegId: fundingLeg,
+                idempotencyKey: `${String(row.idempotency_key)}:reconciled_fallback`,
+                ladderReason: 'direct_attempt_failed',
+                payInId: fallbackPayInId,
+                payoutLegId: payoutLeg,
+                postId,
+                recipientRef: recipientRow.party_ref,
+                senderRef: String(row.payer_ref),
+              },
+              deps.nowIso,
+            ),
+          )
+        }
+      }
+    }
+  }
+
+  return { refunded, settled, waiting }
 }
 
 export const runTipsSweepScheduled = (

@@ -295,6 +295,36 @@ export const executeTipLadder = (
         }),
       )
 
+      if (!payResult.ok && payResult.pending === true) {
+        // #4710: pending holds the debit in forwarding; the
+        // reconciliation pass settles or refunds-with-fallback later.
+        yield* Effect.tryPromise({
+          catch: error =>
+            new TipLadderError(
+              'ledger_batch_failed',
+              error instanceof Error ? error.message : String(error),
+            ),
+          try: () =>
+            runLedgerStatements(db, [
+              {
+                params: [`pending:${payResult.paymentId}`, directPayoutLegId],
+                sql: `UPDATE pay_in_legs
+                      SET external_ref = external_ref || '|' || ?
+                      WHERE id = ?`,
+              },
+            ]),
+        })
+
+        return {
+          amountSat: input.amountSat,
+          kind: 'tipped' as const,
+          ladderReason: 'direct_forwarding',
+          payInId: directPayInId,
+          rung: 'direct_bolt12' as const,
+          senderBalanceMsatAfter: senderBalanceMsat - amountMsat,
+        }
+      }
+
       if (payResult.ok) {
         yield* Effect.tryPromise({
           catch: error =>

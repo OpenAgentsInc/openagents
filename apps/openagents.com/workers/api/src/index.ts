@@ -50,7 +50,7 @@ import { makeAgentSiteRoutes } from './agent-site-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
-import { type BufferPayFn, checkTipsBufferBackingInvariant, runTipsSweepScheduled } from './tips-sweep'
+import { type BufferPayFn, checkTipsBufferBackingInvariant, reconcileForwardingBufferPayments, runTipsSweepScheduled } from './tips-sweep'
 import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
@@ -723,6 +723,14 @@ const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
         error?: string
         paymentId?: string
         status?: string
+      }
+
+      if (response.ok && result.status === 'pending' && result.paymentId) {
+        return {
+          ok: false as const,
+          paymentId: String(result.paymentId),
+          pending: true as const,
+        }
       }
 
       if (!response.ok || result.status !== 'succeeded') {
@@ -6940,6 +6948,34 @@ export default {
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           tip: artanisComposerTipForEnv(env),
         }),
+      ),
+      observedEffect(
+        'TipsBuffer.reconcileForwarding',
+        Effect.promise(() =>
+          reconcileForwardingBufferPayments(openAgentsDatabase(env), {
+            fetchBufferPaymentStatus: async paymentId => {
+              const fetchBuffer = fetchMdkTipsBufferPath(env)
+              if (fetchBuffer === undefined) {
+                return 'pending'
+              }
+              try {
+                const response = await fetchBuffer(
+                  `/payments/${encodeURIComponent(paymentId)}`,
+                )
+                const body = (await response.json()) as { status?: string }
+                return body.status === 'succeeded'
+                  ? 'succeeded'
+                  : body.status === 'failed'
+                    ? 'failed'
+                    : 'pending'
+              } catch {
+                return 'pending'
+              }
+            },
+            makeId: randomUuid,
+            nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          }),
+        ),
       ),
       observedEffect(
         'TipsBuffer.backingInvariant',
