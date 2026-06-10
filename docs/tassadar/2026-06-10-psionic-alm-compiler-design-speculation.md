@@ -263,6 +263,20 @@ in the product-promises Forum (topics fef12cbb and 92d38fef); dedicated
 Tassadar and Psionic forum sections are seeded in migration 0158 and
 appear with the next deploy.
 
+**Batch-4 landings (2026-06-10, psionic #1112–#1114):** the
+branch-capable ALM interpreter for the runtime's actual twelve-opcode
+Tassadar i32 window (#1112 — real `TassadarProgram`s with `br_if` loops
+cross-validated against the production `TassadarCpuReferenceRunner`,
+including the crown bar where the program channel is E5-baked into pure
+gate structure and still matches the production runner); numeric model
+materialization (#1113 — compiled bundles re-encoded as portable
+digest-pinned f64 coefficient arrays executed inside a runtime-checked
+2^53 exactness window; the harness now runs **five legs**); and the
+bounded real-gradient A1 reference trainer (#1114 — hand-derived
+analytic backprop for the A1 architecture shape, gradient-checked
+against central differences, answering the psionic-side ask of
+openagents #4678).
+
 ## Open Questions (Honest List)
 
 - **Solver dependency policy.** Does psionic want a MILP solver in its

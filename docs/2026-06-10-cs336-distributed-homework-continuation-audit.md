@@ -207,9 +207,13 @@ green since 2026-04-02 (`PSION_CS336_A1_FULL_PORT_MATRIX.md`; surfaces in
 `psionic-models/src/cs336_a1_reference_stack.rs`,
 `psionic-train/src/cs336_a1_reference_training.rs`,
 `psionic-data/src/cs336_a1_bpe.rs`), packaged for dispatch as
-`psion_cs336_a1_demo_v1`. The honest gap the matrix itself names: the
-reference trainer is a tiny finite-difference trainer, not scalable
-backprop. Psionic's newer actual-pretraining lane (`./TRAIN`) owns real
+`psion_cs336_a1_demo_v1`. The honest gap the matrix itself named — the
+reference trainer was a tiny finite-difference trainer, not real
+backprop — narrowed on 2026-06-10: `psionic#1114`
+(`psion_cs336_a1_real_gradient_reference_v1`) lands hand-derived
+analytic backprop for the A1 architecture shape, gradient-checked
+against central differences in f64; single-head tiny config only, with
+RoPE/multi-head backward, batching, and scale still open. Psionic's newer actual-pretraining lane (`./TRAIN`) owns real
 training; the A1 lane's continuation is a **leaderboard-class run** — train
 the A1 model on TinyStories/OWT shards across contributor devices with real
 gradients, matching the course's own measure (validation loss under a
