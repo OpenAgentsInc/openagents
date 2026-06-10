@@ -15,6 +15,7 @@
       "apps/nostr-relay",
       "apps/pylon",
       "apps/pylon/packages/*",
+      "packages/*",
       "packages/probe",
       "packages/probe/packages/*"
     ],
@@ -30,14 +31,16 @@
     "dev:pylon": "bun run --cwd apps/pylon start",
     "deploy:nostr-relay": "bun run --cwd apps/nostr-relay deploy",
     "smoke:nostr-relay": "bun run --cwd apps/nostr-relay smoke",
-    "test": "bun run test:forum && bun run test:pylon && bun run test:probe",
+    "test": "bun run test:forum && bun run test:pylon && bun run test:probe && bun run test:nip90",
     "test:openagents.com": "bun run --cwd apps/openagents.com test",
     "test:forum": "bun run --cwd apps/forum test",
     "test:pylon": "bun run --cwd apps/pylon test",
     "test:probe": "bun run --cwd packages/probe test",
-    "typecheck": "bun run typecheck:forum && bun run typecheck:nostr-relay",
+    "test:nip90": "bun run --cwd packages/nip90 test",
+    "typecheck": "bun run typecheck:forum && bun run typecheck:nostr-relay && bun run typecheck:nip90",
     "typecheck:forum": "bun run --cwd apps/forum typecheck",
     "typecheck:nostr-relay": "bun run --cwd apps/nostr-relay typecheck",
+    "typecheck:nip90": "bun run --cwd packages/nip90 typecheck",
     "prepare": "effect-language-service patch"
   },
   "devDependencies": {

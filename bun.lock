@@ -148,6 +148,7 @@
         "@openagents/email-templates": "workspace:*",
         "@openagents/mullet-schema": "workspace:*",
         "@openagents/mullet-sim": "workspace:*",
+        "@openagents/nip90": "workspace:*",
         "@openagents/provider-account-schema": "workspace:*",
         "@openagents/sync-schema": "workspace:*",
         "@openagents/sync-worker": "workspace:*",
@@ -167,6 +168,7 @@
         "pylon": "src/index.ts",
       },
       "dependencies": {
+        "@openagents/nip90": "workspace:*",
         "@noble/curves": "1.8.1",
         "@noble/hashes": "1.7.1",
         "@opentui/core": "^0.3.4",
@@ -192,6 +194,14 @@
         "diff": "^9.0.0",
         "effect": "catalog:",
         "marked": "^18.0.5",
+      },
+    },
+    "packages/nip90": {
+      "name": "@openagents/nip90",
+      "version": "0.1.0",
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
       },
     },
     "packages/probe": {
@@ -500,6 +510,8 @@
     "@openagents/mullet-schema": ["@openagents/mullet-schema@workspace:apps/openagents.com/packages/mullet-schema"],
 
     "@openagents/mullet-sim": ["@openagents/mullet-sim@workspace:apps/openagents.com/packages/mullet-sim"],
+
+    "@openagents/nip90": ["@openagents/nip90@workspace:packages/nip90"],
 
     "@openagents/nostr-relay": ["@openagents/nostr-relay@workspace:apps/nostr-relay"],
 
