@@ -2,9 +2,16 @@
 
 Date: 2026-06-10 (evening)
 
-Status: design audit only. Nothing in this document is implemented. The
-companion product promise is `pylon.local_claude_agent_bridge.v1`
-(yellow, three blockers) added in registry `2026-06-10.21`.
+Status: originally a design-only audit; the design is now implemented.
+The build sequence below was executed the same evening as issues #4718
+(SDK dependency, BYOK probe, capability declaration), #4719 (bounded
+executor gate), and #4720 (dispatch work class + bounded real-task
+smoke), all merged to main under epic #4717. The companion product
+promise `pylon.local_claude_agent_bridge.v1` (added at registry
+`2026-06-10.21`) remains yellow on one blocker: the live-device run of
+the bounded task smoke (`apps/pylon/docs/claude-agent-task-smoke.md`,
+leg 2 — needs an operator-credentialed machine). The design content
+below is kept as written; the implementation followed it closely.
 
 ## The directive
 

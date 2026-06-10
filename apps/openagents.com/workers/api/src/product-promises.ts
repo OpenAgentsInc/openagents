@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.23'
+export const PublicProductPromisesVersion = '2026-06-10.24'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1452,17 +1452,20 @@ export const publicProductPromisesDocument = () => {
       claim:
         'Pylon can talk to your local Claude: the Pylon worker loop hands a coding assignment to the Claude Agent SDK (TypeScript) running on the contributor machine with the user own credentials, drives a bounded read/edit/test session inside a sandboxed working directory with an assignment-derived tool allowlist, and returns public-safe closeout refs - making the user local Claude a real execution lane for delegated coding work.',
       safeCopy:
-        'The execution-gate spine this lane plugs into is live and green (a registered Pylon executed a digest-pinned Tassadar workload through the same worker loop, replay-verified by the platform), and the Claude Agent SDK exists as a published TypeScript library with a bundled agent binary. The Pylon-side bridge - SDK dependency, bounded executor gate, capability.pylon.local_claude_agent declaration, BYOK auth policy - is design-audited only (docs/autopilot-coder/2026-06-10-claude-agent-sdk-local-claude-pylon-audit.md) and is not built; Pylon cannot command a local Claude today.',
+        'The Pylon-side bridge is now built and merged: the SDK ships as a lazy optional dependency, go-online declares capability.pylon.local_claude_agent only when the BYOK readiness probe passes, the bounded executor gate runs a sandboxed Claude Agent SDK session with workspace-escape denial and independent test-command verification, and the CI-safe bounded-task smoke (smoke:claude-agent-task) drives the full worker-loop lifecycle with redaction scanning (issues #4718/#4719/#4720, epic #4717). What has NOT happened: no live run on a real device with real credentials has executed a coding assignment through a deployment, so Pylon has not yet commanded a local Claude in production.',
       unsafeCopy:
         'Do not claim Pylon commands Claude today or that any coding assignment has been executed by this lane. Do not call the lane "Claude Code" in product copy; permitted terms are "Claude Agent", "your local Claude", or "Powered by Claude" per Anthropic branding terms. Do not imply OpenAgents supplies Claude access, login, or rate limits - the user brings their own API key or provider configuration. Do not describe local SDK transcripts as shareable artifacts; only public-safe refs leave the device.',
       evidenceRefs: [
         'docs/autopilot-coder/2026-06-10-claude-agent-sdk-local-claude-pylon-audit.md',
-        'docs/autopilot-coder/2026-06-10-autopilot-coder-full-flow-audit.md',
-        'apps/pylon/src/assignment.ts',
+        'apps/pylon/src/claude-agent.ts',
+        'apps/pylon/src/claude-agent-executor.ts',
+        'apps/pylon/src/claude-agent-task-smoke.ts',
+        'apps/pylon/docs/claude-agent-bridge.md',
+        'apps/pylon/docs/claude-agent-task-smoke.md',
+        'apps/openagents.com/workers/api/scripts/claude-agent-task-dispatch.ts',
+        'https://github.com/OpenAgentsInc/openagents/issues/4717',
       ],
       blockerRefs: [
-        'blocker.product_promises.pylon_claude_agent_executor_gate_missing',
-        'blocker.product_promises.pylon_claude_agent_byok_auth_policy_missing',
         'blocker.product_promises.pylon_claude_agent_bounded_task_smoke_missing',
       ],
       verification:
