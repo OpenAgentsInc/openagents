@@ -11,6 +11,7 @@ import {
   FailedLoadPublicForumTipLeaderboards,
   FailedLoadPublicProductPromises,
   FailedLoadPublicPylonStats,
+  FailedLoadPublicTrainingRuns,
   FailedLoadShareProjection,
   Message,
   SucceededLoadPublicAdjutantActivity,
@@ -20,6 +21,7 @@ import {
   SucceededLoadPublicForumTipLeaderboards,
   SucceededLoadPublicProductPromises,
   SucceededLoadPublicPylonStats,
+  SucceededLoadPublicTrainingRuns,
   SucceededLoadShareProjection,
 } from './message'
 import {
@@ -30,6 +32,7 @@ import {
   FailedPublicForumTipLeaderboards,
   FailedPublicProductPromises,
   FailedPublicPylonStats,
+  FailedPublicTrainingRuns,
   FailedShareProjection,
   LoadedPublicAdjutantActivity,
   LoadedPublicAgent,
@@ -38,6 +41,7 @@ import {
   LoadedPublicForumTipLeaderboards,
   LoadedPublicProductPromises,
   LoadedPublicPylonStats,
+  LoadedPublicTrainingRuns,
   LoadedShareProjection,
   Model,
   PublicAdjutantActivity,
@@ -47,6 +51,8 @@ import {
   PublicForumTipLeaderboards,
   PublicProductPromises,
   PublicPylonStats,
+  PublicTrainingRunResponse,
+  PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
 
@@ -75,6 +81,11 @@ class PublicForumTipLeaderboardsLoadError extends S.TaggedErrorClass<PublicForum
 
 class PublicProductPromisesLoadError extends S.TaggedErrorClass<PublicProductPromisesLoadError>()(
   'PublicProductPromisesLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicTrainingRunsLoadError extends S.TaggedErrorClass<PublicTrainingRunsLoadError>()(
+  'PublicTrainingRunsLoadError',
   { error: S.Defect },
 ) {}
 
@@ -391,6 +402,62 @@ export const LoadPublicProductPromises = Command.define(
   ),
 )
 
+export const LoadPublicTrainingRuns = Command.define(
+  'LoadPublicTrainingRuns',
+  { runId: S.NullOr(S.String) },
+  SucceededLoadPublicTrainingRuns,
+  FailedLoadPublicTrainingRuns,
+)(({ runId }) =>
+  Effect.gen(function* () {
+    const path =
+      runId === null
+        ? '/api/training/runs'
+        : `/api/training/runs/${encodeURIComponent(runId)}`
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(path, {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicTrainingRunsLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicTrainingRunsLoadError({
+        error: `Public training runs returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicTrainingRunsLoadError({ error }),
+    })
+    const decoded =
+      runId === null
+        ? yield* S.decodeUnknownEffect(PublicTrainingRunsResponse)(payload)
+        : yield* S.decodeUnknownEffect(PublicTrainingRunResponse)(payload).pipe(
+            Effect.map(detail => ({
+              runs: [detail.run],
+              summaries: [detail.summary],
+            })),
+          )
+
+    return SucceededLoadPublicTrainingRuns({
+      response: decoded,
+      selectedRunId: runId,
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicTrainingRuns({
+          runId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
 export const LoadShareProjection = Command.define(
   'LoadShareProjection',
   { shareId: S.String },
@@ -491,31 +558,35 @@ export const initialCommands = (
         ]
       : model.route._tag === 'ProductPromises'
         ? [LoadPublicProductPromises()]
-        : model.route._tag === 'PublicAgent'
-          ? model.route.agentRef === 'artanis'
-            ? [
-                LoadPublicAgentGoal({
-                  agentId: publicAgentIdForRef(model.route.agentRef),
-                  agentRef: model.route.agentRef,
-                }),
-                LoadPublicArtanisReport(),
-                LoadPublicPylonStats(),
-              ]
-            : model.route.agentRef === 'adjutant'
-              ? [
-                  LoadPublicAgentGoal({
-                    agentId: publicAgentIdForRef(model.route.agentRef),
-                    agentRef: model.route.agentRef,
-                  }),
-                  LoadPublicAdjutantActivity(),
-                ]
-              : [
-                  LoadPublicAgentGoal({
-                    agentId: publicAgentIdForRef(model.route.agentRef),
-                    agentRef: model.route.agentRef,
-                  }),
-                ]
-          : []
+        : model.route._tag === 'PublicTrainingRuns'
+          ? [LoadPublicTrainingRuns({ runId: null })]
+          : model.route._tag === 'PublicTrainingRun'
+            ? [LoadPublicTrainingRuns({ runId: model.route.runId })]
+            : model.route._tag === 'PublicAgent'
+              ? model.route.agentRef === 'artanis'
+                ? [
+                    LoadPublicAgentGoal({
+                      agentId: publicAgentIdForRef(model.route.agentRef),
+                      agentRef: model.route.agentRef,
+                    }),
+                    LoadPublicArtanisReport(),
+                    LoadPublicPylonStats(),
+                  ]
+                : model.route.agentRef === 'adjutant'
+                  ? [
+                      LoadPublicAgentGoal({
+                        agentId: publicAgentIdForRef(model.route.agentRef),
+                        agentRef: model.route.agentRef,
+                      }),
+                      LoadPublicAdjutantActivity(),
+                    ]
+                  : [
+                      LoadPublicAgentGoal({
+                        agentId: publicAgentIdForRef(model.route.agentRef),
+                        agentRef: model.route.agentRef,
+                      }),
+                    ]
+              : []
 
 const fundingAmountFromInput = (value: string): number => {
   const parsed = Number.parseInt(value, 10)
@@ -676,6 +747,19 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       FailedLoadPublicProductPromises: ({ error }) => [
         evo(model, {
           publicProductPromises: () => FailedPublicProductPromises({ error }),
+        }),
+        [],
+      ],
+      SucceededLoadPublicTrainingRuns: ({ response, selectedRunId }) => [
+        evo(model, {
+          publicTrainingRuns: () =>
+            LoadedPublicTrainingRuns({ response, selectedRunId }),
+        }),
+        [],
+      ],
+      FailedLoadPublicTrainingRuns: ({ error, runId }) => [
+        evo(model, {
+          publicTrainingRuns: () => FailedPublicTrainingRuns({ error, runId }),
         }),
         [],
       ],

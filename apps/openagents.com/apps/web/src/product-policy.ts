@@ -153,6 +153,8 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'Blog' &&
   route._tag !== 'BlogPost' &&
   route._tag !== 'PublicAgent' &&
+  route._tag !== 'PublicTrainingRuns' &&
+  route._tag !== 'PublicTrainingRun' &&
   route._tag !== 'Share' &&
   route._tag !== 'Demo' &&
   route._tag !== 'DemoOrder' &&
@@ -195,6 +197,8 @@ export const browserRouteProductIntents = {
   PersonalFile: 'files.personal.detail',
   ProductPromises: 'public.product-promises',
   PublicAgent: 'public.agent.profile',
+  PublicTrainingRun: 'public.training.run',
+  PublicTrainingRuns: 'public.training.runs',
   Share: 'share.projection',
   SiteCheckoutDemo: 'public.sites.demo-checkout',
   SiteCheckoutDemoReturn: 'public.sites.demo-checkout-return',
@@ -252,6 +256,7 @@ export const browserCommandProductIntents = {
   LoadPublicForumTipLeaderboards: 'public.forum.tip-leaderboards.load',
   LoadPublicProductPromises: 'public.product-promises.load',
   LoadPublicPylonStats: 'public.pylon.stats.load',
+  LoadPublicTrainingRuns: 'public.training.runs.load',
   LoadShareProjection: 'share.projection.load',
   LoadSyncSnapshot: 'sync.workspace.snapshot.load',
   LoadTeamChatMessages: 'workroom.chat.team.messages.load',

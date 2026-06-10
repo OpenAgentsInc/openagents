@@ -19,6 +19,7 @@ import {
   buildTrainingWindowLeaseRecord,
   buildTrainingWindowRecord,
   publicTrainingRunProjection,
+  publicTrainingRunSummary,
   publicTrainingWindowProjection,
   selectTrainingLeaseCandidate,
   trainingAuthorityStoreErrorFromUnknown,
@@ -273,8 +274,72 @@ const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
       })
     }
 
+    const store = dependencies.makeStore(env)
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+
     return noStoreJsonResponse({
       run: publicTrainingRunProjection(record, nowIso),
+      summary: publicTrainingRunSummary({
+        challenges,
+        leases,
+        nowIso,
+        run: record,
+        windows,
+      }),
+    })
+  })
+
+const routeListRuns = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const runs = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listRuns(50),
+    })
+    const summaries = yield* Effect.forEach(runs, run =>
+      Effect.gen(function* () {
+        const windows = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowsForRun(run.trainingRunRef, 100),
+        })
+        const leases = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowLeasesForRun(run.trainingRunRef, 1000),
+        })
+        const challenges = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
+        })
+
+        return publicTrainingRunSummary({
+          challenges,
+          leases,
+          nowIso,
+          run,
+          windows,
+        })
+      }),
+    )
+
+    return noStoreJsonResponse({
+      runs: runs.map(run => publicTrainingRunProjection(run, nowIso)),
+      summaries,
     })
   })
 
@@ -314,8 +379,14 @@ export const makeTrainingRunWindowRoutes = <
     const url = new URL(request.url)
 
     if (url.pathname === '/api/training/runs') {
+      if (request.method === 'GET') {
+        return routeListRuns(dependencies, env).pipe(
+          Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+        )
+      }
+
       if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
+        return Effect.succeed(methodNotAllowed(['GET', 'POST']))
       }
 
       return routePlanRun(dependencies, request, env).pipe(

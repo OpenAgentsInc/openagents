@@ -3,6 +3,11 @@ import { Schema as S } from 'effect'
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 import { parseJsonStringArray } from './json-boundary'
 import { isoTimestampAfterIso } from './runtime-primitives'
+import {
+  type TrainingVerificationChallengeRecord,
+  type TrainingVerificationRow,
+  rowToTrainingVerificationChallenge,
+} from './training-verification'
 
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
@@ -163,6 +168,36 @@ export type TrainingWindowLeaseProjection = Readonly<{
   windowRef: string
 }>
 
+export type TrainingRunPublicMetric = Readonly<{
+  provenanceLabel: string
+  sourceRefs: ReadonlyArray<string>
+  value: number
+}>
+
+export type TrainingRunPublicSummary = Readonly<{
+  copyBoundaryRefs: ReadonlyArray<string>
+  emptyState: Readonly<{
+    idle: boolean
+    reason: string
+  }>
+  metrics: Readonly<{
+    activeWindowCount: TrainingRunPublicMetric
+    assignedContributorCount: TrainingRunPublicMetric
+    pendingPayoutCount: TrainingRunPublicMetric
+    plannedWindowCount: TrainingRunPublicMetric
+    providerConfirmedSettledPayoutSats: TrainingRunPublicMetric
+    receiptRefCount: TrainingRunPublicMetric
+    reconciledWindowCount: TrainingRunPublicMetric
+    rejectedWorkCount: TrainingRunPublicMetric
+    sealedWindowCount: TrainingRunPublicMetric
+    verifiedWorkCount: TrainingRunPublicMetric
+  }>
+  receiptRefs: ReadonlyArray<string>
+  run: TrainingRunProjection
+  sourceRefs: ReadonlyArray<string>
+  windows: ReadonlyArray<TrainingWindowProjection>
+}>
+
 export type TrainingAuthorityStore = Readonly<{
   claimLease: (
     lease: TrainingWindowLeaseRecord,
@@ -170,6 +205,19 @@ export type TrainingAuthorityStore = Readonly<{
   ) => Promise<TrainingWindowLeaseRecord>
   listClaimableWindows: (
     nowIso: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<TrainingWindowRecord>>
+  listRuns: (limit: number) => Promise<ReadonlyArray<TrainingRunRecord>>
+  listVerificationChallengesForRun: (
+    trainingRunRef: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<TrainingVerificationChallengeRecord>>
+  listWindowLeasesForRun: (
+    trainingRunRef: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<TrainingWindowLeaseRecord>>
+  listWindowsForRun: (
+    trainingRunRef: string,
     limit: number,
   ) => Promise<ReadonlyArray<TrainingWindowRecord>>
   planRun: (run: TrainingRunRecord) => Promise<TrainingRunRecord>
@@ -223,6 +271,19 @@ export type TrainingWindowRow = Readonly<{
   state: TrainingWindowState
   training_run_ref: string
   updated_at: string
+  window_ref: string
+}>
+
+export type TrainingWindowLeaseRow = Readonly<{
+  claimed_at: string
+  id: string
+  lease_expires_at: string
+  lease_ref: string
+  public_projection_json: string
+  pylon_ref: string
+  receipt_refs_json: string
+  state: 'active' | 'released'
+  training_run_ref: string
   window_ref: string
 }>
 
@@ -320,6 +381,133 @@ export const publicTrainingWindowLeaseProjection = (
   trainingRunRef: record.trainingRunRef,
   windowRef: record.windowRef,
 })
+
+const metric = (
+  value: number,
+  provenanceLabel: string,
+  sourceRefs: ReadonlyArray<string>,
+): TrainingRunPublicMetric => ({
+  provenanceLabel,
+  sourceRefs: uniqueRefs(sourceRefs),
+  value,
+})
+
+const distinctPylonRefs = (
+  leases: ReadonlyArray<TrainingWindowLeaseRecord>,
+): ReadonlyArray<string> => uniqueRefs(leases.map(lease => lease.pylonRef))
+
+export const publicTrainingRunSummary = (
+  input: Readonly<{
+    challenges: ReadonlyArray<TrainingVerificationChallengeRecord>
+    leases: ReadonlyArray<TrainingWindowLeaseRecord>
+    nowIso: string
+    run: TrainingRunRecord
+    windows: ReadonlyArray<TrainingWindowRecord>
+  }>,
+): TrainingRunPublicSummary => {
+  const windowProjections = input.windows.map(window =>
+    publicTrainingWindowProjection(window, input.nowIso),
+  )
+  const receiptRefs = uniqueRefs([
+    ...input.run.receiptRefs,
+    ...input.windows.flatMap(window => window.receiptRefs),
+    ...input.leases.flatMap(lease => lease.receiptRefs),
+    ...input.challenges.flatMap(challenge => challenge.verdictRefs),
+  ])
+  const sourceRefs = uniqueRefs([
+    ...input.run.sourceRefs,
+    ...input.windows.flatMap(window => window.sourceRefs),
+    'route:/api/training/runs',
+    `route:/api/training/runs/${input.run.trainingRunRef}`,
+  ])
+  const windowMetricRefs = [
+    `training.run.${input.run.trainingRunRef}.windows`,
+    ...input.windows.map(window => window.windowRef),
+  ]
+  const challengeMetricRefs = [
+    `training.run.${input.run.trainingRunRef}.verification_challenges`,
+    ...input.challenges.map(challenge => challenge.challengeRef),
+  ]
+  const payoutMetricRefs = [
+    `training.run.${input.run.trainingRunRef}.provider_confirmed_settlements`,
+  ]
+  const empty =
+    input.windows.length === 0 &&
+    input.leases.length === 0 &&
+    input.challenges.length === 0
+
+  return {
+    copyBoundaryRefs: [
+      'copy.public.training.run_page.provenance_labeled_numbers',
+      'copy.public.training.no_pending_as_paid',
+      'copy.public.training.no_unbounded_model_training_claim',
+    ],
+    emptyState: {
+      idle: empty,
+      reason: empty
+        ? 'No Worker-authoritative windows, leases, verification challenges, or provider-confirmed settlements are recorded for this run yet.'
+        : 'Worker-authoritative run data is present.',
+    },
+    metrics: {
+      activeWindowCount: metric(
+        input.windows.filter(window => window.state === 'active').length,
+        'Worker D1 training_windows rows with state active.',
+        windowMetricRefs,
+      ),
+      assignedContributorCount: metric(
+        distinctPylonRefs(input.leases).length,
+        'Distinct pylon_ref values from Worker D1 training_window_leases rows.',
+        input.leases.map(lease => lease.leaseRef),
+      ),
+      pendingPayoutCount: metric(
+        0,
+        'No pending payout rows are counted as paid on the public run page.',
+        payoutMetricRefs,
+      ),
+      plannedWindowCount: metric(
+        input.windows.filter(window => window.state === 'planned').length,
+        'Worker D1 training_windows rows with state planned.',
+        windowMetricRefs,
+      ),
+      providerConfirmedSettledPayoutSats: metric(
+        0,
+        'Provider-confirmed settlement receipts linked to this run only; pending, offered, claimed, or wallet-side records are excluded.',
+        payoutMetricRefs,
+      ),
+      receiptRefCount: metric(
+        receiptRefs.length,
+        'Public-safe receipt and verdict refs linked to the run, windows, leases, or verification challenges.',
+        receiptRefs,
+      ),
+      reconciledWindowCount: metric(
+        input.windows.filter(window => window.state === 'reconciled').length,
+        'Worker D1 training_windows rows with state reconciled.',
+        windowMetricRefs,
+      ),
+      rejectedWorkCount: metric(
+        input.challenges.filter(challenge => challenge.state === 'Rejected')
+          .length,
+        'Worker D1 training_verification_challenges rows with state Rejected.',
+        challengeMetricRefs,
+      ),
+      sealedWindowCount: metric(
+        input.windows.filter(window => window.state === 'sealed').length,
+        'Worker D1 training_windows rows with state sealed.',
+        windowMetricRefs,
+      ),
+      verifiedWorkCount: metric(
+        input.challenges.filter(challenge => challenge.state === 'Verified')
+          .length,
+        'Worker D1 training_verification_challenges rows with state Verified.',
+        challengeMetricRefs,
+      ),
+    },
+    receiptRefs,
+    run: publicTrainingRunProjection(input.run, input.nowIso),
+    sourceRefs,
+    windows: windowProjections,
+  }
+}
 
 export const buildTrainingRunRecord = (
   input: Readonly<{
@@ -538,6 +726,21 @@ export const rowToTrainingWindow = (
   windowRef: row.window_ref,
 })
 
+export const rowToTrainingWindowLease = (
+  row: TrainingWindowLeaseRow,
+): TrainingWindowLeaseRecord => ({
+  claimedAt: row.claimed_at,
+  id: row.id,
+  leaseExpiresAt: row.lease_expires_at,
+  leaseRef: row.lease_ref,
+  publicProjectionJson: row.public_projection_json,
+  pylonRef: row.pylon_ref,
+  receiptRefs: parseJsonStringArray(row.receipt_refs_json),
+  state: row.state,
+  trainingRunRef: row.training_run_ref,
+  windowRef: row.window_ref,
+})
+
 export const makeD1TrainingAuthorityStore = (
   db: D1Database,
 ): TrainingAuthorityStore => ({
@@ -592,6 +795,65 @@ export const makeD1TrainingAuthorityStore = (
           LIMIT ?`,
       )
       .bind(nowIso, limit)
+      .all<TrainingWindowRow>()
+
+    return (result.results ?? []).map(rowToTrainingWindow)
+  },
+  listRuns: async limit => {
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM training_runs
+          WHERE archived_at IS NULL
+          ORDER BY updated_at DESC
+          LIMIT ?`,
+      )
+      .bind(limit)
+      .all<TrainingRunRow>()
+
+    return (result.results ?? []).map(rowToTrainingRun)
+  },
+  listVerificationChallengesForRun: async (trainingRunRef, limit) => {
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM training_verification_challenges
+          WHERE training_run_ref = ?
+            AND archived_at IS NULL
+          ORDER BY updated_at DESC
+          LIMIT ?`,
+      )
+      .bind(trainingRunRef, limit)
+      .all<TrainingVerificationRow>()
+
+    return (result.results ?? []).map(rowToTrainingVerificationChallenge)
+  },
+  listWindowLeasesForRun: async (trainingRunRef, limit) => {
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM training_window_leases
+          WHERE training_run_ref = ?
+            AND archived_at IS NULL
+          ORDER BY claimed_at DESC
+          LIMIT ?`,
+      )
+      .bind(trainingRunRef, limit)
+      .all<TrainingWindowLeaseRow>()
+
+    return (result.results ?? []).map(rowToTrainingWindowLease)
+  },
+  listWindowsForRun: async (trainingRunRef, limit) => {
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM training_windows
+          WHERE training_run_ref = ?
+            AND archived_at IS NULL
+          ORDER BY planned_at DESC
+          LIMIT ?`,
+      )
+      .bind(trainingRunRef, limit)
       .all<TrainingWindowRow>()
 
     return (result.results ?? []).map(rowToTrainingWindow)

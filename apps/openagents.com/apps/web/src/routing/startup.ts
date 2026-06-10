@@ -79,6 +79,8 @@ export const startupRouteForLoggedOut = (
       'Docs',
       'DocsPage',
       'ProductPromises',
+      'PublicTrainingRuns',
+      'PublicTrainingRun',
       'Forum',
       'ForumForum',
       'ForumTopic',
@@ -126,6 +128,12 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       }),
     ),
     M.tag('PublicAgent', 'ProductPromises', 'Share', route =>
+      LoggedOutStartupRoute({
+        route,
+        redirect: Option.none(),
+      }),
+    ),
+    M.tag('PublicTrainingRuns', 'PublicTrainingRun', route =>
       LoggedOutStartupRoute({
         route,
         redirect: Option.none(),
@@ -185,11 +193,17 @@ const startupRouteForCompleteOnboarding = (
         ),
       }),
     ),
-    M.tag('PublicAgent', 'ProductPromises', 'Share', route =>
-      LoggedOutStartupRoute({
-        route,
-        redirect: Option.none(),
-      }),
+    M.tag(
+      'PublicAgent',
+      'ProductPromises',
+      'PublicTrainingRuns',
+      'PublicTrainingRun',
+      'Share',
+      route =>
+        LoggedOutStartupRoute({
+          route,
+          redirect: Option.none(),
+        }),
     ),
     M.tag(
       'Chat',

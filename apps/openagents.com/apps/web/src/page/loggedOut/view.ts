@@ -17,6 +17,7 @@ import * as Onboarding from './page/onboarding'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
 import * as Share from './page/share'
+import * as TrainingRuns from './page/trainingRuns'
 
 export const view = Submodel.defineView<Model, Message>((model): Html => {
   const h = html<Message>()
@@ -46,6 +47,10 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Docs: route => Docs.view(route, { _tag: 'LoggedOut' }),
               DocsPage: route => Docs.view(route, { _tag: 'LoggedOut' }),
               ProductPromises: () => Promises.view(model.publicProductPromises),
+              PublicTrainingRuns: () =>
+                TrainingRuns.view(model.publicTrainingRuns, null),
+              PublicTrainingRun: route =>
+                TrainingRuns.view(model.publicTrainingRuns, route.runId),
               Forum: route => Forum.view(route, { _tag: 'LoggedOut' }),
               ForumForum: route => Forum.view(route, { _tag: 'LoggedOut' }),
               ForumTopic: route => Forum.view(route, { _tag: 'LoggedOut' }),

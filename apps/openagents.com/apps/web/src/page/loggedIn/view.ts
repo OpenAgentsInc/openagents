@@ -25,6 +25,8 @@ import {
   orderRouter,
   personalFileRouter,
   publicAgentRouter,
+  publicTrainingRunRouter,
+  publicTrainingRunsRouter,
   settingsRouter,
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,
@@ -82,6 +84,8 @@ const currentHref = (model: Model): string =>
       Blog: () => blogRouter(),
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
       PublicAgent: ({ agentRef }) => publicAgentRouter({ agentRef }),
+      PublicTrainingRuns: () => publicTrainingRunsRouter(),
+      PublicTrainingRun: ({ runId }) => publicTrainingRunRouter({ runId }),
       Dashboard: () => '',
       Billing: () => billingRouter(),
       Usage: () => usageRouter(),
@@ -123,6 +127,8 @@ const routeKey = (model: Model): string =>
       Blog: () => 'Blog',
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
       PublicAgent: ({ agentRef }) => `PublicAgent:${agentRef}`,
+      PublicTrainingRuns: () => 'PublicTrainingRuns',
+      PublicTrainingRun: ({ runId }) => `PublicTrainingRun:${runId}`,
       Dashboard: () => 'Dashboard',
       Billing: () => 'Billing',
       Usage: () => 'Usage',
@@ -441,6 +447,22 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               notFoundView(
                 publicAgentRouter({ agentRef }),
+                chatRouter(),
+                'Go to Chat',
+              ),
+            ]),
+          PublicTrainingRuns: () =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView(
+                publicTrainingRunsRouter(),
+                chatRouter(),
+                'Go to Chat',
+              ),
+            ]),
+          PublicTrainingRun: ({ runId }) =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView(
+                publicTrainingRunRouter({ runId }),
                 chatRouter(),
                 'Go to Chat',
               ),

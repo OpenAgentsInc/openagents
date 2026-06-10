@@ -250,7 +250,10 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
   ),
   TrainingRunEnvelope: objectSummary(
-    'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, and display timestamps only. It grants no assignment, payout, model-publication, or spend authority.',
+    'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, display timestamps, and optional summary metrics. Public summary metrics include provenance labels for windows, contributors, verification, receipt refs, and provider-confirmed settled payout sats. Pending, offered, claimed, and wallet-side records are not counted as paid. It grants no assignment, payout, model-publication, or spend authority.',
+  ),
+  TrainingRunListEnvelope: objectSummary(
+    'Public-safe training-run index with active/recent run projections and provenance-labeled summaries. Empty runs stay visible as idle instead of being hidden.',
   ),
   TrainingWindowEnvelope: objectSummary(
     'Public-safe training-window projection with windowRef, trainingRunRef, lifecycle state, homeworkKind, priority, dataset refs, source refs, receipt refs, and display timestamps only. It excludes private datasets, worker logs, secrets, wallet state, and payout material.',
@@ -2808,6 +2811,21 @@ const paths = (): JsonSchema => ({
     }),
   },
   '/api/training/runs': {
+    get: operation({
+      operationId: 'listTrainingRuns',
+      summary: 'List public training runs',
+      description:
+        'Lists active and recent public-safe training runs with provenance-labeled metrics. Pending work is never displayed as paid; settled payout totals require provider-confirmed settlement receipts.',
+      tags: ['Training'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Training run index.',
+          '#/components/schemas/TrainingRunListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
     post: operation({
       operationId: 'planTrainingRun',
       summary: 'Plan training run',
@@ -4831,9 +4849,7 @@ const paths = (): JsonSchema => ({
           'Stable idempotency key for this direct-tip attempt.',
         ),
       ],
-      requestBody: jsonContent(
-        '#/components/schemas/ForumDirectTipRequest',
-      ),
+      requestBody: jsonContent('#/components/schemas/ForumDirectTipRequest'),
       responses: {
         '201': okJson(
           'Forum direct-tip attempt.',
@@ -5903,9 +5919,7 @@ const paths = (): JsonSchema => ({
         'Operator-only append-only Site referral payout ledger transition. Approves dispatch, marks dispatched, marks failed, refuses, reverses, or marks settled only with public-safe evidence refs. This route records authority state and does not move sats by itself.',
       tags: ['Sites'],
       security: adminBearer,
-      parameters: [
-        pathParam('payoutRef', 'Public-safe referral payout ref.'),
-      ],
+      parameters: [pathParam('payoutRef', 'Public-safe referral payout ref.')],
       requestBody: jsonContent(
         '#/components/schemas/SiteReferralPayoutTransitionRequest',
       ),

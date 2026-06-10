@@ -10,6 +10,7 @@ import {
   PublicForumTipLeaderboards,
   PublicProductPromises,
   PublicPylonStats,
+  PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
 
@@ -110,6 +111,17 @@ export const FailedLoadPublicProductPromises = m(
     error: S.String,
   },
 )
+export const SucceededLoadPublicTrainingRuns = m(
+  'SucceededLoadPublicTrainingRuns',
+  {
+    response: PublicTrainingRunsResponse,
+    selectedRunId: S.NullOr(S.String),
+  },
+)
+export const FailedLoadPublicTrainingRuns = m('FailedLoadPublicTrainingRuns', {
+  error: S.String,
+  runId: S.NullOr(S.String),
+})
 export const SucceededLoadShareProjection = m('SucceededLoadShareProjection', {
   response: ShareProjectionResponse,
   shareId: S.String,
@@ -144,6 +156,8 @@ export const Message = S.Union([
   FailedLoadPublicForumTipLeaderboards,
   SucceededLoadPublicProductPromises,
   FailedLoadPublicProductPromises,
+  SucceededLoadPublicTrainingRuns,
+  FailedLoadPublicTrainingRuns,
   SucceededLoadShareProjection,
   FailedLoadShareProjection,
   CompletedCopyShareLink,

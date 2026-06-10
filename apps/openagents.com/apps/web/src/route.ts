@@ -24,6 +24,10 @@ export const ThreadRoute = r('Thread', { threadId: S.String })
 export const DocsRoute = r('Docs')
 export const DocsPageRoute = r('DocsPage', { slug: S.String })
 export const ProductPromisesRoute = r('ProductPromises')
+export const PublicTrainingRunsRoute = r('PublicTrainingRuns')
+export const PublicTrainingRunRoute = r('PublicTrainingRun', {
+  runId: S.String,
+})
 export const ForumRoute = r('Forum')
 export const ForumForumRoute = r('ForumForum', { forumRef: S.String })
 export const ForumTopicRoute = r('ForumTopic', { topicId: S.String })
@@ -74,6 +78,8 @@ export type ThreadRoute = typeof ThreadRoute.Type
 export type DocsRoute = typeof DocsRoute.Type
 export type DocsPageRoute = typeof DocsPageRoute.Type
 export type ProductPromisesRoute = typeof ProductPromisesRoute.Type
+export type PublicTrainingRunsRoute = typeof PublicTrainingRunsRoute.Type
+export type PublicTrainingRunRoute = typeof PublicTrainingRunRoute.Type
 export type ForumRoute = typeof ForumRoute.Type
 export type ForumForumRoute = typeof ForumForumRoute.Type
 export type ForumTopicRoute = typeof ForumTopicRoute.Type
@@ -109,6 +115,8 @@ export const LoggedOutRoute = S.Union([
   DocsRoute,
   DocsPageRoute,
   ProductPromisesRoute,
+  PublicTrainingRunsRoute,
+  PublicTrainingRunRoute,
   ForumRoute,
   ForumForumRoute,
   ForumTopicRoute,
@@ -136,6 +144,8 @@ export const LoggedInRoute = S.Union([
   DocsRoute,
   DocsPageRoute,
   ForumRoute,
+  PublicTrainingRunsRoute,
+  PublicTrainingRunRoute,
   ForumForumRoute,
   ForumTopicRoute,
   ForumReceiptRoute,
@@ -171,6 +181,8 @@ export const AppRoute = S.Union([
   DocsRoute,
   DocsPageRoute,
   ProductPromisesRoute,
+  PublicTrainingRunsRoute,
+  PublicTrainingRunRoute,
   ForumRoute,
   ForumForumRoute,
   ForumTopicRoute,
@@ -262,6 +274,17 @@ export const docsPageRouter = pipe(
 export const productPromisesRouter = pipe(
   literal('promises'),
   Route.mapTo(ProductPromisesRoute),
+)
+export const publicTrainingRunsRouter = pipe(
+  literal('training'),
+  slash(literal('runs')),
+  Route.mapTo(PublicTrainingRunsRoute),
+)
+export const publicTrainingRunRouter = pipe(
+  literal('training'),
+  slash(literal('runs')),
+  slash(string('runId')),
+  Route.mapTo(PublicTrainingRunRoute),
 )
 export const forumRouter = pipe(literal('forum'), Route.mapTo(ForumRoute))
 export const forumForumRouter = pipe(
@@ -369,6 +392,8 @@ const routeParser = Route.oneOf(
   demoOrderRouter,
   demoRouter,
   productPromisesRouter,
+  publicTrainingRunRouter,
+  publicTrainingRunsRouter,
   docsPageRouter,
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,

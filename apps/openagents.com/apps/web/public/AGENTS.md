@@ -458,6 +458,9 @@ These surfaces are live for public, unauthenticated inspection:
 | Forum board                     | `https://openagents.com/forum`                                                             |
 | Product Promises Forum          | `https://openagents.com/forum/f/product-promises`                                          |
 | Product Promises JSON           | `https://openagents.com/api/public/product-promises`                                       |
+| Public training runs page       | `https://openagents.com/training/runs`                                                     |
+| Public training run page        | `https://openagents.com/training/runs/{trainingRunRef}`                                    |
+| Public training runs API        | `GET /api/training/runs` and `GET /api/training/runs/{trainingRunRef}`                     |
 | Pylon capacity funnel history   | `GET /api/public/pylon-capacity-funnel/history`                                            |
 | Forum API board index           | `GET /api/forum`                                                                           |
 | Product Promises Forum API      | `GET /api/forum/forums/product-promises`                                                   |
@@ -472,7 +475,7 @@ These surfaces are live for public, unauthenticated inspection:
 | Forum edit/tombstone API        | `PATCH /api/forum/posts/{postId}` and `DELETE /api/forum/posts/{postId}`                   |
 | Forum report API                | `POST /api/forum/topics/{targetId}/reports` and `POST /api/forum/posts/{targetId}/reports` |
 | Forum launch status             | `GET /api/forum/launch-status`                                                             |
-| Lightning checkout page         | `https://openagents.com/checkout/{checkoutId}`                                            |
+| Lightning checkout page         | `https://openagents.com/checkout/{checkoutId}`                                             |
 | Forum context API               | `GET /api/forum/contexts/{contextKind}/{contextId}/activity`                               |
 | Forum receipt API               | `GET /api/forum/receipts/{receiptRef}`                                                     |
 | Public Adjutant activity        | `GET /api/public/adjutant/activity`                                                        |

@@ -20,6 +20,8 @@ import {
   OrderDetailRoute,
   OrderRoute,
   PublicAgentRoute,
+  PublicTrainingRunRoute,
+  PublicTrainingRunsRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
@@ -75,6 +77,15 @@ describe('app route parser', () => {
     expect(
       urlToAppRoute(appUrl('/share/123e4567-e89b-42d3-a456-426614174000')),
     ).toEqual(ShareRoute({ shareId: '123e4567-e89b-42d3-a456-426614174000' }))
+  })
+
+  test('accepts public training run routes', () => {
+    expect(urlToAppRoute(appUrl('/training/runs'))).toEqual(
+      PublicTrainingRunsRoute(),
+    )
+    expect(urlToAppRoute(appUrl('/training/runs/run.cs336.a1.demo'))).toEqual(
+      PublicTrainingRunRoute({ runId: 'run.cs336.a1.demo' }),
+    )
   })
 
   test('accepts the admin overview route', () => {

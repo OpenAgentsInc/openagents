@@ -378,6 +378,81 @@ export const PublicProductPromises = S.Struct({
 })
 export type PublicProductPromises = typeof PublicProductPromises.Type
 
+export const PublicTrainingRunMetric = S.Struct({
+  provenanceLabel: S.String,
+  sourceRefs: S.Array(S.String),
+  value: S.Number,
+})
+export type PublicTrainingRunMetric = typeof PublicTrainingRunMetric.Type
+
+export const PublicTrainingRunProjection = S.Struct({
+  createdAtDisplay: S.String,
+  promiseRef: S.String,
+  receiptRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  state: S.Literals(['planned', 'active', 'sealed', 'reconciled']),
+  trainingRunRef: S.String,
+  updatedAtDisplay: S.String,
+})
+export type PublicTrainingRunProjection =
+  typeof PublicTrainingRunProjection.Type
+
+export const PublicTrainingWindowProjection = S.Struct({
+  datasetRefs: S.Array(S.String),
+  homeworkKind: S.Literals([
+    'admin_dispatched_homework',
+    'operator_planned_homework',
+    'auto_starter',
+  ]),
+  plannedAtDisplay: S.String,
+  priority: S.Number,
+  receiptRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  state: S.Literals(['planned', 'active', 'sealed', 'reconciled']),
+  trainingRunRef: S.String,
+  updatedAtDisplay: S.String,
+  windowRef: S.String,
+})
+export type PublicTrainingWindowProjection =
+  typeof PublicTrainingWindowProjection.Type
+
+export const PublicTrainingRunSummary = S.Struct({
+  copyBoundaryRefs: S.Array(S.String),
+  emptyState: S.Struct({
+    idle: S.Boolean,
+    reason: S.String,
+  }),
+  metrics: S.Struct({
+    activeWindowCount: PublicTrainingRunMetric,
+    assignedContributorCount: PublicTrainingRunMetric,
+    pendingPayoutCount: PublicTrainingRunMetric,
+    plannedWindowCount: PublicTrainingRunMetric,
+    providerConfirmedSettledPayoutSats: PublicTrainingRunMetric,
+    receiptRefCount: PublicTrainingRunMetric,
+    reconciledWindowCount: PublicTrainingRunMetric,
+    rejectedWorkCount: PublicTrainingRunMetric,
+    sealedWindowCount: PublicTrainingRunMetric,
+    verifiedWorkCount: PublicTrainingRunMetric,
+  }),
+  receiptRefs: S.Array(S.String),
+  run: PublicTrainingRunProjection,
+  sourceRefs: S.Array(S.String),
+  windows: S.Array(PublicTrainingWindowProjection),
+})
+export type PublicTrainingRunSummary = typeof PublicTrainingRunSummary.Type
+
+export const PublicTrainingRunsResponse = S.Struct({
+  runs: S.Array(PublicTrainingRunProjection),
+  summaries: S.Array(PublicTrainingRunSummary),
+})
+export type PublicTrainingRunsResponse = typeof PublicTrainingRunsResponse.Type
+
+export const PublicTrainingRunResponse = S.Struct({
+  run: PublicTrainingRunProjection,
+  summary: PublicTrainingRunSummary,
+})
+export type PublicTrainingRunResponse = typeof PublicTrainingRunResponse.Type
+
 export const PublicArtanisReportLoopState = S.Literals([
   'blocked',
   'completed',
@@ -852,6 +927,26 @@ export const PublicProductPromisesModel = S.Union([
 ])
 export type PublicProductPromisesModel = typeof PublicProductPromisesModel.Type
 
+export const IdlePublicTrainingRuns = ts('PublicTrainingRunsIdle', {})
+export const LoadingPublicTrainingRuns = ts('PublicTrainingRunsLoading', {
+  runId: S.NullOr(S.String),
+})
+export const LoadedPublicTrainingRuns = ts('PublicTrainingRunsLoaded', {
+  response: PublicTrainingRunsResponse,
+  selectedRunId: S.NullOr(S.String),
+})
+export const FailedPublicTrainingRuns = ts('PublicTrainingRunsFailed', {
+  error: S.String,
+  runId: S.NullOr(S.String),
+})
+export const PublicTrainingRunsModel = S.Union([
+  IdlePublicTrainingRuns,
+  LoadingPublicTrainingRuns,
+  LoadedPublicTrainingRuns,
+  FailedPublicTrainingRuns,
+])
+export type PublicTrainingRunsModel = typeof PublicTrainingRunsModel.Type
+
 export const IdlePublicArtanisReport = ts('PublicArtanisReportIdle', {})
 export const LoadingPublicArtanisReport = ts('PublicArtanisReportLoading', {})
 export const LoadedPublicArtanisReport = ts('PublicArtanisReportLoaded', {
@@ -918,6 +1013,7 @@ export const Model = ts('LoggedOut', {
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
   publicProductPromises: PublicProductPromisesModel,
+  publicTrainingRuns: PublicTrainingRunsModel,
   shareProjection: ShareProjectionModel,
 })
 
@@ -957,6 +1053,12 @@ export const init = (route: LoggedOutRoute): Model =>
       route._tag === 'ProductPromises'
         ? LoadingPublicProductPromises()
         : IdlePublicProductPromises(),
+    publicTrainingRuns:
+      route._tag === 'PublicTrainingRuns'
+        ? LoadingPublicTrainingRuns({ runId: null })
+        : route._tag === 'PublicTrainingRun'
+          ? LoadingPublicTrainingRuns({ runId: route.runId })
+          : IdlePublicTrainingRuns(),
     shareProjection:
       route._tag === 'Share'
         ? LoadingShareProjection({ shareId: route.shareId })
