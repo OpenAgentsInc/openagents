@@ -5,13 +5,21 @@ import { schnorr } from "@noble/curves/secp256k1"
 import { sha256 } from "@noble/hashes/sha256"
 import {
   KIND_JOB_FEEDBACK,
+  KIND_JOB_LABOR_CODE_TASK,
+  KIND_JOB_LABOR_DOCUMENT_WORK,
+  KIND_JOB_LABOR_REVIEW,
   KIND_JOB_TEXT_GENERATION,
   createJobFeedbackEvent,
   createJobResultEvent,
+  isLaborJobKind,
+  laborJobResultToTags,
   makeJobFeedback,
   makeJobResult,
+  makeLaborJobResult,
   parseJobRequestEvent,
+  parseLaborJobRequestEvent,
   type JobRequest,
+  type LaborJobRequest,
 } from "@openagents/nip90"
 import { Effect } from "effect"
 import type { BootstrapSummary } from "./bootstrap"
@@ -25,6 +33,19 @@ import {
 } from "./state"
 import { appendLedgerEvent, defaultWalletCommandRunner, type WalletCommandRunner } from "./wallet"
 import { makeAppleFmClient, type AppleFmClient } from "../packages/runtime/src/index"
+import {
+  assertLaborPublicSafe,
+  detectConfiguredLaborAgent,
+  evaluateLaborRequestSafety,
+  hasLaborFirstRunApproval,
+  laborResultContent,
+  makeConfiguredLaborRuntime,
+  requestedLaborWorkspacePath,
+  resolveLaborWorkspace,
+  type LaborLocalAgentKind,
+  type LaborRuntime,
+  type LaborWorkspace,
+} from "./labor"
 
 export const NIP89_HANDLER_INFO_KIND = 31990
 export const OPENAGENTS_MARKET_RELAY_URL = "wss://openagents-market-relay.openagents.workers.dev"
@@ -75,6 +96,7 @@ export type ProviderRuntimeCompletion = {
 
 export type ProviderTextRuntime = {
   complete(prompt: string): Promise<ProviderRuntimeCompletion>
+  runLabor?: LaborRuntime["runLabor"]
 }
 
 export type ProviderAdmissionPolicy = {
@@ -122,6 +144,7 @@ export type ProviderRequestEntry = {
   requesterPubkey: string
   relayUrl?: string
   targeted: boolean
+  jobFamily: "text_generation" | "labor"
   decision: "match" | "drop"
   dropReason?: ProviderDropReason
   prompt?: string
@@ -130,6 +153,7 @@ export type ProviderRequestEntry = {
   bidMsats?: number
   output?: string
   request?: JobRequest
+  laborRequest?: LaborJobRequest
 }
 
 export type ProviderDropReason =
@@ -154,6 +178,10 @@ export type ProviderAdmissionReason =
   | "active_admission_lease"
   | "max_inflight"
   | "buyer_limit"
+  | "labor_auth_exfiltration_blocked"
+  | "labor_first_run_approval_required"
+  | "labor_policy_mismatch"
+  | "labor_workspace_out_of_bounds"
   | "runtime_error"
 
 export type ProviderPaymentQuote = {
@@ -177,6 +205,9 @@ export type ProviderLoopOptions = {
   policy?: Partial<ProviderAdmissionPolicy>
   runtime?: ProviderTextRuntime
   walletRunner?: WalletCommandRunner
+  laborRuntime?: LaborRuntime
+  laborWorkspaceRoot?: string
+  laborAgentKind?: LaborLocalAgentKind
   now?: () => Date
   idleMs?: number
   once?: boolean
@@ -228,11 +259,11 @@ export function buildNip89HandlerInfoEvent(input: {
 }) {
   const content = {
     name: "Pylon",
-    about: "OpenAgents Pylon local NIP-90 text inference provider.",
+    about: "OpenAgents Pylon local NIP-90 text inference and labor provider.",
     picture: "https://openagents.com/pylon.png",
     nip90: {
-      kinds: [KIND_JOB_TEXT_GENERATION],
-      backend: "apple_fm",
+      kinds: providerSupportedKinds(),
+      backend: "pylon_local",
       pricing: input.priceMsats > 0 ? { amount: input.priceMsats, unit: "msats" } : { amount: 0, unit: "msats" },
     },
   }
@@ -243,9 +274,10 @@ export function buildNip89HandlerInfoEvent(input: {
       kind: NIP89_HANDLER_INFO_KIND,
       tags: [
         ["d", String(KIND_JOB_TEXT_GENERATION)],
-        ["k", String(KIND_JOB_TEXT_GENERATION)],
+        ...providerSupportedKinds().map((kind) => ["k", String(kind)]),
         ["t", "openagents"],
         ["t", "pylon"],
+        ["t", "labor"],
         ["status", "healthy"],
         ["pricing", String(input.priceMsats), "msats"],
         ...input.relayUrls.map((relay) => ["relay", relay]),
@@ -263,17 +295,26 @@ export function buildProviderReqFilters(input: {
 }) {
   return [
     {
-      kinds: [KIND_JOB_TEXT_GENERATION],
+      kinds: providerSupportedKinds(),
       "#p": [input.providerPubkey],
       since: input.since,
       limit: input.limit ?? 64,
     },
     {
-      kinds: [KIND_JOB_TEXT_GENERATION],
+      kinds: providerSupportedKinds(),
       since: input.since,
       limit: input.limit ?? 64,
     },
   ]
+}
+
+function providerSupportedKinds() {
+  return [
+    KIND_JOB_TEXT_GENERATION,
+    KIND_JOB_LABOR_CODE_TASK,
+    KIND_JOB_LABOR_REVIEW,
+    KIND_JOB_LABOR_DOCUMENT_WORK,
+  ] as const
 }
 
 function firstTagValue(tags: ReadonlyArray<readonly string[]>, name: string) {
@@ -300,6 +341,9 @@ export function classifyProviderRequestEvent(input: {
   relayUrl?: string
 }): ProviderRequestEntry {
   const targeted = input.event.tags.some((tag) => tag[0] === "p")
+  if (isLaborJobKind(input.event.kind)) {
+    return classifyLaborRequestEvent(input, targeted)
+  }
   if (input.event.kind !== KIND_JOB_TEXT_GENERATION) {
     return dropEntry(input, targeted, "unsupported_kind")
   }
@@ -331,6 +375,7 @@ export function classifyProviderRequestEvent(input: {
     requesterPubkey: input.event.pubkey,
     relayUrl: input.relayUrl,
     targeted,
+    jobFamily: "text_generation",
     decision: "match",
     prompt,
     promptPreview: previewText(prompt),
@@ -338,6 +383,42 @@ export function classifyProviderRequestEvent(input: {
     bidMsats: request.bid,
     output: request.output,
     request,
+  }
+}
+
+function classifyLaborRequestEvent(
+  input: { event: NostrEvent; providerPubkey: string; relayUrl?: string },
+  targeted: boolean,
+): ProviderRequestEntry {
+  let laborRequest: LaborJobRequest
+  try {
+    laborRequest = parseLaborJobRequestEvent(input.event)
+  } catch {
+    return dropEntry(input, targeted, "malformed_request")
+  }
+
+  const request = laborRequest.request
+  if (request.encrypted) {
+    return dropEntry(input, targeted, "encrypted_request", request)
+  }
+  if (request.serviceProviders.length > 0 && !request.serviceProviders.includes(input.providerPubkey as never)) {
+    return dropEntry(input, targeted, "target_mismatch", request)
+  }
+
+  const prompt = request.content.trim() || laborRequest.acceptanceCriteria.join("\n")
+  return {
+    requestEventId: input.event.id,
+    requesterPubkey: input.event.pubkey,
+    relayUrl: input.relayUrl,
+    targeted,
+    jobFamily: "labor",
+    decision: "match",
+    prompt,
+    promptPreview: previewText(prompt || laborRequest.inputRefs.join(" ")),
+    bidMsats: request.bid,
+    output: request.output,
+    request,
+    laborRequest,
   }
 }
 
@@ -353,6 +434,7 @@ function dropEntry(
     requesterPubkey: input.event.pubkey,
     relayUrl: input.relayUrl,
     targeted,
+    jobFamily: isLaborJobKind(input.event.kind) ? "labor" : "text_generation",
     decision: "drop",
     dropReason: reason,
     prompt: prompt || undefined,
@@ -480,6 +562,36 @@ export function evaluateProviderAdmission(input: {
   return { admitted: true, amountMsats: policy.priceMsats > 0 ? policy.priceMsats : input.entry.bidMsats ?? 0 }
 }
 
+export async function evaluateLaborAdmission(input: {
+  entry: ProviderRequestEntry
+  paths: PylonPaths
+  workspaceRoot: string
+}) {
+  if (input.entry.laborRequest === undefined) {
+    return { admitted: true as const }
+  }
+
+  const safetyBlocker = evaluateLaborRequestSafety(input.entry.laborRequest)[0]
+  if (safetyBlocker !== undefined) {
+    return { admitted: false as const, action: "drop" as const, reasonRef: safetyBlocker }
+  }
+
+  const workspace = resolveLaborWorkspace({
+    root: input.workspaceRoot,
+    requestedPath: requestedLaborWorkspacePath(input.entry.laborRequest),
+  })
+  if (workspace === undefined) {
+    return { admitted: false as const, action: "drop" as const, reasonRef: "labor_workspace_out_of_bounds" as const }
+  }
+
+  const approved = await hasLaborFirstRunApproval(input.paths, input.entry.laborRequest)
+  if (!approved) {
+    return { admitted: false as const, action: "defer" as const, reasonRef: "labor_first_run_approval_required" as const }
+  }
+
+  return { admitted: true as const, workspace }
+}
+
 export function rememberAdmissionLease(input: {
   store: ProviderAdmissionStore
   entry: ProviderRequestEntry
@@ -533,6 +645,9 @@ export async function runProviderJobOnce(input: {
   runtime?: ProviderTextRuntime
   walletRunner?: WalletCommandRunner
   policy?: Partial<ProviderAdmissionPolicy>
+  laborRuntime?: LaborRuntime
+  laborWorkspaceRoot?: string
+  laborAgentKind?: LaborLocalAgentKind
   now?: () => Date
   online?: boolean
 }): Promise<ProviderRunResult> {
@@ -566,6 +681,30 @@ export async function runProviderJobOnce(input: {
       requestEventId: input.event.id,
       status: decision.action === "defer" ? "deferred" : "dropped",
       reasonRef: decision.reasonRef,
+      feedbackEventIds: [],
+    }
+  }
+
+  const laborAdmission = await evaluateLaborAdmission({
+    entry,
+    paths: input.state.paths,
+    workspaceRoot: input.laborWorkspaceRoot ?? process.cwd(),
+  })
+  if (!laborAdmission.admitted) {
+    if (laborAdmission.action === "drop") {
+      store.handledRequests[input.event.id] = {
+        requestEventId: input.event.id,
+        requesterPubkey: input.event.pubkey,
+        status: "rejected",
+        reasonRef: laborAdmission.reasonRef,
+        completedAt: now.toISOString(),
+      }
+      await writeProviderAdmissionStore(input.state.paths, store)
+    }
+    return {
+      requestEventId: input.event.id,
+      status: laborAdmission.action === "defer" ? "deferred" : "dropped",
+      reasonRef: laborAdmission.reasonRef,
       feedbackEventIds: [],
     }
   }
@@ -609,21 +748,25 @@ export async function runProviderJobOnce(input: {
   feedbackEventIds.push(processing.id)
 
   try {
-    const runtime = input.runtime ?? await makeAppleFmProviderRuntime()
-    const completion = await runtime.complete(entry.prompt ?? input.event.content)
-    const result = signNostrEvent(
-      unsignedEvent(createJobResultEvent(makeJobResult({
-        requestKind: input.event.kind,
-        requestId: input.event.id,
-        requestRelay: input.relay.relayUrl,
-        customerPubkey: input.event.pubkey,
-        content: completion.text,
-        inputs: entry.request?.inputs ?? [],
-        amount: quote?.amountMsats,
-        bolt11: quote?.bolt11,
-      }))),
-      input.identity,
-    )
+    const result = entry.laborRequest === undefined
+      ? await runTextJobResult({
+          entry,
+          event: input.event,
+          identity: input.identity,
+          quote,
+          relayUrl: input.relay.relayUrl,
+          runtime: input.runtime,
+        })
+      : await runLaborResult({
+          agentKind: input.laborAgentKind ?? detectConfiguredLaborAgent() ?? "codex",
+          entry: entry as ProviderRequestEntry & { laborRequest: LaborJobRequest },
+          event: input.event,
+          identity: input.identity,
+          quote,
+          relayUrl: input.relay.relayUrl,
+          runtime: input.laborRuntime ?? input.runtime ?? makeConfiguredLaborRuntime(),
+          workspace: laborAdmission.workspace,
+        })
     await input.relay.publish(result)
 
     const success = signNostrEvent(
@@ -701,6 +844,84 @@ export async function runProviderJobOnce(input: {
       feedbackEventIds,
     }
   }
+}
+
+async function runTextJobResult(input: {
+  entry: ProviderRequestEntry
+  event: NostrEvent
+  identity: PylonNostrPrivateIdentity
+  quote?: ProviderPaymentQuote
+  relayUrl: string
+  runtime?: ProviderTextRuntime
+}) {
+  const runtime = input.runtime ?? await makeAppleFmProviderRuntime()
+  const completion = await runtime.complete(input.entry.prompt ?? input.event.content)
+  return signNostrEvent(
+    unsignedEvent(createJobResultEvent(makeJobResult({
+      requestKind: input.event.kind,
+      requestId: input.event.id,
+      requestRelay: input.relayUrl,
+      customerPubkey: input.event.pubkey,
+      content: completion.text,
+      inputs: input.entry.request?.inputs ?? [],
+      amount: input.quote?.amountMsats,
+      bolt11: input.quote?.bolt11,
+    }))),
+    input.identity,
+  )
+}
+
+async function runLaborResult(input: {
+  agentKind: LaborLocalAgentKind
+  entry: ProviderRequestEntry & { laborRequest: LaborJobRequest }
+  event: NostrEvent
+  identity: PylonNostrPrivateIdentity
+  quote?: ProviderPaymentQuote
+  relayUrl: string
+  runtime: ProviderTextRuntime | LaborRuntime
+  workspace: LaborWorkspace
+}) {
+  const runLabor = "runLabor" in input.runtime && typeof input.runtime.runLabor === "function"
+    ? input.runtime.runLabor.bind(input.runtime)
+    : makeConfiguredLaborRuntime().runLabor
+  const completion = await runLabor({
+    agentKind: input.agentKind,
+    request: input.entry.laborRequest,
+    requestEventId: input.event.id,
+    workspace: input.workspace,
+  })
+  assertLaborPublicSafe(completion)
+  const content = completion.content.trim()
+    ? completion.content
+    : laborResultContent({
+        agentKind: input.agentKind,
+        request: input.entry.laborRequest,
+        artifactRefs: completion.artifactRefs,
+        receiptRefs: completion.receiptRefs,
+        summary: "Local labor agent completed.",
+        workspace: input.workspace,
+      })
+  const laborResult = makeLaborJobResult({
+    jobType: input.entry.laborRequest.jobType,
+    requestId: input.event.id,
+    requestRelay: input.relayUrl,
+    customerPubkey: input.event.pubkey,
+    artifactRefs: completion.artifactRefs,
+    content,
+    amount: input.quote?.amountMsats,
+    bolt11: input.quote?.bolt11,
+    policyRef: input.entry.laborRequest.policyRef,
+  })
+  return signNostrEvent(
+    {
+      pubkey: input.identity.publicKey,
+      created_at: nowSeconds(new Date()),
+      kind: laborResult.result.kind,
+      tags: laborJobResultToTags(laborResult),
+      content: laborResult.result.content,
+    },
+    input.identity,
+  )
 }
 
 export async function recordProviderEarning(paths: PylonPaths, earning: ProviderEarningRecord) {
@@ -785,6 +1006,9 @@ export async function startNip90ProviderLoop(summary: BootstrapSummary, options:
   const policy = defaultProviderAdmissionPolicy(options.policy ?? policyFromEnv())
   const runtime = options.runtime
   const walletRunner = options.walletRunner
+  const laborRuntime = options.laborRuntime
+  const laborWorkspaceRoot = options.laborWorkspaceRoot
+  const laborAgentKind = options.laborAgentKind
   const transports = relays.map((relay) => new WebSocketRelayTransport(relay))
 
   try {
@@ -807,6 +1031,9 @@ export async function startNip90ProviderLoop(summary: BootstrapSummary, options:
           policy,
           runtime,
           walletRunner,
+          laborRuntime,
+          laborWorkspaceRoot,
+          laborAgentKind,
           now: loopOptions.now,
           online: true,
         })

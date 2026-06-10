@@ -95,22 +95,30 @@ command:
 
 ```sh
 pylon provider go-online
+pylon provider approve-labor --approved-by-ref operator.public.<ref> --job-type code_task
 pylon provider once
 pylon provider go-offline
 bun run smoke:nip90-provider
 ```
 
 `go-online` marks the local runtime online, adds
-`capability.public.pylon.nip90.text_inference.v0.3`, and records the relay and
-admission policy that the OpenTUI background loop will use. `provider once` is
-the headless smoke path for one relay loop iteration; the default dashboard
-starts the same loop automatically only when the persisted lifecycle is
-`online` or `assignment-ready`.
+`capability.public.pylon.nip90.text_inference.v0.3` and
+`capability.public.pylon.labor.local_agent.v0.3`, and records the relay and
+admission policy that the OpenTUI background loop will use. Labor jobs require
+an explicit first-run operator approval record from `provider approve-labor`
+before they execute on a machine. `provider once` is the headless smoke path
+for one relay loop iteration; the default dashboard starts the same loop
+automatically only when the persisted lifecycle is `online` or
+`assignment-ready`.
 
 The provider loop subscribes to the scoped OpenAgents market relay by default,
 publishes NIP-89 handler info, admits public kind `5050` text-inference
-requests, executes the local Apple FM runtime, and publishes NIP-90 `7000`
-feedback plus `6050` results. It uses the shared `@openagents/nip90` package,
+requests and OpenAgents labor kinds `5934` code task, `5935` review, and
+`5936` document work, then publishes NIP-90 `7000` feedback plus result kinds
+`6050` or `6934`-`6936`. Text inference executes the local Apple FM runtime.
+Labor jobs execute through the contributor's configured local agent path
+(`codex`, `opencode`, or `claude`) inside a bounded workspace and return
+public-safe artifact refs. It uses the shared `@openagents/nip90` package,
 which re-exports the local `nostr-effect` protocol helpers.
 
 Environment controls:
@@ -124,12 +132,24 @@ Environment controls:
   to `1`.
 - `PYLON_NIP90_PER_BUYER_MAX_INFLIGHT`: per-buyer inflight leases; defaults
   to `1`.
+- `PYLON_LABOR_AGENT`: optional local labor agent selector: `codex`,
+  `opencode`, or `claude_code`. If unset, Pylon detects `codex`, then
+  `opencode`, then `claude`.
+- `PYLON_LABOR_AGENT_COMMAND`: optional explicit local command prefix for
+  advanced operators. Pylon appends the generated public-safe labor prompt.
 
 Wallet boundary: the loop may put a raw BOLT 11 invoice into Nostr relay
 events because NIP-90 payment-required/result tags require it, but local state,
 ledger records, OpenAgents API payloads, logs, and issue evidence must only
 carry public-safe receipt refs, amounts, event ids, and readiness refs. See
 `docs/nip90-provider-loop.md`.
+
+Labor boundary: Pylon rejects labor requests that carry provider-auth-shaped
+material, requests outside the bounded workspace, or a policy ref other than
+`provider.compliant_usage_labor.v1`. The contributor's own local provider
+accounts or API budgets stay on the contributor machine; OpenAgents pays for
+accepted work output only and never resells, proxies, brokers, or transfers
+provider credentials, sessions, account access, or subscription/API capacity.
 
 The runtime includes:
 

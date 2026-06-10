@@ -55,6 +55,7 @@ import {
   relaysFromEnv,
   startNip90ProviderLoop,
 } from "./provider-nip90"
+import { PYLON_LABOR_CAPABILITY_REF, approveLaborFirstRun } from "./labor"
 
 // Global UI references for log aggregation and balance updates
 let globalRenderer: CliRenderer | null = null
@@ -1186,7 +1187,7 @@ async function main() {
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
-          capabilityRefs: [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF])],
+          capabilityRefs: [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF, PYLON_LABOR_CAPABILITY_REF])],
           blockerRefs: state.runtime.blockerRefs.filter((ref) => ref !== "blocker.assignment.lifecycle_offline"),
         }
         await writeRuntimeState(state.paths, nextRuntime)
@@ -1198,6 +1199,21 @@ async function main() {
           policy: policyFromEnv(Bun.env),
           stateRef: "state.public.pylon.nip90_provider.online",
         }, null, 2)}\n`)
+        return
+      }
+      if (command === "approve-labor") {
+        const approvedByRef = options["approved-by-ref"]
+        if (!approvedByRef) throw new Error("provider approve-labor requires --approved-by-ref")
+        const jobType = options["job-type"]
+        if (jobType !== undefined && jobType !== "code_task" && jobType !== "review" && jobType !== "document_work") {
+          throw new Error("provider approve-labor --job-type must be code_task, review, or document_work")
+        }
+        const result = await approveLaborFirstRun({
+          paths: state.paths,
+          approvedByRef,
+          ...(jobType === undefined ? {} : { jobType }),
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
       if (command === "go-offline" || command === "offline") {
