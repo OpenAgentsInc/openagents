@@ -328,3 +328,77 @@ If resumed, I would continue from D5, not jump ahead:
 
 I am stopping issue implementation here per the user's instruction. The only
 work produced by this pause request is this audit document and its commit.
+
+---
+
+# Fable Review (Continuation Pass D1-D5)
+
+Appended 2026-06-10 by Fable (registered agent `fable-promise-auditor`),
+reviewing the continuation work above on the owner's behalf. As before, I
+re-verified first-hand instead of trusting the report.
+
+## Review Verdict
+
+The work checks out, with one material gap the audit does not state: **none of
+the four commits is deployed to production yet.**
+
+What I verified directly:
+
+- All four commits (`6d3060ba2`, `598709dd3`, `e1e82a9a3`, `6c96b83fe`) are on
+  `origin/main`. Issue states match the audit exactly: #4688 closed, #4695
+  closed, #4653 correctly left open for live payment evidence.
+- Re-ran the cited tests first-hand:
+  `bunx vitest run src/orange-check-nostr-export.test.ts src/forum-routes.test.ts src/agent-owner-claim-routes.test.ts`
+  — 3 files, 84 tests, all passing.
+- D2 honors the shared-Nostr rule: `orange-check-nostr-export.ts` imports from
+  `nostr-effect/nip58` and `@openagents/nip90`; no parallel Nostr code. The
+  private-tier design doc landed as a doc, not shipped behavior, as delegated.
+- D4's leak regression is real: the `should_not_leak` receipt-ref test exists
+  in `forum-routes.test.ts`, and the schema carries the public-safe fields
+  only.
+- D3's runbook and blocker assessment exist with the 15/30-sat spend bounds
+  and secret-safety rules as described.
+
+## The Gap: Pushed Is Not Live
+
+Live production checks fail for the new surfaces:
+
+- `GET /api/forum/actors/{me}/orange-check/nostr-export` returns 404 in
+  production.
+- My own agent profile (`/api/agents/profiles/fable-promise-auditor`) shows
+  `topicCount: 11, postCount: 18` but carries **no `activity` key at all** —
+  the D4 feed is not live.
+
+Cause: this worker deploys manually (`bun run deploy` → wrangler); there is no
+CI deploy from `main`. The audit says "completed and pushed," which is
+accurate, but the prior 12-hour pass verified live routes because it deployed;
+this pass did not, and the audit should have said so explicitly. Consequence:
+the orange-check promise cannot clear `orange_check_nostr_export_missing`
+until the route is live, and #4695's closure is technically ahead of live
+state (code-complete, not user-visible).
+
+**Single highest-leverage next action: one production deploy.** It makes D1's
+claim-page UX, D2's export route, and D4's activity feed all real at once.
+This is a bounded operator (or operator-approved agent) action.
+
+## Context The Audit Could Not See
+
+A parallel lane landed Tassadar executor work on `main` during the same
+window (`3704ba785`, `73cf42015`, `a409d5d0c`, `7bf1f01c4` — live
+executor-trace closeout on a real Pylon, milestone 1). D6 is therefore already
+moving; the continuation agent should re-read #4687's state before touching
+that lane to avoid duplicating the parallel work.
+
+## Standing Delegation
+
+The D5-D9 order from the previous review stands, with these amendments:
+
+1. **D0 (new): production deploy** of the four commits, with live re-checks of
+   the claim page, the orange-check export, and the activity feed, posted as
+   evidence. Then propose the orange-check transition with a receipt.
+2. D5 continues as the agent planned (resume at the #4658 runbook gap check;
+   no duplicate docs).
+3. D6: sync with the parallel Tassadar lane's milestone-1 closeout before
+   acting.
+4. The audit's own discipline note stands: future audits must distinguish
+   "pushed" from "deployed and live-verified" in every completion claim.
