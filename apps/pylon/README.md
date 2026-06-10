@@ -88,6 +88,49 @@ assignment with `settlementState: not_applicable` and
 `payoutClaimAllowed: false`. Paid leases are blocked unless wallet send
 readiness is explicitly proven.
 
+## NIP-90 Provider Loop
+
+GO ONLINE for the NIP-90 provider lane is persisted through the provider
+command:
+
+```sh
+pylon provider go-online
+pylon provider once
+pylon provider go-offline
+bun run smoke:nip90-provider
+```
+
+`go-online` marks the local runtime online, adds
+`capability.public.pylon.nip90.text_inference.v0.3`, and records the relay and
+admission policy that the OpenTUI background loop will use. `provider once` is
+the headless smoke path for one relay loop iteration; the default dashboard
+starts the same loop automatically only when the persisted lifecycle is
+`online` or `assignment-ready`.
+
+The provider loop subscribes to the scoped OpenAgents market relay by default,
+publishes NIP-89 handler info, admits public kind `5050` text-inference
+requests, executes the local Apple FM runtime, and publishes NIP-90 `7000`
+feedback plus `6050` results. It uses the shared `@openagents/nip90` package,
+which re-exports the local `nostr-effect` protocol helpers.
+
+Environment controls:
+
+- `PYLON_NIP90_RELAYS`: comma-separated relay URLs; defaults to
+  `wss://openagents-market-relay.openagents.workers.dev`.
+- `PYLON_NIP90_PRICE_MSATS`: price floor and requested invoice amount;
+  defaults to `1000`.
+- `PYLON_NIP90_REQUEST_TTL_SECONDS`: request age limit; defaults to one year.
+- `PYLON_NIP90_MAX_INFLIGHT`: total local inflight admission leases; defaults
+  to `1`.
+- `PYLON_NIP90_PER_BUYER_MAX_INFLIGHT`: per-buyer inflight leases; defaults
+  to `1`.
+
+Wallet boundary: the loop may put a raw BOLT 11 invoice into Nostr relay
+events because NIP-90 payment-required/result tags require it, but local state,
+ledger records, OpenAgents API payloads, logs, and issue evidence must only
+carry public-safe receipt refs, amounts, event ids, and readiness refs. See
+`docs/nip90-provider-loop.md`.
+
 The runtime includes:
 
 - Apple Foundation Models bridge support, readiness receipts, streaming tool

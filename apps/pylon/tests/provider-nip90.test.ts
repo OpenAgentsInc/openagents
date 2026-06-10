@@ -1,0 +1,355 @@
+import { mkdtemp, rm } from "node:fs/promises"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { describe, expect, test } from "bun:test"
+import {
+  KIND_JOB_FEEDBACK,
+  KIND_JOB_TEXT_GENERATION,
+  createJobRequestEvent,
+  jobInput,
+  makeJobRequest,
+  parseJobFeedbackEvent,
+  parseJobResultEvent,
+} from "@openagents/nip90"
+import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import { deriveNip06Identity, loadOrCreateNostrIdentity } from "../src/nostr-identity"
+import {
+  classifyProviderRequestEvent,
+  defaultProviderAdmissionPolicy,
+  emptyProviderAdmissionStore,
+  evaluateProviderAdmission,
+  loadProviderAdmissionStore,
+  runProviderJobOnce,
+  signNostrEvent,
+  type NostrEvent,
+  type ProviderRelayTransport,
+} from "../src/provider-nip90"
+import { ensurePylonLocalState, type PylonLocalState } from "../src/state"
+import type { WalletCommandRunner } from "../src/wallet"
+
+const buyer = deriveNip06Identity(
+  "leader monkey parrot ring guide accident before fence cannon height naive bean",
+  "/tmp/pylon-provider-test-buyer.mnemonic",
+)
+
+async function withTempHome<T>(fn: (home: string) => Promise<T>) {
+  const home = await mkdtemp(join(tmpdir(), "pylon-provider-nip90-test-"))
+  try {
+    return await fn(home)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+}
+
+async function readyState(home: string) {
+  const summary = createBootstrapSummary(
+    parseBootstrapArgs(["--display-name", "Provider Test", "--capability-ref", "capability.public.pylon.nip90.text_inference.v0.3"]),
+    { PYLON_HOME: home },
+    "darwin",
+  )
+  const state = await ensurePylonLocalState(summary)
+  state.runtime.lifecycle = "online"
+  state.runtime.capabilityRefs = ["capability.public.pylon.nip90.text_inference.v0.3"]
+  return { summary, state, identity: await loadOrCreateNostrIdentity(summary.paths) }
+}
+
+function requestEvent(input: {
+  providerPubkey?: string
+  content?: string
+  bid?: number
+  output?: string
+  kind?: number
+  createdAt?: number
+}) {
+  const request = makeJobRequest({
+    kind: input.kind ?? KIND_JOB_TEXT_GENERATION,
+    inputs: [jobInput.text(input.content ?? "Summarize the public OpenAgents market relay.")],
+    bid: input.bid,
+    output: input.output,
+    serviceProviders: input.providerPubkey ? [input.providerPubkey] : [],
+  })
+  return signNostrEvent(
+    createJobRequestEvent(request, input.createdAt ?? 1_781_000_000),
+    buyer,
+  )
+}
+
+class FakeRelay implements ProviderRelayTransport {
+  readonly relayUrl = "wss://relay.test/"
+  readonly published: NostrEvent[] = []
+
+  async publish(event: NostrEvent) {
+    this.published.push(event)
+    return { relayUrl: this.relayUrl, accepted: true, message: "" }
+  }
+
+  async *subscribe() {
+    return
+  }
+}
+
+const walletRunner: WalletCommandRunner = async (args) => {
+  expect(args).toEqual(["receive", "1"])
+  return {
+    exitCode: 0,
+    stdout: JSON.stringify({ invoice: "lnbc10n1providerinvoice" }),
+    stderr: "",
+  }
+}
+
+describe("Pylon NIP-90 provider loop", () => {
+  test("classifies only local, public kind 5050 text inference requests", async () => {
+    await withTempHome(async (home) => {
+      const { identity } = await readyState(home)
+      const matched = classifyProviderRequestEvent({
+        event: requestEvent({ providerPubkey: identity.publicKey, bid: 1_000 }),
+        providerPubkey: identity.publicKey,
+        relayUrl: "wss://relay.test/",
+      })
+
+      expect(matched.decision).toBe("match")
+      expect(matched.targeted).toBe(true)
+      expect(matched.promptPreview).toContain("Summarize")
+      expect(matched.bidMsats).toBe(1_000)
+
+      const targetMismatch = classifyProviderRequestEvent({
+        event: requestEvent({ providerPubkey: "11".repeat(32), bid: 1_000 }),
+        providerPubkey: identity.publicKey,
+      })
+      expect(targetMismatch.decision).toBe("drop")
+      expect(targetMismatch.dropReason).toBe("target_mismatch")
+
+      const unsupportedOutput = classifyProviderRequestEvent({
+        event: requestEvent({ providerPubkey: identity.publicKey, bid: 1_000, output: "application/json" }),
+        providerPubkey: identity.publicKey,
+      })
+      expect(unsupportedOutput.decision).toBe("drop")
+      expect(unsupportedOutput.dropReason).toBe("unsupported_output")
+    })
+  })
+
+  test("ports provider admission drops and defers before runtime execution", async () => {
+    await withTempHome(async (home) => {
+      const { identity } = await readyState(home)
+      const event = requestEvent({ providerPubkey: identity.publicKey })
+      const entry = classifyProviderRequestEvent({ event, providerPubkey: identity.publicKey })
+      const store = emptyProviderAdmissionStore()
+      const now = new Date("2026-06-10T00:00:00.000Z")
+
+      expect(evaluateProviderAdmission({ entry, eventCreatedAtSeconds: event.created_at, store, now }).reasonRef).toBe("missing_bid")
+
+      const underbid = classifyProviderRequestEvent({
+        event: requestEvent({ providerPubkey: identity.publicKey, bid: 999 }),
+        providerPubkey: identity.publicKey,
+      })
+      expect(evaluateProviderAdmission({ entry: underbid, eventCreatedAtSeconds: event.created_at, store, now }).reasonRef).toBe(
+        "bid_below_price_floor",
+      )
+
+      const priced = classifyProviderRequestEvent({
+        event: requestEvent({ providerPubkey: identity.publicKey, bid: 1_000 }),
+        providerPubkey: identity.publicKey,
+      })
+      expect(
+        evaluateProviderAdmission({
+          entry: priced,
+          eventCreatedAtSeconds: 0,
+          store,
+          now,
+          policy: defaultProviderAdmissionPolicy({ requestTtlSeconds: 1 }),
+        }).reasonRef,
+      ).toBe("stale_request")
+
+      store.admissionLeases["request.active"] = {
+        requestEventId: "request.active",
+        requesterPubkey: "buyer-a",
+        status: "processing",
+        expiresAtMs: now.getTime() + 60_000,
+      }
+      expect(
+        evaluateProviderAdmission({
+          entry: priced,
+          eventCreatedAtSeconds: event.created_at,
+          store,
+          now,
+        }),
+      ).toEqual({ admitted: false, action: "defer", reasonRef: "max_inflight" })
+
+      store.admissionLeases = {
+        "request.active": {
+          requestEventId: "request.active",
+          requesterPubkey: priced.requesterPubkey,
+          status: "processing",
+          expiresAtMs: now.getTime() + 60_000,
+        },
+      }
+      expect(
+        evaluateProviderAdmission({
+          entry: priced,
+          eventCreatedAtSeconds: event.created_at,
+          store,
+          now,
+          policy: { maxInflight: 2 },
+        }),
+      ).toEqual({ admitted: false, action: "defer", reasonRef: "buyer_limit" })
+    })
+  })
+
+  test("rejects malformed jobs without executing the local runtime", async () => {
+    await withTempHome(async (home) => {
+      const { state, identity } = await readyState(home)
+      const relay = new FakeRelay()
+      let runtimeCalls = 0
+      const malformed = {
+        ...requestEvent({ providerPubkey: identity.publicKey, bid: 1_000 }),
+        kind: 5050,
+        tags: [["output", "application/json"]],
+      }
+
+      const result = await runProviderJobOnce({
+        state,
+        event: malformed,
+        identity,
+        relay,
+        runtime: {
+          async complete() {
+            runtimeCalls += 1
+            return { text: "should not execute", model: "test", receiptRefs: [] }
+          },
+        },
+        walletRunner,
+        now: () => new Date("2026-06-10T00:00:00.000Z"),
+      })
+
+      expect(result.status).toBe("dropped")
+      expect(result.reasonRef).toBe("unsupported_output")
+      expect(runtimeCalls).toBe(0)
+      expect(relay.published).toEqual([])
+    })
+  })
+
+  test("defers busy provider jobs without permanently handling them", async () => {
+    await withTempHome(async (home) => {
+      const { state, identity } = await readyState(home)
+      const relay = new FakeRelay()
+      const event = requestEvent({ providerPubkey: identity.publicKey, bid: 1_000 })
+      const store = emptyProviderAdmissionStore()
+      store.admissionLeases["request.active"] = {
+        requestEventId: "request.active",
+        requesterPubkey: "buyer-a",
+        status: "processing",
+        expiresAtMs: new Date("2026-06-10T00:00:00.000Z").getTime() + 60_000,
+      }
+
+      const result = await runProviderJobOnce({
+        state,
+        event,
+        identity,
+        relay,
+        store,
+        runtime: {
+          async complete() {
+            throw new Error("runtime should not execute for deferred admission")
+          },
+        },
+        walletRunner,
+        now: () => new Date("2026-06-10T00:00:00.000Z"),
+      })
+
+      expect(result.status).toBe("deferred")
+      expect(result.reasonRef).toBe("max_inflight")
+      expect(relay.published).toEqual([])
+      const persisted = await loadProviderAdmissionStore(state.paths)
+      expect(persisted.handledRequests[event.id]).toBeUndefined()
+      expect(store.admissionLeases["request.active"]).toBeDefined()
+    })
+  })
+
+  test("publishes error feedback when the local runtime fails", async () => {
+    await withTempHome(async (home) => {
+      const { state, identity } = await readyState(home)
+      const relay = new FakeRelay()
+      const event = requestEvent({ providerPubkey: identity.publicKey })
+
+      const result = await runProviderJobOnce({
+        state,
+        event,
+        identity,
+        relay,
+        policy: { priceMsats: 0 },
+        runtime: {
+          async complete() {
+            throw new Error("local model unavailable")
+          },
+        },
+        walletRunner,
+        now: () => new Date("2026-06-10T00:00:00.000Z"),
+      })
+
+      expect(result.status).toBe("error")
+      expect(result.reasonRef).toBe("runtime_error")
+      expect(relay.published.map((event) => event.kind)).toEqual([KIND_JOB_FEEDBACK, KIND_JOB_FEEDBACK])
+      expect(parseJobFeedbackEvent(relay.published[0]).status).toBe("processing")
+      expect(parseJobFeedbackEvent(relay.published[1]).status).toBe("error")
+      const store = await loadProviderAdmissionStore(state.paths)
+      expect(store.handledRequests[event.id]?.status).toBe("error")
+      expect(store.handledRequests[event.id]?.reasonRef).toBe("runtime_error")
+    })
+  })
+
+  test("publishes payment, processing, success result events and records redacted earnings", async () => {
+    await withTempHome(async (home) => {
+      const { state, identity } = await readyState(home)
+      const relay = new FakeRelay()
+      const event = requestEvent({ providerPubkey: identity.publicKey, bid: 2_000 })
+
+      const result = await runProviderJobOnce({
+        state,
+        event,
+        identity,
+        relay,
+        policy: { priceMsats: 1_000 },
+        runtime: {
+          async complete(prompt: string) {
+            expect(prompt).toContain("Summarize")
+            return { text: "public inference result", model: "test-runtime", receiptRefs: ["receipt.public.runtime.test"] }
+          },
+        },
+        walletRunner,
+        now: () => new Date("2026-06-10T00:00:00.000Z"),
+      })
+
+      expect(result.status).toBe("completed")
+      expect(result.earning?.amountMsats).toBe(1_000)
+      expect(relay.published.map((event) => event.kind)).toEqual([
+        KIND_JOB_FEEDBACK,
+        KIND_JOB_FEEDBACK,
+        6050,
+        KIND_JOB_FEEDBACK,
+      ])
+
+      const payment = parseJobFeedbackEvent(relay.published[0])
+      expect(payment.status).toBe("payment-required")
+      expect(payment.amount).toBe(1_000)
+      expect(payment.bolt11).toBe("lnbc10n1providerinvoice")
+
+      const processing = parseJobFeedbackEvent(relay.published[1])
+      expect(processing.status).toBe("processing")
+
+      const jobResult = parseJobResultEvent(relay.published[2])
+      expect(jobResult.content).toBe("public inference result")
+      expect(jobResult.amount).toBe(1_000)
+      expect(jobResult.bolt11).toBe("lnbc10n1providerinvoice")
+
+      const success = parseJobFeedbackEvent(relay.published[3])
+      expect(success.status).toBe("success")
+
+      const store = await loadProviderAdmissionStore(state.paths)
+      const serialized = JSON.stringify(store)
+      expect(store.earnings).toHaveLength(1)
+      expect(serialized).toContain("receipt.public.pylon.nip90.result")
+      expect(serialized).not.toContain("lnbc10n1providerinvoice")
+      expect(serialized).not.toContain(home)
+    })
+  })
+})

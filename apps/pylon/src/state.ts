@@ -215,6 +215,11 @@ export async function writePresenceState(paths: PylonPaths, state: PylonPresence
   await writeFile(paths.presenceState, `${JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2)}\n`)
 }
 
+export async function writeRuntimeState(paths: PylonPaths, state: PylonRuntimeState) {
+  await ensureStateDirectories(paths)
+  await writeFile(paths.runtimeState, `${JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2)}\n`)
+}
+
 export async function ensurePylonLocalState(summary: BootstrapSummary): Promise<PylonLocalState> {
   const paths = resolveStatePaths(summary.paths)
   const identity = await loadOrCreateIdentity(paths, {

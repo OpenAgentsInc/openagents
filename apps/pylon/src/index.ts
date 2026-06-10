@@ -20,7 +20,7 @@ import {
   parseBootstrapArgs,
   writeBootstrapFiles,
 } from "./bootstrap"
-import { ensurePylonLocalState, projectPublicStatus } from "./state"
+import { ensurePylonLocalState, projectPublicStatus, writeRuntimeState } from "./state"
 import {
   completePylonLink,
   refreshPylonLink,
@@ -49,6 +49,12 @@ import {
   installPsionicBinary,
   installPsionicModelArtifact,
 } from "./psionic-install"
+import {
+  PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+  policyFromEnv,
+  relaysFromEnv,
+  startNip90ProviderLoop,
+} from "./provider-nip90"
 
 // Global UI references for log aggregation and balance updates
 let globalRenderer: CliRenderer | null = null
@@ -871,6 +877,12 @@ const runPylonNode = Effect.gen(function* () {
     runBackgroundEffect("Telemetry", startHardwareTelemetryLoop)
     runBackgroundEffect("Wallet", startMdkWalletService)
     runBackgroundEffect("Heartbeat", startPresenceHeartbeatLoop)
+    runBackgroundEffect("NIP-90", Effect.tryPromise({
+      try: () => startNip90ProviderLoop(bootstrapSummary, {
+        log: (message) => logToUi(message),
+      }).then(() => undefined),
+      catch: (error) => new Error(`NIP-90 provider loop failed: ${String(error)}`),
+    }))
     if (!smokeDashboard && Bun.env.PYLON_DISABLE_OPENCODE_STARTUP !== "1") {
       runBackgroundEffect("OpenCode", runOpencodeStartupInference)
     }
@@ -1159,6 +1171,59 @@ async function main() {
       throw new Error(`unknown assignment command: ${command ?? ""}`)
     } catch (error) {
       process.stderr.write(`Pylon assignment failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "provider") {
+    try {
+      const command = args[1]
+      const options = parseKeyValueOptions(args.slice(2))
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const state = await ensurePylonLocalState(summary)
+      if (command === "go-online" || command === "online") {
+        const nextRuntime = {
+          ...state.runtime,
+          lifecycle: "online" as const,
+          capabilityRefs: [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF])],
+          blockerRefs: state.runtime.blockerRefs.filter((ref) => ref !== "blocker.assignment.lifecycle_offline"),
+        }
+        await writeRuntimeState(state.paths, nextRuntime)
+        process.stdout.write(`${JSON.stringify({
+          ok: true,
+          lifecycle: nextRuntime.lifecycle,
+          capabilityRefs: nextRuntime.capabilityRefs,
+          relayUrls: relaysFromEnv(Bun.env),
+          policy: policyFromEnv(Bun.env),
+          stateRef: "state.public.pylon.nip90_provider.online",
+        }, null, 2)}\n`)
+        return
+      }
+      if (command === "go-offline" || command === "offline") {
+        const nextRuntime = {
+          ...state.runtime,
+          lifecycle: "offline" as const,
+        }
+        await writeRuntimeState(state.paths, nextRuntime)
+        process.stdout.write(`${JSON.stringify({
+          ok: true,
+          lifecycle: nextRuntime.lifecycle,
+          stateRef: "state.public.pylon.nip90_provider.offline",
+        }, null, 2)}\n`)
+        return
+      }
+      if (command === "once") {
+        const result = await startNip90ProviderLoop(summary, {
+          once: true,
+          log: (message) => process.stderr.write(`${message}\n`),
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+      throw new Error(`unknown provider command: ${command ?? ""}`)
+    } catch (error) {
+      process.stderr.write(`Pylon provider failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
       return
     }
