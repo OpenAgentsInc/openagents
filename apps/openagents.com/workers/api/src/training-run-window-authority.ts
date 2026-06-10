@@ -1,7 +1,13 @@
 import { Schema as S } from 'effect'
 
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
-import { parseJsonStringArray } from './json-boundary'
+import {
+  isRecord,
+  optionalString,
+  parseJsonRecord,
+  parseJsonStringArray,
+  stringArrayFromUnknown,
+} from './json-boundary'
 import { isoTimestampAfterIso } from './runtime-primitives'
 import {
   type TrainingVerificationChallengeRecord,
@@ -174,6 +180,60 @@ export type TrainingRunPublicMetric = Readonly<{
   value: number
 }>
 
+export type TrainingRunLossPoint = Readonly<{
+  provenanceLabel: string
+  sourceRefs: ReadonlyArray<string>
+  step: number
+  validationLoss: number
+}>
+
+export type TrainingRunLeaderboardRow = Readonly<{
+  bestValidationLoss: number | null
+  provenanceLabel: string
+  pylonRef: string
+  rank: number
+  settledPayoutSats: number
+  sourceRefs: ReadonlyArray<string>
+  trainingRunRef: string
+  verifiedWindowCount: number
+}>
+
+export type TrainingRunRealGradientStatus = Readonly<{
+  closeoutRequirement: Readonly<{
+    evalRef: string | null
+    freivaldsCommitmentRefs: ReadonlyArray<string>
+    gradientCloseoutRefs: ReadonlyArray<string>
+    mergeRef: string | null
+    provenanceLabel: string
+    satisfied: boolean
+  }>
+  deviceRequirement: Readonly<{
+    observedDistinctContributorDevices: number
+    provenanceLabel: string
+    requiredDistinctContributorDevices: number
+    satisfied: boolean
+    sourceRefs: ReadonlyArray<string>
+  }>
+  externalAsk: Readonly<{
+    blockerRefs: ReadonlyArray<string>
+    psionicLaneRef: string
+    requirementRefs: ReadonlyArray<string>
+    status: 'blocked_external' | 'ready' | 'observed'
+  }>
+  leaderboardRows: ReadonlyArray<TrainingRunLeaderboardRow>
+  lossCurve: ReadonlyArray<TrainingRunLossPoint>
+  lossUnderBudget: Readonly<{
+    budgetLabel: string
+    budgetRef: string | null
+    finalValidationLoss: number | null
+    maxValidationLoss: number | null
+    provenanceLabel: string
+    satisfied: boolean
+    sourceRefs: ReadonlyArray<string>
+  }>
+  scopeBoundaryRefs: ReadonlyArray<string>
+}>
+
 export type TrainingRunPublicSummary = Readonly<{
   copyBoundaryRefs: ReadonlyArray<string>
   emptyState: Readonly<{
@@ -192,6 +252,7 @@ export type TrainingRunPublicSummary = Readonly<{
     sealedWindowCount: TrainingRunPublicMetric
     verifiedWorkCount: TrainingRunPublicMetric
   }>
+  realGradient: TrainingRunRealGradientStatus
   receiptRefs: ReadonlyArray<string>
   run: TrainingRunProjection
   sourceRefs: ReadonlyArray<string>
@@ -396,6 +457,202 @@ const distinctPylonRefs = (
   leases: ReadonlyArray<TrainingWindowLeaseRecord>,
 ): ReadonlyArray<string> => uniqueRefs(leases.map(lease => lease.pylonRef))
 
+const optionalNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined
+  }
+
+  const parsed = Number(value)
+
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+const realGradientEvidenceRecord = (
+  run: TrainingRunRecord,
+): Record<string, unknown> | undefined => {
+  const projection = parseJsonRecord(run.publicProjectionJson)
+  const nested = projection?.realGradient
+
+  return isRecord(nested) ? nested : undefined
+}
+
+const lossCurveFromEvidence = (
+  evidence: Record<string, unknown> | undefined,
+): ReadonlyArray<TrainingRunLossPoint> => {
+  const curve = evidence?.lossCurve
+
+  if (!Array.isArray(curve)) {
+    return []
+  }
+
+  return curve
+    .flatMap((point): ReadonlyArray<TrainingRunLossPoint> => {
+      if (!isRecord(point)) {
+        return []
+      }
+
+      const step = optionalNumber(point.step)
+      const validationLoss = optionalNumber(point.validationLoss)
+
+      if (step === undefined || validationLoss === undefined) {
+        return []
+      }
+
+      return [
+        {
+          provenanceLabel:
+            optionalString(point.provenanceLabel) ??
+            'Public-safe validation-loss point from run projection evidence.',
+          sourceRefs: uniqueRefs(stringArrayFromUnknown(point.sourceRefs)),
+          step,
+          validationLoss,
+        },
+      ]
+    })
+    .sort((left, right) => left.step - right.step)
+}
+
+const bestValidationLoss = (
+  points: ReadonlyArray<TrainingRunLossPoint>,
+): number | null =>
+  points.length === 0
+    ? null
+    : Math.min(...points.map(point => point.validationLoss))
+
+const publicRealGradientStatus = (
+  input: Readonly<{
+    challenges: ReadonlyArray<TrainingVerificationChallengeRecord>
+    leases: ReadonlyArray<TrainingWindowLeaseRecord>
+    run: TrainingRunRecord
+    windows: ReadonlyArray<TrainingWindowRecord>
+  }>,
+): TrainingRunRealGradientStatus => {
+  const evidence = realGradientEvidenceRecord(input.run)
+  const lossCurve = lossCurveFromEvidence(evidence)
+  const finalLoss =
+    lossCurve.length === 0
+      ? null
+      : lossCurve[lossCurve.length - 1]!.validationLoss
+  const maxLoss = optionalNumber(evidence?.maxValidationLoss) ?? null
+  const mergeRef = optionalString(evidence?.mergeRef) ?? null
+  const evalRef = optionalString(evidence?.evalRef) ?? null
+  const freivaldsCommitmentRefs = uniqueRefs(
+    stringArrayFromUnknown(evidence?.freivaldsCommitmentRefs),
+  )
+  const gradientCloseoutRefs = uniqueRefs(
+    stringArrayFromUnknown(evidence?.gradientCloseoutRefs),
+  )
+  const observedPylonRefs = distinctPylonRefs(input.leases)
+  const verifiedChallenges = input.challenges.filter(
+    challenge => challenge.state === 'Verified',
+  )
+  const closeoutSatisfied =
+    freivaldsCommitmentRefs.length > 0 &&
+    gradientCloseoutRefs.length > 0 &&
+    mergeRef !== null &&
+    evalRef !== null
+  const lossSatisfied =
+    finalLoss !== null && maxLoss !== null && finalLoss <= maxLoss
+  const observed =
+    observedPylonRefs.length >= 2 &&
+    closeoutSatisfied &&
+    lossSatisfied &&
+    verifiedChallenges.length > 0
+  const blockerRefs = observed
+    ? []
+    : [
+        'blocker.cs336_a1.real_gradient_psionic_lane_external',
+        'blocker.cs336_a1.requires_two_real_contributor_devices',
+        'blocker.cs336_a1.operator_funded_settled_payouts_required',
+      ]
+  const bestLoss = bestValidationLoss(lossCurve)
+  const verifiedWindowRefs = new Set(
+    verifiedChallenges
+      .map(challenge => challenge.windowRef)
+      .filter((ref): ref is string => ref !== null),
+  )
+
+  return {
+    closeoutRequirement: {
+      evalRef,
+      freivaldsCommitmentRefs,
+      gradientCloseoutRefs,
+      mergeRef,
+      provenanceLabel:
+        'Real-gradient closeout requires public Freivalds commitment refs, gradient closeout refs, merge refs, and eval refs from the Psionic lane.',
+      satisfied: closeoutSatisfied,
+    },
+    deviceRequirement: {
+      observedDistinctContributorDevices: observedPylonRefs.length,
+      provenanceLabel:
+        'Distinct contributor devices are counted from Worker D1 training_window_leases pylon_ref values; loopback/operator-only runs do not satisfy this issue.',
+      requiredDistinctContributorDevices: 2,
+      satisfied: observedPylonRefs.length >= 2,
+      sourceRefs: input.leases.map(lease => lease.leaseRef),
+    },
+    externalAsk: {
+      blockerRefs,
+      psionicLaneRef:
+        optionalString(evidence?.psionicLaneRef) ??
+        'psion_cs336_a1_real_gradient_v1',
+      requirementRefs: [
+        'requirement.psionic.cs336_a1.real_gradient_training_lane',
+        'requirement.psionic.cs336_a1.tinystories_owt_shards',
+        'requirement.psionic.cs336_a1.freivalds_gradient_commitments',
+        'requirement.psionic.cs336_a1.merge_eval_loss_curve_receipts',
+      ],
+      status: observed
+        ? 'observed'
+        : closeoutSatisfied
+          ? 'ready'
+          : 'blocked_external',
+    },
+    leaderboardRows: observedPylonRefs.map((pylonRef, index) => ({
+      bestValidationLoss: bestLoss,
+      provenanceLabel:
+        'Public leaderboard row derived from D1 lease refs, verified challenge refs, and optional run projection loss evidence; settled sats stay zero until provider-confirmed settlement receipts are linked.',
+      pylonRef,
+      rank: index + 1,
+      settledPayoutSats: 0,
+      sourceRefs: uniqueRefs([
+        ...input.leases
+          .filter(lease => lease.pylonRef === pylonRef)
+          .map(lease => lease.leaseRef),
+        ...verifiedChallenges.map(challenge => challenge.challengeRef),
+      ]),
+      trainingRunRef: input.run.trainingRunRef,
+      verifiedWindowCount: input.windows.filter(window =>
+        verifiedWindowRefs.has(window.windowRef),
+      ).length,
+    })),
+    lossCurve,
+    lossUnderBudget: {
+      budgetLabel:
+        optionalString(evidence?.budgetLabel) ??
+        'CS336 A1 validation loss under bounded compute budget.',
+      budgetRef: optionalString(evidence?.budgetRef) ?? null,
+      finalValidationLoss: finalLoss,
+      maxValidationLoss: maxLoss,
+      provenanceLabel:
+        'Loss-under-budget is true only when the public run projection includes a final validation loss at or below the declared maxValidationLoss.',
+      satisfied: lossSatisfied,
+      sourceRefs: uniqueRefs([
+        ...lossCurve.flatMap(point => point.sourceRefs),
+        ...stringArrayFromUnknown(evidence?.lossSourceRefs),
+      ]),
+    },
+    scopeBoundaryRefs: [
+      'scope.cs336_a1.bounded_multi_device_training_evidence_only',
+      'scope.cs336_a1.does_not_replace_qwen_finetune_gate_4670',
+      'scope.cs336_a1.no_first_real_training_run_green_copy_from_this_issue_alone',
+    ],
+  }
+}
+
 export const publicTrainingRunSummary = (
   input: Readonly<{
     challenges: ReadonlyArray<TrainingVerificationChallengeRecord>
@@ -502,6 +759,7 @@ export const publicTrainingRunSummary = (
         challengeMetricRefs,
       ),
     },
+    realGradient: publicRealGradientStatus(input),
     receiptRefs,
     run: publicTrainingRunProjection(input.run, input.nowIso),
     sourceRefs,

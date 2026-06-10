@@ -385,6 +385,65 @@ export const PublicTrainingRunMetric = S.Struct({
 })
 export type PublicTrainingRunMetric = typeof PublicTrainingRunMetric.Type
 
+export const PublicTrainingRunLossPoint = S.Struct({
+  provenanceLabel: S.String,
+  sourceRefs: S.Array(S.String),
+  step: S.Number,
+  validationLoss: S.Number,
+})
+export type PublicTrainingRunLossPoint = typeof PublicTrainingRunLossPoint.Type
+
+export const PublicTrainingRunLeaderboardRow = S.Struct({
+  bestValidationLoss: S.NullOr(S.Number),
+  provenanceLabel: S.String,
+  pylonRef: S.String,
+  rank: S.Number,
+  settledPayoutSats: S.Number,
+  sourceRefs: S.Array(S.String),
+  trainingRunRef: S.String,
+  verifiedWindowCount: S.Number,
+})
+export type PublicTrainingRunLeaderboardRow =
+  typeof PublicTrainingRunLeaderboardRow.Type
+
+export const PublicTrainingRunRealGradientStatus = S.Struct({
+  closeoutRequirement: S.Struct({
+    evalRef: S.NullOr(S.String),
+    freivaldsCommitmentRefs: S.Array(S.String),
+    gradientCloseoutRefs: S.Array(S.String),
+    mergeRef: S.NullOr(S.String),
+    provenanceLabel: S.String,
+    satisfied: S.Boolean,
+  }),
+  deviceRequirement: S.Struct({
+    observedDistinctContributorDevices: S.Number,
+    provenanceLabel: S.String,
+    requiredDistinctContributorDevices: S.Number,
+    satisfied: S.Boolean,
+    sourceRefs: S.Array(S.String),
+  }),
+  externalAsk: S.Struct({
+    blockerRefs: S.Array(S.String),
+    psionicLaneRef: S.String,
+    requirementRefs: S.Array(S.String),
+    status: S.Literals(['blocked_external', 'ready', 'observed']),
+  }),
+  leaderboardRows: S.Array(PublicTrainingRunLeaderboardRow),
+  lossCurve: S.Array(PublicTrainingRunLossPoint),
+  lossUnderBudget: S.Struct({
+    budgetLabel: S.String,
+    budgetRef: S.NullOr(S.String),
+    finalValidationLoss: S.NullOr(S.Number),
+    maxValidationLoss: S.NullOr(S.Number),
+    provenanceLabel: S.String,
+    satisfied: S.Boolean,
+    sourceRefs: S.Array(S.String),
+  }),
+  scopeBoundaryRefs: S.Array(S.String),
+})
+export type PublicTrainingRunRealGradientStatus =
+  typeof PublicTrainingRunRealGradientStatus.Type
+
 export const PublicTrainingRunProjection = S.Struct({
   createdAtDisplay: S.String,
   promiseRef: S.String,
@@ -434,6 +493,7 @@ export const PublicTrainingRunSummary = S.Struct({
     sealedWindowCount: PublicTrainingRunMetric,
     verifiedWorkCount: PublicTrainingRunMetric,
   }),
+  realGradient: PublicTrainingRunRealGradientStatus,
   receiptRefs: S.Array(S.String),
   run: PublicTrainingRunProjection,
   sourceRefs: S.Array(S.String),

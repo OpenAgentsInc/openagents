@@ -50,6 +50,12 @@ type TrainingRunDetailJson = Readonly<{
   summary: TrainingRunPublicSummary
 }>
 
+type TrainingRunLeaderboardJson = Readonly<{
+  leaderboardRows: ReadonlyArray<
+    TrainingRunPublicSummary['realGradient']['leaderboardRows'][number]
+  >
+}>
+
 const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
   const runs = new Map<string, TrainingRunRecord>()
   const windows = new Map<string, TrainingWindowRecord>()
@@ -243,6 +249,25 @@ describe('training run window routes', () => {
     ).toContain(
       'pending, offered, claimed, or wallet-side records are excluded',
     )
+
+    const leaderboardResponse = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/leaderboards/a1'),
+        {},
+      ),
+    )
+    const leaderboard =
+      (await leaderboardResponse.json()) as TrainingRunLeaderboardJson
+
+    expect(leaderboardResponse.status).toBe(200)
+    expect(leaderboard.leaderboardRows).toEqual([
+      expect.objectContaining({
+        pylonRef: 'pylon.training.1',
+        rank: 1,
+        settledPayoutSats: 0,
+        trainingRunRef: 'training.run.cs336.a1.demo',
+      }),
+    ])
   })
 
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {

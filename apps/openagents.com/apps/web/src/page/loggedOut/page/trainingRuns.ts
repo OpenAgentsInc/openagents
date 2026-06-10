@@ -194,6 +194,148 @@ const summaryWindows = (summary: PublicTrainingRunSummary): Html => {
   )
 }
 
+const summaryRealGradient = (summary: PublicTrainingRunSummary): Html => {
+  const h = html<Message>()
+  const status = summary.realGradient
+  const finalLoss = status.lossUnderBudget.finalValidationLoss
+  const maxLoss = status.lossUnderBudget.maxValidationLoss
+  const lossText =
+    finalLoss === null || maxLoss === null
+      ? 'No public loss result'
+      : `${finalLoss.toFixed(3)} / ${maxLoss.toFixed(3)}`
+
+  return h.section(
+    [Ui.className<Message>(panelClass)],
+    [
+      panelHeader({
+        title: 'A1 Real Gradient Status',
+        meta: status.lossUnderBudget.budgetLabel,
+        status: status.externalAsk.status,
+      }),
+      metricRow(
+        'Contributor devices',
+        {
+          provenanceLabel: status.deviceRequirement.provenanceLabel,
+          sourceRefs: status.deviceRequirement.sourceRefs,
+          value: status.deviceRequirement.observedDistinctContributorDevices,
+        },
+        ` / ${status.deviceRequirement.requiredDistinctContributorDevices}`,
+      ),
+      h.div(
+        [Ui.className<Message>(rowClass)],
+        [
+          h.div(
+            [],
+            [
+              h.div(
+                [Ui.className<Message>(rowLabelClass)],
+                ['Loss under budget'],
+              ),
+              h.div(
+                [Ui.className<Message>(rowDetailClass)],
+                [status.lossUnderBudget.provenanceLabel],
+              ),
+            ],
+          ),
+          h.div([Ui.className<Message>(rowValueClass)], [lossText]),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>(rowClass)],
+        [
+          h.div(
+            [],
+            [
+              h.div([Ui.className<Message>(rowLabelClass)], ['Psionic lane']),
+              h.div(
+                [Ui.className<Message>(rowDetailClass)],
+                [status.closeoutRequirement.provenanceLabel],
+              ),
+            ],
+          ),
+          h.div(
+            [Ui.className<Message>(rowValueClass)],
+            [status.externalAsk.psionicLaneRef],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('flex flex-wrap gap-2 pt-2')],
+        [
+          ...status.externalAsk.blockerRefs.map(ref => statusPill(ref)),
+          ...status.scopeBoundaryRefs.map(ref => statusPill(ref)),
+        ],
+      ),
+      status.lossCurve.length === 0
+        ? ''
+        : h.div(
+            [Ui.className<Message>('grid gap-2 pt-2')],
+            status.lossCurve
+              .slice(-5)
+              .map(point =>
+                h.div(
+                  [Ui.className<Message>(rowClass)],
+                  [
+                    h.div(
+                      [],
+                      [
+                        h.div(
+                          [Ui.className<Message>(rowLabelClass)],
+                          [`Step ${formatNumber(point.step)}`],
+                        ),
+                        h.div(
+                          [Ui.className<Message>(rowDetailClass)],
+                          [point.provenanceLabel],
+                        ),
+                      ],
+                    ),
+                    h.div(
+                      [Ui.className<Message>(rowValueClass)],
+                      [point.validationLoss.toFixed(3)],
+                    ),
+                  ],
+                ),
+              ),
+          ),
+      status.leaderboardRows.length === 0
+        ? ''
+        : h.div(
+            [Ui.className<Message>('grid gap-2 pt-2')],
+            status.leaderboardRows
+              .slice(0, 8)
+              .map(row =>
+                h.div(
+                  [Ui.className<Message>(rowClass)],
+                  [
+                    h.div(
+                      [],
+                      [
+                        h.div(
+                          [Ui.className<Message>(rowLabelClass)],
+                          [`#${row.rank} ${row.pylonRef}`],
+                        ),
+                        h.div(
+                          [Ui.className<Message>(rowDetailClass)],
+                          [row.provenanceLabel],
+                        ),
+                      ],
+                    ),
+                    h.div(
+                      [Ui.className<Message>(rowValueClass)],
+                      [
+                        row.bestValidationLoss === null
+                          ? 'no loss'
+                          : row.bestValidationLoss.toFixed(3),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+          ),
+    ],
+  )
+}
+
 const summaryReceipts = (summary: PublicTrainingRunSummary): Html => {
   const h = html<Message>()
 
@@ -339,6 +481,7 @@ export const view = (
                 [Ui.className<Message>('grid gap-3')],
                 [
                   summaryMetrics(summary),
+                  summaryRealGradient(summary),
                   summaryWindows(summary),
                   summaryReceipts(summary),
                 ],

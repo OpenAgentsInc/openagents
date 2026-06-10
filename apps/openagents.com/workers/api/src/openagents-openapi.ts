@@ -250,10 +250,13 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
   ),
   TrainingRunEnvelope: objectSummary(
-    'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, display timestamps, and optional summary metrics. Public summary metrics include provenance labels for windows, contributors, verification, receipt refs, and provider-confirmed settled payout sats. Pending, offered, claimed, and wallet-side records are not counted as paid. It grants no assignment, payout, model-publication, or spend authority.',
+    'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, display timestamps, and optional summary metrics. Public summary metrics include provenance labels for windows, contributors, verification, receipt refs, provider-confirmed settled payout sats, and the CS336 A1 real-gradient status/loss/leaderboard projection. Pending, offered, claimed, and wallet-side records are not counted as paid. The real-gradient status remains blocked unless Psionic evidence includes two real contributor devices, Freivalds commitments, merge/eval refs, verified closeouts, and loss under budget. It grants no assignment, payout, model-publication, or spend authority.',
   ),
   TrainingRunListEnvelope: objectSummary(
-    'Public-safe training-run index with active/recent run projections and provenance-labeled summaries. Empty runs stay visible as idle instead of being hidden.',
+    'Public-safe training-run index with active/recent run projections and provenance-labeled summaries, including A1 real-gradient loss/leaderboard status when evidence exists. Empty runs stay visible as idle instead of being hidden.',
+  ),
+  TrainingA1LeaderboardEnvelope: objectSummary(
+    'Public-safe CS336 A1 real-gradient leaderboard envelope with leaderboardRows, sourceRefs, and scopeBoundaryRefs. Rows include trainingRunRef, pylonRef, rank, verifiedWindowCount, bestValidationLoss when public loss evidence exists, settledPayoutSats only from provider-confirmed settlement receipts, provenanceLabel, and sourceRefs.',
   ),
   TrainingWindowEnvelope: objectSummary(
     'Public-safe training-window projection with windowRef, trainingRunRef, lifecycle state, homeworkKind, priority, dataset refs, source refs, receipt refs, and display timestamps only. It excludes private datasets, worker logs, secrets, wallet state, and payout material.',
@@ -2815,7 +2818,7 @@ const paths = (): JsonSchema => ({
       operationId: 'listTrainingRuns',
       summary: 'List public training runs',
       description:
-        'Lists active and recent public-safe training runs with provenance-labeled metrics. Pending work is never displayed as paid; settled payout totals require provider-confirmed settlement receipts.',
+        'Lists active and recent public-safe training runs with provenance-labeled metrics, A1 real-gradient loss/leaderboard status, and scope blockers. Pending work is never displayed as paid; settled payout totals require provider-confirmed settlement receipts.',
       tags: ['Training'],
       security: publicRead,
       responses: {
@@ -2848,7 +2851,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTrainingRun',
       summary: 'Read training run',
       description:
-        'Reads the public-safe projection for a training run. Counts, state, promise refs, source refs, and receipt refs are exposed without private datasets, logs, wallet material, or payout detail.',
+        'Reads the public-safe projection for a training run. Counts, state, promise refs, source refs, receipt refs, A1 real-gradient status, loss curve, and leaderboard rows are exposed without private datasets, logs, wallet material, or payout detail.',
       tags: ['Training'],
       security: publicRead,
       parameters: [pathParam('trainingRunRef', 'Training run ref.')],
@@ -2856,6 +2859,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training run projection.',
           '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/leaderboards/a1': {
+    get: operation({
+      operationId: 'listTrainingA1Leaderboard',
+      summary: 'List CS336 A1 training leaderboard',
+      description:
+        'Lists public-safe CS336 A1 real-gradient leaderboard rows derived from training run summaries. Rows include trainingRunRef, pylonRef, verifiedWindowCount, bestValidationLoss when public evidence exists, and settledPayoutSats only from provider-confirmed settlement receipts.',
+      tags: ['Training'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'CS336 A1 training leaderboard.',
+          '#/components/schemas/TrainingA1LeaderboardEnvelope',
         ),
         ...errorResponses(),
       },

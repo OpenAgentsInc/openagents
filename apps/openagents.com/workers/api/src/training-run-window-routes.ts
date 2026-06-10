@@ -343,6 +343,78 @@ const routeListRuns = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const runs = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listRuns(50),
+    })
+    const summaries = yield* Effect.forEach(runs, run =>
+      Effect.gen(function* () {
+        const windows = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowsForRun(run.trainingRunRef, 100),
+        })
+        const leases = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowLeasesForRun(run.trainingRunRef, 1000),
+        })
+        const challenges = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
+        })
+
+        return publicTrainingRunSummary({
+          challenges,
+          leases,
+          nowIso,
+          run,
+          windows,
+        })
+      }),
+    )
+    const rows = summaries
+      .flatMap(summary => summary.realGradient.leaderboardRows)
+      .sort((left, right) => {
+        if (
+          left.bestValidationLoss !== null &&
+          right.bestValidationLoss !== null
+        ) {
+          return left.bestValidationLoss - right.bestValidationLoss
+        }
+
+        if (left.bestValidationLoss !== null) {
+          return -1
+        }
+
+        if (right.bestValidationLoss !== null) {
+          return 1
+        }
+
+        return right.verifiedWindowCount - left.verifiedWindowCount
+      })
+      .map((row, index) => ({ ...row, rank: index + 1 }))
+
+    return noStoreJsonResponse({
+      leaderboardRows: rows,
+      scopeBoundaryRefs: [
+        'scope.cs336_a1.bounded_multi_device_training_evidence_only',
+        'scope.cs336_a1.does_not_replace_qwen_finetune_gate_4670',
+        'scope.cs336_a1.no_first_real_training_run_green_copy_from_this_issue_alone',
+      ],
+      sourceRefs: [
+        'route:/api/training/leaderboards/a1',
+        'route:/api/training/runs',
+      ],
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -390,6 +462,16 @@ export const makeTrainingRunWindowRoutes = <
       }
 
       return routePlanRun(dependencies, request, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/training/leaderboards/a1') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeA1Leaderboard(dependencies, env).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
     }

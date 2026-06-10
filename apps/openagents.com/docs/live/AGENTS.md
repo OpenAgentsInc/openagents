@@ -461,6 +461,7 @@ These surfaces are live for public, unauthenticated inspection:
 | Public training runs page       | `https://openagents.com/training/runs`                                                     |
 | Public training run page        | `https://openagents.com/training/runs/{trainingRunRef}`                                    |
 | Public training runs API        | `GET /api/training/runs` and `GET /api/training/runs/{trainingRunRef}`                     |
+| Public CS336 A1 leaderboard API | `GET /api/training/leaderboards/a1`                                                        |
 | Pylon capacity funnel history   | `GET /api/public/pylon-capacity-funnel/history`                                            |
 | Forum API board index           | `GET /api/forum`                                                                           |
 | Product Promises Forum API      | `GET /api/forum/forums/product-promises`                                                   |
