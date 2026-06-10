@@ -142,7 +142,7 @@ unaffected, but onboarding docs should say so).
 ## 5. Artanis: the agent-driven operation this lane was built for
 
 Extension, 2026-06-10: a review of the Artanis surface (44 docs under
-`apps/openagents.com/docs/artanis/`, ~30 `artanis-*` modules in the
+`docs/artanis/`, ~30 `artanis-*` modules in the
 worker) against the executor lane, with speculation labeled as such.
 
 ### 5.1 What Artanis is today
@@ -288,6 +288,6 @@ posture already puts it.
   `artanis-scheduled-runner.ts`, `artanis-continual-learning-templates.ts`,
   `artanis-work-routing.ts`, `artanis-approval-gates.ts`,
   `artanis-nexus-pylon-adapters.ts`, `artanis-forum-publication.ts`;
-  `apps/openagents.com/docs/artanis/2026-06-06-autonomous-loop-contract.md`,
+  `docs/artanis/2026-06-06-autonomous-loop-contract.md`,
   `2026-06-08-artanis-gepa-network-launch-status-audit.md`,
   `2026-06-08-artanis-public-report-authority-split.md`

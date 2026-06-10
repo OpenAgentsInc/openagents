@@ -1,14 +1,28 @@
 # MDK Programmatic Agent Payout Review
 
-Date: 2026-06-10 (revised same day after owner correction; the first version
-wrongly recommended standing up a new standalone `mdkd` campaign daemon)
+Date: 2026-06-10 (revised twice same day on owner direction; see Decision)
 Author: Fable (review of `projects/moneydevkit/repos/*` reference clones,
 https://docs.moneydevkit.com/dashboard/payouts.md and llms.txt, and the live
 OpenAgents production integration)
 
 Question under review: how do we enable programmatic payouts so 1000 sats can
-be distributed to new agents — using the balance we already hold with
-MoneyDevKit and MDK's own payouts flow, not new wallet infrastructure?
+be distributed to new agents.
+
+## Decision (owner, 2026-06-10)
+
+Payouts to people come from a **dedicated campaign treasury wallet**: a
+regular MDK wallet with its own identity (own mnemonic) and its own funds,
+deployed in our cloud infrastructure — not on a local machine, and not
+entangled with the revenue node or the MDK dashboard payouts flow. The
+dashboard payouts flow stays what MDK built it to be — a way to withdraw the
+app's revenue balance to one configured destination — and is at most an
+optional funding source for the treasury wallet, not part of the per-agent
+payout path.
+
+Revision history: v1 of this doc proposed a campaign `mdkd` but assumed a
+local operator machine; v2 overcorrected into routing distribution through
+the existing local funded wallets. Both are superseded by the
+cloud-deployed treasury wallet above.
 
 ## Where our MDK balance actually lives
 
@@ -49,32 +63,53 @@ Current enablement state in this repo: `WITHDRAWAL_DESTINATION` is not set
 anywhere (worker vars, sidecar env, or secrets). Setting it on the sidecar
 container env and redeploying is the entire platform-side enablement step.
 
-## The one structural constraint, stated honestly
+## Why the payouts flow is not the per-agent path
 
 The payouts flow pays exactly **one env-pinned destination**. That is a
-security feature, not a gap, and we should not fight it. It means the
-dashboard Pay button can move the campaign budget *out of the app balance in
-one hop*, but it cannot fan out to N different agents' wallets directly —
-per-agent destinations would require rotating an env var per recipient.
+security feature, not a gap: mdk.com cannot redirect funds even if the
+dashboard or platform key is compromised. It makes the flow right for
+withdrawing revenue to the owner's wallet and wrong for fanning out to N
+different agents — per-agent destinations would mean rotating an env var per
+recipient. Payouts-to-people is a different job with a different owner: a
+treasury, not a withdrawal.
 
-So the agent-reward architecture is two hops, each using MDK surfaces we
-already operate:
+## The campaign treasury wallet (target architecture)
 
-1. **Budget hop (MDK payouts flow).** `WITHDRAWAL_DESTINATION` = the BOLT12
-   offer of the existing funded operator/campaign wallet (the same local MDK
-   wallet family already used for the funded tip smokes — not Treasury, not
-   the edge wallet). Operator clicks Pay for the campaign amount
-   (N x 1000 sats + fee headroom). One click, one webhook, idempotent,
-   self-custodial end to end.
-2. **Distribution hop (per-agent sends from the campaign wallet).** The
-   funded wallet pays each eligible agent's registered BOLT12 offer:
-   1000 sats per reward row, driven by the `x_claim_reward_ledger` state
-   machine (`approve_dispatch -> pay -> mark_dispatched -> mark_settled`)
-   via the wallet's existing send surface — the local wallet daemon's
-   `POST /pay` (`{ destination, amountSat, waitForPaymentSecs }`) or
-   `npx @moneydevkit/agent-wallet send <offer> 1000`. No new daemon: this is
-   the wallet that already exists and already holds spend history from the
-   tip smokes.
+A second MDK wallet with its **own mnemonic, own identity, own funds**,
+deployed the same way the revenue node already is: as a Cloudflare Container
+beside the worker. The existing `services/mdk-sidecar/` container proves the
+pattern; the treasury container differs in one way — it exposes a *send*
+surface instead of the checkout route. `mdkd` is MDK's stock daemon for
+exactly this (`POST /pay` with `{ destination, amountSat,
+waitForPaymentSecs }`, `GET /getbalance`, HTTP Basic full-access auth,
+secrets via env), so the treasury container is "a regular MDK wallet," not a
+custom payment engine. Nothing runs on a local machine.
+
+The pieces and their jobs:
+
+- **Treasury wallet container** (`services/mdk-treasury/`, new): holds the
+  campaign funds, executes sends. Its own `MDK_MNEMONIC` (backed up like the
+  others), explicit port, full-access password as a deploy secret. Reachable
+  only from the worker via its container binding — never publicly routed.
+- **Worker-side dispatcher** (new, small): runs in the worker we already
+  deploy (scheduled handler or queue consumer — the worker already has a
+  `* * * * *` cron trigger and queue infrastructure). It walks
+  `x_claim_reward_ledger` rows that an operator has moved to
+  `dispatch_requested`, resolves the agent's registered BOLT12 offer, calls
+  the treasury container's `/pay`, then `mark_dispatched` /
+  `mark_settled`-with-evidence or `mark_failed`. Per-run and per-day spend
+  caps enforced in code, same pattern as the #4639 buy-mode dispatcher.
+- **Funding** (decoupled): the treasury wallet is funded like any wallet —
+  from an external wallet, or optionally via the MDK dashboard payouts flow
+  by setting `WITHDRAWAL_DESTINATION` to the treasury wallet's offer and
+  clicking Pay to move revenue-balance into it. Either way, funding is an
+  operator action separate from distribution.
+
+Boundary note: this is the bounded *campaign* treasury inside the
+`openagents.com` surface (marketing rewards with their own ledger and caps).
+It is not the private `treasury` repo's settlement daemon; if payout classes
+beyond bounded campaigns ever route through it, that work migrates to the
+repo that owns payout-execution truth.
 
 ## What OpenAgents provides (authority layer, unchanged)
 
@@ -91,24 +126,27 @@ already operate:
   the Forum tip-recipient wallet store tracks public-safe recipient
   readiness. A reward payout is "pay the agent's registered offer."
 
-## Execution-layer notes that still apply to the distribution hop
+## Execution-layer notes that apply to the dispatcher
 
-- **Idempotency lives in the ledger, not the wallet.** The wallet `/pay`
-  call has no idempotency key; a reward row passes through
-  `dispatch_requested` exactly once and is never paid twice. (The payouts
-  flow's own `idempotencyKey` covers the budget hop.)
-- **No `payment_sent` webhook from the local wallet daemon.** Outbound
-  completion comes from the synchronous wait window (max 50s) or event
-  polling; treat PENDING as poll-again.
+- **Idempotency lives in the ledger, not the wallet.** `mdkd /pay` has no
+  idempotency key; a reward row passes through `dispatch_requested` exactly
+  once and is never paid twice. The dispatcher transitions the row before
+  paying and never re-pays a row that has left that state.
+- **No `payment_sent` webhook from `mdkd`.** Outbound completion comes from
+  the synchronous wait window (`waitForPaymentSecs`, max 50s) or event
+  polling; treat PENDING as poll-again with the returned `paymentId`, never
+  as a reason to re-send.
+- **Liquidity preflight.** Refuse a run when `GET /getbalance`'s
+  `max_withdrawable_sat` is below `1000 + fee buffer` (default buffer: 1% +
+  10-sat floor + 1.1x retry multiplier, configurable under
+  `[max_sendable]`).
 - **Cold-channel latency.** First payments that open or splice a channel
   settle correctly but can exceed the wait window; warm channels settle in
   seconds. Keep the fail-then-pass tolerance the tip smokes encode.
 - **Self-pay classification.** Shared MDK LSP introduction pubkeys are not
   wallet identity; only per-wallet JIT SCID path entries are (commit
-  `14464c96e`).
-- **Port discipline.** Set `MDK_WALLET_PORT` explicitly; the CLI
-  restart-respawn-on-3456 cross-talk bug (#4609) misroutes sends when two
-  wallets share a port.
+  `14464c96e`). The treasury wallet must refuse destinations that resolve to
+  itself.
 
 ## Why "new agents" must mean "verified claims," not "registrations"
 

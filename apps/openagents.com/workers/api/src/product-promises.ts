@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.12'
+export const PublicProductPromisesVersion = '2026-06-10.13'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1297,6 +1297,36 @@ export const publicProductPromisesDocument = () => {
       authorityBoundary:
         'A proof-of-concept verdict proves exact replay of bounded committed workloads only. It grants no serving authority, no performance claim against conventional CPUs, and no general LLM-computer capability claim; the Tassadar research lane publication gates stay closed for everything beyond this scoped promise.',
     },
+    {
+      ...basePromiseFields,
+      promiseId: 'artanis.tassadar_evolution_loop.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'A standing automated Artanis run advances the Tassadar executor lane in production: dispatching digest-pinned executor work to Pylons, verifying it by exact replay, accumulating the verified-trace corpus toward Tassadar model training, and publishing monitorable per-tick receipts on a public surface.',
+      safeCopy:
+        'The Artanis spine exists and is deployed: a worker cron fires every minute and a config-gated scheduled runner persists loop, tick, runtime, Forum-intent, and health records under the tested autonomous-loop contract. The full manual loop the automation will own ran green once (compute.tassadar_executor_poc.v1). Real tick actions, a sustained unattended streak, the public tick monitor, and the first curated distillation dataset remain gated.',
+      unsafeCopy:
+        'Do not claim a trained model executes exactly, that Artanis runs ungated autonomy (spend and publication stay approval-gated), that an autonomous work network is live, or any general LLM-computer or contributor-earning capability from this loop.',
+      evidenceRefs: [
+        'docs/artanis/2026-06-10-artanis-production-tick-and-tassadar-evolution-audit.md',
+        'docs/artanis/2026-06-06-autonomous-loop-contract.md',
+        'apps/openagents.com/workers/api/src/artanis-scheduled-runner.ts',
+        'docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4697',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.artanis_scheduled_runner_real_actions_missing',
+        'blocker.product_promises.artanis_unattended_tick_streak_missing',
+        'blocker.product_promises.artanis_public_tick_monitor_missing',
+        'blocker.product_promises.tassadar_distillation_dataset_receipt_missing',
+      ],
+      verification:
+        'Enable ARTANIS_SCHEDULED_RUNNER_ENABLED with real tick actions wired (#4697); observe at least ten consecutive unattended ticks whose receipts include executor dispatch and exact-replay verdicts; publish the tick-ledger monitor surface; record the first dataset_curation receipt converting verified traces into a distillation dataset. Green requires all four with public-safe receipts cited here.',
+      authorityBoundary:
+        'The loop acts only through existing gates: assignments for computation, approval requirements for risky kinds, owner authority for wallet spend, copy gates for publication. A green here proves a monitorable automated run, not model capability; Tassadar disclosure boundaries extend unchanged.',
+    },
   ],
   notes: [
     `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -1306,6 +1336,7 @@ export const publicProductPromisesDocument = () => {
     'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
     'The five-streams implementation plan is tracked in GitHub issues #4635-#4653 (rails, compute, data, labor, referrals, stacking smoke, tips polish); the lane map and binding delegation contract live in apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md.',
     'Owner decision 2026-06-10: the Tassadar research lane previously held no registry promise by design. The owner approved one scoped exception: compute.tassadar_executor_poc.v1, a bounded proof-of-concept promise for executor-trace work on real Pylons. All other Tassadar publication gates remain closed; the research essay is docs/tassadar/README.md.',
+    'artanis.tassadar_evolution_loop.v1 is the owner-approved follow-on to the Tassadar PoC: an automated, publicly monitorable Artanis run that advances the executor lane and the Tassadar training corpus. The production tick model and evolution-loop design live in docs/artanis/2026-06-10-artanis-production-tick-and-tassadar-evolution-audit.md; tracking issue #4697.',
     'compute.tassadar_executor_poc.v1 went green on 2026-06-10 citing transition receipt promise_transition_99b561e9-74f1-4c9a-90cc-cd7c0aea13bd. Green covers exactly the scoped PoC claim (one workload family, one real Pylon, worker-as-validator replay, one settled paid closeout); the unsafeCopy line is unchanged and binding, and no broader executor capability, performance, or earning claim is created.',
     'The full training-pipeline buildout plan is docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md. The training.* promises represent its workstreams (ablation system, data refinery, model ladder, marathon operations, post-training arc, verification classes, device-capability dataset); all enter as planned. Model-ladder rungs gain their own promise records before each run; no rung above the R0 tri-host rehearsal exists or is scheduled against a date.',
     'Demand-provenance rule (proof.demand_provenance.v1): internal or first-party demand — including the training pipeline’s own ablations, sweeps, and corpus work — is plumbing proof, not market proof. No external dollar, no demand claim; revenue-bearing public numbers must carry an internal/external split alongside modeled/measured/settled provenance.',

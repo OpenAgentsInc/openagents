@@ -3,8 +3,8 @@
 Date: 2026-06-10
 
 Status: analysis pointer. The full review lives in section 5 of
-`docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md`
-(repo root); this note keeps the Artanis doc set self-contained.
+`docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md`;
+this note keeps the Artanis doc set self-contained.
 
 Summary of the argument:
 
