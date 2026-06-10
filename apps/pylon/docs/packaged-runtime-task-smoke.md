@@ -43,7 +43,34 @@ and reports only stable public refs:
 Local paths, source contents, command stdout, command stderr, and credentials
 must not be sent to OpenAgents.
 
-## Live Procedure
+## Repeatable Smoke
+
+The committed wrapper performs the packaged-binary path end to end:
+
+```sh
+OPENAGENTS_AGENT_TOKEN="<redacted>" \
+OPENAGENTS_ADMIN_API_TOKEN="<redacted optional, creates the assignment>" \
+bun run smoke:packaged-runtime-task
+```
+
+Optional inputs:
+
+- `OPENAGENTS_BASE_URL`: defaults to `https://openagents.com`.
+- `PYLON_PACKAGED_RUNTIME_TASK_SMOKE_PYLON_REF`: override the generated public
+  Pylon ref.
+- `PYLON_PACKAGED_RUNTIME_TASK_SMOKE_ASSIGNMENT_REF`: override the generated
+  assignment ref.
+
+If `OPENAGENTS_ADMIN_API_TOKEN` is present, the wrapper creates the no-spend
+runtime-gate assignment for the generated Pylon ref. Without it, the wrapper
+still installs, bootstraps, registers, heartbeats, and then requires an already
+offered compatible assignment.
+
+The wrapper emits only public-safe refs and a compact bootstrap summary. It
+does not print local workspace paths, source contents, stdout, stderr, provider
+credentials, wallet material, invoices, payment hashes, or preimages.
+
+## Manual Live Procedure
 
 1. Install the published package in a clean temporary directory.
 
