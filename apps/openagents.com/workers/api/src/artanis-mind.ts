@@ -37,7 +37,14 @@ export type ArtanisMindFailure = Readonly<{
 const geminiBody = (system: string, prompt: string) =>
   JSON.stringify({
     contents: [{ parts: [{ text: prompt }], role: 'user' }],
-    generationConfig: { maxOutputTokens: 1024, temperature: 0.2 },
+    // gemini-2.5-flash spends "thinking" tokens from the same output
+    // budget; without disabling it a 1024 cap leaves ~90 chars of text
+    // (live truncation incident, topic 479e4480, 2026-06-10).
+    generationConfig: {
+      maxOutputTokens: 4096,
+      temperature: 0.2,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
     systemInstruction: { parts: [{ text: system }] },
   })
 
