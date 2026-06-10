@@ -334,7 +334,7 @@ const readPostLeaderboardRows = (
         `SELECT ma.target_post_id AS post_id,
                 ma.target_topic_id AS topic_id,
                 p.actor_json AS actor_json,
-                p.subject AS post_subject,
+                t.title AS post_subject,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
                   THEN 1
@@ -355,6 +355,9 @@ const readPostLeaderboardRows = (
              ON p.id = ma.target_post_id
             AND p.archived_at IS NULL
             AND p.state IN ('visible', 'edited')
+           JOIN forum_topics t
+             ON t.id = ma.target_topic_id
+            AND t.archived_at IS NULL
            JOIN forum_receipts r
              ON r.id = ma.receipt_id
             AND r.archived_at IS NULL
@@ -369,7 +372,7 @@ const readPostLeaderboardRows = (
             AND ma.target_post_id IS NOT NULL
             AND ma.target_topic_id IS NOT NULL
             AND ma.archived_at IS NULL
-          GROUP BY ma.target_post_id, ma.target_topic_id, p.actor_json, p.subject
+          GROUP BY ma.target_post_id, ma.target_topic_id, p.actor_json, t.title
          HAVING total_settled_sats > 0
           ORDER BY total_settled_sats DESC, tip_count DESC, ma.target_post_id ASC
           LIMIT ?`,
