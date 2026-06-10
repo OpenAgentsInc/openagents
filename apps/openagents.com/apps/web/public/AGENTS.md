@@ -2189,6 +2189,22 @@ Pylons may claim bounded active homework windows at
 auto-launched starter windows. A lease is work authority only, not payout,
 settlement, wallet, or model-publication authority.
 
+Training verification challenges are D1-backed on the current OpenAgents Worker
+at `POST /api/training/verification/challenges`,
+`POST /api/training/verification/challenges/claim`,
+`GET /api/training/verification/challenges/{challengeRef}`,
+`POST /api/training/verification/challenges/{challengeRef}/retry`,
+`POST /api/training/verification/challenges/{challengeRef}/finalize`, and
+`POST /api/training/verification/challenges/{challengeRef}/timeout`.
+Verifier classes are registered by name: `freivalds_merkle`,
+`deterministic_recompute`, `exact_trace_replay`,
+`statistical_cross_check`, and `seeded_replication`. Queue state is
+`Queued`, `Leased`, `Retrying`, `Verified`, `Rejected`, or `TimedOut`.
+Challenge projections expose public-safe refs, sampling policy, typed failure
+codes, and verdict refs only. Verification verdicts can feed closeout and
+payout review, but a challenge, lease, or verdict is not itself payout,
+settlement, wallet, model-publication, or provider-spend authority.
+
 Operator Nexus/Pylon visibility is available through
 `GET /api/operator/nexus-pylon/dashboard` and
 `GET /api/operator/nexus-pylon/receipts/{receiptRef}` for OpenAgents admins or

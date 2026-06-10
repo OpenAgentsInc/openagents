@@ -68,6 +68,7 @@ type WorkerRouteDependencies = Readonly<{
   routeTeamChatRequest: OptionalEffectRoute
   routeThreadFileRequest: OptionalEffectRoute
   routeTrainingRunWindowRequest: OptionalEffectRoute
+  routeTrainingVerificationRequest: OptionalEffectRoute
 }>
 
 const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
@@ -345,6 +346,13 @@ export const makeWorkerRouteRequest =
 
       if (trainingRunWindowResponse !== undefined) {
         return yield* trainingRunWindowResponse
+      }
+
+      const trainingVerificationResponse =
+        dependencies.routeTrainingVerificationRequest(request, env, ctx)
+
+      if (trainingVerificationResponse !== undefined) {
+        return yield* trainingVerificationResponse
       }
 
       const nexusPylonVisibilityResponse =

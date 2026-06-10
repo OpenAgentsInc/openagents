@@ -258,6 +258,9 @@ const schemaComponents = (): JsonSchema => ({
   TrainingWindowLeaseEnvelope: objectSummary(
     'Public-safe training-window lease claim projection with leaseRef, pylonRef, windowRef, trainingRunRef, receiptRefs, state, and lease expiry seconds. It grants bounded work authority only, not payout or settlement authority.',
   ),
+  TrainingVerificationChallengeEnvelope: objectSummary(
+    'Public-safe training verification challenge projection with challengeRef, trainingRunRef, optional window/contribution refs, verificationClass, samplingPolicy, queue state, commitment refs, typed failure codes, verdict refs, lease expiry seconds, and display timestamps only. It grants no payout, settlement, wallet, or model-publication authority.',
+  ),
   PublicLaunchDashboard: objectSummary(
     'Public-safe red/yellow/green launch dashboard for every transcript promise. Rows include promise text, status, evidence refs, blocker refs, safe copy, and unsafe copy boundaries.',
   ),
@@ -1469,6 +1472,18 @@ const requestSchemas = (): JsonSchema => ({
   ),
   TrainingWindowLeaseClaimRequest: objectSummary(
     'Pylon request to claim the highest-priority active training window. Admin-dispatched homework is selected before auto-starter windows; request fields are pylonRef, optional leaseSeconds, and public-safe receiptRefs.',
+  ),
+  TrainingVerificationChallengeCreateRequest: objectSummary(
+    'Admin-only request to enqueue a training verification challenge with public-safe training/window/contribution refs, verificationClass, aggregate or per-contribution samplingPolicy, commitment refs, and class-specific payload metadata.',
+  ),
+  TrainingVerificationChallengeLeaseRequest: objectSummary(
+    'Validator request to claim the oldest queued/retrying training verification challenge, optionally filtered by verificationClass, with validatorRef and bounded leaseSeconds.',
+  ),
+  TrainingVerificationChallengeRetryRequest: objectSummary(
+    'Admin-only request to return a leased training verification challenge to retrying or timed-out with typed public-safe failure codes and receipt refs.',
+  ),
+  TrainingVerificationChallengeFinalizeRequest: objectSummary(
+    'Admin-only request to finalize a leased training verification challenge after running its registered verifier class. The route records public-safe receipt refs and typed verdict refs only.',
   ),
   SubmitPublicAgentProposalRequest: {
     type: 'object',
@@ -2944,6 +2959,132 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training window lease projection.',
           '#/components/schemas/TrainingWindowLeaseEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/verification/challenges': {
+    post: operation({
+      operationId: 'createTrainingVerificationChallenge',
+      summary: 'Create training verification challenge',
+      description:
+        'Admin-only route to enqueue a D1-backed training verification challenge. The challenge records a registered verification class, aggregate or per-contribution sampling policy, commitment refs, and public-safe payload metadata. It does not launch workers, spend funds, publish model artifacts, or settle providers.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingVerificationChallengeCreateRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training verification challenge projection.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/verification/challenges/claim': {
+    post: operation({
+      operationId: 'claimTrainingVerificationChallenge',
+      summary: 'Claim training verification challenge',
+      description:
+        'Claims the oldest queued or retrying training verification challenge, optionally filtered by verificationClass. The lease grants bounded verification work only and does not grant payout, settlement, wallet, or model-publication authority.',
+      tags: ['Training'],
+      security: publicRead,
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingVerificationChallengeLeaseRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training verification challenge projection.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/verification/challenges/{challengeRef}': {
+    get: operation({
+      operationId: 'getTrainingVerificationChallenge',
+      summary: 'Read training verification challenge',
+      description:
+        'Reads the public-safe projection for a training verification challenge, including queue state, class, sampling policy, commitment refs, typed failure codes, and verdict refs only.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [
+        pathParam('challengeRef', 'Training verification challenge ref.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Training verification challenge projection.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/verification/challenges/{challengeRef}/retry': {
+    post: operation({
+      operationId: 'retryTrainingVerificationChallenge',
+      summary: 'Retry training verification challenge',
+      description:
+        'Admin-only route to move a leased challenge back to retrying, or to timed-out when the retry budget is exhausted. The D1 write records the challenge update and event in one batch.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [
+        pathParam('challengeRef', 'Training verification challenge ref.'),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingVerificationChallengeRetryRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training verification challenge projection.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/verification/challenges/{challengeRef}/finalize': {
+    post: operation({
+      operationId: 'finalizeTrainingVerificationChallenge',
+      summary: 'Finalize training verification challenge',
+      description:
+        'Admin-only route to run the registered verifier class for a leased challenge and atomically record Verified or Rejected with typed failure codes and verdict refs. Adding exact-trace replay or future verifier classes is a registry concern, not queue code.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [
+        pathParam('challengeRef', 'Training verification challenge ref.'),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingVerificationChallengeFinalizeRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training verification challenge projection.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/verification/challenges/{challengeRef}/timeout': {
+    post: operation({
+      operationId: 'timeoutTrainingVerificationChallenge',
+      summary: 'Time out training verification challenge',
+      description:
+        'Admin-only route to mark a non-terminal training verification challenge timed out with LeaseExpired and RetryBudgetExhausted failure codes. The D1 write records the challenge update and event in one batch.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [
+        pathParam('challengeRef', 'Training verification challenge ref.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Training verification challenge projection.',
+          '#/components/schemas/TrainingVerificationChallengeEnvelope',
         ),
         ...errorResponses(),
       },
