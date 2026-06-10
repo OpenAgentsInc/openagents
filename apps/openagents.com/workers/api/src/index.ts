@@ -212,6 +212,12 @@ import {
   readOperatorTargetUser,
 } from './operator-targets'
 import { publicProductPromisesDocument } from './product-promises'
+import {
+  handleOperatorPromiseTransitionApi,
+  handlePublicPromiseTransitionsApi,
+  lastVerifiedAtByPromise,
+  makeD1PromiseTransitionReceiptStore,
+} from './promise-transition-receipt-routes'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
@@ -2116,10 +2122,24 @@ const handlePublicHomeApi = (request: Request) =>
         }),
       )
 
-const handlePublicProductPromisesApi = (request: Request) =>
+const handlePublicProductPromisesApi = (request: Request, db: D1Database) =>
   request.method !== 'GET'
     ? Effect.succeed(methodNotAllowed(['GET']))
-    : Effect.succeed(noStoreJsonResponse(publicProductPromisesDocument()))
+    : Effect.promise(async () => {
+        const document = publicProductPromisesDocument()
+        const receipts = await makeD1PromiseTransitionReceiptStore(db)
+          .listReceipts(200)
+          .catch(() => [])
+        const verifiedAt = lastVerifiedAtByPromise(receipts)
+
+        return noStoreJsonResponse({
+          ...document,
+          promises: document.promises.map(promise => ({
+            ...promise,
+            lastVerifiedAt: verifiedAt.get(promise.promiseId) ?? null,
+          })),
+        })
+      })
 
 const handleThreadPage = async (
   request: Request,
@@ -5574,7 +5594,23 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   },
   {
     path: '/api/public/product-promises',
-    handler: request => handlePublicProductPromisesApi(request),
+    handler: (request, env) =>
+      handlePublicProductPromisesApi(request, openAgentsDatabase(env)),
+  },
+  {
+    path: '/api/public/product-promises/transitions',
+    handler: (request, env) =>
+      handlePublicPromiseTransitionsApi(request, {
+        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/product-promises/transitions',
+    handler: (request, env) =>
+      handleOperatorPromiseTransitionApi(request, {
+        requireAdminApiToken: () => requireAdminApiToken(request, env),
+        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+      }),
   },
   {
     path: '/chat',

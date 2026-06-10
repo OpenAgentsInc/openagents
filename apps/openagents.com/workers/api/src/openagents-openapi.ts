@@ -210,6 +210,12 @@ const schemaComponents = (): JsonSchema => ({
   AutopilotWorkEventsEnvelope: objectSummary(
     'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',
   ),
+  ProductPromiseTransitions: objectSummary(
+    'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
+  ),
+  ProductPromiseTransitionRequest: objectSummary(
+    'Operator request to evaluate and record a promise transition: promiseId, toState, optional evidenceRefs, optional explicit exception (reasonRef, approvedByRef, expiresAt).',
+  ),
   PublicPylonCapacityFunnel: objectSummary(
     'Public-safe Pylon capacity funnel: stage counts from registered through settled plus dark-capacity counts by typed reason. Counts only, no device identifiers. Read-only capacity accounting; grants no assignment, payout, or settlement authority.',
   ),
@@ -3281,6 +3287,43 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Autopilot work projection.',
           '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/product-promises/transitions': {
+    get: operation({
+      operationId: 'listProductPromiseTransitions',
+      summary: 'List product-promise transition receipts',
+      description:
+        'Returns the public feed of promise transition receipts: for each proposed registry state change, the mechanical checks that ran (promise exists, state differs, evidence present, verification named, blockers clear for green), the result (passed, failed, or explicit policy exception), evidence refs, registry version, and timestamp. Promises in the main registry carry lastVerifiedAt derived from their latest passing receipt. A receipt is evidence for a transition, not the transition itself.',
+      tags: ['Public Proof'],
+      security: [],
+      responses: {
+        '200': okJson(
+          'Promise transition receipt feed.',
+          '#/components/schemas/ProductPromiseTransitions',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/product-promises/transitions': {
+    post: operation({
+      operationId: 'recordProductPromiseTransition',
+      summary: 'Record product-promise transition receipt',
+      description:
+        'Admin-token-gated action that evaluates a proposed promise state transition against the current registry and records a receipt with typed check results, optional evidence refs, and optional explicit policy-exception records. Recording a receipt does not change registry state; maintainers apply transitions through the versioned registry and cite receipts as evidence.',
+      tags: ['Public Proof'],
+      security: adminSession,
+      requestBody: jsonContent(
+        '#/components/schemas/ProductPromiseTransitionRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Recorded promise transition receipt.',
+          '#/components/schemas/ProductPromiseTransitions',
         ),
         ...errorResponses(),
       },

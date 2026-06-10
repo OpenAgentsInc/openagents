@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.17'
+export const PublicProductPromisesVersion = '2026-06-09.18'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -928,21 +928,22 @@ export const publicProductPromisesDocument = () => {
       claim:
         'Public claims should upgrade only when required receipts exist, and sensitive work should route according to reusable policy rather than marketing copy or operator judgment.',
       safeCopy:
-        'Product promises are versioned and evidence-linked today; automatic claim-upgrade receipts and enterprise policy proofs are still incomplete.',
+        'Promise transition receipts are live: operators record proposed state transitions at POST /api/operator/product-promises/transitions, each receipt mechanically checks the registry record (promise exists, state differs, evidence present, verification named, blockers clear for green) and supports explicit policy-exception records, the public feed at GET /api/public/product-promises/transitions lists them, and each promise in the registry carries lastVerifiedAt from its latest passing receipt. The enterprise audit panel is still missing.',
       unsafeCopy:
-        'Do not manually upgrade public claims to green without matching evidence, policy boundary, and receipt refs.',
+        'Do not manually upgrade public claims to green without matching evidence, policy boundary, and receipt refs, and do not present a passing receipt as the state change itself - registry transitions remain maintainer actions.',
       evidenceRefs: [
+        'route:/api/public/product-promises/transitions',
+        'apps/openagents.com/workers/api/src/promise-transition-receipt-routes.ts',
+        'apps/openagents.com/workers/api/src/promise-transition-receipt-routes.test.ts',
         'https://openagents.com/api/public/product-promises',
         'https://openagents.com/promises',
         'docs/promises/registry.md',
       ],
       blockerRefs: [
-        'blocker.product_promises.claim_upgrade_receipt_service_missing',
-        'blocker.product_promises.policy_exception_receipts_missing',
         'blocker.product_promises.enterprise_audit_panel_missing',
       ],
       verification:
-        'Green requires claim-upgrade receipts that bind claim ID, evidence refs, policy checks, reviewer or automated gate, timestamp, and downgrade path.',
+        'Run the promise-transition-receipt tests: receipts must bind promiseId, from/to state, registry version, evidence refs, typed checks, exceptions, and timestamps, the public feed must serve them, and lastVerifiedAt must derive from passing receipts. Green additionally requires the enterprise audit panel.',
       authorityBoundary:
         'A public proof page does not expose private data, bypass policy, or grant production authority.',
     },
