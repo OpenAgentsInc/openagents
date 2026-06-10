@@ -1,148 +1,145 @@
 # MDK Programmatic Agent Payout Review
 
-Date: 2026-06-10
-Author: Fable (review of `projects/moneydevkit/repos/*` reference clones at
-the 2026-06-07 manifest refresh, against the live OpenAgents reward surfaces)
+Date: 2026-06-10 (revised same day after owner correction; the first version
+wrongly recommended standing up a new standalone `mdkd` campaign daemon)
+Author: Fable (review of `projects/moneydevkit/repos/*` reference clones,
+https://docs.moneydevkit.com/dashboard/payouts.md and llms.txt, and the live
+OpenAgents production integration)
 
 Question under review: how do we enable programmatic payouts so 1000 sats can
-be distributed to new agents without a human driving each send by hand?
+be distributed to new agents — using the balance we already hold with
+MoneyDevKit and MDK's own payouts flow, not new wallet infrastructure?
 
-## Verdict
+## Where our MDK balance actually lives
 
-Everything needed exists today except one small component. OpenAgents already
-has the payout *authority* layer (the `x_claim_reward_ledger` state machine
-with operator-gated dispatch), and MoneyDevKit already has the payout
-*execution* layer (`mdkd`'s `POST /pay` pays a BOLT12 offer, BOLT11 invoice,
-LNURL, or lightning address programmatically). Nothing connects them. The
-missing piece is a bounded dispatcher that walks eligible reward rows through
-`approve_dispatch -> pay -> mark_dispatched -> mark_settled` with the actual
-Lightning send done by the campaign wallet's `mdkd`.
+Production already runs the MDK node. The Worker config sets
+`MDK_CHECKOUT_ROUTE_KIND: "self_hosted_mdkd_sidecar"` and deploys the
+`openagents-autopilot-mdksidecarcontainer` from
+`apps/openagents.com/services/mdk-sidecar/` — a thin proxy that forwards
+`/api/mdk` to `@moneydevkit/core/route` (the standard MDK serverless app
+handler) with `MDK_MNEMONIC` and `MDK_ACCESS_TOKEN` in its environment.
 
-## What MDK provides (execution layer)
+That self-custodial node is "our balance with Money Dev Kit": revenue from
+MDK checkout products (orange checks, and anything else sold through the
+dashboard products) accrues to it. Per MDK's own architecture docs
+(howitworks.md), MDK opens channels and manages inbound liquidity to that
+node; the keys and funds are ours.
 
-Programmatic send surfaces, from most to least suitable for us:
+Consequence: **no new `mdkd` daemon is needed.** The node that holds the
+money is already deployed beside the worker.
 
-1. **`mdkd` HTTP daemon** (`mdkd/src/daemon/api/mod.rs`):
-   - `POST /pay` — unified dispatcher: `{ destination, amountSat?,
-     waitForPaymentSecs? (max 50), payerNote?, quantity? }`. Destination
-     auto-detects BOLT11 / BOLT12 (`lno...`) / LNURL / lightning address /
-     BIP-353 HRN. Returns `{ paymentId, paymentHash?, preimage?, feeSat?,
-     status: PENDING|SUCCEEDED|FAILED, reason? }`.
-   - `POST /payinvoice` — BOLT11 only.
-   - `POST /sendtoaddress` — on-chain fallback.
-   - `GET /getbalance` — `balance_sat`, `onchain_balance_sat`, and
-     `max_withdrawable_sat` (outbound capacity minus the routing-fee buffer:
-     1% + 10-sat floor + 1.1x retry multiplier, all configurable under
-     `[max_sendable]`).
-   - Auth: HTTP Basic, full-access password required for sends
-     (`MDK_HTTP_PASSWORD_FULL`). Secrets via env or file descriptors.
-2. **`lightning-js`** — in-process `MdkNode.pay(destination, amountMsat?,
-   waitForPaymentSecs?)` with event polling (`nextEvent`/`ackEvent`); same
-   destination coverage. Right choice only if the dispatcher embeds the node.
-3. **`@moneydevkit/agent-wallet` CLI** (`agent-skills`) — `send <dest> [amt]`
-   with JSON stdout; fine for one-off operator sends, not for a ledger-driven
-   loop.
-4. **`api-contract` node-control `payout()`** — WebSocket RPC with an
-   `idempotencyKey`, but the destination is pinned to
-   `process.env.WITHDRAWAL_DESTINATION` on the node side. That is a
-   self-withdrawal primitive, not a pay-many-recipients primitive. Not ours.
-5. **`mdk-checkout`** — inbound only. No payout or refund path.
+## The MDK payouts flow (the platform way to move that balance)
 
-### Gaps in MDK we must compensate for
+From https://docs.moneydevkit.com/dashboard/payouts.md:
 
-- **No `payment_sent` webhook.** `mdkd` webhooks cover `payment_received` and
-  `invoice_expired` only. Outbound completion arrives via the event stream or
-  the synchronous `waitForPaymentSecs` window. The dispatcher must wait
-  in-band (50s max) and treat PENDING as "poll again," not as failure.
-- **No idempotency on `/pay`.** Replaying the HTTP call can double-pay. The
-  ledger state machine is our idempotency: a reward row only passes through
-  `dispatch_requested` once, and the dispatcher must transition the row
-  *before* calling `/pay` and never re-pay a row that has left `eligible`.
-- **No self-pay restrictions.** `mdkd` will happily pay our own offers; the
-  caller owns that check. The tip-smoke lesson applies: shared MDK LSP
-  introduction pubkeys are not wallet identity — only per-wallet JIT SCID
-  path entries are (commit `14464c96e`).
-- **Cold-channel latency.** First payments that open or splice a channel
-  settle correctly but can exceed the wait window and classify as recovery.
-  Warm channels settle strict in seconds. The dispatcher needs the same
-  fail-then-pass tolerance the tip smokes encode.
+1. Set `WITHDRAWAL_DESTINATION` in the app's environment to a Lightning
+   Address (`name@domain`), LNURL, or BOLT12 offer (`lno...`).
+2. In the MDK dashboard, choose an amount and click **Pay**.
+3. MDK sends a webhook to the app; the app's node spins up and pays the
+   configured destination from its own balance.
 
-## What OpenAgents provides (authority layer)
+Under the hood this is the `api-contract` node-control `payout()` RPC:
+`{ amountMsat, idempotencyKey }` in, `{ accepted, paymentId, paymentHash }`
+out, with completion arriving as `paymentSent` / `paymentFailed` node events.
+The destination is read from `process.env.WITHDRAWAL_DESTINATION` on the node
+side **by design** — mdk.com cannot redirect funds even if the dashboard or
+platform key is compromised.
+
+Current enablement state in this repo: `WITHDRAWAL_DESTINATION` is not set
+anywhere (worker vars, sidecar env, or secrets). Setting it on the sidecar
+container env and redeploying is the entire platform-side enablement step.
+
+## The one structural constraint, stated honestly
+
+The payouts flow pays exactly **one env-pinned destination**. That is a
+security feature, not a gap, and we should not fight it. It means the
+dashboard Pay button can move the campaign budget *out of the app balance in
+one hop*, but it cannot fan out to N different agents' wallets directly —
+per-agent destinations would require rotating an env var per recipient.
+
+So the agent-reward architecture is two hops, each using MDK surfaces we
+already operate:
+
+1. **Budget hop (MDK payouts flow).** `WITHDRAWAL_DESTINATION` = the BOLT12
+   offer of the existing funded operator/campaign wallet (the same local MDK
+   wallet family already used for the funded tip smokes — not Treasury, not
+   the edge wallet). Operator clicks Pay for the campaign amount
+   (N x 1000 sats + fee headroom). One click, one webhook, idempotent,
+   self-custodial end to end.
+2. **Distribution hop (per-agent sends from the campaign wallet).** The
+   funded wallet pays each eligible agent's registered BOLT12 offer:
+   1000 sats per reward row, driven by the `x_claim_reward_ledger` state
+   machine (`approve_dispatch -> pay -> mark_dispatched -> mark_settled`)
+   via the wallet's existing send surface — the local wallet daemon's
+   `POST /pay` (`{ destination, amountSat, waitForPaymentSecs }`) or
+   `npx @moneydevkit/agent-wallet send <offer> 1000`. No new daemon: this is
+   the wallet that already exists and already holds spend history from the
+   tip smokes.
+
+## What OpenAgents provides (authority layer, unchanged)
 
 - `x_claim_reward_ledger` (issue #4626, promise `agents.x_claim_reward.v1`,
   yellow): rows enter `eligible` only after a verified X owner-claim tweet,
   with structural anti-Sybil (one reward per X account, ever) and a campaign
-  budget cap. `amountSats: 1000` is fixed by policy
-  (`agent-claim-reward-policy.ts`).
-- Operator dispatch route: `POST /api/agents/claims/rewards/{rewardId}/dispatch`
-  with admin bearer; actions `approve_dispatch`, `mark_dispatched`,
-  `mark_settled` (requires public-safe `evidenceRefs`), `mark_failed`,
-  `refuse`. Runbook: `2026-06-09-x-claim-reward-dispatch-runbook.md`.
-- Agents already carry a receive identity: registration accepts a
-  `bolt12Offer`, and the Forum tip-recipient wallet store tracks public-safe
-  recipient readiness. A reward payout is "pay the agent's registered offer."
+  budget cap. `amountSats: 1000` fixed by `agent-claim-reward-policy.ts`.
+- Operator dispatch route:
+  `POST /api/agents/claims/rewards/{rewardId}/dispatch` with admin bearer;
+  actions `approve_dispatch`, `mark_dispatched`, `mark_settled` (requires
+  public-safe `evidenceRefs`), `mark_failed`, `refuse`. Runbook:
+  `2026-06-09-x-claim-reward-dispatch-runbook.md`.
+- Agents carry a receive identity: registration accepts a `bolt12Offer`, and
+  the Forum tip-recipient wallet store tracks public-safe recipient
+  readiness. A reward payout is "pay the agent's registered offer."
 
-## The missing component: a bounded campaign dispatcher
+## Execution-layer notes that still apply to the distribution hop
 
-A small operator-run script (same family as the tip smokes, e.g.
-`apps/openagents.com/scripts/x-claim-reward-dispatch.mjs`) that does, per
-eligible reward, with the admin token and the campaign `mdkd` credentials in
-env:
+- **Idempotency lives in the ledger, not the wallet.** The wallet `/pay`
+  call has no idempotency key; a reward row passes through
+  `dispatch_requested` exactly once and is never paid twice. (The payouts
+  flow's own `idempotencyKey` covers the budget hop.)
+- **No `payment_sent` webhook from the local wallet daemon.** Outbound
+  completion comes from the synchronous wait window (max 50s) or event
+  polling; treat PENDING as poll-again.
+- **Cold-channel latency.** First payments that open or splice a channel
+  settle correctly but can exceed the wait window; warm channels settle in
+  seconds. Keep the fail-then-pass tolerance the tip smokes encode.
+- **Self-pay classification.** Shared MDK LSP introduction pubkeys are not
+  wallet identity; only per-wallet JIT SCID path entries are (commit
+  `14464c96e`).
+- **Port discipline.** Set `MDK_WALLET_PORT` explicitly; the CLI
+  restart-respawn-on-3456 cross-talk bug (#4609) misroutes sends when two
+  wallets share a port.
 
-1. `approve_dispatch` via the worker route (row -> `dispatch_requested`;
-   this is the idempotency gate — if this step fails or the row is not in
-   `eligible`, stop without paying).
-2. Resolve the recipient destination: the agent's registered BOLT12 offer
-   (refuse rows whose agent has no registered receive identity; never invent
-   a destination).
-3. `POST /pay` on the campaign `mdkd` with
-   `{ destination, amountSat: 1000, waitForPaymentSecs: 50 }`; on PENDING,
-   poll the payment by `paymentId` before any retry decision; never call
-   `/pay` twice for one reward row.
-4. `mark_dispatched`, then on SUCCEEDED `mark_settled` with a public-safe
-   evidence ref (`settlement_evidence.public.mdk_campaign_wallet.*`); on
-   terminal failure `mark_failed` with a `reason.public.*` ref.
-5. Refuse to start when `GET /getbalance.max_withdrawable_sat` is below
-   `1000 + fee buffer`, and stop when a configured per-run spend cap is hit
-   (same pattern as the #4639 buy-mode dispatcher caps).
-
-### Wallet separation (hard rule from the runbook)
-
-The campaign wallet is a dedicated bounded `mdkd` instance — not the Forum
-tip payer, not the edge wallet, not Treasury. Fund it with exactly the
-campaign budget (N x 1000 sats + fee headroom under the 1% + 10-sat buffer).
-Set `MDK_WALLET_PORT` explicitly; the CLI restart respawn-on-3456 cross-talk
-bug is documented in #4609 and will misroute sends if two daemons share a
-port.
-
-### Why "new agents" must mean "verified claims," not "registrations"
+## Why "new agents" must mean "verified claims," not "registrations"
 
 Registration is one unauthenticated POST with a `displayName`. Paying 1000
 sats per registration is a free-sats faucet and will be farmed within hours
 of discovery. The X owner-claim verification is the anti-Sybil boundary the
 ledger was built around: one human-visible X account, one reward, ever, under
-a campaign budget cap. Distribute to new agents *through* that gate. If a
-second distribution lane is ever wanted (e.g. first-accepted-work bonus), it
-needs its own ledger with its own structural dedupe, not a relaxation of this
-one.
+a campaign budget cap. Distribute to new agents *through* that gate. A
+second distribution lane (e.g. first-accepted-work bonus) needs its own
+ledger with its own structural dedupe, not a relaxation of this one.
 
 ## Enablement checklist (operator)
 
-1. Stand up the campaign `mdkd`: config.toml with `rest_service_address`,
-   secrets (`MDK_MNEMONIC`, `MDK_HTTP_PASSWORD_FULL`, `MDK_ACCESS_TOKEN`,
-   `MDK_WEBHOOK_SECRET`) via env/fd, explicit port.
-2. Fund it with the bounded campaign budget and confirm
-   `max_withdrawable_sat` covers the first dispatch.
-3. Land the dispatcher script (agent-side work; no spend involved in landing
-   it).
-4. Run the first single-reward smoke exactly per the existing dispatch
-   runbook, with the script doing steps the runbook currently does by hand.
-5. That first settled reward is the live evidence `agents.x_claim_reward.v1`
-   has been waiting on: record it on #4626 and propose the transition with a
+1. Pick the campaign wallet (existing funded local MDK wallet; bounded; not
+   the tip payer, edge wallet, or Treasury) and get its BOLT12 offer.
+2. Set `WITHDRAWAL_DESTINATION` to that offer in the mdk-sidecar container
+   environment (as a deploy-time env/secret, never in tracked config with
+   the raw `lno...` value) and redeploy the worker.
+3. In the MDK dashboard, Pay the campaign budget (N x 1000 sats + fee
+   headroom). Confirm arrival in the campaign wallet.
+4. Land the dispatcher script for the distribution hop (agent-side work, no
+   spend involved in landing it): walk `eligible` rewards through
+   `approve_dispatch -> pay agent offer -> mark_dispatched -> mark_settled`
+   with public-safe evidence refs and a per-run spend cap.
+5. Run the first single-reward smoke per the existing dispatch runbook. That
+   first settled reward is the live evidence `agents.x_claim_reward.v1` has
+   been waiting on: record it on #4626 and propose the transition with a
    receipt.
 
 ## Authority note
 
-This document changes no policy. Dispatch approval, funding, and registry
-transitions remain operator actions; the dispatcher only mechanizes the
-already-documented runbook steps between them.
+This document changes no policy. Dispatch approval, dashboard payout clicks,
+funding decisions, and registry transitions remain operator actions; the
+dispatcher only mechanizes the already-documented runbook steps between them.
