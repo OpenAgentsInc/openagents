@@ -56,6 +56,10 @@ import {
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
 import {
+  ARTANIS_REGISTERED_ACTOR_REF,
+  runArtanisResponderScanScheduled,
+} from './artanis-forum-responder'
+import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_STATE_MAX_AGE_SECONDS,
@@ -6795,6 +6799,19 @@ export default {
           makeId: randomUuid,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           payFromBuffer: tipsBufferPayFnForEnv(env),
+        }),
+      ),
+      observedEffect(
+        'ArtanisResponder.scan',
+        runArtanisResponderScanScheduled(openAgentsDatabase(env), {
+          artanisActorRefs: [ARTANIS_REGISTERED_ACTOR_REF],
+          enabled:
+            (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
+              .ARTANIS_FORUM_RESPONDER_ENABLED === 'true',
+          gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
+          geminiApiKey:
+            (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
         }),
       ),
       observedEffect(
