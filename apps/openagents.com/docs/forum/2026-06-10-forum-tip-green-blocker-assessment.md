@@ -73,3 +73,6 @@ Relevant local tests:
 
 Live blocker clears require funded operator approval and product-promise
 transition receipts before any registry edit.
+
+The exact one-sitting operator procedure is now recorded in
+`apps/openagents.com/docs/forum/2026-06-10-forum-tip-yellow-to-green-operator-runbook.md`.
