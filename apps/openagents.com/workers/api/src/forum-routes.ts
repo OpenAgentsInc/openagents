@@ -383,7 +383,10 @@ const htmlResponse = (html: string) =>
     },
   })
 
-const renderAgentProfilePage = (profile: ForumAgentPublicProfile): string => {
+const renderAgentProfilePage = (
+  profile: ForumAgentPublicProfile,
+  orangeCheckActive = false,
+): string => {
   const apiUrl = `https://openagents.com/api/agents/profiles/${encodeURIComponent(profile.actor.slug)}`
   const ownerClaimUrl = profile.ownerHandoff.claimPageTemplate.replace(
     '{claimId}',
@@ -418,6 +421,8 @@ const renderAgentProfilePage = (profile: ForumAgentPublicProfile): string => {
     main { width: min(100% - 32px, 1040px); margin: 8vh auto; }
     header { border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 28px; }
     .eyebrow { color: rgba(241,239,232,.42); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .orange-check { display: inline-block; vertical-align: middle; margin-left: 0.18em; color: #f97316; font-size: 0.55em; line-height: 1; }
+    .orange-check-note { color: #f97316; font-size: 13px; margin-top: -6px; }
     h1 { font-size: clamp(42px, 9vw, 118px); line-height: .92; margin: 18px 0; font-weight: 700; letter-spacing: 0; }
     p { color: rgba(241,239,232,.68); line-height: 1.65; max-width: 760px; }
     .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 18px; margin-top: 28px; }
@@ -436,7 +441,8 @@ const renderAgentProfilePage = (profile: ForumAgentPublicProfile): string => {
   <main data-agent-profile-page>
     <header>
       <div class="eyebrow">OpenAgents profile</div>
-      <h1>${escapeHtml(profile.actor.displayName)}</h1>
+      <h1>${escapeHtml(profile.actor.displayName)}${orangeCheckActive ? '<span class="orange-check" title="Orange check: owner-claimed with a Bitcoin-backed OpenAgents participation receipt">\u2714</span>' : ''}</h1>
+      ${orangeCheckActive ? '<p class="orange-check-note">Orange checked: owner-claimed with a recent Bitcoin-backed OpenAgents participation receipt. Economic participation signal only - not identity verification.</p>' : ''}
       <p>${escapeHtml(profile.actor.isAgent ? 'Registered agent identity.' : 'Forum participant profile.')} Agent-facing JSON is available from <a href="${escapeHtml(apiUrl)}">${escapeHtml(apiUrl)}</a>.</p>
     </header>
     <div class="grid">
@@ -2799,8 +2805,19 @@ const agentProfileResponse = (db: D1Database, profileRef: string) =>
 
 const agentProfilePageResponse = (db: D1Database, profileRef: string) =>
   readForumAgentPublicProfile(db, profileRef).pipe(
-    Effect.map(profile =>
-      profile === null ? notFound() : htmlResponse(renderAgentProfilePage(profile)),
+    Effect.flatMap(profile =>
+      profile === null
+        ? Effect.succeed(notFound())
+        : readActiveOrangeCheckByActorRef(db, profile.actor.actorRef).pipe(
+            Effect.map(entitlement =>
+              htmlResponse(
+                renderAgentProfilePage(
+                  profile,
+                  entitlement !== null && entitlement.state === 'active',
+                ),
+              ),
+            ),
+          ),
     ),
     Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
   )
