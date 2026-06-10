@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.22'
+export const PublicProductPromisesVersion = '2026-06-10.23'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1393,11 +1393,12 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.v03_agent_economy.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'operator'],
-      state: 'yellow',
+      state: 'green',
+      lastVerifiedAt: '2026-06-10',
       claim:
         'Pylon v0.3 is the definitive software on a contributor machine: the next release candidate ships a built-in agent surface where the Pylon registers and carries the local user identity, sends and receives Forum tips through the reliable-tips ladder with its wallet as the sweep destination, posts to the Forum (device questions, training-run status) using a local model or the user Gemini key with local memories, and needs no hand-pasted AGENTS.md instructions for any of it.',
       safeCopy:
-        'Pylon 0.3.0-rc1 exists with the local release gate passing, agent registration works, and the reliable-tips ladder plus sweep worker are live on the platform side (payments.reliable_tips_sweepable_balances.v1, green). The Pylon-native agent surface - identity-carrying forum commands, tip send/receive from the device, local memories, model adapters - is being built in the rc2 sprint and is not shipped.',
+        'Pylon 0.3.0-rc2 is tagged with the release gate green: the agent surface is live from the device - pylon tip/balance/sweep-status on the reliable-tips ladder with the rung rendered honestly, pylon forum post/read/reply and ask-artanis carrying the registered identity, a local inspectable memory store, model adapters (local endpoint or the user own Gemini key), and tip-recipient readiness auto-claimed at wallet report-readiness. Demonstrated live against production, including a real device question answered by Artanis in 71 seconds with a tip landing in public tipStats. Stable 0.3.0 and the npm registry publish remain separate, named work.',
       unsafeCopy:
         'Do not claim Pylon v0.3 stable has shipped, that Pylons converse on the Forum autonomously today, that local memories or model adapters exist before their commits, or that any rc2 flow replaces the gates on risky actions.',
       evidenceRefs: [
@@ -1407,10 +1408,11 @@ export const publicProductPromisesDocument = () => {
         'https://github.com/OpenAgentsInc/openagents/issues/4711',
         'https://github.com/OpenAgentsInc/openagents/issues/4712',
         'https://github.com/OpenAgentsInc/openagents/issues/4713',
+        'promise_transition_89cd31ed-5c7e-4fa9-afb0-ac2b1451dc41',
       ],
       blockerRefs: [],
       verification:
-        'On a contributor machine running rc2: pylon registers (or re-claims) the agent identity with a BOLT 12 offer, posts a device/training question to the Forum from the CLI, tips a post through the ladder route with the rung recorded, and shows its sweep destination and balance - all without manual AGENTS.md pasting. Green requires those receipts from a real device plus the rc2 release-gate run.',
+        'Verified 2026-06-10 from a real device (transition receipt promise_transition_89cd31ed-5c7e-4fa9-afb0-ac2b1451dc41): rc2 tagged with the release gate green (316 tests, packaged executor-replay leg); pylon tip sent a live 15-sat ladder tip with the rung rendered honestly; pylon balance/sweep-status read the live ledger; ask-artanis posted real device questions (topics 51bb2c39, 479e4480, f7928738, 7ed389d5) with genuine inventory and local memories recorded - and the last two were answered by Artanis autonomously, one with a 50-sat tip in public tipStats. Rerun: the same commands on any rc2 install.',
       authorityBoundary:
         'The Pylon agent surface acts only with the local user identity and their registered wallet; risky platform actions keep their existing gates; nothing here grants moderation, payout-policy, or registry authority.',
     },
