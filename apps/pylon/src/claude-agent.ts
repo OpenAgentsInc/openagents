@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises"
-import type { BootstrapSummary } from "./bootstrap"
 
 /**
  * The local Claude Agent bridge probe (issue #4718, promise
@@ -165,7 +164,7 @@ export function withClaudeAgentCapability(
  * Best-effort: a missing or malformed file means no overrides.
  */
 export async function loadClaudeAgentConfig(
-  summary: BootstrapSummary,
+  summary: { paths: { config: string } },
 ): Promise<ClaudeAgentConfig> {
   try {
     const raw = JSON.parse(

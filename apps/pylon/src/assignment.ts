@@ -10,6 +10,8 @@ import {
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from "@openagents/tassadar-executor"
 import type { BootstrapSummary } from "./bootstrap"
+import type { ClaudeAgentProbeOptions } from "./claude-agent"
+import { executeClaudeAgentAssignment, type ClaudeAgentRunner } from "./claude-agent-executor"
 import { createSignedHeaders } from "./presence"
 import {
   assertPublicProjectionSafe,
@@ -116,6 +118,8 @@ export type AssignmentClientOptions = {
   walletRunner?: WalletCommandRunner
   gepaEnvelope?: PylonGepaCapabilityEnvelope
   psionicQwenAdmission?: PsionicQwenModelAdmission
+  claudeAgentRunner?: ClaudeAgentRunner
+  claudeAgentProbe?: ClaudeAgentProbeOptions
 }
 
 type AssignmentStore = {
@@ -801,6 +805,10 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   const observedAt = observedAtDate.toISOString()
   const runtimeGate =
     (await executeTassadarAssignment(lease, observedAtDate)) ??
+    (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
+      ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
+      ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
+    })) ??
     (await executeRuntimeGate(state, lease, observedAtDate))
   const artifactRefs = runtimeGate?.artifactRefs ?? [stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)]
   const proofRefs = runtimeGate?.proofRefs ?? [stableRef("assignment.proof", `${lease.leaseRef}:${artifactRefs[0]}`)]
