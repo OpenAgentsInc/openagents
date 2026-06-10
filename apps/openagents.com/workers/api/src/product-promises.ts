@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.18'
+export const PublicProductPromisesVersion = '2026-06-10.19'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1360,11 +1360,12 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'payments.reliable_tips_sweepable_balances.v1',
       productArea: 'Forum',
       audience: ['contributor', 'operator'],
-      state: 'yellow',
+      state: 'green',
+      lastVerifiedAt: '2026-06-10',
       claim:
         'Tips to agents never fail: direct BOLT 12 payment is attempted when the recipient wallet is reachable, otherwise the recipient is instantly credited to a sweepable per-agent balance, and an automated background sweep pushes balances out to each agent registered Lightning offer with fee caps and indefinite retries - all on one audited pay-in ledger.',
       safeCopy:
-        'The design is owner-approved and documented (the Stacker News balance/cash-in/cash-out audit, with the owner electing sweepable balances and maximum automation): a per-agent credit ledger in D1, a receive ladder where unreachable recipients are credited instead of failing, send/receive credit thresholds so micro-tips never touch Lightning, and a scheduled sweep worker. Direct BOLT 12 tipping is live today and settles when the recipient node is reachable; the credit ledger, receive ladder, sweep worker, and backing buffer are not yet built.',
+        'Live in production: POST /api/forum/posts/{postId}/tips/ladder runs the receive ladder on a per-agent credit ledger in D1 backed 1:1 by the dedicated tips buffer wallet. Tips below the send/receive thresholds or to unreachable recipients credit the recipient instantly (rung recorded, tipStats show the credited split); reachable recipients are paid direct BOLT 12 by the buffer in-flow; failed direct attempts refund atomically and fall back to credited; and the every-minute sweep worker pushes balances above each agent threshold to their registered offer with refund-on-fail and indefinite retry.',
       unsafeCopy:
         'Do not claim tips currently never fail, that agent balances exist or are sweepable today, that credited amounts are settled bitcoin before a sweep receipt exists, or any custody posture beyond bounded 1:1-backed balances.',
       evidenceRefs: [
@@ -1379,10 +1380,11 @@ export const publicProductPromisesDocument = () => {
         'https://github.com/OpenAgentsInc/openagents/issues/4706',
         'https://github.com/OpenAgentsInc/openagents/issues/4707',
         'https://github.com/OpenAgentsInc/openagents/issues/4708',
+        'promise_transition_bac0a106-1e80-4dd2-86d5-ca2bedfefecb',
       ],
       blockerRefs: [],
       verification:
-        'Live three-leg smoke once built: (1) tip a reachable recipient and observe direct BOLT 12 settlement; (2) tip an unreachable recipient and observe an instant ledger credit with the rung recorded; (3) bring the recipient online and observe the automated sweep settle the balance to their registered offer with receipts and the resulting balance audited on the ledger rows. Green requires all three plus refund-on-fail evidence.',
+        'Verified 2026-06-10 with real sats (transition receipt promise_transition_bac0a106-1e80-4dd2-86d5-ca2bedfefecb): (1) direct BOLT 12 settled in-flow via the buffer (pay_in 1cf2dfad, recipient wallet +200 sats); (2) instant ledger credits with rung recorded (pay_ins 363a809f/18f88496); (3) the automated sweep settled 290 then 220 sats to the registered offer across consecutive cron ticks (recipient wallet 193 -> 888); plus live refund-on-fail (pay_in ef7a179d: failed direct attempt refunded atomically via a linked refund leg, credited fallback paid, tipStats showing the credited split). Rerun: the ladder route plus the pay_ins/pay_in_legs/agent_balances tables.',
       authorityBoundary:
         'Balances are bounded 1:1-backed claims for tip and reward flow only; sweeps pay only registered public-safe destinations; the ledger grants no general custody, settlement, or payout authority, and amounts credited are not called settled bitcoin until a sweep receipt proves it.',
     },
