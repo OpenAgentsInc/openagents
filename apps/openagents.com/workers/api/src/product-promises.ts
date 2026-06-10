@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.3'
+export const PublicProductPromisesVersion = '2026-06-10.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -337,6 +337,7 @@ export const publicProductPromisesDocument = () => {
         'docs/transcripts/214.md',
         'docs/transcripts/215.md',
         'apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4652',
         'apps/openagents.com/docs/2026-06-08-pylon-agentic-revenue-gap-audit.md',
         'apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md',
       ],
@@ -1011,6 +1012,7 @@ export const publicProductPromisesDocument = () => {
     'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
     'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and labor-market claims remain gated.',
     'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
+    'The five-streams implementation plan is tracked in GitHub issues #4635-#4653 (rails, compute, data, labor, referrals, stacking smoke, tips polish); the lane map and binding delegation contract live in apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md.',
     'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
     'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',

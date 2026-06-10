@@ -1,5 +1,14 @@
 # Provider Capacity Marketplace Gate
 
+> **SUPERSEDED (2026-06-10).** OpenAgents does not resell, rent, proxy, or
+> broker subscription or API provider capacity, and no capacity marketplace
+> is planned. The fifth revenue stream is the agent labor market:
+> contributors use their own compliant provider usage to do useful work and
+> sell the accepted output (`provider.compliant_usage_labor.v1`, registry
+> 2026-06-10.3). See
+> `2026-06-10-five-bitcoin-revenue-streams-promise-audit.md`. This document
+> is retained as history only; the matching worker gate module was removed.
+
 Implemented: 2026-06-08
 
 Issue: #561

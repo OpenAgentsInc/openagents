@@ -101,8 +101,7 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     ],
     evidenceRefs: [
       'docs/2026-06-08-data-trace-marketplace-gate.md',
-      'docs/2026-06-08-signature-marketplace-revenue-gate.md',
-      'docs/2026-06-08-provider-capacity-marketplace-gate.md',
+      'docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
     ],
     promiseId: 'five_bitcoin_revenue_streams',
     promiseText:
