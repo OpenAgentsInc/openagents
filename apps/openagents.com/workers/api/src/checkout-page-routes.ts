@@ -6,6 +6,8 @@ import type {
 } from './hosted-mdk-client'
 import { methodNotAllowed } from './http/responses'
 
+type HttpResponse = globalThis.Response
+
 const checkoutPagePattern = /^\/checkout\/([A-Za-z0-9]{8,64})$/
 
 const escapeHtml = (value: string): string =>
@@ -41,7 +43,7 @@ const htmlPage = (
   title: string,
   body: string,
   options: Readonly<{ refresh?: boolean; status?: number }> = {},
-): Response =>
+): HttpResponse =>
   new Response(pageShell(title, body, options.refresh === true), {
     headers: {
       'cache-control': 'no-store',
@@ -60,7 +62,7 @@ export const makeCheckoutPageRoutes = <Bindings,>(
   routeCheckoutPageRequest: (
     request: Request,
     env: Bindings,
-  ): Effect.Effect<Response> | undefined => {
+  ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
     const match = checkoutPagePattern.exec(url.pathname)
 
