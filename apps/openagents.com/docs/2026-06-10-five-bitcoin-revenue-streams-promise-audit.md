@@ -284,11 +284,131 @@ streams implemented. Issues are listed here for review and are **not yet
 created** on GitHub. Sequencing: rails (1–6) unblock everything; streams
 (7–17) can then run in parallel; 18 composes; 19 is optional polish.
 
-Standing constraints for every issue body when filed: no mnemonics, agent
-tokens, raw invoices, payment hashes, preimages, or wallet-home paths in
-issues/comments; only provider-confirmed settlement counts as payment
-evidence; record promise transitions via
-`POST /api/operator/product-promises/transitions` before registry edits.
+### Delegation Contract (binding for every issue below)
+
+This plan was drafted by Fable (registered agent
+`fable-promise-auditor`) and will be executed by delegated coding agents who
+were not present for the wave-1 campaign. The working conventions are the
+ones already adopted on the Forum — topic `promise-flip-campaign-conventions`
+in the product-promises forum, plus the wave-1 priorities/wrap-up topics —
+and the repo-specific expectations below. **When these issues are filed,
+every issue body must link this section.** Wave 1 closed fourteen issues in
+one day because each issue carried explicit surfaces, acceptance criteria,
+and authority boundaries; ambiguity is what makes delegation fail.
+
+**Process conventions (from the Forum conventions topic, adopted):**
+
+1. Claim before you build: post in (or create) a `Working: <promiseId>`
+   topic in the product-promises forum naming the issue, the blockerRef you
+   are taking, and your approach in 2–3 sentences. Yield if someone is
+   visibly further along.
+2. Evidence over narrative: progress posts and issue comments carry commit
+   SHAs on `main`, route names, smoke names with pass/fail, receipt refs,
+   and the registry version — not prose about intent.
+3. Done means the promise `verification` field (or the issue's acceptance
+   list) passes **from integrated state**: merged to `main`, pushed, and
+   deployed where the issue says deployment is in scope. Branch work is
+   in-progress evidence, never completion. Close the issue only after that,
+   with a closing comment containing the evidence refs.
+4. Nobody flips their own promise. Propose the transition; the
+   operator/maintainer flips it. Record transitions via
+   `POST /api/operator/product-promises/transitions` (admin token) **before**
+   shipping the registry edit, or the receipt evaluates as a backfill
+   exception.
+5. Lane discipline: each issue is tagged Lane A (agent can finish alone),
+   Lane B (a human operator must fund or execute the live step — say
+   explicitly which part is yours and which waits on the operator), or
+   Lane C (a human decision is required first — deliver a draft proposal,
+   not code). If your work suddenly needs spend, deploy-to-prod judgment,
+   settlement, moderation, or provider-account authority you were not
+   granted, that is a lane signal: stop and flag it on the issue.
+6. File-surface ownership: the lane map table below names each issue's
+   primary surfaces. Do not edit another issue's surfaces without
+   coordinating in the Working topic first; this is what allows the issues
+   to run in parallel without collisions.
+
+**Repo-specific expectations (things you cannot guess; learned the hard way):**
+
+- **Tests:** run `bunx vitest run <files>` from
+  `apps/openagents.com/workers/api`. Do NOT use `bun test` — it cannot load
+  `cloudflare:workers` imports and reports ~70 false failures. Web tests run
+  from `apps/openagents.com/apps/web`.
+- **Architecture gates (zero-debt):** the deploy gate enforces a budget on
+  Worker `Response` return-type surfaces — new HTTP code should use a
+  `type HttpResponse = globalThis.Response` alias instead of adding `Response`
+  annotations. No `try/catch` inside `Effect.gen` (custom TS error); HTTP
+  route files follow the `-routes.ts` naming convention. Never pipe gate
+  output through `tail`/`head` inside `&&` chains — it masks failures and
+  has let bad commits through twice.
+- **D1 discipline:** multi-statement writes that must be consistent go
+  through one `db.batch([...])` call — sequential `.run()` calls are NOT
+  transactional and caused a live orphaned-receipt incident (#4634). SQLite
+  `CHECK` constraint changes require a full table rebuild migration
+  (`PRAGMA defer_foreign_keys`; create-new → insert-select → drop → rename →
+  recreate indexes; see migration `0151`).
+- **Registry edits:** bump `PublicProductPromisesVersion` in
+  `product-promises.ts` AND the version pin in `product-promises.test.ts`;
+  check `public-launch-dashboard.ts` for mirrored rows; transition receipt
+  first (rule 4).
+- **AGENTS.md:** `docs/live/AGENTS.md` and `apps/web/public/AGENTS.md` must
+  stay byte-identical, with the sha pin in `openagents-agent-onboarding.ts`
+  updated in the same commit.
+- **Deploy:** `bun run deploy` from `workers/api` runs the full gate chain
+  (checks → remote D1 migrations → web build → wrangler deploy). Deploy only
+  when the issue scope says so. Verify live with a cache-busting query param;
+  the first read after deploy can serve stale cache.
+- **Copy boundaries:** do not change user-facing copy beyond issue scope.
+  unsafe-copy scan gates run over live docs and seed copy; the orange-check
+  copy boundary (economic participation signal, never identity verification)
+  and the no-resale labor boundary (this audit) are load-bearing.
+- **Payments evidence:** a wallet-side "pending" record is not a payment.
+  Only provider-confirmed settlement (e.g. hosted MDK `payment_received`,
+  settled BOLT 12 state) counts. Never post mnemonics, agent tokens, raw
+  invoices, payment hashes, preimages, or wallet-home paths into issues,
+  Forum posts, commits, or tracked files. (The checkout page showing an
+  invoice to the payer is the one deliberate exception.)
+- **MDK operational gotchas** (for any issue touching wallets): always set
+  `MDK_WALLET_PORT` (CLI restart respawns on 3456 and cross-talks to the
+  wrong wallet); BOLT 12 offers are session-bound and must be re-claimed
+  after daemon restarts; mnemonic-only restore does NOT restore outbound
+  capacity; cold-channel first payments settle but exceed the CLI's 120s
+  wait — a fail-then-pass pattern on first attempts is expected and the
+  smoke's `failureClassification` tells you which case you hit.
+- **NIP-90 source of truth:** the removed Rust implementation is at git rev
+  `f5919c766^` — `crates/nostr/core/src/nip90/`, `crates/nostr/nips/*.md`,
+  `apps/deprecated/autopilot-deprecated/src/*nip90*`,
+  `apps/deprecated/pylon/src/nip90_runtime.rs`. Treat it as the contract
+  reference; port behavior and tests, do not blind-rewrite.
+
+**Lane map (issue → lane → primary file surfaces → depends on):**
+
+| # | Lane | Primary surfaces | Depends on |
+|---|------|------------------|-----------|
+| 1 | A | NEW `packages/nip90` (or nostr-effect contribution) | — |
+| 2 | A | `apps/nostr-relay/*`, AGENTS.md mirrors | — |
+| 3 | A | NEW `docs/nips/*`, AGENTS.md mirrors | — |
+| 4 | A | `apps/pylon/src/*` (provider loop), pylon runtime contracts | 1, 2 |
+| 5 | B (operator enables; caps approval) | NEW worker dispatcher module + operator routes | 1, 2 |
+| 6 | A | NEW worker receipts module, `public-pylon-stats.ts` | 1 |
+| 7 | B (funded jobs + contributor machine) | smoke scripts, registry files | 4, 5, 6 |
+| 8 | B (paid settlement step) | `apps/pylon/src/assignment.ts`, smoke scripts | — |
+| 9 | A | `packages/nip90` (NIP-DS module), NEW CLI/skill script | 1, 3 |
+| 10 | A | NEW export/redaction script + fixtures | — |
+| 11 | B (small-sats buy) | smoke scripts, registry files | 9, 10, 5 |
+| 12 | C (policy needs maintainer adoption) | NEW policy doc, `packages/nip90` labor schema | 1 |
+| 13 | A | `apps/pylon/src/*` (labor intake), runtime contracts | 12, 4 |
+| 14 | B (paid job + acceptance) | smoke scripts, registry files | 13, 5, 6 |
+| 15 | A | site referral routes/store in worker | — |
+| 16 | C then A (policy doc → ledger code) | NEW referral ledger module + policy doc | 15 |
+| 17 | B (operator-approved payout) | payout dispatch path, registry files | 16 |
+| 18 | B (composition smoke) | registry files, smoke scripts | any two of 7/11/14 (+ tips) |
+| 19 | B | forum tip webhook/refund surfaces | — |
+
+Registry-file edits (issues 7, 11, 14, 17, 18) all touch
+`product-promises.ts`; those five issues must serialize their registry
+commits (coordinate in Working topics) even though their build work is
+parallel. Issue 5's spend caps and every Lane B live step require explicit
+operator approval before any sats move.
 
 ### Rails
 
@@ -555,3 +675,11 @@ evidence; record promise transitions via
 - `apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md`
 - Live: `GET /api/public/product-promises`, `GET /api/public/pylon-stats`,
   `GET /api/forum/launch-status`, `GET /api/forum/tip-leaderboards`
+- Forum (product-promises forum, all authored by Fable, reviewed for the
+  Delegation Contract): `promise-flip-campaign-conventions` (lane taxonomy,
+  claim/evidence/done/flip rules), `campaign-priorities-wave-1` (issue map
+  with file-surface parallelization lanes — the delegation pattern this plan
+  reuses), `wave-1-wrapup-2026-06-09` (fourteen issues closed in one day
+  under those conventions; MDK operational findings),
+  `fable-registry-review-2026-06-09-15` (registry critique; safeCopy/
+  unsafeCopy discipline)
