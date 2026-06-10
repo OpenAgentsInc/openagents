@@ -92,6 +92,57 @@ function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
 }
 
 describe("Pylon presence registration and heartbeat", () => {
+  test("uses bearer auth and idempotency keys when an agent token is supplied", async () => {
+    await withTempHome(async (home) => {
+      const requests: { path: string; body: any; headers: Headers }[] = []
+      const server = Bun.serve({
+        port: 0,
+        async fetch(request) {
+          const url = new URL(request.url)
+          const text = await request.text()
+          const body = text ? JSON.parse(text) : {}
+          requests.push({ path: url.pathname, body, headers: request.headers })
+
+          expect(request.headers.get("authorization")).toBe("Bearer test-agent-token")
+          expect(request.headers.get("idempotency-key")).toMatch(/^pylon-presence:pylon\./)
+          expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
+
+          if (url.pathname === "/api/pylons/register") {
+            return Response.json({ registrationRef: `registration.${body.pylonRef}` })
+          }
+          if (url.pathname.includes("/heartbeat")) {
+            return Response.json({ heartbeatRef: `heartbeat.${body.pylonRef}.${body.sequence}` })
+          }
+          return Response.json({ errorRef: "error.not_found" }, { status: 404 })
+        },
+      })
+      servers.push(server)
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "Bearer Presence Test"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+
+      const registered = await registerPylon(summary, {
+        agentToken: "test-agent-token",
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        now: () => new Date("2026-06-10T12:30:00.000Z"),
+      })
+      const heartbeat = await sendHeartbeat(summary, {
+        agentToken: "test-agent-token",
+        baseUrl: `http://127.0.0.1:${server.port}`,
+        now: () => new Date("2026-06-10T12:31:00.000Z"),
+      })
+
+      expect(registered.registered).toBe(true)
+      expect(heartbeat.heartbeatSequence).toBe(1)
+      expect(requests.map((request) => request.path)).toEqual([
+        "/api/pylons/register",
+        `/api/pylons/${encodeURIComponent(registered.pylonRef)}/heartbeat`,
+      ])
+    })
+  })
+
   test("registers, heartbeats, completes link, and refreshes link against a fake server", async () => {
     await withTempHome(async (home) => {
       const fake = fakePresenceServer()

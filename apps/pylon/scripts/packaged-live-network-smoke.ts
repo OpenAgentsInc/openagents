@@ -11,6 +11,7 @@ type CommandResult = {
 }
 
 const repoRoot = resolve(import.meta.dir, "..")
+const workspaceRoot = resolve(repoRoot, "../..")
 const defaultBaseUrl = "https://openagents.com"
 
 const compactTimestamp = (date: Date) =>
@@ -88,6 +89,64 @@ const pack = async () => {
   return join(repoRoot, tarball)
 }
 
+const packNip90 = async () => {
+  const packageRoot = join(workspaceRoot, "packages/nip90")
+  const result = await runRequired("bun pm pack @openagents/nip90", ["bun", "pm", "pack"], {
+    cwd: packageRoot,
+    timeoutMs: 60_000,
+  })
+  const tarball = result.stdout
+    .split("\n")
+    .map(line => line.trim())
+    .find(line => /^openagents-nip90-.*\.tgz$/.test(line))
+
+  if (!tarball) {
+    throw new Error(`failed to find packed @openagents/nip90 tarball in bun pm pack output: ${result.stdout}`)
+  }
+
+  return join(packageRoot, tarball)
+}
+
+const summarizeBootstrap = (bootstrap: Record<string, unknown>) => {
+  const platform = bootstrap.platform && typeof bootstrap.platform === "object"
+    ? bootstrap.platform as Record<string, unknown>
+    : {}
+  return {
+    bin: bootstrap.bin,
+    packageName: bootstrap.packageName,
+    platform: {
+      current: platform.current,
+      supported: platform.supported,
+      supportedTargets: platform.supportedTargets,
+    },
+  }
+}
+
+const summarizeStats = (stats: Record<string, unknown>) => ({
+  asOfLabel: stats.asOfLabel,
+  pylonSessionsOnlineNow: stats.pylonSessionsOnlineNow,
+  pylonsAssignmentReadyNow: stats.pylonsAssignmentReadyNow,
+  pylonsOnlineNow: stats.pylonsOnlineNow,
+  pylonsRegisteredTotal: stats.pylonsRegisteredTotal,
+  pylonsSeen24h: stats.pylonsSeen24h,
+  pylonsWalletReadyNow: stats.pylonsWalletReadyNow,
+  sellablePylonsOnlineNow: stats.sellablePylonsOnlineNow,
+})
+
+const summarizeFunnel = (funnel: Record<string, unknown>) => {
+  const summary = funnel.funnel && typeof funnel.funnel === "object"
+    ? funnel.funnel as Record<string, unknown>
+    : {}
+  return {
+    byDarkCapacityReason: summary.byDarkCapacityReason,
+    byStage: summary.byStage,
+    darkCount: summary.darkCount,
+    eligibleCount: summary.eligibleCount,
+    registeredCount: summary.registeredCount,
+    totalCount: summary.totalCount,
+  }
+}
+
 async function main() {
   const now = new Date()
   const baseUrl = Bun.env.OPENAGENTS_BASE_URL?.trim() || defaultBaseUrl
@@ -102,17 +161,29 @@ async function main() {
   const projectDir = join(tmpDir, "install")
   const pylonHome = join(tmpDir, "pylon-home")
   let tarball: string | undefined
+  let nip90Tarball: string | undefined
   await mkdir(projectDir, { recursive: true })
-  await writeFile(
-    join(projectDir, "package.json"),
-    `${JSON.stringify({ name: "pylon-packaged-network-smoke", private: true, type: "module" }, null, 2)}\n`,
-  )
 
   try {
     tarball = await pack()
+    nip90Tarball = await packNip90()
+    await writeFile(
+      join(projectDir, "package.json"),
+      `${JSON.stringify({
+        dependencies: {
+          "@openagentsinc/pylon": `file:${tarball}`,
+        },
+        name: "pylon-packaged-network-smoke",
+        overrides: {
+          "@openagents/nip90": `file:${nip90Tarball}`,
+        },
+        private: true,
+        type: "module",
+      }, null, 2)}\n`,
+    )
     await runRequired(
       "fresh packaged install",
-      ["bun", "--dns-result-order=ipv4first", "add", tarball],
+      ["bun", "--dns-result-order=ipv4first", "install"],
       { cwd: projectDir, timeoutMs: 90_000 },
     )
 
@@ -129,6 +200,8 @@ async function main() {
       "--capability-ref",
       "capability.public.pylon_cli",
       "--capability-ref",
+      "capability.pylon.assignment_ready",
+      "--capability-ref",
       "capability.public.packaged_binary",
       "--capability-ref",
       "capability.public.background_loop",
@@ -141,12 +214,12 @@ async function main() {
     )
     await runRequired(
       "packaged presence register",
-      ["bunx", "pylon", "presence", "register", "--base-url", baseUrl],
+      ["bunx", "pylon", "presence", "register", "--base-url", baseUrl, ...commonBootstrapArgs],
       { cwd: projectDir, env },
     )
     await runRequired(
       "packaged presence heartbeat",
-      ["bunx", "pylon", "presence", "heartbeat", "--base-url", baseUrl],
+      ["bunx", "pylon", "presence", "heartbeat", "--base-url", baseUrl, ...commonBootstrapArgs],
       { cwd: projectDir, env },
     )
     const walletReport = await runRequired(
@@ -174,9 +247,24 @@ async function main() {
     const stats = await publicGet(baseUrl, "/api/public/pylon-stats")
     const funnel = await publicGet(baseUrl, "/api/public/pylon-capacity-funnel")
     const walletStatus = jsonFrom<{ status: { receiveReady: boolean; readiness: string } }>(walletReport).status
+    const statsSummary = summarizeStats(stats)
+    const funnelSummary = summarizeFunnel(funnel)
+    const onlineNow = typeof statsSummary.pylonsOnlineNow === "number" && statsSummary.pylonsOnlineNow > 0
+    const walletReadyNow =
+      typeof statsSummary.pylonsWalletReadyNow === "number" && statsSummary.pylonsWalletReadyNow > 0
+    const nonDarkNow =
+      typeof funnelSummary.darkCount === "number" &&
+      typeof funnelSummary.totalCount === "number" &&
+      funnelSummary.totalCount > funnelSummary.darkCount
+    const blockerRefs = [
+      ...(walletStatus.receiveReady ? [] : ["blocker.pylon.packaged_network.wallet_not_receive_ready"]),
+      ...(onlineNow ? [] : ["blocker.pylon.packaged_network.public_stats_not_online"]),
+      ...(walletReadyNow ? [] : ["blocker.pylon.packaged_network.public_stats_not_wallet_ready"]),
+      ...(nonDarkNow ? [] : ["blocker.pylon.packaged_network.capacity_funnel_still_dark"]),
+    ]
     const result = {
       baseUrl,
-      blockerRefs: walletStatus.receiveReady ? [] : ["blocker.pylon.packaged_network.wallet_not_receive_ready"],
+      blockerRefs,
       evidenceRefs: [
         "route:/api/pylons/register",
         "route:/api/pylons/{pylonRef}/heartbeat",
@@ -185,10 +273,10 @@ async function main() {
         "route:/api/public/pylon-stats",
         "route:/api/public/pylon-capacity-funnel",
       ],
-      funnel,
+      funnel: funnelSummary,
       pylonRef,
-      stats,
-      status: walletStatus.receiveReady ? "passed" : "partial",
+      stats: statsSummary,
+      status: blockerRefs.length === 0 ? "passed" : "partial",
       stepRefs: [
         "smoke.pylon.packaged_install",
         "smoke.pylon.packaged_bootstrap",
@@ -203,7 +291,7 @@ async function main() {
         readiness: walletStatus.readiness,
         receiveReady: walletStatus.receiveReady,
       },
-      bootstrap: jsonFrom<Record<string, unknown>>(bootstrap),
+      bootstrap: summarizeBootstrap(jsonFrom<Record<string, unknown>>(bootstrap)),
       payoutAdmission: jsonFrom<Record<string, unknown>>(payoutAdmission),
     }
 
@@ -212,6 +300,7 @@ async function main() {
   } finally {
     await rm(tmpDir, { recursive: true, force: true })
     if (tarball) await rm(tarball, { force: true })
+    if (nip90Tarball) await rm(nip90Tarball, { force: true })
   }
 }
 

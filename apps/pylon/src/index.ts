@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { readFile } from "node:fs/promises"
 import { Effect, Console } from "effect"
 import {
   createCliRenderer,
@@ -943,6 +944,86 @@ function parseKeyValueOptions(args: string[]) {
   return parsePresenceOptions(args)
 }
 
+const presenceBootstrapValueOptions = new Set([
+  "capability-ref",
+  "display-name",
+  "pylon-ref",
+  "resource-mode",
+])
+
+const presenceBootstrapFlagOptions = new Set([
+  "register-openagents",
+  "setup-mdk-wallet",
+])
+
+async function persistedBootstrapArgs(env: NodeJS.ProcessEnv) {
+  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), env)
+  try {
+    const config = JSON.parse(await readFile(summary.paths.config, "utf8")) as Record<string, unknown>
+    const args: string[] = []
+    const pushString = (key: string, flag: string) => {
+      const value = config[key]
+      if (typeof value === "string" && value.length > 0) {
+        args.push(flag, value)
+      }
+    }
+
+    pushString("pylonRef", "--pylon-ref")
+    pushString("displayName", "--display-name")
+    pushString("resourceMode", "--resource-mode")
+
+    const capabilityRefs = config.capabilityRefs
+    if (Array.isArray(capabilityRefs)) {
+      for (const ref of capabilityRefs) {
+        if (typeof ref === "string" && ref.length > 0) {
+          args.push("--capability-ref", ref)
+        }
+      }
+    }
+
+    return args
+  } catch {
+    return []
+  }
+}
+
+function parsePresenceBootstrapArgs(args: string[]) {
+  const bootstrapArgs: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (!arg.startsWith("--")) continue
+    const key = arg.slice(2)
+    if (key === "base-url") {
+      index += 1
+      continue
+    }
+    if (presenceBootstrapFlagOptions.has(key)) {
+      bootstrapArgs.push(arg)
+      continue
+    }
+    if (presenceBootstrapValueOptions.has(key)) {
+      const value = args[index + 1]
+      if (!value || value.startsWith("--")) {
+        throw new Error(`${arg} requires a value`)
+      }
+      bootstrapArgs.push(arg, value)
+      index += 1
+      continue
+    }
+    throw new Error(`Unknown presence option: ${arg}`)
+  }
+  return bootstrapArgs
+}
+
+async function createPresenceBootstrapSummary(args: string[], env: NodeJS.ProcessEnv) {
+  const argsFromConfig = await persistedBootstrapArgs(env)
+  const argsFromPresence = parsePresenceBootstrapArgs(args)
+  return createBootstrapSummary(
+    parseBootstrapArgs(["--json", ...argsFromConfig, ...argsFromPresence]),
+    env,
+  )
+}
+
 function parsePsionicOptions(args: string[]) {
   const options: Record<string, string | true> = {}
   for (let index = 0; index < args.length; index += 1) {
@@ -1072,13 +1153,17 @@ async function main() {
   if (args[0] === "presence") {
     try {
       const command = args[1]
-      const options = parsePresenceOptions(args.slice(2))
+      const presenceArgs = args.slice(2)
+      const options = parsePresenceOptions(presenceArgs)
       const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) {
         throw new Error("presence commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
-      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-      const clientOptions = { baseUrl }
+      const summary = await createPresenceBootstrapSummary(presenceArgs, Bun.env)
+      const clientOptions = {
+        agentToken: Bun.env.OPENAGENTS_AGENT_TOKEN,
+        baseUrl,
+      }
       const result =
         command === "register"
           ? await registerPylon(summary, clientOptions)

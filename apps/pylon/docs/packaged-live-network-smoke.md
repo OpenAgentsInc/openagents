@@ -24,15 +24,18 @@ Optional inputs:
 The smoke performs these steps through the freshly installed package:
 
 1. `bun pm pack` builds the local release tarball.
-2. A temporary project installs that tarball with `bun add`.
-3. `bunx pylon bootstrap --json` creates isolated `PYLON_HOME` state.
-4. `bunx pylon presence register` registers the Pylon against OpenAgents.
-5. `bunx pylon presence heartbeat` sends a fresh heartbeat.
-6. `bunx pylon wallet report-readiness` classifies the local MDK wallet and
+2. `bun pm pack` builds the local `@openagents/nip90` protocol tarball so the
+   smoke uses the same `nostr-effect`-backed NIP-90 package as the workspace.
+3. A temporary project installs the Pylon tarball with a local
+   `@openagents/nip90` override.
+4. `bunx pylon bootstrap --json` creates isolated `PYLON_HOME` state.
+5. `bunx pylon presence register` registers the Pylon against OpenAgents.
+6. `bunx pylon presence heartbeat` sends a fresh heartbeat.
+7. `bunx pylon wallet report-readiness` classifies the local MDK wallet and
    reports only public-safe readiness refs.
-7. `bunx pylon wallet request-payout-target-admission` requests admission for a
+8. `bunx pylon wallet request-payout-target-admission` requests admission for a
    redacted payout-target ref.
-8. The wrapper reads `GET /api/public/pylon-stats` and
+9. The wrapper reads `GET /api/public/pylon-stats` and
    `GET /api/public/pylon-capacity-funnel` to capture projection evidence.
 
 Exit codes:
@@ -40,9 +43,24 @@ Exit codes:
 - `0`: packaged install, registration, heartbeat, wallet readiness,
   payout-target admission, stats read, and capacity-funnel read passed, and the
   local wallet classified as receive-ready.
-- `2`: the network path ran but the local wallet was not receive-ready.
+- `2`: the network path ran but wallet readiness, public stats visibility, or
+  capacity-funnel non-dark eligibility did not meet the live smoke criteria.
 - `1`: install, credentials, route, or package execution failed.
 
 The output is JSON and redacts bearer tokens. It must not contain raw wallet
 material, mnemonics, invoices, preimages, private payment destinations, or
 provider credentials.
+
+## Evidence
+
+Production run on 2026-06-10:
+
+- Command: `bun run smoke:packaged-network` from `apps/pylon` with
+  `OPENAGENTS_AGENT_TOKEN` sourced from the local ignored agent env file.
+- Status: `passed`, with `blockerRefs: []`.
+- Public stats summary: `pylonsOnlineNow: 2`, `pylonsWalletReadyNow: 2`,
+  `pylonsAssignmentReadyNow: 1`, `sellablePylonsOnlineNow: 1`.
+- Capacity funnel summary: `eligibleCount: 1`, `darkCount: 24`,
+  `totalCount: 25`.
+- Wallet readiness summary: `receiveReady: true`,
+  `readiness: send-ready-blocked`.

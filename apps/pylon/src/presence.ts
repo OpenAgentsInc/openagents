@@ -12,6 +12,7 @@ import {
 } from "./state"
 
 export type PresenceClientOptions = {
+  agentToken?: string
   baseUrl: string
   fetch?: typeof fetch
   now?: () => Date
@@ -22,9 +23,12 @@ export type PylonRegistrationRequest = {
   pylonRef: string
   identity: PylonLocalState["identity"]
   lifecycle: PylonRuntimeState["lifecycle"]
+  clientProtocolVersion: "0.3.0"
+  clientVersion: "openagents.pylon@0.3.0-rc1"
   resourceMode: string
   capabilityRefs: string[]
   blockerRefs: string[]
+  statusRefs: string[]
 }
 
 export type PylonHeartbeatRequest = {
@@ -33,6 +37,13 @@ export type PylonHeartbeatRequest = {
   sequence: number
   sentAt: string
   lifecycle: PylonRuntimeState["lifecycle"]
+  capacityRefs: string[]
+  clientProtocolVersion: "0.3.0"
+  clientVersion: "openagents.pylon@0.3.0-rc1"
+  healthRefs: string[]
+  loadRefs: string[]
+  resourceMode: string
+  status: "online"
   walletReadiness: "unknown" | "offline" | "receive-ready" | "send-ready" | "blocked"
   assignmentReadiness: "not-ready" | "ready" | "blocked"
   capabilityRefs: string[]
@@ -52,6 +63,15 @@ type JsonRecord = Record<string, unknown>
 export function sha256Base64Url(input: string) {
   return createHash("sha256").update(input).digest("base64url")
 }
+
+const compactTimestamp = (now: Date) =>
+  now.toISOString().replace(/\D/g, "").slice(0, 14)
+
+const makeIdempotencyKey = (
+  pylonRef: string,
+  action: "register" | "heartbeat" | "link-complete" | "link-refresh",
+  now: Date,
+) => `pylon-presence:${pylonRef}:${action}:${compactTimestamp(now)}`
 
 export async function createSignedHeaders(input: {
   method: string
@@ -77,19 +97,36 @@ export async function createSignedHeaders(input: {
   }
 }
 
-async function postJson(options: PresenceClientOptions, path: string, body: JsonRecord, state: PylonLocalState) {
+async function postJson(
+  options: PresenceClientOptions,
+  input: {
+    action: "register" | "heartbeat" | "link-complete" | "link-refresh"
+    body: JsonRecord
+    path: string
+  },
+  state: PylonLocalState,
+) {
+  const { body, path } = input
   assertPublicProjectionSafe(body)
   const fetchImpl = options.fetch ?? fetch
   const url = new URL(path, options.baseUrl).toString()
   const text = JSON.stringify(body)
-  const headers = await createSignedHeaders({
-    method: "POST",
-    url,
-    body: text,
-    pylonRef: state.identity.pylonRef,
-    paths: state.paths,
-    now: options.now?.(),
-  })
+  const now = options.now?.() ?? new Date()
+  const headers = options.agentToken
+    ? {
+        "content-type": "application/json",
+        "Idempotency-Key": makeIdempotencyKey(state.identity.pylonRef, input.action, now),
+        "x-pylon-ref": state.identity.pylonRef,
+        authorization: `Bearer ${options.agentToken}`,
+      }
+    : await createSignedHeaders({
+        method: "POST",
+        url,
+        body: text,
+        pylonRef: state.identity.pylonRef,
+        paths: state.paths,
+        now,
+      })
   const response = await fetchImpl(url, { method: "POST", headers, body: text })
   const responseText = await response.text()
   let json: JsonRecord = {}
@@ -110,11 +147,18 @@ export async function registerPylon(summary: BootstrapSummary, options: Presence
     pylonRef: state.identity.pylonRef,
     identity: state.identity,
     lifecycle: state.runtime.lifecycle,
+    clientProtocolVersion: "0.3.0",
+    clientVersion: "openagents.pylon@0.3.0-rc1",
     resourceMode: state.runtime.resourceMode,
     capabilityRefs: state.runtime.capabilityRefs,
     blockerRefs: state.runtime.blockerRefs,
+    statusRefs: ["status.public.pylon_cli.registered"],
   }
-  const response = await postJson(options, "/api/pylons/register", body, state)
+  const response = await postJson(options, {
+    action: "register",
+    body,
+    path: "/api/pylons/register",
+  }, state)
   const presence = await loadOrCreatePresenceState(state.paths, state.identity)
   const next: PylonPresenceState = {
     ...presence,
@@ -138,12 +182,23 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
     sequence,
     sentAt,
     lifecycle: state.runtime.lifecycle,
+    capacityRefs: ["capacity.public.pylon_cli.available"],
+    clientProtocolVersion: "0.3.0",
+    clientVersion: "openagents.pylon@0.3.0-rc1",
+    healthRefs: ["health.public.pylon_cli.ok"],
+    loadRefs: ["load.public.pylon_cli.low"],
+    resourceMode: state.runtime.resourceMode,
+    status: "online",
     walletReadiness: "unknown",
     assignmentReadiness: state.runtime.lifecycle === "assignment-ready" ? "ready" : "not-ready",
     capabilityRefs: state.runtime.capabilityRefs,
     blockerRefs: [...state.runtime.blockerRefs, ...presence.blockerRefs],
   }
-  await postJson(options, `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/heartbeat`, body, state)
+  await postJson(options, {
+    action: "heartbeat",
+    body,
+    path: `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/heartbeat`,
+  }, state)
   const next: PylonPresenceState = {
     ...presence,
     stale: false,
@@ -167,7 +222,11 @@ export async function completePylonLink(summary: BootstrapSummary, options: Pres
     ...bodyWithoutHash,
     bodyHash: sha256Base64Url(JSON.stringify(bodyWithoutHash)),
   }
-  const response = await postJson(options, "/api/pylon-links/complete", body, state)
+  const response = await postJson(options, {
+    action: "link-complete",
+    body,
+    path: "/api/pylon-links/complete",
+  }, state)
   const presence = await loadOrCreatePresenceState(state.paths, state.identity)
   const next: PylonPresenceState = {
     ...presence,
@@ -191,7 +250,11 @@ export async function refreshPylonLink(summary: BootstrapSummary, options: Prese
     ...bodyWithoutHash,
     bodyHash: sha256Base64Url(JSON.stringify(bodyWithoutHash)),
   }
-  const response = await postJson(options, "/api/pylon-links/refresh", body, state)
+  const response = await postJson(options, {
+    action: "link-refresh",
+    body,
+    path: "/api/pylon-links/refresh",
+  }, state)
   const presence = await loadOrCreatePresenceState(state.paths, state.identity)
   const next: PylonPresenceState = {
     ...presence,
