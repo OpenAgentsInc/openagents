@@ -37,6 +37,14 @@ export type WalletCommandResult = {
 
 export type WalletCommandRunner = (args: string[]) => Promise<WalletCommandResult>
 
+export type WalletNetworkOptions = {
+  agentToken?: string
+  baseUrl: string
+  fetch?: typeof fetch
+  now?: () => Date
+  pylonRef: string
+}
+
 export type LedgerEvent = {
   eventId: string
   kind: string
@@ -71,9 +79,51 @@ function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
+const compactTimestamp = (now: Date) =>
+  now.toISOString().replace(/\D/g, "").slice(0, 14)
+
+const makeIdempotencyKey = (
+  pylonRef: string,
+  action: "wallet-readiness" | "payout-target-admission",
+  now: Date,
+) => `pylon-wallet:${pylonRef}:${action}:${compactTimestamp(now)}`
+
 function parseJson(stdout: string) {
   if (!stdout.trim()) return null
   return JSON.parse(stdout) as Record<string, unknown>
+}
+
+async function postPylonEvent(
+  options: WalletNetworkOptions,
+  input: {
+    action: "wallet-readiness" | "payout-target-admission"
+    body: Record<string, unknown>
+    path: string
+  },
+) {
+  const agentToken = options.agentToken ?? process.env.OPENAGENTS_AGENT_TOKEN
+  if (!agentToken) {
+    throw new Error("OPENAGENTS_AGENT_TOKEN or --agent-token is required")
+  }
+
+  const now = options.now?.() ?? new Date()
+  const response = await (options.fetch ?? fetch)(new URL(input.path, options.baseUrl), {
+    body: JSON.stringify(input.body),
+    headers: {
+      Authorization: `Bearer ${agentToken}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": makeIdempotencyKey(options.pylonRef, input.action, now),
+    },
+    method: "POST",
+  })
+  const text = await response.text()
+  const payload = text.trim() ? JSON.parse(text) as Record<string, unknown> : {}
+
+  if (!response.ok) {
+    throw new Error(`Pylon ${input.action} request failed (${response.status}): ${text}`)
+  }
+
+  return payload
 }
 
 export async function classifyMdkWallet(runner: WalletCommandRunner = defaultWalletCommandRunner) {
@@ -149,6 +199,54 @@ export function admitPayoutTarget(input: { kind: PayoutTargetKind; ref: string }
   }
   assertPublicProjectionSafe(projection)
   return projection
+}
+
+export async function reportWalletReadiness(
+  input: { status: WalletStatusProjection },
+  options: WalletNetworkOptions,
+) {
+  const readinessRef = `readiness.public.pylon.${input.status.readiness.replace(/_/g, "-")}`
+  const body = {
+    balanceRefs: input.status.balanceSats === null
+      ? ["balance.public.not_reported"]
+      : ["balance.public.reported_redacted"],
+    liquidityRefs: input.status.sendReady
+      ? ["liquidity.public.send_ready_redacted"]
+      : ["liquidity.public.send_readiness_unproven"],
+    readinessRefs: [readinessRef, ...input.status.blockerRefs],
+    status: input.status.receiveReady ? "ready" : "blocked",
+    walletReady: input.status.receiveReady,
+    walletRef: input.status.configured
+      ? stableRef("wallet.public.mdk", options.pylonRef)
+      : undefined,
+  }
+  assertPublicProjectionSafe(body)
+
+  return postPylonEvent(options, {
+    action: "wallet-readiness",
+    body,
+    path: `/api/pylons/${encodeURIComponent(options.pylonRef)}/wallet-readiness`,
+  })
+}
+
+export async function requestPayoutTargetAdmission(
+  input: { kind: PayoutTargetKind; ref: string },
+  options: WalletNetworkOptions,
+) {
+  const projection = admitPayoutTarget(input)
+  const body = {
+    admissionRefs: ["admission.public.pylon.payout_target.requested"],
+    payoutTargetRef: projection.payoutTargetRef,
+    policyRefs: ["policy.public.pylon.redacted_payout_target_only"],
+    status: "requested",
+  }
+  assertPublicProjectionSafe(body)
+
+  return postPylonEvent(options, {
+    action: "payout-target-admission",
+    body,
+    path: `/api/pylons/${encodeURIComponent(options.pylonRef)}/payout-target-admission`,
+  })
 }
 
 export async function receiveWithMdk(amountSats: number, runner: WalletCommandRunner = defaultWalletCommandRunner) {

@@ -9,6 +9,8 @@ import {
   appendLedgerEvent,
   classifyMdkWallet,
   receiveWithMdk,
+  reportWalletReadiness,
+  requestPayoutTargetAdmission,
   sendWithMdk,
   type WalletCommandRunner,
 } from "../src/wallet"
@@ -65,6 +67,48 @@ describe("MDK wallet readiness and ledger", () => {
       readiness: "payout-target-admitted",
     })
     expect(() => admitPayoutTarget({ kind: "bolt11_invoice", ref: "lnbc10n1rawinvoice" })).toThrow("public-safe")
+  })
+
+  test("reports wallet readiness and payout-target admission with public-safe event bodies", async () => {
+    const requests: Array<{ body: Record<string, unknown>; headers: Headers; url: string }> = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push({
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        headers: new Headers(init?.headers),
+        url: input.toString(),
+      })
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }
+    const status = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+    )
+
+    await reportWalletReadiness({ status }, {
+      agentToken: "oa_agent_test",
+      baseUrl: "https://openagents.test",
+      fetch: fetchImpl,
+      now: () => new Date("2026-06-10T12:00:00.000Z"),
+      pylonRef: "pylon.test.wallet",
+    })
+    await requestPayoutTargetAdmission(
+      { kind: "bolt12_offer", ref: "payout.bolt12.test" },
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: fetchImpl,
+        now: () => new Date("2026-06-10T12:00:00.000Z"),
+        pylonRef: "pylon.test.wallet",
+      },
+    )
+
+    expect(requests[0]?.url).toBe("https://openagents.test/api/pylons/pylon.test.wallet/wallet-readiness")
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer oa_agent_test")
+    expect(requests[0]?.body.walletReady).toBe(true)
+    expect(requests[0]?.body.walletRef).toStartWith("wallet.public.mdk.")
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("123")
+    expect(requests[1]?.url).toBe("https://openagents.test/api/pylons/pylon.test.wallet/payout-target-admission")
+    expect(requests[1]?.body.payoutTargetRef).toBe("payout.bolt12.test")
+    expect(() => assertPublicProjectionSafe(requests[1]?.body ?? {})).not.toThrow()
   })
 
   test("redacts receive and send receipts to refs and records settlement ledger idempotently", async () => {

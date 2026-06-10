@@ -51,6 +51,7 @@
     "smoke:psionic-qwen": "bun scripts/psionic-qwen-live-smoke.ts",
     "smoke:wallet": "npx --yes @moneydevkit/agent-wallet@latest balance | bun -e 'const input = await new Response(Bun.stdin.stream()).text(); const json = JSON.parse(input); if (typeof json.balance_sats !== \"number\") { console.error(input.trim()); process.exit(1); } console.log(`wallet balance: ${json.balance_sats} sats`);'",
     "smoke:install:local": "bash scripts/smoke-local-package-install.sh",
+    "smoke:packaged-network": "bun scripts/packaged-live-network-smoke.ts",
     "test": "bun test --max-concurrency=1",
     "release:gate": "bash scripts/release-gate.sh"
   },

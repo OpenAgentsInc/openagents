@@ -31,6 +31,8 @@ import {
   admitPayoutTarget,
   classifyMdkWallet,
   receiveWithMdk,
+  reportWalletReadiness,
+  requestPayoutTargetAdmission,
   sendWithMdk,
 } from "./wallet"
 import {
@@ -1096,6 +1098,18 @@ async function main() {
         process.stdout.write(`${JSON.stringify(status, null, 2)}\n`)
         return
       }
+      if (command === "report-readiness") {
+        const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+        if (!baseUrl) throw new Error("wallet report-readiness requires --base-url or PYLON_OPENAGENTS_BASE_URL")
+        const status = await classifyMdkWallet()
+        const result = await reportWalletReadiness({ status }, {
+          agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+          baseUrl,
+          pylonRef: state.identity.pylonRef,
+        })
+        process.stdout.write(`${JSON.stringify({ status, result }, null, 2)}\n`)
+        return
+      }
       if (command === "receive") {
         const amount = Number(options.amount)
         if (!Number.isFinite(amount) || amount <= 0) throw new Error("wallet receive requires --amount")
@@ -1117,6 +1131,20 @@ async function main() {
         if (!kind || !ref) throw new Error("wallet admit-payout-target requires --kind and --ref")
         const result = admitPayoutTarget({ kind, ref })
         process.stdout.write(`${JSON.stringify({ ...result, ledger: state.paths.ledger }, null, 2)}\n`)
+        return
+      }
+      if (command === "request-payout-target-admission") {
+        const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+        if (!baseUrl) throw new Error("wallet request-payout-target-admission requires --base-url or PYLON_OPENAGENTS_BASE_URL")
+        const kind = options.kind as any
+        const ref = options.ref
+        if (!kind || !ref) throw new Error("wallet request-payout-target-admission requires --kind and --ref")
+        const result = await requestPayoutTargetAdmission({ kind, ref }, {
+          agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+          baseUrl,
+          pylonRef: state.identity.pylonRef,
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
       throw new Error(`unknown wallet command: ${command ?? ""}`)
