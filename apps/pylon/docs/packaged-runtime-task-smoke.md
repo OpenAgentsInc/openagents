@@ -53,6 +53,12 @@ OPENAGENTS_ADMIN_API_TOKEN="<redacted optional, creates the assignment>" \
 bun run smoke:packaged-runtime-task
 ```
 
+The wrapper packs both local packages used by the installed smoke:
+
+- `@openagentsinc/pylon`
+- `@openagents/nip90`, which reuses the workspace `nostr-effect` NIP-90
+  implementation instead of rebuilding protocol helpers inside Pylon
+
 Optional inputs:
 
 - `OPENAGENTS_BASE_URL`: defaults to `https://openagents.com`.
@@ -85,11 +91,17 @@ credentials, wallet material, invoices, payment hashes, or preimages.
 
    ```sh
    export PYLON_HOME="$tmpdir/pylon-home"
-   export OPENAGENTS_BASE_URL="https://openagents.com"
+   export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
    export OPENAGENTS_AGENT_TOKEN="<redacted>"
-   bunx pylon register --base-url "$OPENAGENTS_BASE_URL"
-   bunx pylon heartbeat --base-url "$OPENAGENTS_BASE_URL"
-   bunx pylon wallet report-readiness --base-url "$OPENAGENTS_BASE_URL"
+   bunx pylon bootstrap --json \
+     --pylon-ref "pylon.public.runtime_gate.example" \
+     --display-name "Pylon packaged runtime task smoke" \
+     --capability-ref "cap.gepa.retained.v1" \
+     --capability-ref "capability.public.packaged_binary" \
+     --capability-ref "capability.public.pylon_runtime_gate"
+   bunx pylon presence register --base-url "$PYLON_OPENAGENTS_BASE_URL"
+   bunx pylon presence heartbeat --base-url "$PYLON_OPENAGENTS_BASE_URL"
+   bunx pylon wallet report-readiness --base-url "$PYLON_OPENAGENTS_BASE_URL"
    ```
 
 3. Have an operator create the no-spend validation assignment above for the

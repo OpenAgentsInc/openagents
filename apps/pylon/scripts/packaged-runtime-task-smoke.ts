@@ -11,6 +11,7 @@ type CommandResult = {
 }
 
 const repoRoot = resolve(import.meta.dir, "..")
+const workspaceRoot = resolve(repoRoot, "../..")
 const defaultBaseUrl = "https://openagents.com"
 
 const compactTimestamp = (date: Date) =>
@@ -102,6 +103,24 @@ const pack = async () => {
   return join(repoRoot, tarball)
 }
 
+const packNip90 = async () => {
+  const packageRoot = join(workspaceRoot, "packages/nip90")
+  const result = await runRequired("bun pm pack @openagents/nip90", ["bun", "pm", "pack"], {
+    cwd: packageRoot,
+    timeoutMs: 60_000,
+  })
+  const tarball = result.stdout
+    .split("\n")
+    .map(line => line.trim())
+    .find(line => /^openagents-nip90-.*\.tgz$/.test(line))
+
+  if (!tarball) {
+    throw new Error(`failed to find packed @openagents/nip90 tarball in bun pm pack output: ${result.stdout}`)
+  }
+
+  return join(packageRoot, tarball)
+}
+
 const assignmentBody = (input: { assignmentRef: string; now: Date; pylonRef: string }) => ({
   acceptanceCriteriaRefs: ["acceptance.public.pylon_runtime_gate.bounded_fixture_test_passes"],
   assignmentRef: input.assignmentRef,
@@ -154,17 +173,29 @@ async function main() {
   const projectDir = join(tmpDir, "install")
   const pylonHome = join(tmpDir, "pylon-home")
   let tarball: string | undefined
+  let nip90Tarball: string | undefined
   await mkdir(projectDir, { recursive: true })
-  await writeFile(
-    join(projectDir, "package.json"),
-    `${JSON.stringify({ name: "pylon-packaged-runtime-task-smoke", private: true, type: "module" }, null, 2)}\n`,
-  )
 
   try {
     tarball = await pack()
+    nip90Tarball = await packNip90()
+    await writeFile(
+      join(projectDir, "package.json"),
+      `${JSON.stringify({
+        dependencies: {
+          "@openagentsinc/pylon": `file:${tarball}`,
+        },
+        name: "pylon-packaged-runtime-task-smoke",
+        overrides: {
+          "@openagents/nip90": `file:${nip90Tarball}`,
+        },
+        private: true,
+        type: "module",
+      }, null, 2)}\n`,
+    )
     await runRequired(
       "fresh packaged install",
-      ["bun", "--dns-result-order=ipv4first", "add", tarball],
+      ["bun", "--dns-result-order=ipv4first", "install"],
       { cwd: projectDir, timeoutMs: 90_000 },
     )
 
@@ -173,6 +204,18 @@ async function main() {
       PYLON_HOME: pylonHome,
       PYLON_OPENAGENTS_BASE_URL: baseUrl,
     }
+    const commonBootstrapArgs = [
+      "--pylon-ref",
+      pylonRef,
+      "--display-name",
+      "Pylon packaged runtime task smoke",
+      "--capability-ref",
+      "cap.gepa.retained.v1",
+      "--capability-ref",
+      "capability.public.packaged_binary",
+      "--capability-ref",
+      "capability.public.pylon_runtime_gate",
+    ]
     const bootstrap = await runRequired(
       "packaged bootstrap",
       [
@@ -180,29 +223,21 @@ async function main() {
         "pylon",
         "bootstrap",
         "--json",
-        "--pylon-ref",
-        pylonRef,
-        "--display-name",
-        "Pylon packaged runtime task smoke",
-        "--capability-ref",
-        "cap.gepa.retained.v1",
-        "--capability-ref",
-        "capability.public.packaged_binary",
-        "--capability-ref",
-        "capability.public.pylon_runtime_gate",
+        ...commonBootstrapArgs,
       ],
       { cwd: projectDir, env },
     )
     await runRequired(
       "packaged presence register",
-      ["bunx", "pylon", "presence", "register", "--base-url", baseUrl],
+      ["bunx", "pylon", "presence", "register", "--base-url", baseUrl, ...commonBootstrapArgs],
       { cwd: projectDir, env },
     )
     await runRequired(
       "packaged presence heartbeat",
-      ["bunx", "pylon", "presence", "heartbeat", "--base-url", baseUrl],
+      ["bunx", "pylon", "presence", "heartbeat", "--base-url", baseUrl, ...commonBootstrapArgs],
       { cwd: projectDir, env },
     )
+    const bootstrapJson = jsonFrom<Record<string, any>>(bootstrap)
 
     const assignmentCreated = adminToken
       ? await postJson(baseUrl, "/api/operator/pylons/assignments", assignmentBody({ assignmentRef, now, pylonRef }), adminToken)
@@ -214,11 +249,17 @@ async function main() {
     )
     const result = jsonFrom<Record<string, any>>(runNoSpend)
     const closeout = result.closeout as Record<string, unknown> | undefined
+    const blockerRefs = [
+      ...(assignmentCreated === null && result.ok !== true
+        ? ["blocker.pylon.packaged_runtime_task.admin_assignment_create_token_missing"]
+        : []),
+      ...(result.ok === true ? [] : ["blocker.pylon.packaged_runtime_task.not_accepted"]),
+    ]
     const output = {
       assignmentCreated: assignmentCreated === null ? false : true,
       assignmentRef,
       baseUrl,
-      blockerRefs: result.ok === true ? [] : ["blocker.pylon.packaged_runtime_task.not_accepted"],
+      blockerRefs,
       closeout: closeout === undefined
         ? null
         : {
@@ -245,7 +286,7 @@ async function main() {
         "route:/api/pylons/{pylonRef}/assignments/{assignmentRef}/closeout",
       ],
       pylonRef,
-      status: result.ok === true ? "passed" : "partial",
+      status: blockerRefs.length === 0 ? "passed" : "partial",
       stepRefs: [
         "smoke.pylon.packaged_install",
         "smoke.pylon.packaged_bootstrap",
@@ -255,10 +296,10 @@ async function main() {
         "smoke.pylon.packaged_runtime_task_run_no_spend",
       ],
       bootstrap: {
-        bin: (jsonFrom<Record<string, any>>(bootstrap).bootstrap as Record<string, unknown> | undefined)?.bin,
-        packageName: (jsonFrom<Record<string, any>>(bootstrap).bootstrap as Record<string, unknown> | undefined)?.packageName,
-        platform: (jsonFrom<Record<string, any>>(bootstrap).platform as Record<string, unknown> | undefined)?.current,
-        supported: (jsonFrom<Record<string, any>>(bootstrap).platform as Record<string, unknown> | undefined)?.supported,
+        bin: bootstrapJson.bin,
+        packageName: bootstrapJson.packageName,
+        platform: (bootstrapJson.platform as Record<string, unknown> | undefined)?.current,
+        supported: (bootstrapJson.platform as Record<string, unknown> | undefined)?.supported,
       },
     }
 
@@ -267,6 +308,7 @@ async function main() {
   } finally {
     await rm(tmpDir, { recursive: true, force: true })
     if (tarball) await rm(tarball, { force: true })
+    if (nip90Tarball) await rm(nip90Tarball, { force: true })
   }
 }
 
