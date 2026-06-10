@@ -229,7 +229,7 @@ the research question Percepta hasn't published on — and
 | E2 — **landed 2026-06-10** (psionic #1099, `d6652ee3`: `psionic-compiler/src/tassadar_alm_backend.rs`, `docs/TASSADAR_ALM_BACKEND.md`) | Backend phase 1 (list scheduler + interval coloring + emitter) for the committed workloads | Evaluator-vs-compiled parity digest-for-digest on all three workloads; slot reuse + subtraction records demonstrated; digest-pinned bundle. f32/hull legs deferred |
 | E3 | Wasm frontend over `core_i32_v2` window | transformer-vm example set cross-validated trace-for-trace |
 | E4 | MILP optimal scheduling | d_model parity-or-better vs phase 1 on the interpreter graph; solver verdict cross-checked |
-| E5 | Specializer + module manifest integration | one specialized bundle, replay-verified, cataloged |
+| E5 — **landed 2026-06-10 (IR-level)** (psionic #1100, `2285a92f`: `tassadar_alm_specializer.rs`, `docs/TASSADAR_ALM_SPECIALIZER.md`) | First-Futamura specializer over static seeded channels | Full pipeline parity: IR → specialize → E2 schedule → compiled execution, identical outputs; typed refusals for dynamic channels; module-manifest integration still open |
 | E6 | Served compiled artifacts via `psionic.executor_trace`; provider envelope rows | capability matrix rows derived from compile receipts |
 
 Every phase lands behind the existing publication gates; none of it
