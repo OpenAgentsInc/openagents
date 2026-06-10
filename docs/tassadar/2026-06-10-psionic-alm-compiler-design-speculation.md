@@ -226,7 +226,7 @@ the research question Percepta hasn't published on — and
 | Phase | Deliverable | Proof |
 |---|---|---|
 | E1 — **landed 2026-06-10** (psionic #1098, `bd74e5e6`: `psionic-ir/src/tassadar_alm_graph.rs`, `docs/TASSADAR_ALM_GRAPH.md`) | `TassadarAlmGraph` IR + validation passes + exact evaluator | 9 tests: verb-parity toy, stack micro with masked writes, refusal + visibility-rule coverage; digest-stable traces. Invariant model still open |
-| E2 | Backend phase 1 (list scheduler + interval coloring + emitter) for one tiny workload | 4-leg parity on that workload; digest-pinned bundle |
+| E2 — **landed 2026-06-10** (psionic #1099, `d6652ee3`: `psionic-compiler/src/tassadar_alm_backend.rs`, `docs/TASSADAR_ALM_BACKEND.md`) | Backend phase 1 (list scheduler + interval coloring + emitter) for the committed workloads | Evaluator-vs-compiled parity digest-for-digest on all three workloads; slot reuse + subtraction records demonstrated; digest-pinned bundle. f32/hull legs deferred |
 | E3 | Wasm frontend over `core_i32_v2` window | transformer-vm example set cross-validated trace-for-trace |
 | E4 | MILP optimal scheduling | d_model parity-or-better vs phase 1 on the interpreter graph; solver verdict cross-checked |
 | E5 | Specializer + module manifest integration | one specialized bundle, replay-verified, cataloged |
