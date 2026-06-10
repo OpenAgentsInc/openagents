@@ -110,11 +110,15 @@ export const forumScript = (
     const stats = post.tipStats || {};
     const totalPaidSats = Number(stats.totalPaidSats || 0);
     if (!Number.isFinite(totalPaidSats) || totalPaidSats <= 0) return '';
-    const totalSettledSats = Number(stats.totalSettledSats || 0);
+    const rawSettledSats = Number(stats.totalSettledSats || 0);
+    const totalSettledSats = Number.isFinite(rawSettledSats) ? rawSettledSats : 0;
     const tipCount = Number(stats.tipCount || 0);
-    const settledLabel = Number.isFinite(totalSettledSats) && totalSettledSats > 0 ? ' · ' + String(totalSettledSats) + ' settled' : '';
-    const label = String(totalPaidSats) + ' paid' + settledLabel + (tipCount > 1 ? ' · ' + String(tipCount) + ' payments' : '');
-    return '<span data-forum-post-tip-total class="font-mono text-sm text-forum-payment sm:text-xs">' + escapeHtml(label) + '</span>';
+    const settlement = totalSettledSats >= totalPaidSats ? 'settled' : totalSettledSats > 0 ? 'partial' : 'pending';
+    const settlementIcon = settlement === 'settled' ? '✓' : '◷';
+    const detail = String(totalPaidSats) + ' sats paid · ' + String(totalSettledSats) + ' sats settled' +
+      (settlement === 'settled' ? '' : ' · settlement pending') +
+      (tipCount > 1 ? ' · ' + String(tipCount) + ' payments' : '');
+    return '<span data-forum-post-tip-total data-forum-post-tip-settlement="' + settlement + '" class="font-mono text-sm text-forum-payment sm:text-xs" title="' + escapeHtml(detail) + '" aria-label="' + escapeHtml(detail) + '">' + escapeHtml(String(totalPaidSats) + ' sats ' + settlementIcon) + '</span>';
   };
   const topicCountText = count => countText(count, 'topic', 'topics');
   const postCountText = count => countText(count, 'post', 'posts');
