@@ -124,6 +124,7 @@ import {
   epochMillisToIsoTimestamp,
   randomUuid,
 } from './runtime-primitives'
+import { TipLadderError, executeTipLadder } from './tip-ladder'
 
 type ForumRouteDependencies = Readonly<{
   agentStore?: AgentRegistrationStore
@@ -328,6 +329,10 @@ const ForumDirectTipEvidenceBody = S.Struct({
 const ForumDirectTipSubmitBody = S.Struct({
   amount: ForumMoneyAmount,
   paymentEvidence: ForumDirectTipEvidenceBody,
+})
+
+const ForumTipLadderBody = S.Struct({
+  amountSat: S.Number,
 })
 
 const ForumTipSettlementClaimBody = S.Struct({
@@ -2664,6 +2669,94 @@ const submitDirectTipResponse = (
     Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
   )
 
+const tipLadderResponse = (
+  request: Request,
+  db: D1Database,
+  postId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+
+    if (actor._tag !== 'Agent') {
+      return forbidden('tip ladder requires a registered agent actor')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumTipLadderBody),
+    )
+    const postDetail = yield* readForumPostDetail(db, postId)
+
+    if (postDetail === null) {
+      return notFound()
+    }
+
+    const readiness = postDetail.post.tipRecipientReadiness
+    const recipientHasRegisteredOffer =
+      readiness.state === 'ready' && readiness.directPayment !== null
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
+
+    const result = yield* executeTipLadder(db, {
+      amountSat: body.amountSat,
+      idempotencyKey,
+      makeId,
+      nowIso,
+      postId: postDetail.post.postId,
+      recipientHasRegisteredOffer,
+      recipientRef: postDetail.post.author.actorRef,
+      senderRef: actorRefForForumActor(actor),
+      // The direct rung activates when the tips buffer (#4708) is live;
+      // until then every above-threshold tip lands on the credited rung
+      // with the reason recorded.
+      tipsBufferConfigured: false,
+    }).pipe(
+      Effect.catch((error: TipLadderError) =>
+        Effect.succeed({
+          kind: 'error' as const,
+          reason: error.reason,
+        }),
+      ),
+    )
+
+    if (result.kind === 'error') {
+      return noStoreJsonResponse(
+        { error: 'tip_ladder_failed', reason: result.reason },
+        { status: result.reason === 'ledger_batch_failed' ? 409 : 500 },
+      )
+    }
+
+    if (result.kind === 'refused') {
+      return noStoreJsonResponse(
+        {
+          error: 'tip_ladder_refused',
+          reason: result.reason,
+          senderBalanceMsat: result.senderBalanceMsat,
+        },
+        { status: result.reason === 'insufficient_sender_balance' ? 402 : 400 },
+      )
+    }
+
+    return noStoreJsonResponse(
+      {
+        amountSat: result.amountSat,
+        ladderReason: result.ladderReason,
+        payInId: result.payInId,
+        rung: result.rung,
+        senderBalanceMsatAfter: result.senderBalanceMsatAfter,
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
 const directTipStatusResponse = (db: D1Database, attemptId: string) =>
   lookupForumDirectTip(db, attemptId).pipe(
     Effect.map(response =>
@@ -3821,6 +3914,21 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       return request.method === 'GET'
         ? directTipStatusResponse(db, attemptId)
         : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const postTipLadderMatch =
+      /^\/api\/forum\/posts\/([^/]+)\/tips\/ladder$/.exec(url.pathname)
+
+    if (postTipLadderMatch !== null) {
+      const postId = decodePathSegment(postTipLadderMatch[1])
+
+      if (postId === undefined) {
+        return Effect.succeed(badRequest('tip ladder path is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? tipLadderResponse(request, db, postId, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
     }
 
     const postDirectTipMatch =

@@ -583,6 +583,7 @@ type ForumNotificationReceiptRow = Readonly<{
 
 type ForumPostTipStats = Readonly<{
   tipCount: number
+  totalCreditedSats: number
   totalPaidSats: number
   totalSettledSats: number
 }>
@@ -1306,6 +1307,7 @@ const postWithTipRecipientReadiness = (
 
 const zeroPostTipStats: ForumPostTipStats = {
   tipCount: 0,
+  totalCreditedSats: 0,
   totalPaidSats: 0,
   totalSettledSats: 0,
 }
@@ -1479,6 +1481,7 @@ const readForumPostTipStats = (
             row.post_id,
             {
               tipCount: Math.max(0, Number(row.tip_count ?? 0)),
+              totalCreditedSats: 0 as number,
               totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
               totalSettledSats: Math.max(
                 0,
@@ -1490,7 +1493,74 @@ const readForumPostTipStats = (
 
       return new Map(entries)
     }),
+    Effect.flatMap(stats =>
+      readCreditedPostTipTotals(db, uniquePostIds).pipe(
+        Effect.map(creditedTotals => {
+          if (creditedTotals.size === 0) {
+            return stats
+          }
+
+          const merged = new Map(stats)
+          for (const [postId, creditedSats] of creditedTotals) {
+            const existing = merged.get(postId) ?? zeroPostTipStats
+            merged.set(postId, {
+              ...existing,
+              tipCount: existing.tipCount + (creditedSats > 0 ? 1 : 0),
+              totalCreditedSats: creditedSats,
+              totalPaidSats: existing.totalPaidSats + creditedSats,
+            })
+          }
+          return merged
+        }),
+      ),
+    ),
   )
+}
+
+// Credited-rung tips from the payments ledger (issue #4706). The query
+// is failure-tolerant: environments without migration 0160 simply show
+// no credited totals rather than breaking tip stats.
+const readCreditedPostTipTotals = (
+  db: D1Database,
+  postIds: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyMap<string, number>, never> => {
+  if (postIds.length === 0) {
+    return Effect.succeed(new Map())
+  }
+
+  const placeholders = postIds.map(() => '?').join(', ')
+  const contextRefs = postIds.map(postId => `forum.post.${postId}`)
+
+  return Effect.promise(async () => {
+    try {
+      const result = await db
+        .prepare(
+          `SELECT context_ref, COALESCE(SUM(cost_msat), 0) AS credited_msat
+             FROM pay_ins
+            WHERE pay_in_type = 'tip'
+              AND rung = 'credited'
+              AND state = 'paid'
+              AND context_ref IN (${placeholders})
+            GROUP BY context_ref`,
+        )
+        .bind(...contextRefs)
+        .all()
+
+      const totals = new Map<string, number>()
+      for (const row of (result.results ?? []) as Array<{
+        context_ref: unknown
+        credited_msat: unknown
+      }>) {
+        totals.set(
+          String(row.context_ref).replace('forum.post.', ''),
+          Math.floor(Number(row.credited_msat) / 1000),
+        )
+      }
+      return totals
+    } catch {
+      return new Map<string, number>()
+    }
+  })
 }
 
 const postsWithTipStats = (

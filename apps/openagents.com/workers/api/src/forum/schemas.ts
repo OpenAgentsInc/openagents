@@ -542,6 +542,7 @@ export const ForumPostSummary = S.Struct({
   tipStats: S.optionalKey(
     S.Struct({
       tipCount: S.Number,
+      totalCreditedSats: S.optionalKey(S.Number),
       totalPaidSats: S.Number,
       totalSettledSats: S.Number,
     }),
