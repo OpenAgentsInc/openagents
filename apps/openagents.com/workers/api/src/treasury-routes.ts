@@ -307,7 +307,7 @@ export const handleOperatorTreasuryPayoutApi = (
 
       return Effect.tryPromise({
         catch: () => null,
-        try: async (): Promise<Response> => {
+        try: async () => {
           let body: { amountSat?: unknown; destination?: unknown } = {}
 
           try {
