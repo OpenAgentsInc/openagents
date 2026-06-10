@@ -8,6 +8,7 @@ claim.
 | Spec | Market stream | File |
 | --- | --- | --- |
 | NIP-DS | Data market | [`DS.md`](DS.md) |
+| NIP-LBR | Labor market | [`LBR.md`](LBR.md) |
 | NIP-SKL | Skills registry | [`SKL.md`](SKL.md) |
 | NIP-SA | Sovereign agents | [`SA.md`](SA.md) |
 | NIP-AC | Agent credit | [`AC.md`](AC.md) |

@@ -57,8 +57,10 @@ acceptance layer that connects them.**
 A new living draft, `docs/nips/LBR.md`, alongside DS/SKL/SA/AC/TRN:
 agentic labor jobs as NIP-90 job types.
 
-- **Job request** (kind in the 5xxx range reserved by the draft, e.g.
-  `5930` for `agentic_coding`): tags carry public-safe refs only —
+- **Job request** (kind in the 5xxx range reserved by the draft; the
+  current shared `nostr-effect` allocation uses `5934` for
+  `agentic_coding`/`code_task`, while `5930` remains the lower bound of
+  the labor/code-work reserve): tags carry public-safe refs only —
   objective ref, repository refs (public), acceptance-criteria
   verification command, required capability refs (e.g.
   `capability.pylon.local_claude_agent`), `bid` (max budget, msats),
@@ -71,16 +73,17 @@ agentic labor jobs as NIP-90 job types.
   requester accepts exactly one quote with an acceptance event
   (feedback addressed to the chosen provider carrying the escrow
   receipt ref). Everything else expires.
-- **Result** (kind `6930` mirror): output-only delivery — artifact,
-  test, build, summary refs plus the platform closeout ref. Raw diffs
-  and logs travel through the platform's artifact lanes, not the relay.
+- **Result** (kind `6934` mirror for the current `5934` agentic-coding
+  request kind): output-only delivery — artifact, test, build, summary
+  refs plus the platform closeout ref. Raw diffs and logs travel
+  through the platform's artifact lanes, not the relay.
 - Typed schemas implemented against `nostr-effect/nip90` (extend
   `nostr-effect` first for any new protocol primitive, per the
   workspace Nostr law); OpenAgents market specifics live in the
   monorepo wrapper, exactly like the relay's transport policy does.
 
-The relay needs **no kind-range change** — 5930/6930/7000 are already
-inside its allowlist.
+The relay needs **no kind-range change** — 5930/6930/7000 and the
+currently allocated 5934/6934 pair are already inside its allowlist.
 
 ### 2. The Forum surface (requests humans can see, tip, and discuss)
 
@@ -90,9 +93,9 @@ human-legible twin of the relay job:
 - Any registered identity posts a request (objective, acceptance
   criteria, budget sats, deadline). Forum write auth, redaction
   scanning, and anti-abuse already exist.
-- The worker's **Forum↔relay bridge** publishes the matching kind-5930
-  job on the owned relay (bridge-held market key; the requester is
-  identified by ref, never by key custody) and links
+- The worker's **Forum↔relay bridge** publishes the matching kind-5934
+  agentic-coding job on the owned relay (bridge-held market key; the
+  requester is identified by ref, never by key custody) and links
   `topicId ↔ jobEventId` durably, both directions.
 - Lifecycle posts flow back to the thread: quotes received, quote
   accepted, work running, delivered, accepted, settled — each a
@@ -117,7 +120,7 @@ human-legible twin of the relay job:
 
 Extension of the existing GO ONLINE provider loop:
 
-- Watch the relay for kind-5930 jobs whose required capability refs the
+- Watch the relay for kind-5934 jobs whose required capability refs the
   Pylon truthfully declares (the claude-agent probe gates
   `capability.pylon.local_claude_agent`).
 - Quote under local policy: minimum price, job-size bounds, allowed
@@ -128,7 +131,7 @@ Extension of the existing GO ONLINE provider loop:
   independent verification command); `codex`/`opencode` lanes follow as
   peer adapters. First-run operator approval and auth-exfiltration
   blocking from `labor.ts` stay mandatory.
-- Deliver: kind-6930 result with output-only refs + platform closeout
+- Deliver: kind-6934 result with output-only refs + platform closeout
   (so receipts, stats, and settlement see it). The provider never
   self-accepts.
 
@@ -225,7 +228,7 @@ conventions.
 
 The owner types `pylon work request "fix the failing test in <public
 repo>" --budget 2000` (or Artanis proposes the same on its tick). A
-Forum topic appears; a kind-5930 job hits the relay; a contributor's
+Forum topic appears; a kind-5934 job hits the relay; a contributor's
 Pylon — online, capability-true, price-willing — quotes 1,500 sats; the
 owner accepts; escrow reserves; the contributor's local Claude fixes
 the test in a sandbox; the verification command passes on delivery and

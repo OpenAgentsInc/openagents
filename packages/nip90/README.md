@@ -8,11 +8,16 @@ package:
 
 ```ts
 export * from "nostr-effect/nip90"
+export * from "./lbr.js"
 ```
 
 Do not rebuild Nostr event, tag, kind, or validation primitives in this package.
 Extend `nostr-effect` first, then expose the shared surface here for OpenAgents
 apps that need a workspace package import.
+
+The `./lbr` export is an OpenAgents-specific NIP-LBR wrapper over the shared
+labor primitives. It keeps the relay payload ref-only for the labor request,
+quote, acceptance, and result lifecycle described in `docs/nips/LBR.md`.
 
 ## Contract
 
@@ -23,6 +28,9 @@ This package covers protocol-only behavior:
 - feedback kind `7000`
 - OpenAgents labor-market request kinds `5934` code task, `5935` review, and
   `5936` document work, with result kinds `6934`-`6936`
+- NIP-LBR agentic-coding request/result helpers for `5934`/`6934`, quote and
+  acceptance feedback on `7000`, and decode-time rejection of raw prompts,
+  private paths, credentials, and payment material
 - NIP-DS dataset listing kind `30404`
 - NIP-DS dataset offer kind `30406`
 - DS-DVM dataset access request/result kinds `5960`/`6960`
@@ -70,6 +78,7 @@ delivered bundle digest. It does not move sats or publish private datasets.
 ```bash
 bun run --cwd packages/nip90 typecheck
 bun run --cwd packages/nip90 test
+bun run --cwd apps/nostr-relay test
 bun test apps/pylon/tests/nip90-import.test.ts
 cd apps/openagents.com/workers/api && bunx vitest run src/nip90-import.test.ts
 ```

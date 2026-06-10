@@ -35,6 +35,23 @@ describe("market relay policy", () => {
     expect(marketKindBucket(1)).toBeNull()
   })
 
+  test("allows NIP-LBR labor transport kinds", () => {
+    expect(isAllowedMarketKind(5930)).toBe(true)
+    expect(isAllowedMarketKind(5934)).toBe(true)
+    expect(isAllowedMarketKind(6930)).toBe(true)
+    expect(isAllowedMarketKind(6934)).toBe(true)
+    expect(isAllowedMarketKind(7000)).toBe(true)
+
+    expect(marketKindBucket(5934)).toBe("nip90_request")
+    expect(marketKindBucket(6934)).toBe("nip90_result")
+    expect(marketKindBucket(7000)).toBe("nip90_feedback")
+    expect(
+      validateReqFilters([
+        { kinds: [5930, 5934, 6930, 6934, 7000], limit: 10 },
+      ]),
+    ).toBeNull()
+  })
+
   test("rejects oversized REQ filters", () => {
     expect(validateReqFilters([])).toContain("at least one filter")
     expect(
