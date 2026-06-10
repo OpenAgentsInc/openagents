@@ -297,6 +297,19 @@ const countEarningRows = (
   ).pipe(Effect.map(row => Math.max(0, Number(row?.count ?? 0))))
 }
 
+export const safeLeaderboardPostTitle = (
+  subject: string | null,
+): string | null => {
+  if (subject === null || subject.trim() === '') {
+    return null
+  }
+
+  return containsProviderSecretMaterial(subject) ||
+    privateMaterialPattern.test(subject)
+    ? null
+    : subject
+}
+
 const postLeaderboardFromRow = (
   row: ForumTipLeaderboardPostRow,
 ): ForumTipLeaderboardPost =>
@@ -304,7 +317,7 @@ const postLeaderboardFromRow = (
     author: actorFromJson(row.actor_json),
     postId: row.post_id,
     postPermalink: forumPostPublicUrl(row.topic_id, row.post_id),
-    postTitle: row.post_subject ?? null,
+    postTitle: safeLeaderboardPostTitle(row.post_subject ?? null),
     tipCount: Math.max(0, Number(row.tip_count ?? 0)),
     topicId: row.topic_id,
     totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
