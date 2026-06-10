@@ -78,16 +78,18 @@ question our plan deferred: on non-Apple edge GPUs, **Vulkan with
 per-device fallbacks is the durable path**, and that should shape
 psionic's backend roadmap (currently CPU/Metal/CUDA).
 
-**2.4 Seeded diffusion is a candidate paid work class.** The
-stable-diffusion fork uses a Philox counter-based RNG (PyTorch-CUDA
-compatible) that makes generation reproducible from a seed *across
-backends*, plus an abort-callback API for mid-sampling cancellation. That
-is precisely the shape a paid image/video-generation work kind needs on
-our rails: dispatch with pinned seed and digests, verify by seeded
-replication of sampled jobs, cancel on timeout. Their fork adds LTX video
-and Flux support — the work class extends to video. This is
-compute-market scope (`pylon.compute_revenue_modes.v1` adjacents), not
-training scope, but it rides the same verification registry.
+**2.4 The diffusion fork's durable lesson is the RNG, not the work
+class.** The stable-diffusion fork uses a Philox counter-based RNG
+(PyTorch-CUDA compatible) that makes generation reproducible from a seed
+*across backends*, plus an abort-callback API for mid-sampling
+cancellation — the general shape any seeded paid work kind needs
+(dispatch with pinned seed and digests, verify by seeded replication,
+cancel on timeout). **Owner decision 2026-06-10: image generation is not
+pursued at this time, at least not locally via this infrastructure** —
+no image/video work kind gets filed from this review. The Philox pattern
+survives that decision on its own merits, because our existing seeded
+work classes (ablation cells, sweep cells, rollouts) want the same
+cross-device reproducibility; it is ported as psionic#1116.
 
 **2.5 The platform itself validates our thesis by what it omits.** QVAC
 solves discovery (model registry), packaging (plugins, GGUF), and
@@ -125,7 +127,7 @@ have — and the layer our plan owns (windows, verification, settlement).
 | `training.device_capability_dataset.v1` | GPU-gen quirks taxonomy, mobile thermal/memory constraints (SSBO limits), backend-selection policy as reason-code vocabulary | Taxonomy |
 | `training.post_training_arc.v1` | Working reference for the instruct SFT lane: masked-loss LoRA, checkpoint/resume, schedulers, chat-template handling, plus dataset/eval recipe shapes | Pattern |
 | `pylon.first_real_model_training_run.v1` | Existence proof + timing envelopes for bounded LoRA on consumer/mobile devices (sizes #4670's two-device run honestly) | Evidence-shaping |
-| `pylon.compute_revenue_modes.v1` | BitNet perf (13B in 2.8 GiB, 15–386 tok/s on phones/Macs) strengthens the sellable-local-inference lane; seeded diffusion/LTX as new paid kinds | Lane-strengthening |
+| `pylon.compute_revenue_modes.v1` | BitNet perf (13B in 2.8 GiB, 15–386 tok/s on phones/Macs) strengthens the sellable-local-inference lane | Lane-strengthening |
 | `compute.tassadar_executor_poc.v1` | Complementary determinism culture; **distinct lane** (see §5) | Boundary to keep |
 | `training.model_ladder.v1` | BitNet-b1.58-style QAT as a derisking-ledger candidate for a future rung (1.58-bit pretraining is a published recipe; ours only via ablation) | Ablation candidate |
 | `provider.compliant_usage_labor.v1` / five streams | QVAC's unpaid voluntary provider network is a future supply class whose missing economy is our product | Strategic adjacency |
@@ -161,8 +163,8 @@ Rust) decide most of this. Four tiers:
   verification class.*
 - **Philox counter-based RNG** as psionic's standard for seeded work. It
   is a small, fully-specified algorithm; one Rust port gives every
-  seeded work class (diffusion, rollouts, sweep cells) cross-device
-  replayability by construction.
+  seeded work class (ablation cells, sweep cells, rollouts) cross-device
+  replayability by construction. Filed: psionic#1116.
 - **Masked-loss LoRA SFT loop shape** (assistant-only loss, checkpoint/
   resume granularity, warmup-cosine schedules, template-aware
   tokenization) into the planned `psionic-train` instruct lane. We were
@@ -190,12 +192,14 @@ finetune capabilities for contributor devices quickly *without*
 violating the Rust-substrate policy, since Pylon's adapter layer is
 already TS. The costs are real: a large dependency surface, a C++ addon
 supply chain we don't control, and capability claims we would have to
-verify rather than inherit. Recommendation: do **not** adopt now; file
-it as a scoped evaluation issue gated on the first paid work kind that
-would actually use it (likely seeded diffusion). Until then, use QVAC as
-a **conformance and benchmark comparator** — same model, same device,
+verify rather than inherit. Recommendation: do **not** adopt now — and
+with image generation declined (owner decision, 2026-06-10) no current
+work kind triggers the evaluation, so no issue is filed; the gate is "a
+paid work kind that would actually use one of its capabilities (e.g.,
+transcription) reaches dispatch readiness." Until then, use QVAC as a
+**conformance and benchmark comparator** — same model, same device,
 QVAC runtime vs psionic serving — which produces useful receipts either
-way.
+way (recorded as spec input on openagents#4681).
 
 **Tier 4 — do not adopt.**
 - **Holepunch/Hyperswarm transport.** Our protocol substrate is
@@ -214,19 +218,38 @@ way.
   entry: *deferred — revisit at R2+ when the ablation system can price
   it.*
 
-## 7. Proposed follow-ups (all gated, none filed yet)
+## 7. Follow-ups — filed 2026-06-10
 
-Monorepo: a scoped issue for a **seeded image-generation work kind**
-(Philox seed + digest dispatch, seeded-replication verification, abort
-on timeout) under the compute-modes lane; a **QVAC-comparator benchmark
-recipe** in the device-capability dataset spec; the Tier-3 evaluation
-issue written with its gate. Psionic tracker: ternary quant formats with
-parity fixtures; Philox RNG port; instruct-SFT lane informed by the
-fabric finetune reference; derisking-ledger entries for Vulkan backend,
-dynamic tiling, KV-cache quantization, and BitNet-QAT-deferred. None of
-this moves a promise; all of it is the plan's existing workstreams
-absorbing a well-built external reference — which is what the
-`projects/` lanes are for.
+The Tier 1/2 items do **not** become new product promises: they are
+implementation work inside existing planned `training.*` promises, so
+the tight connection is issues in the owning trackers plus evidence refs
+on the touched promises (registry `2026-06-10.10`).
+
+Filed in the psionic tracker (the owning repo for execution-truth work):
+
+- **psionic#1115** — ternary TQ-class formats with cross-backend
+  determinism receipts (→ `training.verification_classes.v1`,
+  `pylon.compute_revenue_modes.v1`)
+- **psionic#1116** — Philox counter-based RNG as the standard seeded-work
+  RNG (→ `training.ablation_system.v1`,
+  `training.verification_classes.v1`)
+- **psionic#1117** — general instruct SFT lane with the fabric finetune
+  CLI as external reference (→ `training.post_training_arc.v1`)
+- **psionic#1118** — derisking-ledger entries for the deferred
+  techniques: Vulkan backend, dynamic tiling, KV-cache quantization,
+  BitNet QAT (→ `training.ablation_system.v1`,
+  `training.model_ladder.v1`)
+
+Filed in this monorepo: the device-taxonomy and QVAC-comparator
+benchmark inputs are recorded as spec input on **#4681**
+(`training.device_capability_dataset.v1`).
+
+Explicitly **not** filed: any image/video-generation work kind (owner
+decision above) and the Tier-3 Pylon-adapter evaluation (gate not
+triggered). None of this moves a promise; all of it is the plan's
+existing workstreams absorbing a well-built external reference — which
+is what the `projects/` lanes are for. The unified roadmap lives in the
+buildout plan's sequencing section.
 
 ## 8. Bottom line
 

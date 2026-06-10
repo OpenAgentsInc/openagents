@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.9'
+export const PublicProductPromisesVersion = '2026-06-10.10'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1055,6 +1055,8 @@ export const publicProductPromisesDocument = () => {
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
+        'https://github.com/OpenAgentsInc/psionic/issues/1116',
+        'https://github.com/OpenAgentsInc/psionic/issues/1118',
       ],
       blockerRefs: [
         'blocker.product_promises.ablation_harness_missing',
@@ -1159,7 +1161,9 @@ export const publicProductPromisesDocument = () => {
         'Do not claim instruct or reasoning Psion models exist, that post-training runs as paid network work, or that any fine-tuning service is live.',
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'docs/training/2026-06-10-qvac-edge-stack-analysis.md',
         'https://github.com/OpenAgentsInc/openagents/issues/4682',
+        'https://github.com/OpenAgentsInc/psionic/issues/1117',
         'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_CS336_A5_REFERENCE_LANE.md',
       ],
       blockerRefs: [
@@ -1186,9 +1190,12 @@ export const publicProductPromisesDocument = () => {
         'Do not claim training work is currently verified end to end on paid assignments, or that validator work is currently earning contributors bitcoin.',
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'docs/training/2026-06-10-qvac-edge-stack-analysis.md',
         'apps/openagents.com/workers/api/src/tassadar-executor-trace-homework.test.ts',
         'https://github.com/OpenAgentsInc/openagents/issues/4674',
         'https://github.com/OpenAgentsInc/openagents/issues/4676',
+        'https://github.com/OpenAgentsInc/psionic/issues/1115',
+        'https://github.com/OpenAgentsInc/psionic/issues/1116',
       ],
       blockerRefs: [
         'blocker.product_promises.verification_class_registry_missing',
@@ -1213,6 +1220,7 @@ export const publicProductPromisesDocument = () => {
         'Do not claim a public device-capability dataset exists, that benchmark work currently pays, or quote per-device earning estimates without measured receipts.',
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'docs/training/2026-06-10-qvac-edge-stack-analysis.md',
         'route:/api/public/pylon-capacity-funnel',
         'https://github.com/OpenAgentsInc/openagents/issues/4681',
       ],
@@ -1291,6 +1299,7 @@ export const publicProductPromisesDocument = () => {
     'The full training-pipeline buildout plan is docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md. The training.* promises represent its workstreams (ablation system, data refinery, model ladder, marathon operations, post-training arc, verification classes, device-capability dataset); all enter as planned. Model-ladder rungs gain their own promise records before each run; no rung above the R0 tri-host rehearsal exists or is scheduled against a date.',
     'Demand-provenance rule (proof.demand_provenance.v1): internal or first-party demand — including the training pipeline’s own ablations, sweeps, and corpus work — is plumbing proof, not market proof. No external dollar, no demand claim; revenue-bearing public numbers must carry an internal/external split alongside modeled/measured/settled provenance.',
     'The Smol Training Playbook chapters mirrored at psionic docs/smol guide the pipeline’s operational shape; its measurements (MFU, bandwidth, mixture ratios) are external priors on other hardware, never OpenAgents claims.',
+    'External-reference absorption 2026-06-10: the QVAC edge-stack analysis (docs/training/2026-06-10-qvac-edge-stack-analysis.md) feeds the training workstreams through psionic issues #1115-#1118 (ternary determinism receipts, Philox seeded-work RNG, instruct SFT lane, derisking-ledger entries) and spec input on #4681. It creates no new promises, and by owner decision local image/video generation via that stack is not pursued at this time.',
     'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
     'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',

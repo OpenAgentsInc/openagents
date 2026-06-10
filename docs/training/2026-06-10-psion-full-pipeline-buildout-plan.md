@@ -456,7 +456,11 @@ Bounded, because the playbook's advice is to *not* be clever here:
   playbook's own measurements), Muon-class optimizers (promising,
   under-recipe'd), hybrid SSM blocks, QK-norm (playbook: hurts
   long-context). Each gets a one-line entry in the derisking ledger with
-  the reason, so "we considered it" is on the record.
+  the reason, so "we considered it" is on the record. Four QVAC-derived
+  entries join the ledger via psionic#1118 (Vulkan backend, dynamic
+  tiling, KV-cache quantization, BitNet-b1.58 QAT — the last enters only
+  through the ablation manifest, at R2+; see the QVAC analysis in this
+  folder).
 - **Tassadar hybrid hooks:** the only architecture ask from the exact
   lane is that the weight-bundle/layout formats leave seams for reserved
   exact heads later (`docs/tassadar/` E-phases). Design-time
@@ -545,7 +549,10 @@ SFT/DPO/GRPO CLI lanes, A5 alignment math, #4682); what's missing is the
    template (owned, versioned, with generation-masking — the playbook
    flags template bugs as silent killers), an instruct corpus assembled
    under the same provenance discipline as pretraining data, LR ~10×
-   below pretraining. *Hybrid reasoning modes are explicitly deferred* —
+   below pretraining. Filed as psionic#1117, with QVAC's
+   `llama-finetune-lora` (masked loss, checkpoint/resume, schedulers,
+   proven on consumer/mobile GPUs) as the read-only external reference.
+   *Hybrid reasoning modes are explicitly deferred* —
    the playbook documents them as hard (paired data, separate reward
    shaping, joint training instability); a 100M–1B Psion has no business
    there yet.
@@ -614,7 +621,14 @@ already decided to sell it as a product:
   contract* per verification class instead — Freivalds checks over
   committed matrices absorb backend numerics differences by checking in a
   field, which is precisely why that class (not bitwise comparison) is
-  the training-work default (#4674).
+  the training-work default (#4674). A second path opened by the QVAC
+  review: integer/ternary serving formats can make *inference* outputs
+  bit-reproducible across heterogeneous backends (Tether's BitNet lane
+  demonstrates this on Vulkan-vs-CPU), which would let quantized
+  inference work ride deterministic_recompute instead of statistical
+  checks — psionic#1115 ports the formats with parity fixtures and
+  determinism receipts, and psionic#1116 gives every seeded work class a
+  counter-based RNG with the same cross-device property.
 
 ## 10. The Model Ladder (sizing the program honestly)
 
@@ -672,9 +686,30 @@ This table is §3.4 made operational: the rows near the bottom of the
 effort ladder (deterministic, replayable) are routed to the cheapest
 supply, and the one row with structurally zero verification cost
 (exact_trace_replay) is the floor the rest of the system is being bent
-toward.
+toward. Two QVAC-derived upgrades are in flight for this table: a
+ternary serving lane with determinism receipts (psionic#1115) would move
+quantized-inference rows from seeded_replication down to
+deterministic_recompute, and the Philox port (psionic#1116) hardens
+every seeded row by making seed → output reproducible across device
+classes by construction.
 
-## 12. Sequencing
+## 12. Sequencing — The Unified Roadmap
+
+This section is the single roadmap view. It binds four layers that are
+maintained in different places: **phases** (below) gate on receipts;
+**promises** (registry `2026-06-10.10`: the red tier-1 claims, the nine
+planned program records, the yellow Tassadar PoC) are the public claim
+ledger for each phase; **issues** are the work units (monorepo
+#4673–#4684 for rails and lanes; psionic #1115–#1118 for the QVAC-derived
+ports, plus the psionic-side asks below); and the **velocity forecast**
+(`../promises/2026-06-10-green-velocity-extrapolation.md`) is the
+modeled calendar, re-measured weekly. External references (the smol
+playbook in `psionic/docs/smol/`, the QVAC analysis in this folder) feed
+workstreams through issues — never directly into promises. One explicit
+scope decision is recorded here so the roadmap stays unified: **image
+generation is out of scope at this time** (owner decision 2026-06-10; at
+least not locally via the QVAC-class infrastructure), so no image/video
+work kind appears in any phase.
 
 Phases, each gated by receipts, layered onto the existing issue set:
 
@@ -708,7 +743,14 @@ Phases, each gated by receipts, layered onto the existing issue set:
    the always-available, verification-perfect floor workload; the
    `compute.tassadar_executor_poc.v1` promise resolves on its own track.
 
-Proposed new issues (to file after review, monorepo side unless noted):
+**Filed (2026-06-10):** monorepo rails and lanes #4673–#4684 (from the
+CS336 audit); psionic #1115 (ternary determinism receipts), #1116
+(Philox seeded-work RNG), #1117 (instruct SFT lane — covers the "chat
+template + instruct SFT lane" ask below), #1118 (QVAC derisking-ledger
+entries); device-taxonomy and external-comparator spec input recorded on
+#4681.
+
+**Still proposed (to file after review, monorepo side unless noted):**
 ablation-ledger projection + dispatched work kind; durable checkpoint-seal
 storage in the window lifecycle; corpus-provenance receipts on the data
 rails; decontamination receipts; standby-Pylon dispatcher feature;
@@ -716,8 +758,8 @@ vibe-test artifact in post-training closeouts; per-rung economics-gate
 report format with provenance labels; the scheduled curtailment drill
 (§7). Psionic side (its tracker): ablation manifest/harness, eval-suite
 reproduction gate, WSD schedule, intra-document masking +
-embedding-weight-decay deltas, chat template + instruct SFT lane, GRPO
-length-penalty reward shaping, remote checkpoint backup target.
+embedding-weight-decay deltas, GRPO length-penalty reward shaping, remote
+checkpoint backup target.
 
 ## 13. What This Plan Does Not Claim
 
@@ -748,6 +790,8 @@ length-penalty reward shaping, remote checkpoint backup target.
   issues #4664–#4671, #4673–#4684
 - `docs/tassadar/README.md`, `work-that-proves-itself.md`,
   `2026-06-10-tassadar-percepta-audit.md`
+- `docs/training/2026-06-10-qvac-edge-stack-analysis.md` (external
+  reference absorption; psionic #1115–#1118)
 - Episode transcripts (`docs/transcripts/`): 178 (Swarm Inference), 201
   (Fracking Apple Silicon), 202 (Recursive Language Models), 216, 220,
   224 (Distributed Training 101), 228 (Free Autopilot), 230 (Calling All
