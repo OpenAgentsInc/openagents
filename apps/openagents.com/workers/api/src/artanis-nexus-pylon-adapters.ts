@@ -13,6 +13,7 @@ import {
   PublicPylonAcceptedWorkSettlementGate,
   PublicPylonEarningLaunchGate,
   PublicPylonStats,
+  emptyUnavailableMarketSettlementTotals,
 } from './public-pylon-stats'
 import { PylonMarketplaceJobKind } from './pylon-marketplace-jobs'
 import { PylonResourceMode } from './pylon-resource-mode-setup'
@@ -1544,6 +1545,9 @@ export const exampleArtanisNexusPylonAdminAdapterLedger =
           state: 'ready',
           stateLabel: 'Receipt-backed accepted-work settlement totals ready',
         }),
+      nip90MarketSettlementStats: emptyUnavailableMarketSettlementTotals(
+        'NIP-90 market receipt store unavailable.',
+      ),
       nexusPayoutSatsPaidTotal: 101000,
       pylonSessionsOnlineNow: 3,
       pylonsAssignmentReadyNow: 2,

@@ -3,6 +3,10 @@ import { Effect } from 'effect'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import {
+  makeD1Nip90MarketReceiptStore,
+  type Nip90MarketReceiptStore,
+} from './nip90-market-receipts'
+import {
   type PublicPylonSettlementReceiptStore,
   type PublicPylonStatsStore,
   publicPylonStatsSnapshot,
@@ -11,6 +15,7 @@ import { makeD1PylonApiStore } from './pylon-api'
 
 type PublicPylonStatsRouteInput = Readonly<{
   OPENAGENTS_DB?: D1Database
+  marketReceiptStore?: Nip90MarketReceiptStore
   nowUnixMs?: () => number
   receiptStore?: PublicPylonSettlementReceiptStore
   store?: PublicPylonStatsStore
@@ -24,6 +29,11 @@ export const handlePublicPylonStatsApi = (
     ? Effect.succeed(methodNotAllowed(['GET']))
     : Effect.map(
         publicPylonStatsSnapshot({
+          marketReceiptStore:
+            input.marketReceiptStore ??
+            (input.OPENAGENTS_DB === undefined
+              ? undefined
+              : makeD1Nip90MarketReceiptStore(input.OPENAGENTS_DB)),
           nowUnixMs: input.nowUnixMs,
           receiptStore:
             input.receiptStore ??

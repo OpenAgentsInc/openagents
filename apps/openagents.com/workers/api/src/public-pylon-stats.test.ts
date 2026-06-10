@@ -14,6 +14,10 @@ import {
   publicPylonStatsFromRegistrations,
 } from './public-pylon-stats'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
+import type {
+  Nip90MarketReceiptStore,
+  Nip90MarketSettlementReceiptRecord,
+} from './nip90-market-receipts'
 import type { PylonApiRegistrationRecord } from './pylon-api'
 
 const nowUnixMs = Date.parse('2026-06-08T14:00:00.000Z')
@@ -211,6 +215,36 @@ const settlementReceiptStore = (
 
   return store
 }
+
+const marketReceipt = (
+  input: Partial<Nip90MarketSettlementReceiptRecord> &
+    Pick<Nip90MarketSettlementReceiptRecord, 'receiptRef' | 'streamKind'>,
+): Nip90MarketSettlementReceiptRecord => {
+  const { receiptRef, streamKind, ...overrides } = input
+
+  return {
+    amountMsats: 2_000,
+    createdAt: '2026-06-08T13:45:00.000Z',
+    jobRef: `buy_mode_job_${receiptRef}`,
+    receiptRef,
+    requestEventRef: `event.request.${receiptRef}`,
+    resultEventRef: `event.result.${receiptRef}`,
+    settledAt: '2026-06-08T13:57:00.000Z',
+    state: 'settled',
+    streamKind,
+    ...overrides,
+  }
+}
+
+const marketReceiptStore = (
+  records: ReadonlyArray<Nip90MarketSettlementReceiptRecord>,
+): Nip90MarketReceiptStore => ({
+  listSettledMarketReceipts: () => Promise.resolve(records),
+  readSettledMarketReceiptByRef: receiptRef =>
+    Promise.resolve(
+      records.find(record => record.receiptRef === receiptRef) ?? null,
+    ),
+})
 
 describe('public pylon stats', () => {
   afterEach(() => {
@@ -758,6 +792,74 @@ describe('public pylon stats', () => {
         state: 'unavailable',
       },
     })
+  })
+
+  test('counts only settled public NIP-90 market receipts by stream', async () => {
+    const response = await Effect.runPromise(
+      handlePublicPylonStatsApi(
+        new Request('https://openagents.com/api/public/pylon-stats'),
+        {
+          marketReceiptStore: marketReceiptStore([
+            marketReceipt({
+              amountMsats: 2_000,
+              receiptRef: 'receipt.nip90_market.compute.settled_recent',
+              streamKind: 'compute',
+            }),
+            marketReceipt({
+              amountMsats: 3_000,
+              receiptRef: 'receipt.nip90_market.data.settled_old',
+              settledAt: '2026-06-06T13:57:00.000Z',
+              streamKind: 'data',
+            }),
+            marketReceipt({
+              receiptRef: 'receipt.nip90_market.labor.pending',
+              state: 'issued',
+              streamKind: 'labor',
+            }),
+            marketReceipt({
+              amountMsats: 1_500,
+              receiptRef: 'receipt.nip90_market.compute.fractional_msat',
+              streamKind: 'compute',
+            }),
+          ]),
+          nowUnixMs: () => nowUnixMs,
+          store: storeFor([registration({ pylonRef: 'pylon.public.ready' })]),
+        },
+      ),
+    )
+    const stats = (await response.json()) as Record<string, any>
+
+    expect(response.status).toBe(200)
+    expect(stats.nip90MarketSettlementStats).toMatchObject({
+      available: true,
+      compute: {
+        jobsSettled24h: 1,
+        jobsSettledTotal: 1,
+        receiptRefs: ['receipt.nip90_market.compute.settled_recent'],
+        satsSettled24h: 2,
+        satsSettledTotal: 2,
+        streamKind: 'compute',
+      },
+      data: {
+        jobsSettled24h: 0,
+        jobsSettledTotal: 1,
+        receiptRefs: ['receipt.nip90_market.data.settled_old'],
+        satsSettled24h: 0,
+        satsSettledTotal: 3,
+        streamKind: 'data',
+      },
+      labor: {
+        jobsSettled24h: 0,
+        jobsSettledTotal: 0,
+        receiptRefs: [],
+        satsSettled24h: 0,
+        satsSettledTotal: 0,
+        streamKind: 'labor',
+      },
+    })
+    expect(JSON.stringify(stats.nip90MarketSettlementStats)).not.toMatch(
+      /lnbc|bolt11|invoice|preimage|payment_hash|wallet|mnemonic|private_key/,
+    )
   })
 
   test('serves no-store public stats from the injected Omega store', async () => {

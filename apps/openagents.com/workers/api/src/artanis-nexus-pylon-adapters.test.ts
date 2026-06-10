@@ -32,6 +32,7 @@ import {
   PublicPylonAcceptedWorkSettlementGate,
   PublicPylonEarningLaunchGate,
   PublicPylonStats,
+  emptyUnavailableMarketSettlementTotals,
 } from './public-pylon-stats'
 import { examplePylonMarketplaceLedger } from './pylon-marketplace-jobs'
 import { buildPylonMarketplacePayoutFlowRecords } from './pylon-marketplace-payout-flow'
@@ -258,6 +259,9 @@ describe('Artanis Nexus/Pylon admin adapters', () => {
             stateLabel:
               'Accepted-work settlement totals unavailable: Omega public Pylon stats are unavailable.',
           }),
+        nip90MarketSettlementStats: emptyUnavailableMarketSettlementTotals(
+          'NIP-90 market receipt store unavailable.',
+        ),
         nexusPayoutSatsPaidTotal: null,
         pylonSessionsOnlineNow: 0,
         pylonsAssignmentReadyNow: 0,

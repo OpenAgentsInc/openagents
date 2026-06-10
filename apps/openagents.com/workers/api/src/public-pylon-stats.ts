@@ -17,6 +17,12 @@ import {
   type NexusTreasuryPayoutReconciliationEventRecord,
 } from './nexus-treasury-payout-ledger'
 import {
+  type Nip90MarketReceiptStore,
+  type Nip90MarketStreamKind,
+  type PublicNip90MarketSettlementReceipt,
+  publicNip90MarketReceiptFromRecord,
+} from './nip90-market-receipts'
+import {
   type PylonApiRegistrationRecord,
   pylonApiStoreErrorFromUnknown,
   pylonClientVersionMeetsMinimum,
@@ -113,6 +119,29 @@ export class PublicPylonAcceptedWorkSettlementGate extends S.Class<PublicPylonAc
   sourceRefs: S.Array(S.String),
 }) {}
 
+export class PublicNip90MarketStreamStats extends S.Class<PublicNip90MarketStreamStats>(
+  'PublicNip90MarketStreamStats',
+)({
+  jobsSettled24h: S.Int,
+  jobsSettledTotal: S.Int,
+  receiptRefs: S.Array(S.String),
+  satsSettled24h: S.Number,
+  satsSettledTotal: S.Number,
+  streamKind: S.Literals(['compute', 'data', 'labor']),
+}) {}
+
+export class PublicNip90MarketSettlementStats extends S.Class<PublicNip90MarketSettlementStats>(
+  'PublicNip90MarketSettlementStats',
+)({
+  available: S.Boolean,
+  caveatRefs: S.Array(S.String),
+  compute: PublicNip90MarketStreamStats,
+  data: PublicNip90MarketStreamStats,
+  error: S.NullOr(S.String),
+  labor: PublicNip90MarketStreamStats,
+  sourceRefs: S.Array(S.String),
+}) {}
+
 export class PublicPylonStats extends S.Class<PublicPylonStats>(
   'PublicPylonStats',
 )({
@@ -138,6 +167,7 @@ export class PublicPylonStats extends S.Class<PublicPylonStats>(
   nexusAcceptedWorkPayoutSatsPaid24h: S.NullOr(S.Int),
   nexusAcceptedWorkPayoutReceiptRefs: S.Array(S.String),
   nexusAcceptedWorkSettlementGate: PublicPylonAcceptedWorkSettlementGate,
+  nip90MarketSettlementStats: PublicNip90MarketSettlementStats,
   trainingAssignedContributors: S.Int,
   trainingAcceptedContributors: S.Int,
   trainingModelProgressContributors: S.Int,
@@ -360,6 +390,8 @@ type PublicPylonSettlementTotals = Readonly<{
   sourceRefs: ReadonlyArray<string>
 }>
 
+type PublicNip90MarketSettlementTotals = PublicNip90MarketSettlementStats
+
 const emptyUnavailableSettlementTotals = (
   error: string,
 ): PublicPylonSettlementTotals => ({
@@ -370,6 +402,52 @@ const emptyUnavailableSettlementTotals = (
   satsPaidTotal: null,
   sourceRefs: ['route:/api/public/pylon-stats'],
 })
+
+const emptyMarketStreamStats = (
+  streamKind: Nip90MarketStreamKind,
+): PublicNip90MarketStreamStats =>
+  new PublicNip90MarketStreamStats({
+    jobsSettled24h: 0,
+    jobsSettledTotal: 0,
+    receiptRefs: [],
+    satsSettled24h: 0,
+    satsSettledTotal: 0,
+    streamKind,
+  })
+
+export const emptyUnavailableMarketSettlementTotals = (
+  error: string,
+): PublicNip90MarketSettlementTotals =>
+  new PublicNip90MarketSettlementStats({
+    available: false,
+    caveatRefs: [
+      'caveat.public.nip90_market.settled_receipts_only',
+      'caveat.public.no_private_settlement_material',
+    ],
+    compute: emptyMarketStreamStats('compute'),
+    data: emptyMarketStreamStats('data'),
+    error,
+    labor: emptyMarketStreamStats('labor'),
+    sourceRefs: ['route:/api/public/pylon-stats'],
+  })
+
+const emptyAvailableMarketSettlementTotals = (): PublicNip90MarketSettlementTotals =>
+  new PublicNip90MarketSettlementStats({
+    available: true,
+    caveatRefs: [
+      'caveat.public.nip90_market.settled_receipts_only',
+      'caveat.public.nip90_market.pending_records_excluded',
+      'caveat.public.no_private_settlement_material',
+    ],
+    compute: emptyMarketStreamStats('compute'),
+    data: emptyMarketStreamStats('data'),
+    error: null,
+    labor: emptyMarketStreamStats('labor'),
+    sourceRefs: [
+      'route:/api/public/pylon-stats',
+      'route:/api/public/nip90-market/receipts/{receiptRef}',
+    ],
+  })
 
 const emptyAvailableSettlementTotals = (): PublicPylonSettlementTotals => ({
   available: true,
@@ -449,6 +527,78 @@ const settledWithin24h = (createdAt: string, nowUnixMs: number): boolean => {
     nowUnixMs - createdMs >= 0 &&
     nowUnixMs - createdMs <= SEEN_24H_WINDOW_MS
   )
+}
+
+const marketStreamStatsFromReceipts = (
+  input: Readonly<{
+    nowUnixMs: number
+    receipts: ReadonlyArray<PublicNip90MarketSettlementReceipt>
+    streamKind: Nip90MarketStreamKind
+  }>,
+): PublicNip90MarketStreamStats => {
+  const streamReceipts = input.receipts.filter(
+    receipt => receipt.streamKind === input.streamKind,
+  )
+  const streamReceipts24h = streamReceipts.filter(receipt =>
+    settledWithin24h(receipt.settledAt, input.nowUnixMs)
+  )
+
+  return new PublicNip90MarketStreamStats({
+    jobsSettled24h: streamReceipts24h.length,
+    jobsSettledTotal: streamReceipts.length,
+    receiptRefs: uniqueRefs(streamReceipts.map(receipt => receipt.receiptRef)),
+    satsSettled24h: streamReceipts24h.reduce(
+      (total, receipt) => total + receipt.amountSats,
+      0,
+    ),
+    satsSettledTotal: streamReceipts.reduce(
+      (total, receipt) => total + receipt.amountSats,
+      0,
+    ),
+    streamKind: input.streamKind,
+  })
+}
+
+const publicNip90MarketSettlementTotalsFromReceipts = async (
+  input: Readonly<{
+    marketReceiptStore: Nip90MarketReceiptStore
+    nowUnixMs: number
+  }>,
+): Promise<PublicNip90MarketSettlementTotals> => {
+  const receipts = (await input.marketReceiptStore.listSettledMarketReceipts(1000))
+    .map(publicNip90MarketReceiptFromRecord)
+    .filter((receipt): receipt is PublicNip90MarketSettlementReceipt =>
+      receipt !== null
+    )
+  const base = emptyAvailableMarketSettlementTotals()
+
+  return new PublicNip90MarketSettlementStats({
+    available: true,
+    caveatRefs: base.caveatRefs,
+    compute: marketStreamStatsFromReceipts({
+      nowUnixMs: input.nowUnixMs,
+      receipts,
+      streamKind: 'compute',
+    }),
+    data: marketStreamStatsFromReceipts({
+      nowUnixMs: input.nowUnixMs,
+      receipts,
+      streamKind: 'data',
+    }),
+    error: null,
+    labor: marketStreamStatsFromReceipts({
+      nowUnixMs: input.nowUnixMs,
+      receipts,
+      streamKind: 'labor',
+    }),
+    sourceRefs: uniqueRefs([
+      ...base.sourceRefs,
+      ...receipts.map(receipt => receipt.receiptRef),
+      ...receipts.map(receipt =>
+        `route:/api/public/nip90-market/receipts/${receipt.receiptRef}`
+      ),
+    ]),
+  })
 }
 
 const receiptPublicProjectionIsRealBitcoin = (
@@ -583,6 +733,9 @@ export const publicPylonStatsFromRegistrations = (
   settlementTotals: PublicPylonSettlementTotals = emptyUnavailableSettlementTotals(
     'Nexus/Pylon settlement receipt store unavailable.',
   ),
+  marketSettlementTotals: PublicNip90MarketSettlementTotals = emptyUnavailableMarketSettlementTotals(
+    'NIP-90 market receipt store unavailable.',
+  ),
 ): PublicPylonStats => {
   const eligibleRegistrations = registrations.filter(
     isActiveEligibleRegistration,
@@ -649,6 +802,7 @@ export const publicPylonStatsFromRegistrations = (
     nexusAcceptedWorkPayoutSatsPaid24h: settlementTotals.satsPaid24h,
     nexusAcceptedWorkPayoutReceiptRefs: [...settlementTotals.receiptRefs],
     nexusAcceptedWorkSettlementGate: settlementGate,
+    nip90MarketSettlementStats: marketSettlementTotals,
     trainingAssignedContributors: 0,
     trainingAcceptedContributors: 0,
     trainingModelProgressContributors: 0,
@@ -667,7 +821,11 @@ export const publicPylonStatsFromRegistrations = (
       'caveat.public.accepted_work_totals_require_settled_real_bitcoin_receipts',
       'caveat.public.no_sensitive_material',
     ],
-    sourceRefs: uniqueRefs([...sourceRefs, ...settlementTotals.sourceRefs]),
+    sourceRefs: uniqueRefs([
+      ...sourceRefs,
+      ...settlementTotals.sourceRefs,
+      ...marketSettlementTotals.sourceRefs,
+    ]),
   })
 }
 
@@ -739,6 +897,9 @@ export const publicPylonStatsFromNexusPayload = (
     nexusAcceptedWorkPayoutReceiptRefs: [...legacyTotals.receiptRefs],
     nexusAcceptedWorkSettlementGate:
       publicPylonAcceptedWorkSettlementGate(legacyTotals),
+    nip90MarketSettlementStats: emptyUnavailableMarketSettlementTotals(
+      'Legacy Nexus public payload did not include NIP-90 market receipts.',
+    ),
     trainingAssignedContributors: intValue(
       payload.training_assigned_contributors,
     ),
@@ -787,6 +948,7 @@ const unavailablePublicPylonStats = (error: string): PublicPylonStats =>
     nexusAcceptedWorkSettlementGate: publicPylonAcceptedWorkSettlementGate(
       emptyUnavailableSettlementTotals(error),
     ),
+    nip90MarketSettlementStats: emptyUnavailableMarketSettlementTotals(error),
     trainingAssignedContributors: 0,
     trainingAcceptedContributors: 0,
     trainingModelProgressContributors: 0,
@@ -805,6 +967,7 @@ const unavailablePublicPylonStats = (error: string): PublicPylonStats =>
 export const publicPylonStatsSnapshot = (
   input: Readonly<{
     nowUnixMs?: (() => number) | undefined
+    marketReceiptStore?: Nip90MarketReceiptStore | undefined
     receiptStore?: PublicPylonSettlementReceiptStore | undefined
     store: PublicPylonStatsStore
   }>,
@@ -822,6 +985,7 @@ export const publicPylonStatsSnapshot = (
       try: () => input.store.listRegistrations(1000),
     })
     const receiptStore = input.receiptStore
+    const marketReceiptStore = input.marketReceiptStore
     const settlementTotals =
       receiptStore === undefined
         ? emptyUnavailableSettlementTotals(
@@ -842,11 +1006,34 @@ export const publicPylonStatsSnapshot = (
               Effect.succeed(emptyUnavailableSettlementTotals(error.reason)),
             ),
           )
+    const marketSettlementTotals =
+      marketReceiptStore === undefined
+        ? emptyUnavailableMarketSettlementTotals(
+            'NIP-90 market receipt store unavailable.',
+          )
+        : yield* Effect.tryPromise({
+            catch: error =>
+              new PublicPylonStatsSnapshotError({
+                reason: error instanceof Error ? error.message : String(error),
+              }),
+            try: () =>
+              publicNip90MarketSettlementTotalsFromReceipts({
+                marketReceiptStore,
+                nowUnixMs,
+              }),
+          }).pipe(
+            Effect.catch(error =>
+              Effect.succeed(
+                emptyUnavailableMarketSettlementTotals(error.reason),
+              )
+            ),
+          )
 
     return publicPylonStatsFromRegistrations(
       registrations,
       nowUnixMs,
       settlementTotals,
+      marketSettlementTotals,
     )
   }).pipe(
     Effect.catch(error =>

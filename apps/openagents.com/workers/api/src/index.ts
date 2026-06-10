@@ -232,12 +232,14 @@ import {
 } from './provider-accounts'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
+import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { handlePylonCapacityFunnelApi } from './pylon-capacity-funnel-live-routes'
 import { makeD1PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
+import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
 import { handleResendWebhook } from './resend-webhooks'
 import {
   OpenAgentsWorkerRequest,
@@ -5249,6 +5251,10 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
   requireAdminApiToken,
 })
 
+const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
+  makeStore: env => makeD1Nip90MarketReceiptStore(openAgentsDatabase(env)),
+})
+
 const blueprintRoutes = makeBlueprintRoutes<Env>({
   listActionSubmissions: env =>
     listBlueprintActionSubmissions(openAgentsDatabase(env)),
@@ -5957,6 +5963,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
+  routePublicNip90MarketReceiptRequest:
+    publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeSiteCommerceRequest: (request, _env, _ctx) =>
     siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),

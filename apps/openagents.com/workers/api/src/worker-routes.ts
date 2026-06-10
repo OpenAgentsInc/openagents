@@ -45,6 +45,7 @@ type WorkerRouteDependencies = Readonly<{
   routeOmniRequest: OptionalEffectRoute
   routeOnboardingRequest: OptionalEffectRoute
   routeNexusPylonVisibilityRequest: OptionalEffectRoute
+  routePublicNip90MarketReceiptRequest: OptionalEffectRoute
   routePylonApiRequest: OptionalEffectRoute
   routeSiteCommerceRequest: OptionalEffectRoute
   routeSiteReferralInspectionRequest: OptionalEffectRoute
@@ -335,6 +336,13 @@ export const makeWorkerRouteRequest =
 
       if (nexusPylonVisibilityResponse !== undefined) {
         return yield* nexusPylonVisibilityResponse
+      }
+
+      const publicNip90MarketReceiptResponse =
+        dependencies.routePublicNip90MarketReceiptRequest(request, env, ctx)
+
+      if (publicNip90MarketReceiptResponse !== undefined) {
+        return yield* publicNip90MarketReceiptResponse
       }
 
       const operatorAdjutantResponse =
