@@ -51,6 +51,7 @@ describe("MDK wallet readiness and ledger", () => {
   test("classifies receive-ready without overclaiming send readiness", async () => {
     const status = await classifyMdkWallet(
       runner({ balance: { stdout: { balance_sats: 123, restored_mnemonic_only: true, outbound_capacity_sats: 0 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
     )
 
     expect(status.balanceSats).toBe(123)
@@ -58,6 +59,38 @@ describe("MDK wallet readiness and ledger", () => {
     expect(status.sendReady).toBe(false)
     expect(status.readiness).toBe("send-ready-blocked")
     expect(status.blockerRefs).toContain("blocker.wallet.send_readiness_unproven")
+    expect(status.blockerRefs).toContain("blocker.wallet.mnemonic_only_restore_not_send_ready")
+    expect(status.sendReadinessPreflight).toMatchObject({
+      mode: "mnemonic-only-restore",
+      outboundCapacityKnown: true,
+      outboundCapacityPositive: false,
+      portConfigured: true,
+      sendReady: false,
+    })
+  })
+
+  test("requires explicit MDK_WALLET_PORT before classifying send-ready", async () => {
+    const withoutPort = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      {} as NodeJS.ProcessEnv,
+    )
+    const withPort = await classifyMdkWallet(
+      runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
+    )
+
+    expect(withoutPort.sendReady).toBe(false)
+    expect(withoutPort.sendReadinessPreflight.portIsolationRef).toBe("mdk.port.default_possible_crosstalk")
+    expect(withoutPort.blockerRefs).toContain("blocker.wallet.mdk_port_unset")
+    expect(withPort.sendReady).toBe(true)
+    expect(withPort.readiness).toBe("send-ready")
+    expect(withPort.sendReadinessPreflight).toMatchObject({
+      mode: "original-wallet-home",
+      outboundCapacityKnown: true,
+      outboundCapacityPositive: true,
+      portConfigured: true,
+      sendReady: true,
+    })
   })
 
   test("admits only public-safe payout target refs", () => {
@@ -81,6 +114,7 @@ describe("MDK wallet readiness and ledger", () => {
     }
     const status = await classifyMdkWallet(
       runner({ balance: { stdout: { balance_sats: 123, send_ready: true, outbound_capacity_sats: 21 } } }),
+      { MDK_WALLET_PORT: "3457" } as NodeJS.ProcessEnv,
     )
 
     await reportWalletReadiness({ status }, {

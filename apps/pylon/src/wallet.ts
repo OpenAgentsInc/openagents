@@ -26,6 +26,7 @@ export type WalletStatusProjection = {
   readiness: WalletReadiness
   blockerRefs: string[]
   payoutTargetRefs: string[]
+  sendReadinessPreflight: SendReadinessPreflight
   settlementRefs: string[]
 }
 
@@ -36,6 +37,18 @@ export type WalletCommandResult = {
 }
 
 export type WalletCommandRunner = (args: string[]) => Promise<WalletCommandResult>
+
+export type SendReadinessPreflight = {
+  schema: "openagents.pylon.send_readiness_preflight.v0.3"
+  balanceKnown: boolean
+  blockerRefs: string[]
+  mode: "original-wallet-home" | "mnemonic-only-restore" | "unknown"
+  outboundCapacityKnown: boolean
+  outboundCapacityPositive: boolean
+  portConfigured: boolean
+  portIsolationRef: "mdk.port.configured" | "mdk.port.default_possible_crosstalk"
+  sendReady: boolean
+}
 
 export type WalletNetworkOptions = {
   agentToken?: string
@@ -93,6 +106,50 @@ function parseJson(stdout: string) {
   return JSON.parse(stdout) as Record<string, unknown>
 }
 
+function buildSendReadinessPreflight(input: {
+  balanceKnown: boolean
+  env: NodeJS.ProcessEnv
+  outboundCapacitySats: number | null
+  restoredMnemonicOnly: boolean
+  sendReadyClaimed: boolean
+}): SendReadinessPreflight {
+  const portConfigured = typeof input.env.MDK_WALLET_PORT === "string" && input.env.MDK_WALLET_PORT.trim() !== ""
+  const outboundCapacityKnown = input.outboundCapacitySats !== null
+  const outboundCapacityPositive = input.outboundCapacitySats !== null && input.outboundCapacitySats > 0
+  const mode = input.restoredMnemonicOnly
+    ? "mnemonic-only-restore"
+    : portConfigured && outboundCapacityKnown
+      ? "original-wallet-home"
+      : "unknown"
+  const blockerRefs = [
+    ...(portConfigured ? [] : ["blocker.wallet.mdk_port_unset"]),
+    ...(input.balanceKnown ? [] : ["blocker.wallet.balance_unknown"]),
+    ...(outboundCapacityKnown ? [] : ["blocker.wallet.outbound_capacity_unknown"]),
+    ...(outboundCapacityPositive ? [] : ["blocker.wallet.outbound_capacity_zero"]),
+    ...(input.restoredMnemonicOnly ? ["blocker.wallet.mnemonic_only_restore_not_send_ready"] : []),
+  ]
+  const sendReady =
+    input.sendReadyClaimed &&
+    portConfigured &&
+    input.balanceKnown &&
+    outboundCapacityPositive &&
+    !input.restoredMnemonicOnly
+
+  return {
+    schema: "openagents.pylon.send_readiness_preflight.v0.3",
+    balanceKnown: input.balanceKnown,
+    blockerRefs,
+    mode,
+    outboundCapacityKnown,
+    outboundCapacityPositive,
+    portConfigured,
+    portIsolationRef: portConfigured
+      ? "mdk.port.configured"
+      : "mdk.port.default_possible_crosstalk",
+    sendReady,
+  }
+}
+
 async function postPylonEvent(
   options: WalletNetworkOptions,
   input: {
@@ -126,9 +183,19 @@ async function postPylonEvent(
   return payload
 }
 
-export async function classifyMdkWallet(runner: WalletCommandRunner = defaultWalletCommandRunner) {
+export async function classifyMdkWallet(
+  runner: WalletCommandRunner = defaultWalletCommandRunner,
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const result = await runner(["balance"])
   if (result.exitCode !== 0) {
+    const sendReadinessPreflight = buildSendReadinessPreflight({
+      balanceKnown: false,
+      env,
+      outboundCapacitySats: null,
+      restoredMnemonicOnly: false,
+      sendReadyClaimed: false,
+    })
     return {
       schema: "openagents.pylon.wallet_status.v0.3",
       configured: false,
@@ -139,6 +206,7 @@ export async function classifyMdkWallet(runner: WalletCommandRunner = defaultWal
       readiness: "daemon-offline",
       blockerRefs: ["blocker.wallet.daemon_offline"],
       payoutTargetRefs: [],
+      sendReadinessPreflight,
       settlementRefs: [],
     } satisfies WalletStatusProjection
   }
@@ -153,6 +221,13 @@ export async function classifyMdkWallet(runner: WalletCommandRunner = defaultWal
           ? data.confirmed
           : null
   if (balance === null) {
+    const sendReadinessPreflight = buildSendReadinessPreflight({
+      balanceKnown: false,
+      env,
+      outboundCapacitySats: typeof data?.outbound_capacity_sats === "number" ? data.outbound_capacity_sats : null,
+      restoredMnemonicOnly: data?.restored_mnemonic_only === true,
+      sendReadyClaimed: data?.send_ready === true,
+    })
     return {
       schema: "openagents.pylon.wallet_status.v0.3",
       configured: true,
@@ -163,11 +238,25 @@ export async function classifyMdkWallet(runner: WalletCommandRunner = defaultWal
       readiness: "balance-unknown",
       blockerRefs: ["blocker.wallet.balance_unknown"],
       payoutTargetRefs: [],
+      sendReadinessPreflight,
       settlementRefs: [],
     } satisfies WalletStatusProjection
   }
 
-  const sendReady = data?.send_ready === true && data?.restored_mnemonic_only !== true && data?.outbound_capacity_sats !== 0
+  const sendReadinessPreflight = buildSendReadinessPreflight({
+    balanceKnown: true,
+    env,
+    outboundCapacitySats: typeof data?.outbound_capacity_sats === "number" ? data.outbound_capacity_sats : null,
+    restoredMnemonicOnly: data?.restored_mnemonic_only === true,
+    sendReadyClaimed: data?.send_ready === true,
+  })
+  const sendReady = sendReadinessPreflight.sendReady
+  const blockerRefs = sendReady
+    ? []
+    : [
+        "blocker.wallet.send_readiness_unproven",
+        ...sendReadinessPreflight.blockerRefs,
+      ]
   return {
     schema: "openagents.pylon.wallet_status.v0.3",
     configured: true,
@@ -176,8 +265,9 @@ export async function classifyMdkWallet(runner: WalletCommandRunner = defaultWal
     receiveReady: true,
     sendReady,
     readiness: sendReady ? "send-ready" : "send-ready-blocked",
-    blockerRefs: sendReady ? [] : ["blocker.wallet.send_readiness_unproven"],
+    blockerRefs: [...new Set(blockerRefs)],
     payoutTargetRefs: [],
+    sendReadinessPreflight,
     settlementRefs: [],
   } satisfies WalletStatusProjection
 }
