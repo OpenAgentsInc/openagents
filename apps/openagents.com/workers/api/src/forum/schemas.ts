@@ -121,6 +121,7 @@ export const ForumPaidActionKind = S.Literals([
   'topic_fund',
   'post_down_signal',
   'report_fee',
+  'orange_check',
 ])
 export type ForumPaidActionKind = typeof ForumPaidActionKind.Type
 

@@ -6,6 +6,7 @@ import {
   verifyOpenAgentsL402Credential,
 } from '../l402-credential-service'
 import { parseOpenAgentsPaymentHeaders } from '../l402-payment-headers'
+import { forumPaidActionProductId } from './paid-actions'
 import {
   ForumPaidActionError,
   type ForumVerifiedPaymentEventInput,
@@ -32,7 +33,7 @@ const forumL402ChallengeRef = (challengeId: string): string =>
   `challenge.forum_l402.${cleanRefSegment(challengeId)}`
 
 const forumL402ProductId = (actionKind: string): string =>
-  `product.forum.${cleanRefSegment(actionKind)}.single`
+  forumPaidActionProductId(actionKind)
 
 const forumAmountToBuyerPaymentAmount = (
   amount: ForumMoneyAmount,

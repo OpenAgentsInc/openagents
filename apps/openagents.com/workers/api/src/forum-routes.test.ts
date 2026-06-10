@@ -2325,6 +2325,29 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve({ success: true } as D1Result<T>)
     }
 
+    if (this.query.includes('INSERT OR IGNORE INTO orange_check_entitlements')) {
+      const actorRef = String(this.values[2])
+      const existing = this.store.orangeCheckEntitlements.find(
+        item => item.actor_ref === actorRef,
+      )
+
+      if (existing === undefined) {
+        this.store.orangeCheckEntitlements.push({
+          action_ref: String(this.values[4]),
+          actor_ref: actorRef,
+          agent_user_id: String(this.values[1]),
+          created_at: String(this.values[6]),
+          id: String(this.values[0]),
+          paid_amount_cents: Number(this.values[5]),
+          receipt_ref: String(this.values[3]),
+          state: 'active',
+          updated_at: String(this.values[7]),
+        })
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
     if (this.query.includes('UPDATE forum_topics')) {
       const topicId = String(this.values[2])
       const existing = this.store.topics.find(item => item.id === topicId)
@@ -3204,6 +3227,7 @@ const route = async (
   store: ForumRouteStore,
   path: string,
   options: Readonly<{
+    hostedMdkClient?: ReturnType<typeof forumHostedMdkClient>
     agentClaimed?: boolean
     agentMetadata?: Record<string, unknown>
     body?: unknown
@@ -3229,7 +3253,7 @@ const route = async (
   const request = new Request(`https://openagents.com${path}`, init)
   const effect = makeForumRoutes({
     agentStore: testAgentStore(options.agentMetadata),
-    hostedMdkClient: forumHostedMdkClient(),
+    hostedMdkClient: options.hostedMdkClient ?? forumHostedMdkClient(),
     l402SigningBoundary: forumL402SigningBoundary,
     makeId: () => store.nextId(),
     mdkWebhookConfig: {
@@ -6640,6 +6664,125 @@ describe('Forum routes', () => {
     })
     expect(store.reports[0]?.status).toBe('resolved')
     expect(store.moderationEvents).toHaveLength(3)
+  })
+
+  test('sells the orange check through preview, private payment, and redeem with entitlement fulfillment', async () => {
+    const store = new ForumRouteStore()
+    const path = '/api/forum/orange-check'
+    const previewResponse = await route(
+      store,
+      '/api/forum/paid-actions/preview',
+      {
+        body: {
+          actionKind: 'orange_check',
+          method: 'POST',
+          path,
+          requestBodyDigest: 'sha256:orange-check-purchase-body',
+          routeParams: {},
+          spendCap: { amount: 500, asset: 'usd' },
+          target: { forumId: null, postId: null, topicId: null },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'orange-check-preview-1',
+        },
+        method: 'POST',
+      },
+    )
+    const preview = (await previewResponse.json()) as Readonly<{
+      challenge: Readonly<{ challengeId: string }>
+    }>
+    const privatePaymentResponse = await route(
+      store,
+      '/api/forum/paid-actions/private-payment',
+      {
+        body: {
+          challengeId: preview.challenge.challengeId,
+          method: 'POST',
+          path,
+          requestBodyDigest: 'sha256:orange-check-purchase-body',
+          routeParams: {},
+          spendCap: { amount: 500, asset: 'usd' },
+        },
+        headers: { authorization: 'Bearer oa_agent_route_test' },
+        method: 'POST',
+      },
+    )
+    const privatePayment = (await privatePaymentResponse.json()) as Readonly<{
+      privatePayment: Readonly<{ credential: string; l402ProofRef: string }>
+    }>
+    const unpaidRedeem = await route(
+      store,
+      '/api/forum/paid-actions/redeem',
+      {
+        body: {
+          challengeId: preview.challenge.challengeId,
+          l402ProofRef: privatePayment.privatePayment.l402ProofRef,
+          method: 'POST',
+          path,
+          requestBodyDigest: 'sha256:orange-check-purchase-body',
+          routeParams: {},
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'orange-check-redeem-unpaid',
+          'x-openagents-l402': `${privatePayment.privatePayment.credential}:${privatePayment.privatePayment.l402ProofRef}`,
+        },
+        method: 'POST',
+      },
+    )
+    const baseClient = forumHostedMdkClient()
+    const paidClient = {
+      ...baseClient,
+      getCheckoutStatus: (
+        request: Parameters<typeof baseClient.getCheckoutStatus>[0],
+      ) =>
+        Effect.map(baseClient.getCheckoutStatus(request), status => ({
+          ...status,
+          status: 'payment_received' as const,
+        })),
+    }
+    const redeemResponse = await route(
+      store,
+      '/api/forum/paid-actions/redeem',
+      {
+        body: {
+          challengeId: preview.challenge.challengeId,
+          l402ProofRef: privatePayment.privatePayment.l402ProofRef,
+          method: 'POST',
+          path,
+          requestBodyDigest: 'sha256:orange-check-purchase-body',
+          routeParams: {},
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'orange-check-redeem-1',
+          'x-openagents-l402': `${privatePayment.privatePayment.credential}:${privatePayment.privatePayment.l402ProofRef}`,
+        },
+        hostedMdkClient: paidClient,
+        method: 'POST',
+      },
+    )
+    const redeem = (await redeemResponse.json()) as Readonly<{
+      orangeCheck: Readonly<{ active: boolean; badgeRef: string | null }>
+    }>
+
+    expect(previewResponse.status).toBe(200)
+    expect(privatePaymentResponse.status).toBe(200)
+    expect(unpaidRedeem.status).toBe(402)
+    await expect(unpaidRedeem.json()).resolves.toMatchObject({
+      error: 'orange_check_payment_not_received',
+    })
+    expect(redeemResponse.status).toBe(201)
+    expect(redeem.orangeCheck).toMatchObject({ active: true })
+    expect(store.orangeCheckEntitlements).toHaveLength(1)
+    expect(store.orangeCheckEntitlements[0]).toMatchObject({
+      actor_ref: expect.stringContaining('agent:'),
+      paid_amount_cents: 500,
+      state: 'active',
+    })
+    expect(JSON.stringify(redeem)).not.toMatch(/verified human|safe account/i)
+    expect(JSON.stringify(redeem)).not.toContain('lntbs')
   })
 
   test('projects orange-check badges on profiles and posts from active entitlements', async () => {

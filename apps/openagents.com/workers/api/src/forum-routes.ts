@@ -91,6 +91,7 @@ import {
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import {
+  grantOrangeCheckEntitlement,
   orangeCheckBadgeProjection,
   readActiveOrangeCheckByActorRef,
 } from './orange-check-entitlements'
@@ -699,6 +700,7 @@ const ForumPaidActionPriceByKind: Readonly<
   post_reply_fee: { amount: 25, asset: 'sats' },
   post_reward: { amount: 10, asset: 'sats' },
   report_fee: { amount: 25, asset: 'sats' },
+  orange_check: { amount: 500, asset: 'usd' },
   topic_boost: { amount: 250, asset: 'sats' },
   topic_create_fee: { amount: 100, asset: 'sats' },
   topic_fund: { amount: 250, asset: 'sats' },
@@ -756,16 +758,18 @@ const forumPaidActionAmountError = (
 
 const paidActionTargetObjectKind = (
   actionKind: ForumPaidActionKindType,
-): 'forum' | 'post' | 'topic' =>
-  actionKind === 'post_reward' ||
-  actionKind === 'post_boost' ||
-  actionKind === 'post_down_signal'
-    ? 'post'
-    : actionKind === 'topic_boost' ||
-        actionKind === 'topic_fund' ||
-        actionKind === 'post_reply_fee'
-      ? 'topic'
-      : 'forum'
+): 'forum' | 'post' | 'self' | 'topic' =>
+  actionKind === 'orange_check'
+    ? 'self'
+    : actionKind === 'post_reward' ||
+        actionKind === 'post_boost' ||
+        actionKind === 'post_down_signal'
+      ? 'post'
+      : actionKind === 'topic_boost' ||
+          actionKind === 'topic_fund' ||
+          actionKind === 'post_reply_fee'
+        ? 'topic'
+        : 'forum'
 
 const actorRefForForumActor = (actor: ForumWriterActorInput): string =>
   actor._tag === 'Agent'
@@ -818,6 +822,15 @@ const resolveForumPaidActionTarget = (
 > =>
   Effect.gen(function* () {
     const targetKind = paidActionTargetObjectKind(actionKind)
+
+    if (targetKind === 'self') {
+      return {
+        nonPayableDenial: null,
+        recipientActorRef: null,
+        recipientReadinessRef: null,
+        target: { forumId: null, postId: null, topicId: null },
+      }
+    }
 
     if (targetKind === 'post') {
       if (target.postId === null) {
@@ -2435,6 +2448,97 @@ const redeemPaidActionResponse = (
       nowIso: dependencies.nowIso?.() ?? currentIsoTimestamp(),
       signingBoundary: dependencies.l402SigningBoundary,
     })
+
+    if (challenge.actionKind === 'orange_check') {
+      if (actor._tag !== 'Agent') {
+        return noStoreJsonResponse(
+          {
+            error: 'orange_check_requires_agent',
+            reason:
+              'Orange check purchases are self-purchases by registered agent tokens.',
+          },
+          { status: 403 },
+        )
+      }
+
+      const l402 = challenge.l402
+
+      if (
+        l402 === null ||
+        l402.checkoutRef === null ||
+        dependencies.hostedMdkClient === undefined
+      ) {
+        return noStoreJsonResponse(
+          {
+            error: 'orange_check_payment_unverifiable',
+            reason:
+              'Orange check fulfillment requires a hosted checkout binding.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const checkoutStatus = yield* dependencies.hostedMdkClient
+        .getCheckoutStatus({
+          checkoutRef: l402.checkoutRef,
+          environment: l402.environment,
+          providerRef: l402.providerRef,
+          sandbox: l402.sandbox,
+          siteRef: null,
+        })
+        .pipe(
+          Effect.mapError(
+            () =>
+              new ForumPaidActionError({
+                kind: 'payment_verification_failed',
+                reason:
+                  'Orange check checkout status could not be confirmed with the payment provider.',
+              }),
+          ),
+        )
+
+      if (checkoutStatus.status !== 'payment_received') {
+        return noStoreJsonResponse(
+          {
+            checkoutStatus: checkoutStatus.status,
+            error: 'orange_check_payment_not_received',
+            reason:
+              'Pay the checkout invoice first; fulfillment requires provider payment_received status.',
+          },
+          { status: 402 },
+        )
+      }
+
+      const orangeRedemption = yield* redeemForumPaidAction(db, {
+        actorRef: actorRefForForumActor(actor),
+        challengeId: body.challengeId,
+        idempotencyKey,
+        l402ProofRef: body.l402ProofRef,
+        method: body.method,
+        path: body.path,
+        paymentEvent,
+        recipientActorRef: resolved.recipientActorRef,
+        recipientReadinessRef: resolved.recipientReadinessRef,
+        requestBodyDigest: body.requestBodyDigest,
+        routeParams: body.routeParams ?? {},
+      })
+      const entitlement = yield* grantOrangeCheckEntitlement(db, {
+        actionRef: `forum_paid_action.orange_check.${challenge.challengeId}`,
+        actorRef: actorRefForForumActor(actor),
+        agentUserId: actor.session.user.id,
+        nowIso: dependencies.nowIso?.() ?? currentIsoTimestamp(),
+        paidAmountCents: 500,
+        receiptRef: `orange_check_receipt.${challenge.challengeId}`,
+      })
+
+      return noStoreJsonResponse(
+        {
+          ...orangeRedemption,
+          orangeCheck: orangeCheckBadgeProjection(entitlement),
+        },
+        { status: orangeRedemption.replayed ? 200 : 201 },
+      )
+    }
 
     const redemption = yield* redeemForumPaidAction(db, {
       actorRef: actorRefForForumActor(actor),

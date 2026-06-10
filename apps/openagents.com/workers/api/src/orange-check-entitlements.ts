@@ -59,6 +59,54 @@ const entitlementFromRow = (row: EntitlementRow): OrangeCheckEntitlement => ({
 
 export class OrangeCheckStorageError extends Error {}
 
+export const grantOrangeCheckEntitlement = (
+  db: D1Database,
+  input: Readonly<{
+    actionRef: string
+    actorRef: string
+    agentUserId: string
+    nowIso: string
+    paidAmountCents: number
+    receiptRef: string
+  }>,
+): Effect.Effect<OrangeCheckEntitlement | null> =>
+  Effect.promise(async () => {
+    try {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO orange_check_entitlements (
+            id, agent_user_id, actor_ref, state, receipt_ref, action_ref,
+            paid_amount_cents, created_at, updated_at
+          ) VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          `orange_check_${input.agentUserId}`,
+          input.agentUserId,
+          input.actorRef,
+          input.receiptRef,
+          input.actionRef,
+          input.paidAmountCents,
+          input.nowIso,
+          input.nowIso,
+        )
+        .run()
+
+      const row = await db
+        .prepare(
+          `SELECT *
+           FROM orange_check_entitlements
+           WHERE actor_ref = ?
+           LIMIT 1`,
+        )
+        .bind(input.actorRef)
+        .first<EntitlementRow>()
+
+      return row === null ? null : entitlementFromRow(row)
+    } catch {
+      return null
+    }
+  })
+
 export const readActiveOrangeCheckByActorRef = (
   db: D1Database,
   actorRef: string,

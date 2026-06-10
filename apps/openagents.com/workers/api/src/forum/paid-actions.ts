@@ -426,8 +426,15 @@ const paymentProofRefForChallenge = (challengeId: string): string =>
 const endpointRefForAction = (actionKind: ForumPaidActionKind): string =>
   `endpoint.forum_paid_action.${cleanRefSegment(actionKind)}`
 
+export const ORANGE_CHECK_MDK_PRODUCT_ID = 'cmq7ikvjx00c0ad0yz9sti7qu'
+
+export const forumPaidActionProductId = (actionKind: string): string =>
+  actionKind === 'orange_check'
+    ? ORANGE_CHECK_MDK_PRODUCT_ID
+    : `product.forum.${cleanRefSegment(actionKind)}.single`
+
 const productIdForAction = (actionKind: ForumPaidActionKind): string =>
-  `product.forum.${cleanRefSegment(actionKind)}.single`
+  forumPaidActionProductId(actionKind)
 
 const entitlementScopeRefForAction = (
   actionKind: ForumPaidActionKind,
