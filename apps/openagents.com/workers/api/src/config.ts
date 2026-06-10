@@ -70,6 +70,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   TREASURY_DISPATCH_LIQUIDITY_BUFFER_SATS?: string | undefined
   TREASURY_DISPATCH_PAYMENT_TIMEOUT_SECS?: string | undefined
   TREASURY_DISPATCH_PER_RUN_REWARD_CAP?: string | undefined
+  WITHDRAWAL_DESTINATION?: string | undefined
 }>
 
 export const OpenAgentsAppUrl = S.String.pipe(S.brand('OpenAgentsAppUrl'))

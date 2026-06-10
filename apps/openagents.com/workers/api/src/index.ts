@@ -157,6 +157,10 @@ import {
   makeOpenAgentsHostedMdkRouteClient,
 } from './hosted-mdk-client'
 import {
+  mdkContainerEnvVars,
+  optionalMdkContainerSecret,
+} from './mdk-container-env'
+import {
   forbidden,
   methodNotAllowed,
   noStoreJsonResponse,
@@ -418,32 +422,6 @@ class UnsupportedAuthProvider extends S.TaggedErrorClass<UnsupportedAuthProvider
     provider: S.String,
   },
 ) {}
-
-const optionalMdkContainerSecret = (
-  value: string | undefined,
-): string | undefined => {
-  const trimmed = value?.trim()
-
-  return trimmed === undefined || trimmed === '' ? undefined : trimmed
-}
-
-const mdkContainerEnvVars = (
-  environment: OpenAgentsWorkerConfigEnv,
-): Record<string, string> => {
-  const accessToken = optionalMdkContainerSecret(environment.MDK_ACCESS_TOKEN)
-  const mnemonic = optionalMdkContainerSecret(environment.MDK_MNEMONIC)
-  const webhookSecret = optionalMdkContainerSecret(
-    environment.MDK_WEBHOOK_SECRET,
-  )
-
-  return {
-    ...(accessToken === undefined ? {} : { MDK_ACCESS_TOKEN: accessToken }),
-    ...(mnemonic === undefined ? {} : { MDK_MNEMONIC: mnemonic }),
-    ...(webhookSecret === undefined
-      ? {}
-      : { MDK_WEBHOOK_SECRET: webhookSecret }),
-  }
-}
 
 export class MdkSidecarContainer extends Container<Env> {
   override defaultPort = 8080

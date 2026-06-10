@@ -61,11 +61,16 @@ The destination is read from `process.env.WITHDRAWAL_DESTINATION` on the node
 side **by design** — mdk.com cannot redirect funds even if the dashboard or
 platform key is compromised.
 
-Current state in this repo: `WITHDRAWAL_DESTINATION` is not set anywhere
-(worker vars, sidecar env, or secrets). Under the decision above it is an
-optional revenue-withdrawal convenience — set it to the treasury wallet's
-offer if revenue should fund the campaign, or to the owner's wallet for
-ordinary withdrawals — and it is not on the per-agent payout path.
+Current state in this repo: the Worker passes the optional
+`WITHDRAWAL_DESTINATION` secret through to the MDK sidecar container and the
+sidecar reports only `withdrawalDestinationConfigured` on `/healthz`. The raw
+destination is still operator-secret material and is not tracked in worker
+vars, docs, fixtures, issue comments, or checked-in env files. Under the
+decision above it is an optional revenue-withdrawal convenience — set it to
+the treasury wallet's offer if revenue should fund the campaign, or to the
+owner's wallet for ordinary withdrawals — and it is not on the per-agent payout
+path. The live dashboard funding hop is tracked by
+`2026-06-10-mdk-dashboard-treasury-funding-runbook.md`.
 
 ## Why the payouts flow is not the per-agent path
 

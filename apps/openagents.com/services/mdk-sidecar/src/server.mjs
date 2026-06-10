@@ -15,6 +15,9 @@ const readBody = request =>
     .arrayBuffer()
     .then(buffer => (buffer.byteLength === 0 ? null : buffer))
 
+const envConfigured = value =>
+  typeof value === 'string' && value.trim().length > 0
+
 const toMdkRequest = async request => {
   const url = new URL(request.url)
   url.pathname = '/api/mdk'
@@ -34,8 +37,11 @@ const handleRequest = async request => {
     return json(200, {
       ok: true,
       service: 'openagents-mdk-sidecar',
-      mdkAccessTokenConfigured: Boolean(process.env.MDK_ACCESS_TOKEN),
-      mdkMnemonicConfigured: Boolean(process.env.MDK_MNEMONIC),
+      mdkAccessTokenConfigured: envConfigured(process.env.MDK_ACCESS_TOKEN),
+      mdkMnemonicConfigured: envConfigured(process.env.MDK_MNEMONIC),
+      withdrawalDestinationConfigured: envConfigured(
+        process.env.WITHDRAWAL_DESTINATION,
+      ),
     })
   }
 

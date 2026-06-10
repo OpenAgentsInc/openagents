@@ -364,6 +364,10 @@ const committedRawPaymentLeakPatterns = [
     pattern: /\bMDK_WEBHOOK_SECRET\s*=\s*(?!<|$|`|\s)[^\s`]+/iu,
   },
   {
+    label: 'assigned MDK withdrawal destination',
+    pattern: /\bWITHDRAWAL_DESTINATION\s*=\s*(?!<|$|`|\s)[^\s`]+/iu,
+  },
+  {
     label: 'raw BOLT11 invoice',
     pattern: /\b(?:lnbc|lntb|lnbcrt)[0-9a-z]{48,}\b/iu,
   },
