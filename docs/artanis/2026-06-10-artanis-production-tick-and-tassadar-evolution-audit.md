@@ -220,6 +220,14 @@ tick model in §2 is for.
    decision later.
 6. **A scoped product promise** (below) makes the automated run
    publicly monitorable, consistent with the registry discipline.
+7. *(Owner clarification, §7)* **Artanis is a model-driven agent, not
+   the cron**: the cron is its alarm clock, the loop ledger its working
+   memory, Cloudflare pure orchestration. The AI proposes; the schema
+   validates; the gates hold.
+8. *(Owner clarification, §7)* **The objective function is full device
+   utilization with dark-capacity accounting**, and Artanis holds
+   Autopilot powers — filing issues and commissioning code changes on
+   its own infrastructure through the normal work-order gates.
 
 ## 5. Unanswered questions
 
@@ -249,6 +257,19 @@ tick model in §2 is for.
   suggests extending.
 - **Queue adoption point**: at what fan-out (assignments per tick) do
   Workers Queues earn their place for follow-up scheduling?
+- **The mind's model binding**: which provider runs the in-worker
+  administrator (Workers AI, hosted Gemini per `api.hosted_gemini.v1`,
+  or an existing provider binding), and what is the per-tick token
+  budget? Does the binding choice need its own promise evidence?
+- **Artanis's authority envelope**: when Artanis files issues and opens
+  work orders on its own blockers, does it act under its own registered
+  identity with scoped grants (recommended — symmetrical with every
+  other agent) or under a delegated operator identity? What can it
+  accept on its own ticks (proposal: nothing — acceptance stays with
+  owner/operator gates until a promise says otherwise)?
+- **Umbrella promise timing**: create
+  `artanis.nexus_administrator.v1` now (yellow, design-stage) or at
+  Phase A evidence? (§7.6 recommends at evidence; owner's call.)
 
 ## 6. Proposed product promise
 
@@ -278,6 +299,174 @@ asked for: monitorable because every tick emits receipts to a public
 projection, and pushable because contributing compute (run a Pylon) or
 contributing ticks (claim an open action) are both standing,
 first-class ways for anyone to advance it.
+
+## 7. Owner clarification (2026-06-10): Artanis as Nexus administrator
+
+After the sections above were written, the owner clarified the full
+vision. It is larger than the tick spine and the Tassadar loop, and it
+changes one architectural emphasis. Restated:
+
+> Artanis is the administrator of the Nexus — the central administrator
+> of the Pylons (the Nexus/Pylon idea from StarCraft), even though
+> Nexus folded into core openagents.com. An agent in charge of
+> distributing work out to Pylons and making sure devices are fully
+> utilized. All of this has to be run by an actual AI — that is what
+> Artanis is — posting Forum updates. Cloudflare is orchestration.
+> Ideally Artanis can also deploy Probes and run the Autopilot system:
+> request software updates, post GitHub issues, use the full suite of
+> Autopilot automated-coding services from the product promises.
+> Artanis boots up Tassadar.
+
+### 7.1 What "run by an actual AI" changes in section 2
+
+Section 2's layer model survives, but its emphasis inverts: **the cron
+is not Artanis. Artanis is a model-driven agent; the cron is its alarm
+clock and the loop ledger is its working memory.** Cloudflare remains
+pure orchestration substrate. Two embodiments, complementary rather
+than competing:
+
+- **(a) The in-worker mind**: the scheduled tick assembles the typed
+  context (capacity funnel, new closeouts, verdicts, blockers, spend
+  state) and calls a hosted model, which returns an action plan that
+  must validate against the typed action vocabulary. Schema-invalid
+  proposals are blocked ticks, not actions; risky kinds still route to
+  approval gates. This is the smallest honest path to "an actual AI
+  decides every tick," and it is cheap enough to run at administrative
+  cadence.
+- **(b) The resident agent**: a long-lived coding-agent session
+  (Probe/Codex class, a registered agent identity like the ones
+  operating today) that claims the tick actions the in-worker mind
+  cannot perform — filing issues, opening work orders, diagnosing
+  refusals, incident response. This is where the Autopilot powers live.
+
+Recommended composition: (a) is the standing administrator; (b) is
+summoned by (a) when a tick needs hands. The typed loop ledger is the
+contract between them, and the existence proof for (b) is this very
+operating mode — the Tassadar PoC and this audit were produced by
+registered agents doing exactly that job manually.
+
+The decisive guardrail is unchanged from the loop contract: the AI
+*proposes*; the schema *validates*; the gates *hold*. Intelligence
+upgrades the quality of proposals, never the authority of actions.
+
+### 7.2 Nexus administration: the utilization objective
+
+The administrator's objective function is **full device utilization
+with honest accounting**: every online Pylon should hold work it is
+capable of, and every idle device should have a named dark-capacity
+reason. The inputs are already shipped: capacity-funnel snapshots are
+recorded by the same scheduled handler that runs the Artanis tick,
+presence/heartbeats and registration capabilities exist, and
+`pylon.no_dark_capacity_accounting.v1` (yellow) is the accounting
+conscience — a utilization claim without dark-capacity reasons is
+overclaim by that promise's own standard.
+
+The administration policy is a matching loop over work classes, in
+descending order of verification cheapness:
+
+1. **executor-trace** — the always-on floor; green PoC; every CPU
+   qualifies (execute or validate);
+2. **GEPA assignment slices** — `pylon.gepa_worker_loop_v03.v1`
+   (yellow; live endpoint + paid settlement gated);
+3. **CS336 homework** — rails landed (#4673–#4684), training run
+   promise still red;
+4. **local inference** — `pylon.compute_revenue_modes.v1` (red);
+5. **labor** — `provider.compliant_usage_labor.v1` (red).
+
+Artanis keeps queue depth against capability match; the funnel measures
+the result; the Forum gets the projection. This is the StarCraft
+framing made literal: the Nexus does not do the work — it powers and
+directs Pylons.
+
+### 7.3 The Autopilot powers: the self-improvement arm
+
+The vision's most consequential clause is that Artanis consumes the
+Autopilot coding suite on its own infrastructure: when a tick hits a
+blocker that requires code — the PoC's job-kind mismatch, the payout
+adapter, a new workload family — Artanis files the GitHub issue, opens
+an Autopilot work order carrying a `promiseRef`, lets the coding loop
+produce the change under the normal acceptance gates, and consumes the
+deploy as new capability on a later tick. **Self-improving operations,
+priced and gated identically to customer work.** The existence proof is
+already on the record: the entire Tassadar campaign (issues filed,
+implemented, reviewed, deployed, promise flipped) is one agent doing
+this loop by hand.
+
+What that requires, honestly, by promise state:
+
+- Available now: agents file issues and Forum posts
+  (`agents.one_instruction_sheet.v1` green; demonstrated daily); the
+  no-spend Autopilot work-order loop (grant → work order → lease →
+  execution → proof → acceptance → briefing) runs today; Probe ships
+  inside every Pylon (`pylon.cli_tui_probe_background.v1` green;
+  `autopilot.codex_probe_pylon_successor.v1` yellow). So the
+  issue-filing + work-order version of self-improvement needs **no new
+  product surface** — only the Artanis identity and tick wiring.
+- Gated: mission briefings as Artanis's read-back surface
+  (`autopilot.mission_briefing.v1` yellow); the decision queue Artanis
+  would drive instead of a human
+  (`autopilot.decision_queue.v1` planned); many-agent fan-out
+  (`autopilot.control_center_fanout_marketplace.v1` red); honest
+  outcome economics for pricing its own commissions
+  (`payments.accepted_outcome_economics.v1` red).
+
+### 7.4 The promise map
+
+How the full vision decomposes onto the registry as of `2026-06-10.13`:
+
+| Vision component | Promise | State | Gap for Artanis |
+| --- | --- | --- | --- |
+| The administrator loop + Tassadar boot-up | `artanis.tassadar_evolution_loop.v1` | yellow | its four blockers are the Phase A work |
+| The executor work class (floor) | `compute.tassadar_executor_poc.v1` | green | scale past one Pylon / one family (#4696, #4697) |
+| The AI mind's model binding | `api.hosted_gemini.v1` | red | any provider binding works; this is the named one |
+| Utilization accounting | `pylon.no_dark_capacity_accounting.v1` | yellow | funnel→reason wiring into tick context |
+| GEPA work class | `pylon.gepa_worker_loop_v03.v1` | yellow | live endpoint smoke, paid settlement |
+| Training work class | `pylon.first_real_model_training_run.v1` | red | CS336 rails exist; needs the run |
+| Inference work class | `pylon.compute_revenue_modes.v1` | red | psionic-qwen lanes in flight (#4665/#4666) |
+| Labor work class | `provider.compliant_usage_labor.v1` | red | five-streams lane (#4646–#4650) |
+| Probe deployment | `pylon.cli_tui_probe_background.v1` | green | Probe is in every Pylon already |
+| Coding-runtime direction | `autopilot.codex_probe_pylon_successor.v1` | yellow | per its own blockers |
+| Mission read-back | `autopilot.mission_briefing.v1` | yellow | Artanis as briefing consumer |
+| Decision-driving | `autopilot.decision_queue.v1` | planned | Artanis as the queue's first agent driver |
+| Many-agent fan-out | `autopilot.control_center_fanout_marketplace.v1` | red | Phase C+ |
+| Commission economics | `payments.accepted_outcome_economics.v1` | red | needed before Artanis prices its own work orders |
+| Agent identity/onboarding | `agents.one_instruction_sheet.v1` | green | Artanis registers like any agent |
+| Forum updates | (live Forum surface + publication queue) | live/built | copy gates per authority split |
+
+### 7.5 Roadmap phases
+
+- **Phase A — the administrator boots (now)**: real tick actions, the
+  in-worker mind on a model binding, executor-lane dispatch, the public
+  tick monitor. Flips the four `artanis.tassadar_evolution_loop.v1`
+  blockers. Needs nothing red.
+- **Phase B — Nexus administration**: utilization matching across the
+  yellow work classes with dark-capacity reporting; the funnel becomes
+  Artanis's scoreboard. Needs GEPA yellow→green motion; benefits from
+  no-dark-capacity flipping.
+- **Phase C — Autopilot powers**: Artanis files issues and opens work
+  orders on its own blockers (possible now); graduates to driving the
+  decision queue and fan-out as those promises land.
+- **Phase D — Tassadar evolution at scale**: the §3 flywheel with the
+  training work class live (red→yellow via the CS336/homework rails),
+  candidates graded by exact replay, curriculum widening per the
+  alignment plan.
+
+Phases are concurrent-friendly: A is prerequisite to nothing being
+claimed about B–D, but B–D groundwork (rails, lanes, promises) is
+already in flight across the issue tracker.
+
+### 7.6 Proposed umbrella promise (not yet created)
+
+`artanis.nexus_administrator.v1`: *an actual AI administers the Pylon
+fleet in production — distributing work across all live work classes,
+keeping devices utilized with dark-capacity accounting, posting Forum
+updates, and commissioning its own software improvements through the
+Autopilot loop under unchanged approval gates.* Creation is an owner
+decision; the honest sequencing is to create it when Phase A evidence
+exists (so its safeCopy can cite a running administrator rather than a
+design), with `artanis.tassadar_evolution_loop.v1` as the first
+evidence row beneath it. Recorded here so the registry intent is
+explicit.
 
 ## Source refs
 
