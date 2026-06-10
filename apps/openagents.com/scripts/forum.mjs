@@ -790,7 +790,15 @@ const blindedPathFirstNodeIds = value => {
       return identities.length === 0 ? null : identities
     }
 
-    identities.push(hexFromBytes(value.slice(offset, offset + firstNodeIdLength)))
+    // Only short-channel-id path entries identify the receiving wallet.
+    // Pubkey-form entries name the shared LSP introduction node, which is
+    // identical across unrelated wallets behind the same LSP.
+    if (firstNodeIdLength === 9) {
+      identities.push(
+        hexFromBytes(value.slice(offset, offset + firstNodeIdLength)),
+      )
+    }
+
     offset += firstNodeIdLength + 33
     const numHops = value[offset]
     offset += 1
@@ -826,7 +834,7 @@ export const bolt12OfferIdentityRefs = offer => {
     if (record.type === 16) {
       const firstNodeIds = blindedPathFirstNodeIds(record.value)
 
-      if (firstNodeIds !== null) {
+      if (firstNodeIds !== null && firstNodeIds.length > 0) {
         for (const firstNodeId of firstNodeIds) {
           identities.add(`path_entry:${firstNodeId}`)
         }

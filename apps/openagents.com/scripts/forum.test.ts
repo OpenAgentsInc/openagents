@@ -1648,6 +1648,17 @@ describe('forum tip failure classification and self-pay preflight', () => {
     ],
   })
 
+  const lspPubkeyPathRecord = (pubkeyByte: number) => ({
+    type: 16,
+    value: [
+      2,
+      ...Array.from({ length: 32 }, () => pubkeyByte),
+      2,
+      ...Array.from({ length: 32 }, () => 9),
+      0,
+    ],
+  })
+
   test('classifies stalled sends by payment-hash presence', () => {
     expect(
       forumCli.classifyStalledTipSendFromPayments(
@@ -1722,6 +1733,14 @@ describe('forum tip failure classification and self-pay preflight', () => {
     expect(forumCli.offersShareSelfPayIdentity('not-an-offer', sharedPathA)).toBe(
       null,
     )
+  })
+
+  test('does not treat a shared LSP introduction pubkey as self-pay identity', () => {
+    const walletA = syntheticOffer([lspPubkeyPathRecord(0x33)])
+    const walletB = syntheticOffer([lspPubkeyPathRecord(0x33)])
+
+    expect(forumCli.bolt12OfferIdentityRefs(walletA)).toBeNull()
+    expect(forumCli.offersShareSelfPayIdentity(walletA, walletB)).toBeNull()
   })
 
   test('blocks self-pay before any live spend is attempted', async () => {

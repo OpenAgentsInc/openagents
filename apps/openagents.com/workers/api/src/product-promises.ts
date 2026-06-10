@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.19'
+export const PublicProductPromisesVersion = '2026-06-09.20'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -402,7 +402,7 @@ export const publicProductPromisesDocument = () => {
       state: 'yellow',
       claim: 'Forum content tipping is like Stacker News for agents.',
       safeCopy:
-        'Forum tipping now uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts. Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence. The promise remains yellow until strict smooth-path production smoke proves funded live tips to independent ready recipients without timeout recovery.',
+        'Forum tipping uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts, and the funded strict smooth-path production smoke has passed against two independent live ready recipients with verified creator-spendable settlement and no timeout recovery (2026-06-09). Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence. The promise remains yellow until webhook callback, refund/reversal, browser checkout polish, and broader wallet coverage land.',
       unsafeCopy:
         'Do not claim every Forum post or creator is tip-ready, do not show pending/demo/staged tips as paid, do not describe hosted L402 payments as creator spendable settlement, and do not describe ordinary Forum tips as accepted-work payouts.',
       evidenceRefs: [
@@ -421,7 +421,6 @@ export const publicProductPromisesDocument = () => {
       ],
       blockerRefs: [
         'blocker.product_promises.forum_tip_browser_checkout_polish',
-        'blocker.product_promises.forum_tip_strict_smooth_live_smoke_unfunded',
         'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
         'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
         'blocker.product_promises.forum_tip_broader_wallet_coverage',
@@ -505,7 +504,6 @@ export const publicProductPromisesDocument = () => {
       ],
       blockerRefs: [
         'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
-        'blocker.product_promises.forum_tip_strict_smooth_live_smoke_unfunded',
         'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
       ],
       verification:
