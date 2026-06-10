@@ -1296,7 +1296,23 @@ const startXClaimResponse = async <
   const existing = await store.readActiveXChallengeByClaimId(current.id)
 
   if (existing !== undefined) {
-    return xClaimChallengeResponse(existing)
+    // Challenges minted before the 12-char code format that have not been
+    // tweeted yet are superseded with a fresh short code instead of being
+    // echoed back; once a tweet is bound or verified the nonce must not move.
+    const isPreTweet =
+      existing.state === 'pending_owner_session' ||
+      existing.state === 'pending_x_connection' ||
+      existing.state === 'pending_tweet'
+
+    if (!isPreTweet || existing.nonce.length <= 12) {
+      return xClaimChallengeResponse(existing)
+    }
+
+    await store.rejectXChallenge({
+      challengeId: existing.id,
+      now,
+      reason: 'superseded_by_short_verification_code',
+    })
   }
 
   const makeUuid = dependencies.makeUuid ?? randomUuid

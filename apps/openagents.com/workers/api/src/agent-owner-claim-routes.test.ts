@@ -919,6 +919,89 @@ describe('agent owner claim routes', () => {
     expect(body.xClaim.requiredText).toContain('Code: oa-x-f47ac10')
   })
 
+  test('supersedes a stale long-code challenge that has not been tweeted', async () => {
+    const store = new MemoryAgentOwnerClaimStore()
+    await createClaim(store, {
+      makeUuid: makeUuidFactory([
+        'claim-2',
+        'user-2',
+        'credential-2',
+        'identity-2',
+      ]),
+    })
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-2/approve',
+        { method: 'POST' },
+      ),
+      {
+        makeUuid: makeUuidFactory(['user-2', 'credential-2', 'identity-2']),
+        nowIso: () => '2026-06-06T00:05:00.000Z',
+        session,
+      },
+    )
+    await store.createXChallenge({
+      agentClaimId: 'agent_claim_claim-2',
+      agentUserId: 'user-2',
+      caveatRefsJson: '[]',
+      createdAt: '2026-06-06T00:05:30.000Z',
+      expiresAt: '2026-06-08T00:05:30.000Z',
+      id: 'agent_x_claim_legacy-long',
+      nonce: 'oa-x-709b776813a047cfbf0c8ce8',
+      ownerUserId: session.user.userId,
+      policyRefsJson: '[]',
+      receiptRef: 'agent_x_claim_receipt_agent_x_claim_legacy-long',
+      rejectedReason: null,
+      requiredText:
+        'Verifying my agent Claimed Agent is joining @OpenAgents\n\nCode: oa-x-709b776813a047cfbf0c8ce8',
+      requiredUrl:
+        'https://openagents.com/agents/claims/agent_claim_claim-2',
+      state: 'pending_tweet',
+      tweetRef: null,
+      tweetUrl: null,
+      updatedAt: '2026-06-06T00:05:30.000Z',
+      verifiedAt: null,
+      xAccountRef: 'x:pending:agent_x_claim_legacy-long',
+      xHandle: '',
+    })
+
+    const response = await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-2/x/challenge',
+        {
+          body: JSON.stringify({}),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory([
+          '123e4567-e89b-42d3-a456-426614174000',
+          'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+        ]),
+        nowIso: () => '2026-06-06T00:06:00.000Z',
+        session,
+      },
+    )
+    const body = (await response.json()) as {
+      xClaim: { nonce: string; state: string }
+    }
+
+    expect(response.status).toBe(201)
+    expect(body.xClaim.nonce).toBe('oa-x-f47ac10')
+    expect(body.xClaim.state).toBe('pending_tweet')
+
+    const superseded = await store.readXChallengeById(
+      'agent_x_claim_legacy-long',
+    )
+    expect(superseded?.state).toBe('rejected')
+    expect(superseded?.rejectedReason).toBe(
+      'superseded_by_short_verification_code',
+    )
+  })
+
   test('escapes friendly tweet copy inside the X intent URL', async () => {
     const store = new MemoryAgentOwnerClaimStore()
     await runRoute(
