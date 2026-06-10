@@ -121,6 +121,48 @@ describe('public treasury api', () => {
     expect(JSON.stringify(body)).not.toContain('paymentRef')
     expect(JSON.stringify(body)).not.toContain('bolt11')
   })
+
+  test('hides unpaid pending donation invoices from the public list', async () => {
+    const store = makeMemoryStore()
+    await store.insert({
+      amountSat: 0,
+      bolt11: 'lnbc1unpaid',
+      createdAt: '2026-06-10T18:10:00.000Z',
+      direction: 'in',
+      expiresAt: '2026-06-10T19:10:00.000Z',
+      id: 'treasury_donation_unpaid',
+      paymentRef: 'cd'.repeat(32),
+      settledAt: null,
+      state: 'pending',
+    })
+    await store.insert(settledOut('treasury_payout_1', 48))
+    const routes = makeRoutes({
+      containerResponses: {
+        '/balance': jsonResponse(200, { balanceSat: 442, maxSendableSat: 432 }),
+      },
+      store,
+    })
+
+    const response = await run(
+      routes.routeTreasuryPageRequest(
+        new Request('https://openagents.com/api/public/treasury'),
+      )!,
+    )
+    const body = (await response.json()) as {
+      transactions: Array<{ direction: string }>
+    }
+
+    expect(body.transactions).toHaveLength(1)
+    expect(body.transactions[0]?.direction).toBe('out')
+
+    const page = await run(
+      routes.routeTreasuryPageRequest(
+        new Request('https://openagents.com/treasury'),
+      )!,
+    )
+    const html = await page.text()
+    expect(html).not.toContain('pending')
+  })
 })
 
 describe('treasury page', () => {

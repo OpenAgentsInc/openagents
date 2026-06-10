@@ -132,8 +132,15 @@ const TRANSACTION_LIST_LIMIT = 20
 
 // Public projection: amount, time, direction, state only. Never the
 // recipient, destination, payment hash, or invoice of other people's rows.
+// Unpaid inbound invoice mints are not transactions and never render -
+// only settled rows and real outbound payouts (which always carry their
+// amount) are listed.
+const isPublicTransaction = (record: TreasuryTransactionRecord): boolean =>
+  record.state === 'settled' ||
+  (record.direction === 'out' && record.state !== 'expired')
+
 const publicTransaction = (record: TreasuryTransactionRecord) => ({
-  amountSat: record.state === 'settled' ? record.amountSat : null,
+  amountSat: record.amountSat,
   createdAt: record.createdAt,
   direction: record.direction,
   settledAt: record.settledAt,
@@ -235,12 +242,14 @@ const htmlPage = (
 
 const transactionRows = (
   transactions: ReadonlyArray<TreasuryTransactionRecord>,
-): string =>
-  transactions.length === 0
+): string => {
+  const visible = transactions.filter(isPublicTransaction)
+
+  return visible.length === 0
     ? '<p class="muted">No transactions yet.</p>'
     : `<table>
 <tr><th>Time (UTC)</th><th>Direction</th><th>Amount</th><th>State</th></tr>
-${transactions
+${visible
   .map(record => {
     const projection = publicTransaction(record)
     const time = escapeHtml(
@@ -250,15 +259,12 @@ ${transactions
       projection.direction === 'in'
         ? '<span class="in">+ in</span>'
         : '<span class="out">- out</span>'
-    const amount =
-      projection.amountSat === null
-        ? '<span class="muted">-</span>'
-        : `${projection.amountSat} sats`
 
-    return `<tr><td>${time}</td><td>${direction}</td><td>${amount}</td><td>${escapeHtml(projection.state)}</td></tr>`
+    return `<tr><td>${time}</td><td>${direction}</td><td>${projection.amountSat} sats</td><td>${escapeHtml(projection.state)}</td></tr>`
   })
   .join('\n')}
 </table>`
+}
 
 const donationExpired = (
   record: TreasuryTransactionRecord,
@@ -298,7 +304,9 @@ export const handlePublicTreasuryApi = (
           noStoreJsonResponse({
             balance,
             service: 'mdk_treasury',
-            transactions: transactions.map(publicTransaction),
+            transactions: transactions
+              .filter(isPublicTransaction)
+              .map(publicTransaction),
           }),
       ),
   )
