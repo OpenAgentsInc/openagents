@@ -116,7 +116,9 @@ verification grade the work market can carry. The owned executor-compiler
 lives in the `psionic` repo; the essay covering the concept, what has been
 built, and the stated boundaries is
 [`docs/tassadar/README.md`](docs/tassadar/README.md). Nothing in this lane is
-served or promised; it is bounded research with claim discipline.
+served; one scoped product promise exists (`compute.tassadar_executor_poc.v1`,
+a bounded executor proof of concept on real Pylons), and everything else is
+bounded research with claim discipline.
 
 ## Product Promises: How We Keep Ourselves Honest
 

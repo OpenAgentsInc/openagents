@@ -357,3 +357,154 @@ touching code blindly:
 - Psionic issues need external repo work or a documented dependency handoff.
 - Registry issues need transition receipts before product-promise edits.
 
+---
+
+# Fable Review And Next Delegation
+
+Appended 2026-06-10 by Fable (registered agent `fable-promise-auditor`),
+reviewing the work above on the owner's behalf against registry version
+`2026-06-10.7` and the live issue queue.
+
+## Review Verdict
+
+The work above checks out. I re-verified rather than trusting the report:
+
+- Re-ran the #4680 verification first-hand: 3 Worker test files (10 tests)
+  and the `smoke:cs336-a4:data-refinery` script (2 files, 9 tests) pass, and
+  the live `a4_eval_delta` leaderboard route serves the honest empty state
+  with the correct blocker ref. I posted the missing evidence comment the
+  agent was interrupted before posting.
+- Confirmed registry `2026-06-10.7` reflects the claimed transitions: tips,
+  MDK, orange check, X-claim reward, mission briefing, capacity funnel, and
+  the new scoped `compute.tassadar_executor_poc.v1` are all yellow with
+  accurate blockers; nothing the agent shipped is overclaimed as green.
+- Read the X owner-claim implementation directly
+  (`agent-owner-claim-routes.ts`): challenge nonce, state machine, tweet
+  verification, and the anti-Sybil reward ledger all exist and are tested.
+
+Two process criticisms stand: the Spark/Breez work generated duplicate issue
+forms (#4672/#4685/#4686) where one consolidated family was warranted, and
+several issue bodies still mix "land the code contract" with "prove it live,"
+which forces slow open-versus-done relitigating in comments. New issues should
+split those acceptance criteria into separately checkable items.
+
+## Blockers Identified
+
+Every remaining blocker on the campaign board falls into one of six classes:
+
+1. **Claim-flow UX gap.** The owner-claim machinery is server-complete but
+   owner-hostile: GitHub-session-first, machine-shaped tweet text, no tweet
+   button. Filed as #4688 with the full spec. This is the single highest
+   priority item on the board.
+2. **Operator spend/authority.** X-claim reward live dispatch smoke, tips
+   webhook/refund funded smokes, paid GEPA settlement, paid executor
+   closeout, npm publish auth for stable 0.3.0, and registry transitions all
+   wait on bounded operator actions, not code.
+3. **Real devices.** Multi-Pylon dispatch, separate-device replay,
+   Windows/WSL matrix evidence, and the two-device remote Qwen run.
+4. **External Psionic work.** A4 adapter conformance, A3/A5 model-coupled
+   loops, executor adapter ports.
+5. **Live receipts.** Empty leaderboards, referral payout, dataset sale, and
+   one-install stacking all need first verified rows, not new surfaces.
+6. **Public projection gaps.** Agent profile pages expose post/topic counts
+   but no browsable activity feed; an outside reviewer cannot walk an
+   agent's history from its profile. I hit this personally while auditing my
+   own record today.
+
+## Delegation: What The Agent Should Do Next
+
+Work these in order. Do not start a lower item while a higher item has
+unblocked agent-side work remaining. Group registry edits behind transition
+receipts as before.
+
+### D1. Tweet-first Claim Your Agent flow (#4688) — do this first
+
+Implement the X intent button, friendly required-text format
+(`Verifying my agent {displayName} is joining @OpenAgents` + `Code: {code}`),
+paste-back verification matched to the new copy, author binding from the
+verified tweet, and login deferred to verify/attach time. Keep a transition
+window for old-format tweets. Update AGENTS.md and OpenAPI claim
+descriptions. Then prepare (do not execute) the operator dispatch smoke for
+`agents.x_claim_reward.v1`: a runbook with exact commands, funding amount,
+and expected receipt rows, so the operator action is one sitting.
+
+### D2. Orange check to green
+
+`identity.orange_check_forum_signal.v1` has exactly one blocker:
+`orange_check_nostr_export_missing`. Implement the Nostr export path using
+the shared `nostr-effect` / `@openagents/nip90` primitives — no parallel
+Nostr code. Separately, write the deferred private-forum-tier (clubhouse)
+design doc with the privacy review questions answered, as a doc PR, not as
+shipped behavior.
+
+### D3. Tips yellow-to-green (#4653)
+
+Sequence: webhook live callback first (clears the shared blocker on
+`payments.money_dev_kit.v1` at the same time), then refund/reversal public
+smoke, then checkout polish, then one non-MDK recipient wallet settlement.
+Prepare the funded steps as operator runbooks with bounded amounts.
+
+### D4. Agent-record review surfaces
+
+Add a public, browsable activity feed to agent profile pages (topics and
+posts with dates, links, and receipt refs), so any agent's public record can
+be audited from its profile URL alone. File the issue with a strict
+projection boundary: public-safe rows only, no notification or private
+context leakage. This also serves the standing goal that agent work be
+reviewable by outsiders.
+
+### D5. Pylon v0.3 release cluster (#4654–#4663)
+
+Drive the stable 0.3.0 gate (#4662) by finishing its dependencies, prepare
+the live install-to-bitcoin smoke (#4658) as an operator runbook, and land
+capacity-funnel history (#4660) plus the provider lifecycle follow-ups so
+`pylon.no_dark_capacity_accounting.v1` can clear both blockers. Windows/WSL
+evidence (#4655) stays honestly blocked on hardware; say so rather than
+simulating it.
+
+### D6. Tassadar executor PoC (#4687)
+
+Follow the strict sequence in my triage comment: live multi-Pylon dispatch,
+separate-device replay verdict, then the smallest honest paid closeout.
+Reuse the device capacity stood up for D5. No public capability copy beyond
+the promise safeCopy.
+
+### D7. Artanis operator surfaces
+
+Refresh the Artanis status topics in the Artanis forum against current
+reality and verify `/api/public/artanis/report` and the public Pylon stats
+agree with the capacity funnel. Stale operator-status projections are
+promise-registry liabilities; fix or date-stamp them.
+
+### D8. Nostr market rails (#4641, #4642, and relay follow-ups)
+
+Continue compute-stream work on the shared NIP-90 package and the scoped
+market relay. The standing rule from this pass holds: start from
+`nostr-effect` and `@openagents/nip90`; any new parallel Nostr parser/router
+is a review-blocking defect. Keep the draft NIP specs (DS, SKL, SA, AC, TRN)
+in sync with shipped behavior.
+
+### D9. Distributed training program (#4675–#4684)
+
+Continue numerically. Priorities inside the lane: the A1 real-gradient run
+(#4678) once two real devices exist, validator assignments (#4676) as the
+weak-device on-ramp, and first verified receipt rows for the leaderboards
+(#4683). The empty-leaderboard honest state is correct; do not seed synthetic
+rows.
+
+## Operator Actions Requested (Bounded)
+
+1. Approve and run the X-claim reward dispatch smoke once D1's runbook lands.
+2. Fund the tips webhook callback and refund/reversal smokes (small sats).
+3. npm publish auth for `@openagentsinc/pylon@0.3.0` when #4662's gates pass.
+4. Make two or more real Pylon devices available for D5/D6/D9 evidence.
+5. Record transition receipts for any registry flips the above evidence
+   supports; agents will propose, not flip.
+
+## Review Receipts
+
+- Issue comments posted today: #4680 (evidence), #4653 (triage), #4687
+  (triage). Issue filed: #4688 (tweet-first claim flow).
+- Registry snapshot reviewed: `2026-06-10.7`, 35 promises, with the blocker
+  map enumerated per promise above.
+
