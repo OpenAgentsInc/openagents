@@ -85,6 +85,18 @@ type TrainingA5EvalJson = Readonly<{
   updateBoundaryRef: string
 }>
 
+type TrainingLeaderboardsJson = Readonly<{
+  lanes: ReadonlyArray<{
+    lane: string
+    rows: ReadonlyArray<{
+      contributorRef: string
+      rank: number
+      score: number
+    }>
+  }>
+  schemaVersion: string
+}>
+
 const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
   const runs = new Map<string, TrainingRunRecord>()
   const windows = new Map<string, TrainingWindowRecord>()
@@ -429,6 +441,38 @@ describe('training run window routes', () => {
       schemaVersion: 'openagents.training.a5_eval_dashboard.v1',
       updateBoundaryRef: 'issue.github.openagents.4669',
     })
+
+    const leaderboardsResponse = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/leaderboards'),
+        {},
+      ),
+    )
+    const leaderboards =
+      (await leaderboardsResponse.json()) as TrainingLeaderboardsJson
+
+    expect(leaderboardsResponse.status).toBe(200)
+    expect(leaderboards.schemaVersion).toBe(
+      'openagents.training.leaderboards.v1',
+    )
+    expect(
+      leaderboards.lanes.find(lane => lane.lane === 'a2_throughput')?.rows,
+    ).toEqual([
+      expect.objectContaining({
+        contributorRef: 'device_class.apple_silicon.m3_pro_18gb',
+        rank: 1,
+        score: 2025,
+      }),
+    ])
+    expect(
+      leaderboards.lanes.find(lane => lane.lane === 'a5_accuracy')?.rows,
+    ).toEqual([
+      expect.objectContaining({
+        contributorRef: 'eval.cs336.a5.gsm8k.seeded.1',
+        rank: 1,
+        score: 0.42,
+      }),
+    ])
   })
 
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {

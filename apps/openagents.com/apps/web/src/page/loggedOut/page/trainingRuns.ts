@@ -358,6 +358,48 @@ const summaryReceipts = (summary: PublicTrainingRunSummary): Html => {
   )
 }
 
+const leaderboardLinks = (): Html => {
+  const h = html<Message>()
+  const links = [
+    ['All lanes', '/api/training/leaderboards'],
+    ['A1 loss', '/api/training/leaderboards/a1_loss'],
+    ['A2 throughput', '/api/training/leaderboards/a2_throughput'],
+    ['A4 eval delta', '/api/training/leaderboards/a4_eval_delta'],
+    ['A5 accuracy', '/api/training/leaderboards/a5_accuracy'],
+  ] as const
+
+  return h.section(
+    [Ui.className<Message>(panelClass)],
+    [
+      panelHeader({
+        title: 'Receipt-Backed Leaderboards',
+        meta: 'Only verified closeout-backed rows can rank.',
+        status: 'Public',
+      }),
+      ...links.map(([label, href]) =>
+        h.a(
+          [
+            h.Href(href),
+            Ui.className<Message>(
+              `${rowClass} block hover:bg-white/[0.03]`,
+            ),
+          ],
+          [
+            h.div(
+              [],
+              [
+                h.div([Ui.className<Message>(rowLabelClass)], [label]),
+                h.div([Ui.className<Message>(rowDetailClass)], [href]),
+              ],
+            ),
+            h.div([Ui.className<Message>(rowValueClass)], ['JSON']),
+          ],
+        ),
+      ),
+    ],
+  )
+}
+
 const runList = (
   summaries: ReadonlyArray<PublicTrainingRunSummary>,
   selectedRunId: string | null,
@@ -482,6 +524,7 @@ export const view = (
                 [
                   summaryMetrics(summary),
                   summaryRealGradient(summary),
+                  leaderboardLinks(),
                   summaryWindows(summary),
                   summaryReceipts(summary),
                 ],

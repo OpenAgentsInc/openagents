@@ -8,6 +8,10 @@ import {
 } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  TrainingLeaderboardLanes,
+  buildTrainingLeaderboardsProjection,
+} from './training-leaderboards'
 import { publicDeviceCapabilityProjection } from './training-device-capability'
 import {
   type TrainingAuthorityStore,
@@ -418,6 +422,82 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  laneFilter?: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const runs = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listRuns(50),
+    })
+    const inputs = yield* Effect.forEach(runs, run =>
+      Effect.gen(function* () {
+        const windows = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowsForRun(run.trainingRunRef, 100),
+        })
+        const leases = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowLeasesForRun(run.trainingRunRef, 1000),
+        })
+        const challenges = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
+        })
+
+        return {
+          a2Projection: publicDeviceCapabilityProjection({
+            challenges,
+            leases,
+            run,
+            windows,
+          }),
+          a5Projection: publicCs336A5EvalProjection({
+            challenges,
+            leases,
+            run,
+            windows,
+          }),
+          summary: publicTrainingRunSummary({
+            challenges,
+            leases,
+            nowIso,
+            run,
+            windows,
+          }),
+        }
+      }),
+    )
+    const projection = buildTrainingLeaderboardsProjection({
+      a2Projections: inputs.map(input => input.a2Projection),
+      a5Projections: inputs.map(input => input.a5Projection),
+      runs,
+      summaries: inputs.map(input => input.summary),
+    })
+    const lanes =
+      laneFilter === undefined
+        ? projection.lanes
+        : projection.lanes.filter(lane => lane.lane === laneFilter)
+
+    if (laneFilter !== undefined && lanes.length === 0) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training leaderboard lane not found.',
+      })
+    }
+
+    return noStoreJsonResponse({
+      ...projection,
+      blockerRefs: lanes.flatMap(lane => lane.blockerRefs),
+      lanes,
+    })
+  })
+
 const routeA3IsoFlop = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -658,6 +738,43 @@ export const makeTrainingRunWindowRoutes = <
       }
 
       return routeA1Leaderboard(dependencies, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/training/leaderboards') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeTrainingLeaderboards(dependencies, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    const leaderboardLaneMatch =
+      /^\/api\/training\/leaderboards\/([^/]+)$/.exec(url.pathname)
+
+    if (leaderboardLaneMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const lane = decodeURIComponent(leaderboardLaneMatch[1]!)
+
+      if (!TrainingLeaderboardLanes.some(knownLane => knownLane === lane)) {
+        return Effect.succeed(
+          noStoreJsonResponse(
+            {
+              error: 'training_leaderboard_lane_not_found',
+              reason: 'Training leaderboard lane not found.',
+            },
+            { status: 404 },
+          ),
+        )
+      }
+
+      return routeTrainingLeaderboards(dependencies, env, lane).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
     }
