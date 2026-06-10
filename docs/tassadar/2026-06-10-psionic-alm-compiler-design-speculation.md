@@ -236,6 +236,20 @@ Every phase lands behind the existing publication gates; none of it
 creates public claim copy until the disclosure flow approves, and no
 OpenAgents registry promise exists or should exist before E3 at minimum.
 
+**Batch-2 landings (2026-06-10, psionic #1104–#1108):** the universal
+stack-ISA interpreter with six-way agreement (#1104, the bounded E3); the
+symbolic-IR → ALM bridge making every committed symbolic example an
+executor-compiler conformance case (#1105); the exact trace-replay
+verification class `exact_trace_replay.alm_compiled.v1` with full-replay
+and window verdicts (#1106 — the reference for openagents #4674/#4684);
+the bounded differential check harness (#1107), which on its first run
+found and fixed two real scheduler bugs (same-channel cumsum reordering;
+same-step write-order hazard) that all hand-written workload tests had
+missed — the invariant-first item from "What We Would Do Differently" is
+now partially landed; and the Wasm-window alignment audit (#1108)
+answering the transformer-vm cross-validation open question with a
+`core_i32_v3` convergence plan.
+
 ## Open Questions (Honest List)
 
 - **Solver dependency policy.** Does psionic want a MILP solver in its
