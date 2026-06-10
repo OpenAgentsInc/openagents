@@ -1,14 +1,16 @@
 # Reliable Tips: Sweepable Balances Design
 
-Status: owner-approved design, 2026-06-10. This is the one document for
-how OpenAgents tips become reliable. If the built system and this
-document disagree, the deployed behavior wins and this file must be
-corrected in the same change.
+Status: LIVE and GREEN as of 2026-06-10 (registry `2026-06-10.19`,
+transition receipt `promise_transition_bac0a106-1e80-4dd2-86d5-ca2bedfefecb`;
+all five issues #4705-#4709 implemented, deployed, and live-smoked with
+real sats). This is the one document for how OpenAgents tips are
+reliable. If the built system and this document disagree, the deployed
+behavior wins and this file must be corrected in the same change.
+Known follow-up: #4710 (buffer /pay 'pending' classification).
 
 - Promise: `payments.reliable_tips_sweepable_balances.v1`
-  (registry `2026-06-10.17`, yellow with four blockers:
-  `agent_credit_ledger_missing`, `tip_receive_ladder_missing`,
-  `automated_sweep_worker_missing`, `tips_buffer_wallet_missing`).
+  (GREEN at registry `2026-06-10.19`; blockers cleared at `.18` with
+  implementation evidence, receipt-disciplined two-pass flip).
   Live record: `GET https://openagents.com/api/public/product-promises`
   — report mismatches in the Product Promises Forum (Working topic:
   https://openagents.com/forum/t/dce3418a-297e-4b3e-bc67-1c33d9c3e805).
