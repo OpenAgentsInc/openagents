@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.15'
+export const PublicProductPromisesVersion = '2026-06-09.16'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -736,24 +736,25 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'autopilot.mission_briefing.v1',
       productArea: 'Autopilot',
       audience: ['agent', 'user', 'operator'],
-      state: 'red',
+      state: 'yellow',
       claim:
         'Long-running Autopilot missions should return a mission briefing that shows what happened, what changed, what is blocked, what decision is needed, costs, risks, artifacts, receipts, and proof refs.',
       safeCopy:
-        'Mission briefings are a target product surface. Do not claim every long-running mission has a complete briefing yet.',
+        'Owner-granted agents can read a Mission Briefing projection for any Autopilot work order at GET /api/autopilot/work/{workOrderRef}/briefing: event rollup, changed artifact/result refs, blocked requirements, running state, waiting decision, cost rollup, and grouped drill-down refs. Risk and receipt rollups remain incomplete until richer operator evidence exists.',
       unsafeCopy:
-        'Do not claim users can always understand any multi-hour mission in under two minutes with complete diffs, tests, costs, receipts, and next actions.',
+        'Do not claim users can always understand any multi-hour mission in under two minutes with complete diffs, tests, costs, receipts, and next actions, and do not present a briefing as deploy, spend, acceptance, or settlement authority.',
       evidenceRefs: [
+        'route:/api/autopilot/work/{workOrderRef}/briefing',
+        'apps/openagents.com/workers/api/src/autopilot-mission-briefing.ts',
+        'apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts',
         'docs/promises/2026-06-09-product-promises-green-roadmap.md',
-        'apps/openagents.com/workers/api/src/agent-goal-routes.ts',
       ],
       blockerRefs: [
-        'blocker.product_promises.mission_briefing_projection_missing',
         'blocker.product_promises.drilldown_artifact_refs_incomplete',
         'blocker.product_promises.cost_risk_receipt_rollup_missing',
       ],
       verification:
-        'A green record requires at least one live mission with briefing JSON, decision-needed state, artifact refs, test refs, cost/risk summary, and public-safe proof refs.',
+        'Run the autopilot-work-routes briefing route test: a delivered work order must project briefing sections, grouped drill-down refs, and authority-free flags. A green record additionally requires at least one live mission with briefing JSON, decision-needed state, artifact refs, test refs, cost/risk summary, and public-safe proof refs.',
       authorityBoundary:
         'A briefing is review evidence. It does not approve code, deploy, spend, continue a mission, or publish proof without separate authority.',
     },

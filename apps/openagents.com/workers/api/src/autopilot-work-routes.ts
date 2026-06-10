@@ -7,6 +7,7 @@ import {
 import {
   autopilotCodingAssignmentsForWork,
 } from './autopilot-coding-assignment'
+import { missionBriefingForWorkOrder } from './autopilot-mission-briefing'
 import {
   assignmentIntentsForWorkOrder,
   type AutopilotWorkAssignmentIntentProjection,
@@ -2591,6 +2592,65 @@ const workOrderRefFromPath = (pathname: string): string | undefined => {
   return match?.[1]
 }
 
+const workOrderBriefingRefFromPath = (pathname: string): string | undefined => {
+  const match = /^\/api\/autopilot\/work\/([^/]+)\/briefing$/.exec(pathname)
+
+  return match?.[1]
+}
+
+const readWorkOrderBriefing = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  workOrderRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const pylonRegistrations = yield* routePylonRegistrations(
+      dependencies,
+      env,
+    )
+    const auth = yield* authenticateCustomerOrderAgentRequest(
+      request,
+      dependencies.agentStore(env),
+      {
+        nowIso: () => nowIso,
+        requiredScope: 'customer_orders.read',
+      },
+    )
+    const record = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => dependencies.makeStore(env).readWorkOrder(workOrderRef),
+    })
+
+    if (record === undefined || record.ownerUserId !== auth.ownerUserId) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_work_not_found',
+          reason: 'Autopilot work order was not found.',
+        },
+        { status: 404 },
+      )
+    }
+
+    return noStoreJsonResponse({
+      briefing: missionBriefingForWorkOrder({
+        events: eventsForRecord(record),
+        nowIso,
+        work: projectionForRecord(record, false, nowIso, pylonRegistrations),
+      }),
+    })
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
+      Effect.succeed(unauthorized())
+    ),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
 const workOrderEventsRefFromPath = (pathname: string): string | undefined => {
   const match = /^\/api\/autopilot\/work\/([^/]+)\/events$/.exec(pathname)
 
@@ -2631,6 +2691,22 @@ export const makeAutopilotWorkRoutes = <
             request,
             env,
             workOrderEventsRef,
+          )
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
+      )
+    }
+
+    const workOrderBriefingRef = workOrderBriefingRefFromPath(url.pathname)
+
+    if (workOrderBriefingRef !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('GET', () =>
+          readWorkOrderBriefing(
+            dependencies,
+            request,
+            env,
+            workOrderBriefingRef,
           )
         ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),

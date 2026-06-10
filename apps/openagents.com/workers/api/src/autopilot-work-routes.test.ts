@@ -793,6 +793,11 @@ const createDeliveredPylonBackedWork = async () => {
 
 const responseJson = async (response: Response) =>
   response.json() as Promise<Readonly<{
+    briefing?: Readonly<{
+      briefingRef: string
+      drilldown: ReadonlyArray<Readonly<{ kind: string; refs: ReadonlyArray<string> }>>
+      whatHappened: ReadonlyArray<Readonly<{ eventKind: string; sequence: number }>>
+    }>
     error?: string
     events?: ReadonlyArray<Readonly<{
       eventKind: string
@@ -1500,6 +1505,81 @@ describe('Autopilot work routes', () => {
       expect.objectContaining({ eventKind: 'queued' }),
       expect.objectContaining({ eventKind: 'delivered' }),
     ])
+
+    const briefing = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/briefing',
+      {
+        method: 'GET',
+        pylonApiStore,
+      },
+    )
+    const briefingJson = await responseJson(briefing)
+
+    expect(briefing.status).toBe(200)
+    expect(briefingJson.briefing).toMatchObject({
+      briefingRef: 'briefing.autopilot_work_order.test_1',
+      costs: {
+        currency: 'USD',
+        fundedAmountCents: 0,
+      },
+      decisionsWaiting: {
+        nextActionState: 'delivered',
+        reasonRefs: ['next_action.review_delivered_work'],
+        reviewAction: null,
+      },
+      kind: 'autopilot_mission_briefing',
+      publicSafe: true,
+      state: 'delivered',
+      whatChanged: {
+        artifactRefs: ['artifact.public.autopilot_docs.patch_summary'],
+        resultRefs: ['result.public.autopilot_docs.delivered'],
+        runnerKind: 'requester_pylon',
+        summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
+      },
+      whatIsBlocked: {
+        accessRequirementRefs: [],
+        blockerRefs: [],
+      },
+      whatIsRunning: {
+        running: false,
+      },
+      workOrderRef: 'autopilot_work_order.test_1',
+    })
+    expect(briefingJson.briefing?.whatHappened).toEqual([
+      expect.objectContaining({ eventKind: 'queued', sequence: 1 }),
+      expect.objectContaining({ eventKind: 'delivered', sequence: 2 }),
+    ])
+    expect(
+      briefingJson.briefing?.drilldown.map(
+        (group: { kind: string }) => group.kind,
+      ),
+    ).toEqual([
+      'artifact',
+      'assignment',
+      'build',
+      'closeout',
+      'preview',
+      'proof',
+      'result',
+      'summary',
+      'test',
+    ])
+    expect(JSON.stringify(briefingJson)).not.toMatch(
+      /mnemonic|invoice|preimage|\/Users\//,
+    )
+
+    const briefingUnauthorized = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.test_1/briefing',
+      {
+        method: 'GET',
+        pylonApiStore,
+        token: '',
+      },
+    )
+
+    expect(briefingUnauthorized.status).toBe(401)
   })
 
   test('rejects unsafe Pylon worker closeout refs before Autopilot delivery persistence', async () => {

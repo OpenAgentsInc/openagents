@@ -210,6 +210,9 @@ const schemaComponents = (): JsonSchema => ({
   AutopilotWorkEventsEnvelope: objectSummary(
     'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',
   ),
+  AutopilotWorkMissionBriefingEnvelope: objectSummary(
+    'Public-safe Autopilot Mission Briefing envelope: event rollup, changed artifact/result refs, blocked access requirements and blocker refs, running state, waiting decision, cost rollup, and grouped drill-down refs. A briefing is a read projection and grants no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
+  ),
   ProductPromises: objectSummary(
     'Versioned public OpenAgents product-promise registry. Records classify claims as green, yellow, red, degraded, or planned and include evidence refs, verification guidance, report paths, and authority boundaries.',
   ),
@@ -3251,6 +3254,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Autopilot work projection.',
           '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/work/{workOrderRef}/briefing': {
+    get: operation({
+      operationId: 'getAutopilotWorkMissionBriefing',
+      summary: 'Read Autopilot Mission Briefing',
+      description:
+        'Returns the public-safe Mission Briefing projection for a delegated Autopilot work order: what happened (event rollup), what changed (artifact/result refs), what is blocked (access requirements and blocker refs), what is running, which decision is waiting, cost rollup, and grouped drill-down refs. The briefing is a read projection only; it grants no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
+      tags: ['Autopilot Work'],
+      security: agentBearer,
+      parameters: [
+        pathParam('workOrderRef', 'Autopilot work-order reference.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Autopilot Mission Briefing envelope.',
+          '#/components/schemas/AutopilotWorkMissionBriefingEnvelope',
         ),
         ...errorResponses(),
       },

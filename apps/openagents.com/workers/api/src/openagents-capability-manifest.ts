@@ -539,6 +539,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Owner-granted agents can poll JSON events or request text/event-stream. Use ?after=<sequence> or Last-Event-ID for retry recovery. Events are progress signals only, not deploy, spend, accepted-work, payout, or settlement authority.',
       },
       {
+        id: 'autopilot_work_mission_briefing',
+        href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/briefing',
+        method: 'GET',
+        auth: 'registered_agent_token_with_customer_orders.read',
+        description:
+          'Owner-granted agents can read the Mission Briefing projection for a work order: what happened, what changed, what is blocked, what is running, which decision is waiting, cost rollup, and grouped drill-down refs. Read projection only; no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
+      },
+      {
         id: 'site_builder_sessions',
         href: 'https://openagents.com/api/sites/builder-sessions',
         method: 'POST',

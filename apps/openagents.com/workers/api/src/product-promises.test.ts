@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-09.15')
+    expect(decoded.version).toBe('2026-06-09.16')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -97,7 +97,7 @@ describe('public product promises document', () => {
       expect.arrayContaining([
         expect.objectContaining({
           promiseId: 'autopilot.mission_briefing.v1',
-          state: 'red',
+          state: 'yellow',
         }),
         expect.objectContaining({
           promiseId: 'autopilot.decision_queue.v1',
