@@ -372,3 +372,170 @@ export const runArtanisAdminTickScheduled = (
         reason: 'admin_tick_disabled',
         state: 'skipped',
       })
+
+// ---------------------------------------------------------------------------
+// Closeout verifier (issue #4697, the verify->accept half of the span).
+// For admin-tick-dispatched executor-trace assignments in
+// closeout_submitted: extract the claimed trace digest from the closeout
+// refs, replay the fixed PoC workload byte-identically in the worker,
+// and accept or reject the closeout on the digest predicate alone -
+// deterministic acceptance, no judgment calls, exactly why this work
+// class is mechanically safe.
+
+export type CloseoutAcceptFn = (input: {
+  assignmentRef: string
+  accepted: boolean
+  refs: ReadonlyArray<string>
+}) => Promise<{ ok: boolean; detail: string }>
+
+export type CloseoutVerifierOutcome = Readonly<{
+  considered: number
+  verified: number
+  rejected: number
+  unreadable: number
+}>
+
+const digestFromRefs = (refsJson: unknown): string | null => {
+  const text = String(refsJson ?? '')
+  const match = /([a-f0-9]{64})/.exec(text)
+  return match === null ? null : match[1]!
+}
+
+export const runArtanisCloseoutVerifier = async (
+  db: D1Database,
+  deps: Readonly<{
+    replay: (input: {
+      assignmentRef: string
+      claimedTraceDigest: string
+      pylonDeviceRef: string
+      workload: { model: Record<string, unknown>; steps: number }
+    }) => Promise<{ outcome: string }>
+    accept: CloseoutAcceptFn
+    nowIso: string
+  }>,
+): Promise<CloseoutVerifierOutcome> => {
+  const rows = (
+    (
+      await db
+        .prepare(
+          `SELECT assignment_ref, pylon_ref, closeout_refs_json, proof_refs_json
+             FROM pylon_api_assignments
+            WHERE state = 'closeout_submitted'
+              AND job_kind = ?
+              AND assignment_ref LIKE 'assignment.artanis_admin.%'
+              AND assignment_ref NOT IN (
+                SELECT assignment_ref FROM artanis_closeout_verdicts
+              )
+            LIMIT 3`,
+        )
+        .bind(TASSADAR_EXECUTOR_TRACE_JOB_KIND)
+        .all()
+    ).results ?? []
+  ) as Array<Record<string, unknown>>
+
+  let verified = 0
+  let rejected = 0
+  let unreadable = 0
+
+  for (const row of rows) {
+    const assignmentRef = String(row.assignment_ref)
+    const claimedDigest =
+      digestFromRefs(row.proof_refs_json) ??
+      digestFromRefs(row.closeout_refs_json)
+
+    if (claimedDigest === null) {
+      unreadable += 1
+      await db
+        .prepare(
+          `INSERT INTO artanis_closeout_verdicts
+           (id, assignment_ref, outcome, accept_state, detail, created_at)
+           VALUES (?, ?, 'unreadable', 'skipped', 'no 64-hex digest in closeout refs', ?)`,
+        )
+        .bind(randomUuid(), assignmentRef, deps.nowIso)
+        .run()
+      continue
+    }
+
+    const dispatchBody = buildTassadarPocDispatchBody({
+      assignmentRef,
+      pylonRef: String(row.pylon_ref),
+    })
+    const tassadar = (
+      dispatchBody.codingAssignment as {
+        tassadar: { model: Record<string, unknown>; steps: number }
+      }
+    ).tassadar
+
+    const verdict = await deps.replay({
+      assignmentRef,
+      claimedTraceDigest: claimedDigest,
+      pylonDeviceRef: `device.pylon.${String(row.pylon_ref)}`,
+      workload: { model: tassadar.model, steps: tassadar.steps },
+    })
+
+    const isVerified = verdict.outcome === 'verified'
+    const acceptResult = await deps.accept({
+      accepted: isVerified,
+      assignmentRef,
+      refs: [
+        `verdict.artanis_closeout.${verdict.outcome}`,
+        `expectation.tassadar_poc.trace_digest.${claimedDigest.slice(0, 16)}`,
+      ],
+    })
+
+    await db
+      .prepare(
+        `INSERT INTO artanis_closeout_verdicts
+         (id, assignment_ref, outcome, claimed_trace_digest_prefix,
+          accept_state, detail, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        randomUuid(),
+        assignmentRef,
+        isVerified ? 'verified' : 'rejected',
+        claimedDigest.slice(0, 16),
+        acceptResult.ok
+          ? isVerified
+            ? 'accepted'
+            : 'rejected'
+          : 'accept_failed',
+        acceptResult.detail.slice(0, 200),
+        deps.nowIso,
+      )
+      .run()
+
+    if (isVerified) {
+      verified += 1
+    } else {
+      rejected += 1
+    }
+  }
+
+  return { considered: rows.length, rejected, unreadable, verified }
+}
+
+export const runArtanisCloseoutVerifierScheduled = (
+  db: D1Database,
+  deps: Readonly<{
+    enabled: boolean
+    replay: Parameters<typeof runArtanisCloseoutVerifier>[1]['replay']
+    accept: CloseoutAcceptFn
+    nowIso: string
+  }>,
+): Effect.Effect<CloseoutVerifierOutcome, never> =>
+  deps.enabled
+    ? Effect.tryPromise({
+        catch: () => null,
+        try: () => runArtanisCloseoutVerifier(db, deps),
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed({
+            considered: 0,
+            rejected: 0,
+            unreadable: 0,
+            verified: 0,
+          } satisfies CloseoutVerifierOutcome),
+        ),
+      )
+    : Effect.succeed({ considered: 0, rejected: 0, unreadable: 0, verified: 0 })
