@@ -106,11 +106,15 @@ export const runArtanisComposerTick = async (
 
   // Daily tip budget from the ledger itself - no separate counter to
   // drift: sum of Artanis's paid tip pay-ins created today.
+  // The budget gates the RESPONDER's spend specifically (its own
+  // idempotency namespace), not every tip the Artanis identity has ever
+  // sent - operator-driven smoke tips must not starve the responder.
   const tipBudgetRow = (await db
     .prepare(
       `SELECT COALESCE(SUM(cost_msat), 0) AS spent
          FROM pay_ins
         WHERE payer_ref = ? AND pay_in_type = 'tip' AND state = 'paid'
+          AND idempotency_key LIKE 'artanis-responder-tip:%'
           AND created_at >= ?`,
     )
     .bind(deps.artanisActorRef, `${deps.nowIso.slice(0, 10)}T00:00:00.000Z`)
