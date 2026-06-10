@@ -1,13 +1,12 @@
 import { Effect } from 'effect'
 
+import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 
 export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
 
-export type TreasuryContainerFetch = (path: string) => Promise<Response>
-
 export type TreasuryRouteDependencies = Readonly<{
-  fetchTreasury?: TreasuryContainerFetch | undefined
+  fetchTreasury?: ContainerPathFetch | undefined
   requireAdminApiToken: (request: Request) => Promise<boolean>
 }>
 
@@ -44,7 +43,7 @@ const healthFromPayload = (payload: unknown): TreasuryHealth | null => {
 }
 
 const readTreasuryHealth = (
-  fetchTreasury: TreasuryContainerFetch,
+  fetchTreasury: ContainerPathFetch,
 ): Effect.Effect<TreasuryHealth | null> =>
   Effect.tryPromise({
     catch: () => null,
@@ -74,7 +73,7 @@ const treasuryState = (health: TreasuryHealth | null): string => {
 export const handlePublicTreasuryLaunchStatusApi = (
   request: Request,
   dependencies: TreasuryRouteDependencies,
-): Effect.Effect<Response> => {
+) => {
   if (request.method !== 'GET') {
     return Effect.succeed(methodNotAllowed(['GET']))
   }
@@ -109,7 +108,7 @@ export const handlePublicTreasuryLaunchStatusApi = (
 }
 
 const readTreasuryBalance = (
-  fetchTreasury: TreasuryContainerFetch,
+  fetchTreasury: ContainerPathFetch,
 ): Effect.Effect<unknown> =>
   Effect.tryPromise({
     catch: () => null,
@@ -123,7 +122,7 @@ const readTreasuryBalance = (
 export const handleOperatorTreasuryStatusApi = (
   request: Request,
   dependencies: TreasuryRouteDependencies,
-): Effect.Effect<Response> => {
+) => {
   if (request.method !== 'GET') {
     return Effect.succeed(methodNotAllowed(['GET']))
   }

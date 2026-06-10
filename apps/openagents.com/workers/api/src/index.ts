@@ -332,6 +332,7 @@ import {
   TokenUsageLeaderboards,
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
+import type { ContainerPathFetch } from './http/container-fetch'
 import {
   TREASURY_SERVICE_TOKEN_HEADER,
   handleOperatorTreasuryStatusApi,
@@ -469,7 +470,7 @@ export class MdkTreasuryContainer extends Container<Env> {
 
 const fetchMdkTreasuryPath = (
   environment: Env,
-): ((path: string) => Promise<Response>) | undefined => {
+): ContainerPathFetch | undefined => {
   const namespace = environment.MDK_TREASURY as
     | DurableObjectNamespace<MdkTreasuryContainer>
     | undefined
@@ -5761,23 +5762,14 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(async () => {
         if (request.method !== 'POST') {
-          return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
-            headers: { 'content-type': 'application/json' },
-            status: 405,
-          })
+          return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
         }
         if (!(await requireAdminApiToken(request, env))) {
-          return new Response(JSON.stringify({ error: 'unauthorized' }), {
-            headers: { 'content-type': 'application/json' },
-            status: 401,
-          })
+          return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
         }
         const apiKey = (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY
         if (apiKey === undefined || apiKey === '') {
-          return new Response(
-            JSON.stringify({ error: 'gemini_api_key_missing' }),
-            { headers: { 'content-type': 'application/json' }, status: 503 },
-          )
+          return noStoreJsonResponse({ error: 'gemini_api_key_missing' }, { status: 503 })
         }
         let body: {
           forumPost?: boolean
@@ -5801,10 +5793,7 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           system: ArtanisMindSmokeSystem,
         })
         if ('error' in result) {
-          return new Response(JSON.stringify(result), {
-            headers: { 'content-type': 'application/json' },
-            status: 502,
-          })
+          return noStoreJsonResponse(result, { status: 502 })
         }
         let forumPost: { topicId?: string; error?: string } | null = null
         const artanisToken = (env as { ARTANIS_AGENT_TOKEN?: string })
@@ -5839,24 +5828,15 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
               ? { error: payload.error ?? `status_${post.status}` }
               : { topicId: payload.topic.topicId }
         }
-        return new Response(
-          JSON.stringify({
-            forumPost,
-            gatewayId: result.gatewayId,
-            model: result.model,
-            promptChars: result.promptChars,
-            responseChars: result.responseChars,
-            servedVia: result.servedVia,
-            text: result.text.slice(0, 600),
-          }),
-          {
-            headers: {
-              'cache-control': 'no-store',
-              'content-type': 'application/json',
-            },
-            status: 200,
-          },
-        )
+        return noStoreJsonResponse({
+          forumPost,
+          gatewayId: result.gatewayId,
+          model: result.model,
+          promptChars: result.promptChars,
+          responseChars: result.responseChars,
+          servedVia: result.servedVia,
+          text: result.text.slice(0, 600),
+        })
       }),
   },
   {
@@ -5864,36 +5844,24 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(async () => {
         if (request.method !== 'POST') {
-          return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
-            headers: { 'content-type': 'application/json' },
-            status: 405,
-          })
+          return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
         }
         if (!(await requireAdminApiToken(request, env))) {
-          return new Response(JSON.stringify({ error: 'unauthorized' }), {
-            headers: { 'content-type': 'application/json' },
-            status: 401,
-          })
+          return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
         }
         try {
           const body = S.decodeUnknownSync(TassadarReplayRequest)(
             await request.json(),
           )
           const verdict = await runTassadarReplayValidation(body)
-          return new Response(JSON.stringify({ verdict }), {
-            headers: {
-              'cache-control': 'no-store',
-              'content-type': 'application/json',
-            },
-            status: 200,
-          })
+          return noStoreJsonResponse({ verdict })
         } catch (error) {
-          return new Response(
-            JSON.stringify({
+          return noStoreJsonResponse(
+            {
               error: 'bad_request',
               reason: error instanceof Error ? error.message : String(error),
-            }),
-            { headers: { 'content-type': 'application/json' }, status: 400 },
+            },
+            { status: 400 },
           )
         }
       }),
