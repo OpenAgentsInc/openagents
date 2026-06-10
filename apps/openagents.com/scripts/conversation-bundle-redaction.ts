@@ -409,7 +409,7 @@ export const writeConversationBundle = async (options: {
   await mkdir(options.outDir, { recursive: true })
   const bundleFile = join(options.outDir, built.manifest.bundleFile)
   const manifestFile = join(options.outDir, 'manifest.json')
-  await writeFile(bundleFile, `${built.bundlePayload}\n`)
+  await writeFile(bundleFile, built.bundlePayload)
   await writeFile(manifestFile, `${canonicalJson(built.manifest)}\n`)
   return {
     ...built,

@@ -54,7 +54,8 @@ describe('conversation bundle redaction', () => {
       const manifest = JSON.parse(await readFile(result.manifestFile, 'utf8'))
       const bundle = await readFile(result.bundleFile, 'utf8')
 
-      expect(manifest.bundleDigest).toBe(sha256Hex(bundle.trim()))
+      expect(manifest.bundleDigest).toBe(sha256Hex(bundle))
+      expect(bundle.endsWith('\n')).toBe(false)
       expect(manifest.nipDs.listingDigest).toBe(manifest.bundleDigest)
       expect(manifest.recordCount).toBe(3)
     } finally {
