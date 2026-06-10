@@ -282,6 +282,113 @@ const balancePayload = (payload: unknown): { maxSendableSat: number | null } | n
     : null
 }
 
+// Policy-applying payout core (issue #4703): the ONE path that moves
+// money out of the treasury, shared by the operator route and the
+// gated in-worker Artanis spend action. Applies the owner's
+// full-or-10%-fractional policy and records the transaction.
+export type TreasuryPayoutExecution =
+  | Readonly<{
+      kind: 'paid'
+      intendedAmountSat: number
+      paidAmountSat: number
+      policyApplied: string
+      paymentRef: string
+      status: string
+    }>
+  | Readonly<{
+      kind: 'refused'
+      reason:
+        | 'treasury_unconfigured'
+        | 'treasury_depleted'
+        | 'treasury_balance_unavailable'
+        | 'treasury_pay_failed'
+      intendedAmountSat: number
+      policyApplied: string | null
+    }>
+
+export const executeTreasuryPayout = async (
+  dependencies: TreasuryRouteDependencies,
+  input: Readonly<{ destination: string; amountSat: number }>,
+): Promise<TreasuryPayoutExecution> => {
+  const fetchTreasury = dependencies.fetchTreasury
+  const intendedAmountSat = Math.floor(input.amountSat)
+
+  if (fetchTreasury === undefined) {
+    return {
+      intendedAmountSat,
+      kind: 'refused',
+      policyApplied: null,
+      reason: 'treasury_unconfigured',
+    }
+  }
+
+  const balanceResponse = await fetchTreasury('/balance')
+  if (!balanceResponse.ok) {
+    return {
+      intendedAmountSat,
+      kind: 'refused',
+      policyApplied: null,
+      reason: 'treasury_balance_unavailable',
+    }
+  }
+  const balance = balancePayload(await balanceResponse.json())
+  if (balance === null) {
+    return {
+      intendedAmountSat,
+      kind: 'refused',
+      policyApplied: null,
+      reason: 'treasury_balance_unavailable',
+    }
+  }
+  const plan = treasuryPayoutPlan({
+    intendedAmountSat,
+    maxSendableSat: balance.maxSendableSat ?? 0,
+  })
+
+  if (plan.kind === 'depleted') {
+    return {
+      intendedAmountSat,
+      kind: 'refused',
+      policyApplied: 'depleted',
+      reason: 'treasury_depleted',
+    }
+  }
+
+  const payResponse = await fetchTreasury('/pay', {
+    body: JSON.stringify({
+      amountSat: plan.paidAmountSat,
+      destination: input.destination,
+    }),
+    method: 'POST',
+  })
+  const payResult = (await payResponse.json()) as Record<string, unknown>
+
+  if (!payResponse.ok || payResult.status !== 'succeeded') {
+    return {
+      intendedAmountSat,
+      kind: 'refused',
+      policyApplied: plan.kind,
+      reason: 'treasury_pay_failed',
+    }
+  }
+
+  const paymentRef = `payment.treasury.${String(payResult.paymentId ?? '').slice(0, 12)}`
+  await dependencies.recordPayoutTransaction?.({
+    amountSat: plan.paidAmountSat,
+    paymentRef,
+    settled: true,
+  })
+
+  return {
+    intendedAmountSat,
+    kind: 'paid',
+    paidAmountSat: plan.paidAmountSat,
+    paymentRef,
+    policyApplied: plan.kind,
+    status: 'succeeded',
+  }
+}
+
 export const handleOperatorTreasuryPayoutApi = (
   request: Request,
   dependencies: TreasuryRouteDependencies,

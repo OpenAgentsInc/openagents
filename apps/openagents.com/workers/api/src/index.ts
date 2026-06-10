@@ -61,6 +61,7 @@ import {
 } from './artanis-forum-responder'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
+import { runArtanisSpendDecision } from './artanis-spend'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -6333,6 +6334,92 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         serviceLabel: 'mdk_tips_buffer',
+      }),
+  },
+  {
+    path: '/api/operator/artanis/spend-decision',
+    handler: (request, env) =>
+      Effect.gen(function* () {
+        if (request.method !== 'POST') {
+          return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const authorized = yield* Effect.promise(() =>
+          requireAdminApiToken(request, env),
+        )
+        if (!authorized) {
+          return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+        }
+        const body = yield* Effect.promise(async () => {
+          try {
+            return (await request.json()) as {
+              recipientActorRef?: string
+              context?: string
+              suggestedMaxSat?: number
+            }
+          } catch {
+            return {}
+          }
+        })
+        if (
+          typeof body.recipientActorRef !== 'string' ||
+          typeof body.context !== 'string' ||
+          typeof body.suggestedMaxSat !== 'number'
+        ) {
+          return noStoreJsonResponse({ error: 'bad_request' }, { status: 400 })
+        }
+        // Registered destinations only: the recipient's tip-recipient
+        // wallet claim is the public-safe source of the offer.
+        const wallet = yield* Effect.promise(async () =>
+          (await openAgentsDatabase(env)
+            .prepare(
+              `SELECT wallet_ref, bolt12_offer FROM forum_tip_recipient_wallets
+               WHERE actor_ref = ? AND state = 'ready' AND archived_at IS NULL
+                 AND bolt12_offer IS NOT NULL`,
+            )
+            .bind(body.recipientActorRef)
+            .first()) as { wallet_ref: string; bolt12_offer: string } | null,
+        )
+        if (wallet === null) {
+          return noStoreJsonResponse(
+            { error: 'recipient_destination_not_registered' },
+            { status: 409 },
+          )
+        }
+        const outcome = yield* Effect.promise(() =>
+          runArtanisSpendDecision(openAgentsDatabase(env), {
+            candidate: {
+              bolt12Offer: wallet.bolt12_offer,
+              context: body.context!,
+              destinationSourceRef: wallet.wallet_ref,
+              recipientRef: body.recipientActorRef!,
+              suggestedMaxSat: Math.floor(body.suggestedMaxSat!),
+            },
+            gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
+            geminiApiKey:
+              (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+            nowIso: currentIsoTimestamp(),
+            treasury: {
+              fetchTreasury: fetchMdkTreasuryPath(env),
+              recordPayoutTransaction: async input => {
+                await makeD1TreasuryTransactionStore(
+                  openAgentsDatabase(env),
+                ).insert({
+                  amountSat: input.amountSat,
+                  bolt11: null,
+                  createdAt: currentIsoTimestamp(),
+                  direction: 'out',
+                  expiresAt: null,
+                  id: randomUuid(),
+                  paymentRef: input.paymentRef,
+                  settledAt: input.settled ? currentIsoTimestamp() : null,
+                  state: input.settled ? 'settled' : 'pending',
+                })
+              },
+              requireAdminApiToken: async () => true,
+            },
+          }),
+        )
+        return noStoreJsonResponse({ outcome })
       }),
   },
   {
