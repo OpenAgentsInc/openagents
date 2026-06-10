@@ -72,20 +72,20 @@ const drainPaymentEvents = node => {
       return
     }
 
-    if (
-      (event.eventType === 'Sent' || event.eventType === 'Failed') &&
-      typeof event.paymentId === 'string'
-    ) {
+    // PaymentEventType is a const numeric enum in lightning-js:
+    // Claimable=0, Received=1, Failed=2, Sent=3.
+    const isSent = event.eventType === 3 || event.eventType === 'Sent'
+    const isFailed = event.eventType === 2 || event.eventType === 'Failed'
+    const isReceived = event.eventType === 1 || event.eventType === 'Received'
+
+    if ((isSent || isFailed) && typeof event.paymentId === 'string') {
       paymentOutcomes.set(event.paymentId, {
         reason: event.reason ?? null,
-        status: event.eventType === 'Sent' ? 'succeeded' : 'failed',
+        status: isSent ? 'succeeded' : 'failed',
       })
     }
 
-    if (
-      event.eventType === 'Received' &&
-      typeof event.paymentHash === 'string'
-    ) {
+    if (isReceived && typeof event.paymentHash === 'string') {
       receivedPayments.set(event.paymentHash.toLowerCase(), {
         amountSat:
           typeof event.amountMsat === 'number'
