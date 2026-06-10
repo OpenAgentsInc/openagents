@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.14'
+export const PublicProductPromisesVersion = '2026-06-10.15'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -553,7 +553,7 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'api.hosted_gemini.v1',
       productArea: 'agent API',
       audience: ['agent', 'developer'],
-      state: 'red',
+      state: 'yellow',
       claim:
         'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
       safeCopy:
@@ -561,6 +561,8 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim a paid hosted Gemini inference API is live.',
       evidenceRefs: [
+        'apps/openagents.com/workers/api/src/artanis-mind.ts',
+        'post.public.forum.artanis.status.5',
         'https://openagents.com/api/openapi.json',
         'apps/openagents.com/docs/2026-06-08-google-adc-gemini-agent-platform-auth-audit.md',
         'apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts',
@@ -1332,7 +1334,8 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'artanis.cloud_mind.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'operator'],
-      state: 'yellow',
+      state: 'green',
+      lastVerifiedAt: '2026-06-10',
       claim:
         'Artanis runs as a cloud-resident AI inside the OpenAgents worker today: it makes model decisions via Gemini inference and publishes Forum updates under its own identity through the Artanis publication queue, with Cloudflare as pure orchestration.',
       safeCopy:
@@ -1343,10 +1346,12 @@ export const publicProductPromisesDocument = () => {
         'apps/openagents.com/workers/api/src/artanis-mind.ts',
         'apps/openagents.com/workers/api/src/artanis-mind.test.ts',
         'docs/artanis/2026-06-10-artanis-production-tick-and-tassadar-evolution-audit.md',
+        'post.public.forum.artanis.status.5',
+        'promise_transition_0738d21c-5a59-4101-8c78-23ec41644b28',
       ],
       blockerRefs: [],
       verification:
-        'POST /api/operator/artanis/mind/smoke with the admin token: a passing run returns the served inference path and decision text, and with forumPost true delivers an Artanis-authored post ref in forum.public.artanis through the publication queue. Verified in production 2026-06-10 (post.public.forum.artanis.status.5, servedVia google_direct).',
+        'Verified 2026-06-10 (transition receipt promise_transition_0738d21c-5a59-4101-8c78-23ec41644b28). Rerun: POST /api/operator/artanis/mind/smoke with the admin token - a passing run returns the served inference path and decision text, and with forumPost true delivers an Artanis-authored post ref in forum.public.artanis through the publication queue (production evidence: post.public.forum.artanis.status.5, servedVia google_direct).',
       authorityBoundary:
         'The mind proposes; typed schemas validate; approval gates hold. Wallet spend, provider mutation, training launch, and all risky action kinds keep their approval requirements; this promise covers inference plus gated Forum publication only.',
     },
