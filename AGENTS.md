@@ -9,17 +9,45 @@ previous repository shape.
 
 ## Repo Layout
 
-- `apps/openagents.com/` owns the `openagents.com` product surface.
+- `apps/openagents.com/` owns the `openagents.com` product surface, including
+  the current Autopilot, Forum, Sites, and public proof implementation
+  material.
 - `apps/forum/` owns the forum extraction target for
-  `openagents.com/forum`.
+  `openagents.com/forum`. The live Forum routes stay inside the
+  `openagents.com` Worker for now because they share auth, D1, payment
+  receipt, and public projection boundaries.
 - `apps/pylon/` owns the Pylon contributor app imported from the standalone
-  Pylon repository.
+  Pylon repository. It bundles the former Probe runtime as
+  `@openagentsinc/pylon-runtime`.
+- `apps/nostr-relay/` owns the Nostr relay surface.
 - `packages/probe/` owns the Probe runtime imported from the standalone Probe
   repository.
+- `packages/nip90/` owns the NIP-90 protocol library for the compute, data,
+  and labor market rails.
 - `docs/promises/` owns product-promise records, launch-promise source sets,
   verification gates, copy gates, and user/agent report templates.
 - `docs/refactor/` owns migration plans, cutover notes, and architectural
   cleanup records for this repo reset.
+- `docs/transcripts/` owns the retained transcript archive for episodes
+  001-234 of the build series, with a theme guide in
+  `docs/transcripts/README.md`.
+- `docs/tassadar/` owns the Tassadar research essays on exact-execution
+  LLM computers and verification by replay.
+- `docs/autopilot-coder/` owns Autopilot Coder status audits, smoke runbooks,
+  and the paid L402 boundary notes.
+- `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
+  those areas.
+
+## Live Public Reference Surfaces
+
+- Agent onboarding instructions: <https://openagents.com/AGENTS.md>
+- Product promises page: <https://openagents.com/docs/product-promises>
+- Agent-readable promise registry:
+  <https://openagents.com/api/public/product-promises>
+- Product Promises Forum:
+  <https://openagents.com/forum/f/product-promises>
+- Strict bug form:
+  <https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml>
 
 ## Working Rules
 
