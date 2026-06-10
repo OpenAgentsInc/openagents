@@ -41,6 +41,10 @@ export type WalletCommandRunner = (args: string[]) => Promise<WalletCommandResul
 export type LegacySparkCommandRunner = (args: string[]) => Promise<WalletCommandResult>
 
 export type LegacySparkMigrationState = "not-detected" | "blocked" | "ready" | "consent-required" | "migrated"
+export type LegacySparkMigrationRecoveryMode =
+  | "legacy-helper-credential"
+  | "local-recovery"
+  | "unavailable"
 
 export type LegacySparkMigrationPreflight = {
   schema: "openagents.pylon.legacy_spark_migration.v0.3"
@@ -53,6 +57,8 @@ export type LegacySparkMigrationPreflight = {
   legacyCredentialReady: boolean
   identityMnemonicPresent: boolean
   mnemonicRecoveryAvailable: boolean
+  mnemonicBackedRecoveryReady: boolean
+  recoveryMode: LegacySparkMigrationRecoveryMode
   destinationInvoiceReady: boolean
   explicitConsentRequired: boolean
   migrationRecommended: boolean
@@ -373,7 +379,7 @@ export async function preflightLegacySparkMigration(
   const dryRun = options.dryRun !== false
   const hintedBalance = envNumber(env, "PYLON_LEGACY_SPARK_BALANCE_SATS")
   const hintedDeposits = envNumber(env, "PYLON_LEGACY_SPARK_UNCLAIMED_DEPOSIT_COUNT")
-  const legacyCredentialReady = hasLegacySparkCredential(env)
+  const legacyHelperCredentialReady = hasLegacySparkCredential(env)
   const identityMnemonicPresent = options.identityMnemonicPath === undefined
     ? env.PYLON_LEGACY_SPARK_IDENTITY_PRESENT === "1"
     : existsSync(options.identityMnemonicPath)
@@ -405,15 +411,24 @@ export async function preflightLegacySparkMigration(
   const legacySpendableBalanceSats = helperBalance ?? hintedBalance
   const unclaimedDepositCount = helperDeposits ?? hintedDeposits
   const legacyBalanceDetected = legacySpendableBalanceSats !== null && legacySpendableBalanceSats > 0
-  const helperInitReady = helperResult.exitCode === 0
   const missingBreezCredential = isMissingBreezCredential(helperResult)
+  const mnemonicBackedRecoveryReady =
+    mnemonicRecoveryAvailable && legacyBalanceDetected && (identityMnemonicPresent || missingBreezCredential)
+  const legacyCredentialReady = legacyHelperCredentialReady || mnemonicBackedRecoveryReady
+  const helperInitReady = helperResult.exitCode === 0 || mnemonicBackedRecoveryReady
+  const recoveryMode: LegacySparkMigrationRecoveryMode =
+    legacyHelperCredentialReady
+      ? "legacy-helper-credential"
+      : mnemonicBackedRecoveryReady
+        ? "local-recovery"
+        : "unavailable"
   const destinationInvoiceReady = options.destinationInvoiceReady === true
 
   const blockerRefs = [
     ...(identityMnemonicPresent || mnemonicRecoveryAvailable
       ? []
       : ["blocker.wallet.legacy_spark.identity_or_private_mnemonic_recovery_required"]),
-    ...(missingBreezCredential || !legacyCredentialReady
+    ...((missingBreezCredential || !legacyCredentialReady) && !mnemonicBackedRecoveryReady
       ? ["blocker.wallet.legacy_spark.breez_api_key_missing"]
       : []),
     ...(helperInitReady ? [] : ["blocker.wallet.legacy_spark.helper_init_failed"]),
@@ -444,15 +459,26 @@ export async function preflightLegacySparkMigration(
     legacyCredentialReady,
     identityMnemonicPresent,
     mnemonicRecoveryAvailable,
+    mnemonicBackedRecoveryReady,
+    recoveryMode,
     destinationInvoiceReady,
     explicitConsentRequired: !consentGiven,
     migrationRecommended: ready && !consentGiven,
     blockerRefs,
     nextActionRefs: ready
-      ? ["action.wallet.legacy_spark.review_and_confirm_migrate_spark_yes"]
+      ? [
+          ...(recoveryMode === "local-recovery"
+            ? ["action.wallet.legacy_spark.review_private_local_recovery_plan"]
+            : []),
+          "action.wallet.legacy_spark.review_and_confirm_migrate_spark_yes",
+        ]
       : [
           ...(!legacyCredentialReady || missingBreezCredential
-            ? ["action.wallet.legacy_spark.configure_bundled_spark_credential_or_wait_for_fix"]
+            ? [
+                identityMnemonicPresent || mnemonicRecoveryAvailable
+                  ? "action.wallet.legacy_spark.rerun_with_mnemonic_recovery_local_only"
+                  : "action.wallet.legacy_spark.configure_supported_local_spark_credential",
+              ]
             : []),
           ...(!identityMnemonicPresent && !mnemonicRecoveryAvailable
             ? ["action.wallet.legacy_spark.use_original_identity_path_or_private_mnemonic_recovery"]

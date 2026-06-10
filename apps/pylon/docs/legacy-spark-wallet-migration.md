@@ -2,7 +2,10 @@
 
 Date: 2026-06-10
 
-Issue: [#4672](https://github.com/OpenAgentsInc/openagents/issues/4672)
+Issues:
+
+- [#4672](https://github.com/OpenAgentsInc/openagents/issues/4672)
+- [#4685](https://github.com/OpenAgentsInc/openagents/issues/4685)
 
 Pylon v0.2.5 included a `pylon wallet migrate-spark` compatibility path for
 old Spark/Breez wallet balances. Some users can still have old spendable
@@ -41,19 +44,46 @@ This compatibility command never asks users to paste a mnemonic into GitHub,
 support threads, logs, or issue comments. If a user has only the 12-word phrase,
 recovery must happen locally and privately on their machine.
 
+If the old helper cannot initialize because the Breez/Spark credential is
+missing, and the user has the local 12-word mnemonic, they should run a local
+mnemonic recovery preflight:
+
+```sh
+pylon wallet migrate-spark --mnemonic-recovery --destination-invoice-ready
+```
+
+That mode keeps the mnemonic private. The flag only tells Pylon to use the
+local recovery path; it does not print, upload, or ask for the phrase. The
+command returns `consent-required` until the user reviews the local recovery
+plan and reruns with `--yes --execute`.
+
 ## Breez / Spark Credential Behavior
 
-If the helper reports `Missing Breez API key`, Pylon now returns:
+If the helper reports `Missing Breez API key` and the user has not selected
+local mnemonic recovery, Pylon returns:
 
 - `blocker.wallet.legacy_spark.breez_api_key_missing`;
 - `blocker.wallet.legacy_spark.helper_init_failed`;
-- `action.wallet.legacy_spark.configure_bundled_spark_credential_or_wait_for_fix`.
+- `action.wallet.legacy_spark.rerun_with_mnemonic_recovery_local_only` when an
+  identity mnemonic is present; otherwise
+- `action.wallet.legacy_spark.configure_supported_local_spark_credential`.
 
 That is an actionable blocked state, not a recommendation to run
 `migrate-spark --yes`. Normal users should not have to hunt through support
-threads for raw API keys. If the migration must depend on a Breez/Spark
-credential, Pylon should surface the supported local setup path before any
-migration recommendation is shown.
+threads for raw API keys.
+
+If the user selects `--mnemonic-recovery`, old balance is detected, and the
+destination invoice is prepared, Pylon sets:
+
+- `recoveryMode: "local-recovery"`;
+- `mnemonicBackedRecoveryReady: true`;
+- `state: "consent-required"` for dry-run/no-consent calls;
+- `action.wallet.legacy_spark.review_private_local_recovery_plan`;
+- `action.wallet.legacy_spark.review_and_confirm_migrate_spark_yes`.
+
+Destination readiness remains load-bearing. `--mnemonic-recovery` is not send
+readiness and does not prove outbound capacity; the new MDK destination must be
+prepared before any migration can execute.
 
 ## Public-Safe Evidence
 

@@ -119,15 +119,123 @@ describe("MDK wallet readiness and ledger", () => {
         legacySpendableBalanceSats: 4242,
         helperInitReady: false,
         legacyCredentialReady: false,
+        mnemonicBackedRecoveryReady: false,
         migrationRecommended: false,
+        recoveryMode: "unavailable",
       })
       expect(preflight.blockerRefs).toContain("blocker.wallet.legacy_spark.breez_api_key_missing")
       expect(preflight.blockerRefs).toContain("blocker.wallet.legacy_spark.helper_init_failed")
       expect(preflight.nextActionRefs).toContain(
-        "action.wallet.legacy_spark.configure_bundled_spark_credential_or_wait_for_fix",
+        "action.wallet.legacy_spark.rerun_with_mnemonic_recovery_local_only",
       )
       assertPublicProjectionSafe(preflight)
     })
+  })
+
+  test("uses local mnemonic recovery instead of blocking on missing Breez credential when requested", async () => {
+    await withTempHome(async (home) => {
+      const identityMnemonicPath = join(home, "identity.mnemonic")
+      await Bun.write(identityMnemonicPath, "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\n")
+      const preflight = await preflightLegacySparkMigration({
+        destinationInvoiceReady: true,
+        dryRun: true,
+        env: {
+          PYLON_LEGACY_SPARK_BALANCE_SATS: "4242",
+        } as NodeJS.ProcessEnv,
+        helperRunner: runner({
+          status: {
+            exitCode: 1,
+            stderr: "Missing Breez API key",
+          },
+        }),
+        identityMnemonicPath,
+        mnemonicRecoveryRequested: true,
+      })
+
+      expect(preflight).toMatchObject({
+        state: "consent-required",
+        dryRun: true,
+        helperInitReady: true,
+        legacyCredentialReady: true,
+        mnemonicBackedRecoveryReady: true,
+        migrationRecommended: true,
+        recoveryMode: "local-recovery",
+      })
+      expect(preflight.blockerRefs).not.toContain("blocker.wallet.legacy_spark.breez_api_key_missing")
+      expect(preflight.nextActionRefs).toEqual([
+        "action.wallet.legacy_spark.review_private_local_recovery_plan",
+        "action.wallet.legacy_spark.review_and_confirm_migrate_spark_yes",
+      ])
+      assertPublicProjectionSafe(preflight)
+    })
+  })
+
+  test("keeps mnemonic recovery blocked until a destination invoice is prepared", async () => {
+    const preflight = await preflightLegacySparkMigration({
+      dryRun: true,
+      env: {
+        PYLON_LEGACY_SPARK_BALANCE_SATS: "4242",
+      } as NodeJS.ProcessEnv,
+      helperRunner: runner({
+        status: {
+          exitCode: 1,
+          stderr: "Missing Breez API key",
+        },
+      }),
+      mnemonicRecoveryRequested: true,
+    })
+
+    expect(preflight).toMatchObject({
+      state: "blocked",
+      destinationInvoiceReady: false,
+      mnemonicBackedRecoveryReady: true,
+      recoveryMode: "local-recovery",
+    })
+    expect(preflight.blockerRefs).toContain("blocker.wallet.legacy_spark.destination_invoice_not_ready")
+    expect(preflight.nextActionRefs).toContain("action.wallet.legacy_spark.prepare_mdk_destination_invoice")
+    assertPublicProjectionSafe(preflight)
+  })
+
+  test("requires consent before executing mnemonic-only legacy Spark recovery", async () => {
+    const baseOptions = {
+      destinationInvoiceReady: true,
+      env: {
+        PYLON_LEGACY_SPARK_BALANCE_SATS: "4242",
+        PYLON_LEGACY_SPARK_UNCLAIMED_DEPOSIT_COUNT: "1",
+      } as NodeJS.ProcessEnv,
+      helperRunner: runner({
+        status: {
+          exitCode: 1,
+          stderr: "Missing Breez API key",
+        },
+      }),
+      mnemonicRecoveryRequested: true,
+    }
+
+    const consentRequired = await preflightLegacySparkMigration({
+      ...baseOptions,
+      dryRun: false,
+    })
+    const migrated = await preflightLegacySparkMigration({
+      ...baseOptions,
+      dryRun: false,
+      now: () => new Date("2026-06-10T13:00:00.000Z"),
+      yes: true,
+    })
+
+    expect(consentRequired).toMatchObject({
+      state: "consent-required",
+      explicitConsentRequired: true,
+      publicReceiptRefs: [],
+      recoveryMode: "local-recovery",
+    })
+    expect(migrated).toMatchObject({
+      state: "migrated",
+      explicitConsentRequired: false,
+      recoveryMode: "local-recovery",
+    })
+    expect(migrated.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.legacy_spark_migration\.[a-f0-9]{24}$/)
+    assertPublicProjectionSafe(migrated)
   })
 
   test("requires explicit consent before a ready legacy Spark migration can execute", async () => {
