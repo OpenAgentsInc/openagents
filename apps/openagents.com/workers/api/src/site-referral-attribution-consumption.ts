@@ -155,18 +155,17 @@ const existingAgentAttribution = (
       .first<AgentAttributionRow>(),
   )
 
-const insertUserAttribution = (
+const userAttributionStatement = (
   db: D1Database,
   input: Readonly<{
     attribution: ReferralAttributionRow
     nowIso: string
     userId: string
   }>,
-): Promise<void> =>
-  storage('siteReferralConsumption.userAttribution.insert', async () => {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO user_referral_attributions
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `INSERT OR IGNORE INTO user_referral_attributions
            (user_id,
             referral_attribution_id,
             referral_source_id,
@@ -179,22 +178,20 @@ const insertUserAttribution = (
             updated_at,
             archived_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)`,
-      )
-      .bind(
-        input.userId,
-        input.attribution.id,
-        input.attribution.referral_source_id,
-        input.attribution.referral_invite_id,
-        input.attribution.capture_path,
-        input.attribution.target,
-        input.nowIso,
-        input.nowIso,
-        input.nowIso,
-      )
-      .run()
-  })
+    )
+    .bind(
+      input.userId,
+      input.attribution.id,
+      input.attribution.referral_source_id,
+      input.attribution.referral_invite_id,
+      input.attribution.capture_path,
+      input.attribution.target,
+      input.nowIso,
+      input.nowIso,
+      input.nowIso,
+    )
 
-const insertOrderAttribution = (
+const orderAttributionStatement = (
   db: D1Database,
   input: Readonly<{
     attribution: ReferralAttributionRow
@@ -202,11 +199,10 @@ const insertOrderAttribution = (
     orderId: string
     userId: string
   }>,
-): Promise<void> =>
-  storage('siteReferralConsumption.orderAttribution.insert', async () => {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO order_referral_attributions
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `INSERT OR IGNORE INTO order_referral_attributions
            (software_order_id,
             user_id,
             referral_attribution_id,
@@ -220,23 +216,21 @@ const insertOrderAttribution = (
             updated_at,
             archived_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)`,
-      )
-      .bind(
-        input.orderId,
-        input.userId,
-        input.attribution.id,
-        input.attribution.referral_source_id,
-        input.attribution.referral_invite_id,
-        input.attribution.capture_path,
-        input.attribution.target,
-        input.nowIso,
-        input.nowIso,
-        input.nowIso,
-      )
-      .run()
-  })
+    )
+    .bind(
+      input.orderId,
+      input.userId,
+      input.attribution.id,
+      input.attribution.referral_source_id,
+      input.attribution.referral_invite_id,
+      input.attribution.capture_path,
+      input.attribution.target,
+      input.nowIso,
+      input.nowIso,
+      input.nowIso,
+    )
 
-const insertAgentAttribution = (
+const agentAttributionStatement = (
   db: D1Database,
   input: Readonly<{
     agentUserId: string
@@ -244,11 +238,10 @@ const insertAgentAttribution = (
     nowIso: string
     ownerUserId: string | null
   }>,
-): Promise<void> =>
-  storage('siteReferralConsumption.agentAttribution.insert', async () => {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO agent_referral_attributions
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `INSERT OR IGNORE INTO agent_referral_attributions
            (agent_user_id,
             owner_user_id,
             referral_attribution_id,
@@ -262,34 +255,31 @@ const insertAgentAttribution = (
             updated_at,
             archived_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)`,
-      )
-      .bind(
-        input.agentUserId,
-        input.ownerUserId,
-        input.attribution.id,
-        input.attribution.referral_source_id,
-        input.attribution.referral_invite_id,
-        input.attribution.capture_path,
-        input.attribution.target,
-        input.nowIso,
-        input.nowIso,
-        input.nowIso,
-      )
-      .run()
-  })
+    )
+    .bind(
+      input.agentUserId,
+      input.ownerUserId,
+      input.attribution.id,
+      input.attribution.referral_source_id,
+      input.attribution.referral_invite_id,
+      input.attribution.capture_path,
+      input.attribution.target,
+      input.nowIso,
+      input.nowIso,
+      input.nowIso,
+    )
 
-const markClaimed = (
+const markClaimedStatement = (
   db: D1Database,
   input: Readonly<{
     attributionId: string
     nowIso: string
     userId: string
   }>,
-): Promise<void> =>
-  storage('siteReferralConsumption.attribution.claim', async () => {
-    await db
-      .prepare(
-        `UPDATE referral_attributions
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `UPDATE referral_attributions
             SET policy_state = 'claimed',
                 claimed_user_id = COALESCE(claimed_user_id, ?),
                 first_verified_at = COALESCE(first_verified_at, ?),
@@ -297,9 +287,16 @@ const markClaimed = (
           WHERE id = ?
             AND policy_state = 'pending'
             AND archived_at IS NULL`,
-      )
-      .bind(input.userId, input.nowIso, input.nowIso, input.attributionId)
-      .run()
+    )
+    .bind(input.userId, input.nowIso, input.nowIso, input.attributionId)
+
+const batchReferralConsumption = (
+  db: D1Database,
+  operation: string,
+  statements: Array<D1PreparedStatement>,
+): Promise<void> =>
+  storage(operation, async () => {
+    await db.batch(statements)
   })
 
 export const consumePendingReferralForUser = async (
@@ -337,16 +334,22 @@ export const consumePendingReferralForUser = async (
     return { _tag: 'expired', attributionId: attribution.id }
   }
 
-  await insertUserAttribution(db, {
-    attribution,
-    nowIso,
-    userId: input.userId,
-  })
-  await markClaimed(db, {
-    attributionId: attribution.id,
-    nowIso,
-    userId: input.userId,
-  })
+  // Attribution window: pending captures are valid until expires_at, currently
+  // thirty days from capture. Last touch is represented by the pending cookie:
+  // whichever unconsumed attribution id is present at signup/order claim wins,
+  // and this batch locks that attribution exactly once with the qualifying row.
+  await batchReferralConsumption(db, 'siteReferralConsumption.user.batch', [
+    userAttributionStatement(db, {
+      attribution,
+      nowIso,
+      userId: input.userId,
+    }),
+    markClaimedStatement(db, {
+      attributionId: attribution.id,
+      nowIso,
+      userId: input.userId,
+    }),
+  ])
 
   return { _tag: 'consumed', attributionId: attribution.id }
 }
@@ -387,12 +390,14 @@ export const linkPendingReferralToOrder = async (
     return userResult
   }
 
-  await insertOrderAttribution(db, {
-    attribution,
-    nowIso,
-    orderId: input.orderId,
-    userId: input.userId,
-  })
+  await batchReferralConsumption(db, 'siteReferralConsumption.order.batch', [
+    orderAttributionStatement(db, {
+      attribution,
+      nowIso,
+      orderId: input.orderId,
+      userId: input.userId,
+    }),
+  ])
 
   return userResult._tag === 'none'
     ? {
@@ -438,17 +443,19 @@ export const linkPendingReferralToAgentClaim = async (
     return { _tag: 'expired', attributionId: attribution.id }
   }
 
-  await insertAgentAttribution(db, {
-    agentUserId: input.agentUserId,
-    attribution,
-    nowIso,
-    ownerUserId: input.ownerUserId,
-  })
-  await markClaimed(db, {
-    attributionId: attribution.id,
-    nowIso,
-    userId: input.ownerUserId ?? input.agentUserId,
-  })
+  await batchReferralConsumption(db, 'siteReferralConsumption.agent.batch', [
+    agentAttributionStatement(db, {
+      agentUserId: input.agentUserId,
+      attribution,
+      nowIso,
+      ownerUserId: input.ownerUserId,
+    }),
+    markClaimedStatement(db, {
+      attributionId: attribution.id,
+      nowIso,
+      userId: input.ownerUserId ?? input.agentUserId,
+    }),
+  ])
 
   return { _tag: 'consumed', attributionId: attribution.id }
 }

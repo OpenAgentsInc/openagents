@@ -100,6 +100,12 @@ export const OperatorSiteReferralInspection = S.Struct({
 export type OperatorSiteReferralInspection =
   typeof OperatorSiteReferralInspection.Type
 
+export const OperatorConsumedReferralAttributions = S.Struct({
+  attributions: S.Array(OperatorReferralAttributionInspection),
+})
+export type OperatorConsumedReferralAttributions =
+  typeof OperatorConsumedReferralAttributions.Type
+
 type SourceMetricsRow = Readonly<{
   agent_claim_count: number | null
   capped_policy_count: number | null
@@ -484,7 +490,7 @@ const sourceMetricsQuery = (whereClause: string): string =>
     ORDER BY site_referral_sources.created_at DESC
     LIMIT ?`
 
-const operatorAttributionsQuery = `
+const operatorAttributionsQuery = (whereClause: string): string => `
   SELECT referral_attributions.id AS referral_attribution_id,
          referral_attributions.referral_source_id,
          referral_attributions.referral_invite_id,
@@ -516,6 +522,7 @@ const operatorAttributionsQuery = `
       ON site_projects.id = site_referral_sources.site_id
      AND site_projects.archived_at IS NULL
    WHERE referral_attributions.archived_at IS NULL
+     ${whereClause}
    ORDER BY referral_attributions.created_at DESC
    LIMIT ?`
 
@@ -560,7 +567,7 @@ export const readOperatorSiteReferralInspection = async (
   const [sourceRows, attributionRows] = await Promise.all([
     db.prepare(sourceMetricsQuery('')).bind(safeLimit).all<SourceMetricsRow>(),
     db
-      .prepare(operatorAttributionsQuery)
+      .prepare(operatorAttributionsQuery(''))
       .bind(safeLimit)
       .all<AttributionInspectionRow>(),
   ])
@@ -577,4 +584,27 @@ export const readOperatorSiteReferralInspection = async (
   assertPublicSafeProjection('Operator Site referral inspection', inspection)
 
   return inspection
+}
+
+export const readOperatorConsumedReferralAttributions = async (
+  db: D1Database,
+  limit = 100,
+): Promise<OperatorConsumedReferralAttributions> => {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)))
+  const rows = await db
+    .prepare(
+      operatorAttributionsQuery(
+        `AND referral_attributions.policy_state = 'claimed'
+         AND referral_attributions.first_verified_at IS NOT NULL`,
+      ),
+    )
+    .bind(safeLimit)
+    .all<AttributionInspectionRow>()
+  const projection = {
+    attributions: (rows.results ?? []).map(attributionFromRow),
+  } satisfies OperatorConsumedReferralAttributions
+
+  assertPublicSafeProjection('Operator consumed referral attributions', projection)
+
+  return projection
 }

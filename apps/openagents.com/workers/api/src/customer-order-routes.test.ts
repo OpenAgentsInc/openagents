@@ -854,7 +854,29 @@ const storedReferralAttribution = (
 })
 
 const customerOrderDb = (store: CustomerOrderDbStore): D1Database => ({
-  batch: () => Promise.reject(new Error('D1 batch should not be used')),
+  batch: async <T = unknown>(statements: Array<D1PreparedStatement>) => {
+    const snapshot = {
+      orderReferralAttributions: [...store.orderReferralAttributions],
+      referralAttributions: [...store.referralAttributions],
+      userReferralAttributions: [...store.userReferralAttributions],
+    }
+
+    try {
+      const results: Array<D1Result> = []
+
+      for (const statement of statements) {
+        results.push(await statement.run())
+      }
+
+      return results as Array<D1Result<T>>
+    } catch (error) {
+      store.orderReferralAttributions = snapshot.orderReferralAttributions
+      store.referralAttributions = snapshot.referralAttributions
+      store.userReferralAttributions = snapshot.userReferralAttributions
+
+      throw error
+    }
+  },
   dump: () => Promise.reject(new Error('D1 dump should not be used')),
   exec: () => Promise.reject(new Error('D1 exec should not be used')),
   prepare: query => new CustomerOrderStatement(query, store),

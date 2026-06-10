@@ -260,7 +260,7 @@ describe('Site referral capture routes', () => {
     })
   })
 
-  test('preserves the first verified pending attribution', async () => {
+  test('replaces a valid pending cookie with the latest capture', async () => {
     const store = {
       attributions: [
         {
@@ -291,8 +291,22 @@ describe('Site referral capture routes', () => {
     )
 
     expect(response.status).toBe(302)
-    expect(response.headers.get('location')).toBe('/')
-    expect(store.attributions).toHaveLength(1)
+    expect(response.headers.get('location')).toBe('/order')
+    expect(response.headers.get('set-cookie')).toContain(
+      'oa_pending_referral_attribution=referral_attribution_',
+    )
+    expect(response.headers.get('set-cookie')).not.toContain(
+      'referral_attribution_existing',
+    )
+    expect(store.attributions).toHaveLength(2)
+    expect(store.attributions[0]).toMatchObject({
+      id: 'referral_attribution_existing',
+      policy_state: 'pending',
+    })
+    expect(store.attributions[1]).toMatchObject({
+      public_source_ref: 'site_ref_otec_ben',
+      target: 'order',
+    })
   })
 
   test('fails safely for expired or disabled referrals', async () => {

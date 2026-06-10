@@ -1199,6 +1199,9 @@ const schemaComponents = (): JsonSchema => ({
   SiteReferralCapture: objectSummary(
     'OpenAgents-hosted referral capture response or redirect boundary.',
   ),
+  OperatorConsumedReferralAttributions: objectSummary(
+    'Operator-only public-safe consumed Site referral attribution query.',
+  ),
   OperatorSite: objectSummary(
     'Operator Site project projection with lifecycle state and public-safe refs.',
   ),
@@ -5501,7 +5504,7 @@ const paths = (): JsonSchema => ({
       operationId: 'captureSiteReferral',
       summary: 'Capture Site referral',
       description:
-        'Captures OpenAgents-hosted public Site referral attribution and redirects to a clean product URL when accepted.',
+        'Captures OpenAgents-hosted public Site referral attribution and redirects to a clean product URL when accepted. Captures use a thirty-day window and last-touch pending cookie; signup, agent-claim, or paid-order consumption locks the pending attribution exactly once.',
       tags: ['Sites'],
       security: publicRead,
       parameters: [
@@ -5516,6 +5519,32 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Referral capture projection.',
           '#/components/schemas/SiteReferralCapture',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/sites/referrals/consumed': {
+    get: operation({
+      operationId: 'listConsumedSiteReferralAttributions',
+      summary: 'List consumed Site referral attributions',
+      description:
+        'Operator-only public-safe query for consumed Site referral attributions. Returns claimed captures with first verification timestamps and omits private referred-user contact data, token hashes, wallet material, payment payloads, and provider grants.',
+      tags: ['Sites'],
+      security: adminSession,
+      parameters: [queryParam('limit', 'Optional result limit, max 200.')],
+      responses: {
+        '200': okJson(
+          'Consumed Site referral attribution projection.',
+          '#/components/schemas/OperatorConsumedReferralAttributions',
+        ),
+        '401': okJson(
+          'Browser session is missing or expired.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '403': okJson(
+          'Browser session is not an OpenAgents admin.',
+          '#/components/schemas/ErrorResponse',
         ),
         ...errorResponses(),
       },

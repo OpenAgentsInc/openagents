@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import { parseCookies, serializeCookie } from './auth-cookies'
+import { serializeCookie } from './auth-cookies'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -62,23 +62,6 @@ type ReferralInviteRow = Readonly<{
   updated_at: string
 }>
 
-type ReferralAttributionRow = Readonly<{
-  archived_at: string | null
-  capture_path: ReferralInviteAudiencePath
-  claimed_user_id: string | null
-  created_at: string
-  expires_at: string
-  first_verified_at: string | null
-  id: string
-  policy_state: ReferralAttributionRecord['policyState']
-  public_invite_ref: string | null
-  public_source_ref: string
-  referral_invite_id: string | null
-  referral_source_id: string
-  target: ReferralAttributionTarget
-  updated_at: string
-}>
-
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,190}$/
 
 const sourceRecordFromRow = (row: SiteReferralRow): SiteReferralSourceRecord => ({
@@ -107,25 +90,6 @@ const inviteRecordFromRow = (row: ReferralInviteRow): ReferralInviteRecord => ({
   referralSourceId: row.referral_source_id,
   scope: row.scope,
   tokenHash: row.token_hash,
-  updatedAt: row.updated_at,
-})
-
-const attributionRecordFromRow = (
-  row: ReferralAttributionRow,
-): ReferralAttributionRecord => ({
-  archivedAt: row.archived_at,
-  capturePath: row.capture_path,
-  claimedUserId: row.claimed_user_id,
-  createdAt: row.created_at,
-  expiresAt: row.expires_at,
-  firstVerifiedAt: row.first_verified_at,
-  id: row.id,
-  policyState: row.policy_state,
-  publicInviteRef: row.public_invite_ref,
-  publicSourceRef: row.public_source_ref,
-  referralInviteId: row.referral_invite_id,
-  referralSourceId: row.referral_source_id,
-  target: row.target,
   updatedAt: row.updated_at,
 })
 
@@ -161,31 +125,6 @@ const targetFromUrl = (
 
 const expiresAtFromNow = (): string =>
   isoTimestampAfter(currentDate(), PENDING_REFERRAL_MAX_AGE_SECONDS * 1000)
-
-const activePendingAttribution = async (
-  db: D1Database,
-  attributionId: string | undefined,
-  nowIso: string,
-): Promise<ReferralAttributionRecord | null> => {
-  if (attributionId === undefined || !SAFE_REF_PATTERN.test(attributionId)) {
-    return null
-  }
-
-  const row = await db
-    .prepare(
-      `SELECT *
-       FROM referral_attributions
-       WHERE id = ?
-         AND policy_state = 'pending'
-         AND archived_at IS NULL
-         AND expires_at > ?
-       LIMIT 1`,
-    )
-    .bind(attributionId, nowIso)
-    .first<ReferralAttributionRow>()
-
-  return row === null ? null : attributionRecordFromRow(row)
-}
 
 const findSourceByPublicRef = async (
   db: D1Database,
@@ -345,15 +284,6 @@ const sourceCaptureResponse = async (
   const url = new URL(request.url)
   const nowIso = currentIsoTimestamp()
   const database = openAgentsDatabase(env)
-  const existing = await activePendingAttribution(
-    database,
-    parseCookies(request).get(PENDING_REFERRAL_COOKIE),
-    nowIso,
-  )
-
-  if (existing !== null) {
-    return captureResponse(existing)
-  }
 
   const source = await findSourceByPublicRef(database, publicSourceRef)
   const sourceUnavailable = referralSourceUnavailableReason(source)
@@ -389,15 +319,6 @@ const inviteCaptureResponse = async (
 
   const nowIso = currentIsoTimestamp()
   const database = openAgentsDatabase(env)
-  const existing = await activePendingAttribution(
-    database,
-    parseCookies(request).get(PENDING_REFERRAL_COOKIE),
-    nowIso,
-  )
-
-  if (existing !== null) {
-    return captureResponse(existing)
-  }
 
   const invite = await findInviteByPublicRef(database, publicInviteRef)
   const inviteUnavailable = referralInviteUnavailableReason(invite, nowIso)

@@ -14,6 +14,12 @@ putting `ref`, checkout, auth, account, or payout state on product pages.
 Successful capture sets a first-party pending-attribution cookie and redirects
 to a clean canonical URL.
 
+The attribution window is thirty days from capture. Before a qualifying
+signup, agent claim, or paid order consumes attribution, the browser's current
+pending-attribution cookie is the last-touch winner. Consumption locks that
+winner exactly once by linking it to the qualifying event and marking the
+capture claimed in the same D1 batch.
+
 ## Routes
 
 `GET /r/site/:publicSourceRef`
@@ -24,8 +30,8 @@ to a clean canonical URL.
   - `target=order`
   - `target=agent` or `target=agent_claim`
   - `path=human` or `path=agent`
-- Creates a pending `referral_attributions` record when no valid pending
-  attribution already exists.
+- Creates a pending `referral_attributions` record and replaces the browser
+  pending-attribution cookie for last-touch attribution.
 - Redirects to `/`, `/order`, or `https://openagents.com/AGENTS.md` without preserving source query
   parameters.
 
@@ -59,9 +65,21 @@ The pending cookie is `oa_pending_referral_attribution`. It stores only the
 internal pending attribution id, not source secrets, invite token hashes, payout
 state, checkout state, or user-private data.
 
-First verified attribution wins at capture time: when the browser already has a
-valid pending attribution cookie, a later capture link redirects cleanly but
-does not create or replace attribution.
+Last touch wins until first consumption: a valid pending attribution cookie can
+be replaced by a later capture within the thirty-day window, but after signup,
+agent claim, or paid order consumption the first consumed attribution remains
+the durable direct-referrer record. Consumption is idempotent and uses `db.batch`
+for the event link plus claimed-attribution mutation.
+
+## Operator Query
+
+`GET /api/operator/sites/referrals/consumed`
+
+- Requires an admin browser session.
+- Returns public-safe consumed attribution refs only: claimed captures with a
+  first verification timestamp.
+- Redacts private referred-user contact data, token hashes, wallet material,
+  payment payloads, provider grants, and source labels that look secret-shaped.
 
 ## Failure States
 
@@ -72,7 +90,5 @@ grants, or user-private data.
 
 ## Remaining Work
 
-REF1 must consume the pending attribution during signup, agent claim, and
-order creation, then durably set first verified direct referrer state. REF2
-must add owner/operator dashboards, paid-workflow event linkage, and abuse or
-dispute policy before payout automation expands.
+REF2 must add paid-workflow event linkage and abuse or dispute policy before
+payout automation expands.

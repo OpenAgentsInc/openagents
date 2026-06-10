@@ -153,6 +153,25 @@ class SiteReferralInspectionStore {
       target: 'order',
       updated_at: '2026-06-05T12:05:00.000Z',
     },
+    {
+      capture_path: 'human',
+      claimed_user_id: null,
+      created_at: '2026-06-05T12:10:00.000Z',
+      expires_at: '2026-07-05T12:10:00.000Z',
+      first_verified_at: null,
+      linked_order_count: 0,
+      policy_state: 'pending',
+      public_invite_ref: null,
+      public_source_ref: 'src_otec',
+      referral_attribution_id: 'referral_attribution_pending',
+      referral_invite_id: null,
+      referral_source_id: 'site_referral_source_otec',
+      site_id: 'site_project_otec',
+      site_slug: 'otec',
+      site_title: 'OTEC Floating Datacenter',
+      target: 'order',
+      updated_at: '2026-06-05T12:10:00.000Z',
+    },
   ]
 }
 
@@ -199,12 +218,16 @@ class SiteReferralInspectionStatement implements D1PreparedStatement {
 
     if (this.query.includes('FROM referral_attributions')) {
       const limit = Number(this.values[0] ?? 100)
+      const rows = this.query.includes("policy_state = 'claimed'")
+        ? this.store.attributionRows.filter(
+            row =>
+              row.policy_state === 'claimed' &&
+              row.first_verified_at !== null,
+          )
+        : this.store.attributionRows
 
       return Promise.resolve({
-        results: this.store.attributionRows.slice(
-          0,
-          limit,
-        ) as unknown as ReadonlyArray<T>,
+        results: rows.slice(0, limit) as unknown as ReadonlyArray<T>,
         success: true,
       } as unknown as D1Result<T>)
     }
@@ -334,6 +357,11 @@ describe('Site referral inspection projections', () => {
         linkedOrderCount: 1,
         referralAttributionId: 'referral_attribution_otec',
       }),
+      expect.objectContaining({
+        claimedUserId: null,
+        linkedOrderCount: 0,
+        referralAttributionId: 'referral_attribution_pending',
+      }),
     ])
     expect(JSON.stringify(inspection)).not.toMatch(/@|gho_should_not_render/)
   })
@@ -434,5 +462,61 @@ describe('Site referral inspection routes', () => {
       target: 'order',
     })
     expect(JSON.stringify(body)).not.toMatch(/email|gho_should_not_render/)
+  })
+
+  test('operator consumed attribution query is admin-gated and claimed-only', async () => {
+    const forbidden = await runRoute(
+      new Request(
+        'https://openagents.com/api/operator/sites/referrals/consumed',
+      ),
+      {
+        user: {
+          email: 'ben@example.com',
+          userId: 'github:ben',
+        },
+      },
+      new SiteReferralInspectionStore(),
+    )
+
+    expect(forbidden.status).toBe(403)
+
+    const store = new SiteReferralInspectionStore()
+    const response = await runRoute(
+      new Request(
+        'https://openagents.com/api/operator/sites/referrals/consumed?limit=10',
+      ),
+      {
+        user: {
+          email: 'admin@openagents.com',
+          userId: 'github:admin',
+        },
+      },
+      store,
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      consumedAttributions: {
+        attributions: Array<{
+          firstVerifiedAt: string | null
+          policyState: string
+          referralAttributionId: string
+        }>
+      }
+    }
+
+    expect(body.consumedAttributions.attributions).toEqual([
+      expect.objectContaining({
+        firstVerifiedAt: '2026-06-05T12:05:00.000Z',
+        policyState: 'claimed',
+        referralAttributionId: 'referral_attribution_otec',
+      }),
+    ])
+    expect(JSON.stringify(body)).not.toContain('referral_attribution_pending')
+    expect(
+      store.queries.some(query =>
+        query.query.includes("policy_state = 'claimed'"),
+      ),
+    ).toBe(true)
   })
 })

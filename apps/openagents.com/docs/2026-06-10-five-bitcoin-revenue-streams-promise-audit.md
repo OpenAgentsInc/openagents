@@ -625,9 +625,12 @@ operator approval before any sats move.
 > user completes a qualifying event (signup or paid order), bind the
 > pending attribution to that event exactly once (idempotent, atomic with
 > the qualifying write via db.batch), with an attribution window and
-> last-touch rule documented. Acceptance: tests cover consume-once, window
-> expiry, and no-attribution paths; consumed attributions are queryable by
-> operator route.
+> last-touch rule documented. The attribution window is thirty days from
+> capture; the latest pending cookie is the last-touch winner until first
+> signup, agent-claim, or paid-order consumption. Acceptance: tests cover
+> consume-once, window expiry, and no-attribution paths; consumed attributions
+> are queryable through the admin-gated
+> `/api/operator/sites/referrals/consumed` route.
 
 **Issue 16 — `referrals: payout policy and referral payout ledger`**
 

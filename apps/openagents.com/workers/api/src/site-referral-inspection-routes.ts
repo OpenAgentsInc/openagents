@@ -4,6 +4,7 @@ import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { openAgentsDatabase } from './runtime'
 import {
   SiteReferralInspectionUnsafePayload,
+  readOperatorConsumedReferralAttributions,
   readOperatorSiteReferralInspection,
   readSiteReferralOwnerOverview,
 } from './site-referral-inspection'
@@ -226,6 +227,46 @@ export const makeSiteReferralInspectionRoutes = <
       }),
     )
 
+  const operatorConsumedAttributions = (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) =>
+    runRoute(
+      Effect.gen(function* () {
+        if (request.method !== 'GET') {
+          return methodNotAllowed(['GET'])
+        }
+
+        const session = yield* requireAdminSession(
+          dependencies,
+          request,
+          env,
+          ctx,
+        )
+        const consumedAttributions = yield* Effect.tryPromise({
+          catch: error =>
+            error instanceof SiteReferralInspectionUnsafePayload
+              ? error
+              : new SiteReferralInspectionStorageError({
+                  error,
+                  operation:
+                    'siteReferralInspection.operatorConsumedAttributions',
+                }),
+          try: () =>
+            readOperatorConsumedReferralAttributions(
+              openAgentsDatabase(env),
+              readLimit(request),
+            ),
+        })
+
+        return dependencies.appendRefreshedSessionCookies(
+          noStoreJsonResponse({ consumedAttributions }),
+          session,
+        )
+      }),
+    )
+
   return {
     routeSiteReferralInspectionRequest: (
       request: Request,
@@ -240,6 +281,10 @@ export const makeSiteReferralInspectionRoutes = <
 
       if (url.pathname === '/api/operator/sites/referrals') {
         return operatorInspection(request, env, ctx)
+      }
+
+      if (url.pathname === '/api/operator/sites/referrals/consumed') {
+        return operatorConsumedAttributions(request, env, ctx)
       }
 
       return undefined

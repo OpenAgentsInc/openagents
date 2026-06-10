@@ -46,6 +46,7 @@ type AgentAttributionRow = Readonly<{
 class Store {
   agentAttributions: Array<AgentAttributionRow> = []
   attributions: Array<AttributionRow> = []
+  failBatchAfterStatements: number | null = null
   orderAttributions: Array<OrderAttributionRow> = []
   userAttributions: Array<UserAttributionRow> = []
 }
@@ -204,7 +205,35 @@ class Statement implements D1PreparedStatement {
 
 const db = (store: Store): D1Database =>
   ({
-    batch: () => Promise.reject(new Error('D1 batch should not be used')),
+    batch: async statements => {
+      const snapshot = {
+        agentAttributions: [...store.agentAttributions],
+        attributions: [...store.attributions],
+        orderAttributions: [...store.orderAttributions],
+        userAttributions: [...store.userAttributions],
+      }
+
+      try {
+        const results: Array<D1Result> = []
+
+        for (const [index, statement] of statements.entries()) {
+          if (store.failBatchAfterStatements === index) {
+            throw new Error('simulated batch failure')
+          }
+
+          results.push(await statement.run())
+        }
+
+        return results
+      } catch (error) {
+        store.agentAttributions = snapshot.agentAttributions
+        store.attributions = snapshot.attributions
+        store.orderAttributions = snapshot.orderAttributions
+        store.userAttributions = snapshot.userAttributions
+
+        throw error
+      }
+    },
     dump: () => Promise.reject(new Error('D1 dump should not be used')),
     exec: () => Promise.reject(new Error('D1 exec should not be used')),
     prepare: query => new Statement(store, query),
@@ -325,6 +354,41 @@ describe('Site referral attribution consumption', () => {
     })
     expect(store.userAttributions).toEqual([])
     expect(store.attributions[0]?.policy_state).toBe('pending')
+  })
+
+  test('does not consume when no pending attribution is present', async () => {
+    const store = new Store()
+
+    await expect(
+      consumePendingReferralForUser(db(store), runtime, {
+        pendingAttributionId: undefined,
+        userId: 'github:1',
+      }),
+    ).resolves.toEqual({ _tag: 'none' })
+    expect(store.userAttributions).toEqual([])
+    expect(store.attributions).toEqual([])
+  })
+
+  test('rolls back consumed attribution when batch fails after first mutation', async () => {
+    const store = new Store()
+    store.attributions.push(attribution())
+    store.failBatchAfterStatements = 1
+
+    await expect(
+      consumePendingReferralForUser(db(store), runtime, {
+        pendingAttributionId: 'referral_attribution_otec',
+        userId: 'github:1',
+      }),
+    ).rejects.toMatchObject({
+      _tag: 'SiteReferralConsumptionStorageError',
+      operation: 'siteReferralConsumption.user.batch',
+    })
+    expect(store.userAttributions).toEqual([])
+    expect(store.attributions[0]).toMatchObject({
+      claimed_user_id: null,
+      first_verified_at: null,
+      policy_state: 'pending',
+    })
   })
 
   test('supports future agent claim linkage', async () => {

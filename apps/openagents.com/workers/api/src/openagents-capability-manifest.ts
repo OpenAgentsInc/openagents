@@ -632,7 +632,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'OpenAgents-hosted public Site referral capture boundary. Successful captures redirect to clean product URLs and set pending attribution server-side.',
+          'OpenAgents-hosted public Site referral capture boundary. Successful captures redirect to clean product URLs and set a thirty-day pending attribution cookie; the latest pending cookie is the last-touch winner until signup, agent claim, or paid order consumption locks it exactly once.',
+      },
+      {
+        id: 'operator_site_referral_consumed_attributions',
+        href: 'https://openagents.com/api/operator/sites/referrals/consumed',
+        method: 'GET',
+        auth: 'browser_session_admin',
+        description:
+          'Operator-only public-safe query for consumed Site referral attributions: claimed captures with first verification timestamps and no private referred-user contact data, token hashes, wallet material, payment payloads, or provider grants.',
       },
       {
         id: 'public_artanis_report',
