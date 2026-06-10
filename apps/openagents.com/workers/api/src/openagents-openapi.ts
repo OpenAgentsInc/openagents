@@ -225,6 +225,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicPylonCapacityFunnel: objectSummary(
     'Public-safe Pylon capacity funnel: stage counts from registered through settled plus dark-capacity counts by typed reason. Counts only, no device identifiers. Read-only capacity accounting; grants no assignment, payout, or settlement authority.',
   ),
+  PublicPylonCapacityFunnelHistory: objectSummary(
+    'Public-safe retained Pylon capacity funnel history: hourly and daily count-only snapshots with the same read-only capacity-accounting authority boundary as the live funnel. No device identifiers, owner linkage, wallet detail, assignment authority, payout authority, or settlement authority.',
+  ),
   AutopilotWorkPromiseListEnvelope: objectSummary(
     'Public-safe list of owner work-order summaries that carry a promiseRef for the requested promiseId: workOrderRef, state, promiseRef, createdAt, updatedAt. Listing grants no review, settlement, or registry-transition authority.',
   ),
@@ -3400,6 +3403,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Pylon capacity funnel counts.',
           '#/components/schemas/PublicPylonCapacityFunnel',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/pylon-capacity-funnel/history': {
+    get: operation({
+      operationId: 'getPublicPylonCapacityFunnelHistory',
+      summary: 'Read retained public Pylon capacity funnel history',
+      description:
+        'Returns retained public-safe Pylon capacity funnel snapshots as hourly and daily count-only series. Each entry carries bucket time, snapshot time, and funnel stage/dark-capacity counts only. No device identifiers, owner linkage, wallet detail, assignment authority, payout authority, or settlement authority. Hourly snapshots retain 14 days; daily snapshots retain 180 days.',
+      tags: ['Pylon'],
+      security: [],
+      responses: {
+        '200': okJson(
+          'Public Pylon capacity funnel history.',
+          '#/components/schemas/PublicPylonCapacityFunnelHistory',
         ),
         ...errorResponses(),
       },

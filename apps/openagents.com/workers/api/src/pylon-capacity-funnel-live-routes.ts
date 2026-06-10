@@ -6,6 +6,7 @@ import {
   pylonHeartbeatFresh,
 } from './autopilot-work-placement-selector'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { safeJsonRecord } from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type PylonApiAssignmentRecord,
@@ -17,6 +18,7 @@ import {
 } from './pylon-api'
 import {
   PYLON_CAPACITY_FUNNEL_ACCOUNTING_READ_ONLY_AUTHORITY,
+  type PylonCapacityFunnelAggregate,
   type PylonCapacityFunnelRecord,
   type PylonCapacityFunnelStage,
   aggregatePylonCapacityFunnel,
@@ -280,6 +282,344 @@ type PylonCapacityFunnelRouteInput = Readonly<{
   store?: PylonApiStore
 }>
 
+export type PylonCapacityFunnelSnapshotBucketKind = 'daily' | 'hourly'
+
+export type PylonCapacityFunnelSnapshotRecord = Readonly<{
+  aggregate: PylonCapacityFunnelAggregate
+  bucketKind: PylonCapacityFunnelSnapshotBucketKind
+  bucketStartAt: string
+  createdAt: string
+  id: string
+  publicProjectionJson: string
+  snapshotAt: string
+  totalCount: number
+  updatedAt: string
+}>
+
+type PylonCapacityFunnelSnapshotRow = Readonly<{
+  aggregate_json: string
+  bucket_kind: PylonCapacityFunnelSnapshotBucketKind
+  bucket_start_at: string
+  created_at: string
+  id: string
+  public_projection_json: string
+  snapshot_at: string
+  total_count: number
+  updated_at: string
+}>
+
+export type PylonCapacityFunnelSnapshotStore = Readonly<{
+  listSnapshots: (
+    input: Readonly<{
+      bucketKind: PylonCapacityFunnelSnapshotBucketKind
+      limit: number
+    }>,
+  ) => Promise<ReadonlyArray<PylonCapacityFunnelSnapshotRecord>>
+  pruneSnapshotsBefore: (
+    input: Readonly<{
+      bucketKind: PylonCapacityFunnelSnapshotBucketKind
+      beforeIso: string
+    }>,
+  ) => Promise<void>
+  upsertSnapshot: (
+    record: PylonCapacityFunnelSnapshotRecord,
+  ) => Promise<PylonCapacityFunnelSnapshotRecord>
+}>
+
+const snapshotRetentionPolicyRef =
+  'retention.public.pylon_capacity_funnel.hourly_14d_daily_180d'
+const hourlyRetentionMs = 14 * 24 * 60 * 60 * 1000
+const dailyRetentionMs = 180 * 24 * 60 * 60 * 1000
+
+const snapshotCaveatRefs = [
+  'caveat.public.pylon_capacity_funnel.history_counts_only_no_device_identifiers',
+  'caveat.public.pylon_capacity_funnel.retention_hourly_14d_daily_180d',
+] as const
+
+const bucketStartFor = (
+  nowIso: string,
+  bucketKind: PylonCapacityFunnelSnapshotBucketKind,
+): string => {
+  const date = new Date(nowIso)
+
+  if (!Number.isFinite(date.getTime())) {
+    return nowIso
+  }
+
+  date.setUTCMinutes(0, 0, 0)
+
+  if (bucketKind === 'daily') {
+    date.setUTCHours(0, 0, 0, 0)
+  }
+
+  return date.toISOString()
+}
+
+const retentionCutoffFor = (
+  nowIso: string,
+  bucketKind: PylonCapacityFunnelSnapshotBucketKind,
+): string => {
+  const date = new Date(nowIso)
+  const retentionMs =
+    bucketKind === 'hourly' ? hourlyRetentionMs : dailyRetentionMs
+
+  if (!Number.isFinite(date.getTime())) {
+    return nowIso
+  }
+
+  return new Date(date.getTime() - retentionMs).toISOString()
+}
+
+const snapshotIdFor = (
+  bucketKind: PylonCapacityFunnelSnapshotBucketKind,
+  bucketStartAt: string,
+): string =>
+  `pylon_capacity_funnel_snapshot_${bucketKind}_${bucketStartAt.replaceAll(
+    /[^A-Za-z0-9]+/g,
+    '_',
+  )}`
+
+const publicSnapshotProjection = (
+  record: PylonCapacityFunnelSnapshotRecord,
+): Record<string, unknown> => ({
+  bucketKind: record.bucketKind,
+  bucketStartAt: record.bucketStartAt,
+  funnel: record.aggregate,
+  snapshotAt: record.snapshotAt,
+})
+
+export const buildPylonCapacityFunnelSnapshotRecord = (
+  input: Readonly<{
+    aggregate: PylonCapacityFunnelAggregate
+    bucketKind: PylonCapacityFunnelSnapshotBucketKind
+    nowIso: string
+  }>,
+): PylonCapacityFunnelSnapshotRecord => {
+  const bucketStartAt = bucketStartFor(input.nowIso, input.bucketKind)
+  const base: PylonCapacityFunnelSnapshotRecord = {
+    aggregate: input.aggregate,
+    bucketKind: input.bucketKind,
+    bucketStartAt,
+    createdAt: input.nowIso,
+    id: snapshotIdFor(input.bucketKind, bucketStartAt),
+    publicProjectionJson: '{}',
+    snapshotAt: input.nowIso,
+    totalCount: input.aggregate.totalCount,
+    updatedAt: input.nowIso,
+  }
+
+  return {
+    ...base,
+    publicProjectionJson: JSON.stringify(publicSnapshotProjection(base)),
+  }
+}
+
+const rowToSnapshot = (
+  row: PylonCapacityFunnelSnapshotRow,
+): PylonCapacityFunnelSnapshotRecord => ({
+  aggregate: (safeJsonRecord(row.aggregate_json) ??
+    {}) as unknown as PylonCapacityFunnelAggregate,
+  bucketKind: row.bucket_kind,
+  bucketStartAt: row.bucket_start_at,
+  createdAt: row.created_at,
+  id: row.id,
+  publicProjectionJson: row.public_projection_json,
+  snapshotAt: row.snapshot_at,
+  totalCount: row.total_count,
+  updatedAt: row.updated_at,
+})
+
+export const makeD1PylonCapacityFunnelSnapshotStore = (
+  db: D1Database,
+): PylonCapacityFunnelSnapshotStore => ({
+  listSnapshots: async input => {
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM pylon_capacity_funnel_snapshots
+          WHERE bucket_kind = ?
+            AND archived_at IS NULL
+          ORDER BY bucket_start_at DESC
+          LIMIT ?`,
+      )
+      .bind(input.bucketKind, input.limit)
+      .all<PylonCapacityFunnelSnapshotRow>()
+
+    return (result.results ?? []).map(rowToSnapshot)
+  },
+
+  pruneSnapshotsBefore: async input => {
+    await db
+      .prepare(
+        `UPDATE pylon_capacity_funnel_snapshots
+            SET archived_at = ?
+          WHERE bucket_kind = ?
+            AND bucket_start_at < ?
+            AND archived_at IS NULL`,
+      )
+      .bind(currentIsoTimestamp(), input.bucketKind, input.beforeIso)
+      .run()
+  },
+
+  upsertSnapshot: async record => {
+    await db
+      .prepare(
+        `INSERT INTO pylon_capacity_funnel_snapshots
+          (id, bucket_kind, bucket_start_at, snapshot_at, total_count,
+           aggregate_json, public_projection_json, created_at, updated_at,
+           archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(bucket_kind, bucket_start_at) DO UPDATE SET
+           snapshot_at = excluded.snapshot_at,
+           total_count = excluded.total_count,
+           aggregate_json = excluded.aggregate_json,
+           public_projection_json = excluded.public_projection_json,
+           updated_at = excluded.updated_at,
+           archived_at = NULL`,
+      )
+      .bind(
+        record.id,
+        record.bucketKind,
+        record.bucketStartAt,
+        record.snapshotAt,
+        record.totalCount,
+        JSON.stringify(record.aggregate),
+        record.publicProjectionJson,
+        record.createdAt,
+        record.updatedAt,
+      )
+      .run()
+
+    return record
+  },
+})
+
+export const readPylonCapacityFunnelAggregate = async (
+  input: Readonly<{
+    nowIso: string
+    store: PylonApiStore
+  }>,
+): Promise<PylonCapacityFunnelAggregate> => {
+  const registrations = await input.store.listRegistrations(
+    registrationListLimit,
+  )
+  const assignmentsByPylonRef = new Map<
+    string,
+    ReadonlyArray<PylonApiAssignmentRecord>
+  >()
+  const lifecycleByPylonRef = new Map<
+    string,
+    ReadonlyArray<PylonApiProviderJobLifecycleRecord>
+  >()
+
+  for (const registration of registrations) {
+    assignmentsByPylonRef.set(
+      registration.pylonRef,
+      await input.store.listAssignmentsForPylon(
+        registration.pylonRef,
+        assignmentListLimit,
+      ),
+    )
+  }
+
+  const lifecycleRecords = await input.store.listProviderJobLifecycleForPylons(
+    registrations.map(registration => registration.pylonRef),
+    registrationListLimit * assignmentListLimit,
+  )
+
+  for (const record of lifecycleRecords) {
+    lifecycleByPylonRef.set(record.pylonRef, [
+      ...(lifecycleByPylonRef.get(record.pylonRef) ?? []),
+      record,
+    ])
+  }
+
+  const records = pylonCapacityFunnelRecordsFromStore({
+    assignmentsByPylonRef,
+    lifecycleByPylonRef,
+    nowIso: input.nowIso,
+    registrations,
+  })
+
+  return aggregatePylonCapacityFunnel(records, 'public', input.nowIso)
+}
+
+export const recordPylonCapacityFunnelSnapshots = async (
+  input: Readonly<{
+    nowIso: string
+    snapshotStore: PylonCapacityFunnelSnapshotStore
+    store: PylonApiStore
+  }>,
+): Promise<ReadonlyArray<PylonCapacityFunnelSnapshotRecord>> => {
+  const aggregate = await readPylonCapacityFunnelAggregate({
+    nowIso: input.nowIso,
+    store: input.store,
+  })
+  const snapshots = (['hourly', 'daily'] as const).map(bucketKind =>
+    buildPylonCapacityFunnelSnapshotRecord({
+      aggregate,
+      bucketKind,
+      nowIso: input.nowIso,
+    }),
+  )
+
+  await Promise.all(
+    snapshots.map(snapshot => input.snapshotStore.upsertSnapshot(snapshot)),
+  )
+  await Promise.all(
+    (['hourly', 'daily'] as const).map(bucketKind =>
+      input.snapshotStore.pruneSnapshotsBefore({
+        beforeIso: retentionCutoffFor(input.nowIso, bucketKind),
+        bucketKind,
+      }),
+    ),
+  )
+
+  return snapshots
+}
+
+export const handlePylonCapacityFunnelHistoryApi = (
+  request: Request,
+  input: Readonly<{
+    OPENAGENTS_DB?: D1Database
+    nowIso?: () => string
+    snapshotStore?: PylonCapacityFunnelSnapshotStore
+  }>,
+) => {
+  if (request.method !== 'GET') {
+    return Effect.succeed(methodNotAllowed(['GET']))
+  }
+
+  const nowIso = input.nowIso?.() ?? currentIsoTimestamp()
+  const snapshotStore =
+    input.snapshotStore ??
+    makeD1PylonCapacityFunnelSnapshotStore(input.OPENAGENTS_DB as D1Database)
+
+  return Effect.promise(async () => {
+    const [hourly, daily] = await Promise.all([
+      snapshotStore.listSnapshots({ bucketKind: 'hourly', limit: 336 }),
+      snapshotStore.listSnapshots({ bucketKind: 'daily', limit: 180 }),
+    ])
+
+    return noStoreJsonResponse({
+      authority: PYLON_CAPACITY_FUNNEL_ACCOUNTING_READ_ONLY_AUTHORITY,
+      caveatRefs: snapshotCaveatRefs,
+      generatedAt: nowIso,
+      history: {
+        daily: daily.map(
+          record => safeJsonRecord(record.publicProjectionJson) ?? {},
+        ),
+        hourly: hourly.map(record =>
+          safeJsonRecord(record.publicProjectionJson) ?? {},
+        ),
+        retentionPolicyRef: snapshotRetentionPolicyRef,
+      },
+      kind: 'pylon_capacity_funnel_history',
+      publicSafe: true,
+    })
+  })
+}
+
 export const handlePylonCapacityFunnelApi = (
   request: Request,
   input: PylonCapacityFunnelRouteInput,
@@ -293,42 +633,9 @@ export const handlePylonCapacityFunnelApi = (
     input.store ?? makeD1PylonApiStore(input.OPENAGENTS_DB as D1Database)
 
   return Effect.promise(async () => {
-    const registrations = await store.listRegistrations(registrationListLimit)
-    const assignmentsByPylonRef = new Map<
-      string,
-      ReadonlyArray<PylonApiAssignmentRecord>
-    >()
-    const lifecycleByPylonRef = new Map<
-      string,
-      ReadonlyArray<PylonApiProviderJobLifecycleRecord>
-    >()
-
-    for (const registration of registrations) {
-      assignmentsByPylonRef.set(
-        registration.pylonRef,
-        await store.listAssignmentsForPylon(
-          registration.pylonRef,
-          assignmentListLimit,
-        ),
-      )
-    }
-    const lifecycleRecords = await store.listProviderJobLifecycleForPylons(
-      registrations.map(registration => registration.pylonRef),
-      registrationListLimit * assignmentListLimit,
-    )
-
-    for (const record of lifecycleRecords) {
-      lifecycleByPylonRef.set(record.pylonRef, [
-        ...(lifecycleByPylonRef.get(record.pylonRef) ?? []),
-        record,
-      ])
-    }
-
-    const records = pylonCapacityFunnelRecordsFromStore({
-      assignmentsByPylonRef,
-      lifecycleByPylonRef,
+    const funnel = await readPylonCapacityFunnelAggregate({
       nowIso,
-      registrations,
+      store,
     })
 
     return noStoreJsonResponse({
@@ -337,7 +644,7 @@ export const handlePylonCapacityFunnelApi = (
         'caveat.public.pylon_capacity_funnel.paid_settled_pending_settlement_system',
         'caveat.public.pylon_capacity_funnel.counts_only_no_device_identifiers',
       ],
-      funnel: aggregatePylonCapacityFunnel(records, 'public', nowIso),
+      funnel,
       generatedAt: nowIso,
       kind: 'pylon_capacity_funnel_live',
       publicSafe: true,

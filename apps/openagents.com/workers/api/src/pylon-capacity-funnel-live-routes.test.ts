@@ -9,10 +9,17 @@ import type {
 } from './pylon-api'
 import { providerJobLifecycleRecordFromAssignment } from './pylon-api'
 import {
+  type PylonCapacityFunnelSnapshotBucketKind,
+  type PylonCapacityFunnelSnapshotRecord,
+  type PylonCapacityFunnelSnapshotStore,
+  buildPylonCapacityFunnelSnapshotRecord,
   darkCapacityReasonRefForPylon,
   handlePylonCapacityFunnelApi,
+  handlePylonCapacityFunnelHistoryApi,
   pylonCapacityFunnelRecordsFromStore,
+  recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
+import { aggregatePylonCapacityFunnel } from './pylon-capacity-funnel'
 
 const nowIso = '2026-06-09T20:00:00.000Z'
 
@@ -72,6 +79,44 @@ const assignment = (
   updatedAt: '2026-06-09T19:30:00.000Z',
   ...overrides,
 })
+
+class MemorySnapshotStore implements PylonCapacityFunnelSnapshotStore {
+  readonly records = new Map<string, PylonCapacityFunnelSnapshotRecord>()
+  readonly pruned: Array<
+    Readonly<{
+      beforeIso: string
+      bucketKind: PylonCapacityFunnelSnapshotBucketKind
+    }>
+  > = []
+
+  listSnapshots = async (
+    input: Readonly<{
+      bucketKind: PylonCapacityFunnelSnapshotBucketKind
+      limit: number
+    }>,
+  ) =>
+    Array.from(this.records.values())
+      .filter(record => record.bucketKind === input.bucketKind)
+      .sort((left, right) =>
+        right.bucketStartAt.localeCompare(left.bucketStartAt),
+      )
+      .slice(0, input.limit)
+
+  pruneSnapshotsBefore = async (
+    input: Readonly<{
+      beforeIso: string
+      bucketKind: PylonCapacityFunnelSnapshotBucketKind
+    }>,
+  ) => {
+    this.pruned.push(input)
+  }
+
+  upsertSnapshot = async (record: PylonCapacityFunnelSnapshotRecord) => {
+    this.records.set(`${record.bucketKind}:${record.bucketStartAt}`, record)
+
+    return record
+  }
+}
 
 describe('pylon capacity funnel live bridge', () => {
   test('classifies every dark-capacity reason in the taxonomy', () => {
@@ -375,6 +420,137 @@ describe('pylon capacity funnel live bridge', () => {
           { method: 'POST' },
         ),
         { nowIso: () => nowIso, store },
+      ),
+    )
+
+    expect(wrongMethod.status).toBe(405)
+  })
+
+  test('records hourly and daily retained funnel snapshots', async () => {
+    const store: PylonApiStore = {
+      createAssignment: () => Promise.reject(new Error('unused')),
+      createEvent: () => Promise.reject(new Error('unused')),
+      listAssignmentsForPylon: () => Promise.resolve([assignment()]),
+      listEventsForPylon: () => Promise.resolve([]),
+      listEventsForAssignment: () => Promise.resolve([]),
+      listRegistrations: () =>
+        Promise.resolve([
+          registration({ latestHeartbeatAt: '2026-06-09T20:41:00.000Z' }),
+        ]),
+      listProviderJobLifecycleForPylons: () =>
+        Promise.resolve([providerJobLifecycleRecordFromAssignment(assignment())]),
+      readEventByIdempotencyKeyHash: () => Promise.resolve(undefined),
+      readAssignment: () => Promise.resolve(undefined),
+      readAssignmentByIdempotencyKeyHash: () => Promise.resolve(undefined),
+      readRegistrationByPylonRef: () => Promise.resolve(undefined),
+      updateAssignment: () => Promise.reject(new Error('unused')),
+      upsertProviderJobLifecycle: () => Promise.reject(new Error('unused')),
+      upsertRegistration: () => Promise.reject(new Error('unused')),
+    } as unknown as PylonApiStore
+    const snapshotStore = new MemorySnapshotStore()
+
+    const snapshots = await recordPylonCapacityFunnelSnapshots({
+      nowIso: '2026-06-09T20:42:00.000Z',
+      snapshotStore,
+      store,
+    })
+
+    expect(snapshots.map(snapshot => snapshot.bucketKind).sort()).toEqual([
+      'daily',
+      'hourly',
+    ])
+    expect(
+      snapshots.find(snapshot => snapshot.bucketKind === 'hourly')
+        ?.bucketStartAt,
+    ).toBe('2026-06-09T20:00:00.000Z')
+    expect(
+      snapshots.find(snapshot => snapshot.bucketKind === 'daily')
+        ?.bucketStartAt,
+    ).toBe('2026-06-09T00:00:00.000Z')
+    expect(snapshots[0]?.aggregate.runningCount).toBe(1)
+    expect(snapshotStore.pruned).toEqual([
+      {
+        beforeIso: '2026-05-26T20:42:00.000Z',
+        bucketKind: 'hourly',
+      },
+      {
+        beforeIso: '2025-12-11T20:42:00.000Z',
+        bucketKind: 'daily',
+      },
+    ])
+  })
+
+  test('serves retained public funnel history as counts only', async () => {
+    const snapshotStore = new MemorySnapshotStore()
+    const records = pylonCapacityFunnelRecordsFromStore({
+      assignmentsByPylonRef: new Map([['pylon.test.alpha', [assignment()]]]),
+      lifecycleByPylonRef: new Map([
+        [
+          'pylon.test.alpha',
+          [providerJobLifecycleRecordFromAssignment(assignment())],
+        ],
+      ]),
+      nowIso,
+      registrations: [registration()],
+    })
+    const aggregate = aggregatePylonCapacityFunnel(records, 'public', nowIso)
+
+    await snapshotStore.upsertSnapshot(
+      buildPylonCapacityFunnelSnapshotRecord({
+        aggregate,
+        bucketKind: 'hourly',
+        nowIso: '2026-06-09T20:42:00.000Z',
+      }),
+    )
+    await snapshotStore.upsertSnapshot(
+      buildPylonCapacityFunnelSnapshotRecord({
+        aggregate,
+        bucketKind: 'daily',
+        nowIso: '2026-06-09T20:42:00.000Z',
+      }),
+    )
+
+    const response = await Effect.runPromise(
+      handlePylonCapacityFunnelHistoryApi(
+        new Request(
+          'https://openagents.com/api/public/pylon-capacity-funnel/history',
+        ),
+        { nowIso: () => nowIso, snapshotStore },
+      ),
+    )
+    const body = (await response.json()) as Readonly<{
+      history: Readonly<{
+        daily: ReadonlyArray<Record<string, unknown>>
+        hourly: ReadonlyArray<Record<string, unknown>>
+        retentionPolicyRef: string
+      }>
+      kind: string
+      publicSafe: boolean
+    }>
+
+    expect(response.status).toBe(200)
+    expect(body.kind).toBe('pylon_capacity_funnel_history')
+    expect(body.publicSafe).toBe(true)
+    expect(body.history.retentionPolicyRef).toBe(
+      'retention.public.pylon_capacity_funnel.hourly_14d_daily_180d',
+    )
+    expect(body.history.hourly).toHaveLength(1)
+    expect(body.history.daily).toHaveLength(1)
+    expect(body.history.hourly[0]?.funnel).toMatchObject({
+      runningCount: 1,
+      totalCount: 1,
+    })
+    expect(JSON.stringify(body)).not.toMatch(
+      /pylon\\.test\\.|user_test|oa_agent|wallet\\.public\\.test/,
+    )
+
+    const wrongMethod = await Effect.runPromise(
+      handlePylonCapacityFunnelHistoryApi(
+        new Request(
+          'https://openagents.com/api/public/pylon-capacity-funnel/history',
+          { method: 'POST' },
+        ),
+        { nowIso: () => nowIso, snapshotStore },
       ),
     )
 

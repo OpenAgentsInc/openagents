@@ -84,6 +84,24 @@ assignment refs, but the public route still returns aggregate stage and dark
 reason counts without exposing device identifiers, wallet material, raw
 artifacts, or provider-private details.
 
+## Retained History
+
+Issue #4660 adds retained live-funnel snapshots. The Worker cron refreshes the
+current hourly bucket and current daily bucket from the live public aggregate.
+The public history route is:
+
+- `GET /api/public/pylon-capacity-funnel/history`
+
+The history route returns count-only hourly and daily series with the same
+read-only accounting authority boundary as the live route. It does not expose
+device identifiers, owner linkage, wallet material, raw assignment details,
+artifacts, or provider-private details.
+
+Retention policy:
+
+- hourly snapshots: 14 days;
+- daily snapshots: 180 days.
+
 ## Aggregates
 
 `aggregatePylonCapacityFunnel` returns count-only funnel data:
@@ -161,4 +179,6 @@ counted as settled without a visible receipt for that audience.
 
 - lifecycle-backed live funnel stages;
 - unchanged public route shape with counts only;
-- assignment/lifecycle atomic D1 batch writes and mid-batch failure behavior.
+- assignment/lifecycle atomic D1 batch writes and mid-batch failure behavior;
+- retained hourly/daily history snapshots, retention pruning, and the public
+  history route's count-only output.

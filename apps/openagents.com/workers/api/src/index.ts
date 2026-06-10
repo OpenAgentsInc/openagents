@@ -235,7 +235,12 @@ import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
-import { handlePylonCapacityFunnelApi } from './pylon-capacity-funnel-live-routes'
+import {
+  handlePylonCapacityFunnelApi,
+  handlePylonCapacityFunnelHistoryApi,
+  makeD1PylonCapacityFunnelSnapshotStore,
+  recordPylonCapacityFunnelSnapshots,
+} from './pylon-capacity-funnel-live-routes'
 import { makeD1PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
@@ -4451,6 +4456,23 @@ const runArtanisScheduledTickScheduled = (
     Effect.catch(() => Effect.void),
   )
 
+const recordPylonCapacityFunnelSnapshotsScheduled = (
+  db: D1Database,
+  scheduledTime: number,
+): Effect.Effect<void, never> =>
+  Effect.tryPromise({
+    catch: () => 'pylon_capacity_funnel_snapshot_failed' as const,
+    try: () =>
+      recordPylonCapacityFunnelSnapshots({
+        nowIso: new Date(scheduledTime).toISOString(),
+        snapshotStore: makeD1PylonCapacityFunnelSnapshotStore(db),
+        store: makeD1PylonApiStore(db),
+      }),
+  }).pipe(
+    Effect.asVoid,
+    Effect.catch(() => Effect.void),
+  )
+
 const readTokenUsageLeaderboardsForUser = (
   env: Env,
   userId: string,
@@ -5751,6 +5773,11 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) => handlePylonCapacityFunnelApi(request, env),
   },
   {
+    path: '/api/public/pylon-capacity-funnel/history',
+    handler: (request, env) =>
+      handlePylonCapacityFunnelHistoryApi(request, env),
+  },
+  {
     path: '/api/public/launch-dashboard',
     handler: (request, env) => handlePublicLaunchDashboardApi(request, env),
   },
@@ -6265,6 +6292,13 @@ export default {
         runArtanisScheduledTickScheduled(
           openAgentsDatabase(env),
           config.artanis.scheduledRunnerEnabled,
+          event.scheduledTime,
+        ),
+      ),
+      observedEffect(
+        'PylonCapacityFunnel.recordSnapshots',
+        recordPylonCapacityFunnelSnapshotsScheduled(
+          openAgentsDatabase(env),
           event.scheduledTime,
         ),
       ),

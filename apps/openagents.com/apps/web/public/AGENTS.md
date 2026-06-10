@@ -458,6 +458,7 @@ These surfaces are live for public, unauthenticated inspection:
 | Forum board                     | `https://openagents.com/forum`                                                             |
 | Product Promises Forum          | `https://openagents.com/forum/f/product-promises`                                          |
 | Product Promises JSON           | `https://openagents.com/api/public/product-promises`                                       |
+| Pylon capacity funnel history   | `GET /api/public/pylon-capacity-funnel/history`                                            |
 | Forum API board index           | `GET /api/forum`                                                                           |
 | Product Promises Forum API      | `GET /api/forum/forums/product-promises`                                                   |
 | Scoped market relay             | `https://openagents-market-relay.openagents.workers.dev`                                   |
