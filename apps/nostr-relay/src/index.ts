@@ -2,6 +2,7 @@ import relayWorker, {
   NostrRelayDO as BaseNostrRelayDO,
 } from "nostr-effect/relay/backends/cloudflare/worker"
 import type { Env as NostrRelayEnv } from "nostr-effect/relay/backends/cloudflare/NostrRelayDO"
+import { verifyEvent, type Event as SignedNostrEvent } from "nostr-effect/pure"
 
 import {
   MarketRelayPolicy,
@@ -41,8 +42,11 @@ type SqlStorage = {
 type MarketRelayEvent = Readonly<{
   id?: unknown
   pubkey?: unknown
+  created_at?: unknown
   kind?: unknown
+  tags?: unknown
   content?: unknown
+  sig?: unknown
 }>
 
 type MarketRelayMetrics = Readonly<{
@@ -95,6 +99,23 @@ const eventFromMessage = (message: unknown): MarketRelayEvent | null =>
     ? message[1]
     : null
 
+const isSignedNostrEvent = (event: MarketRelayEvent): event is SignedNostrEvent =>
+  typeof event.id === "string" &&
+  typeof event.pubkey === "string" &&
+  typeof event.created_at === "number" &&
+  typeof event.kind === "number" &&
+  Array.isArray(event.tags) &&
+  event.tags.every(
+    tag => Array.isArray(tag) && tag.every(value => typeof value === "string"),
+  ) &&
+  typeof event.content === "string" &&
+  typeof event.sig === "string"
+
+const dTagValue = (event: SignedNostrEvent): string | null => {
+  const tag = event.tags.find(candidate => candidate[0] === "d")
+  return typeof tag?.[1] === "string" && tag[1].length > 0 ? tag[1] : null
+}
+
 const filtersFromReqMessage = (message: unknown): ReadonlyArray<Record<string, unknown>> | null =>
   Array.isArray(message) && message[0] === "REQ"
     ? message.slice(2).filter(isRecord)
@@ -108,6 +129,32 @@ const kindCountsDefault = () => ({
   nip89_handler: 0,
 })
 
+const ensureParameterizedReplaceableStorage = (sql: SqlStorage): void => {
+  try {
+    const columns = sql.exec<{ name: string }>("PRAGMA table_info(events)").toArray()
+    const hasDTag = columns.some(column => column.name === "d_tag")
+    if (!hasDTag) {
+      sql.exec("ALTER TABLE events ADD COLUMN d_tag TEXT")
+    }
+  } catch {
+    try {
+      sql.exec("ALTER TABLE events ADD COLUMN d_tag TEXT")
+    } catch {
+      // The column already exists or the upstream store will report the real
+      // storage failure during publish.
+    }
+  }
+
+  try {
+    sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_pubkey_kind_dtag ON events(pubkey, kind, d_tag)",
+    )
+  } catch {
+    // If the events table does not exist yet, nostr-effect creates it during
+    // base DO construction. The next object construction will create the index.
+  }
+}
+
 export class NostrRelayDO extends BaseNostrRelayDO {
   private readonly marketSql: SqlStorage
   private readonly issue: string | null
@@ -118,6 +165,7 @@ export class NostrRelayDO extends BaseNostrRelayDO {
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env)
+    ensureParameterizedReplaceableStorage(state.storage.sql as SqlStorage)
     this.marketSql = state.storage.sql as SqlStorage
     this.issue = env.OPENAGENTS_NOSTR_RELAY_ISSUE ?? null
   }
@@ -137,10 +185,27 @@ export class NostrRelayDO extends BaseNostrRelayDO {
     ws: WebSocket,
     message: string | ArrayBuffer,
   ): Promise<void> {
+    let parsed: unknown
+    try {
+      parsed = parseClientMessage(message)
+    } catch {
+      ws.send(relayNotice("invalid: client message must be valid JSON"))
+      return
+    }
+
     const screening = this.screenMessage(message)
 
     if (screening !== null) {
       ws.send(screening)
+      return
+    }
+
+    const event = eventFromMessage(parsed)
+    if (
+      event !== null &&
+      (event.kind === 30404 || event.kind === 30406) &&
+      this.storeAddressableMarketEvent(event, ws)
+    ) {
       return
     }
 
@@ -206,6 +271,81 @@ export class NostrRelayDO extends BaseNostrRelayDO {
     return next.allowed
       ? null
       : relayOk(event.id, false, "rate-limited: per-pubkey publish limit exceeded")
+  }
+
+  private storeAddressableMarketEvent(
+    event: MarketRelayEvent,
+    ws: WebSocket,
+  ): boolean {
+    if (!isSignedNostrEvent(event)) {
+      ws.send(relayOk(event.id, false, "blocked: malformed addressable market event"))
+      return true
+    }
+
+    if (!verifyEvent(event)) {
+      ws.send(relayOk(event.id, false, "invalid: event signature verification failed"))
+      return true
+    }
+
+    const dTag = dTagValue(event)
+    if (dTag === null) {
+      ws.send(relayOk(event.id, false, "blocked: addressable market event requires d tag"))
+      return true
+    }
+
+    try {
+      ensureParameterizedReplaceableStorage(this.marketSql)
+      const existing = this.marketSql
+        .exec<{ id: string; created_at: number }>(
+          "SELECT id, created_at FROM events WHERE pubkey = ? AND kind = ? AND d_tag = ?",
+          event.pubkey,
+          event.kind,
+          dTag,
+        )
+        .toArray()[0] ?? null
+
+      if (existing !== null) {
+        if (existing.id === event.id) {
+          ws.send(relayOk(event.id, true, "duplicate: event already exists"))
+          return true
+        }
+
+        const shouldReplace =
+          event.created_at > existing.created_at ||
+          (event.created_at === existing.created_at && event.id < existing.id)
+
+        if (!shouldReplace) {
+          ws.send(relayOk(event.id, true, "duplicate: older addressable event ignored"))
+          return true
+        }
+
+        this.marketSql.exec("DELETE FROM events WHERE id = ?", existing.id)
+      }
+
+      this.marketSql.exec(
+        `INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig, d_tag)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        event.id,
+        event.pubkey,
+        event.created_at,
+        event.kind,
+        JSON.stringify(event.tags),
+        event.content,
+        event.sig,
+        dTag,
+      )
+      ws.send(relayOk(event.id, true, ""))
+      return true
+    } catch (error) {
+      ws.send(
+        relayOk(
+          event.id,
+          false,
+          `error: addressable market storage failed: ${(error as Error).message}`,
+        ),
+      )
+      return true
+    }
   }
 
   private runRetention(nowMs: number): void {

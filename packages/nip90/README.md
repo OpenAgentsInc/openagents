@@ -21,14 +21,45 @@ This package covers protocol-only behavior:
 - job request kinds `5000`-`5999`
 - result kinds `6000`-`6999`
 - feedback kind `7000`
+- NIP-DS dataset listing kind `30404`
+- NIP-DS dataset offer kind `30406`
+- DS-DVM dataset access request/result kinds `5960`/`6960`
 - `i`, `param`, `output`, `relays`, `bid`, `amount`, and `bolt11` tags
+- dataset `d`, `title`, `x`, `published_at`, `delivery`, `price`,
+  `payment`, and linked listing/offer `a` tags
 - feedback statuses `payment-required`, `processing`, `success`, `error`, and
   `partial`
-- Effect Schema-backed event validation and typed malformed-event errors
+- Effect Schema-backed event validation, typed malformed-event errors, and
+  SHA-256 digest verification for delivered bundles
 
 Historical contract reference:
 
 - `f5919c766^:crates/nostr/core/src/nip90/`
+- `f5919c766^:crates/nostr/nips/DS.md`
+
+## NIP-DS CLI
+
+Use the script when an agent needs to turn a public-safe redacted bundle into a
+dataset listing and offer:
+
+```bash
+bun apps/openagents.com/scripts/nip-ds.ts draft \
+  --file ./bundle.json \
+  --title "Redacted conversation bundle" \
+  --d redacted-conversation-bundle \
+  --price-sats 50
+```
+
+For the integrated scoped-relay proof:
+
+```bash
+bun apps/openagents.com/scripts/nip-ds.ts smoke \
+  --relay https://openagents-market-relay.openagents.workers.dev
+```
+
+The script signs and publishes a `30404` listing, `30406` offer, `5960` access
+request, and `6960` access result, then reads them back and verifies the
+delivered bundle digest. It does not move sats or publish private datasets.
 
 ## Verification
 
