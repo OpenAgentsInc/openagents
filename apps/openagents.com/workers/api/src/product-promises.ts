@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.4'
+export const PublicProductPromisesVersion = '2026-06-10.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -679,6 +679,7 @@ export const publicProductPromisesDocument = () => {
       evidenceRefs: [
         'docs/transcripts/214.md',
         'apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
+        'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
         'apps/pylon/packages/runtime/src/contracts/provider-account.ts',
       ],
       blockerRefs: ['blocker.product_promises.labor_stream_not_live'],

@@ -3,8 +3,11 @@ import {
   KIND_DATASET_ACCESS_REQUEST,
   KIND_DATASET_LISTING,
   KIND_DATASET_OFFER,
+  KIND_JOB_LABOR_CODE_TASK,
+  KIND_JOB_LABOR_REVIEW,
   KIND_JOB_TEXT_GENERATION,
   Nip90ProtocolError,
+  PROVIDER_COMPLIANT_USAGE_LABOR_POLICY_REF,
   datasetAccessRequestToTags,
   datasetAddress,
   datasetListingToTags,
@@ -13,14 +16,21 @@ import {
   getResultKind,
   jobInput,
   jobParam,
+  laborJobRequestToTags,
+  laborJobResultToTags,
+  laborJobTypeForKind,
   makeDatasetAccessRequest,
   makeDatasetListing,
   makeDatasetOffer,
+  makeLaborJobRequest,
+  makeLaborJobResult,
   jobRequestToTags,
   makeJobRequest,
   parseDatasetListingEvent,
   parseDatasetOfferEvent,
   parseJobRequestEvent,
+  parseLaborJobRequestEvent,
+  parseLaborJobResultEvent,
   sha256Hex,
   verifyDatasetDigest,
 } from "./index.js"
@@ -66,6 +76,56 @@ describe("@openagents/nip90", () => {
     expect(parsed.inputs[0]?.inputType).toBe("text")
     expect(parsed.bid).toBe(1000)
     expect(() => makeJobRequest({ kind: 6000 })).toThrow(Nip90ProtocolError)
+  })
+
+  test("re-exports shared labor job request and result helpers", () => {
+    const request = makeLaborJobRequest({
+      jobType: "review",
+      inputRefs: ["work-order.public.review-1"],
+      acceptanceCriteria: ["review artifact is public-safe"],
+      bid: 10_000,
+      relays: ["wss://relay.openagents.example"],
+    })
+    const result = makeLaborJobResult({
+      jobType: "review",
+      requestId: "dd".repeat(32),
+      customerPubkey: pubkey,
+      artifactRefs: ["artifact.public.review-1"],
+      content: '{"status":"accepted"}',
+      amount: 10_000,
+    })
+
+    expect(KIND_JOB_LABOR_REVIEW).toBe(5935)
+    expect(KIND_JOB_LABOR_CODE_TASK).toBe(5934)
+    expect(laborJobTypeForKind(KIND_JOB_LABOR_REVIEW)).toBe("review")
+    expect(request.policyRef).toBe(PROVIDER_COMPLIANT_USAGE_LABOR_POLICY_REF)
+    expect(laborJobRequestToTags(request).map((tag: readonly string[]) => [...tag])).toContainEqual([
+      "param",
+      "acceptance",
+      "review artifact is public-safe",
+    ])
+    expect(parseLaborJobRequestEvent({
+      id: "aa".repeat(32),
+      pubkey,
+      created_at: 1_762_000_000,
+      kind: KIND_JOB_LABOR_REVIEW,
+      tags: laborJobRequestToTags(request),
+      content: request.request.content,
+      sig,
+    }).jobType).toBe("review")
+    expect(laborJobResultToTags(result).map((tag: readonly string[]) => [...tag])).toContainEqual([
+      "artifact",
+      "artifact.public.review-1",
+    ])
+    expect(parseLaborJobResultEvent({
+      id: "bb".repeat(32),
+      pubkey,
+      created_at: 1_762_000_000,
+      kind: 6935,
+      tags: laborJobResultToTags(result),
+      content: result.result.content,
+      sig,
+    }).artifactRefs).toEqual(["artifact.public.review-1"])
   })
 
   test("re-exports shared NIP-DS listing, offer, and digest helpers", () => {

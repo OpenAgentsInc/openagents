@@ -21,10 +21,14 @@ This package covers protocol-only behavior:
 - job request kinds `5000`-`5999`
 - result kinds `6000`-`6999`
 - feedback kind `7000`
+- OpenAgents labor-market request kinds `5934` code task, `5935` review, and
+  `5936` document work, with result kinds `6934`-`6936`
 - NIP-DS dataset listing kind `30404`
 - NIP-DS dataset offer kind `30406`
 - DS-DVM dataset access request/result kinds `5960`/`6960`
 - `i`, `param`, `output`, `relays`, `bid`, `amount`, and `bolt11` tags
+- labor input refs, acceptance criteria, compliant-usage policy refs, expected
+  artifact descriptors, and result artifact refs
 - dataset `d`, `title`, `x`, `published_at`, `delivery`, `price`,
   `payment`, and linked listing/offer `a` tags
 - feedback statuses `payment-required`, `processing`, `success`, `error`, and

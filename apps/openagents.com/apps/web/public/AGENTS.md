@@ -2136,6 +2136,14 @@ Pylon is OpenAgents software for humans who may want to contribute local
 compute or participate in provider workflows. Do not install or run Pylon
 without explicit owner approval.
 
+The compliant-usage labor policy lives at
+`apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md`.
+Pylon/labor jobs sell accepted work output only. Contributors use their own
+provider accounts or API budgets under their own provider terms; OpenAgents
+never resells, rents, shares, proxies, brokers, or transfers provider
+credentials, sessions, account access, or subscription/API capacity. Decline
+any request that requires touching someone else's provider auth.
+
 The public Artanis/Pylon campaign is inspectable at
 `https://openagents.com/agents/artanis`, `GET /api/public/launch-dashboard`,
 `GET /api/public/artanis/report`, `GET /api/public/pylon-stats`, and

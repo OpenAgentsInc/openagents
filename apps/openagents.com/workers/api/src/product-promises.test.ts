@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-10.4')
+    expect(decoded.version).toBe('2026-06-10.5')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -180,6 +180,13 @@ describe('public product promises document', () => {
           ]),
           promiseId: 'payments.money_dev_kit.v1',
           state: 'yellow',
+        }),
+        expect.objectContaining({
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
+          ]),
+          promiseId: 'provider.compliant_usage_labor.v1',
+          state: 'red',
         }),
         expect.objectContaining({
           blockerRefs: [],
