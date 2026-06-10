@@ -60,6 +60,7 @@ import {
   runArtanisResponderScanScheduled,
 } from './artanis-forum-responder'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
+import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -6975,6 +6976,15 @@ export default {
             makeId: randomUuid,
             nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           }),
+        ),
+      ),
+      observedEffect(
+        'ForumDirectTips.archiveStaleRecoveries',
+        Effect.promise(() =>
+          archiveStaleDirectTipRecoveries(
+            openAgentsDatabase(env),
+            epochMillisToIsoTimestamp(event.scheduledTime),
+          ),
         ),
       ),
       observedEffect(

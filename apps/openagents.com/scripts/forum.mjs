@@ -2935,6 +2935,11 @@ export const runForumDirectTipPostPayment = async (
           walletPayment.blocker?.reasonRef ??
           'reason.public.agent_wallet_send_failed',
         status: timedOut ? 'recovery_pending' : 'failed',
+        // #4704: recovery_pending attempts archive after 24h if the
+        // provider callback never reconciles them. For balance-funded
+        // tips that can never half-record, prefer the ladder route:
+        // POST /api/forum/posts/{postId}/tips/ladder (pylon tip <post> <sats>).
+
       },
       preflight,
       reasonRef:
