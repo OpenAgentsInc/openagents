@@ -62,7 +62,7 @@ import {
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import { runArtanisSpendDecision } from './artanis-spend'
-import { runArtanisAdminTickScheduled } from './artanis-administrator-tick'
+import { runArtanisAdminTickScheduled, runArtanisCloseoutVerifierScheduled } from './artanis-administrator-tick'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -7091,6 +7091,54 @@ export default {
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+        }),
+      ),
+      observedEffect(
+        'ArtanisAdmin.closeoutVerifier',
+        runArtanisCloseoutVerifierScheduled(openAgentsDatabase(env), {
+          accept: async input => {
+            const adminToken = (env as { OPENAGENTS_ADMIN_API_TOKEN?: string })
+              .OPENAGENTS_ADMIN_API_TOKEN
+            if (adminToken === undefined) {
+              return { detail: 'admin_token_missing', ok: false }
+            }
+            const response = await runArtanisForumRouteEffect(
+              pylonApiRoutes.routePylonApiRequest(
+                new Request(
+                  `https://openagents.com/api/operator/pylons/assignments/${encodeURIComponent(input.assignmentRef)}/closeout`,
+                  {
+                    body: JSON.stringify({
+                      accepted: input.accepted,
+                      acceptedWorkRefs: input.accepted ? input.refs : [],
+                      closeoutRefs: input.refs,
+                      rejectionRefs: input.accepted ? [] : input.refs,
+                    }),
+                    headers: {
+                      Authorization: `Bearer ${adminToken}`,
+                      'Content-Type': 'application/json',
+                    },
+                    method: 'POST',
+                  },
+                ),
+                env,
+              ),
+            )
+            if (response === undefined) {
+              return { detail: 'route_unmatched', ok: false }
+            }
+            return { detail: (await response.text()).slice(0, 200), ok: response.ok }
+          },
+          enabled:
+            (env as { ARTANIS_ADMIN_TICK_ENABLED?: string })
+              .ARTANIS_ADMIN_TICK_ENABLED === 'true',
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          replay: async input =>
+            runTassadarReplayValidation({
+              assignmentRef: input.assignmentRef,
+              claimedTraceDigest: input.claimedTraceDigest,
+              pylonDeviceRef: input.pylonDeviceRef,
+              workload: input.workload,
+            } as never),
         }),
       ),
       observedEffect(
