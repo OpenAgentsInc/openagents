@@ -3764,6 +3764,27 @@ export const updateForumTopicModerationState = (
       .run(),
   ).pipe(Effect.flatMap(() => readForumTopicById(db, input.topicId)))
 
+export const updateForumTopicPinState = (
+  db: D1Database,
+  input: Readonly<{
+    pinState: 'normal' | 'sticky' | 'announcement'
+    topicId: string
+  }>,
+  runtime: ForumRepositoryRuntime = systemForumRepositoryRuntime,
+): Effect.Effect<ForumTopicSummary | null, ForumStorageError> =>
+  d1Effect('forum.updateTopicPinState', () =>
+    db
+      .prepare(
+        `UPDATE forum_topics
+            SET pin_state = ?,
+                updated_at = ?
+          WHERE id = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(input.pinState, runtime.nowIso(), input.topicId)
+      .run(),
+  ).pipe(Effect.flatMap(() => readForumTopicById(db, input.topicId)))
+
 export const createForumPrivateMessageThread = (
   db: D1Database,
   input: ForumPrivateMessageThreadInput,

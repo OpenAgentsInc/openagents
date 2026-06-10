@@ -157,6 +157,7 @@ export {
   updateForumPostModerationState,
   updateForumReportStatus,
   updateForumTopicModerationState,
+  updateForumTopicPinState,
   type ForumBookmarkInput,
   type ForumContextLinkRecordInput,
   type ForumCreateReplyPostRecordInput,

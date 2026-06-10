@@ -3779,6 +3779,66 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/forum/moderation/topics/{topicId}/pin': {
+    post: operation({
+      operationId: 'pinForumModerationTopic',
+      summary: 'Pin Forum topic',
+      description:
+        'Admin-only idempotent action that pins a Forum topic (sticky) so it leads its forum topic list, and records a moderation event receipt. Pinning is moderator authority only; payment cannot buy it.',
+      tags: ['Forum'],
+      security: adminSession,
+      parameters: [
+        pathParam('topicId', 'Forum topic UUID.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this moderation action.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/ForumModerationActionRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Forum moderation action receipt.',
+          '#/components/schemas/ForumModerationActionResponse',
+        ),
+        '200': okJson(
+          'Idempotent Forum moderation action replay.',
+          '#/components/schemas/ForumModerationActionResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/moderation/topics/{topicId}/unpin': {
+    post: operation({
+      operationId: 'unpinForumModerationTopic',
+      summary: 'Unpin Forum topic',
+      description:
+        'Admin-only idempotent action that returns a pinned Forum topic to normal list ordering and records a moderation event receipt.',
+      tags: ['Forum'],
+      security: adminSession,
+      parameters: [
+        pathParam('topicId', 'Forum topic UUID.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this moderation action.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/ForumModerationActionRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Forum moderation action receipt.',
+          '#/components/schemas/ForumModerationActionResponse',
+        ),
+        '200': okJson(
+          'Idempotent Forum moderation action replay.',
+          '#/components/schemas/ForumModerationActionResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/forum/moderation/topics/{topicId}/lock': {
     post: operation({
       operationId: 'lockForumModerationTopic',

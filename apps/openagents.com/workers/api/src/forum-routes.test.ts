@@ -2316,10 +2316,14 @@ class ForumRouteStatement implements D1PreparedStatement {
           latest_post_id: this.query.includes('latest_post_id')
             ? String(this.values[0])
             : existing.latest_post_id,
+          pin_state: this.query.includes('SET pin_state')
+            ? (this.values[0] as 'normal' | 'sticky' | 'announcement')
+            : existing.pin_state,
           post_count: this.query.includes('post_count = post_count + 1')
             ? existing.post_count + 1
             : existing.post_count,
-          state: this.query.includes('latest_post_id')
+          state: this.query.includes('latest_post_id') ||
+            this.query.includes('SET pin_state')
             ? existing.state
             : (this.values[0] as 'open' | 'locked' | 'archived' | 'hidden'),
           updated_at: String(this.values[1]),
@@ -6615,6 +6619,90 @@ describe('Forum routes', () => {
     })
     expect(store.reports[0]?.status).toBe('resolved')
     expect(store.moderationEvents).toHaveLength(3)
+  })
+
+  test('pins and unpins topics through moderator actions with pinned-first ordering', async () => {
+    const store = new ForumRouteStore()
+    const created = await route(
+      store,
+      '/api/forum/forums/site-builder-help/topics',
+      {
+        body: {
+          bodyText: 'This thread should be pinnable by moderators.',
+          title: 'Pin candidate thread',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'pin-topic-create-1',
+        },
+        method: 'POST',
+      },
+    )
+    const createdBody = (await created.json()) as Readonly<{
+      topic: Readonly<{ topicId: string }>
+    }>
+    const topicId = createdBody.topic.topicId
+    const nonModeratorPin = await route(
+      store,
+      `/api/forum/moderation/topics/${topicId}/pin`,
+      {
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'pin-topic-agent-1',
+        },
+        method: 'POST',
+      },
+    )
+    const pinResponse = await route(
+      store,
+      `/api/forum/moderation/topics/${topicId}/pin`,
+      {
+        headers: { 'idempotency-key': 'pin-topic-moderator-1' },
+        method: 'POST',
+        moderator: 'admin',
+      },
+    )
+    const listAfterPin = await route(
+      store,
+      '/api/forum/forums/site-builder-help/topics',
+    )
+    const listBody = (await listAfterPin.json()) as Readonly<{
+      topics: ReadonlyArray<Readonly<{ pinState: string; title: string }>>
+    }>
+    const unpinResponse = await route(
+      store,
+      `/api/forum/moderation/topics/${topicId}/unpin`,
+      {
+        headers: { 'idempotency-key': 'unpin-topic-moderator-1' },
+        method: 'POST',
+        moderator: 'admin',
+      },
+    )
+
+    expect(created.status).toBe(201)
+    expect(nonModeratorPin.status).toBe(401)
+    expect(pinResponse.status).toBe(201)
+    await expect(pinResponse.json()).resolves.toMatchObject({
+      moderationEvent: {
+        actionKind: 'moderator_pin_topic',
+        targetId: topicId,
+        targetKind: 'topic',
+      },
+      target: { pinState: 'sticky' },
+    })
+    expect(
+      listBody.topics.find(topic => topic.title === 'Pin candidate thread'),
+    ).toMatchObject({
+      pinState: 'sticky',
+    })
+    expect(unpinResponse.status).toBe(201)
+    await expect(unpinResponse.json()).resolves.toMatchObject({
+      moderationEvent: {
+        actionKind: 'moderator_unpin_topic',
+        targetId: topicId,
+      },
+      target: { pinState: 'normal' },
+    })
   })
 
   test('returns public-safe Site context activity and redacts private links', async () => {

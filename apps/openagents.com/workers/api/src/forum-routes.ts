@@ -85,6 +85,7 @@ import {
   updateForumPostModerationState,
   updateForumReportStatus,
   updateForumTopicModerationState,
+  updateForumTopicPinState,
   upsertForumTipRecipientWallet,
   watchForumTarget,
 } from './forum'
@@ -3302,7 +3303,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
     }
 
     const moderationTopicActionMatch =
-      /^\/api\/forum\/moderation\/topics\/([^/]+)\/(lock|unlock|archive|hide)$/.exec(
+      /^\/api\/forum\/moderation\/topics\/([^/]+)\/(lock|unlock|archive|hide|pin|unpin)$/.exec(
         url.pathname,
       )
 
@@ -3312,6 +3313,25 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
       if (topicId === undefined || actionSlug === undefined) {
         return Effect.succeed(badRequest('topic moderation path is malformed'))
+      }
+
+      if (actionSlug === 'pin' || actionSlug === 'unpin') {
+        const pinState = actionSlug === 'pin' ? 'sticky' : 'normal'
+
+        return request.method === 'POST'
+          ? moderationActionResponse(
+              request,
+              db,
+              {
+                actionKind: `moderator_${actionSlug}_topic`,
+                targetId: topicId,
+                targetKind: 'topic',
+                update: () =>
+                  updateForumTopicPinState(db, { pinState, topicId }),
+              },
+              requestDependencies,
+            )
+          : Effect.succeed(methodNotAllowed(['POST']))
       }
 
       const state =
