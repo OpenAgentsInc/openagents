@@ -39,8 +39,10 @@ dashboard products) accrues to it. Per MDK's own architecture docs
 (howitworks.md), MDK opens channels and manages inbound liquidity to that
 node; the keys and funds are ours.
 
-Consequence: **no new `mdkd` daemon is needed.** The node that holds the
-money is already deployed beside the worker.
+Consequence: the revenue balance and the container deployment pattern both
+already exist. What does not exist is a wallet whose job is paying people —
+that is the treasury wallet this doc specifies, kept deliberately separate
+from the revenue node.
 
 ## The MDK payouts flow (the platform way to move that balance)
 
@@ -59,9 +61,11 @@ The destination is read from `process.env.WITHDRAWAL_DESTINATION` on the node
 side **by design** — mdk.com cannot redirect funds even if the dashboard or
 platform key is compromised.
 
-Current enablement state in this repo: `WITHDRAWAL_DESTINATION` is not set
-anywhere (worker vars, sidecar env, or secrets). Setting it on the sidecar
-container env and redeploying is the entire platform-side enablement step.
+Current state in this repo: `WITHDRAWAL_DESTINATION` is not set anywhere
+(worker vars, sidecar env, or secrets). Under the decision above it is an
+optional revenue-withdrawal convenience — set it to the treasury wallet's
+offer if revenue should fund the campaign, or to the owner's wallet for
+ordinary withdrawals — and it is not on the per-agent payout path.
 
 ## Why the payouts flow is not the per-agent path
 
@@ -158,23 +162,31 @@ a campaign budget cap. Distribute to new agents *through* that gate. A
 second distribution lane (e.g. first-accepted-work bonus) needs its own
 ledger with its own structural dedupe, not a relaxation of this one.
 
-## Enablement checklist (operator)
+## Enablement checklist
 
-1. Pick the campaign wallet (existing funded local MDK wallet; bounded; not
-   the tip payer, edge wallet, or Treasury) and get its BOLT12 offer.
-2. Set `WITHDRAWAL_DESTINATION` to that offer in the mdk-sidecar container
-   environment (as a deploy-time env/secret, never in tracked config with
-   the raw `lno...` value) and redeploy the worker.
-3. In the MDK dashboard, Pay the campaign budget (N x 1000 sats + fee
-   headroom). Confirm arrival in the campaign wallet.
-4. Land the dispatcher script for the distribution hop (agent-side work, no
-   spend involved in landing it): walk `eligible` rewards through
-   `approve_dispatch -> pay agent offer -> mark_dispatched -> mark_settled`
-   with public-safe evidence refs and a per-run spend cap.
-5. Run the first single-reward smoke per the existing dispatch runbook. That
-   first settled reward is the live evidence `agents.x_claim_reward.v1` has
-   been waiting on: record it on #4626 and propose the transition with a
-   receipt.
+Agent-side (no spend involved in landing any of it):
+
+1. Add the `services/mdk-treasury/` container (mdkd image, own config,
+   secrets via deploy-time env: fresh `MDK_MNEMONIC`, full/read-only
+   passwords, explicit port) and its wrangler container binding, reachable
+   from the worker only.
+2. Land the worker-side dispatcher behind the existing operator gates:
+   consumes `dispatch_requested` reward rows, pays the agent's registered
+   BOLT12 offer via the treasury binding, marks
+   `dispatched`/`settled`-with-evidence/`failed`, enforces per-run and
+   per-day spend caps, exposes a public-safe status projection.
+3. Tests + a no-spend smoke (mock treasury binding) before any live run.
+
+Operator-side (bounded actions):
+
+4. Generate and back up the treasury mnemonic; set the deploy secrets.
+5. Fund the treasury wallet with the campaign budget (N x 1000 sats + fee
+   headroom) — externally, or via the dashboard payouts flow by pointing
+   `WITHDRAWAL_DESTINATION` at the treasury offer and clicking Pay.
+6. Approve the first single reward (`approve_dispatch`) and let the
+   dispatcher run it end to end. That first settled reward is the live
+   evidence `agents.x_claim_reward.v1` has been waiting on: record it on
+   #4626 and propose the transition with a receipt.
 
 ## Authority note
 
