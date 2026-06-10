@@ -3795,6 +3795,7 @@ describe('Forum routes', () => {
           blockerRef: null,
           caveatRefs: [
             'caveat.public.forum_tip_recipient.claim_required',
+            'caveat.public.forum_tip_recipient.daemon_reachability_required',
             'policy.public.forum_tip_recipient.agent_claimed',
             'policy.public.forum_tip_recipient.self_custody',
           ],

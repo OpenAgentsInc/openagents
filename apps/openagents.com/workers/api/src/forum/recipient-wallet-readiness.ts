@@ -245,6 +245,9 @@ export const projectForumTipRecipientReadiness = (
       ...(missingDirectOffer
         ? ['caveat.public.forum_tip_recipient.bolt12_offer_missing']
         : []),
+      ...(directPayment === null
+        ? []
+        : ['caveat.public.forum_tip_recipient.daemon_reachability_required']),
     ]),
     directPayment,
     providerClass: safe.providerClass,

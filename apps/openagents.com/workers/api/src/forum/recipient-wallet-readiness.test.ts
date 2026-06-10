@@ -56,6 +56,24 @@ describe('Forum tip recipient wallet readiness', () => {
     expect(serialized).not.toContain('approval.public.forum_tip_recipient')
   })
 
+  test('names the daemon-reachability constraint on every direct-payment projection', () => {
+    const withOffer = projectForumTipRecipientReadiness(readyRecord())
+
+    expect(withOffer.directPayment?.kind).toBe('bolt12_offer')
+    expect(withOffer.caveatRefs).toContain(
+      'caveat.public.forum_tip_recipient.daemon_reachability_required',
+    )
+
+    const withoutOffer = projectForumTipRecipientReadiness(
+      readyRecord({ bolt12Offer: null }),
+    )
+
+    expect(withoutOffer.directPayment).toBeNull()
+    expect(withoutOffer.caveatRefs).not.toContain(
+      'caveat.public.forum_tip_recipient.daemon_reachability_required',
+    )
+  })
+
   test('represents missing readiness as a first-class public blocker', () => {
     expect(missingForumTipRecipientReadiness('actor.missing')).toStrictEqual({
       actorRef: 'actor.missing',
