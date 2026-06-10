@@ -1,0 +1,3 @@
+{"timestamp":"2026-06-10T10:00:00.000Z","cwd":"/Users/fixture/private/openagents","message":{"role":"user","content":"Can you summarize the public launch notes for fixture-user@example.com?"},"provider":"codex","privateMetadata":{"rawPath":"/Users/fixture/private/openagents/.env"}}
+{"timestamp":"2026-06-10T10:01:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"The launch notes are safe to publish. Local notes live at /Users/fixture/private/openagents/notes.md."}]},"provider":"codex"}
+{"timestamp":"2026-06-10T10:02:00.000Z","role":"tool","text":"Wrote public receipt wallet.public.fixture123456 and digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa."}
