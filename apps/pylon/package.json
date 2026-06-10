@@ -53,6 +53,7 @@
     "smoke:install:local": "bash scripts/smoke-local-package-install.sh",
     "smoke:packaged-network": "bun scripts/packaged-live-network-smoke.ts",
     "smoke:packaged-runtime-task": "bun scripts/packaged-runtime-task-smoke.ts",
+    "smoke:claude-agent-task": "bun scripts/claude-agent-task-smoke.ts",
     "test": "bun test --max-concurrency=1",
     "release:gate": "bash scripts/release-gate.sh"
   },
