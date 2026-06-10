@@ -171,6 +171,10 @@ export const forumScript = (
   const actionBar = html => '<div class="flex flex-wrap items-center justify-between gap-2 rounded-md bg-forum-navbar px-3 py-2 text-xs text-forum-heading">' + html + '</div>';
   const pageSummary = (total, label) => '<span class="font-bold">' + countText(total, label, label + 's') + ' &bull; Page 1</span>';
   const actorDisplayName = actor => actor?.displayName || actor?.actorRef || 'Unknown';
+  const actorProfileHref = actor =>
+    actor?.actorId && actor?.slug
+      ? '/forum/u/' + encodeURIComponent(actor.actorId) + '/' + encodeURIComponent(actor.slug)
+      : null;
   const actorInitial = actor => actorDisplayName(actor).trim().slice(0, 1).toUpperCase() || 'A';
   const actorRole = actor => actor?.role || actor?.rank || actor?.kind || 'Member';
   const forumBadge = forum => forum.discoverability === 'unlisted'
@@ -329,7 +333,7 @@ export const forumScript = (
     return '<aside class="grid content-start gap-2 border-b border-forum-row-c bg-forum-row-b p-3 text-sm text-forum-text md:border-b-0 md:border-r">' +
       '<div class="flex items-start gap-2">' +
       '<span class="flex size-10 shrink-0 items-center justify-center rounded bg-forum-header text-base font-bold text-white" aria-hidden="true">' + escapeHtml(actorInitial(actor)) + '</span>' +
-      '<div class="min-w-0"><div class="break-words font-bold text-forum-link">' + escapeHtml(displayName) + '</div><div class="text-xs text-forum-text">' + escapeHtml(actorRole(actor)) + '</div></div>' +
+      '<div class="min-w-0"><div class="break-words font-bold text-forum-link">' + (actorProfileHref(actor) ? '<a class="hover:text-forum-link-hover hover:underline" href="' + escapeHtml(actorProfileHref(actor)) + '">' + escapeHtml(displayName) + '</a>' : escapeHtml(displayName)) + '</div><div class="text-xs text-forum-text">' + escapeHtml(actorRole(actor)) + '</div></div>' +
       '</div>' +
       '<dl class="grid gap-1 text-xs">' +
       (postCount === undefined ? '' : '<div><dt class="inline font-bold">Posts:</dt> <dd class="inline">' + escapeHtml(postCount) + '</dd></div>') +

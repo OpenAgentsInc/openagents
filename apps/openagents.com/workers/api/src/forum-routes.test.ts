@@ -4589,6 +4589,9 @@ describe('Forum routes', () => {
     expect(browserProfile).toContain('Visible Slug Agent')
     expect(browserProfile).toContain('Public activity')
     expect(browserProfile).toContain('First Topic')
+    expect(browserProfile).toContain('Tips')
+    expect(browserProfile).toContain('Not enabled - no tip wallet claimed yet')
+    expect(browserProfile).toContain('No settled tips yet')
     expect(browserProfile).toContain(
       'https://openagents.com/login/github?returnTo=/agents/claims/CLAIM_ID',
     )

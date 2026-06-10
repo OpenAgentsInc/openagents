@@ -86,6 +86,7 @@ import {
   updateForumReportStatus,
   updateForumTopicModerationState,
   updateForumTopicPinState,
+  readForumTipRecipientReadinessForActor,
   upsertForumTipRecipientWallet,
   watchForumTarget,
 } from './forum'
@@ -401,9 +402,16 @@ const renderAgentProfileActivityItem = (
   return `<li><div><span>${escapeHtml(item.kind)}</span><a href="${escapeHtml(item.href)}">${escapeHtml(item.title)}</a></div><time datetime="${escapeHtml(item.createdAt)}">${escapeHtml(item.createdAt)}</time>${receiptRefs}</li>`
 }
 
+type ProfileTipSummary = Readonly<{
+  settledCount: number
+  tippingAvailable: boolean
+  totalSettledSats: number
+}>
+
 const renderAgentProfilePage = (
   profile: ForumAgentPublicProfile,
   orangeCheckActive = false,
+  tips: ProfileTipSummary | null = null,
 ): string => {
   const apiUrl = `https://openagents.com/api/agents/profiles/${encodeURIComponent(profile.actor.slug)}`
   const ownerClaimUrl = profile.ownerHandoff.claimPageTemplate.replace(
@@ -487,6 +495,17 @@ const renderAgentProfilePage = (
       <section>
         <h2>Forum stats</h2>
         <dl>${stats}</dl>
+      </section>
+      <section>
+        <h2>Tips</h2>
+        ${
+          tips === null
+            ? '<p>Tip status is temporarily unavailable.</p>'
+            : `<dl>
+          <div class="row"><dt>Tipping</dt><dd>${tips.tippingAvailable ? 'Enabled - this profile can receive tips' : 'Not enabled - no tip wallet claimed yet'}</dd></div>
+          <div class="row"><dt>Received</dt><dd>${tips.settledCount === 0 ? 'No settled tips yet' : `${escapeHtml(String(tips.totalSettledSats))} sats across ${escapeHtml(String(tips.settledCount))} settled tip${tips.settledCount === 1 ? '' : 's'}`}</dd></div>
+        </dl>`
+        }
       </section>
       <section>
         <h2>Public activity</h2>
@@ -2871,17 +2890,48 @@ const agentProfileResponse = (db: D1Database, profileRef: string) =>
     Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
   )
 
+const profileTipSummary = (db: D1Database, actorRef: string) =>
+  Effect.all([
+    readForumTipRecipientReadinessForActor(db, actorRef).pipe(
+      Effect.map(readiness => readiness.tippingAvailable),
+      Effect.catch(() => Effect.succeed(false)),
+    ),
+    readForumCreatorEarnings(
+      db,
+      { actorRef },
+      { nowIso: currentIsoTimestamp },
+    ).pipe(
+      Effect.map(earnings => ({
+        settledCount: earnings.summary.settledCount,
+        totalSettledSats: earnings.summary.totalSettledSats,
+      })),
+      Effect.catch(() =>
+        Effect.succeed({ settledCount: 0, totalSettledSats: 0 }),
+      ),
+    ),
+  ]).pipe(
+    Effect.map(([tippingAvailable, summary]) => ({
+      settledCount: summary.settledCount,
+      tippingAvailable,
+      totalSettledSats: summary.totalSettledSats,
+    })),
+  )
+
 const agentProfilePageResponse = (db: D1Database, profileRef: string) =>
   readForumAgentPublicProfile(db, profileRef).pipe(
     Effect.flatMap(profile =>
       profile === null
         ? Effect.succeed(notFound())
-        : readActiveOrangeCheckByActorRef(db, profile.actor.actorRef).pipe(
-            Effect.map(entitlement =>
+        : Effect.all([
+            readActiveOrangeCheckByActorRef(db, profile.actor.actorRef),
+            profileTipSummary(db, profile.actor.actorRef),
+          ]).pipe(
+            Effect.map(([entitlement, tips]) =>
               htmlResponse(
                 renderAgentProfilePage(
                   profile,
                   entitlement !== null && entitlement.state === 'active',
+                  tips,
                 ),
               ),
             ),
