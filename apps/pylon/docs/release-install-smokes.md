@@ -21,21 +21,28 @@ project, and verifies:
 - `pylon bootstrap --json` emits a supported macOS/Linux summary;
 - the summary points at the v0.3 home/config/cache/release layout.
 
-## Linux CI Smoke
+## CI Release Gate
 
-The same smoke is ready for an `ubuntu-latest` CI runner. The current GitHub
-token cannot create workflow files, so the reproducible command sequence is
-documented here until a workflow-scope token wires it:
+The Pylon release gate workflow is staged at
+`apps/pylon/docs/ci/release-gate.yml` because the current GitHub token cannot
+create `.github/workflows/*` files without `workflow` scope. An operator with
+workflow scope should move that file to `.github/workflows/pylon-release-gate.yml`.
+
+Once moved, it runs for pull requests and `main` pushes that touch
+`apps/pylon/**`, plus manual `workflow_dispatch` runs.
+
+The workflow runs on both `ubuntu-latest` and `macos-latest`:
 
 ```sh
 bun install
-bun run test
-bun pm pack --dry-run
-bun run smoke:install:local
+bun run --cwd apps/pylon release:gate
 ```
 
-The smoke is intentionally package-install based. It does not rely on the old
-v0.2 launcher or deprecated OpenAgents Rust Pylon implementation homes.
+`release:gate` runs the unit/runtime tests, bootstrap/status/inventory/operator
+JSON smokes, dashboard startup smoke, package dry-run, and local package
+install smoke. The install smoke is intentionally package-install based. It
+does not rely on the old v0.2 launcher or deprecated OpenAgents Rust Pylon
+implementation homes.
 
 ## Bootstrap Surface
 

@@ -16,8 +16,8 @@ if [[ -z "$tarball" || ! -f "$repo_root/$tarball" ]]; then
 fi
 
 cd "$tmp_dir"
-bun init -y >/dev/null
-bun add "$repo_root/$tarball" >/dev/null
+printf '{"name":"pylon-install-smoke","private":true,"type":"module"}\n' > package.json
+bun --dns-result-order=ipv4first add "$repo_root/$tarball" >/dev/null
 PYLON_HOME="$tmp_dir/pylon-home" bunx pylon bootstrap --json > bootstrap.json
 bun -e 'const summary = await Bun.file("bootstrap.json").json(); if (summary.packageName !== "@openagentsinc/pylon" || summary.bin !== "pylon" || !summary.platform.supported) process.exit(1);'
 
