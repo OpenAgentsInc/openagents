@@ -8,7 +8,11 @@ import {
   type XVerificationTweetLookup,
   makeAgentOwnerClaimRoutes,
 } from './agent-owner-claim-routes'
-import { type AgentRegistrationRecord, sha256Hex } from './agent-registration'
+import {
+  type AgentRegistrationRecord,
+  type AgentRegistrationStore,
+  sha256Hex,
+} from './agent-registration'
 
 type TestSession = Readonly<{
   user: Readonly<{
@@ -23,6 +27,33 @@ class MemoryAgentOwnerClaimStore implements AgentOwnerClaimStore {
   readonly claims = new Map<string, AgentOwnerClaimRecord>()
   readonly registrations: Array<AgentRegistrationRecord> = []
   readonly xChallenges = new Map<string, XOwnerClaimChallengeRecord>()
+
+  attachClaimApproval(input: {
+    claimId: string
+    decidedAt: string
+    ownerUserId: string
+  }): Promise<AgentOwnerClaimRecord | undefined> {
+    const claim = this.claims.get(input.claimId)
+
+    if (
+      claim === undefined ||
+      claim.status !== 'pending' ||
+      claim.agentUserId === null
+    ) {
+      return Promise.resolve(claim)
+    }
+
+    const approved: AgentOwnerClaimRecord = {
+      ...claim,
+      decidedAt: input.decidedAt,
+      ownerUserId: input.ownerUserId,
+      status: 'approved',
+      updatedAt: input.decidedAt,
+    }
+    this.claims.set(input.claimId, approved)
+
+    return Promise.resolve(approved)
+  }
 
   approveClaim(input: {
     claimId: string
@@ -270,11 +301,15 @@ const makeRoutes = (
     resolveXVerificationTweet?: (
       input: Readonly<{ tweetUrl: string }>,
     ) => Promise<XVerificationTweetLookup>
+    agentStore?: AgentRegistrationStore
     session?: TestSession | undefined
   }> = {},
 ) =>
   makeAgentOwnerClaimRoutes<TestSession, { store: MemoryAgentOwnerClaimStore }>(
     {
+      ...(options.agentStore === undefined
+        ? {}
+        : { agentStore: () => options.agentStore as AgentRegistrationStore }),
       appOrigin: () => 'https://openagents.com',
       appendRefreshedSessionCookies: response => {
         response.headers.set('x-test-session-refreshed', 'true')
@@ -355,6 +390,102 @@ describe('agent owner claim routes', () => {
     )
     expect(JSON.stringify(body.claim)).not.toContain(
       'oa_agent_pending_owner_claim_token',
+    )
+  })
+
+  test('attaches an owner claim to an existing registered agent without new identity inserts', async () => {
+    const store = new MemoryAgentOwnerClaimStore()
+    const existingTokenHash = await sha256Hex('oa_agent_existing_agent_token')
+    const agentStore = {
+      findAgentByTokenHash: (tokenHash: string) =>
+        Promise.resolve(
+          tokenHash === existingTokenHash
+            ? {
+                credentialId: 'agent_credential_existing',
+                profileMetadataJson: '{}',
+                tokenPrefix: 'oa_agent_existing_a',
+                user: {
+                  avatarUrl: null,
+                  createdAt: '2026-06-01T00:00:00.000Z',
+                  displayName: 'Existing Agent',
+                  id: 'user_existing_agent',
+                  kind: 'agent' as const,
+                  primaryEmail: null,
+                  status: 'active' as const,
+                  updatedAt: '2026-06-01T00:00:00.000Z',
+                },
+              }
+            : undefined,
+        ),
+      touchAgentCredential: () => Promise.resolve(),
+    } as unknown as AgentRegistrationStore
+    const created = await runRoute(
+      store,
+      new Request('https://openagents.com/api/agents/claims', {
+        body: JSON.stringify({ displayName: 'Existing Agent' }),
+        headers: {
+          authorization: 'Bearer oa_agent_existing_agent_token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      }),
+      { agentStore },
+    )
+    const createdBody = (await created.json()) as {
+      claim: { agentUserRef: string | null; id: string; status: string }
+      instructions: ReadonlyArray<string>
+    }
+    const denied = await runRoute(
+      store,
+      new Request('https://openagents.com/api/agents/claims', {
+        body: JSON.stringify({ displayName: 'Existing Agent' }),
+        headers: {
+          authorization: 'Bearer oa_agent_unknown_token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      }),
+      { agentStore },
+    )
+    const approved = await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-1/approve',
+        { method: 'POST' },
+      ),
+      {
+        agentStore,
+        session: {
+          user: { email: 'owner@example.com', userId: 'user_owner_1' },
+        } as unknown as TestSession,
+      },
+    )
+    const approvedBody = (await approved.json()) as {
+      approval: {
+        attachedAgentUserRef: string
+        tokenWasDisplayedAgain: boolean
+      }
+      claim: { status: string }
+    }
+
+    expect(created.status).toBe(201)
+    expect(createdBody.claim.status).toBe('pending')
+    expect(createdBody.instructions.join(' ')).toContain(
+      'attaches to your existing registered agent identity',
+    )
+    expect(denied.status).toBe(401)
+    expect(approved.status).toBe(200)
+    expect(approvedBody.claim.status).toBe('approved')
+    expect(approvedBody.approval).toMatchObject({
+      attachedAgentUserRef: 'agent:user_existing_agent',
+      tokenWasDisplayedAgain: false,
+    })
+    expect(store.registrations).toHaveLength(0)
+    expect(store.claims.get('agent_claim_claim-1')?.ownerUserId).toBe(
+      'user_owner_1',
+    )
+    expect(store.claims.get('agent_claim_claim-1')?.agentUserId).toBe(
+      'user_existing_agent',
     )
   })
 

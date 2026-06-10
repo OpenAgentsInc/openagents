@@ -4,7 +4,9 @@ import { Effect, Schema as S } from 'effect'
 import {
   AGENT_TOKEN_PREFIX,
   type AgentRegistrationRecord,
+  type AgentRegistrationStore,
   ProgrammaticAgentRegistrationRequest,
+  authenticateProgrammaticAgent,
   buildProgrammaticAgentRegistrationRecord,
   createAgentToken,
   sha256Hex,
@@ -205,6 +207,11 @@ export type AgentOwnerClaimStore = Readonly<{
     ownerUserId: string
     registration: AgentRegistrationRecord
   }) => Promise<AgentOwnerClaimRecord | undefined>
+  attachClaimApproval: (input: {
+    claimId: string
+    decidedAt: string
+    ownerUserId: string
+  }) => Promise<AgentOwnerClaimRecord | undefined>
   createClaim: (record: AgentOwnerClaimRecord) => Promise<void>
   expireClaim: (
     claimId: string,
@@ -246,6 +253,7 @@ type AgentOwnerClaimRouteDependencies<
   Session extends AgentOwnerClaimSession,
   Bindings,
 > = Readonly<{
+  agentStore?: (env: Bindings) => AgentRegistrationStore
   appendRefreshedSessionCookies: (
     response: HttpResponse,
     session: Session,
@@ -574,6 +582,23 @@ export const makeD1AgentOwnerClaimStore = (
   }
 
   return {
+    attachClaimApproval: async input => {
+      await db
+        .prepare(
+          `UPDATE agent_owner_claims
+              SET status = 'approved',
+                  owner_user_id = ?,
+                  decided_at = ?,
+                  updated_at = ?
+            WHERE id = ?
+              AND status = 'pending'
+              AND agent_user_id IS NOT NULL`,
+        )
+        .bind(input.ownerUserId, input.decidedAt, input.decidedAt, input.claimId)
+        .run()
+
+      return readClaimById(input.claimId)
+    },
     approveClaim: async input => {
       await db.batch([
         db
@@ -862,6 +887,13 @@ export const makeD1AgentOwnerClaimStore = (
   }
 }
 
+const bearerTokenFromRequest = (request: Request): string | undefined => {
+  const header = request.headers.get('authorization') ?? ''
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim())
+
+  return match?.[1]?.trim()
+}
+
 const createClaimResponse = async <
   Session extends AgentOwnerClaimSession,
   Bindings,
@@ -884,6 +916,29 @@ const createClaimResponse = async <
   const makeUuid = dependencies.makeUuid ?? randomUuid
   const makeToken = dependencies.makeToken ?? createAgentToken
   const requestedAt = now()
+  const bearerToken = bearerTokenFromRequest(request)
+  let existingAgentUserId: string | null = null
+  let existingAgentDisplayName: string | null = null
+
+  if (
+    bearerToken !== undefined &&
+    bearerToken.startsWith(AGENT_TOKEN_PREFIX) &&
+    dependencies.agentStore !== undefined
+  ) {
+    const session = await authenticateProgrammaticAgent(
+      dependencies.agentStore(env),
+      bearerToken,
+      now,
+    ).catch(() => undefined)
+
+    if (session === undefined) {
+      return unauthorized()
+    }
+
+    existingAgentUserId = session.user.id
+    existingAgentDisplayName = session.user.displayName
+  }
+
   const token = makeToken()
 
   if (!token.startsWith(AGENT_TOKEN_PREFIX)) {
@@ -892,18 +947,18 @@ const createClaimResponse = async <
 
   const claimId = `agent_claim_${makeUuid()}`
   const claim: AgentOwnerClaimRecord = {
-    agentUserId: null,
+    agentUserId: existingAgentUserId,
     claimTokenHash: await sha256Hex(token),
     claimTokenPrefix: token.slice(0, 20),
     createdAt: requestedAt,
     credentialId: null,
     decidedAt: null,
-    displayName: parsed.displayName,
+    displayName: existingAgentDisplayName ?? parsed.displayName,
     expiresAt: isoTimestampAfterIso(
       requestedAt,
       dependencies.claimTtlMs ?? CLAIM_TTL_MS,
     ),
-    externalId: parsed.externalId ?? null,
+    externalId: existingAgentUserId === null ? (parsed.externalId ?? null) : null,
     id: claimId,
     metadataJson: JSON.stringify(parsed.metadata ?? {}),
     ownerUserId: null,
@@ -911,7 +966,7 @@ const createClaimResponse = async <
     receiptRef: `agent_claim_receipt_${claimId}`,
     rejectedReason: null,
     requestedAt,
-    slug: parsed.slug ?? null,
+    slug: existingAgentUserId === null ? (parsed.slug ?? null) : null,
     status: 'pending',
     tokenIssuedAt: null,
     tokenPrefix: null,
@@ -923,7 +978,11 @@ const createClaimResponse = async <
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return noStoreJsonResponse(
-        { error: 'agent_owner_claim_conflict' },
+        {
+          error: 'agent_owner_claim_conflict',
+          reason:
+            'An agent with the same slug or externalId is already registered. Approval creates a new agent identity, so claims must not reuse the slug or externalId of an existing registered agent. To claim an existing agent, send its bearer token on the claim request instead.',
+        },
         { status: 409 },
       )
     }
@@ -936,12 +995,20 @@ const createClaimResponse = async <
     dependencies.appOrigin(env),
     {
       oneTimePendingAgentToken: token,
-      instructions: [
-        'Store the one-time pending token securely. OpenAgents does not store or show it again.',
-        'The token is not usable until a signed-in owner approves this claim.',
-        'Ask the owner to open the claimUrl or call the approveUrl from an authenticated OpenAgents browser session.',
-        'Poll the statusUrl with Authorization: Bearer <oneTimePendingAgentToken> or X-OpenAgents-Claim-Token.',
-      ],
+      instructions:
+        existingAgentUserId === null
+          ? [
+              'Store the one-time pending token securely. OpenAgents does not store or show it again.',
+              'The token is not usable until a signed-in owner approves this claim.',
+              'Ask the owner to open the claimUrl or call the approveUrl from an authenticated OpenAgents browser session.',
+              'Poll the statusUrl with Authorization: Bearer <oneTimePendingAgentToken> or X-OpenAgents-Claim-Token.',
+            ]
+          : [
+              'This claim attaches to your existing registered agent identity. Your current agent token stays active and no new credential will be issued.',
+              'The one-time pending token is for claim status polling only and never becomes a usable credential.',
+              'Ask the owner to open the claimUrl or call the approveUrl from an authenticated OpenAgents browser session.',
+              'Poll the statusUrl with Authorization: Bearer <oneTimePendingAgentToken> or X-OpenAgents-Claim-Token.',
+            ],
     },
     201,
   )
@@ -1338,6 +1405,41 @@ const approveClaimResponse = async <
         error: 'agent_owner_claim_not_pending',
       },
       { status: 409 },
+    )
+  }
+
+  if (current.agentUserId !== null) {
+    let attached: AgentOwnerClaimRecord | undefined
+
+    try {
+      attached = await store.attachClaimApproval({
+        claimId: current.id,
+        decidedAt,
+        ownerUserId: session.user.userId,
+      })
+    } catch {
+      return serverError()
+    }
+
+    if (attached === undefined || attached.status !== 'approved') {
+      return noStoreJsonResponse(
+        { error: 'agent_owner_claim_not_pending' },
+        { status: 409 },
+      )
+    }
+
+    return dependencies.appendRefreshedSessionCookies(
+      claimResponse(attached, dependencies.appOrigin(env), {
+        approval: {
+          attachedAgentUserRef: `agent:${current.agentUserId}`,
+          ownerUserRef: `owner:${session.user.userId}`,
+          tokenPrefix: null,
+          tokenWasDisplayedAgain: false,
+          usableTokenInstruction:
+            'This claim attached owner linkage to the existing registered agent. The agent keeps its current token; no new credential was issued.',
+        },
+      }),
+      session,
     )
   }
 

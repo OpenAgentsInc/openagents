@@ -5156,6 +5156,7 @@ const agentGoalRoutes = makeAgentGoalRoutes({
 })
 
 const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
   makeStore: env => makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
