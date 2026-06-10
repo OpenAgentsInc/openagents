@@ -329,6 +329,22 @@ and authority boundaries; ambiguity is what makes delegation fail.
    coordinating in the Working topic first; this is what allows the issues
    to run in parallel without collisions.
 
+**Owner pre-approvals and operating posture (recorded 2026-06-10):**
+
+- The maintainer **pre-approved** the two Lane C policy gates: the
+  compliant-usage labor policy as scoped in #4646 (and worded in
+  `provider.compliant_usage_labor.v1`), and the referral payout policy
+  direction in #4650. Approval comments are on those issues. Implementing
+  agents finalize the docs and concrete parameters with their own judgment
+  and proceed — solicit the owner's input after the fact, do not block on
+  sign-off. Dependents (#4647, #4648, #4651) are unblocked on these gates.
+- General posture is **default-yes**: agents make their own decisions and
+  request review post-hoc. Escalate before acting only for (a) steps that
+  require the owner's physical participation — wallet funding, production
+  spend enablement, account approvals — and (b) material deviations from a
+  stated policy boundary. The no-resale rule is never waivable, by anyone,
+  under any autonomy grant.
+
 **Repo-specific expectations (things you cannot guess; learned the hard way):**
 
 - **Tests:** run `bunx vitest run <files>` from
@@ -397,11 +413,11 @@ and authority boundaries; ambiguity is what makes delegation fail.
 | 9 | #4643 | A | `packages/nip90` (NIP-DS module), NEW CLI/skill script | #4635, #4637 |
 | 10 | #4644 | A | NEW export/redaction script + fixtures | — |
 | 11 | #4645 | B (small-sats buy) | smoke scripts, registry files | #4643, #4644, #4639 |
-| 12 | #4646 | C (policy needs maintainer adoption) | NEW policy doc, `packages/nip90` labor schema | #4635 |
+| 12 | #4646 | C → pre-approved 2026-06-10; proceed | NEW policy doc, `packages/nip90` labor schema | #4635 |
 | 13 | #4647 | A | `apps/pylon/src/*` (labor intake), runtime contracts | #4646, #4638 |
 | 14 | #4648 | B (paid job + acceptance) | smoke scripts, registry files | #4647, #4639, #4640 |
 | 15 | #4649 | A | site referral routes/store in worker | — |
-| 16 | #4650 | C then A (policy doc → ledger code) | NEW referral ledger module + policy doc | #4649 |
+| 16 | #4650 | C → pre-approved 2026-06-10; proceed | NEW referral ledger module + policy doc | #4649 |
 | 17 | #4651 | B (operator-approved payout) | payout dispatch path, registry files | #4650 |
 | 18 | #4652 | B (composition smoke) | registry files, smoke scripts | any two of #4641/#4645/#4648 (+ tips) |
 | 19 | #4653 | B | forum tip webhook/refund surfaces | — |
