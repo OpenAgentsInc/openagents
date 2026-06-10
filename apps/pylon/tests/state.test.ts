@@ -71,6 +71,27 @@ describe("Pylon identity and public projection state", () => {
     })
   })
 
+  test("preserves persisted capabilities when a later command provides no capability flags", async () => {
+    await withTempHome(async (home) => {
+      const configured = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "Capability Test", "--capability-ref", "cap.gepa.retained.v1"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const first = await ensurePylonLocalState(configured)
+      expect(first.runtime.capabilityRefs).toEqual(["cap.gepa.retained.v1"])
+
+      const commandSummary = createBootstrapSummary(
+        parseBootstrapArgs(["--json"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const reloaded = await ensurePylonLocalState(commandSummary)
+
+      expect(reloaded.runtime.capabilityRefs).toEqual(["cap.gepa.retained.v1"])
+    })
+  })
+
   test("accepts safe identity, availability, heartbeat, inventory, and receipt projection shapes", () => {
     expect(() =>
       assertPublicProjectionSafe({

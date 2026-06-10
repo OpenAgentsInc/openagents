@@ -7,8 +7,8 @@ posting lifecycle API calls directly.
 
 ## Assignment Shape
 
-The operator-created assignment should be a no-spend validation task with this
-public-safe coding assignment payload:
+The operator-created assignment should be a no-spend validation task. The
+runtime gate lives inside this public-safe coding assignment payload:
 
 ```json
 {
@@ -29,6 +29,28 @@ public-safe coding assignment payload:
 }
 ```
 
+The top-level assignment also carries the controlled-dispatch refs required by
+`/api/operator/pylons/assignments`:
+
+```json
+{
+  "campaignPaused": false,
+  "campaignPolicyRefs": ["policy.public.no_spend_smoke"],
+  "closeoutPathRefs": ["closeout.public.operator_review_required"],
+  "forumAutoPublishAllowed": false,
+  "noForumAutoPublishRefs": ["policy.public.no_forum_auto_publish"],
+  "paymentMode": "unpaid_smoke",
+  "requiredCapabilityRefs": [
+    "cap.gepa.retained.v1",
+    "capability.public.packaged_binary",
+    "capability.public.pylon_runtime_gate"
+  ],
+  "rollbackRefs": ["rollback.public.cancel_smoke_assignment"],
+  "selectionPolicyRefs": ["selection.public.explicit_pylon_ref"],
+  "spendCapRefs": ["spend_cap.public.no_spend"]
+}
+```
+
 The packaged runner recognizes only that runtime gate. It creates a bounded
 workspace under local Pylon cache state, repairs the fixture, runs `bun test`,
 and reports only stable public refs:
@@ -45,7 +67,10 @@ must not be sent to OpenAgents.
 
 ## Repeatable Smoke
 
-The committed wrapper performs the packaged-binary path end to end:
+The committed wrapper performs the packaged-binary path end to end: install,
+bootstrap, `provider go-online`, register, heartbeat, wallet-readiness report,
+operator assignment creation when an admin token is present, then
+`pylon assignment run-no-spend`.
 
 ```sh
 OPENAGENTS_AGENT_TOKEN="<redacted>" \
@@ -58,6 +83,9 @@ The wrapper packs both local packages used by the installed smoke:
 - `@openagentsinc/pylon`
 - `@openagents/nip90`, which reuses the workspace `nostr-effect` NIP-90
   implementation instead of rebuilding protocol helpers inside Pylon
+- `@openagents/tassadar-executor`, which is a workspace dependency of the
+  executor-trace lane and must be installed from the local package until it is
+  published
 
 Optional inputs:
 
@@ -99,6 +127,7 @@ credentials, wallet material, invoices, payment hashes, or preimages.
      --capability-ref "cap.gepa.retained.v1" \
      --capability-ref "capability.public.packaged_binary" \
      --capability-ref "capability.public.pylon_runtime_gate"
+   bunx pylon provider go-online
    bunx pylon presence register --base-url "$PYLON_OPENAGENTS_BASE_URL"
    bunx pylon presence heartbeat --base-url "$PYLON_OPENAGENTS_BASE_URL"
    bunx pylon wallet report-readiness --base-url "$PYLON_OPENAGENTS_BASE_URL"

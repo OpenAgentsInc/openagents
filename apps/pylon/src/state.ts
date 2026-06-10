@@ -180,11 +180,15 @@ export async function loadOrCreateRuntimeState(
 ) {
   await ensureStateDirectories(paths)
   const existing = await readJsonFile<PylonRuntimeState>(paths.runtimeState)
+  const capabilityRefs =
+    input.capabilityRefs === undefined || input.capabilityRefs.length === 0
+      ? existing?.capabilityRefs ?? []
+      : input.capabilityRefs
   const state: PylonRuntimeState = {
     lifecycle: existing?.lifecycle ?? "offline",
     displayName: input.displayName ?? existing?.displayName ?? null,
     resourceMode: input.resourceMode ?? existing?.resourceMode ?? "background_20",
-    capabilityRefs: input.capabilityRefs ?? existing?.capabilityRefs ?? [],
+    capabilityRefs,
     blockerRefs: existing?.blockerRefs ?? [],
     updatedAt: new Date().toISOString(),
   }

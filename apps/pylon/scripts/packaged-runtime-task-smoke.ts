@@ -64,6 +64,40 @@ const runRequired = async (
 
 const jsonFrom = <T>(result: CommandResult): T => JSON.parse(result.stdout) as T
 
+const summarizeLease = (lease: unknown) => {
+  if (lease === null || typeof lease !== "object") return null
+  const record = lease as Record<string, unknown>
+  return {
+    assignmentRef: typeof record.assignmentRef === "string" ? record.assignmentRef : null,
+    capabilityRefs: Array.isArray(record.capabilityRefs)
+      ? record.capabilityRefs.filter((ref): ref is string => typeof ref === "string")
+      : [],
+    goal: typeof record.goal === "string" ? record.goal : null,
+    leaseRef: typeof record.leaseRef === "string" ? record.leaseRef : null,
+    paymentMode: typeof record.paymentMode === "string" ? record.paymentMode : null,
+  }
+}
+
+const summarizeRunNoSpendFailure = (result: Record<string, any>) => {
+  if (result.ok === true) return null
+  const acceptance = result.acceptance as Record<string, unknown> | undefined
+  return {
+    acceptance: acceptance === undefined
+      ? null
+      : {
+          accepted: acceptance.accepted === true,
+          blockerRefs: Array.isArray(acceptance.blockerRefs)
+            ? acceptance.blockerRefs.filter((ref): ref is string => typeof ref === "string")
+            : [],
+          denialRef: typeof acceptance.denialRef === "string" ? acceptance.denialRef : null,
+          statusRef: typeof acceptance.statusRef === "string" ? acceptance.statusRef : null,
+        },
+    lease: summarizeLease(result.lease),
+    leases: Array.isArray(result.leases) ? result.leases.map(summarizeLease) : [],
+    reason: typeof result.reason === "string" ? result.reason : null,
+  }
+}
+
 const postJson = async (
   baseUrl: string,
   path: string,
@@ -85,6 +119,12 @@ const postJson = async (
   }
   return text.trim() ? JSON.parse(text) as Record<string, unknown> : {}
 }
+
+const runtimeCapabilityRefs = [
+  "cap.gepa.retained.v1",
+  "capability.public.packaged_binary",
+  "capability.public.pylon_runtime_gate",
+]
 
 const pack = async () => {
   const result = await runRequired("bun pm pack", ["bun", "pm", "pack"], {
@@ -121,7 +161,25 @@ const packNip90 = async () => {
   return join(packageRoot, tarball)
 }
 
-const assignmentBody = (input: { assignmentRef: string; now: Date; pylonRef: string }) => ({
+const packTassadarExecutor = async () => {
+  const packageRoot = join(workspaceRoot, "packages/tassadar-executor")
+  const result = await runRequired("bun pm pack @openagents/tassadar-executor", ["bun", "pm", "pack"], {
+    cwd: packageRoot,
+    timeoutMs: 60_000,
+  })
+  const tarball = result.stdout
+    .split("\n")
+    .map(line => line.trim())
+    .find(line => /^openagents-tassadar-executor-.*\.tgz$/.test(line))
+
+  if (!tarball) {
+    throw new Error(`failed to find packed @openagents/tassadar-executor tarball in bun pm pack output: ${result.stdout}`)
+  }
+
+  return join(packageRoot, tarball)
+}
+
+const assignmentBody = (input: { assignmentRef: string; pylonRef: string }) => ({
   acceptanceCriteriaRefs: ["acceptance.public.pylon_runtime_gate.bounded_fixture_test_passes"],
   assignmentRef: input.assignmentRef,
   budget: {
@@ -129,6 +187,8 @@ const assignmentBody = (input: { assignmentRef: string; now: Date; pylonRef: str
     currency: "SAT",
     paymentMode: "unpaid_smoke",
   },
+  campaignPaused: false,
+  campaignPolicyRefs: ["policy.public.no_spend_smoke"],
   campaignRef: "campaign.public.pylon_runtime_gate_smoke",
   codingAssignment: {
     assignmentRef: input.assignmentRef,
@@ -147,14 +207,21 @@ const assignmentBody = (input: { assignmentRef: string; now: Date; pylonRef: str
     },
     schema: "openagents.autopilot_coding_assignment.v1",
   },
+  closeoutPathRefs: ["closeout.public.operator_review_required"],
+  forumAutoPublishAllowed: false,
   idempotencyRefs: ["idempotency.public.pylon_runtime_gate"],
   jobKind: "validation",
-  leaseExpiresAt: new Date(input.now.getTime() + 15 * 60_000).toISOString(),
+  leaseSeconds: 600,
   noDuplicateAssignmentRefs: ["dedupe.public.pylon_runtime_gate_smoke"],
+  noForumAutoPublishRefs: ["policy.public.no_forum_auto_publish"],
   operatorPauseRefs: ["pause.public.pylon_runtime_gate.not_paused"],
-  paymentMode: "no-spend",
+  paymentMode: "unpaid_smoke",
   pylonRef: input.pylonRef,
+  requiredCapabilityRefs: runtimeCapabilityRefs,
   resultExpectationRefs: ["result.public.pylon_runtime_gate.fixture_repair_passed"],
+  rollbackRefs: ["rollback.public.cancel_smoke_assignment"],
+  selectionPolicyRefs: ["selection.public.explicit_pylon_ref"],
+  spendCapRefs: ["spend_cap.public.no_spend"],
   taskRefs: ["task.public.pylon_runtime_gate.fixture_repair"],
 })
 
@@ -174,11 +241,13 @@ async function main() {
   const pylonHome = join(tmpDir, "pylon-home")
   let tarball: string | undefined
   let nip90Tarball: string | undefined
+  let tassadarExecutorTarball: string | undefined
   await mkdir(projectDir, { recursive: true })
 
   try {
     tarball = await pack()
     nip90Tarball = await packNip90()
+    tassadarExecutorTarball = await packTassadarExecutor()
     await writeFile(
       join(projectDir, "package.json"),
       `${JSON.stringify({
@@ -188,6 +257,7 @@ async function main() {
         name: "pylon-packaged-runtime-task-smoke",
         overrides: {
           "@openagents/nip90": `file:${nip90Tarball}`,
+          "@openagents/tassadar-executor": `file:${tassadarExecutorTarball}`,
         },
         private: true,
         type: "module",
@@ -209,12 +279,7 @@ async function main() {
       pylonRef,
       "--display-name",
       "Pylon packaged runtime task smoke",
-      "--capability-ref",
-      "cap.gepa.retained.v1",
-      "--capability-ref",
-      "capability.public.packaged_binary",
-      "--capability-ref",
-      "capability.public.pylon_runtime_gate",
+      ...runtimeCapabilityRefs.flatMap(ref => ["--capability-ref", ref]),
     ]
     const bootstrap = await runRequired(
       "packaged bootstrap",
@@ -228,6 +293,11 @@ async function main() {
       { cwd: projectDir, env },
     )
     await runRequired(
+      "packaged provider go-online",
+      ["bunx", "pylon", "provider", "go-online"],
+      { cwd: projectDir, env },
+    )
+    await runRequired(
       "packaged presence register",
       ["bunx", "pylon", "presence", "register", "--base-url", baseUrl, ...commonBootstrapArgs],
       { cwd: projectDir, env },
@@ -237,10 +307,15 @@ async function main() {
       ["bunx", "pylon", "presence", "heartbeat", "--base-url", baseUrl, ...commonBootstrapArgs],
       { cwd: projectDir, env },
     )
+    await runRequired(
+      "packaged wallet readiness report",
+      ["bunx", "pylon", "wallet", "report-readiness", "--base-url", baseUrl],
+      { cwd: projectDir, env, timeoutMs: 20_000 },
+    )
     const bootstrapJson = jsonFrom<Record<string, any>>(bootstrap)
 
     const assignmentCreated = adminToken
-      ? await postJson(baseUrl, "/api/operator/pylons/assignments", assignmentBody({ assignmentRef, now, pylonRef }), adminToken)
+      ? await postJson(baseUrl, "/api/operator/pylons/assignments", assignmentBody({ assignmentRef, pylonRef }), adminToken)
       : null
     const runNoSpend = await runRequired(
       "packaged runtime task run-no-spend",
@@ -249,11 +324,13 @@ async function main() {
     )
     const result = jsonFrom<Record<string, any>>(runNoSpend)
     const closeout = result.closeout as Record<string, unknown> | undefined
+    const failure = summarizeRunNoSpendFailure(result)
     const blockerRefs = [
       ...(assignmentCreated === null && result.ok !== true
         ? ["blocker.pylon.packaged_runtime_task.admin_assignment_create_token_missing"]
         : []),
       ...(result.ok === true ? [] : ["blocker.pylon.packaged_runtime_task.not_accepted"]),
+      ...(failure?.acceptance?.blockerRefs ?? []),
     ]
     const output = {
       assignmentCreated: assignmentCreated === null ? false : true,
@@ -285,13 +362,16 @@ async function main() {
         "route:/api/pylons/{pylonRef}/assignments/{assignmentRef}/artifacts",
         "route:/api/pylons/{pylonRef}/assignments/{assignmentRef}/closeout",
       ],
+      failure,
       pylonRef,
       status: blockerRefs.length === 0 ? "passed" : "partial",
       stepRefs: [
         "smoke.pylon.packaged_install",
         "smoke.pylon.packaged_bootstrap",
+        "smoke.pylon.packaged_provider_go_online",
         "smoke.pylon.packaged_presence_register",
         "smoke.pylon.packaged_presence_heartbeat",
+        "smoke.pylon.packaged_wallet_readiness",
         ...(assignmentCreated === null ? ["skip.pylon.assignment_create.admin_token_missing"] : ["smoke.pylon.assignment_create"]),
         "smoke.pylon.packaged_runtime_task_run_no_spend",
       ],
@@ -309,6 +389,7 @@ async function main() {
     await rm(tmpDir, { recursive: true, force: true })
     if (tarball) await rm(tarball, { force: true })
     if (nip90Tarball) await rm(nip90Tarball, { force: true })
+    if (tassadarExecutorTarball) await rm(tassadarExecutorTarball, { force: true })
   }
 }
 
