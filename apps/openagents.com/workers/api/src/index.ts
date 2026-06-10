@@ -52,6 +52,10 @@ import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
 import { type BufferPayFn, checkTipsBufferBackingInvariant, runTipsSweepScheduled } from './tips-sweep'
 import {
+  handleAgentBalanceApi,
+  handleAgentBalancePreferencesApi,
+} from './agent-balance-routes'
+import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_STATE_MAX_AGE_SECONDS,
@@ -4964,6 +4968,19 @@ export const handleProgrammaticAgentRegistration = async (
   }
 }
 
+const agentBalanceAuthForStore =
+  (store: ReturnType<typeof makeD1AgentRegistrationStore>) =>
+  async (request: Request): Promise<{ actorRef: string } | undefined> => {
+    const bearerToken = readBearerToken(request)
+    if (bearerToken === undefined) {
+      return undefined
+    }
+    const session = await authenticateProgrammaticAgent(store, bearerToken)
+    return session === undefined
+      ? undefined
+      : { actorRef: `agent:${session.user.id}` }
+  }
+
 const handleProgrammaticAgentMe = async (
   request: Request,
   env: Env,
@@ -6354,6 +6371,26 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/agents/me',
     handler: (request, env) =>
       Effect.promise(() => handleProgrammaticAgentMe(request, env)),
+  },
+  {
+    path: '/api/agents/me/balance',
+    handler: (request, env) =>
+      handleAgentBalanceApi(request, {
+        authenticate: agentBalanceAuthForStore(
+          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+        ),
+        db: openAgentsDatabase(env),
+      }),
+  },
+  {
+    path: '/api/agents/me/balance/preferences',
+    handler: (request, env) =>
+      handleAgentBalancePreferencesApi(request, {
+        authenticate: agentBalanceAuthForStore(
+          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+        ),
+        db: openAgentsDatabase(env),
+      }),
   },
   {
     path: '/api/agents/home',

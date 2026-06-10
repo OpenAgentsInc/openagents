@@ -2,6 +2,7 @@
 
 import { readFile } from "node:fs/promises"
 import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagents/tassadar-executor"
+import { claimTipReadiness, readBalance, setTipPreferences, sweepStatus, tipPost } from "./tips"
 import { Effect, Console } from "effect"
 import {
   createCliRenderer,
@@ -1185,6 +1186,58 @@ async function main() {
     }
   }
 
+  if (args[0] === "tip" || args[0] === "balance" || args[0] === "sweep-status" || args[0] === "tip-prefs" || args[0] === "claim-tip-readiness") {
+    try {
+      const tipArgs = args[0] === "tip" ? args.slice(3) : args.slice(1)
+      const options = parseKeyValueOptions(tipArgs)
+      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      if (!baseUrl) throw new Error(`${args[0]} requires --base-url or PYLON_OPENAGENTS_BASE_URL`)
+      const networkOptions = {
+        agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        baseUrl,
+      }
+      if (args[0] === "tip") {
+        const postId = args[1]
+        const amountSat = Number(args[2])
+        if (!postId || !Number.isInteger(amountSat) || amountSat <= 0) {
+          throw new Error("usage: pylon tip <post-id> <sats> [--base-url URL]")
+        }
+        const result = await tipPost(networkOptions, { amountSat, postId })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+      if (args[0] === "balance") {
+        const result = await readBalance(networkOptions)
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+      if (args[0] === "sweep-status") {
+        const result = await sweepStatus(networkOptions)
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+      if (args[0] === "tip-prefs") {
+        const prefs: Record<string, number | boolean> = {}
+        if (options["sweep-enabled"] !== undefined) prefs.sweepEnabled = options["sweep-enabled"] === "true"
+        if (options["sweep-threshold"] !== undefined) prefs.sweepThresholdSat = Number(options["sweep-threshold"])
+        if (options["send-credits-below"] !== undefined) prefs.sendCreditsBelowSat = Number(options["send-credits-below"])
+        if (options["receive-credits-below"] !== undefined) prefs.receiveCreditsBelowSat = Number(options["receive-credits-below"])
+        const result = await setTipPreferences(networkOptions, prefs)
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const state = await ensurePylonLocalState(summary)
+      const result = await claimTipReadiness(networkOptions, { pylonRef: state.identity.pylonRef })
+      process.stdout.write(`${JSON.stringify({ claimed: true, tipRecipientReadiness: (result as { tipRecipientReadiness?: unknown }).tipRecipientReadiness ?? null }, null, 2)}\n`)
+      return
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
   if (args[0] === "wallet") {
     try {
       const command = args[1]
@@ -1225,7 +1278,25 @@ async function main() {
           baseUrl,
           pylonRef: state.identity.pylonRef,
         })
-        process.stdout.write(`${JSON.stringify({ status, result }, null, 2)}\n`)
+        // Onboarding auto-claim (#4712): a wallet that reports ready also
+        // claims Forum tip-recipient readiness with a fresh BOLT 12 offer,
+        // best-effort - the silent-untippable trap cannot happen to a
+        // Pylon user. Failures are reported, never fatal to readiness.
+        let tipReadinessClaim: Record<string, unknown> | { error: string } | null = null
+        if (status.receiveReady) {
+          try {
+            tipReadinessClaim = await claimTipReadiness(
+              {
+                agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+                baseUrl,
+              },
+              { pylonRef: state.identity.pylonRef },
+            )
+          } catch (error) {
+            tipReadinessClaim = { error: error instanceof Error ? error.message : String(error) }
+          }
+        }
+        process.stdout.write(`${JSON.stringify({ status, result, tipReadinessClaim: tipReadinessClaim === null ? null : "tipRecipientReadiness" in (tipReadinessClaim as Record<string, unknown>) ? "claimed" : tipReadinessClaim }, null, 2)}\n`)
         return
       }
       if (command === "receive") {
