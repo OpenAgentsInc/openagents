@@ -320,6 +320,15 @@ difference. The homework economy is the small live experiment; the
 general form is a market where the proof class of an artifact is as
 load-bearing as the artifact itself.
 
+**Autonomous operation (Artanis).** Because acceptance of executor work
+is a digest comparison, it is the one work class whose full
+dispatch→verify→accept span is mechanically safe under the Artanis
+autonomous-loop risk rules — only the payout spend needs approval. The
+analysis of executor-trace as Artanis's first standing autonomous work
+class is section 5 of
+`docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md`
+(tracking issue openagents#4697).
+
 **Distillation and interpretability.** A compiled executor is a
 transformer whose every weight has a stated purpose. That makes it both
 a teacher (infinite clean execution traces for training smaller models)
