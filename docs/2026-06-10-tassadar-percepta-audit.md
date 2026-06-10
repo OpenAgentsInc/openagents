@@ -38,17 +38,72 @@ and Artanis.
 ## The Percepta Lineage
 
 Percepta is the research origin. Their post "Can LLMs Be Computers?"
-(percepta.ai) claims transformers can execute arbitrary programs via 2D
-convex-hull ("parabolic") attention with O(log t) per-step decoding. The
-workspace tracks the public independent validation,
+(Christos Tzamos et al., percepta.ai, 2026-03-11) demonstrates a computer
+built inside a transformer: arbitrary C code compiles (via WebAssembly) to
+tokens the model itself executes reliably for millions of steps, with no
+external interpreter and no tool round-trip. The mechanism, in their own
+structure:
+
+- **A modern RAM computer, not a theoretical reduction.** A Wasm
+  interpreter is implemented inside the transformer weights; each
+  instruction maps to at most 5 tokens. Universality results existed for
+  years (their citations and ours agree); the contribution is *practical*
+  execution efficiency.
+- **Computation as an append-only trace.** The prompt is the input, the
+  generated tokens are the machine state's history (instruction pointer,
+  stack ops, memory commits, control flow), and each step reconstructs
+  state by attending back to a small fixed number of earlier positions.
+  Nothing is ever edited; the notebook only grows — which is precisely
+  what makes the trace audit-friendly.
+- **The key unlock — exponentially fast attention.** Standard decoding
+  pays Θ(t) per step against a growing prefix (quadratic total). They
+  restrict *lookup* heads to dimension 2, which turns hard-max attention
+  into the classic computational-geometry "supporting point" query: keys
+  are points in the plane (memory addresses encoded as parabolic keys
+  k_j = (2j, −j²), so query (i, 1) argmaxes exactly at j = i), and the
+  furthest-in-direction point lives on the convex hull, retrievable in
+  O(log t). Their HullKVCache-vs-KVCache benchmark on one 9,580-line
+  trace: **31,037 tok/s vs 316 tok/s (~98×), 1.3s vs 258.9s**, on CPU.
+- **The demos.** A 10×10 min-cost perfect matching solved by the Hungarian
+  algorithm inside the model (439,194 trace tokens at 33,583 tok/s); Arto
+  Inkala's "world's hardest Sudoku" solved in under 3 minutes
+  (2,999,038 tokens) — with the pointed observation that their fully
+  autoregressive system gets 100% on Sudoku benchmarks where learned
+  approaches fail, so the real bottleneck was never autoregression, it was
+  the cost of long traces.
+- **The model is boring on purpose.** A vanilla PyTorch transformer —
+  d_model=36, n_heads=18 (exactly 2D per head), 7 layers, standard
+  `nn.MultiheadAttention`, gated FFN, no custom kernels. "The only thing
+  that makes it special is the weights."
+- **Extensions named in the post:** k-sparse softmax over nested convex
+  hulls (O(k + log n)) so the fast path is not limited to hard-max; 3D
+  hulls; and the open question of how capable 2D-head models are when
+  *trained* at scale ("for Turing completeness, 2D attention is all you
+  need").
+
+Their "So what is next?" section matters as much as the mechanism, because
+it names the design space OpenAgents cares about: (1) the fast path can in
+principle accelerate **any** transformer with 2D heads at decode time;
+(2) 2D-head models as a dedicated fast path, a fast/slow hybrid inside one
+system, or a **speculative-execution** model whose cheap proposals a
+regular-attention model verifies; (3) the hybrid LM+executor where the
+language model plans and the executor runs algorithms — and because the
+trace is part of the forward pass, **the whole computation is
+differentiable**: gradients propagate through execution, making it a
+trainable computational substrate rather than an external tool; (4)
+**programs into weights** — weight compilation as a deployment target for
+software and a second way to modify models beyond gradient descent; and
+(5) **growing AI systems like software** — compiled modules accumulating
+inside models the way libraries accumulate in software ecosystems:
+"future AI systems will not just use software; they will contain it."
+
+The workspace also tracks the public independent validation,
 `projects/repos/llm-as-computer` — a compiled transformer executor
-implementing a 55-opcode stack-machine ISA modeled on WebAssembly's i32
-subset, with opcode dispatch in the feed-forward layers and memory
-addressing in attention heads (their benchmarks: 1.2M steps in 17ms on the
-Mojo backend). Its companion essay "The Free Computer" makes the economic
-argument: offloading exact computation into compiled weights makes the
-execution effectively free relative to ordinary attention-driven token
-generation.
+implementing a 55-opcode stack-machine ISA modeled on Wasm's i32 subset
+(their benchmarks: 1.2M steps in 17ms on a Mojo backend) — whose companion
+essay "The Free Computer" makes the economic argument that compiled CPU
+execution is effectively free relative to attention-driven generation.
+Psionic's `HullCache`/`HullKVCache` naming is a direct lineage marker.
 
 The public OpenAgents framing is on the record in two transcripts:
 
@@ -344,6 +399,98 @@ lane waits on the training epic (#4664–#4671) — compiled executor homework
 could ship on the rails alone. The hybrid waits on real-gradient
 pretraining (CS336 lane 6 in the continuation audit) and is the natural
 follow-on epic after both programs land.
+
+## Implications For OpenAgents If We Implement This Fully
+
+Reading the Percepta post end to end sharpens what full implementation
+would be worth to OpenAgents specifically. None of the following is
+claimed as live; each item names the seam it would land in.
+
+**1. The trace is the receipt.** Percepta's own framing — tool use is
+opaque, in-model execution is transparent, "every intermediate step
+appears in the trace" — is the property OpenAgents' whole economy is
+built around. An execution trace is simultaneously the work product, the
+audit log, and the proof: deterministic, append-only, digest-pinnable, and
+verifiable by exact replay of any sampled window. For a network that pays
+strangers for work, this is the strongest verification grade attainable —
+cheaper even than Freivalds, because there is nothing probabilistic left.
+The commit-and-challenge layer (CS336 continuation audit) gets a work
+class whose validation cost rounds to zero.
+
+**2. CPU economics match our supply side.** 31k tok/s on a CPU, ~98× over
+standard decoding, with the benefit concentrated on "boring" deterministic
+spans. Our contributor fleet is exactly that hardware — Apple Silicon
+laptops, consumer desktops, the "fracked compute" thesis from Episode 224.
+Executor workloads make weak devices first-class *sellers*, not just
+validators: the machines that can't do meaningful gradient descent can
+execute compiled programs at full speed. This is the missing
+high-value workload for the long tail of the capacity funnel (19/19
+registered Pylons currently dark).
+
+**3. Hallucination-free computation is a sellable product boundary.** The
+post's motivation — frontier models fail at multiplication and small
+Sudokus unaided — is a *permanent* gap for API-model agents, and our
+agents share it. An OpenAgents agent with access to a Tassadar executor
+route (or, in the hybrid future, carrying one internally) gets
+calculator-grade exactness with zero tool round-trips. For the agent
+labor market, that means jobs whose acceptance criteria include exact
+computation (accounting checks, constraint solving, schedule
+optimization, settlement math) can be both *executed* and *verified*
+inside the same substrate. The Hungarian-algorithm demo is literally a
+market-clearing computation — min-cost assignment is what a work
+dispatcher does.
+
+**4. Speculative execution is a market structure.** Percepta names 2D
+fast-path models as speculative proposers whose tokens a regular-attention
+model verifies. On an open network, proposer and verifier do not need to
+be the same machine or the same owner: cheap devices propose fast-path
+tokens, stronger devices verify and accept — a price spread the market can
+discover. That is a *new compute-market product* (speculative decode
+bandwidth) that no centralized lab has reason to build openly.
+
+**5. Differentiability makes the hybrid trainable — and CS336 is the
+lever.** Because the trace is part of the forward pass, gradients flow
+through execution. That converts the executor from an external tool into
+a trainable organ, and it is what makes the A5/GRPO routing program in
+the CS336 section real: reward exact-verified internal computation,
+backprop *through* it. No API model offers gradient access; only a
+from-scratch pretraining capability (the CS336 port) can exploit this.
+This is the concrete content behind Episode 220's "things we can do that
+the other labs wouldn't be able to do."
+
+**6. Programs-into-weights meets the skills marketplace.** Percepta's
+"growing AI systems like software" — compiled modules accumulating inside
+models like libraries — lands directly on rails OpenAgents already has:
+digest-pinned program artifacts (Tassadar phase 2), the plugin
+manifest/receipt system, the draft SKL (skills registry) NIP, and the
+NIP-DS dataset-sale flow. A compiled weight-module — an executor circuit
+implementing a named algorithm, digest-pinned, conformance-tested — is a
+*tradeable artifact*: listable on the open marketplace, payable in sats,
+verifiable by replay before purchase clears. Weight compilation as
+"training beyond gradient descent" also creates a homework class that
+needs no GPUs at all: compiling, conformance-testing, and auditing
+weight-modules is CPU work.
+
+**7. Honest differentiation, honestly bounded.** Percepta is a venture
+company aiming at sequential decision systems in healthcare, supply
+chains, and finance; their post ends in a hiring pitch. OpenAgents' angle
+is orthogonal and unclaimed by them: the **open network** version — exact
+execution as paid, verified, Bitcoin-settled work on commodity hardware,
+with the trace-as-receipt property feeding a public proof economy. The
+two can cite the same mechanism without competing for the same product.
+Discipline stays mandatory: Percepta claims arbitrary C via Wasm;
+psionic's committed posture is narrower (`arbitrary_c_or_wasm_not_claimed`,
+publication suppressed) and our public copy keeps saying exactly what our
+own fixtures prove, not what the lineage proves.
+
+**Risks and open questions, kept explicit:** the capability ceiling of
+2D-head models trained at scale is an open question Percepta itself
+names; hard-max vs softmax fast paths differ and k-sparse softmax is an
+approximation; exactness is numerically brittle off CPU-reference (the
+psionic f32 semantics matrix exists for this reason); and the hybrid
+remains a research direction everywhere — nobody has shipped it. The
+bounded-claims machinery Tassadar already has is the right vehicle for
+all four.
 
 ## Registry And Disclosure Posture
 
