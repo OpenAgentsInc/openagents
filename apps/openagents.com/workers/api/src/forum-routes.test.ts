@@ -516,6 +516,7 @@ const signStandardWebhook = async (
 }
 
 class ForumRouteStore {
+  failInsertsInto: string | null = null
   orangeCheckEntitlements: Array<{
     action_ref: string | null
     actor_ref: string
@@ -1533,6 +1534,17 @@ class ForumRouteStatement implements D1PreparedStatement {
   }
 
   run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    if (
+      this.store.failInsertsInto !== null &&
+      this.query.includes(`INSERT INTO ${this.store.failInsertsInto}`)
+    ) {
+      return Promise.reject(
+        new Error(
+          `forced test failure inserting into ${this.store.failInsertsInto}`,
+        ),
+      )
+    }
+
     if (this.query.includes('INSERT OR IGNORE INTO forum_l402_challenges')) {
       const idempotencyKey = String(this.values[1])
 
@@ -3181,8 +3193,52 @@ class ForumRouteStatement implements D1PreparedStatement {
   }
 }
 
+const storeArraySnapshot = (
+  store: ForumRouteStore,
+): Map<string, ReadonlyArray<unknown>> => {
+  const snapshot = new Map<string, ReadonlyArray<unknown>>()
+
+  for (const key of Object.keys(store)) {
+    const value = (store as unknown as Record<string, unknown>)[key]
+
+    if (Array.isArray(value)) {
+      snapshot.set(key, [...value])
+    }
+  }
+
+  return snapshot
+}
+
+const restoreStoreArrays = (
+  store: ForumRouteStore,
+  snapshot: Map<string, ReadonlyArray<unknown>>,
+): void => {
+  for (const [key, rows] of snapshot) {
+    const target = (store as unknown as Record<string, Array<unknown>>)[key]
+
+    if (Array.isArray(target)) {
+      target.length = 0
+      target.push(...rows)
+    }
+  }
+}
+
 const forumRouteDb = (store: ForumRouteStore): D1Database => ({
-  batch: () => Promise.reject(new Error('D1 batch should not be used')),
+  batch: (async (statements: ReadonlyArray<D1PreparedStatement>) => {
+    const snapshot = storeArraySnapshot(store)
+    const results: Array<unknown> = []
+
+    try {
+      for (const statement of statements) {
+        results.push(await statement.run())
+      }
+    } catch (error) {
+      restoreStoreArrays(store, snapshot)
+      throw error
+    }
+
+    return results
+  }) as D1Database['batch'],
   dump: () => Promise.reject(new Error('D1 dump should not be used')),
   exec: () => Promise.reject(new Error('D1 exec should not be used')),
   prepare: query => new ForumRouteStatement(query, store),
@@ -6664,6 +6720,109 @@ describe('Forum routes', () => {
     })
     expect(store.reports[0]?.status).toBe('resolved')
     expect(store.moderationEvents).toHaveLength(3)
+  })
+
+  test('keeps redemption writes atomic when a mid-batch statement fails', async () => {
+    const store = new ForumRouteStore()
+    const path = '/api/forum/orange-check'
+    const previewResponse = await route(
+      store,
+      '/api/forum/paid-actions/preview',
+      {
+        body: {
+          actionKind: 'orange_check',
+          method: 'POST',
+          path,
+          requestBodyDigest: 'sha256:orange-check-atomicity-body',
+          routeParams: {},
+          spendCap: { amount: 500, asset: 'usd' },
+          target: { forumId: null, postId: null, topicId: null },
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'orange-check-atomic-preview-1',
+        },
+        method: 'POST',
+      },
+    )
+    const preview = (await previewResponse.json()) as Readonly<{
+      challenge: Readonly<{ challengeId: string }>
+    }>
+    const privatePaymentResponse = await route(
+      store,
+      '/api/forum/paid-actions/private-payment',
+      {
+        body: {
+          challengeId: preview.challenge.challengeId,
+          method: 'POST',
+          path,
+          requestBodyDigest: 'sha256:orange-check-atomicity-body',
+          routeParams: {},
+          spendCap: { amount: 500, asset: 'usd' },
+        },
+        headers: { authorization: 'Bearer oa_agent_route_test' },
+        method: 'POST',
+      },
+    )
+    const privatePayment = (await privatePaymentResponse.json()) as Readonly<{
+      privatePayment: Readonly<{ credential: string; l402ProofRef: string }>
+    }>
+    const baseClient = forumHostedMdkClient()
+    const paidClient = {
+      ...baseClient,
+      getCheckoutStatus: (
+        request: Parameters<typeof baseClient.getCheckoutStatus>[0],
+      ) =>
+        Effect.map(baseClient.getCheckoutStatus(request), status => ({
+          ...status,
+          status: 'payment_received' as const,
+        })),
+    }
+    const redeemRequest = (idempotencyKey: string) =>
+      ({
+        body: {
+          challengeId: preview.challenge.challengeId,
+          l402ProofRef: privatePayment.privatePayment.l402ProofRef,
+          method: 'POST',
+          path,
+          requestBodyDigest: 'sha256:orange-check-atomicity-body',
+          routeParams: {},
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': idempotencyKey,
+          'x-openagents-l402': `${privatePayment.privatePayment.credential}:${privatePayment.privatePayment.l402ProofRef}`,
+        },
+        hostedMdkClient: paidClient,
+        method: 'POST' as const,
+      }) as const
+
+    store.failInsertsInto = 'forum_l402_redemptions'
+    const failed = await route(
+      store,
+      '/api/forum/paid-actions/redeem',
+      redeemRequest('orange-check-atomic-redeem-fail'),
+    )
+
+    store.failInsertsInto = null
+    const retried = await route(
+      store,
+      '/api/forum/paid-actions/redeem',
+      redeemRequest('orange-check-atomic-redeem-retry'),
+    )
+    const retriedBody = (await retried.json()) as Readonly<{
+      orangeCheck: Readonly<{ active: boolean }>
+      replayed: boolean
+    }>
+
+    expect(failed.status).toBe(500)
+    expect(retried.status).toBe(201)
+    expect(retriedBody.replayed).toBe(false)
+    expect(retriedBody.orangeCheck).toMatchObject({ active: true })
+    expect(store.redemptions).toHaveLength(1)
+    expect(
+      store.receipts.filter(row => row.action_kind === 'orange_check'),
+    ).toHaveLength(1)
   })
 
   test('sells the orange check through preview, private payment, and redeem with entitlement fulfillment', async () => {

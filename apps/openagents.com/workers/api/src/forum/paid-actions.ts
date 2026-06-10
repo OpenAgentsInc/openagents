@@ -1442,17 +1442,16 @@ const readReceiptLookupRowByRef = (
       .first<ReceiptLookupRow>(),
   )
 
-const insertReceipt = (
+const receiptStatement = (
   db: D1Database,
   challenge: ChallengeRow,
   input: ForumPaidActionRedeemInput,
   receiptId: string,
   receiptRef: string,
   runtime: ForumPaidActionRuntime,
-): Effect.Effect<void, ForumPaidActionError> =>
-  d1Effect('forumPaidActions.insertReceipt', () =>
-    db
-      .prepare(
+): D1PreparedStatement =>
+  db
+    .prepare(
         `INSERT INTO forum_receipts (
            id,
            receipt_ref,
@@ -1483,10 +1482,8 @@ const insertReceipt = (
         challenge.public_projection_json,
         runtime.nowIso(),
       )
-      .run(),
-  ).pipe(Effect.asVoid)
 
-const insertMoneyAction = (
+const moneyActionStatement = (
   db: D1Database,
   challenge: ChallengeRow,
   input: ForumPaidActionRedeemInput,
@@ -1494,10 +1491,9 @@ const insertMoneyAction = (
   paymentEventId: string | null,
   receiptId: string,
   runtime: ForumPaidActionRuntime,
-): Effect.Effect<void, ForumPaidActionError> =>
-  d1Effect('forumPaidActions.insertMoneyAction', () =>
-    db
-      .prepare(
+): D1PreparedStatement =>
+  db
+    .prepare(
         `INSERT OR IGNORE INTO forum_money_actions (
            id,
            idempotency_key,
@@ -1532,8 +1528,6 @@ const insertMoneyAction = (
         challenge.public_projection_json,
         runtime.nowIso(),
       )
-      .run(),
-  ).pipe(Effect.asVoid)
 
 const readPaymentEventByProviderExternal = (
   db: D1Database,
@@ -1558,7 +1552,7 @@ const readPaymentEventByProviderExternal = (
       .first<PaymentEventRow>(),
   )
 
-const insertPaymentEvent = (
+const paymentEventStatement = (
   db: D1Database,
   challenge: ChallengeRow,
   input: ForumPaidActionRedeemInput,
@@ -1567,10 +1561,9 @@ const insertPaymentEvent = (
   moneyActionId: string,
   receiptRef: string,
   runtime: ForumPaidActionRuntime,
-): Effect.Effect<void, ForumPaidActionError> =>
-  d1Effect('forumPaidActions.insertPaymentEvent', () =>
-    db
-      .prepare(
+): D1PreparedStatement =>
+  db
+    .prepare(
         `INSERT INTO forum_payment_events (
            id,
            money_action_id,
@@ -1604,8 +1597,6 @@ const insertPaymentEvent = (
         ),
         runtime.nowIso(),
       )
-      .run(),
-  ).pipe(Effect.asVoid)
 
 const readDirectTipAttemptById = (
   db: D1Database,
@@ -2160,17 +2151,16 @@ const insertSettlementClaim = (
       .run(),
   ).pipe(Effect.asVoid)
 
-const insertRedemption = (
+const redemptionStatement = (
   db: D1Database,
   challenge: ChallengeRow,
   input: ForumPaidActionRedeemInput,
   receiptId: string,
   entitlementRef: string,
   runtime: ForumPaidActionRuntime,
-): Effect.Effect<void, ForumPaidActionError> =>
-  d1Effect('forumPaidActions.insertRedemption', () =>
-    db
-      .prepare(
+): D1PreparedStatement =>
+  db
+    .prepare(
         `INSERT INTO forum_l402_redemptions (
            id,
            idempotency_key,
@@ -2196,8 +2186,6 @@ const insertRedemption = (
         challenge.public_projection_json,
         runtime.nowIso(),
       )
-      .run(),
-  ).pipe(Effect.asVoid)
 
 export const previewForumPaidAction = (
   db: D1Database,
@@ -2525,35 +2513,41 @@ export const redeemForumPaidAction = (
     const paymentEventId =
       verifiedPaymentEvent === null ? null : runtime.makePaymentEventId()
 
-    yield* insertReceipt(db, challenge, input, receiptId, receiptRef, runtime)
-    yield* insertMoneyAction(
-      db,
-      challenge,
-      input,
-      moneyActionId,
-      paymentEventId,
-      receiptId,
-      runtime,
-    )
-    if (verifiedPaymentEvent !== null && paymentEventId !== null) {
-      yield* insertPaymentEvent(
-        db,
-        challenge,
-        input,
-        verifiedPaymentEvent,
-        paymentEventId,
-        moneyActionId,
-        receiptRef,
-        runtime,
-      )
-    }
-    yield* insertRedemption(
-      db,
-      challenge,
-      input,
-      receiptId,
-      entitlementRef,
-      runtime,
+    yield* d1Effect('forumPaidActions.redeemWriteBatch', () =>
+      db.batch([
+        receiptStatement(db, challenge, input, receiptId, receiptRef, runtime),
+        moneyActionStatement(
+          db,
+          challenge,
+          input,
+          moneyActionId,
+          paymentEventId,
+          receiptId,
+          runtime,
+        ),
+        ...(verifiedPaymentEvent !== null && paymentEventId !== null
+          ? [
+              paymentEventStatement(
+                db,
+                challenge,
+                input,
+                verifiedPaymentEvent,
+                paymentEventId,
+                moneyActionId,
+                receiptRef,
+                runtime,
+              ),
+            ]
+          : []),
+        redemptionStatement(
+          db,
+          challenge,
+          input,
+          receiptId,
+          entitlementRef,
+          runtime,
+        ),
+      ]),
     )
 
     return decodeRedeemResponse({
