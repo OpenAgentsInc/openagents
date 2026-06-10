@@ -21,6 +21,8 @@ import {
   type ForumAgentNotificationSummary,
   type ForumAgentNotificationsResponse,
   ForumAgentNotificationsResponse as ForumAgentNotificationsResponseSchema,
+  type ForumAgentProfileActivityItem,
+  ForumAgentProfileActivityItem as ForumAgentProfileActivityItemSchema,
   type ForumAgentPublicProfile,
   ForumAgentPublicProfileResponse as ForumAgentPublicProfileResponseSchema,
   type ForumBoardIndexResponse,
@@ -69,6 +71,9 @@ const decodeForumAgentNotificationsResponse = S.decodeUnknownSync(
 )
 const decodeForumAgentNotificationReadWriteResponse = S.decodeUnknownSync(
   ForumAgentNotificationReadWriteResponseSchema,
+)
+const decodeForumAgentProfileActivityItem = S.decodeUnknownSync(
+  ForumAgentProfileActivityItemSchema,
 )
 const decodeForumAgentPublicProfileResponse = S.decodeUnknownSync(
   ForumAgentPublicProfileResponseSchema,
@@ -427,6 +432,27 @@ type ForumContextLinkRow = Readonly<{
   target_id: string
   target_kind: ForumContextTargetKind
   topic_id: string | null
+}>
+
+type ForumAgentActivityTopicRow = Readonly<{
+  activity_id: string
+  created_at: string
+  first_post_receipt_refs_json: string
+  state: 'open' | 'locked'
+  title: string
+  topic_id: string
+  updated_at: string
+}>
+
+type ForumAgentActivityPostRow = Readonly<{
+  activity_id: string
+  created_at: string
+  post_id: string
+  receipt_refs_json: string
+  state: 'visible' | 'edited'
+  title: string
+  topic_id: string
+  updated_at: string
 }>
 
 type PrivateMessageRow = Readonly<{
@@ -1028,12 +1054,46 @@ const agentOwnerHandoff = {
     'https://openagents.com/login/github?returnTo=/agents/claims/{claimId}',
 }
 
+const topicActivityFromRow = (
+  row: ForumAgentActivityTopicRow,
+): ForumAgentProfileActivityItem =>
+  decodeForumAgentProfileActivityItem({
+    activityId: row.activity_id,
+    createdAt: row.created_at,
+    href: forumTopicPublicUrl(row.topic_id),
+    kind: 'topic',
+    postId: null,
+    receiptRefs: parseJsonStringArray(row.first_post_receipt_refs_json),
+    state: row.state,
+    title: row.title,
+    topicId: row.topic_id,
+    updatedAt: row.updated_at,
+  })
+
+const postActivityFromRow = (
+  row: ForumAgentActivityPostRow,
+): ForumAgentProfileActivityItem =>
+  decodeForumAgentProfileActivityItem({
+    activityId: row.activity_id,
+    createdAt: row.created_at,
+    href: forumPostPublicUrl(row.topic_id, row.post_id),
+    kind: 'post',
+    postId: row.post_id,
+    receiptRefs: parseJsonStringArray(row.receipt_refs_json),
+    state: row.state,
+    title: row.title,
+    topicId: row.topic_id,
+    updatedAt: row.updated_at,
+  })
+
 const agentProfileFromRow = (
   row: AgentProfileRow,
   stats: typeof actorStatsDefault,
+  activity: ReadonlyArray<ForumAgentProfileActivityItem>,
 ): ForumAgentPublicProfile =>
   decodeForumAgentPublicProfileResponse({
     profile: {
+      activity,
       actor: {
         actorId: row.user_id,
         actorRef: `agent:${row.user_id}`,
@@ -1073,9 +1133,11 @@ const snapshotProfileFromActor = (
   createdAt: string,
   updatedAt: string,
   stats: typeof actorStatsDefault,
+  activity: ReadonlyArray<ForumAgentProfileActivityItem>,
 ): ForumAgentPublicProfile =>
   decodeForumAgentPublicProfileResponse({
     profile: {
+      activity,
       actor,
       avatarUrl: null,
       createdAt,
@@ -1632,6 +1694,92 @@ const normalizeAgentProfileRef = (profileRef: string): string =>
       ? profileRef.slice('agent_profile:'.length)
     : profileRef
 
+const readForumAgentProfileActivity = (
+  db: D1Database,
+  actorRef: string,
+  limit = 12,
+): Effect.Effect<
+  ReadonlyArray<ForumAgentProfileActivityItem>,
+  ForumStorageError
+> =>
+  Effect.gen(function* () {
+    const boundedLimit = Math.max(1, Math.min(50, Math.trunc(limit)))
+    const [topics, posts] = yield* Effect.all([
+      d1Effect('forum.agentProfileActivity.topics', () =>
+        db
+          .prepare(
+            `/* forum.agentProfileActivity.topics */
+             SELECT forum_topics.id AS activity_id,
+                    forum_topics.id AS topic_id,
+                    forum_topics.title AS title,
+                    forum_topics.state AS state,
+                    forum_topics.created_at AS created_at,
+                    forum_topics.updated_at AS updated_at,
+                    COALESCE(first_post.receipt_refs_json, '[]') AS first_post_receipt_refs_json
+               FROM forum_topics
+               JOIN forum_forums
+                 ON forum_forums.id = forum_topics.forum_id
+                AND forum_forums.archived_at IS NULL
+                AND forum_forums.visibility = 'public'
+                AND forum_forums.discoverability = 'listed'
+          LEFT JOIN forum_posts first_post
+                 ON first_post.id = forum_topics.first_post_id
+                AND first_post.archived_at IS NULL
+                AND first_post.state IN ('visible', 'edited')
+              WHERE forum_topics.actor_ref = ?
+                AND forum_topics.archived_at IS NULL
+                AND forum_topics.state IN ('open', 'locked')
+              ORDER BY forum_topics.created_at DESC, forum_topics.id DESC
+              LIMIT ?`,
+          )
+          .bind(actorRef, boundedLimit)
+          .all<ForumAgentActivityTopicRow>(),
+      ),
+      d1Effect('forum.agentProfileActivity.posts', () =>
+        db
+          .prepare(
+            `/* forum.agentProfileActivity.posts */
+             SELECT forum_posts.id AS activity_id,
+                    forum_posts.id AS post_id,
+                    forum_posts.topic_id AS topic_id,
+                    forum_topics.title AS title,
+                    forum_posts.state AS state,
+                    forum_posts.created_at AS created_at,
+                    forum_posts.updated_at AS updated_at,
+                    forum_posts.receipt_refs_json AS receipt_refs_json
+               FROM forum_posts
+               JOIN forum_topics
+                 ON forum_topics.id = forum_posts.topic_id
+                AND forum_topics.archived_at IS NULL
+                AND forum_topics.state IN ('open', 'locked')
+               JOIN forum_forums
+                 ON forum_forums.id = forum_posts.forum_id
+                AND forum_forums.archived_at IS NULL
+                AND forum_forums.visibility = 'public'
+                AND forum_forums.discoverability = 'listed'
+              WHERE forum_posts.actor_ref = ?
+                AND forum_posts.archived_at IS NULL
+                AND forum_posts.state IN ('visible', 'edited')
+              ORDER BY forum_posts.created_at DESC, forum_posts.id DESC
+              LIMIT ?`,
+          )
+          .bind(actorRef, boundedLimit)
+          .all<ForumAgentActivityPostRow>(),
+      ),
+    ])
+
+    return [
+      ...(topics.results ?? []).map(topicActivityFromRow),
+      ...(posts.results ?? []).map(postActivityFromRow),
+    ]
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) ||
+          right.activityId.localeCompare(left.activityId),
+      )
+      .slice(0, boundedLimit)
+  })
+
 export const readForumAgentPublicProfile = (
   db: D1Database,
   profileRef: string,
@@ -1665,9 +1813,12 @@ export const readForumAgentPublicProfile = (
 
     if (row !== null) {
       const actorRef = `agent:${row.user_id}`
-      const stats = yield* readActorStats(db, actorRef)
+      const [stats, activity] = yield* Effect.all([
+        readActorStats(db, actorRef),
+        readForumAgentProfileActivity(db, actorRef),
+      ])
 
-      return agentProfileFromRow(row, stats)
+      return agentProfileFromRow(row, stats, activity)
     }
 
     const snapshot = yield* d1Effect(
@@ -1732,13 +1883,17 @@ export const readForumAgentPublicProfile = (
       }
     }
 
-    const stats = yield* readActorStats(db, actor.actorRef)
+    const [stats, activity] = yield* Effect.all([
+      readActorStats(db, actor.actorRef),
+      readForumAgentProfileActivity(db, actor.actorRef),
+    ])
 
     return snapshotProfileFromActor(
       actor,
       snapshot.created_at,
       snapshot.updated_at,
       stats,
+      activity,
     )
   })
 

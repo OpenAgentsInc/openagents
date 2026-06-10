@@ -2903,6 +2903,53 @@ class ForumRouteStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('FROM forum_topics')) {
+      if (this.query.includes('forum.agentProfileActivity.topics')) {
+        const actorRef = String(this.values[0])
+        const limit = Number(this.values[1] ?? 12)
+        const rows = this.store.topics
+          .filter(item => {
+            const forum = this.store.forums.find(f => f.id === item.forum_id)
+            const actor = JSON.parse(item.actor_json) as { actorRef: string }
+
+            return (
+              actor.actorRef === actorRef &&
+              item.archived_at === null &&
+              (item.state === 'open' || item.state === 'locked') &&
+              forum !== undefined &&
+              forum.archived_at === null &&
+              forum.visibility === 'public' &&
+              forum.discoverability === 'listed'
+            )
+          })
+          .sort(
+            (left, right) =>
+              right.created_at.localeCompare(left.created_at) ||
+              right.id.localeCompare(left.id),
+          )
+          .slice(0, limit)
+          .map(item => {
+            const firstPost = this.store.posts.find(
+              post =>
+                post.id === item.first_post_id &&
+                post.archived_at === null &&
+                (post.state === 'visible' || post.state === 'edited'),
+            )
+
+            return {
+              activity_id: item.id,
+              created_at: item.created_at,
+              first_post_receipt_refs_json:
+                firstPost?.receipt_refs_json ?? '[]',
+              state: item.state,
+              title: item.title,
+              topic_id: item.id,
+              updated_at: item.updated_at,
+            }
+          })
+
+        return Promise.resolve({ results: rows } as unknown as D1Result<T>)
+      }
+
       if (this.query.includes("state = 'hidden'")) {
         const limit = Number(this.values[0] ?? 50)
         const rows = this.store.topics
@@ -2947,6 +2994,52 @@ class ForumRouteStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('FROM forum_posts')) {
+      if (this.query.includes('forum.agentProfileActivity.posts')) {
+        const actorRef = String(this.values[0])
+        const limit = Number(this.values[1] ?? 12)
+        const rows = this.store.posts
+          .filter(item => {
+            const topic = this.store.topics.find(t => t.id === item.topic_id)
+            const forum = this.store.forums.find(f => f.id === item.forum_id)
+            const actor = JSON.parse(item.actor_json) as { actorRef: string }
+
+            return (
+              actor.actorRef === actorRef &&
+              item.archived_at === null &&
+              (item.state === 'visible' || item.state === 'edited') &&
+              topic !== undefined &&
+              topic.archived_at === null &&
+              (topic.state === 'open' || topic.state === 'locked') &&
+              forum !== undefined &&
+              forum.archived_at === null &&
+              forum.visibility === 'public' &&
+              forum.discoverability === 'listed'
+            )
+          })
+          .sort(
+            (left, right) =>
+              right.created_at.localeCompare(left.created_at) ||
+              right.id.localeCompare(left.id),
+          )
+          .slice(0, limit)
+          .map(item => {
+            const topic = this.store.topics.find(t => t.id === item.topic_id)
+
+            return {
+              activity_id: item.id,
+              created_at: item.created_at,
+              post_id: item.id,
+              receipt_refs_json: item.receipt_refs_json,
+              state: item.state,
+              title: topic?.title ?? 'Forum topic',
+              topic_id: item.topic_id,
+              updated_at: item.updated_at,
+            }
+          })
+
+        return Promise.resolve({ results: rows } as unknown as D1Result<T>)
+      }
+
       if (
         this.query.includes('forum_posts.actor_ref = ?') &&
         this.query.includes('forum_posts.created_at >= ?')
@@ -4305,6 +4398,102 @@ describe('Forum routes', () => {
       topic_id: '55555555-5555-4555-8555-555555555555',
       updated_at: '2026-06-05T21:00:00.000Z',
     })
+    store.topics.push({
+      actor_json: visibleSlugActorJson,
+      archived_at: null,
+      created_at: '2026-06-05T21:05:00.000Z',
+      first_post_id: 'bbbbbbbb-2222-4111-8111-bbbbbbbbbbbb',
+      forum_id: '77777777-1111-4111-8111-777777777777',
+      id: 'bbbbbbbb-2222-4111-8111-bbbbbbbbbbbb',
+      idempotency_key: 'seed-visible-slug-agent-void-topic',
+      latest_post_id: 'bbbbbbbb-2222-4111-8111-bbbbbbbbbbbb',
+      pin_state: 'normal',
+      post_count: 1,
+      public_projection_json: projectionJson,
+      score_ref: null,
+      slug: 'visible-slug-void-topic',
+      state: 'open',
+      title: 'Visible Slug Void Topic',
+      updated_at: '2026-06-05T21:05:00.000Z',
+    })
+    store.posts.push(
+      {
+        actor_json: visibleSlugActorJson,
+        archived_at: null,
+        body_text: 'Visible slug hidden moderation row.',
+        content_ref: 'content.forum.visible_slug_agent.hidden',
+        created_at: '2026-06-05T21:06:00.000Z',
+        forum_id: '33333333-3333-4333-8333-333333333333',
+        id: 'bbbbbbbb-3333-4111-8111-bbbbbbbbbbbb',
+        idempotency_key: 'seed-visible-slug-agent-hidden',
+        parent_post_id: null,
+        post_number: 3,
+        public_projection_json: projectionJson,
+        quote_post_id: null,
+        receipt_refs_json: '["receipt.public.hidden.should_not_leak"]',
+        revision_ref: null,
+        state: 'hidden',
+        topic_id: '55555555-5555-4555-8555-555555555555',
+        updated_at: '2026-06-05T21:06:00.000Z',
+      },
+      {
+        actor_json: visibleSlugActorJson,
+        archived_at: null,
+        body_text: 'Visible slug held moderation row.',
+        content_ref: 'content.forum.visible_slug_agent.held',
+        created_at: '2026-06-05T21:07:00.000Z',
+        forum_id: '33333333-3333-4333-8333-333333333333',
+        id: 'bbbbbbbb-4444-4111-8111-bbbbbbbbbbbb',
+        idempotency_key: 'seed-visible-slug-agent-held',
+        parent_post_id: null,
+        post_number: 4,
+        public_projection_json: projectionJson,
+        quote_post_id: null,
+        receipt_refs_json: '["receipt.public.held.should_not_leak"]',
+        revision_ref: null,
+        state: 'held_for_review',
+        topic_id: '55555555-5555-4555-8555-555555555555',
+        updated_at: '2026-06-05T21:07:00.000Z',
+      },
+      {
+        actor_json: visibleSlugActorJson,
+        archived_at: null,
+        body_text: 'Visible slug tombstoned row.',
+        content_ref: 'content.forum.visible_slug_agent.tombstoned',
+        created_at: '2026-06-05T21:08:00.000Z',
+        forum_id: '33333333-3333-4333-8333-333333333333',
+        id: 'bbbbbbbb-5555-4111-8111-bbbbbbbbbbbb',
+        idempotency_key: 'seed-visible-slug-agent-tombstoned',
+        parent_post_id: null,
+        post_number: 5,
+        public_projection_json: projectionJson,
+        quote_post_id: null,
+        receipt_refs_json: '["receipt.public.tombstoned.should_not_leak"]',
+        revision_ref: null,
+        state: 'tombstoned',
+        topic_id: '55555555-5555-4555-8555-555555555555',
+        updated_at: '2026-06-05T21:08:00.000Z',
+      },
+      {
+        actor_json: visibleSlugActorJson,
+        archived_at: null,
+        body_text: 'Visible slug unlisted row.',
+        content_ref: 'content.forum.visible_slug_agent.unlisted',
+        created_at: '2026-06-05T21:09:00.000Z',
+        forum_id: '77777777-1111-4111-8111-777777777777',
+        id: 'bbbbbbbb-6666-4111-8111-bbbbbbbbbbbb',
+        idempotency_key: 'seed-visible-slug-agent-unlisted',
+        parent_post_id: null,
+        post_number: 1,
+        public_projection_json: projectionJson,
+        quote_post_id: null,
+        receipt_refs_json: '["receipt.public.unlisted.should_not_leak"]',
+        revision_ref: null,
+        state: 'visible',
+        topic_id: 'bbbbbbbb-2222-4111-8111-bbbbbbbbbbbb',
+        updated_at: '2026-06-05T21:09:00.000Z',
+      },
+    )
     const profileResponse = await route(
       store,
       '/api/agents/profiles/route-test-agent',
@@ -4364,6 +4553,19 @@ describe('Forum routes', () => {
         source: 'agent_profile',
       },
     })
+    expect(visibleSlugProfile).toMatchObject({
+      profile: {
+        activity: [
+          expect.objectContaining({
+            href: 'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555#post-bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+            kind: 'post',
+            postId: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+            receiptRefs: [],
+            title: 'First Topic',
+          }),
+        ],
+      },
+    })
     expect(agentProfileRefResponse.status).toBe(200)
     expect(agentProfileRef).toMatchObject({
       profile: {
@@ -4371,6 +4573,12 @@ describe('Forum routes', () => {
           actorRef: `agent:${visibleSlugAgentId}`,
           slug: 'visible-slug-agent',
         },
+        activity: [
+          expect.objectContaining({
+            postId: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+            title: 'First Topic',
+          }),
+        ],
       },
     })
     expect(browserProfileResponse.status).toBe(200)
@@ -4379,6 +4587,8 @@ describe('Forum routes', () => {
     )
     expect(browserProfile).toContain('data-agent-profile-page')
     expect(browserProfile).toContain('Visible Slug Agent')
+    expect(browserProfile).toContain('Public activity')
+    expect(browserProfile).toContain('First Topic')
     expect(browserProfile).toContain(
       'https://openagents.com/login/github?returnTo=/agents/claims/CLAIM_ID',
     )
@@ -4395,6 +4605,11 @@ describe('Forum routes', () => {
     })
     expect(JSON.stringify(profile)).not.toContain('agent@example.com')
     expect(JSON.stringify(profile)).not.toContain('oa_agent')
+    expect(JSON.stringify(visibleSlugProfile)).not.toContain(
+      'should_not_leak',
+    )
+    expect(browserProfile).not.toContain('should_not_leak')
+    expect(browserProfile).not.toContain('Visible Slug Void Topic')
   })
 
   test('creates idempotent watches, bookmarks, and follows for authorized agents', async () => {

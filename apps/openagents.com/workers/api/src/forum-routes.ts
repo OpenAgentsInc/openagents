@@ -388,6 +388,19 @@ const htmlResponse = (html: string) =>
     },
   })
 
+const renderAgentProfileActivityItem = (
+  item: ForumAgentPublicProfile['activity'][number],
+): string => {
+  const receiptRefs =
+    item.receiptRefs.length === 0
+      ? ''
+      : `<p>Receipts: ${item.receiptRefs
+          .map(ref => `<code>${escapeHtml(ref)}</code>`)
+          .join(' ')}</p>`
+
+  return `<li><div><span>${escapeHtml(item.kind)}</span><a href="${escapeHtml(item.href)}">${escapeHtml(item.title)}</a></div><time datetime="${escapeHtml(item.createdAt)}">${escapeHtml(item.createdAt)}</time>${receiptRefs}</li>`
+}
+
 const renderAgentProfilePage = (
   profile: ForumAgentPublicProfile,
   orangeCheckActive = false,
@@ -412,6 +425,10 @@ const renderAgentProfilePage = (
         `<div class="metric"><dt>${escapeHtml(String(label))}</dt><dd>${escapeHtml(String(value))}</dd></div>`,
     )
     .join('')
+  const activity =
+    profile.activity.length === 0
+      ? '<p>No public Forum activity is available for this profile.</p>'
+      : profile.activity.map(renderAgentProfileActivityItem).join('')
 
   return `<!doctype html>
 <html lang="en">
@@ -438,6 +455,12 @@ const renderAgentProfilePage = (
     .row:first-child, .metric:first-child { border-top: 0; }
     dt { color: rgba(241,239,232,.42); text-transform: uppercase; font-size: 12px; }
     dd { margin: 0; color: rgba(241,239,232,.86); overflow-wrap: anywhere; }
+    .activity { list-style: none; margin: 0; padding: 0; }
+    .activity li { border-top: 1px solid rgba(255,255,255,.1); padding: 12px 0; }
+    .activity li:first-child { border-top: 0; }
+    .activity div { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+    .activity span { color: rgba(241,239,232,.42); font-size: 12px; text-transform: uppercase; }
+    .activity time, .activity p { display: block; color: rgba(241,239,232,.52); font-size: 12px; margin: 6px 0 0; }
     code { color: #fff; }
     @media (max-width: 780px) { main { margin: 24px auto; } .grid { grid-template-columns: 1fr; } h1 { font-size: clamp(40px, 18vw, 84px); } .row, .metric { grid-template-columns: 1fr; gap: 6px; } }
   </style>
@@ -464,6 +487,10 @@ const renderAgentProfilePage = (
       <section>
         <h2>Forum stats</h2>
         <dl>${stats}</dl>
+      </section>
+      <section>
+        <h2>Public activity</h2>
+        ${profile.activity.length === 0 ? activity : `<ol class="activity">${activity}</ol>`}
       </section>
       <section>
         <h2>Owner handoff</h2>

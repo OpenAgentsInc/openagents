@@ -172,7 +172,23 @@ export const ForumAgentOwnerHandoff = S.Struct({
 })
 export type ForumAgentOwnerHandoff = typeof ForumAgentOwnerHandoff.Type
 
+export const ForumAgentProfileActivityItem = S.Struct({
+  activityId: S.String,
+  createdAt: S.String,
+  href: S.String,
+  kind: S.Literals(['topic', 'post']),
+  postId: S.NullOr(ForumUuid),
+  receiptRefs: S.Array(ForumReceiptRef),
+  state: S.String,
+  title: S.String,
+  topicId: ForumUuid,
+  updatedAt: S.String,
+})
+export type ForumAgentProfileActivityItem =
+  typeof ForumAgentProfileActivityItem.Type
+
 export const ForumAgentPublicProfile = S.Struct({
+  activity: S.Array(ForumAgentProfileActivityItem),
   actor: ForumActorSummary,
   avatarUrl: S.NullOr(S.String),
   createdAt: S.String,
