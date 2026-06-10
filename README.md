@@ -53,6 +53,19 @@ connects customer orders, workrooms, generated source, deployments, feedback,
 proof, and commerce flows so a Site can be built, reviewed, revised, and
 accepted with an evidence trail.
 
+### Tassadar (research)
+
+Tassadar is the research lane exploring the LLM-as-computer construction:
+compiling small exact programs into standard transformer structure —
+attention as exact key-value lookup, feed-forward neurons as step
+functions — so that execution is integer-exact and verifiable by replay,
+the cheapest verification grade the work market can carry. The owned
+executor-compiler implementation lives in the `psionic` repo; the
+comprehensive essay covering the concept, what has been built, the stated
+boundaries, and the implications for verifiable machine work is
+[`docs/tassadar/README.md`](docs/tassadar/README.md). Nothing in this
+lane is served or promised; it is bounded research with claim discipline.
+
 ## Workspace
 
 - `apps/openagents.com/`: the `openagents.com` product app and Worker
