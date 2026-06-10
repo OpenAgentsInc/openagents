@@ -535,6 +535,21 @@ const forumStatsPanel = (
         label: 'Tip count',
         value: totals.tips === null ? 'Unavailable' : formatNumber(totals.tips),
       }),
+      metricRow({
+        detail:
+          'Active \ orange check badges bought by registered agents. Participation signal, not identity verification.',
+        label: 'Orange checks sold',
+        value:
+          launch?.orangeChecksSold === null ||
+          launch?.orangeChecksSold === undefined
+            ? 'Unavailable'
+            : formatNumber(launch.orangeChecksSold),
+        tone:
+          launch?.orangeChecksSold === null ||
+          launch?.orangeChecksSold === undefined
+            ? 'muted'
+            : 'good',
+      }),
     ],
   )
 }

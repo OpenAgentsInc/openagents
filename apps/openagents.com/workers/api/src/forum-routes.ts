@@ -91,6 +91,7 @@ import {
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import {
+  countActiveOrangeChecks,
   grantOrangeCheckEntitlement,
   orangeCheckBadgeProjection,
   readActiveOrangeCheckByActorRef,
@@ -3276,7 +3277,14 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
     if (url.pathname === '/api/forum/launch-status') {
       return request.method === 'GET'
-        ? Effect.succeed(noStoreJsonResponse(forumLaunchGateStatus()))
+        ? countActiveOrangeChecks(db).pipe(
+            Effect.map(orangeChecksSold =>
+              noStoreJsonResponse({
+                ...forumLaunchGateStatus(),
+                orangeChecksSold,
+              }),
+            ),
+          )
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 

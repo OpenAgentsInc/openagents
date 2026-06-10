@@ -238,6 +238,7 @@ export type PublicForumTipPayerWalletReadiness =
 
 export const PublicForumLaunchStatus = S.Struct({
   gates: S.Array(PublicForumLaunchGate),
+  orangeChecksSold: S.optionalKey(S.NullOr(S.Number)),
   publicPosting: S.Struct({
     listedForums: PublicForumLaunchGateState,
     voidLane: PublicForumLaunchGateState,

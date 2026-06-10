@@ -59,6 +59,25 @@ const entitlementFromRow = (row: EntitlementRow): OrangeCheckEntitlement => ({
 
 export class OrangeCheckStorageError extends Error {}
 
+export const countActiveOrangeChecks = (
+  db: D1Database,
+): Effect.Effect<number | null> =>
+  Effect.promise(async () => {
+    try {
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) AS orange_count
+           FROM orange_check_entitlements
+           WHERE state = 'active'`,
+        )
+        .first<Record<string, unknown>>()
+
+      return row === null ? null : Number(row.orange_count)
+    } catch {
+      return null
+    }
+  })
+
 export const grantOrangeCheckEntitlement = (
   db: D1Database,
   input: Readonly<{
