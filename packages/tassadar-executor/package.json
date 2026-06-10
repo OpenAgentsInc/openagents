@@ -1,0 +1,19 @@
+{
+  "name": "@openagents/tassadar-executor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "fixtures",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "replay": "bun run src/replay-cli.ts"
+  }
+}
