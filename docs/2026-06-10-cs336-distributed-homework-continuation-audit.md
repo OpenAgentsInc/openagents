@@ -409,32 +409,42 @@ curriculum and the verification layer that plug into it. Concretely:
    it gates; and the training promises' green copy runs through the
    fine-tune gate's scope-language discipline regardless of curriculum.
 
-### Candidate issue set (not filed — sequence after epic 3's #4669)
+### Issue set — **filed on GitHub 2026-06-10 as #4673–#4684**
 
-Monorepo-side rails (the original five, unchanged):
+Monorepo-side rails (refined at filing: verification v2 became
+verification-**class-pluggable**, preparing the Tassadar exact-replay
+class):
 
-1. `training: worker-side training-run and window authority (runs, windows, leases, public projections)`
-2. `training: commit-and-challenge verification v2 (Merkle commitments in closeouts, D1 challenge queue, Freivalds verifier)` — port the `f5919c766^` validator-service contract
-3. `training: CS336 A1 homework job kind through the dispatcher (#4639 pattern) with paid closeouts`
-4. `training: validator work as paid Pylon assignments (weak-device lane)`
-5. `training: public run page projection replacing the dead /training/runs SPA shell`
+1. #4673 `training: worker-side training-run and window authority`
+2. #4674 `training: pluggable verification v2 (commitments, challenge queue, replay + Freivalds classes)` — ports the `f5919c766^` validator-service contract; verification classes (freivalds_merkle, deterministic_recompute, exact_trace_replay, statistical_cross_check, seeded_replication) are pluggable registrations
+3. #4675 `training: CS336 A1 homework job kind with paid closeouts`
+4. #4676 `training: validator work as paid Pylon assignments (weak-device lane)`
+5. #4677 `training: public run pages replacing the dead /training/runs SPA shell`
 
 Pipeline lanes (monorepo side: dispatch kinds, verification classes,
-leaderboards; each has a Psionic-repo counterpart for the port itself):
+leaderboards; each flags its Psionic-repo counterpart as an external
+dependency):
 
-6. `training: A1 leaderboard-class run — real-gradient TinyStories/OWT training windows across contributor devices, loss-under-budget leaderboard`
-7. `training: A3 scaling-sweep homework kind — (N, D) sweep cells, sampled-cell validator replication, public IsoFLOP dashboard from receipts` (Psionic side: port scaling-law fitting + run planner)
-8. `data: A4 data-refinery homework kinds — WARC extraction, langid, PII masking, quality filters, exact + MinHash dedup as deterministic-recompute-verified CPU jobs; eval-delta payment design` (Psionic side: port the A4 adapter set into psionic-data; shares quality machinery with #4643–#4645)
-9. `systems: A2 benchmark homework kind — receipted per-device kernel/throughput benchmarks; public device-capability dataset` (Psionic side: owned Metal/CUDA attention kernels, real-transport DDP/FSDP in psionic-distributed/collectives)
-10. `alignment: A5 rollout + grading homework kinds — GRPO rollout batches via the compute market, deterministic reward/eval grading, receipted MMLU/GSM8K eval suites` (Psionic side: port SFT packing, GRPO losses, DPO)
-11. `training: per-assignment receipt-backed public leaderboards (A1 loss, A2 throughput, A4 eval delta, A5 accuracy)`
+6. #4678 `training: A1 leaderboard-class run — real gradients across contributor devices` (Psionic ask: a real-gradient A1 lane; the bounded finite-difference trainer is honestly insufficient)
+7. #4679 `training: A3 scaling-sweep homework — crowd-sourced IsoFLOP curves` (Psionic ask: scaling-law fitting + run planner)
+8. #4680 `data: A4 data-refinery homework — filtering, dedup, and eval-delta payment design` (Psionic ask: A4 adapter port into psionic-data; shares quality machinery with #4643–#4645)
+9. #4681 `systems: A2 benchmark homework — the public device-capability dataset` (Psionic ask, longer horizon: owned kernels, real-transport DDP/FSDP)
+10. #4682 `alignment: A5 rollout and grading homework — RL fed by the compute market` (Psionic ask: SFT packing, GRPO losses, DPO)
+11. #4683 `training: per-assignment receipt-backed public leaderboards`
+
+Filed addition connecting this epic to the Tassadar plan
+(`docs/tassadar/`):
+
+12. #4684 `training: executor-trace homework — the exact-replay work class (Tassadar lane)` — bounded executor workloads dispatched through the epic-3 connector (#4664), verified by exact trace replay (the cheapest verification grade; weak devices fully competent), with a hard disclosure boundary: dispatch plumbing only, zero public Tassadar capability copy, the psionic capability envelope governs what may be dispatched.
 
 Rails 1–5 slot between #4669 (boundary) and #4670 (bounded remote Qwen
 run); lanes 6–11 follow the pipeline sequencing above (A1 → A3 → A4 → A2 →
-A5). Together they re-run the Episode 224 story — paid, verified homework —
-and carry it through the whole course: by the end the network has trained,
-profiled, scaled, data-fed, and post-trained a model on a stack that is
-owned Rust top to bottom.
+A5); #4684 needs only #4674 plus the #4664 connector and can run early as
+the always-available verification-perfect work class. Together they re-run
+the Episode 224 story — paid, verified homework — and carry it through the
+whole course: by the end the network has trained, profiled, scaled,
+data-fed, and post-trained a model on a stack that is owned Rust top to
+bottom.
 
 ## Evidence Reviewed
 

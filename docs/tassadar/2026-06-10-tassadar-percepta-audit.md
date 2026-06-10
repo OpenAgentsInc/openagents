@@ -628,6 +628,9 @@ same scope-language discipline the Qwen fine-tune gate uses.
 2. Executor-trace homework: dispatch bounded article-class workloads to
    Pylons through the epic-3 connector, verified by exact trace replay —
    the cheapest verification class in the whole homework program.
+   **Filed 2026-06-10 as #4684** (CS336 epic, disclosure-bounded), with
+   the pluggable `exact_trace_replay` verification class landing in
+   #4674.
 3. A `TassadarCapabilityEnvelope` consumer in Pylon's capability reporting,
    so executor-class capacity is advertised with the same no-overclaim
    posture as GEPA.
