@@ -26,9 +26,10 @@ Their answer is a construction. Take a small exact program. Compile it —
 do not train it — into the weights of a completely standard transformer
 architecture: attention heads, feed-forward layers, residual streams,
 nothing exotic. The resulting model interprets a real instruction set
-(their core handles a 35-opcode WebAssembly subset, enough to run
-compiled C programs) with zero errors over arbitrarily long executions.
-The model is a computer. The only special thing about it is the weights.
+(their core handles a 35-opcode WebAssembly subset; their demo programs
+happen to be written in C and compiled to that subset) with zero errors
+over arbitrarily long executions. The model is a computer. The only
+special thing about it is the weights.
 
 That result matters to OpenAgents for one specific reason, and it is the
 reason this folder exists: **a computation that is exact is a computation
@@ -72,6 +73,21 @@ the program literally moves from context into parameters. And a **convex
 hull cache** exploits the parabolic geometry to answer the attention
 argmax in logarithmic rather than linear time, since the scores are lines
 evaluated at a point.
+
+One clarification worth making explicit: the C in Percepta's demos is
+incidental, not structural. Their construction interprets *WebAssembly*;
+C is merely the source language they happened to compile their example
+programs from, and nothing in the mathematics cares. Our stack has no C
+in it and gains nothing by adding any. Psionic's founding thesis is to
+rebuild all relevant ML infrastructure in one very typesafe language —
+Rust — and this lane keeps that discipline end to end: the IR, the
+compiler, the schedulers, the five executor legs, the verifiers, and the
+differential harness are all Rust, with the typed refusals and
+digest-pinned artifacts that thesis exists to make cheap. When we want
+high-level source programs as conformance cases, Rust compiles to the
+same WebAssembly targets (`wasm32`) that C does, so Rust-authored
+programs can feed the same window the construction interprets. C is
+where Percepta's examples came from; it is not where ours will.
 
 The construction is real, published, and reproducible. What it is *not*
 is fast in absolute terms — a plain CPU beats it handily on standalone
