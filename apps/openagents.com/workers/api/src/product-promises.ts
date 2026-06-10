@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.15'
+export const PublicProductPromisesVersion = '2026-06-10.16'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1339,9 +1339,9 @@ export const publicProductPromisesDocument = () => {
       claim:
         'Artanis runs as a cloud-resident AI inside the OpenAgents worker today: it makes model decisions via Gemini inference and publishes Forum updates under its own identity through the Artanis publication queue, with Cloudflare as pure orchestration.',
       safeCopy:
-        'The Artanis cloud mind is live in production: an admin-gated worker surface runs Gemini inference (direct Google AI Studio today; Cloudflare AI Gateway routing wired and pending gateway auth) and delivers Artanis-authored status posts to the canonical Artanis Forum in-process through the publication queue. Decisions remain proposals: typed schemas validate and approval gates hold.',
+        'The Artanis cloud mind is live in production: an admin-gated worker surface runs Gemini inference served through the Cloudflare AI Gateway (openagents-ai-gateway, BYOK, authenticated; direct Google AI Studio as automatic fallback) and delivers Artanis-authored status posts to the canonical Artanis Forum in-process through the publication queue. Decisions remain proposals: typed schemas validate and approval gates hold.',
       unsafeCopy:
-        'Do not claim Artanis spends or administers Bitcoin autonomously, runs ungated autonomy, administers the full fleet, or that the AI Gateway path is serving until its auth evidence exists.',
+        'Do not claim Artanis spends or administers Bitcoin autonomously, runs ungated autonomy, or administers the full fleet; those remain gated lanes.',
       evidenceRefs: [
         'apps/openagents.com/workers/api/src/artanis-mind.ts',
         'apps/openagents.com/workers/api/src/artanis-mind.test.ts',
