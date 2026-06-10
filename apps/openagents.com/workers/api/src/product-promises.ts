@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.11'
+export const PublicProductPromisesVersion = '2026-06-10.12'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1262,7 +1262,8 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'compute.tassadar_executor_poc.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'operator'],
-      state: 'yellow',
+      state: 'green',
+      lastVerifiedAt: '2026-06-10',
       claim:
         'OpenAgents will run a Tassadar executor proof of concept on real Pylons: bounded exact-program workloads dispatched to contributor machines, verified by exact trace replay on a separate device, with at least one paid closeout settled on receipts.',
       safeCopy:
@@ -1288,10 +1289,11 @@ export const publicProductPromisesDocument = () => {
         'assignment.closeout.7b794dac86405677243ac182',
         'receipt.tassadar_poc.payer_balance_2173_to_1173',
         'receipt.tassadar_poc.receiver_balance_0_to_980',
+        'promise_transition_99b561e9-74f1-4c9a-90cc-cd7c0aea13bd',
       ],
       blockerRefs: [],
       verification:
-        'Run smoke:tassadar:executor-trace for the wiring, then the live proof of concept: dispatch one digest-pinned bounded executor workload to at least one real Pylon, replay its trace on a different device with a verified exact_trace_replay verdict receipt, and settle one operator-funded paid closeout. Green requires all three with public-safe receipts cited here.',
+        'Verified 2026-06-10 (transition receipt promise_transition_99b561e9-74f1-4c9a-90cc-cd7c0aea13bd). Rerun recipe: smoke:tassadar:executor-trace for the wiring; dispatch via scripts/tassadar-poc-dispatch.ts to a registered Pylon; pylon assignment run-no-spend executes and closes out with the trace digest; POST /api/operator/tassadar/replay re-executes on the worker as the separate validator device; the training-verification challenge lifecycle records Verified/Rejected receipts; the paid rung settles through the MDK bridge pattern with balance receipts.',
       authorityBoundary:
         'A proof-of-concept verdict proves exact replay of bounded committed workloads only. It grants no serving authority, no performance claim against conventional CPUs, and no general LLM-computer capability claim; the Tassadar research lane publication gates stay closed for everything beyond this scoped promise.',
     },
@@ -1304,6 +1306,7 @@ export const publicProductPromisesDocument = () => {
     'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
     'The five-streams implementation plan is tracked in GitHub issues #4635-#4653 (rails, compute, data, labor, referrals, stacking smoke, tips polish); the lane map and binding delegation contract live in apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md.',
     'Owner decision 2026-06-10: the Tassadar research lane previously held no registry promise by design. The owner approved one scoped exception: compute.tassadar_executor_poc.v1, a bounded proof-of-concept promise for executor-trace work on real Pylons. All other Tassadar publication gates remain closed; the research essay is docs/tassadar/README.md.',
+    'compute.tassadar_executor_poc.v1 went green on 2026-06-10 citing transition receipt promise_transition_99b561e9-74f1-4c9a-90cc-cd7c0aea13bd. Green covers exactly the scoped PoC claim (one workload family, one real Pylon, worker-as-validator replay, one settled paid closeout); the unsafeCopy line is unchanged and binding, and no broader executor capability, performance, or earning claim is created.',
     'The full training-pipeline buildout plan is docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md. The training.* promises represent its workstreams (ablation system, data refinery, model ladder, marathon operations, post-training arc, verification classes, device-capability dataset); all enter as planned. Model-ladder rungs gain their own promise records before each run; no rung above the R0 tri-host rehearsal exists or is scheduled against a date.',
     'Demand-provenance rule (proof.demand_provenance.v1): internal or first-party demand — including the training pipeline’s own ablations, sweeps, and corpus work — is plumbing proof, not market proof. No external dollar, no demand claim; revenue-bearing public numbers must carry an internal/external split alongside modeled/measured/settled provenance.',
     'The Smol Training Playbook chapters mirrored at psionic docs/smol guide the pipeline’s operational shape; its measurements (MFU, bandwidth, mixture ratios) are external priors on other hardware, never OpenAgents claims.',

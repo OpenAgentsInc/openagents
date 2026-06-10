@@ -6,8 +6,13 @@
 > Nothing here is a served product or a capability claim beyond the
 > committed parity tests. One scoped registry promise exists by owner
 > decision (2026-06-10): `compute.tassadar_executor_poc.v1`, a bounded
-> proof of concept for executor-trace work on real Pylons. All other
-> publication gates stay closed. Companion documents are indexed
+> proof of concept for executor-trace work on real Pylons — **green as
+> of 2026-06-10** (transition receipt
+> `promise_transition_99b561e9-74f1-4c9a-90cc-cd7c0aea13bd`): a real
+> Pylon executed the digest-pinned workload, the production worker
+> replayed it as a separate validator device with Verified/Rejected
+> challenge receipts, and one operator-funded paid closeout settled
+> over real Lightning. All other publication gates stay closed. Companion documents are indexed
 > at the end.
 
 ## The Question
@@ -281,10 +286,11 @@ Stated plainly, because boundaries are the product:
   lane's no-promise-by-design posture gained one scoped exception by
   owner decision on 2026-06-10: `compute.tassadar_executor_poc.v1`, a
   bounded registry promise to run an executor-trace proof of concept on
-  real Pylons (dispatch, separate-device exact-replay verdict, one paid
-  closeout). Every other publication gate remains closed until the
-  disclosure flow approves otherwise. A plain CPU remains faster for
-  standalone batch work.
+  real Pylons — completed and green the same day (live dispatch,
+  worker-as-validator exact-replay verdicts with a tampered rejection,
+  and one paid closeout settled over real Lightning). Every other
+  publication gate remains closed until the disclosure flow approves
+  otherwise. A plain CPU remains faster for standalone batch work.
 
 ## Possible Futures
 
