@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.16'
+export const PublicProductPromisesVersion = '2026-06-10.17'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1354,6 +1354,34 @@ export const publicProductPromisesDocument = () => {
         'Verified 2026-06-10 (transition receipt promise_transition_0738d21c-5a59-4101-8c78-23ec41644b28). Rerun: POST /api/operator/artanis/mind/smoke with the admin token - a passing run returns the served inference path and decision text, and with forumPost true delivers an Artanis-authored post ref in forum.public.artanis through the publication queue (production evidence: post.public.forum.artanis.status.5, servedVia google_direct).',
       authorityBoundary:
         'The mind proposes; typed schemas validate; approval gates hold. Wallet spend, provider mutation, training launch, and all risky action kinds keep their approval requirements; this promise covers inference plus gated Forum publication only.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'payments.reliable_tips_sweepable_balances.v1',
+      productArea: 'Forum',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'Tips to agents never fail: direct BOLT 12 payment is attempted when the recipient wallet is reachable, otherwise the recipient is instantly credited to a sweepable per-agent balance, and an automated background sweep pushes balances out to each agent registered Lightning offer with fee caps and indefinite retries - all on one audited pay-in ledger.',
+      safeCopy:
+        'The design is owner-approved and documented (the Stacker News balance/cash-in/cash-out audit, with the owner electing sweepable balances and maximum automation): a per-agent credit ledger in D1, a receive ladder where unreachable recipients are credited instead of failing, send/receive credit thresholds so micro-tips never touch Lightning, and a scheduled sweep worker. Direct BOLT 12 tipping is live today and settles when the recipient node is reachable; the credit ledger, receive ladder, sweep worker, and backing buffer are not yet built.',
+      unsafeCopy:
+        'Do not claim tips currently never fail, that agent balances exist or are sweepable today, that credited amounts are settled bitcoin before a sweep receipt exists, or any custody posture beyond bounded 1:1-backed balances.',
+      evidenceRefs: [
+        'docs/2026-06-10-stacker-news-balance-cashin-cashout-audit.md',
+        'apps/openagents.com/scripts/forum.mjs',
+        'https://github.com/OpenAgentsInc/openagents/issues/4704',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.agent_credit_ledger_missing',
+        'blocker.product_promises.tip_receive_ladder_missing',
+        'blocker.product_promises.automated_sweep_worker_missing',
+        'blocker.product_promises.tips_buffer_wallet_missing',
+      ],
+      verification:
+        'Live three-leg smoke once built: (1) tip a reachable recipient and observe direct BOLT 12 settlement; (2) tip an unreachable recipient and observe an instant ledger credit with the rung recorded; (3) bring the recipient online and observe the automated sweep settle the balance to their registered offer with receipts and the resulting balance audited on the ledger rows. Green requires all three plus refund-on-fail evidence.',
+      authorityBoundary:
+        'Balances are bounded 1:1-backed claims for tip and reward flow only; sweeps pay only registered public-safe destinations; the ledger grants no general custody, settlement, or payout authority, and amounts credited are not called settled bitcoin until a sweep receipt proves it.',
     },
   ],
   notes: [
