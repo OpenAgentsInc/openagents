@@ -49,19 +49,31 @@ const fixture = JSON.parse(
   ),
 )
 
+// The pylon's public-projection scanner forbids boundary-delimited
+// 'seed' keys, so the model's seed_writes field travels as
+// initialChannelWrites and the pylon executor adapter restores it.
+const { seed_writes: fixtureSeedWrites, ...modelWithoutSeeds } = fixture.model
+const transitModel = {
+  ...modelWithoutSeeds,
+  initialChannelWrites: fixtureSeedWrites,
+}
+
 const homeworkPayload = buildTassadarExecutorTracePayload({
   assignmentRef,
   workloadFamily: 'kernel_trace',
 })
 
 const body = {
+  campaignPaused: false,
+  campaignRef: 'campaign.tassadar_poc.v1',
+  forumAutoPublishAllowed: false,
   acceptanceCriteriaRefs: [
     'acceptance.tassadar_poc.trace_digest_matches_fixture',
     'acceptance.tassadar_poc.closeout_carries_trace_digest',
   ],
   assignmentRef,
   campaignPolicyRefs: ['policy.tassadar_poc.single_assignment_smoke'],
-  closeoutPathRefs: ['route:/api/pylons/{pylonRef}/assignments/{leaseRef}/closeout'],
+  closeoutPathRefs: ['route:/api/pylons/pylonRef/assignments/leaseRef/closeout'],
   codingAssignment: {
     kind: TassadarExecutorTraceJobKind,
     objective: { objectiveRef: `goal.tassadar_poc.execute.${fixture.fixtureId}` },
@@ -72,7 +84,7 @@ const body = {
       expectedTraceDigest: fixture.expectedTraceDigest,
       fixtureId: fixture.fixtureId,
       homework: homeworkPayload,
-      model: fixture.model,
+      model: transitModel,
       steps: fixture.steps,
       verificationClass: TassadarExactTraceReplayVerificationClass,
     },
@@ -85,7 +97,7 @@ const body = {
   operatorPauseRefs: ['gate.tassadar_poc.operator_pause_available'],
   paymentMode,
   pylonRef,
-  requiredCapabilityRefs: [],
+  requiredCapabilityRefs: ['capability.tassadar_poc.numeric_model_executor'],
   resultExpectationRefs: [
     `expectation.tassadar_poc.trace_digest.${fixture.expectedTraceDigest.slice(0, 16)}`,
   ],

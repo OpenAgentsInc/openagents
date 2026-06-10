@@ -191,10 +191,30 @@ export function tassadarPayloadFrom(codingAssignment: unknown): TassadarAssignme
     | { kind?: unknown; tassadar?: TassadarAssignmentPayload }
     | null
     | undefined
-  if (record?.kind !== "tassadar_executor_trace") return null
+  const kind = record?.kind
+  if (kind !== "tassadar_executor_trace" && kind !== "tassadar_executor_trace_homework") {
+    return null
+  }
   const tassadar = record.tassadar
   if (tassadar === undefined || typeof tassadar !== "object") return null
   if (tassadar.model === undefined || !Array.isArray(tassadar.steps)) return null
+  // The dispatch payload renames the model's seed_writes field to
+  // initialChannelWrites so it survives the public-projection scanner;
+  // restore the executor's wire format here.
+  const transit = tassadar.model as unknown as {
+    initialChannelWrites?: ReadonlyArray<readonly [number, number, number]>
+    seed_writes?: ReadonlyArray<readonly [number, number, number]>
+  }
+  if (transit.seed_writes === undefined && transit.initialChannelWrites !== undefined) {
+    const { initialChannelWrites, ...rest } = transit
+    return {
+      ...tassadar,
+      model: {
+        ...(rest as object),
+        seed_writes: initialChannelWrites,
+      } as TassadarAssignmentPayload["model"],
+    }
+  }
   return tassadar
 }
 
@@ -581,6 +601,35 @@ async function getJson(options: AssignmentClientOptions, path: string, state: Py
   const response = await fetchImpl(url, { method: "GET", headers })
   const responseText = await response.text()
   const json = responseText.trim() ? (JSON.parse(responseText) as JsonRecord) : {}
+  // Per-assignment safety isolation: one projection-unsafe assignment must
+  // not poison the entire poll. Unsafe entries are dropped with a typed
+  // marker; everything else still passes the full assertion.
+  const assignments = (json as { assignments?: unknown }).assignments
+  if (Array.isArray(assignments)) {
+    const safeAssignments: unknown[] = []
+    const droppedRefs: string[] = []
+    for (const assignment of assignments) {
+      try {
+        assertPublicProjectionSafe(assignment, "projection.assignment")
+        safeAssignments.push(assignment)
+      } catch {
+        const ref = (assignment as { assignmentRef?: unknown })?.assignmentRef
+        droppedRefs.push(typeof ref === "string" ? ref : "assignment.unknown")
+      }
+    }
+    const filtered: JsonRecord = {
+      ...json,
+      assignments: safeAssignments,
+      ...(droppedRefs.length > 0
+        ? { droppedUnsafeAssignmentRefs: droppedRefs }
+        : {}),
+    }
+    assertPublicProjectionSafe(filtered)
+    if (!response.ok) {
+      throw new Error(`OpenAgents assignment request failed (${response.status}): ${responseText}`)
+    }
+    return filtered
+  }
   assertPublicProjectionSafe(json)
   if (!response.ok) {
     throw new Error(`OpenAgents assignment request failed (${response.status}): ${responseText}`)

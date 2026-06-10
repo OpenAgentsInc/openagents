@@ -21,7 +21,7 @@ const leaseWith = (tassadar: Record<string, unknown>): PylonAssignmentLease => (
   paymentMode: "no-spend",
   capabilityRefs: [],
   codingAssignment: {
-    kind: "tassadar_executor_trace",
+    kind: "tassadar_executor_trace_homework",
     tassadar,
   } as never,
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -78,5 +78,20 @@ describe("tassadar executor-trace assignment gate", () => {
     expect(result?.blockerRefs).toEqual([
       "blocker.assignment.tassadar_execution_refused",
     ])
+  })
+})
+
+describe("transit shape restoration", () => {
+  test("initialChannelWrites restores to seed_writes before execution", async () => {
+    const { seed_writes, ...rest } = fixture.model
+    const result = await executeTassadarAssignment(
+      leaseWith({
+        expectedTraceDigest: fixture.expectedTraceDigest,
+        model: { ...rest, initialChannelWrites: seed_writes },
+        steps: fixture.steps,
+      }),
+      new Date("2026-06-10T00:00:00.000Z"),
+    )
+    expect(result?.status).toBe("accepted")
   })
 })
