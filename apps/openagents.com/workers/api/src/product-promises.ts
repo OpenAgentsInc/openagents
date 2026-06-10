@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.10'
+export const PublicProductPromisesVersion = '2026-06-10.11'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1266,7 +1266,7 @@ export const publicProductPromisesDocument = () => {
       claim:
         'OpenAgents will run a Tassadar executor proof of concept on real Pylons: bounded exact-program workloads dispatched to contributor machines, verified by exact trace replay on a separate device, with at least one paid closeout settled on receipts.',
       safeCopy:
-        'Internal no-spend executor-trace dispatch wiring and the psionic exact-replay verifier exist with passing smokes and committed parity tests; live multi-Pylon dispatch, separate-device replay verdicts, and a paid executor closeout remain gated.',
+        'The proof of concept ran on 2026-06-10: a real registered Pylon executed a digest-pinned exact-program workload dispatched through the operator assignment route, the closeout carried the trace digest byte-identical to the psionic Rust executor fixture, the production worker re-executed the workload as a separate validator device with a Verified exact_trace_replay challenge receipt (and a Rejected receipt on a tampered digest), and one operator-funded paid closeout settled over real Lightning to the Pylon payout target with balance receipts on both sides. Bounded to one workload family and one Pylon; broad executor earning remains gated separately.',
       unsafeCopy:
         'Do not claim transformers-as-computers as a served product, performance parity or superiority over CPUs, general LLM-computer capability, model-training capability from this lane, or that executor work is currently earning contributors bitcoin.',
       evidenceRefs: [
@@ -1276,12 +1276,20 @@ export const publicProductPromisesDocument = () => {
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'https://github.com/OpenAgentsInc/psionic/blob/main/docs/TASSADAR_ALM_TRACE_REPLAY.md',
         'https://github.com/OpenAgentsInc/psionic/blob/main/docs/TASSADAR_ALM_WASM_INTERPRETER.md',
+        'packages/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json',
+        'apps/openagents.com/workers/api/src/tassadar-replay-validator.ts',
+        'https://github.com/OpenAgentsInc/openagents/issues/4691#issuecomment-4671677251',
+        'https://github.com/OpenAgentsInc/openagents/issues/4692#issuecomment-4671820793',
+        'https://github.com/OpenAgentsInc/openagents/issues/4693#issuecomment-4671952078',
+        'artifact.tassadar_poc.trace_digest.f2995c4e3c959b42bb1e4afbefffbcf7ba6104099621ccc0ac912862dc932a5b',
+        'assignment.closeout.7e7ebbf204c7b7688d07af55',
+        'training.verification.challenge.81760553-2889-4cf9-95e9-0d100b10e57a',
+        'training.verification.challenge.c8c39547-8d44-4a48-be12-6af253d836e3',
+        'assignment.closeout.7b794dac86405677243ac182',
+        'receipt.tassadar_poc.payer_balance_2173_to_1173',
+        'receipt.tassadar_poc.receiver_balance_0_to_980',
       ],
-      blockerRefs: [
-        'blocker.product_promises.tassadar_poc_live_pylon_dispatch_missing',
-        'blocker.product_promises.tassadar_poc_separate_device_replay_missing',
-        'blocker.product_promises.tassadar_poc_paid_closeout_missing',
-      ],
+      blockerRefs: [],
       verification:
         'Run smoke:tassadar:executor-trace for the wiring, then the live proof of concept: dispatch one digest-pinned bounded executor workload to at least one real Pylon, replay its trace on a different device with a verified exact_trace_replay verdict receipt, and settle one operator-funded paid closeout. Green requires all three with public-safe receipts cited here.',
       authorityBoundary:
