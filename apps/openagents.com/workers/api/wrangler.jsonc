@@ -61,6 +61,13 @@
       "instance_type": "basic",
       "max_instances": 2,
     },
+    {
+      "class_name": "MdkTreasuryContainer",
+      "image": "../../services/mdk-treasury/Dockerfile",
+      "image_build_context": "../../services/mdk-treasury",
+      "instance_type": "basic",
+      "max_instances": 1,
+    },
   ],
   "kv_namespaces": [
     {
@@ -127,6 +134,10 @@
         "name": "MDK_SIDECAR",
         "class_name": "MdkSidecarContainer",
       },
+      {
+        "name": "MDK_TREASURY",
+        "class_name": "MdkTreasuryContainer",
+      },
     ],
   },
   "migrations": [
@@ -137,6 +148,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["MdkSidecarContainer"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["MdkTreasuryContainer"],
     },
   ],
   "env": {

@@ -22,6 +22,7 @@ export type WorkerBindings = Readonly<{
   OPENAGENTS_DB: D1Database
   SYNC_ROOM: DurableObjectNamespace
   MDK_SIDECAR: DurableObjectNamespace
+  MDK_TREASURY?: DurableObjectNamespace
   ARTIFACTS: R2Bucket
   RUNNER_EVENTS: Queue
   ADJUTANT_ENRICHMENT_QUEUE: Queue
