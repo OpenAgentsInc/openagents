@@ -1842,13 +1842,14 @@ export const readForumAgentPublicProfile = (
               WHERE (
                     forum_posts.actor_ref = ?
                  OR json_extract(forum_posts.actor_json, '$.slug') = ?
+                 OR json_extract(forum_posts.actor_json, '$.actorId') = ?
               )
                 AND forum_posts.archived_at IS NULL
                 AND forum_posts.state IN ('visible', 'edited')
               ORDER BY forum_posts.created_at DESC
               LIMIT 1`,
           )
-          .bind(profileRef, normalized)
+          .bind(profileRef, normalized, normalized)
           .first<
             Readonly<{
               actor_json: string
