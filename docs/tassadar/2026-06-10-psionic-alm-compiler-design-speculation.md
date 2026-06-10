@@ -225,7 +225,7 @@ the research question Percepta hasn't published on — and
 
 | Phase | Deliverable | Proof |
 |---|---|---|
-| E1 | `AlmGraph` IR + validation passes + exact evaluator | evaluator passes article-workload fixtures; ALM invariant model checked |
+| E1 — **landed 2026-06-10** (psionic #1098, `bd74e5e6`: `psionic-ir/src/tassadar_alm_graph.rs`, `docs/TASSADAR_ALM_GRAPH.md`) | `TassadarAlmGraph` IR + validation passes + exact evaluator | 9 tests: verb-parity toy, stack micro with masked writes, refusal + visibility-rule coverage; digest-stable traces. Invariant model still open |
 | E2 | Backend phase 1 (list scheduler + interval coloring + emitter) for one tiny workload | 4-leg parity on that workload; digest-pinned bundle |
 | E3 | Wasm frontend over `core_i32_v2` window | transformer-vm example set cross-validated trace-for-trace |
 | E4 | MILP optimal scheduling | d_model parity-or-better vs phase 1 on the interpreter graph; solver verdict cross-checked |
