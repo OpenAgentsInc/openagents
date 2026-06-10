@@ -216,6 +216,10 @@ Current Pylon implementation:
 - default package installation does not include Psionic binaries or model
   weights;
 - startup does not download or launch Psionic;
+- `pylon status --json` projects
+  `openagents.pylon.psionic_connector.v0.3` connector state with typed
+  `absent`, `configured`, `negotiated`, and `refused` phases; see
+  `docs/psionic-connector.md`;
 - `pylon psionic install --channel rc --manifest-url <url> --yes` verifies a
   Psionic release manifest and SHA-256 before placing a binary in the
   digest-addressed Pylon cache;

@@ -47,6 +47,7 @@ import {
 } from "./assignment"
 import { discoverHostInventory } from "./inventory"
 import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator"
+import { inspectPsionicConnector } from "./psionic-connector"
 import {
   installPsionicBinary,
   installPsionicModelArtifact,
@@ -140,9 +141,9 @@ function updateMdkStatus(status: string, color = "#22C55E") {
   }
 }
 
-function updateTelemetryState(state: string, model: string, vram: string) {
+function updateTelemetryConnector(state: string, model: string, vram: string, psionic: string) {
   if (telemetryTextRenderable) {
-    telemetryTextRenderable.content = ` State: ${state}\n Model: ${model}\n VRAM:  ${vram}`
+    telemetryTextRenderable.content = ` State: ${state}\n Model: ${model}\n VRAM:  ${vram}\n Psionic: ${psionic}`
   }
 }
 
@@ -306,14 +307,14 @@ const startHardwareTelemetryLoop = Effect.gen(function* () {
     )
     yield* Effect.sync(() => {
       if (!inventory) {
-        updateTelemetryState("UNAVAILABLE", "inventory unavailable", "--")
+        updateTelemetryConnector("UNAVAILABLE", "inventory unavailable", "--", "unknown")
         return
       }
       const readyBackends = inventory.backendHealth.filter((backend) => backend.state === "ready" || backend.state === "configured")
       const model = readyBackends[0]?.modelRef ?? "None"
       const vram = inventory.accelerator.vramGb === null ? "--" : `${inventory.accelerator.vramGb.toFixed(1)} GB`
       const state = inventory.eligibleInventoryCount > 0 ? "INVENTORY FRESH" : "INVENTORY BLOCKED"
-      updateTelemetryState(state, model, vram)
+      updateTelemetryConnector(state, model, vram, "checking")
       if (operatorTextRenderable) {
         const wallet = {
           schema: "openagents.pylon.wallet_status.v0.3" as const,
@@ -329,6 +330,15 @@ const startHardwareTelemetryLoop = Effect.gen(function* () {
         }
         operatorTextRenderable.content = formatOperatorSnapshotText(createOperatorSnapshot({ inventory, wallet }))
       }
+    })
+    const psionic = yield* Effect.promise(() => inspectPsionicConnector({ env: Bun.env }))
+    yield* Effect.sync(() => {
+      if (!inventory) return
+      const readyBackends = inventory.backendHealth.filter((backend) => backend.state === "ready" || backend.state === "configured")
+      const model = readyBackends[0]?.modelRef ?? "None"
+      const vram = inventory.accelerator.vramGb === null ? "--" : `${inventory.accelerator.vramGb.toFixed(1)} GB`
+      const state = inventory.eligibleInventoryCount > 0 ? "INVENTORY FRESH" : "INVENTORY BLOCKED"
+      updateTelemetryConnector(state, model, vram, psionic.phase)
     })
     yield* Effect.sleep("10 seconds")
   }
@@ -985,7 +995,8 @@ async function main() {
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
     const state = await ensurePylonLocalState(summary)
     const inventory = await discoverHostInventory({ env: Bun.env })
-    process.stdout.write(`${JSON.stringify(projectPublicStatus(state, inventory), null, 2)}\n`)
+    const psionicConnector = await inspectPsionicConnector({ env: Bun.env })
+    process.stdout.write(`${JSON.stringify(projectPublicStatus(state, inventory, psionicConnector), null, 2)}\n`)
     return
   }
 

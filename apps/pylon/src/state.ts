@@ -5,6 +5,7 @@ import { hostname } from "node:os"
 import { dirname } from "node:path"
 import type { BootstrapSummary } from "./bootstrap"
 import type { PylonHostInventoryProjection } from "./inventory"
+import type { PsionicConnectorState } from "./psionic-connector"
 import { loadOrCreateNostrIdentity } from "./nostr-identity"
 
 export type PylonLifecycleState = "offline" | "online" | "paused" | "degraded" | "assignment-ready"
@@ -262,7 +263,11 @@ export function assertPublicProjectionSafe(value: unknown, path = "projection"):
   }
 }
 
-export function projectPublicStatus(state: PylonLocalState, inventory?: PylonHostInventoryProjection) {
+export function projectPublicStatus(
+  state: PylonLocalState,
+  inventory?: PylonHostInventoryProjection,
+  psionicConnector?: PsionicConnectorState,
+) {
   const projection = {
     kind: "status",
     state: {
@@ -279,6 +284,7 @@ export function projectPublicStatus(state: PylonLocalState, inventory?: PylonHos
       runtime: state.runtime,
       presence: state.presence,
       inventory,
+      psionicConnector,
     },
   } as const
 
