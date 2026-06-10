@@ -8,6 +8,7 @@ import {
   admitPayoutTarget,
   appendLedgerEvent,
   classifyMdkWallet,
+  preflightLegacySparkMigration,
   receiveWithMdk,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
@@ -90,6 +91,91 @@ describe("MDK wallet readiness and ledger", () => {
       outboundCapacityPositive: true,
       portConfigured: true,
       sendReady: true,
+    })
+  })
+
+  test("turns v0.2.5 Spark missing Breez API key into an actionable migration blocker", async () => {
+    await withTempHome(async (home) => {
+      const identityMnemonicPath = join(home, "identity.mnemonic")
+      await Bun.write(identityMnemonicPath, "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\n")
+      const preflight = await preflightLegacySparkMigration({
+        dryRun: true,
+        env: {
+          PYLON_LEGACY_SPARK_BALANCE_SATS: "4242",
+        } as NodeJS.ProcessEnv,
+        helperRunner: runner({
+          status: {
+            exitCode: 1,
+            stderr: "Missing Breez API key",
+          },
+        }),
+        identityMnemonicPath,
+      })
+
+      expect(preflight).toMatchObject({
+        state: "blocked",
+        dryRun: true,
+        legacyBalanceDetected: true,
+        legacySpendableBalanceSats: 4242,
+        helperInitReady: false,
+        legacyCredentialReady: false,
+        migrationRecommended: false,
+      })
+      expect(preflight.blockerRefs).toContain("blocker.wallet.legacy_spark.breez_api_key_missing")
+      expect(preflight.blockerRefs).toContain("blocker.wallet.legacy_spark.helper_init_failed")
+      expect(preflight.nextActionRefs).toContain(
+        "action.wallet.legacy_spark.configure_bundled_spark_credential_or_wait_for_fix",
+      )
+      assertPublicProjectionSafe(preflight)
+    })
+  })
+
+  test("requires explicit consent before a ready legacy Spark migration can execute", async () => {
+    await withTempHome(async (home) => {
+      const identityMnemonicPath = join(home, "identity.mnemonic")
+      await Bun.write(identityMnemonicPath, "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\n")
+      const baseOptions = {
+        destinationInvoiceReady: true,
+        env: {
+          OPENAGENTS_SPARK_API_KEY: "redacted-test-key",
+        } as NodeJS.ProcessEnv,
+        helperRunner: runner({
+          status: {
+            stdout: {
+              balance_sats: 5000,
+              unclaimed_deposit_count: 0,
+            },
+          },
+        }),
+        identityMnemonicPath,
+      }
+
+      const ready = await preflightLegacySparkMigration({
+        ...baseOptions,
+        dryRun: true,
+      })
+      const migrated = await preflightLegacySparkMigration({
+        ...baseOptions,
+        dryRun: false,
+        now: () => new Date("2026-06-10T12:00:00.000Z"),
+        yes: true,
+      })
+
+      expect(ready).toMatchObject({
+        state: "consent-required",
+        explicitConsentRequired: true,
+        helperInitReady: true,
+        legacyCredentialReady: true,
+        migrationRecommended: true,
+      })
+      expect(ready.nextActionRefs).toContain("action.wallet.legacy_spark.review_and_confirm_migrate_spark_yes")
+      expect(migrated).toMatchObject({
+        state: "migrated",
+        explicitConsentRequired: false,
+        migrationRecommended: false,
+      })
+      expect(migrated.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.legacy_spark_migration\.[a-f0-9]{24}$/)
+      assertPublicProjectionSafe(migrated)
     })
   })
 

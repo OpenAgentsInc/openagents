@@ -30,6 +30,7 @@ import {
 import {
   admitPayoutTarget,
   classifyMdkWallet,
+  preflightLegacySparkMigration,
   receiveWithMdk,
   reportWalletReadiness,
   requestPayoutTargetAdmission,
@@ -1101,14 +1102,34 @@ async function main() {
   if (args[0] === "wallet") {
     try {
       const command = args[1]
-      const options = parseKeyValueOptions(args.slice(2))
+      const walletArgs = args.slice(2)
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
       if (command === "status") {
         const status = await classifyMdkWallet()
-        process.stdout.write(`${JSON.stringify(status, null, 2)}\n`)
+        const legacySparkMigration = await preflightLegacySparkMigration({
+          dryRun: true,
+          env: Bun.env,
+          identityMnemonicPath: state.paths.identityMnemonic,
+        })
+        process.stdout.write(`${JSON.stringify({ ...status, legacySparkMigration }, null, 2)}\n`)
         return
       }
+      if (command === "migrate-spark") {
+        const sparkOptions = parsePsionicOptions(walletArgs)
+        const result = await preflightLegacySparkMigration({
+          destinationInvoiceReady: sparkOptions["destination-invoice-ready"] === true,
+          dryRun: sparkOptions.execute !== true,
+          env: Bun.env,
+          identityMnemonicPath: stringPsionicOption(sparkOptions, "identity-mnemonic-path") ?? state.paths.identityMnemonic,
+          mnemonicRecoveryRequested: sparkOptions["mnemonic-recovery"] === true,
+          yes: sparkOptions.yes === true,
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        process.exitCode = result.state === "blocked" ? 1 : 0
+        return
+      }
+      const options = parseKeyValueOptions(walletArgs)
       if (command === "report-readiness") {
         const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
         if (!baseUrl) throw new Error("wallet report-readiness requires --base-url or PYLON_OPENAGENTS_BASE_URL")

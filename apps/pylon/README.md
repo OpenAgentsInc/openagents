@@ -144,6 +144,13 @@ ledger records, OpenAgents API payloads, logs, and issue evidence must only
 carry public-safe receipt refs, amounts, event ids, and readiness refs. See
 `docs/nip90-provider-loop.md`.
 
+Legacy Spark/Breez migration boundary: `pylon wallet migrate-spark` is a
+preflight-first compatibility path for old v0.2.x balances. It reports missing
+Breez/Spark credential material as an actionable blocker and only proceeds with
+explicit local consent. Users must never paste a 12-word mnemonic into GitHub,
+support threads, logs, or issue comments. See
+`docs/legacy-spark-wallet-migration.md`.
+
 Labor boundary: Pylon rejects labor requests that carry provider-auth-shaped
 material, requests outside the bounded workspace, or a policy ref other than
 `provider.compliant_usage_labor.v1`. The contributor's own local provider

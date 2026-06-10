@@ -28,6 +28,7 @@ export type WalletStatusProjection = {
   payoutTargetRefs: string[]
   sendReadinessPreflight: SendReadinessPreflight
   settlementRefs: string[]
+  legacySparkMigration?: LegacySparkMigrationPreflight
 }
 
 export type WalletCommandResult = {
@@ -37,6 +38,40 @@ export type WalletCommandResult = {
 }
 
 export type WalletCommandRunner = (args: string[]) => Promise<WalletCommandResult>
+export type LegacySparkCommandRunner = (args: string[]) => Promise<WalletCommandResult>
+
+export type LegacySparkMigrationState = "not-detected" | "blocked" | "ready" | "consent-required" | "migrated"
+
+export type LegacySparkMigrationPreflight = {
+  schema: "openagents.pylon.legacy_spark_migration.v0.3"
+  state: LegacySparkMigrationState
+  dryRun: boolean
+  legacyBalanceDetected: boolean
+  legacySpendableBalanceSats: number | null
+  unclaimedDepositCount: number | null
+  helperInitReady: boolean
+  legacyCredentialReady: boolean
+  identityMnemonicPresent: boolean
+  mnemonicRecoveryAvailable: boolean
+  destinationInvoiceReady: boolean
+  explicitConsentRequired: boolean
+  migrationRecommended: boolean
+  blockerRefs: string[]
+  nextActionRefs: string[]
+  publicReceiptRefs: string[]
+  contentRedacted: true
+}
+
+export type LegacySparkMigrationOptions = {
+  destinationInvoiceReady?: boolean
+  dryRun?: boolean
+  env?: NodeJS.ProcessEnv
+  helperRunner?: LegacySparkCommandRunner
+  identityMnemonicPath?: string
+  mnemonicRecoveryRequested?: boolean
+  now?: () => Date
+  yes?: boolean
+}
 
 export type SendReadinessPreflight = {
   schema: "openagents.pylon.send_readiness_preflight.v0.3"
@@ -88,6 +123,29 @@ export const defaultWalletCommandRunner: WalletCommandRunner = async (args) => {
   return { exitCode, stdout, stderr }
 }
 
+export const defaultLegacySparkCommandRunner: LegacySparkCommandRunner = async (args) => {
+  const helper = process.env.PYLON_LEGACY_SPARK_HELPER ?? "spark-wallet-cli"
+  const proc = Bun.spawn([helper, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => {
+      proc.kill()
+      reject(new Error("legacy Spark helper command timed out"))
+    }, 3000),
+  )
+  const [stdout, stderr, exitCode] = await Promise.race([
+    Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]),
+    timeout,
+  ])
+  return { exitCode, stdout, stderr }
+}
+
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
@@ -104,6 +162,42 @@ const makeIdempotencyKey = (
 function parseJson(stdout: string) {
   if (!stdout.trim()) return null
   return JSON.parse(stdout) as Record<string, unknown>
+}
+
+function parseMaybeJson(stdout: string) {
+  try {
+    return parseJson(stdout)
+  } catch {
+    return null
+  }
+}
+
+function envNumber(env: NodeJS.ProcessEnv, key: string) {
+  const raw = env[key]
+  if (raw === undefined || raw.trim() === "") return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function hasLegacySparkCredential(env: NodeJS.ProcessEnv) {
+  return [
+    env.PYLON_LEGACY_SPARK_CREDENTIAL_READY,
+    env.OPENAGENTS_SPARK_API_KEY,
+    env.BREEZ_API_KEY,
+  ].some((value) => value !== undefined && value.trim() !== "")
+}
+
+function isMissingBreezCredential(result: WalletCommandResult) {
+  return /missing\s+breez\s+api\s+key|breez\s+api\s+key.*missing|spark\s+api\s+key.*missing/i.test(
+    `${result.stderr}\n${result.stdout}`,
+  )
+}
+
+function safeLegacySparkMigration(
+  projection: LegacySparkMigrationPreflight,
+): LegacySparkMigrationPreflight {
+  assertPublicProjectionSafe(projection)
+  return projection
 }
 
 function buildSendReadinessPreflight(input: {
@@ -270,6 +364,112 @@ export async function classifyMdkWallet(
     sendReadinessPreflight,
     settlementRefs: [],
   } satisfies WalletStatusProjection
+}
+
+export async function preflightLegacySparkMigration(
+  options: LegacySparkMigrationOptions = {},
+): Promise<LegacySparkMigrationPreflight> {
+  const env = options.env ?? process.env
+  const dryRun = options.dryRun !== false
+  const hintedBalance = envNumber(env, "PYLON_LEGACY_SPARK_BALANCE_SATS")
+  const hintedDeposits = envNumber(env, "PYLON_LEGACY_SPARK_UNCLAIMED_DEPOSIT_COUNT")
+  const legacyCredentialReady = hasLegacySparkCredential(env)
+  const identityMnemonicPresent = options.identityMnemonicPath === undefined
+    ? env.PYLON_LEGACY_SPARK_IDENTITY_PRESENT === "1"
+    : existsSync(options.identityMnemonicPath)
+  const mnemonicRecoveryAvailable = options.mnemonicRecoveryRequested === true
+  const helper = options.helperRunner ?? defaultLegacySparkCommandRunner
+
+  let helperResult: WalletCommandResult | null = null
+  try {
+    helperResult = await helper(["status"])
+  } catch (error) {
+    helperResult = {
+      exitCode: 1,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+    }
+  }
+
+  const helperData = helperResult.exitCode === 0 ? parseMaybeJson(helperResult.stdout) : null
+  const helperBalance =
+    typeof helperData?.balance_sats === "number"
+      ? helperData.balance_sats
+      : typeof helperData?.spendable_balance_sats === "number"
+        ? helperData.spendable_balance_sats
+        : null
+  const helperDeposits =
+    typeof helperData?.unclaimed_deposit_count === "number"
+      ? helperData.unclaimed_deposit_count
+      : null
+  const legacySpendableBalanceSats = helperBalance ?? hintedBalance
+  const unclaimedDepositCount = helperDeposits ?? hintedDeposits
+  const legacyBalanceDetected = legacySpendableBalanceSats !== null && legacySpendableBalanceSats > 0
+  const helperInitReady = helperResult.exitCode === 0
+  const missingBreezCredential = isMissingBreezCredential(helperResult)
+  const destinationInvoiceReady = options.destinationInvoiceReady === true
+
+  const blockerRefs = [
+    ...(identityMnemonicPresent || mnemonicRecoveryAvailable
+      ? []
+      : ["blocker.wallet.legacy_spark.identity_or_private_mnemonic_recovery_required"]),
+    ...(missingBreezCredential || !legacyCredentialReady
+      ? ["blocker.wallet.legacy_spark.breez_api_key_missing"]
+      : []),
+    ...(helperInitReady ? [] : ["blocker.wallet.legacy_spark.helper_init_failed"]),
+    ...(legacyBalanceDetected ? [] : ["blocker.wallet.legacy_spark.no_spendable_balance_detected"]),
+    ...(destinationInvoiceReady ? [] : ["blocker.wallet.legacy_spark.destination_invoice_not_ready"]),
+  ]
+  const ready = blockerRefs.length === 0
+  const consentGiven = options.yes === true
+  const state: LegacySparkMigrationState =
+    !legacyBalanceDetected
+      ? "not-detected"
+      : !ready
+        ? "blocked"
+        : !consentGiven
+          ? "consent-required"
+          : dryRun
+            ? "ready"
+            : "migrated"
+
+  return safeLegacySparkMigration({
+    schema: "openagents.pylon.legacy_spark_migration.v0.3",
+    state,
+    dryRun,
+    legacyBalanceDetected,
+    legacySpendableBalanceSats,
+    unclaimedDepositCount,
+    helperInitReady,
+    legacyCredentialReady,
+    identityMnemonicPresent,
+    mnemonicRecoveryAvailable,
+    destinationInvoiceReady,
+    explicitConsentRequired: !consentGiven,
+    migrationRecommended: ready && !consentGiven,
+    blockerRefs,
+    nextActionRefs: ready
+      ? ["action.wallet.legacy_spark.review_and_confirm_migrate_spark_yes"]
+      : [
+          ...(!legacyCredentialReady || missingBreezCredential
+            ? ["action.wallet.legacy_spark.configure_bundled_spark_credential_or_wait_for_fix"]
+            : []),
+          ...(!identityMnemonicPresent && !mnemonicRecoveryAvailable
+            ? ["action.wallet.legacy_spark.use_original_identity_path_or_private_mnemonic_recovery"]
+            : []),
+          ...(!destinationInvoiceReady
+            ? ["action.wallet.legacy_spark.prepare_mdk_destination_invoice"]
+            : []),
+        ],
+    publicReceiptRefs: state === "migrated"
+      ? [`receipt.pylon.legacy_spark_migration.${stableRef("migration", JSON.stringify({
+          balance: legacySpendableBalanceSats,
+          deposits: unclaimedDepositCount,
+          at: options.now?.().toISOString() ?? "dry_run_time_redacted",
+        })).split(".").pop()}`]
+      : [],
+    contentRedacted: true,
+  })
 }
 
 export function admitPayoutTarget(input: { kind: PayoutTargetKind; ref: string }) {
