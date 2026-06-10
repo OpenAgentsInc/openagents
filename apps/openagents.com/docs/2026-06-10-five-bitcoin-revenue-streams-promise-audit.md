@@ -280,9 +280,11 @@ registry edit so receipts evaluate cleanly (not as backfill exceptions) and
 Every step from the current codebase (Bun/Effect monorepo: `apps/openagents.com`
 worker + web, `apps/pylon` v0.3 OpenTUI, `apps/nostr-relay` POC,
 `apps/forum`; NIP-90 Rust stack in git history at `f5919c766^`) to all five
-streams implemented. Issues are listed here for review and are **not yet
-created** on GitHub. Sequencing: rails (1–6) unblock everything; streams
-(7–17) can then run in parallel; 18 composes; 19 is optional polish.
+streams implemented. **Filed on GitHub 2026-06-10 as #4635–#4653**, one per
+plan step in order (plan 1 = #4635 … plan 19 = #4653); each filed body is
+self-contained and inlines the Delegation Contract below. Sequencing: rails
+(1–6 / #4635–#4640) unblock everything; streams (7–17 / #4641–#4651) can
+then run in parallel; 18 (#4652) composes; 19 (#4653) is optional polish.
 
 ### Delegation Contract (binding for every issue below)
 
@@ -380,29 +382,29 @@ and authority boundaries; ambiguity is what makes delegation fail.
   `apps/deprecated/pylon/src/nip90_runtime.rs`. Treat it as the contract
   reference; port behavior and tests, do not blind-rewrite.
 
-**Lane map (issue → lane → primary file surfaces → depends on):**
+**Lane map (plan step → issue → lane → primary file surfaces → depends on):**
 
-| # | Lane | Primary surfaces | Depends on |
-|---|------|------------------|-----------|
-| 1 | A | NEW `packages/nip90` (or nostr-effect contribution) | — |
-| 2 | A | `apps/nostr-relay/*`, AGENTS.md mirrors | — |
-| 3 | A | NEW `docs/nips/*`, AGENTS.md mirrors | — |
-| 4 | A | `apps/pylon/src/*` (provider loop), pylon runtime contracts | 1, 2 |
-| 5 | B (operator enables; caps approval) | NEW worker dispatcher module + operator routes | 1, 2 |
-| 6 | A | NEW worker receipts module, `public-pylon-stats.ts` | 1 |
-| 7 | B (funded jobs + contributor machine) | smoke scripts, registry files | 4, 5, 6 |
-| 8 | B (paid settlement step) | `apps/pylon/src/assignment.ts`, smoke scripts | — |
-| 9 | A | `packages/nip90` (NIP-DS module), NEW CLI/skill script | 1, 3 |
-| 10 | A | NEW export/redaction script + fixtures | — |
-| 11 | B (small-sats buy) | smoke scripts, registry files | 9, 10, 5 |
-| 12 | C (policy needs maintainer adoption) | NEW policy doc, `packages/nip90` labor schema | 1 |
-| 13 | A | `apps/pylon/src/*` (labor intake), runtime contracts | 12, 4 |
-| 14 | B (paid job + acceptance) | smoke scripts, registry files | 13, 5, 6 |
-| 15 | A | site referral routes/store in worker | — |
-| 16 | C then A (policy doc → ledger code) | NEW referral ledger module + policy doc | 15 |
-| 17 | B (operator-approved payout) | payout dispatch path, registry files | 16 |
-| 18 | B (composition smoke) | registry files, smoke scripts | any two of 7/11/14 (+ tips) |
-| 19 | B | forum tip webhook/refund surfaces | — |
+| Plan | Issue | Lane | Primary surfaces | Depends on |
+|------|-------|------|------------------|-----------|
+| 1 | #4635 | A | NEW `packages/nip90` (or nostr-effect contribution) | — |
+| 2 | #4636 | A | `apps/nostr-relay/*`, AGENTS.md mirrors | — |
+| 3 | #4637 | A | NEW `docs/nips/*`, AGENTS.md mirrors | — |
+| 4 | #4638 | A | `apps/pylon/src/*` (provider loop), pylon runtime contracts | #4635, #4636 |
+| 5 | #4639 | B (operator enables; caps approval) | NEW worker dispatcher module + operator routes | #4635, #4636 |
+| 6 | #4640 | A | NEW worker receipts module, `public-pylon-stats.ts` | #4635 |
+| 7 | #4641 | B (funded jobs + contributor machine) | smoke scripts, registry files | #4638, #4639, #4640 |
+| 8 | #4642 | B (paid settlement step) | `apps/pylon/src/assignment.ts`, smoke scripts | — |
+| 9 | #4643 | A | `packages/nip90` (NIP-DS module), NEW CLI/skill script | #4635, #4637 |
+| 10 | #4644 | A | NEW export/redaction script + fixtures | — |
+| 11 | #4645 | B (small-sats buy) | smoke scripts, registry files | #4643, #4644, #4639 |
+| 12 | #4646 | C (policy needs maintainer adoption) | NEW policy doc, `packages/nip90` labor schema | #4635 |
+| 13 | #4647 | A | `apps/pylon/src/*` (labor intake), runtime contracts | #4646, #4638 |
+| 14 | #4648 | B (paid job + acceptance) | smoke scripts, registry files | #4647, #4639, #4640 |
+| 15 | #4649 | A | site referral routes/store in worker | — |
+| 16 | #4650 | C then A (policy doc → ledger code) | NEW referral ledger module + policy doc | #4649 |
+| 17 | #4651 | B (operator-approved payout) | payout dispatch path, registry files | #4650 |
+| 18 | #4652 | B (composition smoke) | registry files, smoke scripts | any two of #4641/#4645/#4648 (+ tips) |
+| 19 | #4653 | B | forum tip webhook/refund surfaces | — |
 
 Registry-file edits (issues 7, 11, 14, 17, 18) all touch
 `product-promises.ts`; those five issues must serialize their registry
