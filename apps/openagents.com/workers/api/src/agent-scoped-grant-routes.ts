@@ -585,7 +585,7 @@ const applyCreateGrant = async <
     grantKind: AgentScopedGrantKind
     idempotencyKey: string
     ownerUserId: string
-    wrapResponse?: (response: Response) => Response
+    wrapResponse?: (response: HttpResponse) => HttpResponse
   }>,
 ) => {
   const { agentUserId, body, grantKind, idempotencyKey, ownerUserId } = input
