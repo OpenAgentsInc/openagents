@@ -98,6 +98,10 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/api/public/proof/otec', 'get').operationId).toBe(
       'getPublicOtecProof',
     )
+    expect(
+      operationAt(body, '/api/training/device-capabilities/a2', 'get')
+        .operationId,
+    ).toBe('readTrainingA2DeviceCapabilityDashboard')
     expect(operationAt(body, '/api/agents/register', 'post').operationId).toBe(
       'registerProgrammaticAgent',
     )

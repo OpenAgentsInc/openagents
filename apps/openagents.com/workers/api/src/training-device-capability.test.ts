@@ -1,0 +1,215 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  buildTrainingRunRecord,
+  buildTrainingWindowRecord,
+} from './training-run-window-authority'
+import {
+  Cs336A2DeviceBenchmarkJobKind,
+  buildCs336A2DeviceBenchmarkPayload,
+  publicDeviceCapabilityProjection,
+} from './training-device-capability'
+import {
+  buildTrainingVerificationChallengeRecord,
+  finalizeTrainingVerificationChallengeRecord,
+  leaseTrainingVerificationChallengeRecord,
+} from './training-verification'
+
+describe('CS336 A2 device capability projection', () => {
+  it('keeps the public capability dataset blocked without receipted measurements', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a2',
+      nowIso: '2026-06-10T12:00:00.000Z',
+      request: {
+        promiseRef: 'pylon.compute_revenue_modes.v1',
+        trainingRunRef: 'training.run.cs336.a2.benchmark',
+      },
+    })
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [],
+      leases: [],
+      run,
+      windows: [],
+    })
+
+    expect(projection).toMatchObject({
+      blockerRefs: [
+        'blocker.cs336_a2.requires_receipted_benchmark_results',
+        'blocker.cs336_a2.requires_statistical_cross_check',
+        'blocker.cs336_a2.requires_replication_across_same_class_devices',
+      ],
+      classDistributions: [],
+      jobKind: 'cs336_a2_device_benchmark',
+      observedDeviceClassCount: 0,
+      observedMeasurementCount: 0,
+      requiredSameClassSampleCount: 3,
+      schemaVersion: 'openagents.training.device_capability_dataset.v1',
+    })
+    expect(Cs336A2DeviceBenchmarkJobKind).toBe('cs336_a2_device_benchmark')
+    expect(
+      buildCs336A2DeviceBenchmarkPayload({
+        assignmentRef: 'assignment.cs336.a2.device_benchmark.1',
+      }),
+    ).toMatchObject({
+      benchmarkSuiteRef:
+        'benchmark_suite.cs336_a2.pylon_runtime_device_capability.v1',
+      jobKind: 'cs336_a2_device_benchmark',
+      verificationClass: 'statistical_cross_check',
+    })
+  })
+
+  it('publishes anonymized same-class distributions with modeled estimates after cross-check', () => {
+    const runBase = buildTrainingRunRecord({
+      makeId: () => 'a2',
+      nowIso: '2026-06-10T12:00:00.000Z',
+      request: {
+        promiseRef: 'pylon.compute_revenue_modes.v1',
+        trainingRunRef: 'training.run.cs336.a2.benchmark',
+      },
+    })
+    const run = {
+      ...runBase,
+      publicProjectionJson: JSON.stringify({
+        a2DeviceBenchmark: {
+          measurements: [
+            {
+              deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
+              earningEstimate: {
+                estimateRef: 'estimate.cs336.a2.m3_pro.training_window',
+                p50SatsPerHour: 42,
+                p90SatsPerHour: 65,
+                policyRefs: ['policy.cs336_a2.modeled_from_current_rates'],
+                sourceRefs: ['receipt.cs336.a2.estimate.1'],
+                workClass: 'small_model_local_training',
+              },
+              max: 2060,
+              measurementRef: 'measurement.cs336.a2.m3_pro.tokens_per_second',
+              metric: 'tokens_per_second',
+              min: 1710,
+              p50: 1900,
+              p90: 2025,
+              receiptRefs: ['receipt.cs336.a2.measurement.1'],
+              sampleCount: 4,
+              sourceRefs: ['artifact.cs336.a2.class_distribution.1'],
+              unit: 'tokens_per_second',
+              verificationRefs: ['challenge.cs336.a2.class_check.1'],
+              workClass: 'small_model_local_training',
+            },
+          ],
+        },
+      }),
+    }
+    const window = buildTrainingWindowRecord({
+      makeId: () => 'window',
+      nowIso: '2026-06-10T12:00:00.000Z',
+      request: {
+        homeworkKind: 'admin_dispatched_homework',
+        trainingRunRef: run.trainingRunRef,
+        windowRef: 'training.window.cs336.a2.benchmark.1',
+      },
+    })
+    const challenge = buildTrainingVerificationChallengeRecord({
+      makeId: () => 'challenge',
+      nowIso: '2026-06-10T12:01:00.000Z',
+      request: {
+        commitmentRefs: ['commitment.cs336.a2.class_distribution.1'],
+        contributionRef: 'measurement.cs336.a2.m3_pro.tokens_per_second',
+        homeworkKind: 'admin_dispatched_homework',
+        payload: {
+          deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
+          measurementRef: 'measurement.cs336.a2.m3_pro.tokens_per_second',
+        },
+        samplingPolicy: 'aggregate',
+        trainingRunRef: run.trainingRunRef,
+        verificationClass: 'statistical_cross_check',
+        windowRef: window.windowRef,
+      },
+    }).challenge
+    const leased = leaseTrainingVerificationChallengeRecord({
+      challenge,
+      eventId: 'lease',
+      nowIso: '2026-06-10T12:02:00.000Z',
+      request: { validatorRef: 'validator.cs336.a2' },
+    }).challenge
+    const verified = finalizeTrainingVerificationChallengeRecord({
+      challenge: leased,
+      eventId: 'final',
+      nowIso: '2026-06-10T12:03:00.000Z',
+      request: { receiptRefs: ['receipt.cs336.a2.verdict.1'] },
+      verdict: {
+        failureCodes: [],
+        state: 'Verified',
+        verdictRefs: ['verdict.cs336.a2.class_distribution.1'],
+      },
+    }).challenge
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [verified],
+      leases: [],
+      run,
+      windows: [window],
+    })
+
+    expect(projection.blockerRefs).toEqual([])
+    expect(projection.observedDeviceClassCount).toBe(1)
+    expect(projection.observedMeasurementCount).toBe(1)
+    expect(projection.classDistributions[0]).toMatchObject({
+      crossCheckState: 'cross_checked',
+      deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
+      metric: 'tokens_per_second',
+      p50: 1900,
+      sampleCount: 4,
+      verified: true,
+    })
+    expect(projection.classDistributions[0]?.earningEstimate).toMatchObject({
+      basisLabel: 'modeled_from_measured_benchmark_distribution',
+      p50SatsPerHour: 42,
+      workClass: 'small_model_local_training',
+    })
+    expect(JSON.stringify(projection)).not.toMatch(
+      /pylonRef|deviceId|mnemonic|paymentHash/i,
+    )
+  })
+
+  it('rejects device identifiers before building the public projection', () => {
+    const runBase = buildTrainingRunRecord({
+      makeId: () => 'a2',
+      nowIso: '2026-06-10T12:00:00.000Z',
+      request: {
+        promiseRef: 'pylon.compute_revenue_modes.v1',
+        trainingRunRef: 'training.run.cs336.a2.unsafe',
+      },
+    })
+    const run = {
+      ...runBase,
+      publicProjectionJson: JSON.stringify({
+        a2DeviceBenchmark: {
+          measurements: [
+            {
+              deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
+              deviceId: 'local-machine-123',
+              max: 2060,
+              metric: 'tokens_per_second',
+              min: 1710,
+              p50: 1900,
+              p90: 2025,
+              receiptRefs: ['receipt.cs336.a2.measurement.1'],
+              sampleCount: 4,
+              unit: 'tokens_per_second',
+              verificationRefs: ['challenge.cs336.a2.class_check.1'],
+              workClass: 'small_model_local_training',
+            },
+          ],
+        },
+      }),
+    }
+
+    expect(() =>
+      publicDeviceCapabilityProjection({
+        challenges: [],
+        leases: [],
+        run,
+        windows: [],
+      }),
+    ).toThrow('device-identifying')
+  })
+})

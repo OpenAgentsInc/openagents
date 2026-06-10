@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildTrainingRunRecord,
   type TrainingAuthorityStore,
   type TrainingRunPublicSummary,
   type TrainingRunRecord,
@@ -40,6 +41,7 @@ const runRoute = async (
 type MemoryTrainingAuthorityStore = TrainingAuthorityStore &
   Readonly<{
     _testSeedChallenge: (challenge: TrainingVerificationChallengeRecord) => void
+    _testSeedRun: (run: TrainingRunRecord) => void
   }>
 
 type TrainingRunListJson = Readonly<{
@@ -62,6 +64,16 @@ type TrainingRunIsoFlopJson = Readonly<{
   schemaVersion: string
 }>
 
+type TrainingDeviceCapabilityJson = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  classDistributions: ReadonlyArray<{
+    deviceClassRef: string
+    earningEstimate: Readonly<{ basisLabel: string }> | null
+    verified: boolean
+  }>
+  schemaVersion: string
+}>
+
 const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
   const runs = new Map<string, TrainingRunRecord>()
   const windows = new Map<string, TrainingWindowRecord>()
@@ -72,6 +84,9 @@ const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
   return {
     _testSeedChallenge: (challenge: TrainingVerificationChallengeRecord) => {
       challenges.set(challenge.challengeRef, challenge)
+    },
+    _testSeedRun: (run: TrainingRunRecord) => {
+      runs.set(run.trainingRunRef, run)
     },
     claimLease: async lease => {
       leases.set(lease.leaseRef, lease)
@@ -291,6 +306,67 @@ describe('training run window routes', () => {
         'blocker.cs336_a3.fit_artifact_not_published',
       ],
       schemaVersion: 'openagents.training.isoflop_dashboard.v1',
+    })
+
+    store._testSeedRun({
+      ...buildTrainingRunRecord({
+        makeId: () => 'a2-route',
+        nowIso: '2026-06-10T10:00:00.000Z',
+        request: {
+          promiseRef: 'pylon.compute_revenue_modes.v1',
+          trainingRunRef: 'training.run.cs336.a2.benchmark',
+        },
+      }),
+      publicProjectionJson: JSON.stringify({
+        a2DeviceBenchmark: {
+          measurements: [
+            {
+              deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
+              earningEstimate: {
+                p50SatsPerHour: 42,
+                sourceRefs: ['receipt.cs336.a2.estimate.1'],
+                workClass: 'small_model_local_training',
+              },
+              max: 2060,
+              metric: 'tokens_per_second',
+              min: 1710,
+              p50: 1900,
+              p90: 2025,
+              receiptRefs: ['receipt.cs336.a2.measurement.1'],
+              sampleCount: 4,
+              unit: 'tokens_per_second',
+              verificationRefs: ['challenge.cs336.a2.class_check.1'],
+              workClass: 'small_model_local_training',
+            },
+          ],
+        },
+      }),
+    })
+
+    const deviceCapabilityResponse = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/device-capabilities/a2',
+        ),
+        {},
+      ),
+    )
+    const deviceCapability =
+      (await deviceCapabilityResponse.json()) as TrainingDeviceCapabilityJson
+
+    expect(deviceCapabilityResponse.status).toBe(200)
+    expect(deviceCapability).toMatchObject({
+      blockerRefs: [],
+      classDistributions: [
+        {
+          deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
+          earningEstimate: {
+            basisLabel: 'modeled_from_measured_benchmark_distribution',
+          },
+          verified: true,
+        },
+      ],
+      schemaVersion: 'openagents.training.device_capability_dashboard.v1',
     })
   })
 

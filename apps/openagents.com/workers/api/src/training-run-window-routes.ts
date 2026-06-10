@@ -7,6 +7,7 @@ import {
 } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import { publicDeviceCapabilityProjection } from './training-device-capability'
 import {
   type TrainingAuthorityStore,
   TrainingAuthorityStoreError,
@@ -476,6 +477,72 @@ const routeA3IsoFlop = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const store = dependencies.makeStore(env)
+    const runs = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listRuns(50),
+    })
+    const projections = yield* Effect.forEach(runs, run =>
+      Effect.gen(function* () {
+        const windows = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowsForRun(run.trainingRunRef, 100),
+        })
+        const leases = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowLeasesForRun(run.trainingRunRef, 1000),
+        })
+        const challenges = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
+        })
+
+        return publicDeviceCapabilityProjection({
+          challenges,
+          leases,
+          run,
+          windows,
+        })
+      }),
+    )
+    const classDistributions = projections.flatMap(
+      projection => projection.classDistributions,
+    )
+    const observedDeviceClassCount = new Set(
+      classDistributions.map(distribution => distribution.deviceClassRef),
+    ).size
+    const verifiedCount = classDistributions.filter(
+      distribution => distribution.verified,
+    ).length
+
+    return noStoreJsonResponse({
+      blockerRefs:
+        classDistributions.length > 0 &&
+        verifiedCount === classDistributions.length
+          ? []
+          : [
+              'blocker.cs336_a2.requires_receipted_benchmark_results',
+              'blocker.cs336_a2.requires_statistical_cross_check',
+              'blocker.cs336_a2.requires_replication_across_same_class_devices',
+            ],
+      classDistributions,
+      observedDeviceClassCount,
+      observedMeasurementCount: classDistributions.length,
+      projections,
+      schemaVersion: 'openagents.training.device_capability_dashboard.v1',
+      sourceRefs: [
+        'route:/api/training/device-capabilities/a2',
+        'route:/api/training/runs',
+      ],
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -533,6 +600,16 @@ export const makeTrainingRunWindowRoutes = <
       }
 
       return routeA1Leaderboard(dependencies, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/training/device-capabilities/a2') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeA2DeviceCapabilities(dependencies, env).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
     }

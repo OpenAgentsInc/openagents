@@ -258,6 +258,9 @@ const schemaComponents = (): JsonSchema => ({
   TrainingA1LeaderboardEnvelope: objectSummary(
     'Public-safe CS336 A1 real-gradient leaderboard envelope with leaderboardRows, sourceRefs, and scopeBoundaryRefs. Rows include trainingRunRef, pylonRef, rank, verifiedWindowCount, bestValidationLoss when public loss evidence exists, settledPayoutSats only from provider-confirmed settlement receipts, provenanceLabel, and sourceRefs.',
   ),
+  TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
+    'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, and earning estimates explicitly labeled modeled-from-measured. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
+  ),
   TrainingA3IsoFlopDashboardEnvelope: objectSummary(
     'Public-safe CS336 A3 IsoFLOP dashboard envelope with receipt-backed sweep cells, fit artifacts, projections, blockerRefs, and sourceRefs. Cells include public N/D/compute/loss fields and settlement remains zero unless provider-confirmed payout receipts are linked. Fit artifacts are analysis artifacts citing cell receipts, not capability claims.',
   ),
@@ -2879,6 +2882,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'CS336 A1 training leaderboard.',
           '#/components/schemas/TrainingA1LeaderboardEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/device-capabilities/a2': {
+    get: operation({
+      operationId: 'readTrainingA2DeviceCapabilityDashboard',
+      summary: 'Read CS336 A2 device capability dashboard',
+      description:
+        'Reads the public-safe CS336 A2 device-capability dataset. The feed is built from receipt-backed benchmark measurements and statistical same-class cross-checks; it publishes only anonymized device-class distributions and modeled-from-measured earning estimates.',
+      tags: ['Training'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'CS336 A2 device capability dashboard.',
+          '#/components/schemas/TrainingA2DeviceCapabilityDashboardEnvelope',
         ),
         ...errorResponses(),
       },
