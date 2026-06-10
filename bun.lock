@@ -172,6 +172,7 @@
         "@noble/curves": "1.8.1",
         "@noble/hashes": "1.7.1",
         "@openagents/nip90": "workspace:*",
+        "@openagents/tassadar-executor": "workspace:*",
         "@opentui/core": "^0.3.4",
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
@@ -224,6 +225,10 @@
         "effect": "catalog:",
         "marked": "^18.0.5",
       },
+    },
+    "packages/tassadar-executor": {
+      "name": "@openagents/tassadar-executor",
+      "version": "0.1.0",
     },
   },
   "catalog": {
@@ -530,6 +535,8 @@
     "@openagents/sync-schema": ["@openagents/sync-schema@workspace:apps/openagents.com/packages/sync-schema"],
 
     "@openagents/sync-worker": ["@openagents/sync-worker@workspace:apps/openagents.com/packages/sync-worker"],
+
+    "@openagents/tassadar-executor": ["@openagents/tassadar-executor@workspace:packages/tassadar-executor"],
 
     "@openagentsinc/pylon": ["@openagentsinc/pylon@workspace:apps/pylon"],
 

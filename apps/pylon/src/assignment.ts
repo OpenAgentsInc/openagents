@@ -2,6 +2,10 @@ import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
+import {
+  collectInterpreterOutputs,
+  executeTassadarNumericModel,
+} from "@openagents/tassadar-executor"
 import type { BootstrapSummary } from "./bootstrap"
 import { createSignedHeaders } from "./presence"
 import {
@@ -172,6 +176,99 @@ async function runCommand(input: {
     exitCode,
     stderrBytes: stderr.byteLength,
     stdoutBytes: stdout.byteLength,
+  }
+}
+
+type TassadarAssignmentPayload = {
+  expectedTraceDigest?: string
+  fixtureId?: string
+  model: Parameters<typeof executeTassadarNumericModel>[0]
+  steps: ReadonlyArray<ReadonlyArray<number>>
+}
+
+export function tassadarPayloadFrom(codingAssignment: unknown): TassadarAssignmentPayload | null {
+  const record = codingAssignment as
+    | { kind?: unknown; tassadar?: TassadarAssignmentPayload }
+    | null
+    | undefined
+  if (record?.kind !== "tassadar_executor_trace") return null
+  const tassadar = record.tassadar
+  if (tassadar === undefined || typeof tassadar !== "object") return null
+  if (tassadar.model === undefined || !Array.isArray(tassadar.steps)) return null
+  return tassadar
+}
+
+/**
+ * Executes a Tassadar executor-trace assignment: runs the embedded
+ * digest-pinned numeric-model workload through the shared executor and
+ * carries the computed trace digest into closeout refs. Exact-replay
+ * verification happens on a separate validator device; this gate only
+ * reports what this device computed.
+ */
+export async function executeTassadarAssignment(
+  lease: PylonAssignmentLease,
+  now: Date,
+) {
+  const payload = tassadarPayloadFrom(lease.codingAssignment)
+  if (payload === null) return null
+  const runRef = stableRef(
+    "run.pylon.tassadar_executor_trace",
+    `${lease.leaseRef}:${payload.fixtureId ?? "workload"}:${now.toISOString()}`,
+  )
+  try {
+    const trace = await executeTassadarNumericModel(payload.model, payload.steps)
+    const { outputs, halted } = collectInterpreterOutputs(trace.stepOutputs)
+    const digestMatchesExpectation =
+      payload.expectedTraceDigest === undefined ||
+      payload.expectedTraceDigest === trace.traceDigest
+    const artifactRef = `artifact.tassadar_poc.trace_digest.${trace.traceDigest}`
+    const proofRef = stableRef(
+      "proof.pylon.tassadar_executor_trace",
+      `${lease.assignmentRef}:${trace.traceDigest}:${trace.stepCount}`,
+    )
+    return {
+      artifactRefs: [artifactRef],
+      blockerRefs: digestMatchesExpectation
+        ? []
+        : ["blocker.assignment.tassadar_trace_digest_mismatch"],
+      buildRefs: [runRef],
+      message: digestMatchesExpectation
+        ? `Tassadar executor-trace workload executed: ${trace.stepCount} steps, halted=${halted}, ${outputs.length} output(s), trace digest ${trace.traceDigest.slice(0, 16)}… matches the dispatched expectation.`
+        : "Tassadar executor-trace workload executed but the trace digest does not match the dispatched expectation.",
+      previewRefs: [],
+      proofRefs: [proofRef],
+      resultRefs: [
+        `result.tassadar_poc.trace_digest.${trace.traceDigest}`,
+        `result.tassadar_poc.step_count.${trace.stepCount}`,
+        `result.tassadar_poc.halted.${halted}`,
+      ],
+      runRefs: [runRef],
+      status: digestMatchesExpectation ? ("accepted" as const) : ("rejected" as const),
+      summaryRefs: [
+        digestMatchesExpectation
+          ? "summary.tassadar_poc.trace_digest_match"
+          : "summary.tassadar_poc.trace_digest_mismatch",
+      ],
+      testRefs: [proofRef],
+    }
+  } catch (error) {
+    const failureRef = stableRef(
+      "proof.pylon.tassadar_executor_trace.refused",
+      `${lease.leaseRef}:${String(error)}`,
+    )
+    return {
+      artifactRefs: [],
+      blockerRefs: ["blocker.assignment.tassadar_execution_refused"],
+      buildRefs: [runRef],
+      message: "Tassadar executor-trace workload refused with a typed execution error.",
+      previewRefs: [],
+      proofRefs: [failureRef],
+      resultRefs: ["result.tassadar_poc.execution_refused"],
+      runRefs: [runRef],
+      status: "rejected" as const,
+      summaryRefs: ["summary.tassadar_poc.execution_refused"],
+      testRefs: [failureRef],
+    }
   }
 }
 
@@ -650,7 +747,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   const state = await ensurePylonLocalState(summary)
   const observedAtDate = options.now?.() ?? new Date()
   const observedAt = observedAtDate.toISOString()
-  const runtimeGate = await executeRuntimeGate(state, lease, observedAtDate)
+  const runtimeGate =
+    (await executeTassadarAssignment(lease, observedAtDate)) ??
+    (await executeRuntimeGate(state, lease, observedAtDate))
   const artifactRefs = runtimeGate?.artifactRefs ?? [stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)]
   const proofRefs = runtimeGate?.proofRefs ?? [stableRef("assignment.proof", `${lease.leaseRef}:${artifactRefs[0]}`)]
   const progress: AssignmentProgress = {
