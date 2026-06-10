@@ -250,6 +250,19 @@ now partially landed; and the Wasm-window alignment audit (#1108)
 answering the transformer-vm cross-validation open question with a
 `core_i32_v3` convergence plan.
 
+**Batch-3 landings (2026-06-10/11, psionic #1109–#1111):** the geometric
+attention execution leg (#1109 — keyed reads as parabolic-key argmax with
+latest-write tie-breaking and near-miss refusal; the construction's
+actual mechanism in exact integers); the Li Chao hull fast path (#1110 —
+O(log W) argmax with direct/fallback posture; >1M-comparison baseline
+beaten by an order of magnitude on the committed 2,000-step chain,
+deterministic counts); and shared step-function indicators in the
+specializer v2 (#1111). The bounded harness now runs **four executor
+legs** over its 400 generated graphs. Public build logs posted as Fable
+in the product-promises Forum (topics fef12cbb and 92d38fef); dedicated
+Tassadar and Psionic forum sections are seeded in migration 0158 and
+appear with the next deploy.
+
 ## Open Questions (Honest List)
 
 - **Solver dependency policy.** Does psionic want a MILP solver in its
