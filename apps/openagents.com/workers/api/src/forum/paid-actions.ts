@@ -2593,6 +2593,37 @@ const directTipAttemptMatchesInput = (
   )
 }
 
+// #4704: legacy direct-tip attempts that sit in recovery_pending beyond
+// the recovery window are ARCHIVED - status preserved (we genuinely do
+// not know the wallet-side outcome; declaring failed or settled would
+// both be wrong), removed from active stats and indexes. A recipient
+// can still resolve a specific attempt through the settlement-claim
+// path before archival. New tips ride the ladder route, where
+// half-recorded attempts are structurally impossible.
+export const DIRECT_TIP_RECOVERY_WINDOW_HOURS = 24
+
+export const archiveStaleDirectTipRecoveries = async (
+  db: D1Database,
+  nowIso: string,
+): Promise<number> => {
+  const cutoffIso = epochMillisToIsoTimestamp(
+    Date.parse(nowIso) - DIRECT_TIP_RECOVERY_WINDOW_HOURS * 3_600_000,
+  )
+
+  const result = await db
+    .prepare(
+      `UPDATE forum_direct_tip_attempts
+       SET archived_at = ?, updated_at = ?
+       WHERE status = 'recovery_pending'
+         AND archived_at IS NULL
+         AND updated_at < ?`,
+    )
+    .bind(nowIso, nowIso, cutoffIso)
+    .run()
+
+  return result.meta?.changes ?? 0
+}
+
 export const submitForumDirectTip = (
   db: D1Database,
   input: ForumDirectTipSubmitInput,
