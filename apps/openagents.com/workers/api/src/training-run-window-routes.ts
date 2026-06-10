@@ -1,5 +1,6 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
+import { publicCs336A5EvalProjection } from './cs336-a5-alignment-homework'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -543,6 +544,63 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const routeA5EvalSuites = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const store = dependencies.makeStore(env)
+    const runs = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listRuns(50),
+    })
+    const projections = yield* Effect.forEach(runs, run =>
+      Effect.gen(function* () {
+        const windows = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowsForRun(run.trainingRunRef, 100),
+        })
+        const leases = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowLeasesForRun(run.trainingRunRef, 1000),
+        })
+        const challenges = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
+        })
+
+        return publicCs336A5EvalProjection({
+          challenges,
+          leases,
+          run,
+          windows,
+        })
+      }),
+    )
+    const evalSuites = projections.flatMap(projection => projection.evalSuites)
+    const verifiedSuiteCount = evalSuites.filter(
+      suite => suite.verificationRefs.length > 0,
+    ).length
+
+    return noStoreJsonResponse({
+      blockerRefs:
+        evalSuites.length > 0 && verifiedSuiteCount > 0
+          ? []
+          : [
+              'blocker.cs336_a5.requires_rollout_receipts',
+              'blocker.cs336_a5.requires_grading_verification',
+              'blocker.cs336_a5.requires_public_eval_suite_receipt',
+              'blocker.cs336_a5.policy_gradient_update_waits_on_4669',
+            ],
+      evalSuites,
+      projections,
+      schemaVersion: 'openagents.training.a5_eval_dashboard.v1',
+      sourceRefs: ['route:/api/training/evals/a5', 'route:/api/training/runs'],
+      updateBoundaryRef: 'issue.github.openagents.4669',
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -610,6 +668,16 @@ export const makeTrainingRunWindowRoutes = <
       }
 
       return routeA2DeviceCapabilities(dependencies, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/training/evals/a5') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeA5EvalSuites(dependencies, env).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
     }

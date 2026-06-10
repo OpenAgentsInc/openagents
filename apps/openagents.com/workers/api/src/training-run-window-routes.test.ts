@@ -74,6 +74,17 @@ type TrainingDeviceCapabilityJson = Readonly<{
   schemaVersion: string
 }>
 
+type TrainingA5EvalJson = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  evalSuites: ReadonlyArray<{
+    evalSuiteRef: string
+    score: number
+    taskSetRef: string
+  }>
+  schemaVersion: string
+  updateBoundaryRef: string
+}>
+
 const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
   const runs = new Map<string, TrainingRunRecord>()
   const windows = new Map<string, TrainingWindowRecord>()
@@ -367,6 +378,56 @@ describe('training run window routes', () => {
         },
       ],
       schemaVersion: 'openagents.training.device_capability_dashboard.v1',
+    })
+
+    store._testSeedRun({
+      ...buildTrainingRunRecord({
+        makeId: () => 'a5-route',
+        nowIso: '2026-06-10T10:00:00.000Z',
+        request: {
+          promiseRef: 'pylon.compute_revenue_modes.v1',
+          trainingRunRef: 'training.run.cs336.a5.eval',
+        },
+      }),
+      publicProjectionJson: JSON.stringify({
+        a5Alignment: {
+          evalSuites: [
+            {
+              evalSuiteRef: 'eval.cs336.a5.gsm8k.seeded.1',
+              metric: 'accuracy',
+              receiptRefs: ['receipt.cs336.a5.gsm8k.1'],
+              sampleCount: 100,
+              score: 0.42,
+              splitRef: 'gsm8k.test.public_summary',
+              taskSetRef: 'gsm8k',
+              verificationRefs: ['challenge.cs336.a5.gsm8k.1'],
+              verifiedSampleCount: 100,
+            },
+          ],
+        },
+      }),
+    })
+
+    const a5EvalResponse = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/evals/a5'),
+        {},
+      ),
+    )
+    const a5Eval = (await a5EvalResponse.json()) as TrainingA5EvalJson
+
+    expect(a5EvalResponse.status).toBe(200)
+    expect(a5Eval).toMatchObject({
+      blockerRefs: [],
+      evalSuites: [
+        {
+          evalSuiteRef: 'eval.cs336.a5.gsm8k.seeded.1',
+          score: 0.42,
+          taskSetRef: 'gsm8k',
+        },
+      ],
+      schemaVersion: 'openagents.training.a5_eval_dashboard.v1',
+      updateBoundaryRef: 'issue.github.openagents.4669',
     })
   })
 

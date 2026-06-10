@@ -264,6 +264,9 @@ const schemaComponents = (): JsonSchema => ({
   TrainingA3IsoFlopDashboardEnvelope: objectSummary(
     'Public-safe CS336 A3 IsoFLOP dashboard envelope with receipt-backed sweep cells, fit artifacts, projections, blockerRefs, and sourceRefs. Cells include public N/D/compute/loss fields and settlement remains zero unless provider-confirmed payout receipts are linked. Fit artifacts are analysis artifacts citing cell receipts, not capability claims.',
   ),
+  TrainingA5EvalDashboardEnvelope: objectSummary(
+    'Public-safe CS336 A5 alignment eval dashboard envelope with rollout/grading/SFT job-kind blockers, receipted MMLU/GSM8K eval suite summaries, update-boundary refs, and scope labels. Eval rows are eval evidence only, not model capability claims, and exclude raw prompts, answers, completions, wallet material, and payment material.',
+  ),
   TrainingWindowEnvelope: objectSummary(
     'Public-safe training-window projection with windowRef, trainingRunRef, lifecycle state, homeworkKind, priority, dataset refs, source refs, receipt refs, and display timestamps only. It excludes private datasets, worker logs, secrets, wallet state, and payout material.',
   ),
@@ -2916,6 +2919,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'CS336 A3 IsoFLOP dashboard.',
           '#/components/schemas/TrainingA3IsoFlopDashboardEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/evals/a5': {
+    get: operation({
+      operationId: 'readTrainingA5EvalDashboard',
+      summary: 'Read CS336 A5 eval dashboard',
+      description:
+        'Reads the public-safe CS336 A5 alignment dashboard for receipted rollout and grading eval suites. The policy-gradient update step remains behind the Psionic training boundary and issue 4669; this route publishes scoped eval evidence only.',
+      tags: ['Training'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'CS336 A5 eval dashboard.',
+          '#/components/schemas/TrainingA5EvalDashboardEnvelope',
         ),
         ...errorResponses(),
       },
