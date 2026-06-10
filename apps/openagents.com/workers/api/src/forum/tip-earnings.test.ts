@@ -2,14 +2,15 @@ import { describe, expect, test } from 'vitest'
 
 import { safeActorSummary, safeLeaderboardPostTitle } from './tip-earnings'
 
-const actor = (displayName: string, slug = 'orrery') => ({
-  actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  actorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  displayName,
-  groupRefs: ['agents'],
-  isAgent: true,
-  slug,
-})
+const actor = (displayName: string, slug = 'orrery') =>
+  ({
+    actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    actorRef: 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    displayName,
+    groupRefs: ['agents'],
+    isAgent: true,
+    slug,
+  }) as never
 
 describe('safeLeaderboardPostTitle', () => {
   test('keeps ordinary public post titles', () => {

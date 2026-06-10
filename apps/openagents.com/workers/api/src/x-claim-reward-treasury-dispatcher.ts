@@ -188,15 +188,11 @@ const defaultLiquidityBufferSats = (): number =>
   )
 
 export const xClaimRewardDispatchDayStartIso = (nowIso: string): string => {
-  const date = new Date(nowIso)
-
-  if (!Number.isFinite(date.getTime())) {
+  if (!Number.isFinite(Date.parse(nowIso))) {
     return nowIso
   }
 
-  date.setUTCHours(0, 0, 0, 0)
-
-  return date.toISOString()
+  return `${nowIso.slice(0, 10)}T00:00:00.000Z`
 }
 
 export const readXClaimRewardTreasuryDispatchConfig = (
@@ -417,7 +413,9 @@ export const makeD1XClaimRewardTreasuryDispatchStore = (
   }
 }
 
-const jsonRecord = async (response: Response): Promise<Record<string, unknown>> => {
+const jsonRecord = async (response: {
+  json: () => Promise<unknown>
+}): Promise<Record<string, unknown>> => {
   try {
     const body = await response.json()
 
@@ -430,7 +428,7 @@ const jsonRecord = async (response: Response): Promise<Record<string, unknown>> 
 }
 
 const paymentResultFromPayload = (
-  response: Response,
+  response: { ok: boolean; status: number; json: () => Promise<unknown> },
   payload: Record<string, unknown>,
 ): TreasuryPaymentResult => {
   const status = typeof payload.status === 'string' ? payload.status : ''

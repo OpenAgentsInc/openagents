@@ -5,7 +5,7 @@ import {
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from '@openagents/tassadar-executor'
-import tassadarPocFixture from '../../../../packages/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json'
+import { tassadarPocLoopSumFixture } from './tassadar-poc-fixture'
 
 import { artanisMindComplete } from './artanis-mind'
 import { parseJsonWithSchema } from './json-boundary'
@@ -29,7 +29,7 @@ import {
 
 export const ARTANIS_ADMIN_DISPATCH_PER_DAY = 4
 
-const MindAdminAction = S.Union(
+const MindAdminAction = S.Union([
   S.Struct({
     kind: S.Literal('dispatch_executor_trace'),
     pylonRef: S.String,
@@ -39,7 +39,7 @@ const MindAdminAction = S.Union(
     kind: S.Literal('no_action'),
     rationale: S.String,
   }),
-)
+])
 
 export type AdminTickOutcome = Readonly<{
   state:
@@ -64,7 +64,7 @@ export type AdminDispatchFn = (
 export const buildTassadarPocDispatchBody = (
   input: Readonly<{ pylonRef: string; assignmentRef: string }>,
 ): Record<string, unknown> => {
-  const fixture = tassadarPocFixture as {
+  const fixture = tassadarPocLoopSumFixture as unknown as {
     fixtureId: string
     expectedModelDigest: string
     expectedTraceDigest: string
