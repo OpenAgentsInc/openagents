@@ -3,12 +3,14 @@ name: Pylon release gate
 on:
   pull_request:
     paths:
-      - 'apps/pylon/**'
+      - "apps/pylon/**"
+      - ".github/workflows/pylon-release-gate.yml"
   push:
     branches:
       - main
     paths:
-      - 'apps/pylon/**'
+      - "apps/pylon/**"
+      - ".github/workflows/pylon-release-gate.yml"
   workflow_dispatch:
 
 concurrency:
@@ -39,5 +41,14 @@ jobs:
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run Pylon release gate
-        run: bun run --cwd apps/pylon release:gate
+      - name: Run Pylon tests
+        working-directory: apps/pylon
+        run: bun run test
+
+      - name: Run package dry-run
+        working-directory: apps/pylon
+        run: bun pm pack --dry-run
+
+      - name: Run local install smoke
+        working-directory: apps/pylon
+        run: bun run smoke:install:local

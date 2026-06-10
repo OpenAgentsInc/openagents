@@ -3,11 +3,11 @@
 Thin OpenAgents workspace surface for NIP-90 Data Vending Machine protocol
 helpers.
 
-The implementation is intentionally re-exported from the sibling
-`../nostr-effect` checkout:
+The implementation is intentionally re-exported from the `nostr-effect`
+package:
 
 ```ts
-export * from "../../../../nostr-effect/src/core/Nip90.js"
+export * from "nostr-effect/nip90"
 ```
 
 Do not rebuild Nostr event, tag, kind, or validation primitives in this package.

@@ -1,14 +1,24 @@
 {
   "name": "@openagents/nip90",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "nostr-effect": "github:OpenAgentsInc/nostr-effect#e6582ef"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",

@@ -26,23 +26,33 @@ project, and verifies:
 The Pylon release gate workflow is staged at
 `apps/pylon/docs/ci/release-gate.yml` because the current GitHub token cannot
 create `.github/workflows/*` files without `workflow` scope. An operator with
-workflow scope should move that file to `.github/workflows/pylon-release-gate.yml`.
+workflow scope should move that exact file to
+`.github/workflows/pylon-release-gate.yml`.
 
 Once moved, it runs for pull requests and `main` pushes that touch
-`apps/pylon/**`, plus manual `workflow_dispatch` runs.
+`apps/pylon/**` or the workflow itself, plus manual `workflow_dispatch` runs.
 
 The workflow runs on both `ubuntu-latest` and `macos-latest`:
 
 ```sh
-bun install
-bun run --cwd apps/pylon release:gate
+bun install --frozen-lockfile
+bun run test
+bun pm pack --dry-run
+bun run smoke:install:local
 ```
 
-`release:gate` runs the unit/runtime tests, bootstrap/status/inventory/operator
-JSON smokes, dashboard startup smoke, package dry-run, and local package
-install smoke. The install smoke is intentionally package-install based. It
-does not rely on the old v0.2 launcher or deprecated OpenAgents Rust Pylon
-implementation homes.
+The CI smoke is intentionally package-install based. It does not rely on the
+old v0.2 launcher or deprecated OpenAgents Rust Pylon implementation homes.
+
+The fuller local release gate is still:
+
+```sh
+bun run release:gate
+```
+
+That local gate runs unit/runtime tests, bootstrap/status/inventory/operator
+JSON smokes, dashboard startup smoke, package dry-run, and the local package
+install smoke before a release candidate is treated as launchable.
 
 ## Bootstrap Surface
 

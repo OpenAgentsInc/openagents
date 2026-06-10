@@ -1,1 +1,1 @@
-export * from "../../../../nostr-effect/src/core/Nip90.js"
+export * from "nostr-effect/nip90"
