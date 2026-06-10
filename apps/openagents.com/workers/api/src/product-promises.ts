@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.17'
+export const PublicProductPromisesVersion = '2026-06-10.18'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1368,16 +1368,19 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim tips currently never fail, that agent balances exist or are sweepable today, that credited amounts are settled bitcoin before a sweep receipt exists, or any custody posture beyond bounded 1:1-backed balances.',
       evidenceRefs: [
+        'docs/payments/reliable-tips.md',
         'docs/2026-06-10-stacker-news-balance-cashin-cashout-audit.md',
-        'apps/openagents.com/scripts/forum.mjs',
-        'https://github.com/OpenAgentsInc/openagents/issues/4704',
+        'apps/openagents.com/workers/api/migrations/0160_payments_ledger.sql',
+        'apps/openagents.com/workers/api/src/payments-ledger.ts',
+        'apps/openagents.com/workers/api/src/tip-ladder.ts',
+        'apps/openagents.com/workers/api/src/tips-sweep.ts',
+        'docs/artanis/tips-buffer-runbook.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4705',
+        'https://github.com/OpenAgentsInc/openagents/issues/4706',
+        'https://github.com/OpenAgentsInc/openagents/issues/4707',
+        'https://github.com/OpenAgentsInc/openagents/issues/4708',
       ],
-      blockerRefs: [
-        'blocker.product_promises.agent_credit_ledger_missing',
-        'blocker.product_promises.tip_receive_ladder_missing',
-        'blocker.product_promises.automated_sweep_worker_missing',
-        'blocker.product_promises.tips_buffer_wallet_missing',
-      ],
+      blockerRefs: [],
       verification:
         'Live three-leg smoke once built: (1) tip a reachable recipient and observe direct BOLT 12 settlement; (2) tip an unreachable recipient and observe an instant ledger credit with the rung recorded; (3) bring the recipient online and observe the automated sweep settle the balance to their registered offer with receipts and the resulting balance audited on the ledger rows. Green requires all three plus refund-on-fail evidence.',
       authorityBoundary:
