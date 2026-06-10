@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.5'
+export const PublicProductPromisesVersion = '2026-06-10.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -476,9 +476,10 @@ export const publicProductPromisesDocument = () => {
         'https://openagents.com/docs/autopilot-sites',
         'route:/r/site/{publicSourceRef}',
         'apps/openagents.com/docs/sites/2026-06-08-site-referral-reward-withdrawal-gate.md',
+        'apps/openagents.com/docs/2026-06-10-site-referral-payout-policy.md',
+        'route:/api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions',
       ],
       blockerRefs: [
-        'blocker.product_promises.referral_payout_policy_missing',
         'blocker.product_promises.referral_settlement_receipts_missing',
       ],
       verification:

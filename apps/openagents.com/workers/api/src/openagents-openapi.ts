@@ -1202,6 +1202,12 @@ const schemaComponents = (): JsonSchema => ({
   OperatorConsumedReferralAttributions: objectSummary(
     'Operator-only public-safe consumed Site referral attribution query.',
   ),
+  SiteReferralPayoutTransitionRequest: objectSummary(
+    'Operator-only append-only Site referral payout ledger transition request.',
+  ),
+  SiteReferralPayoutTransitionResponse: objectSummary(
+    'Public-safe Site referral payout ledger transition projection.',
+  ),
   OperatorSite: objectSummary(
     'Operator Site project projection with lifecycle state and public-safe refs.',
   ),
@@ -5544,6 +5550,37 @@ const paths = (): JsonSchema => ({
         ),
         '403': okJson(
           'Browser session is not an OpenAgents admin.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions': {
+    post: operation({
+      operationId: 'transitionSiteReferralPayoutLedger',
+      summary: 'Transition Site referral payout ledger',
+      description:
+        'Operator-only append-only Site referral payout ledger transition. Approves dispatch, marks dispatched, marks failed, refuses, reverses, or marks settled only with public-safe evidence refs. This route records authority state and does not move sats by itself.',
+      tags: ['Sites'],
+      security: adminBearer,
+      parameters: [
+        pathParam('payoutRef', 'Public-safe referral payout ref.'),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/SiteReferralPayoutTransitionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Site referral payout transition projection.',
+          '#/components/schemas/SiteReferralPayoutTransitionResponse',
+        ),
+        '401': okJson(
+          'Admin bearer token is missing or invalid.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '409': okJson(
+          'Transition is invalid for the current payout state.',
           '#/components/schemas/ErrorResponse',
         ),
         ...errorResponses(),

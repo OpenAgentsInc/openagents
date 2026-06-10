@@ -643,6 +643,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only public-safe query for consumed Site referral attributions: claimed captures with first verification timestamps and no private referred-user contact data, token hashes, wallet material, payment payloads, or provider grants.',
       },
       {
+        id: 'operator_site_referral_payout_ledger_transition',
+        href: 'https://openagents.com/api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions',
+        method: 'POST',
+        auth: 'admin_api_token',
+        description:
+          'Operator-only append-only Site referral payout ledger transition route. It approves dispatch, marks dispatched, marks failed, refuses, reverses, or marks settled only with public-safe evidence refs; it does not move sats by itself.',
+      },
+      {
         id: 'public_artanis_report',
         href: 'https://openagents.com/api/public/artanis/report',
         method: 'GET',

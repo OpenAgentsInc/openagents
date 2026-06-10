@@ -267,6 +267,7 @@ import {
 } from './site-referral-attribution-consumption'
 import { makeSiteReferralInspectionRoutes } from './site-referral-inspection-routes'
 import { sendSiteReferralOnboardingForConsumption } from './site-referral-onboarding'
+import { makeSiteReferralPayoutLedgerRoutes } from './site-referral-payout-ledger-routes'
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
@@ -5171,6 +5172,11 @@ const siteReferralInspectionRoutes = makeSiteReferralInspectionRoutes({
   requireBrowserSession,
 })
 
+const siteReferralPayoutLedgerRoutes = makeSiteReferralPayoutLedgerRoutes({
+  nowIso: currentIsoTimestamp,
+  requireAdminApiToken,
+})
+
 const agentGoalRoutes = makeAgentGoalRoutes({
   appendRefreshedSessionCookies,
   authenticateRequestActor,
@@ -5970,6 +5976,8 @@ const routeRequest = makeWorkerRouteRequest({
     siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),
   routeSiteReferralInspectionRequest:
     siteReferralInspectionRoutes.routeSiteReferralInspectionRequest,
+  routeSiteReferralPayoutLedgerRequest:
+    siteReferralPayoutLedgerRoutes.routeSiteReferralPayoutLedgerRequest,
   routeSiteReferralRequest: siteReferralRoutes.routeSiteReferralRequest,
   routeOperatorAdjutantRequest:
     operatorAdjutantRoutes.routeOperatorAdjutantRequest,

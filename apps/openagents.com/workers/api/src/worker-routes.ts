@@ -49,6 +49,7 @@ type WorkerRouteDependencies = Readonly<{
   routePylonApiRequest: OptionalEffectRoute
   routeSiteCommerceRequest: OptionalEffectRoute
   routeSiteReferralInspectionRequest: OptionalEffectRoute
+  routeSiteReferralPayoutLedgerRequest: OptionalEffectRoute
   routeSiteReferralRequest: OptionalEffectRoute
   routeOperatorAdjutantRequest: OptionalEffectRoute
   routeOperatorArtanisConsoleRequest: OptionalEffectRoute
@@ -319,6 +320,13 @@ export const makeWorkerRouteRequest =
 
       if (siteReferralInspectionResponse !== undefined) {
         return yield* siteReferralInspectionResponse
+      }
+
+      const siteReferralPayoutLedgerResponse =
+        dependencies.routeSiteReferralPayoutLedgerRequest(request, env, ctx)
+
+      if (siteReferralPayoutLedgerResponse !== undefined) {
+        return yield* siteReferralPayoutLedgerResponse
       }
 
       const pylonApiResponse = dependencies.routePylonApiRequest(
