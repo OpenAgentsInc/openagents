@@ -220,6 +220,10 @@ import {
   runTassadarReplayValidation,
 } from './tassadar-replay-validator'
 import {
+  ArtanisMindSmokeSystem,
+  artanisMindComplete,
+} from './artanis-mind'
+import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
   lastVerifiedAtByPromise,
@@ -328,6 +332,11 @@ import {
   TokenUsageLeaderboards,
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
+import {
+  TREASURY_SERVICE_TOKEN_HEADER,
+  handleOperatorTreasuryStatusApi,
+  handlePublicTreasuryLaunchStatusApi,
+} from './treasury-routes'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import { makeD1TrainingVerificationStore } from './training-verification'
@@ -359,6 +368,7 @@ export {
 export const OPENAGENTS_ADMIN_EMAILS = ['chris@openagents.com'] as const
 const OPENAGENTS_CORE_TEAM_ID = 'team_openagents_core'
 const MDK_SIDECAR_INSTANCE_NAME = 'openagents-mdk-sidecar-20260607-4'
+const MDK_TREASURY_INSTANCE_NAME = 'openagents-mdk-treasury-20260610-1'
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const workerRuntime = {
   makeUuid: randomUuid,
@@ -417,6 +427,71 @@ export class MdkSidecarContainer extends Container<Env> {
       service: 'openagents-mdk-sidecar',
     }
   }
+}
+
+const mdkTreasuryContainerEnvVars = (
+  environment: OpenAgentsWorkerConfigEnv,
+): Record<string, string> => {
+  const accessToken = optionalMdkContainerSecret(
+    environment.MDK_TREASURY_ACCESS_TOKEN,
+  )
+  const mnemonic = optionalMdkContainerSecret(
+    environment.MDK_TREASURY_MNEMONIC,
+  )
+  const serviceToken = optionalMdkContainerSecret(
+    environment.MDK_TREASURY_SERVICE_TOKEN,
+  )
+
+  return {
+    ...(accessToken === undefined
+      ? {}
+      : { MDK_TREASURY_ACCESS_TOKEN: accessToken }),
+    ...(mnemonic === undefined ? {} : { MDK_TREASURY_MNEMONIC: mnemonic }),
+    ...(serviceToken === undefined
+      ? {}
+      : { MDK_TREASURY_SERVICE_TOKEN: serviceToken }),
+  }
+}
+
+export class MdkTreasuryContainer extends Container<Env> {
+  override defaultPort = 8080
+  override sleepAfter = '30m'
+  override pingEndpoint = 'localhost:8080/healthz'
+
+  constructor(ctx: DurableObjectState<{}>, environment: Env) {
+    super(ctx, environment)
+    this.envVars = mdkTreasuryContainerEnvVars(environment)
+    this.labels = {
+      service: 'openagents-mdk-treasury',
+    }
+  }
+}
+
+const fetchMdkTreasuryPath = (
+  environment: Env,
+): ((path: string) => Promise<Response>) | undefined => {
+  const namespace = environment.MDK_TREASURY as
+    | DurableObjectNamespace<MdkTreasuryContainer>
+    | undefined
+
+  if (namespace === undefined) {
+    return undefined
+  }
+
+  const serviceToken = optionalMdkContainerSecret(
+    environment.MDK_TREASURY_SERVICE_TOKEN,
+  )
+
+  return path =>
+    getContainer(namespace, MDK_TREASURY_INSTANCE_NAME).fetch(
+      new Request(`http://mdk-treasury${path}`, {
+        headers:
+          serviceToken === undefined
+            ? {}
+            : { [TREASURY_SERVICE_TOKEN_HEADER]: serviceToken },
+        method: 'GET',
+      }),
+    )
 }
 
 const fetchMdkSidecarRequest = async (request: Request, environment: Env) => {
@@ -5682,6 +5757,109 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
+    path: '/api/operator/artanis/mind/smoke',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'POST') {
+          return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
+            headers: { 'content-type': 'application/json' },
+            status: 405,
+          })
+        }
+        if (!(await requireAdminApiToken(request, env))) {
+          return new Response(JSON.stringify({ error: 'unauthorized' }), {
+            headers: { 'content-type': 'application/json' },
+            status: 401,
+          })
+        }
+        const apiKey = (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY
+        if (apiKey === undefined || apiKey === '') {
+          return new Response(
+            JSON.stringify({ error: 'gemini_api_key_missing' }),
+            { headers: { 'content-type': 'application/json' }, status: 503 },
+          )
+        }
+        let body: {
+          forumPost?: boolean
+          gatewayId?: string
+          model?: string
+          prompt?: string
+        } = {}
+        try {
+          body = (await request.json()) as typeof body
+        } catch {
+          body = {}
+        }
+        const prompt =
+          body.prompt ??
+          'State in one sentence what the Artanis administrator should verify before dispatching executor-trace work to an idle Pylon.'
+        const result = await artanisMindComplete({
+          apiKey,
+          ...(body.gatewayId === undefined ? {} : { gatewayId: body.gatewayId }),
+          ...(body.model === undefined ? {} : { model: body.model }),
+          prompt,
+          system: ArtanisMindSmokeSystem,
+        })
+        if ('error' in result) {
+          return new Response(JSON.stringify(result), {
+            headers: { 'content-type': 'application/json' },
+            status: 502,
+          })
+        }
+        let forumPost: { topicId?: string; error?: string } | null = null
+        const artanisToken = (env as { ARTANIS_AGENT_TOKEN?: string })
+          .ARTANIS_AGENT_TOKEN
+        if (body.forumPost === true && artanisToken !== undefined) {
+          const post = await fetch(
+            'https://openagents.com/api/forum/forums/tassadar/topics',
+            {
+              body: JSON.stringify({
+                bodyText: [
+                  'Automated update from the Artanis cloud mind running inside the OpenAgents worker.',
+                  `Inference served via ${result.servedVia}${result.gatewayId === null ? '' : ` (gateway ${result.gatewayId})`}, model ${result.model}.`,
+                  `Decision sample: ${result.text.slice(0, 400)}`,
+                  'Boundary: the mind proposes; typed schemas validate; approval gates hold. - Artanis (automated)',
+                ].join('\n\n'),
+                title: `Artanis cloud mind production smoke ${new Date().toISOString().slice(0, 16)}`,
+              }),
+              headers: {
+                Authorization: `Bearer ${artanisToken}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': `artanis-mind-smoke-${new Date().toISOString().slice(0, 13)}`,
+              },
+              method: 'POST',
+            },
+          )
+          const payload = (await post.json()) as {
+            error?: string
+            topic?: { topicId?: string }
+          }
+          forumPost =
+            payload.topic?.topicId === undefined
+              ? { error: payload.error ?? `status_${post.status}` }
+              : { topicId: payload.topic.topicId }
+        }
+        return new Response(
+          JSON.stringify({
+            forumPost,
+            gatewayId: result.gatewayId,
+            model: result.model,
+            promptChars: result.promptChars,
+            responseChars: result.responseChars,
+            servedVia: result.servedVia,
+            text: result.text.slice(0, 600),
+          }),
+          {
+            headers: {
+              'cache-control': 'no-store',
+              'content-type': 'application/json',
+            },
+            status: 200,
+          },
+        )
+      }),
+  },
+  {
     path: '/api/operator/tassadar/replay',
     handler: (request, env) =>
       Effect.promise(async () => {
@@ -5840,6 +6018,24 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/launch-dashboard',
     handler: (request, env) => handlePublicLaunchDashboardApi(request, env),
+  },
+  {
+    path: '/api/public/treasury/launch-status',
+    handler: (request, env) =>
+      handlePublicTreasuryLaunchStatusApi(request, {
+        fetchTreasury: fetchMdkTreasuryPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+      }),
+  },
+  {
+    path: '/api/operator/treasury/status',
+    handler: (request, env) =>
+      handleOperatorTreasuryStatusApi(request, {
+        fetchTreasury: fetchMdkTreasuryPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+      }),
   },
   {
     path: '/api/public/artanis/report',
