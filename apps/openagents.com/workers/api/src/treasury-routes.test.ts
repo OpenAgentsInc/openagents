@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryStatusApi,
   handlePublicTreasuryLaunchStatusApi,
 } from './treasury-routes'
@@ -160,6 +161,71 @@ describe('operator treasury status', () => {
       handleOperatorTreasuryStatusApi(
         new Request('https://openagents.com/api/operator/treasury/status'),
         { requireAdminApiToken: () => Promise.resolve(true) },
+      ),
+    )
+
+    expect(response.status).toBe(503)
+  })
+})
+
+describe('operator treasury funding destination', () => {
+  test('requires the admin api token', async () => {
+    const response = await run(
+      handleOperatorTreasuryFundingDestinationApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/funding-destination',
+        ),
+        {
+          fetchTreasury: () =>
+            Promise.resolve(jsonResponse(200, { bolt12Offer: 'lno1x' })),
+          requireAdminApiToken: () => Promise.resolve(false),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  test('serves both funding rails to an authorized operator', async () => {
+    const response = await run(
+      handleOperatorTreasuryFundingDestinationApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/funding-destination',
+        ),
+        {
+          fetchTreasury: path =>
+            Promise.resolve(
+              path === '/offer'
+                ? jsonResponse(200, {
+                    bolt11Invoice: 'lnbc1example',
+                    bolt12Offer: 'lno1example',
+                    nodeId: 'ff'.repeat(33),
+                  })
+                : jsonResponse(404, { error: 'not_found' }),
+            ),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      funding: { bolt11Invoice: string; bolt12Offer: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.funding.bolt12Offer).toBe('lno1example')
+    expect(body.funding.bolt11Invoice).toBe('lnbc1example')
+  })
+
+  test('returns 503 when the container has no funding destination', async () => {
+    const response = await run(
+      handleOperatorTreasuryFundingDestinationApi(
+        new Request(
+          'https://openagents.com/api/operator/treasury/funding-destination',
+        ),
+        {
+          fetchTreasury: () => Promise.reject(new Error('container down')),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
       ),
     )
 

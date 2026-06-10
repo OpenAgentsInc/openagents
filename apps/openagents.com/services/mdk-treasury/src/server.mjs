@@ -107,13 +107,23 @@ const balanceResponse = node => {
   })
 }
 
-const offerResponse = node =>
-  json(200, {
+// Fresh-receiver BOLT12 pays have failed where BOLT11 JIT invoices worked
+// (2026-06-10 Tassadar PoC receiver), so funding exposes both rails.
+const offerResponse = node => {
+  const invoice = node.getVariableAmountJitInvoiceWhileRunning(
+    'OpenAgents campaign treasury funding',
+    3600,
+  )
+
+  return json(200, {
+    bolt11Invoice: invoice.bolt11,
+    bolt11ExpiresAt: invoice.expiresAt,
     bolt12Offer: node.getVariableAmountBolt12OfferWhileRunning(
       'OpenAgents campaign treasury funding',
     ),
     nodeId: node.getNodeId(),
   })
+}
 
 const payResponse = async (request, node) => {
   let body

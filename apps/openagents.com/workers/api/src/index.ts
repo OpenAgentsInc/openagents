@@ -337,6 +337,7 @@ import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import type { ContainerPathFetch } from './http/container-fetch'
 import {
   TREASURY_SERVICE_TOKEN_HEADER,
+  handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryStatusApi,
   handlePublicTreasuryLaunchStatusApi,
 } from './treasury-routes'
@@ -371,7 +372,7 @@ export {
 export const OPENAGENTS_ADMIN_EMAILS = ['chris@openagents.com'] as const
 const OPENAGENTS_CORE_TEAM_ID = 'team_openagents_core'
 const MDK_SIDECAR_INSTANCE_NAME = 'openagents-mdk-sidecar-20260607-4'
-const MDK_TREASURY_INSTANCE_NAME = 'openagents-mdk-treasury-20260610-1'
+const MDK_TREASURY_INSTANCE_NAME = 'openagents-mdk-treasury-20260610-2'
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const workerRuntime = {
   makeUuid: randomUuid,
@@ -6022,6 +6023,15 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/operator/treasury/status',
     handler: (request, env) =>
       handleOperatorTreasuryStatusApi(request, {
+        fetchTreasury: fetchMdkTreasuryPath(env),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+      }),
+  },
+  {
+    path: '/api/operator/treasury/funding-destination',
+    handler: (request, env) =>
+      handleOperatorTreasuryFundingDestinationApi(request, {
         fetchTreasury: fetchMdkTreasuryPath(env),
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),

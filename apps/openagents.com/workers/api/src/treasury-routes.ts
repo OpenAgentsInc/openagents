@@ -174,3 +174,58 @@ export const handleOperatorTreasuryStatusApi = (
     }),
   )
 }
+
+const readTreasuryFunding = (
+  fetchTreasury: ContainerPathFetch,
+): Effect.Effect<unknown> =>
+  Effect.tryPromise({
+    catch: () => null,
+    try: async () => {
+      const response = await fetchTreasury('/offer')
+
+      return response.ok ? await response.json() : null
+    },
+  }).pipe(Effect.catch(() => Effect.succeed(null)))
+
+export const handleOperatorTreasuryFundingDestinationApi = (
+  request: Request,
+  dependencies: TreasuryRouteDependencies,
+) => {
+  if (request.method !== 'GET') {
+    return Effect.succeed(methodNotAllowed(['GET']))
+  }
+
+  return Effect.tryPromise({
+    catch: () => false,
+    try: () => dependencies.requireAdminApiToken(request),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(false)),
+    Effect.flatMap(authorized => {
+      if (!authorized) {
+        return Effect.succeed(
+          noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+        )
+      }
+
+      if (dependencies.fetchTreasury === undefined) {
+        return Effect.succeed(
+          noStoreJsonResponse(
+            { error: 'treasury_unprovisioned' },
+            { status: 503 },
+          ),
+        )
+      }
+
+      return Effect.map(
+        readTreasuryFunding(dependencies.fetchTreasury),
+        funding =>
+          funding === null
+            ? noStoreJsonResponse(
+                { error: 'treasury_funding_destination_unavailable' },
+                { status: 503 },
+              )
+            : noStoreJsonResponse({ funding, service: 'mdk_treasury' }),
+      )
+    }),
+  )
+}
