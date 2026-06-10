@@ -1598,3 +1598,283 @@ describe('forum CLI helpers', () => {
     expect(request.headers.authorization).toBe('Bearer oa_agent_secret_123')
   })
 })
+
+describe('forum tip failure classification and self-pay preflight', () => {
+  const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+
+  const syntheticOffer = (records: Array<{ type: number; value: number[] }>) => {
+    const bytes: number[] = []
+
+    for (const record of records) {
+      bytes.push(record.type)
+      bytes.push(record.value.length)
+      bytes.push(...record.value)
+    }
+
+    let accumulator = 0
+    let bits = 0
+    let encoded = ''
+
+    for (const byte of bytes) {
+      accumulator = (accumulator << 8) | byte
+      bits += 8
+
+      while (bits >= 5) {
+        bits -= 5
+        encoded += BECH32_CHARSET[(accumulator >> bits) & 31]
+      }
+    }
+
+    if (bits > 0) {
+      encoded += BECH32_CHARSET[(accumulator << (5 - bits)) & 31]
+    }
+
+    return `lno1${encoded}`
+  }
+
+  const issuerRecord = (firstByte: number) => ({
+    type: 22,
+    value: [2, ...Array.from({ length: 31 }, () => firstByte), 7],
+  })
+
+  const pathRecord = (scidByte: number) => ({
+    type: 16,
+    value: [
+      0,
+      ...Array.from({ length: 8 }, () => scidByte),
+      2,
+      ...Array.from({ length: 32 }, () => 9),
+      0,
+    ],
+  })
+
+  test('classifies stalled sends by payment-hash presence', () => {
+    expect(
+      forumCli.classifyStalledTipSendFromPayments(
+        [
+          {
+            amountSats: 15,
+            direction: 'outbound',
+            paymentHash: null,
+            status: 'pending',
+            timestamp: 2,
+          },
+        ],
+        15,
+      ),
+    ).toBe('no_invoice_fetched')
+    expect(
+      forumCli.classifyStalledTipSendFromPayments(
+        [
+          {
+            amountSats: 15,
+            direction: 'outbound',
+            paymentHash: 'a'.repeat(64),
+            status: 'pending',
+            timestamp: 2,
+          },
+        ],
+        15,
+      ),
+    ).toBe('route_unresolved')
+    expect(forumCli.classifyStalledTipSendFromPayments([], 15)).toBe(
+      'unclassified',
+    )
+    expect(
+      forumCli.classifyStalledTipSendFromPayments(
+        [
+          {
+            amountSats: 15,
+            direction: 'outbound',
+            paymentHash: null,
+            status: 'pending',
+            timestamp: 1,
+          },
+          {
+            amountSats: 15,
+            direction: 'outbound',
+            paymentHash: 'b'.repeat(64),
+            status: 'pending',
+            timestamp: 5,
+          },
+        ],
+        15,
+      ),
+    ).toBe('route_unresolved')
+  })
+
+  test('extracts shared identity refs from offers minted by the same wallet session', () => {
+    const sharedPathA = syntheticOffer([pathRecord(0x41)])
+    const sharedPathB = syntheticOffer([pathRecord(0x41)])
+    const otherPath = syntheticOffer([pathRecord(0x42)])
+    const sharedIssuerA = syntheticOffer([issuerRecord(0x21)])
+    const sharedIssuerB = syntheticOffer([issuerRecord(0x21)])
+
+    expect(forumCli.offersShareSelfPayIdentity(sharedPathA, sharedPathB)).toBe(
+      true,
+    )
+    expect(forumCli.offersShareSelfPayIdentity(sharedPathA, otherPath)).toBe(
+      false,
+    )
+    expect(
+      forumCli.offersShareSelfPayIdentity(sharedIssuerA, sharedIssuerB),
+    ).toBe(true)
+    expect(forumCli.offersShareSelfPayIdentity('not-an-offer', sharedPathA)).toBe(
+      null,
+    )
+  })
+
+  test('blocks self-pay before any live spend is attempted', async () => {
+    const recipientOffer = syntheticOffer([pathRecord(0x41)])
+    const payerOffer = syntheticOffer([pathRecord(0x41)])
+    const sendCalls: string[] = []
+    const walletExecutor = vi.fn(async (commandSpec: any) => {
+      if (commandSpec.command === 'send') {
+        sendCalls.push('send')
+        return { exitCode: 0, stdout: '{"status":"completed"}' }
+      }
+
+      if (commandSpec.command === 'receive-bolt12') {
+        return { exitCode: 0, stdout: JSON.stringify({ offer: payerOffer }) }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+    const requestJson = vi.fn(async (request: any) => {
+      if (request.path === '/api/forum/posts/post_self') {
+        return {
+          post: {
+            permalink: 'https://openagents.com/forum/t/topic_1#post-post_self',
+            postId: 'post_self',
+            tipRecipientReadiness: {
+              actorRef: 'actor.recipient',
+              directPayment: {
+                bolt12Offer: recipientOffer,
+                kind: 'bolt12_offer',
+                settlementAuthority: 'recipient_wallet_direct',
+              },
+              state: 'ready',
+              tippingAvailable: true,
+            },
+            tipStats: { tipCount: 0, totalPaidSats: 0, totalSettledSats: 0 },
+          },
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+
+    const output = await forumCli.runForumCli(
+      ['tip-post', '--post', 'post_self', '--tip-amount', '15', '--approve-live-spend'],
+      { OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123' },
+      { requestJson, walletExecutor },
+    )
+    const body = JSON.parse(output)
+
+    expect(body).toMatchObject({
+      reasonRef: 'reason.public.forum_tip_self_pay_blocked',
+      selfPayCheck: 'blocked',
+      status: 'self_pay_blocked',
+    })
+    expect(sendCalls).toHaveLength(0)
+    expect(output).not.toContain(recipientOffer)
+  })
+
+  test('strict smoke surfaces no_invoice_fetched classification on timeout', async () => {
+    const recipientOffer = syntheticOffer([pathRecord(0x55)])
+    const payerOffer = syntheticOffer([pathRecord(0x66)])
+    const walletExecutor = vi.fn(async (commandSpec: any) => {
+      if (commandSpec.command === 'send') {
+        return { exitCode: 124, stdout: '', timedOut: true }
+      }
+
+      if (commandSpec.command === 'receive-bolt12') {
+        return { exitCode: 0, stdout: JSON.stringify({ offer: payerOffer }) }
+      }
+
+      if (commandSpec.command === 'payments') {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            payments: [
+              {
+                amountSats: 15,
+                direction: 'outbound',
+                paymentHash: null,
+                status: 'pending',
+                timestamp: 99,
+              },
+            ],
+          }),
+        }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+    const requestJson = vi.fn(async (request: any) => {
+      if (request.path === '/api/forum/posts/post_cls') {
+        return {
+          post: {
+            permalink: 'https://openagents.com/forum/t/topic_1#post-post_cls',
+            postId: 'post_cls',
+            tipRecipientReadiness: {
+              actorRef: 'actor.recipient',
+              directPayment: {
+                bolt12Offer: recipientOffer,
+                kind: 'bolt12_offer',
+                settlementAuthority: 'recipient_wallet_direct',
+              },
+              state: 'ready',
+              tippingAvailable: true,
+            },
+            tipStats: { tipCount: 0, totalPaidSats: 0, totalSettledSats: 0 },
+          },
+        }
+      }
+
+      if (request.path === '/api/forum/posts/post_cls/direct-tips') {
+        return {
+          amount: { amount: 15, asset: 'sats' },
+          attemptId: '88888888-8888-4888-8888-888888888888',
+          idempotent: false,
+          payerActorRef: 'agent:payer',
+          paymentEvidence: request.body.paymentEvidence,
+          postId: 'post_cls',
+          receipt: null,
+          recipientActorRef: 'actor.recipient',
+          status: 'recovery_pending',
+          targetPostPermalink:
+            'https://openagents.com/forum/t/topic_1#post-post_cls',
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+
+    const output = await forumCli.runForumCli(
+      [
+        'tip-post-smoke',
+        '--post',
+        'post_cls',
+        '--tip-amount',
+        '15',
+        '--approve-live-spend',
+        '--strict-smooth',
+      ],
+      { OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123' },
+      { requestJson, walletExecutor },
+    )
+    const body = JSON.parse(output)
+
+    expect(body).toMatchObject({
+      failureClassification: 'no_invoice_fetched',
+      mode: 'strict_smooth',
+      reasonRef: 'reason.public.forum_tip_smoke_no_invoice_fetched',
+      recoveredAfterTimeout: true,
+      selfPayCheck: 'passed',
+      status: 'failed',
+    })
+    expect(output).not.toContain(recipientOffer)
+    expect(output).not.toContain(payerOffer)
+  })
+})

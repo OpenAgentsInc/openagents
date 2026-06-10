@@ -644,6 +644,16 @@ const walletCommandSpecs = {
     command: 'init',
     publicCommandRef: 'mdk_agent_wallet.init_show',
   },
+  payments: {
+    args: [],
+    command: 'payments',
+    publicCommandRef: 'mdk_agent_wallet.payments',
+  },
+  receiveBolt12: {
+    args: [],
+    command: 'receive-bolt12',
+    publicCommandRef: 'mdk_agent_wallet.receive_bolt12',
+  },
   status: {
     args: [],
     command: 'status',
@@ -656,6 +666,278 @@ const walletSendCommandSpec = (destination, amount) => ({
   command: 'send',
   publicCommandRef: 'mdk_agent_wallet.send',
 })
+
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+
+const bolt12OfferDataBytes = offer => {
+  const lowered = typeof offer === 'string' ? offer.trim().toLowerCase() : ''
+
+  if (!lowered.startsWith('lno1')) {
+    return null
+  }
+
+  const data = lowered.slice(4).replace(/\+\s*/g, '')
+  const values = []
+
+  for (const char of data) {
+    const value = BECH32_CHARSET.indexOf(char)
+
+    if (value === -1) {
+      return null
+    }
+
+    values.push(value)
+  }
+
+  const bytes = []
+  let accumulator = 0
+  let bits = 0
+
+  for (const value of values) {
+    accumulator = (accumulator << 5) | value
+    bits += 5
+
+    if (bits >= 8) {
+      bits -= 8
+      bytes.push((accumulator >> bits) & 0xff)
+    }
+  }
+
+  return Uint8Array.from(bytes)
+}
+
+const readBigSize = (bytes, offset) => {
+  if (offset >= bytes.length) {
+    return null
+  }
+
+  const first = bytes[offset]
+
+  if (first < 0xfd) {
+    return { length: 1, value: first }
+  }
+
+  const width = first === 0xfd ? 2 : first === 0xfe ? 4 : 8
+
+  if (offset + 1 + width > bytes.length) {
+    return null
+  }
+
+  let value = 0
+
+  for (let index = 0; index < width; index += 1) {
+    value = value * 256 + bytes[offset + 1 + index]
+  }
+
+  return { length: 1 + width, value }
+}
+
+const bolt12OfferTlvRecords = offer => {
+  const bytes = bolt12OfferDataBytes(offer)
+
+  if (bytes === null) {
+    return null
+  }
+
+  const records = []
+  let offset = 0
+
+  while (offset < bytes.length) {
+    const type = readBigSize(bytes, offset)
+
+    if (type === null) {
+      return null
+    }
+
+    offset += type.length
+    const length = readBigSize(bytes, offset)
+
+    if (length === null || offset + length.length + length.value > bytes.length) {
+      return null
+    }
+
+    offset += length.length
+    records.push({
+      type: type.value,
+      value: bytes.slice(offset, offset + length.value),
+    })
+    offset += length.value
+  }
+
+  return records
+}
+
+const hexFromBytes = bytes =>
+  Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+
+const blindedPathFirstNodeIds = value => {
+  const identities = []
+  let offset = 0
+
+  while (offset < value.length) {
+    const marker = value[offset]
+    const firstNodeIdLength =
+      marker === 0x00 || marker === 0x01
+        ? 9
+        : marker === 0x02 || marker === 0x03
+          ? 33
+          : null
+
+    if (
+      firstNodeIdLength === null ||
+      offset + firstNodeIdLength + 33 + 1 > value.length
+    ) {
+      return identities.length === 0 ? null : identities
+    }
+
+    identities.push(hexFromBytes(value.slice(offset, offset + firstNodeIdLength)))
+    offset += firstNodeIdLength + 33
+    const numHops = value[offset]
+    offset += 1
+
+    for (let hop = 0; hop < numHops; hop += 1) {
+      if (offset + 33 + 2 > value.length) {
+        return identities
+      }
+
+      offset += 33
+      const encryptedLength = (value[offset] << 8) | value[offset + 1]
+      offset += 2 + encryptedLength
+    }
+  }
+
+  return identities
+}
+
+export const bolt12OfferIdentityRefs = offer => {
+  const records = bolt12OfferTlvRecords(offer)
+
+  if (records === null || records.length === 0) {
+    return null
+  }
+
+  const identities = new Set()
+
+  for (const record of records) {
+    if (record.type === 22 && record.value.length === 33) {
+      identities.add(`issuer:${hexFromBytes(record.value)}`)
+    }
+
+    if (record.type === 16) {
+      const firstNodeIds = blindedPathFirstNodeIds(record.value)
+
+      if (firstNodeIds !== null) {
+        for (const firstNodeId of firstNodeIds) {
+          identities.add(`path_entry:${firstNodeId}`)
+        }
+      }
+    }
+  }
+
+  return identities.size === 0 ? null : identities
+}
+
+export const offersShareSelfPayIdentity = (offerA, offerB) => {
+  const identitiesA = bolt12OfferIdentityRefs(offerA)
+  const identitiesB = bolt12OfferIdentityRefs(offerB)
+
+  if (identitiesA === null || identitiesB === null) {
+    return null
+  }
+
+  for (const identity of identitiesA) {
+    if (identitiesB.has(identity)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export const classifyStalledTipSendFromPayments = (rows, amountSats) => {
+  if (!Array.isArray(rows)) {
+    return 'unclassified'
+  }
+
+  const matching = rows.filter(
+    row =>
+      row !== null &&
+      typeof row === 'object' &&
+      row.direction === 'outbound' &&
+      Number(row.amountSats) === Number(amountSats) &&
+      row.status !== 'completed',
+  )
+
+  if (matching.length === 0) {
+    return 'unclassified'
+  }
+
+  const newest = matching.reduce((latest, row) =>
+    Number(row.timestamp ?? 0) >= Number(latest.timestamp ?? 0) ? row : latest,
+  )
+  const hash = newest.paymentHash ?? newest.payment_hash
+
+  return typeof hash === 'string' && hash.trim() !== ''
+    ? 'route_unresolved'
+    : 'no_invoice_fetched'
+}
+
+const tipFailureClassificationReasonRef = classification =>
+  classification === 'no_invoice_fetched'
+    ? 'reason.public.forum_tip_send_no_invoice_fetched'
+    : classification === 'route_unresolved'
+      ? 'reason.public.forum_tip_send_route_unresolved'
+      : null
+
+const walletJsonObjectFromOutput = stdout => {
+  if (typeof stdout !== 'string') {
+    return null
+  }
+
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+
+    if (!trimmed.startsWith('{')) {
+      continue
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed)
+
+      if (parsed !== null && typeof parsed === 'object') {
+        return parsed
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
+const readPayerOfferIdentityRefs = async executor => {
+  try {
+    const result = await executor(walletCommandSpecs.receiveBolt12)
+    const parsed = walletJsonObjectFromOutput(result?.stdout)
+    const offer = typeof parsed?.offer === 'string' ? parsed.offer : null
+
+    return offer === null ? null : bolt12OfferIdentityRefs(offer)
+  } catch {
+    return null
+  }
+}
+
+const classifyStalledTipSend = async (executor, amountSats) => {
+  try {
+    const result = await executor(walletCommandSpecs.payments)
+    const parsed = walletJsonObjectFromOutput(result?.stdout)
+    const rows = Array.isArray(parsed?.payments) ? parsed.payments : null
+
+    return classifyStalledTipSendFromPayments(rows, amountSats)
+  } catch {
+    return 'unclassified'
+  }
+}
 
 const checkPassed = spec => ({
   commandRef: spec.publicCommandRef,
@@ -940,22 +1222,26 @@ const paidRewardResult = ({
 
 const directTipResult = ({
   attemptId = null,
+  failureClassification = null,
   livePaymentAttempted = false,
   payment = null,
   preflight = null,
   reasonRef = null,
   receipt = null,
+  selfPayCheck = null,
   status,
   target = null,
 }) => ({
   kind: 'forum_direct_bolt12_tip',
   attemptId,
+  ...(failureClassification === null ? {} : { failureClassification }),
   livePaymentAttempted,
   payment,
   preflight,
   publicSafe: true,
   reasonRef,
   receipt,
+  ...(selfPayCheck === null ? {} : { selfPayCheck }),
   status,
   target,
 })
@@ -964,21 +1250,25 @@ const tipPostSmokeResult = ({
   balanceAfter = null,
   balanceBefore = null,
   directTip,
+  failureClassification = null,
   mode,
   postStatsAfter = null,
   reasonRef = null,
   recoveredAfterTimeout = false,
+  selfPayCheck = null,
   status,
 }) => ({
   balanceAfter,
   balanceBefore,
   directTip,
+  ...(failureClassification === null ? {} : { failureClassification }),
   kind: 'forum_direct_bolt12_tip_smoke',
   mode,
   postStatsAfter,
   publicSafe: true,
   reasonRef,
   recoveredAfterTimeout,
+  ...(selfPayCheck === null ? {} : { selfPayCheck }),
   status,
 })
 
@@ -2554,6 +2844,42 @@ export const runForumDirectTipPostPayment = async (
     })
   }
 
+  const payerOfferIdentityRefs = await readPayerOfferIdentityRefs(
+    walletExecutor,
+  )
+  const selfPayShared =
+    payerOfferIdentityRefs === null
+      ? null
+      : (() => {
+          const recipientIdentityRefs = bolt12OfferIdentityRefs(
+            directPayment.bolt12Offer,
+          )
+
+          if (recipientIdentityRefs === null) {
+            return null
+          }
+
+          for (const identity of recipientIdentityRefs) {
+            if (payerOfferIdentityRefs.has(identity)) {
+              return true
+            }
+          }
+
+          return false
+        })()
+
+  if (selfPayShared === true) {
+    return directTipResult({
+      preflight,
+      reasonRef: 'reason.public.forum_tip_self_pay_blocked',
+      selfPayCheck: 'blocked',
+      status: 'self_pay_blocked',
+      target,
+    })
+  }
+
+  const selfPayCheck = selfPayShared === false ? 'passed' : 'inconclusive'
+
   const walletPayment = await runAgentWalletSendPayment({
     amount: amount.amount,
     destination: directPayment.bolt12Offer,
@@ -2564,6 +2890,9 @@ export const runForumDirectTipPostPayment = async (
     const timedOut =
       walletPayment.blocker?.reasonRef ===
       'reason.public.agent_wallet_send_timeout'
+    const failureClassification = timedOut
+      ? await classifyStalledTipSend(walletExecutor, amount.amount)
+      : null
     const evidence = directTipEvidenceFromWalletBlocker({
       amount,
       blocker: walletPayment.blocker,
@@ -2582,10 +2911,18 @@ export const runForumDirectTipPostPayment = async (
     }).catch(() => null)
 
     return directTipResult({
+      failureClassification,
       livePaymentAttempted: true,
       payment: {
         commandRef: 'mdk_agent_wallet.send',
         evidenceRef: evidence.redactedEvidenceRef,
+        ...(failureClassification === null
+          ? {}
+          : {
+              failureClassification,
+              failureClassificationReasonRef:
+                tipFailureClassificationReasonRef(failureClassification),
+            }),
         reasonRef:
           walletPayment.blocker?.reasonRef ??
           'reason.public.agent_wallet_send_failed',
@@ -2596,6 +2933,7 @@ export const runForumDirectTipPostPayment = async (
         walletPayment.blocker?.reasonRef ??
         'reason.public.agent_wallet_send_failed',
       receipt: recorded?.receipt ?? null,
+      selfPayCheck,
       status: timedOut ? 'recovery_pending' : 'payment_failed',
       attemptId: recorded?.attemptId ?? null,
       target,
@@ -2631,6 +2969,7 @@ export const runForumDirectTipPostPayment = async (
     },
     preflight,
     receipt: recorded.receipt ?? null,
+    selfPayCheck,
     status: recorded.status === 'settled' ? 'settled' : recorded.status,
     attemptId: recorded.attemptId ?? null,
     target: {
@@ -2696,6 +3035,7 @@ export const runForumDirectTipPostSmoke = async (
   const postAfter = await requestJson(postRequest).catch(() => null)
   const recoveredAfterTimeout = directTipUsedRecovery(directTip)
   const strictFailure = mode === 'strict_smooth' && recoveredAfterTimeout
+  const failureClassification = directTip.failureClassification ?? null
   const status = strictFailure
     ? 'failed'
     : directTip.status === 'settled'
@@ -2718,12 +3058,18 @@ export const runForumDirectTipPostSmoke = async (
       },
       tipSettlement: directTip.receipt?.tipSettlement ?? null,
     },
+    failureClassification,
     mode,
     postStatsAfter: postTipStatsFromDetail(postAfter),
     reasonRef: strictFailure
-      ? 'reason.public.forum_tip_smoke_recovery_used'
+      ? failureClassification === 'no_invoice_fetched'
+        ? 'reason.public.forum_tip_smoke_no_invoice_fetched'
+        : failureClassification === 'route_unresolved'
+          ? 'reason.public.forum_tip_smoke_route_unresolved'
+          : 'reason.public.forum_tip_smoke_recovery_used'
       : directTip.reasonRef,
     recoveredAfterTimeout,
+    selfPayCheck: directTip.selfPayCheck ?? null,
     status,
   })
 }
