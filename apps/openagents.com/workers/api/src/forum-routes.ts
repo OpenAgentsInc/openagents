@@ -90,6 +90,10 @@ import {
   watchForumTarget,
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
+import {
+  orangeCheckBadgeProjection,
+  readActiveOrangeCheckByActorRef,
+} from './orange-check-entitlements'
 import { verifyOpenAgentsForumMdkWebhook } from './forum-mdk-webhooks'
 import {
   type ForumL402SigningBoundaryProvider,
@@ -2674,8 +2678,17 @@ const tipReconciliationResponse = (
 
 const agentProfileResponse = (db: D1Database, profileRef: string) =>
   readForumAgentPublicProfile(db, profileRef).pipe(
-    Effect.map(profile =>
-      profile === null ? notFound() : noStoreJsonResponse({ profile }),
+    Effect.flatMap(profile =>
+      profile === null
+        ? Effect.succeed(notFound())
+        : readActiveOrangeCheckByActorRef(db, profile.actor.actorRef).pipe(
+            Effect.map(entitlement =>
+              noStoreJsonResponse({
+                orangeCheck: orangeCheckBadgeProjection(entitlement),
+                profile,
+              }),
+            ),
+          ),
     ),
     Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
   )
@@ -4010,7 +4023,24 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? publicReadResponse(readForumPostDetail(db, postId))
+        ? publicReadResponse(
+            readForumPostDetail(db, postId).pipe(
+              Effect.flatMap(detail =>
+                detail === null
+                  ? Effect.succeed(null)
+                  : readActiveOrangeCheckByActorRef(
+                      db,
+                      detail.post.author.actorRef,
+                    ).pipe(
+                      Effect.map(entitlement => ({
+                        ...detail,
+                        authorOrangeCheck:
+                          orangeCheckBadgeProjection(entitlement),
+                      })),
+                    ),
+              ),
+            ),
+          )
         : request.method === 'PATCH'
           ? editPostResponse(request, db, postId, requestDependencies)
           : request.method === 'DELETE'

@@ -516,6 +516,18 @@ const signStandardWebhook = async (
 }
 
 class ForumRouteStore {
+  orangeCheckEntitlements: Array<{
+    action_ref: string | null
+    actor_ref: string
+    agent_user_id: string
+    created_at: string
+    id: string
+    paid_amount_cents: number
+    receipt_ref: string
+    state: string
+    updated_at: string
+  }> = []
+
   private idCounter = 0
 
   nextId(): string {
@@ -1038,6 +1050,15 @@ class ForumRouteStatement implements D1PreparedStatement {
   first<T = unknown>(colName: string): Promise<T | null>
   first<T = Record<string, unknown>>(): Promise<T | null>
   first<T = unknown>(): Promise<T | null> {
+    if (this.query.includes('FROM orange_check_entitlements')) {
+      const actorRef = String(this.values[0])
+      const entitlement = this.store.orangeCheckEntitlements.find(
+        item => item.actor_ref === actorRef && item.state === 'active',
+      )
+
+      return Promise.resolve((entitlement ?? null) as T | null)
+    }
+
     if (this.query.includes('SELECT COUNT(*) AS count')) {
       const actorRef = String(this.values[0])
       let count = 0
@@ -6619,6 +6640,68 @@ describe('Forum routes', () => {
     })
     expect(store.reports[0]?.status).toBe('resolved')
     expect(store.moderationEvents).toHaveLength(3)
+  })
+
+  test('projects orange-check badges on profiles and posts from active entitlements', async () => {
+    const store = new ForumRouteStore()
+    const created = await route(
+      store,
+      '/api/forum/forums/site-builder-help/topics',
+      {
+        body: {
+          bodyText: 'Orange badge projection test thread.',
+          title: 'Orange badge thread',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'orange-topic-create-1',
+        },
+        method: 'POST',
+      },
+    )
+    const createdBody = (await created.json()) as Readonly<{
+      firstPost: Readonly<{ author: Readonly<{ actorRef: string }>; postId: string }>
+    }>
+    const actorRef = createdBody.firstPost.author.actorRef
+    const postId = createdBody.firstPost.postId
+    const before = await route(store, `/api/forum/posts/${postId}`)
+    const beforeBody = (await before.json()) as Readonly<{
+      authorOrangeCheck: Readonly<{ active: boolean }>
+    }>
+
+    store.orangeCheckEntitlements.push({
+      action_ref: 'forum_money_action.test.orange',
+      actor_ref: actorRef,
+      agent_user_id: actorRef.replace('agent:', ''),
+      created_at: '2026-06-09T00:00:00.000Z',
+      id: 'orange_check_test_1',
+      paid_amount_cents: 500,
+      receipt_ref: 'orange_check_receipt.test_1',
+      state: 'active',
+      updated_at: '2026-06-09T00:00:00.000Z',
+    })
+
+    const after = await route(store, `/api/forum/posts/${postId}`)
+    const afterBody = (await after.json()) as Readonly<{
+      authorOrangeCheck: Readonly<{ active: boolean; badgeRef: string | null }>
+    }>
+    const profile = await route(
+      store,
+      `/api/forum/actors/${encodeURIComponent(actorRef)}/profile`,
+    )
+    const profileBody = (await profile.json()) as Readonly<{
+      orangeCheck: Readonly<{ active: boolean; meaning: string }>
+    }>
+
+    expect(beforeBody.authorOrangeCheck).toMatchObject({ active: false })
+    expect(afterBody.authorOrangeCheck).toMatchObject({
+      active: true,
+      badgeRef: 'orange_check_receipt.test_1',
+    })
+    expect(profile.status).toBe(200)
+    expect(profileBody.orangeCheck).toMatchObject({ active: true })
+    expect(profileBody.orangeCheck.meaning).toContain('owner-claimed')
+    expect(JSON.stringify(afterBody)).not.toMatch(/verified human|safe account/i)
   })
 
   test('pins and unpins topics through moderator actions with pinned-first ordering', async () => {
