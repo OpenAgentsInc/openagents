@@ -867,6 +867,58 @@ describe('agent owner claim routes', () => {
     )
   })
 
+  test('keeps the X verification code at 12 characters or fewer', async () => {
+    const store = new MemoryAgentOwnerClaimStore()
+    await createClaim(store, {
+      makeUuid: makeUuidFactory([
+        'claim-2',
+        'user-2',
+        'credential-2',
+        'identity-2',
+      ]),
+    })
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-2/approve',
+        { method: 'POST' },
+      ),
+      {
+        makeUuid: makeUuidFactory(['user-2', 'credential-2', 'identity-2']),
+        nowIso: () => '2026-06-06T00:05:00.000Z',
+        session,
+      },
+    )
+
+    const response = await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-2/x/challenge',
+        {
+          body: JSON.stringify({}),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory([
+          '123e4567-e89b-42d3-a456-426614174000',
+          'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+        ]),
+        nowIso: () => '2026-06-06T00:06:00.000Z',
+        session,
+      },
+    )
+    const body = (await response.json()) as {
+      xClaim: { nonce: string; requiredText: string }
+    }
+
+    expect(response.status).toBe(201)
+    expect(body.xClaim.nonce).toBe('oa-x-f47ac10')
+    expect(body.xClaim.nonce.length).toBeLessThanOrEqual(12)
+    expect(body.xClaim.requiredText).toContain('Code: oa-x-f47ac10')
+  })
+
   test('escapes friendly tweet copy inside the X intent URL', async () => {
     const store = new MemoryAgentOwnerClaimStore()
     await runRoute(

@@ -1301,7 +1301,10 @@ const startXClaimResponse = async <
 
   const makeUuid = dependencies.makeUuid ?? randomUuid
   const challengeId = `agent_x_claim_${makeUuid()}`
-  const nonce = `oa-x-${makeUuid().replaceAll('-', '').slice(0, 24)}`
+  // Owner-facing verification code; keep the full string at 12 chars max so
+  // the tweet copy stays human-friendly. Substring-matched against the tweet,
+  // bound to one claim and one challenge, so 7 hex chars of entropy suffice.
+  const nonce = `oa-x-${makeUuid().replaceAll('-', '').slice(0, 7)}`
   const requiredUrl = `${dependencies.appOrigin(env)}${claimPagePath(current.id)}`
   const normalizedHandle =
     parsed.xHandle === undefined || parsed.xHandle.trim() === ''
