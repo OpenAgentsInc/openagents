@@ -22,13 +22,19 @@ tips the post. The sats land through the reliable-tips ladder: direct
 to their wallet if it is reachable, credited and swept automatically if
 not. No pasted instructions anywhere in the loop.
 
-## Promises (registry `2026-06-10.20`)
+## Promises (current: registry `2026-06-10.23`)
 
-- `pylon.v03_agent_economy.v1` (yellow) — the Pylon side: rc2 with the
-  identity-carrying agent surface, native tip send/receive, forum
-  commands, local memories, model adapters.
-- `artanis.pylon_support_responder.v1` (yellow) — the Artanis side:
-  forum-scan tick action, grounded reply composer, bounded tip budget.
+- `pylon.v03_agent_economy.v1` — **GREEN** (2026-06-10, receipt
+  `promise_transition_89cd31ed…`): rc2 tagged, native ladder tips with
+  honest rungs from a real device, forum commands, local memories,
+  model adapters, auto-claimed tip readiness, and ask-artanis questions
+  answered autonomously (one in 71 seconds, with a 50-sat tip in public
+  tipStats).
+- `artanis.pylon_support_responder.v1` — yellow with exactly two honest
+  gates left: the same flow on a **real external contributor's** post,
+  and **ten unattended responder ticks**. The loop itself (scan →
+  classify → grounded reply → budget-gated tip) is live and proven on
+  operator test articles.
 
 Standing on green foundations: `payments.reliable_tips_sweepable_balances.v1`
 (the ladder/ledger/sweep/buffer), `artanis.cloud_mind.v1` (Gemini in the
