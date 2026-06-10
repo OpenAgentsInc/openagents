@@ -139,7 +139,120 @@ posts require the registration's owning agent token; packaged
 contributors who register with `OPENAGENTS_AGENT_TOKEN` set are
 unaffected, but onboarding docs should say so).
 
-## 5. Verdict
+## 5. Artanis: the agent-driven operation this lane was built for
+
+Extension, 2026-06-10: a review of the Artanis surface (44 docs under
+`apps/openagents.com/docs/artanis/`, ~30 `artanis-*` modules in the
+worker) against the executor lane, with speculation labeled as such.
+
+### 5.1 What Artanis is today
+
+Artanis is the autonomous operator-agent layer of the product surface:
+a durable tick/claim/closeout **loop ledger** (`agent_artanis`, one
+active loop per scope, idempotent ticks, blockers, approval
+requirements, closeout receipts, Forum publication intents, next-tick
+scheduling — `artanis-loop.ts`, autonomous-loop contract doc), a
+worker-cron **scheduled runner** that is config-gated
+(`config.artanis.scheduledRunnerEnabled`,
+`runner_backend.public.artanis.worker_cron`), typed **action kinds**
+with risk classes (`pylon_triage`, `training_launch`, `wallet_spend`,
+`forum_publication`, … — risky kinds can never be marked safe and
+require approval + authority receipts), an **operator console and
+steering contract**, **approval gates**, a **Forum publication queue**
+with delivery verification, a **public-report authority split**, and
+the **Nexus-Pylon admin adapters** — which are exactly the
+accepted-work-payout and settlement-bridge routes the PoC used (their
+request schemas already carry `artanisDispatchRef` and
+`artanisRunRef` fields). The 2026-06-08 launch-status audit's verdict
+stands: Artanis has a deployed evidence surface and controlled
+enablement projection, but is not a launched autonomous network.
+
+The structural observation that motivates this section: **the green PoC
+was a human (well, one agent) performing the Artanis loop by hand.**
+Register/triage the Pylon → dispatch the assignment → accept the
+closeout on digest evidence → drive the verification challenge → bridge
+the settlement → post the Forum report under copy gates. Every step I
+executed manually has a typed Artanis surface waiting to own it. The
+PoC is therefore not just evidence for the promise — it is a completed
+dry run of one full Artanis tick, with receipts shaped the way the loop
+ledger expects.
+
+### 5.2 Why executor-trace is Artanis's best first work class (speculation)
+
+Artanis's central constraint is that risky actions require approval:
+the loop can act autonomously only where verdicts are mechanical. Most
+work classes fail this — grading a GEPA rollout or accepting a coding
+artifact embeds judgment. Executor-trace work is the exception by
+construction: the acceptance predicate is a digest comparison, the
+verification class is deterministic replay, and rejection carries the
+exact tampered step. It is the one work class where the **entire**
+dispatch → execute → verify → accept span can be `safe`-classed actions
+under the existing risk rules, with exactly one `approval_required`
+action remaining — `wallet_spend` at payout — which is precisely where
+the owner's standing spend-enable posture already draws the line. The
+cheapest verification grade and the strictest autonomy gate meet at the
+same boundary, and that is not a coincidence; it is the
+work-that-proves-itself thesis expressed in Artanis's type system.
+
+Mapped onto the existing vocabulary, a standing executor-trace loop
+would look like:
+
+| PoC manual step | Artanis surface that owns it | risk class |
+| --- | --- | --- |
+| Pylon registration/heartbeat/capability triage | `pylon_triage` action; health/staleness monitor | safe |
+| Assignment dispatch (no-spend) | continual job template → work routing target `pylon` | safe |
+| Closeout acceptance on digest match | tick closeout receipt, gated on the artifact digest ref | safe (mechanical predicate) |
+| Worker replay + challenge lifecycle | verification action against `/api/operator/tassadar/replay` + the #4674 queue | safe |
+| Paid closeout + settlement bridge | Nexus-Pylon adapters (already Artanis-shaped) | `wallet_spend`, approval_required |
+| Forum report | publication queue + delivery verification, copy-gated to the promise safeCopy | `forum_publication`, gated |
+
+### 5.3 The always-on floor
+
+The executor lane gives Artanis a queue that never empties: psionic's
+own conformance needs — fixture sweeps across the five executor legs,
+bounded-harness replays, cross-language digest parity on every executor
+release — are real, useful, continuously available work ("we are our
+own first buyer," per the lane essay). A standing Artanis loop
+dispatching that backlog to idle Pylons at no-spend, with sampled paid
+closeouts under capped `wallet_spend` approvals, is the smallest honest
+version of an autonomous work network: every tick produces
+digest-pinned receipts, every acceptance is replayable, and the
+comparative-economics evidence packets Artanis already models get their
+cleanest possible unit (cost per verified trace). The weak-device
+validator lane (#4676) slots in as Artanis-scheduled replay challenges
+— validator work as paid assignments, scheduled by the same loop that
+dispatched the work being checked.
+
+### 5.4 What tying it together would take (concrete, beyond v0.3)
+
+None of this belongs in the v0.3 release; all of it builds on surfaces
+that exist:
+
+1. An **executor-trace continual job template** — the template-kind
+   enum (`adapter_validation`, `benchmark_eval_rerun`, …) wants a
+   seventh kind (or `adapter_validation` reused) binding the dispatch
+   script's payload shape to a template with spend caps and workload
+   refs.
+2. A **tick wiring** from the scheduled runner: one safe tick =
+   dispatch one no-spend workload to one eligible Pylon, await
+   closeout, run the replay verdict, record receipts, queue the Forum
+   intent. The loop contract's idempotency-key and
+   one-active-loop-per-scope rules already fit assignment refs.
+3. **Approval-gate plumbing for the paid sample**: a `wallet_spend`
+   approval requirement whose authority receipt is the operator's
+   spend-enable, with the settlement-bridge receipts closing the tick —
+   the adapters already carry the Artanis ref fields.
+4. **Copy gates**: the publication queue's allowed claim for this lane
+   is the promise's safeCopy, nothing broader; the public-report
+   authority split doc governs, and the launch-status audit's
+   no-overclaim posture extends unchanged.
+5. The two PoC residuals become Artanis prerequisites: registration
+   ownership (the loop's agent must own the Pylon registrations it
+   posts settlement events for) and the hosted-MDK programmatic-payout
+   switch (or the agent-wallet adapter registered in the payment
+   authority) for payouts that do not route through a local bridge.
+
+## 6. Verdict
 
 The lane is **release-poised**: the execution path is in the RC source,
 tested, live-proven against production, and the release gate is green
@@ -150,7 +263,12 @@ a pre-existing v0.3 question Tassadar inherits rather than creates), and
 items 4–5 are cheap hardening that should land with them. Nothing about
 the lane requires changing what v0.3 *is* — it slots into the existing
 assignment, capability, smoke, and no-overclaim machinery exactly as
-those systems were designed to absorb a new work class.
+those systems were designed to absorb a new work class. Beyond the
+release, section 5 argues this lane is the natural first work class for
+autonomous Artanis operation: the only one whose full
+dispatch→verify→accept span is mechanically safe under Artanis's own
+risk rules, with spend approval remaining exactly where the owner's
+posture already puts it.
 
 ## Source refs
 
@@ -164,5 +282,12 @@ those systems were designed to absorb a new work class.
 - `apps/openagents.com/workers/api/src/tassadar-executor-trace-homework.ts`,
   `tassadar-replay-validator.ts`, `scripts/tassadar-poc-dispatch.ts`
 - Issues: #4687 (epic), #4689–#4694 (sequence), #4654/#4655/#4656
-  (release cluster)
+  (release cluster), #4696 (v0.3 inclusion), #4676 (validator lane)
 - Promise: `compute.tassadar_executor_poc.v1` (green, 2026-06-10.12)
+- Artanis: `apps/openagents.com/workers/api/src/artanis-loop.ts`,
+  `artanis-scheduled-runner.ts`, `artanis-continual-learning-templates.ts`,
+  `artanis-work-routing.ts`, `artanis-approval-gates.ts`,
+  `artanis-nexus-pylon-adapters.ts`, `artanis-forum-publication.ts`;
+  `apps/openagents.com/docs/artanis/2026-06-06-autonomous-loop-contract.md`,
+  `2026-06-08-artanis-gepa-network-launch-status-audit.md`,
+  `2026-06-08-artanis-public-report-authority-split.md`
