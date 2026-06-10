@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/pylon",
-  "version": "0.3.0-rc1",
+  "version": "0.3.0-rc2",
   "description": "Modern Pylon contributor node built on Bun, Effect, and OpenTUI",
   "private": false,
   "main": "src/index.ts",

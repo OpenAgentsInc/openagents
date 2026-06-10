@@ -107,6 +107,24 @@ const packNip90 = async () => {
   return join(packageRoot, tarball)
 }
 
+const packTassadarExecutor = async () => {
+  const packageRoot = join(workspaceRoot, "packages/tassadar-executor")
+  const result = await runRequired("bun pm pack @openagents/tassadar-executor", ["bun", "pm", "pack"], {
+    cwd: packageRoot,
+    timeoutMs: 60_000,
+  })
+  const tarball = result.stdout
+    .split("\n")
+    .map(line => line.trim())
+    .find(line => /^openagents-tassadar-executor-.*\.tgz$/.test(line))
+
+  if (!tarball) {
+    throw new Error(`failed to find packed @openagents/tassadar-executor tarball in bun pm pack output: ${result.stdout}`)
+  }
+
+  return join(packageRoot, tarball)
+}
+
 const summarizeBootstrap = (bootstrap: Record<string, unknown>) => {
   const platform = bootstrap.platform && typeof bootstrap.platform === "object"
     ? bootstrap.platform as Record<string, unknown>
@@ -162,11 +180,13 @@ async function main() {
   const pylonHome = join(tmpDir, "pylon-home")
   let tarball: string | undefined
   let nip90Tarball: string | undefined
+  let tassadarTarball: string | undefined
   await mkdir(projectDir, { recursive: true })
 
   try {
     tarball = await pack()
     nip90Tarball = await packNip90()
+    tassadarTarball = await packTassadarExecutor()
     await writeFile(
       join(projectDir, "package.json"),
       `${JSON.stringify({
@@ -176,6 +196,7 @@ async function main() {
         name: "pylon-packaged-network-smoke",
         overrides: {
           "@openagents/nip90": `file:${nip90Tarball}`,
+          "@openagents/tassadar-executor": `file:${tassadarTarball}`,
         },
         private: true,
         type: "module",
@@ -244,6 +265,22 @@ async function main() {
       { cwd: projectDir, env },
     )
 
+    // v0.3 readiness item 3: the executor-trace leg runs the bundled
+    // fixture replay THROUGH the installed artifact, proving the
+    // execution lane works from the package users actually install.
+    const executorReplay = await runRequired(
+      "packaged executor-trace fixture replay",
+      [
+        "bun",
+        join(projectDir, "node_modules/@openagents/tassadar-executor/src/replay-cli.ts"),
+        join(projectDir, "node_modules/@openagents/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json"),
+      ],
+      { cwd: projectDir, env },
+    )
+    const executorReplayResult = jsonFrom<{ verdict?: { outcome?: string } }>(executorReplay)
+    const executorReplayVerified =
+      executorReplayResult.verdict?.outcome === "verified"
+
     const stats = await publicGet(baseUrl, "/api/public/pylon-stats")
     const funnel = await publicGet(baseUrl, "/api/public/pylon-capacity-funnel")
     const walletStatus = jsonFrom<{ status: { receiveReady: boolean; readiness: string } }>(walletReport).status
@@ -276,7 +313,7 @@ async function main() {
       funnel: funnelSummary,
       pylonRef,
       stats: statsSummary,
-      status: blockerRefs.length === 0 ? "passed" : "partial",
+      status: blockerRefs.length === 0 && executorReplayVerified ? "passed" : "partial",
       stepRefs: [
         "smoke.pylon.packaged_install",
         "smoke.pylon.packaged_bootstrap",
@@ -286,7 +323,12 @@ async function main() {
         "smoke.pylon.packaged_payout_target_admission",
         "smoke.pylon.public_stats_read",
         "smoke.pylon.capacity_funnel_read",
+        "smoke.pylon.packaged_executor_trace_replay",
       ],
+      executorTraceReplay: {
+        fixtureId: "tassadar-poc-loop-sum-v1",
+        verified: executorReplayVerified,
+      },
       walletReadiness: {
         readiness: walletStatus.readiness,
         receiveReady: walletStatus.receiveReady,

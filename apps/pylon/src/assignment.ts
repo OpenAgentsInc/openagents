@@ -5,6 +5,9 @@ import { createHash } from "node:crypto"
 import {
   collectInterpreterOutputs,
   executeTassadarNumericModel,
+  TASSADAR_EXECUTOR_CAPABILITY_REF,
+  TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
+  TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from "@openagents/tassadar-executor"
 import type { BootstrapSummary } from "./bootstrap"
 import { createSignedHeaders } from "./presence"
@@ -192,7 +195,7 @@ export function tassadarPayloadFrom(codingAssignment: unknown): TassadarAssignme
     | null
     | undefined
   const kind = record?.kind
-  if (kind !== "tassadar_executor_trace" && kind !== "tassadar_executor_trace_homework") {
+  if (kind !== TASSADAR_EXECUTOR_TRACE_JOB_KIND && kind !== TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND) {
     return null
   }
   const tassadar = record.tassadar

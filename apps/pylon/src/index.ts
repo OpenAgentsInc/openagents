@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { readFile } from "node:fs/promises"
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagents/tassadar-executor"
 import { Effect, Console } from "effect"
 import {
   createCliRenderer,
@@ -1332,7 +1333,7 @@ async function main() {
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
-          capabilityRefs: [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF, PYLON_LABOR_CAPABILITY_REF])],
+          capabilityRefs: [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF, PYLON_LABOR_CAPABILITY_REF, TASSADAR_EXECUTOR_CAPABILITY_REF])],
           blockerRefs: state.runtime.blockerRefs.filter((ref) => ref !== "blocker.assignment.lifecycle_offline"),
         }
         await writeRuntimeState(state.paths, nextRuntime)

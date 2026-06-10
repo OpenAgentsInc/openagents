@@ -48,3 +48,13 @@ the named evidence refs before copy can change.
 macOS and Linux are the only first launch platforms. A CI workflow is still
 blocked until the GitHub token used by the agent has workflow scope; until then,
 `bun run release:gate` is the required local gate before public copy changes.
+
+## Allowed scoped executor claim (v0.3)
+
+The ONLY executor copy a v0.3 release may carry is the promise's scoped
+safeCopy: one workload family (the Tassadar PoC numeric-model trace),
+executed by a registered Pylon, replay-verified byte-identically by the
+worker, with a dated settled receipt - receipts cited, nothing
+generalized. "Paid Pylon work settles Bitcoin" and "Pylons sell compute
+capacity live" remain blocked as general copy; release notes must use
+the scoped line above, never the general ones.

@@ -77,7 +77,10 @@ const body = {
   codingAssignment: {
     kind: TassadarExecutorTraceJobKind,
     objective: { objectiveRef: `goal.tassadar_poc.execute.${fixture.fixtureId}` },
-    requiredCapabilityRefs: [],
+    // Admission hardening (v0.3 readiness item 4): mirror the capability
+    // into the lease payload so Pylon-side admission enforces it too,
+    // not just operator dispatch.
+    requiredCapabilityRefs: ['capability.tassadar_poc.numeric_model_executor'],
     tassadar: {
       boundedProfileRef: TassadarBoundedProfileRef,
       expectedModelDigest: fixture.expectedModelDigest,
