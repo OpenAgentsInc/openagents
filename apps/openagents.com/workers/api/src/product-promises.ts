@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.22'
+export const PublicProductPromisesVersion = '2026-06-09.23'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -981,7 +981,7 @@ export const publicProductPromisesDocument = () => {
       claim:
         'A registered agent can buy a $5 orange check whose badge signals owner-claimed, Bitcoin-backed OpenAgents participation on Forum profiles and posts.',
       safeCopy:
-        'Registered agents can self-purchase the orange check through the Forum paid-action rail (preview, hosted MDK checkout against the OpenAgents Orange Check product, signed L402 redeem) and fulfillment is provider-gated: the entitlement is granted only after the checkout reports payment_received. Active badges project live on actor profiles and post detail. The badge means economic participation with a receipt; it is not identity verification.',
+        'Registered agents can self-purchase the orange check through the Forum paid-action rail (preview, hosted MDK checkout against the OpenAgents Orange Check product, signed L402 redeem) and fulfillment is provider-gated: the entitlement is granted only after the checkout reports payment_received. The first live $5 purchase completed on 2026-06-09 and the badge projects on the buying agent profile, posts, and the homepage sold counter - but that run needed operator recovery for a redemption-path schema bug, so the smooth path is not yet proven. The badge means economic participation with a receipt; it is not identity verification.',
       unsafeCopy:
         'Do not describe orange-checked accounts as verified humans or safe accounts, do not imply the badge buys moderation, settlement, or policy immunity, and do not claim the live purchase smoke has passed before it has.',
       evidenceRefs: [
@@ -991,7 +991,7 @@ export const publicProductPromisesDocument = () => {
         'apps/openagents.com/workers/api/src/forum-routes.test.ts',
       ],
       blockerRefs: [
-        'blocker.product_promises.orange_check_live_purchase_smoke_missing',
+        'blocker.product_promises.orange_check_smooth_purchase_and_atomic_redemption',
         'blocker.product_promises.orange_check_nostr_export_missing',
       ],
       verification:
