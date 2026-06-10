@@ -1,3 +1,4 @@
+import { ErrorCorrectionLevel, QRCode } from '@liquid-js/qrcode-generator'
 import { Effect } from 'effect'
 
 import type {
@@ -9,6 +10,19 @@ import { methodNotAllowed } from './http/responses'
 type HttpResponse = globalThis.Response
 
 const checkoutPagePattern = /^\/checkout\/([A-Za-z0-9]{8,64})$/
+
+const invoiceQrSvg = (invoice: string): string => {
+  try {
+    const qr = new QRCode(0, ErrorCorrectionLevel.L)
+
+    qr.addData(`LIGHTNING:${invoice.toUpperCase()}`, 'alphanumeric')
+    qr.make()
+
+    return qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true })
+  } catch {
+    return ''
+  }
+}
 
 const escapeHtml = (value: string): string =>
   value
@@ -33,6 +47,8 @@ p { line-height: 1.5; font-size: 14px; color:#a3a3a3; }
 pre { background:#171717; border:1px solid #262626; padding:12px; white-space:pre-wrap; word-break:break-all; font-size:12px; border-radius:6px; }
 a.button { display:inline-block; background:#f97316; color:#0a0a0a; padding:10px 16px; border-radius:6px; text-decoration:none; font-weight:bold; margin-top:8px; }
 .status { margin-top:16px; font-size:13px; }
+.qr { background:#ffffff; border-radius:8px; padding:8px; width:fit-content; max-width:320px; margin:16px 0; }
+.qr svg { display:block; width:100%; max-width:304px; height:auto; }
 .ok { color:#22c55e; }
 </style>
 </head>
@@ -142,12 +158,14 @@ loaded right now. Refresh in a few seconds.</p>`,
       }
 
       const invoice = escapeHtml(payload.bolt11)
+      const qrSvg = invoiceQrSvg(payload.bolt11)
 
       return htmlPage(
         'Pay with Lightning',
         `<h1>Pay with Lightning</h1>
-<p>Pay this BOLT11 invoice with any Lightning wallet. This page refreshes
-automatically and will confirm when payment is received.</p>
+<p>Scan the QR code with a Lightning wallet, or pay the BOLT11 invoice below.
+This page refreshes automatically and will confirm when payment is received.</p>
+${qrSvg === '' ? '' : `<div class="qr">${qrSvg}</div>`}
 <pre>${invoice}</pre>
 <a class="button" href="lightning:${invoice}">Open in wallet</a>
 <p class="status">Status: ${escapeHtml(status.status)} - waiting for payment.</p>`,

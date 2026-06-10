@@ -35,6 +35,8 @@ describe('checkout page routes', () => {
     expect(html).toContain('Pay with Lightning')
     expect(html).toContain('lntbs')
     expect(html).toContain('lightning:')
+    expect(html).toContain('<svg')
+    expect(html).toContain('class="qr"')
     expect(html).not.toContain('oa_agent_')
   })
 

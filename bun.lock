@@ -143,6 +143,7 @@
         "@cloudflare/containers": "0.3.7",
         "@effect/sql-d1": "4.0.0-beta.70",
         "@effect/sql-sqlite-do": "4.0.0-beta.70",
+        "@liquid-js/qrcode-generator": "1.1.6",
         "@moneydevkit/api-contract": "0.1.36",
         "@openagents/email-templates": "workspace:*",
         "@openagents/mullet-schema": "workspace:*",
