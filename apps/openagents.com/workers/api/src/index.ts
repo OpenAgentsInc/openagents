@@ -202,6 +202,8 @@ import {
   makeOperatorAdjutantRoutes,
 } from './operator-adjutant-routes'
 import { makeOperatorBillingHandlers } from './operator-billing-routes'
+import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
+import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
@@ -5242,6 +5244,11 @@ const operatorBillingHandlers = makeOperatorBillingHandlers({
   requireAdminApiToken,
 })
 
+const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
+  makeStore: env => makeD1BuyModeDispatcherStore(openAgentsDatabase(env)),
+  requireAdminApiToken,
+})
+
 const blueprintRoutes = makeBlueprintRoutes<Env>({
   listActionSubmissions: env =>
     listBlueprintActionSubmissions(openAgentsDatabase(env)),
@@ -5618,6 +5625,31 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         requireAdminApiToken: () => requireAdminApiToken(request, env),
         store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
       }),
+  },
+  {
+    path: '/api/operator/buy-mode',
+    handler: (request, env) =>
+      operatorBuyModeRoutes.handleOperatorBuyModeStatusApi(request, env),
+  },
+  {
+    path: '/api/operator/buy-mode/start',
+    handler: (request, env) =>
+      operatorBuyModeRoutes.handleOperatorBuyModeStartApi(request, env),
+  },
+  {
+    path: '/api/operator/buy-mode/stop',
+    handler: (request, env) =>
+      operatorBuyModeRoutes.handleOperatorBuyModeStopApi(request, env),
+  },
+  {
+    path: '/api/operator/buy-mode/dispatch',
+    handler: (request, env) =>
+      operatorBuyModeRoutes.handleOperatorBuyModeDispatchApi(request, env),
+  },
+  {
+    path: '/api/operator/buy-mode/results/settle',
+    handler: (request, env) =>
+      operatorBuyModeRoutes.handleOperatorBuyModeSettleApi(request, env),
   },
   {
     path: '/chat',
