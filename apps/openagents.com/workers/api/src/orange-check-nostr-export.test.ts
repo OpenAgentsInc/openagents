@@ -69,5 +69,25 @@ describe('orange-check Nostr export', () => {
       }),
     ).rejects.toThrow('recipientPubkey must be 64 hex chars')
   })
+
+  test('refuses an unparseable entitlement timestamp instead of inventing one', async () => {
+    await expect(
+      buildOrangeCheckNostrExport({
+        entitlement: {
+          actionRef: 'forum_paid_action.orange_check.challenge_one',
+          actorRef: 'agent:orange-owner',
+          agentUserId: 'orange-owner',
+          createdAt: '2026-06-10T10:00:00.000Z',
+          id: 'orange_check_orange-owner',
+          paidAmountCents: 500,
+          receiptRef: 'orange_check_receipt.challenge_one',
+          state: 'active',
+          updatedAt: 'not-a-date',
+        },
+        issuerPubkey,
+        recipientPubkey,
+      }),
+    ).rejects.toThrow('entitlement timestamp is not a parseable ISO date')
+  })
 })
 

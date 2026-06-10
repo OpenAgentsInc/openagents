@@ -41,9 +41,13 @@ export class OrangeCheckNostrExportError extends Error {}
 const unixTimestampFromIso = (iso: string): number => {
   const parsed = Date.parse(iso)
 
-  return Number.isNaN(parsed)
-    ? Math.floor(Date.now() / 1000)
-    : Math.floor(parsed / 1000)
+  if (Number.isNaN(parsed)) {
+    throw new OrangeCheckNostrExportError(
+      'entitlement timestamp is not a parseable ISO date',
+    )
+  }
+
+  return Math.floor(parsed / 1000)
 }
 
 const appendTags = (
