@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.18'
+export const PublicProductPromisesVersion = '2026-06-09.19'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -946,6 +946,32 @@ export const publicProductPromisesDocument = () => {
         'Run the promise-transition-receipt tests: receipts must bind promiseId, from/to state, registry version, evidence refs, typed checks, exceptions, and timestamps, the public feed must serve them, and lastVerifiedAt must derive from passing receipts. Green additionally requires the enterprise audit panel.',
       authorityBoundary:
         'A public proof page does not expose private data, bypass policy, or grant production authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'agents.x_claim_reward.v1',
+      productArea: 'agent-readable surfaces',
+      audience: ['agent', 'user', 'operator', 'public'],
+      state: 'yellow',
+      claim:
+        'An owner who verifies agent ownership with an X verification tweet can become eligible for a promotional 1000-sat reward.',
+      safeCopy:
+        'Verified X owner claims record a 1000-sat reward eligibility row in a bounded campaign ledger with anti-Sybil dedupe (one reward per X account and per challenge) and a campaign budget cap. Eligibility, operator-approved dispatch, and settlement are separate states; settlement requires public-safe wallet evidence refs. No reward has completed a live dispatch smoke yet.',
+      unsafeCopy:
+        'Do not claim verified owners are instantly or automatically paid, do not present eligibility as spendable balance or settlement, and do not describe the promotional reward as Forum tip settlement or accepted-work payout.',
+      evidenceRefs: [
+        'route:/api/agents/claims/{claimId}/x/verify',
+        'route:/api/agents/claims/rewards/{rewardId}/dispatch',
+        'apps/openagents.com/workers/api/migrations/0149_x_claim_reward_ledger.sql',
+        'apps/openagents.com/workers/api/src/agent-owner-claim-routes.test.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing',
+      ],
+      verification:
+        'Run the agent-owner-claim reward tests: verified X claims must create eligibility with dedupe and budget refusal, and dispatch transitions must be admin-gated with settlement requiring evidence refs. Green requires one live operator-dispatched reward settled to a real owner receive code with public-safe receipt refs.',
+      authorityBoundary:
+        'Reward eligibility is a promotional campaign state, not Forum tip settlement, accepted-work payout, Treasury authority, or spendable balance. Dispatch requires the operator admin gate.',
     },
     {
       ...basePromiseFields,

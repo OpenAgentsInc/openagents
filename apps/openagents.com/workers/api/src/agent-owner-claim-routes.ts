@@ -199,7 +199,51 @@ type AgentOwnerClaimSession = Readonly<{
 
 type HttpResponse = globalThis.Response
 
+export type XClaimRewardState =
+  | 'dispatch_requested'
+  | 'dispatched'
+  | 'eligible'
+  | 'failed'
+  | 'refused'
+  | 'settled'
+
+export type XClaimRewardRecord = Readonly<{
+  agentUserId: string | null
+  amountSats: number
+  challengeId: string
+  claimId: string
+  createdAt: string
+  evidenceRefs: ReadonlyArray<string>
+  id: string
+  ownerUserId: string
+  receiptRef: string
+  state: XClaimRewardState
+  stateReasonRef: string | null
+  updatedAt: string
+  xAccountRef: string
+}>
+
+export const X_CLAIM_REWARD_AMOUNT_SATS = 1000
+export const X_CLAIM_REWARD_CAMPAIGN_CAP = 100
+
 export type AgentOwnerClaimStore = Readonly<{
+  countXClaimRewards: () => Promise<number>
+  createXClaimReward: (
+    record: XClaimRewardRecord,
+  ) => Promise<XClaimRewardRecord>
+  readXClaimRewardByChallengeId: (
+    challengeId: string,
+  ) => Promise<XClaimRewardRecord | undefined>
+  readXClaimRewardById: (
+    rewardId: string,
+  ) => Promise<XClaimRewardRecord | undefined>
+  updateXClaimRewardState: (input: {
+    evidenceRefs: ReadonlyArray<string>
+    now: string
+    rewardId: string
+    stateReasonRef: string | null
+    toState: XClaimRewardState
+  }) => Promise<XClaimRewardRecord | undefined>
   approveClaim: (input: {
     claimId: string
     credentialExpiresAt: string
@@ -254,6 +298,11 @@ type AgentOwnerClaimRouteDependencies<
   Bindings,
 > = Readonly<{
   agentStore?: (env: Bindings) => AgentRegistrationStore
+  requireAdminApiToken?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<boolean>
+  rewardCampaignCap?: number
   appendRefreshedSessionCookies: (
     response: HttpResponse,
     session: Session,
@@ -422,9 +471,11 @@ const xClaimProjection = (record: XOwnerClaimChallengeRecord) => ({
 const xClaimChallengeResponse = (
   record: XOwnerClaimChallengeRecord,
   status = 200,
+  extra: Record<string, unknown> = {},
 ) =>
   noStoreJsonResponse(
     {
+      ...extra,
       xClaim: xClaimProjection(record),
       verification: {
         instructions: [
@@ -581,7 +632,110 @@ export const makeD1AgentOwnerClaimStore = (
     return row === null ? undefined : rowToXChallenge(row)
   }
 
+  const rewardFromRow = (row: Record<string, unknown>): XClaimRewardRecord => ({
+    agentUserId: (row.agent_user_id as string | null) ?? null,
+    amountSats: Number(row.amount_sats),
+    challengeId: String(row.challenge_id),
+    claimId: String(row.claim_id),
+    createdAt: String(row.created_at),
+    evidenceRefs: parseJsonStringArray(String(row.evidence_refs_json ?? '[]')),
+    id: String(row.id),
+    ownerUserId: String(row.owner_user_id),
+    receiptRef: String(row.receipt_ref),
+    state: String(row.state) as XClaimRewardState,
+    stateReasonRef: (row.state_reason_ref as string | null) ?? null,
+    updatedAt: String(row.updated_at),
+    xAccountRef: String(row.x_account_ref),
+  })
+
+  const readRewardByChallengeId = async (
+    challengeId: string,
+  ): Promise<XClaimRewardRecord | undefined> => {
+    const row = await db
+      .prepare(
+        `SELECT * FROM x_claim_reward_ledger WHERE challenge_id = ? LIMIT 1`,
+      )
+      .bind(challengeId)
+      .first<Record<string, unknown>>()
+
+    return row === null ? undefined : rewardFromRow(row)
+  }
+
   return {
+    countXClaimRewards: async () => {
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) AS reward_count
+           FROM x_claim_reward_ledger
+           WHERE state NOT IN ('refused', 'failed')`,
+        )
+        .first<Record<string, unknown>>()
+
+      return row === null ? 0 : Number(row.reward_count)
+    },
+    createXClaimReward: async record => {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO x_claim_reward_ledger (
+            id, challenge_id, claim_id, owner_user_id, agent_user_id,
+            x_account_ref, amount_sats, state, state_reason_ref, receipt_ref,
+            evidence_refs_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          record.id,
+          record.challengeId,
+          record.claimId,
+          record.ownerUserId,
+          record.agentUserId,
+          record.xAccountRef,
+          record.amountSats,
+          record.state,
+          record.stateReasonRef,
+          record.receiptRef,
+          JSON.stringify(record.evidenceRefs),
+          record.createdAt,
+          record.updatedAt,
+        )
+        .run()
+
+      return (await readRewardByChallengeId(record.challengeId)) ?? record
+    },
+    readXClaimRewardByChallengeId: readRewardByChallengeId,
+    readXClaimRewardById: async rewardId => {
+      const row = await db
+        .prepare(`SELECT * FROM x_claim_reward_ledger WHERE id = ? LIMIT 1`)
+        .bind(rewardId)
+        .first<Record<string, unknown>>()
+
+      return row === null ? undefined : rewardFromRow(row)
+    },
+    updateXClaimRewardState: async input => {
+      await db
+        .prepare(
+          `UPDATE x_claim_reward_ledger
+              SET state = ?,
+                  state_reason_ref = ?,
+                  evidence_refs_json = ?,
+                  updated_at = ?
+            WHERE id = ?`,
+        )
+        .bind(
+          input.toState,
+          input.stateReasonRef,
+          JSON.stringify(input.evidenceRefs),
+          input.now,
+          input.rewardId,
+        )
+        .run()
+
+      const row = await db
+        .prepare(`SELECT * FROM x_claim_reward_ledger WHERE id = ? LIMIT 1`)
+        .bind(input.rewardId)
+        .first<Record<string, unknown>>()
+
+      return row === null ? undefined : rewardFromRow(row)
+    },
     attachClaimApproval: async input => {
       await db
         .prepare(
@@ -1354,8 +1508,33 @@ const verifyXClaimResponse = async <
       tweetRef: tweet.tweetRef,
       tweetUrl: tweet.tweetUrl,
     })
+    const resolved = verified ?? challenge
+    const makeUuid = dependencies.makeUuid ?? randomUuid
+    const campaignCap =
+      dependencies.rewardCampaignCap ?? X_CLAIM_REWARD_CAMPAIGN_CAP
+    const budgetExhausted = (await store.countXClaimRewards()) >= campaignCap
+    const rewardId = `x_claim_reward_${makeUuid()}`
+    const reward = await store.createXClaimReward({
+      agentUserId: resolved.agentUserId,
+      amountSats: X_CLAIM_REWARD_AMOUNT_SATS,
+      challengeId: resolved.id,
+      claimId: resolved.agentClaimId,
+      createdAt: now,
+      evidenceRefs: [resolved.receiptRef],
+      id: rewardId,
+      ownerUserId: resolved.ownerUserId,
+      receiptRef: `x_claim_reward_receipt_${rewardId}`,
+      xAccountRef: resolved.xAccountRef,
+      state: budgetExhausted ? 'refused' : 'eligible',
+      stateReasonRef: budgetExhausted
+        ? 'reason.public.x_claim_reward_campaign_budget_exhausted'
+        : null,
+      updatedAt: now,
+    })
 
-    return xClaimChallengeResponse(verified ?? challenge)
+    return xClaimChallengeResponse(resolved, 200, {
+      reward: publicRewardProjection(reward),
+    })
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return noStoreJsonResponse(
@@ -1366,6 +1545,124 @@ const verifyXClaimResponse = async <
 
     return serverError()
   }
+}
+
+export const publicRewardProjection = (
+  reward: XClaimRewardRecord,
+): Record<string, unknown> => ({
+  amountSats: reward.amountSats,
+  authorityBoundary:
+    'Reward eligibility is a promotional campaign state. It is not Forum tip settlement, accepted-work payout, or spendable balance until operator-gated dispatch settles with receipts.',
+  receiptRef: reward.receiptRef,
+  rewardId: reward.id,
+  state: reward.state,
+  stateReasonRef: reward.stateReasonRef,
+})
+
+const XClaimRewardDispatchRequest = S.Struct({
+  action: S.Literals([
+    'approve_dispatch',
+    'mark_dispatched',
+    'mark_failed',
+    'mark_settled',
+    'refuse',
+  ]),
+  evidenceRefs: S.optionalKey(S.Array(S.Trim.check(S.isMaxLength(300)))),
+  stateReasonRef: S.optionalKey(S.Trim.check(S.isMaxLength(300))),
+})
+
+const rewardTransitionForAction: Record<
+  string,
+  Readonly<{ from: ReadonlyArray<XClaimRewardState>; to: XClaimRewardState }>
+> = {
+  approve_dispatch: { from: ['eligible'], to: 'dispatch_requested' },
+  mark_dispatched: { from: ['dispatch_requested'], to: 'dispatched' },
+  mark_failed: {
+    from: ['dispatch_requested', 'dispatched'],
+    to: 'failed',
+  },
+  mark_settled: { from: ['dispatched'], to: 'settled' },
+  refuse: { from: ['eligible', 'dispatch_requested'], to: 'refused' },
+}
+
+const dispatchRewardResponse = async <
+  Session extends AgentOwnerClaimSession,
+  Bindings,
+>(
+  dependencies: AgentOwnerClaimRouteDependencies<Session, Bindings>,
+  request: Request,
+  env: Bindings,
+  rewardId: string,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  if (
+    dependencies.requireAdminApiToken === undefined ||
+    !(await dependencies.requireAdminApiToken(request, env))
+  ) {
+    return unauthorized()
+  }
+
+  let parsed: typeof XClaimRewardDispatchRequest.Type
+
+  try {
+    parsed = decodeUnknownWithSchema(
+      XClaimRewardDispatchRequest,
+      await request.json().catch(() => ({})),
+    )
+  } catch (error) {
+    return badRequest(errorMessage(error))
+  }
+
+  const store = dependencies.makeStore(env)
+  const reward = await store.readXClaimRewardById(rewardId)
+
+  if (reward === undefined) {
+    return notFound()
+  }
+
+  const transition = rewardTransitionForAction[parsed.action]
+
+  if (transition === undefined || !transition.from.includes(reward.state)) {
+    return noStoreJsonResponse(
+      {
+        error: 'x_claim_reward_invalid_transition',
+        reason: `Reward in state ${reward.state} cannot ${parsed.action}.`,
+        reward: publicRewardProjection(reward),
+      },
+      { status: 409 },
+    )
+  }
+
+  if (
+    transition.to === 'settled' &&
+    (parsed.evidenceRefs ?? []).length === 0
+  ) {
+    return noStoreJsonResponse(
+      {
+        error: 'x_claim_reward_settlement_requires_evidence',
+        reason:
+          'mark_settled requires public-safe settlement evidence refs from the dispatch wallet path.',
+        reward: publicRewardProjection(reward),
+      },
+      { status: 400 },
+    )
+  }
+
+  const now = (dependencies.nowIso ?? currentIsoTimestamp)()
+  const updated = await store.updateXClaimRewardState({
+    evidenceRefs: [...reward.evidenceRefs, ...(parsed.evidenceRefs ?? [])],
+    now,
+    rewardId,
+    stateReasonRef: parsed.stateReasonRef ?? reward.stateReasonRef,
+    toState: transition.to,
+  })
+
+  return updated === undefined
+    ? serverError()
+    : noStoreJsonResponse({ reward: publicRewardProjection(updated) })
 }
 
 const approveClaimResponse = async <
@@ -1791,6 +2088,19 @@ export const makeAgentOwnerClaimRoutes = <
 
       return Effect.promise(() =>
         ownerClaimPageResponse(dependencies, request, env, claimId),
+      )
+    }
+
+    const rewardDispatchMatch =
+      /^\/api\/agents\/claims\/rewards\/([^/]+)\/dispatch$/.exec(
+        url.pathname,
+      )
+
+    if (rewardDispatchMatch !== null) {
+      const rewardId = decodeURIComponent(rewardDispatchMatch[1] ?? '')
+
+      return Effect.promise(() =>
+        dispatchRewardResponse(dependencies, request, env, rewardId),
       )
     }
 

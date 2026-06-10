@@ -5180,6 +5180,7 @@ const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
   makeStore: env => makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   requireBrowserSession,
 })
 

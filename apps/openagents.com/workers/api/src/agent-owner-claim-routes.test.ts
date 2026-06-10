@@ -7,6 +7,8 @@ import {
   type XOwnerClaimChallengeRecord,
   type XVerificationTweetLookup,
   makeAgentOwnerClaimRoutes,
+  type XClaimRewardRecord,
+  type XClaimRewardState,
 } from './agent-owner-claim-routes'
 import {
   type AgentRegistrationRecord,
@@ -27,6 +29,61 @@ class MemoryAgentOwnerClaimStore implements AgentOwnerClaimStore {
   readonly claims = new Map<string, AgentOwnerClaimRecord>()
   readonly registrations: Array<AgentRegistrationRecord> = []
   readonly xChallenges = new Map<string, XOwnerClaimChallengeRecord>()
+
+  readonly rewards = new Map<string, XClaimRewardRecord>()
+
+  countXClaimRewards = async () =>
+    [...this.rewards.values()].filter(
+      reward => reward.state !== 'refused' && reward.state !== 'failed',
+    ).length
+
+  createXClaimReward = async (record: XClaimRewardRecord) => {
+    const existing = [...this.rewards.values()].find(
+      reward =>
+        reward.challengeId === record.challengeId ||
+        reward.xAccountRef === record.xAccountRef,
+    )
+
+    if (existing !== undefined) {
+      return existing
+    }
+
+    this.rewards.set(record.id, record)
+
+    return record
+  }
+
+  readXClaimRewardByChallengeId = async (challengeId: string) =>
+    [...this.rewards.values()].find(
+      reward => reward.challengeId === challengeId,
+    )
+
+  readXClaimRewardById = async (rewardId: string) => this.rewards.get(rewardId)
+
+  updateXClaimRewardState = async (input: {
+    evidenceRefs: ReadonlyArray<string>
+    now: string
+    rewardId: string
+    stateReasonRef: string | null
+    toState: XClaimRewardState
+  }) => {
+    const existing = this.rewards.get(input.rewardId)
+
+    if (existing === undefined) {
+      return undefined
+    }
+
+    const updated: XClaimRewardRecord = {
+      ...existing,
+      evidenceRefs: input.evidenceRefs,
+      state: input.toState,
+      stateReasonRef: input.stateReasonRef,
+      updatedAt: input.now,
+    }
+    this.rewards.set(input.rewardId, updated)
+
+    return updated
+  }
 
   attachClaimApproval(input: {
     claimId: string
@@ -302,6 +359,8 @@ const makeRoutes = (
       input: Readonly<{ tweetUrl: string }>,
     ) => Promise<XVerificationTweetLookup>
     agentStore?: AgentRegistrationStore
+    requireAdminApiToken?: () => Promise<boolean>
+    rewardCampaignCap?: number
     session?: TestSession | undefined
   }> = {},
 ) =>
@@ -310,6 +369,12 @@ const makeRoutes = (
       ...(options.agentStore === undefined
         ? {}
         : { agentStore: () => options.agentStore as AgentRegistrationStore }),
+      ...(options.requireAdminApiToken === undefined
+        ? {}
+        : { requireAdminApiToken: options.requireAdminApiToken }),
+      ...(options.rewardCampaignCap === undefined
+        ? {}
+        : { rewardCampaignCap: options.rewardCampaignCap }),
       appOrigin: () => 'https://openagents.com',
       appendRefreshedSessionCookies: response => {
         response.headers.set('x-test-session-refreshed', 'true')
@@ -1024,6 +1089,235 @@ describe('agent owner claim routes', () => {
     expect(JSON.stringify(body)).not.toContain(
       'oa_agent_pending_owner_claim_token',
     )
+  })
+
+  test('creates reward eligibility on X verification and gates operator dispatch', async () => {
+    const store = new MemoryAgentOwnerClaimStore()
+    await createClaim(store, {
+      makeUuid: makeUuidFactory([
+        'claim-9',
+        'user-9',
+        'credential-9',
+        'identity-9',
+      ]),
+    })
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-9/approve',
+        { method: 'POST' },
+      ),
+      {
+        makeUuid: makeUuidFactory(['user-9', 'credential-9', 'identity-9']),
+        nowIso: () => '2026-06-06T00:05:00.000Z',
+        session,
+      },
+    )
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-9/x/challenge',
+        {
+          body: JSON.stringify({ xHandle: 'rewardowner' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['x-9', 'nonce-9']),
+        nowIso: () => '2026-06-06T00:06:00.000Z',
+        session,
+      },
+    )
+    const verifyResponse = await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-9/x/verify',
+        {
+          body: JSON.stringify({
+            tweetUrl: 'https://x.com/rewardowner/status/900',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['reward-9']),
+        nowIso: () => '2026-06-06T00:07:00.000Z',
+        resolveXVerificationTweet: () =>
+          Promise.resolve({
+            authorHandle: 'rewardowner',
+            htmlText:
+              'OpenAgents claim agent_claim_claim-9 oa-x-nonce9 https://openagents.com/agents/claims/agent_claim_claim-9',
+            state: 'visible',
+            tweetRef: 'x_tweet:900',
+            tweetUrl: 'https://x.com/rewardowner/status/900',
+          }),
+        session,
+      },
+    )
+    const verifyBody = (await verifyResponse.json()) as {
+      reward: { amountSats: number; rewardId: string; state: string }
+    }
+    const rewardId = verifyBody.reward.rewardId
+    const dispatchDenied = await runRoute(
+      store,
+      new Request(
+        `https://openagents.com/api/agents/claims/rewards/${rewardId}/dispatch`,
+        {
+          body: JSON.stringify({ action: 'approve_dispatch' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      { requireAdminApiToken: () => Promise.resolve(false) },
+    )
+    const approveDispatch = await runRoute(
+      store,
+      new Request(
+        `https://openagents.com/api/agents/claims/rewards/${rewardId}/dispatch`,
+        {
+          body: JSON.stringify({ action: 'approve_dispatch' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      { requireAdminApiToken: () => Promise.resolve(true) },
+    )
+    const markDispatched = await runRoute(
+      store,
+      new Request(
+        `https://openagents.com/api/agents/claims/rewards/${rewardId}/dispatch`,
+        {
+          body: JSON.stringify({ action: 'mark_dispatched' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      { requireAdminApiToken: () => Promise.resolve(true) },
+    )
+    const settleWithoutEvidence = await runRoute(
+      store,
+      new Request(
+        `https://openagents.com/api/agents/claims/rewards/${rewardId}/dispatch`,
+        {
+          body: JSON.stringify({ action: 'mark_settled' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      { requireAdminApiToken: () => Promise.resolve(true) },
+    )
+    const settled = await runRoute(
+      store,
+      new Request(
+        `https://openagents.com/api/agents/claims/rewards/${rewardId}/dispatch`,
+        {
+          body: JSON.stringify({
+            action: 'mark_settled',
+            evidenceRefs: [
+              'settlement_evidence.public.mdk_campaign_wallet.send_confirmed',
+            ],
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      { requireAdminApiToken: () => Promise.resolve(true) },
+    )
+    const settledBody = (await settled.json()) as {
+      reward: { state: string }
+    }
+
+    expect(verifyResponse.status).toBe(200)
+    expect(verifyBody.reward).toMatchObject({
+      amountSats: 1000,
+      state: 'eligible',
+    })
+    expect(dispatchDenied.status).toBe(401)
+    expect(approveDispatch.status).toBe(200)
+    expect(markDispatched.status).toBe(200)
+    expect(settleWithoutEvidence.status).toBe(400)
+    expect(settled.status).toBe(200)
+    expect(settledBody.reward.state).toBe('settled')
+    expect(JSON.stringify(settledBody)).not.toContain('lnbc')
+  })
+
+  test('refuses reward eligibility when the campaign budget is exhausted', async () => {
+    const store = new MemoryAgentOwnerClaimStore()
+    await createClaim(store, {
+      makeUuid: makeUuidFactory([
+        'claim-8',
+        'user-8',
+        'credential-8',
+        'identity-8',
+      ]),
+    })
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-8/approve',
+        { method: 'POST' },
+      ),
+      {
+        makeUuid: makeUuidFactory(['user-8', 'credential-8', 'identity-8']),
+        nowIso: () => '2026-06-06T00:05:00.000Z',
+        session,
+      },
+    )
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-8/x/challenge',
+        {
+          body: JSON.stringify({ xHandle: 'capowner' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['x-8', 'nonce-8']),
+        nowIso: () => '2026-06-06T00:06:00.000Z',
+        session,
+      },
+    )
+    const verifyResponse = await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-8/x/verify',
+        {
+          body: JSON.stringify({
+            tweetUrl: 'https://x.com/capowner/status/800',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['reward-8']),
+        nowIso: () => '2026-06-06T00:07:00.000Z',
+        resolveXVerificationTweet: () =>
+          Promise.resolve({
+            authorHandle: 'capowner',
+            htmlText:
+              'OpenAgents claim agent_claim_claim-8 oa-x-nonce8 https://openagents.com/agents/claims/agent_claim_claim-8',
+            state: 'visible',
+            tweetRef: 'x_tweet:800',
+            tweetUrl: 'https://x.com/capowner/status/800',
+          }),
+        rewardCampaignCap: 0,
+        session,
+      },
+    )
+    const verifyBody = (await verifyResponse.json()) as {
+      reward: { state: string; stateReasonRef: string }
+    }
+
+    expect(verifyBody.reward).toMatchObject({
+      state: 'refused',
+      stateReasonRef:
+        'reason.public.x_claim_reward_campaign_budget_exhausted',
+    })
   })
 
   test('rejects a second verified claim for the same X account', async () => {

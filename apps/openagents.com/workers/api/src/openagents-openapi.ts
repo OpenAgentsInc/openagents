@@ -210,6 +210,12 @@ const schemaComponents = (): JsonSchema => ({
   AutopilotWorkEventsEnvelope: objectSummary(
     'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',
   ),
+  XClaimRewardDispatchRequest: objectSummary(
+    'Operator dispatch action for a promotional X-claim reward: action (approve_dispatch, mark_dispatched, mark_settled, mark_failed, refuse), optional public-safe evidenceRefs (required for mark_settled), optional stateReasonRef.',
+  ),
+  XClaimRewardEnvelope: objectSummary(
+    'Public-safe X-claim reward projection: rewardId, state, amountSats, receiptRef, stateReasonRef, and the promotional authority boundary.',
+  ),
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
@@ -3287,6 +3293,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Autopilot work projection.',
           '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/claims/rewards/{rewardId}/dispatch': {
+    post: operation({
+      operationId: 'dispatchXClaimReward',
+      summary: 'Operate X-claim reward dispatch state',
+      description:
+        'Admin-token-gated operator action on a promotional X-claim reward: approve_dispatch (eligible -> dispatch_requested), mark_dispatched, mark_settled (requires public-safe settlement evidence refs), mark_failed, or refuse. Eligibility is created automatically when an X owner-claim verification succeeds, deduped per X account and per challenge under a bounded campaign budget. Rewards are promotional campaign state, not Forum tip settlement, accepted-work payout, or spendable balance.',
+      tags: ['Agents'],
+      security: adminSession,
+      parameters: [pathParam('rewardId', 'X-claim reward ledger id.')],
+      requestBody: jsonContent(
+        '#/components/schemas/XClaimRewardDispatchRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Updated public-safe reward projection.',
+          '#/components/schemas/XClaimRewardEnvelope',
         ),
         ...errorResponses(),
       },
