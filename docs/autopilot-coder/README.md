@@ -16,6 +16,11 @@ Forum reporting.
   owner target "through my Pylon, ask my agent to do coding work and it gets
   done ASAP" — closed/open issue map, the #4633 live production smoke result
   and its caveat, promise statuses, and the remaining unowned gaps.
+- `2026-06-10-claude-agent-sdk-local-claude-pylon-audit.md`: design audit for
+  "Pylon can talk to your local Claude" — the Claude Agent SDK (TypeScript) as
+  the requester-Pylon coding execution lane, exact worker-loop seams, option
+  mapping, BYOK/branding/redaction boundaries, and the companion promise
+  `pylon.local_claude_agent_bridge.v1`.
 - `implementation-log.md`: running issue-by-issue implementation notes for the
   Autopilot coder backlog.
 - `no-spend-e2e-smoke.md`: documented command and retained-evidence checks for

@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.20'
+export const PublicProductPromisesVersion = '2026-06-10.21'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1442,6 +1442,33 @@ export const publicProductPromisesDocument = () => {
         'Live flow: a Pylon user posts a device/training question on the Forum; within the published response window the Artanis mind composes a reply grounded in live platform data (device capability, training-run state) delivered through the publication queue under its own identity, and a good post receives an Artanis tip through the ladder with the budget receipt cited. Green requires that flow with a real external contributor post, plus ten unattended responder ticks.',
       authorityBoundary:
         'The mind proposes; typed schemas validate; gates hold. Artanis tips spend only from its seeded ledger balance under a per-tick budget; forum publication stays inside the publication queue policy; no moderation or registry authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'pylon.local_claude_agent_bridge.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'Pylon can talk to your local Claude: the Pylon worker loop hands a coding assignment to the Claude Agent SDK (TypeScript) running on the contributor machine with the user own credentials, drives a bounded read/edit/test session inside a sandboxed working directory with an assignment-derived tool allowlist, and returns public-safe closeout refs - making the user local Claude a real execution lane for delegated coding work.',
+      safeCopy:
+        'The execution-gate spine this lane plugs into is live and green (a registered Pylon executed a digest-pinned Tassadar workload through the same worker loop, replay-verified by the platform), and the Claude Agent SDK exists as a published TypeScript library with a bundled agent binary. The Pylon-side bridge - SDK dependency, bounded executor gate, capability.pylon.local_claude_agent declaration, BYOK auth policy - is design-audited only (docs/autopilot-coder/2026-06-10-claude-agent-sdk-local-claude-pylon-audit.md) and is not built; Pylon cannot command a local Claude today.',
+      unsafeCopy:
+        'Do not claim Pylon commands Claude today or that any coding assignment has been executed by this lane. Do not call the lane "Claude Code" in product copy; permitted terms are "Claude Agent", "your local Claude", or "Powered by Claude" per Anthropic branding terms. Do not imply OpenAgents supplies Claude access, login, or rate limits - the user brings their own API key or provider configuration. Do not describe local SDK transcripts as shareable artifacts; only public-safe refs leave the device.',
+      evidenceRefs: [
+        'docs/autopilot-coder/2026-06-10-claude-agent-sdk-local-claude-pylon-audit.md',
+        'docs/autopilot-coder/2026-06-10-autopilot-coder-full-flow-audit.md',
+        'apps/pylon/src/assignment.ts',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.pylon_claude_agent_executor_gate_missing',
+        'blocker.product_promises.pylon_claude_agent_byok_auth_policy_missing',
+        'blocker.product_promises.pylon_claude_agent_bounded_task_smoke_missing',
+      ],
+      verification:
+        'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs; the retained projection passes the redaction scan and the run is repeatable from the packaged binary. Green requires those receipts from a real device.',
+      authorityBoundary:
+        'The bridge acts only with the local user identity, credentials, and machine; allowed tools and the working directory are bounded per assignment; raw SDK messages, prompts, file contents, and provider payloads stay on the device as operator-local evidence; worker closeout grants no accepted-work, settlement, payout, deploy, spend, or Forum publication authority.',
     },
   ],
   notes: [
