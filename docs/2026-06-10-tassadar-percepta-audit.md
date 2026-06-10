@@ -227,6 +227,124 @@ internal computation under named profiles with explicit refusal surfaces.
   product whose verification cost is near zero. None of this is claimed as
   live — it is the natural continuation seam.
 
+## Tassadar × CS336: Compiled Versus Trained Computation
+
+Two questions decide how Tassadar and the CS336 program
+(`docs/2026-06-10-cs336-distributed-homework-continuation-audit.md`) relate:
+does Tassadar require training a model at all, and is the from-scratch
+pipeline CS336 builds relevant to it? Short answers: **the exact lane
+requires no training whatsoever — it is compilation — and the CS336
+pipeline is what makes Tassadar's most valuable form (the hybrid) possible
+at all.**
+
+### Three different ways "training" touches Tassadar
+
+The capability matrix already separates these postures (`runtime exact`,
+`compiled exact`, `bounded learned`, `partial learned-long-horizon`), and
+the distinction maps onto a real research lineage:
+
+1. **Compiled-exact: no training, ever.** The core Percepta result — and
+   the academic line before it — is weight *construction*, not learning.
+   RASP ("Thinking Like Transformers", Weiss et al. 2021) defined a
+   programming language whose programs map onto transformer operations;
+   DeepMind/ETH's **Tracr** (Lindner et al. 2023) compiles RASP programs
+   directly into the weights of a standard decoder-only transformer with
+   zero training, as interpretability ground truth. Theory backs the
+   ceiling: attention is Turing-complete (Pérez et al., JMLR 2021), and
+   looped transformers can be programmed as general computers with
+   constructed weights (Giannou et al., ICML 2023). Percepta's
+   `transformer-vm` (March 2026) industrialized the idea: a WebAssembly
+   interpreter compiled into weight matrices — four attention heads
+   (program fetch, argument fetch, stack read, stack-pointer tracking)
+   suffice for a minimal executor — with 2D parabolic attention keys and a
+   convex-hull KV cache making each step an O(log t) lookup, millions of
+   correct steps on a CPU. Exactness is *by construction*: there is no
+   loss curve because there is nothing to learn. Psionic's compiled
+   executor bundles and the hull-cache runtime live in this lane.
+
+2. **Learned-exact: tried, and it plateaus.** The March 2026 experiments
+   in this repo's history are a candid record of attempting to *train* a
+   transformer into exact execution: next-token training on execution
+   sequences, boundary curricula, transition-conditioned adapters — ending
+   in the step-index boundary blocker, the joint-adapter plateau, and
+   adapter saturation evidence. That matches the published limits of
+   learned algorithmic execution (e.g. "Faith and Fate", Dziri et al.
+   2023: transformers trained on compositional procedures fail to
+   length-generalize). The pivot in the commit history — from "train it"
+   to trace-bound weight production and compiled routes — is the program
+   internalizing that result. The bounded-learned lane survives
+   (`TRAIN_TASSADAR` → `tassadar-article-transformer-trace-bound-trained-v0`)
+   but is honestly posted as *bounded*, never as exactness-by-learning.
+
+3. **The hybrid: compiled circuits inside a pretrained model.** Episode
+   216's phrasing — "CPU compute **added to the weights of** models" — is
+   the third lane and the valuable one: a general language model that
+   carries a compiled executor organ, so ordinary generation can route
+   into exact internal computation (no tool call, no interpreter) and
+   back. This is the lane that answers "why would a lab want this": the
+   model gets calculator-grade arithmetic, exact state tracking, and
+   verifiable inner computation at near-zero marginal cost (the "Free
+   Computer" argument), instead of hallucinating arithmetic or paying for
+   tool round-trips.
+
+### Why the CS336 pipeline is exactly what the hybrid needs
+
+The hybrid cannot be retrofitted onto someone else's frozen checkpoint —
+it requires owning the architecture and the training loop. That is what
+the CS336-to-Psionic port builds, assignment by assignment:
+
+- **A1 (architecture ownership):** grafting compiled executor heads into a
+  model means controlling head shapes, dimension layout, and where
+  attention is exact versus learned. The A1 stack (our transformer, our
+  attention, our RoPE) is the substrate the executor circuits get
+  installed into. You cannot reserve 2D parabolic heads in a model you
+  call over an API.
+- **A2 (numerics and kernels):** compiled exactness is precision-brittle —
+  psionic already maintains a scalar-`f32` semantics matrix with canonical
+  quiet-NaN normalization and explicit refusal of non-CPU fast-math
+  regimes, because a fused-multiply-add or fast-math kernel silently
+  breaks exact execution. A2-level ownership of attention kernels is what
+  lets exactness claims survive on real GPU/Metal backends instead of
+  staying CPU-reference-only. The current ≤2.55× hull-cache-to-CPU gap is
+  an A2-class kernel problem.
+- **A3 (scaling the organ):** the open question for the hybrid is capacity
+  cost — how much width/depth does the executor organ consume, and what
+  does the host model lose or gain at each size? Psionic's
+  workload-hardness taxonomy (explicit depth/width/recurrent/extra-trace-
+  space budgets per workload family) is already a scaling-law-shaped
+  object; the A3 sweep machinery (many small runs across (N, D) on the
+  Pylon network) is the natural instrument for mapping
+  hybrid-vs-plain frontiers empirically.
+- **A4 (trace corpora):** the bounded-learned lane trains against
+  execution traces. The homework network is a trace factory — every
+  verified executor run, every CS336 training window, every rollout
+  produces exactly the supervised data that trace-bound training consumes,
+  already redacted and receipt-backed by the A4 data machinery.
+- **A5 (routing is a post-training problem):** the hard learned problem in
+  the hybrid is not execution (compiled, exact) but **routing** — when
+  should the model hand a subproblem to its internal executor, and when
+  must it refuse? Psionic's weighted-controller admission pattern (the
+  Apple FM plugin session) is an early version. Training that router is
+  GRPO-shaped: reward exact-verified internal computation, penalize
+  unrouted arithmetic — i.e., A5's machinery pointed at the executor
+  boundary.
+
+So: **the CS336 pipeline is not just relevant to Tassadar — it is the
+precondition for Tassadar's endgame.** The compiled lane needs no training
+and already works bounded; the hybrid lane needs a from-scratch pretraining
+capability we fully control, and that capability is precisely what the
+CS336 port program produces. The two programs also share one economy: a
+Tassadar executor workload is the *cheapest verifiable homework class*
+(exact trace replay, no probabilistic checking), while CS336 training
+homework needs the Freivalds-class machinery — same commit-and-challenge
+rail, two verification grades.
+
+One sequencing implication for the epics: nothing in the Tassadar exact
+lane waits on the training epic (#4664–#4671) — compiled executor homework
+could ship on the rails alone. The hybrid waits on real-gradient
+pretraining (CS336 lane 6 in the continuation audit) and is the natural
+follow-on epic after both programs land.
+
 ## Registry And Disclosure Posture
 
 There is **no product promise for Tassadar** in the public registry, and
@@ -284,3 +402,15 @@ disclosure flow's own gates.
   (`49a1d193` → `fcd3cd0a`)
 - `projects/repos/llm-as-computer` (public Percepta validation: README,
   ISA, benchmark refs)
+- Web (for the compiled-vs-trained research lineage):
+  Percepta, "Can LLMs Be Computers?" (percepta.ai/blog, 2026-03-11) and
+  `Percepta-Core/transformer-vm` (Wasm interpreter compiled into weights;
+  four attention heads for a minimal executor; 2D convex-hull KV cache,
+  O(log t) steps); Lindner et al., "Tracr: Compiled Transformers as a
+  Laboratory for Interpretability" (arXiv:2301.05062, DeepMind/ETH —
+  RASP-to-weights compilation with zero training); Weiss et al., "Thinking
+  Like Transformers" (RASP, 2021); Pérez et al., "Attention is
+  Turing-Complete" (JMLR 2021); Giannou et al., "Looped Transformers as
+  Programmable Computers" (ICML 2023); Dziri et al., "Faith and Fate:
+  Limits of Transformers on Compositionality" (NeurIPS 2023 — the learned
+  -execution length-generalization plateau)
