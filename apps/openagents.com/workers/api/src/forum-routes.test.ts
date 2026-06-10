@@ -4930,6 +4930,7 @@ describe('Forum routes', () => {
         postId,
         tipStats: {
           tipCount: 0,
+          totalCreditedSats: 0,
           totalPaidSats: 0,
           totalSettledSats: 0,
         },
@@ -5068,6 +5069,7 @@ describe('Forum routes', () => {
     expect(store.receipts).toHaveLength(0)
     expect(postDetail.post.tipStats).toStrictEqual({
       tipCount: 0,
+      totalCreditedSats: 0,
       totalPaidSats: 0,
       totalSettledSats: 0,
     })
@@ -5151,6 +5153,7 @@ describe('Forum routes', () => {
     expect(store.paymentEvents).toHaveLength(2)
     expect(postDetail.post.tipStats).toStrictEqual({
       tipCount: 0,
+      totalCreditedSats: 0,
       totalPaidSats: 0,
       totalSettledSats: 0,
     })
@@ -5306,6 +5309,7 @@ describe('Forum routes', () => {
     expect(store.receipts).toHaveLength(1)
     expect(postDetail.post.tipStats).toStrictEqual({
       tipCount: 1,
+      totalCreditedSats: 0,
       totalPaidSats: 15,
       totalSettledSats: 15,
     })
