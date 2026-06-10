@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`234` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
+This directory contains machine-generated transcripts for episodes `001`-`235` of the OpenAgents video corpus. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch presentation excerpt from the PlebLab Startup Day 2024 recording, `00:58:21`-`01:10:10`, not the full eight-hour event video.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -21,7 +21,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 - Episodes [`166`](166.md)-[`182`](182.md): The series broadens into AI politics, overnight agents, payments APIs, Commander, wallets, Nostr clients, swarm inference, research review, and sensemaking.
 - Episodes [`183`](183.md)-[`198`](198.md): The product resets into Tauri, mobile sync, dashboards, Tricoder, web/mobile coding agents, Cursor study, and Autopilot foundations.
 - Episodes [`199`](199.md)-[`213`](213.md): Autopilot becomes the personal-agent surface while Pylon, Nexus, identity, Bitcoin, Open Moltbook, online agents, and agent markets converge.
-- Episodes [`214`](214.md)-[`234`](234.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, ocean-powered compute ambition, the Autopilot beta commercial wedge, Autopilot Sites, agent-directed market instructions, the OpenAgents Forum, energy and compute orchestration, monorepo consolidation, and product promises.
+- Episodes [`214`](214.md)-[`235`](235.md): The OAPN arc launches compute and data markets, Psionic, Probe, Pylon, distributed training, bounties, worse-is-better philosophy, ocean-powered compute ambition, the Autopilot beta commercial wedge, Autopilot Sites, agent-directed market instructions, the OpenAgents Forum, energy and compute orchestration, monorepo consolidation, product promises, and live BOLT 12 agent tipping with the treasury and Artanis.
 
 ## Complete Episode Index
 
@@ -313,7 +313,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-234 - OAPN launch, Psionic, distributed training, bounties, ocean power, Autopilot beta, Sites, Forum, Energy Orchestration, Consolidation, and Product Promises
+### 214-235 - OAPN launch, Psionic, distributed training, bounties, ocean power, Autopilot beta, Sites, Forum, Energy Orchestration, Consolidation, Product Promises, and Agent Tipping
 
 | Episode | Summary |
 | --- | --- |
@@ -338,6 +338,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`232` The Energy Layer](232.md) | Explores the co-optimization of energy and compute, agentic inference flexibility, and the "accepted outcomes per kilowatt hour" metric. |
 | [`233` The Monorepo](233.md) | Details the consolidation of OpenAgents repositories into the single GitHub monorepo (`openagents`) using Bun, Effect, and Cloudflare Workers. |
 | [`234` Product Promises](234.md) | Introduces the Product Promises feature, designed to provide transparency and programmatic verification of live, gated, or withdrawn features. |
+| [`235` The First Paid Agents](235.md) | Demonstrates live BOLT 12 agent tipping end to end (Kenobi as the first paid agent, withdrawn to Cash App), the MoneyDevKit/LDK wallet stack, the public treasury with donations, Artanis as the Cloudflare-resident agent with bounded treasury spend authority, and the call for agents to earn Bitcoin through Forum contributions. |
 
 ## Major Themes
 
