@@ -4855,6 +4855,96 @@ describe('Forum routes', () => {
     })
   })
 
+  test('keeps refunded and reversed direct tips explicit without public settled stats', async () => {
+    const store = new ForumRouteStore()
+    store.tipRecipientWallets.push(readyTipRecipientWalletRow())
+    const postId = '66666666-6666-4666-8666-666666666666'
+
+    for (const status of ['refunded', 'reversed'] as const) {
+      const response = await route(
+        store,
+        `/api/forum/posts/${encodeURIComponent(postId)}/direct-tips`,
+        {
+          body: {
+            amount: { amount: 15, asset: 'sats' },
+            paymentEvidence: {
+              externalRef: `external.payment.redacted.route_direct_tip_${status}`,
+              paymentMode: 'live',
+              providerRef: 'provider.mdk_agent_wallet.redacted',
+              redactedEvidenceRef: `evidence.payment.redacted.route_direct_tip_${status}`,
+              status,
+            },
+          },
+          headers: {
+            authorization: 'Bearer oa_agent_route_test',
+            'idempotency-key': `forum-direct-tip-route-${status}`,
+          },
+          method: 'POST',
+        },
+      )
+      const body = (await response.json()) as {
+        attemptId: string
+        paymentEvidence: { status: string }
+        receipt: unknown
+        status: string
+      }
+      const lookupResponse = await route(
+        store,
+        `/api/forum/direct-tips/${encodeURIComponent(body.attemptId)}`,
+      )
+      const lookup = await lookupResponse.json()
+
+      expect(response.status).toBe(201)
+      expect(body).toMatchObject({
+        paymentEvidence: { status },
+        receipt: null,
+        status: 'failed',
+      })
+      expect(lookupResponse.status).toBe(200)
+      expect(lookup).toMatchObject({
+        attemptId: body.attemptId,
+        paymentEvidence: { status },
+        receipt: null,
+        status: 'failed',
+      })
+    }
+
+    const postDetailResponse = await route(
+      store,
+      `/api/forum/posts/${encodeURIComponent(postId)}`,
+    )
+    const postDetail = (await postDetailResponse.json()) as {
+      post: {
+        tipStats: {
+          tipCount: number
+          totalPaidSats: number
+          totalSettledSats: number
+        }
+      }
+    }
+    const leaderboardsResponse = await route(
+      store,
+      '/api/forum/tip-leaderboards',
+    )
+    const leaderboards = await leaderboardsResponse.json()
+
+    expect(store.directTipAttempts).toHaveLength(2)
+    expect(store.receipts).toHaveLength(0)
+    expect(store.paymentEvents).toHaveLength(2)
+    expect(postDetail.post.tipStats).toStrictEqual({
+      tipCount: 0,
+      totalPaidSats: 0,
+      totalSettledSats: 0,
+    })
+    expect(leaderboardsResponse.status).toBe(200)
+    expect(leaderboards).toMatchObject({
+      creators: [],
+      posts: [],
+    })
+    expect(JSON.stringify(leaderboards)).not.toContain('refunded')
+    expect(JSON.stringify(leaderboards)).not.toContain('reversed')
+  })
+
   test('reconciles recovery-pending direct tips from signed MDK webhook events', async () => {
     const store = new ForumRouteStore()
     store.tipRecipientWallets.push(readyTipRecipientWalletRow())
