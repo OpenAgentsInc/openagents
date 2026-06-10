@@ -3,8 +3,11 @@
 > Status: research essay and folder index, 2026-06-10. Everything described
 > here is committed public code in `OpenAgentsInc/psionic` with tests and
 > stated claim boundaries, or published external research credited inline.
-> Nothing here is a served product, a registry promise, or a capability
-> claim beyond the committed parity tests. Companion documents are indexed
+> Nothing here is a served product or a capability claim beyond the
+> committed parity tests. One scoped registry promise exists by owner
+> decision (2026-06-10): `compute.tassadar_executor_poc.v1`, a bounded
+> proof of concept for executor-trace work on real Pylons. All other
+> publication gates stay closed. Companion documents are indexed
 > at the end.
 
 ## The Question
@@ -102,8 +105,9 @@ now the compiled-transformer construction. It predates our reading of the
 Percepta posts — roughly 231 commits across seven phases built a bounded
 Tassadar executor profile with CPU reference runners, fixture-backed
 runners, typed refusals, trace ABIs, and a deliberately suppressed
-publication posture (`served_publication_allowed = false`; no registry
-promise exists for this lane *by design*). The full history is in
+publication posture (`served_publication_allowed = false`; the lane held
+no registry promise *by design* until the owner approved the scoped
+`compute.tassadar_executor_poc.v1` exception on 2026-06-10). The full history is in
 [`2026-06-10-tassadar-percepta-audit.md`](2026-06-10-tassadar-percepta-audit.md).
 
 The lane's discipline is the point. Every surface carries a claim
@@ -272,11 +276,15 @@ Stated plainly, because boundaries are the product:
 - **No MILP-optimal scheduling.** Our scheduler is feasible-first greedy
   with interval-coloring reuse. Percepta minimizes peak liveness with an
   integer program. Plausibly vanity at our scale; honestly unported.
-- **No scale, no serving, no promise.** Test programs run tens to
-  thousands of steps. Nothing is served on any route, nothing is priced,
-  and no product-promise registry entry exists for this lane — by
-  design, until the disclosure flow approves otherwise. A plain CPU
-  remains faster for standalone batch work.
+- **No scale, no serving.** Test programs run tens to thousands of
+  steps. Nothing is served on any route and nothing is priced. The
+  lane's no-promise-by-design posture gained one scoped exception by
+  owner decision on 2026-06-10: `compute.tassadar_executor_poc.v1`, a
+  bounded registry promise to run an executor-trace proof of concept on
+  real Pylons (dispatch, separate-device exact-replay verdict, one paid
+  closeout). Every other publication gate remains closed until the
+  disclosure flow approves otherwise. A plain CPU remains faster for
+  standalone batch work.
 
 ## Possible Futures
 
@@ -295,7 +303,8 @@ program *is* a weights file. Distribution, versioning, signing, and
 marketplace mechanics built for models would apply unchanged to exact
 executors. A registry of digest-pinned compiled capabilities — each one
 replayable by any validator — is a plausible OpenAgents product surface
-once the lane earns its disclosure.
+once the lane earns its disclosure. The PoC promise is the first,
+deliberately small step on that path.
 
 **The verification ladder as pricing.** If exactness is a property some
 work has and some does not, it becomes a tier: work verified by replay

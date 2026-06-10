@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.6'
+export const PublicProductPromisesVersion = '2026-06-10.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -65,7 +65,7 @@ export const publicProductPromisesDocument = () => {
   const document = {
   schemaVersion: PublicProductPromisesSchemaVersion,
   version: PublicProductPromisesVersion,
-  lastUpdated: '2026-06-09',
+  lastUpdated: '2026-06-10',
   canonicalDocsUrl:
     'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
   sourceRefs,
@@ -1007,6 +1007,35 @@ export const publicProductPromisesDocument = () => {
       authorityBoundary:
         'No-spend closeout and retained fixtures do not prove paid settlement or live campaign authority.',
     },
+    {
+      ...basePromiseFields,
+      promiseId: 'compute.tassadar_executor_poc.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'operator'],
+      state: 'yellow',
+      claim:
+        'OpenAgents will run a Tassadar executor proof of concept on real Pylons: bounded exact-program workloads dispatched to contributor machines, verified by exact trace replay on a separate device, with at least one paid closeout settled on receipts.',
+      safeCopy:
+        'Internal no-spend executor-trace dispatch wiring and the psionic exact-replay verifier exist with passing smokes and committed parity tests; live multi-Pylon dispatch, separate-device replay verdicts, and a paid executor closeout remain gated.',
+      unsafeCopy:
+        'Do not claim transformers-as-computers as a served product, performance parity or superiority over CPUs, general LLM-computer capability, model-training capability from this lane, or that executor work is currently earning contributors bitcoin.',
+      evidenceRefs: [
+        'apps/openagents.com/workers/api/src/tassadar-executor-trace-homework.test.ts',
+        'docs/tassadar/README.md',
+        'docs/tassadar/2026-06-10-psionic-alm-compiler-design-speculation.md',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/TASSADAR_ALM_TRACE_REPLAY.md',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/TASSADAR_ALM_WASM_INTERPRETER.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.tassadar_poc_live_pylon_dispatch_missing',
+        'blocker.product_promises.tassadar_poc_separate_device_replay_missing',
+        'blocker.product_promises.tassadar_poc_paid_closeout_missing',
+      ],
+      verification:
+        'Run smoke:tassadar:executor-trace for the wiring, then the live proof of concept: dispatch one digest-pinned bounded executor workload to at least one real Pylon, replay its trace on a different device with a verified exact_trace_replay verdict receipt, and settle one operator-funded paid closeout. Green requires all three with public-safe receipts cited here.',
+      authorityBoundary:
+        'A proof-of-concept verdict proves exact replay of bounded committed workloads only. It grants no serving authority, no performance claim against conventional CPUs, and no general LLM-computer capability claim; the Tassadar research lane publication gates stay closed for everything beyond this scoped promise.',
+    },
   ],
   notes: [
     `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -1015,6 +1044,7 @@ export const publicProductPromisesDocument = () => {
     'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and labor-market claims remain gated.',
     'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
     'The five-streams implementation plan is tracked in GitHub issues #4635-#4653 (rails, compute, data, labor, referrals, stacking smoke, tips polish); the lane map and binding delegation contract live in apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md.',
+    'Owner decision 2026-06-10: the Tassadar research lane previously held no registry promise by design. The owner approved one scoped exception: compute.tassadar_executor_poc.v1, a bounded proof-of-concept promise for executor-trace work on real Pylons. All other Tassadar publication gates remain closed; the research essay is docs/tassadar/README.md.',
     'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
     'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
