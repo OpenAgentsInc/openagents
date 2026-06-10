@@ -258,6 +258,9 @@ const schemaComponents = (): JsonSchema => ({
   TrainingA1LeaderboardEnvelope: objectSummary(
     'Public-safe CS336 A1 real-gradient leaderboard envelope with leaderboardRows, sourceRefs, and scopeBoundaryRefs. Rows include trainingRunRef, pylonRef, rank, verifiedWindowCount, bestValidationLoss when public loss evidence exists, settledPayoutSats only from provider-confirmed settlement receipts, provenanceLabel, and sourceRefs.',
   ),
+  TrainingA3IsoFlopDashboardEnvelope: objectSummary(
+    'Public-safe CS336 A3 IsoFLOP dashboard envelope with receipt-backed sweep cells, fit artifacts, projections, blockerRefs, and sourceRefs. Cells include public N/D/compute/loss fields and settlement remains zero unless provider-confirmed payout receipts are linked. Fit artifacts are analysis artifacts citing cell receipts, not capability claims.',
+  ),
   TrainingWindowEnvelope: objectSummary(
     'Public-safe training-window projection with windowRef, trainingRunRef, lifecycle state, homeworkKind, priority, dataset refs, source refs, receipt refs, and display timestamps only. It excludes private datasets, worker logs, secrets, wallet state, and payout material.',
   ),
@@ -2876,6 +2879,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'CS336 A1 training leaderboard.',
           '#/components/schemas/TrainingA1LeaderboardEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/isoflop/a3': {
+    get: operation({
+      operationId: 'readTrainingA3IsoFlopDashboard',
+      summary: 'Read CS336 A3 IsoFLOP dashboard',
+      description:
+        'Reads the public-safe CS336 A3 scaling-sweep dashboard feed. The feed is built from Worker training-run projection evidence, verified cell refs, and public fit artifacts; it does not count pending payouts or publish capability claims from fitted laws.',
+      tags: ['Training'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'CS336 A3 IsoFLOP dashboard.',
+          '#/components/schemas/TrainingA3IsoFlopDashboardEnvelope',
         ),
         ...errorResponses(),
       },

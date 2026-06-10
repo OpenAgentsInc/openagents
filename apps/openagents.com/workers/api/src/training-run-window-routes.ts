@@ -25,6 +25,7 @@ import {
   trainingAuthorityStoreErrorFromUnknown,
   transitionTrainingWindowRecord,
 } from './training-run-window-authority'
+import { publicScalingSweepProjection } from './training-scaling-sweep'
 
 type HttpResponse = globalThis.Response
 
@@ -415,6 +416,66 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const routeA3IsoFlop = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const store = dependencies.makeStore(env)
+    const runs = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listRuns(50),
+    })
+    const projections = yield* Effect.forEach(runs, run =>
+      Effect.gen(function* () {
+        const windows = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowsForRun(run.trainingRunRef, 100),
+        })
+        const leases = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowLeasesForRun(run.trainingRunRef, 1000),
+        })
+        const challenges = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
+        })
+
+        return publicScalingSweepProjection({
+          challenges,
+          leases,
+          run,
+          windows,
+        })
+      }),
+    )
+    const cells = projections.flatMap(projection => projection.cells)
+    const fitArtifacts = projections
+      .map(projection => projection.fitArtifact)
+      .filter(artifact => artifact !== null)
+
+    return noStoreJsonResponse({
+      blockerRefs:
+        cells.filter(cell => cell.verified).length >= 20 &&
+        fitArtifacts.length > 0
+          ? []
+          : [
+              'blocker.cs336_a3.requires_twenty_verified_cells',
+              'blocker.cs336_a3.operator_funding_required_for_paid_cells',
+              'blocker.cs336_a3.fit_artifact_not_published',
+            ],
+      cells,
+      fitArtifacts,
+      projections,
+      schemaVersion: 'openagents.training.isoflop_dashboard.v1',
+      sourceRefs: [
+        'route:/api/training/isoflop/a3',
+        'route:/api/training/runs',
+      ],
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -472,6 +533,16 @@ export const makeTrainingRunWindowRoutes = <
       }
 
       return routeA1Leaderboard(dependencies, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/training/isoflop/a3') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeA3IsoFlop(dependencies, env).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
     }

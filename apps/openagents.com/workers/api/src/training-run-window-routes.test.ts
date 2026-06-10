@@ -56,6 +56,12 @@ type TrainingRunLeaderboardJson = Readonly<{
   >
 }>
 
+type TrainingRunIsoFlopJson = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  cells: ReadonlyArray<unknown>
+  schemaVersion: string
+}>
+
 const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
   const runs = new Map<string, TrainingRunRecord>()
   const windows = new Map<string, TrainingWindowRecord>()
@@ -268,6 +274,24 @@ describe('training run window routes', () => {
         trainingRunRef: 'training.run.cs336.a1.demo',
       }),
     ])
+
+    const isoflopResponse = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/isoflop/a3'),
+        {},
+      ),
+    )
+    const isoflop = (await isoflopResponse.json()) as TrainingRunIsoFlopJson
+
+    expect(isoflopResponse.status).toBe(200)
+    expect(isoflop).toMatchObject({
+      blockerRefs: [
+        'blocker.cs336_a3.requires_twenty_verified_cells',
+        'blocker.cs336_a3.operator_funding_required_for_paid_cells',
+        'blocker.cs336_a3.fit_artifact_not_published',
+      ],
+      schemaVersion: 'openagents.training.isoflop_dashboard.v1',
+    })
   })
 
   it('returns an honest idle empty state for runs with no windows or verification data', async () => {
