@@ -223,6 +223,8 @@ import {
   ArtanisMindSmokeSystem,
   artanisMindComplete,
 } from './artanis-mind'
+import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
+import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
 import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
@@ -5799,46 +5801,54 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         if ('error' in result) {
           return noStoreJsonResponse(result, { status: 502 })
         }
-        let forumPost: { topicId?: string; error?: string } | null = null
-        const artanisToken = (env as { ARTANIS_AGENT_TOKEN?: string })
-          .ARTANIS_AGENT_TOKEN
-        if (body.forumPost === true && artanisToken !== undefined) {
-          try {
-            const post = await fetch(
-              `${new URL(request.url).origin}/api/forum/forums/tassadar/topics`,
-              {
-                body: JSON.stringify({
-                  bodyText: [
-                    'Automated update from the Artanis cloud mind running inside the OpenAgents worker.',
-                    `Inference served via ${result.servedVia}${result.gatewayId === null ? '' : ` (gateway ${result.gatewayId})`}, model ${result.model}.`,
-                    `Decision sample: ${result.text.slice(0, 400)}`,
-                    'Boundary: the mind proposes; typed schemas validate; approval gates hold. - Artanis (automated)',
-                  ].join('\n\n'),
-                  title: `Artanis cloud mind production smoke ${currentIsoTimestamp().slice(0, 16)}`,
-                }),
-                headers: {
-                  Authorization: `Bearer ${artanisToken}`,
-                  'Content-Type': 'application/json',
-                  'Idempotency-Key': `artanis-mind-smoke-${currentIsoTimestamp().slice(0, 13)}`,
-                },
-                method: 'POST',
-              },
-            )
-            const payload = (await post.json()) as {
-              error?: string
-              topic?: { topicId?: string }
-            }
-            forumPost =
-              payload.topic?.topicId === undefined
-                ? { error: payload.error ?? `status_${post.status}` }
-                : { topicId: payload.topic.topicId }
-          } catch (error) {
-            forumPost = {
-              error: `forum_post_failed: ${
-                error instanceof Error ? error.message : String(error)
-              }`.slice(0, 160),
-            }
+        let forumPost: { postRef?: string; error?: string } | null = null
+        if (body.forumPost === true) {
+          // In-process delivery through the shipped Artanis publication
+          // queue (never fetch-to-self): the mind's decision lands as an
+          // Artanis status post in forum.public.artanis.
+          const nowIso = currentIsoTimestamp()
+          const suffix = nowIso.replace(/[-:]/g, '').slice(0, 13)
+          const intent = {
+            ...exampleArtanisForumPublicationQueue().intents[0]!,
+            artifactRefs: ['artifact.public.artanis.mind_smoke'],
+            bodyText: [
+              'Automated update from the Artanis cloud mind running inside the OpenAgents worker.',
+              `Inference served via ${result.servedVia}${result.gatewayId === null ? '' : ` (gateway ${result.gatewayId})`}, model ${result.model}.`,
+              `Decision sample: ${result.text.slice(0, 400)}`,
+              'Boundary: the mind proposes; typed schemas validate; approval gates hold.',
+            ].join(' '),
+            createdAtIso: nowIso,
+            deliveredAtIso: null,
+            deliveryReceiptRefs: [],
+            deliveryState: 'ready' as const,
+            goalRefs: ['goal.public.artanis.cloud_mind_smoke'],
+            idempotencyKey: `artanis-forum:mind-smoke:${suffix}:v1`,
+            intentRef: `forum.public.artanis.mind_smoke_intent.${suffix}`,
+            postRef: null,
+            receiptRefs: ['receipt.public.artanis.mind_smoke'],
+            updatedAtIso: nowIso,
           }
+          const delivered: { postRef?: string; error?: string } =
+            await Effect.runPromise(
+              deliverArtanisForumPublicationIntent(
+                openAgentsDatabase(env),
+                intent,
+              ).pipe(
+                Effect.map(
+                  (post): { postRef?: string; error?: string } => ({
+                    postRef: post.postRef,
+                  }),
+                ),
+                Effect.catch(error =>
+                  Effect.succeed({
+                    error: `forum_delivery_failed: ${String(
+                      (error as { reason?: string }).reason ?? error,
+                    )}`.slice(0, 160),
+                  }),
+                ),
+              ),
+            )
+          forumPost = delivered
         }
         return noStoreJsonResponse({
           forumPost,
