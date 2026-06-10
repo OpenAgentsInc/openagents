@@ -817,6 +817,9 @@ const schemaComponents = (): JsonSchema => ({
   ForumPaidActionPrivatePaymentResponse: objectSummary(
     'Payer-private Forum L402 payment payload. Contains raw invoice and signed credential material for immediate wallet payment only; never store in public projections, Forum posts, receipts, logs, docs examples, or issue comments.',
   ),
+  OrangeCheckNostrExportResponse: objectSummary(
+    'Public-safe unsigned NIP-58 badge definition and award templates for an active orange-check entitlement. The export uses nostr-effect badge helpers, includes receipt refs and authority boundaries, and does not contain private keys, wallet material, invoices, preimages, payment hashes, or settlement authority.',
+  ),
   ForumDirectTipPaymentEvidence: {
     type: 'object',
     additionalProperties: false,
@@ -4696,6 +4699,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public agent or Forum actor profile.',
           '#/components/schemas/ForumAgentPublicProfileResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/actors/{actorRef}/orange-check/nostr-export': {
+    get: operation({
+      operationId: 'exportForumActorOrangeCheckNostrBadge',
+      summary: 'Export orange-check Nostr badge templates',
+      description:
+        'Returns unsigned NIP-58 badge definition and badge award templates for an actor with an active orange-check entitlement. The caller supplies the recipient Nostr pubkey and issuer pubkey; OpenAgents returns public-safe templates and receipt refs only. This route does not sign events, publish to relays, prove identity verification, dispatch payouts, or expose wallet/payment material.',
+      tags: ['Forum'],
+      security: publicRead,
+      parameters: [
+        pathParam('actorRef', 'URL-encoded Forum actor ref.'),
+        queryParam('recipientPubkey', '64-character hex Nostr pubkey to receive the badge award.'),
+        queryParam('issuerPubkey', '64-character hex Nostr pubkey that will sign the badge definition and award.'),
+        queryParam('relay', 'Optional relay URL. Repeat to include multiple relay hints.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Orange-check Nostr export templates.',
+          '#/components/schemas/OrangeCheckNostrExportResponse',
         ),
         ...errorResponses(),
       },

@@ -96,6 +96,10 @@ import {
   orangeCheckBadgeProjection,
   readActiveOrangeCheckByActorRef,
 } from './orange-check-entitlements'
+import {
+  OrangeCheckNostrExportError,
+  buildOrangeCheckNostrExport,
+} from './orange-check-nostr-export'
 import { verifyOpenAgentsForumMdkWebhook } from './forum-mdk-webhooks'
 import {
   type ForumL402SigningBoundaryProvider,
@@ -2622,6 +2626,42 @@ const directTipStatusResponse = (db: D1Database, attemptId: string) =>
     Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
   )
 
+const orangeCheckNostrExportResponse = (
+  db: D1Database,
+  actorRef: string,
+  url: URL,
+  dependencies: ForumRouteDependencies,
+) =>
+  readActiveOrangeCheckByActorRef(db, actorRef).pipe(
+    Effect.flatMap(entitlement => {
+      if (entitlement === null) {
+        return Effect.succeed(notFound())
+      }
+
+      const recipientPubkey = url.searchParams.get('recipientPubkey') ?? ''
+      const issuerPubkey = url.searchParams.get('issuerPubkey') ?? ''
+      const relayUrls = url.searchParams.getAll('relay')
+
+      return Effect.promise(async () => {
+        try {
+          const exported = await buildOrangeCheckNostrExport({
+            entitlement,
+            issuerPubkey,
+            nowIso: dependencies.nowIso?.() ?? currentIsoTimestamp(),
+            recipientPubkey,
+            relayUrls,
+          })
+
+          return noStoreJsonResponse({ nostrExport: exported })
+        } catch (error) {
+          return error instanceof OrangeCheckNostrExportError
+            ? badRequest(error.message)
+            : serverError()
+        }
+      })
+    }),
+  )
+
 const directTipMdkWebhookResponse = (
   request: Request,
   db: D1Database,
@@ -3833,6 +3873,28 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return creatorEarningsResponse(db, actorRef, limit, requestDependencies)
+    }
+
+    const actorOrangeCheckNostrExportMatch =
+      /^\/api\/forum\/actors\/([^/]+)\/orange-check\/nostr-export$/.exec(
+        url.pathname,
+      )
+
+    if (actorOrangeCheckNostrExportMatch !== null) {
+      const actorRef = decodePathSegment(actorOrangeCheckNostrExportMatch[1])
+
+      if (actorRef === undefined) {
+        return Effect.succeed(badRequest('actor ref is malformed'))
+      }
+
+      return request.method === 'GET'
+        ? orangeCheckNostrExportResponse(
+            db,
+            actorRef,
+            url,
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['GET']))
     }
 
     const actorProfileMatch = /^\/api\/forum\/actors\/([^/]+)\/profile$/.exec(

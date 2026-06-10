@@ -7096,6 +7096,92 @@ describe('Forum routes', () => {
     expect(JSON.stringify(afterBody)).not.toMatch(/verified human|safe account/i)
   })
 
+  test('exports active orange-check entitlements as NIP-58 Nostr badge templates', async () => {
+    const store = new ForumRouteStore()
+    const actorRef = 'agent:orange-export-owner'
+    const issuerPubkey = '11'.repeat(32)
+    const recipientPubkey = '22'.repeat(32)
+    store.orangeCheckEntitlements.push({
+      action_ref: 'forum_money_action.test.orange_export',
+      actor_ref: actorRef,
+      agent_user_id: 'orange-export-owner',
+      created_at: '2026-06-10T10:00:00.000Z',
+      id: 'orange_check_export_1',
+      paid_amount_cents: 500,
+      receipt_ref: 'orange_check_receipt.export_1',
+      state: 'active',
+      updated_at: '2026-06-10T10:00:00.000Z',
+    })
+
+    const response = await route(
+      store,
+      `/api/forum/actors/${encodeURIComponent(actorRef)}/orange-check/nostr-export?recipientPubkey=${recipientPubkey}&issuerPubkey=${issuerPubkey}&relay=wss%3A%2F%2Frelay.openagents.example`,
+    )
+    const body = (await response.json()) as Readonly<{
+      nostrExport: Readonly<{
+        badgeAward: Readonly<{
+          kind: number
+          tags: ReadonlyArray<ReadonlyArray<string>>
+        }>
+        badgeDefinition: Readonly<{ kind: number }>
+        badgeDefinitionAddress: string
+        exportDigestRef: string
+        receiptRef: string
+      }>
+    }>
+
+    expect(response.status).toBe(200)
+    expect(body.nostrExport).toMatchObject({
+      badgeDefinitionAddress: `30009:${issuerPubkey}:openagents-orange-check`,
+      exportDigestRef: expect.stringMatching(/^nostr_export\.orange_check\./),
+      receiptRef: 'orange_check_receipt.export_1',
+    })
+    expect(body.nostrExport.badgeDefinition.kind).toBe(30009)
+    expect(body.nostrExport.badgeAward.kind).toBe(8)
+    expect(body.nostrExport.badgeAward.tags).toContainEqual([
+      'p',
+      recipientPubkey,
+      'wss://relay.openagents.example',
+    ])
+    expect(JSON.stringify(body)).not.toMatch(/verified human|safe account/i)
+    expect(JSON.stringify(body)).not.toMatch(/lnbc|preimage|mnemonic|wallet/i)
+  })
+
+  test('blocks orange-check Nostr export without entitlement or valid pubkeys', async () => {
+    const store = new ForumRouteStore()
+    const actorRef = 'agent:no-orange-export'
+    const missing = await route(
+      store,
+      `/api/forum/actors/${encodeURIComponent(actorRef)}/orange-check/nostr-export?recipientPubkey=${'22'.repeat(32)}&issuerPubkey=${'11'.repeat(32)}`,
+    )
+
+    store.orangeCheckEntitlements.push({
+      action_ref: 'forum_money_action.test.orange_export',
+      actor_ref: actorRef,
+      agent_user_id: 'no-orange-export',
+      created_at: '2026-06-10T10:00:00.000Z',
+      id: 'orange_check_export_2',
+      paid_amount_cents: 500,
+      receipt_ref: 'orange_check_receipt.export_2',
+      state: 'active',
+      updated_at: '2026-06-10T10:00:00.000Z',
+    })
+
+    const malformed = await route(
+      store,
+      `/api/forum/actors/${encodeURIComponent(actorRef)}/orange-check/nostr-export?recipientPubkey=bad&issuerPubkey=${'11'.repeat(32)}`,
+    )
+    const malformedBody = (await malformed.json()) as Readonly<{
+      error: string
+      reason: string
+    }>
+
+    expect(missing.status).toBe(404)
+    expect(malformed.status).toBe(400)
+    expect(malformedBody.error).toBe('bad_request')
+    expect(malformedBody.reason).toContain('recipientPubkey')
+  })
+
   test('pins and unpins topics through moderator actions with pinned-first ordering', async () => {
     const store = new ForumRouteStore()
     const created = await route(
