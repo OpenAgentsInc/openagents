@@ -6,14 +6,58 @@ document disagree, the deployed behavior wins and this file must be
 corrected in the same change.
 
 - Promise: `payments.reliable_tips_sweepable_balances.v1`
-  (registry `2026-06-10.17`, yellow)
-- Implementation sequence: #4705 (ledger) → #4706 (receive ladder) →
-  #4707 (sweep worker) → #4708 (buffer wallet) → #4709 (live smoke +
-  green flip)
+  (registry `2026-06-10.17`, yellow with four blockers:
+  `agent_credit_ledger_missing`, `tip_receive_ladder_missing`,
+  `automated_sweep_worker_missing`, `tips_buffer_wallet_missing`).
+  Live record: `GET https://openagents.com/api/public/product-promises`
+  — report mismatches in the Product Promises Forum (Working topic:
+  https://openagents.com/forum/t/dce3418a-297e-4b3e-bc67-1c33d9c3e805).
+- Implementation sequence:
+  - [#4705](https://github.com/OpenAgentsInc/openagents/issues/4705) —
+    agent credit ledger (sweepable balances on a PayIn-shaped D1 ledger)
+  - [#4706](https://github.com/OpenAgentsInc/openagents/issues/4706) —
+    the tip receive ladder (direct BOLT 12 first, instant credit always)
+  - [#4707](https://github.com/OpenAgentsInc/openagents/issues/4707) —
+    automated sweep worker (balances out to registered offers,
+    indefinitely retried)
+  - [#4708](https://github.com/OpenAgentsInc/openagents/issues/4708) —
+    tips buffer wallet (1:1 backing for sweepable balances)
+  - [#4709](https://github.com/OpenAgentsInc/openagents/issues/4709) —
+    three-leg live smoke and the green flip
+  - Related: [#4704](https://github.com/OpenAgentsInc/openagents/issues/4704)
+    (the stuck-reconciliation bug the ledger structurally eliminates)
 - Research source:
   `docs/2026-06-10-stacker-news-balance-cashin-cashout-audit.md`
   (how Stacker News does it; their `api/payIn/README.md` in
   `projects/repos/stacker.news` is the deeper reference)
+
+## Promise mechanics for whoever flips this
+
+The registry entry lives in
+`apps/openagents.com/workers/api/src/product-promises.ts` (bump
+`PublicProductPromisesVersion` and the pin in
+`product-promises.test.ts` with every edit; deploy via `bun run deploy`
+from `apps/openagents.com/workers/api`, which runs the full gate). The
+green flip follows the receipt-disciplined two-pass order proven on
+`compute.tassadar_executor_poc.v1`:
+
+1. Pass A: clear the four `blockerRefs` with evidence citations, keep
+   `state: 'yellow'`, bump version, deploy.
+2. Post the transition receipt:
+   `POST /api/operator/product-promises/transitions` (admin bearer)
+   with `{ promiseId, toState: 'green', evidenceRefs: [...] }` — all
+   five checks must pass (`promise_exists`, `from_state_differs`,
+   `evidence_refs_present`, `verification_named`,
+   `blockers_clear_for_green`).
+3. Pass B: `state: 'green'` + `lastVerifiedAt`, cite the receipt id in
+   `evidenceRefs` and rewrite `verification` as the dated rerun recipe,
+   bump version, deploy, verify the live endpoint.
+
+Nobody flips on their own evidence alone: receipts land on #4709 and in
+the Product Promises Forum first, and the registry change cites them.
+The `unsafeCopy` line is binding copy law throughout: no "tips never
+fail" claims before the flip, and nothing credited is "settled bitcoin"
+before its sweep receipt.
 
 ## The problem, in one paragraph
 
