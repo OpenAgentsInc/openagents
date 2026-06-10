@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.2'
+export const PublicProductPromisesVersion = '2026-06-10.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -665,29 +665,26 @@ export const publicProductPromisesDocument = () => {
     },
     {
       ...basePromiseFields,
-      promiseId: 'provider.subscription_capacity.v1',
-      productArea: 'provider capacity',
-      audience: ['contributor', 'agent', 'operator'],
+      promiseId: 'provider.compliant_usage_labor.v1',
+      productArea: 'labor',
+      audience: ['contributor', 'agent', 'operator', 'public'],
       state: 'red',
       claim:
-        'ChatGPT subscription accounts can be connected through OpenAgents; Claude may come later; Codex/OpenCode auth can be reused or dedicated.',
+        'Contributors can connect their own provider accounts or prepaid API budgets and earn Bitcoin by doing useful work with that compliant usage through the agent labor market; OpenAgents never resells provider access.',
       safeCopy:
-        'Provider-account connection work exists, and Pylon v0.3 carries provider/runtime contracts, but self-serve capacity metering, ToS policy, pricing, assignment, and settlement are missing.',
+        'Provider-account connection and device-login flows exist and contributors keep full custody of their own accounts; paid labor jobs that monetize that compliant usage by selling work output are not live yet.',
       unsafeCopy:
-        'Do not claim ChatGPT, Claude, Codex, OpenCode, Cursor, or generic prepaid provider capacity is monetized.',
+        'Do not claim or imply OpenAgents resells, rents, shares, proxies, or brokers anyone’s subscription seat, provider account, session, or API access. OpenAgents pays for accepted work output only; contributors run their own accounts under their own provider terms.',
       evidenceRefs: [
-        'apps/openagents.com/docs/2026-06-08-provider-capacity-marketplace-gate.md',
+        'docs/transcripts/214.md',
+        'apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
         'apps/pylon/packages/runtime/src/contracts/provider-account.ts',
       ],
-      blockerRefs: [
-        'blocker.product_promises.capacity_metering_missing',
-        'blocker.product_promises.provider_tos_policy_missing',
-        'blocker.product_promises.capacity_settlement_missing',
-      ],
+      blockerRefs: ['blocker.product_promises.labor_stream_not_live'],
       verification:
-        'Requires provider grant, secret policy, route policy, pricing, metering, terms boundary, assignment evidence, and settlement refs per provider.',
+        'A labor job must run on the contributor’s own connected account or API budget with output-only delivery, payment for accepted results, and a public settlement receipt. No provider credentials, session tokens, or account access may be transferred, metered for resale, or brokered.',
       authorityBoundary:
-        'Connected accounts and local auth materialization are not resale, marketplace, or settlement authority.',
+        'Account connection is custody-neutral: OpenAgents never takes provider credentials for resale, and payment buys accepted work output only.',
     },
     {
       ...basePromiseFields,
@@ -712,27 +709,6 @@ export const publicProductPromisesDocument = () => {
         'Register an agent with a bolt12Offer. It automatically submits a public-safe tip-recipient wallet claim. Create an unlisted Forum topic, and verify the post projects tippingAvailable true.',
       authorityBoundary:
         'Forum posting and recipient readiness do not grant payer wallet funding, payment send readiness, owner, moderation, payout, or settlement authority.',
-    },
-    {
-      ...basePromiseFields,
-      promiseId: 'provider.prepaid_capacity_monetization.v1',
-      productArea: 'provider capacity',
-      audience: ['contributor', 'operator'],
-      state: 'red',
-      claim:
-        'Prepaid provider API budgets should be possible to monetize through Pylon/OpenAgents once provider policy, metering, assignment, and settlement are proven.',
-      safeCopy:
-        'Generic prepaid provider capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
-      unsafeCopy:
-        'Do not claim prepaid provider API capacity monetization is live.',
-      evidenceRefs: [
-        'apps/openagents.com/docs/2026-06-08-provider-capacity-marketplace-gate.md',
-      ],
-      blockerRefs: ['blocker.product_promises.prepaid_provider_policy_missing'],
-      verification:
-        'Requires provider-specific schema, secret policy, assignment mode, metering, pricing, terms boundary, and settlement refs.',
-      authorityBoundary:
-        'A budget or API key is not a sellable capacity marketplace.',
     },
     {
       ...basePromiseFields,
@@ -1033,7 +1009,8 @@ export const publicProductPromisesDocument = () => {
     `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
     'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
     'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
-    'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and capacity-market claims remain gated.',
+    'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and labor-market claims remain gated.',
+    'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
     'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
     'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
     'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',

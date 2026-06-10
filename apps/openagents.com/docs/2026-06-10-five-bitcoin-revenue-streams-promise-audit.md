@@ -4,8 +4,10 @@ Date: 2026-06-10 (revised same day after Episode 213/214/215 transcript review)
 
 Promise: `pylon.five_bitcoin_revenue_streams.v1`
 
-Registry version at audit time: `2026-06-10.1`; this audit ships with the
-`2026-06-10.2` correction described below.
+Registry version at audit time: `2026-06-10.1`; this audit shipped the
+`2026-06-10.2` labor-stream correction and the `2026-06-10.3` no-resale
+promise consolidation described below, and now carries the full
+implementation issue plan.
 
 Status: full status audit of the promise and an exact get-to-green plan.
 
@@ -25,13 +27,17 @@ Episode 215: "Labor next week. You can put your Claude Code or Codex to work
 overnight."
 
 This distinction matters operationally: selling work output is ordinary labor
-and removes the heavy provider-ToS resale gate this audit previously treated
-as the long pole. The provider-account *resale* questions remain owned by the
-separate `provider.subscription_capacity.v1` and
-`provider.prepaid_capacity_monetization.v1` promises and do not block this
-one. Registry `2026-06-10.2` renames the blocker
-`capacity_stream_not_live` → `labor_stream_not_live` and fixes the claim,
-safeCopy, and verification text accordingly.
+and removes the provider-ToS resale gate this audit previously treated as the
+long pole. There is no resale anywhere in the plan: OpenAgents does not
+resell, rent, proxy, or broker anyone's subscription seat, provider account,
+or API access — it pays contributors for accepted work output produced with
+their own compliant provider usage. Registry `2026-06-10.2` renamed the
+blocker `capacity_stream_not_live` → `labor_stream_not_live` and fixed the
+claim text; registry `2026-06-10.3` removed the resale-framed
+`provider.subscription_capacity.v1` and
+`provider.prepaid_capacity_monetization.v1` promises and replaced both with a
+single `provider.compliant_usage_labor.v1` promise that carries the no-resale
+boundary explicitly.
 
 The first revision also estimated "weeks-scale" for several streams. That
 ignored the fact that the market rails already exist in this repo's own
@@ -183,9 +189,11 @@ behind Pylon) accepts NIP-90 job requests — "fix this PR", review work,
 inference beyond kind 5050 — does the work using the contributor's own
 capacity, and gets paid sats for the *result*. Episode 214 frames the
 economics: subscription holders sit on heavily subsidized capacity; putting
-that agent to work overnight sells output, which is labor, not account
-resale, so the provider-ToS marketplace gate owned by
-`provider.subscription_capacity.v1` does not block this stream.
+that agent to work overnight sells output. This is labor, not account
+resale: the contributor's own account stays in the contributor's own custody
+under the contributor's own provider terms, and nothing about provider
+access is transferred, metered for resale, or brokered. The
+`provider.compliant_usage_labor.v1` promise carries that boundary.
 
 What exists: the NIP-90 runtime, provider admission, job lifecycle, and MDK
 settlement bridge in repo history; Pylon v0.3's runtime package already
@@ -231,7 +239,9 @@ Record each transition via
 registry edit so receipts evaluate cleanly (not as backfill exceptions) and
 `lastVerifiedAt` finally populates for this promise.
 
-## Registry Changes Shipped With This Audit (`2026-06-10.2`)
+## Registry Changes Shipped With This Audit
+
+### `2026-06-10.2`
 
 - Claim corrected: "...and agent labor markets in one install" (was
   "subscription/token-capacity arbitrage").
@@ -243,6 +253,291 @@ registry edit so receipts evaluate cleanly (not as backfill exceptions) and
 - evidenceRefs now include `docs/transcripts/213.md`, `214.md`, `215.md`,
   and this audit.
 - State stays `red` (no state transition; wording/blocker correction only).
+
+### `2026-06-10.3` — no-resale consolidation
+
+- Removed `provider.subscription_capacity.v1` and
+  `provider.prepaid_capacity_monetization.v1`. Both were framed around
+  capacity metering/marketplace resale, which OpenAgents is not doing and
+  will not do.
+- Added `provider.compliant_usage_labor.v1` (red, blocked on
+  `labor_stream_not_live`): contributors connect their own provider accounts
+  or prepaid API budgets and earn Bitcoin for accepted work output produced
+  with that compliant usage. Its unsafeCopy and authorityBoundary state the
+  no-resale boundary explicitly: no subscription seat, provider account,
+  session, or API access is ever resold, rented, proxied, metered for
+  resale, or brokered.
+- Public launch dashboard: the two historical transcript capacity rows keep
+  their transcript claims but now project the no-resale labor framing in
+  safeCopy/unsafeCopy, share the
+  `blocker.launch_dashboard.compliant_usage_labor.paid_labor_jobs_missing`
+  blocker, and cite this audit; the five-streams row text now reads "agent
+  labor markets".
+- Registry notes now state the no-resale boundary as a standing rule.
+
+## Implementation Plan: GitHub Issues
+
+Every step from the current codebase (Bun/Effect monorepo: `apps/openagents.com`
+worker + web, `apps/pylon` v0.3 OpenTUI, `apps/nostr-relay` POC,
+`apps/forum`; NIP-90 Rust stack in git history at `f5919c766^`) to all five
+streams implemented. Issues are listed here for review and are **not yet
+created** on GitHub. Sequencing: rails (1–6) unblock everything; streams
+(7–17) can then run in parallel; 18 composes; 19 is optional polish.
+
+Standing constraints for every issue body when filed: no mnemonics, agent
+tokens, raw invoices, payment hashes, preimages, or wallet-home paths in
+issues/comments; only provider-confirmed settlement counts as payment
+evidence; record promise transitions via
+`POST /api/operator/product-promises/transitions` before registry edits.
+
+### Rails
+
+**Issue 1 — `nip90: port the NIP-90 protocol library into the Bun/Effect workspace`**
+
+> The full NIP-90 data vending machine implementation lived in this repo as
+> `crates/nostr/core/src/nip90/` (kinds, builders, data_vending, model,
+> integration tests) until the Bun rebuild removed it (`f5919c766`).
+> Port it as a TypeScript package (e.g. `packages/nip90` or as a contribution
+> surface on `nostr-effect`) with: typed job request kinds (5000–5999),
+> result kinds (6000–6999), feedback kind 7000 with status tags
+> (`payment-required`, `processing`, `success`, `error`); `i`/`output`/
+> `relays`/`bid`/`amount` tag builders and parsers; bolt11 amount handling on
+> results/feedback; optional encrypted params; Effect Schema validation for
+> every event shape. Use the Rust source at `f5919c766^` as the contract
+> reference and port its test cases. Acceptance: package builds in the
+> workspace, round-trips all event shapes against fixtures derived from the
+> Rust tests, and rejects malformed kind/tag combinations. No relay,
+> wallet, or execution behavior in this issue.
+
+**Issue 2 — `nostr-relay: promote the POC relay to the scoped market relay`**
+
+> `apps/nostr-relay` is the deploy/handshake POC from #4621 (NIP-11, REQ over
+> a SQLite Durable Object). Promote it to the scoped relay for market
+> events: explicit allowed-kind policy (NIP-90 job/result/feedback ranges,
+> NIP-DS kinds 30404/30406, NIP-89 handler info), retention policy,
+> per-pubkey rate limits, REQ filter limits, and a health/metrics route.
+> Deploy to a production hostname, add a Live Public Surfaces row to
+> `docs/live/AGENTS.md` (and mirror + sha pin), and add a relay smoke
+> (publish job event → REQ readback) to CI or a runnable script. Acceptance:
+> a NIP-90 kind 5050 request published by a test key is readable by a second
+> connection, disallowed kinds are rejected, and the health route reports
+> event counts. This relay is event transport only: it grants no payment,
+> identity, or moderation authority.
+
+**Issue 3 — `nips: restore the draft NIP specs (DS, SKL, SA, AC, TRN) as living docs`**
+
+> The draft NIPs from the Episode 213–215 launch series (`crates/nostr/nips/`:
+> DS.md 864 lines, SKL.md, SA.md, AC.md, TRN.md) were removed in the Bun
+> rebuild. Restore them from `f5919c766^` into `docs/nips/` with a README
+> index, unchanged content plus a status header (draft, last-shipped-in
+> ref), and link them from the public AGENTS.md so outside Nostr/Bitcoin
+> developers can implement against the same liquidity pool (the Episode 213
+> open-protocol commitment). Acceptance: all five specs render in the repo,
+> the README maps spec → market stream, and AGENTS.md links the index.
+
+**Issue 4 — `pylon: NIP-90 provider loop behind GO ONLINE`**
+
+> Port the provider lane (history: `provider_nip90_lane.rs`,
+> `nip90_runtime.rs`, provider admission from `22a162b11`) into the v0.3
+> OpenTUI app: subscribe to the scoped relay, advertise capability via
+> NIP-89 handler info, accept kind 5050 text-inference jobs, execute on the
+> local runtime (Apple FM bridge first, runtime-neutral contract), publish
+> kind 6050 results with a bolt11 amount from the contributor's MDK agent
+> wallet, and mark feedback states. Wallet boundaries: the loop submits only
+> redacted readiness refs; mnemonics, raw invoices on the OpenAgents API,
+> preimages, and wallet-home paths never leave the machine. Reuse provider
+> admission gating before execution. Acceptance: with a funded buyer (Issue
+> 5), GO ONLINE on a real machine results in a paid job visible in local
+> earnings state and a public-safe receipt ref.
+
+**Issue 5 — `worker: operator-gated buy-mode dispatcher with spend caps`**
+
+> Port buy mode (Episode 214: 2-sat jobs every 12 seconds) as a worker-side
+> dispatcher: operator-gated start/stop, per-day and per-job spend caps,
+> idempotent job issuance, payment of provider bolt11s through the proven
+> MDK settlement bridge, and duplicate-settlement guards (reuse the
+> campaign payment-mode ladder patterns). OpenAgents is the first buyer to
+> bootstrap sell-side liquidity, exactly as in March. Acceptance: dispatcher
+> issues NIP-90 jobs against the scoped relay, pays only on valid results,
+> respects caps, halts on cap breach with an operator alert, and every
+> payment lands as a receipt (Issue 6). No autonomous spend outside the
+> configured caps; operator approval required to enable.
+
+**Issue 6 — `worker: public NIP-90 market receipts and stats projection`**
+
+> Project NIP-90 market settlements into the public receipt surface (same
+> discipline as `receipt.nexus_pylon.settlement.*`): receipt ref, settled
+> state, amount sats, stream kind (compute/data/labor), and public-safe
+> projection only — no invoices, preimages, payment hashes, or
+> counterparty wallet detail. Extend `GET /api/public/pylon-stats` (or a
+> sibling market-stats route) with per-stream counters (jobs settled 24h /
+> total, sats settled per stream). Acceptance: a settled buy-mode job from
+> Issue 5 is publicly retrievable by receipt ref, the stats route counts it
+> under the right stream, and the copy-scan gates pass.
+
+### Stream: Compute
+
+**Issue 7 — `compute: live paid kind 5050 smoke and clear compute_stream_not_broadly_live`**
+
+> With Issues 1–6 landed: run the provider loop on at least one real
+> contributor machine (not operator-only), keep it online with fresh
+> heartbeats so `pylonsOnlineNow`/`sellablePylonsOnlineNow` are nonzero,
+> dispatch funded small-sats kind 5050 jobs via buy mode, and verify
+> settlement receipts publicly. Record the
+> `compute_stream_not_broadly_live` blocker clear via a transition receipt
+> BEFORE shipping the registry edit. Acceptance: ≥2 settled compute receipts
+> to a contributor wallet, nonzero online counters at verification time,
+> transition receipt recorded, registry bumped.
+
+**Issue 8 — `pylon v0.3: live OpenAgents GEPA endpoint smoke and one paid settlement`**
+
+> Clears the two `pylon.gepa_worker_loop_v03.v1` blockers
+> (`live_openagents_gepa_endpoint_smoke_missing`,
+> `paid_gepa_settlement_v03_missing`). Run the v0.3 assignment loop against
+> live production endpoints (the #4633 no-spend loop already proved the
+> rail), then repeat in paid mode with operator-approved spend cap and a
+> settled receipt. This is the assignment-rail complement to Issue 7's
+> NIP-90 rail; both feed the compute stream. Acceptance: live endpoint smoke
+> green in repo evidence, one settled paid GEPA assignment receipt, both
+> blocker clears recorded as transition receipts.
+
+### Stream: Data
+
+**Issue 9 — `data: implement the NIP-DS listing/offer flow (kinds 30404/30406)`**
+
+> Implement NIP-DS (restored spec, Issue 3) on the NIP-90 package: kind
+> 30404 dataset listing (canonical digest, size, schema/provenance
+> metadata), kind 30406 offer with terms, and delivery via public, DVM, or
+> NIP-90 flow. Surface as a `scripts/`-style CLI or agent skill so listing
+> is conversational (the Episode 215 demo path). Acceptance: a test dataset
+> can be listed, offered, and delivered end-to-end against the scoped relay
+> with digests verified on receipt; malformed listings rejected by schema.
+
+**Issue 10 — `data: conversation-bundle export and redaction tool`**
+
+> A script/skill that exports recent Claude Code/Codex conversations from
+> the local machine, runs a redaction pass (secrets, tokens, emails, repo
+> paths, names — deny-by-default with an allowlist), produces a manifest +
+> canonical digest, and refuses to bundle anything matching secret
+> patterns. Redaction evidence (what classes were removed, counts) ships in
+> the manifest; raw source never leaves the machine unredacted. Acceptance:
+> running against a fixture conversation set produces a clean bundle, a
+> seeded secret in fixtures causes a hard refusal, and the manifest digest
+> matches the NIP-DS listing digest.
+
+**Issue 11 — `data: first settled dataset sale and clear data_stream_not_live`**
+
+> Sell one redacted conversation bundle (Issues 9–10) for small sats:
+> listing → offer → payment → entitlement/delivery → public settlement
+> receipt (Issue 6 projection). Buyer is OpenAgents buy-side initially
+> (Episode 215: "I'll buy it from you"). Clears `data_stream_not_live` on
+> the five-streams promise and flips `pylon.data_trace_revenue.v1` red →
+> yellow with the receipt as evidence; both via transition receipts before
+> registry edits. Acceptance: one public receipt ref for a settled dataset
+> sale with redaction evidence in the manifest, registry updated.
+
+### Stream: Labor
+
+**Issue 12 — `labor: define labor job kinds and the compliant-usage policy`**
+
+> Define the labor job contract on NIP-90: job kind(s) for agent work tasks
+> (code task, review, document work) with input refs, acceptance criteria,
+> bid/amount, and result artifact refs. Ship the compliant-usage policy doc
+> stating the boundary that governs the whole stream: contributors run jobs
+> on their OWN provider accounts/API budgets under their OWN provider
+> terms; OpenAgents pays for accepted work output only; no provider
+> credentials, sessions, or account access are ever transferred, metered
+> for resale, or brokered; contributors are responsible for their own
+> provider-terms compliance and the runtime never exfiltrates provider
+> auth material. Acceptance: schema lands in the NIP-90 package with tests;
+> policy doc linked from AGENTS.md and from
+> `provider.compliant_usage_labor.v1` evidenceRefs.
+
+**Issue 13 — `labor: Pylon labor intake running jobs on the contributor's own agent`**
+
+> Wire labor jobs (Issue 12) into the v0.3 runtime: accept a labor job,
+> execute through the contributor's locally configured agent (Codex /
+> OpenCode / Claude Code via the existing runtime contracts), apply sandbox
+> and approval policy (bounded working dir, no provider-auth exfiltration,
+> operator-visible approval for first runs), produce result artifacts, and
+> publish the NIP-90 result. The openagents.com assignment rail is an
+> acceptable v1 transport if relay-first slips — the contract, not the
+> transport, is the deliverable. Acceptance: a real job ("fix this
+> fixture's failing test" class) runs end-to-end on a contributor machine
+> using the contributor's own agent capacity and returns verifiable output.
+
+**Issue 14 — `labor: first paid overnight labor job and clear labor_stream_not_live`**
+
+> Run one real paid labor job on a contributor's idle agent: job dispatched
+> (buy mode or operator), executed overnight-unattended on the
+> contributor's own capacity, result accepted against stated criteria,
+> sats settled to the contributor wallet, public receipt recorded. Clears
+> `labor_stream_not_live` on the five-streams promise and flips
+> `provider.compliant_usage_labor.v1` red → yellow; transition receipts
+> before registry edits. Acceptance: one settled labor receipt, acceptance
+> evidence retained, no provider-auth material anywhere in artifacts or
+> receipts.
+
+### Stream: Referrals
+
+**Issue 15 — `referrals: consume attribution at signup/order`**
+
+> Site referral capture (`/r/site/{publicSourceRef}`) records pending
+> attribution but nothing consumes it. Add consumption: when a referred
+> user completes a qualifying event (signup or paid order), bind the
+> pending attribution to that event exactly once (idempotent, atomic with
+> the qualifying write via db.batch), with an attribution window and
+> last-touch rule documented. Acceptance: tests cover consume-once, window
+> expiry, and no-attribution paths; consumed attributions are queryable by
+> operator route.
+
+**Issue 16 — `referrals: payout policy and referral payout ledger`**
+
+> Policy doc + ledger converting consumed attributions into payout-eligible
+> records: reward amount/percentage, caps per referrer/period, abuse rules
+> (self-referral, ring detection), dispute/reversal handling, and payout
+> state machine (eligible → approved → dispatched → settled, reusing the
+> proven MDK settlement bridge semantics). Ledger rows are append-only
+> with reversal entries, not mutations. Acceptance: schema + tests for the
+> state machine and caps; policy doc linked from
+> `sites.referral_bitcoin_stream.v1` evidenceRefs.
+
+**Issue 17 — `referrals: first settled referral payout and clear referral_stream_not_live`**
+
+> Run one real referral end-to-end: captured attribution → qualifying event
+> → eligible ledger row → operator-approved small-sats payout via the MDK
+> bridge → public settlement receipt. Clears `referral_stream_not_live` on
+> the five-streams promise and advances `sites.referral_bitcoin_stream.v1`
+> (clears `referral_settlement_receipts_missing`; policy blocker cleared by
+> Issue 16); transition receipts before registry edits. Acceptance: one
+> public referral settlement receipt ref, ledger states consistent,
+> registry updated.
+
+### Composition
+
+**Issue 18 — `five-streams: one-install stacking smoke and registry flip`**
+
+> The promise claims one install stacks the streams. At the red → yellow
+> flip, add `blocker.product_promises.one_install_stacking_smoke_missing`
+> so the composition claim stays mechanically gated. Then run the smoke:
+> one registered Pylon identity, one session window, public receipts from
+> at least two different streams (compute + labor is the natural pair; tips
+> to the same wallet-readiness identity also counts) projected under the
+> same pylonId. Green copy for the promise only after all four stream
+> blockers AND the stacking blocker are cleared, each with its own
+> transition receipt. Acceptance: stacking receipts visible publicly under
+> one identity; promise green with `lastVerifiedAt` populated.
+
+### Optional polish (not blocking this promise)
+
+**Issue 19 — `tips: webhook live callback, refund/reversal, and checkout polish (yellow→green)`**
+
+> `forum.content_tipping.v1` already does not block the five-streams
+> promise, but its own yellow → green needs: live MDK webhook callback
+> smoke, a public refund/reversal smoke, browser checkout polish (the
+> worker-served `/checkout/{id}` QR page shipped 2026-06-10 covers part),
+> and broader wallet coverage. File separately so tips polish never gates
+> the five-streams campaign.
 
 ## Evidence Reviewed
 

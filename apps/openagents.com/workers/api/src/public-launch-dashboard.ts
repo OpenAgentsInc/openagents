@@ -106,9 +106,9 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     ],
     promiseId: 'five_bitcoin_revenue_streams',
     promiseText:
-      'Pylon stacks compute, data, Forum tips, referrals, and subscription/token-capacity arbitrage in one install.',
+      'Pylon stacks compute, data, Forum tips, referrals, and agent labor markets in one install.',
     safeCopy:
-      'Forum tipping and several future revenue gates exist, but one-install multi-stream Bitcoin earning is not live.',
+      'Forum tipping is live and the NIP-90 market rails exist in repo history, but one-install multi-stream Bitcoin earning is not live in the current app.',
     staleSensitive: true,
     unsafeCopy:
       'Do not claim one Pylon install creates five live Bitcoin revenue streams.',
@@ -325,17 +325,19 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
   {
     baseStatus: 'red',
     blockerRefs: [
-      'blocker.launch_dashboard.subscription_capacity.self_serve_clearing_missing',
+      'blocker.launch_dashboard.compliant_usage_labor.paid_labor_jobs_missing',
     ],
-    evidenceRefs: ['docs/2026-06-08-provider-capacity-marketplace-gate.md'],
+    evidenceRefs: [
+      'docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
+    ],
     promiseId: 'chatgpt_claude_codex_capacity',
     promiseText:
       'ChatGPT subscription accounts can be connected through OpenAgents; Claude may come later; Codex/OpenCode auth can be reused or dedicated.',
     safeCopy:
-      'Provider-account connection work exists, but self-serve capacity metering, ToS policy, pricing, assignment, and settlement are missing.',
+      'Provider-account connection and device-login flows exist and contributors keep full custody of their own accounts; paid labor jobs that put that compliant usage to work for Bitcoin are not live. OpenAgents does not meter, resell, or proxy provider access.',
     staleSensitive: false,
     unsafeCopy:
-      'Do not claim ChatGPT, Claude, Codex, or OpenCode subscription capacity is monetized.',
+      'Do not claim connected provider accounts earn Bitcoin today, and do not describe OpenAgents as reselling, renting, or proxying ChatGPT, Claude, Codex, or OpenCode subscription capacity.',
   },
   {
     baseStatus: 'yellow',
@@ -366,17 +368,19 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
   {
     baseStatus: 'red',
     blockerRefs: [
-      'blocker.launch_dashboard.prepaid_provider_capacity.provider_policy_missing',
+      'blocker.launch_dashboard.compliant_usage_labor.paid_labor_jobs_missing',
     ],
-    evidenceRefs: ['docs/2026-06-08-provider-capacity-marketplace-gate.md'],
+    evidenceRefs: [
+      'docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
+    ],
     promiseId: 'prepaid_provider_capacity_monetization',
     promiseText:
       'Prepaid provider API budgets should be possible to monetize through Pylon/OpenAgents once provider policy, metering, assignment, and settlement are proven.',
     safeCopy:
-      'Generic prepaid provider capacity monetization is planned or unsupported until provider schema, policy, metering, pricing, assignment, and settlement refs exist.',
+      'Prepaid API budgets are contributor-owned capacity for the agent labor market: contributors do useful work with their own keys and sell the results. No resale path exists or is planned, and paid labor jobs are not live.',
     staleSensitive: false,
     unsafeCopy:
-      'Do not claim prepaid provider API capacity monetization is live.',
+      'Do not claim prepaid API budgets earn Bitcoin today, and do not describe OpenAgents as buying, reselling, or brokering provider API access.',
   },
 ]
 
