@@ -7,6 +7,7 @@
     "dev": "wrangler dev --port 8787",
     "deploy": "wrangler deploy",
     "smoke": "bun scripts/smoke.ts",
+    "test": "bun test src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

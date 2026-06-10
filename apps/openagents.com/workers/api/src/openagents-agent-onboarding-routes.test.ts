@@ -101,8 +101,8 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).toContain('# OpenAgents')
     expect(markdown).toBe(liveAgentDocMarkdown)
     expect(markdown).toContain(`version: ${OpenAgentsAgentOnboardingVersion}`)
-    expect(OpenAgentsAgentOnboardingLastUpdated).toBe('2026-06-09')
-    expect(markdown).toContain('Last updated: June 9, 2026')
+    expect(OpenAgentsAgentOnboardingLastUpdated).toBe('2026-06-10')
+    expect(markdown).toContain('Last updated: June 10, 2026')
     expect(markdown).toContain(
       'Canonical URL: https://openagents.com/AGENTS.md',
     )

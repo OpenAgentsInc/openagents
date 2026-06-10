@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "openagents-nostr-relay-poc",
+  "name": "openagents-market-relay",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-09",
   "workers_dev": true,
@@ -21,10 +21,10 @@
     },
   },
   "vars": {
-    "OPENAGENTS_NOSTR_RELAY_ISSUE": "https://github.com/OpenAgentsInc/openagents/issues/4621",
-    "RELAY_NAME": "OpenAgents Nostr Relay POC",
-    "RELAY_DESCRIPTION": "Proof-of-concept OpenAgents Nostr relay backed by a Cloudflare Durable Object and nostr-effect.",
-    "RELAY_CONTACT": "https://github.com/OpenAgentsInc/openagents/issues/4621",
+    "OPENAGENTS_NOSTR_RELAY_ISSUE": "https://github.com/OpenAgentsInc/openagents/issues/4636",
+    "RELAY_NAME": "OpenAgents Scoped Market Relay",
+    "RELAY_DESCRIPTION": "Scoped OpenAgents market-event relay for NIP-90, NIP-DS, and NIP-89 transport. It grants no payment, identity, moderation, assignment, or settlement authority.",
+    "RELAY_CONTACT": "https://github.com/OpenAgentsInc/openagents/issues/4636",
   },
   "durable_objects": {
     "bindings": [
