@@ -7,6 +7,13 @@ export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
 
 export type TreasuryRouteDependencies = Readonly<{
   fetchTreasury?: ContainerPathFetch | undefined
+  recordPayoutTransaction?:
+    | ((input: {
+        amountSat: number
+        paymentRef: string | null
+        settled: boolean
+      }) => Promise<void>)
+    | undefined
   requireAdminApiToken: (request: Request) => Promise<boolean>
 }>
 
@@ -394,6 +401,20 @@ export const handleOperatorTreasuryPayoutApi = (
               },
               { status: 502 },
             )
+          }
+
+          try {
+            await dependencies.recordPayoutTransaction?.({
+              amountSat: plan.paidAmountSat,
+              paymentRef:
+                typeof payResult.paymentId === 'string'
+                  ? payResult.paymentId
+                  : null,
+              settled: payResult.status === 'succeeded',
+            })
+          } catch {
+            // The payment already happened; a ledger write failure must not
+            // convert a successful payout into an error response.
           }
 
           return noStoreJsonResponse({

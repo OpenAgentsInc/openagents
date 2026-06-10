@@ -338,6 +338,10 @@ import {
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import type { ContainerPathFetch } from './http/container-fetch'
 import {
+  makeD1TreasuryTransactionStore,
+  makeTreasuryPageRoutes,
+} from './treasury-page-routes'
+import {
   TREASURY_SERVICE_TOKEN_HEADER,
   handleOperatorTreasuryFundingDestinationApi,
   handleOperatorTreasuryPayoutApi,
@@ -6057,6 +6061,19 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       handleOperatorTreasuryPayoutApi(request, {
         fetchTreasury: fetchMdkTreasuryPath(env),
+        recordPayoutTransaction: async input => {
+          await makeD1TreasuryTransactionStore(openAgentsDatabase(env)).insert({
+            amountSat: input.amountSat,
+            bolt11: null,
+            createdAt: currentIsoTimestamp(),
+            direction: 'out',
+            expiresAt: null,
+            id: `treasury_payout_${randomUuid()}`,
+            paymentRef: input.paymentRef,
+            settledAt: input.settled ? currentIsoTimestamp() : null,
+            state: input.settled ? 'settled' : 'pending',
+          })
+        },
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
       }),
@@ -6231,6 +6248,13 @@ const routeRequest = makeWorkerRouteRequest({
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
   routeCheckoutPageRequest: (request, env) =>
     checkoutPageRoutes.routeCheckoutPageRequest(request, env),
+  routeTreasuryPageRequest: (request, env) =>
+    makeTreasuryPageRoutes({
+      fetchTreasury: fetchMdkTreasuryPath(env),
+      makeUuid: randomUuid,
+      nowIso: currentIsoTimestamp,
+      store: makeD1TreasuryTransactionStore(openAgentsDatabase(env)),
+    }).routeTreasuryPageRequest(request),
   routeAgentProposalRequest: agentProposalRoutes.routeAgentProposalRequest,
   routeAgentSearchRequest: agentSearchRoutes.routeAgentSearchRequest,
   routeAgentScopedGrantRequest:

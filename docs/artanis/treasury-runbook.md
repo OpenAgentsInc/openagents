@@ -107,6 +107,31 @@ trail until topped up or the operator closes it explicitly.
 - The fractional policy is not a budget: per-run and per-day caps from the
   #4699 dispatcher still apply on top of it once that lands.
 
+## Public treasury page and donations
+
+`/treasury` is a public worker-served page (styled like the homepage: black,
+white, Berkeley Mono) showing the live balance, spendable amount, and the
+last 20 transactions — time, direction, amount, and state only. Recipients,
+destinations, payment hashes, and invoice material are never shown for other
+people's rows. JSON projection: `GET /api/public/treasury`.
+
+Donations: `/treasury/donate` mints a fresh variable-amount JIT BOLT11
+invoice from the treasury node and redirects to
+`/treasury/donations/{id}` — a checkout-style page with QR code and
+`lightning:` link that auto-refreshes until the payment arrives, then thanks
+the donor with the received amount. Invoices expire after one hour.
+
+Ledger: every payout through `POST /api/operator/treasury/payout` and every
+donation is recorded in the `treasury_transactions` D1 table (migration
+0159). The public page reads from that table; the container's in-memory
+receive tracking means a donation confirmed across a container restart may
+sit pending until expiry even though the sats arrived — balance is always
+authoritative.
+
+Artanis should link `/treasury` (never raw balances pasted into posts) when
+reporting treasury state publicly, and may cite `GET /api/public/treasury`
+as the machine-readable source.
+
 ## Current live state (2026-06-10)
 
 - Container instance `openagents-mdk-treasury-20260610-2`, state

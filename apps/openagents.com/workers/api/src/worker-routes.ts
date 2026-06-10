@@ -35,6 +35,7 @@ type WorkerRouteDependencies = Readonly<{
   routeAgentGoalRequest: OptionalEffectRoute
   routeAgentOwnerClaimRequest: OptionalEffectRoute
   routeCheckoutPageRequest: OptionalEffectRoute
+  routeTreasuryPageRequest: OptionalEffectRoute
   routeAgentProposalRequest: OptionalEffectRoute
   routeAgentSearchRequest: OptionalEffectRoute
   routeAgentScopedGrantRequest: OptionalEffectRoute
@@ -259,6 +260,16 @@ export const makeWorkerRouteRequest =
 
       if (checkoutPageResponse !== undefined) {
         return yield* checkoutPageResponse
+      }
+
+      const treasuryPageResponse = dependencies.routeTreasuryPageRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (treasuryPageResponse !== undefined) {
+        return yield* treasuryPageResponse
       }
 
       const agentProposalResponse = dependencies.routeAgentProposalRequest(

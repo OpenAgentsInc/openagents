@@ -32,6 +32,10 @@ let runningNode = null
 // Outbound completion has no webhook in lightning-js; outcomes are drained
 // from the node event queue into this map and served by paymentId.
 const paymentOutcomes = new Map()
+// Inbound receipts (donations) drained from the same event queue, keyed by
+// payment hash. Held for container lifetime only; callers must tolerate a
+// pending answer after a container restart.
+const receivedPayments = new Map()
 
 const nodeUnavailableReason = () => {
   const flags = configuredFlags()
@@ -75,6 +79,18 @@ const drainPaymentEvents = node => {
       paymentOutcomes.set(event.paymentId, {
         reason: event.reason ?? null,
         status: event.eventType === 'Sent' ? 'succeeded' : 'failed',
+      })
+    }
+
+    if (
+      event.eventType === 'Received' &&
+      typeof event.paymentHash === 'string'
+    ) {
+      receivedPayments.set(event.paymentHash.toLowerCase(), {
+        amountSat:
+          typeof event.amountMsat === 'number'
+            ? Math.floor(event.amountMsat / 1000)
+            : null,
       })
     }
 
@@ -233,6 +249,31 @@ const handleRequest = async request => {
 
   if (request.method === 'GET' && url.pathname === '/offer') {
     return offerResponse(node)
+  }
+
+  if (request.method === 'POST' && url.pathname === '/donation-invoice') {
+    const invoice = node.getVariableAmountJitInvoiceWhileRunning(
+      'OpenAgents treasury donation',
+      3600,
+    )
+
+    return json(200, {
+      bolt11: invoice.bolt11,
+      expiresAt: invoice.expiresAt,
+      paymentHash: invoice.paymentHash,
+    })
+  }
+
+  const receivedMatch = /^\/received\/([a-f0-9]{64})$/i.exec(url.pathname)
+
+  if (request.method === 'GET' && receivedMatch !== null) {
+    drainPaymentEvents(node)
+    const entry = receivedPayments.get(receivedMatch[1].toLowerCase())
+
+    return json(200, {
+      amountSat: entry?.amountSat ?? null,
+      received: entry !== undefined,
+    })
   }
 
   if (request.method === 'POST' && url.pathname === '/pay') {
