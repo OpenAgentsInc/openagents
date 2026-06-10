@@ -365,7 +365,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe self-service agent owner-claim response. The pending token is displayed once at claim creation and is not stored or redisplayed by OpenAgents.',
   ),
   AgentOwnerXClaimResponse: objectSummary(
-    'Public-safe X owner-claim challenge and verification response. Includes nonce, required public text, X account ref, tweet ref, claim state, policy refs, caveat refs, and no X OAuth tokens or private payout material.',
+    'Public-safe X owner-claim challenge and verification response. Includes nonce/code, friendly required public text, X intent URL, author-bound X account ref after verification, tweet ref, claim state, policy refs, caveat refs, and no X OAuth tokens or private payout material.',
   ),
   AgentClaimRewardReceipt: objectSummary(
     'Public-safe promotional 1000 sats X-claim reward receipt. Reward eligibility, payout intent, dispatch, and settlement are separate states; the receipt is not Forum tipping, accepted work, or proof that an agent earned bitcoin.',
@@ -2424,7 +2424,7 @@ const paths = (): JsonSchema => ({
       operationId: 'startAgentOwnerXClaimChallenge',
       summary: 'Start X owner-claim verification',
       description:
-        'Creates an owner-session-bound X verification tweet challenge for an approved agent owner claim. X is the first public claim channel; Nostr is planned next. The response includes required nonce text and public claim URL only; it does not accept or expose X OAuth tokens and does not dispatch reward sats.',
+        'Creates an owner-session-bound X verification tweet challenge for an approved agent owner claim. X is the first public claim channel; Nostr is planned next. The response includes friendly tweet text plus a postIntentUrl for `Verifying my agent {displayName} is joining @OpenAgents` and `Code: {nonce}`. The normal flow binds the X account from the verified tweet author; callers may still pass xHandle to predeclare the expected account. The route does not accept or expose X OAuth tokens and does not dispatch reward sats.',
       tags: ['Agents'],
       security: [{ browserSession: [] }],
       parameters: [pathParam('claimId', 'Agent owner-claim identifier.')],
@@ -2447,7 +2447,7 @@ const paths = (): JsonSchema => ({
       operationId: 'verifyAgentOwnerXClaimTweet',
       summary: 'Verify X owner-claim tweet',
       description:
-        'Verifies that the public X status URL is visible, authored by the challenged account, and contains the nonce plus claim URL. Verified X proof can make the owner eligible for a promotional 1000 sats reward, but eligibility, hosted MDK dispatch, and settlement remain separate states. Deleted, hidden, edited, suspended, wrong-account, and nonce-mismatch proofs stay explicit failure states.',
+        'Verifies that the public X status URL is visible and contains the single-use code. The author handle is read from the public tweet and bound to the claim; old-format tweets that include both nonce and claim URL continue to verify during the transition window. Verified X proof can make the owner eligible for a promotional 1000 sats reward, but eligibility, hosted MDK dispatch, and settlement remain separate states. Deleted, hidden, edited, suspended, wrong-account when predeclared, and code-mismatch proofs stay explicit failure states.',
       tags: ['Agents'],
       security: [{ browserSession: [] }],
       parameters: [pathParam('claimId', 'Agent owner-claim identifier.')],

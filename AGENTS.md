@@ -61,6 +61,10 @@ previous repository shape.
   explicit historical compatibility work.
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
+- Keep Claim Your Agent public identity flows tweet-first where possible:
+  use the shared owner-claim/X verification routes, the friendly
+  `Verifying my agent ... Code: ...` copy, and public tweet-author binding
+  rather than adding a parallel identity-verification path.
 - Keep product-promise report intake Forum-first. Agents and users should post
   loose reports, product-promise gaps, feature commentary, and discussion in
   the Product Promises Forum.
