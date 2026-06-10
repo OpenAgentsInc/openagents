@@ -59,6 +59,7 @@ import {
   ARTANIS_REGISTERED_ACTOR_REF,
   runArtanisResponderScanScheduled,
 } from './artanis-forum-responder'
+import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -593,6 +594,117 @@ const fetchMdkTipsBufferPath = (
       }),
     )
 }
+
+const runArtanisForumRouteEffect = async (
+  effect: ReturnType<typeof forumRoutes.routeForumRequest> | undefined,
+) => (effect === undefined ? undefined : Effect.runPromise(effect))
+
+const artanisComposerForumPostForEnv =
+  (environment: Env) =>
+  async (input: {
+    topicId: string
+    bodyText: string
+    idempotencyKey: string
+  }): Promise<{ postId: string } | { error: string }> => {
+    const token = (environment as { ARTANIS_AGENT_TOKEN?: string })
+      .ARTANIS_AGENT_TOKEN
+    if (token === undefined || token === '') {
+      return { error: 'artanis_agent_token_missing' }
+    }
+    try {
+      const response = await runArtanisForumRouteEffect(
+        forumRoutes.routeForumRequest(
+          new Request(
+            `https://openagents.com/api/forum/topics/${input.topicId}/posts`,
+            {
+              body: JSON.stringify({ bodyText: input.bodyText }),
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': input.idempotencyKey,
+              },
+              method: 'POST',
+            },
+          ),
+          openAgentsDatabase(environment),
+          {
+            agentStore: makeD1AgentRegistrationStore(
+              openAgentsDatabase(environment),
+            ),
+          },
+        ),
+      )
+      if (response === undefined) {
+        return { error: 'forum_route_unmatched' }
+      }
+      const payload = (await response.json()) as {
+        error?: string
+        post?: { postId?: string }
+      }
+      return payload.post?.postId === undefined
+        ? { error: String(payload.error ?? response.status) }
+        : { postId: payload.post.postId }
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message.slice(0, 120) : 'post_failed',
+      }
+    }
+  }
+
+const artanisComposerTipForEnv =
+  (environment: Env) =>
+  async (input: {
+    postId: string
+    amountSat: number
+    idempotencyKey: string
+  }): Promise<{ rung: string } | { error: string }> => {
+    const token = (environment as { ARTANIS_AGENT_TOKEN?: string })
+      .ARTANIS_AGENT_TOKEN
+    if (token === undefined || token === '') {
+      return { error: 'artanis_agent_token_missing' }
+    }
+    try {
+      const response = await runArtanisForumRouteEffect(
+        forumRoutes.routeForumRequest(
+          new Request(
+            `https://openagents.com/api/forum/posts/${input.postId}/tips/ladder`,
+            {
+              body: JSON.stringify({ amountSat: input.amountSat }),
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': input.idempotencyKey,
+              },
+              method: 'POST',
+            },
+          ),
+          openAgentsDatabase(environment),
+          {
+            agentStore: makeD1AgentRegistrationStore(
+              openAgentsDatabase(environment),
+            ),
+            tipsBufferPay: tipsBufferPayFnForEnv(environment),
+          },
+        ),
+      )
+      if (response === undefined) {
+        return { error: 'forum_route_unmatched' }
+      }
+      const payload = (await response.json()) as {
+        error?: string
+        rung?: string
+      }
+      return payload.rung === undefined
+        ? { error: String(payload.error ?? response.status) }
+        : { rung: payload.rung }
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message.slice(0, 120) : 'tip_failed',
+      }
+    }
+  }
 
 const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
   const fetchBuffer = fetchMdkTipsBufferPath(environment)
@@ -6812,6 +6924,21 @@ export default {
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+        }),
+      ),
+      observedEffect(
+        'ArtanisResponder.compose',
+        runArtanisComposerScheduled(openAgentsDatabase(env), {
+          artanisActorRef: ARTANIS_REGISTERED_ACTOR_REF,
+          enabled:
+            (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
+              .ARTANIS_FORUM_RESPONDER_ENABLED === 'true',
+          forumPost: artanisComposerForumPostForEnv(env),
+          gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
+          geminiApiKey:
+            (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          tip: artanisComposerTipForEnv(env),
         }),
       ),
       observedEffect(

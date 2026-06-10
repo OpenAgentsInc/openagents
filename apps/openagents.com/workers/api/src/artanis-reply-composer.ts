@@ -1,0 +1,277 @@
+import { Effect } from 'effect'
+
+import { artanisMindComplete } from './artanis-mind'
+import { publicProductPromisesDocument } from './product-promises'
+
+// The Artanis grounded reply composer + tip budget (issue #4715;
+// promise artanis.pylon_support_responder.v1). For each proposed
+// responder action: assemble live platform context (the asker's own
+// post - which carries the device inventory the Pylon embedded - plus
+// the current promise registry states for the Pylon/Tassadar lanes),
+// have the mind compose a reply whose every platform claim comes from
+// that context, deliver it as the REGISTERED Artanis identity through
+// the real forum route (in-process, full policy), and tip the question
+// under the per-tick/per-day budget through the reliable-tips ladder.
+// Response windows (asked_at -> replied_at) are recorded per action.
+
+export const ARTANIS_COMPOSER_MAX_PER_TICK = 2
+export const ARTANIS_TIP_AMOUNT_SAT = 50
+export const ARTANIS_TIP_BUDGET_PER_DAY_SAT = 210
+
+export type ComposerForumPost = (input: {
+  topicId: string
+  bodyText: string
+  idempotencyKey: string
+}) => Promise<{ postId: string } | { error: string }>
+
+export type ComposerTip = (input: {
+  postId: string
+  amountSat: number
+  idempotencyKey: string
+}) => Promise<{ rung: string } | { error: string }>
+
+export type ComposerTickOutcome = Readonly<{
+  considered: number
+  responded: number
+  tipped: number
+  blocked: number
+  skippedReason: string | null
+}>
+
+const groundingPromises = () => {
+  const document = publicProductPromisesDocument()
+  return document.promises
+    .filter(
+      promise =>
+        promise.promiseId.startsWith('pylon.') ||
+        promise.promiseId.startsWith('compute.') ||
+        promise.promiseId.startsWith('artanis.') ||
+        promise.promiseId.startsWith('payments.'),
+    )
+    .map(promise => ({
+      claim: promise.safeCopy.slice(0, 280),
+      promiseId: promise.promiseId,
+      state: promise.state,
+    }))
+}
+
+export const runArtanisComposerTick = async (
+  db: D1Database,
+  deps: Readonly<{
+    geminiApiKey: string | null
+    gatewayToken?: string | undefined
+    forumPost: ComposerForumPost
+    tip: ComposerTip
+    artanisActorRef: string
+    nowIso: string
+  }>,
+): Promise<ComposerTickOutcome> => {
+  if (deps.geminiApiKey === null || deps.geminiApiKey === '') {
+    return {
+      blocked: 0,
+      considered: 0,
+      responded: 0,
+      skippedReason: 'mind_unconfigured',
+      tipped: 0,
+    }
+  }
+
+  const proposals = (
+    (
+      await db
+        .prepare(
+          `SELECT a.id, a.topic_id, a.first_post_id, a.question_class, a.asked_at,
+                  t.title, COALESCE(b.body_text, '') AS body_text
+             FROM artanis_responder_actions a
+             JOIN forum_topics t ON t.id = a.topic_id
+        LEFT JOIN forum_post_bodies b ON b.post_id = a.first_post_id
+            WHERE a.state = 'proposed'
+            ORDER BY a.created_at ASC
+            LIMIT ?`,
+        )
+        .bind(ARTANIS_COMPOSER_MAX_PER_TICK)
+        .all()
+    ).results ?? []
+  ) as Array<Record<string, unknown>>
+
+  if (proposals.length === 0) {
+    return {
+      blocked: 0,
+      considered: 0,
+      responded: 0,
+      skippedReason: null,
+      tipped: 0,
+    }
+  }
+
+  // Daily tip budget from the ledger itself - no separate counter to
+  // drift: sum of Artanis's paid tip pay-ins created today.
+  const tipBudgetRow = (await db
+    .prepare(
+      `SELECT COALESCE(SUM(cost_msat), 0) AS spent
+         FROM pay_ins
+        WHERE payer_ref = ? AND pay_in_type = 'tip' AND state = 'paid'
+          AND created_at >= ?`,
+    )
+    .bind(deps.artanisActorRef, `${deps.nowIso.slice(0, 10)}T00:00:00.000Z`)
+    .first()) as { spent: number } | null
+  let tipBudgetLeftSat =
+    ARTANIS_TIP_BUDGET_PER_DAY_SAT -
+    Math.floor(Number(tipBudgetRow?.spent ?? 0) / 1000)
+
+  let responded = 0
+  let tipped = 0
+  let blocked = 0
+
+  for (const proposal of proposals) {
+    const topicId = String(proposal.topic_id)
+    const actionId = String(proposal.id)
+    const grounding = {
+      promiseRegistry: groundingPromises(),
+      question: {
+        bodyText: String(proposal.body_text).slice(0, 3000),
+        questionClass: proposal.question_class,
+        title: String(proposal.title),
+      },
+    }
+
+    const mindResult = await artanisMindComplete({
+      apiKey: deps.geminiApiKey,
+      ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
+        ? {}
+        : { gatewayToken: deps.gatewayToken }),
+      prompt: [
+        'Compose a reply to this Pylon contributor question. GROUNDING RULES (absolute): every claim about the platform, promises, capabilities, dispatch, or payments must come from the grounding JSON below - if the grounding does not answer part of the question, say so plainly rather than inventing. Device facts come only from the question body (the Pylon embedded its own inventory there). Be specific, useful, and honest about what is yellow vs green. 150-350 words, plain text. End with: - Artanis (automated responder; the mind proposes, schemas validate, gates hold)',
+        `GROUNDING: ${JSON.stringify(grounding)}`,
+      ].join('\n\n'),
+      system:
+        'You are Artanis, the Nexus administrator of OpenAgents - the AI agent that distributes work to Pylons and keeps devices utilized. You answer contributor questions with grounded platform facts only.',
+    })
+
+    if ('error' in mindResult) {
+      blocked += 1
+      await db
+        .prepare(
+          `UPDATE artanis_responder_actions
+           SET state = 'blocked', proposal_json = ?, updated_at = ?
+           WHERE id = ? AND state = 'proposed'`,
+        )
+        .bind(
+          JSON.stringify({ reason: 'mind_unavailable_at_compose' }),
+          deps.nowIso,
+          actionId,
+        )
+        .run()
+      continue
+    }
+
+    const posted = await deps.forumPost({
+      bodyText: mindResult.text,
+      idempotencyKey: `artanis-responder:${topicId}`,
+      topicId,
+    })
+
+    if ('error' in posted) {
+      blocked += 1
+      await db
+        .prepare(
+          `UPDATE artanis_responder_actions
+           SET state = 'blocked', proposal_json = ?, updated_at = ?
+           WHERE id = ? AND state = 'proposed'`,
+        )
+        .bind(
+          JSON.stringify({
+            reason: `forum_post_failed:${posted.error}`.slice(0, 200),
+          }),
+          deps.nowIso,
+          actionId,
+        )
+        .run()
+      continue
+    }
+
+    responded += 1
+    await db
+      .prepare(
+        `UPDATE artanis_responder_actions
+         SET state = 'responded', reply_post_id = ?, replied_at = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(posted.postId, deps.nowIso, deps.nowIso, actionId)
+      .run()
+    await db
+      .prepare(
+        `UPDATE artanis_responder_state
+         SET responses_today = CASE WHEN responses_day = ? THEN responses_today + 1 ELSE 1 END,
+             responses_day = ?, updated_at = ?
+         WHERE id = 1`,
+      )
+      .bind(deps.nowIso.slice(0, 10), deps.nowIso.slice(0, 10), deps.nowIso)
+      .run()
+
+    // Tip the question post under the budget; failure to tip never blocks
+    // the response.
+    if (tipBudgetLeftSat >= ARTANIS_TIP_AMOUNT_SAT) {
+      const tipResult = await deps.tip({
+        amountSat: ARTANIS_TIP_AMOUNT_SAT,
+        idempotencyKey: `artanis-responder-tip:${topicId}`,
+        postId: String(proposal.first_post_id),
+      })
+      if (!('error' in tipResult)) {
+        tipped += 1
+        tipBudgetLeftSat -= ARTANIS_TIP_AMOUNT_SAT
+        await db
+          .prepare(
+            `UPDATE artanis_responder_actions
+             SET state = 'tipped', updated_at = ?
+             WHERE id = ?`,
+          )
+          .bind(deps.nowIso, actionId)
+          .run()
+      }
+    }
+  }
+
+  return {
+    blocked,
+    considered: proposals.length,
+    responded,
+    skippedReason: null,
+    tipped,
+  }
+}
+
+export const runArtanisComposerScheduled = (
+  db: D1Database,
+  deps: Readonly<{
+    enabled: boolean
+    geminiApiKey: string | null
+    gatewayToken?: string | undefined
+    forumPost: ComposerForumPost
+    tip: ComposerTip
+    artanisActorRef: string
+    nowIso: string
+  }>,
+): Effect.Effect<ComposerTickOutcome, never> =>
+  deps.enabled
+    ? Effect.tryPromise({
+        catch: () => 'composer_tick_error' as const,
+        try: () => runArtanisComposerTick(db, deps),
+      }).pipe(
+        Effect.catch(reason =>
+          Effect.succeed({
+            blocked: 0,
+            considered: 0,
+            responded: 0,
+            skippedReason: reason,
+            tipped: 0,
+          } satisfies ComposerTickOutcome),
+        ),
+      )
+    : Effect.succeed({
+        blocked: 0,
+        considered: 0,
+        responded: 0,
+        skippedReason: 'responder_disabled',
+        tipped: 0,
+      })
