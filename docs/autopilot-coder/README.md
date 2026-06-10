@@ -20,7 +20,14 @@ Forum reporting.
   "Pylon can talk to your local Claude" — the Claude Agent SDK (TypeScript) as
   the requester-Pylon coding execution lane, exact worker-loop seams, option
   mapping, BYOK/branding/redaction boundaries, and the companion promise
-  `pylon.local_claude_agent_bridge.v1`.
+  `pylon.local_claude_agent_bridge.v1`. Implemented same-day via epic #4717
+  (#4718/#4719/#4720).
+- `2026-06-10-claude-agent-bridge-promise-leverage-audit.md`: leverage audit of
+  the shipped Claude Agent bridge against all 39 outstanding registry promises
+  (registry `2026-06-10.24`) — the three supercharged clusters (compliant
+  labor stream, coding-runtime successor, Artanis evolution loop) and the top
+  three next moves (first paid local-Claude labor job, real-repo work class +
+  `pylon work` entry, Artanis coding tick action).
 - `implementation-log.md`: running issue-by-issue implementation notes for the
   Autopilot coder backlog.
 - `no-spend-e2e-smoke.md`: documented command and retained-evidence checks for
