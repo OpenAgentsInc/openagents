@@ -1,244 +1,261 @@
 # Five Bitcoin Revenue Streams Promise Audit
 
-Date: 2026-06-10
+Date: 2026-06-10 (revised same day after Episode 213/214/215 transcript review)
 
 Promise: `pylon.five_bitcoin_revenue_streams.v1`
 
-Registry version at audit time: `2026-06-10.1`
+Registry version at audit time: `2026-06-10.1`; this audit ships with the
+`2026-06-10.2` correction described below.
 
 Status: full status audit of the promise and an exact get-to-green plan.
 
+## Correction From The First Revision
+
+The first revision of this audit (and the registry claim text through
+`2026-06-10.1`) mischaracterized the fifth stream as "subscription/token-
+capacity arbitrage" — i.e. reselling provider account access. That is wrong.
+
+Per Episodes 213–215, the fifth stream is the **agent labor market**: the
+contributor *uses* their own capacity (their Claude Code / Codex subscription,
+their idle agent, their hardware) to do jobs and **sells the result**.
+Episode 214: "If your Claude Code or Codex is just sitting idle overnight,
+you're not using it, why don't you sell access to it? We want this 'go online'
+button to be able to let you sell agent compute while you're sleeping."
+Episode 215: "Labor next week. You can put your Claude Code or Codex to work
+overnight."
+
+This distinction matters operationally: selling work output is ordinary labor
+and removes the heavy provider-ToS resale gate this audit previously treated
+as the long pole. The provider-account *resale* questions remain owned by the
+separate `provider.subscription_capacity.v1` and
+`provider.prepaid_capacity_monetization.v1` promises and do not block this
+one. Registry `2026-06-10.2` renames the blocker
+`capacity_stream_not_live` → `labor_stream_not_live` and fixes the claim,
+safeCopy, and verification text accordingly.
+
+The first revision also estimated "weeks-scale" for several streams. That
+ignored the fact that the market rails already exist in this repo's own
+history (see below). Corrected estimate: **a couple of days for everything.**
+
 ## The Promise
 
-> Pylon stacks compute, data, Forum tips, referrals, and subscription/token-capacity
-> arbitrage in one install.
+> Pylon stacks compute, data, Forum tips, referrals, and agent labor markets
+> in one install.
 
-Current registry record:
+Current registry record (as corrected in `2026-06-10.2`):
 
 - state: `red`
-- safeCopy: "Forum tipping and multiple future revenue gates exist, but
-  one-install multi-stream Bitcoin earning is not live."
 - blockerRefs:
   - `blocker.product_promises.compute_stream_not_broadly_live`
   - `blocker.product_promises.data_stream_not_live`
   - `blocker.product_promises.referral_stream_not_live`
-  - `blocker.product_promises.capacity_stream_not_live`
-- verification: "Each revenue stream needs its own evidence refs, public-safe
-  receipts, policy gates, and settlement state."
+  - `blocker.product_promises.labor_stream_not_live`
 - lastVerifiedAt: none (no transition receipt has ever been recorded for this
   promise).
 
-Note the blocker set has exactly four entries for five streams: the Forum tips
-stream is the only stream considered live enough that it does not block this
-promise at the per-stream level.
+The blocker set has four entries for five streams: Forum tips is the only
+stream considered live enough that it does not block this promise.
 
-## Why This Promise Is Special
+## Source Material: Episodes 213–215
 
-This is a **composition promise**. It can only go green when:
+The canonical product framing for the streams is the March 2026 agent-markets
+launch series, not just the June 8 transcript:
 
-1. each of the five streams independently has live, receipt-backed,
-   settlement-state evidence under its own gate; and
-2. one Pylon install demonstrably participates in (at minimum) more than one
-   of those streams at once — "stacks ... in one install" is itself a claim
-   that needs its own smoke.
+- `docs/transcripts/213.md` — Agent Markets (2026-03-07): five interlocking
+  markets launching one per week — **compute, data, labor, liquidity, risk** —
+  with Bitcoin rev-share, the economy kernel enforcing rules across all five,
+  and Autopilot as the entry point. Open protocols explicitly invited outside
+  Nostr/Bitcoin developers into the same liquidity pool.
+- `docs/transcripts/214.md` — Compute market launch at the Austin Startup
+  Rodeo (2026-03-11): live NIP-90 kind 5050 text inference jobs on Apple FM,
+  Spark Lightning wallet + Nostr keypair from one BIP-39 seed, buy mode
+  dispatching 2-sat jobs, real sats paid to attendees. Also names the draft
+  NIPs: Skills (SKL), Sovereign Agents (SA), Agent Credit (AC).
+- `docs/transcripts/215.md` — Data market launch: draft **NIP-DS** open spec
+  for dataset sales (kind 30404 dataset listing, kind 30406 offer, optional
+  NIP-90 delivery flow), conversational dataset listing through the agent,
+  with labor named as the next launch.
 
-Every constituent stream maps to other promises in the registry, so this
-promise's state is effectively `min()` over its dependencies plus a stacking
-proof nobody has attempted yet.
+The June 8 transcript reframed the set for the Pylon install as compute,
+data, Forum tips, referrals, and the fifth stream now correctly read as the
+labor market.
+
+## The Critical Fact: The NIP-90 Rails Are Already Built
+
+All three machine markets (compute, data, labor) ride the same NIP-90 data
+vending machine rails, and those rails were implemented in this repository
+and removed only two days ago in the Bun/Effect rebuild (commit
+`f5919c766`, 2026-06-09). In git history:
+
+- `crates/nostr/core/src/nip90/` — builders, data_vending, kinds, model,
+  integration tests (the protocol library).
+- `crates/nostr/nips/DS.md` (864 lines), plus `SKL.md`, `SA.md`, `AC.md`,
+  `TRN.md` — the draft open specs from the launch series.
+- `apps/autopilot-desktop/src/provider_nip90_lane.rs`,
+  `nip90_compute_flow.rs`, `nip90_compute_semantics.rs`,
+  `nip90_compute_domain_events.rs`, buyer payment attempt/fact state, and
+  sent-payments UI panes — the full provider/buyer compute market.
+- `data_seller_control.rs` + the Data Market NIP-90 profile (commit
+  `1fc3d3e01`) — the data market lane.
+- `apps/deprecated/pylon/src/nip90_runtime.rs` — the Pylon-side NIP-90
+  runtime, including provider admission enforcement (`22a162b11`) and the
+  Artanis MDK settlement bridge carrying authority through NIP-90 settlement
+  runs (`f574f123d`, 2026-06-07 — two days before removal, i.e. this was
+  current, working code, not bitrot).
+
+The current workspace also already contains `apps/nostr-relay` — the scoped
+OpenAgents Nostr relay POC (Durable Object relay from `nostr-effect`, NIP-11
+handshake live, issue #4621). So the porting story is: resurrect proven
+NIP-90 contracts from our own history into the Bun/Effect workspace, pointed
+at our own relay, settled by the same MDK bridge that already has 2,323 sats
+of public settlement receipts. That is a port, not a build.
 
 ## Live Evidence Snapshot (2026-06-10)
 
 Checked live during this audit:
 
-- `GET /api/public/product-promises` → version `2026-06-10.1`, promise `red`
-  with the four blockers above.
+- `GET /api/public/product-promises` → version `2026-06-10.1`, promise `red`.
 - `GET /api/public/pylon-stats`:
   - `pylonsOnlineNow: 0`, `pylonsWalletReadyNow: 0`,
-    `pylonsAssignmentReadyNow: 0`, `sellablePylonsOnlineNow: 0`
-  - `pylonsSeen24h: 4`, `pylonsRegisteredTotal: 7`
-  - client versions include `0.3.0` and `openagents.pylon@0.3.0-rc1`
+    `sellablePylonsOnlineNow: 0`
+  - `pylonsSeen24h: 4`, `pylonsRegisteredTotal: 7`, with `0.3.0` and
+    `0.3.0-rc1` clients registering
   - `nexusAcceptedWorkPayoutSatsPaidTotal: 2323` with 8 public settlement
-    receipt refs (including both paid GEPA multi-Pylon settlements from
-    2026-06-08)
+    receipt refs (including both paid GEPA multi-Pylon settlements)
 - `GET /api/forum/launch-status` → `status: ready`, `orangeChecksSold: 2`
-- `GET /api/forum/tip-leaderboards` → live creators with nonzero
-  `totalSettledSats` (settled, not just paid, distinguished in public copy)
+- `GET /api/forum/tip-leaderboards` → creators with nonzero settled sats
 
 ## Stream-By-Stream Status
 
-### Stream 1: Compute — partially live (closest to clearing)
+### Stream 1: Compute — partially live; previously fully live
 
 Blocker: `compute_stream_not_broadly_live`.
 
-What is live:
+Live today: 2,323 sats of receipted accepted-work payouts; full assignment
+lifecycle routes proven end-to-end on production (no-spend loop, #4633);
+v0.3 clients heartbeating. Previously live (March): the NIP-90 kind 5050
+compute market paid real sats to real attendees' Apple Silicon machines.
 
-- 2,323 sats of accepted-work payouts with public settlement receipts,
-  including two paid GEPA Pylon assignments settled with real bitcoin
-  (2026-06-08).
-- Full assignment lifecycle routes (register → heartbeat → wallet readiness →
-  assignment lease → accept → progress → artifacts → closeout → receipt) are
-  live; a complete no-spend loop ran end-to-end on production on 2026-06-09
-  (work order with promiseRef, live Pylon `pylon.fable.live_smoke_4633`,
-  accepted closeout) as part of issue #4633.
-- Pylon v0.3 clients are registering against production (`0.3.0`,
-  `0.3.0-rc1` heartbeats visible in stats).
+To clear: pass the v0.3 live GEPA endpoint smoke, settle one paid v0.3
+assignment, keep at least one Pylon continuously online, and/or port the
+NIP-90 compute provider lane from history so GO ONLINE sells inference again.
+Days, not weeks — both halves (NIP-90 lane, MDK settlement) have already
+worked in production.
 
-What is missing:
-
-- Zero Pylons online/wallet-ready/sellable at audit time. "Broadly live"
-  requires a continuously online sellable network, not episodic smokes.
-- Pylon v0.3 (standalone repo) still gates its own worker loop:
-  `pylon.gepa_worker_loop_v03.v1` is yellow with
-  `live_openagents_gepa_endpoint_smoke_missing` and
-  `paid_gepa_settlement_v03_missing`.
-- `pylon.compute_revenue_modes.v1` is red (no live paid GEPA network, no
-  sellable local inference, no remote Qwen training).
-
-To clear this blocker:
-
-1. Pass the v0.3 live OpenAgents GEPA endpoint smoke (clears the first
-   gepa_worker_loop blocker).
-2. Settle at least one paid GEPA assignment from a v0.3 client (clears the
-   second; reuses the proven MDK agent-wallet settlement bridge).
-3. Keep ≥1 real contributor Pylon continuously online with fresh heartbeats
-   so `pylonsWalletReadyNow`/`sellablePylonsOnlineNow` are nonzero at
-   verification time (heartbeat keeper or operator runbook).
-4. Move assignment creation from one-off operator flow to the controlled
-   dispatcher (spend cap, no duplicate assignment, pause/rollback).
-
-### Stream 2: Data — not live (furthest, with capacity)
+### Stream 2: Data — spec and lane exist in history
 
 Blocker: `data_stream_not_live`. Dependent promise
 `pylon.data_trace_revenue.v1` is red with `settled_trace_sale_missing`.
 
-What is live: the gate doc only
-(`2026-06-08-data-trace-marketplace-gate.md`). No trace submission,
-redaction, valuation, purchase, entitlement, or payout path exists.
-
-To clear this blocker, one public-safe settled trace sale smoke with receipt
-refs covering: trace submission → redaction → consent → valuation → purchase →
-buyer entitlement → contributor payout contract → settlement receipt. This is
-a build, not a smoke — it is the only stream with zero implemented surface.
+The first revision called this "weeks-scale, full build." Wrong: NIP-DS is a
+written 864-line spec, the data market lane shipped in the desktop app
+(Episode 215 demoed listing a dataset for 50 sats conversationally), and the
+data-market NIP-90 profile exists (`1fc3d3e01`). What was never completed is
+one *settled* public-safe sale with redaction evidence. Port the NIP-DS
+listing/offer flow, run one redacted Claude Code/Codex conversation-bundle
+sale for small sats, record the receipt. Days.
 
 ### Stream 3: Forum tips — live (already non-blocking)
 
 No blocker on this promise. `forum.content_tipping.v1` is yellow with
-`lastVerifiedAt: 2026-06-10T02:44:34Z`:
+`lastVerifiedAt: 2026-06-10T02:44:34Z`; strict funded smooth-path BOLT 12
+smokes passed 2026-06-09 against two independent live recipients with
+creator-spendable settlement. Orange check rail adjacent and live (2 sold).
 
-- Strict smooth-path funded production smokes passed 2026-06-09 against two
-  independent live ready recipients with verified creator-spendable BOLT 12
-  settlement and no timeout recovery.
-- Live tip leaderboards distinguish paid vs settled sats and show nonzero
-  settled totals.
-- Adjacent paid rail also live: orange check self-purchase
-  (`identity.orange_check_forum_signal.v1` yellow, 2 sold, atomic redemption,
-  provider-gated fulfillment).
-
-Remaining yellow→green work (webhook live callback, refund/reversal smoke,
-browser checkout polish, broader wallet coverage) does **not** block the
-five-streams promise — but the stacking smoke (below) should use this stream
-because it is the most reliable.
-
-### Stream 4: Referrals — attribution live, payout not
+### Stream 4: Referrals — simple; days
 
 Blocker: `referral_stream_not_live`. Dependent promise
-`sites.referral_bitcoin_stream.v1` is yellow with
-`referral_payout_policy_missing` and `referral_settlement_receipts_missing`.
+`sites.referral_bitcoin_stream.v1` is yellow.
 
-What is live: Site referral capture routes (`/r/site/{publicSourceRef}`) and
-pending attribution persistence. Attribution is explicitly not payout
-eligibility.
+Attribution capture is live. What is missing is consumption + a payout
+ledger + one settled small-sats referral payout receipt through the
+already-proven MDK settlement bridge. There is no research here; it is one
+table, one policy doc, and one smoke. Days (the first revision's "week-scale"
+was padding).
 
-To clear this blocker:
+### Stream 5: Agent labor market — NIP-90 jobs; not capacity resale
 
-1. Referral payout policy: attribution consumption at signup/order, abuse and
-   dispute handling, caps, reversal rules.
-2. A payout ledger that converts consumed attribution into payout-eligible
-   records.
-3. At least one settled referral payout with a public settlement receipt
-   (small-sats is fine; the MDK settlement bridge already proven for Pylon
-   payouts can be reused).
+Blocker: `labor_stream_not_live` (renamed from `capacity_stream_not_live` in
+`2026-06-10.2`).
 
-### Stream 5: Subscription/token-capacity arbitrage — not live (furthest, with data)
+The stream: a contributor's idle agent (Claude Code, Codex, or any runtime
+behind Pylon) accepts NIP-90 job requests — "fix this PR", review work,
+inference beyond kind 5050 — does the work using the contributor's own
+capacity, and gets paid sats for the *result*. Episode 214 frames the
+economics: subscription holders sit on heavily subsidized capacity; putting
+that agent to work overnight sells output, which is labor, not account
+resale, so the provider-ToS marketplace gate owned by
+`provider.subscription_capacity.v1` does not block this stream.
 
-Blocker: `capacity_stream_not_live`. Dependent promises both red:
-`provider.subscription_capacity.v1` (`capacity_metering_missing`,
-`provider_tos_policy_missing`, `capacity_settlement_missing`) and
-`provider.prepaid_capacity_monetization.v1`
-(`prepaid_provider_policy_missing`).
+What exists: the NIP-90 runtime, provider admission, job lifecycle, and MDK
+settlement bridge in repo history; Pylon v0.3's runtime package already
+carries provider-neutral LLM/tool contracts and the OpenCode/Codex
+diagnostic path; the assignment lifecycle on openagents.com already proves
+accept→work→closeout→settle.
 
-What is live: ChatGPT/Codex provider-account connection, device login, the
-six-account operator runbook, provider-account contracts in the Pylon v0.3
-runtime, and the per-provider capacity marketplace gate (unsupported /
-configured / healthy / assignable / payable / settled states). The capacity
-funnel (`pylon.no_dark_capacity_accounting.v1`, yellow, lastVerifiedAt
-2026-06-10) gives the accounting substrate.
+To clear: port the NIP-90 job intake into the v0.3 worker loop (or run the
+labor job through the existing openagents.com assignment rail as the v1),
+execute one real job on a contributor's own agent capacity, settle sats,
+record the public receipt. Days.
 
-To clear this blocker, for at least one provider (ChatGPT first):
+### Liquidity and risk (Episodes 213/214 streams six and seven)
 
-1. Capacity metering: usage records bound to a connected provider account.
-2. An explicit ToS/policy boundary doc for reselling that provider's
-   capacity (this is a policy decision, not just code — it may legitimately
-   conclude "metered internal assignment only, no resale", in which case the
-   promise claim itself should be narrowed in the same change).
-3. Assignment routing that consumes metered capacity for real work.
-4. Pricing and a settled bitcoin payment to the capacity contributor with a
-   public receipt.
+The March framing also named liquidity (Lightning yield) and risk
+(verification derivatives per Catalini's "Some Simple Economics of AGI")
+markets. These are explicitly speculative in the transcripts, are not part
+of this promise's five streams as registered, and are not gated here. They
+should get their own promise records if/when they become claims.
 
-### The stacking proof (no blocker ref exists for it yet)
+## Exact Path To Green — Couple Of Days Total
 
-Even with all four blockers cleared, green copy for "stacks ... in one
-install" needs a one-install smoke: a single registered Pylon identity that,
-in one session window, (a) completes a paid compute assignment and (b)
-receives a Forum tip to the same wallet readiness identity — plus public
-receipts for both, projected under the same pylonId. When the registry flips
-this promise past yellow, add an explicit
-`blocker.product_promises.one_install_stacking_smoke_missing` so the
-composition claim is mechanically gated rather than implied.
+All four blockers are port-and-smoke work against rails that have already
+moved real bitcoin:
 
-## Exact Path To Green
+1. **Labor** (~1 day): NIP-90 job intake into the v0.3 loop or the existing
+   assignment rail; one real overnight-agent job; settled receipt → clear
+   `labor_stream_not_live`.
+2. **Compute** (~1 day, overlaps with labor since it is the kind 5050 case
+   of the same rail): live endpoint smoke + one paid v0.3 settlement +
+   nonzero online counters → clear `compute_stream_not_broadly_live`.
+3. **Data** (~1 day): port NIP-DS listing/offer; one redacted conversation
+   bundle sold and settled → clear `data_stream_not_live`.
+4. **Referrals** (~half day): attribution consumption + payout ledger + one
+   settled referral payout receipt → clear `referral_stream_not_live`.
+5. **Stacking smoke** (~hours, after any two streams): one install, one
+   identity, receipts from two streams in one session window. Add an
+   explicit `one_install_stacking_smoke_missing` blocker at the red→yellow
+   flip so the composition claim stays mechanically gated until this passes.
 
-Honest sequencing, cheapest first:
-
-1. **Compute (days-scale):** v0.3 live GEPA endpoint smoke → one paid v0.3
-   settlement → heartbeat keeper so online counters are nonzero → clear
-   `compute_stream_not_broadly_live`. Most of the machinery already has
-   production receipts; this is integration plus uptime, not new product.
-2. **Referrals (week-scale):** payout policy + ledger + one settled
-   small-sats referral payout receipt → clear `referral_stream_not_live`.
-3. **Capacity (weeks-scale, policy-gated):** ChatGPT metering + ToS boundary
-   decision + one settled capacity payment → clear
-   `capacity_stream_not_live`. The ToS decision is the real gate; do it
-   before writing the metering code.
-4. **Data (weeks-scale, full build):** the settled trace sale smoke per the
-   data trace marketplace gate → clear `data_stream_not_live`.
-5. **Stacking smoke:** one install, two streams, same identity, public
-   receipts → only then green copy.
-
-Intermediate red→yellow flip is defensible once compute and referrals are
-both cleared (three of five streams live-evidenced, tips already live), with
-safeCopy stating exactly which streams have settled receipts and which remain
-gated. Record the transition via
+Record each transition via
 `POST /api/operator/product-promises/transitions` **before** shipping the
-registry edit, so the receipt evaluates cleanly instead of as a backfill
-exception, and so `lastVerifiedAt` finally populates for this promise (it is
-currently null — it has never had a transition receipt).
+registry edit so receipts evaluate cleanly (not as backfill exceptions) and
+`lastVerifiedAt` finally populates for this promise.
 
-## What This Audit Does Not Change
+## Registry Changes Shipped With This Audit (`2026-06-10.2`)
 
-This document does not modify the registry. Follow-ups when work starts:
-
-- add this doc to the promise's `evidenceRefs` in the next registry version
-  bump;
-- add the `one_install_stacking_smoke_missing` blocker at the red→yellow
-  flip;
-- per stream, clear blockers one at a time with transition receipts rather
-  than batching.
+- Claim corrected: "...and agent labor markets in one install" (was
+  "subscription/token-capacity arbitrage").
+- Blocker renamed: `capacity_stream_not_live` → `labor_stream_not_live`.
+- safeCopy now records that the NIP-90 compute/data/labor rails shipped in
+  Episodes 213–215 and exist in repo history.
+- unsafeCopy now forbids describing the labor stream as provider-capacity
+  resale.
+- evidenceRefs now include `docs/transcripts/213.md`, `214.md`, `215.md`,
+  and this audit.
+- State stays `red` (no state transition; wording/blocker correction only).
 
 ## Evidence Reviewed
 
-- `apps/openagents.com/workers/api/src/product-promises.ts` (registry source,
-  version 2026-06-10.1)
+- `docs/transcripts/213.md`, `docs/transcripts/214.md`,
+  `docs/transcripts/215.md`
+- Git history: `f5919c766` (Bun rebuild removing the NIP-90 stack),
+  `f574f123d` (Artanis authority through NIP-90 settlement),
+  `22a162b11` (provider admission before NIP-90 execution),
+  `1fc3d3e01` (Data Market NIP-90 profile),
+  `558729282` (draft NIP-DS), `crates/nostr/core/src/nip90/`,
+  `crates/nostr/nips/{DS,SKL,SA,AC,TRN}.md`
+- `apps/nostr-relay/README.md` (live relay POC, issue #4621)
+- `apps/openagents.com/workers/api/src/product-promises.ts`
 - `apps/openagents.com/docs/2026-06-08-pylon-agentic-revenue-gap-audit.md`
 - `apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md`
 - Live: `GET /api/public/product-promises`, `GET /api/public/pylon-stats`,

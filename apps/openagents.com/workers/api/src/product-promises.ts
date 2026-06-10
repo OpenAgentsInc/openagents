@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.1'
+export const PublicProductPromisesVersion = '2026-06-10.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -327,12 +327,16 @@ export const publicProductPromisesDocument = () => {
       audience: ['contributor', 'public'],
       state: 'red',
       claim:
-        'Pylon stacks compute, data, Forum tips, referrals, and subscription/token-capacity arbitrage in one install.',
+        'Pylon stacks compute, data, Forum tips, referrals, and agent labor markets in one install.',
       safeCopy:
-        'Forum tipping and multiple future revenue gates exist, but one-install multi-stream Bitcoin earning is not live.',
+        'Forum tipping is live and the NIP-90 compute/data/labor market rails shipped in earlier releases (Episodes 213-215) exist in repo history, but one-install multi-stream Bitcoin earning is not live in the current app.',
       unsafeCopy:
-        'Do not claim one Pylon install creates five live Bitcoin revenue streams.',
+        'Do not claim one Pylon install creates five live Bitcoin revenue streams, and do not describe the labor stream as provider-capacity resale; it sells agent work output, not account access.',
       evidenceRefs: [
+        'docs/transcripts/213.md',
+        'docs/transcripts/214.md',
+        'docs/transcripts/215.md',
+        'apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md',
         'apps/openagents.com/docs/2026-06-08-pylon-agentic-revenue-gap-audit.md',
         'apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md',
       ],
@@ -340,12 +344,12 @@ export const publicProductPromisesDocument = () => {
         'blocker.product_promises.compute_stream_not_broadly_live',
         'blocker.product_promises.data_stream_not_live',
         'blocker.product_promises.referral_stream_not_live',
-        'blocker.product_promises.capacity_stream_not_live',
+        'blocker.product_promises.labor_stream_not_live',
       ],
       verification:
-        'Each revenue stream needs its own evidence refs, public-safe receipts, policy gates, and settlement state.',
+        'Each revenue stream needs its own evidence refs, public-safe receipts, policy gates, and settlement state. The labor stream is the NIP-90 job market where contributors use their own agent capacity and sell results; it is not subscription resale.',
       authorityBoundary:
-        'Forum, Sites, provider capacity, data, and Pylon settlement are separate authorities.',
+        'Forum, Sites, agent labor, data, and Pylon settlement are separate authorities.',
     },
     {
       ...basePromiseFields,
