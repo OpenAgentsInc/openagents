@@ -8,9 +8,12 @@ import {
 import {
   type PylonApiAssignmentRecord,
   type PylonApiEventRecord,
+  type PylonApiProviderJobLifecycleRecord,
   type PylonApiRegistrationRecord,
   type PylonApiStore,
   PylonApiStoreError,
+  buildPylonApiAssignmentRecord,
+  providerJobLifecycleRecordFromAssignment,
   buildPylonApiRegistrationRecord,
   makeD1PylonApiStore,
   pylonClientVersionMeetsMinimum,
@@ -69,6 +72,7 @@ class MemoryPylonApiStore implements PylonApiStore {
   assignmentsByIdempotency = new Map<string, PylonApiAssignmentRecord>()
   events = new Map<string, PylonApiEventRecord>()
   eventsByIdempotency = new Map<string, PylonApiEventRecord>()
+  providerJobLifecycle = new Map<string, PylonApiProviderJobLifecycleRecord>()
   registrations = new Map<string, PylonApiRegistrationRecord>()
 
   createAssignment = async (record: PylonApiAssignmentRecord) => {
@@ -82,6 +86,10 @@ class MemoryPylonApiStore implements PylonApiStore {
 
     this.assignments.set(record.assignmentRef, record)
     this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+    this.providerJobLifecycle.set(
+      record.assignmentRef,
+      providerJobLifecycleRecordFromAssignment(record),
+    )
 
     return { idempotent: false, record }
   }
@@ -117,6 +125,14 @@ class MemoryPylonApiStore implements PylonApiStore {
   listRegistrations = async (limit: number) =>
     Array.from(this.registrations.values()).slice(0, limit)
 
+  listProviderJobLifecycleForPylons = async (
+    pylonRefs: ReadonlyArray<string>,
+    limit: number,
+  ) =>
+    Array.from(this.providerJobLifecycle.values())
+      .filter(record => pylonRefs.includes(record.pylonRef))
+      .slice(0, limit)
+
   readEventByIdempotencyKeyHash = async (idempotencyKeyHash: string) =>
     this.eventsByIdempotency.get(idempotencyKeyHash)
 
@@ -132,6 +148,18 @@ class MemoryPylonApiStore implements PylonApiStore {
   updateAssignment = async (record: PylonApiAssignmentRecord) => {
     this.assignments.set(record.assignmentRef, record)
     this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+    this.providerJobLifecycle.set(
+      record.assignmentRef,
+      providerJobLifecycleRecordFromAssignment(record),
+    )
+
+    return record
+  }
+
+  upsertProviderJobLifecycle = async (
+    record: PylonApiProviderJobLifecycleRecord,
+  ) => {
+    this.providerJobLifecycle.set(record.assignmentRef, record)
 
     return record
   }
@@ -253,6 +281,79 @@ class RegistrationInsertD1 implements D1Database {
 
   prepare(query: string): D1PreparedStatement {
     return new RegistrationInsertStatement(this, query)
+  }
+
+  withSession(): D1DatabaseSession {
+    throw new Error('D1 session should not be used')
+  }
+}
+
+class AssignmentBatchStatement implements D1PreparedStatement {
+  readonly bindings: ReadonlyArray<unknown> = []
+
+  constructor(readonly query: string) {}
+
+  bind(...values: ReadonlyArray<unknown>): D1PreparedStatement {
+    return Object.assign(new AssignmentBatchStatement(this.query), {
+      bindings: values,
+    })
+  }
+
+  first<T = unknown>(): Promise<T | null> {
+    if (this.query.includes('FROM pylon_api_assignments')) {
+      return Promise.resolve(null)
+    }
+
+    return Promise.reject(new Error(`Unexpected D1 first: ${this.query}`))
+  }
+
+  run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    return Promise.reject(new Error('D1 run should not be used for assignment lifecycle writes'))
+  }
+
+  all<T = unknown>(): Promise<D1Result<T>> {
+    return Promise.reject(new Error(`Unexpected D1 all: ${this.query}`))
+  }
+
+  raw<T = unknown[]>(options: {
+    columnNames: true
+  }): Promise<[string[], ...T[]]>
+  raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>
+  raw<T = unknown[]>(options?: {
+    columnNames?: boolean
+  }): Promise<T[] | [string[], ...T[]]> {
+    return Promise.reject(new Error(`Unexpected D1 raw: ${this.query}`))
+  }
+}
+
+class AssignmentBatchD1 implements D1Database {
+  batchQueries: string[] = []
+  failBatch = false
+
+  batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<Array<D1Result<T>>> {
+    this.batchQueries = statements.map(statement =>
+      (statement as AssignmentBatchStatement).query,
+    )
+
+    if (this.failBatch) {
+      return Promise.reject(new Error('simulated mid-batch failure'))
+    }
+
+    return Promise.resolve(statements.map(() => d1Result<T>()))
+  }
+
+  dump(): Promise<ArrayBuffer> {
+    return Promise.reject(new Error('D1 dump should not be used'))
+  }
+
+  exec(): Promise<D1ExecResult> {
+    return Promise.reject(new Error('D1 exec should not be used'))
+  }
+
+  prepare(query: string): D1PreparedStatement {
+    return new AssignmentBatchStatement(query)
   }
 
   withSession(): D1DatabaseSession {
@@ -503,6 +604,52 @@ describe('Pylon API routes', () => {
       columnCount: 23,
       valueCount: 23,
     })
+  })
+
+  test('D1 assignment creation batches assignment and provider lifecycle writes atomically', async () => {
+    const db = new AssignmentBatchD1()
+    const store = makeD1PylonApiStore(db)
+    const record = buildPylonApiAssignmentRecord({
+      idempotencyKeyHash: 'hash.assignment.lifecycle',
+      makeId: () => 'assignment-lifecycle',
+      nowIso: '2026-06-10T09:30:00.000Z',
+      ownerAgentUserId: 'agent-one',
+      request: {
+        acceptanceCriteriaRefs: ['acceptance.public.echo_result'],
+        campaignPaused: false,
+        campaignPolicyRefs: ['policy.public.probe_gepa.no_spend_dispatch'],
+        closeoutPathRefs: ['closeout.public.operator_review_required'],
+        forumAutoPublishAllowed: false,
+        idempotencyRefs: ['idempotency.public.pylon_assignment.request_key'],
+        jobKind: 'healthcheck_echo',
+        noDuplicateAssignmentRefs: [
+          'dedupe.public.pylon_assignment.active_lease',
+        ],
+        noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
+        operatorPauseRefs: ['pause.public.artanis.pylon_dispatch'],
+        pylonRef: 'pylon.test.one',
+        requiredCapabilityRefs: ['capability.public.inference'],
+        resultExpectationRefs: ['result.public.echo_summary'],
+        rollbackRefs: ['rollback.public.artanis.cancel_pylon_dispatch'],
+        selectionPolicyRefs: ['selection.public.pylon.capability_match'],
+        spendCapRefs: [],
+        taskRefs: ['task.public.echo_hello_world'],
+      },
+    })
+
+    await store.createAssignment(record)
+
+    expect(db.batchQueries).toHaveLength(2)
+    expect(db.batchQueries[0]).toContain('INSERT INTO pylon_api_assignments')
+    expect(db.batchQueries[1]).toContain('INSERT INTO pylon_provider_job_lifecycle')
+
+    const failingDb = new AssignmentBatchD1()
+    failingDb.failBatch = true
+
+    await expect(
+      makeD1PylonApiStore(failingDb).createAssignment(record),
+    ).rejects.toThrow('simulated mid-batch failure')
+    expect(failingDb.batchQueries).toHaveLength(2)
   })
 
   test('registers a Pylon and exposes public-safe reads', async () => {

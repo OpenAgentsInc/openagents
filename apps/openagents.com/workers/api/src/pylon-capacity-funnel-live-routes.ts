@@ -9,6 +9,7 @@ import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type PylonApiAssignmentRecord,
+  type PylonApiProviderJobLifecycleRecord,
   type PylonApiRegistrationRecord,
   type PylonApiStore,
   makeD1PylonApiStore,
@@ -46,8 +47,6 @@ const activeAssignmentStates = new Set([
   'proof_submitted',
   'running',
 ])
-
-const runningAssignmentStates = new Set(['accepted', 'running'])
 
 const leaseExpired = (
   assignment: PylonApiAssignmentRecord,
@@ -136,12 +135,12 @@ export const darkCapacityReasonRefForPylon = (
 
 const stageForPylon = (
   input: Readonly<{
-    assignments: ReadonlyArray<PylonApiAssignmentRecord>
     darkReasonRef: PylonDarkCapacityReasonRef | null
     eligible: boolean
+    lifecycle: ReadonlyArray<PylonApiProviderJobLifecycleRecord>
   }>,
 ): PylonCapacityFunnelStage => {
-  const { assignments, darkReasonRef, eligible } = input
+  const { darkReasonRef, eligible, lifecycle } = input
 
   if (
     darkReasonRef !== null &&
@@ -150,29 +149,28 @@ const stageForPylon = (
     return 'dark'
   }
 
-  if (
-    assignments.some(
-      assignment =>
-        assignment.state === 'accepted_work' ||
-        assignment.acceptedWorkRefs.length > 0,
-    )
-  ) {
+  if (lifecycle.some(record => record.stage === 'accepted_work')) {
     return 'accepted'
   }
 
-  if (assignments.some(assignment => assignment.artifactRefs.length > 0)) {
+  if (
+    lifecycle.some(record =>
+      record.stage === 'artifact_submitted' ||
+      record.stage === 'closeout_submitted',
+    )
+  ) {
     return 'artifact_producing'
   }
 
-  if (
-    assignments.some(assignment =>
-      runningAssignmentStates.has(assignment.state),
-    )
-  ) {
+  if (lifecycle.some(record => record.stage === 'running')) {
     return 'running'
   }
 
-  if (assignments.length > 0) {
+  if (
+    lifecycle.some(record =>
+      record.stage === 'accepted' || record.stage === 'offered',
+    )
+  ) {
     return 'assigned'
   }
 
@@ -185,6 +183,10 @@ export const pylonCapacityFunnelRecordsFromStore = (
       string,
       ReadonlyArray<PylonApiAssignmentRecord>
     >
+    lifecycleByPylonRef?: ReadonlyMap<
+      string,
+      ReadonlyArray<PylonApiProviderJobLifecycleRecord>
+    >
     nowIso: string
     registrations: ReadonlyArray<PylonApiRegistrationRecord>
   }>,
@@ -192,6 +194,8 @@ export const pylonCapacityFunnelRecordsFromStore = (
   input.registrations.map((registration, index) => {
     const assignments =
       input.assignmentsByPylonRef.get(registration.pylonRef) ?? []
+    const lifecycle =
+      input.lifecycleByPylonRef?.get(registration.pylonRef) ?? []
     const heartbeatOnline = onlineHeartbeatStatuses.has(
       (registration.latestHeartbeatStatus ?? '').trim().toLowerCase(),
     )
@@ -212,7 +216,11 @@ export const pylonCapacityFunnelRecordsFromStore = (
       registration,
     })
     const ordinal = index + 1
-    const stage = stageForPylon({ assignments, darkReasonRef, eligible })
+    const stage = stageForPylon({
+      darkReasonRef,
+      eligible,
+      lifecycle,
+    })
     const stageRank: Record<PylonCapacityFunnelStage, number> = {
       accepted: 6,
       artifact_producing: 5,
@@ -290,6 +298,10 @@ export const handlePylonCapacityFunnelApi = (
       string,
       ReadonlyArray<PylonApiAssignmentRecord>
     >()
+    const lifecycleByPylonRef = new Map<
+      string,
+      ReadonlyArray<PylonApiProviderJobLifecycleRecord>
+    >()
 
     for (const registration of registrations) {
       assignmentsByPylonRef.set(
@@ -300,9 +312,21 @@ export const handlePylonCapacityFunnelApi = (
         ),
       )
     }
+    const lifecycleRecords = await store.listProviderJobLifecycleForPylons(
+      registrations.map(registration => registration.pylonRef),
+      registrationListLimit * assignmentListLimit,
+    )
+
+    for (const record of lifecycleRecords) {
+      lifecycleByPylonRef.set(record.pylonRef, [
+        ...(lifecycleByPylonRef.get(record.pylonRef) ?? []),
+        record,
+      ])
+    }
 
     const records = pylonCapacityFunnelRecordsFromStore({
       assignmentsByPylonRef,
+      lifecycleByPylonRef,
       nowIso,
       registrations,
     })

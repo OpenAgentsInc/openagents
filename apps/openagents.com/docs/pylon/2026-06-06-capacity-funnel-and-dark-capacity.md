@@ -11,7 +11,9 @@ The capacity funnel shows where Pylon/provider capacity sits before it becomes
 accepted and, later, paid or settled work. It also records why capacity is
 "dark" instead of silently treating registered machines as useful supply.
 
-The implementation lives in `workers/api/src/pylon-capacity-funnel.ts`.
+The pure projection contract lives in
+`workers/api/src/pylon-capacity-funnel.ts`. The live public route lives in
+`workers/api/src/pylon-capacity-funnel-live-routes.ts`.
 
 ## Funnel Stages
 
@@ -59,6 +61,28 @@ Operator projection can see safe private provider/node refs and safe reward or
 settlement refs. It still rejects raw host identifiers, private hardware
 telemetry, wallet/payment secrets, provider tokens, raw runner logs, private
 repo material, customer-private data, and raw timestamps.
+
+## Provider Job Lifecycle
+
+The live public route projects assigned, running, artifact-producing, and
+accepted stages from durable `pylon_provider_job_lifecycle` rows rather than
+from assignment inference. Assignment creation and assignment-state updates
+write the assignment row and matching lifecycle row in one D1 `db.batch`, so a
+job transition cannot land without the corresponding funnel accounting record.
+
+Lifecycle stages are:
+
+- `offered`;
+- `accepted`;
+- `running`;
+- `artifact_submitted`;
+- `closeout_submitted`;
+- `accepted_work`.
+
+The public funnel remains count-only. Lifecycle rows are keyed by Pylon and
+assignment refs, but the public route still returns aggregate stage and dark
+reason counts without exposing device identifiers, wallet material, raw
+artifacts, or provider-private details.
 
 ## Aggregates
 
@@ -131,3 +155,10 @@ counted as settled without a visible receipt for that audience.
 - required refs for benchmarked/eligible/running/paid/dark stages;
 - rejection of raw host, private hardware, wallet, payment, provider, runner,
   customer, and payout-destination material.
+
+`workers/api/src/pylon-capacity-funnel-live-routes.test.ts` and
+`workers/api/src/pylon-api-routes.test.ts` cover:
+
+- lifecycle-backed live funnel stages;
+- unchanged public route shape with counts only;
+- assignment/lifecycle atomic D1 batch writes and mid-batch failure behavior.

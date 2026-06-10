@@ -385,6 +385,31 @@ export type PylonApiAssignmentProjection = Readonly<{
   updatedAtDisplay: string
 }>
 
+export type PylonProviderJobLifecycleStage =
+  | 'accepted'
+  | 'accepted_work'
+  | 'artifact_submitted'
+  | 'closeout_submitted'
+  | 'offered'
+  | 'running'
+
+export type PylonApiProviderJobLifecycleRecord = Readonly<{
+  acceptedWorkRefs: ReadonlyArray<string>
+  artifactRefs: ReadonlyArray<string>
+  assignmentRef: string
+  closeoutRefs: ReadonlyArray<string>
+  createdAt: string
+  id: string
+  jobKind: PylonApiAssignmentJobKind
+  ownerAgentUserId: string
+  proofRefs: ReadonlyArray<string>
+  publicProjectionJson: string
+  pylonRef: string
+  stage: PylonProviderJobLifecycleStage
+  taskRefs: ReadonlyArray<string>
+  updatedAt: string
+}>
+
 export type PylonApiStore = Readonly<{
   createAssignment: (
     record: PylonApiAssignmentRecord,
@@ -409,6 +434,10 @@ export type PylonApiStore = Readonly<{
   listRegistrations: (
     limit: number,
   ) => Promise<ReadonlyArray<PylonApiRegistrationRecord>>
+  listProviderJobLifecycleForPylons: (
+    pylonRefs: ReadonlyArray<string>,
+    limit: number,
+  ) => Promise<ReadonlyArray<PylonApiProviderJobLifecycleRecord>>
   readEventByIdempotencyKeyHash: (
     idempotencyKeyHash: string,
   ) => Promise<PylonApiEventRecord | undefined>
@@ -424,6 +453,9 @@ export type PylonApiStore = Readonly<{
   updateAssignment: (
     record: PylonApiAssignmentRecord,
   ) => Promise<PylonApiAssignmentRecord>
+  upsertProviderJobLifecycle: (
+    record: PylonApiProviderJobLifecycleRecord,
+  ) => Promise<PylonApiProviderJobLifecycleRecord>
   upsertRegistration: (
     record: PylonApiRegistrationRecord,
   ) => Promise<PylonApiRegistrationRecord>
@@ -501,6 +533,23 @@ type PylonApiAssignmentRow = Readonly<{
   rejection_refs_json: string
   result_expectation_refs_json: string
   state: PylonApiAssignmentState
+  task_refs_json: string
+  updated_at: string
+}>
+
+type PylonProviderJobLifecycleRow = Readonly<{
+  accepted_work_refs_json: string
+  artifact_refs_json: string
+  assignment_ref: string
+  closeout_refs_json: string
+  created_at: string
+  id: string
+  job_kind: PylonApiAssignmentJobKind
+  owner_agent_user_id: string
+  proof_refs_json: string
+  public_projection_json: string
+  pylon_ref: string
+  stage: PylonProviderJobLifecycleStage
   task_refs_json: string
   updated_at: string
 }>
@@ -1107,6 +1156,159 @@ const rowToAssignment = (
   updatedAt: row.updated_at,
 })
 
+const lifecycleStageForAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): PylonProviderJobLifecycleStage =>
+  assignment.state === 'accepted_work'
+    ? 'accepted_work'
+    : assignment.state === 'closeout_submitted'
+      ? 'closeout_submitted'
+      : assignment.artifactRefs.length > 0 || assignment.proofRefs.length > 0
+        ? 'artifact_submitted'
+        : assignment.state === 'running'
+          ? 'running'
+          : assignment.state === 'accepted'
+            ? 'accepted'
+            : 'offered'
+
+const publicProviderJobLifecycleProjection = (
+  record: PylonApiProviderJobLifecycleRecord,
+): Record<string, unknown> => ({
+  assignmentRef: record.assignmentRef,
+  stage: record.stage,
+})
+
+export const providerJobLifecycleRecordFromAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): PylonApiProviderJobLifecycleRecord => {
+  const record: PylonApiProviderJobLifecycleRecord = {
+    acceptedWorkRefs: assignment.acceptedWorkRefs,
+    artifactRefs: assignment.artifactRefs,
+    assignmentRef: assignment.assignmentRef,
+    closeoutRefs: assignment.closeoutRefs,
+    createdAt: assignment.createdAt,
+    id: `pylon_provider_job_lifecycle_${assignment.id}`,
+    jobKind: assignment.jobKind,
+    ownerAgentUserId: assignment.ownerAgentUserId,
+    proofRefs: assignment.proofRefs,
+    publicProjectionJson: '{}',
+    pylonRef: assignment.pylonRef,
+    stage: lifecycleStageForAssignment(assignment),
+    taskRefs: assignment.taskRefs,
+    updatedAt: assignment.updatedAt,
+  }
+
+  return {
+    ...record,
+    publicProjectionJson: JSON.stringify(
+      publicProviderJobLifecycleProjection(record),
+    ),
+  }
+}
+
+const rowToProviderJobLifecycle = (
+  row: PylonProviderJobLifecycleRow,
+): PylonApiProviderJobLifecycleRecord => ({
+  acceptedWorkRefs: parseJsonStringArray(row.accepted_work_refs_json),
+  artifactRefs: parseJsonStringArray(row.artifact_refs_json),
+  assignmentRef: row.assignment_ref,
+  closeoutRefs: parseJsonStringArray(row.closeout_refs_json),
+  createdAt: row.created_at,
+  id: row.id,
+  jobKind: row.job_kind,
+  ownerAgentUserId: row.owner_agent_user_id,
+  proofRefs: parseJsonStringArray(row.proof_refs_json),
+  publicProjectionJson: row.public_projection_json,
+  pylonRef: row.pylon_ref,
+  stage: row.stage,
+  taskRefs: parseJsonStringArray(row.task_refs_json),
+  updatedAt: row.updated_at,
+})
+
+const insertAssignmentStatement = (
+  db: D1Database,
+  record: PylonApiAssignmentRecord,
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `INSERT INTO pylon_api_assignments
+        (id, assignment_ref, pylon_ref, owner_agent_user_id,
+         idempotency_key_hash, job_kind, state, lease_expires_at,
+         task_refs_json, acceptance_criteria_refs_json,
+         result_expectation_refs_json, artifact_refs_json, proof_refs_json,
+         accepted_work_refs_json, rejection_refs_json, closeout_refs_json,
+         coding_assignment_json, public_projection_json, created_at,
+         updated_at, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    )
+    .bind(
+      record.id,
+      record.assignmentRef,
+      record.pylonRef,
+      record.ownerAgentUserId,
+      record.idempotencyKeyHash,
+      record.jobKind,
+      record.state,
+      record.leaseExpiresAt,
+      JSON.stringify(record.taskRefs),
+      JSON.stringify(record.acceptanceCriteriaRefs),
+      JSON.stringify(record.resultExpectationRefs),
+      JSON.stringify(record.artifactRefs),
+      JSON.stringify(record.proofRefs),
+      JSON.stringify(record.acceptedWorkRefs),
+      JSON.stringify(record.rejectionRefs),
+      JSON.stringify(record.closeoutRefs),
+      record.codingAssignment === null
+        ? null
+        : JSON.stringify(record.codingAssignment),
+      record.publicProjectionJson,
+      record.createdAt,
+      record.updatedAt,
+    )
+
+const upsertProviderJobLifecycleStatement = (
+  db: D1Database,
+  record: PylonApiProviderJobLifecycleRecord,
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `INSERT INTO pylon_provider_job_lifecycle
+        (id, pylon_ref, assignment_ref, owner_agent_user_id, job_kind, stage,
+         task_refs_json, artifact_refs_json, proof_refs_json, closeout_refs_json,
+         accepted_work_refs_json, public_projection_json, created_at,
+         updated_at, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       ON CONFLICT(assignment_ref) DO UPDATE SET
+         pylon_ref = excluded.pylon_ref,
+         owner_agent_user_id = excluded.owner_agent_user_id,
+         job_kind = excluded.job_kind,
+         stage = excluded.stage,
+         task_refs_json = excluded.task_refs_json,
+         artifact_refs_json = excluded.artifact_refs_json,
+         proof_refs_json = excluded.proof_refs_json,
+         closeout_refs_json = excluded.closeout_refs_json,
+         accepted_work_refs_json = excluded.accepted_work_refs_json,
+         public_projection_json = excluded.public_projection_json,
+         updated_at = excluded.updated_at,
+         archived_at = NULL`,
+    )
+    .bind(
+      record.id,
+      record.pylonRef,
+      record.assignmentRef,
+      record.ownerAgentUserId,
+      record.jobKind,
+      record.stage,
+      JSON.stringify(record.taskRefs),
+      JSON.stringify(record.artifactRefs),
+      JSON.stringify(record.proofRefs),
+      JSON.stringify(record.closeoutRefs),
+      JSON.stringify(record.acceptedWorkRefs),
+      record.publicProjectionJson,
+      record.createdAt,
+      record.updatedAt,
+    )
+
 export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
   createAssignment: async record => {
     const existing = await makeD1PylonApiStore(
@@ -1117,43 +1319,13 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       return { idempotent: true, record: existing }
     }
 
-    await db
-      .prepare(
-        `INSERT INTO pylon_api_assignments
-          (id, assignment_ref, pylon_ref, owner_agent_user_id,
-           idempotency_key_hash, job_kind, state, lease_expires_at,
-           task_refs_json, acceptance_criteria_refs_json,
-           result_expectation_refs_json, artifact_refs_json, proof_refs_json,
-           accepted_work_refs_json, rejection_refs_json, closeout_refs_json,
-           coding_assignment_json, public_projection_json, created_at,
-           updated_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-      )
-      .bind(
-        record.id,
-        record.assignmentRef,
-        record.pylonRef,
-        record.ownerAgentUserId,
-        record.idempotencyKeyHash,
-        record.jobKind,
-        record.state,
-        record.leaseExpiresAt,
-        JSON.stringify(record.taskRefs),
-        JSON.stringify(record.acceptanceCriteriaRefs),
-        JSON.stringify(record.resultExpectationRefs),
-        JSON.stringify(record.artifactRefs),
-        JSON.stringify(record.proofRefs),
-        JSON.stringify(record.acceptedWorkRefs),
-        JSON.stringify(record.rejectionRefs),
-        JSON.stringify(record.closeoutRefs),
-        record.codingAssignment === null
-          ? null
-          : JSON.stringify(record.codingAssignment),
-        record.publicProjectionJson,
-        record.createdAt,
-        record.updatedAt,
-      )
-      .run()
+    await db.batch([
+      insertAssignmentStatement(db, record),
+      upsertProviderJobLifecycleStatement(
+        db,
+        providerJobLifecycleRecordFromAssignment(record),
+      ),
+    ])
 
     return { idempotent: false, record }
   },
@@ -1256,6 +1428,27 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
     return (result.results ?? []).map(rowToRegistration)
   },
 
+  listProviderJobLifecycleForPylons: async (pylonRefs, limit) => {
+    if (pylonRefs.length === 0) {
+      return []
+    }
+
+    const placeholders = pylonRefs.map(() => '?').join(', ')
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM pylon_provider_job_lifecycle
+          WHERE pylon_ref IN (${placeholders})
+            AND archived_at IS NULL
+          ORDER BY updated_at DESC
+          LIMIT ?`,
+      )
+      .bind(...pylonRefs, limit)
+      .all<PylonProviderJobLifecycleRow>()
+
+    return (result.results ?? []).map(rowToProviderJobLifecycle)
+  },
+
   readEventByIdempotencyKeyHash: async idempotencyKeyHash => {
     const row = await db
       .prepare(
@@ -1317,7 +1510,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       publicPylonApiAssignmentProjection(record, record.updatedAt),
     )
 
-    await db
+    const update = db
       .prepare(
         `UPDATE pylon_api_assignments
             SET state = ?,
@@ -1348,12 +1541,26 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         record.assignmentRef,
         record.pylonRef,
       )
-      .run()
-
-    return {
+    const next = {
       ...record,
       publicProjectionJson,
     }
+
+    await db.batch([
+      update,
+      upsertProviderJobLifecycleStatement(
+        db,
+        providerJobLifecycleRecordFromAssignment(next),
+      ),
+    ])
+
+    return next
+  },
+
+  upsertProviderJobLifecycle: async record => {
+    await upsertProviderJobLifecycleStatement(db, record).run()
+
+    return record
   },
 
   upsertRegistration: async record => {

@@ -3,9 +3,11 @@ import { describe, expect, test } from 'vitest'
 
 import type {
   PylonApiAssignmentRecord,
+  PylonApiProviderJobLifecycleRecord,
   PylonApiRegistrationRecord,
   PylonApiStore,
 } from './pylon-api'
+import { providerJobLifecycleRecordFromAssignment } from './pylon-api'
 import {
   darkCapacityReasonRefForPylon,
   handlePylonCapacityFunnelApi,
@@ -179,8 +181,27 @@ describe('pylon capacity funnel live bridge', () => {
         ],
       ],
     ])
+    const lifecycleByPylonRef = new Map([
+      [
+        'pylon.test.running',
+        [providerJobLifecycleRecordFromAssignment(assignment())],
+      ],
+      [
+        'pylon.test.artifact',
+        [
+          providerJobLifecycleRecordFromAssignment(
+            assignment({
+              artifactRefs: ['artifact.public.test.delivered'],
+              assignmentRef: 'pylon_assignment.test.artifact',
+              state: 'closeout_submitted',
+            }),
+          ),
+        ],
+      ],
+    ])
     const records = pylonCapacityFunnelRecordsFromStore({
       assignmentsByPylonRef,
+      lifecycleByPylonRef,
       nowIso,
       registrations,
     })
@@ -202,6 +223,79 @@ describe('pylon capacity funnel live bridge', () => {
     ).not.toMatch(/pylon\.test\.|user_test|oa_agent|wallet\.public\.test/)
   })
 
+  test('prefers provider job lifecycle records over assignment inference for job stages', () => {
+    const registrations = [
+      registration({ pylonRef: 'pylon.test.accepted' }),
+      registration({ pylonRef: 'pylon.test.artifact' }),
+      registration({ pylonRef: 'pylon.test.running' }),
+      registration({ pylonRef: 'pylon.test.assigned' }),
+    ]
+    const lifecycleByPylonRef = new Map<
+      string,
+      ReadonlyArray<PylonApiProviderJobLifecycleRecord>
+    >([
+      [
+        'pylon.test.accepted',
+        [
+          providerJobLifecycleRecordFromAssignment(
+            assignment({
+              acceptedWorkRefs: ['accepted_work.public.test'],
+              pylonRef: 'pylon.test.accepted',
+              state: 'accepted_work',
+            }),
+          ),
+        ],
+      ],
+      [
+        'pylon.test.artifact',
+        [
+          providerJobLifecycleRecordFromAssignment(
+            assignment({
+              artifactRefs: ['artifact.public.test'],
+              pylonRef: 'pylon.test.artifact',
+              state: 'proof_submitted',
+            }),
+          ),
+        ],
+      ],
+      [
+        'pylon.test.running',
+        [
+          providerJobLifecycleRecordFromAssignment(
+            assignment({
+              pylonRef: 'pylon.test.running',
+              state: 'running',
+            }),
+          ),
+        ],
+      ],
+      [
+        'pylon.test.assigned',
+        [
+          providerJobLifecycleRecordFromAssignment(
+            assignment({
+              pylonRef: 'pylon.test.assigned',
+              state: 'offered',
+            }),
+          ),
+        ],
+      ],
+    ])
+    const records = pylonCapacityFunnelRecordsFromStore({
+      assignmentsByPylonRef: new Map(),
+      lifecycleByPylonRef,
+      nowIso,
+      registrations,
+    })
+
+    expect(records.map(record => record.stage)).toEqual([
+      'accepted',
+      'artifact_producing',
+      'running',
+      'assigned',
+    ])
+  })
+
   test('serves the public funnel route with counts only', async () => {
     const store: PylonApiStore = {
       createAssignment: () => Promise.reject(new Error('unused')),
@@ -220,11 +314,22 @@ describe('pylon capacity funnel live bridge', () => {
             pylonRef: 'pylon.test.dark',
           }),
         ]),
+      listProviderJobLifecycleForPylons: (pylonRefs: ReadonlyArray<string>) =>
+        Promise.resolve(
+          pylonRefs.includes('pylon.test.running')
+            ? [
+                providerJobLifecycleRecordFromAssignment(
+                  assignment({ pylonRef: 'pylon.test.running' }),
+                ),
+              ]
+            : [],
+        ),
       readEventByIdempotencyKeyHash: () => Promise.resolve(undefined),
       readAssignment: () => Promise.resolve(undefined),
       readAssignmentByIdempotencyKeyHash: () => Promise.resolve(undefined),
       readRegistrationByPylonRef: () => Promise.resolve(undefined),
       updateAssignment: () => Promise.reject(new Error('unused')),
+      upsertProviderJobLifecycle: () => Promise.reject(new Error('unused')),
       upsertRegistration: () => Promise.reject(new Error('unused')),
     } as unknown as PylonApiStore
     const response = await Effect.runPromise(

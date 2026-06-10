@@ -39,10 +39,14 @@ import type {
 import type {
   PylonApiAssignmentRecord,
   PylonApiEventRecord,
+  PylonApiProviderJobLifecycleRecord,
   PylonApiRegistrationRecord,
   PylonApiStore,
 } from './pylon-api'
-import { PylonApiStoreError } from './pylon-api'
+import {
+  PylonApiStoreError,
+  providerJobLifecycleRecordFromAssignment,
+} from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 
 class MemoryAutopilotWorkStore implements AutopilotWorkStore {
@@ -216,6 +220,10 @@ class MemoryPylonApiStore implements PylonApiStore {
   readonly assignmentsByIdempotency = new Map<string, PylonApiAssignmentRecord>()
   readonly events = new Map<string, PylonApiEventRecord>()
   readonly eventsByIdempotency = new Map<string, PylonApiEventRecord>()
+  readonly providerJobLifecycle = new Map<
+    string,
+    PylonApiProviderJobLifecycleRecord
+  >()
   readonly registrations = new Map<string, PylonApiRegistrationRecord>()
 
   constructor(registrations: ReadonlyArray<PylonApiRegistrationRecord>) {
@@ -235,6 +243,10 @@ class MemoryPylonApiStore implements PylonApiStore {
 
     this.assignments.set(record.assignmentRef, record)
     this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+    this.providerJobLifecycle.set(
+      record.assignmentRef,
+      providerJobLifecycleRecordFromAssignment(record),
+    )
 
     return { idempotent: false, record }
   }
@@ -270,6 +282,14 @@ class MemoryPylonApiStore implements PylonApiStore {
   listRegistrations = async (limit: number) =>
     Array.from(this.registrations.values()).slice(0, limit)
 
+  listProviderJobLifecycleForPylons = async (
+    pylonRefs: ReadonlyArray<string>,
+    limit: number,
+  ) =>
+    Array.from(this.providerJobLifecycle.values())
+      .filter(record => pylonRefs.includes(record.pylonRef))
+      .slice(0, limit)
+
   readAssignment = async (assignmentRef: string) =>
     this.assignments.get(assignmentRef)
 
@@ -285,6 +305,18 @@ class MemoryPylonApiStore implements PylonApiStore {
   updateAssignment = async (record: PylonApiAssignmentRecord) => {
     this.assignments.set(record.assignmentRef, record)
     this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
+    this.providerJobLifecycle.set(
+      record.assignmentRef,
+      providerJobLifecycleRecordFromAssignment(record),
+    )
+
+    return record
+  }
+
+  upsertProviderJobLifecycle = async (
+    record: PylonApiProviderJobLifecycleRecord,
+  ) => {
+    this.providerJobLifecycle.set(record.assignmentRef, record)
 
     return record
   }
