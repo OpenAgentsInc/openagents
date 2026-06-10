@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-09.20'
+export const PublicProductPromisesVersion = '2026-06-09.21'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -231,12 +231,13 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim the old Claude Code-first launch framing is the current implementation, or that the current Codex/Probe/Pylon path is fully green.',
       evidenceRefs: [
+        'work_order:autopilot_work_order.a1aef38e-66e7-488f-a06c-05dd02b34b35',
+        'route:/api/autopilot/work?promiseId=autopilot.codex_probe_pylon_successor.v1',
         'apps/pylon/README.md',
         'packages/probe',
         'apps/openagents.com/docs/probe/2026-06-07-first-party-probe-runtime-audit.md',
       ],
       blockerRefs: [
-        'blocker.product_promises.current_codex_path_needs_evidence',
         'blocker.product_promises.live_probe_pylon_runtime_gates_incomplete',
       ],
       verification:
