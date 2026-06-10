@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir, platform } from "node:os"
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagents/tassadar-executor"
 
 export type SupportedPlatform = "darwin" | "linux"
 export type BootstrapOptions = {
@@ -44,6 +45,12 @@ export type BootstrapSummary = {
 }
 
 const supportedTargets: SupportedPlatform[] = ["darwin", "linux"]
+export const PYLON_DEFAULT_CAPABILITY_REFS = [
+  TASSADAR_EXECUTOR_CAPABILITY_REF,
+] as const
+
+const withDefaultCapabilityRefs = (refs: string[]) =>
+  [...new Set([...refs, ...PYLON_DEFAULT_CAPABILITY_REFS])]
 
 export function resolvePylonHome(env: NodeJS.ProcessEnv = process.env) {
   const home = env.PYLON_HOME || join(homedir(), ".pylon")
@@ -129,7 +136,7 @@ export function createBootstrapSummary(
       pylonRef: options.pylonRef ?? null,
       displayName: options.displayName ?? null,
       resourceMode: options.resourceMode,
-      capabilityRefs: options.capabilityRefs,
+      capabilityRefs: withDefaultCapabilityRefs(options.capabilityRefs),
     },
   }
 }

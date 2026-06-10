@@ -1,7 +1,10 @@
+import { TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND } from '@openagents/tassadar-executor'
+
 import type { BuyModeDispatchInput } from './buy-mode-dispatcher'
 import type { TrainingVerificationChallengeCreateRequest } from './training-verification'
 
-export const TassadarExecutorTraceJobKind = 'tassadar_executor_trace_homework'
+export const TassadarExecutorTraceJobKind =
+  TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND
 export const TassadarExactTraceReplayVerificationClass = 'exact_trace_replay'
 export const TassadarPsionicConnectorRef =
   'psionic.connector.bounded_executor_trace.v1'

@@ -87,6 +87,14 @@ dry-run, and the local package install smoke.
 
 ## 4. What is still needed for inclusion
 
+Resolution note (2026-06-10, #4696): items 2-5 below landed after this audit.
+Pylon bootstrap/runtime defaults now auto-declare
+`capability.tassadar_poc.numeric_model_executor`, the packaged-network smoke
+packs and replays `@openagents/tassadar-executor`, the PoC dispatch script
+mirrors the capability ref into the embedded coding assignment, and
+`apps/pylon/docs/launch-gates-no-overclaim.md` carries the only allowed scoped
+executor copy. Item 1 remains the external publish mechanism tracked by #4654.
+
 In order of hardness:
 
 1. **The npm publish story (shared with nip90; blocking the actual
@@ -257,10 +265,10 @@ that exist:
 The lane is **release-poised**: the execution path is in the RC source,
 tested, live-proven against production, and the release gate is green
 with the packaging fix from this audit. It is **not yet
-release-complete**: items 1–3 above are required before
-`@openagentsinc/pylon@0.3.0` can honestly include the lane (item 1 being
-a pre-existing v0.3 question Tassadar inherits rather than creates), and
-items 4–5 are cheap hardening that should land with them. Nothing about
+release-complete** until item 1 above, the shared npm publish mechanism
+tracked by #4654, is resolved for `@openagentsinc/pylon@0.3.0`; items
+2–5 landed under #4696 and now make the lane honest inside the release
+candidate source and packaged-network smoke. Nothing about
 the lane requires changing what v0.3 *is* — it slots into the existing
 assignment, capability, smoke, and no-overclaim machinery exactly as
 those systems were designed to absorb a new work class. Beyond the

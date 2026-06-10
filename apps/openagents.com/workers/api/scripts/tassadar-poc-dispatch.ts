@@ -13,9 +13,14 @@
 import { readFileSync } from 'node:fs'
 
 import {
+  TASSADAR_EXECUTOR_CAPABILITY_REF,
+  TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
+  TASSADAR_EXECUTOR_TRACE_JOB_KIND,
+} from '@openagents/tassadar-executor'
+
+import {
   TassadarBoundedProfileRef,
   TassadarExactTraceReplayVerificationClass,
-  TassadarExecutorTraceJobKind,
   buildTassadarExecutorTracePayload,
 } from '../src/tassadar-executor-trace-homework'
 
@@ -75,12 +80,12 @@ const body = {
   campaignPolicyRefs: ['policy.tassadar_poc.single_assignment_smoke'],
   closeoutPathRefs: ['route:/api/pylons/pylonRef/assignments/leaseRef/closeout'],
   codingAssignment: {
-    kind: TassadarExecutorTraceJobKind,
+    kind: TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
     objective: { objectiveRef: `goal.tassadar_poc.execute.${fixture.fixtureId}` },
     // Admission hardening (v0.3 readiness item 4): mirror the capability
     // into the lease payload so Pylon-side admission enforces it too,
     // not just operator dispatch.
-    requiredCapabilityRefs: ['capability.tassadar_poc.numeric_model_executor'],
+    requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
     tassadar: {
       boundedProfileRef: TassadarBoundedProfileRef,
       expectedModelDigest: fixture.expectedModelDigest,
@@ -93,14 +98,14 @@ const body = {
     },
   },
   idempotencyRefs: [`idempotency.tassadar_poc.${assignmentRef}`],
-  jobKind: 'tassadar_executor_trace',
+  jobKind: TASSADAR_EXECUTOR_TRACE_JOB_KIND,
   leaseSeconds: 3600,
   noDuplicateAssignmentRefs: ['gate.tassadar_poc.no_duplicate'],
   noForumAutoPublishRefs: ['gate.tassadar_poc.no_forum_auto_publish'],
   operatorPauseRefs: ['gate.tassadar_poc.operator_pause_available'],
   paymentMode,
   pylonRef,
-  requiredCapabilityRefs: ['capability.tassadar_poc.numeric_model_executor'],
+  requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
   resultExpectationRefs: [
     `expectation.tassadar_poc.trace_digest.${fixture.expectedTraceDigest.slice(0, 16)}`,
   ],

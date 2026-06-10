@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   createBootstrapSummary,
   isSupportedPlatform,
+  PYLON_DEFAULT_CAPABILITY_REFS,
   parseBootstrapArgs,
   resolvePylonHome,
 } from "../src/bootstrap"
@@ -37,7 +38,7 @@ describe("Pylon bootstrap release surface", () => {
     expect(summary.bootstrap.setupMdkWallet).toBe(true)
     expect(summary.bootstrap.pylonRef).toBe("pylon.local.test")
     expect(summary.bootstrap.displayName).toBe("Local Test Pylon")
-    expect(summary.bootstrap.capabilityRefs).toEqual(["cap.gepa.retained.v1"])
+    expect(summary.bootstrap.capabilityRefs).toEqual(["cap.gepa.retained.v1", ...PYLON_DEFAULT_CAPABILITY_REFS])
     expect(summary.updatePolicy.sourceBuildFallback).toBe("disabled")
   })
 

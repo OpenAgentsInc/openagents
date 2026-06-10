@@ -3,7 +3,7 @@ import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import { hostname } from "node:os"
 import { dirname } from "node:path"
-import type { BootstrapSummary } from "./bootstrap"
+import { PYLON_DEFAULT_CAPABILITY_REFS, type BootstrapSummary } from "./bootstrap"
 import type { PylonHostInventoryProjection } from "./inventory"
 import type { PsionicConnectorState } from "./psionic-connector"
 import { loadOrCreateNostrIdentity } from "./nostr-identity"
@@ -180,10 +180,17 @@ export async function loadOrCreateRuntimeState(
 ) {
   await ensureStateDirectories(paths)
   const existing = await readJsonFile<PylonRuntimeState>(paths.runtimeState)
+  const requestedCapabilityRefs = input.capabilityRefs ?? []
+  const defaultCapabilityRefSet = new Set(PYLON_DEFAULT_CAPABILITY_REFS)
+  const defaultOnly =
+    requestedCapabilityRefs.length > 0 &&
+    requestedCapabilityRefs.every(ref => defaultCapabilityRefSet.has(ref))
   const capabilityRefs =
-    input.capabilityRefs === undefined || input.capabilityRefs.length === 0
+    requestedCapabilityRefs.length === 0
       ? existing?.capabilityRefs ?? []
-      : input.capabilityRefs
+      : defaultOnly && existing?.capabilityRefs
+        ? [...new Set([...existing.capabilityRefs, ...requestedCapabilityRefs])]
+        : requestedCapabilityRefs
   const state: PylonRuntimeState = {
     lifecycle: existing?.lifecycle ?? "offline",
     displayName: input.displayName ?? existing?.displayName ?? null,
