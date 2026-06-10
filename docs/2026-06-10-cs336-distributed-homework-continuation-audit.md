@@ -169,6 +169,202 @@ hashed into execution facts).
   `docs/promises/source-set.md` still cites #4413 ("Prove public-style CS336
   Pylon earning end to end", 2026-04-21) as prior-proof source material.
 
+## The Full Pipeline: Porting All Of CS336 Into Psionic
+
+The point of CS336 was never one demo lane. The course is a complete
+LM-pipeline curriculum — data → tokenizer → architecture → training →
+systems → scaling → post-training — and the program is to port **all of
+it** into Psionic as owned Rust, then run it as paid, verified homework on
+the Pylon network. That does three things at once: builds our own
+full-stack training pipeline from scratch (no PyTorch dependency anywhere),
+gives the network a graded curriculum of real work, and turns the course's
+own measurement structure (its leaderboards) into our public receipts
+layer. The structural insight from reviewing the course repos
+(`projects/cs336/repos/`): **Assignment 3's hosted training API is
+literally our product architecture** — Stanford runs a FastAPI dispatcher
+where students submit training configs by API key and fit scaling laws to
+the results; that is exactly "worker dispatches training runs to Pylons,
+public dashboard shows results." We are building the industrial version of
+the course's own teaching infrastructure.
+
+Repo boundary for everything below: Psionic-side ports happen in the
+psionic repo (its own issue tracker); the openagents monorepo owns
+dispatch, verification, receipts, leaderboards, and public projections.
+The reference adapters in `projects/cs336/repos/*/tests/adapters.py` are
+the conformance bars — port behavior against them, never vendor course
+code.
+
+### A1 — Basics (tokenizer, transformer, optimizer, training loop)
+
+**Reference surface:** 21 adapters in `assignment1-basics/tests/adapters.py`
+— linear/embedding/swiglu/RoPE/attention/transformer-block/transformer-LM/
+rmsnorm/silu (model), get_batch/softmax/cross-entropy/gradient-clipping/
+AdamW/cosine-schedule/save+load-checkpoint (training), tokenizer +
+train_bpe (tokenizer). Data: TinyStories + OpenWebText sample.
+
+**Psionic status: complete as a bounded reference lane** — all 21 rows
+green since 2026-04-02 (`PSION_CS336_A1_FULL_PORT_MATRIX.md`; surfaces in
+`psionic-models/src/cs336_a1_reference_stack.rs`,
+`psionic-train/src/cs336_a1_reference_training.rs`,
+`psionic-data/src/cs336_a1_bpe.rs`), packaged for dispatch as
+`psion_cs336_a1_demo_v1`. The honest gap the matrix itself names: the
+reference trainer is a tiny finite-difference trainer, not scalable
+backprop. Psionic's newer actual-pretraining lane (`./TRAIN`) owns real
+training; the A1 lane's continuation is a **leaderboard-class run** — train
+the A1 model on TinyStories/OWT shards across contributor devices with real
+gradients, matching the course's own measure (validation loss under a
+compute budget).
+
+**Homework kinds:** BPE corpus-shard training, tokenization throughput
+jobs, bounded training windows (already packaged), then real A1 training
+windows.
+
+### A2 — Systems (kernels, profiling, distributed training)
+
+**Reference surface:** FlashAttention2 autograd functions (PyTorch +
+Triton), DDP (+ after-backward hook), FSDP (wrapper, after-backward
+reduce-scatter, gather-full-params), sharded optimizer, plus the handout's
+profiling/benchmarking work.
+
+**Psionic status: bounded reference coverage, explicitly not full parity**
+(`PSION_CS336_A2_FULL_PORT_MATRIX.md`: no row missing-tracked, but bounded
+evidence only; the earlier full-green claim was retired when Stanford's
+Spring 2026 FSDP surface changed — a useful precedent for tracking
+upstream adapter drift). The continuation is where the owned Rust stack
+gets real: attention kernels in the owned backends
+(`psionic-backend-metal`, `psionic-backend-cuda`, CPU), DDP/FSDP over real
+transport (`psionic-distributed`, `psionic-collectives` — which already
+carry the cluster commit-authority model), and a profiling harness whose
+output is receipt-shaped (per-device tokens/sec, memory, step-time
+histograms).
+
+**Homework kinds:** kernel benchmark jobs (run the attention benchmark on
+your device, return receipted numbers — this is also how the network learns
+the answer to "what can my machine earn?", which Episode 224 promised),
+multi-device throughput probes, gradient all-reduce window tests. Hardware
+diversity is the asset: the same benchmark across M1/M2/M5 Macs and
+consumer NVIDIA/AMD cards is a dataset no lab has.
+
+### A3 — Scaling (the structural jackpot)
+
+**Reference surface:** `assignment3-scaling` is a *training API client
+exercise* — the course hosts a FastAPI + dispatcher + database service
+(`hyperturing.stanford.edu:8000`, server side shipped in the repo for
+non-students); students submit (model-size, data, compute) configs under an
+API-key budget, get loss results back, and fit scaling laws (IsoFLOP
+curves) to pick the best model under a fixed budget.
+
+**Psionic status:** nothing ported yet, and the port surface is small
+(scaling-law fitting + a run planner). The big work is not the math — it is
+that **our worker training-run authority becomes the training API**, and
+the Pylon network replaces Stanford's cluster. Scaling sweeps are
+embarrassingly parallel small runs at varied (N, D) — the single
+best-matched workload for a heterogeneous volunteer network: every device
+trains a different tiny config; the curve fit happens in Psionic; the
+output (a fitted scaling law and a predicted-best config) is a public
+artifact.
+
+**Homework kinds:** sweep cells (one small training run per assignment),
+loss-curve reporting, validator replication of sampled cells. Public
+dashboard = an IsoFLOP plot built from receipts.
+
+### A4 — Data (Common Crawl → pretraining data)
+
+**Reference surface:** `assignment4-data/tests/adapters.py` — HTML text
+extraction from WARC bytes, language ID, PII masking (emails, phones,
+IPs), NSFW + toxic-speech + quality classifiers, Gopher quality rules,
+exact line dedup, MinHash document dedup. The leaderboard twist: students
+train a **fixed** staff model on their filtered data — data quality is
+measured by downstream eval delta, holding training constant.
+
+**Psionic status:** not ported (psionic-data owns the A1 BPE only). This
+assignment is the seed of the owned data refinery, and it overlaps two
+things already in motion: the data-market stream (epic 1: #4643–#4645 —
+the redaction tool and NIP-DS sale path) and Episode 215's promise to pay
+for data work. The A4 port gives the data market its quality machinery:
+language ID, PII masking, quality classification, and dedup are exactly
+what a redacted conversation bundle or a crawl shard needs before sale.
+
+**Homework kinds:** the best CPU-only homework in the curriculum — WARC
+extraction, filtering, classification, and MinHash dedup over crawl shards
+run fine on weak devices (the machines that can't do "meaningful gradient
+descent work" per Episode 224). Payment can follow the course's own
+incentive design: pay per shard processed, with bonuses tied to the
+measured eval delta of data trained on a fixed reference model — paying
+for data *quality*, not volume.
+
+### A5 — Alignment (SFT + reasoning RL)
+
+**Reference surface:** `assignment5-alignment/tests/adapters.py` —
+prompt/output tokenization, response log-probs, rollout rewards,
+group-normalized rewards, policy-gradient loss, microbatch aggregation,
+`grpo_train_step`, packed SFT dataset, batch iteration, MMLU/GSM8K response
+parsing, per-instance DPO loss. GRPO-style reasoning RL on math tasks, with
+an optional safety/DPO supplement.
+
+**Psionic status:** not ported as a CS336 lane (adjacent ambitions exist;
+the `reasoning-from-scratch`, `tinker-cookbook`, and Nous reference lanes
+cover the same ground). The network fit is strong: **GRPO rollout
+generation is pure inference** — every pylon that can serve kind 5050 can
+generate rollouts; reward scoring (GSM8K answer checking) is cheap
+deterministic CPU work; only the policy-gradient update needs the training
+boundary. The compute market built in epic 1 literally feeds the RL loop.
+
+**Homework kinds:** rollout batches (inference), reward/eval grading
+(deterministic CPU), SFT data packing, eval suites (MMLU/GSM8K passes as
+receipted public evals).
+
+### Verification Across The Pipeline
+
+The commit-and-challenge layer generalizes per work class — this is where
+the validator-service revival pays for itself across all five assignments:
+
+| Work class | Verification |
+|---|---|
+| Training steps / matrix work (A1, A2, A3, A5 update step) | Merkle-committed matrices + Freivalds (the ported protocol) |
+| Tokenizer / BPE / data filters / dedup / reward grading (A1, A4, A5) | Deterministic recompute spot-checks: commit the output digest, a validator re-runs a sampled shard exactly |
+| Kernel/throughput benchmarks (A2) | Statistical cross-checks across same-class devices plus occasional replication |
+| Rollout generation (A5) | Seeded-sample replication and reward-distribution checks |
+| Scaling sweep cells (A3) | Sampled cell re-runs (cells are tiny by design) |
+
+Deterministic-recompute classes are the cheapest to verify and the most
+abundant (A4 especially) — which is exactly why weak devices can be both
+workers *and* validators.
+
+### Leaderboards As The Public Layer
+
+Each assignment has a public leaderboard repo upstream because the course
+made every stage *measurable*: A1 loss-under-budget, A2 latency/throughput,
+A4 downstream eval delta, A5 reasoning accuracy. The continuation publishes
+the same measures as receipt-backed leaderboards on openagents.com (the
+existing tip-leaderboard pattern generalizes), so "the network is learning
+to train models" stays publicly auditable stage by stage, and contributor
+earnings attach to visible ranked work.
+
+### Sequencing The Pipeline
+
+1. **A1 homework first** — already packaged; re-attaches through the epic-3
+   connector (#4664/#4669); rehearses dispatch + verification end to end.
+2. **A3 sweeps second** — reuses the A1 trainer unchanged; embarrassingly
+   parallel; produces the first crowd-sourced public scaling-law artifact
+   while exercising many devices cheaply.
+3. **A4 data third** — CPU homework for the long tail of weak devices;
+   gives the epic-1 data market its quality machinery; eval-delta payment
+   design.
+4. **A2 systems fourth** — owned kernels and real-transport DDP/FSDP
+   graduate A1/A3 work from tiny to real scale, and benchmark homework
+   doubles as the public device-capability dataset.
+5. **A5 alignment last** — needs inference (epic-1 compute market), reward
+   grading, and the training boundary all in place; closes the loop with
+   models post-trained by the network itself.
+
+The lectures repo (17 executable `lecture_XX.py` files spanning
+tokenization, resource accounting, architectures, MoE, GPUs, Triton,
+parallelism, scaling laws, inference, eval, data, and alignment) is the
+derived-notes program for the lane — `projects/cs336/notes/` has lecture 01
+done; the remaining notes are cheap background work that keeps the ports
+honest against the course's intent rather than just its test files.
+
 ## What Continuation Needs
 
 The training epic (#4664–#4671) builds the modern skeleton; CS336 is the
@@ -215,15 +411,30 @@ curriculum and the verification layer that plug into it. Concretely:
 
 ### Candidate issue set (not filed — sequence after epic 3's #4669)
 
+Monorepo-side rails (the original five, unchanged):
+
 1. `training: worker-side training-run and window authority (runs, windows, leases, public projections)`
 2. `training: commit-and-challenge verification v2 (Merkle commitments in closeouts, D1 challenge queue, Freivalds verifier)` — port the `f5919c766^` validator-service contract
 3. `training: CS336 A1 homework job kind through the dispatcher (#4639 pattern) with paid closeouts`
 4. `training: validator work as paid Pylon assignments (weak-device lane)`
 5. `training: public run page projection replacing the dead /training/runs SPA shell`
 
-These slot between #4669 (boundary) and #4670 (bounded remote Qwen run) or
-immediately after the epic, and would let the network re-run the Episode
-224 story — paid homework with verification — on the current honest stack.
+Pipeline lanes (monorepo side: dispatch kinds, verification classes,
+leaderboards; each has a Psionic-repo counterpart for the port itself):
+
+6. `training: A1 leaderboard-class run — real-gradient TinyStories/OWT training windows across contributor devices, loss-under-budget leaderboard`
+7. `training: A3 scaling-sweep homework kind — (N, D) sweep cells, sampled-cell validator replication, public IsoFLOP dashboard from receipts` (Psionic side: port scaling-law fitting + run planner)
+8. `data: A4 data-refinery homework kinds — WARC extraction, langid, PII masking, quality filters, exact + MinHash dedup as deterministic-recompute-verified CPU jobs; eval-delta payment design` (Psionic side: port the A4 adapter set into psionic-data; shares quality machinery with #4643–#4645)
+9. `systems: A2 benchmark homework kind — receipted per-device kernel/throughput benchmarks; public device-capability dataset` (Psionic side: owned Metal/CUDA attention kernels, real-transport DDP/FSDP in psionic-distributed/collectives)
+10. `alignment: A5 rollout + grading homework kinds — GRPO rollout batches via the compute market, deterministic reward/eval grading, receipted MMLU/GSM8K eval suites` (Psionic side: port SFT packing, GRPO losses, DPO)
+11. `training: per-assignment receipt-backed public leaderboards (A1 loss, A2 throughput, A4 eval delta, A5 accuracy)`
+
+Rails 1–5 slot between #4669 (boundary) and #4670 (bounded remote Qwen
+run); lanes 6–11 follow the pipeline sequencing above (A1 → A3 → A4 → A2 →
+A5). Together they re-run the Episode 224 story — paid, verified homework —
+and carry it through the whole course: by the end the network has trained,
+profiled, scaled, data-fed, and post-trained a model on a stack that is
+owned Rust top to bottom.
 
 ## Evidence Reviewed
 
@@ -239,8 +450,18 @@ immediately after the epic, and would let the network re-run the Episode
   `d1a6a9dc4:docs/pylon/distributed-training-launch-status.md`,
   `cbf617ca4:docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md`
 - Psionic repo: `docs/PSION_CS336_A1_DEMO_LANE.md`,
-  `docs/PSION_CS336_A1_FULL_PORT_MATRIX.md`,
-  `docs/PSION_CS336_A2_FULL_PORT_MATRIX.md`, CS336 commit history
+  `docs/PSION_CS336_A1_FULL_PORT_MATRIX.md` (21/21 adapters green, bounded),
+  `docs/PSION_CS336_A2_FULL_PORT_MATRIX.md`,
+  `docs/PSION_CS336_A2_REFERENCE_LANE.md`, CS336 commit history
+- `projects/cs336/` lane: `README.md` (assignment arc, repo table, compute
+  posture), `repos/assignment1-basics/tests/adapters.py` (21 adapters),
+  `repos/assignment2-systems/tests/adapters.py` (FlashAttention/DDP/FSDP/
+  sharded-optimizer), `repos/assignment3-scaling/README.md` (hosted
+  training API + shipped server/dispatcher), `repos/assignment4-data/`
+  (adapter set + fixed-staff-trainer leaderboard design),
+  `repos/assignment5-alignment/tests/adapters.py` (SFT/GRPO/DPO/eval
+  parsing), `repos/lectures/` (17 executable lecture files),
+  `notes/lecture-01-overview-and-tokenization.md`
 - Workspace: `projects/cs336/README.md` and lane notes
 - Live: `GET /api/public/pylon-stats`,
   `https://openagents.com/training/runs/run.cs336.a1.demo` (SPA shell only)
