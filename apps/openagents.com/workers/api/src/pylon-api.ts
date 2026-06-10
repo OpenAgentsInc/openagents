@@ -104,6 +104,7 @@ export const PylonApiAssignmentJobKind = S.Literals([
   'artifact_review',
   'healthcheck_echo',
   'inference',
+  'tassadar_executor_trace',
   'validation',
 ])
 export type PylonApiAssignmentJobKind = typeof PylonApiAssignmentJobKind.Type

@@ -19,7 +19,8 @@
     "smoke:autopilot-coder:no-spend": "vitest run src/autopilot-work-routes.test.ts -t \"no-spend Autopilot Coder end-to-end smoke\"",
     "smoke:autopilot-coder:paid": "vitest run src/autopilot-work-routes.test.ts -t \"paid Autopilot Coder end-to-end smoke\"",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dispatch:tassadar:poc": "bun run scripts/tassadar-poc-dispatch.ts"
   },
   "dependencies": {
     "@cloudflare/containers": "0.3.7",
