@@ -379,7 +379,7 @@ export {
 export const OPENAGENTS_ADMIN_EMAILS = ['chris@openagents.com'] as const
 const OPENAGENTS_CORE_TEAM_ID = 'team_openagents_core'
 const MDK_SIDECAR_INSTANCE_NAME = 'openagents-mdk-sidecar-20260607-4'
-const MDK_TREASURY_INSTANCE_NAME = 'openagents-mdk-treasury-20260610-2'
+const MDK_TREASURY_INSTANCE_NAME = 'openagents-mdk-treasury-20260610-3'
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const workerRuntime = {
   makeUuid: randomUuid,
