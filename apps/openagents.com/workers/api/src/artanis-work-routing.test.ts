@@ -51,16 +51,18 @@ describe('Artanis work routing', () => {
     )
 
     expect(operator.authority).toEqual(ARTANIS_WORK_ROUTING_NO_DIRECT_AUTHORITY)
-    expect(operator.proposalCount).toBe(4)
+    expect(operator.proposalCount).toBe(5)
     expect(operator.proposals.map(proposal => proposal.workClass)).toEqual([
       'benchmark_evaluation',
       'inference',
+      'executor_trace_validation',
       'lora_finetuning',
       'embedding_data_prep',
     ])
     expect(operator.proposals.map(proposal => proposal.capability)).toEqual([
       'benchmark_evaluation',
       'inference',
+      'executor_trace_validation',
       'lora_finetuning',
       'embedding_data_prep',
     ])
@@ -68,6 +70,7 @@ describe('Artanis work routing', () => {
       'work.public.artanis.benchmark_eval_proposed',
     ])
     expect(operator.traceableWorkRefs).toEqual([
+      'assignment.public.artanis.tassadar_executor_trace.template',
       'work.public.pylon.inference.trace_001',
     ])
     expect(operator.proposals.some(
@@ -77,6 +80,7 @@ describe('Artanis work routing', () => {
       proposal => proposal.operatorDetailRefs.length === 0,
     )).toBe(true)
     expect(publicArtanis.traceableWorkRefs).toEqual([
+      'assignment.public.artanis.tassadar_executor_trace.template',
       'work.public.pylon.inference.trace_001',
     ])
     expect(publicArtanis.proposals.find(
@@ -84,6 +88,19 @@ describe('Artanis work routing', () => {
     )).toMatchObject({
       receiptRefs: ['receipt.public.artanis.pylon_inference_accepted'],
       traceableWorkRefs: ['work.public.pylon.inference.trace_001'],
+    })
+    expect(publicArtanis.proposals.find(
+      proposal => proposal.workClass === 'executor_trace_validation',
+    )).toMatchObject({
+      receiptRefs: [
+        'receipt.public.artanis.tassadar_executor_trace.dispatch_ready',
+      ],
+      risk: 'safe_read_only',
+      state: 'dispatched',
+      target: 'pylon',
+      traceableWorkRefs: [
+        'assignment.public.artanis.tassadar_executor_trace.template',
+      ],
     })
     expect(publicArtanis.proposals.find(
       proposal => proposal.state === 'blocked',
@@ -105,6 +122,7 @@ describe('Artanis work routing', () => {
     expect(ARTANIS_WORK_ROUTING_WORK_CLASSES).toEqual([
       'benchmark_evaluation',
       'embedding_data_prep',
+      'executor_trace_validation',
       'gepa_dspy_optimization',
       'inference',
       'lora_finetuning',
@@ -116,6 +134,7 @@ describe('Artanis work routing', () => {
       'benchmark_evaluation',
       'coding_runtime_probe',
       'embedding_data_prep',
+      'executor_trace_validation',
       'gepa_dspy_optimization',
       'inference',
       'lora_finetuning',

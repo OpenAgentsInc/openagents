@@ -1,6 +1,8 @@
 import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagents/tassadar-executor'
+
 import {
   ARTANIS_CONTINUAL_LEARNING_NO_EXECUTION_AUTHORITY,
   ARTANIS_CONTINUAL_LEARNING_TEMPLATE_KINDS,
@@ -55,11 +57,11 @@ describe('Artanis continual-learning templates', () => {
       authority: ARTANIS_CONTINUAL_LEARNING_NO_EXECUTION_AUTHORITY,
       audience: 'public_forum',
       blockedCount: 0,
-      operatorReadyProposalCount: 6,
-      proposedCount: 6,
+      operatorReadyProposalCount: 7,
+      proposedCount: 7,
       rejectedCount: 0,
       runningCount: 0,
-      templateCount: 6,
+      templateCount: 7,
       updatedAtDisplay: '5 minutes ago',
     })
     expect(publicProjection.templates.map(template => template.kind)).toEqual(
@@ -81,17 +83,21 @@ describe('Artanis continual-learning templates', () => {
 
     for (const template of base.templates) {
       expect(template.benchmarkTargetRefs).not.toEqual([])
+      expect(template.dispatchPayloadSchemaRefs).not.toEqual([])
       expect(template.acceptanceCriteriaRefs).not.toEqual([])
       expect(template.evidenceRefs).not.toEqual([])
+      expect(template.requiredCapabilityRefs).not.toEqual([])
       expect(template.costCaveatRefs).not.toEqual([])
       expect(template.rollbackPostureRefs).not.toEqual([])
       expect(template.approvalRequirementRefs).not.toEqual([])
+      expect(template.spendLimitRefs).not.toEqual([])
       expect(template.retainedFailureRefs).not.toEqual([])
       expect(template.modelArtifactRefs).not.toEqual([])
       expect(template.trainingRunRefs).not.toEqual([])
       expect(template.benchmarkCloudRefs).not.toEqual([])
       expect(template.promotionDecisionRefs).not.toEqual([])
       expect(template.publicReportRefs).not.toEqual([])
+      expect(template.workloadRefs).not.toEqual([])
     }
 
     expect(() =>
@@ -212,19 +218,57 @@ describe('Artanis continual-learning templates', () => {
       'gepa_dspy_optimization',
       'embedding_data_prep',
       'validation',
+      'validation',
       'lora_finetuning',
       'artifact_review',
     ])
     expect(triageRequest).toMatchObject({
       assignment: {
-        providerEligibilityRefs: [
+        providerEligibilityRefs: expect.arrayContaining([
           'eligibility.public.provider.capability_snapshot_ok',
           'eligibility.public.model_lab_artifact_policy_ok',
-        ],
+        ]),
         resourceMode: 'balanced',
       },
       outcome: 'proposed_assignment',
     })
+  })
+
+  test('binds executor-trace replay to Tassadar capability, payload schemas, workload refs, and zero-spend caps', () => {
+    const executorTemplate = exampleArtanisContinualLearningTemplateLedger()
+      .templates.find(template => template.kind === 'executor_trace_replay')
+    const intake = pylonMarketplaceIntakeRequestFromTemplate(
+      executorTemplate!,
+      'background_20',
+    )
+    const triage = pylonMarketplaceTriageRequestFromTemplate(
+      executorTemplate!,
+      'background_20',
+    )
+
+    expect(executorTemplate).toMatchObject({
+      dispatchPayloadSchemaRefs: [
+        'openagents.tassadar_executor_trace_request.v1',
+        'openagents.tassadar_executor_trace_output.v1',
+      ],
+      requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
+      spendLimitRefs: [
+        'spend_limit.public.tassadar_executor_trace.zero_sats_default',
+      ],
+      workloadRefs: ['workload.public.tassadar_poc.loop_sum_fixture'],
+    })
+    expect(intake).toMatchObject({
+      dataRefs: expect.arrayContaining([
+        'workload.public.tassadar_poc.loop_sum_fixture',
+      ]),
+      jobKind: 'validation',
+      spendCaveatRefs: expect.arrayContaining([
+        'spend_limit.public.tassadar_executor_trace.zero_sats_default',
+      ]),
+    })
+    expect(triage.assignment!.providerEligibilityRefs).toContain(
+      'eligibility.public.capability_tassadar_poc_numeric_model_executor',
+    )
   })
 
   test('rejects raw prompts, private datasets, weights, provider payloads, private repos, customer data, and raw timestamps', () => {

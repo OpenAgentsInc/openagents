@@ -1,6 +1,8 @@
 import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
 import { Schema as S } from 'effect'
 
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagents/tassadar-executor'
+
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 import {
   PylonMarketplaceCreateJobIntakeRequest,
@@ -16,6 +18,7 @@ export const ArtanisContinualLearningTemplateKind = S.Literals([
   'benchmark_eval_rerun',
   'dataset_curation',
   'dspy_gepa_optimization',
+  'executor_trace_replay',
   'lora_finetuning_training',
   'regression_analysis',
 ])
@@ -81,6 +84,7 @@ export class ArtanisContinualLearningTemplateRecord extends S.Class<ArtanisConti
   blockerRefs: S.Array(S.String),
   costCaveatRefs: S.Array(S.String),
   createdAtIso: S.String,
+  dispatchPayloadSchemaRefs: S.Array(S.String),
   downstreamExecutorAuthorityRefs: S.Array(S.String),
   evidenceRefs: S.Array(S.String),
   forumSummaryRefs: S.Array(S.String),
@@ -92,15 +96,18 @@ export class ArtanisContinualLearningTemplateRecord extends S.Class<ArtanisConti
   operatorDetailRefs: S.Array(S.String),
   promotionDecisionRefs: S.Array(S.String),
   publicReportRefs: S.Array(S.String),
+  requiredCapabilityRefs: S.Array(S.String),
   retainedFailureRefs: S.Array(S.String),
   riskLabel: ArtanisContinualLearningRiskLabel,
   rollbackPostureRefs: S.Array(S.String),
   sourceRefs: S.Array(S.String),
   spendLabel: ArtanisContinualLearningCostLabel,
+  spendLimitRefs: S.Array(S.String),
   state: ArtanisContinualLearningTemplateState,
   templateRef: S.String,
   trainingRunRefs: S.Array(S.String),
   updatedAtIso: S.String,
+  workloadRefs: S.Array(S.String),
 }) {}
 
 export class ArtanisContinualLearningTemplateProjection extends S.Class<ArtanisContinualLearningTemplateProjection>(
@@ -113,6 +120,7 @@ export class ArtanisContinualLearningTemplateProjection extends S.Class<ArtanisC
   blockerRefs: S.Array(S.String),
   costCaveatRefs: S.Array(S.String),
   createdAtDisplay: S.String,
+  dispatchPayloadSchemaRefs: S.Array(S.String),
   downstreamExecutorAuthorityRefs: S.Array(S.String),
   evidenceRefs: S.Array(S.String),
   forumSummaryRefs: S.Array(S.String),
@@ -126,16 +134,19 @@ export class ArtanisContinualLearningTemplateProjection extends S.Class<ArtanisC
   operatorReadyProposal: S.Boolean,
   promotionDecisionRefs: S.Array(S.String),
   publicReportRefs: S.Array(S.String),
+  requiredCapabilityRefs: S.Array(S.String),
   retainedFailureRefs: S.Array(S.String),
   riskLabel: ArtanisContinualLearningRiskLabel,
   rollbackPostureRefs: S.Array(S.String),
   sourceRefs: S.Array(S.String),
   spendLabel: ArtanisContinualLearningCostLabel,
+  spendLimitRefs: S.Array(S.String),
   state: ArtanisContinualLearningTemplateState,
   templateExecutionAllowed: S.Boolean,
   templateRef: S.String,
   trainingRunRefs: S.Array(S.String),
   updatedAtDisplay: S.String,
+  workloadRefs: S.Array(S.String),
 }) {}
 
 export class ArtanisContinualLearningTemplateLedgerRecord extends S.Class<ArtanisContinualLearningTemplateLedgerRecord>(
@@ -198,6 +209,7 @@ export const ARTANIS_CONTINUAL_LEARNING_TEMPLATE_KINDS:
     'dspy_gepa_optimization',
     'dataset_curation',
     'adapter_validation',
+    'executor_trace_replay',
     'lora_finetuning_training',
     'regression_analysis',
   ]
@@ -209,6 +221,7 @@ const templateToMarketplaceKind:
     benchmark_eval_rerun: 'benchmark_evaluation',
     dataset_curation: 'embedding_data_prep',
     dspy_gepa_optimization: 'gepa_dspy_optimization',
+    executor_trace_replay: 'validation',
     lora_finetuning_training: 'lora_finetuning',
     regression_analysis: 'artifact_review',
   }
@@ -299,10 +312,14 @@ const assertRequiredRefs = (
   const missing = [
     ['benchmark target', template.benchmarkTargetRefs],
     ['acceptance criteria', template.acceptanceCriteriaRefs],
+    ['dispatch payload schema', template.dispatchPayloadSchemaRefs],
     ['evidence', template.evidenceRefs],
+    ['required capability', template.requiredCapabilityRefs],
     ['cost caveat', template.costCaveatRefs],
     ['rollback posture', template.rollbackPostureRefs],
     ['approval requirement', template.approvalRequirementRefs],
+    ['spend limit', template.spendLimitRefs],
+    ['workload', template.workloadRefs],
   ].find(([, refs]) => !hasAny(refs as ReadonlyArray<string>))
 
   if (missing !== undefined) {
@@ -325,6 +342,10 @@ const assertTemplate = (
   assertSafeRefs('blocker refs', template.blockerRefs)
   assertSafeRefs('cost caveat refs', template.costCaveatRefs)
   assertSafeRefs(
+    'dispatch payload schema refs',
+    template.dispatchPayloadSchemaRefs,
+  )
+  assertSafeRefs(
     'downstream executor authority refs',
     template.downstreamExecutorAuthorityRefs,
   )
@@ -337,10 +358,13 @@ const assertTemplate = (
   assertSafeRefs('operator detail refs', template.operatorDetailRefs)
   assertSafeRefs('promotion decision refs', template.promotionDecisionRefs)
   assertSafeRefs('public report refs', template.publicReportRefs)
+  assertSafeRefs('required capability refs', template.requiredCapabilityRefs)
   assertSafeRefs('retained failure refs', template.retainedFailureRefs)
   assertSafeRefs('rollback posture refs', template.rollbackPostureRefs)
   assertSafeRefs('source refs', template.sourceRefs)
+  assertSafeRefs('spend limit refs', template.spendLimitRefs)
   assertSafeRefs('training run refs', template.trainingRunRefs)
+  assertSafeRefs('workload refs', template.workloadRefs)
   assertRequiredRefs(template)
 
   if (
@@ -445,6 +469,11 @@ const projectTemplate = (
       template.createdAtIso,
       nowIso,
     ),
+    dispatchPayloadSchemaRefs: refsForAudience(
+      'dispatch payload schema refs',
+      template.dispatchPayloadSchemaRefs,
+      audience,
+    ),
     downstreamExecutorAuthorityRefs: refsForAudience(
       'downstream executor authority refs',
       template.downstreamExecutorAuthorityRefs,
@@ -494,6 +523,11 @@ const projectTemplate = (
       template.publicReportRefs,
       audience,
     ),
+    requiredCapabilityRefs: refsForAudience(
+      'required capability refs',
+      template.requiredCapabilityRefs,
+      audience,
+    ),
     retainedFailureRefs: refsForAudience(
       'retained failure refs',
       template.retainedFailureRefs,
@@ -507,6 +541,11 @@ const projectTemplate = (
     ),
     sourceRefs: refsForAudience('source refs', template.sourceRefs, audience),
     spendLabel: template.spendLabel,
+    spendLimitRefs: refsForAudience(
+      'spend limit refs',
+      template.spendLimitRefs,
+      audience,
+    ),
     state: template.state,
     templateExecutionAllowed: templateExecutionAllowed(template),
     templateRef: refsForAudience(
@@ -522,6 +561,11 @@ const projectTemplate = (
     updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
       template.updatedAtIso,
       nowIso,
+    ),
+    workloadRefs: refsForAudience(
+      'workload refs',
+      template.workloadRefs,
+      audience,
     ),
   })
 
@@ -622,10 +666,13 @@ export const pylonMarketplaceIntakeRequestFromTemplate = (
       ...template.costCaveatRefs,
       'caveat.public.continual_learning_template_not_execution',
     ],
-    dataRefs: template.modelLabEvidenceRefs,
+    dataRefs: uniqueRefs([...template.modelLabEvidenceRefs, ...template.workloadRefs]),
     eligibilityRequirementRefs: [
       'eligibility.public.pylon_provider_registered',
       'eligibility.public.model_lab_evidence_available',
+      ...template.requiredCapabilityRefs.map(
+        ref => `eligibility.public.${ref.replaceAll(/[^A-Za-z0-9]+/g, '_')}`,
+      ),
     ],
     evidenceExpectationRefs: template.evidenceRefs,
     jobKind: templateToMarketplaceKind[template.kind],
@@ -636,7 +683,7 @@ export const pylonMarketplaceIntakeRequestFromTemplate = (
     resultExpectationRefs: template.acceptanceCriteriaRefs,
     source: 'openagents_seeded',
     sourceRefs: template.sourceRefs,
-    spendCaveatRefs: template.costCaveatRefs,
+    spendCaveatRefs: uniqueRefs([...template.costCaveatRefs, ...template.spendLimitRefs]),
   })
 }
 
@@ -660,6 +707,9 @@ export const pylonMarketplaceTriageRequestFromTemplate = (
       providerEligibilityRefs: [
         'eligibility.public.provider.capability_snapshot_ok',
         'eligibility.public.model_lab_artifact_policy_ok',
+        ...template.requiredCapabilityRefs.map(
+          ref => `eligibility.public.${ref.replaceAll(/[^A-Za-z0-9]+/g, '_')}`,
+        ),
       ],
       providerRefs: ['provider.public.pylon_eligible_pool'],
       resourceMode,
@@ -691,6 +741,9 @@ const template = (
     blockerRefs: [],
     costCaveatRefs: [`cost.public.continual_learning.${input.spendLabel}`],
     createdAtIso: '2026-06-07T06:00:00.000Z',
+    dispatchPayloadSchemaRefs: [
+      `payload_schema.public.continual_learning.${input.suffix}`,
+    ],
     downstreamExecutorAuthorityRefs: [],
     evidenceRefs: [`evidence.public.continual_learning.${input.suffix}`],
     forumSummaryRefs: [`forum.public.artanis.continual_learning.${input.suffix}`],
@@ -704,6 +757,7 @@ const template = (
     operatorDetailRefs: [`operator.artanis.continual_learning.${input.suffix}`],
     promotionDecisionRefs: ['promotion.public.model_lab.autopilot_review'],
     publicReportRefs: ['report.public.model_lab_autopilot_v2'],
+    requiredCapabilityRefs: [`capability.public.continual_learning.${input.suffix}`],
     retainedFailureRefs: ['retained_failure.public.autopilot_codegen'],
     riskLabel: input.riskLabel,
     rollbackPostureRefs: ['rollback.public.model_lab.autopilot_candidate'],
@@ -712,11 +766,84 @@ const template = (
       'docs/artanis/2026-06-06-pylon-marketplace-job-contract.md',
     ],
     spendLabel: input.spendLabel,
+    spendLimitRefs: [`spend_limit.public.continual_learning.${input.spendLabel}`],
     state: input.state ?? 'proposed',
     templateRef: `template.public.artanis.continual_learning.${input.suffix}`,
     trainingRunRefs: ['training_run.public.model_lab.autopilot_candidate'],
     updatedAtIso: '2026-06-07T06:05:00.000Z',
+    workloadRefs: [`workload.public.continual_learning.${input.suffix}`],
   })
+
+export const artanisExecutorTraceReplayTemplate =
+  (): ArtanisContinualLearningTemplateRecord =>
+    new ArtanisContinualLearningTemplateRecord({
+      acceptanceCriteriaRefs: [
+        'acceptance.public.tassadar_executor_trace.digest_match',
+        'acceptance.public.tassadar_executor_trace.separate_replay_verdict',
+      ],
+      approvalRequirementRefs: [
+        'approval.public.artanis.operator_required',
+        'approval.public.artanis.tassadar_executor_paid_sample',
+      ],
+      benchmarkCloudRefs: ['benchmark_cloud.public.tassadar_executor_trace'],
+      benchmarkTargetRefs: ['benchmark.public.tassadar.executor_trace_replay'],
+      blockerRefs: [],
+      costCaveatRefs: ['cost.public.tassadar_executor_trace.no_spend_default'],
+      createdAtIso: '2026-06-10T16:30:00.000Z',
+      dispatchPayloadSchemaRefs: [
+        'openagents.tassadar_executor_trace_request.v1',
+        'openagents.tassadar_executor_trace_output.v1',
+      ],
+      downstreamExecutorAuthorityRefs: [],
+      evidenceRefs: [
+        'evidence.public.tassadar_executor_trace.green_poc',
+        'promise.public.compute.tassadar_executor_poc.v1',
+      ],
+      forumSummaryRefs: [
+        'forum.public.artanis.continual_learning.executor_trace_replay',
+      ],
+      kind: 'executor_trace_replay',
+      marketplaceIntakeRefs: [
+        'intake.public.pylon_marketplace.continual_learning.executor_trace_replay',
+      ],
+      modelArtifactRefs: ['artifact.public.tassadar_executor_trace.fixture'],
+      modelLabEvidenceRefs: [
+        'model_lab.public.evidence_graph.tassadar_executor_trace',
+      ],
+      operatorApprovalRefs: [],
+      operatorDetailRefs: [
+        'operator.artanis.continual_learning.executor_trace_replay',
+      ],
+      promotionDecisionRefs: [
+        'promotion.public.tassadar_executor_trace.no_runtime_promotion',
+      ],
+      publicReportRefs: [
+        'report.public.product_promises.compute_tassadar_executor_poc',
+      ],
+      requiredCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
+      retainedFailureRefs: [
+        'retained_failure.public.tassadar_executor_trace.digest_mismatch',
+      ],
+      riskLabel: 'low',
+      rollbackPostureRefs: [
+        'rollback.public.tassadar_executor_trace.cancel_assignment',
+      ],
+      sourceRefs: [
+        'docs/artanis/2026-06-10-executor-trace-loop-candidate.md',
+        'docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md',
+        'apps/openagents.com/workers/api/scripts/tassadar-poc-dispatch.ts',
+      ],
+      spendLabel: 'low',
+      spendLimitRefs: [
+        'spend_limit.public.tassadar_executor_trace.zero_sats_default',
+      ],
+      state: 'proposed',
+      templateRef:
+        'template.public.artanis.continual_learning.executor_trace_replay',
+      trainingRunRefs: ['training_run.public.tassadar_executor_trace.poc'],
+      updatedAtIso: '2026-06-10T16:35:00.000Z',
+      workloadRefs: ['workload.public.tassadar_poc.loop_sum_fixture'],
+    })
 
 export const exampleArtanisContinualLearningTemplateLedger = ():
   ArtanisContinualLearningTemplateLedgerRecord =>
@@ -763,6 +890,7 @@ export const exampleArtanisContinualLearningTemplateLedger = ():
         spendLabel: 'medium',
         suffix: 'adapter_validation',
       }),
+      artanisExecutorTraceReplayTemplate(),
       template({
         benchmarkTargetRefs: ['benchmark.public.autopilot.lora_training'],
         kind: 'lora_finetuning_training',

@@ -236,23 +236,26 @@ dispatched the work being checked.
 None of this belongs in the v0.3 release; all of it builds on surfaces
 that exist:
 
-1. An **executor-trace continual job template** — the template-kind
+1. An **executor-trace continual job template** — shipped under #4697 as
+   `executor_trace_replay`, binding Tassadar payload schema refs, workload
+   refs, the executor capability ref, and a zero-sats default spend cap to the
+   continual-learning template ledger. The original note was: the template-kind
    enum (`adapter_validation`, `benchmark_eval_rerun`, …) wants a
    seventh kind (or `adapter_validation` reused) binding the dispatch
    script's payload shape to a template with spend caps and workload
    refs.
-2. A **tick wiring** from the scheduled runner: one safe tick =
-   dispatch one no-spend workload to one eligible Pylon, await
-   closeout, run the replay verdict, record receipts, queue the Forum
-   intent. The loop contract's idempotency-key and
-   one-active-loop-per-scope rules already fit assignment refs.
-3. **Approval-gate plumbing for the paid sample**: a `wallet_spend`
-   approval requirement whose authority receipt is the operator's
-   spend-enable, with the settlement-bridge receipts closing the tick —
-   the adapters already carry the Artanis ref fields.
-4. **Copy gates**: the publication queue's allowed claim for this lane
-   is the promise's safeCopy, nothing broader; the public-report
-   authority split doc governs, and the launch-status audit's
+2. A **tick wiring** from the scheduled runner — shipped under #4697 as a
+   config-gated executor-trace tick that records no-spend Pylon dispatch refs,
+   exact-replay verdict refs, deterministic closeout receipts, and a queued
+   Forum intent. The loop still grants no direct dispatch, settlement, spend,
+   or Forum publishing authority.
+3. **Approval-gate plumbing for the paid sample** — shipped under #4697 as a
+   `wallet_spend` approval requirement and pending approval gate whose
+   authority ref is the operator spend-enable; settlement-bridge receipt refs
+   remain required before any paid sample can close.
+4. **Copy gates** — shipped under #4697 by pinning the queued Forum intent
+   body to the `compute.tassadar_executor_poc.v1` promise safeCopy. The
+   public-report authority split doc governs, and the launch-status audit's
    no-overclaim posture extends unchanged.
 5. The two PoC residuals become Artanis prerequisites: registration
    ownership (the loop's agent must own the Pylon registrations it
@@ -272,11 +275,12 @@ candidate source and packaged-network smoke. Nothing about
 the lane requires changing what v0.3 *is* — it slots into the existing
 assignment, capability, smoke, and no-overclaim machinery exactly as
 those systems were designed to absorb a new work class. Beyond the
-release, section 5 argues this lane is the natural first work class for
-autonomous Artanis operation: the only one whose full
-dispatch→verify→accept span is mechanically safe under Artanis's own
-risk rules, with spend approval remaining exactly where the owner's
-posture already puts it.
+release, section 5's #4697 follow-up now makes this lane Artanis's first
+typed scheduled-runner work class. Live autonomous launch remains separately
+gated, but the no-spend dispatch, replay-verdict, paid-sample approval, and
+safeCopy publication-intent records now exist under Artanis's own risk rules,
+with spend approval remaining exactly where the owner's posture already puts
+it.
 
 ## Source refs
 
@@ -290,7 +294,8 @@ posture already puts it.
 - `apps/openagents.com/workers/api/src/tassadar-executor-trace-homework.ts`,
   `tassadar-replay-validator.ts`, `scripts/tassadar-poc-dispatch.ts`
 - Issues: #4687 (epic), #4689–#4694 (sequence), #4654/#4655/#4656
-  (release cluster), #4696 (v0.3 inclusion), #4676 (validator lane)
+  (release cluster), #4696 (v0.3 inclusion), #4697 (Artanis work class),
+  #4676 (validator lane)
 - Promise: `compute.tassadar_executor_poc.v1` (green, 2026-06-10.12)
 - Artanis: `apps/openagents.com/workers/api/src/artanis-loop.ts`,
   `artanis-scheduled-runner.ts`, `artanis-continual-learning-templates.ts`,

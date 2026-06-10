@@ -1308,7 +1308,7 @@ export const publicProductPromisesDocument = () => {
       claim:
         'A standing automated Artanis run advances the Tassadar executor lane in production: dispatching digest-pinned executor work to Pylons, verifying it by exact replay, accumulating the verified-trace corpus toward Tassadar model training, and publishing monitorable per-tick receipts on a public surface.',
       safeCopy:
-        'The Artanis spine exists and is deployed: a worker cron fires every minute and a config-gated scheduled runner persists loop, tick, runtime, Forum-intent, and health records under the tested autonomous-loop contract. The full manual loop the automation will own ran green once (compute.tassadar_executor_poc.v1). Real tick actions, a sustained unattended streak, the public tick monitor, and the first curated distillation dataset remain gated.',
+        'The Artanis spine exists and is deployed: a worker cron fires every minute and a config-gated scheduled runner persists loop, tick, runtime, Forum-intent, and health records under the tested autonomous-loop contract. The executor-trace work class is now modeled in that runner: enabled ticks record no-spend Pylon dispatch refs, exact-replay verdict refs, a pending wallet_spend approval requirement for the paid sample, and a Forum intent limited to compute.tassadar_executor_poc.v1 safeCopy. Production enablement, a sustained unattended streak, the public tick monitor, and the first curated distillation dataset remain gated.',
       unsafeCopy:
         'Do not claim a trained model executes exactly, that Artanis runs ungated autonomy (spend and publication stay approval-gated), that an autonomous work network is live, or any general LLM-computer or contributor-earning capability from this loop.',
       evidenceRefs: [
@@ -1319,13 +1319,12 @@ export const publicProductPromisesDocument = () => {
         'https://github.com/OpenAgentsInc/openagents/issues/4697',
       ],
       blockerRefs: [
-        'blocker.product_promises.artanis_scheduled_runner_real_actions_missing',
         'blocker.product_promises.artanis_unattended_tick_streak_missing',
         'blocker.product_promises.artanis_public_tick_monitor_missing',
         'blocker.product_promises.tassadar_distillation_dataset_receipt_missing',
       ],
       verification:
-        'Enable ARTANIS_SCHEDULED_RUNNER_ENABLED with real tick actions wired (#4697); observe at least ten consecutive unattended ticks whose receipts include executor dispatch and exact-replay verdicts; publish the tick-ledger monitor surface; record the first dataset_curation receipt converting verified traces into a distillation dataset. Green requires all four with public-safe receipts cited here.',
+        'Executor-trace tick wiring landed under #4697. Green still requires ARTANIS_SCHEDULED_RUNNER_ENABLED during an operator-controlled window, at least ten consecutive unattended ticks whose receipts include executor dispatch and exact-replay verdicts, the public tick-ledger monitor surface, and the first dataset_curation receipt converting verified traces into a distillation dataset.',
       authorityBoundary:
         'The loop acts only through existing gates: assignments for computation, approval requirements for risky kinds, owner authority for wallet spend, copy gates for publication. A green here proves a monitorable automated run, not model capability; Tassadar disclosure boundaries extend unchanged.',
     },

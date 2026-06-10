@@ -147,7 +147,8 @@ describe('Artanis operator console routes', () => {
 
   test('records operator approval actions as evidence without public leakage', async () => {
     const { db } = await seedStore()
-    const gateRef = 'gate.public.artanis.l402_redemption_pending'
+    const gateRef =
+      'gate.public.artanis.tassadar_executor_paid_sample.cron_public_artanis_20260607T0520'
     const response = await Effect.runPromise(
       route({
         adminToken: true,
@@ -175,10 +176,10 @@ describe('Artanis operator console routes', () => {
             gateRef: `${gateRef}.approved`,
             state: 'approved',
             operatorReceiptRefs: expect.arrayContaining([
-              'receipt.operator.artanis.approve_gate_public_artanis_l402_redemption_pending',
+              'receipt.operator.artanis.approve_gate_public_artanis_tassadar_executor_paid_sample_cron_public_artanis_20260607t0520',
             ]),
             authorityReceiptRefs: expect.arrayContaining([
-              'authority.public.artanis.operator_approve.gate_public_artanis_l402_redemption_pending',
+              'authority.public.artanis.operator_approve.gate_public_artanis_tassadar_executor_paid_sample_cron_public_artanis_20260607t0520',
             ]),
           },
         ],

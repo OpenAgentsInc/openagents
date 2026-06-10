@@ -2,9 +2,11 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_TASSADAR_EXECUTOR_SAFE_COPY,
   runArtanisScheduledTick,
   runArtanisScheduledTickForWorker,
 } from './artanis-scheduled-runner'
+import { publicProductPromisesDocument } from './product-promises'
 import {
   ArtanisPersistenceTestStore,
   artanisPersistenceTestDb,
@@ -67,16 +69,16 @@ describe('Artanis scheduled runner', () => {
       walletSpendAllowed: false,
     })
     expect(result.approvalRequirementRefs).toContain(
-      'approval.public.artanis.eval_launch_pending',
+      'approval.public.artanis.tassadar_executor_paid_sample.cron_public_artanis_20260607T0520',
     )
     expect(result.approvalRequirementRefs).toContain(
-      'gate.public.artanis.l402_redemption_pending',
+      'gate.public.artanis.tassadar_executor_paid_sample.cron_public_artanis_20260607T0520',
     )
     expect(result.workProposalRefs).toEqual([
-      'work.public.artanis.benchmark_eval_proposed',
+      'work.public.artanis.tassadar_executor_trace.cron_public_artanis_20260607T0520',
     ])
     expect(result.forumIntentRefs).toEqual([
-      'forum.public.artanis.status_intent.cron_public_artanis_20260607T0520',
+      'forum.public.artanis.tassadar_executor_trace_intent.cron_public_artanis_20260607T0520',
     ])
     expect(result.healthSnapshotRef).toBe(
       'health.public.artanis.snapshot.cron_public_artanis_20260607T0520',
@@ -100,11 +102,61 @@ describe('Artanis scheduled runner', () => {
       closed_at: nowIso,
       state: 'completed',
     })
+    const tickProjection = JSON.parse(
+      store.rows('artanis_loop_ticks')[0]!.public_projection_json,
+    )
+    expect(tickProjection.loops[0].ticks[0]).toMatchObject({
+      actionProposals: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'pylon_triage',
+          risk: 'safe',
+        }),
+        expect.objectContaining({
+          kind: 'executor_trace_replay',
+          risk: 'safe',
+        }),
+        expect.objectContaining({
+          kind: 'wallet_spend',
+          risk: 'approval_required',
+        }),
+      ]),
+      approvalRequirements: [
+        expect.objectContaining({
+          authorityRef: 'authority.public.artanis.operator_spend_enable',
+          state: 'pending',
+        }),
+      ],
+      receiptRefs: expect.arrayContaining([
+        'receipt.public.artanis.tassadar_executor_dispatch.cron_public_artanis_20260607T0520',
+        'receipt.public.artanis.tassadar_executor_replay_verified.cron_public_artanis_20260607T0520',
+      ]),
+    })
     expect(store.rows('artanis_forum_publication_intents')).toHaveLength(1)
+    const forumIntentProjection = JSON.parse(
+      store.rows('artanis_forum_publication_intents')[0]!
+        .public_projection_json,
+    )
+    expect(forumIntentProjection.intents[0]).toMatchObject({
+      bodyText: ARTANIS_TASSADAR_EXECUTOR_SAFE_COPY,
+      caveatRefs: [
+        'caveat.public.copy_limited_to_promise_safeCopy',
+        'caveat.public.no_broader_executor_or_earning_claim',
+      ],
+      deliveryState: 'ready',
+    })
     expect(store.rows('artanis_work_routing_proposals')).toHaveLength(1)
+    expect(store.rows('artanis_approval_gates')).toHaveLength(1)
     expect(
       store.rows('artanis_forum_publication_intents')[0]!.public_projection_json,
     ).not.toMatch(/context\.private|evidence\.private|receipt\.operator|wallet_secret|raw_log/i)
+  })
+
+  test('keeps the executor-trace Forum intent pinned to the promise safeCopy', () => {
+    const promise = publicProductPromisesDocument().promises.find(
+      item => item.promiseId === 'compute.tassadar_executor_poc.v1',
+    )
+
+    expect(promise?.safeCopy).toBe(ARTANIS_TASSADAR_EXECUTOR_SAFE_COPY)
   })
 
   test('collapses duplicate scheduled retries without duplicate rows', async () => {

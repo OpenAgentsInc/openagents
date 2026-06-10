@@ -1,5 +1,7 @@
 import { Schema as S } from 'effect'
 
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagents/tassadar-executor'
+
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 
 export const ArtanisWorkRoutingAudience = S.Literals([
@@ -26,6 +28,7 @@ export const ArtanisWorkRoutingCapability = S.Literals([
   'benchmark_evaluation',
   'coding_runtime_probe',
   'embedding_data_prep',
+  'executor_trace_validation',
   'gepa_dspy_optimization',
   'inference',
   'lora_finetuning',
@@ -40,6 +43,7 @@ export type ArtanisWorkRoutingCapability =
 export const ArtanisWorkRoutingWorkClass = S.Literals([
   'benchmark_evaluation',
   'embedding_data_prep',
+  'executor_trace_validation',
   'gepa_dspy_optimization',
   'inference',
   'lora_finetuning',
@@ -180,6 +184,7 @@ export const ARTANIS_WORK_ROUTING_WORK_CLASSES: ReadonlyArray<ArtanisWorkRouting
   [
     'benchmark_evaluation',
     'embedding_data_prep',
+    'executor_trace_validation',
     'gepa_dspy_optimization',
     'inference',
     'lora_finetuning',
@@ -193,6 +198,7 @@ export const ARTANIS_WORK_ROUTING_CAPABILITIES: ReadonlyArray<ArtanisWorkRouting
     'benchmark_evaluation',
     'coding_runtime_probe',
     'embedding_data_prep',
+    'executor_trace_validation',
     'gepa_dspy_optimization',
     'inference',
     'lora_finetuning',
@@ -689,6 +695,46 @@ export const exampleArtanisWorkRoutingLedger =
         traceableWorkRefs: ['work.public.pylon.inference.trace_001'],
         updatedAtIso: '2026-06-07T04:03:00.000Z',
         workClass: 'inference',
+      }),
+      proposal({
+        acceptanceCriteriaRefs: [
+          'criteria.public.tassadar_executor_trace.digest_match',
+          'criteria.public.tassadar_executor_trace.separate_replay_verdict',
+        ],
+        approvalRequirementRefs: [],
+        blockerRefs: [],
+        capability: 'executor_trace_validation',
+        costCaveatRefs: ['cost.public.tassadar_executor_trace.no_spend_default'],
+        createdAtIso: '2026-06-10T16:30:00.000Z',
+        decidedAtIso: '2026-06-10T16:31:00.000Z',
+        operatorDetailRefs: [
+          'operator.artanis.route.tassadar_executor_trace',
+        ],
+        proposalRefSuffix: 'tassadar_executor_trace_dispatched',
+        publicCaveatRefs: [
+          'caveat.public.tassadar_executor_trace.no_spend_dispatch_only',
+          'caveat.public.tassadar_executor_trace.copy_limited_to_safeCopy',
+        ],
+        receiptRefs: [
+          'receipt.public.artanis.tassadar_executor_trace.dispatch_ready',
+        ],
+        resourceMode: 'background',
+        risk: 'safe_read_only',
+        sourceEvidenceRefs: [
+          'docs/artanis/2026-06-10-executor-trace-loop-candidate.md',
+          'promise.public.compute.tassadar_executor_poc.v1',
+        ],
+        spendLimitRefs: [
+          'spend_limit.public.tassadar_executor_trace.zero_sats_default',
+        ],
+        state: 'dispatched',
+        target: 'pylon',
+        targetCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
+        traceableWorkRefs: [
+          'assignment.public.artanis.tassadar_executor_trace.template',
+        ],
+        updatedAtIso: '2026-06-10T16:31:00.000Z',
+        workClass: 'executor_trace_validation',
       }),
       proposal({
         acceptanceCriteriaRefs: ['criteria.public.adapter_validation_report'],

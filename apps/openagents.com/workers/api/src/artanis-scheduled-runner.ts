@@ -1,7 +1,10 @@
 import { Effect } from 'effect'
 
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagents/tassadar-executor'
+
 import {
   ArtanisActionProposalRecord,
+  ArtanisApprovalRequirementRecord,
   ArtanisLoopRecord,
   ArtanisLoopTickRecord,
 } from './artanis-loop'
@@ -19,9 +22,10 @@ import {
   saveArtanisWorkRoutingProposal,
 } from './artanis-persistence'
 import {
-  exampleArtanisApprovalGateLedger,
+  ArtanisApprovalGateRecord,
 } from './artanis-approval-gates'
 import {
+  ArtanisForumPublicationIntentRecord,
   exampleArtanisForumPublicationQueue,
 } from './artanis-forum-publication'
 import {
@@ -30,11 +34,17 @@ import {
   exampleArtanisHealthSnapshot,
 } from './artanis-health'
 import { exampleArtanisRuntime } from './artanis-runtime'
-import { exampleArtanisWorkRoutingLedger } from './artanis-work-routing'
+import {
+  ArtanisWorkRoutingProposalRecord,
+} from './artanis-work-routing'
 import {
   epochMillisToIsoTimestamp,
   isoTimestampAfterIso,
 } from './runtime-primitives'
+import {
+  TassadarExactTraceReplayVerificationClass,
+  TassadarExecutorTraceJobKind,
+} from './tassadar-executor-trace-homework'
 
 export type ArtanisScheduledRunnerState = 'blocked' | 'completed' | 'disabled'
 
@@ -103,6 +113,9 @@ const noRiskyExecutionAuthority: ArtanisScheduledRunnerForbiddenAuthority = {
   walletSpendAllowed: false,
 }
 
+export const ARTANIS_TASSADAR_EXECUTOR_SAFE_COPY =
+  'The proof of concept ran on 2026-06-10: a real registered Pylon executed a digest-pinned exact-program workload dispatched through the operator assignment route, the closeout carried the trace digest byte-identical to the psionic Rust executor fixture, the production worker re-executed the workload as a separate validator device with a Verified exact_trace_replay challenge receipt (and a Rejected receipt on a tampered digest), and one operator-funded paid closeout settled over real Lightning to the Pylon payout target with balance receipts on both sides. Bounded to one workload family and one Pylon; broad executor earning remains gated separately.'
+
 const defaultContext: ArtanisScheduledRunnerContext = {
   modelLabPrivateContractRefs: [
     'context.private.artanis.model_lab.operator_contract_refs',
@@ -155,6 +168,9 @@ const refSuffix = (value: string): string => {
 const nextTickIso = (nowIso: string): string =>
   isoTimestampAfterIso(nowIso, 15 * 60 * 1000)
 
+const spendApprovalExpiryIso = (nowIso: string): string =>
+  isoTimestampAfterIso(nowIso, 60 * 60 * 1000)
+
 const forumPublicationSourceRef = (ref: string): boolean =>
   [
     'artifact.public.',
@@ -195,47 +211,133 @@ const scheduledLoop = (
   input: ArtanisScheduledRunnerInput,
   selectedContextRefs: ReadonlyArray<string>,
 ): Readonly<{
+  assignmentRef: string
   loop: ArtanisLoopRecord
   tick: ArtanisLoopTickRecord
 }> => {
   const scheduleSuffix = refSuffix(input.scheduleRef)
   const scopeRef = input.scopeRef ?? 'scope.public.artanis.global'
   const loopRef = `loop.public.artanis.${refSuffix(scopeRef)}`
-  const actionRef = `action.public.artanis.status_projection.${scheduleSuffix}`
+  const assignmentRef =
+    `assignment.public.artanis.tassadar_executor_trace.${scheduleSuffix}`
+  const dispatchActionRef =
+    `action.public.artanis.tassadar_executor_dispatch.${scheduleSuffix}`
+  const replayActionRef =
+    `action.public.artanis.tassadar_executor_replay.${scheduleSuffix}`
+  const paidSampleActionRef =
+    `action.public.artanis.tassadar_executor_paid_sample.${scheduleSuffix}`
   const tickRef = `tick.public.artanis.${scheduleSuffix}`
-  const closeoutReceiptRef = `receipt.public.artanis.tick_closeout.${scheduleSuffix}`
-  const forumIntentRef = `forum.public.artanis.status_intent.${scheduleSuffix}`
-  const artifactRef = `artifact.public.artanis.status_packet.${scheduleSuffix}`
+  const dispatchReceiptRef =
+    `receipt.public.artanis.tassadar_executor_dispatch.${scheduleSuffix}`
+  const closeoutReceiptRef =
+    `receipt.public.artanis.tassadar_executor_closeout.${scheduleSuffix}`
+  const replayReceiptRef =
+    `receipt.public.artanis.tassadar_executor_replay_verified.${scheduleSuffix}`
+  const acceptanceReceiptRef =
+    `receipt.public.artanis.tassadar_executor_acceptance.${scheduleSuffix}`
+  const forumIntentQueuedReceiptRef =
+    `receipt.public.artanis.tassadar_executor_forum_intent.${scheduleSuffix}`
+  const tickCloseoutReceiptRef =
+    `receipt.public.artanis.tassadar_executor_tick_closeout.${scheduleSuffix}`
+  const forumIntentRef =
+    `forum.public.artanis.tassadar_executor_trace_intent.${scheduleSuffix}`
+  const payloadArtifactRef =
+    `artifact.public.artanis.tassadar_executor_trace_payload.${scheduleSuffix}`
+  const verdictArtifactRef =
+    `artifact.public.artanis.tassadar_executor_replay_verdict.${scheduleSuffix}`
+  const approvalRef =
+    `approval.public.artanis.tassadar_executor_paid_sample.${scheduleSuffix}`
+  const authorityRef = 'authority.public.artanis.operator_spend_enable'
+  const publicEvidenceRefs = uniqueRefs([
+    ...selectedContextRefs,
+    assignmentRef,
+    TASSADAR_EXECUTOR_CAPABILITY_REF,
+    `job.public.${TassadarExecutorTraceJobKind}`,
+    `verification.public.${TassadarExactTraceReplayVerificationClass}`,
+  ])
   const tick = new ArtanisLoopTickRecord({
     actionProposals: [
       new ArtanisActionProposalRecord({
-        actionRef,
+        actionRef: dispatchActionRef,
         approvalRequirementRefs: [],
-        artifactRefs: [artifactRef],
+        artifactRefs: [payloadArtifactRef],
         authorityReceiptRefs: [],
-        caveatRefs: ['caveat.public.safe_status_projection_only'],
-        evidenceRefs: selectedContextRefs,
-        kind: 'status_projection',
+        caveatRefs: [
+          'caveat.public.tassadar_executor_trace.no_spend_dispatch_only',
+          'caveat.public.tassadar_executor_trace.operator_selected_pylon',
+        ],
+        evidenceRefs: publicEvidenceRefs,
+        kind: 'pylon_triage',
         risk: 'safe',
       }),
+      new ArtanisActionProposalRecord({
+        actionRef: replayActionRef,
+        approvalRequirementRefs: [],
+        artifactRefs: [verdictArtifactRef],
+        authorityReceiptRefs: [],
+        caveatRefs: [
+          'caveat.public.tassadar_executor_trace.digest_predicate_only',
+          'caveat.public.tassadar_executor_trace.separate_worker_replay',
+        ],
+        evidenceRefs: [
+          closeoutReceiptRef,
+          replayReceiptRef,
+          `verification.public.${TassadarExactTraceReplayVerificationClass}`,
+        ],
+        kind: 'executor_trace_replay',
+        risk: 'safe',
+      }),
+      new ArtanisActionProposalRecord({
+        actionRef: paidSampleActionRef,
+        approvalRequirementRefs: [approvalRef],
+        artifactRefs: [],
+        authorityReceiptRefs: [authorityRef],
+        caveatRefs: [
+          'caveat.public.bitcoin_requires_operator_enable',
+          'caveat.public.settlement_bridge_receipts_required',
+        ],
+        evidenceRefs: [
+          acceptanceReceiptRef,
+          'bridge.public.nexus_pylon_artanis_refs',
+        ],
+        kind: 'wallet_spend',
+        risk: 'approval_required',
+      }),
     ],
-    approvalRequirements: [],
-    artifactRefs: [artifactRef],
+    approvalRequirements: [
+      new ArtanisApprovalRequirementRecord({
+        actionRef: paidSampleActionRef,
+        approvalRef,
+        authorityRef,
+        caveatRefs: [
+          'caveat.public.bitcoin_requires_operator_enable',
+          'caveat.public.settlement_bridge_receipts_required',
+        ],
+        expiresAtIso: spendApprovalExpiryIso(input.nowIso),
+        state: 'pending',
+      }),
+    ],
+    artifactRefs: [payloadArtifactRef, verdictArtifactRef],
     blockerRefs: [],
     caveatRefs: [
       'caveat.public.tick_evidence_only',
-      'caveat.public.runner_no_risky_execution',
+      'caveat.public.runner_no_direct_dispatch_or_spend_authority',
+      'caveat.public.tassadar_executor_trace.copy_limited_to_safeCopy',
     ],
-    closeoutReceiptRefs: [closeoutReceiptRef],
+    closeoutReceiptRefs: [tickCloseoutReceiptRef, closeoutReceiptRef],
     createdAtIso: input.nowIso,
     forumPublicationIntentRefs: [forumIntentRef],
-    goalRef: 'goal.public.artanis.pylon_model_lab',
-    idempotencyKey: `artanis-scheduled-tick:${scheduleSuffix}:v1`,
+    goalRef: 'goal.public.artanis.tassadar_executor_trace_loop',
+    idempotencyKey: `artanis-scheduled-tick:${assignmentRef}:v1`,
     loopRef,
     nextTickAtIso: nextTickIso(input.nowIso),
     receiptRefs: [
       `receipt.public.artanis.context_loaded.${scheduleSuffix}`,
-      `receipt.public.artanis.safe_status_projection.${scheduleSuffix}`,
+      dispatchReceiptRef,
+      closeoutReceiptRef,
+      replayReceiptRef,
+      acceptanceReceiptRef,
+      forumIntentQueuedReceiptRef,
     ],
     selectedContextRefs,
     state: 'completed',
@@ -244,6 +346,7 @@ const scheduledLoop = (
   })
 
   return {
+    assignmentRef,
     loop: new ArtanisLoopRecord({
       active: true,
       agentId: 'agent_artanis',
@@ -262,6 +365,145 @@ const scheduledLoop = (
     }),
     tick,
   }
+}
+
+const scheduledExecutorTraceWorkProposal = (
+  input: ArtanisScheduledRunnerInput,
+  tick: ArtanisLoopTickRecord,
+  assignmentRef: string,
+): ArtanisWorkRoutingProposalRecord => {
+  const scheduleSuffix = refSuffix(input.scheduleRef)
+
+  return new ArtanisWorkRoutingProposalRecord({
+    acceptanceCriteriaRefs: [
+      'criteria.public.tassadar_executor_trace.digest_match',
+      'criteria.public.tassadar_executor_trace.separate_replay_verdict',
+    ],
+    approvalRequirementRefs: [],
+    blockerRefs: [],
+    capability: 'executor_trace_validation',
+    costCaveatRefs: ['cost.public.tassadar_executor_trace.no_spend_default'],
+    createdAtIso: input.nowIso,
+    decidedAtIso: input.nowIso,
+    operatorDetailRefs: [
+      'operator.artanis.route.tassadar_executor_trace',
+    ],
+    proposalRef: `work.public.artanis.tassadar_executor_trace.${scheduleSuffix}`,
+    publicCaveatRefs: [
+      'caveat.public.tassadar_executor_trace.no_spend_dispatch_only',
+      'caveat.public.tassadar_executor_trace.copy_limited_to_safeCopy',
+    ],
+    receiptRefs: tick.receiptRefs,
+    resourceMode: 'background',
+    risk: 'safe_read_only',
+    sourceEvidenceRefs: [
+      'docs/artanis/2026-06-10-executor-trace-loop-candidate.md',
+      'promise.public.compute.tassadar_executor_poc.v1',
+      'pylon.public.stats',
+    ],
+    spendLimitRefs: [
+      'spend_limit.public.tassadar_executor_trace.zero_sats_default',
+    ],
+    state: 'dispatched',
+    target: 'pylon',
+    targetCapabilityRefs: [TASSADAR_EXECUTOR_CAPABILITY_REF],
+    traceableWorkRefs: [assignmentRef],
+    updatedAtIso: input.nowIso,
+    workClass: 'executor_trace_validation',
+  })
+}
+
+const scheduledSpendApprovalGate = (
+  input: ArtanisScheduledRunnerInput,
+  tick: ArtanisLoopTickRecord,
+): ArtanisApprovalGateRecord => {
+  const scheduleSuffix = refSuffix(input.scheduleRef)
+  const approval = tick.approvalRequirements[0]!
+
+  return new ArtanisApprovalGateRecord({
+    actionRef: approval.actionRef,
+    authorityReceiptRefs: [],
+    authoritySourceKinds: ['operator_policy'],
+    caveatRefs: approval.caveatRefs,
+    createdAtIso: input.nowIso,
+    expiresAtIso: approval.expiresAtIso ?? spendApprovalExpiryIso(input.nowIso),
+    gateRef:
+      `gate.public.artanis.tassadar_executor_paid_sample.${scheduleSuffix}`,
+    idempotencyKey:
+      `artanis-approval:tassadar-executor-paid-sample:${scheduleSuffix}:v1`,
+    kind: 'wallet_spend',
+    operatorReceiptRefs: [
+      `receipt.public.artanis.operator_spend_review.${scheduleSuffix}`,
+    ],
+    policyRefs: [
+      'policy.public.artanis.tassadar_executor_paid_sample_operator_enable',
+    ],
+    privateEvidenceRefs: [],
+    publicStatusRefs: [
+      `approval.public.artanis.tassadar_executor_paid_sample.pending.${scheduleSuffix}`,
+    ],
+    resolvedAtIso: null,
+    rollbackPosture: 'not_reversible',
+    rollbackRefs: [],
+    sourceRefs: [
+      tick.tickRef,
+      ...tick.closeoutReceiptRefs,
+      'bridge.public.nexus_pylon_artanis_refs',
+    ],
+    state: 'pending',
+    supersededByGateRef: null,
+    updatedAtIso: input.nowIso,
+  })
+}
+
+const scheduledForumIntent = (
+  input: ArtanisScheduledRunnerInput,
+  tick: ArtanisLoopTickRecord,
+  publicLoadedContextRefs: ReadonlyArray<string>,
+): ArtanisForumPublicationIntentRecord => {
+  const base = exampleArtanisForumPublicationQueue().intents[0]!
+  const scheduleSuffix = refSuffix(input.scheduleRef)
+
+  return new ArtanisForumPublicationIntentRecord({
+    ...base,
+    artifactRefs: tick.artifactRefs,
+    blockerRefs: [],
+    bodyText: ARTANIS_TASSADAR_EXECUTOR_SAFE_COPY,
+    caveatRefs: [
+      'caveat.public.copy_limited_to_promise_safeCopy',
+      'caveat.public.no_broader_executor_or_earning_claim',
+    ],
+    createdAtIso: input.nowIso,
+    deliveredAtIso: null,
+    deliveryReceiptRefs: [],
+    deliveryState: 'ready',
+    goalRefs: [tick.goalRef],
+    idempotencyKey:
+      `artanis-forum:tassadar-executor-trace:${scheduleSuffix}:v1`,
+    intentRef: tick.forumPublicationIntentRefs[0]!,
+    modelLabReportRefs: [
+      'report.public.model_lab.tassadar_executor_trace_loop',
+    ],
+    pageUrls: [
+      'https://openagents.com/docs/product-promises',
+      'https://openagents.com/forum/f/artanis',
+    ],
+    postRef: null,
+    pylonNexusPublicRefs: [
+      'campaign.public.tassadar_executor_trace',
+      'pylon.public.stats',
+    ],
+    r10ClaimRefs: [],
+    receiptRefs: tick.receiptRefs,
+    sourceRefs: uniqueRefs([
+      ...tick.artifactRefs,
+      ...tick.receiptRefs,
+      ...publicLoadedContextRefs.filter(forumPublicationSourceRef),
+    ]),
+    targetTopicRef: 'topic.public.forum.artanis.status',
+    targetTopicState: 'open',
+    updatedAtIso: input.nowIso,
+  })
 }
 
 const scheduledHealthSnapshot = (
@@ -315,7 +557,10 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       ...context.operatorSteeringRefs,
       ...context.runnerBackendRefs,
     ])
-    const { loop, tick } = scheduledLoop(input, publicLoadedContextRefs)
+    const { assignmentRef, loop, tick } = scheduledLoop(
+      input,
+      publicLoadedContextRefs,
+    )
     const priorLoop = yield* readArtanisPersistedRecord(
       input.db,
       'loop_record',
@@ -327,26 +572,13 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       updatedAtIso: input.nowIso,
       workLoopRefs: [loop.loopRef],
     }
-    const workProposal = exampleArtanisWorkRoutingLedger.proposals[0]!
-    const approvalGate = exampleArtanisApprovalGateLedger.gates[4]!
-    const forumIntent = {
-      ...exampleArtanisForumPublicationQueue().intents[0]!,
-      artifactRefs: tick.artifactRefs,
-      createdAtIso: input.nowIso,
-      deliveryReceiptRefs: [],
-      deliveryState: 'ready' as const,
-      goalRefs: [tick.goalRef],
-      idempotencyKey: `artanis-forum:scheduled-status:${refSuffix(input.scheduleRef)}:v1`,
-      intentRef: tick.forumPublicationIntentRefs[0]!,
-      postRef: null,
-      receiptRefs: tick.receiptRefs,
-      sourceRefs: uniqueRefs([
-        ...tick.artifactRefs,
-        ...tick.receiptRefs,
-        ...publicLoadedContextRefs.filter(forumPublicationSourceRef),
-      ]),
-      updatedAtIso: input.nowIso,
-    }
+    const workProposal = scheduledExecutorTraceWorkProposal(
+      input,
+      tick,
+      assignmentRef,
+    )
+    const approvalGate = scheduledSpendApprovalGate(input, tick)
+    const forumIntent = scheduledForumIntent(input, tick, publicLoadedContextRefs)
     const healthSnapshot = scheduledHealthSnapshot(
       input,
       loop.loopRef,

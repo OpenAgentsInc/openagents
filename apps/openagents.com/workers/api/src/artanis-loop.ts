@@ -24,6 +24,7 @@ export type ArtanisLoopState = typeof ArtanisLoopState.Type
 
 export const ArtanisActionKind = S.Literals([
   'eval_launch',
+  'executor_trace_replay',
   'forum_publication',
   'model_lab_inspection',
   'provider_mutation',
@@ -604,6 +605,9 @@ const redactApproval = (
     approval.caveatRefs,
     audience,
   ),
+  expiresAtIso: audience === 'operator' || audience === 'team'
+    ? approval.expiresAtIso
+    : null,
 })
 
 const projectTick = (
@@ -801,11 +805,45 @@ const projectionStringValues = (value: unknown): ReadonlyArray<string> => {
   return []
 }
 
+const allowedProjectionLiteralValues = new Set<string>([
+  'agent',
+  'approval_required',
+  'approved',
+  'blocked',
+  'completed',
+  'customer',
+  'denied',
+  'eval_launch',
+  'expired',
+  'executor_trace_replay',
+  'failed',
+  'forum_publication',
+  'model_lab_inspection',
+  'operator',
+  'paused',
+  'pending',
+  'provider_mutation',
+  'public',
+  'pylon_triage',
+  'queued',
+  'read_only_artanis_loop',
+  'running',
+  'runtime_promotion',
+  'safe',
+  'status_projection',
+  'team',
+  'training_launch',
+  'waiting_for_approval',
+  'wallet_spend',
+])
+
 export const artanisLoopProjectionHasPrivateMaterial = (
   projection: ArtanisLoopLedgerProjection,
 ): boolean =>
   projectionStringValues(projection).some(
-    value => unsafeLoopRefPattern.test(value) || rawTimestampPattern.test(value),
+    value =>
+      !allowedProjectionLiteralValues.has(value) &&
+      (unsafeLoopRefPattern.test(value) || rawTimestampPattern.test(value)),
   )
 
 export const exampleArtanisLoopLedger = (): ArtanisLoopLedgerRecord => ({

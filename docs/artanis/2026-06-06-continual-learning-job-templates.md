@@ -15,6 +15,7 @@ contract gives Artanis a bounded vocabulary for Model Lab and Pylon work:
 - DSPy/GEPA prompt or program optimization;
 - dataset curation;
 - adapter validation;
+- executor-trace replay/validation;
 - LoRA fine-tuning or training;
 - regression analysis.
 
@@ -36,6 +37,10 @@ Every template records:
 - Benchmark Cloud refs;
 - promotion decision refs;
 - public report refs;
+- dispatch payload schema refs;
+- required capability refs;
+- spend limit refs;
+- workload refs;
 - cost caveat refs;
 - risk labels;
 - rollback posture refs;
@@ -55,6 +60,9 @@ triage proposal:
 - DSPy/GEPA optimization -> `gepa_dspy_optimization`;
 - dataset curation -> `embedding_data_prep`;
 - adapter validation -> `validation`;
+- executor-trace replay -> `validation`, with
+  `capability.tassadar_poc.numeric_model_executor`, Tassadar request/output
+  schema refs, the bounded workload ref, and a zero-sats default spend cap;
 - LoRA fine-tuning or training -> `lora_finetuning`;
 - regression analysis -> `artifact_review`.
 
