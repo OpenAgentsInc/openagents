@@ -50,6 +50,7 @@ import { makeAgentSiteRoutes } from './agent-site-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
+import { runTipsSweepScheduled } from './tips-sweep'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -6613,6 +6614,16 @@ export default {
       observedEffect(
         'EmailCampaignDispatcher.dispatchDue',
         dispatchDueEmailCampaignSendsScheduled(env),
+      ),
+      observedEffect(
+        'TipsSweep.runTick',
+        runTipsSweepScheduled(openAgentsDatabase(env), {
+          makeId: randomUuid,
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          // The buffer payer activates with the tips buffer container
+          // (#4708); until then every tick records a typed skip.
+          payFromBuffer: null,
+        }),
       ),
     ])
   },
