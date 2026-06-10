@@ -1,0 +1,406 @@
+import { Effect, Match as M, Schema as S } from 'effect'
+
+import {
+  methodNotAllowed,
+  noStoreJsonResponse,
+  unauthorized,
+} from './http/responses'
+import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
+import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  type TrainingAuthorityStore,
+  TrainingAuthorityStoreError,
+  TrainingRunPlanRequest,
+  TrainingWindowLeaseClaimRequest,
+  TrainingWindowPlanRequest,
+  type TrainingWindowState,
+  TrainingWindowTransitionRequest,
+  buildTrainingRunRecord,
+  buildTrainingWindowLeaseRecord,
+  buildTrainingWindowRecord,
+  publicTrainingRunProjection,
+  publicTrainingWindowProjection,
+  selectTrainingLeaseCandidate,
+  trainingAuthorityStoreErrorFromUnknown,
+  transitionTrainingWindowRecord,
+} from './training-run-window-authority'
+
+type HttpResponse = globalThis.Response
+
+type TrainingRunWindowRouteDependencies<Bindings> = Readonly<{
+  makeId?: () => string
+  makeStore: (env: Bindings) => TrainingAuthorityStore
+  nowIso?: () => string
+  requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
+}>
+
+type TrainingRunWindowRouteEnv = Readonly<Record<string, unknown>>
+
+class TrainingRunWindowUnauthorized extends S.TaggedErrorClass<TrainingRunWindowUnauthorized>()(
+  'TrainingRunWindowUnauthorized',
+  {},
+) {}
+
+type TrainingRunWindowRouteError =
+  | TrainingAuthorityStoreError
+  | TrainingRunWindowUnauthorized
+
+const routeErrorResponse = (error: TrainingRunWindowRouteError): HttpResponse =>
+  M.value(error).pipe(
+    M.tags({
+      TrainingAuthorityStoreError: storeError =>
+        noStoreJsonResponse(
+          {
+            error: `training_authority_${storeError.kind}`,
+            reason: storeError.reason,
+          },
+          {
+            status:
+              storeError.kind === 'conflict'
+                ? 409
+                : storeError.kind === 'forbidden'
+                  ? 403
+                  : storeError.kind === 'not_found'
+                    ? 404
+                    : storeError.kind === 'storage_error'
+                      ? 500
+                      : 400,
+          },
+        ),
+      TrainingRunWindowUnauthorized: () => unauthorized(),
+    }),
+    M.exhaustive,
+  )
+
+const decodeBody = <A>(
+  request: Request,
+  schema: S.Decoder<A>,
+): Effect.Effect<A, TrainingAuthorityStoreError> =>
+  Effect.tryPromise({
+    catch: error =>
+      new TrainingAuthorityStoreError({
+        kind: 'validation_error',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    try: async () =>
+      decodeUnknownWithSchema(schema, await readJsonObject(request)),
+  })
+
+const routeNowIso = <Bindings>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+): string => dependencies.nowIso?.() ?? currentIsoTimestamp()
+
+const routeMakeId = <Bindings>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+): string => (dependencies.makeId ?? randomUuid)()
+
+const requireAdmin = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<void, TrainingRunWindowUnauthorized> =>
+  Effect.tryPromise({
+    catch: () => new TrainingRunWindowUnauthorized({}),
+    try: () =>
+      dependencies.requireAdminApiToken?.(request, env) ??
+      Promise.resolve(false),
+  }).pipe(
+    Effect.flatMap(isAdmin =>
+      isAdmin
+        ? Effect.void
+        : Effect.fail(new TrainingRunWindowUnauthorized({})),
+    ),
+  )
+
+const routePlanRun = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, TrainingRunPlanRequest)
+    const nowIso = routeNowIso(dependencies)
+    const record = buildTrainingRunRecord({
+      makeId: () => routeMakeId(dependencies),
+      nowIso,
+      request: body,
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => dependencies.makeStore(env).planRun(record),
+    })
+
+    return noStoreJsonResponse({
+      run: publicTrainingRunProjection(stored, nowIso),
+    })
+  })
+
+const routePlanWindow = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, TrainingWindowPlanRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(body.trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const record = buildTrainingWindowRecord({
+      makeId: () => routeMakeId(dependencies),
+      nowIso,
+      request: body,
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.planWindow(record),
+    })
+
+    return noStoreJsonResponse({
+      window: publicTrainingWindowProjection(stored, nowIso),
+    })
+  })
+
+const routeTransitionWindow = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  windowRef: string,
+  transitionKind: string,
+  nextState: TrainingWindowState,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, TrainingWindowTransitionRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const current = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readWindow(windowRef),
+    })
+
+    if (current === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training window not found.',
+      })
+    }
+
+    const transitioned = transitionTrainingWindowRecord({
+      actorRef: body.actorRef ?? 'operator.openagents.training_authority',
+      eventId: routeMakeId(dependencies),
+      nextState,
+      nowIso,
+      receiptRef: body.receiptRef,
+      transitionKind,
+      window: current,
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () =>
+        store.transitionWindow(transitioned.window, transitioned.event),
+    })
+
+    return noStoreJsonResponse({
+      window: publicTrainingWindowProjection(stored, nowIso),
+    })
+  })
+
+const routeClaimLease = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const body = yield* decodeBody(request, TrainingWindowLeaseClaimRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listClaimableWindows(nowIso, 25),
+    })
+    const selected = selectTrainingLeaseCandidate(windows)
+
+    if (selected === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'No active training window is currently claimable.',
+      })
+    }
+
+    const lease = buildTrainingWindowLeaseRecord({
+      makeId: () => routeMakeId(dependencies),
+      nowIso,
+      request: body,
+      window: selected,
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.claimLease(lease, nowIso),
+    })
+
+    return noStoreJsonResponse({ lease: stored })
+  })
+
+const routeReadRun = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const record = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => dependencies.makeStore(env).readRun(trainingRunRef),
+    })
+
+    if (record === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    return noStoreJsonResponse({
+      run: publicTrainingRunProjection(record, nowIso),
+    })
+  })
+
+const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  windowRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const record = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => dependencies.makeStore(env).readWindow(windowRef),
+    })
+
+    if (record === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training window not found.',
+      })
+    }
+
+    return noStoreJsonResponse({
+      window: publicTrainingWindowProjection(record, nowIso),
+    })
+  })
+
+export const makeTrainingRunWindowRoutes = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+) => ({
+  routeTrainingRunWindowRequest: (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<HttpResponse> | undefined => {
+    const url = new URL(request.url)
+
+    if (url.pathname === '/api/training/runs') {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routePlanRun(dependencies, request, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/training/windows/plan') {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routePlanWindow(dependencies, request, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/training/leases/claim') {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeClaimLease(dependencies, request, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    const runReadMatch = /^\/api\/training\/runs\/([^/]+)$/.exec(url.pathname)
+
+    if (runReadMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeReadRun(
+        dependencies,
+        env,
+        decodeURIComponent(runReadMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const windowTransitionMatch =
+      /^\/api\/training\/windows\/([^/]+)\/(activate|seal|reconcile)$/.exec(
+        url.pathname,
+      )
+
+    if (windowTransitionMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      const action = windowTransitionMatch[2]!
+      const nextState =
+        action === 'activate'
+          ? 'active'
+          : action === 'seal'
+            ? 'sealed'
+            : 'reconciled'
+
+      return routeTransitionWindow(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(windowTransitionMatch[1]!),
+        `window_${action}`,
+        nextState,
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const windowReadMatch = /^\/api\/training\/windows\/([^/]+)$/.exec(
+      url.pathname,
+    )
+
+    if (windowReadMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeReadWindow(
+        dependencies,
+        env,
+        decodeURIComponent(windowReadMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    return undefined
+  },
+})

@@ -324,6 +324,8 @@ import {
   TokenUsageLeaderboards,
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
+import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
+import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
 import { makeTreasuryPaymentAuthority } from './treasury-payment-authority'
 import { makeHostedMdkPayoutAdapter } from './treasury-payment-hosted-mdk-payout-adapter'
 import {
@@ -5502,6 +5504,11 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   requireAdminApiToken,
 })
 
+const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
+  makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
+  requireAdminApiToken,
+})
+
 const omniRoutes = makeOmniRoutes({
   handleAutopilotFleetApi: (request, env, ctx) =>
     routeEffect('handle_autopilot_fleet_api', () =>
@@ -6040,6 +6047,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeSyncRequest: syncRoutes.routeSyncRequest,
   routeTeamChatRequest: teamChatRoutes.routeTeamChatRequest,
   routeThreadFileRequest: threadFileRoutes.routeThreadFileRequest,
+  routeTrainingRunWindowRequest:
+    trainingRunWindowRoutes.routeTrainingRunWindowRequest,
 })
 
 type SyncSocketAttachment = Readonly<{

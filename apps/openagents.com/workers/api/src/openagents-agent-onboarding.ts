@@ -9,7 +9,7 @@ export const OpenAgentsAgentOnboardingCanonicalUrl =
 export const OpenAgentsAgentOnboardingSourceRef =
   'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS.md'
 export const OpenAgentsAgentOnboardingSha256 =
-  'a83deee45eaaec5f9043769c929c92c623658b0dd93d557ec3ba883defdc2b8a'
+  '0566f297a864f9b32a5c877f3d863329037e131915878043d1d58941b20e5dfd'
 
 export class OpenAgentsAgentOnboardingUnsafe extends S.TaggedErrorClass<OpenAgentsAgentOnboardingUnsafe>()(
   'OpenAgentsAgentOnboardingUnsafe',

@@ -67,6 +67,7 @@ type WorkerRouteDependencies = Readonly<{
   ) => Effect.Effect<Response>
   routeTeamChatRequest: OptionalEffectRoute
   routeThreadFileRequest: OptionalEffectRoute
+  routeTrainingRunWindowRequest: OptionalEffectRoute
 }>
 
 const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
@@ -337,6 +338,13 @@ export const makeWorkerRouteRequest =
 
       if (pylonApiResponse !== undefined) {
         return yield* pylonApiResponse
+      }
+
+      const trainingRunWindowResponse =
+        dependencies.routeTrainingRunWindowRequest(request, env, ctx)
+
+      if (trainingRunWindowResponse !== undefined) {
+        return yield* trainingRunWindowResponse
       }
 
       const nexusPylonVisibilityResponse =

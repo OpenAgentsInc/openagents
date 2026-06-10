@@ -249,6 +249,15 @@ const schemaComponents = (): JsonSchema => ({
   PublicPylonStats: objectSummary(
     'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
   ),
+  TrainingRunEnvelope: objectSummary(
+    'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, and display timestamps only. It grants no assignment, payout, model-publication, or spend authority.',
+  ),
+  TrainingWindowEnvelope: objectSummary(
+    'Public-safe training-window projection with windowRef, trainingRunRef, lifecycle state, homeworkKind, priority, dataset refs, source refs, receipt refs, and display timestamps only. It excludes private datasets, worker logs, secrets, wallet state, and payout material.',
+  ),
+  TrainingWindowLeaseEnvelope: objectSummary(
+    'Public-safe training-window lease claim projection with leaseRef, pylonRef, windowRef, trainingRunRef, receiptRefs, state, and lease expiry seconds. It grants bounded work authority only, not payout or settlement authority.',
+  ),
   PublicLaunchDashboard: objectSummary(
     'Public-safe red/yellow/green launch dashboard for every transcript promise. Rows include promise text, status, evidence refs, blocker refs, safe copy, and unsafe copy boundaries.',
   ),
@@ -1448,6 +1457,18 @@ const requestSchemas = (): JsonSchema => ({
   ),
   PylonSettlementStatusRequest: objectSummary(
     'Registered Pylon settlement status report with settlementRefs and treasuryReceiptRefs.',
+  ),
+  TrainingRunPlanRequest: objectSummary(
+    'Admin-only request to plan a D1-authoritative training run linked to a promiseRef with public-safe sourceRefs and receiptRefs.',
+  ),
+  TrainingWindowPlanRequest: objectSummary(
+    'Admin-only request to plan a training window for a trainingRunRef, including homeworkKind, priority, datasetRefs, sourceRefs, and receiptRefs as public-safe refs only.',
+  ),
+  TrainingWindowTransitionRequest: objectSummary(
+    'Admin-only request to activate, seal, or reconcile a training window with a public-safe receiptRef and optional actorRef.',
+  ),
+  TrainingWindowLeaseClaimRequest: objectSummary(
+    'Pylon request to claim the highest-priority active training window. Admin-dispatched homework is selected before auto-starter windows; request fields are pylonRef, optional leaseSeconds, and public-safe receiptRefs.',
   ),
   SubmitPublicAgentProposalRequest: {
     type: 'object',
@@ -2766,6 +2787,163 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Pylon settlement status response.',
           '#/components/schemas/PylonApiWriteResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs': {
+    post: operation({
+      operationId: 'planTrainingRun',
+      summary: 'Plan training run',
+      description:
+        'Admin-only route to create a D1-authoritative training-run record linked to a product promise. It records public-safe source and receipt refs only and does not launch workers, spend funds, or publish model artifacts.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      requestBody: jsonContent('#/components/schemas/TrainingRunPlanRequest'),
+      responses: {
+        '200': okJson(
+          'Training run projection.',
+          '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}': {
+    get: operation({
+      operationId: 'getTrainingRun',
+      summary: 'Read training run',
+      description:
+        'Reads the public-safe projection for a training run. Counts, state, promise refs, source refs, and receipt refs are exposed without private datasets, logs, wallet material, or payout detail.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      responses: {
+        '200': okJson(
+          'Training run projection.',
+          '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/windows/plan': {
+    post: operation({
+      operationId: 'planTrainingWindow',
+      summary: 'Plan training window',
+      description:
+        'Admin-only route to plan a training homework window for a training run. homeworkKind and priority drive lease selection, with admin-dispatched homework ahead of auto-starter windows.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingWindowPlanRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training window projection.',
+          '#/components/schemas/TrainingWindowEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/windows/{windowRef}': {
+    get: operation({
+      operationId: 'getTrainingWindow',
+      summary: 'Read training window',
+      description:
+        'Reads the public-safe projection for a training window, including lifecycle state and refs only.',
+      tags: ['Training'],
+      security: publicRead,
+      parameters: [pathParam('windowRef', 'Training window ref.')],
+      responses: {
+        '200': okJson(
+          'Training window projection.',
+          '#/components/schemas/TrainingWindowEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/windows/{windowRef}/activate': {
+    post: operation({
+      operationId: 'activateTrainingWindow',
+      summary: 'Activate training window',
+      description:
+        'Admin-only atomic transition from planned to active. The D1 write records the window update and transition receipt in one batch.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('windowRef', 'Training window ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingWindowTransitionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training window projection.',
+          '#/components/schemas/TrainingWindowEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/windows/{windowRef}/seal': {
+    post: operation({
+      operationId: 'sealTrainingWindow',
+      summary: 'Seal training window',
+      description:
+        'Admin-only atomic transition from active to sealed. The D1 write records the window update and transition receipt in one batch.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('windowRef', 'Training window ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingWindowTransitionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training window projection.',
+          '#/components/schemas/TrainingWindowEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/windows/{windowRef}/reconcile': {
+    post: operation({
+      operationId: 'reconcileTrainingWindow',
+      summary: 'Reconcile training window',
+      description:
+        'Admin-only atomic transition from sealed to reconciled. The D1 write records the window update and transition receipt in one batch.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('windowRef', 'Training window ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingWindowTransitionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training window projection.',
+          '#/components/schemas/TrainingWindowEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/leases/claim': {
+    post: operation({
+      operationId: 'claimTrainingWindowLease',
+      summary: 'Claim training window lease',
+      description:
+        'Claims one active training homework window for a Pylon. The selector prefers admin-dispatched homework before auto-launched starter runs, then priority, then oldest planned window. The response is public-safe and does not grant payout, settlement, or wallet authority.',
+      tags: ['Training', 'Pylon'],
+      security: publicRead,
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingWindowLeaseClaimRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Training window lease projection.',
+          '#/components/schemas/TrainingWindowLeaseEnvelope',
         ),
         ...errorResponses(),
       },

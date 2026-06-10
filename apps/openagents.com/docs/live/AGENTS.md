@@ -2175,6 +2175,20 @@ work in public-safe language, but do not claim direct marketplace creation,
 assignment, dispatch, payout, or settlement authority without a future scoped
 server-side grant.
 
+Training-run and homework-window authority is D1-backed on the current
+OpenAgents Worker. Public-safe reads are `GET /api/training/runs/{trainingRunRef}`
+and `GET /api/training/windows/{windowRef}`. Operator/system lifecycle writes
+are `POST /api/training/runs`, `POST /api/training/windows/plan`,
+`POST /api/training/windows/{windowRef}/activate`,
+`POST /api/training/windows/{windowRef}/seal`, and
+`POST /api/training/windows/{windowRef}/reconcile`; they require the admin API
+token and public-safe receipt refs, use atomic D1 transitions, and do not
+launch workers, spend funds, publish model artifacts, or settle providers.
+Pylons may claim bounded active homework windows at
+`POST /api/training/leases/claim`; admin-dispatched homework is selected before
+auto-launched starter windows. A lease is work authority only, not payout,
+settlement, wallet, or model-publication authority.
+
 Operator Nexus/Pylon visibility is available through
 `GET /api/operator/nexus-pylon/dashboard` and
 `GET /api/operator/nexus-pylon/receipts/{receiptRef}` for OpenAgents admins or
