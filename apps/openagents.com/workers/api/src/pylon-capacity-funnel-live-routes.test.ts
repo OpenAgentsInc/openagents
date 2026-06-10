@@ -10,7 +10,7 @@ import {
   darkCapacityReasonRefForPylon,
   handlePylonCapacityFunnelApi,
   pylonCapacityFunnelRecordsFromStore,
-} from './pylon-capacity-funnel-live'
+} from './pylon-capacity-funnel-live-routes'
 
 const nowIso = '2026-06-09T20:00:00.000Z'
 

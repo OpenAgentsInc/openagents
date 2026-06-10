@@ -6,6 +6,7 @@ import {
   pylonHeartbeatFresh,
 } from './autopilot-work-placement-selector'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type PylonApiAssignmentRecord,
   type PylonApiRegistrationRecord,
@@ -279,7 +280,7 @@ export const handlePylonCapacityFunnelApi = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
 
-  const nowIso = input.nowIso?.() ?? new Date().toISOString()
+  const nowIso = input.nowIso?.() ?? currentIsoTimestamp()
   const store =
     input.store ?? makeD1PylonApiStore(input.OPENAGENTS_DB as D1Database)
 

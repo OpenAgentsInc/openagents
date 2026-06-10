@@ -225,7 +225,7 @@ import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-rout
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
-import { handlePylonCapacityFunnelApi } from './pylon-capacity-funnel-live'
+import { handlePylonCapacityFunnelApi } from './pylon-capacity-funnel-live-routes'
 import { makeD1PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'

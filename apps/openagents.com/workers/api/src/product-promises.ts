@@ -851,8 +851,8 @@ export const publicProductPromisesDocument = () => {
         'Do not claim all linked provider capacity is earning, useful, benchmarked, assigned, or settlement-ready, and do not present funnel counts as payment or settlement evidence.',
       evidenceRefs: [
         'route:/api/public/pylon-capacity-funnel',
-        'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live.ts',
-        'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live.test.ts',
+        'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live-routes.ts',
+        'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live-routes.test.ts',
         'https://openagents.com/api/public/pylon-stats',
         'apps/openagents.com/workers/api/src/public-pylon-stats.ts',
       ],
