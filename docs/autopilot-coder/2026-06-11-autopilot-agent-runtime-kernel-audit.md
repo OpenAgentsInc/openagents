@@ -245,9 +245,13 @@ The runtime kernel must preserve existing OpenAgents projection discipline:
 1. File a new #4786 sub-issue for the shared event contract. Done: filed as
    #4805 (RK1) under epic #4804.
 2. Add `packages/agent-runtime-schema` with only Effect Schema definitions and
-   fixtures.
+   fixtures. Done in RK1 (#4805): the package exports the run/event/part,
+   invocation, artifact, usage, visibility, redaction, lifecycle, and fixture
+   log contract.
 3. Add schema tests for every event tag, redaction class, adapter kind, and
-   run lifecycle transition.
+   run lifecycle transition. Done in RK1 (#4805): the filed tag list contains
+   32 tags, and the package tests cover all 32 rather than silently dropping
+   one to match the earlier prose count.
 4. Wrap existing Pylon `claude_code`, `codex`, `opencode`, and `test_fixture`
    paths behind the adapter contract without changing their execution behavior.
 5. Add an event-log replay test that rebuilds current workroom/projection state

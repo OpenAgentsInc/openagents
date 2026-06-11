@@ -1023,3 +1023,30 @@ Verification:
 Note: direct `bunx tsc -p tsconfig.json --noEmit` in `apps/pylon` remains
 blocked by preexisting repo-wide node16/import-extension and TUI type issues;
 the focused runtime tests and script syntax/dry-run checks pass.
+
+## RK1 / Issue #4805: Shared Agent Runtime Kernel Schema
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4805`
+
+Status: complete for the schema-only kernel contract.
+
+Implemented:
+
+- Added `packages/agent-runtime-schema` as a schema-only Effect Schema package
+  with no provider SDK or Vercel AI SDK dependency.
+- Exported the RK1 run, event, part, tool invocation, external invocation,
+  artifact ref, usage record, visibility, redaction policy, adapter kind, loop
+  kind, and lifecycle contract.
+- Added reusable fixture event logs for fixture, native model, external agent,
+  and hosted loops.
+- Added redaction and lifecycle helpers so public event logs reject raw prompts,
+  raw shell logs, provider payloads, secrets, and local paths before
+  persistence or projection.
+- Covered every filed event tag. The filed RK1 tag list contains 32 tags even
+  though the prose says 31; the implementation preserves and tests all listed
+  tags.
+
+Verification:
+
+- `bun run --cwd packages/agent-runtime-schema test`
+- `bun run --cwd packages/agent-runtime-schema typecheck`
