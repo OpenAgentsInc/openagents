@@ -698,6 +698,19 @@ const receiptRefsFromRefs = (
 ): ReadonlyArray<string> =>
   uniqueRefs(refs.filter(ref => ref.startsWith('receipt.')))
 
+export const publicNexusPylonReceiptRouteRefsFromRefs = (
+  refs: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    refs
+      .filter(
+        ref =>
+          ref.startsWith('assignment.artanis_admin.') ||
+          ref.startsWith('receipt.nexus_pylon.artanis_admin_closeout.'),
+      )
+      .map(ref => `route:/api/public/nexus-pylon/receipts/${ref}`),
+  )
+
 const probeGepaOutcomeSnapshot = (
   overrides: Partial<ProbeGepaCodingOutcomeMetricSnapshot> = {},
 ): ProbeGepaCodingOutcomeMetricSnapshot =>
@@ -1054,6 +1067,10 @@ export const artanisPublicReportSnapshot = (input: {
       ...input.pylonStats.nexusAcceptedWorkPayoutReceiptRefs.map(
         receiptRef => `route:/api/public/nexus-pylon/receipts/${receiptRef}`,
       ),
+      ...publicNexusPylonReceiptRouteRefsFromRefs([
+        ...(latestTick?.receiptRefs ?? []),
+        ...(latestTick?.closeoutReceiptRefs ?? []),
+      ]),
     ]),
     omegaPublicRefs: uniqueRefs([
       'omega.public.pylon_api.registrations',

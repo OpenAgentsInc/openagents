@@ -34,6 +34,14 @@ include:
 - public-safe settlement state
 - a public page URL and API URL
 
+Artanis admin assignment refs are valid public receipt lookup refs too. For
+example,
+`GET /api/public/nexus-pylon/receipts/assignment.artanis_admin.20260611011429`
+returns an `artanis_admin_assignment_closeout` receipt when the assignment row
+exists. The projection includes assignment state, public-safe closeout/proof
+refs, the trace digest or prefix, verdict ref, and relative timestamp displays.
+It remains a closeout proof, not a payout or terminal settlement claim.
+
 This is intentional. It proves the receipt and dashboard projection surfaces
 before #431 moves real bitcoin through isolated MDK test wallets.
 An accepted dispatch or provider call must not be described as terminal

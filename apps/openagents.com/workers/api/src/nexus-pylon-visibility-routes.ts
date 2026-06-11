@@ -4,6 +4,10 @@ import { sha256Hex } from './agent-registration'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import {
+  artanisAdminCloseoutReceiptDetail,
+  type ArtanisAdminCloseoutReceiptStore,
+} from './artanis-admin-closeout-receipts'
+import {
   ArtanisPylonProofTraceDispatchEvidence,
   ArtanisPylonProofTracePylonEvent,
   type ArtanisPylonProofTracePylonEventKind,
@@ -83,6 +87,9 @@ type NexusPylonVisibilityDependencies<
   ) => HttpResponse
   currentIsoTimestamp?: () => string
   isOpenAgentsAdminEmail: (email: string) => boolean
+  makeArtanisAdminCloseoutReceiptStore?: (
+    env: Bindings,
+  ) => ArtanisAdminCloseoutReceiptStore
   makeLedgerStore?: (
     env: Bindings,
   ) => NexusPylonVisibilityLedgerStore
@@ -715,6 +722,9 @@ const publicReceiptDetail = <
 ) =>
   Effect.gen(function* () {
     const makeLedgerStore = dependencies.makeLedgerStore
+    const makeArtanisAdminCloseoutReceiptStore =
+      dependencies.makeArtanisAdminCloseoutReceiptStore
+    const normalizedReceiptRef = decodedReceiptRef(receiptRef)
     const fallback = () =>
       Effect.try({
         catch: error =>
@@ -732,12 +742,41 @@ const publicReceiptDetail = <
           }),
       })
 
+    if (makeArtanisAdminCloseoutReceiptStore !== undefined) {
+      const store = makeArtanisAdminCloseoutReceiptStore(env)
+      const artanisRecord = yield* Effect.tryPromise({
+        catch: error =>
+          error instanceof NexusPylonVisibilityUnsafe
+            ? error
+            : new NexusPylonVisibilityUnsafe({
+                reason: 'Artanis admin closeout receipt projection failed.',
+              }),
+        try: () => store.readCloseoutReceiptByRef(normalizedReceiptRef),
+      })
+
+      if (artanisRecord !== undefined) {
+        return yield* Effect.try({
+          catch: error =>
+            error instanceof NexusPylonVisibilityUnsafe
+              ? error
+              : new NexusPylonVisibilityUnsafe({
+                  reason: 'Artanis admin closeout receipt projection failed.',
+                }),
+          try: () =>
+            artanisAdminCloseoutReceiptDetail({
+              appUrl: appUrlFromRequest(request),
+              nowIso,
+              record: artanisRecord,
+            }),
+        })
+      }
+    }
+
     if (makeLedgerStore === undefined) {
       return yield* fallback()
     }
 
     const store = makeLedgerStore(env)
-    const normalizedReceiptRef = decodedReceiptRef(receiptRef)
     const receipt = yield* Effect.tryPromise({
       catch: ledgerReadError,
       try: () => store.readPaymentAuthorityReceiptByRef(normalizedReceiptRef),

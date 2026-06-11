@@ -259,7 +259,10 @@ const scanPublicResponse = (
     .find((unsafePath): unsafePath is string => unsafePath !== undefined)
 }
 
-const assertPublicSafe = (label: string, value: unknown): void => {
+export const assertNexusPylonPublicSafe = (
+  label: string,
+  value: unknown,
+): void => {
   const unsafePath = scanPublicResponse(value)
 
   if (unsafePath !== undefined) {
@@ -450,7 +453,7 @@ export const nexusPylonPublicReceiptDetail = (
     status: publicReceipt.status,
   }
 
-  assertPublicSafe('Nexus/Pylon public receipt detail', detail)
+  assertNexusPylonPublicSafe('Nexus/Pylon public receipt detail', detail)
 
   return detail
 }
@@ -586,7 +589,10 @@ export const nexusPylonPublicReceiptDetailFromLedger = (
     status: publicReceipt.status,
   }
 
-  assertPublicSafe('Nexus/Pylon persisted public receipt detail', detail)
+  assertNexusPylonPublicSafe(
+    'Nexus/Pylon persisted public receipt detail',
+    detail,
+  )
 
   return detail
 }

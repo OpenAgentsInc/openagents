@@ -8,6 +8,7 @@ import {
 import {
   artanisPublicReportHasPrivateMaterial,
   artanisPublicReportSnapshot,
+  publicNexusPylonReceiptRouteRefsFromRefs,
 } from './artanis-public-report'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { publicPylonStatsFromNexusPayload } from './public-pylon-stats'
@@ -40,6 +41,19 @@ const deliveredForumQueue = (): ArtanisForumPublicationQueueRecord => {
 describe('Artanis public report', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  test('links Artanis admin closeout refs through the public receipt route', () => {
+    expect(
+      publicNexusPylonReceiptRouteRefsFromRefs([
+        'assignment.artanis_admin.20260611011429',
+        'receipt.nexus_pylon.artanis_admin_closeout.assignment.artanis_admin.20260611011429',
+        'receipt.public.artanis.tick_closeout',
+      ]),
+    ).toEqual([
+      'route:/api/public/nexus-pylon/receipts/assignment.artanis_admin.20260611011429',
+      'route:/api/public/nexus-pylon/receipts/receipt.nexus_pylon.artanis_admin_closeout.assignment.artanis_admin.20260611011429',
+    ])
   })
 
   test('aggregates public-safe Artanis, Pylon, R10, Model Lab, Forum, and blocker state', () => {

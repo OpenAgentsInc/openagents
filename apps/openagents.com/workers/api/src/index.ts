@@ -55,6 +55,7 @@ import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
 } from './artanis-administrator-tick'
+import { makeD1ArtanisAdminCloseoutReceiptStore } from './artanis-admin-closeout-receipts'
 import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
 import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
@@ -5838,6 +5839,8 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
   appendRefreshedSessionCookies,
   currentIsoTimestamp,
   isOpenAgentsAdminEmail,
+  makeArtanisAdminCloseoutReceiptStore: env =>
+    makeD1ArtanisAdminCloseoutReceiptStore(openAgentsDatabase(env)),
   makeLedgerStore: env =>
     makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
   makePaymentAuthority: (env, context) => {

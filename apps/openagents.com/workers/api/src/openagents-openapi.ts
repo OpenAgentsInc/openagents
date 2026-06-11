@@ -2103,10 +2103,15 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicNexusPylonReceipt',
       summary: 'Read public Nexus/Pylon receipt',
       description:
-        'Returns a public-safe Nexus/Pylon receipt detail and clearly marks whether the record is simulation-only or evidence of real bitcoin movement. Dispatch acceptance is separate from terminal settlement evidence. Private customer data, raw invoices, preimages, mnemonics, payout targets, and operator notes are excluded.',
+        'Returns a public-safe Nexus/Pylon receipt detail and clearly marks whether the record is simulation-only or evidence of real bitcoin movement. Dispatch acceptance is separate from terminal settlement evidence. Artanis admin assignment refs can also resolve here as public closeout receipts with assignment state, digest, verdict, and redacted timestamp displays. Private customer data, raw invoices, preimages, mnemonics, payout targets, and operator notes are excluded.',
       tags: ['Public Proof', 'Pylon'],
       security: publicRead,
-      parameters: [pathParam('receiptRef', 'Nexus/Pylon receipt ref.')],
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Nexus/Pylon receipt ref or Artanis admin assignment ref.',
+        ),
+      ],
       responses: {
         '200': okJson(
           'Public Nexus/Pylon receipt.',
