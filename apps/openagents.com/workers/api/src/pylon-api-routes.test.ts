@@ -72,6 +72,11 @@ type PylonRouteJson = Readonly<{
       pylonRef?: string
     }>
   >
+  tassadarCapabilityAdmission?: Readonly<{
+    refusalRefs?: ReadonlyArray<string>
+    selfTestReceiptRefs?: ReadonlyArray<string>
+    state?: string
+  }>
 }>
 
 class MemoryPylonApiStore implements PylonApiStore {
@@ -678,6 +683,97 @@ describe('Pylon API routes', () => {
     expect(JSON.stringify(createdJson)).not.toMatch(/2026-06-07T00:10/)
     expect((await responseJson<PylonRouteJson>(list)).pylons).toHaveLength(1)
     expect((await responseJson<PylonRouteJson>(detail)).events).toHaveLength(1)
+  })
+
+  test('refuses an unreceipted Tassadar executor capability claim at registration (W4.1)', async () => {
+    const store = new MemoryPylonApiStore()
+    const created = await registerPylon(store, {
+      capabilityRefs: [
+        'capability.public.inference',
+        'capability.tassadar_poc.numeric_model_executor',
+      ],
+    })
+    const createdJson = await responseJson<PylonRouteJson>(created)
+
+    expect(created.status).toBe(201)
+    expect(createdJson.tassadarCapabilityAdmission?.state).toBe('refused')
+    expect(createdJson.tassadarCapabilityAdmission?.refusalRefs).toEqual([
+      'refusal.public.pylon_capability.tassadar_executor_unreceipted',
+    ])
+    expect(createdJson.pylon?.capabilityRefs).toEqual([
+      'capability.public.inference',
+    ])
+
+    const stored = store.registrations.get('pylon.test.one')
+    expect(stored?.capabilityRefs).toEqual(['capability.public.inference'])
+  })
+
+  test('admits and advertises a Tassadar executor capability carried with its self-test receipt (W4.1)', async () => {
+    const store = new MemoryPylonApiStore()
+    const receiptRef =
+      'receipt.tassadar_executor.self_test.v1.f2995c4e3c959b42'
+    const created = await registerPylon(store, {
+      capabilityRefs: [
+        'capability.tassadar_poc.numeric_model_executor',
+        receiptRef,
+      ],
+    })
+    const createdJson = await responseJson<PylonRouteJson>(created)
+
+    expect(created.status).toBe(201)
+    expect(createdJson.tassadarCapabilityAdmission?.state).toBe('admitted')
+    expect(
+      createdJson.tassadarCapabilityAdmission?.selfTestReceiptRefs,
+    ).toEqual([receiptRef])
+    expect(createdJson.pylon?.capabilityRefs).toContain(
+      'capability.tassadar_poc.numeric_model_executor',
+    )
+    expect(createdJson.pylon?.capabilityRefs).toContain(receiptRef)
+  })
+
+  test('blocks executor dispatch against a legacy registration whose capability has no self-test receipt (W4.1)', async () => {
+    const store = new MemoryPylonApiStore()
+    const receiptRef =
+      'receipt.tassadar_executor.self_test.v1.f2995c4e3c959b42'
+    await registerPylon(store, {
+      capabilityRefs: [
+        'capability.tassadar_poc.numeric_model_executor',
+        receiptRef,
+      ],
+    })
+    await markOnline(store)
+    await markWalletReady(store)
+
+    const receipted = await createAssignment(store, {
+      assignmentRef: 'assignment.public.tassadar_receipted',
+      idempotencyKey: 'assignment-tassadar-receipted',
+      requiredCapabilityRefs: [
+        'capability.tassadar_poc.numeric_model_executor',
+      ],
+    })
+    expect(receipted.status).toBe(201)
+
+    // Simulate a pre-W4.1 registration row: capability claim stored
+    // without its self-test receipt ref.
+    const stored = store.registrations.get('pylon.test.one')
+    store.registrations.set('pylon.test.one', {
+      ...stored!,
+      capabilityRefs: ['capability.tassadar_poc.numeric_model_executor'],
+    })
+
+    const unreceipted = await createAssignment(store, {
+      assignmentRef: 'assignment.public.tassadar_unreceipted',
+      idempotencyKey: 'assignment-tassadar-unreceipted',
+      requiredCapabilityRefs: [
+        'capability.tassadar_poc.numeric_model_executor',
+      ],
+    })
+    const unreceiptedJson = await responseJson<PylonRouteJson>(unreceipted)
+
+    expect(unreceipted.status).toBe(409)
+    expect(unreceiptedJson.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.tassadar_capability_unreceipted',
+    )
   })
 
   test('renders scanner-shaped Pylon public refs as short dotted aliases', async () => {

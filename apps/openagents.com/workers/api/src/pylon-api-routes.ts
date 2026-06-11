@@ -50,6 +50,11 @@ import {
   pylonClientVersionMeetsMinimum,
 } from './pylon-api'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  TASSADAR_DISPATCH_CAPABILITY_UNRECEIPTED_BLOCKER_REF,
+  admitTassadarExecutorCapabilityClaim,
+  tassadarDispatchCapabilityUnreceipted,
+} from './tassadar-capability-admission'
 
 type HttpResponse = globalThis.Response
 
@@ -370,6 +375,13 @@ const controlledPylonAssignmentDispatchGate = (
     ...(missingCapabilityRefs.length > 0
       ? ['blocker.public.pylon_dispatch.wrong_capability']
       : []),
+    ...(registration !== undefined &&
+    tassadarDispatchCapabilityUnreceipted(
+      gateRefs(body.requiredCapabilityRefs),
+      registration.capabilityRefs,
+    )
+      ? [TASSADAR_DISPATCH_CAPABILITY_UNRECEIPTED_BLOCKER_REF]
+      : []),
     ...(duplicateRefs.length > 0
       ? ['blocker.public.pylon_dispatch.duplicate_active_assignment']
       : []),
@@ -614,6 +626,13 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
       )
     }
 
+    // W4.1 (#4750): a Tassadar executor-capability claim is admitted
+    // only with its self-test receipt ref. Refused claims are stripped
+    // before the registration row is built, so unreceipted executor
+    // capacity never becomes dispatchable registry state.
+    const tassadarAdmission = admitTassadarExecutorCapabilityClaim(
+      body.capabilityRefs ?? [],
+    )
     const registration = yield* Effect.try({
       catch: pylonApiStoreErrorFromUnknown,
       try: () =>
@@ -624,7 +643,10 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
           nowIso,
           ownerAgentTokenPrefix: session.credential.tokenPrefix,
           ownerAgentUserId: session.user.id,
-          request: body,
+          request: {
+            ...body,
+            capabilityRefs: tassadarAdmission.admittedCapabilityRefs,
+          },
         }),
     })
     const event = yield* Effect.try({
@@ -633,6 +655,7 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
         buildPylonApiEventRecord({
           body: {
             capabilityRefs: registration.capabilityRefs,
+            capabilityRefusalRefs: tassadarAdmission.refusalRefs,
             clientProtocolVersion: registration.clientProtocolVersion,
             clientVersion: registration.clientVersion,
             resourceMode: registration.resourceMode,
@@ -662,6 +685,11 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
         event: publicPylonApiEventProjection(eventResult.record, nowIso),
         idempotent: eventResult.idempotent,
         pylon: publicPylonApiRegistrationProjection(storedRegistration, nowIso),
+        tassadarCapabilityAdmission: {
+          refusalRefs: tassadarAdmission.refusalRefs,
+          selfTestReceiptRefs: tassadarAdmission.selfTestReceiptRefs,
+          state: tassadarAdmission.state,
+        },
       },
       { status: eventResult.idempotent ? 200 : 201 },
     )

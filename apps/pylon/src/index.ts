@@ -1,7 +1,12 @@
 #!/usr/bin/env bun
 
 import { readFile } from "node:fs/promises"
-import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagents/tassadar-executor"
+import {
+  PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,
+  declareTassadarExecutorCapability,
+  mergeTassadarCapabilityRefs,
+  writeTassadarCapabilityEvidence,
+} from "./tassadar-capability"
 import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
@@ -1404,14 +1409,32 @@ async function main() {
         const claudeAgentReadiness = await probeClaudeAgentReadiness({
           config: await loadClaudeAgentConfig(summary),
         })
+        // W4.1 (#4750): the Tassadar executor capability is declared
+        // only behind a passing self-test receipt — a real digest-pinned
+        // execution on this device — never by configuration assertion.
+        const tassadarDeclaration = await declareTassadarExecutorCapability()
+        const evidencePath = await writeTassadarCapabilityEvidence(
+          state.paths.home,
+          tassadarDeclaration,
+        )
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
           capabilityRefs: withClaudeAgentCapability(
-            [...new Set([...state.runtime.capabilityRefs, PYLON_NIP90_PROVIDER_CAPABILITY_REF, PYLON_LABOR_CAPABILITY_REF, TASSADAR_EXECUTOR_CAPABILITY_REF])],
+            [...new Set([
+              ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
+              PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+              PYLON_LABOR_CAPABILITY_REF,
+            ])],
             claudeAgentReadiness,
           ),
-          blockerRefs: state.runtime.blockerRefs.filter((ref) => ref !== "blocker.assignment.lifecycle_offline"),
+          blockerRefs: [...new Set([
+            ...state.runtime.blockerRefs.filter((ref) =>
+              ref !== "blocker.assignment.lifecycle_offline" &&
+              ref !== PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,
+            ),
+            ...tassadarDeclaration.blockerRefs,
+          ])],
         }
         await writeRuntimeState(state.paths, nextRuntime)
         process.stdout.write(`${JSON.stringify({
@@ -1421,6 +1444,17 @@ async function main() {
           claudeAgent: {
             state: claudeAgentReadiness.state,
             credentialSourceRef: claudeAgentReadiness.credentialSourceRef,
+          },
+          tassadar: {
+            declared: tassadarDeclaration.declared,
+            capabilityRef: tassadarDeclaration.capabilityRef,
+            selfTestReceiptRef: tassadarDeclaration.selfTestReceiptRef,
+            windowVersionRef: tassadarDeclaration.windowVersionRef,
+            legRefs: tassadarDeclaration.legRefs,
+            replayClassId: tassadarDeclaration.replayClassId,
+            matrixRow: tassadarDeclaration.matrixRow,
+            blockerRefs: tassadarDeclaration.blockerRefs,
+            evidencePath,
           },
           relayUrls: relaysFromEnv(Bun.env),
           policy: policyFromEnv(Bun.env),

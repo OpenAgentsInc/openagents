@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import type { BootstrapSummary } from "./bootstrap"
+import { publishableCapabilityRefs } from "./tassadar-capability"
 import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity"
 import {
   assertPublicProjectionSafe,
@@ -150,7 +151,9 @@ export async function registerPylon(summary: BootstrapSummary, options: Presence
     clientProtocolVersion: "0.3.0",
     clientVersion: "openagents.pylon@0.3.0-rc1",
     resourceMode: state.runtime.resourceMode,
-    capabilityRefs: state.runtime.capabilityRefs,
+    // W4.1 (#4750): an executor-capability claim without its self-test
+    // receipt never leaves the device.
+    capabilityRefs: publishableCapabilityRefs(state.runtime.capabilityRefs),
     blockerRefs: state.runtime.blockerRefs,
     statusRefs: ["status.public.pylon_cli.registered"],
   }
@@ -191,7 +194,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
     status: "online",
     walletReadiness: "unknown",
     assignmentReadiness: state.runtime.lifecycle === "assignment-ready" ? "ready" : "not-ready",
-    capabilityRefs: state.runtime.capabilityRefs,
+    capabilityRefs: publishableCapabilityRefs(state.runtime.capabilityRefs),
     blockerRefs: [...state.runtime.blockerRefs, ...presence.blockerRefs],
   }
   await postJson(options, {

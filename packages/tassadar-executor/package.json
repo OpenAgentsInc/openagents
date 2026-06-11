@@ -4,7 +4,8 @@
   "private": false,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./self-test": "./src/self-test.ts"
   },
   "files": [
     "src",

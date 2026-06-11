@@ -8,8 +8,9 @@ import {
 import { tassadarPocLoopSumFixture } from './tassadar-poc-fixture'
 
 import { artanisMindComplete } from './artanis-mind'
-import { parseJsonWithSchema } from './json-boundary'
+import { parseJsonStringArray, parseJsonWithSchema } from './json-boundary'
 import { epochMillisToIsoTimestamp, randomUuid } from './runtime-primitives'
+import { pylonCapabilityRefsEligibleForExecutorDispatch } from './tassadar-capability-admission'
 import {
   TassadarBoundedProfileRef,
   TassadarExactTraceReplayVerificationClass,
@@ -200,9 +201,15 @@ export const runArtanisAdminTick = async (
 
   const context = await assembleContext(db, deps.nowIso)
 
+  // W4.1 (#4750): executor eligibility requires the receipted capability
+  // (claim + self-test receipt ref), not the bare configuration claim.
   const eligible = context.onlinePylons.filter(pylon =>
-    String(pylon.capability_refs_json ?? '').includes(
-      TASSADAR_EXECUTOR_CAPABILITY_REF,
+    pylonCapabilityRefsEligibleForExecutorDispatch(
+      parseJsonStringArray(
+        typeof pylon.capability_refs_json === 'string'
+          ? pylon.capability_refs_json
+          : null,
+      ),
     ),
   )
 

@@ -71,7 +71,13 @@ Production run on 2026-06-10:
   `totalCount: 48`.
 - Wallet readiness summary: `receiveReady: true`,
   `readiness: send-ready-blocked`.
-- Registered capability refs include
-  `capability.tassadar_poc.numeric_model_executor`.
+- Registered capability refs included
+  `capability.tassadar_poc.numeric_model_executor` (the 2026-06-10
+  configuration-asserted default). Since W4.1 (openagents#4750) the
+  executor capability is published only after `pylon provider go-online`
+  runs the digest-pinned self-test and mints
+  `receipt.tassadar_executor.self_test.v1.<digest16>`; an unreceipted
+  claim is stripped client-side at registration and refused by the
+  Worker (`refusal.public.pylon_capability.tassadar_executor_unreceipted`).
 - Executor replay summary: `fixtureId: tassadar-poc-loop-sum-v1`,
   `verified: true`.
