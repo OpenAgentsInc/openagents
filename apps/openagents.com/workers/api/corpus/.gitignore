@@ -4,3 +4,7 @@
 # scripts/tassadar-trace-factory-generate.ts and verify via
 # scripts/tassadar-trace-factory-replay.ts.
 tassadar-trace-corpus.v0_1/
+# W3 100M-token snapshot (issue #4749): shards/records/verdicts are
+# reproducible from the tracked manifest via
+# scripts/tassadar-trace-factory-generate-w3.ts.
+tassadar-trace-corpus.v0_2.w3_100m/
