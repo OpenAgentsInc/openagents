@@ -49,3 +49,11 @@ bun run smoke:cs336-a3:isoflop
 
 The smoke proves the public projection stays blocked without cells and publishes
 a fit only when 20 public verified cells and a fit artifact are present.
+
+## Live evidence
+
+The first live crowd-sourced sweep (24 paid cells, sampled
+`deterministic_recompute` re-runs, the published Psionic fit artifact,
+and the admission seam
+`POST /api/training/runs/{trainingRunRef}/scaling-sweep-evidence`) is
+recorded in `2026-06-11-cs336-a3-isoflop-paid-sweep-evidence.md`.

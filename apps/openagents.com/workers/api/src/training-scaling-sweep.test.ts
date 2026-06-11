@@ -6,6 +6,8 @@ import {
 } from './training-run-window-authority'
 import {
   Cs336A3ScalingSweepJobKind,
+  admitCs336A3ScalingSweepEvidence,
+  buildCs336A3SweepAssignmentPayload,
   publicScalingSweepProjection,
 } from './training-scaling-sweep'
 import {
@@ -150,6 +152,128 @@ describe('CS336 A3 scaling sweep projection', () => {
       cellRef: 'cell.cs336.a3.1',
       settledPayoutSats: 0,
       verified: true,
+    })
+  })
+
+  it('admits receipted sweep cells and rejects unreceipted, unsafe, or thin-fit evidence', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a3-admit',
+      nowIso: '2026-06-11T08:00:00.000Z',
+      request: {
+        promiseRef: 'pylon.compute_revenue_modes.v1',
+        trainingRunRef: 'run.cs336.a3.scaling_sweep.demo',
+      },
+    })
+    const cell = {
+      cellRef: 'cell.cs336_a3.b1.n1',
+      computeBudgetFlops: 300_000_000,
+      parameterCount: 1_024,
+      pylonRef: 'pylon.24819249b4634a4c9d5e',
+      receiptRefs: ['receipt.cs336_a3.settlement.cell_1'],
+      sourceRefs: ['commitment.cs336_a3.cell_1.sha256_abcdef0123456789'],
+      tokenCount: 48_828,
+      validationLoss: 5.0621,
+      verificationRefs: [],
+    }
+
+    expect(() =>
+      admitCs336A3ScalingSweepEvidence({
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: { cells: [] },
+        run,
+      }),
+    ).toThrow(/at least one cell/)
+
+    expect(() =>
+      admitCs336A3ScalingSweepEvidence({
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: { cells: [{ ...cell, receiptRefs: [] }] },
+        run,
+      }),
+    ).toThrow(/unreceipted/i)
+
+    expect(() =>
+      admitCs336A3ScalingSweepEvidence({
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: { cells: [{ ...cell, parameterCount: 0 }] },
+        run,
+      }),
+    ).toThrow(/positive finite/)
+
+    expect(() =>
+      admitCs336A3ScalingSweepEvidence({
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: { cells: [{ ...cell, validationLoss: Number.NaN }] },
+        run,
+      }),
+    ).toThrow(/finite validation loss/)
+
+    expect(() =>
+      admitCs336A3ScalingSweepEvidence({
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: {
+          cells: [
+            { ...cell, sourceRefs: ['lnbc10n1deadbeef.fake_invoice_material'] },
+          ],
+        },
+        run,
+      }),
+    ).toThrow(/wallet, payment, or private material/)
+
+    expect(() =>
+      admitCs336A3ScalingSweepEvidence({
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: {
+          cells: [cell],
+          fitArtifact: {
+            artifactRef: 'artifact.cs336_a3.isoflop_fit.sha256_abcdef',
+            predictedBestConfig: {
+              parameterCount: 63_249,
+              tokenCount: 12_648,
+            },
+          },
+        },
+        run,
+      }),
+    ).toThrow(/at least 20 receipted cells/)
+
+    const admitted = admitCs336A3ScalingSweepEvidence({
+      nowIso: '2026-06-11T08:30:00.000Z',
+      request: {
+        cells: [cell],
+        receiptRefs: ['approval.operator.20260611.focus_cs336_issue4679'],
+        sourceRefs: ['issue.github.openagents.4679'],
+      },
+      run,
+    })
+    const projection = publicScalingSweepProjection({
+      challenges: [],
+      leases: [],
+      run: admitted,
+      windows: [],
+    })
+
+    expect(admitted.updatedAt).toBe('2026-06-11T08:30:00.000Z')
+    expect(projection.status).toBe('collecting_cells')
+    expect(projection.cells).toHaveLength(1)
+    expect(projection.cells[0]).toMatchObject({
+      cellRef: 'cell.cs336_a3.b1.n1',
+      parameterCount: 1_024,
+      pylonRef: 'pylon.24819249b4634a4c9d5e',
+      receiptRefs: ['receipt.cs336_a3.settlement.cell_1'],
+      validationLoss: 5.0621,
+    })
+  })
+
+  it('builds a public-safe A3 sweep assignment payload bound to the deterministic_recompute class', () => {
+    expect(
+      buildCs336A3SweepAssignmentPayload({
+        assignmentRef: 'assignment.cs336_a3.sweep.cell_1',
+      }),
+    ).toMatchObject({
+      jobKind: 'cs336_a3_scaling_sweep',
+      psionicLaneRef: 'psion_cs336_a3_scaling_reference_v1',
+      verificationClass: 'deterministic_recompute',
     })
   })
 })

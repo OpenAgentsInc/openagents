@@ -522,6 +522,117 @@ describe('training run window routes', () => {
     })
   })
 
+  it('admits receipted scaling-sweep evidence through the admin route and rejects unreceipted cells', async () => {
+    const store = makeMemoryStore()
+    let counter = 0
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => `a3-evidence-${++counter}`,
+      makeStore: () => store,
+      nowIso: () => '2026-06-11T08:00:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+    const adminHeaders = { authorization: 'Bearer admin-token-test' }
+    const evidencePath =
+      '/api/training/runs/run.cs336.a3.scaling_sweep.demo/scaling-sweep-evidence'
+    const cell = {
+      cellRef: 'cell.cs336_a3.b1.n1',
+      computeBudgetFlops: 300_000_000,
+      parameterCount: 1_024,
+      pylonRef: 'pylon.24819249b4634a4c9d5e',
+      receiptRefs: ['receipt.cs336_a3.settlement.cell_1'],
+      tokenCount: 48_828,
+      validationLoss: 5.0621,
+      verificationRefs: ['verdict.training.deterministic_recompute.cell_1'],
+    }
+
+    store._testSeedRun(
+      buildTrainingRunRecord({
+        makeId: () => 'a3-admit',
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: {
+          promiseRef: 'pylon.compute_revenue_modes.v1',
+          trainingRunRef: 'run.cs336.a3.scaling_sweep.demo',
+        },
+      }),
+    )
+
+    const unauthorized = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(evidencePath, { cells: [cell] }),
+        {},
+      ),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const missingRun = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.cs336.a3.missing/scaling-sweep-evidence',
+          { cells: [cell] },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+
+    expect(missingRun.status).toBe(404)
+
+    const unreceipted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          { cells: [{ ...cell, receiptRefs: [] }] },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+
+    expect(unreceipted.status).toBe(400)
+
+    const admitted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          {
+            cells: [cell],
+            receiptRefs: ['approval.operator.20260611.focus_cs336_issue4679'],
+            sourceRefs: ['issue.github.openagents.4679'],
+          },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const admittedBody = (await admitted.json()) as Readonly<{
+      isoflop: Readonly<{
+        cells: ReadonlyArray<Record<string, unknown>>
+        status: string
+      }>
+    }>
+
+    expect(admitted.status).toBe(200)
+    expect(admittedBody.isoflop.status).toBe('collecting_cells')
+    expect(admittedBody.isoflop.cells[0]).toMatchObject({
+      cellRef: 'cell.cs336_a3.b1.n1',
+      parameterCount: 1_024,
+      verified: true,
+    })
+
+    const dashboard = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/isoflop/a3'),
+        {},
+      ),
+    )
+    const dashboardBody = (await dashboard.json()) as TrainingRunIsoFlopJson
+
+    expect(dashboard.status).toBe(200)
+    expect(dashboardBody.cells).toHaveLength(1)
+  })
+
   it('admits receipted device benchmark evidence through the admin route and rejects unsafe or unreceipted rows', async () => {
     const store = makeMemoryStore()
     let counter = 0

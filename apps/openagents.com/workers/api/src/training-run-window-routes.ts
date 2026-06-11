@@ -35,7 +35,11 @@ import {
   trainingAuthorityStoreErrorFromUnknown,
   transitionTrainingWindowRecord,
 } from './training-run-window-authority'
-import { publicScalingSweepProjection } from './training-scaling-sweep'
+import {
+  Cs336A3ScalingSweepEvidenceRequest,
+  admitCs336A3ScalingSweepEvidence,
+  publicScalingSweepProjection,
+} from './training-scaling-sweep'
 
 type HttpResponse = globalThis.Response
 
@@ -750,6 +754,68 @@ const routeAttachDeviceBenchmarkEvidence = <
     })
   })
 
+const routeAttachScalingSweepEvidence = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, Cs336A3ScalingSweepEvidenceRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const admitted = yield* Effect.try({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        admitCs336A3ScalingSweepEvidence({ nowIso, request: body, run }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.attachRunEvidence(admitted),
+    })
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+
+    return noStoreJsonResponse({
+      isoflop: publicScalingSweepProjection({
+        challenges,
+        leases,
+        run: stored,
+        windows,
+      }),
+      run: publicTrainingRunProjection(stored, nowIso),
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -913,6 +979,24 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(runEvidenceMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const sweepEvidenceMatch =
+      /^\/api\/training\/runs\/([^/]+)\/scaling-sweep-evidence$/.exec(
+        url.pathname,
+      )
+
+    if (sweepEvidenceMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeAttachScalingSweepEvidence(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(sweepEvidenceMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

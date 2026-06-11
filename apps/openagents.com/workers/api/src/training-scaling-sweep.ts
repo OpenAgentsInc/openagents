@@ -1,3 +1,5 @@
+import { Schema as S } from 'effect'
+
 import {
   isRecord,
   optionalString,
@@ -58,6 +60,197 @@ export type ScalingSweepProjection = Readonly<{
 export const Cs336A3ScalingSweepJobKind = 'cs336_a3_scaling_sweep'
 export const Cs336A3ScalingSweepPsionicLaneRef =
   'psion_cs336_a3_scaling_reference_v1'
+export const Cs336A3SweepRequestSchemaRef =
+  'openagents.cs336_a3_scaling_sweep_request.v1'
+export const Cs336A3SweepOutputSchemaRef =
+  'openagents.cs336_a3_scaling_sweep_output.v1'
+
+const TrimmedString = S.Trim
+const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
+const PublicSafeRef = NonEmptyTrimmedString.check(
+  S.isMinLength(3),
+  S.isMaxLength(260),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/),
+)
+const PublicSafeRefs = S.optionalKey(S.Array(PublicSafeRef))
+
+export const Cs336A3SweepCellEvidence = S.Struct({
+  cellRef: S.optionalKey(PublicSafeRef),
+  computeBudgetFlops: S.Number,
+  parameterCount: S.Number,
+  pylonRef: S.optionalKey(PublicSafeRef),
+  receiptRefs: S.Array(PublicSafeRef),
+  sourceRefs: PublicSafeRefs,
+  tokenCount: S.Number,
+  validationLoss: S.Number,
+  verificationRefs: PublicSafeRefs,
+})
+export type Cs336A3SweepCellEvidence = typeof Cs336A3SweepCellEvidence.Type
+
+export const Cs336A3SweepFitArtifactEvidence = S.Struct({
+  artifactRef: PublicSafeRef,
+  exponentRefs: PublicSafeRefs,
+  predictedBestConfig: S.Struct({
+    parameterCount: S.Number,
+    tokenCount: S.Number,
+  }),
+  provenanceLabel: S.optionalKey(NonEmptyTrimmedString),
+  sourceRefs: PublicSafeRefs,
+})
+export type Cs336A3SweepFitArtifactEvidence =
+  typeof Cs336A3SweepFitArtifactEvidence.Type
+
+export const Cs336A3ScalingSweepEvidenceRequest = S.Struct({
+  cells: S.Array(Cs336A3SweepCellEvidence),
+  fitArtifact: S.optionalKey(Cs336A3SweepFitArtifactEvidence),
+  psionicLaneRef: S.optionalKey(PublicSafeRef),
+  receiptRefs: PublicSafeRefs,
+  sourceRefs: PublicSafeRefs,
+})
+export type Cs336A3ScalingSweepEvidenceRequest =
+  typeof Cs336A3ScalingSweepEvidenceRequest.Type
+
+export class ScalingSweepUnsafeProjectionError extends Error {
+  readonly _tag = 'ScalingSweepUnsafeProjectionError'
+}
+
+export class ScalingSweepEvidenceValidationError extends Error {
+  readonly _tag = 'ScalingSweepEvidenceValidationError'
+}
+
+/**
+ * Public-safety guard for admitted A3 sweep evidence. Pylon refs are
+ * legitimate public provenance on sweep cells, so unlike the A2
+ * device-capability guard this one allows `pylonRef` keys, but it
+ * still rejects wallet, payment, invoice, mnemonic, key, and private
+ * path material before it can reach D1.
+ */
+const unsafeSweepMaterialPattern =
+  /(\"?(mnemonic|preimage|invoice|bolt11|bolt12|lno1|secret[A-Za-z0-9_-]*|private[A-Za-z0-9_-]*|wallet[A-Za-z0-9_-]*)\"?\s*:|\/Users\/|\/home\/|api[_-]?key|bearer|lnbc|lntb|lno1|mnemonic|payment[_-]?(hash|preimage)|preimage|raw[_-]?(dataset|invoice|payment|payload|prompt|runner)|seed[_-]?phrase|sk-[a-z0-9]|wallet[_-]?(home|path|seed|mnemonic|private))/i
+
+const publicSafeJson = (value: unknown): string => {
+  const json = JSON.stringify(value)
+
+  if (unsafeSweepMaterialPattern.test(json)) {
+    throw new ScalingSweepUnsafeProjectionError(
+      'CS336 A3 scaling-sweep projection contains wallet, payment, or private material.',
+    )
+  }
+
+  return json
+}
+
+export type Cs336A3SweepAssignmentPayload = Readonly<{
+  assignmentRef: string
+  jobKind: typeof Cs336A3ScalingSweepJobKind
+  outputSchemaRef: typeof Cs336A3SweepOutputSchemaRef
+  psionicLaneRef: typeof Cs336A3ScalingSweepPsionicLaneRef
+  requestSchemaRef: typeof Cs336A3SweepRequestSchemaRef
+  verificationClass: 'deterministic_recompute'
+}>
+
+export const buildCs336A3SweepAssignmentPayload = (
+  input: Readonly<{ assignmentRef: string }>,
+): Cs336A3SweepAssignmentPayload => {
+  const payload: Cs336A3SweepAssignmentPayload = {
+    assignmentRef: input.assignmentRef,
+    jobKind: Cs336A3ScalingSweepJobKind,
+    outputSchemaRef: Cs336A3SweepOutputSchemaRef,
+    psionicLaneRef: Cs336A3ScalingSweepPsionicLaneRef,
+    requestSchemaRef: Cs336A3SweepRequestSchemaRef,
+    verificationClass: 'deterministic_recompute',
+  }
+
+  publicSafeJson(payload)
+
+  return payload
+}
+
+const assertAdmissibleCell = (cell: Cs336A3SweepCellEvidence): void => {
+  const quantities = [
+    cell.computeBudgetFlops,
+    cell.parameterCount,
+    cell.tokenCount,
+  ]
+
+  if (!quantities.every(value => Number.isFinite(value) && value > 0)) {
+    throw new ScalingSweepEvidenceValidationError(
+      'CS336 A3 sweep cell evidence requires positive finite parameter, data, and compute quantities.',
+    )
+  }
+
+  if (!Number.isFinite(cell.validationLoss)) {
+    throw new ScalingSweepEvidenceValidationError(
+      'CS336 A3 sweep cell evidence requires a finite validation loss.',
+    )
+  }
+
+  if (cell.receiptRefs.length === 0) {
+    throw new ScalingSweepEvidenceValidationError(
+      'CS336 A3 sweep cell evidence requires at least one receipt ref; unreceipted cells are not admissible.',
+    )
+  }
+}
+
+/**
+ * Admits receipted CS336 A3 scaling-sweep cells (and optionally the
+ * Psionic-fitted IsoFLOP artifact) into a training run's public
+ * projection. The public-safety guard runs at admission time on the
+ * exact evidence that will be projected; a fit artifact is admissible
+ * only over a sweep of at least 20 cells, mirroring the dashboard's
+ * verified-cell threshold.
+ */
+export const admitCs336A3ScalingSweepEvidence = (
+  input: Readonly<{
+    nowIso: string
+    request: Cs336A3ScalingSweepEvidenceRequest
+    run: TrainingRunRecord
+  }>,
+): TrainingRunRecord => {
+  if (input.request.cells.length === 0) {
+    throw new ScalingSweepEvidenceValidationError(
+      'CS336 A3 scaling-sweep evidence requires at least one cell.',
+    )
+  }
+
+  for (const cell of input.request.cells) {
+    assertAdmissibleCell(cell)
+  }
+
+  if (
+    input.request.fitArtifact !== undefined &&
+    input.request.cells.length < 20
+  ) {
+    throw new ScalingSweepEvidenceValidationError(
+      'CS336 A3 fit artifacts are admissible only over a sweep of at least 20 receipted cells.',
+    )
+  }
+
+  const evidence = {
+    cells: input.request.cells,
+    ...(input.request.fitArtifact === undefined
+      ? {}
+      : { fitArtifact: input.request.fitArtifact }),
+    jobKind: Cs336A3ScalingSweepJobKind,
+    psionicLaneRef:
+      input.request.psionicLaneRef ?? Cs336A3ScalingSweepPsionicLaneRef,
+    receiptRefs: uniqueRefs([...(input.request.receiptRefs ?? [])]),
+    sourceRefs: uniqueRefs([...(input.request.sourceRefs ?? [])]),
+  }
+
+  publicSafeJson(evidence)
+
+  const projection = parseJsonRecord(input.run.publicProjectionJson) ?? {}
+
+  return {
+    ...input.run,
+    publicProjectionJson: JSON.stringify({
+      ...projection,
+      a3ScalingSweep: evidence,
+    }),
+    updatedAt: input.nowIso,
+  }
+}
 
 const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
   [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()

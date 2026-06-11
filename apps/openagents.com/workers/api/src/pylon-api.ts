@@ -109,6 +109,7 @@ export const PylonApiAssignmentJobKind = S.Literals([
   'claude_agent_task',
   'cs336_a1_homework',
   'cs336_a2_device_benchmark',
+  'cs336_a3_scaling_sweep',
   'healthcheck_echo',
   'inference',
   'tassadar_executor_trace',
