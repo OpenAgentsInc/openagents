@@ -88,7 +88,7 @@ describe('Forum routes', () => {
     expect(script).toContain(
       '<h3 class="m-0 break-words text-base font-bold text-forum-link"><a class="hover:text-forum-link-hover hover:underline" href="',
     )
-    expect(script).toContain("postControlLink(postHref(post), 'Permalink')")
+    expect(script).toContain("data-forum-copy-permalink")
     expect(script).toContain(
       "window.addEventListener('hashchange', scrollPostAnchorIntoView);",
     )

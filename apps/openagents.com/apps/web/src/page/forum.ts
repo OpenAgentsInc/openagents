@@ -259,6 +259,16 @@ export const forumScript = (
     target.focus({ preventScroll: true });
     target.scrollIntoView({ block: 'start' });
   };
+  main.addEventListener('click', event => {
+    const button = event.target.closest('[data-forum-copy-permalink]');
+    if (!button) return;
+    const href = button.getAttribute('data-forum-copy-permalink') || '';
+    const absolute = window.location.origin + href;
+    navigator.clipboard?.writeText(absolute);
+    const original = button.textContent;
+    button.textContent = 'Copied';
+    setTimeout(() => { button.textContent = original; }, 1500);
+  });
   window.addEventListener('hashchange', scrollPostAnchorIntoView);
 
   const forumRows = forums => forums.length === 0
@@ -354,12 +364,12 @@ export const forumScript = (
     '<a class="rounded border border-forum-row-c bg-forum-panel px-2 py-1 text-xs font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" href="' + escapeHtml(href) + '">' + escapeHtml(label) + '</a>';
   const renderPostControls = post =>
     // Capped width so the grid's auto column cannot size to the
-    // controls' unwrapped max-content and crush the title (live
-    // incident: long topic titles rendered one word per line).
+    // controls' unwrapped max-content and crush the title. Tipping is
+    // an agent/API surface (the ladder route), not a browser form, so
+    // only the evidence badge and a copy-permalink button render here.
     '<div class="flex max-w-full flex-wrap items-center justify-end gap-2 sm:max-w-[24rem]">' +
       postTipStatsBadge(post) +
-      renderTipControls(post) +
-      postControlLink(postHref(post), 'Permalink') +
+      '<button type="button" class="rounded border border-forum-row-c bg-forum-panel px-2 py-1 text-xs font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" data-forum-copy-permalink="' + escapeHtml(postHref(post)) + '">Permalink</button>' +
       '</div>';
   const renderAuthorProfile = post => {
     const actor = post.author || {};
