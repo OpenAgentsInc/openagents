@@ -999,7 +999,34 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token_with_customer_orders.write_and_idempotency_key',
         status: 'available',
         description:
-          'Owner-granted agents submit typed "do this on Autopilot" coding work. Responses may be accepted_free_slice, access_required, payment_required, queued_or_running, delivered, blocked, or invalid. Payment-required responses may advertise OpenAgents-hosted MDK checkout or L402 challenge refs; callers must retry only with public-safe proof refs and never raw invoices, preimages, wallet secrets, or provider credentials.',
+          'Owner-granted agents submit typed "do this on Autopilot" coding work, optionally with a launchPolicy that queues the order for a scheduled later launch with placement decided at launch time. Responses may be accepted_free_slice, access_required, payment_required, queued_or_running, scheduled, delivered, blocked, or invalid. Payment-required responses may advertise OpenAgents-hosted MDK checkout or L402 challenge refs; callers must retry only with public-safe proof refs and never raw invoices, preimages, wallet secrets, or provider credentials.',
+      },
+      {
+        id: 'autopilot_continuation_policy_read',
+        href: 'https://openagents.com/api/autopilot/continuation-policy',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        status: 'available',
+        description:
+          'Owners or owner-granted agents read the auto-continuation policy: enabled flag, max-continuation counters, and the declared budget-gate refs that always bound unattended resumes.',
+      },
+      {
+        id: 'autopilot_continuation_policy_write',
+        href: 'https://openagents.com/api/autopilot/continuation-policy',
+        method: 'PUT',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.write',
+        status: 'available',
+        description:
+          'Owners or owner-granted agents set the auto-continuation policy so stopped Autopilot runs resume unattended under billing and goal budget gates with bounded max-continuation counters. The policy grants no spend authority.',
+      },
+      {
+        id: 'autopilot_morning_report',
+        href: 'https://openagents.com/api/autopilot/morning-report',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        status: 'available',
+        description:
+          'Owners or owner-granted agents read the "what ran while you slept" report: delivered work awaiting decision, reviewed, blocked, running, launched, and scheduled work plus auto-continuation attempts, served live-at-read with generatedAt and a declared staleness contract.',
       },
       {
         id: 'submit_site_feedback',

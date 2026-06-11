@@ -3210,5 +3210,6 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     handleOmniOperatorFleetApi,
     handleOmniOperatorTeamChatMessagesApi,
     launchUserAutopilotMission,
+    requestGoalContinuationAfterCompletedRun,
   }
 }

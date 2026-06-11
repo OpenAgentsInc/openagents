@@ -92,6 +92,14 @@ import {
   makeBrowserSessionBoundary,
 } from './auth/session'
 import {
+  listAutopilotContinuationRunCandidates,
+  makeD1AutopilotContinuationStore,
+  runAutopilotContinuationSweep,
+} from './autopilot-continuation-policy'
+import { makeAutopilotContinuationPolicyRoutes } from './autopilot-continuation-policy-routes'
+import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
+import {
+  dispatchDueScheduledAutopilotWork,
   makeAutopilotWorkRoutes,
   makeD1AutopilotWorkStore,
   recordAutopilotWorkerCloseoutFromPylon,
@@ -103,6 +111,7 @@ import {
   markOutOfCreditsNotificationSent,
   readBillingSummary,
   recordContainerUsageDebitForRun,
+  requireMinimumRunCredits,
   reserveOutOfCreditsNotification,
   suspendBillingAccountIfOutOfCredits,
 } from './billing'
@@ -5650,20 +5659,47 @@ const agentSearchRoutes = makeAgentSearchRoutes({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
 })
 
-const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-  l402SigningBoundary: env => forumL402SigningBoundaryForEnv(env),
-  makeBuyerPaymentLedgerStore: env =>
+const autopilotWorkRouteDependencies = {
+  agentStore: (env: WorkerBindings) =>
+    makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  l402SigningBoundary: (env: WorkerBindings) =>
+    forumL402SigningBoundaryForEnv(env),
+  makeBuyerPaymentLedgerStore: (env: WorkerBindings) =>
     makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
-  makePylonApiStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
-  makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+  makePylonApiStore: (env: WorkerBindings) =>
+    makeD1PylonApiStore(openAgentsDatabase(env)),
+  makeStore: (env: WorkerBindings) =>
+    makeD1AutopilotWorkStore(openAgentsDatabase(env)),
   requireBrowserSession,
-  verifyL402PaymentProof: (env, input) =>
+  verifyL402PaymentProof: (
+    env: WorkerBindings,
+    input: Parameters<typeof verifyAutopilotL402PaymentProofFromBuyerLedger>[1],
+  ) =>
     verifyAutopilotL402PaymentProofFromBuyerLedger(
       makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
       input,
     ),
-})
+}
+
+const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>(
+  autopilotWorkRouteDependencies,
+)
+
+const autopilotContinuationPolicyRoutes =
+  makeAutopilotContinuationPolicyRoutes<WorkerBindings>({
+    agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    makeStore: env => makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
+    requireBrowserSession,
+  })
+
+const autopilotMorningReportRoutes =
+  makeAutopilotMorningReportRoutes<WorkerBindings>({
+    agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    makeContinuationStore: env =>
+      makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
+    makeWorkStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+    requireBrowserSession,
+  })
 
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
@@ -6359,6 +6395,24 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/auth/teams',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleAuthTeamsApi(request, env, ctx)),
+  },
+  {
+    path: '/api/autopilot/continuation-policy',
+    handler: (request, env, ctx) =>
+      autopilotContinuationPolicyRoutes.routeAutopilotContinuationPolicyRequest(
+        request,
+        env,
+        ctx,
+      ),
+  },
+  {
+    path: '/api/autopilot/morning-report',
+    handler: (request, env, ctx) =>
+      autopilotMorningReportRoutes.routeAutopilotMorningReportRequest(
+        request,
+        env,
+        ctx,
+      ),
   },
   {
     path: '/api/public/pylon-stats',
@@ -7149,6 +7203,74 @@ export default {
       observedEffect(
         'EmailCampaignDispatcher.dispatchDue',
         dispatchDueEmailCampaignSendsScheduled(env),
+      ),
+      observedEffect(
+        'AutopilotScheduledLaunches.dispatchDue',
+        dispatchDueScheduledAutopilotWork(
+          autopilotWorkRouteDependencies,
+          env,
+          { nowIso: epochMillisToIsoTimestamp(event.scheduledTime) },
+        ),
+      ),
+      observedEffect(
+        'AutopilotContinuationPolicy.sweep',
+        runAutopilotContinuationSweep({
+          billingAllowsContinuation: async userId => {
+            const result = await requireMinimumRunCredits(
+              openAgentsDatabase(env),
+              userId,
+            )
+
+            return result.ok
+              ? { ok: true, reasonRef: 'continuation.billing_ok' }
+              : {
+                  ok: false,
+                  reasonRef: 'continuation.skipped.billing_blocked',
+                }
+          },
+          dispatchFollowUpTurn: async candidate => {
+            const result = await omniHandlers.continueUserAutopilotRun(
+              env,
+              ctx,
+              {
+                prompt:
+                  'Continue the active OpenAgents goal from the latest durable run state.',
+                runId: candidate.runId,
+                userId: candidate.userId,
+              },
+            )
+
+            return result.ok
+              ? {
+                  ok: true,
+                  reasonRef: 'continuation.dispatched.follow_up_turn',
+                }
+              : {
+                  ok: false,
+                  reasonRef: 'continuation.failed.follow_up_turn',
+                }
+          },
+          dispatchGoalContinuation: async candidate => {
+            await omniHandlers.requestGoalContinuationAfterCompletedRun(
+              env,
+              ctx,
+              candidate.runId,
+            )
+
+            return {
+              ok: true,
+              reasonRef: 'continuation.dispatched.goal_continuation',
+            }
+          },
+          listStoppedRunsForUser: (userId, sinceIso, limit) =>
+            listAutopilotContinuationRunCandidates(openAgentsDatabase(env), {
+              limit,
+              sinceIso,
+              userId,
+            }),
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          store: makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
+        }),
       ),
       observedEffect(
         'TipsSweep.runTick',

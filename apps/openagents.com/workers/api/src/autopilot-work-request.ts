@@ -142,6 +142,7 @@ export const OpenAgentsAutopilotWorkState = S.Literals([
   'queued_or_running',
   'rejected',
   'revision_required',
+  'scheduled',
 ])
 export type OpenAgentsAutopilotWorkState =
   typeof OpenAgentsAutopilotWorkState.Type
@@ -237,12 +238,21 @@ export class OpenAgentsAutopilotPromiseRef extends S.Class<OpenAgentsAutopilotPr
   registryVersion: S.String,
 }) {}
 
+export class OpenAgentsAutopilotScheduledLaunchPolicy extends S.Class<OpenAgentsAutopilotScheduledLaunchPolicy>(
+  'OpenAgentsAutopilotScheduledLaunchPolicy',
+)({
+  kind: S.Literal('scheduled'),
+  launchAt: S.String,
+  launchWindowMinutes: S.optionalKey(S.Number),
+}) {}
+
 export class OpenAgentsAutopilotWorkRequest extends S.Class<OpenAgentsAutopilotWorkRequest>(
   'OpenAgentsAutopilotWorkRequest',
 )({
   caller: OpenAgentsAutopilotCaller,
   clientRequestRef: S.String,
   intent: OpenAgentsAutopilotWorkRequestIntent,
+  launchPolicy: S.optionalKey(OpenAgentsAutopilotScheduledLaunchPolicy),
   mode: OpenAgentsAutopilotWorkRequestMode,
   paymentPolicy: OpenAgentsAutopilotPaymentPolicy,
   placementPolicy: OpenAgentsAutopilotPlacementPolicy,
@@ -515,6 +525,46 @@ const assertPlacementPolicy = (
   }
 }
 
+const isoUtcTimestampPattern =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?Z$/
+
+export const AUTOPILOT_SCHEDULED_LAUNCH_MIN_WINDOW_MINUTES = 5
+export const AUTOPILOT_SCHEDULED_LAUNCH_MAX_WINDOW_MINUTES = 24 * 60
+
+const assertLaunchPolicy = (
+  launchPolicy: OpenAgentsAutopilotScheduledLaunchPolicy | undefined,
+): void => {
+  if (launchPolicy === undefined) {
+    return
+  }
+
+  if (
+    !isoUtcTimestampPattern.test(launchPolicy.launchAt) ||
+    !Number.isFinite(Date.parse(launchPolicy.launchAt))
+  ) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason:
+        'launchPolicy.launchAt must be a UTC ISO timestamp like 2026-06-12T03:00:00Z.',
+    })
+  }
+
+  if (
+    launchPolicy.launchWindowMinutes !== undefined &&
+    (
+      !Number.isInteger(launchPolicy.launchWindowMinutes) ||
+      launchPolicy.launchWindowMinutes <
+        AUTOPILOT_SCHEDULED_LAUNCH_MIN_WINDOW_MINUTES ||
+      launchPolicy.launchWindowMinutes >
+        AUTOPILOT_SCHEDULED_LAUNCH_MAX_WINDOW_MINUTES
+    )
+  ) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason:
+        'launchPolicy.launchWindowMinutes must be an integer between 5 and 1440.',
+    })
+  }
+}
+
 export const assertOpenAgentsAutopilotWorkRequest = (
   request: OpenAgentsAutopilotWorkRequest,
 ): void => {
@@ -535,6 +585,7 @@ export const assertOpenAgentsAutopilotWorkRequest = (
   assertPlacementPolicy(request.placementPolicy)
   assertPaymentPolicy(request.paymentPolicy)
   assertPromiseRef(request.promiseRef)
+  assertLaunchPolicy(request.launchPolicy)
 }
 
 const promiseIdPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)*\.v\d+$/

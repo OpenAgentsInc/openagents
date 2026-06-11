@@ -1568,6 +1568,7 @@ export const AutopilotWorkState = S.Literals([
   'queued_or_running',
   'rejected',
   'revision_required',
+  'scheduled',
 ])
 export type AutopilotWorkState = typeof AutopilotWorkState.Type
 
@@ -1581,9 +1582,93 @@ export const AutopilotWorkEventKind = S.Literals([
   'rejected',
   'revision_required',
   'running',
+  'scheduled',
   'settled',
 ])
 export type AutopilotWorkEventKind = typeof AutopilotWorkEventKind.Type
+
+export const AutopilotMorningReportGroup = S.Literals([
+  'awaiting_decision',
+  'blocked',
+  'launched',
+  'reviewed',
+  'running',
+  'scheduled',
+])
+export type AutopilotMorningReportGroup =
+  typeof AutopilotMorningReportGroup.Type
+
+export const AutopilotMorningReportWorkItem = S.Struct({
+  group: AutopilotMorningReportGroup,
+  scheduledLaunchAt: S.NullOr(S.String),
+  state: AutopilotWorkState,
+  taskRefs: S.Array(S.String),
+  updatedAt: S.String,
+  workOrderRef: S.String,
+})
+export type AutopilotMorningReportWorkItem =
+  typeof AutopilotMorningReportWorkItem.Type
+
+export const AutopilotMorningReportContinuation = S.Struct({
+  attempt: S.Number,
+  decision: S.Literals(['dispatched', 'failed', 'skipped']),
+  mode: S.Literals(['follow_up_turn', 'goal_continuation']),
+  occurredAt: S.String,
+  reasonRef: S.String,
+  runId: S.String,
+})
+export type AutopilotMorningReportContinuation =
+  typeof AutopilotMorningReportContinuation.Type
+
+export const AutopilotMorningReport = S.Struct({
+  continuations: S.Array(AutopilotMorningReportContinuation),
+  counts: S.Struct({
+    awaitingDecision: S.Number,
+    blocked: S.Number,
+    continuations: S.Number,
+    launched: S.Number,
+    reviewed: S.Number,
+    running: S.Number,
+    scheduled: S.Number,
+  }),
+  generatedAt: S.String,
+  reportRef: S.String,
+  sinceIso: S.String,
+  workItems: S.Array(AutopilotMorningReportWorkItem),
+})
+export type AutopilotMorningReport = typeof AutopilotMorningReport.Type
+
+export const AutopilotMorningReportResponse = S.Struct({
+  report: AutopilotMorningReport,
+})
+export type AutopilotMorningReportResponse =
+  typeof AutopilotMorningReportResponse.Type
+
+export const AutopilotMorningReportIdle = ts('AutopilotMorningReportIdle', {})
+export const AutopilotMorningReportLoading = ts(
+  'AutopilotMorningReportLoading',
+  {},
+)
+export const AutopilotMorningReportLoaded = ts(
+  'AutopilotMorningReportLoaded',
+  {
+    response: AutopilotMorningReportResponse,
+  },
+)
+export const AutopilotMorningReportFailed = ts(
+  'AutopilotMorningReportFailed',
+  {
+    error: S.String,
+  },
+)
+export const AutopilotMorningReportState = S.Union([
+  AutopilotMorningReportIdle,
+  AutopilotMorningReportLoading,
+  AutopilotMorningReportLoaded,
+  AutopilotMorningReportFailed,
+])
+export type AutopilotMorningReportState =
+  typeof AutopilotMorningReportState.Type
 
 export const AutopilotWorkReviewAction = S.Literals([
   'accept',
@@ -2686,6 +2771,7 @@ export const Model = ts('LoggedIn', {
   adminOverview: AdminOverviewState,
   adminSiteDeploymentAction: AdminSiteDeploymentActionState,
   auth: AuthBootstrap,
+  autopilotMorningReport: AutopilotMorningReportState,
   autopilotWorkBriefing: AutopilotWorkBriefingState,
   autopilotWorkDetail: AutopilotWorkDetailState,
   autopilotWorkEvents: AutopilotWorkEventsState,
@@ -3223,6 +3309,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
       scopeKey: '',
     }),
     auth,
+    autopilotMorningReport: AutopilotMorningReportIdle(),
     autopilotWorkBriefing: AutopilotWorkBriefingIdle(),
     autopilotWorkDetail: AutopilotWorkDetailIdle(),
     autopilotWorkEvents: AutopilotWorkEventsIdle(),

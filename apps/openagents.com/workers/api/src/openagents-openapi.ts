@@ -202,10 +202,19 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe homepage JSON discovery document with canonical docs and live data endpoint refs for the public homepage.',
   ),
   AutopilotWorkRequest: objectSummary(
-    'Typed openagents.autopilot_work_request.v1 delegated coding-work request. It carries public-safe task, repository, placement, payment, and forum policy refs only. Do not include secrets, raw prompts, private repo archives, raw logs, wallet material, invoices, preimages, or provider credentials.',
+    'Typed openagents.autopilot_work_request.v1 delegated coding-work request. It carries public-safe task, repository, placement, payment, and forum policy refs only, plus an optional launchPolicy ({kind: scheduled, launchAt UTC ISO, launchWindowMinutes 5-1440}) that queues the order for a later launch with placement decided at launch time. Do not include secrets, raw prompts, private repo archives, raw logs, wallet material, invoices, preimages, or provider credentials.',
   ),
   AutopilotWorkEnvelope: objectSummary(
-    'Autopilot work-order response envelope with workOrderRef, clientRequestRef, statusUrlRef, eventStreamRef, task refs, typed task records, assignment intents, controlled no-spend Pylon assignment intents, controlled SHC/cloud fallback lease intents, auditable placement policy record, Pylon-aware placement decision with refusal and retry state, nextAction, access request refs, typed accessRequirements, repositoryAuthorities, deterministic quote, funding projection, optional paymentChallengeRef, idempotent flag, and state.',
+    'Autopilot work-order response envelope with workOrderRef, clientRequestRef, statusUrlRef, eventStreamRef, task refs, typed task records, assignment intents, controlled no-spend Pylon assignment intents, controlled SHC/cloud fallback lease intents, auditable placement policy record, Pylon-aware placement decision with refusal and retry state, nextAction, access request refs, typed accessRequirements, repositoryAuthorities, deterministic quote, funding projection, optional paymentChallengeRef, optional scheduledLaunch projection (launchAt, windowMinutes, pending/dispatched/expired launchState, reason refs), idempotent flag, and state (which may be scheduled while a launch is pending).',
+  ),
+  AutopilotContinuationPolicyEnvelope: objectSummary(
+    'Owner auto-continuation policy projection: enabled flag, maxContinuationsPerRun, maxContinuationsPerDay, declared budget-gate refs (billing minimum run credits, goal token budget, max-continuation counters), generatedAt, and updatedAt. The policy lets stopped Autopilot runs resume unattended under budget gates; it grants no spend authority and never overrides billing or goal budget limits.',
+  ),
+  AutopilotContinuationPolicyUpdateRequest: objectSummary(
+    'Auto-continuation policy update: enabled (boolean) plus optional maxContinuationsPerRun (1-10) and maxContinuationsPerDay (1-50) integer counters. Continuations remain bounded by billing balance and goal token budgets regardless of these counters.',
+  ),
+  AutopilotMorningReportEnvelope: objectSummary(
+    'Owner "what ran while you slept" report: work orders grouped as awaiting_decision, reviewed, blocked, running, launched, and scheduled (with launchAt), recent auto-continuation attempts (run, mode, decision, attempt, reason ref), group counts, sinceIso, generatedAt, and the declared live_at_read staleness contract. Read projection only; it grants no review, spend, payout, or settlement authority.',
   ),
   AutopilotWorkEventsEnvelope: objectSummary(
     'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',
@@ -4365,6 +4374,64 @@ const paths = (): JsonSchema => ({
         '402': okJson(
           'Payment required. Follow the advertised OpenAgents MDK checkout or L402 path, then retry with public-safe proof refs only.',
           '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/continuation-policy': {
+    get: operation({
+      operationId: 'getAutopilotContinuationPolicy',
+      summary: 'Read auto-continuation policy',
+      description:
+        'Returns the authenticated owner auto-continuation policy: whether stopped Autopilot runs may resume unattended, the max-continuations counters, and the declared budget-gate refs. Continuation is always bounded by billing balance and goal token budgets. Requires a browser session or an owner-granted agent token with customer_orders.read.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      responses: {
+        '200': okJson(
+          'Auto-continuation policy projection.',
+          '#/components/schemas/AutopilotContinuationPolicyEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    put: operation({
+      operationId: 'updateAutopilotContinuationPolicy',
+      summary: 'Update auto-continuation policy',
+      description:
+        'Sets the authenticated owner auto-continuation policy: enabled flag plus bounded maxContinuationsPerRun (1-10) and maxContinuationsPerDay (1-50) counters. Enabling continuation converts the operator-only continue semantics into product behavior for the owner runs, still gated by billing minimum run credits and goal token budgets. Requires a browser session or an owner-granted agent token with customer_orders.write.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/AutopilotContinuationPolicyUpdateRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Updated auto-continuation policy projection.',
+          '#/components/schemas/AutopilotContinuationPolicyEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/morning-report': {
+    get: operation({
+      operationId: 'getAutopilotMorningReport',
+      summary: 'Read "what ran while you slept" report',
+      description:
+        'Returns the owner morning report over recent Autopilot work orders and auto-continuation attempts: delivered work awaiting decision, reviewed, blocked, running, launched, and scheduled groups plus continuation attempts with typed reason refs. Accepts an optional sinceHours query (1-48, default 12). Live-at-read projection with generatedAt and a declared staleness contract; it grants no review, spend, payout, or settlement authority. Requires a browser session or an owner-granted agent token with customer_orders.read.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      parameters: [
+        queryParam(
+          'sinceHours',
+          'Optional lookback window in hours (1-48, default 12).',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Autopilot morning report envelope.',
+          '#/components/schemas/AutopilotMorningReportEnvelope',
         ),
         ...errorResponses(),
       },

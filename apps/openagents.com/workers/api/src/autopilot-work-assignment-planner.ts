@@ -18,6 +18,7 @@ export type AutopilotWorkAssignmentPlannerState =
   | 'payment_required'
   | 'queued_or_running'
   | 'ready_for_assignment'
+  | 'scheduled'
 
 export type AutopilotWorkAssignmentIntentProjection = Readonly<{
   accessState: AutopilotWorkTaskRecordProjection['accessState']
@@ -79,6 +80,10 @@ const plannerStateForTask = (
     return 'queued_or_running'
   }
 
+  if (task.lifecycleState === 'scheduled') {
+    return 'scheduled'
+  }
+
   if (task.lifecycleState === 'ready_for_assignment') {
     return task.paymentState === 'funded' ? 'paid_ready' : 'free_slice'
   }
@@ -118,6 +123,11 @@ const plannerReasonRefsForTask = (
       return ['assignment.queued_or_running']
     case 'ready_for_assignment':
       return ['assignment.ready_for_assignment']
+    case 'scheduled':
+      return [
+        'assignment.blocked.scheduled_launch_pending',
+        'scheduled_launch.placement_at_launch_time',
+      ]
   }
 }
 

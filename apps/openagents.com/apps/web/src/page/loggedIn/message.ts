@@ -33,6 +33,7 @@ import {
   AgentRunLaunchResponse,
   ArtanisOperatorApprovalAction,
   ArtanisOperatorConsoleResponse,
+  AutopilotMorningReportResponse,
   AutopilotWorkBriefingResponse,
   AutopilotWorkComposerField,
   AutopilotWorkEventsResponse,
@@ -295,6 +296,21 @@ export const SucceededLoadAutopilotWorkList = m(
 export const FailedLoadAutopilotWorkList = m('FailedLoadAutopilotWorkList', {
   error: S.String,
 })
+export const RequestedLoadAutopilotMorningReport = m(
+  'RequestedLoadAutopilotMorningReport',
+)
+export const SucceededLoadAutopilotMorningReport = m(
+  'SucceededLoadAutopilotMorningReport',
+  {
+    response: AutopilotMorningReportResponse,
+  },
+)
+export const FailedLoadAutopilotMorningReport = m(
+  'FailedLoadAutopilotMorningReport',
+  {
+    error: S.String,
+  },
+)
 export const UpdatedAutopilotWorkComposerField = m(
   'UpdatedAutopilotWorkComposerField',
   {
@@ -1134,6 +1150,9 @@ export const Message = S.Union([
   RequestedLoadAutopilotWorkList,
   SucceededLoadAutopilotWorkList,
   FailedLoadAutopilotWorkList,
+  RequestedLoadAutopilotMorningReport,
+  SucceededLoadAutopilotMorningReport,
+  FailedLoadAutopilotMorningReport,
   UpdatedAutopilotWorkComposerField,
   SubmittedAutopilotWorkComposer,
   SucceededAutopilotWorkComposer,

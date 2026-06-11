@@ -15,6 +15,8 @@ import {
 } from '../message'
 import type {
   AutopilotMissionBriefing,
+  AutopilotMorningReport,
+  AutopilotMorningReportGroup,
   AutopilotWorkEvent,
   AutopilotWorkProjection,
   AutopilotWorkReviewAction,
@@ -41,6 +43,7 @@ const stateTone = (
     M.when('queued_or_running', () => 'info' as const),
     M.when('rejected', () => 'negative' as const),
     M.when('revision_required', () => 'warning' as const),
+    M.when('scheduled', () => 'info' as const),
     M.exhaustive,
   )
 
@@ -291,6 +294,137 @@ const composerView = (model: Model): Html => {
   )
 }
 
+const morningReportGroupLabel = (
+  group: AutopilotMorningReportGroup,
+): string =>
+  M.value(group).pipe(
+    M.when('awaiting_decision', () => 'Awaiting decision'),
+    M.when('blocked', () => 'Blocked'),
+    M.when('launched', () => 'Launched'),
+    M.when('reviewed', () => 'Reviewed'),
+    M.when('running', () => 'Running'),
+    M.when('scheduled', () => 'Scheduled'),
+    M.exhaustive,
+  )
+
+const morningReportGroupTone = (
+  group: AutopilotMorningReportGroup,
+): ReturnType<typeof stateTone> =>
+  M.value(group).pipe(
+    M.when('awaiting_decision', () => 'warning' as const),
+    M.when('blocked', () => 'negative' as const),
+    M.when('launched', () => 'info' as const),
+    M.when('reviewed', () => 'positive' as const),
+    M.when('running', () => 'info' as const),
+    M.when('scheduled', () => 'accent' as const),
+    M.exhaustive,
+  )
+
+const morningReportItemRow = (
+  item: AutopilotMorningReport['workItems'][number],
+): Html => {
+  const h = html<Message>()
+  const href = autopilotWorkDetailRouter({ workOrderRef: item.workOrderRef })
+
+  return h.a(
+    [
+      h.Href(href),
+      Ui.className<Message>(
+        'grid gap-2 border-b border-[#222] px-4 py-3 text-left no-underline last:border-b-0 hover:bg-[#080808] md:grid-cols-[9rem_minmax(0,1.4fr)_10rem] md:items-center',
+      ),
+    ],
+    [
+      h.div([], [
+        badge(morningReportGroupLabel(item.group), morningReportGroupTone(item.group)),
+      ]),
+      h.div(
+        [
+          Ui.className<Message>(
+            'overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white/75',
+          ),
+        ],
+        [item.workOrderRef],
+      ),
+      h.div([Ui.className<Message>('text-xs text-white/45 md:text-right')], [
+        item.scheduledLaunchAt === null
+          ? formatIsoDateTime(item.updatedAt)
+          : `Launch ${formatIsoDateTime(item.scheduledLaunchAt)}`,
+      ]),
+    ],
+  )
+}
+
+const morningReportContinuationRow = (
+  continuation: AutopilotMorningReport['continuations'][number],
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border-b border-[#222] px-4 py-3 last:border-b-0 md:grid-cols-[9rem_minmax(0,1.4fr)_10rem] md:items-center',
+      ),
+    ],
+    [
+      h.div([], [
+        badge(
+          continuation.decision === 'dispatched' ? 'Resumed' : 'Resume failed',
+          continuation.decision === 'dispatched' ? 'positive' : 'negative',
+        ),
+      ]),
+      h.div(
+        [
+          Ui.className<Message>(
+            'overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white/75',
+          ),
+        ],
+        [`${continuation.runId} - attempt ${continuation.attempt}`],
+      ),
+      h.div([Ui.className<Message>('text-xs text-white/45 md:text-right')], [
+        formatIsoDateTime(continuation.occurredAt),
+      ]),
+    ],
+  )
+}
+
+const morningReportPanel = (report: AutopilotMorningReport): Html => {
+  const h = html<Message>()
+  const rows = [
+    ...report.workItems.map(morningReportItemRow),
+    ...report.continuations.map(morningReportContinuationRow),
+  ]
+
+  return h.section([Ui.className<Message>('grid gap-3')], [
+    h.div([Ui.className<Message>('grid gap-1')], [
+      h.h2([Ui.className<Message>('m-0 text-base font-medium text-white/80')], [
+        'While you were away',
+      ]),
+      h.p([Ui.className<Message>('m-0 text-sm/6 text-white/45')], [
+        `Since ${formatIsoDateTime(report.sinceIso)} - ${report.counts.awaitingDecision} awaiting decision, ${report.counts.blocked} blocked, ${report.counts.scheduled} scheduled, ${report.counts.continuations} resumed`,
+      ]),
+    ]),
+    rows.length === 0
+      ? h.p([Ui.className<Message>('m-0 text-sm text-white/45')], [
+          'Nothing ran in this window.',
+        ])
+      : h.div([Ui.className<Message>('overflow-hidden border border-[#222]')], rows),
+  ])
+}
+
+const morningReportView = (model: Model): Html =>
+  M.value(model.autopilotMorningReport).pipe(
+    M.tags({
+      AutopilotMorningReportIdle: () =>
+        html<Message>().span([Ui.className<Message>('hidden')], []),
+      AutopilotMorningReportLoading: () =>
+        loadingView('Loading overnight summary...'),
+      AutopilotMorningReportFailed: ({ error }) => errorView(error),
+      AutopilotMorningReportLoaded: ({ response }) =>
+        morningReportPanel(response.report),
+    }),
+    M.exhaustive,
+  )
+
 const workRow = (
   summary: AutopilotWorkSummary,
   generatedAt: string,
@@ -370,6 +504,7 @@ const listLoadedView = (
         variant: 'secondary',
       }),
     ]),
+    morningReportView(model),
     workOrders.length === 0
       ? emptyView()
       : h.div(

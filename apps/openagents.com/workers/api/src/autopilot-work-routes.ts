@@ -85,6 +85,19 @@ import {
   type OpenAgentsAutopilotWorkState as OpenAgentsAutopilotWorkStateType,
   decodeOpenAgentsAutopilotWorkRequest,
 } from './autopilot-work-request'
+import {
+  type AutopilotWorkScheduledLaunchProjection,
+  AutopilotWorkScheduledLaunchRecord,
+  dispatchedScheduledLaunch,
+  expiredScheduledLaunch,
+  scheduledLaunchDue,
+  scheduledLaunchHoldsDispatch,
+  scheduledLaunchHorizonReason,
+  scheduledLaunchProjection,
+  scheduledLaunchRecordForRequest,
+  scheduledLaunchRetryAfterSeconds,
+  scheduledLaunchWindowExpired,
+} from './autopilot-work-scheduled-launch'
 
 type HttpResponse = globalThis.Response
 
@@ -258,6 +271,7 @@ export type AutopilotWorkTaskLifecycleState =
   | 'rejected'
   | 'ready_for_assignment'
   | 'revision_required'
+  | 'scheduled'
 
 export type AutopilotWorkTaskPlacementState =
   | 'accepted'
@@ -269,6 +283,7 @@ export type AutopilotWorkTaskPlacementState =
   | 'rejected'
   | 'ready_for_assignment'
   | 'revision_required'
+  | 'scheduled'
 
 export type AutopilotWorkTaskRecordProjection = Readonly<{
   acceptanceCriteriaRefs: ReadonlyArray<string>
@@ -300,6 +315,7 @@ export type AutopilotWorkOrderRecord = Readonly<{
   paymentChallengeRef: string | null
   request: OpenAgentsAutopilotWorkRequest
   reviewDecision: AutopilotWorkReviewDecisionRecord | null
+  scheduledLaunch: AutopilotWorkScheduledLaunchRecord | null
   state: OpenAgentsAutopilotWorkStateType
   statusUrlRef: string
   taskRefs: ReadonlyArray<string>
@@ -367,6 +383,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   quote: AutopilotWorkQuote
   repositoryAuthorities: ReadonlyArray<AutopilotWorkRepositoryAuthorityProjection>
   reviewDecision: AutopilotWorkReviewDecisionProjection | null
+  scheduledLaunch: AutopilotWorkScheduledLaunchProjection | null
   state: OpenAgentsAutopilotWorkStateType
   statusUrlRef: string
   taskRefs: ReadonlyArray<string>
@@ -385,6 +402,7 @@ export type AutopilotWorkEventKind =
   | 'rejected'
   | 'revision_required'
   | 'running'
+  | 'scheduled'
   | 'settled'
 
 export type AutopilotWorkEventProjection = Readonly<{
@@ -449,6 +467,18 @@ export type AutopilotWorkStore = Readonly<{
   readWorkOrderByIdempotency: (
     ownerUserId: string,
     idempotencyKeyHash: string,
+  ) => Promise<AutopilotWorkOrderRecord | undefined>
+  listPendingScheduledWorkOrders: (
+    input: Readonly<{ limit: number }>,
+  ) => Promise<ReadonlyArray<AutopilotWorkOrderRecord>>
+  recordScheduledLaunchTransition: (
+    input: Readonly<{
+      ownerUserId: string
+      scheduledLaunch: AutopilotWorkScheduledLaunchRecord
+      state: OpenAgentsAutopilotWorkStateType
+      updatedAt: string
+      workOrderRef: string
+    }>,
   ) => Promise<AutopilotWorkOrderRecord | undefined>
 }>
 
@@ -1502,6 +1532,10 @@ const lifecycleStateForTask = (
     return 'payment_required'
   }
 
+  if (scheduledLaunchHoldsDispatch(record.scheduledLaunch)) {
+    return 'scheduled'
+  }
+
   switch (record.state) {
     case 'accepted':
       return 'accepted'
@@ -1522,6 +1556,8 @@ const lifecycleStateForTask = (
     case 'access_required':
     case 'payment_required':
       return 'ready_for_assignment'
+    case 'scheduled':
+      return 'scheduled'
   }
 }
 
@@ -1547,6 +1583,8 @@ const placementStateForLifecycle = (
       return 'ready_for_assignment'
     case 'revision_required':
       return 'revision_required'
+    case 'scheduled':
+      return 'scheduled'
   }
 }
 
@@ -1585,6 +1623,7 @@ const nextActionForRecord = (
   record: AutopilotWorkOrderRecord,
   funding: AutopilotWorkFundingProjection,
   placementDecision: AutopilotPlacementDecisionProjection,
+  nowIso: string,
 ): AutopilotWorkNextActionProjection => {
   if (record.state === 'accepted') {
     return {
@@ -1631,6 +1670,24 @@ const nextActionForRecord = (
     }
   }
 
+  if (
+    record.scheduledLaunch !== null &&
+    scheduledLaunchHoldsDispatch(record.scheduledLaunch)
+  ) {
+    return {
+      callerActionRefs: ['caller.wait_for_scheduled_launch'],
+      reasonRefs: [
+        'next_action.scheduled_launch_pending',
+        'scheduled_launch.placement_at_launch_time',
+      ],
+      retryAfterSeconds: scheduledLaunchRetryAfterSeconds(
+        record.scheduledLaunch,
+        nowIso,
+      ),
+      state: 'retry_later',
+    }
+  }
+
   if (placementDecision.source === 'none_available') {
     return {
       callerActionRefs: placementDecision.callerActionRefs,
@@ -1652,6 +1709,7 @@ const nextActionForRecord = (
 
 const stateForRequest = (
   request: OpenAgentsAutopilotWorkRequest,
+  scheduledLaunch: AutopilotWorkScheduledLaunchRecord | null,
 ): OpenAgentsAutopilotWorkStateType => {
   if (accessRequirementsForRequest(request).length > 0) {
     return 'access_required'
@@ -1659,6 +1717,10 @@ const stateForRequest = (
 
   if (paymentChallengeRefForRequest(request) !== null) {
     return 'payment_required'
+  }
+
+  if (scheduledLaunchHoldsDispatch(scheduledLaunch)) {
+    return 'scheduled'
   }
 
   return 'accepted_free_slice'
@@ -1690,7 +1752,7 @@ const projectionForRecord = (
     funding,
     generatedAt: nowIso,
     idempotent,
-    nextAction: nextActionForRecord(record, funding, placementDecision),
+    nextAction: nextActionForRecord(record, funding, placementDecision, nowIso),
     paymentChallenge: paymentChallengeForRecord(record),
     paymentChallengeRef: record.paymentChallengeRef,
     placementDecision,
@@ -1708,6 +1770,7 @@ const projectionForRecord = (
     quote: makeAutopilotWorkQuote(record.request),
     repositoryAuthorities: repositoryAuthoritiesForRequest(record.request),
     reviewDecision: reviewDecisionProjectionForRecord(record.reviewDecision),
+    scheduledLaunch: scheduledLaunchProjection(record.scheduledLaunch),
     state: record.state,
     statusUrlRef: record.statusUrlRef,
     taskRefs: record.taskRefs,
@@ -1904,7 +1967,8 @@ const maybeExecuteReadyWork = <Bindings extends AutopilotWorkRouteEnv>(
       dependencies.executeReadyWork === undefined ||
       input.record.executionCloseout !== null ||
       input.record.state === 'payment_required' ||
-      input.record.state === 'access_required'
+      input.record.state === 'access_required' ||
+      scheduledLaunchHoldsDispatch(input.record.scheduledLaunch)
     ) {
       return input.record
     }
@@ -2091,7 +2155,8 @@ const maybeDispatchPylonAssignments = <Bindings extends AutopilotWorkRouteEnv>(
       input.record.executionCloseout !== null ||
       input.record.state === 'access_required' ||
       input.record.state === 'payment_required' ||
-      input.record.state === 'queued_or_running'
+      input.record.state === 'queued_or_running' ||
+      scheduledLaunchHoldsDispatch(input.record.scheduledLaunch)
     ) {
       return input.record
     }
@@ -2157,6 +2222,159 @@ const maybeDispatchPylonAssignments = <Bindings extends AutopilotWorkRouteEnv>(
     return dispatched ?? input.record
   })
 
+export type AutopilotScheduledLaunchDispatchReport = Readonly<{
+  dispatchedWorkOrderRefs: ReadonlyArray<string>
+  expiredWorkOrderRefs: ReadonlyArray<string>
+  generatedAt: string
+  heldWorkOrders: ReadonlyArray<Readonly<{
+    reasonRef: string
+    workOrderRef: string
+  }>>
+}>
+
+const releasedStateForScheduledRecord = (
+  record: AutopilotWorkOrderRecord,
+): OpenAgentsAutopilotWorkStateType =>
+  record.state === 'scheduled' ? 'accepted_free_slice' : record.state
+
+const dispatchableScheduledStates: ReadonlySet<OpenAgentsAutopilotWorkStateType> =
+  new Set(['accepted_free_slice', 'paid_ready', 'scheduled'])
+
+export const dispatchDueScheduledAutopilotWork = <
+  Bindings extends AutopilotWorkRouteEnv,
+>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{ limit?: number; nowIso: string }>,
+): Effect.Effect<AutopilotScheduledLaunchDispatchReport> =>
+  Effect.gen(function* () {
+    const nowIso = input.nowIso
+    const store = dependencies.makeStore(env)
+    const pending = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: errorReason(error),
+        }),
+      try: () =>
+        store.listPendingScheduledWorkOrders({ limit: input.limit ?? 50 }),
+    })
+    const dispatchedWorkOrderRefs: Array<string> = []
+    const expiredWorkOrderRefs: Array<string> = []
+    const heldWorkOrders: Array<{ reasonRef: string; workOrderRef: string }> =
+      []
+    const pylonRegistrations = yield* routePylonRegistrations(
+      dependencies,
+      env,
+    )
+
+    for (const record of pending) {
+      const scheduledLaunch = record.scheduledLaunch
+
+      if (
+        scheduledLaunch === null ||
+        !scheduledLaunchHoldsDispatch(scheduledLaunch)
+      ) {
+        continue
+      }
+
+      if (scheduledLaunchWindowExpired(scheduledLaunch, nowIso)) {
+        yield* Effect.tryPromise({
+          catch: error =>
+            new AutopilotWorkStoreError({
+              kind: 'storage_error',
+              reason: errorReason(error),
+            }),
+          try: () =>
+            store.recordScheduledLaunchTransition({
+              ownerUserId: record.ownerUserId,
+              scheduledLaunch: expiredScheduledLaunch(scheduledLaunch, nowIso),
+              state: 'blocked',
+              updatedAt: nowIso,
+              workOrderRef: record.workOrderRef,
+            }),
+        })
+        expiredWorkOrderRefs.push(record.workOrderRef)
+        continue
+      }
+
+      if (!scheduledLaunchDue(scheduledLaunch, nowIso)) {
+        continue
+      }
+
+      if (!dispatchableScheduledStates.has(record.state)) {
+        heldWorkOrders.push({
+          reasonRef: `scheduled_launch.held.${record.state}`,
+          workOrderRef: record.workOrderRef,
+        })
+        continue
+      }
+
+      const released = yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: errorReason(error),
+          }),
+        try: () =>
+          store.recordScheduledLaunchTransition({
+            ownerUserId: record.ownerUserId,
+            scheduledLaunch: dispatchedScheduledLaunch(
+              scheduledLaunch,
+              nowIso,
+            ),
+            state: releasedStateForScheduledRecord(record),
+            updatedAt: nowIso,
+            workOrderRef: record.workOrderRef,
+          }),
+      })
+
+      if (released === undefined) {
+        heldWorkOrders.push({
+          reasonRef: 'scheduled_launch.held.transition_lost',
+          workOrderRef: record.workOrderRef,
+        })
+        continue
+      }
+
+      const executedRecord = yield* maybeExecuteReadyWork(dependencies, env, {
+        idempotent: false,
+        nowIso,
+        pylonRegistrations,
+        record: released,
+      })
+
+      yield* maybeDispatchPylonAssignments(dependencies, env, {
+        idempotent: false,
+        nowIso,
+        pylonRegistrations,
+        record: executedRecord,
+      })
+      dispatchedWorkOrderRefs.push(record.workOrderRef)
+    }
+
+    return {
+      dispatchedWorkOrderRefs,
+      expiredWorkOrderRefs,
+      generatedAt: nowIso,
+      heldWorkOrders,
+    }
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed({
+        dispatchedWorkOrderRefs: [],
+        expiredWorkOrderRefs: [],
+        generatedAt: input.nowIso,
+        heldWorkOrders: [
+          {
+            reasonRef: `scheduled_launch.dispatch_failed.${error.kind}`,
+            workOrderRef: 'scheduled_launch.dispatch_batch',
+          },
+        ],
+      }),
+    ),
+  )
+
 const terminalEventKindForState = (
   state: OpenAgentsAutopilotWorkStateType,
 ): AutopilotWorkEventKind | undefined => {
@@ -2180,6 +2398,8 @@ const terminalEventKindForState = (
       return 'rejected'
     case 'revision_required':
       return 'revision_required'
+    case 'scheduled':
+      return 'scheduled'
     case 'accepted_free_slice':
       return undefined
   }
@@ -2231,6 +2451,10 @@ const buildWorkOrderRecord = (
 ): AutopilotWorkOrderRecord => {
   const workOrderRef = workOrderRefForId(input.id)
   const paymentChallengeRef = paymentChallengeRefForRequest(input.request)
+  const scheduledLaunch = scheduledLaunchRecordForRequest(
+    input.request,
+    input.nowIso,
+  )
 
   return {
     accessRequestRefs: accessRequestRefsForRequest(input.request),
@@ -2248,7 +2472,8 @@ const buildWorkOrderRecord = (
     paymentChallengeRef,
     request: input.request,
     reviewDecision: null,
-    state: stateForRequest(input.request),
+    scheduledLaunch,
+    state: stateForRequest(input.request, scheduledLaunch),
     statusUrlRef: statusUrlRefForWorkOrder(workOrderRef),
     taskRefs: input.request.tasks.map(task => task.taskRef),
     updatedAt: input.nowIso,
@@ -2368,6 +2593,17 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       ownerUserId: auth.ownerUserId,
       request: workRequest,
     })
+    const horizonReason = scheduledLaunchHorizonReason(
+      record.scheduledLaunch,
+      nowIso,
+    )
+
+    if (horizonReason !== undefined) {
+      return yield* new AutopilotWorkStoreError({
+        kind: 'validation_error',
+        reason: horizonReason,
+      })
+    }
     const proof = yield* verifyBuyerPaymentProofFromRequest(
       dependencies,
       env,
@@ -2994,6 +3230,15 @@ const reviewDecisionFromRowValue = (
       )
     : null
 
+const scheduledLaunchFromRowValue = (
+  value: unknown,
+): AutopilotWorkScheduledLaunchRecord | null =>
+  typeof value === 'string' && value.trim() !== ''
+    ? S.decodeUnknownSync(AutopilotWorkScheduledLaunchRecord)(
+        parseJsonUnknown(value),
+      )
+    : null
+
 const recordFromRow = (
   row: Readonly<Record<string, unknown>>,
 ): AutopilotWorkOrderRecord => ({
@@ -3023,6 +3268,7 @@ const recordFromRow = (
     parseJsonUnknown(String(row.request_json)),
   ),
   reviewDecision: reviewDecisionFromRowValue(row.review_decision_json),
+  scheduledLaunch: scheduledLaunchFromRowValue(row.scheduled_launch_json),
   state: S.decodeUnknownSync(OpenAgentsAutopilotWorkState)(row.state),
   statusUrlRef: String(row.status_url_ref),
   taskRefs: parseJsonStringArray(String(row.task_refs_json)),
@@ -3067,12 +3313,13 @@ export const makeD1AutopilotWorkStore = (
           buyer_payment_proof_ref,
           payment_challenge_ref,
           placement_policy_json,
+          scheduled_launch_json,
           status_url_ref,
           event_stream_ref,
           created_at,
           updated_at,
           archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         record.id,
@@ -3089,6 +3336,9 @@ export const makeD1AutopilotWorkStore = (
         record.buyerPaymentProofRef,
         record.paymentChallengeRef,
         JSON.stringify(record.request.placementPolicy),
+        record.scheduledLaunch === null
+          ? null
+          : JSON.stringify(record.scheduledLaunch),
         record.statusUrlRef,
         record.eventStreamRef,
         record.createdAt,
@@ -3122,7 +3372,7 @@ export const makeD1AutopilotWorkStore = (
          WHERE work_order_ref = ?
            AND owner_user_id = ?
            AND archived_at IS NULL
-           AND state NOT IN ('access_required', 'payment_required', 'delivered')`,
+           AND state NOT IN ('access_required', 'payment_required', 'delivered', 'scheduled')`,
       )
       .bind(input.updatedAt, input.workOrderRef, input.ownerUserId)
       .run()
@@ -3313,6 +3563,65 @@ export const makeD1AutopilotWorkStore = (
          LIMIT 1`,
       )
       .bind(ownerUserId, idempotencyKeyHash)
+      .first<Record<string, unknown>>()
+
+    return row === null ? undefined : recordFromRow(row)
+  },
+  listPendingScheduledWorkOrders: async input => {
+    const rows = await db
+      .prepare(
+        `SELECT *
+         FROM autopilot_work_orders
+         WHERE scheduled_launch_json IS NOT NULL
+           AND archived_at IS NULL
+           AND state IN (
+             'scheduled',
+             'accepted_free_slice',
+             'paid_ready',
+             'access_required',
+             'payment_required'
+           )
+         ORDER BY created_at ASC
+         LIMIT ?`,
+      )
+      .bind(input.limit)
+      .all<Record<string, unknown>>()
+
+    return (rows.results ?? [])
+      .map(recordFromRow)
+      .filter(record => scheduledLaunchHoldsDispatch(record.scheduledLaunch))
+  },
+  recordScheduledLaunchTransition: async input => {
+    await db
+      .prepare(
+        `UPDATE autopilot_work_orders
+         SET scheduled_launch_json = ?,
+             state = ?,
+             updated_at = ?
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+           AND scheduled_launch_json IS NOT NULL`,
+      )
+      .bind(
+        JSON.stringify(input.scheduledLaunch),
+        input.state,
+        input.updatedAt,
+        input.workOrderRef,
+        input.ownerUserId,
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `SELECT *
+         FROM autopilot_work_orders
+         WHERE work_order_ref = ?
+           AND owner_user_id = ?
+           AND archived_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(input.workOrderRef, input.ownerUserId)
       .first<Record<string, unknown>>()
 
     return row === null ? undefined : recordFromRow(row)

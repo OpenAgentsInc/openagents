@@ -9,6 +9,7 @@ import {
 import {
   FailedAutopilotWorkReview,
   FailedAutopilotWorkComposer,
+  FailedLoadAutopilotMorningReport,
   FailedLoadAutopilotWorkBriefing,
   FailedLoadAutopilotWorkDetail,
   FailedLoadAutopilotWorkEvents,
@@ -16,6 +17,7 @@ import {
   Message,
   SucceededAutopilotWorkComposer,
   SucceededAutopilotWorkReview,
+  SucceededLoadAutopilotMorningReport,
   SucceededLoadAutopilotWorkBriefing,
   SucceededLoadAutopilotWorkDetail,
   SucceededLoadAutopilotWorkEvents,
@@ -23,6 +25,10 @@ import {
 } from '../message'
 import {
   AUTOPILOT_WORK_LIST_PROMISE_ID,
+  AutopilotMorningReportFailed,
+  AutopilotMorningReportLoaded,
+  AutopilotMorningReportLoading,
+  AutopilotMorningReportResponse,
   AutopilotWorkBriefingFailed,
   AutopilotWorkBriefingLoaded,
   AutopilotWorkBriefingLoading,
@@ -66,6 +72,9 @@ const autopilotWorkEventsPath = (workOrderRef: string): string =>
 
 const autopilotWorkBriefingPath = (workOrderRef: string): string =>
   `${autopilotWorkPath(workOrderRef)}/briefing`
+
+const autopilotMorningReportPath = (): string =>
+  '/api/autopilot/morning-report'
 
 const reviewRefs = (
   action: AutopilotWorkReviewAction,
@@ -192,6 +201,36 @@ export const LoadAutopilotWorkList = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadAutopilotWorkList({
+          error: errorMessageFromUnknown(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadAutopilotMorningReport = Command.define(
+  'LoadAutopilotMorningReport',
+  {},
+  SucceededLoadAutopilotMorningReport,
+  FailedLoadAutopilotMorningReport,
+)(() =>
+  Effect.gen(function* () {
+    const response = yield* requestJson({
+      init: {
+        cache: 'no-store',
+        credentials: 'include',
+        headers: { accept: 'application/json' },
+      },
+      name: 'loggedIn.autopilotWork.morningReport.load',
+      request: autopilotMorningReportPath(),
+      schema: AutopilotMorningReportResponse,
+    })
+
+    return SucceededLoadAutopilotMorningReport({ response })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadAutopilotMorningReport({
           error: errorMessageFromUnknown(error),
         }),
       ),
@@ -401,8 +440,11 @@ export const updateAutopilotWork = (
     withUpdateReturn,
     M.tags({
       RequestedLoadAutopilotWorkList: () => [
-        evo(model, { autopilotWorkList: () => AutopilotWorkListLoading() }),
-        [LoadAutopilotWorkList({})],
+        evo(model, {
+          autopilotMorningReport: () => AutopilotMorningReportLoading(),
+          autopilotWorkList: () => AutopilotWorkListLoading(),
+        }),
+        [LoadAutopilotWorkList({}), LoadAutopilotMorningReport({})],
         Option.none(),
       ],
       SucceededLoadAutopilotWorkList: ({ response }) => [
@@ -415,6 +457,29 @@ export const updateAutopilotWork = (
       FailedLoadAutopilotWorkList: ({ error }) => [
         evo(model, {
           autopilotWorkList: () => AutopilotWorkListFailed({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
+      RequestedLoadAutopilotMorningReport: () => [
+        evo(model, {
+          autopilotMorningReport: () => AutopilotMorningReportLoading(),
+        }),
+        [LoadAutopilotMorningReport({})],
+        Option.none(),
+      ],
+      SucceededLoadAutopilotMorningReport: ({ response }) => [
+        evo(model, {
+          autopilotMorningReport: () =>
+            AutopilotMorningReportLoaded({ response }),
+        }),
+        [],
+        Option.none(),
+      ],
+      FailedLoadAutopilotMorningReport: ({ error }) => [
+        evo(model, {
+          autopilotMorningReport: () =>
+            AutopilotMorningReportFailed({ error }),
         }),
         [],
         Option.none(),

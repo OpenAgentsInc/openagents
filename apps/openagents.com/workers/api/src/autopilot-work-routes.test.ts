@@ -23,6 +23,7 @@ import {
   type AutopilotWorkReviewDecisionRecord,
   type AutopilotWorkStore,
   AutopilotWorkStoreError,
+  dispatchDueScheduledAutopilotWork,
   makeAutopilotWorkRoutes,
   recordAutopilotWorkerCloseoutFromPylon,
   verifyAutopilotL402PaymentProofFromBuyerLedger,
@@ -214,6 +215,48 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
     ownerUserId: string,
     idempotencyKeyHash: string,
   ) => this.recordsByOwnerIdempotency.get(`${ownerUserId}:${idempotencyKeyHash}`)
+
+  listPendingScheduledWorkOrders = async (
+    input: Readonly<{ limit: number }>,
+  ) =>
+    [...this.records.values()]
+      .filter(record =>
+        record.scheduledLaunch !== null &&
+        record.scheduledLaunch.dispatchedAt === null &&
+        record.scheduledLaunch.expiredAt === null
+      )
+      .slice(0, input.limit)
+
+  recordScheduledLaunchTransition = async (input: Readonly<{
+    ownerUserId: string
+    scheduledLaunch: NonNullable<AutopilotWorkOrderRecord['scheduledLaunch']>
+    state: AutopilotWorkOrderRecord['state']
+    updatedAt: string
+    workOrderRef: string
+  }>) => {
+    const existing = this.records.get(input.workOrderRef)
+
+    if (
+      existing === undefined ||
+      existing.ownerUserId !== input.ownerUserId ||
+      existing.scheduledLaunch === null
+    ) {
+      return undefined
+    }
+
+    const updated = {
+      ...existing,
+      scheduledLaunch: input.scheduledLaunch,
+      state: input.state,
+      updatedAt: input.updatedAt,
+    }
+    const key = `${existing.ownerUserId}:${existing.idempotencyKeyHash}`
+
+    this.records.set(existing.workOrderRef, updated)
+    this.recordsByOwnerIdempotency.set(key, updated)
+
+    return updated
+  }
 }
 
 class MemoryPylonApiStore implements PylonApiStore {
@@ -3557,5 +3600,199 @@ describe('Autopilot work routes', () => {
     )
 
     expect(events.status).toBe(401)
+  })
+})
+
+describe('Autopilot scheduled launches (M6)', () => {
+  const scheduledLaunchFixture = (launchAt: string, windowMinutes?: number) => ({
+    ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+    launchPolicy: {
+      kind: 'scheduled' as const,
+      launchAt,
+      ...(windowMinutes === undefined
+        ? {}
+        : { launchWindowMinutes: windowMinutes }),
+    },
+  })
+
+  const scheduledJson = async (response: Response) =>
+    response.json() as Promise<Readonly<{
+      error?: string
+      reason?: string
+      work?: Readonly<{
+        nextAction?: Readonly<{
+          reasonRefs: ReadonlyArray<string>
+          retryAfterSeconds: number | null
+          state: string
+        }>
+        pylonAssignmentIntents?: ReadonlyArray<unknown>
+        scheduledLaunch?: Readonly<{
+          dispatchedAt: string | null
+          expiredAt: string | null
+          launchAt: string
+          launchState: string
+          windowMinutes: number
+        }> | null
+        state?: string
+        workOrderRef?: string
+      }>
+    }>>
+
+  let scheduledDispatchCounter = 0
+
+  const runScheduledDispatch = (
+    store: MemoryAutopilotWorkStore,
+    pylonApiStore: PylonApiStore,
+    nowIso: string,
+  ) =>
+    Effect.runPromise(
+      dispatchDueScheduledAutopilotWork<Record<string, unknown>>(
+        {
+          agentStore: () => agentStoreForScopes(),
+          makeId: () => `scheduled_dispatch_${++scheduledDispatchCounter}`,
+          makePylonApiStore: () => pylonApiStore,
+          makeStore: () => store,
+          nowIso: () => nowIso,
+        },
+        {},
+        { nowIso },
+      ),
+    )
+
+  test('a scheduled order holds placement and dispatch until launch time', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([pylonRegistration()])
+    const created = await route(store, '/api/autopilot/work', {
+      body: scheduledLaunchFixture('2026-06-10T03:00:00Z'),
+      idempotencyKey: 'idem-scheduled-launch-holds',
+      pylonApiStore,
+    })
+    const createdJson = await scheduledJson(created)
+
+    expect(created.status).toBe(202)
+    expect(createdJson.work?.state).toBe('scheduled')
+    expect(createdJson.work?.scheduledLaunch?.launchState).toBe('pending')
+    expect(createdJson.work?.nextAction?.state).toBe('retry_later')
+    expect(createdJson.work?.nextAction?.reasonRefs).toContain(
+      'next_action.scheduled_launch_pending',
+    )
+    expect(createdJson.work?.pylonAssignmentIntents).toEqual([])
+    expect(pylonApiStore.assignments.size).toBe(0)
+
+    const earlyReport = await runScheduledDispatch(
+      store,
+      pylonApiStore,
+      '2026-06-10T02:00:00.000Z',
+    )
+
+    expect(earlyReport.dispatchedWorkOrderRefs).toEqual([])
+    expect(pylonApiStore.assignments.size).toBe(0)
+
+    await pylonApiStore.upsertRegistration(
+      pylonRegistration({
+        latestHeartbeatAt: '2026-06-10T03:04:30.000Z',
+        updatedAt: '2026-06-10T03:04:30.000Z',
+      }),
+    )
+
+    const dueReport = await runScheduledDispatch(
+      store,
+      pylonApiStore,
+      '2026-06-10T03:05:00.000Z',
+    )
+    const workOrderRef = createdJson.work?.workOrderRef ?? ''
+    const released = await store.readWorkOrder(workOrderRef)
+
+    expect(dueReport.dispatchedWorkOrderRefs).toEqual([workOrderRef])
+    expect(released?.state).toBe('queued_or_running')
+    expect(released?.scheduledLaunch?.dispatchedAt).toBe(
+      '2026-06-10T03:05:00.000Z',
+    )
+    expect(pylonApiStore.assignments.size).toBe(1)
+  })
+
+  test('a missed launch window expires to blocked instead of launching late', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([pylonRegistration()])
+    const created = await route(store, '/api/autopilot/work', {
+      body: scheduledLaunchFixture('2026-06-10T03:00:00Z', 30),
+      idempotencyKey: 'idem-scheduled-launch-expires',
+      pylonApiStore,
+    })
+    const createdJson = await scheduledJson(created)
+    const workOrderRef = createdJson.work?.workOrderRef ?? ''
+    const report = await runScheduledDispatch(
+      store,
+      pylonApiStore,
+      '2026-06-10T04:00:00.000Z',
+    )
+    const expired = await store.readWorkOrder(workOrderRef)
+
+    expect(report.expiredWorkOrderRefs).toEqual([workOrderRef])
+    expect(report.dispatchedWorkOrderRefs).toEqual([])
+    expect(expired?.state).toBe('blocked')
+    expect(expired?.scheduledLaunch?.expiredAt).toBe('2026-06-10T04:00:00.000Z')
+    expect(pylonApiStore.assignments.size).toBe(0)
+  })
+
+  test('scheduled dispatch is idempotent after release', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([pylonRegistration()])
+    const created = await route(store, '/api/autopilot/work', {
+      body: scheduledLaunchFixture('2026-06-10T03:00:00Z'),
+      idempotencyKey: 'idem-scheduled-launch-idempotent',
+      pylonApiStore,
+    })
+    const createdJson = await scheduledJson(created)
+    const workOrderRef = createdJson.work?.workOrderRef ?? ''
+
+    await pylonApiStore.upsertRegistration(
+      pylonRegistration({
+        latestHeartbeatAt: '2026-06-10T03:04:30.000Z',
+        updatedAt: '2026-06-10T03:04:30.000Z',
+      }),
+    )
+    await runScheduledDispatch(store, pylonApiStore, '2026-06-10T03:05:00.000Z')
+
+    const repeatReport = await runScheduledDispatch(
+      store,
+      pylonApiStore,
+      '2026-06-10T03:10:00.000Z',
+    )
+
+    expect(repeatReport.dispatchedWorkOrderRefs).toEqual([])
+    expect(repeatReport.expiredWorkOrderRefs).toEqual([])
+    expect(pylonApiStore.assignments.size).toBe(1)
+    expect((await store.readWorkOrder(workOrderRef))?.state).toBe(
+      'queued_or_running',
+    )
+  })
+
+  test('a launchAt past the seven-day horizon is rejected', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const created = await route(store, '/api/autopilot/work', {
+      body: scheduledLaunchFixture('2026-06-30T03:00:00Z'),
+      idempotencyKey: 'idem-scheduled-launch-horizon',
+    })
+    const createdJson = await scheduledJson(created)
+
+    expect(created.status).toBe(400)
+    expect(createdJson.error).toBe('autopilot_work_validation_error')
+    expect(createdJson.reason).toContain('7 days')
+  })
+
+  test('a past launchAt launches immediately', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const pylonApiStore = new MemoryPylonApiStore([pylonRegistration()])
+    const created = await route(store, '/api/autopilot/work', {
+      body: scheduledLaunchFixture('2026-06-09T17:00:00Z'),
+      idempotencyKey: 'idem-scheduled-launch-immediate',
+      pylonApiStore,
+    })
+    const createdJson = await scheduledJson(created)
+
+    expect(createdJson.work?.state).toBe('queued_or_running')
+    expect(createdJson.work?.scheduledLaunch?.launchState).toBe('dispatched')
+    expect(pylonApiStore.assignments.size).toBe(1)
   })
 })

@@ -4,6 +4,7 @@ import { loggedInPermissionGate } from '../../product-policy'
 import { LoadAdminOverview } from './admin/transitions'
 import { artanisOperatorInitialCommands } from './artanis-console/transitions'
 import {
+  LoadAutopilotMorningReport,
   LoadAutopilotWorkDetail,
   LoadAutopilotWorkBriefing,
   LoadAutopilotWorkEvents,
@@ -65,7 +66,11 @@ export const initialCommands = (
   }
 
   if (model.route._tag === 'AutopilotWork') {
-    return [InstallAccountMenuOutsideClick(), LoadAutopilotWorkList({})]
+    return [
+      InstallAccountMenuOutsideClick(),
+      LoadAutopilotWorkList({}),
+      LoadAutopilotMorningReport({}),
+    ]
   }
 
   if (model.route._tag === 'AutopilotWorkDetail') {
