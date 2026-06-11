@@ -307,3 +307,68 @@ click (#4700), optional hosted-MDK programmatic-payouts enable (noted on
   `2026-06-11-cs336-a5-rollout-grading-paid-evidence.md`
 - `apps/pylon/docs/2026-06-11-v030-release-preparation-record.md` — the
   npm-credential runbook
+
+---
+
+## Addendum — end of session (~13:00 UTC 2026-06-11)
+
+Since the main body above was written, this session closed six more issues
+and the board changed shape twice.
+
+**Closed since the main body:**
+- **#4748** (W2 trace-factory contract freeze): all four contracts frozen
+  and versioned (`workers/api/src/tassadar-trace-factory/`), a 314-record /
+  3.48M-token six-family pilot corpus generated and validated at **100%
+  schema-valid / 100% full-replay**, clean-checkout replay proven from a
+  fresh /tmp worktree, and the distillation-dataset receipt
+  (`receipt.dataset_curation.corpus.tassadar_trace.v0_1.local_pilot`)
+  proposed to the operator against the evolution-loop's fourth blocker.
+- **#4750** (capability envelope consumer): live-verified — the validator
+  Pylon's public row carries `capability.tassadar_poc.numeric_model_executor`
+  plus `receipt.tassadar_executor.self_test.v1.f2995c4e3c959b42`; unreceipted
+  claims get typed refusals; the dispatch gate and admin-tick eligibility
+  filter on the receipted capability.
+- **#4663 / #4671** (both verification sweeps): 18 fresh receipts on the
+  public transitions log, both Forum wrap-ups posted, no flips earned (the
+  honest outcome both issues define). The capacity-funnel exception receipt
+  was confirmed discharged before its 2026-06-12 expiry.
+- **#4753 / #4754** (projection-staleness instances): credited-rung tips
+  now fully readable (credited/swept buckets, derived receipt refs, FIFO
+  sweep attribution — live-verified showing 3 previously-invisible swept
+  rows / 270 sats) and x_claim_reward eligibility served at
+  `GET /api/agents/claims/rewards` with the #4748-shape staleness contract
+  (live: `eligible: 1`, Orrery's disclosed case).
+
+**Session totals: 35 issues closed**, registry `.19` → `2026-06-11.7`
+(plus committed `.1–.7` series), ~564 sats spent against per-issue caps,
+38 public settled receipts, five verification classes live, ten production
+deploys, zero gate failures left behind.
+
+**Still open, and why:**
+- **#4678** — held by an ACTIVE parallel Codex lane (SHC control API;
+  uncommitted files in the shared worktree touched as recently as 05:58
+  local; staging dirs on oa-shc-katy-01 current). Not taken over.
+- **#4752** (OpenAPI refresh) — mechanically blocked on
+  `openagents-openapi.ts`, which that same lane holds; three issues'
+  worth of owed OpenAPI entries are queued in closure comments.
+- **#4751** (projection-staleness epic) — two of its instances closed
+  tonight (#4753, #4754); the remaining retrofit (generatedAt+maxStaleness
+  across all public projections) is bounded engineering, partially blocked
+  on #4752's file.
+- **#4749** (W3 student program) — its own acceptance requires all four
+  baselines trained on a **100M-token corpus snapshot**; the verified
+  corpus is 3.48M (local pilot), and network-scale generation is gated by
+  psionic W1.1. Honestly not closeable yet; the contract freeze it depends
+  on (#4748) is done.
+
+**New scope conflict requiring an owner ruling:** a parallel lane filed a
+**30-issue Autopilot MVP ladder** (#4757–#4786: B1–B4 bootstrap, M1–M14
+MVP, A1–A4 agent parity, P1–P9 post-MVP, epic #4786) at ~12:30 UTC. This
+is an entire product program — web composer, Stripe card-on-file,
+account-pool dashboards, provider connect flows, cloud-Pylon deployment,
+overnight proof smokes — and it post-dates the standing owner directive
+that all implementation focus is Tassadar/Psion + CS336 pipeline prep with
+non-fitting work closed/deprioritized. This session deliberately did NOT
+apply the old directive to the new ladder (mass-closing a freshly-filed
+roadmap would destroy deliberate parallel work). The two directives cannot
+both govern; the owner should say which applies to #4757–#4786.
