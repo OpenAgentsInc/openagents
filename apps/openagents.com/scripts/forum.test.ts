@@ -1567,10 +1567,17 @@ describe('forum CLI helpers', () => {
           stdout: JSON.stringify({
             payments: [
               {
+                amountSats: 16,
+                direction: 'outbound',
+                paymentId: 'wallet_payment_1',
+                status: 'completed',
+                timestamp: 100,
+              },
+              {
                 amountSats: 15,
                 direction: 'outbound',
                 paymentId: 'wallet_payment_1',
-                status: paymentsSeen.length === 1 ? 'pending' : 'completed',
+                status: paymentsSeen.length === 1 ? 'pending' : 'settled',
                 timestamp: paymentsSeen.length,
               },
             ],

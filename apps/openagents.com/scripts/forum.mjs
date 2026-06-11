@@ -73,6 +73,7 @@ Options:
   --diagnostic              Let tip-post-smoke report recovery as a known blocker instead of failing.
   --reward-amount <n>       Optional sats amount for Forum post rewards.
   --recovery-wait-ms <n>    tip-post timeout recovery wait. Defaults to 120000.
+  --recovery-poll-ms <n>    tip-post timeout recovery poll interval. Defaults to 1000.
   --tip-amount <n>          Required sats amount for direct BOLT 12 Forum tips.
   --target-forum <id>       Generic paid-action forum target.
   --target-post <id>        Generic paid-action post target.
@@ -161,7 +162,9 @@ const valueFlags = new Set([
   'request-body-digest',
   'requestBodyDigest',
   'recovery-wait-ms',
+  'recovery-poll-ms',
   'recoveryWaitMs',
+  'recoveryPollMs',
   'receipt',
   'reward-amount',
   'rewardAmount',
@@ -243,6 +246,7 @@ const canonicalFlagName = name =>
     quotePost: 'quote-post',
     readinessRef: 'readiness-ref',
     receiveCapabilityRef: 'receive-capability-ref',
+    recoveryPollMs: 'recovery-poll-ms',
     requestBodyDigest: 'request-body-digest',
     recoveryWaitMs: 'recovery-wait-ms',
     rewardAmount: 'reward-amount',
@@ -576,6 +580,22 @@ const recoveryWaitMsFromFlags = flags => {
 
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error('--recovery-wait-ms must be a positive integer.')
+  }
+
+  return parsed
+}
+
+const recoveryPollMsFromFlags = flags => {
+  const raw = flagText(flags, 'recovery-poll-ms')
+
+  if (raw === undefined) {
+    return DEFAULT_DIRECT_TIP_RECOVERY_POLL_MS
+  }
+
+  const parsed = Number(raw)
+
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error('--recovery-poll-ms must be a non-negative integer.')
   }
 
   return parsed
@@ -1220,17 +1240,24 @@ const privateL402CredentialFromPreview = preview => {
 const paymentPreimageFromWalletOutput = value =>
   firstStringField(value, ['payment_preimage', 'paymentPreimage', 'preimage'])
 
+const walletPaymentIdentifierNames = [
+  'payment_hash',
+  'paymentHash',
+  'payment_id',
+  'paymentId',
+  'payment_ref',
+  'paymentRef',
+  'hash',
+  'id',
+]
+
+const walletPaymentIdentifiersFromOutput = value =>
+  walletPaymentIdentifierNames
+    .map(name => firstStringField(value, [name]))
+    .filter(identifier => typeof identifier === 'string')
+
 const walletPaymentIdentifierFromOutput = value =>
-  firstStringField(value, [
-    'payment_hash',
-    'paymentHash',
-    'payment_id',
-    'paymentId',
-    'payment_ref',
-    'paymentRef',
-    'hash',
-    'id',
-  ])
+  walletPaymentIdentifiersFromOutput(value)[0]
 
 const publicRefDigest = value =>
   createHash('sha256').update(String(value)).digest('hex').slice(0, 32)
@@ -1758,10 +1785,29 @@ const directTipEvidenceFromWalletBlocker = ({
   }
 }
 
-const paymentRowStatus = row =>
-  typeof row?.status === 'string' ? row.status.trim().toLowerCase() : null
+const paymentRowStatus = row => {
+  const normalized =
+    typeof row?.status === 'string' ? row.status.trim().toLowerCase() : null
 
-const paymentRowMatches = (row, paymentIdentifier) => {
+  if (
+    ['completed', 'paid', 'settled', 'succeeded', 'success'].includes(
+      normalized,
+    )
+  ) {
+    return 'completed'
+  }
+
+  if (['canceled', 'cancelled', 'error', 'failed'].includes(normalized)) {
+    return 'failed'
+  }
+
+  return normalized
+}
+
+const paymentRowAmountSats = row =>
+  Number(row?.amountSats ?? row?.amount_sats ?? row?.amount)
+
+const paymentRowMatches = (row, paymentIdentifier, amountSats) => {
   if (row === null || typeof row !== 'object' || Array.isArray(row)) {
     return false
   }
@@ -1774,9 +1820,11 @@ const paymentRowMatches = (row, paymentIdentifier) => {
     return false
   }
 
-  const rowIdentifier = walletPaymentIdentifierFromOutput(row)
+  if (Number.isFinite(amountSats) && paymentRowAmountSats(row) !== amountSats) {
+    return false
+  }
 
-  return rowIdentifier === paymentIdentifier
+  return walletPaymentIdentifiersFromOutput(row).includes(paymentIdentifier)
 }
 
 const newestPaymentRow = rows =>
@@ -1796,12 +1844,21 @@ const walletPaymentsRows = result => {
 }
 
 const pollDirectTipPaymentRecovery = async ({
+  amountSats,
   executor,
   paymentIdentifier,
   pollMs = DEFAULT_DIRECT_TIP_RECOVERY_POLL_MS,
   sleepFn = sleep,
   waitMs,
 }) => {
+  if (typeof paymentIdentifier !== 'string' || paymentIdentifier.length === 0) {
+    return {
+      payment: null,
+      polls: 0,
+      status: 'no_identifier',
+    }
+  }
+
   const maxAttempts = Math.max(1, Math.ceil(waitMs / Math.max(pollMs, 1)) + 1)
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -1809,7 +1866,7 @@ const pollDirectTipPaymentRecovery = async ({
       () => null,
     )
     const matching = walletPaymentsRows(payments).filter(row =>
-      paymentRowMatches(row, paymentIdentifier),
+      paymentRowMatches(row, paymentIdentifier, amountSats),
     )
 
     if (matching.length > 0) {
@@ -2920,6 +2977,7 @@ export const runForumDirectTipPostPayment = async (
   const spendCap = directTipSpendCapFromFlags(parsed.flags, amount)
   const timeoutMs = walletTimeoutMsFromFlags(parsed.flags)
   const recoveryWaitMs = recoveryWaitMsFromFlags(parsed.flags)
+  const recoveryPollMs = recoveryPollMsFromFlags(parsed.flags)
   const walletNetwork = walletNetworkFromFlags(parsed.flags, env)
   const walletExecutor =
     options.walletExecutor || createAgentWalletExecutor({ timeoutMs })
@@ -3025,12 +3083,13 @@ export const runForumDirectTipPostPayment = async (
 
     if (timedOut) {
       const recovery = await pollDirectTipPaymentRecovery({
+        amountSats: amount.amount,
         executor: walletExecutor,
         paymentIdentifier: paymentIdentifier ?? null,
         pollMs:
           typeof options.recoveryPollMs === 'number'
             ? options.recoveryPollMs
-            : DEFAULT_DIRECT_TIP_RECOVERY_POLL_MS,
+            : recoveryPollMs,
         sleepFn: options.sleep || sleep,
         waitMs: recoveryWaitMs,
       })
