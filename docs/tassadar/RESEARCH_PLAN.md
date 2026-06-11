@@ -370,6 +370,17 @@ The external analysis's 14-day plan is adopted as the W2/W3 onramp with
 the day-0 amendments above. Nothing in the first week of it requires
 hardware we do not hold.
 
+**Issues of record** (filed 2026-06-11): W1.1 window ladder —
+psionic#1119; W1.2 dense materialization — psionic#1120; W1.3 MILP
+backend — psionic#1121; W1.4 softmax bounds — psionic#1122; W2 contract
+freeze and factory — openagents#4748; W3 student program —
+openagents#4749 (blocked on #4748's first corpus); W4.1 capability
+envelopes — openagents#4750. Method-section case law remains open at
+openagents#4744–#4747. Registry promises are owner-gated by the
+disclosure flow: the two existing promises (PoC green, evolution loop
+yellow) cover the program's current claims, and no new promise is
+warranted until a workstream produces evidence that needs one.
+
 ## 8. Kill Conditions
 
 A program that cannot say what would kill it is not a research program
