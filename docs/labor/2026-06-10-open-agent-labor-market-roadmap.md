@@ -273,7 +273,9 @@ labor lane, `autopilot.agentic_labor_products.v1`,
 6. **The live demonstration** — one real negotiated, escrowed,
    executed, accepted, settled labor job with public receipts
    (coordinates #4648, whose acceptance this run satisfies); registry
-   flips via transition receipts.
+   flips via transition receipts. Lane A runbook and CI-safe rehearsal
+   live in `docs/labor/first-negotiated-labor-job-runbook.md` and
+   `apps/openagents.com/workers/api/src/labor-live-rehearsal.test.ts`.
 
 Sequencing: 1 → (2 ∥ 3 ∥ 4) → 5 → 6. Lanes are file-surface-disjoint
 by design; each issue body names its surfaces per the campaign

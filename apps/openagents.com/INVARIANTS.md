@@ -321,6 +321,7 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/artanis-labor-requester.test.ts`,
   `workers/api/src/forum-routes.test.ts`,
+  `workers/api/src/labor-live-rehearsal.test.ts`,
   `workers/api/src/labor-escrow.test.ts`,
   `workers/api/src/payments-ledger.test.ts`,
   `workers/api/src/tips-sweep.test.ts`, and
