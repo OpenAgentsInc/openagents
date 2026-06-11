@@ -1139,4 +1139,219 @@ The strongest near-term bet remains the hybrid: **learned planner plus frozen ex
 [38]: https://arxiv.org/abs/2205.14135?utm_source=chatgpt.com "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"
 [39]: https://arxiv.org/abs/2310.01889?utm_source=chatgpt.com "[2310.01889] Ring Attention with Blockwise Transformers ..."
 
+---
+
+## Commentary (Fable / claude-fable-5, appended 2026-06-11)
+
+This second analysis was produced by ChatGPT Pro from the research plan
+and the full introduction, again without access to the codebase, the
+issue tracker, or the last 48 hours of receipts. Same treatment as the
+first ([`2026-06-11-chatgpt-pro-analysis.md`](2026-06-11-chatgpt-pro-analysis.md)):
+where it is right, what it does not know already exists, where it needs
+adjusting, and what we adopt. Written by the agent that maintains this
+folder, with the workspace, psionic, and the open issues in front of it.
+
+### Overall verdict
+
+This is a better document than the first analysis, and a different kind
+of document. The first was an execution plan; this is a research-program
+grounding. Its two genuinely new contributions are (1) the literature
+map — the lane's docs argued from first principles and our own receipts,
+and this supplies the citation spine that connects every hypothesis to
+prior art and, more importantly, to prior *negative results* — and
+(2) the corpus-science and first-divergence-taxonomy layers, which are
+concrete upgrades to W2 and W3 as filed. Its priority ordering (§11:
+substrate before scale, factory before students, hybrid as the robust
+bet, market test last) independently reproduces the research plan's own
+sequencing, including the W1-gates-everything correction that the first
+analysis needed lane commentary to get. Convergence from a second
+independent source is mild evidence the ordering is right.
+
+### Where it is right, and should be treated as settled
+
+1. **The refined thesis sentence.** "Exact computation should be treated
+   as an engineered substrate, not a capability we merely hope gradient
+   descent discovers" is the program's one-line answer to every "why not
+   just train it?" question, and it is sharper than anything in our own
+   docs. Adopt as framing language alongside §11's public stance
+   paragraph, which is also correct and quotable as-is.
+2. **The literature map, especially the negative results.** The
+   expressivity-vs-learnability split (Turing-completeness results vs
+   the parallelism tradeoff and the globality barrier) is exactly the
+   theoretical backbone H1 needed — our falsifier was stated from
+   instinct; now it has a citation trail. The NTM/DNC/Neural-GPU/NPI
+   lessons (explicit memory helps, trace supervision helps, length
+   generalization is fragile, architecture bias is usually necessary)
+   are the same conclusions our March 2026 learned-exactness plateau
+   reached empirically — the audit's commit-history arc
+   (`e8e076ddd` → `50c8fdb86` → `fa80adcf8`) is an unpublished replication
+   of that literature, and the lane should say so when it writes up W3.
+   The trace-complexity warning (limited gains in 2 of 6 configurations)
+   was already adopted via the first analysis; this one explains *why*
+   compact, structured, auxiliary-supervised traces are the right call.
+3. **The first-divergence taxonomy.** The twelve-class error taxonomy
+   (instruction_fetch_error … halt_error) is the single most adoptable
+   artifact in the document. Our replay verifier
+   (`tassadar_alm_trace_replay.rs`) names the first divergent step but
+   does not classify it; the taxonomy turns a step number into a
+   research signal ("divergence shifted from syntax to memory-alias
+   errors" is progress even at constant pass rate). Adopt verbatim into
+   the W3 eval schema on openagents#4749.
+4. **Corpus science as a named discipline.** The coverage-scoring
+   dimensions (branch entropy, alias density, near-miss stress,
+   first-divergence diagnostic value), the named eval suites, and the
+   "coverage-balanced, not just large" rule are a real upgrade over
+   W2-as-filed, which specified scale targets and families but not a
+   quality layer. The active-curriculum loop in Phase 3 (generate new
+   stress traces from the student's divergence profile) is the harness
+   generator and the eval schema composed into a flywheel — cheap to
+   build once both exist, and exactly how the factory should spend its
+   marginal token.
+5. **Compiler QA as the center, not a support function.** Critique 4/
+   Avenue 7's stack (reference semantics, randomized differential
+   generation, translation validation, proof-carrying artifacts,
+   regression pinning) is the methodology our differential harness
+   already vindicated at small scale. The Isabelle-mechanized WASM
+   semantics and the official spec test suite belong in W1.1's
+   conformance ladder (psionic#1119) as external bars, the same role
+   transformer-vm's examples already play.
+6. **The weak-arguments list (§9).** All ten are restatements of our
+   claim boundaries, which means an external reviewer reading only our
+   public docs reconstructed the discipline correctly. That is what the
+   discipline is for. Item 10 ("dense weight modules are ready if only
+   scalar/numeric artifacts exist") earns specific praise: it is the
+   precise overclaim W1.2 exists to prevent.
+
+### What it does not know is already built or already happened
+
+- **The factory planes are not greenfield.** Like the first analysis,
+  it designs Planes A–C and F as future systems. They ran live on
+  2026-06-10/11: production assignment route, worker-as-validator
+  replay verdicts (tampered digest correctly Rejected), paid Lightning
+  closeouts, and — as of last night — all five verification classes
+  exercised on real dispatched production work with 37 new public
+  settled receipts. What is genuinely new in its plane diagram is
+  **Plane D, the corpus curator** (diversity quotas, immutable
+  manifests, admission policy as a distinct role). W2 should name the
+  curator explicitly; it is the one role our rails do not yet have.
+- **The workstreams are filed, not proposed.** W1.1–W1.4 are psionic
+  #1119–#1122; W2/W3/W4.1 are openagents #4748/#4749/#4750. Its §6
+  phase agenda maps almost one-to-one onto those issues, which is
+  convenient: the deltas below can land as issue comments rather than
+  new structure.
+- **The projection-staleness defense is already case law.** Its attack
+  table includes "public dashboard stale → rebuild on validation
+  transitions" — the lesson this platform paid for twice over
+  (openagents #4744–#4746) and promoted to a standing method rule in
+  `RESEARCH_PLAN.md` §6. The analysis likely absorbed it from the
+  directive; either way, it is policy, not advice.
+- **Avenue 9's "boring by design" profile is the current profile.**
+  Integer-only, deterministic, bounded, no host calls, typed refusals
+  for traps and resource limits — that is a description of the
+  twelve-opcode window as it exists, not a recommendation. The security
+  list's forward-looking items (module conformance before marketplace
+  admission, verifier diversity, ABI prompt injection against hybrid
+  planners) are real and belong to W4's day, not W2's.
+- **The numerics concern has an existing anchor.** Critique 5's
+  "numerical margins program" lands on machinery the lane already
+  maintains: the scalar-f32 semantics matrix with fast-math refusal in
+  psionic, and the 2⁵³-checked numeric artifact from #1113. What is
+  missing is exactly what it asks for — *certified margins under BF16/
+  FP8* — which is W1.4's softmax-bounds work plus one new deliverable
+  (see below).
+
+### Where it needs adjusting for our actual situation
+
+1. **Do not reopen the frozen four-baseline design.** Training variants
+   4 (verifier-in-the-loop RL / rejection fine-tuning), 5 (synthetic
+   error-correction students), and 6–7 are good experiments, but
+   openagents#4749 froze the four-baseline sweep deliberately so nobody
+   improvises the experiment design mid-flight. The variants join the
+   W3 backlog *behind* the frozen sweep, as issue comments, and remain
+   subject to the same gates: no training before W2's first 100M
+   verified tokens, and no public gradients into the main optimizer
+   ever — variant 4 especially must not become a backdoor for
+   contributor-side gradient acceptance.
+2. **The module ABI sketch should bind to the existing plugin
+   machinery, not parallel it.** Avenue 5's `<exact.call>`/
+   `<exact.trace>` shape is fine as a wire format, but psionic already
+   owns the module manifest / catalog / linker / packet-ABI family and
+   the Rust PDK (`tassadar_module_*`, plugin packet ABI). The Avenue 6
+   package-metadata block is a strict subset of what the module
+   manifest plus capability matrix already carry. W4 should extend
+   those surfaces; a second ABI invented beside them would be exactly
+   the parallel-primitive mistake the workspace rules exist to prevent.
+3. **`pass@k` needs a claim-discipline caveat.** The metric list adds
+   `exact_rollout_pass@k` alongside `pass@1`. Useful for research
+   (it measures whether capability exists anywhere in the sample
+   distribution), but no public claim should ever cite pass@k for an
+   executor-class behavior — sampling until something replays is the
+   statistical lane's vocabulary, and the naming rule says students
+   carry Psion's claim vocabulary, never Tassadar's. Report pass@k
+   internally; publish pass@1 behind replay.
+4. **The theory agenda (Avenue 11) must stay experiment-tied or it will
+   sprawl.** Five theory programs is a department, not a workstream.
+   The one with near-term leverage is the **margin-certification
+   question** (finite-precision lookup margins), because it gates dense
+   materialization on real inference engines (W1.2) and any future
+   softmax/BF16 posture (W1.4). Adopt that one as a named W1
+   deliverable; leave the rest as reading-list questions until an
+   experiment needs them.
+5. **GPU topology sections remain on file, not in plan.** Same
+   adjustment as the first analysis: we do not own the cluster this
+   plans for, the asynchronous network we do own is for
+   generation/validation/evaluation only (already policy), and nothing
+   in Phases 0–2 requires hardware we lack. The FlashAttention/Ring
+   Attention pointers are correctly scoped by the document itself —
+   student-training systems, irrelevant to the compiled hull path.
+6. **Provenance hygiene, again.** Several citations blend our committed
+   claims with Percepta's published ones (e.g. attributing trace-replay
+   capabilities to "your introduction" where the underlying fact is a
+   psionic test, or vice versa). The standing rule from the full
+   introduction applies to this document too: Percepta's numbers are
+   their claims, ours are committed tests, and a downstream reader must
+   never have to guess which is which.
+
+### What we adopt now
+
+Concretely, into the filed workstreams:
+
+- **Into #4749 (W3):** the twelve-class first-divergence taxonomy,
+  verbatim, as part of the eval schema; `pass@k` as internal-only with
+  the claim-discipline caveat above; training variants 4–7 logged as
+  post-sweep backlog.
+- **Into #4748 (W2):** the corpus coverage-scoring dimensions and named
+  eval-suite layout as part of the day-0 contract freeze; the artifact
+  state machine (submitted → … → admitted_to_training → deprecated) as
+  the lifecycle vocabulary for the validator verdict schema; the
+  economic attack/defense table as the red-team checklist; the
+  **curator** as a named role the factory must staff.
+- **Into psionic#1119 (W1.1):** the profile-registry schema (it is a
+  superset of our profile-versioning rule — adopt the missing fields:
+  trap_policy, lowering_policy, test_suite_hash, known_limitations);
+  the official WASM spec test suite and the Isabelle mechanization as
+  external conformance references for the window ladder.
+- **Into psionic#1122 (W1.4):** the margin-certification deliverable —
+  certified lookup margins under FP32/BF16, per module, as the
+  precision half of the softmax-bounds work.
+- **Into the folder:** §10's reading list as the lane's standing
+  citation spine, and the §11 stance paragraph as approved public
+  framing language.
+
+What we explicitly do not adopt: a second module ABI beside the psionic
+plugin machinery; succinct proofs now (the document itself agrees);
+synchronous training topology work before an operator commits hardware;
+any reopening of the frozen W3 sweep design.
+
+The document's most useful sentence is its last uncertainty triplet:
+the scientific risk is whether the learned side internalizes anything
+beyond local imitation, the engineering risk is whether the window
+widens without semantic bugs outrunning the harness, and the business
+risk is whether verification-included compute clears at a better price
+than compute plus trust. Those are H1, the W1 kill condition, and H6 —
+the program's own top risks, found independently by a reviewer who
+could only see the documents. The risk register survives contact with
+an outside auditor unchanged, which is the most reassuring thing a
+plan can do.
+
 

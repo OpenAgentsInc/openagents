@@ -377,6 +377,16 @@ stack and cheap to begin.
   projection-staleness lesson. The first-divergence eval schema and
   trace_record artifact contract adopted there now shape the evolution
   loop's corpus stage.
+- [`2026-06-11-chatgpt-pro-analysis-2.md`](2026-06-11-chatgpt-pro-analysis-2.md)
+  — the second external (ChatGPT Pro) brief: the literature map
+  (RASP/Tracr lineage, expressivity-versus-learnability,
+  NTM/DNC-era lessons, compiler-QA methodology, verification-market
+  precedents), corpus-science and first-divergence-taxonomy layers,
+  and eleven expanded avenues — with appended lane commentary on what
+  is adopted into the filed workstream issues (divergence taxonomy,
+  coverage scoring, profile registry, margin certification) and what
+  is declined (a parallel module ABI, reopening the frozen W3 sweep,
+  cluster topology work before hardware exists).
 
 Implementation, contract docs, and tests live in `OpenAgentsInc/psionic`
 under `crates/psionic-compiler/`, `crates/psionic-ir/`, and
