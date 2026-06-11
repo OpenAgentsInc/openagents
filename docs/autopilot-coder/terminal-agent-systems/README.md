@@ -123,6 +123,81 @@ map. The audits below are the currently imported subsystem records.
 - `2026-06-11-browser-desktop-integration-audit.md`: Defines safe URL opening,
   browser or desktop bridges, screenshot/clipboard evidence, GUI action
   approvals, and desktop-session handoff boundaries.
+- `2026-06-11-voice-multimodal-input-audit.md`: Defines speech, screenshots,
+  clipboard images, files, transcriptions, attachment review, provider
+  capability checks, and typed media context refs.
+- `2026-06-11-remote-session-bridge-audit.md`: Defines paired companion
+  sessions, scoped remote observation/control, approval forwarding, connection
+  records, revocation, and reconnect behavior.
+- `2026-06-11-mobile-web-companion-system-audit.md`: Defines mobile and web
+  companion surfaces for status, approvals, artifact review, bounded
+  instructions, cancellation, and notification delivery.
+- `2026-06-11-team-shared-memory-system-audit.md`: Defines scoped shared
+  memory records for teams, repositories, missions, provenance, retrieval
+  policy, redaction, correction, and removal.
+- `2026-06-11-multi-agent-coordination-system-audit.md`: Defines decomposed
+  multi-lane work, assignment ownership, lane supervision, evidence
+  aggregation, conflict handling, and coordinated closeout.
+- `2026-06-11-external-work-intake-system-audit.md`: Defines API, issue,
+  Forum, workroom, schedule, and agent-submitted work intake as typed work
+  orders with admission, budget, scope, and review policy.
+- `2026-06-11-artifact-receipt-system-audit.md`: Defines artifacts and
+  receipts for patches, diffs, tests, previews, screenshots, closeouts,
+  payment evidence, assignment events, and settlement projections.
+- `2026-06-11-scheduling-cron-system-audit.md`: Defines delayed runs,
+  recurring checks, overnight tasks, retry windows, continuation policy,
+  approval requirements, and scheduled-work receipts.
+- `2026-06-11-structured-event-log-audit.md`: Defines the append-only event
+  log for replay, projections, receipts, debugging, audit trails, sequence
+  integrity, redaction classes, and export.
+- `2026-06-11-telemetry-privacy-system-audit.md`: Defines privacy-first
+  telemetry modes, redacted diagnostics, metric categories, opt-out controls,
+  local-only behavior, and raw private data exclusion.
+- `2026-06-11-performance-system-audit.md`: Defines latency, throughput,
+  memory, model streaming, tool duration, queueing, background responsiveness,
+  rate limits, and redacted performance profiles.
+- `2026-06-11-update-release-system-audit.md`: Defines signed releases,
+  platform support, rollout channels, compatibility checks, release notes,
+  smoke receipts, update policy, and rollback.
+- `2026-06-11-migration-system-audit.md`: Defines state schema upgrades,
+  restore points, validation, rollback boundaries, migration receipts, optional
+  cache rebuilds, and private-data handling.
+- `2026-06-11-testing-smoke-system-audit.md`: Defines unit, contract,
+  integration, CI-safe, local-device, staging, and live smokes with explicit
+  proof boundaries and retained evidence.
+- `2026-06-11-evaluation-regression-system-audit.md`: Defines task suites,
+  model/provider comparisons, regression detection, fixture promotion,
+  redacted reporting, cost tracking, and release gates.
+- `2026-06-11-security-review-system-audit.md`: Defines threat models, policy
+  refs, redaction checks, approval gates, high-risk integration review,
+  diagnostic bundles, and regression tests.
+- `2026-06-11-data-retention-deletion-system-audit.md`: Defines retention
+  policy, deletion, tombstones, exports, cache clearing, memory correction, and
+  projection invalidation.
+- `2026-06-11-onboarding-system-audit.md`: Defines first-run setup, repository
+  connection, instruction/invariant review, provider readiness, capability
+  snapshots, and setup smokes.
+- `2026-06-11-output-style-persona-system-audit.md`: Defines tone, verbosity,
+  formatting, persona, domain style, accessibility preferences, and policy-safe
+  style composition.
+- `2026-06-11-prompt-suggestions-autocomplete-audit.md`: Defines command,
+  prompt, file, symbol, issue, session, and artifact suggestions while keeping
+  intent selection explicit.
+- `2026-06-11-tips-education-system-audit.md`: Defines contextual tips,
+  first-run education, capability caveats, dismissals, rate limits, and
+  claim-safe help content.
+- `2026-06-11-theme-visual-design-system-audit.md`: Defines visual tokens,
+  themes, contrast, status badges, density, terminal/web/mobile consistency,
+  and reduced-motion support.
+- `2026-06-11-accessibility-non-interactive-mode-audit.md`: Defines screen
+  reader, keyboard-only, high-contrast, no-color, reduced-motion, JSON output,
+  CI, scripting, and headless-mode behavior.
+- `2026-06-11-internationalization-localization-boundary-audit.md`: Defines
+  localized UI text, help, dates, numbers, and errors while keeping schemas,
+  refs, policies, receipts, commands, and JSON stable.
+- `2026-06-11-enterprise-managed-policy-system-audit.md`: Defines
+  organization/team/repository/device policy, provider allowlists, budgets,
+  retention, telemetry, plugin policy, update channels, and audit trails.
 
 ## Index
 
