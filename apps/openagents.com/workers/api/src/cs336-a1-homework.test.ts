@@ -186,6 +186,17 @@ describe('CS336 A1 homework job kind', () => {
     expect(JSON.stringify(payload)).not.toMatch(/lnbc|mnemonic|secret|\/Users\//i)
   })
 
+  it('is a first-class job kind on the Pylon assignment dispatcher rail', async () => {
+    const { PylonApiAssignmentJobKind } = await import('./pylon-api')
+    const { Schema } = await import('effect')
+
+    expect(
+      Schema.decodeUnknownSync(PylonApiAssignmentJobKind)(
+        Cs336A1HomeworkJobKind,
+      ),
+    ).toBe('cs336_a1_homework')
+  })
+
   it('dispatches no-spend A1 homework on the buy-mode rail and verifies closeout evidence', async () => {
     const buyModeStore = new MemoryBuyModeStore()
     const verificationStore = new MemoryVerificationStore()
