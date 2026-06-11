@@ -889,7 +889,7 @@ export const view = (input: HomeViewInput): Html => {
     h.main(
       [
         Ui.className<Message>(
-          'min-h-dvh bg-black px-3 py-4 font-mono text-[#f1efe8] sm:px-4 lg:px-6',
+          'bg-black px-3 py-4 font-mono text-[#f1efe8] sm:px-4 lg:px-6',
         ),
       ],
       [
