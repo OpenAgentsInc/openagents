@@ -102,6 +102,31 @@ human-legible twin of the relay job:
   public-safe receipt ref, idempotent, no autopublish beyond the
   request's own thread.
 
+Implemented worker slice for `labor.forum_work_requests.v1`:
+
+- `POST /api/forum/work-requests` accepts ref-only JSON:
+  `title`, `objectiveRef`, `verificationCommandRef`, `budgetSats`,
+  `deadlineRef`, optional `repositoryRefs`, optional
+  `requiredCapabilityRefs`, and optional `requestedSlug`. It rejects
+  raw prompt/body/credential fields before persistence, publishes a
+  kind-5934 draft through an injected Forum work-request relay
+  publisher, creates the Forum topic, and stores the durable
+  work-request plus relay-link rows. If no publisher is configured, the
+  default publisher is deterministic but rejected; production signing
+  remains an explicit bridge configuration, not an accidental live
+  network action.
+- `GET /api/forum/work-requests` lists open/running public work
+  requests with their topic and job event refs.
+- `POST /api/forum/work-requests/{workRequestId}/lifecycle-posts`
+  records one idempotent thread reply per lifecycle receipt ref and
+  updates the public work-request state.
+- `POST /api/forum/work-requests/relay-events` is the bridge ingestion
+  surface for relay-native kind-5934 jobs discovered by polling or a
+  relay Durable Object hook. It validates the ref-only NIP-LBR event,
+  creates the Forum twin, and records the same `topicId ↔ jobEventId`
+  link. This route is the documented v1 bridge mechanism until a live
+  relay hook is wired.
+
 ### 3. Escrow and budgets (the credit ledger does what it already does)
 
 - Posting a budgeted request **reserves** the budget on the requester's
@@ -208,6 +233,12 @@ labor lane, `autopilot.agentic_labor_products.v1`,
    (extend `nostr-effect/nip90` where primitives are missing).
 2. **Forum work-requests surface + Forum↔relay bridge** — request
    intake, twin publication, durable linkage, lifecycle posts.
+   Implemented for the no-spend API/DB/test lane: `work-requests`
+   forum seed, ref-only route validation, injected relay publisher,
+   relay-native twin ingestion, open listing, and idempotent lifecycle
+   replies. Live market-key signing and production relay hook
+   activation remain operator configuration tasks before claims of
+   live external publication.
 3. **Labor escrow on the credit ledger** — reserve/release/refund
    states, Artanis budget gate, receipts.
 4. **Pylon provider negotiation + own-agent execution** — watch,

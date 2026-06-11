@@ -1,5 +1,9 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
+import {
+  lbrAgenticCodingRequestToDraft,
+  makeLbrAgenticCodingRequest,
+} from '@openagents/nip90'
 
 import type { VerifiedPublicIdentityClaim } from './agent-owner-claim-routes'
 import { makeForumRoutes } from './forum-routes'
@@ -387,6 +391,76 @@ type ContextLinkRow = Readonly<{
   topic_id: string | null
 }>
 
+type WorkRequestRow = Readonly<{
+  archived_at: string | null
+  budget_msats: number
+  budget_sats: number
+  created_at: string
+  deadline_ref: string
+  first_post_id: string
+  id: string
+  idempotency_key: string
+  job_event_id: string
+  job_event_kind: number
+  job_result_kind: number
+  objective_ref: string
+  public_projection_json: string
+  quote_count: number
+  relay_url: string
+  repository_refs_json: string
+  requester_actor_ref: string
+  required_capability_refs_json: string
+  state:
+    | 'open'
+    | 'quote_received'
+    | 'quote_accepted'
+    | 'running'
+    | 'delivered'
+    | 'accepted'
+    | 'settled'
+    | 'cancelled'
+    | 'expired'
+  title: string
+  topic_id: string
+  updated_at: string
+  verification_command_ref: string
+}>
+
+type WorkRequestRelayLinkRow = Readonly<{
+  archived_at: string | null
+  bridge_actor_ref: string
+  created_at: string
+  event_json: string
+  id: string
+  job_event_id: string
+  job_event_kind: number
+  relay_ref: string
+  relay_url: string
+  topic_id: string
+  work_request_id: string
+}>
+
+type WorkRequestLifecyclePostRow = Readonly<{
+  archived_at: string | null
+  created_at: string
+  id: string
+  idempotency_key: string
+  lifecycle_kind:
+    | 'quote_received'
+    | 'quote_accepted'
+    | 'running'
+    | 'delivered'
+    | 'accepted'
+    | 'settled'
+    | 'cancelled'
+    | 'expired'
+  post_id: string
+  receipt_ref: string
+  state_after: WorkRequestRow['state']
+  topic_id: string
+  work_request_id: string
+}>
+
 const projectionJson = JSON.stringify({
   classificationCaveatRef: 'classification.public_forum_projection',
   customerSafe: true,
@@ -489,6 +563,41 @@ const forumL402SigningBoundary = () =>
     secretKeyMaterial: forumL402SigningSecret,
     signerRef: 'binding.forum.route.mdk.sandbox',
   })
+
+type CapturedWorkRequestRelayPublish = Readonly<{
+  draft: Readonly<{
+    content: string
+    kind: number
+    tags: ReadonlyArray<readonly string[]>
+  }>
+  relayUrl: string
+  topicId: string
+  workRequestId: string
+}>
+
+const fakeWorkRequestRelayPublisher = (
+  captured: Array<CapturedWorkRequestRelayPublish>,
+) => ({
+  publishWorkRequest: async (input: CapturedWorkRequestRelayPublish) => {
+    captured.push(input)
+    const jobEventId = String(captured.length).padStart(64, '0')
+
+    return {
+      accepted: true,
+      event: {
+        content: input.draft.content,
+        id: jobEventId,
+        kind: input.draft.kind,
+        pubkey: 'b'.repeat(64),
+        sig: 'c'.repeat(128),
+        tags: input.draft.tags,
+      },
+      jobEventId,
+      relayRef: 'relay.public.test.openagents_market',
+      relayUrl: input.relayUrl,
+    }
+  },
+})
 
 const signStandardWebhook = async (
   secret: string,
@@ -599,6 +708,16 @@ class ForumRouteStore {
       slug: 'product-feedback',
       title: 'Product Feedback',
     },
+    {
+      archived_at: null,
+      board_id: '11111111-1111-4111-8111-111111111111',
+      description_ref: 'content.forum.category.labor.description',
+      discoverability: 'listed',
+      id: '99999999-7777-4777-8777-999999999999',
+      order_index: 50,
+      slug: 'labor',
+      title: 'Labor',
+    },
   ]
   forums: Array<ForumRow> = [
     {
@@ -666,6 +785,23 @@ class ForumRouteStore {
       public_projection_json: projectionJson,
       slug: 'product-promises',
       title: 'Product Promises',
+      topic_count: 0,
+      visibility: 'public',
+    },
+    {
+      archived_at: null,
+      board_id: '11111111-1111-4111-8111-111111111111',
+      category_id: '99999999-7777-4777-8777-999999999999',
+      description_ref: 'content.forum.work_requests.description',
+      discoverability: 'listed',
+      id: '99999999-7778-4778-8778-999999999999',
+      latest_post_id: null,
+      latest_topic_id: null,
+      locked: 0,
+      post_count: 0,
+      public_projection_json: projectionJson,
+      slug: 'work-requests',
+      title: 'Work Requests',
       topic_count: 0,
       visibility: 'public',
     },
@@ -1032,6 +1168,9 @@ class ForumRouteStore {
   notificationReads: Array<NotificationReadRow> = []
   tipRecipientWallets: Array<TipRecipientWalletRow> = []
   contextLinks: Array<ContextLinkRow> = []
+  workRequests: Array<WorkRequestRow> = []
+  workRequestRelayLinks: Array<WorkRequestRelayLinkRow> = []
+  workRequestLifecyclePosts: Array<WorkRequestLifecyclePostRow> = []
 }
 
 class ForumRouteStatement implements D1PreparedStatement {
@@ -1436,6 +1575,48 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve(row as T | null)
     }
 
+    if (this.query.includes('FROM forum_work_requests')) {
+      const ref = String(this.values[0])
+      const row = this.query.includes('idempotency_key =')
+        ? (this.store.workRequests.find(
+            item => item.idempotency_key === ref && item.archived_at === null,
+          ) ?? null)
+        : this.query.includes('job_event_id =')
+          ? (this.store.workRequests.find(
+              item => item.job_event_id === ref && item.archived_at === null,
+            ) ?? null)
+          : (this.store.workRequests.find(
+              item => item.id === ref && item.archived_at === null,
+            ) ?? null)
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM forum_work_request_relay_links')) {
+      const ref = String(this.values[0])
+      const row = this.query.includes('job_event_id =')
+        ? (this.store.workRequestRelayLinks.find(
+            item => item.job_event_id === ref && item.archived_at === null,
+          ) ?? null)
+        : (this.store.workRequestRelayLinks.find(
+            item => item.work_request_id === ref && item.archived_at === null,
+          ) ?? null)
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM forum_work_request_lifecycle_posts')) {
+      const idempotencyKey = String(this.values[0])
+      const row =
+        this.store.workRequestLifecyclePosts.find(
+          item =>
+            item.idempotency_key === idempotencyKey &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
     if (this.query.includes('FROM forum_forums')) {
       const forumRef = String(this.values[0])
       const slugRef = String(this.values[1] ?? this.values[0])
@@ -1543,6 +1724,97 @@ class ForumRouteStatement implements D1PreparedStatement {
           `forced test failure inserting into ${this.store.failInsertsInto}`,
         ),
       )
+    }
+
+    if (this.query.includes('INSERT INTO forum_work_requests')) {
+      this.store.workRequests.push({
+        archived_at: null,
+        budget_msats: Number(this.values[11]),
+        budget_sats: Number(this.values[10]),
+        created_at: String(this.values[18]),
+        deadline_ref: String(this.values[12]),
+        first_post_id: String(this.values[3]),
+        id: String(this.values[0]),
+        idempotency_key: String(this.values[1]),
+        job_event_id: String(this.values[14]),
+        job_event_kind: Number(this.values[15]),
+        job_result_kind: Number(this.values[16]),
+        objective_ref: String(this.values[6]),
+        public_projection_json: String(this.values[17]),
+        quote_count: 0,
+        relay_url: String(this.values[13]),
+        repository_refs_json: String(this.values[8]),
+        requester_actor_ref: String(this.values[4]),
+        required_capability_refs_json: String(this.values[9]),
+        state: 'open',
+        title: String(this.values[5]),
+        topic_id: String(this.values[2]),
+        updated_at: String(this.values[19]),
+        verification_command_ref: String(this.values[7]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('INSERT INTO forum_work_request_relay_links')) {
+      this.store.workRequestRelayLinks.push({
+        archived_at: null,
+        bridge_actor_ref: String(this.values[7]),
+        created_at: String(this.values[9]),
+        event_json: String(this.values[8]),
+        id: String(this.values[0]),
+        job_event_id: String(this.values[3]),
+        job_event_kind: Number(this.values[4]),
+        relay_ref: String(this.values[6]),
+        relay_url: String(this.values[5]),
+        topic_id: String(this.values[2]),
+        work_request_id: String(this.values[1]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('INSERT INTO forum_work_request_lifecycle_posts')) {
+      this.store.workRequestLifecyclePosts.push({
+        archived_at: null,
+        created_at: String(this.values[8]),
+        id: String(this.values[0]),
+        idempotency_key: String(this.values[4]),
+        lifecycle_kind:
+          this.values[5] as WorkRequestLifecyclePostRow['lifecycle_kind'],
+        post_id: String(this.values[3]),
+        receipt_ref: String(this.values[6]),
+        state_after: this.values[7] as WorkRequestRow['state'],
+        topic_id: String(this.values[2]),
+        work_request_id: String(this.values[1]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_work_requests')) {
+      const state = this.values[0] as WorkRequestRow['state']
+      const lifecycleKind = String(this.values[1])
+      const updatedAt = String(this.values[2])
+      const workRequestId = String(this.values[3])
+      const existingIndex = this.store.workRequests.findIndex(
+        item => item.id === workRequestId && item.archived_at === null,
+      )
+
+      if (existingIndex !== -1) {
+        const existing = this.store.workRequests[existingIndex]!
+        this.store.workRequests[existingIndex] = {
+          ...existing,
+          quote_count:
+            lifecycleKind === 'quote_received'
+              ? existing.quote_count + 1
+              : existing.quote_count,
+          state,
+          updated_at: updatedAt,
+        }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
     }
 
     if (this.query.includes('INSERT OR IGNORE INTO forum_l402_challenges')) {
@@ -2393,6 +2665,26 @@ class ForumRouteStatement implements D1PreparedStatement {
   }
 
   all<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    if (this.query.includes('FROM forum_work_requests')) {
+      const limit = Number(this.values[0] ?? 50)
+      const rows = this.store.workRequests
+        .filter(
+          item =>
+            item.archived_at === null &&
+            ['open', 'quote_received', 'quote_accepted', 'running'].includes(
+              item.state,
+            ),
+        )
+        .sort(
+          (left, right) =>
+            right.created_at.localeCompare(left.created_at) ||
+            right.id.localeCompare(left.id),
+        )
+        .slice(0, limit)
+
+      return Promise.resolve({ results: rows } as unknown as D1Result<T>)
+    }
+
     if (
       this.query.includes('FROM forum_watches') &&
       this.query.includes('JOIN forum_posts')
@@ -3383,6 +3675,8 @@ const route = async (
     headers?: HeadersInit
     moderator?: 'admin' | 'non_admin'
     method?: string
+    workRequestRelayPublisher?: ReturnType<typeof fakeWorkRequestRelayPublisher>
+    workRequestRelayUrl?: string
   }> = {},
 ) => {
   const init: RequestInit = {
@@ -3402,6 +3696,12 @@ const route = async (
   const request = new Request(`https://openagents.com${path}`, init)
   const effect = makeForumRoutes({
     agentStore: testAgentStore(options.agentMetadata),
+    ...(options.workRequestRelayPublisher === undefined
+      ? {}
+      : { forumWorkRequestRelayPublisher: options.workRequestRelayPublisher }),
+    ...(options.workRequestRelayUrl === undefined
+      ? {}
+      : { forumWorkRequestRelayUrl: options.workRequestRelayUrl }),
     hostedMdkClient: options.hostedMdkClient ?? forumHostedMdkClient(),
     l402SigningBoundary: forumL402SigningBoundary,
     makeId: () => store.nextId(),
@@ -3472,6 +3772,7 @@ describe('Forum routes', () => {
       'site-builder-help',
       'artanis',
       'product-promises',
+      'work-requests',
     ])
     expect(testResponse.status).toBe(401)
     expect(testBody.forums.map(forum => forum.slug).sort()).toStrictEqual([
@@ -3479,6 +3780,7 @@ describe('Forum routes', () => {
       'product-promises',
       'site-builder-help',
       'void',
+      'work-requests',
     ])
   })
 
@@ -3514,6 +3816,277 @@ describe('Forum routes', () => {
         title: 'Promise report: example mismatch',
       },
     })
+  })
+
+  test('creates Forum work requests as NIP-LBR relay jobs with idempotent linkage', async () => {
+    const store = new ForumRouteStore()
+    const captured: Array<CapturedWorkRequestRelayPublish> = []
+    const publisher = fakeWorkRequestRelayPublisher(captured)
+    const request = {
+      body: {
+        budgetSats: 2_500,
+        deadlineRef: 'deadline.public.lbr.20260612',
+        objectiveRef: 'objective.public.openagents.forum_bridge_smoke',
+        repositoryRefs: ['repo.public.openagents'],
+        requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+        title: 'Forum bridge smoke request',
+        verificationCommandRef: 'command.public.bun_vitest_forum_work_requests',
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'work-request-create-1',
+      },
+      method: 'POST',
+      workRequestRelayPublisher: publisher,
+      workRequestRelayUrl: 'wss://relay.test.openagents.dev',
+    }
+    const created = await route(store, '/api/forum/work-requests', request)
+    const retry = await route(store, '/api/forum/work-requests', request)
+    const conflict = await route(store, '/api/forum/work-requests', {
+      ...request,
+      body: {
+        ...request.body,
+        objectiveRef: 'objective.public.openagents.changed',
+      },
+    })
+    const list = await route(store, '/api/forum/work-requests')
+
+    expect(created.status).toBe(201)
+    expect(retry.status).toBe(200)
+    expect(conflict.status).toBe(409)
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.draft.kind).toBe(5934)
+    expect(captured[0]?.draft.content).toBe('')
+    expect(captured[0]?.draft.tags).toContainEqual([
+      'param',
+      'lbr_objective_ref',
+      'objective.public.openagents.forum_bridge_smoke',
+    ])
+    await expect(created.json()).resolves.toMatchObject({
+      firstPost: {
+        bodyText: expect.stringContaining(
+          'Job event ref: nostr.event.0000000000000000000000000000000000000000000000000000000000000001',
+        ),
+      },
+      idempotent: false,
+      relayLink: {
+        jobEventId:
+          '0000000000000000000000000000000000000000000000000000000000000001',
+        jobEventKind: 5934,
+      },
+      topic: {
+        slug: 'forum-bridge-smoke-request',
+        title: 'Forum bridge smoke request',
+      },
+      workRequest: {
+        budgetSats: 2500,
+        jobEventKind: 5934,
+        jobResultKind: 6934,
+        objectiveRef: 'objective.public.openagents.forum_bridge_smoke',
+        state: 'open',
+      },
+    })
+    await expect(retry.json()).resolves.toMatchObject({
+      idempotent: true,
+      relayLink: {
+        jobEventId:
+          '0000000000000000000000000000000000000000000000000000000000000001',
+      },
+    })
+    await expect(list.json()).resolves.toMatchObject({
+      workRequests: [
+        {
+          objectiveRef: 'objective.public.openagents.forum_bridge_smoke',
+          state: 'open',
+        },
+      ],
+    })
+    expect(store.workRequests).toHaveLength(1)
+    expect(store.workRequestRelayLinks).toHaveLength(1)
+  })
+
+  test('rejects invalid or unsafe Forum work request material before persistence', async () => {
+    const store = new ForumRouteStore()
+    const captured: Array<CapturedWorkRequestRelayPublish> = []
+    const base = {
+      budgetSats: 2_500,
+      deadlineRef: 'deadline.public.lbr.20260612',
+      objectiveRef: 'objective.public.openagents.safe',
+      repositoryRefs: ['repo.public.openagents'],
+      requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+      title: 'Safe work request',
+      verificationCommandRef: 'command.public.bun_test',
+    }
+    const invalid = await route(store, '/api/forum/work-requests', {
+      body: { ...base, budgetSats: 0 },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'work-request-invalid-1',
+      },
+      method: 'POST',
+      workRequestRelayPublisher: fakeWorkRequestRelayPublisher(captured),
+    })
+    const unsafe = await route(store, '/api/forum/work-requests', {
+      body: {
+        ...base,
+        rawPrompt: 'fix this using OPENAI_API_KEY=secret',
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'work-request-unsafe-1',
+      },
+      method: 'POST',
+      workRequestRelayPublisher: fakeWorkRequestRelayPublisher(captured),
+    })
+
+    expect(invalid.status).toBe(400)
+    expect(unsafe.status).toBe(400)
+    await expect(unsafe.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: expect.stringContaining('public refs only'),
+    })
+    expect(captured).toHaveLength(0)
+    expect(store.workRequests).toHaveLength(0)
+    expect(store.topics.some(topic => topic.forum_id === store.forums[4]?.id)).toBe(
+      false,
+    )
+  })
+
+  test('records Forum work request lifecycle updates as idempotent topic replies', async () => {
+    const store = new ForumRouteStore()
+    const captured: Array<CapturedWorkRequestRelayPublish> = []
+    const created = await route(store, '/api/forum/work-requests', {
+      body: {
+        budgetSats: 1_000,
+        deadlineRef: 'deadline.public.lbr.20260612',
+        objectiveRef: 'objective.public.openagents.lifecycle',
+        repositoryRefs: ['repo.public.openagents'],
+        requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+        title: 'Lifecycle request',
+        verificationCommandRef: 'command.public.bun_lifecycle_test',
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'work-request-lifecycle-root',
+      },
+      method: 'POST',
+      workRequestRelayPublisher: fakeWorkRequestRelayPublisher(captured),
+    })
+    const createdBody = (await created.json()) as Readonly<{
+      topic: Readonly<{ postCount: number }>
+      workRequest: Readonly<{ workRequestId: string }>
+    }>
+    const lifecycleRequest = {
+      body: {
+        lifecycleKind: 'quote_received',
+        receiptRef: 'receipt.public.lbr.quote_1',
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'work-request-lifecycle-quote-1',
+      },
+      method: 'POST',
+    }
+    const lifecycle = await route(
+      store,
+      `/api/forum/work-requests/${createdBody.workRequest.workRequestId}/lifecycle-posts`,
+      lifecycleRequest,
+    )
+    const retry = await route(
+      store,
+      `/api/forum/work-requests/${createdBody.workRequest.workRequestId}/lifecycle-posts`,
+      lifecycleRequest,
+    )
+
+    expect(created.status).toBe(201)
+    expect(createdBody.topic.postCount).toBe(1)
+    expect(lifecycle.status).toBe(201)
+    expect(retry.status).toBe(200)
+    await expect(lifecycle.json()).resolves.toMatchObject({
+      idempotent: false,
+      lifecyclePost: {
+        lifecycleKind: 'quote_received',
+        receiptRef: 'receipt.public.lbr.quote_1',
+      },
+      post: {
+        bodyText: expect.stringContaining('Receipt ref: receipt.public.lbr.quote_1'),
+        postNumber: 2,
+      },
+      workRequest: { quoteCount: 1, state: 'quote_received' },
+    })
+    await expect(retry.json()).resolves.toMatchObject({
+      idempotent: true,
+      post: { postNumber: 2 },
+      workRequest: { quoteCount: 1, state: 'quote_received' },
+    })
+    expect(store.workRequestLifecyclePosts).toHaveLength(1)
+    expect(
+      store.posts.filter(post => post.topic_id === store.workRequests[0]?.topic_id),
+    ).toHaveLength(2)
+  })
+
+  test('ingests relay-native NIP-LBR requests into twin Forum work-request topics', async () => {
+    const store = new ForumRouteStore()
+    const lbr = makeLbrAgenticCodingRequest({
+      bidMsats: 3_000_000,
+      deadline: 'deadline.public.lbr.20260612',
+      objectiveRef: 'objective.public.openagents.relay_native',
+      relays: ['wss://relay.test.openagents.dev'],
+      repositoryRefs: ['repo.public.openagents'],
+      requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+      verificationCommandRef: 'command.public.bun_relay_native',
+    })
+    const draft = lbrAgenticCodingRequestToDraft(lbr)
+    const event = {
+      content: draft.content,
+      created_at: 1_781_107_200,
+      id: 'd'.repeat(64),
+      kind: draft.kind,
+      pubkey: 'e'.repeat(64),
+      sig: 'f'.repeat(128),
+      tags: draft.tags,
+    }
+    const request = {
+      body: { event, title: 'Relay native request' },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'relay-native-work-request-1',
+      },
+      method: 'POST',
+      workRequestRelayUrl: 'wss://relay.test.openagents.dev',
+    }
+    const created = await route(
+      store,
+      '/api/forum/work-requests/relay-events',
+      request,
+    )
+    const retry = await route(store, '/api/forum/work-requests/relay-events', {
+      ...request,
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'relay-native-work-request-2',
+      },
+    })
+
+    expect(created.status).toBe(201)
+    expect(retry.status).toBe(200)
+    await expect(created.json()).resolves.toMatchObject({
+      idempotent: false,
+      relayLink: { jobEventId: 'd'.repeat(64), jobEventKind: 5934 },
+      topic: { title: 'Relay native request' },
+      workRequest: {
+        jobEventId: 'd'.repeat(64),
+        objectiveRef: 'objective.public.openagents.relay_native',
+      },
+    })
+    await expect(retry.json()).resolves.toMatchObject({
+      idempotent: true,
+      relayLink: { jobEventId: 'd'.repeat(64) },
+    })
+    expect(store.workRequests).toHaveLength(1)
+    expect(store.workRequestRelayLinks[0]?.topic_id).toBe(
+      store.workRequests[0]?.topic_id,
+    )
   })
 
   test('discovers Artanis canonical topics and keeps moderation operator-only', async () => {

@@ -119,6 +119,31 @@ import {
   serverError,
 } from './http/responses'
 import {
+  DefaultForumWorkRequestBridgeActorRef,
+  DefaultForumWorkRequestRelayUrl,
+  ForumWorkRequestLifecycleKind,
+  ForumWorkRequestsForumSlug,
+  buildForumWorkRequestLbrDraft,
+  decodeRelayNativeLbrWorkRequest,
+  defaultForumWorkRequestRelayPublisher,
+  forumWorkRequestBodyText,
+  forumWorkRequestErrorToValidationError,
+  forumWorkRequestEventRef,
+  forumWorkRequestLifecycleBodyText,
+  listOpenForumWorkRequests,
+  normalizeForumWorkRequestInput,
+  readForumWorkRequestById,
+  readForumWorkRequestByIdempotencyKey,
+  readForumWorkRequestByJobEventId,
+  readForumWorkRequestLifecycleByIdempotencyKey,
+  readForumWorkRequestRelayLinkByWorkRequestId,
+  recordForumWorkRequest,
+  recordForumWorkRequestLifecyclePost,
+  type ForumWorkRequestRecord,
+  type ForumWorkRequestRelayPublisher,
+  type NormalizedForumWorkRequestInput,
+} from './forum-work-requests'
+import {
   currentEpochMillis,
   currentIsoTimestamp,
   epochMillisToIsoTimestamp,
@@ -130,6 +155,8 @@ type ForumRouteDependencies = Readonly<{
   tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
   agentStore?: AgentRegistrationStore
   hostedMdkClient?: OpenAgentsHostedMdkClient
+  forumWorkRequestRelayPublisher?: ForumWorkRequestRelayPublisher
+  forumWorkRequestRelayUrl?: string
   l402SigningBoundary?: ForumL402SigningBoundaryProvider
   mdkWebhookConfig?: OpenAgentsSiteMdkWebhookConfig | undefined
   makeId?: () => string
@@ -196,6 +223,46 @@ const CreateForumReplyBody = S.Struct({
   paymentProofRef: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(300)))),
   quotePostId: S.optionalKey(S.NullOr(S.String)),
 })
+
+const ForumWorkRequestRef = S.Trim.check(
+  S.isNonEmpty(),
+  S.isMaxLength(220),
+)
+const ForumWorkRequestRefs = S.Array(ForumWorkRequestRef)
+
+const CreateForumWorkRequestBody = S.Struct({
+  budgetSats: S.Number,
+  deadlineRef: ForumWorkRequestRef,
+  objectiveRef: ForumWorkRequestRef,
+  repositoryRefs: S.optionalKey(ForumWorkRequestRefs),
+  requestedSlug: S.optionalKey(
+    S.NullOr(
+      S.Trim.check(
+        S.isMinLength(3),
+        S.isMaxLength(80),
+        S.isPattern(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/),
+      ),
+    ),
+  ),
+  requiredCapabilityRefs: S.optionalKey(ForumWorkRequestRefs),
+  title: S.Trim.check(S.isMinLength(3), S.isMaxLength(160)),
+  verificationCommandRef: ForumWorkRequestRef,
+})
+type CreateForumWorkRequestBody = typeof CreateForumWorkRequestBody.Type
+
+const RelayNativeForumWorkRequestBody = S.Struct({
+  event: S.Unknown,
+  title: S.optionalKey(S.NullOr(S.Trim.check(S.isMaxLength(160)))),
+})
+type RelayNativeForumWorkRequestBody =
+  typeof RelayNativeForumWorkRequestBody.Type
+
+const ForumWorkRequestLifecycleBody = S.Struct({
+  lifecycleKind: ForumWorkRequestLifecycleKind,
+  receiptRef: ForumWorkRequestRef,
+})
+type ForumWorkRequestLifecycleBody =
+  typeof ForumWorkRequestLifecycleBody.Type
 
 const EditForumPostBody = S.Struct({
   bodyText: S.Trim.check(
@@ -657,6 +724,85 @@ const defaultPublicProjection = (artifactRef: string) => ({
   safeReceiptRefs: [],
   trustTier: 'reviewed' as const,
 })
+
+const workRequestPublicProjection = (
+  workRequestId: string,
+  jobEventId: string,
+) => ({
+  ...defaultPublicProjection(`artifact.forum.work_request.${workRequestId}`),
+  safeArtifactRefs: [
+    `artifact.forum.work_request.${workRequestId}`,
+    forumWorkRequestEventRef(jobEventId),
+  ],
+})
+
+const forbiddenWorkRequestBodyKeys = new Set([
+  'bodyText',
+  'credentials',
+  'privateRepoContent',
+  'prompt',
+  'rawCommand',
+  'rawContent',
+  'rawPrompt',
+  'secret',
+])
+
+const rejectForbiddenWorkRequestBodyKeys = (body: unknown): void => {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return
+  }
+
+  const keys = Object.keys(body)
+  const forbidden = keys.find(key => forbiddenWorkRequestBodyKeys.has(key))
+
+  if (forbidden !== undefined) {
+    throw new Error(
+      `Forum work requests accept public refs only; ${forbidden} is not allowed.`,
+    )
+  }
+}
+
+const decodeCreateForumWorkRequestBody = (
+  body: unknown,
+): CreateForumWorkRequestBody => {
+  rejectForbiddenWorkRequestBodyKeys(body)
+
+  return S.decodeUnknownSync(CreateForumWorkRequestBody)(body)
+}
+
+const decodeRelayNativeForumWorkRequestBody = (
+  body: unknown,
+): RelayNativeForumWorkRequestBody => {
+  rejectForbiddenWorkRequestBodyKeys(body)
+
+  return S.decodeUnknownSync(RelayNativeForumWorkRequestBody)(body)
+}
+
+const decodeForumWorkRequestLifecycleBody = (
+  body: unknown,
+): ForumWorkRequestLifecycleBody => {
+  rejectForbiddenWorkRequestBodyKeys(body)
+
+  return S.decodeUnknownSync(ForumWorkRequestLifecycleBody)(body)
+}
+
+const arraysEqual = (
+  left: ReadonlyArray<string>,
+  right: ReadonlyArray<string>,
+): boolean =>
+  left.length === right.length && left.every((value, index) => value === right[index])
+
+const workRequestMatchesInput = (
+  record: ForumWorkRequestRecord,
+  input: NormalizedForumWorkRequestInput,
+): boolean =>
+  record.title === input.title &&
+  record.objectiveRef === input.objectiveRef &&
+  record.verificationCommandRef === input.verificationCommandRef &&
+  record.deadlineRef === input.deadlineRef &&
+  record.budgetSats === input.budgetSats &&
+  arraysEqual(record.repositoryRefs, input.repositoryRefs) &&
+  arraysEqual(record.requiredCapabilityRefs, input.requiredCapabilityRefs)
 
 const ForumReportReasonRefs: Record<ForumReportReason, string> = {
   off_topic: 'forum.report.reason.off_topic',
@@ -1726,6 +1872,628 @@ const createReplyResponse = (
           { idempotent: false, post, receiptRefs: [], topic: updatedTopic },
           { status: 201 },
         )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const createForumWorkRequestResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      decodeCreateForumWorkRequestBody,
+    )
+    const normalized = yield* Effect.try({
+      catch: forumWorkRequestErrorToValidationError,
+      try: () =>
+        normalizeForumWorkRequestInput({
+          budgetSats: body.budgetSats,
+          deadlineRef: body.deadlineRef,
+          objectiveRef: body.objectiveRef,
+          repositoryRefs: body.repositoryRefs ?? [],
+          requiredCapabilityRefs: body.requiredCapabilityRefs ?? [],
+          title: body.title,
+          verificationCommandRef: body.verificationCommandRef,
+        }),
+    })
+    const existing = yield* readForumWorkRequestByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existing !== null) {
+      if (!workRequestMatchesInput(existing, normalized)) {
+        return idempotencyConflictResponse()
+      }
+
+      const [topic, firstPost, relayLink] = yield* Effect.all([
+        readForumTopicById(db, existing.topicId),
+        readForumPostById(db, existing.firstPostId),
+        readForumWorkRequestRelayLinkByWorkRequestId(
+          db,
+          existing.workRequestId,
+        ),
+      ])
+
+      if (topic === null || firstPost === null || relayLink === null) {
+        return serverError()
+      }
+
+      return noStoreJsonResponse({
+        firstPost,
+        idempotent: true,
+        relayLink,
+        topic,
+        workRequest: existing,
+      })
+    }
+
+    const forum = yield* readForumSummaryByRef(
+      db,
+      ForumWorkRequestsForumSlug,
+      { allowUnlisted: true },
+    )
+
+    if (forum === null) {
+      return notFound()
+    }
+
+    if (forum.locked) {
+      return locked('forum is locked')
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const publicIdentity = yield* verifiedPublicIdentityForActor(
+      actor,
+      dependencies,
+    )
+    const grant = forumWriteGrantForActor(
+      actor,
+      forum.forumId,
+      'forum.write',
+      nowEpochMillis,
+      publicIdentity,
+    )
+    const writer = yield* buildForumWriterContext({
+      actor,
+      grant,
+      nowEpochMillis,
+      paymentProofRef: null,
+      requiredScope: 'forum.write',
+      targetForumId: forum.forumId,
+      targetOwnerUserId:
+        actor._tag === 'Agent' ? (publicIdentity?.ownerUserId ?? null) : null,
+      targetTeamId: null,
+    })
+    const makeId = dependencies.makeId ?? randomUuid
+    const topicId = makeId()
+    const firstPostId = makeId()
+    const workRequestId = makeId()
+    const relayUrl =
+      dependencies.forumWorkRequestRelayUrl ?? DefaultForumWorkRequestRelayUrl
+    const bridgeActorRef = DefaultForumWorkRequestBridgeActorRef
+    const lbr = yield* Effect.try({
+      catch: forumWorkRequestErrorToValidationError,
+      try: () =>
+        buildForumWorkRequestLbrDraft(normalized, {
+          relayUrl,
+          topicId,
+        }),
+    })
+    const relayPublisher =
+      dependencies.forumWorkRequestRelayPublisher ??
+      defaultForumWorkRequestRelayPublisher()
+    const relayReceipt = yield* Effect.tryPromise({
+      catch: error =>
+        new ForumStorageError({
+          operation: 'forumWorkRequests.publishRelay',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        relayPublisher.publishWorkRequest({
+          bridgeActorRef,
+          draft: lbr.draft,
+          idempotencyKey,
+          lbrRequest: lbr.request,
+          relayUrl,
+          topicId,
+          workRequestId,
+        }),
+    })
+
+    if (!relayReceipt.accepted) {
+      return noStoreJsonResponse(
+        {
+          error: 'forum_work_request_relay_rejected',
+          reason: 'Forum work-request bridge publisher rejected the LBR event.',
+          relayRef: relayReceipt.relayRef,
+        },
+        { status: 503 },
+      )
+    }
+
+    const bodyText = yield* Effect.try({
+      catch: forumWorkRequestErrorToValidationError,
+      try: () =>
+        forumWorkRequestBodyText(normalized, {
+          jobEventId: relayReceipt.jobEventId,
+          relayUrl: relayReceipt.relayUrl,
+          workRequestId,
+        }),
+    })
+    const writePolicyDenial = yield* enforceForumWritePolicy(db, {
+      actionKind: 'topic',
+      actorRef: writer.actor.actorRef,
+      bodyText,
+      nowEpochMillis: nowEpochMillis(),
+    })
+
+    if (writePolicyDenial !== null) {
+      return writePolicyDenial
+    }
+
+    const runtime = {
+      makeId,
+      nowIso: dependencies.nowIso ?? currentIsoTimestamp,
+    }
+    const created = yield* createForumTopicWithFirstPost(
+      db,
+      {
+        actor: writer.actor,
+        bodyText,
+        contentRef: `content.forum.work_request.${workRequestId}`,
+        firstPostId,
+        forumId: forum.forumId,
+        idempotencyKey,
+        publicProjection: workRequestPublicProjection(
+          workRequestId,
+          relayReceipt.jobEventId,
+        ),
+        slug: body.requestedSlug ?? slugify(body.title, topicId.slice(0, 8)),
+        title: body.title,
+        topicId,
+      },
+      runtime,
+    )
+    const workRequest = yield* recordForumWorkRequest(
+      db,
+      {
+        bridgeActorRef,
+        firstPostId,
+        idempotencyKey,
+        jobEventId: relayReceipt.jobEventId,
+        publicProjection: workRequestPublicProjection(
+          workRequestId,
+          relayReceipt.jobEventId,
+        ),
+        relayEvent: relayReceipt.event,
+        relayRef: relayReceipt.relayRef,
+        relayUrl: relayReceipt.relayUrl,
+        request: normalized,
+        requesterActorRef: writer.actor.actorRef,
+        topicId,
+        workRequestId,
+      },
+      runtime,
+    )
+    const relayLink = yield* readForumWorkRequestRelayLinkByWorkRequestId(
+      db,
+      workRequest.workRequestId,
+    )
+
+    if (relayLink === null) {
+      return serverError()
+    }
+
+    return noStoreJsonResponse(
+      {
+        firstPost: created.firstPost,
+        idempotent: false,
+        relayLink,
+        topic: created.topic,
+        workRequest,
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const ingestRelayNativeForumWorkRequestResponse = (
+  request: Request,
+  db: D1Database,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      decodeRelayNativeForumWorkRequestBody,
+    )
+    const decoded = yield* Effect.try({
+      catch: forumWorkRequestErrorToValidationError,
+      try: () => decodeRelayNativeLbrWorkRequest(body.event),
+    })
+    const normalized = yield* Effect.try({
+      catch: forumWorkRequestErrorToValidationError,
+      try: () =>
+        normalizeForumWorkRequestInput({
+          budgetSats: decoded.request.budgetSats,
+          deadlineRef: decoded.request.deadlineRef,
+          objectiveRef: decoded.request.objectiveRef,
+          repositoryRefs: decoded.request.repositoryRefs,
+          requiredCapabilityRefs: decoded.request.requiredCapabilityRefs,
+          title:
+            body.title !== null && body.title !== undefined && body.title !== ''
+              ? body.title
+              : decoded.request.title,
+          verificationCommandRef: decoded.request.verificationCommandRef,
+        }),
+    })
+    const existingByEvent = yield* readForumWorkRequestByJobEventId(
+      db,
+      decoded.eventId,
+    )
+
+    if (existingByEvent !== null) {
+      const [topic, firstPost, relayLink] = yield* Effect.all([
+        readForumTopicById(db, existingByEvent.topicId),
+        readForumPostById(db, existingByEvent.firstPostId),
+        readForumWorkRequestRelayLinkByWorkRequestId(
+          db,
+          existingByEvent.workRequestId,
+        ),
+      ])
+
+      if (topic === null || firstPost === null || relayLink === null) {
+        return serverError()
+      }
+
+      return noStoreJsonResponse({
+        firstPost,
+        idempotent: true,
+        relayLink,
+        topic,
+        workRequest: existingByEvent,
+      })
+    }
+
+    const existingByKey = yield* readForumWorkRequestByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingByKey !== null) {
+      return idempotencyConflictResponse()
+    }
+
+    const forum = yield* readForumSummaryByRef(
+      db,
+      ForumWorkRequestsForumSlug,
+      { allowUnlisted: true },
+    )
+
+    if (forum === null) {
+      return notFound()
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const publicIdentity = yield* verifiedPublicIdentityForActor(
+      actor,
+      dependencies,
+    )
+    const grant = forumWriteGrantForActor(
+      actor,
+      forum.forumId,
+      'forum.write',
+      nowEpochMillis,
+      publicIdentity,
+    )
+    const writer = yield* buildForumWriterContext({
+      actor,
+      grant,
+      nowEpochMillis,
+      paymentProofRef: null,
+      requiredScope: 'forum.write',
+      targetForumId: forum.forumId,
+      targetOwnerUserId:
+        actor._tag === 'Agent' ? (publicIdentity?.ownerUserId ?? null) : null,
+      targetTeamId: null,
+    })
+    const makeId = dependencies.makeId ?? randomUuid
+    const topicId = makeId()
+    const firstPostId = makeId()
+    const workRequestId = makeId()
+    const relayUrl =
+      dependencies.forumWorkRequestRelayUrl ?? DefaultForumWorkRequestRelayUrl
+    const bodyText = yield* Effect.try({
+      catch: forumWorkRequestErrorToValidationError,
+      try: () =>
+        forumWorkRequestBodyText(normalized, {
+          jobEventId: decoded.eventId,
+          relayUrl,
+          workRequestId,
+        }),
+    })
+    const writePolicyDenial = yield* enforceForumWritePolicy(db, {
+      actionKind: 'topic',
+      actorRef: writer.actor.actorRef,
+      bodyText,
+      nowEpochMillis: nowEpochMillis(),
+    })
+
+    if (writePolicyDenial !== null) {
+      return writePolicyDenial
+    }
+
+    const runtime = {
+      makeId,
+      nowIso: dependencies.nowIso ?? currentIsoTimestamp,
+    }
+    const created = yield* createForumTopicWithFirstPost(
+      db,
+      {
+        actor: writer.actor,
+        bodyText,
+        contentRef: `content.forum.work_request.${workRequestId}`,
+        firstPostId,
+        forumId: forum.forumId,
+        idempotencyKey,
+        publicProjection: workRequestPublicProjection(
+          workRequestId,
+          decoded.eventId,
+        ),
+        slug: slugify(normalized.title, topicId.slice(0, 8)),
+        title: normalized.title,
+        topicId,
+      },
+      runtime,
+    )
+    const workRequest = yield* recordForumWorkRequest(
+      db,
+      {
+        bridgeActorRef: DefaultForumWorkRequestBridgeActorRef,
+        firstPostId,
+        idempotencyKey,
+        jobEventId: decoded.eventId,
+        publicProjection: workRequestPublicProjection(
+          workRequestId,
+          decoded.eventId,
+        ),
+        relayEvent: body.event,
+        relayRef: 'relay.public.native.openagents_market',
+        relayUrl,
+        request: normalized,
+        requesterActorRef: writer.actor.actorRef,
+        topicId,
+        workRequestId,
+      },
+      runtime,
+    )
+    const relayLink = yield* readForumWorkRequestRelayLinkByWorkRequestId(
+      db,
+      workRequest.workRequestId,
+    )
+
+    if (relayLink === null) {
+      return serverError()
+    }
+
+    return noStoreJsonResponse(
+      {
+        firstPost: created.firstPost,
+        idempotent: false,
+        relayLink,
+        topic: created.topic,
+        workRequest,
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const listForumWorkRequestsResponse = (db: D1Database, url: URL) => {
+  const limit = forumListLimitFromUrl(url)
+
+  if (limit instanceof Response) {
+    return Effect.succeed(limit)
+  }
+
+  return publicListResponse(
+    listOpenForumWorkRequests(db, limit).pipe(
+      Effect.map(workRequests => ({
+        generatedAt: currentIsoTimestamp(),
+        pagination: {
+          cursor: null,
+          hasMore: false,
+          limit,
+          nextCursor: null,
+        },
+        workRequests,
+      })),
+    ),
+  )
+}
+
+const createForumWorkRequestLifecycleResponse = (
+  request: Request,
+  db: D1Database,
+  workRequestId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const body = yield* decodeJsonBody(
+      request,
+      decodeForumWorkRequestLifecycleBody,
+    )
+    const existingLifecycle = yield* readForumWorkRequestLifecycleByIdempotencyKey(
+      db,
+      idempotencyKey,
+    )
+
+    if (existingLifecycle !== null) {
+      if (
+        existingLifecycle.workRequestId !== workRequestId ||
+        existingLifecycle.lifecycleKind !== body.lifecycleKind ||
+        existingLifecycle.receiptRef !== body.receiptRef
+      ) {
+        return idempotencyConflictResponse()
+      }
+
+      const [workRequest, post] = yield* Effect.all([
+        readForumWorkRequestById(db, workRequestId),
+        readForumPostById(db, existingLifecycle.postId),
+      ])
+
+      if (workRequest === null || post === null) {
+        return serverError()
+      }
+
+      return noStoreJsonResponse({
+        idempotent: true,
+        lifecyclePost: existingLifecycle,
+        post,
+        workRequest,
+      })
+    }
+
+    const workRequest = yield* readForumWorkRequestById(db, workRequestId)
+
+    if (workRequest === null) {
+      return notFound()
+    }
+
+    const topic = yield* readForumTopicById(db, workRequest.topicId)
+
+    if (topic === null || topic.state === 'archived' || topic.state === 'hidden') {
+      return notFound()
+    }
+
+    if (topic.state === 'locked') {
+      return locked('topic is locked')
+    }
+
+    const forum = yield* readForumSummaryByRef(db, topic.forumId, {
+      allowUnlisted: true,
+    })
+
+    if (forum === null) {
+      return notFound()
+    }
+
+    const bodyText = yield* Effect.try({
+      catch: forumWorkRequestErrorToValidationError,
+      try: () =>
+        forumWorkRequestLifecycleBodyText(
+          body.lifecycleKind,
+          body.receiptRef,
+          workRequestId,
+        ),
+    })
+    const actor = yield* actorForRequest(request, dependencies)
+    const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
+    const publicIdentity = yield* verifiedPublicIdentityForActor(
+      actor,
+      dependencies,
+    )
+    const grant = forumWriteGrantForActor(
+      actor,
+      forum.forumId,
+      forumWriteRequiredScopeForForum(forum.slug),
+      nowEpochMillis,
+      publicIdentity,
+    )
+    const writer = yield* buildForumWriterContext({
+      actor,
+      grant,
+      nowEpochMillis,
+      paymentProofRef: null,
+      requiredScope: forumWriteRequiredScopeForForum(forum.slug),
+      targetForumId: forum.forumId,
+      targetOwnerUserId:
+        actor._tag === 'Agent' ? (publicIdentity?.ownerUserId ?? null) : null,
+      targetTeamId: null,
+    })
+    const writePolicyDenial = yield* enforceForumWritePolicy(db, {
+      actionKind: 'reply',
+      actorRef: writer.actor.actorRef,
+      bodyText,
+      nowEpochMillis: nowEpochMillis(),
+    })
+
+    if (writePolicyDenial !== null) {
+      return writePolicyDenial
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const postId = makeId()
+    const runtime = {
+      makeId,
+      nowIso: dependencies.nowIso ?? currentIsoTimestamp,
+    }
+    const post = yield* createForumReplyPost(
+      db,
+      {
+        actor: writer.actor,
+        bodyText,
+        contentRef: `content.forum.work_request_lifecycle.${postId}`,
+        forumId: forum.forumId,
+        idempotencyKey,
+        parentPostId: topic.latestPostId,
+        postId,
+        publicProjection: defaultPublicProjection(
+          `artifact.forum.work_request_lifecycle.${postId}`,
+        ),
+        quotePostId: null,
+        topicId: topic.topicId,
+      },
+      runtime,
+    )
+    const lifecyclePost = yield* recordForumWorkRequestLifecyclePost(
+      db,
+      {
+        idempotencyKey,
+        lifecycleKind: body.lifecycleKind,
+        lifecyclePostId: makeId(),
+        postId,
+        receiptRef: body.receiptRef,
+        topicId: topic.topicId,
+        workRequestId,
+      },
+      runtime,
+    )
+    const updated = yield* readForumWorkRequestById(db, workRequestId)
+
+    if (updated === null) {
+      return serverError()
+    }
+
+    return noStoreJsonResponse(
+      {
+        idempotent: false,
+        lifecyclePost,
+        post,
+        workRequest: updated,
+      },
+      { status: 201 },
+    )
   }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
 
 const writerForForumResponse = (
@@ -3453,6 +4221,50 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
           Effect.succeed(unauthorized()),
         ),
       )
+    }
+
+    if (url.pathname === '/api/forum/work-requests') {
+      if (request.method === 'GET') {
+        return listForumWorkRequestsResponse(db, url)
+      }
+
+      if (request.method === 'POST') {
+        return createForumWorkRequestResponse(request, db, requestDependencies)
+      }
+
+      return Effect.succeed(methodNotAllowed(['GET', 'POST']))
+    }
+
+    if (url.pathname === '/api/forum/work-requests/relay-events') {
+      return request.method === 'POST'
+        ? ingestRelayNativeForumWorkRequestResponse(
+            request,
+            db,
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
+    }
+
+    const workRequestLifecycleMatch =
+      /^\/api\/forum\/work-requests\/([^/]+)\/lifecycle-posts$/.exec(
+        url.pathname,
+      )
+
+    if (workRequestLifecycleMatch !== null) {
+      const workRequestId = decodePathSegment(workRequestLifecycleMatch[1])
+
+      if (workRequestId === undefined) {
+        return Effect.succeed(badRequest('workRequestId is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? createForumWorkRequestLifecycleResponse(
+            request,
+            db,
+            workRequestId,
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
     }
 
     if (url.pathname === '/api/forum/search') {
