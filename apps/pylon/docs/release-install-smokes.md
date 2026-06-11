@@ -21,24 +21,24 @@ project, and verifies:
 - `pylon bootstrap --json` emits a supported macOS/Linux summary;
 - the summary points at the v0.3 home/config/cache/release layout.
 
-## CI Release Gate
+## Release Gate (manual, script-based — no hosted CI by owner decision)
 
-The Pylon release gate workflow lives at
-`.github/workflows/pylon-release-gate.yml`. It runs for pull requests and
-`main` pushes that touch `apps/pylon/**` or the workflow itself, plus manual
-`workflow_dispatch` runs.
-
-The workflow runs on both `ubuntu-latest` and `macos-latest`:
+Owner decision (2026-06-10): OpenAgents does not connect this repo to GitHub
+Actions or any hosted CI. The release gate is custom and script-based, run
+manually (or by an agent) before any release-bearing change:
 
 ```sh
+# from apps/pylon, on macOS and on Linux
 bun install --frozen-lockfile
 bun run test
 bun pm pack --dry-run
 bun run smoke:install:local
 ```
 
-The CI smoke is intentionally package-install based. It does not rely on the
-old v0.2 launcher or deprecated OpenAgents Rust Pylon implementation homes.
+Run the sequence on both platforms before tagging a release; keep the
+captured output as gate evidence in the release record. The smoke is
+intentionally package-install based. It does not rely on the old v0.2
+launcher or deprecated OpenAgents Rust Pylon implementation homes.
 
 The fuller local release gate is still:
 
