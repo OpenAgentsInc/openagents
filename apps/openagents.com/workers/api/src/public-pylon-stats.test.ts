@@ -446,6 +446,71 @@ describe('public pylon stats', () => {
     expect(JSON.stringify(stats)).not.toContain(scannerShapedCapabilityRef)
   })
 
+  test('self-describes counter windows so rows can never contradict counters unlabeled', () => {
+    const stats = publicPylonStatsFromRegistrations(
+      [
+        registration({
+          pylonRef: 'pylon.public.fresh_online',
+        }),
+        registration({
+          // Reported "online" 20 minutes ago: inside the 24h sample window,
+          // outside the 5-minute online-now window. This is the exact shape
+          // from issue #4735 and must now be reconcilable from the JSON.
+          latestHeartbeatAt: '2026-06-08T13:40:00.000Z',
+          pylonRef: 'pylon.public.stale_reported_online',
+        }),
+      ],
+      nowUnixMs,
+    )
+
+    expect(stats.counterWindows).toMatchObject({
+      assignmentReadyNowWindowMinutes: 5,
+      onlineNowWindowMinutes: 5,
+      recentPylonsLimit: 12,
+      recentPylonsWindowMinutes: 1440,
+      seen24hWindowMinutes: 1440,
+      walletReadyNowWindowMinutes: 5,
+    })
+    expect(stats.counterWindows.onlineHeartbeatStatuses).toContain('online')
+    expect(stats.counterWindows.definitionRefs).toContain(
+      'definition.public.pylon_stats.runtime_state_is_last_reported_not_live.v1',
+    )
+    expect(stats.caveatRefs).toContain(
+      'caveat.public.recent_pylon_runtime_state_is_last_reported_not_live',
+    )
+
+    const fresh = stats.recentPylons.find(
+      pylon => pylon.nostrPubkeyShort === 'pylon.public.fresh_online',
+    )
+    const stale = stats.recentPylons.find(
+      pylon => pylon.nostrPubkeyShort === 'pylon.public.stale_reported_online',
+    )
+
+    expect(fresh).toMatchObject({
+      assignmentReadyNow: true,
+      lastHeartbeatAgeSeconds: 120,
+      onlineNow: true,
+      runtimeState: 'online',
+      walletReadyNow: true,
+    })
+    expect(stale).toMatchObject({
+      assignmentReadyNow: false,
+      lastHeartbeatAgeSeconds: 1200,
+      onlineNow: false,
+      runtimeState: 'online',
+      walletReadyNow: false,
+    })
+
+    const rowsCountedOnline = stats.recentPylons.filter(
+      pylon => pylon.onlineNow === true,
+    ).length
+
+    expect(stats.pylonsOnlineNow).toBe(rowsCountedOnline)
+    expect(stats.pylonsWalletReadyNow).toBe(
+      stats.recentPylons.filter(pylon => pylon.walletReadyNow === true).length,
+    )
+  })
+
   test('blocks public earning copy and exposes blocker refs when counters are zero', () => {
     const stats = publicPylonStatsFromRegistrations([], nowUnixMs)
 

@@ -12,6 +12,7 @@ import type {
 import {
   PublicPylonAcceptedWorkSettlementGate,
   PublicPylonEarningLaunchGate,
+  publicPylonStatsCounterWindows,
   PublicPylonStats,
   emptyUnavailableMarketSettlementTotals,
 } from './public-pylon-stats'
@@ -1565,6 +1566,7 @@ export const exampleArtanisNexusPylonAdminAdapterLedger =
       trainingAcceptedContributors: 1,
       trainingAssignedContributors: 2,
       trainingModelProgressContributors: 1,
+      counterWindows: publicPylonStatsCounterWindows(),
       earningLaunchGate: new PublicPylonEarningLaunchGate({
         blockedClaimRefs: [],
         blockerRefs: [],

@@ -31,6 +31,7 @@ import type {
 import {
   PublicPylonAcceptedWorkSettlementGate,
   PublicPylonEarningLaunchGate,
+  publicPylonStatsCounterWindows,
   PublicPylonStats,
   emptyUnavailableMarketSettlementTotals,
 } from './public-pylon-stats'
@@ -279,6 +280,7 @@ describe('Artanis Nexus/Pylon admin adapters', () => {
         trainingAcceptedContributors: 0,
         trainingAssignedContributors: 0,
         trainingModelProgressContributors: 0,
+        counterWindows: publicPylonStatsCounterWindows(),
         earningLaunchGate: new PublicPylonEarningLaunchGate({
           blockedClaimRefs: [
             'blocked_claim.public.pylon.automatic_bitcoin_earning',

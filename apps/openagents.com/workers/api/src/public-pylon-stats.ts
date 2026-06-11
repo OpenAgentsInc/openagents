@@ -85,9 +85,26 @@ export class PublicRecentPylon extends S.Class<PublicRecentPylon>(
   runtimeState: S.NullOr(S.String),
   lastSeenAtUnixMs: S.NullOr(S.Int),
   lastSeenAtLabel: S.NullOr(S.String),
+  lastHeartbeatAgeSeconds: S.NullOr(S.Int),
+  onlineNow: S.NullOr(S.Boolean),
+  walletReadyNow: S.NullOr(S.Boolean),
+  assignmentReadyNow: S.NullOr(S.Boolean),
   eligibleProductCount: S.Int,
   relayUrls: S.Array(S.String),
   products: S.Array(S.String),
+}) {}
+
+export class PublicPylonStatsCounterWindows extends S.Class<PublicPylonStatsCounterWindows>(
+  'PublicPylonStatsCounterWindows',
+)({
+  onlineNowWindowMinutes: S.Int,
+  walletReadyNowWindowMinutes: S.Int,
+  assignmentReadyNowWindowMinutes: S.Int,
+  seen24hWindowMinutes: S.Int,
+  recentPylonsWindowMinutes: S.Int,
+  recentPylonsLimit: S.Int,
+  onlineHeartbeatStatuses: S.Array(S.String),
+  definitionRefs: S.Array(S.String),
 }) {}
 
 export class PublicPylonEarningLaunchGate extends S.Class<PublicPylonEarningLaunchGate>(
@@ -172,11 +189,31 @@ export class PublicPylonStats extends S.Class<PublicPylonStats>(
   trainingAssignedContributors: S.Int,
   trainingAcceptedContributors: S.Int,
   trainingModelProgressContributors: S.Int,
+  counterWindows: PublicPylonStatsCounterWindows,
   recentPylons: S.Array(PublicRecentPylon),
   earningLaunchGate: PublicPylonEarningLaunchGate,
   caveatRefs: S.Array(S.String),
   sourceRefs: S.Array(S.String),
 }) {}
+
+export const publicPylonStatsCounterWindows =
+  (): PublicPylonStatsCounterWindows =>
+    new PublicPylonStatsCounterWindows({
+      assignmentReadyNowWindowMinutes: ONLINE_WINDOW_MS / 60_000,
+      definitionRefs: [
+        'definition.public.pylon_stats.online_now.v1',
+        'definition.public.pylon_stats.wallet_ready_now.v1',
+        'definition.public.pylon_stats.assignment_ready_now.v1',
+        'definition.public.pylon_stats.recent_pylons.v1',
+        'definition.public.pylon_stats.runtime_state_is_last_reported_not_live.v1',
+      ],
+      onlineHeartbeatStatuses: [...onlineHeartbeatStatuses].sort(),
+      onlineNowWindowMinutes: ONLINE_WINDOW_MS / 60_000,
+      recentPylonsLimit: MAX_RECENT_PYLONS,
+      recentPylonsWindowMinutes: SEEN_24H_WINDOW_MS / 60_000,
+      seen24hWindowMinutes: SEEN_24H_WINDOW_MS / 60_000,
+      walletReadyNowWindowMinutes: ONLINE_WINDOW_MS / 60_000,
+    })
 
 class PublicPylonStatsSnapshotError extends S.TaggedErrorClass<PublicPylonStatsSnapshotError>()(
   'PublicPylonStatsSnapshotError',
@@ -227,6 +264,12 @@ const recentPylonFromUnknown = (value: unknown): PublicRecentPylon | null => {
     runtimeState: optionalString(value.runtime_state) ?? null,
     lastSeenAtUnixMs,
     lastSeenAtLabel: timestampLabel(lastSeenAtUnixMs),
+    // Legacy Nexus payloads carry no eligibility evidence, so the
+    // counter-reconciliation fields stay null instead of guessing.
+    lastHeartbeatAgeSeconds: null,
+    onlineNow: null,
+    walletReadyNow: null,
+    assignmentReadyNow: null,
     eligibleProductCount: intValue(value.eligible_product_count),
     relayUrls: stringArrayFromUnknown(value.relay_urls),
     products: stringArrayFromUnknown(value.products),
@@ -718,6 +761,7 @@ const recentPylonFromRegistration = (
   nowUnixMs: number,
 ): PublicRecentPylon => {
   const lastSeenAtUnixMs = pylonHeartbeatUnixMs(registration)
+  const onlineNow = isOnlineNow(registration, nowUnixMs)
 
   return new PublicRecentPylon({
     nodeLabel: registration.displayName,
@@ -727,6 +771,13 @@ const recentPylonFromRegistration = (
     runtimeState: registration.latestHeartbeatStatus,
     lastSeenAtUnixMs,
     lastSeenAtLabel: friendlyTimestampLabel(lastSeenAtUnixMs, nowUnixMs),
+    lastHeartbeatAgeSeconds:
+      lastSeenAtUnixMs === null
+        ? null
+        : Math.max(0, Math.floor((nowUnixMs - lastSeenAtUnixMs) / 1000)),
+    onlineNow,
+    walletReadyNow: onlineNow && registration.walletReady,
+    assignmentReadyNow: isAssignmentReady(registration, nowUnixMs),
     eligibleProductCount: 0,
     relayUrls: [],
     products: publicScannerSafeRefs(
@@ -815,6 +866,7 @@ export const publicPylonStatsFromRegistrations = (
     trainingAssignedContributors: 0,
     trainingAcceptedContributors: 0,
     trainingModelProgressContributors: 0,
+    counterWindows: publicPylonStatsCounterWindows(),
     recentPylons,
     earningLaunchGate: publicPylonEarningLaunchGate({
       available: true,
@@ -825,6 +877,7 @@ export const publicPylonStatsFromRegistrations = (
     }),
     caveatRefs: [
       'caveat.public.pylon_stats_are_registration_heartbeat_only',
+      'caveat.public.recent_pylon_runtime_state_is_last_reported_not_live',
       'caveat.public.assignment_ready_is_not_payout_evidence',
       'caveat.public.wallet_ready_is_receive_readiness_not_send_ready',
       'caveat.public.accepted_work_totals_require_settled_real_bitcoin_receipts',
@@ -918,6 +971,7 @@ export const publicPylonStatsFromNexusPayload = (
     trainingModelProgressContributors: intValue(
       payload.training_model_progress_contributors,
     ),
+    counterWindows: publicPylonStatsCounterWindows(),
     recentPylons: recentPylonsFromUnknown(payload.recent_pylons),
     earningLaunchGate: publicPylonEarningLaunchGate({
       available: true,
@@ -961,6 +1015,7 @@ const unavailablePublicPylonStats = (error: string): PublicPylonStats =>
     trainingAssignedContributors: 0,
     trainingAcceptedContributors: 0,
     trainingModelProgressContributors: 0,
+    counterWindows: publicPylonStatsCounterWindows(),
     recentPylons: [],
     earningLaunchGate: publicPylonEarningLaunchGate({
       available: false,
