@@ -50,13 +50,23 @@ Live or integrated:
 - The #4756 branch work was merged to `main`; the merge is visible in the
   current history as `432372461`.
 
-Partly live:
+Live or integrated (added after the original query — #4792 closed later on
+2026-06-11):
 
 - `codex_agent_task` is a known Pylon job kind.
 - The local Codex lane has fixture execution, dispatch support, CI-safe smoke,
   and live fixture evidence.
-- Real public-repository `git_checkout` parity for the Codex lane remains open
-  in #4792.
+- Real public-repository `git_checkout` parity for the Codex lane landed with
+  CX5 (#4792, closed 2026-06-11): API order
+  `autopilot_work_order.c63284d5-e24a-4f4a-aeab-4be45ffd8d72` placed on a
+  codex-only Pylon, executed at the pinned commit through the shared
+  `git_checkout` contract, closeout
+  `assignment.closeout.b6d31228033e1009fe773326` accepted with
+  `git_checkout_verified_passed`. The Codex executor consumes the same
+  validator and checkout runner as the Claude lane (`gitCheckoutWorkspaceFrom`
+  and `defaultClaudeAgentCheckoutRunner`), so no contract fork appeared — but
+  that shared logic is exported from `apps/pylon/src/claude-agent-executor.ts`
+  rather than an adapter-neutral module, which is the extraction seam below.
 
 Not live as a distinct shared subsystem:
 
@@ -83,20 +93,20 @@ Queried on 2026-06-11.
 | #4758 | Open | Work list/detail UI. This needs public-safe workspace, verification, artifact, and review projections. |
 | #4751 | Open | Projection staleness epic. Workspace projections must obey this once they are visible. |
 | #4752 | Closed | OpenAPI route freshness gate. Any new route surface must keep it green. |
-| #4793 | Open | Codex executor lane epic. |
+| #4793 | Closed | Codex executor lane epic. CX1–CX5 complete; closed 2026-06-11 after the original query. |
 | #4789 | Closed | Codex bounded executor gate for fixture work. |
 | #4790 | Closed | `codex_agent_task` work class, dispatch, and fixture smokes. |
 | #4791 | Closed | Codex live fixture run. |
-| #4792 | Open | Codex API parity with `codex_agent_task` plus the existing `git_checkout` workspace contract. |
+| #4792 | Closed | Codex API parity with `codex_agent_task` plus the existing `git_checkout` workspace contract. Closed 2026-06-11 with a live receipt after the original query. |
 | #4796 | Open | Deploy-gate tooling for projection freshness. Relevant to workspace status projections. |
 
-No current open issue directly scopes an adapter-neutral native worktree
-manager. If that subsystem becomes necessary, file it narrowly under #4786 or
-after #4792 exposes concrete duplication.
-
-Suggested issue title:
-
-`Autopilot Pylon: adapter-neutral git_checkout workspace materializer with TTL cleanup receipts`
+At the original query time, no open issue directly scoped an adapter-neutral
+native worktree manager. With #4792 now closed and both adapters consuming the
+same checkout runner out of `claude-agent-executor.ts`, the condition this
+audit set ("after #4792 exposes concrete duplication") is met: the shared
+logic exists but lives in an adapter-named module. Follow-up issues are filed
+under #4786 covering the adapter-neutral materializer extraction and the
+native shared-cache `git worktree` manager with TTL cleanup receipts.
 
 ## Design Boundary
 
@@ -320,12 +330,15 @@ projected.
 
 ## Recommended Next Step
 
-1. Close #4792 by making `codex_agent_task` consume the existing
-   `git_checkout` workspace contract end to end.
-2. During #4792, extract the current checkout materializer into a shared Pylon
-   workspace service if adapter duplication appears.
-3. File a separate child issue only if native shared-cache `git worktree`
-   support is needed after both adapters consume the same service.
+1. Done: #4792 closed on 2026-06-11 with `codex_agent_task` consuming the
+   existing `git_checkout` workspace contract end to end, receipt-backed.
+2. Extract the shared validator and checkout runner from
+   `apps/pylon/src/claude-agent-executor.ts` into an adapter-neutral Pylon
+   workspace materializer module that both executors consume, with the
+   `MaterializedWorkspace` return shape above and no behavior change.
+3. Add native shared-cache `git worktree` support behind that service, with
+   the bare-repo cache, retention policy, and cleanup receipts described in
+   the architecture section.
 
 The desired end state is one OpenAgents workspace contract, one Pylon
 materializer, multiple adapters, and ref-only evidence across every surface.
