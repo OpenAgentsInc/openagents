@@ -135,6 +135,14 @@ export class OpenAgentsAutopilotCodingClaudeAgentTask extends S.Class<OpenAgents
   timeoutSeconds: S.Number,
 }) {}
 
+export class OpenAgentsAutopilotCodingCodexTask extends S.Class<OpenAgentsAutopilotCodingCodexTask>(
+  'OpenAgentsAutopilotCodingCodexTask',
+)({
+  agentKind: S.Literal('codex_sdk'),
+  schema: S.Literal('openagents.pylon.codex_agent_task.v0.3'),
+  timeoutSeconds: S.Number,
+}) {}
+
 export class OpenAgentsAutopilotCodingAssignmentPayload extends S.Class<OpenAgentsAutopilotCodingAssignmentPayload>(
   'OpenAgentsAutopilotCodingAssignmentPayload',
 )({
@@ -146,6 +154,7 @@ export class OpenAgentsAutopilotCodingAssignmentPayload extends S.Class<OpenAgen
   budget: OpenAgentsAutopilotCodingBudget,
   closeoutSchema: OpenAgentsAutopilotCodingCloseoutSchema,
   claudeAgent: S.optionalKey(OpenAgentsAutopilotCodingClaudeAgentTask),
+  codex: S.optionalKey(OpenAgentsAutopilotCodingCodexTask),
   laneRef: S.String,
   objective: OpenAgentsAutopilotCodingObjective,
   publicSafe: S.Literal(true),
@@ -492,13 +501,23 @@ const codingAssignmentForIntent = (
       resultExpectationRefs: uniqueRefs(input.intent.resultExpectationRefs),
       testsOrBlockerRequired: true,
     }),
-    claudeAgent: new OpenAgentsAutopilotCodingClaudeAgentTask({
-      agentKind: 'claude_agent_sdk',
-      allowedToolKinds,
-      maxTurns: 24,
-      schema: 'openagents.pylon.claude_agent_task.v0.3',
-      timeoutSeconds: 15 * 60,
-    }),
+    ...(input.intent.jobKind === 'codex_agent_task'
+      ? {
+          codex: new OpenAgentsAutopilotCodingCodexTask({
+            agentKind: 'codex_sdk',
+            schema: 'openagents.pylon.codex_agent_task.v0.3',
+            timeoutSeconds: 15 * 60,
+          }),
+        }
+      : {
+          claudeAgent: new OpenAgentsAutopilotCodingClaudeAgentTask({
+            agentKind: 'claude_agent_sdk',
+            allowedToolKinds,
+            maxTurns: 24,
+            schema: 'openagents.pylon.claude_agent_task.v0.3',
+            timeoutSeconds: 15 * 60,
+          }),
+        }),
     laneRef: input.fallbackLaneRef ?? `lane.${input.runnerKind}`,
     objective: new OpenAgentsAutopilotCodingObjective({
       mode: 'ref_only',

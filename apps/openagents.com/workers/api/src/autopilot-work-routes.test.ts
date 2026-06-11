@@ -638,6 +638,7 @@ const route = async (
     pylonStoreRegistrations?: ReadonlyArray<PylonApiRegistrationRecord>
     ownerUserId?: string
     scopes?: ReadonlyArray<string>
+    sessionUserId?: string
     token?: string
     verifyL402PaymentProof?: (
       input: AutopilotWorkL402PaymentVerificationInput,
@@ -664,6 +665,14 @@ const route = async (
     ) =>
       options.verifyL402PaymentProof?.(input) ??
       verifyAutopilotL402PaymentProof(input),
+    ...(options.sessionUserId === undefined
+      ? {}
+      : {
+          requireBrowserSession: () =>
+            Promise.resolve({
+              user: { userId: options.sessionUserId ?? 'github:browser-user' },
+            }),
+        }),
     ...(options.executeReadyWork === undefined
       ? {}
       : {
@@ -714,7 +723,11 @@ const route = async (
     },
     method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
   })
-  const response = routes.routeAutopilotWorkRequest(request, {})
+  const response = routes.routeAutopilotWorkRequest(
+    request,
+    {},
+    {} as ExecutionContext,
+  )
 
   if (response === undefined) {
     throw new Error(`No Autopilot work route matched ${path}`)
@@ -1110,6 +1123,93 @@ describe('Autopilot work routes', () => {
 
     expect(detail.status).toBe(200)
     expect(detailJson.work).toEqual(firstJson.work)
+  })
+
+  test('creates browser-session work orders for own Pylon and metered SHC fallback', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const browserUserId = 'github:browser-autopilot-owner'
+    const promiseRef = {
+      blockerRefs: [],
+      promiseId: 'autopilot.mission_briefing.v1',
+      registryVersion: '2026-06-11.1',
+    }
+    const ownPylon = new MemoryPylonApiStore([
+      pylonRegistration({
+        ownerAgentCredentialId: 'browser_session.github_browser-autopilot-owner',
+        ownerAgentUserId: browserUserId,
+      }),
+    ])
+    const ownPylonRequest = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      caller: { kind: 'browser_session', ownerRef: 'owner_ref.browser' },
+      clientRequestRef: 'client.browser.20260611.own_pylon',
+      promiseRef,
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          accessRequests: [],
+          taskRef: 'task.autopilot_coder.browser_own_pylon',
+        },
+      ],
+    }
+    const fallbackRequest = {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+      caller: { kind: 'browser_session', ownerRef: 'owner_ref.browser' },
+      clientRequestRef: 'client.browser.20260611.shc_metered',
+      promiseRef,
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].tasks[0],
+          taskRef: 'task.autopilot_coder.browser_shc_metered',
+        },
+      ],
+    }
+
+    const ownPylonResponse = await route(store, '/api/autopilot/work', {
+      body: ownPylonRequest,
+      idempotencyKey: 'browser-own-pylon',
+      pylonApiStore: ownPylon,
+      sessionUserId: browserUserId,
+      token: '',
+    })
+    const fallbackResponse = await route(store, '/api/autopilot/work', {
+      body: fallbackRequest,
+      idempotencyKey: 'browser-shc-metered',
+      sessionUserId: browserUserId,
+      token: '',
+    })
+    const listResponse = await route(
+      store,
+      '/api/autopilot/work?promiseId=autopilot.mission_briefing.v1',
+      {
+        sessionUserId: browserUserId,
+        token: '',
+      },
+    )
+    const ownPylonJson = await responseJson(ownPylonResponse)
+    const fallbackJson = await responseJson(fallbackResponse)
+    const listJson = (await listResponse.json()) as Readonly<{
+      workOrders: ReadonlyArray<Readonly<{ workOrderRef: string }>>
+    }>
+
+    expect(ownPylonResponse.status).toBe(202)
+    expect(ownPylonJson.work?.state).toBe('queued_or_running')
+    expect(ownPylonJson.work?.placementDecision?.selectedRunnerKind).toBe(
+      'requester_pylon',
+    )
+    expect([...ownPylon.assignments.values()]).toHaveLength(1)
+    expect(fallbackResponse.status).toBe(402)
+    expect(fallbackJson.work?.state).toBe('payment_required')
+    expect(
+      fallbackJson.work?.placementDecision?.fallbackRunnerKind ??
+        fallbackJson.work?.placementDecision?.selectedRunnerKind,
+    ).toBe('openagents_shc')
+    expect(listJson.workOrders.map(order => order.workOrderRef)).toEqual(
+      expect.arrayContaining([
+        ownPylonJson.work?.workOrderRef,
+        fallbackJson.work?.workOrderRef,
+      ]),
+    )
   })
 
   test('carries promiseRef through projections, briefing, and the list filter', async () => {

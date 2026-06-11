@@ -269,3 +269,108 @@ describe("post-hoc workspace boundary checks", () => {
     expect(fileChangeEscapesWorkspace(`${workspace}-sibling/sum.ts`, workspace)).toBe(true)
   })
 })
+
+describe("codex git_checkout workspace (shared B2 contract)", () => {
+  const checkoutAssignment = {
+    kind: "codex_agent_task",
+    objective: { publicSummary: "Repair the failing sum test." },
+    codex: {
+      schema: CODEX_AGENT_TASK_SCHEMA,
+      agentKind: "codex_sdk",
+      timeoutSeconds: 120,
+    },
+    workspace: {
+      kind: "git_checkout",
+      repository: {
+        branch: "main",
+        commitSha: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
+        fullName: "AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040",
+        provider: "github",
+        visibility: "public",
+      },
+      verificationCommand: {
+        args: ["bun", "test", "sum.test.ts"],
+        commandRef: "command.public.autopilot_coder.bun_test",
+      },
+    },
+  }
+
+  test("recognizes a workspace-bearing payload without a fixture ref", () => {
+    const task = codexAgentTaskFrom(checkoutAssignment)
+    expect(task).not.toBeNull()
+    expect(task?.workspace?.repository.fullName).toBe(
+      "AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040",
+    )
+    expect(task?.objectiveSummary).toBe("Repair the failing sum test.")
+  })
+
+  test("rejects an invalid workspace exactly like the claude gate (shared validator)", () => {
+    const tampered = {
+      ...checkoutAssignment,
+      workspace: {
+        ...checkoutAssignment.workspace,
+        repository: { ...checkoutAssignment.workspace.repository, commitSha: "main" },
+      },
+    }
+    expect(codexAgentTaskFrom(tampered)).toBeNull()
+  })
+
+  test("executes a checkout task end to end with an injected checkout runner", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        const { mkdir } = await import("node:fs/promises")
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left - right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        { checkoutRunner, codexAgentRunner: fixingRunner, codexAgentProbe: readyProbe },
+      )
+      expect(record?.status).toBe("accepted")
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.git_checkout_verified_passed",
+      )
+      assertPublicProjectionSafe(record)
+      const projected = JSON.stringify(record)
+      expect(projected).not.toContain(state.paths.cache)
+      expect(projected).not.toContain("Repair the failing sum test.")
+    })
+  })
+
+  test("a failed checkout produces the typed checkout refusal arm", async () => {
+    await withState(async (state) => {
+      const failingCheckout = async () => {
+        throw new Error("git fetch failed")
+      }
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        { checkoutRunner: failingCheckout, codexAgentRunner: fixingRunner, codexAgentProbe: readyProbe },
+      )
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toEqual([
+        "blocker.assignment.codex_agent_workspace_checkout_failed",
+      ])
+      assertPublicProjectionSafe(record)
+    })
+  })
+})

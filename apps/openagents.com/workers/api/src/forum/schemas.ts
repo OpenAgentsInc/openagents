@@ -4,6 +4,7 @@ import {
   OmniDataClassification,
   OmniTrustTier,
 } from '../omni-data-classification'
+import { PublicProjectionStalenessContract } from '../public-projection-staleness'
 
 export const ForumUuid = S.String.pipe(S.brand('ForumUuid'))
 export type ForumUuid = typeof ForumUuid.Type
@@ -212,10 +213,15 @@ export const ForumAgentPublicProfile = S.Struct({
     watchCount: S.Number,
   }),
   updatedAt: S.String,
+  // 'x_verified_agent' composes the verified X-proof challenge live so
+  // the public trust surface reflects the verification write (epic
+  // #4751 instance 2, documented on #4744): approved owner claim plus
+  // verified X challenge outranks 'owner_claimed_agent'.
   verificationState: S.Literals([
     'forum_snapshot',
     'owner_claimed_agent',
     'registered_agent',
+    'x_verified_agent',
   ]),
 })
 export type ForumAgentPublicProfile = typeof ForumAgentPublicProfile.Type
@@ -551,6 +557,10 @@ export const ForumPostSummary = S.Struct({
   subject: S.optionalKey(S.NullOr(S.String)),
   tipStats: S.optionalKey(
     S.Struct({
+      // Post tip stats compose live at read (epic #4751, #4753
+      // remainder): the block declares its staleness contract instead
+      // of implying freshness.
+      staleness: PublicProjectionStalenessContract,
       tipCount: S.Number,
       totalCreditedSats: S.optionalKey(S.Number),
       totalPaidSats: S.Number,
@@ -1025,6 +1035,7 @@ export const ForumCreatorEarningsResponse = S.Struct({
   earnings: S.Array(ForumCreatorEarning),
   generatedAt: S.String,
   pagination: ForumPagination,
+  staleness: PublicProjectionStalenessContract,
   summary: ForumCreatorEarningsSummary,
 })
 export type ForumCreatorEarningsResponse =
@@ -1045,15 +1056,21 @@ export type ForumTipLeaderboardPost = typeof ForumTipLeaderboardPost.Type
 export const ForumTipLeaderboardCreator = S.Struct({
   actor: ForumActorSummary,
   tipCount: S.Number,
+  /** Ladder-credited sats not yet covered by a settled sweep (#4751). */
+  totalCreditedSats: S.Number,
   totalPaidSats: S.Number,
   totalSettledSats: S.Number,
+  /** Ladder-credited sats covered by settled sweeps, oldest first (#4753). */
+  totalSweptSats: S.Number,
 })
 export type ForumTipLeaderboardCreator = typeof ForumTipLeaderboardCreator.Type
 
 export const ForumTipLeaderboardsResponse = S.Struct({
+  caveatRefs: S.Array(S.String),
   creators: S.Array(ForumTipLeaderboardCreator),
   generatedAt: S.String,
   posts: S.Array(ForumTipLeaderboardPost),
+  staleness: PublicProjectionStalenessContract,
 })
 export type ForumTipLeaderboardsResponse =
   typeof ForumTipLeaderboardsResponse.Type
@@ -1067,6 +1084,7 @@ export const ForumTipReconciliationResponse = S.Struct({
   generatedAt: S.String,
   operatorCaveatRefs: S.Array(S.String),
   pagination: ForumPagination,
+  staleness: PublicProjectionStalenessContract,
   summary: ForumCreatorEarningsSummary,
 })
 export type ForumTipReconciliationResponse =

@@ -172,6 +172,38 @@ that does not carry the `codex_sdk` work class. When it does run:
   mock runner, full worker-loop lifecycle, redaction scan) and the
   `--live` leg for CX4. Runbook: `codex-agent-task-smoke.md`.
 
+## Adapter selection and the API path (CX5, #4792)
+
+Two adapters, one deterministic rule set
+(`workers/api/src/autopilot-work-adapter-selection.ts`):
+
+1. **Requester intent wins.** An order naming an adapter (explicit
+   request or an adapter capability ref in its required refs) gets
+   that adapter, and placement refuses — never substitutes — when the
+   Pylon cannot honor it.
+2. **Owner preference is capability declaration.** Adapter-agnostic
+   orders go to the placed Pylon's declared lanes; disabling a lane in
+   `~/.pylon/config.json` strips its capability at go-online, which is
+   how an owner expresses preference. A single-capability Pylon gets
+   its one adapter.
+3. **Dual-capability default is `claude_agent`** (documented, matches
+   the executor chain order), with the selection reason ref carried in
+   the assignment's `selectionPolicyRefs`.
+4. **The closeout names the adapter.** Run, result, and summary refs
+   are adapter-prefixed (`…pylon.codex_agent_task.…` vs
+   `…pylon.claude_agent_task.…`), and each Pylon gate executes only
+   its own work class.
+
+The API path is B2's (#4756) exactly: `POST /api/autopilot/work` with
+a `git_checkout` task → own-Pylon placement → the synthesizer picks
+the work class per the policy above → durable `codex_agent_task`
+assignment whose `codingAssignment.codex` payload rides the **same**
+`workspace` contract (shared validator and checkout runner owned by
+the adapter-neutral `workspace-materializer` module since #4798 —
+never forked) → own-Pylon pickup →
+`executeCodexAgentAssignment` → independent verification → ref-only
+closeout → delivered → review.
+
 ## Current status
 
 CX1 (#4788) ships the probe, capability declaration, credential-policy
@@ -191,5 +223,20 @@ closeout reached the deployed API as `accepted`
 (`assignment.closeout.f264043a9f173b20514521da`) with the redaction
 scan clean and the no-spend boundary intact. A green transition for
 `autopilot.codex_probe_pylon_successor.v1` was proposed receipt-first;
-the maintainer flips the registry. The API-parity path (CX5 #4792)
-follows on the epic.
+the maintainer flips the registry.
+
+**The API-parity leg (CX5 #4792) has also run live.** On 2026-06-11 an
+API-submitted work order
+(`autopilot_work_order.c63284d5-e24a-4f4a-aeab-4be45ffd8d72`,
+free-slice, registered-agent auth) was placed on the requester's own
+codex-only Pylon, synthesized as `codex_agent_task` by the adapter
+selection policy (`adapter_selection.single_capability`), executed by
+the real Codex SDK against the public fixture repo
+`AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040` at
+pinned commit `1745cd4b54b8a12a50922f80b5d345314c91d70d` via the
+shared `git_checkout` workspace contract, verified by an independent
+`bun test`, and closed out as accepted
+(`assignment.closeout.b6d31228033e1009fe773326`,
+`result.public.pylon.codex_agent_task.git_checkout_verified_passed`)
+with the no-spend boundary and redaction scan intact. The full CX
+epic (#4793) is complete.

@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs"
-import { mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import {
@@ -8,6 +8,13 @@ import {
   probeClaudeAgentReadiness,
   type ClaudeAgentProbeOptions,
 } from "./claude-agent"
+import {
+  defaultGitCheckoutRunner,
+  gitCheckoutWorkspaceFrom,
+  materializeGitCheckoutWorkspaceWithLease,
+  type GitCheckoutWorkspace,
+  type WorkspaceCheckoutRunner,
+} from "./workspace-materializer"
 import type { PylonLocalState } from "./state"
 
 /**
@@ -27,20 +34,13 @@ export const CLAUDE_AGENT_TASK_SCHEMA = "openagents.pylon.claude_agent_task.v0.3
 export const CLAUDE_AGENT_TASK_AGENT_KIND = "claude_agent_sdk"
 export const CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF = "fixture.public.pylon.claude_agent.sum_repair.v1"
 
-export type ClaudeAgentGitCheckoutWorkspace = {
-  kind: "git_checkout"
-  repository: {
-    branch: string
-    commitSha: string
-    fullName: string
-    provider: "github"
-    visibility: "public"
-  }
-  verificationCommand: {
-    args: string[]
-    commandRef: string
-  }
-}
+// The git_checkout workspace contract now lives in the adapter-neutral
+// materializer module (#4798). These aliases and re-exports keep existing
+// import sites working; new code should import ./workspace-materializer.
+export type ClaudeAgentGitCheckoutWorkspace = GitCheckoutWorkspace
+export type ClaudeAgentCheckoutRunner = WorkspaceCheckoutRunner
+export { gitCheckoutWorkspaceFrom } from "./workspace-materializer"
+export const defaultClaudeAgentCheckoutRunner: WorkspaceCheckoutRunner = defaultGitCheckoutRunner
 
 export type ClaudeAgentTaskPayload = {
   schema: typeof CLAUDE_AGENT_TASK_SCHEMA
@@ -77,13 +77,9 @@ export type ClaudeAgentRunResult = {
 }
 
 export type ClaudeAgentRunner = (input: ClaudeAgentRunInput) => Promise<ClaudeAgentRunResult>
-export type ClaudeAgentCheckoutRunner = (
-  workspace: string,
-  checkout: ClaudeAgentGitCheckoutWorkspace,
-) => Promise<void>
 
 export type ClaudeAgentExecutionOptions = {
-  checkoutRunner?: ClaudeAgentCheckoutRunner
+  checkoutRunner?: WorkspaceCheckoutRunner
   claudeAgentRunner?: ClaudeAgentRunner
   claudeAgentProbe?: ClaudeAgentProbeOptions
 }
@@ -152,30 +148,6 @@ const CLAUDE_AGENT_FIXTURES: Record<string, ClaudeAgentFixture> = {
 
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
-}
-
-const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
-const gitCommitShaPattern = /^[a-f0-9]{40}$/i
-const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
-
-function gitCheckoutWorkspaceFrom(codingAssignment: unknown): ClaudeAgentGitCheckoutWorkspace | null {
-  const workspace = (codingAssignment as { workspace?: unknown } | null)?.workspace
-  if (workspace === null || typeof workspace !== "object") return null
-  const payload = workspace as ClaudeAgentGitCheckoutWorkspace
-  if (payload.kind !== "git_checkout") return null
-  if (payload.repository?.provider !== "github" || payload.repository.visibility !== "public") return null
-  if (!githubFullNamePattern.test(payload.repository.fullName)) return null
-  if (!gitCommitShaPattern.test(payload.repository.commitSha)) return null
-  if (typeof payload.repository.branch !== "string" || payload.repository.branch.includes("..")) return null
-  if (!Array.isArray(payload.verificationCommand?.args) || payload.verificationCommand.args.length === 0) return null
-  if (typeof payload.verificationCommand.commandRef !== "string") return null
-  const safeArgs = payload.verificationCommand.args.every((arg) =>
-    typeof arg === "string" &&
-    verificationCommandArgPattern.test(arg) &&
-    !arg.includes("..") &&
-    !arg.startsWith("/")
-  )
-  return safeArgs ? payload : null
 }
 
 export function claudeAgentTaskFrom(codingAssignment: unknown): ClaudeAgentTaskPayload | null {
@@ -276,52 +248,25 @@ async function runCommand(input: { args: string[]; cwd: string }) {
   return { exitCode, stderrBytes: stderr.byteLength, stdoutBytes: stdout.byteLength }
 }
 
-async function runCheckedCommand(args: string[], cwd: string): Promise<void> {
-  const result = await runCommand({ args, cwd })
-  if (result.exitCode !== 0) {
-    throw new Error(`command failed: ${args[0] ?? "unknown"}`)
-  }
-}
-
-export const defaultClaudeAgentCheckoutRunner: ClaudeAgentCheckoutRunner = async (
-  workspace,
-  checkout,
-) => {
-  await rm(workspace, { recursive: true, force: true })
-  await mkdir(workspace, { recursive: true })
-  await runCheckedCommand(["git", "init"], workspace)
-  await runCheckedCommand(
-    [
-      "git",
-      "remote",
-      "add",
-      "origin",
-      `https://github.com/${checkout.repository.fullName}.git`,
-    ],
-    workspace,
-  )
-  await runCheckedCommand(
-    ["git", "fetch", "--depth", "1", "origin", checkout.repository.commitSha],
-    workspace,
-  )
-  await runCheckedCommand(["git", "checkout", "--detach", checkout.repository.commitSha], workspace)
-}
-
 async function materializeClaudeAgentWorkspace(input: {
-  checkoutRunner: ClaudeAgentCheckoutRunner
+  checkoutRunner?: WorkspaceCheckoutRunner
   leaseRef: string
   state: PylonLocalState
   task: ClaudeAgentTaskPayload
 }) {
-  const workspaceRef = stableRef("workspace.pylon.claude_agent_task", input.leaseRef)
-  const workspace = join(input.state.paths.cache, "claude-agent-tasks", workspaceRef)
-
   if (input.task.workspace !== undefined) {
-    await mkdir(join(input.state.paths.cache, "claude-agent-tasks"), { recursive: true })
-    await input.checkoutRunner(workspace, input.task.workspace)
+    const materialized = await materializeGitCheckoutWorkspaceWithLease({
+      cacheRoot: join(input.state.paths.cache, "claude-agent-tasks"),
+      checkout: input.task.workspace,
+      ...(input.checkoutRunner === undefined ? {} : { checkoutRunner: input.checkoutRunner }),
+      leaseRef: input.leaseRef,
+      refPrefix: "workspace.pylon.claude_agent_task",
+      repositoryCacheRoot: join(input.state.paths.cache, "workspace-git-cache"),
+      workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
+    })
     return {
       acceptanceResultRef: "git_checkout_verified",
-      artifactSourceRef: `${input.task.workspace.repository.fullName}:${input.task.workspace.repository.commitSha}`,
+      artifactSourceRef: materialized.sourceRef,
       instructions: [
         "You are working in a bounded public repository checkout.",
         `Task objective: ${input.task.objectiveSummary ?? "complete the referenced Autopilot task"}.`,
@@ -329,11 +274,13 @@ async function materializeClaudeAgentWorkspace(input: {
         `Run the verification command ref ${input.task.workspace.verificationCommand.commandRef} before finishing.`,
       ].join(" "),
       verificationArgs: input.task.workspace.verificationCommand.args,
-      workspace,
-      workspaceRef,
+      workspace: materialized.workingDirectory,
+      workspaceRef: materialized.workspaceRef,
     }
   }
 
+  const workspaceRef = stableRef("workspace.pylon.claude_agent_task", input.leaseRef)
+  const workspace = join(input.state.paths.cache, "claude-agent-tasks", workspaceRef)
   const fixtureRef = input.task.fixtureRef ?? CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF
   const fixture = CLAUDE_AGENT_FIXTURES[fixtureRef] ?? CLAUDE_AGENT_FIXTURES[CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF]
   await mkdir(workspace, { recursive: true })
@@ -517,7 +464,7 @@ export async function executeClaudeAgentAssignment(
   let materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
   try {
     materialized = await materializeClaudeAgentWorkspace({
-      checkoutRunner: options.checkoutRunner ?? defaultClaudeAgentCheckoutRunner,
+      ...(options.checkoutRunner === undefined ? {} : { checkoutRunner: options.checkoutRunner }),
       leaseRef: lease.leaseRef,
       state,
       task,

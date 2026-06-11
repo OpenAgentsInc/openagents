@@ -2,6 +2,7 @@ import { containsProviderSecretMaterial } from '@openagents/provider-account-sch
 import { Effect, Schema as S } from 'effect'
 
 import { parseJsonUnknown } from '../json-boundary'
+import { liveAtReadStaleness } from '../public-projection-staleness'
 import { ForumStorageError } from './repository'
 import {
   type ForumActorSummary,
@@ -83,14 +84,48 @@ type ForumTipLeaderboardPostRow = Readonly<{
 
 type ForumTipLeaderboardCreatorRow = Readonly<{
   actor_json: string
+  earning_actor_ref: string
   tip_count: number | null
   total_paid_sats: number | null
   total_settled_sats: number | null
 }>
 
+type ForumTipLadderCreatorTotals = Readonly<{
+  totalCreditedSats: number
+  totalSweptSats: number
+}>
+
+const zeroLadderCreatorTotals: ForumTipLadderCreatorTotals = {
+  totalCreditedSats: 0,
+  totalSweptSats: 0,
+}
+
 type ForumTipEarningsRuntime = Readonly<{
   nowIso: () => string
 }>
+
+/**
+ * Declared staleness contract for the tip read surfaces (epic #4751,
+ * the #4753 remainder): every payload composes live at read from the
+ * receipt-backed money actions and the tip-ladder pay-in ledger, so
+ * the bound is zero and the rebuild set names the write transitions.
+ */
+export const FORUM_TIP_PROJECTION_STALENESS = liveAtReadStaleness([
+  'forum_payment_event_confirmed',
+  'forum_tip_settlement_claimed',
+  'tip_ladder_pay_in_paid',
+  'tip_sweep_settled',
+])
+
+/**
+ * Leaderboard honesty caveats: ranking still keys on settled
+ * receipt-backed tips; ladder credited/swept sats are listed for
+ * ranked creators but do not admit creators or posts by themselves.
+ */
+export const FORUM_TIP_LEADERBOARD_CAVEAT_REFS: ReadonlyArray<string> = [
+  'caveat.public.forum_tip.leaderboards_rank_by_settled_receipt_tips_only',
+  'caveat.public.forum_tip.ladder_credited_swept_sats_listed_for_ranked_creators_only',
+]
 
 const decodeActorSummary = S.decodeUnknownSync(ForumActorSummarySchema)
 const decodeCreatorEarning = S.decodeUnknownSync(ForumCreatorEarningSchema)
@@ -572,12 +607,15 @@ const postLeaderboardFromRow = (
 
 const creatorLeaderboardFromRow = (
   row: ForumTipLeaderboardCreatorRow,
+  ladderTotals: ForumTipLadderCreatorTotals,
 ): ForumTipLeaderboardCreator =>
   decodeTipLeaderboardCreator({
     actor: safeActorSummary(actorFromJson(row.actor_json)),
     tipCount: Math.max(0, Number(row.tip_count ?? 0)),
+    totalCreditedSats: ladderTotals.totalCreditedSats,
     totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
     totalSettledSats: Math.max(0, Number(row.total_settled_sats ?? 0)),
+    totalSweptSats: ladderTotals.totalSweptSats,
   })
 
 const readPostLeaderboardRows = (
@@ -651,6 +689,7 @@ const readCreatorLeaderboardRows = (
     db
       .prepare(
         `SELECT p.actor_json AS actor_json,
+                ma.earning_actor_ref AS earning_actor_ref,
                 COUNT(CASE
                   WHEN json_extract(pe.public_projection_json, '$.status') = 'confirmed'
                   THEN 1
@@ -692,6 +731,83 @@ const readCreatorLeaderboardRows = (
       .bind(limit)
       .all<ForumTipLeaderboardCreatorRow>(),
   ).pipe(Effect.map(result => result.results ?? []))
+
+type ForumTipLadderCreatorTotalsRow = Readonly<{
+  credited_msat: number | null
+  recipient_actor_ref: string
+  swept_msat: number | null
+}>
+
+// Ladder credited/swept sats for creators already ranked on the
+// settled leaderboard (#4751, the #4753 remainder). Swept coverage
+// follows the documented oldest-credited-first convention: settled
+// sweep payouts cover credited value in aggregate, so the swept
+// portion is min(sweptMsat, creditedMsat) and the rest stays credited.
+const readLadderCreatorTotals = (
+  db: D1Database,
+  actorRefs: ReadonlyArray<string>,
+): Effect.Effect<
+  ReadonlyMap<string, ForumTipLadderCreatorTotals>,
+  ForumStorageError
+> => {
+  const uniqueActorRefs = [...new Set(actorRefs)].filter(ref => ref !== '')
+
+  if (uniqueActorRefs.length === 0) {
+    return Effect.succeed(new Map())
+  }
+
+  const placeholders = uniqueActorRefs.map(() => '?').join(', ')
+
+  return d1Effect('forumTipLeaderboards.readLadderCreatorTotals', () =>
+    db
+      .prepare(
+        `SELECT payout.party_ref AS recipient_actor_ref,
+                COALESCE(SUM(CASE
+                  WHEN p.rung = 'credited' THEN p.cost_msat
+                  ELSE 0
+                END), 0) AS credited_msat,
+                (SELECT COALESCE(SUM(s.cost_msat), 0)
+                   FROM pay_ins s
+                  WHERE s.pay_in_type = 'sweep'
+                    AND s.state = 'paid'
+                    AND s.payer_ref = payout.party_ref) AS swept_msat
+           FROM pay_ins p
+           JOIN pay_in_legs payout
+             ON payout.pay_in_id = p.id
+            AND payout.direction = 'out'
+          WHERE p.pay_in_type = 'tip'
+            AND p.state = 'paid'
+            AND p.context_ref LIKE 'forum.post.%'
+            AND payout.party_ref IN (${placeholders})
+          GROUP BY payout.party_ref`,
+      )
+      .bind(...uniqueActorRefs)
+      .all<ForumTipLadderCreatorTotalsRow>(),
+  ).pipe(
+    Effect.map(
+      result =>
+        new Map(
+          (result.results ?? []).map(row => {
+            const creditedMsat = Math.max(0, Number(row.credited_msat ?? 0))
+            const sweptCoverageMsat = Math.min(
+              creditedMsat,
+              Math.max(0, Number(row.swept_msat ?? 0)),
+            )
+
+            return [
+              row.recipient_actor_ref,
+              {
+                totalCreditedSats: Math.floor(
+                  (creditedMsat - sweptCoverageMsat) / 1000,
+                ),
+                totalSweptSats: Math.floor(sweptCoverageMsat / 1000),
+              },
+            ] as const
+          }),
+        ),
+    ),
+  )
+}
 
 // Arbitrary public content (titles, names, slugs) is sanitized per-field at
 // row construction; the projection-wide throwing scan below must only fire
@@ -745,10 +861,21 @@ export const readForumTipLeaderboards = (
       readPostLeaderboardRows(db, limit),
       readCreatorLeaderboardRows(db, limit),
     ])
+    const ladderTotals = yield* readLadderCreatorTotals(
+      db,
+      creatorRows.map(row => row.earning_actor_ref),
+    )
     const projection = decodeTipLeaderboardsResponse({
-      creators: creatorRows.map(creatorLeaderboardFromRow),
+      caveatRefs: FORUM_TIP_LEADERBOARD_CAVEAT_REFS,
+      creators: creatorRows.map(row =>
+        creatorLeaderboardFromRow(
+          row,
+          ladderTotals.get(row.earning_actor_ref) ?? zeroLadderCreatorTotals,
+        ),
+      ),
       generatedAt: runtime.nowIso(),
       posts: postRows.map(postLeaderboardFromRow),
+      staleness: FORUM_TIP_PROJECTION_STALENESS,
     })
 
     assertProjectionSafe(projection)
@@ -784,6 +911,7 @@ export const readForumCreatorEarnings = (
         limit,
         nextCursor: null,
       },
+      staleness: FORUM_TIP_PROJECTION_STALENESS,
       summary: summarizeEarnings(earnings),
     })
 
@@ -825,6 +953,7 @@ export const readForumTipReconciliation = (
         limit,
         nextCursor: null,
       },
+      staleness: FORUM_TIP_PROJECTION_STALENESS,
       summary: summarizeEarnings(earnings),
     })
 

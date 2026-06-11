@@ -17,6 +17,7 @@ import {
   probeCodexAgentReadiness,
   withCodexAgentCapability,
 } from "./codex-agent"
+import { withWorkspaceMaterializerCapability } from "./workspace-materializer"
 import { claimTipReadiness, readBalance, setTipPreferences, sweepStatus, tipPost } from "./tips"
 import {
   ARTANIS_FORUM_SLUG,
@@ -105,7 +106,11 @@ import {
   acceptPylonWorkOffer,
   createPylonWorkRequest,
   listPylonWorkOffers,
+  readPylonAutopilotWorkEvents,
+  readPylonAutopilotWorkStatus,
   readPylonWorkStatus,
+  reviewPylonAutopilotWork,
+  submitPylonAutopilotWork,
   workAcceptanceMemoryEntry,
   workRequestMemoryEntry,
 } from "./work-requester"
@@ -1178,7 +1183,7 @@ async function main() {
   if (args[0] === "work") {
     try {
       const command = args[1]
-      const workArgs = args.slice(2)
+      const workArgs = args.slice(2).flatMap((arg) => (arg === "--events" ? ["--events", "true"] : [arg]))
       const options = parseKeyValueOptions(workArgs)
       const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) throw new Error("work commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
@@ -1186,6 +1191,32 @@ async function main() {
       const networkOptions = {
         agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
         baseUrl,
+      }
+
+      if (command === "submit") {
+        const objective = args[2]
+        const budgetCents = Number(options["budget-cents"] ?? options.budget ?? 0)
+        if (!objective || objective.startsWith("--") || !Number.isInteger(budgetCents) || budgetCents < 0) {
+          throw new Error('usage: pylon work submit "<objective>" [--budget-cents <cents>] [--repo owner/repo] [--branch main] [--verify "bun test"]')
+        }
+        const result = await submitPylonAutopilotWork(networkOptions, {
+          branch: options.branch,
+          budgetCents,
+          objective,
+          repository: options.repo,
+          verificationCommand: options.verify,
+        })
+        await appendMemory(summary.paths.home, {
+          at: new Date().toISOString(),
+          kind: "autopilot_work_submit",
+          refs: {
+            state: (result.work as { state?: unknown } | undefined)?.state ?? null,
+            workOrderRef: (result.work as { workOrderRef?: unknown } | undefined)?.workOrderRef ?? null,
+          },
+          summary: `submitted autopilot work ${String((result.work as { workOrderRef?: unknown } | undefined)?.workOrderRef ?? "unknown").slice(0, 48)}`,
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
       }
 
       if (command === "request") {
@@ -1235,12 +1266,40 @@ async function main() {
       if (command === "status") {
         const requestRef = args[2]
         if (!requestRef) throw new Error("usage: pylon work status <request-ref>")
+        const includeEvents = options.events !== undefined && options.events !== "false" && options.events !== "0"
+        if (requestRef.startsWith("autopilot_work_order.") || includeEvents) {
+          const result = includeEvents
+            ? await readPylonAutopilotWorkEvents(networkOptions, requestRef)
+            : await readPylonAutopilotWorkStatus(networkOptions, requestRef)
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+          return
+        }
         const result = await readPylonWorkStatus(networkOptions, requestRef)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
 
-      throw new Error("usage: pylon work request|offers|accept|status ...")
+      if (command === "review") {
+        const workOrderRef = args[2]
+        const action = options.action
+        if (
+          !workOrderRef ||
+          (action !== "accept" && action !== "reject" && action !== "request_changes")
+        ) {
+          throw new Error("usage: pylon work review <work-order-ref> --action accept|reject|request_changes")
+        }
+        const result = await reviewPylonAutopilotWork(networkOptions, { action, workOrderRef })
+        await appendMemory(summary.paths.home, {
+          at: new Date().toISOString(),
+          kind: "autopilot_work_review",
+          refs: { action, workOrderRef },
+          summary: `reviewed autopilot work ${workOrderRef.slice(0, 48)} as ${action}`,
+        })
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+
+      throw new Error("usage: pylon work submit|status|review|request|offers|accept ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1
@@ -1428,16 +1487,18 @@ async function main() {
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
-          capabilityRefs: withCodexAgentCapability(
-            withClaudeAgentCapability(
-              [...new Set([
-                ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
-                PYLON_NIP90_PROVIDER_CAPABILITY_REF,
-                PYLON_LABOR_CAPABILITY_REF,
-              ])],
-              claudeAgentReadiness,
+          capabilityRefs: withWorkspaceMaterializerCapability(
+            withCodexAgentCapability(
+              withClaudeAgentCapability(
+                [...new Set([
+                  ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
+                  PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+                  PYLON_LABOR_CAPABILITY_REF,
+                ])],
+                claudeAgentReadiness,
+              ),
+              codexAgentReadiness,
             ),
-            codexAgentReadiness,
           ),
           blockerRefs: [...new Set([
             ...state.runtime.blockerRefs.filter((ref) =>

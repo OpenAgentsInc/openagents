@@ -97,11 +97,117 @@ describe('Autopilot Pylon assignment synthesizer', () => {
         selectionPolicyRefs: [
           'placement.selected.requester_pylon',
           'placement.pylon.preferred_before_fallback',
+          'adapter_selection.default_no_candidate_capabilities',
         ],
         spendCapRefs: ['spend_cap.no_spend.autopilot_pylon_assignment'],
         taskRef: 'task.docs',
       },
     ])
+  })
+
+  test('a codex-only placed Pylon gets codex_agent_task and only its capability ref (CX5)', () => {
+    const intents = pylonAssignmentIntentsForAutopilotWork({
+      assignmentIntents: [readyAssignment],
+      placementDecision: {
+        availabilityState: 'selected',
+        callerActionRefs: [],
+        fallbackRunnerKind: 'openagents_shc',
+        pylonCandidates: [
+          {
+            assignmentReady: true,
+            capabilityRefs: [
+              'capability.pylon.assignment_ready',
+              'capability.pylon.local_codex',
+            ],
+            clientVersion: 'openagents.pylon@0.3.0-rc2',
+            heartbeatFresh: true,
+            latestHeartbeatAt: '2026-06-11T00:00:00.000Z',
+            latestHeartbeatStatus: 'online',
+            latestResourceMode: null,
+            localExecutionReady: true,
+            ownerLinked: true,
+            pylonRef: 'pylon.local.docs_agent',
+            reasonRefs: [],
+            selected: true,
+            status: 'active',
+            versionCompatible: true,
+            walletReady: true,
+          },
+        ],
+        reasonRefs: ['placement.selected.requester_pylon'],
+        refusalReasonRefs: [],
+        retryAfterSeconds: null,
+        selectedPylonRef: 'pylon.local.docs_agent',
+        selectedRunnerKind: 'requester_pylon',
+        source: 'requester_pylon',
+      },
+      tasks: [task],
+      workOrderRef: 'autopilot_work_order.test',
+    })
+
+    expect(intents).toHaveLength(1)
+    expect(intents[0]).toMatchObject({
+      jobKind: 'codex_agent_task',
+      requiredCapabilityRefs: [
+        'capability.pylon.assignment_ready',
+        'capability.pylon.local_codex',
+      ],
+    })
+    expect(intents[0]?.selectionPolicyRefs).toContain(
+      'adapter_selection.single_capability',
+    )
+  })
+
+  test('a dual-capability placed Pylon gets the documented claude default (CX5)', () => {
+    const intents = pylonAssignmentIntentsForAutopilotWork({
+      assignmentIntents: [readyAssignment],
+      placementDecision: {
+        availabilityState: 'selected',
+        callerActionRefs: [],
+        fallbackRunnerKind: 'openagents_shc',
+        pylonCandidates: [
+          {
+            assignmentReady: true,
+            capabilityRefs: [
+              'capability.pylon.local_claude_agent',
+              'capability.pylon.local_codex',
+            ],
+            clientVersion: 'openagents.pylon@0.3.0-rc2',
+            heartbeatFresh: true,
+            latestHeartbeatAt: '2026-06-11T00:00:00.000Z',
+            latestHeartbeatStatus: 'online',
+            latestResourceMode: null,
+            localExecutionReady: true,
+            ownerLinked: true,
+            pylonRef: 'pylon.local.docs_agent',
+            reasonRefs: [],
+            selected: true,
+            status: 'active',
+            versionCompatible: true,
+            walletReady: true,
+          },
+        ],
+        reasonRefs: ['placement.selected.requester_pylon'],
+        refusalReasonRefs: [],
+        retryAfterSeconds: null,
+        selectedPylonRef: 'pylon.local.docs_agent',
+        selectedRunnerKind: 'requester_pylon',
+        source: 'requester_pylon',
+      },
+      tasks: [task],
+      workOrderRef: 'autopilot_work_order.test',
+    })
+
+    expect(intents[0]).toMatchObject({
+      jobKind: 'claude_agent_task',
+      requiredCapabilityRefs: [
+        'capability.pylon.assignment_ready',
+        'capability.pylon.local_claude_agent',
+      ],
+    })
+    expect(intents[0]?.selectionPolicyRefs).toContain(
+      'adapter_selection.dual_capability_default',
+    )
   })
 
   test('does not synthesize leases without a selected requester Pylon', () => {

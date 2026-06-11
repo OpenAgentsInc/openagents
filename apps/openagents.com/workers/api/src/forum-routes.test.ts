@@ -292,6 +292,16 @@ type AgentOwnerClaimRow = Readonly<{
   updated_at: string
 }>
 
+type AgentOwnerXChallengeRow = Readonly<{
+  agent_user_id: string
+  id: string
+  receipt_ref: string | null
+  state: 'approved' | 'pending_tweet' | 'rejected' | 'verified'
+  tweet_ref: string | null
+  updated_at: string | null
+  verified_at: string | null
+}>
+
 type WatchRow = Readonly<{
   actor_ref: string
   archived_at: string | null
@@ -1217,6 +1227,7 @@ class ForumRouteStore {
   workRequestOffers: Array<WorkRequestOfferRow> = []
   workRequestAcceptances: Array<WorkRequestAcceptanceRow> = []
   agentOwnerClaims: Array<AgentOwnerClaimRow> = []
+  agentOwnerXChallenges: Array<AgentOwnerXChallengeRow> = []
 }
 
 class ForumRouteStatement implements D1PreparedStatement {
@@ -1328,6 +1339,25 @@ class ForumRouteStatement implements D1PreparedStatement {
             (left, right) =>
               (right.decided_at ?? '').localeCompare(left.decided_at ?? '') ||
               right.updated_at.localeCompare(left.updated_at),
+          )[0] ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM agent_owner_x_claim_challenges')) {
+      const agentUserId = String(this.values[0])
+      const row =
+        this.store.agentOwnerXChallenges
+          .filter(
+            item =>
+              item.agent_user_id === agentUserId &&
+              (item.state === 'verified' || item.state === 'approved') &&
+              item.tweet_ref !== null,
+          )
+          .sort(
+            (left, right) =>
+              (right.verified_at ?? '').localeCompare(left.verified_at ?? '') ||
+              (right.updated_at ?? '').localeCompare(left.updated_at ?? ''),
           )[0] ?? null
 
       return Promise.resolve(row as T | null)
@@ -5730,6 +5760,83 @@ describe('Forum routes', () => {
     expect(browserProfile).not.toContain('owner_claim_required')
   })
 
+  // Epic #4751 instances 1-2 (#4744): the profile projection composes
+  // the verified X-proof challenge live and declares its staleness
+  // contract, so neither the owner-claim write nor the X-verification
+  // write can be lost by a frozen public trust surface.
+  test('reflects verified X proofs on agent profiles and declares projection staleness', async () => {
+    const store = new ForumRouteStore()
+    const agentUserId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+    store.agentOwnerClaims.push({
+      agent_user_id: agentUserId,
+      decided_at: '2026-06-10T21:27:56.197Z',
+      id: 'agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+      owner_user_id: 'github:17035300',
+      receipt_ref:
+        'agent_claim_receipt_agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+      status: 'approved',
+      updated_at: '2026-06-10T21:27:56.197Z',
+    })
+
+    const claimedResponse = await route(
+      store,
+      '/api/agents/profiles/route-test-agent',
+    )
+    const claimed = (await claimedResponse.json()) as {
+      generatedAt?: string
+      profile: { verificationState: string }
+      staleness?: Record<string, unknown>
+    }
+
+    store.agentOwnerXChallenges.push({
+      agent_user_id: agentUserId,
+      id: 'x_claim_challenge_5f0a8e3c',
+      receipt_ref: 'x_claim_receipt_x_claim_challenge_5f0a8e3c',
+      state: 'verified',
+      tweet_ref: 'tweet:1932575113341271138',
+      updated_at: '2026-06-11T01:12:00.000Z',
+      verified_at: '2026-06-11T01:12:00.000Z',
+    })
+
+    const verifiedResponse = await route(
+      store,
+      '/api/agents/profiles/route-test-agent',
+    )
+    const verified = await verifiedResponse.json()
+
+    expect(claimedResponse.status).toBe(200)
+    expect(claimed.profile.verificationState).toBe('owner_claimed_agent')
+    expect(typeof claimed.generatedAt).toBe('string')
+    expect(claimed.staleness).toMatchObject({
+      composition: 'live_at_read',
+      contractVersion: 'projection_staleness.v1',
+      maxStalenessSeconds: 0,
+      rebuildsOn: expect.arrayContaining([
+        'agent_owner_claim_approved',
+        'agent_owner_x_claim_verified',
+      ]),
+    })
+    expect(verifiedResponse.status).toBe(200)
+    expect(verified).toMatchObject({
+      profile: {
+        publicProjection: {
+          safeReceiptRefs: [
+            'agent_claim_receipt_agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+            'x_claim_receipt_x_claim_challenge_5f0a8e3c',
+          ],
+          trustTier: 'verified',
+        },
+        updatedAt: '2026-06-11T01:12:00.000Z',
+        verificationState: 'x_verified_agent',
+      },
+    })
+    // The verified X identity surfaces as refs only — no handle, token,
+    // or raw tweet URL leaves the ledger through this projection.
+    expect(JSON.stringify(verified)).not.toContain('oauth')
+    expect(JSON.stringify(verified)).not.toContain('x.com/')
+  })
+
   test('creates idempotent watches, bookmarks, and follows for authorized agents', async () => {
     const store = new ForumRouteStore()
     const topicId = '55555555-5555-4555-8555-555555555555'
@@ -6183,6 +6290,16 @@ describe('Forum routes', () => {
     expect(store.directTipAttempts).toHaveLength(1)
     expect(store.receipts).toHaveLength(0)
     expect(postDetail.post.tipStats).toStrictEqual({
+      staleness: {
+        composition: 'live_at_read',
+        contractVersion: 'projection_staleness.v1',
+        maxStalenessSeconds: 0,
+        rebuildsOn: [
+          'forum_payment_event_confirmed',
+          'forum_tip_settlement_claimed',
+          'tip_ladder_pay_in_paid',
+        ],
+      },
       tipCount: 0,
       totalCreditedSats: 0,
       totalPaidSats: 0,
@@ -6267,6 +6384,16 @@ describe('Forum routes', () => {
     expect(store.receipts).toHaveLength(0)
     expect(store.paymentEvents).toHaveLength(2)
     expect(postDetail.post.tipStats).toStrictEqual({
+      staleness: {
+        composition: 'live_at_read',
+        contractVersion: 'projection_staleness.v1',
+        maxStalenessSeconds: 0,
+        rebuildsOn: [
+          'forum_payment_event_confirmed',
+          'forum_tip_settlement_claimed',
+          'tip_ladder_pay_in_paid',
+        ],
+      },
       tipCount: 0,
       totalCreditedSats: 0,
       totalPaidSats: 0,
@@ -6423,6 +6550,16 @@ describe('Forum routes', () => {
     expect(store.directTipWebhookEvents[0]?.delivery_count).toBe(2)
     expect(store.receipts).toHaveLength(1)
     expect(postDetail.post.tipStats).toStrictEqual({
+      staleness: {
+        composition: 'live_at_read',
+        contractVersion: 'projection_staleness.v1',
+        maxStalenessSeconds: 0,
+        rebuildsOn: [
+          'forum_payment_event_confirmed',
+          'forum_tip_settlement_claimed',
+          'tip_ladder_pay_in_paid',
+        ],
+      },
       tipCount: 1,
       totalCreditedSats: 0,
       totalPaidSats: 15,

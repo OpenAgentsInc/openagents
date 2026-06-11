@@ -8,6 +8,12 @@ import {
   type CodexAgentProbeOptions,
   type CodexAgentSandboxMode,
 } from "./codex-agent"
+import {
+  gitCheckoutWorkspaceFrom,
+  materializeGitCheckoutWorkspaceWithLease,
+  type GitCheckoutWorkspace,
+  type WorkspaceCheckoutRunner,
+} from "./workspace-materializer"
 import type { PylonLocalState } from "./state"
 
 /**
@@ -34,12 +40,20 @@ export const CODEX_AGENT_TASK_SCHEMA = "openagents.pylon.codex_agent_task.v0.3"
 export const CODEX_AGENT_TASK_AGENT_KIND = "codex_sdk"
 export const CODEX_AGENT_SUM_REPAIR_FIXTURE_REF = "fixture.public.pylon.codex_agent.sum_repair.v1"
 
+// The git_checkout workspace contract is shared with the Claude Agent
+// lane (B2 #4756) through the adapter-neutral materializer module
+// (#4798) — same validator, same checkout runner, never forked.
+export type CodexAgentGitCheckoutWorkspace = GitCheckoutWorkspace
+export type CodexAgentCheckoutRunner = WorkspaceCheckoutRunner
+
 export type CodexAgentTaskPayload = {
   schema: typeof CODEX_AGENT_TASK_SCHEMA
   agentKind: typeof CODEX_AGENT_TASK_AGENT_KIND
-  fixtureRef: string
+  fixtureRef?: string
+  objectiveSummary?: string
   sandboxMode?: CodexAgentSandboxMode
   timeoutSeconds?: number
+  workspace?: CodexAgentGitCheckoutWorkspace
 }
 
 export type CodexAgentRunInput = {
@@ -67,6 +81,7 @@ export type CodexAgentRunResult = {
 export type CodexAgentRunner = (input: CodexAgentRunInput) => Promise<CodexAgentRunResult>
 
 export type CodexAgentExecutionOptions = {
+  checkoutRunner?: CodexAgentCheckoutRunner
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
 }
@@ -126,9 +141,17 @@ export function codexAgentTaskFrom(codingAssignment: unknown): CodexAgentTaskPay
   const payload = codex as CodexAgentTaskPayload
   if (payload.schema !== CODEX_AGENT_TASK_SCHEMA) return null
   if (payload.agentKind !== CODEX_AGENT_TASK_AGENT_KIND) return null
-  if (typeof payload.fixtureRef !== "string") return null
-  if (CODEX_AGENT_FIXTURES[payload.fixtureRef] === undefined) return null
-  return payload
+  const workspace = gitCheckoutWorkspaceFrom(codingAssignment)
+  const objective = (codingAssignment as { objective?: { publicSummary?: unknown } } | null)?.objective
+  const hasFixture =
+    typeof payload.fixtureRef === "string" &&
+    CODEX_AGENT_FIXTURES[payload.fixtureRef] !== undefined
+  if (!hasFixture && workspace === null) return null
+  return {
+    ...payload,
+    ...(typeof objective?.publicSummary === "string" ? { objectiveSummary: objective.publicSummary } : {}),
+    ...(workspace === null ? {} : { workspace }),
+  }
 }
 
 function boundedNumber(value: number | undefined, fallback: number, max: number): number {
@@ -267,6 +290,55 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   return { outcome: "completed", turnCount, editedFileCount, commandCount, sessionRef }
 }
 
+async function materializeCodexAgentWorkspace(input: {
+  checkoutRunner?: WorkspaceCheckoutRunner
+  leaseRef: string
+  state: PylonLocalState
+  task: CodexAgentTaskPayload
+}) {
+  if (input.task.workspace !== undefined) {
+    const materialized = await materializeGitCheckoutWorkspaceWithLease({
+      cacheRoot: join(input.state.paths.cache, "codex-agent-tasks"),
+      checkout: input.task.workspace,
+      ...(input.checkoutRunner === undefined ? {} : { checkoutRunner: input.checkoutRunner }),
+      leaseRef: input.leaseRef,
+      refPrefix: "workspace.pylon.codex_agent_task",
+      repositoryCacheRoot: join(input.state.paths.cache, "workspace-git-cache"),
+      workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
+    })
+    return {
+      acceptanceResultRef: "git_checkout_verified",
+      artifactSourceRef: materialized.sourceRef,
+      instructions: [
+        "You are working in a bounded public repository checkout.",
+        `Task objective: ${input.task.objectiveSummary ?? "complete the referenced Autopilot task"}.`,
+        "Only modify files inside this checkout.",
+        `Run the verification command ref ${input.task.workspace.verificationCommand.commandRef} before finishing.`,
+      ].join(" "),
+      verificationArgs: input.task.workspace.verificationCommand.args,
+      workspace: materialized.workingDirectory,
+      workspaceRef: materialized.workspaceRef,
+    }
+  }
+
+  const workspaceRef = stableRef("workspace.pylon.codex_agent_task", input.leaseRef)
+  const workspace = join(input.state.paths.cache, "codex-agent-tasks", workspaceRef)
+  const fixtureRef = input.task.fixtureRef ?? CODEX_AGENT_SUM_REPAIR_FIXTURE_REF
+  const fixture = CODEX_AGENT_FIXTURES[fixtureRef] ?? CODEX_AGENT_FIXTURES[CODEX_AGENT_SUM_REPAIR_FIXTURE_REF]
+  await mkdir(workspace, { recursive: true })
+  for (const [relativePath, contents] of Object.entries(fixture.files)) {
+    await writeFile(join(workspace, relativePath), contents)
+  }
+  return {
+    acceptanceResultRef: "fixture_repair",
+    artifactSourceRef: fixtureRef,
+    instructions: fixture.instructions,
+    verificationArgs: fixture.verificationArgs,
+    workspace,
+    workspaceRef,
+  }
+}
+
 type CodexAgentLease = {
   assignmentRef: string
   leaseRef: string
@@ -318,7 +390,7 @@ export async function executeCodexAgentAssignment(
 
   const runRef = stableRef(
     "run.pylon.codex_agent_task",
-    `${lease.leaseRef}:${task.fixtureRef}:${now.toISOString()}`,
+    `${lease.leaseRef}:${task.fixtureRef ?? task.workspace?.repository.commitSha ?? "unspecified"}:${now.toISOString()}`,
   )
 
   const config = await loadCodexAgentConfig({ paths: { config: state.paths.config } })
@@ -334,20 +406,31 @@ export async function executeCodexAgentAssignment(
     })
   }
 
-  const fixture = CODEX_AGENT_FIXTURES[task.fixtureRef]
-  const workspaceRef = stableRef("workspace.pylon.codex_agent_task", lease.leaseRef)
-  const workspace = join(state.paths.cache, "codex-agent-tasks", workspaceRef)
-  await mkdir(workspace, { recursive: true })
-  for (const [relativePath, contents] of Object.entries(fixture.files)) {
-    await writeFile(join(workspace, relativePath), contents)
+  let materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
+  try {
+    materialized = await materializeCodexAgentWorkspace({
+      ...(options.checkoutRunner === undefined ? {} : { checkoutRunner: options.checkoutRunner }),
+      leaseRef: lease.leaseRef,
+      state,
+      task,
+    })
+  } catch {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_workspace_checkout_failed"],
+      resultRef: "result.public.pylon.codex_agent_task.workspace_checkout_failed",
+      summaryRef: "summary.public.pylon.codex_agent_task.workspace_checkout_failed",
+      message: "Local Codex thread refused because the bounded workspace checkout could not be materialized.",
+    })
   }
 
   const runner = options.codexAgentRunner ?? runWithCodexSdk
   let run: CodexAgentRunResult
   try {
     run = await runner({
-      cwd: workspace,
-      instructions: fixture.instructions,
+      cwd: materialized.workspace,
+      instructions: materialized.instructions,
       sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs:
         boundedNumber(
@@ -399,14 +482,14 @@ export async function executeCodexAgentAssignment(
     })
   }
 
-  const verification = await runCommand({ args: fixture.verificationArgs, cwd: workspace })
+  const verification = await runCommand({ args: materialized.verificationArgs, cwd: materialized.workspace })
   const commandRef = stableRef(
     "command.pylon.codex_agent_task.verification",
     `${lease.leaseRef}:${verification.exitCode}:${verification.stdoutBytes}:${verification.stderrBytes}`,
   )
   const artifactRef = stableRef(
     "artifact.pylon.codex_agent_task.patch",
-    `${lease.assignmentRef}:${task.fixtureRef}:${run.editedFileCount}`,
+    `${lease.assignmentRef}:${materialized.artifactSourceRef}:${run.editedFileCount}`,
   )
   const proofRef = stableRef(
     "proof.pylon.codex_agent_task.test",
@@ -422,20 +505,20 @@ export async function executeCodexAgentAssignment(
     message: passed
       ? `Local Codex completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.`
       : "Local Codex thread completed but the verification test command failed; the change is not accepted.",
-    previewRefs: [workspaceRef],
+    previewRefs: [materialized.workspaceRef],
     proofRefs: [proofRef],
     resultRefs: [
       passed
-        ? "result.public.pylon.codex_agent_task.fixture_repair_passed"
-        : "result.public.pylon.codex_agent_task.fixture_repair_failed",
+        ? `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_passed`
+        : `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),
     summaryRefs: [
       passed
-        ? "summary.public.pylon.codex_agent_task.fixture_repair_passed"
-        : "summary.public.pylon.codex_agent_task.fixture_repair_failed",
+        ? `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_passed`
+        : `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
     ],
     testRefs: [commandRef],
   }

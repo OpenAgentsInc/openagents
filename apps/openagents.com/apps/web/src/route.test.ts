@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AdminRoute,
+  AutopilotWorkDetailRoute,
+  AutopilotWorkRoute,
   ChatRoute,
   DemoOrderRoute,
   DemoRoute,
@@ -46,6 +48,21 @@ describe('app route parser', () => {
 
   test('accepts the operator Autopilot shell route', () => {
     expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(ChatRoute())
+  })
+
+  test('accepts Autopilot work visibility routes', () => {
+    expect(urlToAppRoute(appUrl('/autopilot/work'))).toEqual(
+      AutopilotWorkRoute(),
+    )
+    expect(
+      urlToAppRoute(
+        appUrl('/autopilot/work/autopilot_work_order.visible_1'),
+      ),
+    ).toEqual(
+      AutopilotWorkDetailRoute({
+        workOrderRef: 'autopilot_work_order.visible_1',
+      }),
+    )
   })
 
   test('does not accept the deleted login page route', () => {

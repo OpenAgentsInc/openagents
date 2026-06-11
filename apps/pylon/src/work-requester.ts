@@ -10,6 +10,14 @@ export type PylonWorkRequestInput = {
   deadline?: string
 }
 
+export type PylonAutopilotWorkInput = {
+  objective: string
+  budgetCents: number
+  repository?: string
+  branch?: string
+  verificationCommand?: string
+}
+
 export type PylonWorkRequestBody = {
   budgetSats: number
   deadlineRef: string
@@ -30,6 +38,9 @@ export type PylonWorkMemoryEntry = {
 const DEFAULT_REQUIRED_CAPABILITY_REF = "capability.pylon.local_claude_agent"
 const DEFAULT_REPOSITORY_REF = "repo.public.openagents"
 const DEFAULT_VERIFY_REF = "command.public.pylon.labor.bun_test"
+const DEFAULT_BRANCH = "main"
+const DEFAULT_VERIFICATION_COMMAND = "bun test"
+const AUTOPILOT_WORK_PROMISE_ID = "autopilot.mission_briefing.v1"
 
 const unsafeWorkRequestPattern =
   /(\/Users\/|\/home\/|access[_-]?token|bearer\s+|cookie|file:\/\/|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?(key|repo)|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(command|content|invoice|payment|payload|prompt|repo|runner|state)|secret|seed[_-]?phrase|sk-[a-z0-9]|ssh:\/\/|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
@@ -76,6 +87,82 @@ function verificationRefFromInput(command: string | undefined) {
   return stableRef("command.public.pylon_work", value)
 }
 
+function cleanRefSegment(value: string) {
+  return value.trim().replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80) || "request"
+}
+
+function githubFullNameFromInput(repository: string | undefined) {
+  const value = repository?.trim()
+  if (!value) return "OpenAgentsInc/openagents"
+  assertPublicSafe(value, "autopilot work repository")
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)) return value
+  const github = /^https:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)(?:[/?#].*)?$/.exec(value)
+  if (github) return `${github[1]}/${github[2].replace(/\.git$/, "")}`
+  throw new Error("work submit --repo must be owner/repo or a public GitHub URL")
+}
+
+function verificationArgsFromInput(command: string | undefined) {
+  const value = command?.trim() || DEFAULT_VERIFICATION_COMMAND
+  assertPublicSafe(value, "autopilot work verification command")
+  const args = value.split(/\s+/).filter(Boolean)
+  if (args.length === 0 || args.length > 12 || args.some((arg) => arg.length > 120 || arg.startsWith("/") || arg.includes(".."))) {
+    throw new Error("work submit --verify must be bounded argv tokens without absolute paths or traversal")
+  }
+  return args
+}
+
+export function buildPylonAutopilotWorkRequestBody(input: PylonAutopilotWorkInput): Record<string, unknown> {
+  const objective = cleanObjective(input.objective)
+  if (!Number.isInteger(input.budgetCents) || input.budgetCents < 0) {
+    throw new Error("work submit --budget-cents must be a non-negative integer cent amount")
+  }
+  const repository = githubFullNameFromInput(input.repository)
+  const branch = input.branch?.trim() || DEFAULT_BRANCH
+  assertPublicSafe(branch, "autopilot work branch")
+  const args = verificationArgsFromInput(input.verificationCommand)
+  const taskRef = `task.autopilot_coder.pylon.${cleanRefSegment(repository)}.${cleanRefSegment(objective)}`
+  const paid = input.budgetCents > 0
+  const body = {
+    caller: { agentId: "oa_agent.pylon_cli", kind: "registered_agent", ownerRef: "owner_ref.pylon_cli" },
+    clientRequestRef: `client.pylon.${taskRef}`,
+    intent: "delegate_to_autopilot",
+    mode: paid ? "free_slice_or_paid_quote_or_l402" : "free_slice_or_paid_quote",
+    paymentPolicy: {
+      buyerPaymentMode: paid ? "l402" : "free_slice",
+      maxSpendCents: input.budgetCents,
+      quoteRef: paid ? `quote.${taskRef}` : null,
+      quotedAmountCents: paid ? input.budgetCents : null,
+      settlementMode: paid ? "no_worker_payout_until_accepted_work" : "no_worker_payout",
+    },
+    placementPolicy: {
+      allowedRunnerKinds: ["requester_pylon", "openagents_shc"],
+      disallowedRunnerKinds: [],
+      localOnlyAllowed: false,
+      preferredRunnerKinds: ["requester_pylon", "openagents_shc"],
+      privacyTier: paid ? "openagents_shc" : "public_beta",
+      publicTraceAllowed: !paid,
+      requiresSecretBroker: false,
+    },
+    promiseRef: { blockerRefs: [], promiseId: AUTOPILOT_WORK_PROMISE_ID, registryVersion: "2026-06-11.1" },
+    schema: "openagents.autopilot_work_request.v1",
+    tasks: [{
+      acceptanceCriteriaRefs: ["acceptance.pylon_cli.customer_review"],
+      accessRequests: [{ kind: "github_repo_read", reasonRef: "access.github.public_read" }],
+      checkout: {
+        commitSha: "1111111111111111111111111111111111111111",
+        kind: "git_checkout",
+        verificationCommand: { args, commandRef: `command.${cleanRefSegment(args.join("_"))}` },
+      },
+      forumReporting: { mode: "operator_approved_only" },
+      kind: "code_change",
+      objective,
+      repository: { branch, fullName: repository, provider: "github", visibility: "public" },
+      taskRef,
+    }],
+  }
+  return body
+}
+
 function deadlineRefFromInput(deadline: string | undefined) {
   const value = deadline?.trim()
   if (!value) return "deadline.public.pylon_work.unspecified"
@@ -112,6 +199,7 @@ async function workApiRequest(
     method: "GET" | "POST"
     body?: Record<string, unknown>
     idempotencyKey?: string
+    okStatuses?: number[]
   },
 ): Promise<Record<string, unknown>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -128,7 +216,7 @@ async function workApiRequest(
   })
   const text = await response.text()
   const payload = text.trim() ? JSON.parse(text) as Record<string, unknown> : {}
-  if (!response.ok) {
+  if (!response.ok && !(input.okStatuses ?? []).includes(response.status)) {
     const reason = typeof payload.reason === "string" ? payload.reason : typeof payload.error === "string" ? payload.error : String(response.status)
     throw new Error(`pylon work request failed (${response.status}): ${reason}`)
   }
@@ -146,6 +234,65 @@ export async function createPylonWorkRequest(
     idempotencyKey: `pylon-work-request:${body.objectiveRef}:${now.toISOString().slice(0, 16)}`,
     method: "POST",
     path: "/api/forum/work-requests",
+  })
+}
+
+export async function submitPylonAutopilotWork(
+  options: TipsNetworkOptions,
+  input: PylonAutopilotWorkInput,
+): Promise<Record<string, unknown>> {
+  const body = buildPylonAutopilotWorkRequestBody(input)
+  const now = options.now?.() ?? new Date()
+  return workApiRequest(options, {
+    body,
+    idempotencyKey: `pylon-work-submit:${String(body.clientRequestRef)}:${now.toISOString().slice(0, 16)}`,
+    method: "POST",
+    okStatuses: [402],
+    path: "/api/autopilot/work",
+  })
+}
+
+export async function readPylonAutopilotWorkStatus(
+  options: TipsNetworkOptions,
+  workOrderRef: string,
+): Promise<Record<string, unknown>> {
+  assertPublicSafe(workOrderRef, "autopilot work order ref")
+  return workApiRequest(options, {
+    method: "GET",
+    path: `/api/autopilot/work/${encodeURIComponent(workOrderRef)}`,
+  })
+}
+
+export async function readPylonAutopilotWorkEvents(
+  options: TipsNetworkOptions,
+  workOrderRef: string,
+): Promise<Record<string, unknown>> {
+  assertPublicSafe(workOrderRef, "autopilot work order ref")
+  return workApiRequest(options, {
+    method: "GET",
+    path: `/api/autopilot/work/${encodeURIComponent(workOrderRef)}/events`,
+  })
+}
+
+export async function reviewPylonAutopilotWork(
+  options: TipsNetworkOptions,
+  input: { action: "accept" | "reject" | "request_changes"; workOrderRef: string },
+): Promise<Record<string, unknown>> {
+  assertPublicSafe(input, "autopilot work review input")
+  const now = options.now?.() ?? new Date()
+  const ref = `review.pylon_cli.${input.action}.${cleanRefSegment(input.workOrderRef)}`
+  return workApiRequest(options, {
+    body: {
+      action: input.action,
+      ...(input.action === "accept"
+        ? { decisionRefs: [ref] }
+        : input.action === "reject"
+          ? { rejectionRefs: [ref] }
+          : { revisionRequestRefs: [ref] }),
+    },
+    idempotencyKey: `pylon-work-review:${input.workOrderRef}:${input.action}:${now.toISOString().slice(0, 16)}`,
+    method: "POST",
+    path: `/api/autopilot/work/${encodeURIComponent(input.workOrderRef)}/review`,
   })
 }
 

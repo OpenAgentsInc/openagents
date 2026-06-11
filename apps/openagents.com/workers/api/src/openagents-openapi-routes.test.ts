@@ -230,10 +230,17 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/api/autopilot/work', 'post').operationId).toBe(
       'createAutopilotWork',
     )
+    expect(operationAt(body, '/api/autopilot/work', 'get').operationId).toBe(
+      'listAutopilotWorkByPromise',
+    )
     expect(
       operationAt(body, '/api/autopilot/work/{workOrderRef}', 'get')
         .operationId,
     ).toBe('getAutopilotWork')
+    expect(
+      operationAt(body, '/api/autopilot/work/{workOrderRef}/review', 'post')
+        .operationId,
+    ).toBe('reviewAutopilotWork')
     expect(
       operationAt(body, '/api/autopilot/work/{workOrderRef}/events', 'get')
         .operationId,
@@ -874,7 +881,6 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/autopilot/goals/{param}/visibility',
   '/api/autopilot/missions',
   '/api/autopilot/token-leaderboards',
-  '/api/autopilot/work/{param}/review',
   '/api/billing/checkout',
   '/api/billing/coupons/redeem',
   '/api/billing/stripe/checkout-return',

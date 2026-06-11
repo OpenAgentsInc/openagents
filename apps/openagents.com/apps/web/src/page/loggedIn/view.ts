@@ -7,6 +7,8 @@ import { notFoundView } from '../../notFoundView'
 import { browserRouteIsEnabled } from '../../product-policy'
 import {
   adminRouter,
+  autopilotWorkDetailRouter,
+  autopilotWorkRouter,
   billingRouter,
   blogPostRouter,
   blogRouter,
@@ -45,6 +47,7 @@ import { ClickedLogout, ClickedNewChat, Message } from './message'
 import { type Model, type SidebarModel, teamRouteRef } from './model'
 import * as Mullet from './mullet/view'
 import * as Admin from './page/admin'
+import * as AutopilotWork from './page/autopilot-work'
 import * as Billing from './page/billing'
 import * as Chat from './page/chat'
 import * as Dashboard from './page/dashboard'
@@ -63,6 +66,9 @@ const currentHref = (model: Model): string =>
       Onboarding: () => onboardingRouter(),
       Order: () => orderRouter(),
       OrderDetail: ({ orderId }) => orderDetailRouter({ orderId }),
+      AutopilotWork: () => autopilotWorkRouter(),
+      AutopilotWorkDetail: ({ workOrderRef }) =>
+        autopilotWorkDetailRouter({ workOrderRef }),
       Invite: () => inviteRouter(),
       Chat: () => chatRouter(),
       TeamChat: ({ teamRef }) => teamChatRouter({ teamRef }),
@@ -106,6 +112,9 @@ const routeKey = (model: Model): string =>
       Onboarding: () => 'Onboarding',
       Order: () => 'Order',
       OrderDetail: ({ orderId }) => `OrderDetail:${orderId}`,
+      AutopilotWork: () => 'AutopilotWork',
+      AutopilotWorkDetail: ({ workOrderRef }) =>
+        `AutopilotWorkDetail:${workOrderRef}`,
       Invite: () => 'Invite',
       Chat: () => 'Chat',
       TeamChat: ({ teamRef }) => `TeamChat:${teamRef}`,
@@ -353,6 +362,14 @@ const routeView = (model: Model): Html => {
           Order: () => Ui.workroomScrollableRoute<Message>([Order.view(model)]),
           OrderDetail: () =>
             Ui.workroomScrollableRoute<Message>([Order.view(model)]),
+          AutopilotWork: () =>
+            Ui.workroomScrollableRoute<Message>([
+              AutopilotWork.listView(model),
+            ]),
+          AutopilotWorkDetail: () =>
+            Ui.workroomScrollableRoute<Message>([
+              AutopilotWork.detailView(model),
+            ]),
           TeamChat: ({ teamRef }) =>
             Ui.workroomChatRoute<Message>(Chat.teamRoomView(model, teamRef)),
           TeamProjectChat: ({ projectRef, teamRef }) =>

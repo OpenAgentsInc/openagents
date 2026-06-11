@@ -421,6 +421,19 @@ async function writeAssignmentStore(state: PylonLocalState, store: AssignmentSto
   await writeFile(state.paths.assignmentState, `${JSON.stringify(store, null, 2)}\n`)
 }
 
+const locallyTerminalAssignmentStatuses = new Set<AssignmentStatus>([
+  "closed",
+  "rejected",
+  "cancelled",
+  "timed-out",
+  "stale",
+])
+
+function localLeaseIsTerminal(store: AssignmentStore, leaseRef: string): boolean {
+  const local = store.leases[leaseRef]
+  return local !== undefined && locallyTerminalAssignmentStatuses.has(local.status)
+}
+
 function isLegacyLease(value: unknown): value is PylonAssignmentLease {
   const lease = value as PylonAssignmentLease
   return (
@@ -671,7 +684,11 @@ export async function acceptAssignment(
   const state = await ensurePylonLocalState(summary)
   const store = await loadAssignmentStore(state)
   const existing = store.leases[lease.leaseRef]
-  if (existing?.status === "accepted" || existing?.status === "running" || existing?.status === "closed") {
+  if (
+    existing?.status === "accepted" ||
+    existing?.status === "running" ||
+    localLeaseIsTerminal(store, lease.leaseRef)
+  ) {
     return {
       ok: false,
       accepted: false,
@@ -798,8 +815,13 @@ export async function submitAssignmentCloseout(
 }
 
 export async function runNoSpendAssignment(summary: BootstrapSummary, options: AssignmentClientOptions) {
+  const state = await ensurePylonLocalState(summary)
+  const store = await loadAssignmentStore(state)
   const leases = await pollAssignments(summary, options)
-  const lease = leases.find((candidate) => candidate.paymentMode === "no-spend")
+  const lease = leases.find((candidate) =>
+    candidate.paymentMode === "no-spend" &&
+    !localLeaseIsTerminal(store, candidate.leaseRef)
+  )
   if (!lease) {
     return { ok: false, reason: "no no-spend assignment lease available", leases }
   }
@@ -809,7 +831,6 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     return { ok: false, acceptance }
   }
 
-  const state = await ensurePylonLocalState(summary)
   const observedAtDate = options.now?.() ?? new Date()
   const observedAt = observedAtDate.toISOString()
   const runtimeGate =

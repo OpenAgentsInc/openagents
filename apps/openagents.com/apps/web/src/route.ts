@@ -8,6 +8,10 @@ export const InviteRoute = r('Invite')
 export const OnboardingRoute = r('Onboarding')
 export const OrderRoute = r('Order')
 export const OrderDetailRoute = r('OrderDetail', { orderId: S.String })
+export const AutopilotWorkRoute = r('AutopilotWork')
+export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
+  workOrderRef: S.String,
+})
 export const ChatRoute = r('Chat')
 export const TeamChatRoute = r('TeamChat', { teamRef: S.String })
 export const TeamProjectChatRoute = r('TeamProjectChat', {
@@ -68,6 +72,9 @@ export type InviteRoute = typeof InviteRoute.Type
 export type OnboardingRoute = typeof OnboardingRoute.Type
 export type OrderRoute = typeof OrderRoute.Type
 export type OrderDetailRoute = typeof OrderDetailRoute.Type
+export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
+export type AutopilotWorkDetailRoute =
+  typeof AutopilotWorkDetailRoute.Type
 export type ChatRoute = typeof ChatRoute.Type
 export type TeamChatRoute = typeof TeamChatRoute.Type
 export type TeamProjectChatRoute = typeof TeamProjectChatRoute.Type
@@ -135,6 +142,8 @@ export const LoggedInRoute = S.Union([
   OnboardingRoute,
   OrderRoute,
   OrderDetailRoute,
+  AutopilotWorkRoute,
+  AutopilotWorkDetailRoute,
   ChatRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
@@ -172,6 +181,8 @@ export const AppRoute = S.Union([
   OnboardingRoute,
   OrderRoute,
   OrderDetailRoute,
+  AutopilotWorkRoute,
+  AutopilotWorkDetailRoute,
   ChatRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
@@ -228,6 +239,17 @@ export const orderDetailRouter = pipe(
   literal('orders'),
   slash(string('orderId')),
   Route.mapTo(OrderDetailRoute),
+)
+export const autopilotWorkRouter = pipe(
+  literal('autopilot'),
+  slash(literal('work')),
+  Route.mapTo(AutopilotWorkRoute),
+)
+export const autopilotWorkDetailRouter = pipe(
+  literal('autopilot'),
+  slash(literal('work')),
+  slash(string('workOrderRef')),
+  Route.mapTo(AutopilotWorkDetailRoute),
 )
 export const teamChatRouter = pipe(
   literal('teams'),
@@ -406,6 +428,8 @@ const routeParser = Route.oneOf(
   shareRouter,
   inviteRouter,
   onboardingRouter,
+  autopilotWorkDetailRouter,
+  autopilotWorkRouter,
   orderDetailRouter,
   orderRouter,
   teamProjectChatRouter,

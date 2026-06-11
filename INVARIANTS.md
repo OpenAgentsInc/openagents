@@ -48,6 +48,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
 
+## Public Projection Staleness
+
+- Every public projection in this workspace carries `generatedAt` (or an
+  equivalent rebuild timestamp) plus a declared staleness contract, and either
+  rebuilds on the state transitions that matter or composes live at read. A
+  projection that cannot meet its declared staleness must say so in the
+  payload rather than serve stale data as current.
+- The `openagents.com` worker-surface contract vocabulary, the enumerated
+  projection inventory, and the enforcing check tooling live in
+  `apps/openagents.com/INVARIANTS.md` ("Public Projection Staleness
+  Declaration") and `apps/openagents.com/scripts/check-zero-debt-architecture.mjs`
+  (epic #4751).
+
 ## Product Promise Claims
 
 - User-facing and agent-facing product claims belong in the product-promises
