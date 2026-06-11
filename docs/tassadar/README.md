@@ -377,6 +377,15 @@ stack and cheap to begin.
   projection-staleness lesson. The first-divergence eval schema and
   trace_record artifact contract adopted there now shape the evolution
   loop's corpus stage.
+- [`2026-06-11-tassadar-plugin-marketplace-audit.md`](2026-06-11-tassadar-plugin-marketplace-audit.md)
+  — the marketplace-lineage audit and essay: the 2024 agent store and
+  paid-plugin arc (transcripts 048–102), the Blueprint/DSPy typed-program
+  generation, and what Tassadar's replay-verifiable compiled modules
+  change — payments-without-proofs → contracts-without-a-floor → goods
+  that carry their own evidence — with a speculative ecosystem sketch
+  (verification ladder as shelf structure, mechanized admission,
+  trace-decomposed revenue splits) and the store-is-built-last
+  sequencing rule.
 - [`2026-06-11-chatgpt-pro-analysis-2.md`](2026-06-11-chatgpt-pro-analysis-2.md)
   — the second external (ChatGPT Pro) brief: the literature map
   (RASP/Tracr lineage, expressivity-versus-learnability,
