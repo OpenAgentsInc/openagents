@@ -179,6 +179,51 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("skips locally terminal leases that are still offered by the server", async () => {
+    await withTempHome(async (home) => {
+      const firstLease = lease({
+        assignmentRef: "assignment.public.no_spend.rejected",
+        leaseRef: "lease.public.no_spend.rejected",
+      })
+      const secondLease = lease({
+        assignmentRef: "assignment.public.no_spend.next",
+        leaseRef: "lease.public.no_spend.next",
+      })
+      const fake = fakeAssignmentServer({ leases: [firstLease, secondLease] })
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await writeFile(
+        state.paths.assignmentState,
+        `${JSON.stringify({
+          schema: "openagents.pylon.assignment_state.v0.3",
+          leases: {
+            [firstLease.leaseRef]: {
+              assignmentRef: firstLease.assignmentRef,
+              status: "rejected",
+              closedAt: "2026-06-09T00:00:10.000Z",
+            },
+          },
+        }, null, 2)}\n`,
+      )
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected runner to skip terminal lease")
+      expect(result.lease.leaseRef).toBe(secondLease.leaseRef)
+      const acceptPaths = fake.requests
+        .map((request) => request.path)
+        .filter((path) => path.endsWith("/accept"))
+      expect(acceptPaths).toEqual([
+        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(secondLease.leaseRef)}/accept`,
+      ])
+    })
+  })
+
   test("executes runtime-gate coding assignment and reports only public-safe refs", async () => {
     await withTempHome(async (home) => {
       const codingAssignment = {
