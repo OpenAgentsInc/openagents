@@ -270,11 +270,15 @@ export const pylonCapacityFunnelRecordsFromStore = (
       nodeVisibility: 'public',
       providerRef: 'provider.public.pylon_capacity.redacted',
       providerVisibility: 'public',
-      rewardRefs: [],
+      rewardRefs: reached('paid')
+        ? [`reward.public.pylon_capacity.entry_${ordinal}`]
+        : [],
       runRefs: reached('running')
         ? [`run.public.pylon_capacity.entry_${ordinal}`]
         : [],
-      settlementRefs: [],
+      settlementRefs: reached('settled')
+        ? [`settlement.public.pylon_capacity.entry_${ordinal}`]
+        : [],
       stage,
       updatedAtIso: registration.updatedAt,
       workClassRefs: [],

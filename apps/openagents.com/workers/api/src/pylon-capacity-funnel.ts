@@ -235,13 +235,21 @@ const stageAtLeast = (
   threshold: PylonCapacityFunnelStage,
 ): boolean => stageRank[stage] >= stageRank[threshold]
 
+// Platform-issued dark-capacity taxonomy constants are a closed enum;
+// the substring heuristic must not reject its own taxonomy (the live
+// funnel 500 of 2026-06-11: dark_capacity.public.wallet_not_ready
+// contains 'wallet' and fired for the first time when the first
+// capability-eligible, wallet-unready Pylon came online).
+const platformIssuedDarkReasonPattern = /^dark_capacity\.public\.[a-z0-9_]+$/
+
 const assertSafeRefs = (
   label: string,
   refs: ReadonlyArray<string>,
 ): void => {
   const unsafe = uniqueRefs(refs).find(ref =>
     !safeRefPattern.test(ref) ||
-    universallyUnsafeRefPattern.test(ref) ||
+    (!platformIssuedDarkReasonPattern.test(ref) &&
+      universallyUnsafeRefPattern.test(ref)) ||
     isoTimestampPattern.test(ref)
   )
 
@@ -401,7 +409,13 @@ const projectionText = (
 export const pylonCapacityProjectionHasPrivateMaterial = (
   projection: PylonCapacityFunnelProjection,
 ): boolean => {
-  const text = projectionText(projection)
+  // Strip platform-issued dark-reason taxonomy constants before the
+  // substring scan - the closed enum must not trip its own scanner
+  // (dark_capacity.public.wallet_not_ready contains 'wallet').
+  const text = projectionText(projection).replaceAll(
+    /dark_capacity\.public\.[a-z0-9_]+/g,
+    'dark_capacity.public.reason',
+  )
   const pattern = audienceUnsafePattern(projection.audience)
 
   return universallyUnsafeRefPattern.test(text) ||

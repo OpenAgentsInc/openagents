@@ -592,3 +592,29 @@ describe('funnel aggregate subrequest discipline', () => {
     expect(aggregate.totalCount).toBe(60)
   })
 })
+
+describe('dark-reason taxonomy survives its own scanner', () => {
+  test('a wallet_not_ready pylon projects instead of poisoning the surface', async () => {
+    const store = {
+      listAssignmentsForPylon: () => Promise.resolve([]),
+      listProviderJobLifecycleForPylons: () => Promise.resolve([]),
+      listRegistrations: () =>
+        Promise.resolve([
+          registration({
+            pylonRef: 'pylon.test.no_wallet',
+            walletReady: false,
+          }),
+        ]),
+    } as unknown as PylonApiStore
+
+    const aggregate = await readPylonCapacityFunnelAggregate({
+      nowIso,
+      store,
+    })
+
+    expect(aggregate.totalCount).toBe(1)
+    expect(aggregate.byDarkCapacityReason).toEqual([
+      { count: 1, key: 'dark_capacity.public.wallet_not_ready' },
+    ])
+  })
+})
