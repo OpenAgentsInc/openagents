@@ -115,10 +115,12 @@ const log = (message: string, level: PylonLogLevel = "verbose") =>
   Effect.sync(() => logToUi(message, level))
 
 // The Solid JSX transform must be registered before src/tui/*.tsx loads.
-// Dev/test runs get it from apps/pylon/bunfig.toml's preload; a packaged
-// `pylon` bin runs from an arbitrary cwd with no bunfig, so re-exec once
-// with --preload pointing at the plugin inside our own dependency tree.
-function ensureSolidRuntime(): void {
+// The dashboard path re-execs itself once with --preload pointing at the
+// plugin inside our own dependency tree. This is deliberately NOT a bunfig
+// preload: subcommands (bootstrap/status/wallet/...) must keep working even
+// when the transform cannot load, and bunfig preload failures abort before
+// any of our code runs. Tests still preload via bunfig's [test] section.
+async function ensureSolidRuntime(): Promise<void> {
   const transformState = (globalThis as Record<symbol, { installed?: boolean } | undefined>)[
     Symbol.for("opentui.solid.transform")
   ]
@@ -128,14 +130,25 @@ function ensureSolidRuntime(): void {
   }
   const preloadPath = Bun.fileURLToPath(import.meta.resolve("@opentui/solid/preload"))
   const entry = Bun.argv[1] ?? Bun.fileURLToPath(import.meta.url)
-  const result = Bun.spawnSync({
+  const child = Bun.spawn({
     cmd: [process.execPath, "--preload", preloadPath, entry, ...Bun.argv.slice(2)],
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
     env: { ...Bun.env, PYLON_SOLID_REEXEC: "1" },
   })
-  process.exit(result.exitCode ?? 1)
+  // Forward termination to the child so it is never orphaned holding the
+  // terminal (Ctrl+C reaches it via the tty; these cover kill/timeouts).
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGALRM"] as const) {
+    process.on(signal, () => {
+      try {
+        child.kill(signal)
+      } catch {
+        // child already gone
+      }
+    })
+  }
+  process.exit(await child.exited)
 }
 
 // Builds the operator-pane text the telemetry service publishes. The wallet
@@ -1133,7 +1146,7 @@ async function main() {
   // Dashboard path needs the Solid JSX transform before src/tui/*.tsx can
   // load; re-execs once with --preload when launched without the bunfig
   // preload (e.g. the packaged bin from an arbitrary cwd).
-  ensureSolidRuntime()
+  await ensureSolidRuntime()
 
   await Effect.runPromise(
     Effect.scoped(runPylonNode).pipe(

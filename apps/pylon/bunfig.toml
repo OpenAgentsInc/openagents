@@ -1,8 +1,6 @@
-# Registers the @opentui/solid JSX transform for dev runs (`bun src/index.ts`
-# from this directory) and tests. The packaged `pylon` bin runs from arbitrary
-# cwds without this file; src/index.ts re-execs with --preload in that case
-# (see ensureSolidRuntime).
-preload = ["@opentui/solid/preload"]
-
+# Tests need the @opentui/solid JSX transform preloaded. Normal runs do NOT
+# preload it here: subcommands (bootstrap/status/wallet/...) must work even
+# if the transform cannot load, and the dashboard path registers it via a
+# one-shot --preload re-exec (see ensureSolidRuntime in src/index.ts).
 [test]
 preload = ["@opentui/solid/preload"]
