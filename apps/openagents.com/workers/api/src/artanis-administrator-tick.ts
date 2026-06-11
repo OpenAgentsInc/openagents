@@ -418,13 +418,15 @@ export const runArtanisCloseoutVerifier = async (
     (
       await db
         .prepare(
-          `SELECT assignment_ref, pylon_ref, closeout_refs_json, proof_refs_json
+          `SELECT assignment_ref, pylon_ref, closeout_refs_json, proof_refs_json,
+                  artifact_refs_json
              FROM pylon_api_assignments
             WHERE state = 'closeout_submitted'
               AND job_kind = ?
               AND assignment_ref LIKE 'assignment.artanis_admin.%'
               AND assignment_ref NOT IN (
                 SELECT assignment_ref FROM artanis_closeout_verdicts
+                WHERE outcome != 'unreadable'
               )
             LIMIT 3`,
         )
@@ -439,7 +441,11 @@ export const runArtanisCloseoutVerifier = async (
 
   for (const row of rows) {
     const assignmentRef = String(row.assignment_ref)
+    // The pylon executor puts the full trace digest in the artifact ref
+    // (artifact.tassadar_poc.trace_digest.<64-hex>); proof/closeout refs
+    // carry truncated prefixes only.
     const claimedDigest =
+      digestFromRefs(row.artifact_refs_json) ??
       digestFromRefs(row.proof_refs_json) ??
       digestFromRefs(row.closeout_refs_json)
 
@@ -449,7 +455,8 @@ export const runArtanisCloseoutVerifier = async (
         .prepare(
           `INSERT INTO artanis_closeout_verdicts
            (id, assignment_ref, outcome, accept_state, detail, created_at)
-           VALUES (?, ?, 'unreadable', 'skipped', 'no 64-hex digest in closeout refs', ?)`,
+           VALUES (?, ?, 'unreadable', 'skipped', 'no 64-hex digest in closeout refs', ?)
+           ON CONFLICT (assignment_ref) DO NOTHING`,
         )
         .bind(randomUuid(), assignmentRef, deps.nowIso)
         .run()
@@ -488,7 +495,12 @@ export const runArtanisCloseoutVerifier = async (
         `INSERT INTO artanis_closeout_verdicts
          (id, assignment_ref, outcome, claimed_trace_digest_prefix,
           accept_state, detail, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (assignment_ref) DO UPDATE SET
+           outcome = excluded.outcome,
+           claimed_trace_digest_prefix = excluded.claimed_trace_digest_prefix,
+           accept_state = excluded.accept_state,
+           detail = excluded.detail`,
       )
       .bind(
         randomUuid(),
