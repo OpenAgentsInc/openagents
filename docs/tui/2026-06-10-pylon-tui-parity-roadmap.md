@@ -7,6 +7,9 @@ Inputs:
 - `docs/tui/2026-06-10-textual-vs-pylon-opentui-audit.md` (conceptual lessons)
 Target surface: `apps/pylon/src/index.ts` and successors
 
+Tracking issues: Phase 0 #4736 · Phase 1 #4737 · Phase 2 #4738 · Phase 3
+\#4739 · Phase 4 #4740 · Phase 5 #4741 · Phase 6 #4742
+
 ## Goal and non-goals
 
 **Goal:** bring the Pylon TUI mostly into parity with opencode's TUI as the
@@ -199,16 +202,17 @@ round-trips through the protocol.
 **Exit criteria:** ≥2 non-dashboard surfaces shipped; navigation discoverable
 via palette/help; composer history works across restarts.
 
-## Phase 6 — Test harness and ecosystem give-back
+## Phase 6 — Owned test harness
 
-*Theme: close the gap both repos share, ideally upstream.*
+*Theme: close the gap both repos share. No upstreaming planned — our codebase
+will diverge significantly from OpenTUI/opencode upstream, so the harness is
+built and owned in this repo.*
 
 1. **Headless render harness:** drive the OpenTUI renderer against a dumpable
    buffer (no TTY), inject key events, snapshot the text frame with
-   `bun:test` snapshots — Textual's Pilot model on OpenTUI. Investigate what
-   the Zig core already exposes (`projects/repos/opentui/packages/core`);
-   if the capability is missing, contribute it upstream — the whole OpenTUI
-   ecosystem (opencode included) lacks this.
+   `bun:test` snapshots — Textual's Pilot model, implemented in-repo.
+   Spike first against what the Zig core already exposes
+   (`projects/repos/opentui/packages/core`) versus what we wrap ourselves.
 2. **Snapshot the dashboard and each surface** at 2–3 terminal sizes; snapshot
    dialog stacking and focus restore.
 3. **Protocol tests:** fake event stream → assert rendered frames; this is the
