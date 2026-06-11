@@ -128,6 +128,31 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy starts in
   `workers/api/src/autopilot-pack-a-supervision.test.ts`.
 
+## Pack A Ledger And Settlement Evidence
+
+- Pack A artifacts, lifecycle receipts, usage budget events, team spend joins,
+  buyer-payment receipts, conversion refs, escrow holds, acceptance records,
+  and settlement receipts must remain distinct typed records. A payment receipt
+  cannot satisfy delivery, review, accepted-work, or settled-bitcoin
+  requirements, and accepted work cannot imply payout settlement by itself.
+- Public and agent-readable Ledger projections may expose refs, summaries,
+  caveats, `generatedAt`, and the declared staleness contract only. They must
+  reject raw prompts, raw shell logs, private repo data, provider payloads,
+  wallet material, payment preimages or hashes, payout targets, local paths,
+  and secrets before projection.
+- Unknown pricing is an explicit caveated state, never zero cost. Own-Pylon
+  free-lane work may report zero credit debit only while still preserving
+  local/provider usage refs where available.
+- Team spend-to-evidence joins must link ledger entries to mission refs,
+  artifact refs, and receipt refs without widening artifact visibility or
+  leaking provider/customer/private material.
+- Labor-lane payout visibility is a release gate. P4/P6/P7 live paid-labor
+  claims require every payout-ladder rung used by that job to be
+  dereferenceable for recipient, public receipt, and auditor surfaces, or to
+  return a typed-absent reason.
+- Regression coverage for this policy starts in
+  `workers/api/src/autopilot-pack-a-ledger.test.ts`.
+
 ## Typed Email Side Effects
 
 - Production email sends must pass through `EmailService`; route handlers and
