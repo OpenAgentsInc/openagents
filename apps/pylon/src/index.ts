@@ -18,16 +18,8 @@ import {
   readMemories,
   resolveModelAdapter,
 } from "./agent-surface"
-import { Console, Deferred, Effect, PubSub, Stream, SubscriptionRef } from "effect"
-import {
-  formatLogTimestamp,
-  classifyServiceLogLevel,
-  isLogEntryVisible,
-  type PylonLogEntry,
-  type PylonLogLevel,
-  type TelemetryPaneState,
-  type WalletPaneState,
-} from "./node/state"
+import { Console, Deferred, Effect, SubscriptionRef } from "effect"
+import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state"
 import {
   forkNodeServices,
   logMessage,
@@ -35,18 +27,7 @@ import {
   superviseLoop,
   type PylonNodeRuntime,
 } from "./node/runtime"
-import {
-  createCliRenderer,
-  BoxRenderable,
-  TextRenderable,
-  ScrollBoxRenderable,
-  MarkdownRenderable,
-  TextareaRenderable,
-  MacOSScrollAccel,
-  parseColor,
-  SyntaxStyle,
-  type CliRenderer
-} from "@opentui/core"
+import { runOpencodeStream, summarizeOpenCodeEvent } from "./opencode-run"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -103,17 +84,6 @@ import {
   workRequestMemoryEntry,
 } from "./work-requester"
 
-// View-layer plumbing. These renderable refs are written ONLY by the UI
-// subscriber (subscribeUiToRuntime) and the composer's interactive path —
-// node services go through the PylonNodeRuntime state/event seam instead
-// (issue #4736).
-let globalRenderer: CliRenderer | null = null
-let logScrollBox: ScrollBoxRenderable | null = null
-let balanceTextRenderable: TextRenderable | null = null
-let statusTextRenderable: TextRenderable | null = null
-let telemetryTextRenderable: TextRenderable | null = null
-let operatorTextRenderable: TextRenderable | null = null
-
 // Bridge for legacy call sites (OpenCode helpers) that log from plain
 // async code. Set once at dashboard boot, before any service starts.
 let nodeRuntime: PylonNodeRuntime | null = null
@@ -121,30 +91,11 @@ let nodeRuntime: PylonNodeRuntime | null = null
 // PYLON_VERBOSE=1 (issue #4743).
 let verboseMode = false
 
-const terminalScrollLockOn = "\x1b[?1007h"
-const terminalScrollLockOff = "\x1b[?1007l"
-const sgrMousePattern = /\x1b\[<(\d+);(\d+);(\d+)([mM])/g
-
-const syntaxStyle = SyntaxStyle.fromStyles({
-  default: { fg: parseColor("#E6EDF3") },
-  keyword: { fg: parseColor("#FF7B72"), bold: true },
-  string: { fg: parseColor("#A5D6FF") },
-  comment: { fg: parseColor("#8B949E"), italic: true },
-  number: { fg: parseColor("#79C0FF") },
-  function: { fg: parseColor("#D2A8FF") },
-  type: { fg: parseColor("#FFA657") },
-  variable: { fg: parseColor("#E6EDF3") },
-  property: { fg: parseColor("#79C0FF") },
-  "markup.heading": { fg: parseColor("#00D7FF"), bold: true },
-  "markup.bold": { fg: parseColor("#F0F6FC"), bold: true },
-  "markup.italic": { fg: parseColor("#F0F6FC"), italic: true },
-  "markup.list": { fg: parseColor("#FF7B72") },
-  "markup.quote": { fg: parseColor("#8B949E"), italic: true },
-  "markup.raw": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") },
-  "markup.link": { fg: parseColor("#58A6FF"), underline: true },
-  "markup.link.url": { fg: parseColor("#58A6FF"), underline: true },
-  conceal: { fg: parseColor("#6E7681") },
-})
+// The dynamically-loaded Solid view module (src/tui/app.tsx). index.ts must
+// never import it statically: the Solid transform plugin has to be active
+// before any .tsx (or solid-js) module loads — see ensureSolidRuntime().
+type DashboardUiModule = typeof import("./tui/app")
+let dashboardUi: DashboardUiModule | null = null
 
 // Routes a log message into the node runtime (which owns the feed and the
 // event stream). Pre-boot or in plain CLI paths it falls back to stdout.
@@ -163,226 +114,28 @@ function logToUi(message: string, level: PylonLogLevel = "verbose") {
 const log = (message: string, level: PylonLogLevel = "verbose") =>
   Effect.sync(() => logToUi(message, level))
 
-// View-side renderers — called only from the UI subscriber.
-function appendLogLine(entry: PylonLogEntry) {
-  if (!logScrollBox || !globalRenderer) return
-  const line = makeLogMarkdown(globalRenderer, {
-    content: `[${formatLogTimestamp(entry.at)}] ${entry.message}`,
-    syntaxStyle,
-    width: "100%",
-    conceal: true,
-    fg: parseColor(entry.level === "error" ? "#EF4444" : "#5C7080"),
+// The Solid JSX transform must be registered before src/tui/*.tsx loads.
+// Dev/test runs get it from apps/pylon/bunfig.toml's preload; a packaged
+// `pylon` bin runs from an arbitrary cwd with no bunfig, so re-exec once
+// with --preload pointing at the plugin inside our own dependency tree.
+function ensureSolidRuntime(): void {
+  const transformState = (globalThis as Record<symbol, { installed?: boolean } | undefined>)[
+    Symbol.for("opentui.solid.transform")
+  ]
+  if (transformState?.installed) return
+  if (Bun.env.PYLON_SOLID_REEXEC === "1") {
+    throw new Error("Solid transform plugin failed to install after --preload re-exec")
+  }
+  const preloadPath = Bun.fileURLToPath(import.meta.resolve("@opentui/solid/preload"))
+  const entry = Bun.argv[1] ?? Bun.fileURLToPath(import.meta.url)
+  const result = Bun.spawnSync({
+    cmd: [process.execPath, "--preload", preloadPath, entry, ...Bun.argv.slice(2)],
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+    env: { ...Bun.env, PYLON_SOLID_REEXEC: "1" },
   })
-  logScrollBox.add(line)
-}
-
-function applyWalletUi(state: WalletPaneState) {
-  const online = state.daemonOnline && state.balanceSats !== null
-  if (balanceTextRenderable) {
-    balanceTextRenderable.content =
-      state.balanceSats === null ? " Balance: -- Sats" : ` Balance: ${state.balanceSats.toLocaleString()} Sats`
-  }
-  if (statusTextRenderable) {
-    statusTextRenderable.content = online ? " Wallet: ONLINE (OK)" : " Wallet: OFFLINE"
-    statusTextRenderable.fg = parseColor(online ? "#58A6FF" : "#EF4444")
-  }
-}
-
-function applyTelemetryUi(state: TelemetryPaneState) {
-  if (telemetryTextRenderable) {
-    telemetryTextRenderable.content = ` State: ${state.state}\n Model: ${state.model}\n VRAM:  ${state.vram}\n Psionic: ${state.psionic}`
-  }
-}
-
-function applyOperatorUi(text: string) {
-  if (operatorTextRenderable) {
-    operatorTextRenderable.content = text
-  }
-}
-
-// Subscribes the renderables to runtime state: render current values once,
-// then follow changes. Log entries follow the event stream with verbosity
-// filtering. All consumers are scoped fibers, interrupted on shutdown.
-const subscribeUiToRuntime = (runtime: PylonNodeRuntime) =>
-  Effect.gen(function* () {
-    // Subscribe before reading the feed so no event falls between replay and
-    // live tail. No other fiber writes during this window (services fork
-    // after the UI subscription), so replay+tail cannot duplicate either.
-    const eventSubscription = yield* PubSub.subscribe(runtime.events)
-    applyWalletUi(yield* SubscriptionRef.get(runtime.wallet))
-    applyTelemetryUi(yield* SubscriptionRef.get(runtime.telemetry))
-    applyOperatorUi((yield* SubscriptionRef.get(runtime.operator)).text)
-    for (const entry of yield* SubscriptionRef.get(runtime.logFeed)) {
-      if (isLogEntryVisible(entry, verboseMode)) appendLogLine(entry)
-    }
-    yield* Effect.forkScoped(
-      Stream.runForEach(SubscriptionRef.changes(runtime.wallet), (state) =>
-        Effect.sync(() => applyWalletUi(state)),
-      ),
-    )
-    yield* Effect.forkScoped(
-      Stream.runForEach(SubscriptionRef.changes(runtime.telemetry), (state) =>
-        Effect.sync(() => applyTelemetryUi(state)),
-      ),
-    )
-    yield* Effect.forkScoped(
-      Stream.runForEach(SubscriptionRef.changes(runtime.operator), (state) =>
-        Effect.sync(() => applyOperatorUi(state.text)),
-      ),
-    )
-    yield* Effect.forkScoped(
-      Effect.gen(function* () {
-        while (true) {
-          const event = yield* PubSub.take(eventSubscription)
-          if (event.type === "log" && isLogEntryVisible(event, verboseMode)) {
-            appendLogLine(event)
-          }
-        }
-      }),
-    )
-  })
-
-function installTerminalScrollLock() {
-  if (!process.stdout.isTTY) {
-    return () => {}
-  }
-
-  process.stdout.write(terminalScrollLockOn)
-  let restored = false
-  const restore = () => {
-    if (restored) return
-    restored = true
-    process.stdout.write(terminalScrollLockOff)
-  }
-
-  process.once("exit", restore)
-
-  return restore
-}
-
-function scrollLogBy(delta: number, unit: "absolute" | "viewport" | "content" | "step" = "absolute") {
-  logScrollBox?.scrollBy(delta, unit)
-}
-
-function isPointInsideLogScrollBox(x: number, y: number) {
-  if (!logScrollBox) return false
-  const box = logScrollBox as any
-  const left = box.screenX ?? box.x ?? 0
-  const top = box.screenY ?? box.y ?? 0
-  const width = box.width ?? 0
-  const height = box.height ?? 0
-
-  return x >= left && x < left + width && y >= top && y < top + height
-}
-
-function scrollLogByWheelButton(button: number) {
-  if (!logScrollBox) return false
-  const wheelButton = button & 0b11
-  const step = Math.max(3, Math.ceil((logScrollBox.viewport?.height ?? logScrollBox.height ?? 15) / 6))
-
-  if (wheelButton === 0) {
-    logScrollBox.scrollBy(-step)
-    return true
-  }
-  if (wheelButton === 1) {
-    logScrollBox.scrollBy(step)
-    return true
-  }
-  if (wheelButton === 2) {
-    logScrollBox.scrollBy({ x: -step, y: 0 })
-    return true
-  }
-  if (wheelButton === 3) {
-    logScrollBox.scrollBy({ x: step, y: 0 })
-    return true
-  }
-
-  return false
-}
-
-function handleRawLogWheel(sequence: string) {
-  if (!logScrollBox) return false
-  let handled = false
-  sgrMousePattern.lastIndex = 0
-
-  for (const match of sequence.matchAll(sgrMousePattern)) {
-    const button = Number(match[1])
-    if ((button & 64) !== 64) continue
-
-    const x = Number(match[2]) - 1
-    const y = Number(match[3]) - 1
-    if (!isPointInsideLogScrollBox(x, y)) continue
-
-    logScrollBox.focus()
-    handled = scrollLogByWheelButton(button) || handled
-  }
-
-  return handled
-}
-
-function scrollLogFromWheel(event: any) {
-  if (!logScrollBox || event.type !== "scroll") return false
-
-  ;(logScrollBox as any).onMouseEvent?.(event)
-  return true
-}
-
-function routeLogMouse(event: any) {
-  if (!logScrollBox) return
-  logScrollBox.focus()
-  if (event.type === "scroll") {
-    scrollLogFromWheel(event)
-    event.stopPropagation?.()
-    event.preventDefault?.()
-  }
-}
-
-function sinkRootScroll(event: any) {
-  if (event.type !== "scroll") return
-  if (logScrollBox) {
-    logScrollBox.focus()
-    scrollLogFromWheel(event)
-  }
-  event.stopPropagation?.()
-  event.preventDefault?.()
-}
-
-function makeLogMarkdown(
-  renderer: CliRenderer,
-  options: ConstructorParameters<typeof MarkdownRenderable>[1],
-) {
-  return new MarkdownRenderable(renderer, {
-    ...options,
-    onMouseDown: routeLogMouse,
-    onMouseScroll: routeLogMouse,
-  })
-}
-
-function handleLogKey(key: any, focusComposer?: () => void) {
-  if (key.name === "tab") {
-    focusComposer?.()
-  } else if (key.name === "up") {
-    scrollLogBy(-1, "step")
-  } else if (key.name === "down") {
-    scrollLogBy(1, "step")
-  } else if (key.name === "pageup") {
-    scrollLogBy(-0.8, "viewport")
-  } else if (key.name === "pagedown") {
-    scrollLogBy(0.8, "viewport")
-  } else if (key.name === "home") {
-    scrollLogBy(-1, "content")
-  } else if (key.name === "end") {
-    scrollLogBy(1, "content")
-  } else if (key.meta && key.name === "up") {
-    scrollLogBy(-0.5, "viewport")
-  } else if (key.meta && key.name === "down") {
-    scrollLogBy(0.5, "viewport")
-  } else {
-    return false
-  }
-  key.preventDefault?.()
-  key.stopPropagation?.()
-  return true
+  process.exit(result.exitCode ?? 1)
 }
 
 // Builds the operator-pane text the telemetry service publishes. The wallet
@@ -413,167 +166,70 @@ type OpenCodeInferenceOptions = {
   statusIntervalMs?: number
 }
 
-function summarizeOpenCodeEvent(event: any) {
-  const type = typeof event?.type === "string" ? event.type : "event"
-  const partType = typeof event?.part?.type === "string" ? event.part.type : undefined
-  const tool = event?.part?.tool ?? event?.tool ?? event?.name
-  const title = event?.part?.title ?? event?.title
-  const path = event?.part?.path ?? event?.path
-  const detail = [partType, tool, title, path].filter(Boolean).join(" ")
-  return detail ? `${type}: ${detail}` : type
-}
-
-// OpenCode Programmatic Integration Helper
+// OpenCode Programmatic Integration Helper. Streaming UI goes through the
+// Solid feed store via the dynamically loaded view module (verbose mode
+// only); all progress logging goes through the runtime log seam.
 async function executeOpencodeInference(
   opencodePath: string,
   prompt: string,
   options: OpenCodeInferenceOptions,
 ) {
-  const proc = Bun.spawn(
-    [
-      opencodePath,
-      "run",
-      prompt,
-      "--model",
-      "opencode/deepseek-v4-flash-free",
-      "--format",
-      "json",
-    ],
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-    }
-  )
-
-  const responseLine =
-    options.streamToUi && verboseMode && globalRenderer
-      ? makeLogMarkdown(globalRenderer, {
-          content: `**OpenCode ${options.label}**: starting...`,
-          syntaxStyle,
-          width: "100%",
-          conceal: true,
-          streaming: true,
-        })
+  const chatItem =
+    options.streamToUi && verboseMode && dashboardUi
+      ? dashboardUi.appendChatFeedItem(`**OpenCode ${options.label}**: starting...`, { streaming: true })
       : null
-  if (responseLine) {
-    logScrollBox?.add(responseLine)
-  }
 
   const startTime = Date.now()
   const statusIntervalMs = options.statusIntervalMs ?? 5000
-  let textResult = ""
-  let finalCost = 0
-  let totalTokens = 0
+  let lastText = ""
+  let lastUsage = { cost: 0, tokens: 0 }
   let eventCount = 0
-  let byteCount = 0
   let lastEventSummary = "waiting for first event"
 
   const renderStreamingLine = () => {
-    if (!responseLine) return
+    if (!chatItem) return
     const elapsedSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000))
-    const visibleText = textResult.trim() || `_${lastEventSummary}_`
-    const footer = `\n\n*[${options.label}: ${elapsedSeconds}s | events: ${eventCount} | bytes: ${byteCount} | tokens: ${totalTokens || "-"}]*`
-    responseLine.content = `**OpenCode ${options.label}**: ${visibleText}${footer}`
+    const visibleText = lastText.trim() || `_${lastEventSummary}_`
+    const footer = `\n\n*[${options.label}: ${elapsedSeconds}s | events: ${eventCount} | tokens: ${lastUsage.tokens || "-"}]*`
+    chatItem.update(`**OpenCode ${options.label}**: ${visibleText}${footer}`)
   }
 
   const statusTimer = setInterval(() => {
     const elapsedSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000))
     logToUi(
-      `[OpenCode] ${options.label} still running (${elapsedSeconds}s, events=${eventCount}, bytes=${byteCount}, last=${lastEventSummary}).`,
+      `[OpenCode] ${options.label} still running (${elapsedSeconds}s, events=${eventCount}, last=${lastEventSummary}).`,
     )
     renderStreamingLine()
   }, statusIntervalMs)
 
-  const stderrTask = (async () => {
-    const reader = proc.stderr.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ""
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split("\n")
-      buffer = lines.pop() ?? ""
-      for (const line of lines) {
-        if (line.trim()) {
-          logToUi(`[OpenCode] ${options.label} stderr: ${line.trim()}`)
-        }
-      }
-    }
-    const trailing = buffer.trim()
-    if (trailing) {
-      logToUi(`[OpenCode] ${options.label} stderr: ${trailing}`)
-    }
-  })()
-
   try {
-    const reader = proc.stdout.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ""
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      byteCount += value.byteLength
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split("\n")
-      buffer = lines.pop() ?? ""
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        eventCount += 1
-        try {
-          const event = JSON.parse(line)
-          lastEventSummary = summarizeOpenCodeEvent(event)
-          if (event.type !== "text") {
-            logToUi(`[OpenCode] ${options.label} event ${eventCount}: ${lastEventSummary}`)
-          }
-          if (event.type === "text" && event.part && event.part.text) {
-            textResult += event.part.text
-            renderStreamingLine()
-          }
-          if (event.type === "step_finish" && event.part && event.part.tokens) {
-            finalCost = event.part.cost ?? 0
-            totalTokens = event.part.tokens.total ?? 0
-            renderStreamingLine()
-          }
-        } catch {
-          lastEventSummary = `raw output: ${line.slice(0, 120)}`
-          logToUi(`[OpenCode] ${options.label} raw output: ${line.slice(0, 240)}`)
-          renderStreamingLine()
-        }
-      }
-    }
-
-    const trailing = buffer.trim()
-    if (trailing) {
-      eventCount += 1
-      try {
-        const event = JSON.parse(trailing)
-        lastEventSummary = summarizeOpenCodeEvent(event)
-      } catch {
-        lastEventSummary = `raw output: ${trailing.slice(0, 120)}`
-        logToUi(`[OpenCode] ${options.label} raw output: ${trailing.slice(0, 240)}`)
-      }
-    }
+    const result = await runOpencodeStream(opencodePath, prompt, {
+      onText: (text) => {
+        lastText = text
+        renderStreamingLine()
+      },
+      onEvent: (summary, count) => {
+        eventCount = count
+        lastEventSummary = summary
+        logToUi(`[OpenCode] ${options.label} event ${count}: ${summary}`)
+      },
+      onRaw: (line) => {
+        lastEventSummary = `raw output: ${line.slice(0, 120)}`
+        logToUi(`[OpenCode] ${options.label} raw output: ${line.slice(0, 240)}`)
+        renderStreamingLine()
+      },
+      onStderr: (line) => {
+        logToUi(`[OpenCode] ${options.label} stderr: ${line}`)
+      },
+      onUsage: (usage) => {
+        lastUsage = usage
+        renderStreamingLine()
+      },
+    })
+    return result
   } finally {
     clearInterval(statusTimer)
-  }
-
-  const exitCode = await proc.exited
-  await stderrTask
-  if (responseLine) {
-    responseLine.streaming = false
-  }
-  if (exitCode !== 0) {
-    throw new Error(`OpenCode exited with code ${exitCode}`)
-  }
-
-  return {
-    text: textResult.trim(),
-    cost: finalCost,
-    tokens: totalTokens,
+    chatItem?.finish()
   }
 }
 
@@ -650,291 +306,32 @@ const runPylonNode = Effect.gen(function* () {
   }
   process.once("SIGINT", requestShutdown)
   process.once("SIGTERM", requestShutdown)
-  const interceptCtrlC = (sequence: string) => {
-    if (sequence.includes("\x03")) {
-      requestShutdown()
-      return true
-    }
-    return false
-  }
-
   yield* logMessage(runtime, "verbose", "Initializing Pylon v0.3 observational earning node...")
-  const restoreTerminalScrollLock = installTerminalScrollLock()
 
-  // Bootstrap OpenTUI Core
-  const renderer = yield* Effect.tryPromise({
-    try: () =>
-      createCliRenderer({
-        screenMode: "alternate-screen",
-        exitOnCtrlC: false,
-        useMouse: true,
-        autoFocus: true,
-        targetFps: 30,
-        prependInputHandlers: [interceptCtrlC, handleRawLogWheel],
-      }),
+  // Load and mount the Solid view (src/tui/app.tsx). Imported dynamically:
+  // the Solid transform plugin must be active before any .tsx module loads —
+  // ensureSolidRuntime() in main() guarantees that.
+  const ui = yield* Effect.tryPromise({
+    try: () => import("./tui/app"),
+    catch: (error) => new Error(`Failed to load dashboard view: ${String(error)}`),
+  })
+  dashboardUi = ui
+
+  const dashboard = yield* Effect.tryPromise({
+    try: () => ui.startDashboard({ onRequestShutdown: requestShutdown }),
     catch: (error) => new Error(`Failed to initialize OpenTUI renderer: ${String(error)}`),
   })
-
-  globalRenderer = renderer
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
-      // destroy() is OpenTUI's full teardown (leaves the alternate screen,
-      // restores the cursor); stop() alone keeps the terminal captured.
-      const teardown = renderer as { destroy?: () => void; stop?: () => void }
-      if (typeof teardown.destroy === "function") {
-        teardown.destroy()
-      } else {
-        teardown.stop?.()
-      }
-      restoreTerminalScrollLock()
-      globalRenderer = null
-      logScrollBox = null
-      balanceTextRenderable = null
-      statusTextRenderable = null
-      telemetryTextRenderable = null
-      operatorTextRenderable = null
+      dashboard.destroy()
+      dashboardUi = null
     }),
   )
 
-  // 1. Create Main Outer Layout (Height 100%, Width 100%)
-  const outerContainer = new BoxRenderable(renderer, {
-    flexDirection: "column",
-    width: "100%",
-    height: "100%",
-    onMouseScroll: sinkRootScroll,
-  })
-  renderer.root.add(outerContainer)
-
-  // 3. Create Main Split Pane (Row Direction, Flex Grow)
-  const splitPane = new BoxRenderable(renderer, {
-    flexDirection: "row",
-    width: "100%",
-    flexGrow: 1,
-  })
-  outerContainer.add(splitPane)
-
-  // 3a. Logs/Feed Panel (Left Column, Flex Grow)
-  const leftPanel = new BoxRenderable(renderer, {
-    border: true,
-    borderStyle: "single",
-    borderColor: parseColor("#73C2FB"),
-    title: " // Active Workroom Execution Logs ",
-    titleColor: parseColor("#73C2FB"),
-    flexGrow: 1,
-    height: "100%",
-  })
-  splitPane.add(leftPanel)
-
-  logScrollBox = new ScrollBoxRenderable(renderer, {
-    scrollY: true,
-    stickyScroll: true,
-    stickyStart: "bottom",
-    scrollAcceleration: new MacOSScrollAccel(),
-    focusable: true,
-    flexGrow: 1,
-    width: "100%",
-    height: "100%",
-    onMouseDown: routeLogMouse,
-    onMouseScroll: routeLogMouse,
-  })
-  leftPanel.add(logScrollBox)
-
-  // Seed the feed before the first layout pass. The scrollbox silently
-  // swallows the first child added around its initial frame (observed
-  // OpenTUI 0.3.4 quirk; the old startup masked it under log spam), so the
-  // sacrificial line is this banner rather than a real log entry.
-  logScrollBox.add(
-    makeLogMarkdown(renderer, {
-      content: "*Pylon v0.3*",
-      syntaxStyle,
-      width: "100%",
-      conceal: true,
-      fg: parseColor("#3B5B82"),
-    }),
-  )
-
-  // 3b. Telemetry & Balance Panel (Right Column, Fixed Width 35)
-  const rightPanel = new BoxRenderable(renderer, {
-    border: true,
-    borderStyle: "single",
-    borderColor: parseColor("#73C2FB"),
-    title: " // Telemetry & Wallet ",
-    titleColor: parseColor("#73C2FB"),
-    width: 35,
-    flexBasis: 35,
-    flexGrow: 0,
-    flexShrink: 0,
-    height: "100%",
-    flexDirection: "column",
-  })
-  splitPane.add(rightPanel)
-
-  statusTextRenderable = new TextRenderable(renderer, {
-    content: " Wallet: OFFLINE",
-    fg: parseColor("#EF4444"),
-    width: "100%",
-    height: 1,
-  })
-  rightPanel.add(statusTextRenderable)
-
-  balanceTextRenderable = new TextRenderable(renderer, {
-    content: " Balance: -- Sats",
-    fg: parseColor("#66D9EF"),
-    width: "100%",
-    height: 1,
-  })
-  rightPanel.add(balanceTextRenderable)
-
-  // Add some separator space
-  rightPanel.add(new TextRenderable(renderer, { content: " ---------------------------------", fg: parseColor("#3B5B82"), height: 1 }))
-
-  telemetryTextRenderable = new TextRenderable(renderer, {
-    content: " State: IDLE\n Model: -\n VRAM:  -",
-    fg: parseColor("#D7E5FA"),
-    width: "100%",
-    height: 3,
-  })
-  rightPanel.add(telemetryTextRenderable)
-
-  rightPanel.add(new TextRenderable(renderer, { content: " ---------------------------------", fg: parseColor("#3B5B82"), height: 1 }))
-  operatorTextRenderable = new TextRenderable(renderer, {
-    content: " Operate: loading\n Inspect: loading\n Recovery: loading",
-    fg: parseColor("#D7E5FA"),
-    width: "100%",
-    flexGrow: 1,
-  })
-  rightPanel.add(operatorTextRenderable)
-
-  // 4. Create Composer Input Panel (Bottom, Height 5)
-  const composerBox = new BoxRenderable(renderer, {
-    border: true,
-    borderStyle: "single",
-    borderColor: parseColor("#73C2FB"),
-    title: " // Composer (meta+return to submit) ",
-    titleColor: parseColor("#73C2FB"),
-    width: "100%",
-    height: 5,
-  })
-  outerContainer.add(composerBox)
-
-  const composerInput = new TextareaRenderable(renderer, {
-    width: "100%",
-    height: "100%",
-    placeholder: "Ask your agent anything...",
-    onKeyDown: (key) => {
-      if (key.name === "tab") {
-        logScrollBox?.focus()
-        key.preventDefault?.()
-        key.stopPropagation?.()
-        return
-      }
-      handleLogKey(key)
-    },
-    onMouseDown: () => {
-      composerInput.focus()
-    },
-    onSubmit: async () => {
-      const prompt = composerInput.plainText.trim()
-      if (!prompt) return
-
-      // Clear the composer
-      composerInput.setText("")
-
-      // Render User prompt in logs feed
-      const userLine = makeLogMarkdown(renderer, {
-        content: `**User**: ${prompt}`,
-        syntaxStyle,
-        width: "100%",
-        conceal: true,
-      })
-      logScrollBox?.add(userLine)
-
-      // Setup response placeholder
-      const responseLine = makeLogMarkdown(renderer, {
-        content: `**OpenCode**: ... thinking ...`,
-        syntaxStyle,
-        width: "100%",
-        conceal: true,
-        streaming: true,
-      })
-      logScrollBox?.add(responseLine)
-
-      // Start asynchronous OpenCode inference
-      const opencodePath = Bun.which("opencode")
-      if (opencodePath) {
-        const proc = Bun.spawn(
-          [
-            opencodePath,
-            "run",
-            prompt,
-            "--model",
-            "opencode/deepseek-v4-flash-free",
-            "--format",
-            "json",
-          ],
-          {
-            stdout: "pipe",
-            stderr: "pipe",
-          }
-        )
-
-        const reader = proc.stdout.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ""
-        let receivedText = ""
-
-        responseLine.content = `**OpenCode**: `
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split("\n")
-          buffer = lines.pop() ?? ""
-
-          for (const line of lines) {
-            if (!line.trim()) continue
-            try {
-              const event = JSON.parse(line)
-              if (event.type === "text" && event.part && event.part.text) {
-                receivedText += event.part.text
-                responseLine.content = `**OpenCode**: ${receivedText}`
-              }
-              if (event.type === "step_finish" && event.part && event.part.tokens) {
-                const cost = event.part.cost ?? 0
-                const tokens = event.part.tokens.total ?? 0
-                responseLine.content = `**OpenCode**: ${receivedText}\n\n*[Cost: $${cost.toFixed(4)} | Tokens: ${tokens}]*`
-              }
-            } catch {
-              // Ignore partial chunk syntax errors
-            }
-          }
-        }
-
-        responseLine.streaming = false
-      } else {
-        responseLine.content = `**OpenCode**: Error - OpenCode CLI is not installed on this system.`
-        responseLine.streaming = false
-      }
-    },
-  })
-  composerBox.add(composerInput)
-
-  logScrollBox.handleKeyPress = (key: any) => {
-    return handleLogKey(key, () => composerInput.focus()) || false
-  }
-
-  // Start OpenTUI Event Loop
-  renderer.start()
-
-  // Focus on Composer Input
-  composerInput.focus()
-
-  // Attach the view to the runtime seam: render current state, then follow
-  // ref changes and log events. Services are forked only after this, so the
-  // feed replay misses nothing.
-  yield* subscribeUiToRuntime(runtime)
+  // Attach the view to the runtime seam through the bridge: replay current
+  // state, then follow ref changes and batched log events. Services are
+  // forked only after this, so the feed replay misses nothing.
+  yield* ui.attachRuntimeToView(runtime, { verbose: verboseMode })
 
   yield* logMessage(
     runtime,
@@ -1732,6 +1129,11 @@ async function main() {
     process.exitCode = result.exitCode
     return
   }
+
+  // Dashboard path needs the Solid JSX transform before src/tui/*.tsx can
+  // load; re-execs once with --preload when launched without the bunfig
+  // preload (e.g. the packaged bin from an arbitrary cwd).
+  ensureSolidRuntime()
 
   await Effect.runPromise(
     Effect.scoped(runPylonNode).pipe(
