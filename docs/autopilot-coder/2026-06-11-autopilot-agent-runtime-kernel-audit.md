@@ -266,7 +266,12 @@ The runtime kernel must preserve existing OpenAgents projection discipline:
    `AgentRuntimeAdapter` with Effect service/layer boundaries for the language
    model and toolkit, Schema-typed tool input/output, deterministic test
    layers, typed tool denial, budget-stop interruption, and cancellation.
-7. Add worker ingestion for runtime events and public-safe projections.
+7. Add worker ingestion for runtime events and public-safe projections. Done in
+   RK4 (#4808): the Worker has a schema-decoded append-only ingestion module,
+   an explicit visibility split, public-safe projection rebuild from the log,
+   generatedAt plus staleness metadata, and authority-disabled projection
+   fields. No HTTP route was added in this slice, so there was no OpenAPI
+   surface to register.
 8. Add workroom/TUI status views that read projections rather than raw adapter
    logs.
 9. Add cancellation, permission-denial, budget-stop, and adapter-failure smokes.

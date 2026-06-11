@@ -62,6 +62,27 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/team-autopilot.test.ts`.
 
+## Agent Runtime Kernel Event Projection
+
+- Worker ingestion of Agent Runtime Kernel events must schema-decode
+  `AgentRuntimeEvent` at the boundary and append by `runId` plus exact
+  sequence. Duplicate or non-append events must fail closed before
+  persistence.
+- Ingestion must not parse adapter-specific transcript dialects. Fixture,
+  Codex, Claude, OpenCode, hosted, SHC, Hermes-reserved, and native loops must
+  project into the shared kernel contract before the Worker sees them.
+- Runtime events are evidence only. Ingestion and public projection must not
+  grant accepted-work authority, payout authority, public-claim authority,
+  provider-account mutation, or spend authority.
+- Public runtime projections must rebuild from public-visible kernel events,
+  carry `generatedAt` and the declared staleness contract, and expose the
+  storage/projection visibility split.
+- Public runtime projections must reject raw prompts, raw logs, provider
+  payloads, secrets, private paths, wallet material, and customer/private data
+  before persistence or projection.
+- Regression coverage for this policy lives in
+  `workers/api/src/agent-runtime-kernel.test.ts`.
+
 ## Typed Email Side Effects
 
 - Production email sends must pass through `EmailService`; route handlers and

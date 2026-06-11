@@ -1148,3 +1148,37 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api test -- src/billing.test.ts src/billing-routes.test.ts src/openagents-openapi-routes.test.ts src/omni-services.test.ts`
 - `cd apps/openagents.com && bunx tsc -p workers/api/tsconfig.json --noEmit`
 - `cd apps/openagents.com && bunx tsc -p apps/web/tsconfig.json --noEmit`
+
+## RK4 / Issue #4808: Worker Kernel Event Ingestion And Projection
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4808`
+
+Status: complete for the Worker ingestion/projection module.
+
+Implemented:
+
+- Added `workers/api/src/agent-runtime-kernel.ts` with schema-decoded
+  `AgentRuntimeEvent` ingestion and an append-only repository contract.
+- Added duplicate and non-append sequence rejection before persistence.
+- Added public projection rebuild from the event log with `generatedAt`,
+  declared staleness metadata, artifact refs, blocker refs, terminal state,
+  event count, and latest event id.
+- Documented and projected the visibility split: events remain stored with
+  their declared visibility/redaction class, while public projections read only
+  public-visible events.
+- Kept acceptance, payout, and public-claim authority explicitly false in
+  projections.
+- Added `apps/openagents.com/INVARIANTS.md` coverage for the kernel ingestion
+  and projection boundary.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/agent-runtime-kernel.test.ts src/public-projection-staleness.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
+- `bun run --cwd packages/agent-runtime-schema test`
+
+OpenAPI note:
+
+- RK4 did not add an HTTP route in this slice, so there was no new served
+  OpenAPI path to register. The ingestion/projection module is route-ready and
+  remains adapter-agnostic.
