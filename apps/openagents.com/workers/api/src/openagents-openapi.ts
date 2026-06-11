@@ -279,6 +279,15 @@ const schemaComponents = (): JsonSchema => ({
   TrainingA3ScalingSweepEvidenceEnvelope: objectSummary(
     'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A3 IsoFLOP sweep projection for that run.',
   ),
+  TrainingA4DataRefineryDashboardEnvelope: objectSummary(
+    'Public-safe CS336 A4 data-refinery dashboard envelope with receipt-backed deterministic refinery shards (pii_masking, gopher_rules, exact_line_dedup, minhash_dedup), each shard carrying its output-digest commitment, verification refs, and optional public pylon provenance. Settlement stays zero unless provider-confirmed payout receipts are linked. The eval-delta quality bonus is reported as a separate blocked design, never a fabricated score.',
+  ),
+  TrainingA4DataRefineryEvidenceRequest: objectSummary(
+    'Admin-only request to admit receipted CS336 A4 data-refinery shards into a training run projection. Each shard names one deterministic stage, its public output-digest commitment, receipt refs, verification refs, optional input document count, and optional public pylon provenance. Unreceipted shards are not admissible, and wallet, payment, invoice, raw-shard, and private-path material are rejected by the public-safety guard at admission time. No eval-delta scores are admitted by this route.',
+  ),
+  TrainingA4DataRefineryEvidenceEnvelope: objectSummary(
+    'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A4 data-refinery projection for that run.',
+  ),
   TrainingA5EvalDashboardEnvelope: objectSummary(
     'Public-safe CS336 A5 alignment eval dashboard envelope with rollout/grading/SFT job-kind blockers, receipted MMLU/GSM8K eval suite summaries, update-boundary refs, and scope labels. Eval rows are eval evidence only, not model capability claims, and exclude raw prompts, answers, completions, wallet material, and payment material.',
   ),
@@ -2955,6 +2964,27 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/training/runs/{trainingRunRef}/data-refinery-evidence': {
+    post: operation({
+      operationId: 'admitTrainingA4DataRefineryEvidence',
+      summary: 'Admit CS336 A4 data-refinery evidence',
+      description:
+        'Admin-only route to admit receipted CS336 A4 data-refinery shards into a training run projection for the public refinery dashboard. Each shard names one deterministic stage (pii_masking, gopher_rules, exact_line_dedup, minhash_dedup) and its output-digest commitment. Unreceipted shards are not admissible, and the public-safety guard rejects wallet, payment, raw-shard, and private-path material at admission. No eval-delta scores are admitted here; the quality bonus stays a blocked design.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingA4DataRefineryEvidenceRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Admitted refinery evidence with the recomputed data-refinery projection.',
+          '#/components/schemas/TrainingA4DataRefineryEvidenceEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/training/leaderboards/a1': {
     get: operation({
       operationId: 'listTrainingA1Leaderboard',
@@ -3036,6 +3066,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'CS336 A3 IsoFLOP dashboard.',
           '#/components/schemas/TrainingA3IsoFlopDashboardEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/refinery/a4': {
+    get: operation({
+      operationId: 'readTrainingA4DataRefineryDashboard',
+      summary: 'Read CS336 A4 data-refinery dashboard',
+      description:
+        'Reads the public-safe CS336 A4 data-refinery dashboard feed. The feed is built from Worker training-run projection evidence and verified deterministic_recompute shard refs across the refinery stages; it does not count pending payouts and reports the eval-delta quality bonus as a separate blocked design rather than a fabricated score.',
+      tags: ['Training'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'CS336 A4 data-refinery dashboard.',
+          '#/components/schemas/TrainingA4DataRefineryDashboardEnvelope',
         ),
         ...errorResponses(),
       },

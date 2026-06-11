@@ -40,6 +40,12 @@ import {
   admitCs336A3ScalingSweepEvidence,
   publicScalingSweepProjection,
 } from './training-scaling-sweep'
+import {
+  Cs336A4DataRefineryEvidenceRequest,
+  Cs336A4RequiredVerifiedStageCount,
+  admitCs336A4DataRefineryEvidence,
+  publicDataRefineryProjection,
+} from './training-data-refinery'
 
 type HttpResponse = globalThis.Response
 
@@ -566,6 +572,74 @@ const routeA3IsoFlop = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const routeA4DataRefinery = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const store = dependencies.makeStore(env)
+    const runs = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listRuns(50),
+    })
+    const projections = yield* Effect.forEach(runs, run =>
+      Effect.gen(function* () {
+        const windows = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowsForRun(run.trainingRunRef, 100),
+        })
+        const leases = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () => store.listWindowLeasesForRun(run.trainingRunRef, 1000),
+        })
+        const challenges = yield* Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.listVerificationChallengesForRun(run.trainingRunRef, 1000),
+        })
+
+        return publicDataRefineryProjection({
+          challenges,
+          leases,
+          run,
+          windows,
+        })
+      }),
+    )
+    const shards = projections.flatMap(projection => projection.shards)
+    const verifiedStages = [
+      ...new Set(
+        shards
+          .filter(shard => shard.verified)
+          .map(shard => shard.stage),
+      ),
+    ].sort()
+
+    return noStoreJsonResponse({
+      blockerRefs:
+        verifiedStages.length >= Cs336A4RequiredVerifiedStageCount
+          ? []
+          : [
+              'blocker.cs336_a4.requires_three_verified_stages',
+              'blocker.cs336_a4.operator_funding_required_for_paid_shards',
+            ],
+      evalDeltaBonusBlockerRefs: [
+        'blocker.cs336_a4.fixed_trainer_eval_loop_required_for_quality_bonus',
+        'blocker.cs336_a4.operator_funding_required_for_bonus_settlement',
+        'blocker.cs336_a4.psionic_classifier_adapters_partial',
+      ],
+      observedVerifiedStages: verifiedStages,
+      projections,
+      requiredVerifiedStageCount: Cs336A4RequiredVerifiedStageCount,
+      schemaVersion: 'openagents.training.data_refinery_dashboard.v1',
+      shards,
+      sourceRefs: [
+        'route:/api/training/refinery/a4',
+        'route:/api/training/runs',
+      ],
+    })
+  })
+
 const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -816,6 +890,68 @@ const routeAttachScalingSweepEvidence = <
     })
   })
 
+const routeAttachDataRefineryEvidence = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, Cs336A4DataRefineryEvidenceRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const admitted = yield* Effect.try({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        admitCs336A4DataRefineryEvidence({ nowIso, request: body, run }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.attachRunEvidence(admitted),
+    })
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+
+    return noStoreJsonResponse({
+      refinery: publicDataRefineryProjection({
+        challenges,
+        leases,
+        run: stored,
+        windows,
+      }),
+      run: publicTrainingRunProjection(stored, nowIso),
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -944,6 +1080,16 @@ export const makeTrainingRunWindowRoutes = <
       )
     }
 
+    if (url.pathname === '/api/training/refinery/a4') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeA4DataRefinery(dependencies, env).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
     if (url.pathname === '/api/training/windows/plan') {
       if (request.method !== 'POST') {
         return Effect.succeed(methodNotAllowed(['POST']))
@@ -997,6 +1143,24 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(sweepEvidenceMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const refineryEvidenceMatch =
+      /^\/api\/training\/runs\/([^/]+)\/data-refinery-evidence$/.exec(
+        url.pathname,
+      )
+
+    if (refineryEvidenceMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeAttachDataRefineryEvidence(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(refineryEvidenceMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

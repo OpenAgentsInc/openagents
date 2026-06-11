@@ -633,6 +633,109 @@ describe('training run window routes', () => {
     expect(dashboardBody.cells).toHaveLength(1)
   })
 
+  it('admits receipted A4 data-refinery evidence through the admin route and serves the refinery dashboard', async () => {
+    const store = makeMemoryStore()
+    let counter = 0
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => `a4-evidence-${++counter}`,
+      makeStore: () => store,
+      nowIso: () => '2026-06-11T02:30:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+    const adminHeaders = { authorization: 'Bearer admin-token-test' }
+    const evidencePath =
+      '/api/training/runs/run.cs336.a4.data_refinery.demo/data-refinery-evidence'
+    const shard = {
+      inputDocumentCount: 64,
+      outputDigestRef: 'digest.sha256.cs336_a4.pii_masking.aaaa',
+      pylonRef: 'pylon.24819249b4634a4c9d5e',
+      receiptRefs: ['receipt.cs336_a4.settlement.pii_masking'],
+      shardRef: 'shard.cs336_a4.pii_masking.1',
+      sourceRefs: ['commitment.cs336_a4.pii_masking.sha256_abcdef0123456789'],
+      stage: 'pii_masking' as const,
+      verificationRefs: ['verdict.training.deterministic_recompute.pii_masking'],
+    }
+
+    store._testSeedRun(
+      buildTrainingRunRecord({
+        makeId: () => 'a4-admit',
+        nowIso: '2026-06-11T02:00:00.000Z',
+        request: {
+          promiseRef: 'training.data_refinery_corpus.v1',
+          trainingRunRef: 'run.cs336.a4.data_refinery.demo',
+        },
+      }),
+    )
+
+    const unauthorized = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(evidencePath, { shards: [shard] }),
+        {},
+      ),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const unreceipted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          { shards: [{ ...shard, receiptRefs: [] }] },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+
+    expect(unreceipted.status).toBe(400)
+
+    const admitted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          {
+            receiptRefs: ['approval.operator.20260611.focus_cs336_issue4680'],
+            shards: [shard],
+            sourceRefs: ['issue.github.openagents.4680'],
+          },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const admittedBody = (await admitted.json()) as Readonly<{
+      refinery: Readonly<{
+        shards: ReadonlyArray<Record<string, unknown>>
+        status: string
+      }>
+    }>
+
+    expect(admitted.status).toBe(200)
+    expect(admittedBody.refinery.status).toBe('collecting_shards')
+    expect(admittedBody.refinery.shards[0]).toMatchObject({
+      stage: 'pii_masking',
+      verified: true,
+    })
+
+    const dashboard = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/refinery/a4'),
+        {},
+      ),
+    )
+    const dashboardBody = (await dashboard.json()) as Readonly<{
+      schemaVersion: string
+      shards: ReadonlyArray<unknown>
+    }>
+
+    expect(dashboard.status).toBe(200)
+    expect(dashboardBody.schemaVersion).toBe(
+      'openagents.training.data_refinery_dashboard.v1',
+    )
+    expect(dashboardBody.shards).toHaveLength(1)
+  })
+
   it('admits receipted device benchmark evidence through the admin route and rejects unsafe or unreceipted rows', async () => {
     const store = makeMemoryStore()
     let counter = 0
