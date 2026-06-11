@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.26'
+export const PublicProductPromisesVersion = '2026-06-10.27'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -831,26 +831,28 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.no_dark_capacity_accounting.v1',
       productArea: 'Pylon',
       audience: ['operator', 'contributor', 'public'],
-      state: 'yellow',
+      state: 'green',
       claim:
         'Pylon provider capacity should show registered, benchmarked, eligible, assigned, running, artifact-producing, accepted, paid, settled, and dark-capacity reasons.',
       safeCopy:
-        'A live public capacity funnel at GET /api/public/pylon-capacity-funnel counts registered Pylons through the funnel stages and reason-codes dark capacity with a typed taxonomy (never heartbeated, stale heartbeat, version incompatible, capability missing, wallet not ready, assignment declined, assignment expired, closeout missing, no assignments offered). Paid and settled stages stay zero until settlement receipts exist, and historical snapshots are not yet retained.',
+        'A live public capacity funnel at GET /api/public/pylon-capacity-funnel counts registered Pylons through funnel stages backed by provider lifecycle records, reason-codes dark capacity with a typed taxonomy, and retains count-only hourly and daily history at GET /api/public/pylon-capacity-funnel/history. Paid and settled stages stay zero until settlement receipts exist.',
       unsafeCopy:
         'Do not claim all linked provider capacity is earning, useful, benchmarked, assigned, or settlement-ready, and do not present funnel counts as payment or settlement evidence.',
       evidenceRefs: [
+        'promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe',
         'route:/api/public/pylon-capacity-funnel',
+        'route:/api/public/pylon-capacity-funnel/history',
+        'https://github.com/OpenAgentsInc/openagents/issues/4659',
+        'https://github.com/OpenAgentsInc/openagents/issues/4660',
         'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live-routes.ts',
         'apps/openagents.com/workers/api/src/pylon-capacity-funnel-live-routes.test.ts',
+        'apps/openagents.com/workers/api/src/pylon-provider-job-lifecycle.test.ts',
         'https://openagents.com/api/public/pylon-stats',
         'apps/openagents.com/workers/api/src/public-pylon-stats.ts',
       ],
-      blockerRefs: [
-        'blocker.product_promises.provider_job_lifecycle_missing',
-        'blocker.product_promises.capacity_funnel_snapshots_missing',
-      ],
+      blockerRefs: [],
       verification:
-        'Run the pylon-capacity-funnel-live tests: every dark-capacity taxonomy reason must be reachable from synthetic store records and the public route must expose counts only. Green additionally requires retained historical funnel snapshots and provider job-lifecycle records for real registered Pylons.',
+        'Provider lifecycle accounting is deployed from #4659, the public funnel remains counts-only, and the history route retained hourly and daily snapshots across 2026-06-10 and 2026-06-11 before the green registry edit. Re-run pylon-capacity-funnel-live, pylon-provider-job-lifecycle, OpenAPI, onboarding, and product-promises tests before changing this claim.',
       authorityBoundary:
         'Capacity presence is not accepted work, payment, settlement, or withdrawal evidence.',
     },

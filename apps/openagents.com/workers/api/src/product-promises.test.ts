@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-10.26')
+    expect(decoded.version).toBe('2026-06-10.27')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -113,7 +113,12 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'pylon.no_dark_capacity_accounting.v1',
-          state: 'yellow',
+          state: 'green',
+          blockerRefs: [],
+          evidenceRefs: expect.arrayContaining([
+            'promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe',
+            'route:/api/public/pylon-capacity-funnel/history',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'payments.accepted_outcome_economics.v1',

@@ -102,6 +102,18 @@ Retention policy:
 - hourly snapshots: 14 days;
 - daily snapshots: 180 days.
 
+Closeout evidence recorded 2026-06-11:
+
+- the live history route retained hourly and daily buckets for both
+  2026-06-10 and 2026-06-11;
+- provider lifecycle accounting from #4659 was already deployed;
+- transition receipt `promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe`
+  proposed `pylon.no_dark_capacity_accounting.v1` from yellow to green before
+  the registry edit;
+- registry version `2026-06-10.27` marks the promise green while preserving
+  the boundary that capacity presence is not accepted work, payment,
+  settlement, or withdrawal evidence.
+
 ## Aggregates
 
 `aggregatePylonCapacityFunnel` returns count-only funnel data:

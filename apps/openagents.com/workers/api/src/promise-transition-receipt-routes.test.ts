@@ -69,7 +69,7 @@ describe('promise transition receipts', () => {
           'https://openagents.com/api/operator/product-promises/transitions',
           {
             body: JSON.stringify({
-              promiseId: 'pylon.no_dark_capacity_accounting.v1',
+              promiseId: 'autopilot.mission_briefing.v1',
               toState: 'green',
             }),
             headers: { 'content-type': 'application/json' },
@@ -89,7 +89,7 @@ describe('promise transition receipts', () => {
           {
             body: JSON.stringify({
               evidenceRefs: ['route:/api/public/pylon-capacity-funnel'],
-              promiseId: 'pylon.no_dark_capacity_accounting.v1',
+              promiseId: 'autopilot.mission_briefing.v1',
               toState: 'green',
             }),
             headers: { 'content-type': 'application/json' },
@@ -114,11 +114,11 @@ describe('promise transition receipts', () => {
           {
             body: JSON.stringify({
               exception: {
-                approvedByRef: 'owner:chris',
+                approvedByRef: 'owner:openagents',
                 expiresAt: '2026-06-16',
                 reasonRef: 'exception.launch_window_demo',
               },
-              promiseId: 'pylon.no_dark_capacity_accounting.v1',
+              promiseId: 'autopilot.mission_briefing.v1',
               toState: 'green',
             }),
             headers: { 'content-type': 'application/json' },
@@ -152,7 +152,7 @@ describe('promise transition receipts', () => {
     expect(recorded.status).toBe(201)
     expect(recordedBody.receipt).toMatchObject({
       fromState: 'yellow',
-      promiseId: 'pylon.no_dark_capacity_accounting.v1',
+      promiseId: 'autopilot.mission_briefing.v1',
       receiptId: 'promise_transition_test-receipt-1',
       result: 'failed',
       toState: 'green',
@@ -163,7 +163,7 @@ describe('promise transition receipts', () => {
 
     const verified = lastVerifiedAtByPromise(feedBody.receipts)
 
-    expect(verified.get('pylon.no_dark_capacity_accounting.v1')).toBe(
+    expect(verified.get('autopilot.mission_briefing.v1')).toBe(
       '2026-06-09T23:05:00.000Z',
     )
   })

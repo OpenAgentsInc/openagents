@@ -19,13 +19,14 @@ coordinated push (wave 5 of the campaign trajectory):
 | Promise | State | Blockers |
 |---|---|---|
 | `pylon.v03_release_candidate.v1` | yellow | `pylon_v03_stable_release_not_green`, `pylon_v03_live_network_smokes_incomplete` |
-| `pylon.release_tomorrow.v1` | yellow | `pylon_v03_stable_release_not_green` (shared), `native_windows_wsl_unproven` |
+| `pylon.release_tomorrow.v1` | yellow | `pylon_v03_stable_release_not_green` (shared); Windows/WSL deliberately out of scope by owner decision in version `2026-06-10.26` |
 | `pylon.install_without_wallet_knowledge.v1` | **red** | `mdk_send_readiness_not_proven_for_restore`, `live_install_to_bitcoin_smoke_incomplete` |
-| `pylon.no_dark_capacity_accounting.v1` | yellow | `provider_job_lifecycle_missing`, `capacity_funnel_snapshots_missing` |
+| `pylon.no_dark_capacity_accounting.v1` | green | Cleared by #4659 provider lifecycle accounting, #4660 retained two-day history, and receipt `promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe` |
 | `autopilot.codex_probe_pylon_successor.v1` | yellow | `live_probe_pylon_runtime_gates_incomplete` |
 
-Eight distinct blockers; one (`pylon_v03_stable_release_not_green`) clears
-two promises at once.
+The remaining shared blocker `pylon_v03_stable_release_not_green` still clears
+two release promises at once; `pylon.no_dark_capacity_accounting.v1` has moved
+out of the blocked set.
 
 ## Live Evidence Snapshot (2026-06-10)
 
@@ -107,13 +108,15 @@ install-to-bitcoin run on a real machine with operator approval, spend cap,
 payment receipt, settlement receipt, and public projection. Path: issues 4
 then 5.
 
-### `pylon.no_dark_capacity_accounting.v1` (yellow)
+### `pylon.no_dark_capacity_accounting.v1` (green)
 
-Live: the public funnel with the full dark-capacity taxonomy (today: 19/19
-dark — exactly the honest number the promise exists to surface). Missing:
-provider job-lifecycle records for real registered Pylons and retained
-historical snapshots. The five-streams waves generate the job activity;
-this cluster persists and projects it. Path: issues 6 and 7.
+Live: the public funnel with the full dark-capacity taxonomy, provider
+job-lifecycle-backed stage counts from #4659, and retained count-only hourly
+and daily history from #4660. The green transition cited receipt
+`promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe` after the live
+history route showed buckets for both 2026-06-10 and 2026-06-11. The boundary
+is unchanged: capacity presence is not accepted work, payment, settlement, or
+withdrawal evidence.
 
 ### `autopilot.codex_probe_pylon_successor.v1` (yellow)
 
@@ -220,6 +223,9 @@ enablement or material policy deviations.
 > lifecycle records for real Pylons; tests cover every stage transition;
 > deployed.
 
+Closeout: #4659 is deployed and closed; lifecycle-backed stage accounting is
+now part of the public count-only funnel.
+
 **Issue 7 — `worker: retained capacity-funnel history snapshots`**
 
 > `capacity_funnel_snapshots_missing`: the funnel is live-only. Add a
@@ -231,6 +237,11 @@ enablement or material policy deviations.
 > requirements; propose the yellow → green transition receipt-first.
 > Acceptance: snapshots retained across days, public history route live,
 > OpenAPI + AGENTS.md surfaces updated (mirror + sha pin), deployed.
+
+Closeout: #4660 reached two real days of retained live buckets on
+2026-06-11, then recorded receipt
+`promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe`; registry version
+`2026-06-10.27` marks `pylon.no_dark_capacity_accounting.v1` green.
 
 **Issue 8 — `pylon: packaged-binary real-task runtime smoke (Codex-backed, bounded sandbox)`**
 
@@ -294,7 +305,8 @@ each other and with the five-streams registry issues (#4641/#4645/#4648/
 
 ## Expected Registry Motion
 
-- `pylon.no_dark_capacity_accounting.v1` yellow → green (issues 6–7).
+- `pylon.no_dark_capacity_accounting.v1` green in version `2026-06-10.27`
+  (issues 6–7).
 - `autopilot.codex_probe_pylon_successor.v1` yellow → green (issue 8).
 - `pylon.v03_release_candidate.v1` yellow → green (issues 1, 3, 9).
 - `pylon.release_tomorrow.v1` yellow → green (issues 2, 9) — with copy
