@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.27'
+export const PublicProductPromisesVersion = '2026-06-10.28'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1002,20 +1002,21 @@ export const publicProductPromisesDocument = () => {
       claim:
         'Pylon v0.3 can run GEPA-first assignment work through the in-repo runtime.',
       safeCopy:
-        'Pylon v0.3 has assignment, GEPA capability, and runtime contracts with fake-server/no-spend coverage; live OpenAgents GEPA endpoint integration and paid settlement remain gated.',
+        'Pylon v0.3 has assignment, GEPA capability, and runtime contracts with fake-server/no-spend coverage. A 2026-06-11 live no-spend OpenAgents endpoint smoke created, accepted, progressed, artifact-submitted, and operator-closed an unpaid assignment in production. Paid GEPA settlement remains gated.',
       unsafeCopy:
         'Do not claim Pylon v0.3 runs the full live GEPA network or settles paid GEPA work.',
       evidenceRefs: [
         'apps/pylon/src/assignment.ts',
         'apps/pylon/src/gepa-capability.ts',
         'apps/pylon/packages/runtime/src/benchmark',
+        'apps/pylon/docs/2026-06-10-v03-live-worker-loop-smoke.md#recheck-2026-06-11-0110-utc',
+        'promise_transition_d0f7edc5-1688-4039-bcdf-8971b79512ef',
       ],
       blockerRefs: [
-        'blocker.product_promises.live_openagents_gepa_endpoint_smoke_missing',
         'blocker.product_promises.paid_gepa_settlement_v03_missing',
       ],
       verification:
-        'Run v0.3 assignment fake-server/no-spend tests locally, then add live endpoint smokes before green network copy.',
+        'Run v0.3 assignment fake-server/no-spend tests locally and the production no-spend assignment smoke. Green network copy still requires one settled paid GEPA assignment receipt, a paid-settlement transition receipt before registry edit, and a deployed registry bump.',
       authorityBoundary:
         'No-spend closeout and retained fixtures do not prove paid settlement or live campaign authority.',
     },
