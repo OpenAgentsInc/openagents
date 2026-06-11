@@ -933,11 +933,13 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/omni/operator/team-chat/messages',
   // Provider-account credential plumbing (owner-bound; never public contract surface):
   '/api/provider-accounts',
+  '/api/provider-accounts/anthropic/connect',
   '/api/provider-accounts/chatgpt-codex/device-login/start',
   '/api/provider-accounts/chatgpt-codex/device-login/{param}',
   '/api/provider-accounts/chatgpt-codex/device-login/{param}/connected',
   '/api/provider-accounts/chatgpt-codex/device-login/{param}/failed',
   '/api/provider-accounts/chatgpt-codex/grants/resolve',
+  '/api/provider-accounts/google-gemini/connect',
   '/api/provider-accounts/google-gemini/grants/resolve',
   '/api/provider-accounts/google-gemini/models/{param}:streamGenerateContent',
   '/api/provider-accounts/{param}/disconnect',

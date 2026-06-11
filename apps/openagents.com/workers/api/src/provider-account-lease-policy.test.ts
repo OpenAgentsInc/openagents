@@ -10,6 +10,7 @@ const candidate = (
   overrides: Partial<ProviderAccountLeaseCandidate> = {},
 ): ProviderAccountLeaseCandidate => ({
   providerAccountRef,
+  provider: 'chatgpt_codex',
   status: 'connected',
   health: 'healthy',
   hasSecretRef: true,
@@ -82,6 +83,46 @@ describe('provider account lease selection policy', () => {
       candidate: {
         providerAccountRef: 'provider-account_ref_free_later_priority',
       },
+    })
+  })
+
+  test('selects provider-tagged candidates when a required provider is set', () => {
+    const candidates = [
+      candidate('provider-account_ref_codex', {
+        provider: 'chatgpt_codex',
+      }),
+      candidate('provider-account_ref_anthropic', {
+        provider: 'anthropic_claude',
+      }),
+      candidate('provider-account_ref_gemini', {
+        provider: 'google_gemini',
+      }),
+    ]
+
+    const anthropicResult = selectProviderAccountLeaseCandidate(
+      candidates,
+      now,
+      { requiredProvider: 'anthropic_claude' },
+    )
+
+    expect(anthropicResult).toMatchObject({
+      status: 'selected',
+      candidate: {
+        provider: 'anthropic_claude',
+        providerAccountRef: 'provider-account_ref_anthropic',
+      },
+    })
+
+    const geminiOnlyCodexPool = selectProviderAccountLeaseCandidate(
+      [candidate('provider-account_ref_codex', { provider: 'chatgpt_codex' })],
+      now,
+      { requiredProvider: 'google_gemini' },
+    )
+
+    expect(geminiOnlyCodexPool).toMatchObject({
+      status: 'none',
+      reason:
+        'No connected healthy google_gemini account is currently eligible for lease.',
     })
   })
 

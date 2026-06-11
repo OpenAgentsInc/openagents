@@ -20,6 +20,7 @@ import {
 
 export const CHATGPT_CODEX_PROVIDER = 'chatgpt_codex' as const
 export const GOOGLE_GEMINI_PROVIDER = 'google_gemini' as const
+export const ANTHROPIC_CLAUDE_PROVIDER = 'anthropic_claude' as const
 export const CHATGPT_CODEX_VERIFICATION_URL =
   'https://auth.openai.com/codex/device'
 export const PROVIDER_ACCOUNT_PUBLIC_COLLECTIONS = {
@@ -67,10 +68,21 @@ export type ProviderAccountAuthMode =
   | 'chatgpt_device_code'
   | 'codex_device_auth'
   | 'manual_secret_ref'
+  | 'api_key'
 
 export type ProviderAccountProvider =
   | typeof CHATGPT_CODEX_PROVIDER
   | typeof GOOGLE_GEMINI_PROVIDER
+  | typeof ANTHROPIC_CLAUDE_PROVIDER
+
+export const providerDisplayName = (
+  provider: ProviderAccountProvider,
+): string =>
+  provider === CHATGPT_CODEX_PROVIDER
+    ? 'ChatGPT/Codex'
+    : provider === GOOGLE_GEMINI_PROVIDER
+      ? 'Google Gemini'
+      : 'Anthropic Claude'
 
 export type ProviderConnectionAttemptStatus =
   | 'pending'
@@ -90,6 +102,11 @@ export type ProviderConnectionAttemptSource =
   | 'shc_broker'
   | 'worker_device_code'
   | 'manual_placeholder'
+  | 'browser_api_key'
+
+export type ProviderConnectionAttemptMethod =
+  | 'chatgpt_device_code'
+  | 'provider_api_key'
 
 export type ProviderAccountEventKind =
   | 'login_connected'
@@ -132,7 +149,7 @@ export type ProviderConnectionAttemptRecord = Readonly<{
   userId: string
   teamId: string | null
   provider: ProviderAccountProvider
-  method: 'chatgpt_device_code'
+  method: ProviderConnectionAttemptMethod
   source: ProviderConnectionAttemptSource
   loginRef: string | null
   verificationUrl: string | null
@@ -211,7 +228,7 @@ export type PublicProviderConnectionAttempt = Readonly<{
   providerAccountId: string
   providerAccountRef: string
   provider: ProviderAccountProvider
-  method: 'chatgpt_device_code'
+  method: ProviderConnectionAttemptMethod
   source: ProviderConnectionAttemptSource
   status: ProviderConnectionAttemptStatus
   loginRef?: string | undefined
@@ -303,6 +320,18 @@ export type RedactedGeminiApiKeyMaterializationPlan = Readonly<{
   scrubAfterCloseout: true
 }>
 
+export type RedactedAnthropicApiKeyMaterializationPlan = Readonly<{
+  kind: 'claude_agent_anthropic_api_key'
+  provider: typeof ANTHROPIC_CLAUDE_PROVIDER
+  providerSecretRef: string
+  target: Readonly<{
+    kind: 'env'
+    name: 'ANTHROPIC_API_KEY'
+  }>
+  homeIsolation: 'per_run'
+  scrubAfterCloseout: true
+}>
+
 export type ResolvedProviderAccountGrant = Readonly<{
   grantRef: string
   provider: ProviderAccountProvider
@@ -315,6 +344,7 @@ export type ResolvedProviderAccountGrant = Readonly<{
   materialization:
     | RedactedOpenCodeMaterializationPlan
     | RedactedGeminiApiKeyMaterializationPlan
+    | RedactedAnthropicApiKeyMaterializationPlan
 }>
 
 export type StartedCodexDeviceLogin = Readonly<{
@@ -527,7 +557,7 @@ export type ProviderConnectionAttemptRow = Readonly<{
   user_id: string
   team_id: string | null
   provider: ProviderAccountProvider
-  method: 'chatgpt_device_code'
+  method: ProviderConnectionAttemptMethod
   source: ProviderConnectionAttemptSource
   login_ref: string | null
   verification_url: string | null
@@ -910,6 +940,20 @@ export const buildRedactedGeminiApiKeyMaterializationPlan = (
   target: {
     kind: 'env',
     name: 'GOOGLE_GENERATIVE_AI_API_KEY',
+  },
+  homeIsolation: 'per_run',
+  scrubAfterCloseout: true,
+})
+
+export const buildRedactedAnthropicApiKeyMaterializationPlan = (
+  providerSecretRef: string,
+): RedactedAnthropicApiKeyMaterializationPlan => ({
+  kind: 'claude_agent_anthropic_api_key',
+  provider: ANTHROPIC_CLAUDE_PROVIDER,
+  providerSecretRef,
+  target: {
+    kind: 'env',
+    name: 'ANTHROPIC_API_KEY',
   },
   homeIsolation: 'per_run',
   scrubAfterCloseout: true,

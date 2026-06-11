@@ -5,6 +5,7 @@ import {
 import { Context, Effect, Layer } from 'effect'
 
 import {
+  ANTHROPIC_CLAUDE_PROVIDER,
   CHATGPT_CODEX_PROVIDER,
   SESSION_GRANT_TTL_MS,
   type DeleteStartedCodexDeviceLogin,
@@ -32,6 +33,7 @@ import {
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
   addMilliseconds,
+  buildRedactedAnthropicApiKeyMaterializationPlan,
   buildRedactedGeminiApiKeyMaterializationPlan,
   buildRedactedOpenCodeMaterializationPlan,
   isAttemptExpired,
@@ -39,6 +41,7 @@ import {
   makeProviderAccountBundle,
   normalizeAccountLabel,
   normalizeProviderAccountRef,
+  providerDisplayName,
   sanitizeOrRejectSecretText,
   systemProviderAccountRuntime,
   textOrUndefined,
@@ -684,8 +687,8 @@ export const recordProviderAccountHealth = async (
     teamId: account.teamId,
     summary:
       reason === undefined
-        ? `ChatGPT/Codex account health marked ${input.health}.`
-        : `ChatGPT/Codex account health marked ${input.health}: ${reason}`,
+        ? `${providerDisplayName(account.provider)} account health marked ${input.health}.`
+        : `${providerDisplayName(account.provider)} account health marked ${input.health}: ${reason}`,
     targetRef: providerAccountRef,
     metadata: {
       source: 'broker_health',
@@ -794,7 +797,7 @@ export const issueProviderAccountGrant = async (
     summary:
       account.provider === CHATGPT_CODEX_PROVIDER
         ? 'Session-scoped Codex auth grant issued for a runner.'
-        : 'Session-scoped Gemini API grant issued for a runner.',
+        : `Session-scoped ${providerDisplayName(account.provider)} API grant issued for a runner.`,
     targetRef: grantRef,
     metadata: {
       source: 'browser_grant_issue',
@@ -889,7 +892,7 @@ export const resolveProviderAccountGrant = async (
     summary:
       grant.provider === CHATGPT_CODEX_PROVIDER
         ? 'Runner resolved a session-scoped Codex auth grant.'
-        : 'Runner resolved a session-scoped Gemini API grant.',
+        : `Runner resolved a session-scoped ${providerDisplayName(grant.provider)} API grant.`,
     targetRef: grant.grantRef,
     metadata: {
       source: 'runner_grant_resolve',
@@ -917,7 +920,13 @@ export const resolveProviderAccountGrant = async (
     materialization:
       saved.provider === CHATGPT_CODEX_PROVIDER
         ? buildRedactedOpenCodeMaterializationPlan(saved.providerSecretRef)
-        : buildRedactedGeminiApiKeyMaterializationPlan(saved.providerSecretRef),
+        : saved.provider === ANTHROPIC_CLAUDE_PROVIDER
+          ? buildRedactedAnthropicApiKeyMaterializationPlan(
+              saved.providerSecretRef,
+            )
+          : buildRedactedGeminiApiKeyMaterializationPlan(
+              saved.providerSecretRef,
+            ),
   }
 }
 
@@ -955,7 +964,7 @@ export const disconnectProviderAccountForUser = async (
     userId,
     teamId: null,
     summary:
-      'ChatGPT/Codex provider account was disconnected and outstanding grants were revoked.',
+      'Provider account was disconnected and outstanding grants were revoked.',
     targetRef: normalizedProviderAccountRef,
     metadata: {
       source: 'browser',

@@ -33,11 +33,21 @@ export const ChatGptCodexProvider = S.Literal('chatgpt_codex')
 export type ChatGptCodexProvider = typeof ChatGptCodexProvider.Type
 export const GoogleGeminiProvider = S.Literal('google_gemini')
 export type GoogleGeminiProvider = typeof GoogleGeminiProvider.Type
+export const AnthropicClaudeProvider = S.Literal('anthropic_claude')
+export type AnthropicClaudeProvider = typeof AnthropicClaudeProvider.Type
 export const ProviderAccountProvider = S.Union([
   ChatGptCodexProvider,
   GoogleGeminiProvider,
+  AnthropicClaudeProvider,
 ])
 export type ProviderAccountProvider = typeof ProviderAccountProvider.Type
+
+export const API_KEY_CONNECT_PROVIDERS = [
+  'anthropic_claude',
+  'google_gemini',
+] as const
+export const ApiKeyConnectProvider = S.Literals(API_KEY_CONNECT_PROVIDERS)
+export type ApiKeyConnectProvider = typeof ApiKeyConnectProvider.Type
 
 export const ProviderAccountStatus = S.Literals([
   'pending',
@@ -61,11 +71,13 @@ export const ProviderAccountAuthMode = S.Literals([
   'chatgpt_device_code',
   'codex_device_auth',
   'manual_secret_ref',
+  'api_key',
 ])
 export type ProviderAccountAuthMode = typeof ProviderAccountAuthMode.Type
 
 export const ProviderConnectionAttemptMethod = S.Literals([
   'chatgpt_device_code',
+  'provider_api_key',
 ])
 export type ProviderConnectionAttemptMethod =
   typeof ProviderConnectionAttemptMethod.Type
@@ -74,6 +86,7 @@ export const ProviderConnectionAttemptSource = S.Literals([
   'shc_broker',
   'worker_device_code',
   'manual_placeholder',
+  'browser_api_key',
 ])
 export type ProviderConnectionAttemptSource =
   typeof ProviderConnectionAttemptSource.Type
@@ -203,6 +216,7 @@ const SECRET_MARKERS: ReadonlyArray<RegExp> = [
   /OPENCODE_AUTH_CONTENT\s*[:=]/i,
   /GOOGLE_GENERATIVE_AI_API_KEY\s*[:=]/i,
   /GEMINI_API_KEY\s*[:=]/i,
+  /ANTHROPIC_API_KEY\s*[:=]/i,
   /\bAIza[A-Za-z0-9_-]{16,}/,
   /auth\.json/i,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
@@ -337,6 +351,15 @@ export const redactProviderAccountSecretMaterial = (value: string): string =>
       /OPENCODE_AUTH_CONTENT\s*[:=]\s*[^\s]+/gi,
       `OPENCODE_AUTH_CONTENT=${REDACTED}`,
     )
+    .replace(
+      /ANTHROPIC_API_KEY\s*[:=]\s*[^\s]+/gi,
+      `ANTHROPIC_API_KEY=${REDACTED}`,
+    )
+    .replace(
+      /(?:GOOGLE_GENERATIVE_AI_API_KEY|GEMINI_API_KEY)\s*[:=]\s*[^\s]+/gi,
+      `GEMINI_API_KEY=${REDACTED}`,
+    )
+    .replace(/\bAIza[A-Za-z0-9_-]{8,}/g, `AIza${REDACTED}`)
     .replace(/auth\.json/gi, `auth.json:${REDACTED}`)
     .replace(
       /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,

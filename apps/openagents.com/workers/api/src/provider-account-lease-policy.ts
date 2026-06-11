@@ -1,13 +1,15 @@
 import type {
   ProviderAccountHealth,
+  ProviderAccountProvider,
   ProviderAccountStatus,
 } from './provider-account-domain'
 
 export const PROVIDER_ACCOUNT_LEASE_POLICY_VERSION =
-  'provider-account-lease-policy:v1' as const
+  'provider-account-lease-policy:v2' as const
 
 export type ProviderAccountLeaseCandidate = Readonly<{
   providerAccountRef: string
+  provider: ProviderAccountProvider
   status: ProviderAccountStatus
   health: ProviderAccountHealth
   hasSecretRef: boolean
@@ -23,6 +25,10 @@ export type ProviderAccountLeaseCandidate = Readonly<{
   recentFailureClass: string | null
   cooldownUntil: string | null
   lowCredit: boolean
+}>
+
+export type ProviderAccountLeaseSelectionOptions = Readonly<{
+  requiredProvider?: ProviderAccountProvider | undefined
 }>
 
 export type ProviderAccountLeaseSelection =
@@ -44,7 +50,10 @@ const isAfterNow = (value: string | null, now: string): boolean =>
 const usable = (
   candidate: ProviderAccountLeaseCandidate,
   now: string,
+  requiredProvider: ProviderAccountProvider | undefined,
 ): boolean =>
+  (requiredProvider === undefined ||
+    candidate.provider === requiredProvider) &&
   candidate.status === 'connected' &&
   candidate.health === 'healthy' &&
   candidate.hasSecretRef &&
@@ -59,17 +68,27 @@ const oldestUseTimestamp = (candidate: ProviderAccountLeaseCandidate): string =>
   candidate.connectedAt ??
   candidate.createdAt
 
+const noEligibleCandidateReason = (
+  requiredProvider: ProviderAccountProvider | undefined,
+): string =>
+  requiredProvider === undefined
+    ? 'No connected healthy provider account is currently eligible for lease.'
+    : `No connected healthy ${requiredProvider} account is currently eligible for lease.`
+
 export const selectProviderAccountLeaseCandidate = (
   candidates: ReadonlyArray<ProviderAccountLeaseCandidate>,
   now: string,
+  options: ProviderAccountLeaseSelectionOptions = {},
 ): ProviderAccountLeaseSelection => {
-  const eligible = candidates.filter(candidate => usable(candidate, now))
+  const requiredProvider = options.requiredProvider
+  const eligible = candidates.filter(candidate =>
+    usable(candidate, now, requiredProvider),
+  )
 
   if (eligible.length === 0) {
     return {
       status: 'none',
-      reason:
-        'No connected healthy ChatGPT/Codex account is currently eligible for lease.',
+      reason: noEligibleCandidateReason(requiredProvider),
       policyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
     }
   }
@@ -101,8 +120,7 @@ export const selectProviderAccountLeaseCandidate = (
   if (selected === undefined) {
     return {
       status: 'none',
-      reason:
-        'No connected healthy ChatGPT/Codex account is currently eligible for lease.',
+      reason: noEligibleCandidateReason(requiredProvider),
       policyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
     }
   }
@@ -110,7 +128,7 @@ export const selectProviderAccountLeaseCandidate = (
   return {
     status: 'selected',
     candidate: selected,
-    reason: `Selected connected healthy account with ${selected.activeLeaseCount} active lease(s), priority ${selected.operatorPriority}, and oldest successful use timestamp ${oldestUseTimestamp(selected)}.`,
+    reason: `Selected connected healthy ${selected.provider} account with ${selected.activeLeaseCount} active lease(s), priority ${selected.operatorPriority}, and oldest successful use timestamp ${oldestUseTimestamp(selected)}.`,
     policyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
   }
 }

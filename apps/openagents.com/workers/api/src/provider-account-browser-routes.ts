@@ -5,6 +5,12 @@ import {
   readJsonObject,
 } from './json-boundary'
 import {
+  type ProviderApiKeyProbe,
+  type StoreConnectedProviderApiKey,
+  connectProviderApiKeyAccount,
+  providerApiKeyConnectPolicyForRouteSegment,
+} from './provider-account-api-key'
+import {
   type DeleteStartedCodexDeviceLogin,
   type ReadStartedCodexDeviceLogin,
   type StoreConnectedCodexAuth,
@@ -50,12 +56,16 @@ type ProviderAccountBrowserDependencies<
   ) => DeleteStartedCodexDeviceLogin
   providerAuthSecretKey: (providerAccountRef: string) => string
   readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
+  probeProviderApiKey: ProviderApiKeyProbe
   requireBrowserSession: (
     request: Request,
     env: Env,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
   storeConnectedCodexAuth: (kv: KVNamespace) => StoreConnectedCodexAuth
+  storeConnectedProviderApiKey: (
+    kv: KVNamespace,
+  ) => StoreConnectedProviderApiKey
   storeStartedCodexDeviceLogin: (
     kv: KVNamespace,
   ) => StoreStartedCodexDeviceLogin
@@ -187,6 +197,87 @@ export const makeProviderAccountBrowserHandlers = <
       return noStoreJsonResponse(
         {
           error: 'provider_account_grant_issue_failed',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error) },
+      )
+    }
+  },
+
+  handleProviderApiKeyConnectApi: async (
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+    providerRouteSegment: string,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const policy =
+      providerApiKeyConnectPolicyForRouteSegment(providerRouteSegment)
+
+    if (policy === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_not_api_key_connectable',
+          message:
+            'This provider does not support API-key connect. Subscription-account connect is not offered.',
+        },
+        { status: 404 },
+      )
+    }
+
+    const session = await dependencies.requireBrowserSession(request, env, ctx)
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const accountLabel = optionalString(body.accountLabel)
+    const providerAccountRef = optionalString(body.providerAccountRef)
+
+    try {
+      const result = await observedPromise(
+        'ProviderAccountBrowser.connectProviderApiKeyAccount',
+        () =>
+          connectProviderApiKeyAccount(
+            makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+            {
+              userId: session.user.userId,
+              provider: policy.provider,
+              apiKey: typeof body.apiKey === 'string' ? body.apiKey : '',
+              ...(accountLabel === undefined ? {} : { accountLabel }),
+              ...(providerAccountRef === undefined
+                ? {}
+                : { providerAccountRef }),
+            },
+            {
+              probeApiKey: dependencies.probeProviderApiKey,
+              storeConnectedApiKey: dependencies.storeConnectedProviderApiKey(
+                env.AUTH_STORAGE,
+              ),
+            },
+          ),
+      )
+
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse(result, { status: 201 }),
+        session,
+      )
+    } catch (error) {
+      logWorkerRouteError('provider_api_key_connect_failed', error, {
+        errorName: providerAccountRouteErrorName(error),
+        provider: policy.provider,
+        providerAccountRef,
+      })
+
+      return noStoreJsonResponse(
+        {
+          error: 'provider_api_key_connect_failed',
           message: providerAccountRouteErrorMessage(error),
         },
         { status: providerAccountRouteErrorStatus(error) },

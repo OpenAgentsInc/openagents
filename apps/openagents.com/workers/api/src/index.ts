@@ -252,6 +252,7 @@ import {
   lastVerifiedAtByPromise,
   makeD1PromiseTransitionReceiptStore,
 } from './promise-transition-receipt-routes'
+import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
@@ -4974,6 +4975,29 @@ const deleteStartedCodexDeviceLogin =
     await kv.delete(providerDeviceLoginSecretKey(attemptId))
   }
 
+const storeConnectedProviderApiKey =
+  (kv: KVNamespace) =>
+  async (
+    input: Readonly<{
+      providerAccountRef: string
+      provider: 'anthropic_claude' | 'google_gemini'
+      apiKey: string
+    }>,
+  ): Promise<void> => {
+    const providerField =
+      input.provider === 'anthropic_claude' ? 'anthropic' : 'google'
+
+    await kv.put(
+      providerAuthSecretKey(input.providerAccountRef),
+      JSON.stringify({
+        [providerField]: {
+          type: 'api_key',
+          key: input.apiKey,
+        },
+      }),
+    )
+  }
+
 const storeConnectedCodexAuth =
   (kv: KVNamespace) =>
   async (
@@ -5407,10 +5431,12 @@ const syncRoutes = makeSyncRoutes({
 const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
   appendRefreshedSessionCookies,
   deleteStartedCodexDeviceLogin,
+  probeProviderApiKey: probeProviderApiKey(),
   providerAuthSecretKey,
   readStartedCodexDeviceLogin,
   requireBrowserSession,
   storeConnectedCodexAuth,
+  storeConnectedProviderApiKey,
   storeStartedCodexDeviceLogin,
 })
 
@@ -5492,6 +5518,15 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         env,
         ctx,
         model,
+      ),
+    ),
+  handleProviderApiKeyConnectApi: (request, env, ctx, providerRouteSegment) =>
+    routeEffect('handle_provider_api_key_connect_api', () =>
+      providerAccountBrowserHandlers.handleProviderApiKeyConnectApi(
+        request,
+        env,
+        ctx,
+        providerRouteSegment,
       ),
     ),
   handleProviderAccountHealthApi: (request, env, providerAccountRef) =>

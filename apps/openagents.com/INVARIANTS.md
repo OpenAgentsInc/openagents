@@ -424,6 +424,22 @@ This is the invariant ledger for `openagents`.
   assignment-mode/policy refs are present for that provider.
 - Provider selection must use the typed provider union, not generic provider
   string routing.
+- Anthropic (`anthropic_claude`) and Google Gemini (`google_gemini`) provider
+  peers connect by API-key BYOK only (`authMode: 'api_key'`), per the dated
+  ToS-compliance review in
+  `docs/autopilot-coder/2026-06-11-provider-peer-tos-compliance-review.md`
+  (monorepo `docs/` root). Subscription-account connect shapes
+  (Claude.ai/Pro/Max login or OAuth-token capture, Google account OAuth /
+  Code Assist / AI Pro/Ultra) are forbidden by those providers' terms and
+  must not be added without a new dated review superseding that document.
+- Connected provider API keys are user-scoped: lease selection uses
+  provider-tagged candidates from the requesting user's own connected
+  accounts and never pools credentials across customers. Raw key material
+  lives only in the auth KV under `provider-auth:<providerAccountRef>`;
+  durable rows, events, grants, and projections carry secret refs only.
+- Regression coverage for the API-key connect boundary lives in
+  `workers/api/src/provider-account-api-key.test.ts` and
+  `workers/api/src/provider-account-lease-policy.test.ts`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 

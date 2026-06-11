@@ -1567,7 +1567,7 @@ describe('operator provider account routes', () => {
       failure_class: 'rate_limited',
       account_state_action: 'timed_cooldown',
       outcome: 'retrying',
-      policy_version: 'provider-account-lease-policy:v1',
+      policy_version: 'provider-account-lease-policy:v2',
       customer_safe_summary:
         'Work is retrying through another connected execution account.',
     })
@@ -1667,7 +1667,7 @@ describe('operator provider account routes', () => {
           accountStateAction: 'low_credit_cooldown',
           previousProviderAccountRef: 'provider-account_ref_failed',
           nextProviderAccountRef: null,
-          policyVersion: 'provider-account-lease-policy:v1',
+          policyVersion: 'provider-account-lease-policy:v2',
           customerSafeSummary:
             'Work is waiting for operator capacity before it can continue.',
         },

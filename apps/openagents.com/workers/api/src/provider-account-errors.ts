@@ -66,6 +66,20 @@ export class ProviderAccountNotConnectedHealthy extends S.TaggedErrorClass<Provi
   },
 ) {}
 
+export class ProviderApiKeyInvalid extends S.TaggedErrorClass<ProviderApiKeyInvalid>()(
+  'ProviderApiKeyInvalid',
+  {
+    message: S.String,
+  },
+) {}
+
+export class ProviderApiKeyRejected extends S.TaggedErrorClass<ProviderApiKeyRejected>()(
+  'ProviderApiKeyRejected',
+  {
+    message: S.String,
+  },
+) {}
+
 export class ProviderGrantAccountMismatch extends S.TaggedErrorClass<ProviderGrantAccountMismatch>()(
   'ProviderGrantAccountMismatch',
   {
@@ -120,6 +134,8 @@ export const ProviderAccountError = S.Union([
   ProviderDeviceLoginAttemptExpired,
   ProviderDeviceLoginAttemptAlreadyConnected,
   ProviderAccountNotConnectedHealthy,
+  ProviderApiKeyInvalid,
+  ProviderApiKeyRejected,
   ProviderGrantAccountMismatch,
   ProviderGrantRunnerSessionMismatch,
   ProviderGrantExpired,
@@ -139,6 +155,8 @@ const providerAccountErrorTags = new Set([
   'ProviderDeviceLoginAttemptExpired',
   'ProviderDeviceLoginAttemptAlreadyConnected',
   'ProviderAccountNotConnectedHealthy',
+  'ProviderApiKeyInvalid',
+  'ProviderApiKeyRejected',
   'ProviderGrantAccountMismatch',
   'ProviderGrantRunnerSessionMismatch',
   'ProviderGrantExpired',

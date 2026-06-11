@@ -43,6 +43,12 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     env: Bindings,
     providerAccountRef: string,
   ) => RouteEffect
+  handleProviderApiKeyConnectApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    providerRouteSegment: string,
+  ) => RouteEffect
   handleProviderAccountsListApi: (
     request: Request,
     env: Bindings,
@@ -109,6 +115,26 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       return routeEffectOrResponse(
         dependencies.handleGoogleGeminiGrantResolveApi(request, env),
       )
+    }
+
+    const providerApiKeyConnectMatch =
+      /^\/api\/provider-accounts\/(anthropic|google-gemini)\/connect$/.exec(
+        url.pathname,
+      )
+
+    if (providerApiKeyConnectMatch !== null) {
+      const providerRouteSegment = providerApiKeyConnectMatch[1]
+
+      if (providerRouteSegment !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleProviderApiKeyConnectApi(
+            request,
+            env,
+            ctx,
+            providerRouteSegment,
+          ),
+        )
+      }
     }
 
     const googleGeminiGenerateMatch =
