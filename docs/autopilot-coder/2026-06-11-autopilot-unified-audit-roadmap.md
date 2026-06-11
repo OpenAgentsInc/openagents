@@ -765,6 +765,57 @@ the deploy fails). B1 and P1 are deliberately out of phase order:
 each is a single-run receipt with outsized promise effect, and
 neither blocks nor is blocked by the product work.
 
+### Addendum (2026-06-11) — the Codex executor lane (CX rungs)
+
+This addendum extends the ladder without renumbering anything above.
+Rung prefix **CX** (Codex executor); tracked by **epic #4793**.
+
+**Why this lane exists.** The Claude Agent bridge epic (#4717)
+explicitly required its work class to be adapter-agnostic so
+"`local_codex` and `local_claude_agent` are peer adapters behind one
+gate." The Claude side shipped and ran live (B1, #4755 closed); the
+Codex peer was never filed. Meanwhile
+`autopilot.codex_probe_pylon_successor.v1` remains yellow with a
+verification clause asking for current **Codex-backed** task-path
+evidence — #4661 was closed satisfied via the claude-agent adapter,
+so the literal Codex leg is the promise's outstanding receipt. The CX
+lane files that missing peer: the same bounded-executor pattern
+(`apps/pylon/src/claude-agent{,-executor,-task-smoke}.ts` is the
+reference implementation), with `@openai/codex-sdk` — vendored in the
+reference clone at `projects/repos/codex/sdk/typescript/` — as the
+substrate: lazy optional dependency, bundled platform-native binary,
+thread-based `run`/`runStreamed`, `approvalPolicy: "never"` +
+`sandboxMode` for unattended bounded runs, AbortSignal budgets, token
+usage in `turn.completed`. The one real design delta from the Claude
+gate: the Codex SDK has no `PreToolUse` hook, so workspace-escape
+denial moves from a hook guard to sandbox-mode + pinned working
+directory + post-hoc `file_change` path validation (CX2).
+
+**What this lane is not.** It is not M13 (#4771): M13 is Stack A's
+hosted provider-connect (leased accounts in the web product). CX is
+Lane B — the contributor's own Codex credentials on the contributor's
+own Pylon, under the same BYOK/no-resale law as the Claude bridge,
+with the ToS-compliance review as CX1's first deliverable. And it
+forks nothing: the `git_checkout` workspace contract belongs to B2
+(#4756); CX3/CX5 consume it unchanged.
+
+| # | Issue | Status / size | What it delivers | Depends on |
+| --- | --- | --- | --- | --- |
+| CX1 | **Codex SDK dependency + BYOK credential policy + `capability.pylon.local_codex`** — ToS review first, lazy optional dep joining the #4654 packaging answer, `probeCodexReadiness` + capability declaration, `codex` config surface | [filed: #4788] / M | The probe/capability layer; the lane's compliance gate. | nothing (∥ CX2) |
+| CX2 | **`executeCodexAssignment` bounded executor gate** — same `AssignmentCloseoutRecord` contract, slotted into the executor chain; sandbox-mode boundary enforcement, budgets via AbortSignal, redaction law unchanged | [filed: #4789] / M | The runner behind the shared interface — the "same interface as the Claude Agent SDK" requirement made literal. | CX1 probe signature |
+| CX3 | **`codex_agent_task` work class + dispatch + smokes** — `codingAssignment.codex` as structural peer of `codingAssignment.claudeAgent`; dispatch script; CI-safe mock smoke + packaged-binary smoke | [filed: #4790] / M | The wire format and the repeatable proof harness. | CX1, CX2 |
+| CX4 | **Codex bridge live-leg run** — one credentialed-machine execution through the live assignment API | [filed: #4791] / S | The single-run receipt `autopilot.codex_probe_pylon_successor.v1` still wants — B1's twin, same outsized promise effect. | CX3 |
+| CX5 | **Adapter-selection policy + B2-parity API path** — API-submitted `codex_agent_task` + `git_checkout` end to end no-spend; declared selection rule for dual-capability Pylons (required capability ref wins; owner config preference for agnostic orders; closeout names the adapter) | [filed: #4792] / M | The Codex lane reachable from the same front doors as the Claude lane, and the two-adapter Pylon made deterministic. | B2 (#4756), CX3 |
+
+Sequencing: CX1 ∥ CX2 → CX3 → CX4; CX5 after CX3 and B2. CX1–CX3 and
+CX5 are Lane A (code + tests over existing seams); CX4 needs an
+operator-credentialed device. Like B1 and P1, CX4 is a single-run
+receipt that neither blocks nor is blocked by the product work. The
+standing laws (#4751 projection staleness, #4752 OpenAPI freshness,
+BYOK/no-resale, redaction, copy law — "Codex"/"your local Codex" as
+lane branding, no partnership implication) bind every CX rung exactly
+as they bind the ladder above.
+
 ## Part 5 — Boundaries that hold across everything above
 
 - **BYOK and no-resale, every lane.** Lane A leases the *customer's
