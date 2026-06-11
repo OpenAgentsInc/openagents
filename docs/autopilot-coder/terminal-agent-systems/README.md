@@ -204,3 +204,7 @@ map. The audits below are the currently imported subsystem records.
 - `2026-06-11-terminal-agent-systems-index.md`: Lists the full 62-system map,
   grouped by P0/P1/P2 priority, and names the first ten system docs that form
   the core safety and capability spine.
+- `2026-06-11-terminal-agent-systems-operationalization-roadmap.md`: Decides
+  which subsystem audits to operationalize during and after the active #4786
+  Autopilot MVP sprint, grouped into proof/supervision, credential/policy,
+  repo/delivery, intake/market, and extension/polish packs.
