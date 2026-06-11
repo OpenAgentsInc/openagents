@@ -13,6 +13,7 @@ import {
   appendRuntimeLogEntry,
   setOperatorText,
   setTelemetryState,
+  setVerboseMode,
   setWalletState,
 } from "./store"
 
@@ -37,6 +38,8 @@ export const attachRuntimeToView = (
     const maxBatch = options.maxBatch ?? 256
     const batchWindowMs = options.batchWindowMs ?? 16
 
+    setVerboseMode(options.verbose)
+
     const eventSubscription = yield* PubSub.subscribe(runtime.events)
 
     const wallet = yield* SubscriptionRef.get(runtime.wallet)
@@ -48,7 +51,7 @@ export const attachRuntimeToView = (
       setTelemetryState(telemetry)
       setOperatorText(operator.text)
       for (const entry of feed) {
-        appendRuntimeLogEntry(entry, options.verbose)
+        appendRuntimeLogEntry(entry)
       }
     })
 
@@ -77,7 +80,7 @@ export const attachRuntimeToView = (
           batch(() => {
             for (const event of events) {
               if (event.type === "log") {
-                appendRuntimeLogEntry(event, options.verbose)
+                appendRuntimeLogEntry(event)
               }
             }
           })

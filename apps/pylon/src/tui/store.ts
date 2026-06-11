@@ -18,6 +18,11 @@ import {
   type WalletPaneState,
 } from "../node/state"
 
+// Runtime-toggleable verbosity (issue #4738's verbose toggle command; the
+// initial value comes from --verbose / PYLON_VERBOSE at startup). Applies to
+// entries appended after a change.
+export const [verboseMode, setVerboseMode] = createSignal(false)
+
 export const [walletState, setWalletState] = createSignal<WalletPaneState>(initialWalletPaneState)
 export const [telemetryState, setTelemetryState] = createSignal<TelemetryPaneState>(initialTelemetryPaneState)
 export const [operatorText, setOperatorText] = createSignal<string>(initialOperatorPaneState.text)
@@ -53,7 +58,7 @@ function pushFeedItem(item: Omit<FeedItem, "id">): number {
 }
 
 // Runtime log entries: filtered by verbosity, rendered as dim one-liners.
-export function appendRuntimeLogEntry(entry: PylonLogEntry, verbose: boolean): void {
+export function appendRuntimeLogEntry(entry: PylonLogEntry, verbose: boolean = verboseMode()): void {
   if (!isLogEntryVisible(entry, verbose)) return
   pushFeedItem({
     markdown: `[${formatLogTimestamp(entry.at)}] ${entry.message}`,
@@ -87,6 +92,7 @@ export function appendChatFeedItem(markdown: string, options?: { streaming?: boo
 
 // Test/maintenance helper: reset all view state.
 export function resetViewState(): void {
+  setVerboseMode(false)
   setFeedItems([])
   nextFeedId = 1
   setWalletState(initialWalletPaneState)

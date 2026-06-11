@@ -36,6 +36,27 @@ pylon apple-fm status
 pylon apple-fm tool-stream-demo
 ```
 
+## Dashboard (TUI)
+
+Running `pylon` with no subcommand opens the observational dashboard: an
+execution-log feed (left), wallet/telemetry/operator panes (right), a
+composer (bottom), and a one-line key-hint footer.
+
+- Startup is quiet by default; launch with `--verbose` (or `PYLON_VERBOSE=1`)
+  for full service logs, or press `f2` to toggle verbosity at runtime.
+- `ctrl+k` opens the command palette (fuzzy search over every command),
+  `f1` shows all keybindings, `tab` switches focus between the log feed and
+  the composer, and `ctrl+c` exits cleanly.
+- Wallet operations (`wallet: send sats`, `wallet: receive`, `wallet: admit
+  payout target`) run from the palette and always end in an explicit
+  confirmation dialog before any money moves.
+- Keybindings are user-configurable via `keybinds.json` in the Pylon home
+  directory: `{ "bindings": { "palette.open": "ctrl+p" } }`. Keys are
+  command names (see `f1`); values are `@opentui/keymap` key strings.
+  Invalid files are reported and ignored.
+- The composer submits with `meta+return` and streams OpenCode responses
+  into the feed.
+
 ## Bootstrap And Status
 
 ```sh

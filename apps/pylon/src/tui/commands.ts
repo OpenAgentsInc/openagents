@@ -1,0 +1,359 @@
+// Command registry for the Pylon TUI (issue #4738). Every app-level action
+// is registered exactly once on the @opentui/keymap catalog with title/
+// category metadata; the footer, help dialog, and command palette all derive
+// from this registry. User keybind overrides from keybinds.json replace the
+// default key of the matching command.
+
+import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { filterSelectItems, openAlert, openConfirm, openPrompt, openSelect, showToast } from "./dialogs"
+
+export type PylonKeymap = ReturnType<typeof createDefaultOpenTuiKeymap>
+
+// Actions the node side injects so view code never imports wallet/business
+// modules directly (index.ts implements these over src/wallet.ts).
+export interface WalletActions {
+  send: (destinationRef: string, amountSats?: number) => Promise<unknown>
+  receive: (amountSats: number) => Promise<unknown>
+  admitPayoutTarget: (kind: string, ref: string) => Promise<unknown>
+}
+
+export interface CommandContext {
+  walletActions: WalletActions
+  focusLogs: () => void
+  focusComposer: () => void
+  focusedPane: () => "logs" | "composer"
+  scrollLogs: (delta: number, unit?: "viewport" | "content" | "step") => void
+  submitComposer: () => void
+  toggleVerbose: () => boolean
+  requestShutdown: () => void
+  log: (message: string) => void
+}
+
+export interface CommandSpec {
+  name: string
+  title: string
+  category: string
+  key?: string
+  // Shown in the one-line footer hint bar.
+  footer?: boolean
+  // Listed in the command palette (scroll keys etc. opt out).
+  palette?: boolean
+  run: () => void | Promise<void>
+}
+
+export const PAYOUT_TARGET_KINDS = ["bolt12_offer", "bolt11_invoice", "bip353_name", "lnurl_pay"] as const
+
+export function buildCommandSpecs(ctx: CommandContext): CommandSpec[] {
+  const specs: CommandSpec[] = [
+    {
+      name: "palette.open",
+      title: "Open command palette",
+      category: "App",
+      key: "ctrl+k",
+      footer: true,
+      palette: false,
+      run: async () => {
+        await openCommandPalette()
+      },
+    },
+    {
+      name: "help.open",
+      title: "Show keybindings",
+      category: "App",
+      key: "f1",
+      footer: true,
+      palette: true,
+      run: async () => {
+        await openHelpDialog()
+      },
+    },
+    {
+      name: "app.quit",
+      title: "Quit Pylon",
+      category: "App",
+      key: "ctrl+c",
+      footer: true,
+      palette: true,
+      run: () => ctx.requestShutdown(),
+    },
+    {
+      name: "logs.verbose-toggle",
+      title: "Toggle verbose logs",
+      category: "Logs",
+      key: "f2",
+      palette: true,
+      run: () => {
+        const verbose = ctx.toggleVerbose()
+        showToast(verbose ? "verbose logs on (new entries)" : "verbose logs off (new entries)")
+      },
+    },
+    {
+      name: "focus.toggle",
+      title: "Switch focus (logs/composer)",
+      category: "App",
+      key: "tab",
+      footer: true,
+      palette: true,
+      run: () => {
+        if (ctx.focusedPane() === "composer") ctx.focusLogs()
+        else ctx.focusComposer()
+      },
+    },
+    {
+      name: "composer.submit",
+      title: "Submit composer prompt",
+      category: "Composer",
+      palette: true,
+      run: () => ctx.submitComposer(),
+    },
+    {
+      name: "wallet.send",
+      title: "Wallet: send sats",
+      category: "Wallet",
+      palette: true,
+      run: async () => {
+        const destination = await openPrompt({
+          title: "Wallet send - destination ref",
+          placeholder: "bolt12 offer / bolt11 invoice / admitted target ref",
+        })
+        if (!destination) return
+        const amountRaw = await openPrompt({
+          title: "Wallet send - amount (sats, empty = invoice amount)",
+          placeholder: "e.g. 1000",
+        })
+        const amount = amountRaw ? Number(amountRaw) : undefined
+        if (amountRaw && (!Number.isInteger(amount) || (amount as number) <= 0)) {
+          await openAlert({ title: "Wallet send", body: `Invalid amount: ${amountRaw}` })
+          return
+        }
+        const confirmed = await openConfirm({
+          title: "Confirm wallet send",
+          body: `Send ${amount === undefined ? "the invoice amount" : `${amount} sats`} to ${destination.slice(0, 60)}${destination.length > 60 ? "..." : ""}?`,
+          confirmLabel: "Send",
+        })
+        if (!confirmed) {
+          showToast("wallet send cancelled")
+          return
+        }
+        try {
+          await ctx.walletActions.send(destination, amount)
+          showToast("wallet send dispatched")
+          ctx.log(`[Wallet] Send dispatched to ${destination.slice(0, 60)}`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`wallet send failed: ${message}`, "error")
+          ctx.log(`[Wallet] Send failed: ${message}`)
+        }
+      },
+    },
+    {
+      name: "wallet.receive",
+      title: "Wallet: receive (create invoice)",
+      category: "Wallet",
+      palette: true,
+      run: async () => {
+        const amountRaw = await openPrompt({ title: "Wallet receive - amount (sats)", placeholder: "e.g. 1000" })
+        if (!amountRaw) return
+        const amount = Number(amountRaw)
+        if (!Number.isFinite(amount) || amount <= 0) {
+          await openAlert({ title: "Wallet receive", body: `Invalid amount: ${amountRaw}` })
+          return
+        }
+        const confirmed = await openConfirm({
+          title: "Confirm wallet receive",
+          body: `Create an invoice for ${amount} sats?`,
+          confirmLabel: "Create",
+        })
+        if (!confirmed) return
+        try {
+          const result = await ctx.walletActions.receive(amount)
+          const invoice = (result as { invoice?: string } | null)?.invoice
+          await openAlert({
+            title: "Wallet receive",
+            body: invoice ? `Invoice: ${invoice}` : JSON.stringify(result).slice(0, 400),
+          })
+          ctx.log(`[Wallet] Receive invoice created for ${amount} sats`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`wallet receive failed: ${message}`, "error")
+          ctx.log(`[Wallet] Receive failed: ${message}`)
+        }
+      },
+    },
+    {
+      name: "wallet.admit-payout-target",
+      title: "Wallet: admit payout target",
+      category: "Wallet",
+      palette: true,
+      run: async () => {
+        const kind = await openSelect({
+          title: "Payout target kind",
+          items: PAYOUT_TARGET_KINDS.map((value) => ({ id: value, label: value })),
+        })
+        if (!kind) return
+        const ref = await openPrompt({ title: `Payout target ref (${kind})`, placeholder: "target ref" })
+        if (!ref) return
+        const confirmed = await openConfirm({
+          title: "Confirm payout target admission",
+          body: `Admit ${kind} target ${ref.slice(0, 60)}${ref.length > 60 ? "..." : ""}? Future payouts may settle to it.`,
+          confirmLabel: "Admit",
+        })
+        if (!confirmed) return
+        try {
+          await ctx.walletActions.admitPayoutTarget(kind, ref)
+          showToast("payout target admitted")
+          ctx.log(`[Wallet] Payout target admitted (${kind})`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`admission failed: ${message}`, "error")
+          ctx.log(`[Wallet] Payout target admission failed: ${message}`)
+        }
+      },
+    },
+    // Scroll commands: bound on the logs pane, hidden from the palette.
+    { name: "logs.scroll.up", title: "Scroll logs up", category: "Logs", run: () => ctx.scrollLogs(-1, "step") },
+    { name: "logs.scroll.down", title: "Scroll logs down", category: "Logs", run: () => ctx.scrollLogs(1, "step") },
+    { name: "logs.scroll.page-up", title: "Scroll logs page up", category: "Logs", run: () => ctx.scrollLogs(-0.8, "viewport") },
+    { name: "logs.scroll.page-down", title: "Scroll logs page down", category: "Logs", run: () => ctx.scrollLogs(0.8, "viewport") },
+    { name: "logs.scroll.top", title: "Scroll logs to top", category: "Logs", run: () => ctx.scrollLogs(-1, "content") },
+    { name: "logs.scroll.bottom", title: "Scroll logs to bottom", category: "Logs", run: () => ctx.scrollLogs(1, "content") },
+  ]
+  return specs
+}
+
+// Module-level registry handle so the palette/help/footer can enumerate the
+// active command set without threading the keymap through every component.
+let activeSpecs: CommandSpec[] = []
+let activeKeymap: PylonKeymap | null = null
+let activeOverrides: Record<string, string> = {}
+
+export function commandKey(spec: CommandSpec): string | undefined {
+  return activeOverrides[spec.name] ?? spec.key
+}
+
+export function getActiveCommandSpecs(): CommandSpec[] {
+  return activeSpecs
+}
+
+export function runCommandByName(name: string): void {
+  const spec = activeSpecs.find((candidate) => candidate.name === name)
+  if (spec) void spec.run()
+}
+
+export async function openCommandPalette(): Promise<void> {
+  const items = activeSpecs
+    .filter((spec) => spec.palette !== false)
+    .map((spec) => ({
+      id: spec.name,
+      label: spec.title,
+      detail: [spec.category, commandKey(spec)].filter(Boolean).join(" · "),
+    }))
+  const chosen = await openSelect({ title: "Command palette", items })
+  if (chosen) runCommandByName(chosen)
+}
+
+export async function openHelpDialog(): Promise<void> {
+  const lines = activeSpecs
+    .filter((spec) => commandKey(spec) !== undefined || spec.palette !== false)
+    .map((spec) => `${(commandKey(spec) ?? "(palette)").padEnd(12)} ${spec.title}`)
+  await openAlert({
+    title: "Keybindings",
+    body: [...lines, "", "meta+return  Submit composer (while composing)"].join("\n"),
+  })
+}
+
+export function footerHints(): string {
+  const hints = activeSpecs
+    .filter((spec) => spec.footer && commandKey(spec))
+    .map((spec) => `${commandKey(spec)} ${spec.title.toLowerCase().replace(/ \(.*\)$/, "")}`)
+  return ` ${hints.join("  ·  ")}`
+}
+
+export function filterPaletteItems(query: string) {
+  return filterSelectItems(
+    activeSpecs.filter((spec) => spec.palette !== false).map((spec) => ({ id: spec.name, label: spec.title })),
+    query,
+  )
+}
+
+// Installs the registry on a fresh keymap: command catalog + global layer
+// bindings + a logs-pane focus layer for scroll keys.
+export function installPylonKeymap(
+  renderer: CliRenderer,
+  ctx: CommandContext,
+  options: {
+    overrides?: Record<string, string>
+  } = {},
+): PylonKeymap {
+  const keymap = createDefaultOpenTuiKeymap(renderer)
+  const specs = buildCommandSpecs(ctx)
+  activeSpecs = specs
+  activeKeymap = keymap
+  activeOverrides = options.overrides ?? {}
+
+  keymap.registerLayer({
+    commands: specs.map((spec) => ({
+      name: spec.name,
+      title: spec.title,
+      desc: spec.title,
+      category: spec.category,
+      run: () => {
+        void spec.run()
+      },
+    })),
+  })
+
+  const globalBindings = specs
+    .filter((spec) => commandKey(spec) && !spec.name.startsWith("logs.scroll."))
+    .map((spec) => ({ key: commandKey(spec) as string, cmd: spec.name, desc: spec.title }))
+  keymap.registerLayer({ bindings: globalBindings })
+
+  return keymap
+}
+
+const scrollKeyDefaults: Record<string, string> = {
+  "logs.scroll.up": "up",
+  "logs.scroll.down": "down",
+  "logs.scroll.page-up": "pageup",
+  "logs.scroll.page-down": "pagedown",
+  "logs.scroll.top": "home",
+  "logs.scroll.bottom": "end",
+}
+
+// Focus-scoped scroll bindings for the logs pane; installed once the
+// scrollbox renderable exists (called from the ref callback in app.tsx).
+export function registerLogsScrollLayer(keymap: PylonKeymap, target: Renderable): () => void {
+  return keymap.registerLayer({
+    target,
+    targetMode: "focus",
+    bindings: Object.entries(scrollKeyDefaults).map(([cmd, key]) => ({
+      key: activeOverrides[cmd] ?? key,
+      cmd,
+      desc: cmd,
+    })),
+  })
+}
+
+export function resetCommandRegistry(): void {
+  activeSpecs = []
+  activeKeymap = null
+  activeOverrides = {}
+}
+
+export function getActiveKeymap(): PylonKeymap | null {
+  return activeKeymap
+}
+
+export type { KeyEvent }
+
+// Composer focus layer: Tab must switch focus even while the textarea's own
+// editing bindings are active, so it is bound on the composer target with
+// focus scope (focus layers outrank globals).
+export function registerComposerFocusLayer(keymap: PylonKeymap, target: Renderable): () => void {
+  return keymap.registerLayer({
+    target,
+    targetMode: "focus",
+    bindings: [{ key: activeOverrides["focus.toggle"] ?? "tab", cmd: "focus.toggle", desc: "Switch focus" }],
+  })
+}

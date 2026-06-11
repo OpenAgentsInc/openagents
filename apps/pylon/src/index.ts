@@ -27,7 +27,8 @@ import {
   superviseLoop,
   type PylonNodeRuntime,
 } from "./node/runtime"
-import { runOpencodeStream, summarizeOpenCodeEvent } from "./opencode-run"
+import { runOpencodeStream } from "./opencode-run"
+import { loadKeybindOverrides } from "./node/keybinds"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -330,8 +331,33 @@ const runPylonNode = Effect.gen(function* () {
   })
   dashboardUi = ui
 
+  const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+
+  // User keybind overrides (apps/pylon home keybinds.json, Effect-Schema
+  // validated). Invalid files are reported and ignored.
+  const keybinds = yield* Effect.promise(() => loadKeybindOverrides(bootstrapSummary.paths.home))
+  if (keybinds.state === "invalid") {
+    yield* logMessage(runtime, "info", `[Keybinds] Ignoring invalid ${keybinds.path}: ${keybinds.error}`)
+  }
+
   const dashboard = yield* Effect.tryPromise({
-    try: () => ui.startDashboard({ onRequestShutdown: requestShutdown }),
+    try: () =>
+      ui.startDashboard({
+        onRequestShutdown: requestShutdown,
+        verbose: verboseMode,
+        keybindOverrides: keybinds.overrides,
+        onVerboseChange: (verbose) => {
+          verboseMode = verbose
+        },
+        // Money flows stay node-side; the view invokes these only after an
+        // explicit confirm dialog (issue #4738 exit criterion).
+        walletActions: {
+          send: (destinationRef, amountSats) => sendWithMdk(destinationRef, amountSats),
+          receive: (amountSats) => receiveWithMdk(amountSats),
+          admitPayoutTarget: (kind, ref) =>
+            Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
+        },
+      }),
     catch: (error) => new Error(`Failed to initialize OpenTUI renderer: ${String(error)}`),
   })
   yield* Effect.addFinalizer(() =>
@@ -354,7 +380,6 @@ const runPylonNode = Effect.gen(function* () {
       : "Pylon v0.3 ready. Logs are quiet by default - relaunch with --verbose for service detail.",
   )
 
-  const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
   const localState = yield* Effect.tryPromise({
     try: () => ensurePylonLocalState(bootstrapSummary),
     catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
