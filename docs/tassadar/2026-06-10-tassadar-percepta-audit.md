@@ -687,3 +687,35 @@ disclosure flow's own gates.
   Programmable Computers" (ICML 2023); Dziri et al., "Faith and Fate:
   Limits of Transformers on Compositionality" (NeurIPS 2023 — the learned
   -execution length-generalization plateau)
+
+---
+
+## Addendum (2026-06-11): What Happened To The Continuation
+
+The "What A Continuation Would Look Like (Not Filed)" section above is
+now historical. Status of its four items:
+
+1. **Operator replay/inspection surface** — still open; now implied by
+   `RESEARCH_PLAN.md` W2's factory monitor and the evolution loop's
+   public-tick-monitor blocker.
+2. **Executor-trace homework** — filed as openagents #4684 with the
+   `exact_trace_replay` verification class in #4674, and then *run*: the
+   PoC promise `compute.tassadar_executor_poc.v1` went green 2026-06-10
+   (live Pylon dispatch, separate-device replay verdicts including a
+   tampered-digest rejection, one paid Lightning closeout).
+3. **Capability envelope consumer** — still open; assigned to
+   `RESEARCH_PLAN.md` W4 step 1.
+4. **Registry promise via the disclosure flow** — happened, twice: the
+   PoC promise (green) and `artanis.tassadar_evolution_loop.v1`
+   (yellow, four blockers, tracking issue #4697).
+
+Two facts discovered since the audit that bear on its conclusions: the
+seventeen-issue executor-compiler campaign (psionic #1098–#1114)
+completed the same day, building the IR-level pipeline this audit could
+only anticipate; and the first autonomous overnight run of the loop
+exposed the projection-staleness defect class (its public report and
+capacity funnel did not know about its own accepted work — openagents
+#4745, #4746), which `RESEARCH_PLAN.md` §6 has since made a standing
+method rule. The unified program now lives in
+[`RESEARCH_PLAN.md`](RESEARCH_PLAN.md); this audit remains the canonical
+history through 2026-06-10.

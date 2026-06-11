@@ -265,3 +265,15 @@ in this folder for the lane itself):
 - Reference implementation: `projects/repos/transformer-vm` (read-only;
   port ideas, never vendor)
 - First post notes: covered inside the audit's Percepta lineage section
+
+---
+
+## Addendum (2026-06-11)
+
+These notes were written from the second Percepta post. Both posts have
+since been read in full and taught from zero — with the repo tour, our
+implementation map, and the market reading — in
+[`2026-06-11-llm-computer-full-introduction.md`](2026-06-11-llm-computer-full-introduction.md);
+the program built on these concepts is directed by
+[`RESEARCH_PLAN.md`](RESEARCH_PLAN.md). These notes remain the compact
+per-concept reference for the construction itself.

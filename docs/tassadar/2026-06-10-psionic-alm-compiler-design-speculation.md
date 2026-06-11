@@ -311,3 +311,34 @@ openagents #4678).
 - Business ramifications: `work-that-proves-itself.md`
 - Reference implementation (read-only; port ideas, never vendor):
   `projects/repos/transformer-vm`
+
+---
+
+## Addendum (2026-06-11): Status Of This Design
+
+The campaign this document designed is complete (psionic #1098–#1114);
+the phasing table above records the landings through batch 2. Updates to
+statements that time has overtaken:
+
+- The line "no OpenAgents registry promise exists or should exist before
+  E3 at minimum" is superseded by events in its own spirit: E3's bounded
+  slice landed, and the owner then approved the scoped
+  `compute.tassadar_executor_poc.v1` promise, which went green with live
+  dispatch, separate-device replay verdicts, and a paid closeout on
+  2026-06-10. The disclosure-gated posture held exactly as designed.
+- **E4 (MILP scheduling)** remains open and is now
+  [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) W1 deliverable 3, with the
+  added requirement of formal liveness/slot-reuse validation.
+- **E6 (served compiled artifacts)** remains open and is now W4 step 1
+  (capability envelopes, executor homework, disclosure-gated serving).
+- The full `core_i32_v2`+ Wasm frontend from E3's open half is now W1
+  deliverable 1 — promoted from open item to the binding constraint on
+  the entire learning program, since corpus diversity for W2/W3 cannot
+  exceed the window.
+- The "What We Would Do Differently" invariant-first item is vindicated:
+  the differential harness found two real scheduler bugs on its first
+  run. The remaining do-differently items (dense weight materialization,
+  softmax bounds) are W1 deliverables 2 and 4.
+
+This document stays as the design of record for the campaign it
+specified; forward direction lives in the research plan.

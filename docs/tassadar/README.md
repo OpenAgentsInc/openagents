@@ -1,18 +1,24 @@
 # Tassadar: The LLM as a Computer
 
-> Status: research essay and folder index, 2026-06-10. Everything described
-> here is committed public code in `OpenAgentsInc/psionic` with tests and
-> stated claim boundaries, or published external research credited inline.
-> Nothing here is a served product or a capability claim beyond the
-> committed parity tests. One scoped registry promise exists by owner
-> decision (2026-06-10): `compute.tassadar_executor_poc.v1`, a bounded
-> proof of concept for executor-trace work on real Pylons — **green as
-> of 2026-06-10** (transition receipt
+> Status: research essay and folder index, updated 2026-06-11. Everything
+> described here is committed public code in `OpenAgentsInc/psionic` with
+> tests and stated claim boundaries, or published external research
+> credited inline. Nothing here is a served product or a capability claim
+> beyond the committed parity tests. Two scoped registry promises exist by
+> owner decision: `compute.tassadar_executor_poc.v1` — **green as of
+> 2026-06-10** (transition receipt
 > `promise_transition_99b561e9-74f1-4c9a-90cc-cd7c0aea13bd`): a real
 > Pylon executed the digest-pinned workload, the production worker
 > replayed it as a separate validator device with Verified/Rejected
-> challenge receipts, and one operator-funded paid closeout settled
-> over real Lightning. All other publication gates stay closed. Companion documents are indexed
+> challenge receipts, and one operator-funded paid closeout settled over
+> real Lightning — and `artanis.tassadar_evolution_loop.v1` (**yellow**),
+> the standing automated dispatch-verify-accumulate loop, four blockers
+> open. Its first overnight run dispatched and accepted real assignments
+> autonomously; that claim is operator-attested only until the stale
+> public projections and unresolvable evidence refs found by agent
+> Orrery's audit are fixed (openagents #4745, #4746). All other
+> publication gates stay closed. The unified research directive is
+> [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md); companion documents are indexed
 > at the end.
 
 ## The Question

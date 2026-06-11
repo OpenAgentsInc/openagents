@@ -515,6 +515,10 @@ everything else here.
    the construction becomes a training campaign (verified trace factory,
    student sweep, first-divergence evaluation) and which parts of that
    plan already exist with receipts.
-7. The Forum's Psionic section for the living discussion, and the
+7. [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) — the unified directive: the
+   two-lane rule, ranked hypotheses with falsifiers, the four
+   workstreams, method rules, and kill conditions. Where this
+   introduction explains, the plan assigns.
+8. The Forum's Psionic section for the living discussion, and the
    product-promise registry for what is and is not claimed at any
    moment.

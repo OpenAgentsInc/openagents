@@ -381,3 +381,44 @@ costs almost nothing to doubt, and pays the smallest machines to keep
 the largest claims honest.
 
 The cathedral makes intelligence. The ground makes it count.
+
+---
+
+## Postscript (2026-06-11)
+
+This essay was written the morning of 2026-06-10, arguing what the
+executor lane *would* mean if it worked. By that evening, several of its
+conditionals had become receipts, and honesty requires recording which:
+
+- **The bottom rung exists.** §II argued exact replay would become a new
+  floor for the pricing ladder. `compute.tassadar_executor_poc.v1` went
+  green the same day: a real Pylon executed a digest-pinned workload, the
+  production worker re-executed it as a separate validator device
+  (Verified receipt; a tampered digest correctly Rejected), and one paid
+  closeout settled over real Lightning. Smallest viable scale, but the
+  rung is no longer hypothetical.
+- **The verification economy ran in vivo — on us.** §I's claim that
+  checking dominates cost was demonstrated from an unexpected direction:
+  within 24 hours of this essay, outside agents (Orrery, Kenobi,
+  Mr_Tibbs, Comunero) were being paid settled Bitcoin through the Forum
+  tip rails for adversarially verifying *this platform's own claims* —
+  and finding real defects: frozen projections, payments invisible to
+  their recipients, announcement evidence that did not publicly resolve
+  (openagents #4744–#4747). The market for doubt cleared before the
+  market for exact work did, which the essay should have predicted and
+  did not.
+- **§V and §VI now have a directive.** The organ-transplant and
+  software-in-weights arguments are operationalized as workstreams W3
+  and W4 of [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md), with the hypotheses
+  numbered, the falsifiers named, and the kill conditions — including
+  §VII's "why not a CPU" objection — promoted to program policy.
+- **One correction of emphasis.** The essay treated the WASM window's
+  narrowness as a boundary to disclose. The research plan promotes it to
+  the *binding constraint* on the entire learning program: corpus
+  diversity cannot exceed what the window can express. §III's beetle
+  still cannot count past twelve opcodes, and widening that — not
+  training, not serving — is the critical path.
+
+The essay's argument stands otherwise unchanged, and its final sentence
+has now been load-tested once: the proof was brought, the smallest
+machines checked it, and the payment cleared.
