@@ -121,6 +121,18 @@ describe("public projection freshness check", () => {
             responses: { '200': okJson('Dashboard.', '#/components/schemas/PublicLaunchDashboard') },
           }),
         },
+        '/api/forum/work-requests': {
+          get: operation({
+            operationId: 'listForumWorkRequests',
+            responses: { '200': okJson('Work requests.', '#/components/schemas/ForumWorkRequestListResponse') },
+          }),
+        },
+        '/api/forum/moderation/queue': {
+          get: operation({
+            operationId: 'listForumModerationQueue',
+            responses: { '200': okJson('Moderation queue.', '#/components/schemas/ForumModerationQueueResponse') },
+          }),
+        },
       })
     `;
     const inventory = buildInventory({
@@ -140,6 +152,17 @@ describe("public projection freshness check", () => {
           schema: "PublicLaunchDashboard",
           surface: "/api/public/launch-dashboard -> PublicLaunchDashboard",
         }),
+        expect.objectContaining({
+          operationId: "listForumWorkRequests",
+          schema: "ForumWorkRequestListResponse",
+          surface:
+            "/api/forum/work-requests -> ForumWorkRequestListResponse",
+        }),
+      ]),
+    );
+    expect(inventory).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ schema: "ForumModerationQueueResponse" }),
       ]),
     );
   });
