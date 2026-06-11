@@ -10,6 +10,13 @@ Target surface: `apps/pylon/src/index.ts` and successors
 Tracking issues: Phase 0 #4736 · Phase 1 #4737 · Phase 2 #4738 · Phase 3
 \#4739 · Phase 4 #4740 · Phase 5 #4741 · Phase 6 #4742
 
+Status: Phase 0 shipped (#4736, with quiet startup #4743). Phase 1 shipped
+(#4737): the dashboard is Solid components on `@opentui/solid` under
+`apps/pylon/src/tui/` (theme tokens, view store, Effect<->Solid bridge,
+per-pane error boundaries), with the Solid transform loaded via bunfig
+preload in dev/tests and a one-shot `--preload` re-exec for the packaged
+bin.
+
 ## Goal and non-goals
 
 **Goal:** bring the Pylon TUI mostly into parity with opencode's TUI as the

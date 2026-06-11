@@ -1,0 +1,8 @@
+# Registers the @opentui/solid JSX transform for dev runs (`bun src/index.ts`
+# from this directory) and tests. The packaged `pylon` bin runs from arbitrary
+# cwds without this file; src/index.ts re-execs with --preload in that case
+# (see ensureSolidRuntime).
+preload = ["@opentui/solid/preload"]
+
+[test]
+preload = ["@opentui/solid/preload"]
