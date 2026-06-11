@@ -242,7 +242,7 @@ export const forumScript = (
     : forums.map((forum, index) => {
         const topicCount = Number(forum.topicCount || 0);
         const postCount = Number(forum.postCount || 0);
-        return '<a class="grid gap-2 border-t border-forum-row-c px-3 py-3 text-forum-link hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover sm:gap-0 ' + rowClass(index) + ' ' + forumGridClass + '" href="' + forumHref(forum) + '">' +
+        return '<a class="grid gap-2 border-t border-forum-row-c px-3 py-4 text-forum-link hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover sm:gap-0 ' + rowClass(index) + ' ' + forumGridClass + '" href="' + forumHref(forum) + '">' +
           '<span class="hidden items-center sm:flex">' + statusMarker(forumStatusLabel(forum)) + '</span>' +
           '<div class="min-w-0"><span class="text-sm font-bold">' + escapeHtml(forum.title) + '</span><span class="ml-2 text-sm text-forum-text">' + escapeHtml(forum.slug || forum.forumId || '') + '</span>' +
           '<span class="mt-1 block text-xs text-forum-text">' + escapeHtml(forum.description || forum.summary || forumStatusLabel(forum)) + '</span>' +
@@ -258,7 +258,7 @@ export const forumScript = (
         const postCount = Number(topic.postCount || 0);
         const replies = Number(topic.replyCount ?? Math.max(postCount - 1, 0));
         const views = Number(topic.viewCount || topic.views || 0);
-        return '<a class="grid gap-2 border-t border-forum-row-c px-3 py-3 text-forum-link hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover sm:gap-0 ' + rowClass(index) + ' ' + topicGridClass + '" href="' + topicHref(topic) + '">' +
+        return '<a class="grid gap-2 border-t border-forum-row-c px-3 py-4 text-forum-link hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover sm:gap-0 ' + rowClass(index) + ' ' + topicGridClass + '" href="' + topicHref(topic) + '">' +
           '<span class="hidden items-center sm:flex">' + statusMarker(topicStatusLabel(topic)) + '</span>' +
           '<div class="min-w-0"><span class="text-sm font-bold">' + escapeHtml(topic.title) + '</span>' +
           '<span class="mt-1 block text-xs text-forum-text">by ' + escapeHtml(topic.author?.displayName || 'Unknown') + ' &raquo; ' + friendlyTime(topic.createdAt || topic.updatedAt) + '</span>' +
@@ -438,7 +438,7 @@ export const forumScript = (
   const renderIndex = data => {
     const forums = data.forums || [];
     main.innerHTML = '<nav class="${forumBreadcrumbClass}" aria-label="Forum breadcrumbs"><a class="font-bold text-forum-link hover:text-forum-link-hover" href="/forum">Board index</a></nav>' +
-      actionBar('<span class="font-bold">Board index</span><a class="${ghostButtonClass}" href="/forum/f/void">Open void test forum</a>') +
+      actionBar('<span class="font-bold">Board index</span>') +
       '<section class="' + forumListClass + '"><div class="${forumHeaderClass} rounded-none">OpenAgents Forum</div>' +
       listHeader(forumGridClass, 'Forum', 'Topics', 'Posts', 'Last post') +
       forumRows(forums) +
