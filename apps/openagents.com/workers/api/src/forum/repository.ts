@@ -475,6 +475,14 @@ type AgentProfileRow = Readonly<{
   user_id: string
 }>
 
+type AgentProfileOwnerClaimRow = Readonly<{
+  decided_at: string | null
+  id: string
+  owner_user_id: string
+  receipt_ref: string
+  updated_at: string
+}>
+
 type ForumTipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
@@ -1048,12 +1056,39 @@ const agentOwnerHandoff = {
   agentTokenStatus: 'created' as const,
   claimEndpoint: 'https://openagents.com/api/agents/claims',
   claimPageTemplate: 'https://openagents.com/agents/claims/{claimId}',
+  claimReceiptRefs: [],
+  claimRef: null,
   humanLoginStatus: 'owner_claim_required' as const,
   instruction:
     'An agent bearer token exists, but no human owner login account has been created for this agent unless an owner claim is approved. Create a pending owner claim, give the human owner the returned claimUrl, and tell them to sign in through the ownerLoginTemplate URL with the concrete claimId.',
   ownerLoginTemplate:
     'https://openagents.com/login/github?returnTo=/agents/claims/{claimId}',
+  ownerUserRef: null,
 }
+
+const agentOwnerHandoffForClaim = (
+  claim: AgentProfileOwnerClaimRow | null,
+) =>
+  claim === null
+    ? agentOwnerHandoff
+    : {
+        agentTokenStatus: 'created' as const,
+        claimEndpoint: 'https://openagents.com/api/agents/claims',
+        claimPageTemplate: 'https://openagents.com/agents/claims/{claimId}',
+        claimReceiptRefs: [claim.receipt_ref],
+        claimRef: claim.id,
+        humanLoginStatus: 'owner_claim_approved' as const,
+        instruction:
+          'A human owner claim has been approved for this agent. Public profile projection exposes only the owner ref, claim ref, and claim receipt ref; private owner account details remain hidden.',
+        ownerLoginTemplate:
+          'https://openagents.com/login/github?returnTo=/agents/claims/{claimId}',
+        ownerUserRef: `owner:${claim.owner_user_id}`,
+      }
+
+const latestIso = (values: ReadonlyArray<string | null>): string =>
+  values
+    .filter((value): value is string => value !== null)
+    .sort((left, right) => right.localeCompare(left))[0] ?? ''
 
 const topicActivityFromRow = (
   row: ForumAgentActivityTopicRow,
@@ -1089,10 +1124,17 @@ const postActivityFromRow = (
 
 const agentProfileFromRow = (
   row: AgentProfileRow,
+  ownerClaim: AgentProfileOwnerClaimRow | null,
   stats: typeof actorStatsDefault,
   activity: ReadonlyArray<ForumAgentProfileActivityItem>,
-): ForumAgentPublicProfile =>
-  decodeForumAgentPublicProfileResponse({
+): ForumAgentPublicProfile => {
+  const updatedAt = latestIso([
+    row.updated_at,
+    ownerClaim?.decided_at ?? null,
+    ownerClaim?.updated_at ?? null,
+  ])
+
+  return decodeForumAgentPublicProfileResponse({
     profile: {
       activity,
       actor: {
@@ -1105,7 +1147,7 @@ const agentProfileFromRow = (
       },
       avatarUrl: row.avatar_url,
       createdAt: row.created_at,
-      ownerHandoff: agentOwnerHandoff,
+      ownerHandoff: agentOwnerHandoffForClaim(ownerClaim),
       profileRef: `agent_profile:${row.user_id}`,
       publicProjection: decodeForumPublicProjection({
         classificationCaveatRef: 'classification.public_agent_profile',
@@ -1114,9 +1156,12 @@ const agentProfileFromRow = (
         excludedPrivateRefs: ['primary_email', 'credential', 'metadata_json'],
         publicSafe: true,
         redactionPolicyRef: 'redaction.agent_profile.public.v1',
-        safeArtifactRefs: [`agent_profile:${row.user_id}`],
-        safeReceiptRefs: [],
-        trustTier: 'reviewed',
+        safeArtifactRefs: [
+          `agent_profile:${row.user_id}`,
+          ...(ownerClaim === null ? [] : [ownerClaim.id]),
+        ],
+        safeReceiptRefs: ownerClaim === null ? [] : [ownerClaim.receipt_ref],
+        trustTier: ownerClaim === null ? 'reviewed' : 'verified',
       }),
       publicUrl: publicProfileUrl(
         row.user_id,
@@ -1124,10 +1169,12 @@ const agentProfileFromRow = (
       ),
       source: 'agent_profile',
       stats,
-      updatedAt: row.updated_at,
-      verificationState: 'registered_agent',
+      updatedAt,
+      verificationState:
+        ownerClaim === null ? 'registered_agent' : 'owner_claimed_agent',
     },
   }).profile
+}
 
 const snapshotProfileFromActor = (
   actor: ForumActorSummary,
@@ -1850,6 +1897,29 @@ const readForumAgentProfileActivity = (
       .slice(0, boundedLimit)
   })
 
+const readApprovedOwnerClaimForAgent = (
+  db: D1Database,
+  agentUserId: string,
+): Effect.Effect<AgentProfileOwnerClaimRow | null, ForumStorageError> =>
+  d1Effect('forum.readAgentPublicProfile.ownerClaim', () =>
+    db
+      .prepare(
+        `SELECT id,
+                owner_user_id,
+                receipt_ref,
+                decided_at,
+                updated_at
+           FROM agent_owner_claims
+          WHERE agent_user_id = ?
+            AND status = 'approved'
+            AND owner_user_id IS NOT NULL
+          ORDER BY decided_at DESC, updated_at DESC
+          LIMIT 1`,
+      )
+      .bind(agentUserId)
+      .first<AgentProfileOwnerClaimRow>(),
+  )
+
 export const readForumAgentPublicProfile = (
   db: D1Database,
   profileRef: string,
@@ -1883,12 +1953,13 @@ export const readForumAgentPublicProfile = (
 
     if (row !== null) {
       const actorRef = `agent:${row.user_id}`
-      const [stats, activity] = yield* Effect.all([
+      const [ownerClaim, stats, activity] = yield* Effect.all([
+        readApprovedOwnerClaimForAgent(db, row.user_id),
         readActorStats(db, actorRef),
         readForumAgentProfileActivity(db, actorRef),
       ])
 
-      return agentProfileFromRow(row, stats, activity)
+      return agentProfileFromRow(row, ownerClaim, stats, activity)
     }
 
     const snapshot = yield* d1Effect(

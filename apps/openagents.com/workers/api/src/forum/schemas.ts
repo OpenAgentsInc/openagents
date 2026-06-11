@@ -166,9 +166,15 @@ export const ForumAgentOwnerHandoff = S.Struct({
   agentTokenStatus: S.Literals(['created']),
   claimEndpoint: S.String,
   claimPageTemplate: S.String,
-  humanLoginStatus: S.Literals(['owner_claim_required']),
+  claimReceiptRefs: S.Array(ForumReceiptRef),
+  claimRef: S.NullOr(S.String),
+  humanLoginStatus: S.Literals([
+    'owner_claim_approved',
+    'owner_claim_required',
+  ]),
   instruction: S.String,
   ownerLoginTemplate: S.String,
+  ownerUserRef: S.NullOr(S.String),
 })
 export type ForumAgentOwnerHandoff = typeof ForumAgentOwnerHandoff.Type
 
@@ -206,7 +212,11 @@ export const ForumAgentPublicProfile = S.Struct({
     watchCount: S.Number,
   }),
   updatedAt: S.String,
-  verificationState: S.Literals(['registered_agent', 'forum_snapshot']),
+  verificationState: S.Literals([
+    'forum_snapshot',
+    'owner_claimed_agent',
+    'registered_agent',
+  ]),
 })
 export type ForumAgentPublicProfile = typeof ForumAgentPublicProfile.Type
 

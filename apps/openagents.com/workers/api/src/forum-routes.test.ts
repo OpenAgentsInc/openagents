@@ -282,6 +282,16 @@ type AgentProfileRow = Readonly<{
   user_id: string
 }>
 
+type AgentOwnerClaimRow = Readonly<{
+  agent_user_id: string
+  decided_at: string | null
+  id: string
+  owner_user_id: string
+  receipt_ref: string
+  status: 'approved' | 'expired' | 'pending' | 'rejected' | 'revoked'
+  updated_at: string
+}>
+
 type WatchRow = Readonly<{
   actor_ref: string
   archived_at: string | null
@@ -1206,6 +1216,7 @@ class ForumRouteStore {
   workRequestLifecyclePosts: Array<WorkRequestLifecyclePostRow> = []
   workRequestOffers: Array<WorkRequestOfferRow> = []
   workRequestAcceptances: Array<WorkRequestAcceptanceRow> = []
+  agentOwnerClaims: Array<AgentOwnerClaimRow> = []
 }
 
 class ForumRouteStatement implements D1PreparedStatement {
@@ -1300,6 +1311,24 @@ class ForumRouteStatement implements D1PreparedStatement {
         this.store.agentProfiles.find(
           item => item.user_id === userId || item.slug === slug,
         ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM agent_owner_claims')) {
+      const agentUserId = String(this.values[0])
+      const row =
+        this.store.agentOwnerClaims
+          .filter(
+            item =>
+              item.agent_user_id === agentUserId &&
+              item.status === 'approved',
+          )
+          .sort(
+            (left, right) =>
+              (right.decided_at ?? '').localeCompare(left.decided_at ?? '') ||
+              right.updated_at.localeCompare(left.updated_at),
+          )[0] ?? null
 
       return Promise.resolve(row as T | null)
     }
@@ -5612,6 +5641,81 @@ describe('Forum routes', () => {
     )
     expect(browserProfile).not.toContain('should_not_leak')
     expect(browserProfile).not.toContain('Visible Slug Void Topic')
+  })
+
+  test('refreshes public agent profiles from approved owner claims', async () => {
+    const store = new ForumRouteStore()
+    const agentUserId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const beforeResponse = await route(
+      store,
+      '/api/agents/profiles/route-test-agent',
+    )
+    const before = await beforeResponse.json()
+
+    store.agentOwnerClaims.push({
+      agent_user_id: agentUserId,
+      decided_at: '2026-06-10T21:27:56.197Z',
+      id: 'agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+      owner_user_id: 'github:17035300',
+      receipt_ref:
+        'agent_claim_receipt_agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+      status: 'approved',
+      updated_at: '2026-06-10T21:27:56.197Z',
+    })
+
+    const afterResponse = await route(
+      store,
+      '/api/agents/profiles/route-test-agent',
+    )
+    const browserResponse = await route(
+      store,
+      `/forum/u/${agentUserId}/route-test-agent`,
+    )
+    const after = await afterResponse.json()
+    const browserProfile = await browserResponse.text()
+
+    expect(beforeResponse.status).toBe(200)
+    expect(before).toMatchObject({
+      profile: {
+        ownerHandoff: {
+          humanLoginStatus: 'owner_claim_required',
+          ownerUserRef: null,
+        },
+        updatedAt: '2026-06-05T20:00:00.000Z',
+        verificationState: 'registered_agent',
+      },
+    })
+    expect(afterResponse.status).toBe(200)
+    expect(after).toMatchObject({
+      profile: {
+        ownerHandoff: {
+          claimReceiptRefs: [
+            'agent_claim_receipt_agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+          ],
+          claimRef: 'agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+          humanLoginStatus: 'owner_claim_approved',
+          ownerUserRef: 'owner:github:17035300',
+        },
+        publicProjection: {
+          safeReceiptRefs: [
+            'agent_claim_receipt_agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+          ],
+          trustTier: 'verified',
+        },
+        updatedAt: '2026-06-10T21:27:56.197Z',
+        verificationState: 'owner_claimed_agent',
+      },
+    })
+    expect(browserResponse.status).toBe(200)
+    expect(browserProfile).toContain('owner_claim_approved')
+    expect(browserProfile).toContain('owner:github:17035300')
+    expect(browserProfile).toContain(
+      'agent_claim_receipt_agent_claim_45535152-f195-4b01-95fa-0c1b9bf1f6ff',
+    )
+    expect(JSON.stringify(after)).not.toContain('agent@example.com')
+    expect(JSON.stringify(after)).not.toContain('oa_agent')
+    expect(browserProfile).not.toContain('CLAIM_ID')
+    expect(browserProfile).not.toContain('owner_claim_required')
   })
 
   test('creates idempotent watches, bookmarks, and follows for authorized agents', async () => {

@@ -541,6 +541,24 @@ const renderAgentProfilePage = (
     profile.activity.length === 0
       ? '<p>No public Forum activity is available for this profile.</p>'
       : profile.activity.map(renderAgentProfileActivityItem).join('')
+  const ownerHandoffDetails =
+    profile.ownerHandoff.humanLoginStatus === 'owner_claim_approved'
+      ? `<p>${escapeHtml(profile.ownerHandoff.instruction)}</p>
+        <dl>
+          <div class="row"><dt>Agent token</dt><dd>${escapeHtml(profile.ownerHandoff.agentTokenStatus)}</dd></div>
+          <div class="row"><dt>Human login</dt><dd>${escapeHtml(profile.ownerHandoff.humanLoginStatus)}</dd></div>
+          <div class="row"><dt>Owner</dt><dd><code>${escapeHtml(profile.ownerHandoff.ownerUserRef ?? 'owner.public.unavailable')}</code></dd></div>
+          <div class="row"><dt>Claim</dt><dd><code>${escapeHtml(profile.ownerHandoff.claimRef ?? 'claim.public.unavailable')}</code></dd></div>
+          <div class="row"><dt>Receipts</dt><dd>${profile.ownerHandoff.claimReceiptRefs.map(ref => `<code>${escapeHtml(ref)}</code>`).join(' ')}</dd></div>
+        </dl>`
+      : `<p>${escapeHtml(profile.ownerHandoff.instruction)}</p>
+        <dl>
+          <div class="row"><dt>Agent token</dt><dd>${escapeHtml(profile.ownerHandoff.agentTokenStatus)}</dd></div>
+          <div class="row"><dt>Human login</dt><dd>${escapeHtml(profile.ownerHandoff.humanLoginStatus)}</dd></div>
+          <div class="row"><dt>Create claim</dt><dd><code>${escapeHtml(profile.ownerHandoff.claimEndpoint)}</code></dd></div>
+          <div class="row"><dt>Claim page</dt><dd><code>${escapeHtml(ownerClaimUrl)}</code></dd></div>
+          <div class="row"><dt>Owner login</dt><dd><code>${escapeHtml(ownerLoginUrl)}</code></dd></div>
+        </dl>`
 
   return `<!doctype html>
 <html lang="en">
@@ -617,14 +635,7 @@ const renderAgentProfilePage = (
       </section>
       <section>
         <h2>Owner handoff</h2>
-        <p>${escapeHtml(profile.ownerHandoff.instruction)}</p>
-        <dl>
-          <div class="row"><dt>Agent token</dt><dd>${escapeHtml(profile.ownerHandoff.agentTokenStatus)}</dd></div>
-          <div class="row"><dt>Human login</dt><dd>${escapeHtml(profile.ownerHandoff.humanLoginStatus)}</dd></div>
-          <div class="row"><dt>Create claim</dt><dd><code>${escapeHtml(profile.ownerHandoff.claimEndpoint)}</code></dd></div>
-          <div class="row"><dt>Claim page</dt><dd><code>${escapeHtml(ownerClaimUrl)}</code></dd></div>
-          <div class="row"><dt>Owner login</dt><dd><code>${escapeHtml(ownerLoginUrl)}</code></dd></div>
-        </dl>
+        ${ownerHandoffDetails}
       </section>
       <section>
         <h2>Links</h2>
