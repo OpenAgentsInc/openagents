@@ -935,6 +935,52 @@ events span adapters. The standing laws (#4751/#4800 staleness gates,
 adapter inference, authority separation) bind every RK rung exactly
 as they bind the ladder above.
 
+### Addendum (2026-06-11, latest) — Pack A operationalization issues
+
+This addendum does not renumber the B/M/A/P, CX, or RK ladders. It records how
+the terminal-agent-system audits are now operationalized against the active
+#4786 sprint. Pack prefix **PA** (Pack A); tracked by parent **#4813** and
+child issues **#4814-#4823**. Source planning doc:
+`docs/autopilot-coder/terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`.
+
+**Why this pack exists.** The bootstrap loop, Codex peer adapter, cloud Pylon,
+card-on-file, scheduled launches, decision queue, and Agent Runtime Kernel have
+landed quickly. The remaining MVP risk is no longer "can the loop run at all?"
+It is whether unattended work, proof smokes, mobile/agent supervision, and
+public-safe closeouts are backed by typed events, artifacts, receipts,
+budgets, permission decisions, and structured non-interactive output.
+
+**Timing rule.** Pack A is an acceptance overlay, not a replacement ladder.
+It should not pause unrelated open rungs. M8 account-pool work, M11 repo/scope,
+M12 team budgets, M13 provider review, A2-A4, and post-MVP P-rungs can continue
+when they do not depend on unattended execution, decision notifications, proof
+smokes, or headless/API parity. Product-surface rungs can close on their scoped
+acceptance while the matching PA issues remain open for hardening. MVP-gating
+proof/door-open claims should wait for the Pack A receipts they cite,
+especially M10 (#4768), M14 (#4772), and the proof side of A1 (#4773). M9
+(#4767) remains split: the CI-safe deterministic leg can stay documented, but
+live smart-routing copy waits on the live two-account proof plus Pack A
+smoke/artifact/event/usage receipts. Do not reopen closed rungs merely to hold
+operational debt; cross-link the PA issue and clarify the claim boundary.
+
+| #    | Issue                                                                                                      | What it operationalizes                                                                                               | Main timing effect |
+| ---- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| PA1  | **Task supervisor for scheduled and background Autopilot runs** (#4814)                                    | Stable task refs, output refs, lifecycle events, cancellation, and closeout receipts for background work.              | Required evidence substrate for M10; supports A1 status parity. |
+| PA2  | **Schedule and continuation receipts for unattended Autopilot work** (#4815)                               | Schedule records, fired/skipped/cancelled receipts, continuation receipts, no-double-fire behavior.                    | Hardens M6; gates M10 proof quality. |
+| PA3  | **Notification and attention coordinator for Pack A decision and completion events** (#4816)               | Typed attention events, dedupe, notification delivery/failure receipts, waiting-state snapshots.                       | Hardens M7; gates M10 morning-review proof. |
+| PA4  | **Mobile and web companion projection for decisions and unattended runs** (#4817)                          | Phone-sized status/decision/artifact projection with idempotent action receipts and API peers.                         | Hardens M7; supports M10 and A1. |
+| PA5  | **Smoke receipt authority for Pack A MVP proofs** (#4818)                                                  | Proof-boundary discipline for CI-safe, local, staging, and live smokes; redaction and receipt requirements.            | Gates M9/M10/M14 claim closure. |
+| PA6  | **Artifact and receipt ledger for Pack A proof surfaces** (#4819)                                          | Artifact kinds and lifecycle receipt kinds for schedules, tasks, decisions, notifications, verification, and smokes.   | Gates proof citation for M10/M14; feeds P3/P9 later. |
+| PA7  | **Structured event log replay discipline for Pack A projections** (#4820)                                  | Replay reducers and event registry for schedule, task, decision, notification, artifact, usage, and smoke projections. | Prevents web/Pylon/API drift in A1 and M10. |
+| PA8  | **Usage budget and cost-stop projections for scheduled and background runs** (#4821)                       | Budget stops, context/cost separation, rate-limit/quota blockers, own-Pylon zero-credit proof.                         | Gates M6 auto-continuation safety and M10 budget proof. |
+| PA9  | **Permission and approval contract for headless and background Autopilot actions** (#4822)                 | Shared permission decisions, headless blockers, remote approval ids, denial rules, and public-safe audit events.        | Gates M7/M10 unattended action safety. |
+| PA10 | **Accessibility and non-interactive contract for Pack A agent and Pylon surfaces** (#4823)                 | TUI/plain/JSON/CI/headless output modes, structured blockers, no-color status, stable exit codes.                      | Required for A1 and credible unattended/headless claims. |
+
+The Pack A rule is deliberately simple: if a rung schedules, continues,
+notifies, blocks, asks for approval, completes in the background, or claims a
+proof, it must emit typed events and receipts. Model prose is not acceptance
+evidence.
+
 ## Part 5 — Boundaries that hold across everything above
 
 - **BYOK and no-resale, every lane.** Lane A leases the _customer's

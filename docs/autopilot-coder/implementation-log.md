@@ -1212,3 +1212,48 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api test src/agent-runtime-kernel.test.ts src/public-projection-staleness.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
 - `bun run --cwd packages/agent-runtime-schema test`
+
+## Pack A Operationalization / Issues #4813-#4823
+
+Issue parent: `https://github.com/OpenAgentsInc/openagents/issues/4813`
+
+Status: filed and documented as the proof/supervision acceptance overlay for
+the active #4786 Autopilot MVP sprint.
+
+Implemented:
+
+- Added Pack A as a tracked issue set:
+  - #4813 parent issue.
+  - #4814 task supervisor.
+  - #4815 schedule and continuation receipts.
+  - #4816 notification and attention coordinator.
+  - #4817 mobile and web companion projection.
+  - #4818 smoke receipt authority.
+  - #4819 artifact and receipt ledger.
+  - #4820 structured event-log replay discipline.
+  - #4821 usage budget and cost-stop projections.
+  - #4822 permission and approval contract.
+  - #4823 accessibility and non-interactive contract.
+- Added the Pack A tracking table and timing guidance to
+  `docs/autopilot-coder/terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`.
+- Added a #4786 epic comment clarifying timing: Pack A is an acceptance
+  overlay, not a replacement ladder. It should not pause unrelated M/A/P work,
+  but it does gate proof/claim closure for M9, M10, M14, and the proof side of
+  A1 where those issues cite Pack A receipts.
+- Updated the terminal-agent README and this top-level Autopilot Coder README
+  so the Pack A setup is discoverable from the folder index.
+
+Verification:
+
+- `gh issue list --repo OpenAgentsInc/openagents --state open --label pack-a`
+- `gh issue view 4813 --repo OpenAgentsInc/openagents`
+- `gh issue view 4786 --repo OpenAgentsInc/openagents --comments`
+
+Timing rule:
+
+- Product-surface rungs can close on their scoped acceptance while Pack A
+  issues carry remaining operational hardening.
+- MVP-gating proof or door-open claims should wait for their relevant Pack A
+  receipts.
+- Closed rungs should not be reopened only to hold operational debt; cross-link
+  the relevant Pack A issue and clarify the claim boundary instead.

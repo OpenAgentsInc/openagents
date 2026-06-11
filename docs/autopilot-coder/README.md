@@ -35,7 +35,10 @@ Forum reporting.
   measured against the six wedge problems, the two-stacks finding (the web
   product and the work-order/labor spine don't know each other exist), the
   three-lane placement model anchored by Pylons (hosted SHC / owner Pylon /
-  labor market), and the phased productize → unify → market roadmap.
+  labor market), and the phased productize → unify → market roadmap. It now
+  carries the Pack A timing overlay for proof/supervision operationalization:
+  #4813 tracks the parent, #4814-#4823 track the child subsystem issues, and
+  Pack A affects proof/claim closure without pausing unrelated rungs.
 - `implementation-log.md`: running issue-by-issue implementation notes for the
   Autopilot coder backlog.
 - `terminal-agent-systems/`: dated OpenAgents-native audits for 62 terminal
@@ -47,7 +50,9 @@ Forum reporting.
   hook, settings, authentication, Git/GitHub, editor, and browser/desktop
   integration systems, through collaboration, operations, release, evaluation,
   security, retention, onboarding, accessibility, localization, and managed
-  policy.
+  policy. Start with
+  `terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`
+  when deciding which audits to operationalize during the MVP sprint.
 - `no-spend-e2e-smoke.md`: documented command and retained-evidence checks for
   the public no-spend Autopilot Coder smoke.
 - `paid-e2e-smoke.md`: documented command and retained-evidence checks for the
