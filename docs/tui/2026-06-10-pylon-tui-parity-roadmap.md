@@ -15,7 +15,10 @@ Status: Phase 0 shipped (#4736, with quiet startup #4743). Phase 1 shipped
 `apps/pylon/src/tui/` (theme tokens, view store, Effect<->Solid bridge,
 per-pane error boundaries), with the Solid transform loaded via bunfig
 preload in dev/tests and a one-shot `--preload` re-exec for the packaged
-bin.
+bin. Phase 2 shipped (#4738): @opentui/keymap command registry, dialog
+stack (alert/confirm/prompt/select + toasts), ctrl+k palette, f1 help,
+footer hints, f2 verbose toggle, confirm-gated wallet commands, and
+user keybinds via `keybinds.json`.
 
 ## Goal and non-goals
 
