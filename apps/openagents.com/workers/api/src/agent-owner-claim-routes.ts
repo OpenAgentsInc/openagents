@@ -28,6 +28,10 @@ import {
   isoTimestampAfterIso,
   randomUuid,
 } from './runtime-primitives'
+import {
+  xClaimRewardEligibilityListResponse,
+  xClaimRewardEligibilityStatusResponse,
+} from './x-claim-reward-eligibility-routes'
 
 const CLAIM_TTL_MS = 1000 * 60 * 60 * 48
 const DEFAULT_CREDENTIAL_TTL_MS = 1000 * 60 * 60 * 24 * 90
@@ -232,11 +236,17 @@ export type AgentOwnerClaimStore = Readonly<{
   createXClaimReward: (
     record: XClaimRewardRecord,
   ) => Promise<XClaimRewardRecord>
+  listXClaimRewards: (
+    limit: number,
+  ) => Promise<ReadonlyArray<XClaimRewardRecord>>
   readXClaimRewardByChallengeId: (
     challengeId: string,
   ) => Promise<XClaimRewardRecord | undefined>
   readXClaimRewardById: (
     rewardId: string,
+  ) => Promise<XClaimRewardRecord | undefined>
+  readXClaimRewardByReceiptRef: (
+    receiptRef: string,
   ) => Promise<XClaimRewardRecord | undefined>
   updateXClaimRewardState: (input: {
     evidenceRefs: ReadonlyArray<string>
@@ -725,11 +735,33 @@ export const makeD1AgentOwnerClaimStore = (
 
       return (await readRewardByChallengeId(record.challengeId)) ?? record
     },
+    listXClaimRewards: async limit => {
+      const result = await db
+        .prepare(
+          `SELECT * FROM x_claim_reward_ledger
+           ORDER BY created_at DESC, id DESC
+           LIMIT ?`,
+        )
+        .bind(limit)
+        .all<Record<string, unknown>>()
+
+      return (result.results ?? []).map(rewardFromRow)
+    },
     readXClaimRewardByChallengeId: readRewardByChallengeId,
     readXClaimRewardById: async rewardId => {
       const row = await db
         .prepare(`SELECT * FROM x_claim_reward_ledger WHERE id = ? LIMIT 1`)
         .bind(rewardId)
+        .first<Record<string, unknown>>()
+
+      return row === null ? undefined : rewardFromRow(row)
+    },
+    readXClaimRewardByReceiptRef: async receiptRef => {
+      const row = await db
+        .prepare(
+          `SELECT * FROM x_claim_reward_ledger WHERE receipt_ref = ? LIMIT 1`,
+        )
+        .bind(receiptRef)
         .first<Record<string, unknown>>()
 
       return row === null ? undefined : rewardFromRow(row)
@@ -2310,6 +2342,39 @@ export const makeAgentOwnerClaimRoutes = <
 
       return Effect.promise(() =>
         dispatchRewardResponse(dependencies, request, env, rewardId),
+      )
+    }
+
+    // Public-safe x_claim_reward eligibility read path (#4754): the
+    // four-state lifecycle projection for the campaign ledger and for a
+    // single reward by id or receipt ref.
+    if (url.pathname === '/api/agents/claims/rewards') {
+      return Effect.promise(() =>
+        xClaimRewardEligibilityListResponse(
+          {
+            nowIso: dependencies.nowIso ?? currentIsoTimestamp,
+            store: dependencies.makeStore(env),
+          },
+          request,
+        ),
+      )
+    }
+
+    const rewardStatusMatch =
+      /^\/api\/agents\/claims\/rewards\/([^/]+)$/.exec(url.pathname)
+
+    if (rewardStatusMatch !== null) {
+      const rewardRef = decodeURIComponent(rewardStatusMatch[1] ?? '')
+
+      return Effect.promise(() =>
+        xClaimRewardEligibilityStatusResponse(
+          {
+            nowIso: dependencies.nowIso ?? currentIsoTimestamp,
+            store: dependencies.makeStore(env),
+          },
+          request,
+          rewardRef,
+        ),
       )
     }
 

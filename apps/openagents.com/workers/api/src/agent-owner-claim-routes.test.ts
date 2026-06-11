@@ -53,12 +53,22 @@ class MemoryAgentOwnerClaimStore implements AgentOwnerClaimStore {
     return record
   }
 
+  listXClaimRewards = async (limit: number) =>
+    [...this.rewards.values()]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, limit)
+
   readXClaimRewardByChallengeId = async (challengeId: string) =>
     [...this.rewards.values()].find(
       reward => reward.challengeId === challengeId,
     )
 
   readXClaimRewardById = async (rewardId: string) => this.rewards.get(rewardId)
+
+  readXClaimRewardByReceiptRef = async (receiptRef: string) =>
+    [...this.rewards.values()].find(
+      reward => reward.receiptRef === receiptRef,
+    )
 
   updateXClaimRewardState = async (input: {
     evidenceRefs: ReadonlyArray<string>
@@ -1539,6 +1549,122 @@ describe('agent owner claim routes', () => {
     expect(settled.status).toBe(200)
     expect(settledBody.reward.state).toBe('settled')
     expect(JSON.stringify(settledBody)).not.toContain('lnbc')
+  })
+
+  test('serves the public x_claim_reward eligibility read path after verification (#4754)', async () => {
+    const store = new MemoryAgentOwnerClaimStore()
+    await createClaim(store, {
+      makeUuid: makeUuidFactory([
+        'claim-12',
+        'user-12',
+        'credential-12',
+        'identity-12',
+      ]),
+    })
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-12/approve',
+        { method: 'POST' },
+      ),
+      {
+        makeUuid: makeUuidFactory(['user-12', 'credential-12', 'identity-12']),
+        nowIso: () => '2026-06-06T00:05:00.000Z',
+        session,
+      },
+    )
+    await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-12/x/challenge',
+        {
+          body: JSON.stringify({ xHandle: 'eligiblereader' }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['x-12', 'nonce-12']),
+        nowIso: () => '2026-06-06T00:06:00.000Z',
+        session,
+      },
+    )
+    const verifyResponse = await runRoute(
+      store,
+      new Request(
+        'https://openagents.com/api/agents/claims/agent_claim_claim-12/x/verify',
+        {
+          body: JSON.stringify({
+            tweetUrl: 'https://x.com/eligiblereader/status/1200',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        },
+      ),
+      {
+        makeUuid: makeUuidFactory(['reward-12']),
+        nowIso: () => '2026-06-06T00:07:00.000Z',
+        resolveXVerificationTweet: () =>
+          Promise.resolve({
+            authorHandle: 'eligiblereader',
+            htmlText:
+              'OpenAgents claim agent_claim_claim-12 oa-x-nonce12 https://openagents.com/agents/claims/agent_claim_claim-12',
+            state: 'visible',
+            tweetRef: 'x_tweet:1200',
+            tweetUrl: 'https://x.com/eligiblereader/status/1200',
+          }),
+        session,
+      },
+    )
+    const verifyBody = (await verifyResponse.json()) as {
+      reward: { receiptRef: string; rewardId: string }
+    }
+
+    // The owner cites the refs the verify response returned; both
+    // resolve on the public read path with no session.
+    const byReceiptRef = await runRoute(
+      store,
+      new Request(
+        `https://openagents.com/api/agents/claims/rewards/${verifyBody.reward.receiptRef}`,
+      ),
+      { session: undefined },
+    )
+    const byReceiptBody = (await byReceiptRef.json()) as Record<
+      string,
+      unknown
+    >
+
+    expect(byReceiptRef.status).toBe(200)
+    expect(byReceiptBody).toMatchObject({
+      contractVersion: 'projection.x_claim_reward_eligibility.v1',
+      reward: {
+        lifecycleStage: 'eligible',
+        receiptRef: verifyBody.reward.receiptRef,
+        rewardId: verifyBody.reward.rewardId,
+        state: 'eligible',
+      },
+    })
+
+    const list = await runRoute(
+      store,
+      new Request('https://openagents.com/api/agents/claims/rewards'),
+      { session: undefined },
+    )
+    const listBody = (await list.json()) as Record<string, unknown>
+
+    expect(list.status).toBe(200)
+    expect(listBody).toMatchObject({
+      counts: { eligible: 1 },
+      lifecycle: ['eligible', 'operator_approved', 'dispatched', 'settled'],
+    })
+    // No X handle, owner id, or agent user id leaves the ledger.
+    const publicJson = JSON.stringify(listBody) + JSON.stringify(byReceiptBody)
+    expect(publicJson).not.toContain('eligiblereader')
+    expect(publicJson).not.toContain('github:owner-1')
+    expect(publicJson).not.toContain('agent_user_user-12')
+    expect(typeof (listBody as { generatedAt?: unknown }).generatedAt).toBe(
+      'string',
+    )
   })
 
   test('refuses reward eligibility when the campaign budget is exhausted', async () => {
