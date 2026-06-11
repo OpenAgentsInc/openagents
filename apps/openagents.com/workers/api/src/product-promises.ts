@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.6'
+export const PublicProductPromisesVersion = '2026-06-11.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1232,22 +1232,30 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'training.device_capability_dataset.v1',
       productArea: 'training',
       audience: ['contributor', 'operator', 'public'],
-      state: 'planned',
+      state: 'yellow',
+      lastVerifiedAt: '2026-06-11',
       claim:
         'Benchmark assignments produce a public device-capability dataset across heterogeneous contributor hardware — matmul throughput, memory bandwidth, attention-kernel performance, sustained-versus-burst thermals — that honestly prices what each machine can earn.',
       safeCopy:
-        'Capability envelopes, the live capacity funnel with dark-capacity reason codes, and psionic-collectives quantized collective benchmarking exist. The paid benchmark work kind, statistical cross-check verification across same-class devices, and the public dataset projection are planned (#4681).',
+        'The public device-capability dataset is live with its first receipted rows: two paid benchmark assignments ran the bounded CS336 A2 suite on two registered Pylons, the production Worker verified all four metrics with statistical_cross_check on real cross-device agreement scores, both 30-sat closeouts settled over real Lightning with public receipts, and the dataset serves class-level distributions with earning estimates labeled modeled-from-measured (#4681). Coverage is one device class from two Pylons on a single physical host; thermal-throttle detection and a second device class are still missing.',
       unsafeCopy:
-        'Do not claim a public device-capability dataset exists, that benchmark work currently pays, or quote per-device earning estimates without measured receipts.',
+        'Do not claim multi-class or fleet-scale dataset coverage, that the two same-host Pylons prove cross-machine replication, that benchmark work is a standing paid market beyond the receipted closeouts, or quote earning estimates as guarantees rather than modeled-from-measured labels.',
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'docs/training/2026-06-10-qvac-edge-stack-analysis.md',
+        'route:/api/training/device-capabilities/a2',
         'route:/api/public/pylon-capacity-funnel',
+        'apps/openagents.com/docs/2026-06-11-cs336-a2-device-capability-paid-closeout-evidence.md',
+        'receipt.nexus_pylon.settlement.assignment_cs336_a2_benchmark_worker_20260611060805',
+        'receipt.nexus_pylon.settlement.assignment_cs336_a2_benchmark_validator_20260611060805',
+        'verdict.training.statistical_cross_check.verified.training.verification.challenge.c80ba722-0d0e-4e06-9e33-599ad784',
+        'promise_transition_af246d4d-f37e-456a-b5ee-fba2d5ba3017',
         'https://github.com/OpenAgentsInc/openagents/issues/4681',
       ],
       blockerRefs: [
-        'blocker.product_promises.benchmark_work_kind_missing',
-        'blocker.product_promises.device_dataset_projection_missing',
+        'blocker.product_promises.second_device_class_missing',
+        'blocker.product_promises.thermal_throttle_detection_missing',
+        'blocker.product_promises.same_host_replication_caveat',
       ],
       verification:
         'Green requires benchmark assignments dispatched and paid across at least two distinct device classes, statistical cross-check verification with replication sampling, continuous thermal-throttle detection feeding the funnel reason codes, and a public dataset projection with provenance labels.',

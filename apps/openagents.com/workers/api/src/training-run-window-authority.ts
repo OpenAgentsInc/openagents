@@ -260,6 +260,7 @@ export type TrainingRunPublicSummary = Readonly<{
 }>
 
 export type TrainingAuthorityStore = Readonly<{
+  attachRunEvidence: (run: TrainingRunRecord) => Promise<TrainingRunRecord>
   claimLease: (
     lease: TrainingWindowLeaseRecord,
     nowIso: string,
@@ -1002,6 +1003,26 @@ export const rowToTrainingWindowLease = (
 export const makeD1TrainingAuthorityStore = (
   db: D1Database,
 ): TrainingAuthorityStore => ({
+  attachRunEvidence: async run => {
+    const result = await db
+      .prepare(
+        `UPDATE training_runs
+            SET public_projection_json = ?, updated_at = ?
+          WHERE training_run_ref = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(run.publicProjectionJson, run.updatedAt, run.trainingRunRef)
+      .run()
+
+    if ((result.meta?.changes ?? 0) === 0) {
+      throw new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found for evidence attachment.',
+      })
+    }
+
+    return run
+  },
   claimLease: async lease => {
     await db
       .prepare(

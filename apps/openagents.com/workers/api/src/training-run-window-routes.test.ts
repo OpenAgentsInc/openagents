@@ -111,6 +111,11 @@ const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
     _testSeedRun: (run: TrainingRunRecord) => {
       runs.set(run.trainingRunRef, run)
     },
+    attachRunEvidence: async run => {
+      runs.set(run.trainingRunRef, run)
+
+      return run
+    },
     claimLease: async lease => {
       leases.set(lease.leaseRef, lease)
 
@@ -514,6 +519,160 @@ describe('training run window routes', () => {
         providerConfirmedSettledPayoutSats: { value: 0 },
         verifiedWorkCount: { value: 0 },
       },
+    })
+  })
+
+  it('admits receipted device benchmark evidence through the admin route and rejects unsafe or unreceipted rows', async () => {
+    const store = makeMemoryStore()
+    let counter = 0
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => `a2-evidence-${++counter}`,
+      makeStore: () => store,
+      nowIso: () => '2026-06-11T08:00:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+    const adminHeaders = { authorization: 'Bearer admin-token-test' }
+    const evidencePath =
+      '/api/training/runs/run.cs336.a2.device_capability.demo/device-benchmark-evidence'
+    const measurement = {
+      deviceClassRef: 'device_class.apple_silicon_macos.arm64',
+      earningEstimate: {
+        p50SatsPerHour: 36,
+        sourceRefs: ['receipt.cs336.a2.settlement.1'],
+        workClass: 'cs336_a2_device_benchmark',
+      },
+      max: 2210,
+      metric: 'tokens_per_second',
+      min: 1810,
+      p50: 1995,
+      p90: 2120,
+      receiptRefs: ['receipt.cs336.a2.settlement.1'],
+      sampleCount: 6,
+      unit: 'tokens_per_second',
+      verificationRefs: ['verdict.training.statistical_cross_check.1'],
+      workClass: 'cs336_a2_device_benchmark',
+    }
+
+    store._testSeedRun(
+      buildTrainingRunRecord({
+        makeId: () => 'a2-admit',
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: {
+          promiseRef: 'training.device_capability_dataset.v1',
+          trainingRunRef: 'run.cs336.a2.device_capability.demo',
+        },
+      }),
+    )
+
+    const unauthorized = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(evidencePath, { measurements: [measurement] }),
+        {},
+      ),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const missingRun = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          '/api/training/runs/run.cs336.a2.missing/device-benchmark-evidence',
+          { measurements: [measurement] },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+
+    expect(missingRun.status).toBe(404)
+
+    const unreceipted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          { measurements: [{ ...measurement, receiptRefs: [] }] },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+
+    expect(unreceipted.status).toBe(400)
+
+    const unsafe = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          {
+            measurements: [
+              {
+                ...measurement,
+                sourceRefs: ['payment_hash.deadbeef'],
+              },
+            ],
+          },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+
+    expect(unsafe.status).toBe(400)
+
+    const admitted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          {
+            measurements: [measurement],
+            receiptRefs: ['receipt.cs336.a2.settlement.1'],
+            sourceRefs: ['issue.github.openagents.4681'],
+          },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const admittedBody = (await admitted.json()) as Readonly<{
+      dataset: TrainingDeviceCapabilityJson
+    }>
+
+    expect(admitted.status).toBe(200)
+    expect(admittedBody.dataset).toMatchObject({
+      blockerRefs: [],
+      classDistributions: [
+        {
+          deviceClassRef: 'device_class.apple_silicon_macos.arm64',
+          earningEstimate: {
+            basisLabel: 'modeled_from_measured_benchmark_distribution',
+          },
+          verified: true,
+        },
+      ],
+      schemaVersion: 'openagents.training.device_capability_dataset.v1',
+    })
+
+    const dashboard = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/device-capabilities/a2',
+        ),
+        {},
+      ),
+    )
+    const dashboardBody =
+      (await dashboard.json()) as TrainingDeviceCapabilityJson
+
+    expect(dashboard.status).toBe(200)
+    expect(dashboardBody).toMatchObject({
+      blockerRefs: [],
+      classDistributions: [
+        {
+          deviceClassRef: 'device_class.apple_silicon_macos.arm64',
+          verified: true,
+        },
+      ],
     })
   })
 

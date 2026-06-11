@@ -264,6 +264,12 @@ const schemaComponents = (): JsonSchema => ({
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
     'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, and earning estimates explicitly labeled modeled-from-measured. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
+  TrainingA2DeviceBenchmarkEvidenceRequest: objectSummary(
+    'Admin-only request to admit receipted CS336 A2 benchmark measurements into a training run projection. Each measurement carries class-level statistics only (metric, unit, sampleCount, p50/p90/min/max), receipt refs, verification refs, and an optional earning estimate that is always relabeled modeled-from-measured. Device identifiers, wallet material, and payment material are rejected by the privacy guard at admission time.',
+  ),
+  TrainingA2DeviceBenchmarkEvidenceEnvelope: objectSummary(
+    'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A2 device-capability dataset projection for that run.',
+  ),
   TrainingA3IsoFlopDashboardEnvelope: objectSummary(
     'Public-safe CS336 A3 IsoFLOP dashboard envelope with receipt-backed sweep cells, fit artifacts, projections, blockerRefs, and sourceRefs. Cells include public N/D/compute/loss fields and settlement remains zero unless provider-confirmed payout receipts are linked. Fit artifacts are analysis artifacts citing cell receipts, not capability claims.',
   ),
@@ -2896,6 +2902,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training run projection.',
           '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/device-benchmark-evidence': {
+    post: operation({
+      operationId: 'admitTrainingA2DeviceBenchmarkEvidence',
+      summary: 'Admit CS336 A2 device benchmark evidence',
+      description:
+        'Admin-only route to admit receipted CS336 A2 benchmark measurements into a training run projection for the public device-capability dataset. Measurements are class-level distributions only; the privacy guard rejects device identifiers, wallet material, and payment material at admission, and unreceipted rows are not admissible.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingA2DeviceBenchmarkEvidenceRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Admitted benchmark evidence with the recomputed dataset projection.',
+          '#/components/schemas/TrainingA2DeviceBenchmarkEvidenceEnvelope',
         ),
         ...errorResponses(),
       },

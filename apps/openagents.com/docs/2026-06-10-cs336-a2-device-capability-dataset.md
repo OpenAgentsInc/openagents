@@ -57,14 +57,34 @@ Earning estimates are always labeled
 `modeled_from_measured_benchmark_distribution`. They are planning estimates,
 not payout promises, accepted-work receipts, or settlement evidence.
 
+## Evidence Admission (added 2026-06-11)
+
+`POST /api/training/runs/{trainingRunRef}/device-benchmark-evidence`
+(admin bearer) is the admission seam for receipted measurement rows.
+It validates min <= p50 <= p90 <= max, an integer sampleCount >= 1, and a
+non-empty receiptRefs list per row, then runs the same privacy guard the
+public projection enforces — at admission time — before a single-statement
+D1 `UPDATE` merges `a2DeviceBenchmark` into the run projection. OpenAPI
+operation: `admitTrainingA2DeviceBenchmarkEvidence`.
+
+The device-side suite lives in `src/cs336-a2-benchmark-workload.ts`
+(runner: `scripts/cs336-a2-device-benchmark.ts`): real timed kernels for
+all four measurement kinds with deterministic output digests, nearest-rank
+aggregation, the min-over-max same-class median agreement score for
+`statistical_cross_check`, and the modeled sats/hour helper.
+
 ## Current Live Boundary
 
-The route can be deployed before real measurements exist. With no receipt-backed
-benchmark rows, it returns an empty dataset plus blockers:
+With no receipt-backed benchmark rows, the route returns an empty dataset
+plus blockers:
 
 - `blocker.cs336_a2.requires_receipted_benchmark_results`
 - `blocker.cs336_a2.requires_statistical_cross_check`
 - `blocker.cs336_a2.requires_replication_across_same_class_devices`
 
-The issue should remain open until live A2 benchmark results are dispatched,
-receipted, statistically cross-checked, and visible in production.
+As of 2026-06-11 the live dataset left the empty state: see
+`docs/2026-06-11-cs336-a2-device-capability-paid-closeout-evidence.md`
+for the first receipted rows (two paid Pylon assignments, four
+statistical_cross_check verdicts, two settled public receipts) and the
+named remaining gaps (single physical host, one device class, no thermal
+detection).

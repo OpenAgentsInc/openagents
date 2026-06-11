@@ -12,7 +12,11 @@ import {
   TrainingLeaderboardLanes,
   buildTrainingLeaderboardsProjection,
 } from './training-leaderboards'
-import { publicDeviceCapabilityProjection } from './training-device-capability'
+import {
+  Cs336A2DeviceBenchmarkEvidenceRequest,
+  admitCs336A2DeviceBenchmarkEvidence,
+  publicDeviceCapabilityProjection,
+} from './training-device-capability'
 import {
   type TrainingAuthorityStore,
   TrainingAuthorityStoreError,
@@ -681,6 +685,71 @@ const routeA5EvalSuites = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const routeAttachDeviceBenchmarkEvidence = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(
+      request,
+      Cs336A2DeviceBenchmarkEvidenceRequest,
+    )
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const admitted = yield* Effect.try({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        admitCs336A2DeviceBenchmarkEvidence({ nowIso, request: body, run }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.attachRunEvidence(admitted),
+    })
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+
+    return noStoreJsonResponse({
+      dataset: publicDeviceCapabilityProjection({
+        challenges,
+        leases,
+        run: stored,
+        windows,
+      }),
+      run: publicTrainingRunProjection(stored, nowIso),
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -827,6 +896,24 @@ export const makeTrainingRunWindowRoutes = <
       return routeClaimLease(dependencies, request, env).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
+    }
+
+    const runEvidenceMatch =
+      /^\/api\/training\/runs\/([^/]+)\/device-benchmark-evidence$/.exec(
+        url.pathname,
+      )
+
+    if (runEvidenceMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeAttachDeviceBenchmarkEvidence(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(runEvidenceMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
     const runReadMatch = /^\/api\/training\/runs\/([^/]+)$/.exec(url.pathname)

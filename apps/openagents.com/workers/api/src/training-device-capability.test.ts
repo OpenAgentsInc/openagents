@@ -6,6 +6,7 @@ import {
 } from './training-run-window-authority'
 import {
   Cs336A2DeviceBenchmarkJobKind,
+  admitCs336A2DeviceBenchmarkEvidence,
   buildCs336A2DeviceBenchmarkPayload,
   publicDeviceCapabilityProjection,
 } from './training-device-capability'
@@ -211,5 +212,86 @@ describe('CS336 A2 device capability projection', () => {
         windows: [],
       }),
     ).toThrow('device-identifying')
+  })
+
+  it('admits receipted measurement evidence into the run projection and enforces admissibility', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a2-admit',
+      nowIso: '2026-06-11T08:00:00.000Z',
+      request: {
+        promiseRef: 'training.device_capability_dataset.v1',
+        trainingRunRef: 'run.cs336.a2.device_capability.demo',
+      },
+    })
+    const measurement = {
+      deviceClassRef: 'device_class.apple_silicon_macos.arm64',
+      max: 2210,
+      metric: 'tokens_per_second' as const,
+      min: 1810,
+      p50: 1995,
+      p90: 2120,
+      receiptRefs: ['receipt.cs336.a2.settlement.1'],
+      sampleCount: 6,
+      unit: 'tokens_per_second',
+      verificationRefs: ['verdict.training.statistical_cross_check.1'],
+      workClass: 'cs336_a2_device_benchmark',
+    }
+
+    const admitted = admitCs336A2DeviceBenchmarkEvidence({
+      nowIso: '2026-06-11T08:05:00.000Z',
+      request: {
+        measurements: [measurement],
+        sourceRefs: ['issue.github.openagents.4681'],
+      },
+      run,
+    })
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [],
+      leases: [],
+      run: admitted,
+      windows: [],
+    })
+
+    expect(admitted.updatedAt).toBe('2026-06-11T08:05:00.000Z')
+    expect(projection.classDistributions[0]).toMatchObject({
+      crossCheckState: 'cross_checked',
+      deviceClassRef: 'device_class.apple_silicon_macos.arm64',
+      sampleCount: 6,
+      verified: true,
+    })
+    expect(projection.blockerRefs).toEqual([])
+
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-11T08:05:00.000Z',
+        request: { measurements: [] },
+        run,
+      }),
+    ).toThrow('at least one measurement')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-11T08:05:00.000Z',
+        request: { measurements: [{ ...measurement, receiptRefs: [] }] },
+        run,
+      }),
+    ).toThrow('receipt ref')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-11T08:05:00.000Z',
+        request: { measurements: [{ ...measurement, p50: 5000 }] },
+        run,
+      }),
+    ).toThrow('min <= p50 <= p90 <= max')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-11T08:05:00.000Z',
+        request: {
+          measurements: [
+            { ...measurement, sourceRefs: ['payment_hash.deadbeef'] },
+          ],
+        },
+        run,
+      }),
+    ).toThrow('device-identifying or private material')
   })
 })

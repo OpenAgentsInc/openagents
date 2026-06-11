@@ -1,3 +1,5 @@
+import { Schema as S } from 'effect'
+
 import {
   isRecord,
   optionalString,
@@ -85,8 +87,57 @@ export type DeviceCapabilityDatasetProjection = Readonly<{
   sourceRefs: ReadonlyArray<string>
 }>
 
+const TrimmedString = S.Trim
+const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
+const PublicSafeRef = NonEmptyTrimmedString.check(
+  S.isMinLength(3),
+  S.isMaxLength(260),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/),
+)
+const PublicSafeRefs = S.optionalKey(S.Array(PublicSafeRef))
+
+const Cs336A2EarningEstimateEvidence = S.Struct({
+  estimateRef: S.optionalKey(PublicSafeRef),
+  p50SatsPerHour: S.optionalKey(S.Number),
+  p90SatsPerHour: S.optionalKey(S.Number),
+  policyRefs: PublicSafeRefs,
+  sourceRefs: PublicSafeRefs,
+  workClass: PublicSafeRef,
+})
+
+export const Cs336A2MeasurementEvidence = S.Struct({
+  deviceClassRef: PublicSafeRef,
+  earningEstimate: S.optionalKey(Cs336A2EarningEstimateEvidence),
+  max: S.Number,
+  measurementRef: S.optionalKey(PublicSafeRef),
+  metric: S.Literals(Cs336A2BenchmarkMeasurements),
+  min: S.Number,
+  p50: S.Number,
+  p90: S.Number,
+  receiptRefs: S.Array(PublicSafeRef),
+  sampleCount: S.Number,
+  sourceRefs: PublicSafeRefs,
+  unit: PublicSafeRef,
+  verificationRefs: PublicSafeRefs,
+  workClass: PublicSafeRef,
+})
+export type Cs336A2MeasurementEvidence =
+  typeof Cs336A2MeasurementEvidence.Type
+
+export const Cs336A2DeviceBenchmarkEvidenceRequest = S.Struct({
+  measurements: S.Array(Cs336A2MeasurementEvidence),
+  receiptRefs: PublicSafeRefs,
+  sourceRefs: PublicSafeRefs,
+})
+export type Cs336A2DeviceBenchmarkEvidenceRequest =
+  typeof Cs336A2DeviceBenchmarkEvidenceRequest.Type
+
 export class DeviceCapabilityUnsafeProjectionError extends Error {
   readonly _tag = 'DeviceCapabilityUnsafeProjectionError'
+}
+
+export class DeviceCapabilityEvidenceValidationError extends Error {
+  readonly _tag = 'DeviceCapabilityEvidenceValidationError'
 }
 
 const unsafePublicMaterialPattern =
@@ -299,6 +350,96 @@ export const buildCs336A2DeviceBenchmarkPayload = (
   publicSafeJson(payload)
 
   return payload
+}
+
+const assertAdmissibleMeasurement = (
+  measurement: Cs336A2MeasurementEvidence,
+): void => {
+  const numbers = [
+    measurement.min,
+    measurement.p50,
+    measurement.p90,
+    measurement.max,
+    measurement.sampleCount,
+  ]
+
+  if (!numbers.every(value => Number.isFinite(value))) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 measurement evidence requires finite numeric statistics.',
+    )
+  }
+
+  if (
+    !(
+      measurement.min <= measurement.p50 &&
+      measurement.p50 <= measurement.p90 &&
+      measurement.p90 <= measurement.max
+    )
+  ) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 measurement evidence requires min <= p50 <= p90 <= max.',
+    )
+  }
+
+  if (
+    !Number.isInteger(measurement.sampleCount) ||
+    measurement.sampleCount < 1
+  ) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 measurement evidence requires an integer sampleCount >= 1.',
+    )
+  }
+
+  if (measurement.receiptRefs.length === 0) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 measurement evidence requires at least one receipt ref; unreceipted benchmark rows are not admissible.',
+    )
+  }
+}
+
+/**
+ * Admits receipted CS336 A2 benchmark measurements into a training run's
+ * public projection. The privacy guard runs at admission time on the
+ * exact evidence that will be projected, so device-identifying or
+ * wallet/payment material is rejected before it can reach D1.
+ */
+export const admitCs336A2DeviceBenchmarkEvidence = (
+  input: Readonly<{
+    nowIso: string
+    request: Cs336A2DeviceBenchmarkEvidenceRequest
+    run: TrainingRunRecord
+  }>,
+): TrainingRunRecord => {
+  if (input.request.measurements.length === 0) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 benchmark evidence requires at least one measurement.',
+    )
+  }
+
+  for (const measurement of input.request.measurements) {
+    assertAdmissibleMeasurement(measurement)
+  }
+
+  const evidence = {
+    benchmarkSuiteRef: Cs336A2DeviceBenchmarkSuiteRef,
+    jobKind: Cs336A2DeviceBenchmarkJobKind,
+    measurements: input.request.measurements,
+    receiptRefs: uniqueRefs([...(input.request.receiptRefs ?? [])]),
+    sourceRefs: uniqueRefs([...(input.request.sourceRefs ?? [])]),
+  }
+
+  publicSafeJson(evidence)
+
+  const projection = parseJsonRecord(input.run.publicProjectionJson) ?? {}
+
+  return {
+    ...input.run,
+    publicProjectionJson: JSON.stringify({
+      ...projection,
+      a2DeviceBenchmark: evidence,
+    }),
+    updatedAt: input.nowIso,
+  }
 }
 
 export const publicDeviceCapabilityProjection = (
