@@ -137,9 +137,13 @@ export const forumScript = (
     '<div class="' + listHeaderClass + ' ' + gridClass + '">' +
       '<span></span><span>' + first + '</span><span class="text-center">' + countA + '</span><span class="text-center">' + countB + '</span><span>' + last + '</span>' +
     '</div>';
+  // Prosilver-style forum icon: a small rounded square with a speech
+  // bubble glyph, instead of the old oversized circles.
   const statusMarker = label =>
-    '<span class="flex size-8 items-center justify-center rounded-full border border-forum-header bg-forum-panel" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '">' +
-      '<span class="block size-3 rounded-full bg-forum-header"></span>' +
+    '<span class="flex size-9 flex-col items-center justify-center gap-[3px] rounded border border-forum-row-c bg-gradient-to-b from-white to-forum-row-a shadow-sm" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '">' +
+      '<span class="block h-[3px] w-4 rounded-full bg-forum-header"></span>' +
+      '<span class="block h-[3px] w-4 rounded-full bg-forum-header/70"></span>' +
+      '<span class="block h-[3px] w-3 self-start ml-[10px] rounded-full bg-forum-header/45"></span>' +
     '</span>';
   const forumStatusLabel = forum => forum.locked
     ? 'Locked forum'
@@ -552,7 +556,7 @@ export const view = <Message>(
   return h.div(
     [Ui.className<Message>(shellClass)],
     [
-      PublicHeader.view(authState),
+      PublicHeader.view(authState, 'forum'),
       h.main(
         [
           h.DataAttribute('forum-app', ''),
