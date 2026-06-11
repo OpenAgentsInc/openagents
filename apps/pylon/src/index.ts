@@ -12,6 +12,11 @@ import {
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
 } from "./claude-agent"
+import {
+  loadCodexAgentConfig,
+  probeCodexAgentReadiness,
+  withCodexAgentCapability,
+} from "./codex-agent"
 import { claimTipReadiness, readBalance, setTipPreferences, sweepStatus, tipPost } from "./tips"
 import {
   ARTANIS_FORUM_SLUG,
@@ -1409,6 +1414,9 @@ async function main() {
         const claudeAgentReadiness = await probeClaudeAgentReadiness({
           config: await loadClaudeAgentConfig(summary),
         })
+        const codexAgentReadiness = await probeCodexAgentReadiness({
+          config: await loadCodexAgentConfig(summary),
+        })
         // W4.1 (#4750): the Tassadar executor capability is declared
         // only behind a passing self-test receipt — a real digest-pinned
         // execution on this device — never by configuration assertion.
@@ -1420,13 +1428,16 @@ async function main() {
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
-          capabilityRefs: withClaudeAgentCapability(
-            [...new Set([
-              ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
-              PYLON_NIP90_PROVIDER_CAPABILITY_REF,
-              PYLON_LABOR_CAPABILITY_REF,
-            ])],
-            claudeAgentReadiness,
+          capabilityRefs: withCodexAgentCapability(
+            withClaudeAgentCapability(
+              [...new Set([
+                ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
+                PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+                PYLON_LABOR_CAPABILITY_REF,
+              ])],
+              claudeAgentReadiness,
+            ),
+            codexAgentReadiness,
           ),
           blockerRefs: [...new Set([
             ...state.runtime.blockerRefs.filter((ref) =>
@@ -1444,6 +1455,10 @@ async function main() {
           claudeAgent: {
             state: claudeAgentReadiness.state,
             credentialSourceRef: claudeAgentReadiness.credentialSourceRef,
+          },
+          codexAgent: {
+            state: codexAgentReadiness.state,
+            credentialSourceRef: codexAgentReadiness.credentialSourceRef,
           },
           tassadar: {
             declared: tassadarDeclaration.declared,
