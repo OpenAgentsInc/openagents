@@ -7049,6 +7049,10 @@ export default {
                     headers: {
                       Authorization: `Bearer ${adminToken}`,
                       'Content-Type': 'application/json',
+                      'Idempotency-Key': String(
+                        (body as { assignmentRef?: string }).assignmentRef ??
+                          'artanis-admin-dispatch',
+                      ),
                     },
                     method: 'POST',
                   },
@@ -7094,6 +7098,7 @@ export default {
                     headers: {
                       Authorization: `Bearer ${adminToken}`,
                       'Content-Type': 'application/json',
+                      'Idempotency-Key': `artanis-closeout-${input.assignmentRef}`,
                     },
                     method: 'POST',
                   },

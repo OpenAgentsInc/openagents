@@ -116,6 +116,7 @@ export async function claimTipReadiness(
 
   const slug = input.pylonRef.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40)
   return agentRequest(options, {
+    idempotencyKey: `pylon-tip-claim:${slug}`,
     body: {
       bolt12Offer: offer,
       readinessRefs: [
