@@ -30,11 +30,15 @@ export type ControlCommand =
   | { type: "wallet.send"; destinationRef: string; amountSats?: number }
   | { type: "wallet.receive"; amountSats: number }
   | { type: "wallet.admit-payout-target"; kind: string; ref: string }
+  | { type: "assignments.poll" }
+  | { type: "assignments.accept"; leaseRef: string }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
   walletReceive: (amountSats: number) => Promise<unknown>
   walletAdmitPayoutTarget: (kind: string, ref: string) => Promise<unknown>
+  assignmentsPoll?: () => Promise<unknown>
+  assignmentsAccept?: (leaseRef: string) => Promise<unknown>
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -137,6 +141,12 @@ export const startControlServer = (
           return options.actions.walletReceive(command.amountSats)
         case "wallet.admit-payout-target":
           return options.actions.walletAdmitPayoutTarget(command.kind, command.ref)
+        case "assignments.poll":
+          if (!options.actions.assignmentsPoll) throw new Error("assignments unavailable on this node")
+          return options.actions.assignmentsPoll()
+        case "assignments.accept":
+          if (!options.actions.assignmentsAccept) throw new Error("assignments unavailable on this node")
+          return options.actions.assignmentsAccept(command.leaseRef)
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }

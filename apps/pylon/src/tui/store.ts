@@ -196,3 +196,47 @@ export function resetViewState(): void {
   setTelemetryState(initialTelemetryPaneState)
   setOperatorText(initialOperatorPaneState.text)
 }
+
+// --- Routes and surfaces (issue #4741) --------------------------------------
+
+export type PylonRoute = "dashboard" | "assignments" | "wallet"
+
+export const [activeRoute, setActiveRoute] = createSignal<PylonRoute>("dashboard")
+
+// Assignments surface state, refreshed via the assignments.refresh command.
+export type AssignmentRow = {
+  assignmentRef: string
+  leaseRef: string
+  goal: string
+  paymentMode: string
+  expiresAt: string
+}
+
+export const [assignmentRows, setAssignmentRows] = createSignal<AssignmentRow[]>([])
+export const [assignmentsStatus, setAssignmentsStatus] = createSignal<string>("not refreshed yet")
+
+// Wallet balance history: appended by the bridge whenever the balance
+// changes; rendered by the wallet surface.
+export type BalancePoint = { at: string; sats: number | null }
+export const maxBalanceHistory = 50
+
+const [balanceHistoryStore, setBalanceHistory] = createStore<BalancePoint[]>([])
+export const balanceHistory = balanceHistoryStore
+
+export function recordBalancePoint(at: string, sats: number | null): void {
+  const last = balanceHistoryStore[balanceHistoryStore.length - 1]
+  if (last && last.sats === sats) return
+  setBalanceHistory(
+    produce((points) => {
+      points.push({ at, sats })
+      if (points.length > maxBalanceHistory) points.splice(0, points.length - maxBalanceHistory)
+    }),
+  )
+}
+
+export function resetSurfaceState(): void {
+  setActiveRoute("dashboard")
+  setAssignmentRows([])
+  setAssignmentsStatus("not refreshed yet")
+  setBalanceHistory([])
+}

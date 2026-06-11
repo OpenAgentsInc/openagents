@@ -55,7 +55,12 @@ composer (bottom), and a one-line key-hint footer.
   command names (see `f1`); values are `@opentui/keymap` key strings.
   Invalid files are reported and ignored.
 - The composer submits with `meta+return` and streams OpenCode responses
-  into the feed.
+  into the feed. Submitted prompts persist across restarts: cycle them with
+  `ctrl+p` / `ctrl+n`, and an unsent draft is stashed on exit and restored
+  on the next launch.
+- Views: `f3` dashboard, `f4` assignments (poll/accept work leases - accept
+  always confirms first), `f5` wallet (status, readiness, session balance
+  history). All views are also reachable from the palette.
 
 ### Headless node and attach
 

@@ -11,6 +11,7 @@ import { batch } from "solid-js"
 import type { PylonNodeRuntime } from "../node/runtime"
 import {
   appendRuntimeLogEntry,
+  recordBalancePoint,
   setOperatorText,
   setTelemetryState,
   setVerboseMode,
@@ -57,7 +58,10 @@ export const attachRuntimeToView = (
 
     yield* Effect.forkScoped(
       Stream.runForEach(SubscriptionRef.changes(runtime.wallet), (state) =>
-        Effect.sync(() => setWalletState(state)),
+        Effect.sync(() => {
+          setWalletState(state)
+          recordBalancePoint(new Date().toISOString(), state.balanceSats)
+        }),
       ),
     )
     yield* Effect.forkScoped(
