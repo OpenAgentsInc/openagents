@@ -776,6 +776,13 @@ const forbiddenWorkRequestBodyKeys = new Set([
   'secret',
 ])
 
+class ForumWorkRequestBodyValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ForumWorkRequestBodyValidationError'
+  }
+}
+
 const rejectForbiddenWorkRequestBodyKeys = (body: unknown): void => {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     return
@@ -785,7 +792,7 @@ const rejectForbiddenWorkRequestBodyKeys = (body: unknown): void => {
   const forbidden = keys.find(key => forbiddenWorkRequestBodyKeys.has(key))
 
   if (forbidden !== undefined) {
-    throw new Error(
+    throw new ForumWorkRequestBodyValidationError(
       `Forum work requests accept public refs only; ${forbidden} is not allowed.`,
     )
   }

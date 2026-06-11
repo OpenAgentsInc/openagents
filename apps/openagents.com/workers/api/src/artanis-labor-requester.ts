@@ -89,9 +89,18 @@ export type ArtanisLaborAcceptanceDeps = Readonly<{
 const unsafeArtanisLaborPattern =
   /(\/Users\/|\/home\/|access[_-]?token|bearer\s+|cookie|file:\/\/|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?(key|repo)|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(command|content|invoice|payment|payload|prompt|repo|runner|state)|secret|seed[_-]?phrase|sk-[a-z0-9]|ssh:\/\/|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
 
+class ArtanisLaborValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ArtanisLaborValidationError'
+  }
+}
+
 export const assertArtanisLaborPublicSafe = (value: unknown): void => {
   if (unsafeArtanisLaborPattern.test(JSON.stringify(value) ?? '')) {
-    throw new Error('Artanis labor request contains private or payment material.')
+    throw new ArtanisLaborValidationError(
+      'Artanis labor request contains private or payment material.',
+    )
   }
 }
 
@@ -99,16 +108,22 @@ export const validateArtanisLaborProposal = (
   proposal: ArtanisLaborRequestProposal,
 ): ArtanisLaborRequestProposal => {
   if (!Number.isInteger(proposal.budgetSats) || proposal.budgetSats <= 0) {
-    throw new Error('Artanis labor budget must be positive sats.')
+    throw new ArtanisLaborValidationError(
+      'Artanis labor budget must be positive sats.',
+    )
   }
   if (proposal.title.trim().length < 3 || proposal.title.length > 160) {
-    throw new Error('Artanis labor title must be 3-160 characters.')
+    throw new ArtanisLaborValidationError(
+      'Artanis labor title must be 3-160 characters.',
+    )
   }
   if (
     proposal.repositoryRefs.length === 0 ||
     proposal.requiredCapabilityRefs.length === 0
   ) {
-    throw new Error('Artanis labor request requires repository and capability refs.')
+    throw new ArtanisLaborValidationError(
+      'Artanis labor request requires repository and capability refs.',
+    )
   }
   assertArtanisLaborPublicSafe(proposal)
   return proposal

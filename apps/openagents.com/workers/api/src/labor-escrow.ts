@@ -1,4 +1,5 @@
 import type { ForumWorkRequestRecord } from './forum-work-requests'
+import { parseJsonUnknown } from './json-boundary'
 import {
   type AgentBalanceRow,
   type LedgerStatement,
@@ -550,7 +551,7 @@ type LaborEscrowRow = Readonly<{
 }>
 
 const parseProjection = (json: string): LaborEscrowPublicProjection => {
-  const parsed = JSON.parse(json) as LaborEscrowPublicProjection
+  const parsed = parseJsonUnknown(json) as LaborEscrowPublicProjection
   assertLaborEscrowPublicSafe(parsed)
   return parsed
 }
@@ -652,7 +653,7 @@ export const reserveLaborEscrow = async (
   await runLedgerStatements(db, reserveLaborEscrowStatements(input))
   const escrow = await readLaborEscrowById(db, input.escrowId)
   if (escrow === null) {
-    throw new Error('labor escrow was not persisted')
+    return { kind: 'refused', reason: 'escrow_not_found' }
   }
   return { escrow, idempotent: false, kind: 'ok' }
 }
@@ -698,7 +699,7 @@ export const releaseLaborEscrow = async (
   await runLedgerStatements(db, releaseLaborEscrowStatements(escrow, input))
   const released = await readLaborEscrowById(db, input.escrowId)
   if (released === null) {
-    throw new Error('labor escrow disappeared during release')
+    return { kind: 'refused', reason: 'escrow_not_found' }
   }
   return { escrow: released, idempotent: false, kind: 'ok' }
 }
@@ -723,7 +724,7 @@ export const refundLaborEscrow = async (
   await runLedgerStatements(db, refundLaborEscrowStatements(escrow, input))
   const refunded = await readLaborEscrowById(db, input.escrowId)
   if (refunded === null) {
-    throw new Error('labor escrow disappeared during refund')
+    return { kind: 'refused', reason: 'escrow_not_found' }
   }
   return { escrow: refunded, idempotent: false, kind: 'ok' }
 }

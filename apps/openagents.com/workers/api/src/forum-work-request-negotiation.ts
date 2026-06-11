@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import { parseJsonStringArray } from './json-boundary'
+import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
 import {
   ForumStorageError,
   ForumValidationError,
@@ -203,7 +203,7 @@ const offerFromRow = (row: ForumWorkRequestOfferRow): ForumWorkRequestOfferRecor
   createdAt: row.created_at,
   offerId: row.id,
   providerActorRef: row.provider_actor_ref,
-  publicProjection: JSON.parse(row.public_projection_json) as Record<string, unknown>,
+  publicProjection: parseJsonRecord(row.public_projection_json) ?? {},
   quoteRef: row.quote_ref,
   relayEventRef: row.relay_event_ref,
   state: row.state,
@@ -220,7 +220,7 @@ const acceptanceFromRow = (row: ForumWorkRequestAcceptanceRow): ForumWorkRequest
   idempotencyKey: row.idempotency_key,
   offerId: row.offer_id,
   providerActorRef: row.provider_actor_ref,
-  publicProjection: JSON.parse(row.public_projection_json) as Record<string, unknown>,
+  publicProjection: parseJsonRecord(row.public_projection_json) ?? {},
   quoteRef: row.quote_ref,
   requesterActorRef: row.requester_actor_ref,
   reserveReceiptRef: row.reserve_receipt_ref,
