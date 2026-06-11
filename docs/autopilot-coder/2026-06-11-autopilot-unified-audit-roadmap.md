@@ -753,8 +753,69 @@ public surfaces.
 | P5 | **Backlog faucet: issue→work-request adapter for the open market** — B3's marching-orders pattern pointed outward: budgeted issues become NIP-LBR work requests any provider can quote | [new; B3 is its proven in-house precursor] / M | Standing market inventory from our own backlog; the empty `workRequests` array gets its first rows. | P1, B3 |
 | P6 | **Spare-capacity provider mode** — the M4 cloud (or desktop) Pylon flips GO ONLINE: unused capacity picks up *other people's* jobs for sats | [mostly built: the NIP-90 provider loop (#4730) + labor runtime; needs the pricing/consent face and the settlement bridge] / M | The owner-clarified endgame for deployed Pylons: same machine, both sides of the order book. | M4, P1, P4 |
 | P7 | **Lane C fanout (opt-in, public-tier only)** — product orders burst to the labor market when owned capacity is dark or limited | [new] / L | Flips `autopilot.control_center_fanout_marketplace.v1` from red on evidence; the limit wall's market answer. | P2, P4, P5 |
-| P8 | **Onboarding ramp + capability envelopes** — rung-0 verification bounties as standing newcomer inventory; #4750-pattern envelopes gating quotes | [filed: #4750 (envelope consumer); ramp spec new] / M | Trust bootstrapping for unknown agents; the next Orrery earns within the hour. | P5 |
+| P8 | **Onboarding ramp + capability envelopes** — rung-0 verification bounties as standing newcomer inventory; #4750-pattern envelopes gating quotes | [filed: #4750 (envelope consumer); ramp spec below] / M | Trust bootstrapping for unknown agents; the next Orrery earns within the hour. | P5 |
 | P9 | **Settlement visibility law** — every payout rung publicly dereferenceable; labor-lane acceptance criterion | [filed adjacent: #4753, #4751 epic] / M | The "payment the recipient cannot see" class closed before any live labor claim. | with P4 |
+
+#### P8 onboarding ramp spec (#4784)
+
+P8 is the admission policy for unknown agents once P5 creates standing
+market inventory. It does not start new agents with coding authority.
+It starts them with paid verification work that is useful, bounded, and
+itself easy to verify. Capability envelopes from #4750 gate quotes on
+every rung: a provider may quote only the work classes it has declared
+and backed with self-test receipts.
+
+The ramp is:
+
+| Rung | Admission | Allowed work | Authority and budget cap | Promotion signal |
+| --- | --- | --- | --- | --- |
+| 0 — verification bounties | Registered agent or provider identity with no trusted receipt history | Promise audits, receipt verification, claim falsification, validator re-execution of delivered work, reproduction of reported failures | No writeback, no deployment, no secret access, no private customer data, no merge authority; one small bounty at a time; payout only after validator or maintainer acceptance | Accepted verification receipts, accurate falsifications, useful retractions, low false-positive rate |
+| 1 — bounded coding | Rung-0 receipt history meeting policy thresholds | Small coding jobs with explicit repo scope, verification command, acceptance oracle, and quarantine-before-admission | Small budget cap; public or explicitly scoped repos only; delivery is candidate work until validator re-execution passes | Passed validator re-execution, clean artifact receipt, no authority or data-scope violations |
+| 2 — writeback-class work | Repeated rung-1 passes plus maintainer approval | PR-shaped delivery and writeback-ready artifacts | Maintainer review gate remains mandatory; market acceptance never merges code; authority receipts required before any PR artifact is promoted | Reviewable PR artifacts, stable tests, accepted fixes, maintainer-issued approval history |
+| 3 — standing roles | Maintainer-granted role envelope, never market-granted | Recurring triage, regression watch, audit beats, verification queues | Durable capability envelope with revocation path, scope, cadence, budget ceiling, and projection rules | Ongoing receipt quality, validator pass rates, timely retractions, maintainer renewal |
+
+Rung-0 inventory is generated from low-authority verification surfaces:
+product-promise evidence refs, recently changed public claims, payout
+and settlement receipts, accepted labor deliveries that need independent
+re-execution, strict bug reports with reproduction commands, and the
+P5 backlog faucet's public-tier work requests. The generator must emit
+typed work requests with a verification target, expected evidence
+shape, maximum payout, verifier identity, freshness timestamp, and a
+public result ref. It must not create work that requires private repo
+access, raw prompts, customer data, wallet material, provider secrets,
+or production mutation.
+
+Admission and promotion are receipt-derived, not social. The policy
+should calculate rung eligibility from settled jobs, accepted
+verification receipts, validator pass rates, retraction behavior,
+recent failure classes, dispute history, and scope violations. Stars,
+follower counts, freeform endorsements, and ad hoc operator judgment do
+not promote an agent by themselves. Maintainers can deny, pause, or
+revoke a rung grant when receipts are disputed, stale, Sybil-shaped, or
+outside the declared capability envelope.
+
+Quote gating uses #4750-style capability envelopes as the provider-side
+contract. A quote must name the work class, envelope ref, self-test
+receipt refs, requested budget, expected artifacts, and acceptance
+oracle. The market rejects quotes whose declared envelope does not cover
+the work class, repo scope, data scope, model/tool requirement, or
+settlement mode. Deterministic parsing is allowed for bounded fields
+inside a selected work class; user intent, work-class choice, and
+retrieval remain typed or semantic rather than keyword-routed.
+
+Settlement and projection follow the surrounding labor laws. Held
+escrow is not settled payout. A bounty is paid only after the verifier
+or maintainer accepts the evidence, and every paid rung must expose a
+recipient-readable and auditor-readable receipt path. Every new ramp
+surface carries `generatedAt` and rebuilds on state transitions under
+#4751, and every route added for ramp intake, status, review, or quote
+gating must be present in the served OpenAPI contract under #4752.
+
+Acceptance for #4784 is the spec above landing in this roadmap. Product
+acceptance for P8 later requires one brand-new agent to walk the path
+end to end: rung-0 bounty found from standing inventory, completed,
+accepted, paid, promoted to a rung-1 bounded coding job, completed,
+accepted, paid, and fully receipted without operator-only steps.
 
 Cross-cutting and standing over every rung: **#4751** (projection
 staleness epic — every new surface above carries `generatedAt` and
