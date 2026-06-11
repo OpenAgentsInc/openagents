@@ -1788,6 +1788,49 @@ export const AutopilotWorkListState = S.Union([
 ])
 export type AutopilotWorkListState = typeof AutopilotWorkListState.Type
 
+export const AutopilotWorkComposerField = S.Literals([
+  'branch',
+  'maxSpendCents',
+  'objective',
+  'repositoryFullName',
+  'verificationCommand',
+])
+export type AutopilotWorkComposerField =
+  typeof AutopilotWorkComposerField.Type
+
+export const AutopilotWorkComposerDraft = S.Struct({
+  branch: S.String,
+  maxSpendCents: S.String,
+  objective: S.String,
+  repositoryFullName: S.String,
+  verificationCommand: S.String,
+})
+export type AutopilotWorkComposerDraft =
+  typeof AutopilotWorkComposerDraft.Type
+
+export const AutopilotWorkComposerIdle = ts('AutopilotWorkComposerIdle', {})
+export const AutopilotWorkComposerSubmitting = ts(
+  'AutopilotWorkComposerSubmitting',
+  {},
+)
+export const AutopilotWorkComposerSucceeded = ts(
+  'AutopilotWorkComposerSucceeded',
+  {
+    response: AutopilotWorkResponse,
+  },
+)
+export const AutopilotWorkComposerFailed = ts('AutopilotWorkComposerFailed', {
+  error: S.String,
+})
+export const AutopilotWorkComposerState = S.Union([
+  AutopilotWorkComposerIdle,
+  AutopilotWorkComposerSubmitting,
+  AutopilotWorkComposerSucceeded,
+  AutopilotWorkComposerFailed,
+])
+export type AutopilotWorkComposerState =
+  typeof AutopilotWorkComposerState.Type
+
 export const AutopilotWorkDetailIdle = ts('AutopilotWorkDetailIdle', {})
 export const AutopilotWorkDetailLoading = ts(
   'AutopilotWorkDetailLoading',
@@ -2661,6 +2704,8 @@ export const Model = ts('LoggedIn', {
   autopilotWorkDetail: AutopilotWorkDetailState,
   autopilotWorkEvents: AutopilotWorkEventsState,
   autopilotWorkList: AutopilotWorkListState,
+  autopilotWorkComposer: AutopilotWorkComposerState,
+  autopilotWorkComposerDraft: AutopilotWorkComposerDraft,
   autopilotWorkReview: AutopilotWorkReviewState,
   billingAction: BillingAction,
   billingCouponCode: S.String,
@@ -3196,6 +3241,14 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     autopilotWorkDetail: AutopilotWorkDetailIdle(),
     autopilotWorkEvents: AutopilotWorkEventsIdle(),
     autopilotWorkList: AutopilotWorkListIdle(),
+    autopilotWorkComposer: AutopilotWorkComposerIdle(),
+    autopilotWorkComposerDraft: {
+      branch: 'main',
+      maxSpendCents: '0',
+      objective: '',
+      repositoryFullName: 'OpenAgentsInc/openagents',
+      verificationCommand: 'bun test',
+    },
     autopilotWorkReview: AutopilotWorkReviewIdle(),
     billingAction: IdleBillingAction(),
     billingCouponCode: '',

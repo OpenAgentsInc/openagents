@@ -73,6 +73,7 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       SucceededLoadCustomerOrders: customerOrder,
       FailedLoadCustomerOrders: customerOrder,
       RequestedLoadAutopilotWorkList: autopilotWork, SucceededLoadAutopilotWorkList: autopilotWork, FailedLoadAutopilotWorkList: autopilotWork,
+      UpdatedAutopilotWorkComposerField: autopilotWork, SubmittedAutopilotWorkComposer: autopilotWork, SucceededAutopilotWorkComposer: autopilotWork, FailedAutopilotWorkComposer: autopilotWork,
       RequestedLoadAutopilotWorkDetail: autopilotWork, SucceededLoadAutopilotWorkDetail: autopilotWork, FailedLoadAutopilotWorkDetail: autopilotWork,
       SucceededLoadAutopilotWorkEvents: autopilotWork, FailedLoadAutopilotWorkEvents: autopilotWork, SucceededLoadAutopilotWorkBriefing: autopilotWork,
       FailedLoadAutopilotWorkBriefing: autopilotWork, SubmittedAutopilotWorkReview: autopilotWork, SucceededAutopilotWorkReview: autopilotWork, FailedAutopilotWorkReview: autopilotWork,

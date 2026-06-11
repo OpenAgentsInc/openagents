@@ -9,7 +9,9 @@ import {
   Message,
   RequestedLoadAutopilotWorkDetail,
   RequestedLoadAutopilotWorkList,
+  SubmittedAutopilotWorkComposer,
   SubmittedAutopilotWorkReview,
+  UpdatedAutopilotWorkComposerField,
 } from '../message'
 import type {
   AutopilotMissionBriefing,
@@ -120,6 +122,175 @@ const emptyView = (): Html => {
   )
 }
 
+const recordFromUnknown = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : {}
+
+const stringFromUnknown = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() !== '' ? value : undefined
+
+const accessRequirementLabels = (
+  work: AutopilotWorkProjection,
+): ReadonlyArray<string> =>
+  work.accessRequirements
+    .map(recordFromUnknown)
+    .map(record =>
+      [
+        stringFromUnknown(record.kind),
+        stringFromUnknown(record.grantAction),
+      ].filter((value): value is string => value !== undefined).join(' / ')
+    )
+    .filter(label => label !== '')
+
+const placementSummary = (work: AutopilotWorkProjection): string => {
+  const placement = recordFromUnknown(work.placementDecision)
+  const selected = stringFromUnknown(placement.selectedRunnerKind)
+  const fallback = stringFromUnknown(placement.fallbackRunnerKind)
+
+  return selected ?? fallback ?? 'No runner selected'
+}
+
+const composerStatusView = (model: Model): Html | null => {
+  const h = html<Message>()
+
+  return M.value(model.autopilotWorkComposer).pipe(
+    M.tags({
+      AutopilotWorkComposerIdle: () => null,
+      AutopilotWorkComposerSubmitting: () =>
+        h.p([Ui.className<Message>('m-0 text-sm text-white/50')], [
+          'Submitting request...',
+        ]),
+      AutopilotWorkComposerFailed: ({ error }) => errorView(error),
+      AutopilotWorkComposerSucceeded: ({ response }) => {
+        const access = accessRequirementLabels(response.work)
+
+        return h.div(
+          [Ui.className<Message>('grid gap-2 border border-[#222] bg-[#050505] p-3 text-sm text-white/65')],
+          [
+            h.div([Ui.className<Message>('font-medium text-white/80')], [
+              `${response.work.workOrderRef} - ${stateLabel(response.work.state)}`,
+            ]),
+            h.div([], [`Next: ${response.work.nextAction.state}`]),
+            h.div([], [`Runner: ${placementSummary(response.work)}`]),
+            access.length === 0
+              ? null
+              : h.div([], [`Needs: ${access.join(', ')}`]),
+          ].filter((node): node is Html => node !== null),
+        )
+      },
+    }),
+    M.exhaustive,
+  )
+}
+
+const composerView = (model: Model): Html => {
+  const h = html<Message>()
+  const draft = model.autopilotWorkComposerDraft
+  const submitting =
+    model.autopilotWorkComposer._tag === 'AutopilotWorkComposerSubmitting'
+
+  return h.form(
+    [
+      Ui.className<Message>('grid gap-3 border border-[#222] bg-black p-5'),
+      h.OnSubmit(SubmittedAutopilotWorkComposer()),
+    ],
+    [
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['New work order']),
+      h.label([Ui.className<Message>('grid gap-2')], [
+        h.span([Ui.className<Message>('text-sm font-medium text-white/80')], [
+          'Objective',
+        ]),
+        h.textarea(
+          [
+            h.Name('objective'),
+            h.Value(draft.objective),
+            h.Rows(4),
+            h.OnInput(value =>
+              UpdatedAutopilotWorkComposerField({ field: 'objective', value })
+            ),
+            Ui.className<Message>(
+              'min-h-28 resize-y border border-[#333] bg-[#050505] p-3 text-base/7 text-white/85 outline-none focus:border-white/45 sm:text-sm/6',
+            ),
+          ],
+          [],
+        ),
+      ]),
+      h.div([Ui.className<Message>('grid gap-3 md:grid-cols-[minmax(0,1.2fr)_8rem_10rem]')], [
+        h.label([Ui.className<Message>('grid gap-2')], [
+          h.span([Ui.className<Message>('text-xs uppercase text-white/40')], [
+            'Repository',
+          ]),
+          h.input([
+            h.Name('repository'),
+            h.Value(draft.repositoryFullName),
+            h.OnInput(value =>
+              UpdatedAutopilotWorkComposerField({
+                field: 'repositoryFullName',
+                value,
+              })
+            ),
+            Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+          ]),
+        ]),
+        h.label([Ui.className<Message>('grid gap-2')], [
+          h.span([Ui.className<Message>('text-xs uppercase text-white/40')], [
+            'Branch',
+          ]),
+          h.input([
+            h.Name('branch'),
+            h.Value(draft.branch),
+            h.OnInput(value =>
+              UpdatedAutopilotWorkComposerField({ field: 'branch', value })
+            ),
+            Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+          ]),
+        ]),
+        h.label([Ui.className<Message>('grid gap-2')], [
+          h.span([Ui.className<Message>('text-xs uppercase text-white/40')], [
+            'Budget cents',
+          ]),
+          h.input([
+            h.Name('budget'),
+            h.Type('number'),
+            h.Value(draft.maxSpendCents),
+            h.OnInput(value =>
+              UpdatedAutopilotWorkComposerField({
+                field: 'maxSpendCents',
+                value,
+              })
+            ),
+            Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+          ]),
+        ]),
+      ]),
+      h.label([Ui.className<Message>('grid gap-2')], [
+        h.span([Ui.className<Message>('text-xs uppercase text-white/40')], [
+          'Verification command',
+        ]),
+        h.input([
+          h.Name('verification'),
+          h.Value(draft.verificationCommand),
+          h.OnInput(value =>
+            UpdatedAutopilotWorkComposerField({
+              field: 'verificationCommand',
+              value,
+            })
+          ),
+          Ui.className<Message>(`${Ui.inputClass} max-sm:text-base`),
+        ]),
+      ]),
+      composerStatusView(model),
+      Ui.button<Message>({
+        attrs: [h.Type('submit'), ...(submitting ? [h.Disabled(true)] : [])],
+        label: submitting ? 'Submitting...' : 'Submit work order',
+        size: 'sm',
+        variant: 'primary',
+      }),
+    ].filter((node): node is Html => node !== null),
+  )
+}
+
 const workRow = (
   summary: AutopilotWorkSummary,
   generatedAt: string,
@@ -172,12 +343,14 @@ const workRow = (
 }
 
 const listLoadedView = (
+  model: Model,
   workOrders: ReadonlyArray<AutopilotWorkSummary>,
   generatedAt: string,
 ): Html => {
   const h = html<Message>()
 
   return h.section([Ui.className<Message>('grid gap-4')], [
+    composerView(model),
     h.div([Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')], [
       h.div([Ui.className<Message>('grid gap-1')], [
         h.h1([Ui.className<Message>('m-0 text-2xl font-semibold text-white')], [
@@ -224,11 +397,23 @@ const listLoadedView = (
 export const listView = (model: Model): Html =>
   M.value(model.autopilotWorkList).pipe(
     M.tags({
-      AutopilotWorkListIdle: () => loadingView('Work orders have not loaded.'),
-      AutopilotWorkListLoading: () => loadingView('Loading work orders...'),
-      AutopilotWorkListFailed: ({ error }) => errorView(error),
+      AutopilotWorkListIdle: () =>
+        html<Message>().section([Ui.className<Message>('grid gap-4')], [
+          composerView(model),
+          loadingView('Work orders have not loaded.'),
+        ]),
+      AutopilotWorkListLoading: () =>
+        html<Message>().section([Ui.className<Message>('grid gap-4')], [
+          composerView(model),
+          loadingView('Loading work orders...'),
+        ]),
+      AutopilotWorkListFailed: ({ error }) =>
+        html<Message>().section([Ui.className<Message>('grid gap-4')], [
+          composerView(model),
+          errorView(error),
+        ]),
       AutopilotWorkListLoaded: ({ response }) =>
-        listLoadedView(response.workOrders, response.generatedAt),
+        listLoadedView(model, response.workOrders, response.generatedAt),
     }),
     M.exhaustive,
   )

@@ -33,6 +33,7 @@ import {
   ArtanisOperatorApprovalAction,
   ArtanisOperatorConsoleResponse,
   AutopilotWorkBriefingResponse,
+  AutopilotWorkComposerField,
   AutopilotWorkEventsResponse,
   AutopilotWorkListResponse,
   AutopilotWorkResponse,
@@ -258,6 +259,23 @@ export const FailedLoadAutopilotWorkList = m(
     error: S.String,
   },
 )
+export const UpdatedAutopilotWorkComposerField = m(
+  'UpdatedAutopilotWorkComposerField',
+  {
+    field: AutopilotWorkComposerField,
+    value: S.String,
+  },
+)
+export const SubmittedAutopilotWorkComposer = m('SubmittedAutopilotWorkComposer')
+export const SucceededAutopilotWorkComposer = m(
+  'SucceededAutopilotWorkComposer',
+  {
+    response: AutopilotWorkResponse,
+  },
+)
+export const FailedAutopilotWorkComposer = m('FailedAutopilotWorkComposer', {
+  error: S.String,
+})
 export const RequestedLoadAutopilotWorkDetail = m(
   'RequestedLoadAutopilotWorkDetail',
   {
@@ -1077,6 +1095,10 @@ export const Message = S.Union([
   RequestedLoadAutopilotWorkList,
   SucceededLoadAutopilotWorkList,
   FailedLoadAutopilotWorkList,
+  UpdatedAutopilotWorkComposerField,
+  SubmittedAutopilotWorkComposer,
+  SucceededAutopilotWorkComposer,
+  FailedAutopilotWorkComposer,
   RequestedLoadAutopilotWorkDetail,
   SucceededLoadAutopilotWorkDetail,
   FailedLoadAutopilotWorkDetail,

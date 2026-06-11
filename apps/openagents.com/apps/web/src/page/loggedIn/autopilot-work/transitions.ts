@@ -8,11 +8,13 @@ import {
 } from '../commands/api'
 import {
   FailedAutopilotWorkReview,
+  FailedAutopilotWorkComposer,
   FailedLoadAutopilotWorkBriefing,
   FailedLoadAutopilotWorkDetail,
   FailedLoadAutopilotWorkEvents,
   FailedLoadAutopilotWorkList,
   Message,
+  SucceededAutopilotWorkComposer,
   SucceededAutopilotWorkReview,
   SucceededLoadAutopilotWorkBriefing,
   SucceededLoadAutopilotWorkDetail,
@@ -25,6 +27,11 @@ import {
   AutopilotWorkBriefingLoaded,
   AutopilotWorkBriefingLoading,
   AutopilotWorkBriefingResponse,
+  AutopilotWorkComposerDraft,
+  AutopilotWorkComposerFailed,
+  AutopilotWorkComposerIdle,
+  AutopilotWorkComposerSubmitting,
+  AutopilotWorkComposerSucceeded,
   AutopilotWorkDetailFailed,
   AutopilotWorkDetailLoaded,
   AutopilotWorkDetailLoading,
@@ -70,7 +77,96 @@ const reviewRefs = (
     ? { decisionRefs: [ref] }
     : action === 'reject'
       ? { rejectionRefs: [ref] }
-      : { revisionRequestRefs: [ref] }
+    : { revisionRequestRefs: [ref] }
+}
+
+const cleanRefSegment = (value: string): string =>
+  value.trim().replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 80) || 'request'
+
+const argvFromCommand = (value: string): ReadonlyArray<string> =>
+  value.trim().split(/\s+/).filter(Boolean)
+
+const spendCentsFromDraft = (draft: AutopilotWorkComposerDraft): number => {
+  const parsed = Number.parseInt(draft.maxSpendCents.trim(), 10)
+
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 100_000)) : 0
+}
+
+const workRequestFromDraft = (draft: AutopilotWorkComposerDraft) => {
+  const objective = draft.objective.trim()
+  const repositoryFullName = draft.repositoryFullName.trim()
+  const branch = draft.branch.trim() || 'main'
+  const args = argvFromCommand(draft.verificationCommand)
+  const maxSpendCents = spendCentsFromDraft(draft)
+  const taskRef =
+    `task.autopilot_coder.browser.${cleanRefSegment(repositoryFullName)}.${cleanRefSegment(objective)}`
+  const repository =
+    repositoryFullName === ''
+      ? undefined
+      : {
+          branch,
+          fullName: repositoryFullName,
+          provider: 'github' as const,
+          visibility: 'public' as const,
+        }
+
+  return {
+    caller: { kind: 'browser_session' as const, ownerRef: 'owner_ref.browser' },
+    clientRequestRef: `client.browser.${taskRef}`,
+    intent: 'delegate_to_autopilot' as const,
+    mode: maxSpendCents === 0
+      ? 'free_slice_or_paid_quote' as const
+      : 'free_slice_or_paid_quote_or_l402' as const,
+    paymentPolicy: {
+      buyerPaymentMode: maxSpendCents === 0 ? 'free_slice' as const : 'l402' as const,
+      maxSpendCents,
+      quoteRef: maxSpendCents === 0 ? null : `quote.${taskRef}`,
+      quotedAmountCents: maxSpendCents === 0 ? null : maxSpendCents,
+      settlementMode: maxSpendCents === 0
+        ? 'no_worker_payout' as const
+        : 'no_worker_payout_until_accepted_work' as const,
+    },
+    placementPolicy: {
+      allowedRunnerKinds: ['requester_pylon', 'openagents_shc'] as const,
+      disallowedRunnerKinds: [] as const,
+      localOnlyAllowed: false,
+      preferredRunnerKinds: ['requester_pylon', 'openagents_shc'] as const,
+      privacyTier: maxSpendCents === 0 ? 'public_beta' as const : 'openagents_shc' as const,
+      publicTraceAllowed: maxSpendCents === 0,
+      requiresSecretBroker: false,
+    },
+    promiseRef: {
+      blockerRefs: [] as ReadonlyArray<string>,
+      promiseId: AUTOPILOT_WORK_LIST_PROMISE_ID,
+      registryVersion: '2026-06-11.1',
+    },
+    schema: 'openagents.autopilot_work_request.v1' as const,
+    tasks: [
+      {
+        acceptanceCriteriaRefs: ['acceptance.web_request.customer_review'],
+        accessRequests: repository === undefined
+          ? [{ kind: 'repository_selection' as const, reasonRef: 'access.repository.selection_required' }]
+          : [{ kind: 'github_repo_read' as const, reasonRef: 'access.github.public_read' }],
+        ...(repository === undefined
+          ? {}
+          : {
+              checkout: {
+                commitSha: '1111111111111111111111111111111111111111',
+                kind: 'git_checkout' as const,
+                verificationCommand: {
+                  args: args.length === 0 ? ['bun', 'test'] : args,
+                  commandRef: `command.${cleanRefSegment(draft.verificationCommand)}`,
+                },
+              },
+              repository,
+            }),
+        forumReporting: { mode: 'operator_approved_only' as const },
+        kind: 'code_change' as const,
+        objective: objective || 'Triage the requested public repository work.',
+        taskRef,
+      },
+    ],
+  }
 }
 
 export const LoadAutopilotWorkList = Command.define(
@@ -199,6 +295,54 @@ export const LoadAutopilotWorkBriefing = Command.define(
   ),
 )
 
+export const SubmitAutopilotWorkComposer = Command.define(
+  'SubmitAutopilotWorkComposer',
+  {
+    draft: AutopilotWorkComposerDraft,
+  },
+  SucceededAutopilotWorkComposer,
+  FailedAutopilotWorkComposer,
+)(({ draft }) =>
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/autopilot/work', {
+          body: JSON.stringify(workRequestFromDraft(draft)),
+          cache: 'no-store',
+          credentials: 'include',
+          headers: {
+            accept: 'application/json',
+            'content-type': 'application/json',
+            'idempotency-key':
+              `browser-composer:${cleanRefSegment(draft.repositoryFullName)}:${cleanRefSegment(draft.objective)}`,
+          },
+          method: 'POST',
+        }),
+      catch: errorMessageFromUnknown,
+    })
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: errorMessageFromUnknown,
+    })
+
+    if (!response.ok && response.status !== 402) {
+      return yield* Effect.fail(payload)
+    }
+
+    return SucceededAutopilotWorkComposer({
+      response: S.decodeUnknownSync(AutopilotWorkResponse)(payload),
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedAutopilotWorkComposer({
+          error: errorMessageFromUnknown(error),
+        }),
+      ),
+    ),
+  ),
+)
+
 export const SubmitAutopilotWorkReview = Command.define(
   'SubmitAutopilotWorkReview',
   {
@@ -271,6 +415,40 @@ export const updateAutopilotWork = (
       FailedLoadAutopilotWorkList: ({ error }) => [
         evo(model, {
           autopilotWorkList: () => AutopilotWorkListFailed({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
+      UpdatedAutopilotWorkComposerField: ({ field, value }) => [
+        evo(model, {
+          autopilotWorkComposerDraft: draft => ({ ...draft, [field]: value }),
+          autopilotWorkComposer: () => AutopilotWorkComposerIdle(),
+        }),
+        [],
+        Option.none(),
+      ],
+      SubmittedAutopilotWorkComposer: () => [
+        evo(model, {
+          autopilotWorkComposer: () => AutopilotWorkComposerSubmitting(),
+        }),
+        [SubmitAutopilotWorkComposer({ draft: model.autopilotWorkComposerDraft })],
+        Option.none(),
+      ],
+      SucceededAutopilotWorkComposer: ({ response }) => [
+        evo(model, {
+          autopilotWorkComposer: () =>
+            AutopilotWorkComposerSucceeded({ response }),
+          autopilotWorkDetail: () => AutopilotWorkDetailLoaded({ response }),
+        }),
+        [
+          LoadAutopilotWorkList({}),
+          ...detailCommands(response.work.workOrderRef),
+        ],
+        Option.none(),
+      ],
+      FailedAutopilotWorkComposer: ({ error }) => [
+        evo(model, {
+          autopilotWorkComposer: () => AutopilotWorkComposerFailed({ error }),
         }),
         [],
         Option.none(),

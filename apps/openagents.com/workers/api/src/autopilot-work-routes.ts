@@ -26,6 +26,8 @@ import {
 } from './autopilot-work-pylon-assignment-synthesizer'
 import {
   authenticateCustomerOrderAgentRequest,
+  CustomerOrderAgentAuthFailure,
+  type CustomerOrderAgentScope,
 } from './customer-order-agent-auth'
 import {
   methodNotAllowed,
@@ -487,6 +489,11 @@ type AutopilotWorkRoutesDependencies<Bindings> = Readonly<{
   pylonRegistrations?: (
     env: Bindings,
   ) => Promise<ReadonlyArray<PylonApiRegistrationRecord>>
+  requireBrowserSession?: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => Promise<Readonly<{ user: Readonly<{ userId: string }> }> | undefined>
   verifyL402PaymentProof?: (
     env: Bindings,
     input: AutopilotWorkL402PaymentVerificationInput,
@@ -533,6 +540,21 @@ const requireIdempotencyHash = (
   return Effect.promise(() => sha256Hex(idempotencyKey))
 }
 
+const idempotencyHashForBrowserRequest = <Bindings>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  ownerUserId: string,
+): Effect.Effect<string, AutopilotWorkStoreError> => {
+  const idempotencyKey = idempotencyKeyFromRequest(request)
+
+  return Effect.promise(() =>
+    sha256Hex(
+      idempotencyKey ??
+        `browser.autopilot_work.${ownerUserId}.${routeMakeId(dependencies)}`,
+    ),
+  )
+}
+
 const decodeWorkRequest = (
   request: Request,
 ): Effect.Effect<OpenAgentsAutopilotWorkRequest, AutopilotWorkStoreError> =>
@@ -568,6 +590,71 @@ const routeNowIso = <Bindings>(
 const routeMakeId = <Bindings>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
 ): string => (dependencies.makeId ?? randomUuid)()
+
+type AutopilotWorkRouteAuth = Readonly<{
+  actorAgentCredentialId: string
+  actorAgentUserId: string
+  ownerUserId: string
+}>
+
+const hasBearerAuthorization = (request: Request): boolean =>
+  request.headers.get('authorization')?.trim().toLowerCase().startsWith('bearer ') ===
+  true
+
+const authenticateAutopilotWorkRequest = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  input: Readonly<{
+    ctx: ExecutionContext
+    nowIso: () => string
+    requiredScope: CustomerOrderAgentScope
+  }>,
+): Effect.Effect<
+  AutopilotWorkRouteAuth,
+  AutopilotWorkStoreError | CustomerOrderAgentAuthFailure
+> =>
+  hasBearerAuthorization(request) || dependencies.requireBrowserSession === undefined
+    ? authenticateCustomerOrderAgentRequest(
+        request,
+        dependencies.agentStore(env),
+        {
+          nowIso: input.nowIso,
+          requiredScope: input.requiredScope,
+        },
+      ).pipe(
+        Effect.map(auth => ({
+          actorAgentCredentialId: auth.agent.credential.id,
+          actorAgentUserId: auth.agent.user.id,
+          ownerUserId: auth.ownerUserId,
+        })),
+      )
+    : Effect.gen(function* () {
+        const session = yield* Effect.tryPromise({
+          catch: error =>
+            new AutopilotWorkStoreError({
+              kind: 'storage_error',
+              reason: errorReason(error),
+            }),
+          try: () =>
+            dependencies.requireBrowserSession?.(request, env, input.ctx) ??
+            Promise.resolve(undefined),
+        })
+
+        if (session === undefined) {
+          return yield* new CustomerOrderAgentAuthFailure({
+            failureKind: 'missing_credentials',
+            reason: 'Autopilot work browser session is required.',
+          })
+        }
+
+        return {
+          actorAgentCredentialId:
+            `browser_session.${cleanRefSegment(session.user.userId)}`,
+          actorAgentUserId: session.user.userId,
+          ownerUserId: session.user.userId,
+        }
+      })
 
 const routePylonRegistrations = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
@@ -2156,6 +2243,7 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
   env: Bindings,
+  ctx: ExecutionContext,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     const nowIso = routeNowIso(dependencies)
@@ -2163,15 +2251,23 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       dependencies,
       env,
     )
-    const auth = yield* authenticateCustomerOrderAgentRequest(
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
       request,
-      dependencies.agentStore(env),
+      env,
       {
+        ctx,
         nowIso: () => nowIso,
         requiredScope: 'customer_orders.write',
       },
     )
-    const idempotencyKeyHash = yield* requireIdempotencyHash(request)
+    const idempotencyKeyHash = hasBearerAuthorization(request)
+      ? yield* requireIdempotencyHash(request)
+      : yield* idempotencyHashForBrowserRequest(
+          dependencies,
+          request,
+          auth.ownerUserId,
+        )
     const existing = yield* Effect.promise(() =>
       dependencies
         .makeStore(env)
@@ -2247,8 +2343,8 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
 
     const workRequest = yield* decodeWorkRequest(request)
     const record = buildWorkOrderRecord({
-      agentCredentialId: auth.agent.credential.id,
-      agentUserId: auth.agent.user.id,
+      agentCredentialId: auth.actorAgentCredentialId,
+      agentUserId: auth.actorAgentUserId,
       id: routeMakeId(dependencies),
       idempotencyKeyHash,
       nowIso,
@@ -2326,6 +2422,7 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
   env: Bindings,
+  ctx: ExecutionContext,
   workOrderRef: string,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
@@ -2334,10 +2431,12 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       dependencies,
       env,
     )
-    const auth = yield* authenticateCustomerOrderAgentRequest(
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
       request,
-      dependencies.agentStore(env),
+      env,
       {
+        ctx,
         nowIso: () => nowIso,
         requiredScope: 'customer_orders.read',
       },
@@ -2425,6 +2524,7 @@ const reviewWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
   env: Bindings,
+  ctx: ExecutionContext,
   workOrderRef: string,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
@@ -2433,10 +2533,12 @@ const reviewWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       dependencies,
       env,
     )
-    const auth = yield* authenticateCustomerOrderAgentRequest(
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
       request,
-      dependencies.agentStore(env),
+      env,
       {
+        ctx,
         nowIso: () => nowIso,
         requiredScope: 'customer_orders.write',
       },
@@ -2447,8 +2549,8 @@ const reviewWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
       validateReviewDecisionRequest,
     )
     const reviewDecision = reviewDecisionRecordFromRequest({
-      actorAgentCredentialId: auth.agent.credential.id,
-      actorAgentUserId: auth.agent.user.id,
+      actorAgentCredentialId: auth.actorAgentCredentialId,
+      actorAgentUserId: auth.actorAgentUserId,
       body,
       idempotencyKeyHash,
       nowIso,
@@ -2560,14 +2662,17 @@ const readWorkOrderEvents = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
   env: Bindings,
+  ctx: ExecutionContext,
   workOrderRef: string,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     const nowIso = routeNowIso(dependencies)
-    const auth = yield* authenticateCustomerOrderAgentRequest(
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
       request,
-      dependencies.agentStore(env),
+      env,
       {
+        ctx,
         nowIso: () => nowIso,
         requiredScope: 'customer_orders.read',
       },
@@ -2631,6 +2736,7 @@ const readWorkOrderBriefing = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
   env: Bindings,
+  ctx: ExecutionContext,
   workOrderRef: string,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
@@ -2639,10 +2745,12 @@ const readWorkOrderBriefing = <Bindings extends AutopilotWorkRouteEnv>(
       dependencies,
       env,
     )
-    const auth = yield* authenticateCustomerOrderAgentRequest(
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
       request,
-      dependencies.agentStore(env),
+      env,
       {
+        ctx,
         nowIso: () => nowIso,
         requiredScope: 'customer_orders.read',
       },
@@ -2698,6 +2806,7 @@ const listWorkOrders = <Bindings extends AutopilotWorkRouteEnv>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
   request: Request,
   env: Bindings,
+  ctx: ExecutionContext,
   url: URL,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
@@ -2715,10 +2824,12 @@ const listWorkOrders = <Bindings extends AutopilotWorkRouteEnv>(
     }
 
     const nowIso = routeNowIso(dependencies)
-    const auth = yield* authenticateCustomerOrderAgentRequest(
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
       request,
-      dependencies.agentStore(env),
+      env,
       {
+        ctx,
         nowIso: () => nowIso,
         requiredScope: 'customer_orders.read',
       },
@@ -2774,14 +2885,15 @@ export const makeAutopilotWorkRoutes = <
   routeAutopilotWorkRequest: (
     request: Request,
     env: Bindings,
+    ctx: ExecutionContext,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
 
     if (url.pathname === '/api/autopilot/work') {
       return M.value(request.method).pipe(
-        M.when('POST', () => createWorkOrder(dependencies, request, env)),
+        M.when('POST', () => createWorkOrder(dependencies, request, env, ctx)),
         M.when('GET', () =>
-          listWorkOrders(dependencies, request, env, url)
+          listWorkOrders(dependencies, request, env, ctx, url)
         ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['GET', 'POST']))),
       )
@@ -2796,6 +2908,7 @@ export const makeAutopilotWorkRoutes = <
             dependencies,
             request,
             env,
+            ctx,
             workOrderEventsRef,
           )
         ),
@@ -2812,6 +2925,7 @@ export const makeAutopilotWorkRoutes = <
             dependencies,
             request,
             env,
+            ctx,
             workOrderBriefingRef,
           )
         ),
@@ -2824,7 +2938,7 @@ export const makeAutopilotWorkRoutes = <
     if (workOrderReviewRef !== undefined) {
       return M.value(request.method).pipe(
         M.when('POST', () =>
-          reviewWorkOrder(dependencies, request, env, workOrderReviewRef)
+          reviewWorkOrder(dependencies, request, env, ctx, workOrderReviewRef)
         ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
       )
@@ -2835,7 +2949,7 @@ export const makeAutopilotWorkRoutes = <
     if (workOrderRef !== undefined) {
       return M.value(request.method).pipe(
         M.when('GET', () =>
-          readWorkOrder(dependencies, request, env, workOrderRef)
+          readWorkOrder(dependencies, request, env, ctx, workOrderRef)
         ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
       )

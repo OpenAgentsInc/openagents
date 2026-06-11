@@ -5621,6 +5621,7 @@ const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>({
     makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
   makePylonApiStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
   makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+  requireBrowserSession,
   verifyL402PaymentProof: (env, input) =>
     verifyAutopilotL402PaymentProofFromBuyerLedger(
       makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
