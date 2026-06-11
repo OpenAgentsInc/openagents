@@ -1081,3 +1081,36 @@ Note: direct `bunx tsc -p apps/pylon/tsconfig.json --noEmit` remains blocked
 by preexisting repo-wide import-extension, implicit-unknown, and TUI typing
 issues. The new adapter source does not appear in the remaining typecheck
 diagnostics after its imports were made NodeNext-clean.
+
+## RK3 / Issue #4807: Native OpenAgents Effect Model Loop
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4807`
+
+Status: complete for the deterministic native adapter slice.
+
+Implemented:
+
+- Added `apps/pylon/src/openagents-native-runtime.ts` with the
+  `openagents_native` adapter behind the same RK2 `AgentRuntimeAdapter`
+  contract.
+- Isolated the experimental Effect AI dependency surface behind local Effect
+  service/layer facades: `OpenAgentsNativeLanguageModel` and
+  `OpenAgentsNativeToolkit`.
+- Added a Schema-recognized native task payload and Schema-typed fixture
+  summary tool input/output.
+- Emitted `model.*`, `tool.*`, `run.completed`, `run.interrupted`,
+  `run.failed`, and `run.cancelled` kernel events end to end.
+- Added deterministic test language-model/toolkit layers.
+- Kept tool selection typed by `allowedToolRefs`; no prompt keyword inference
+  is used for adapter or tool routing.
+
+Verification:
+
+- `bun run --cwd apps/pylon test tests/openagents-native-runtime.test.ts tests/agent-runtime-adapter.test.ts tests/claude-agent-executor.test.ts tests/codex-agent-executor.test.ts`
+- `bun run --cwd packages/agent-runtime-schema test`
+
+Typecheck note:
+
+- `bunx tsc -p apps/pylon/tsconfig.json --noEmit` remains blocked by the same
+  preexisting broad Pylon issues noted in RK2. The new native runtime and
+  adapter files do not appear in the remaining typecheck diagnostics.

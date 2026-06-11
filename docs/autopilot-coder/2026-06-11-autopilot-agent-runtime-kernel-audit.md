@@ -262,6 +262,10 @@ The runtime kernel must preserve existing OpenAgents projection discipline:
    terminal state, external status, artifact refs, blocker refs, freshness
    timestamp, and event count from events alone.
 6. Add the native OpenAgents Effect AI loop behind the same adapter contract.
+   Done in RK3 (#4807): `openagents_native` now runs behind
+   `AgentRuntimeAdapter` with Effect service/layer boundaries for the language
+   model and toolkit, Schema-typed tool input/output, deterministic test
+   layers, typed tool denial, budget-stop interruption, and cancellation.
 7. Add worker ingestion for runtime events and public-safe projections.
 8. Add workroom/TUI status views that read projections rather than raw adapter
    logs.
