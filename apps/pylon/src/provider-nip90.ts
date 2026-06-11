@@ -34,6 +34,11 @@ import {
 import { appendLedgerEvent, defaultWalletCommandRunner, type WalletCommandRunner } from "./wallet"
 import { makeAppleFmClient, type AppleFmClient } from "../packages/runtime/src/index"
 import {
+  handleLaborMarketEventOnce,
+  type LaborMarketHandleResult,
+  type LaborMarketOptions,
+} from "./labor-market"
+import {
   assertLaborPublicSafe,
   detectConfiguredLaborAgent,
   evaluateLaborRequestSafety,
@@ -198,6 +203,7 @@ export type ProviderRunResult = {
   feedbackEventIds: string[]
   resultEventId?: string
   earning?: ProviderEarningRecord
+  laborMarket?: LaborMarketHandleResult
 }
 
 export type ProviderLoopOptions = {
@@ -208,6 +214,7 @@ export type ProviderLoopOptions = {
   laborRuntime?: LaborRuntime
   laborWorkspaceRoot?: string
   laborAgentKind?: LaborLocalAgentKind
+  laborMarket?: LaborMarketOptions
   now?: () => Date
   idleMs?: number
   once?: boolean
@@ -302,6 +309,14 @@ export function buildProviderReqFilters(input: {
     },
     {
       kinds: providerSupportedKinds(),
+      since: input.since,
+      limit: input.limit ?? 64,
+    },
+    // Labor-market acceptances: kind-7000 feedback addressed to this
+    // provider (the LBR quote-acceptance handshake).
+    {
+      kinds: [KIND_JOB_FEEDBACK],
+      "#p": [input.providerPubkey],
       since: input.since,
       limit: input.limit ?? 64,
     },
@@ -648,10 +663,41 @@ export async function runProviderJobOnce(input: {
   laborRuntime?: LaborRuntime
   laborWorkspaceRoot?: string
   laborAgentKind?: LaborLocalAgentKind
+  laborMarket?: LaborMarketOptions
   now?: () => Date
   online?: boolean
 }): Promise<ProviderRunResult> {
   const now = input.now?.() ?? new Date()
+
+  // The labor-market negotiation lane routes first: LBR requests are
+  // quoted, never auto-executed, and LBR acceptances trigger execution
+  // of previously quoted jobs. Everything else falls through unchanged.
+  const market = await handleLaborMarketEventOnce({
+    state: input.state,
+    event: input.event,
+    identity: input.identity,
+    relay: input.relay,
+    options: { ...(input.laborMarket ?? {}), now: input.now ?? (() => now) },
+  })
+  if (market.handled) {
+    return {
+      requestEventId: input.event.id,
+      status:
+        market.action === "delivered"
+          ? "completed"
+          : market.action === "quoted"
+            ? "accepted"
+            : market.action === "deferred"
+              ? "deferred"
+              : market.action === "verification_failed"
+                ? "error"
+                : "dropped",
+      feedbackEventIds: market.action === "quoted" ? [market.quoteEventId] : [],
+      ...(market.action === "delivered" ? { resultEventId: market.resultEventId } : {}),
+      laborMarket: market,
+    }
+  }
+
   const store = input.store ?? await loadProviderAdmissionStore(input.state.paths)
   const entry = classifyProviderRequestEvent({
     event: input.event,
@@ -1034,6 +1080,7 @@ export async function startNip90ProviderLoop(summary: BootstrapSummary, options:
           laborRuntime,
           laborWorkspaceRoot,
           laborAgentKind,
+          ...(options.laborMarket === undefined ? {} : { laborMarket: options.laborMarket }),
           now: loopOptions.now,
           online: true,
         })
