@@ -18,7 +18,23 @@ import {
   readMemories,
   resolveModelAdapter,
 } from "./agent-surface"
-import { Effect, Console } from "effect"
+import { Console, Deferred, Effect, PubSub, Stream, SubscriptionRef } from "effect"
+import {
+  formatLogTimestamp,
+  classifyServiceLogLevel,
+  isLogEntryVisible,
+  type PylonLogEntry,
+  type PylonLogLevel,
+  type TelemetryPaneState,
+  type WalletPaneState,
+} from "./node/state"
+import {
+  forkNodeServices,
+  logMessage,
+  makePylonNodeRuntime,
+  superviseLoop,
+  type PylonNodeRuntime,
+} from "./node/runtime"
 import {
   createCliRenderer,
   BoxRenderable,
@@ -87,7 +103,10 @@ import {
   workRequestMemoryEntry,
 } from "./work-requester"
 
-// Global UI references for log aggregation and balance updates
+// View-layer plumbing. These renderable refs are written ONLY by the UI
+// subscriber (subscribeUiToRuntime) and the composer's interactive path —
+// node services go through the PylonNodeRuntime state/event seam instead
+// (issue #4736).
 let globalRenderer: CliRenderer | null = null
 let logScrollBox: ScrollBoxRenderable | null = null
 let balanceTextRenderable: TextRenderable | null = null
@@ -95,8 +114,13 @@ let statusTextRenderable: TextRenderable | null = null
 let telemetryTextRenderable: TextRenderable | null = null
 let operatorTextRenderable: TextRenderable | null = null
 
-const logHistory: string[] = []
-const maxLogHistoryEntries = 1000
+// Bridge for legacy call sites (OpenCode helpers) that log from plain
+// async code. Set once at dashboard boot, before any service starts.
+let nodeRuntime: PylonNodeRuntime | null = null
+// Quiet by default: verbose service chatter is hidden unless --verbose or
+// PYLON_VERBOSE=1 (issue #4743).
+let verboseMode = false
+
 const terminalScrollLockOn = "\x1b[?1007h"
 const terminalScrollLockOff = "\x1b[?1007l"
 const sgrMousePattern = /\x1b\[<(\d+);(\d+);(\d+)([mM])/g
@@ -122,57 +146,101 @@ const syntaxStyle = SyntaxStyle.fromStyles({
   conceal: { fg: parseColor("#6E7681") },
 })
 
-function logToUi(message: string) {
-  const now = new Date()
-  const timestamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`
-  logHistory.push(`[${timestamp}] ${message}`)
-  if (logHistory.length > maxLogHistoryEntries) {
-    logHistory.splice(0, logHistory.length - maxLogHistoryEntries)
+// Routes a log message into the node runtime (which owns the feed and the
+// event stream). Pre-boot or in plain CLI paths it falls back to stdout.
+function logToUi(message: string, level: PylonLogLevel = "verbose") {
+  if (nodeRuntime) {
+    Effect.runFork(logMessage(nodeRuntime, level, message))
+    return
   }
-
-  if (logScrollBox && globalRenderer) {
-    const line = makeLogMarkdown(globalRenderer, {
-      content: `[${timestamp}] ${message}`,
-      syntaxStyle,
-      width: "100%",
-      conceal: true,
-      fg: parseColor("#5C7080"),
-    })
-    logScrollBox.add(line)
-  } else {
-    // Silent pre-boot buffering or console logging
-    Console.log(`[BOOT] ${message}`)
+  if (level !== "verbose" || verboseMode) {
+    void Effect.runPromise(Console.log(`[BOOT] ${message}`))
   }
 }
 
-// Effect-native logging helper
-const log = (message: string) => Effect.sync(() => logToUi(message))
+// Effect-native logging helper (defaults to verbose — hidden unless
+// --verbose / PYLON_VERBOSE=1)
+const log = (message: string, level: PylonLogLevel = "verbose") =>
+  Effect.sync(() => logToUi(message, level))
 
-function runBackgroundEffect(name: string, effect: Effect.Effect<void, unknown>) {
-  void Effect.runPromise(effect).catch((error) => {
-    logToUi(`[${name}] Background service stopped with error: ${String(error)}`)
+// View-side renderers — called only from the UI subscriber.
+function appendLogLine(entry: PylonLogEntry) {
+  if (!logScrollBox || !globalRenderer) return
+  const line = makeLogMarkdown(globalRenderer, {
+    content: `[${formatLogTimestamp(entry.at)}] ${entry.message}`,
+    syntaxStyle,
+    width: "100%",
+    conceal: true,
+    fg: parseColor(entry.level === "error" ? "#EF4444" : "#5C7080"),
   })
+  logScrollBox.add(line)
 }
 
-function updateMdkBalance(balance: number | null, suffix = "Sats") {
+function applyWalletUi(state: WalletPaneState) {
+  const online = state.daemonOnline && state.balanceSats !== null
   if (balanceTextRenderable) {
     balanceTextRenderable.content =
-      balance === null ? ` Balance: -- ${suffix}` : ` Balance: ${balance.toLocaleString()} ${suffix}`
+      state.balanceSats === null ? " Balance: -- Sats" : ` Balance: ${state.balanceSats.toLocaleString()} Sats`
   }
-}
-
-function updateMdkStatus(status: string, color = "#22C55E") {
   if (statusTextRenderable) {
-    statusTextRenderable.content = ` Wallet: ${status}`
-    statusTextRenderable.fg = parseColor(color)
+    statusTextRenderable.content = online ? " Wallet: ONLINE (OK)" : " Wallet: OFFLINE"
+    statusTextRenderable.fg = parseColor(online ? "#58A6FF" : "#EF4444")
   }
 }
 
-function updateTelemetryConnector(state: string, model: string, vram: string, psionic: string) {
+function applyTelemetryUi(state: TelemetryPaneState) {
   if (telemetryTextRenderable) {
-    telemetryTextRenderable.content = ` State: ${state}\n Model: ${model}\n VRAM:  ${vram}\n Psionic: ${psionic}`
+    telemetryTextRenderable.content = ` State: ${state.state}\n Model: ${state.model}\n VRAM:  ${state.vram}\n Psionic: ${state.psionic}`
   }
 }
+
+function applyOperatorUi(text: string) {
+  if (operatorTextRenderable) {
+    operatorTextRenderable.content = text
+  }
+}
+
+// Subscribes the renderables to runtime state: render current values once,
+// then follow changes. Log entries follow the event stream with verbosity
+// filtering. All consumers are scoped fibers, interrupted on shutdown.
+const subscribeUiToRuntime = (runtime: PylonNodeRuntime) =>
+  Effect.gen(function* () {
+    // Subscribe before reading the feed so no event falls between replay and
+    // live tail. No other fiber writes during this window (services fork
+    // after the UI subscription), so replay+tail cannot duplicate either.
+    const eventSubscription = yield* PubSub.subscribe(runtime.events)
+    applyWalletUi(yield* SubscriptionRef.get(runtime.wallet))
+    applyTelemetryUi(yield* SubscriptionRef.get(runtime.telemetry))
+    applyOperatorUi((yield* SubscriptionRef.get(runtime.operator)).text)
+    for (const entry of yield* SubscriptionRef.get(runtime.logFeed)) {
+      if (isLogEntryVisible(entry, verboseMode)) appendLogLine(entry)
+    }
+    yield* Effect.forkScoped(
+      Stream.runForEach(SubscriptionRef.changes(runtime.wallet), (state) =>
+        Effect.sync(() => applyWalletUi(state)),
+      ),
+    )
+    yield* Effect.forkScoped(
+      Stream.runForEach(SubscriptionRef.changes(runtime.telemetry), (state) =>
+        Effect.sync(() => applyTelemetryUi(state)),
+      ),
+    )
+    yield* Effect.forkScoped(
+      Stream.runForEach(SubscriptionRef.changes(runtime.operator), (state) =>
+        Effect.sync(() => applyOperatorUi(state.text)),
+      ),
+    )
+    yield* Effect.forkScoped(
+      Effect.gen(function* () {
+        while (true) {
+          const event = yield* PubSub.take(eventSubscription)
+          if (event.type === "log" && isLogEntryVisible(event, verboseMode)) {
+            appendLogLine(event)
+          }
+        }
+      }),
+    )
+  })
 
 function installTerminalScrollLock() {
   if (!process.stdout.isTTY) {
@@ -317,129 +385,27 @@ function handleLogKey(key: any, focusComposer?: () => void) {
   return true
 }
 
-// Hardware Resource & Telemetry Discovery Service
-const startHardwareTelemetryLoop = Effect.gen(function* () {
-  yield* log("[Telemetry] Platform discovery initialized.")
-  while (true) {
-    const inventory = yield* Effect.tryPromise({
-      try: () => discoverHostInventory(),
-      catch: (error) => new Error(`inventory discovery failed: ${String(error)}`),
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          logToUi(`[Telemetry] Inventory unavailable: ${error.message}`)
-          return null
-        }),
-      ),
-    )
-    yield* Effect.sync(() => {
-      if (!inventory) {
-        updateTelemetryConnector("UNAVAILABLE", "inventory unavailable", "--", "unknown")
-        return
-      }
-      const readyBackends = inventory.backendHealth.filter((backend) => backend.state === "ready" || backend.state === "configured")
-      const model = readyBackends[0]?.modelRef ?? "None"
-      const vram = inventory.accelerator.vramGb === null ? "--" : `${inventory.accelerator.vramGb.toFixed(1)} GB`
-      const state = inventory.eligibleInventoryCount > 0 ? "INVENTORY FRESH" : "INVENTORY BLOCKED"
-      updateTelemetryConnector(state, model, vram, "checking")
-      if (operatorTextRenderable) {
-        const wallet = {
-          schema: "openagents.pylon.wallet_status.v0.3" as const,
-          configured: false,
-          daemonOnline: false,
-          balanceSats: null,
-          receiveReady: false,
-          sendReady: false,
-          readiness: "daemon-offline" as const,
-          blockerRefs: ["blocker.wallet.daemon_offline"],
-          payoutTargetRefs: [],
-          settlementRefs: [],
-        }
-        operatorTextRenderable.content = formatOperatorSnapshotText(createOperatorSnapshot({ inventory, wallet }))
-      }
-    })
-    const psionic = yield* Effect.promise(() => inspectPsionicConnector({ env: Bun.env }))
-    yield* Effect.sync(() => {
-      if (!inventory) return
-      const readyBackends = inventory.backendHealth.filter((backend) => backend.state === "ready" || backend.state === "configured")
-      const model = readyBackends[0]?.modelRef ?? "None"
-      const vram = inventory.accelerator.vramGb === null ? "--" : `${inventory.accelerator.vramGb.toFixed(1)} GB`
-      const state = inventory.eligibleInventoryCount > 0 ? "INVENTORY FRESH" : "INVENTORY BLOCKED"
-      updateTelemetryConnector(state, model, vram, psionic.phase)
-    })
-    yield* Effect.sleep("10 seconds")
+// Builds the operator-pane text the telemetry service publishes. The wallet
+// projection here is the pre-seam placeholder (always offline) — wiring the
+// live wallet state into the snapshot is follow-up work, kept behavior-equal
+// for Phase 0.
+function operatorTextFromInventory(inventory: Awaited<ReturnType<typeof discoverHostInventory>>) {
+  const wallet = {
+    schema: "openagents.pylon.wallet_status.v0.3" as const,
+    configured: false,
+    daemonOnline: false,
+    balanceSats: null,
+    receiveReady: false,
+    sendReady: false,
+    readiness: "daemon-offline" as const,
+    blockerRefs: ["blocker.wallet.daemon_offline"],
+    payoutTargetRefs: [],
+    settlementRefs: [],
   }
-})
-
-// Money Dev Kit (MDK) Wallet Sidecar Service
-const startMdkWalletService = Effect.gen(function* () {
-  yield* log("[Wallet] Connecting to local MDK agent-wallet daemon...")
-  let loggedOffline = false
-  let loggedOnline = false
-  while (true) {
-    const status = yield* Effect.promise(async () => {
-      try {
-        return await classifyMdkWallet()
-      } catch (error) {
-        logToUi(`[Wallet] MDK status unavailable: ${String(error)}`)
-        return null
-      }
-    })
-
-    yield* Effect.sync(() => {
-      if (status?.daemonOnline && status.balanceSats !== null) {
-        updateMdkBalance(status.balanceSats)
-        updateMdkStatus("ONLINE (OK)", "#58A6FF")
-        if (!loggedOnline) {
-          logToUi(`[Wallet] MDK agent-wallet daemon connected. Readiness: ${status.readiness}.`)
-          loggedOnline = true
-          loggedOffline = false
-        }
-      } else {
-        updateMdkBalance(null)
-        updateMdkStatus("OFFLINE", "#EF4444")
-        if (!loggedOffline) {
-          logToUi("[Wallet] Local MDK wallet balance is unavailable. Operating in OFFLINE mode.")
-          loggedOffline = true
-          loggedOnline = false
-        }
-      }
-    })
-    yield* Effect.sleep("10 seconds")
-  }
-})
-
-// Nostr Continuous Presence Heartbeat Loop
-const startPresenceHeartbeatLoop = Effect.gen(function* () {
-  yield* log("[Heartbeat] Presence service initialized.")
-  const baseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
-  if (!baseUrl) {
-    yield* log("[Heartbeat] No OpenAgents base URL configured. Presence remains unregistered.")
-    return
-  }
-
-  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-  yield* Effect.tryPromise({
-    try: () => registerPylon(summary, { baseUrl }),
-    catch: (error) => new Error(`presence registration failed: ${String(error)}`),
-  }).pipe(
-    Effect.catch((error) =>
-      log(`[Heartbeat] Registration blocked: ${error.message}`)
-    )
+  return formatOperatorSnapshotText(
+    createOperatorSnapshot({ inventory, wallet: wallet as Parameters<typeof createOperatorSnapshot>[0]["wallet"] }),
   )
-
-  while (true) {
-    yield* Effect.tryPromise({
-      try: () => sendHeartbeat(summary, { baseUrl }),
-      catch: (error) => new Error(`heartbeat failed: ${String(error)}`),
-    }).pipe(
-      Effect.catch((error) =>
-        log(`[Heartbeat] Heartbeat blocked: ${error.message}`)
-      )
-    )
-    yield* Effect.sleep("30 seconds")
-  }
-})
+}
 
 type OpenCodeInferenceOptions = {
   label: string
@@ -480,7 +446,7 @@ async function executeOpencodeInference(
   )
 
   const responseLine =
-    options.streamToUi && globalRenderer
+    options.streamToUi && verboseMode && globalRenderer
       ? makeLogMarkdown(globalRenderer, {
           content: `**OpenCode ${options.label}**: starting...`,
           syntaxStyle,
@@ -619,9 +585,14 @@ const runOpencodeStartupInference = Effect.gen(function* () {
     yield* log(`[OpenCode] Found OpenCode CLI at ${opencodePath}. Initiating bootup diagnostics...`)
 
     // 1. Get neutral log summary (<10 words)
+    const bootLogs = nodeRuntime
+      ? (yield* SubscriptionRef.get(nodeRuntime.logFeed))
+          .map((entry) => `[${formatLogTimestamp(entry.at)}] ${entry.message}`)
+          .join("\n")
+      : ""
     const logSummaryResult = yield* Effect.tryPromise({
       try: () => {
-        const prompt = `Here are the bootup sequence logs:\n\n${logHistory.join("\n")}\n\nProvide a one line, <10 word, neutral, terminal-sounding summary of these bootup sequence logs.`
+        const prompt = `Here are the bootup sequence logs:\n\n${bootLogs}\n\nProvide a one line, <10 word, neutral, terminal-sounding summary of these bootup sequence logs.`
         return executeOpencodeInference(opencodePath, prompt, {
           label: "boot-summary",
           streamToUi: true,
@@ -662,10 +633,32 @@ const runOpencodeStartupInference = Effect.gen(function* () {
   }
 })
 
-// Main Pylon v0.3 Application Loop
+// Main Pylon v0.3 Application Loop. Runs inside a Scope (Effect.scoped at
+// the call site): every service fiber is forked into that Scope, and the
+// renderer/terminal are restored by finalizers, so Ctrl+C is a deliberate
+// interruption instead of process death (issue #4736).
 const runPylonNode = Effect.gen(function* () {
   const smokeDashboard = Bun.argv.includes("--smoke-dashboard") || Bun.env.PYLON_SMOKE_DASHBOARD === "1"
-  yield* log("Initializing Pylon v0.3 observational earning node...")
+  verboseMode = Bun.argv.includes("--verbose") || Bun.env.PYLON_VERBOSE === "1"
+
+  const runtime = yield* makePylonNodeRuntime
+  nodeRuntime = runtime
+
+  const shutdown = yield* Deferred.make<void>()
+  const requestShutdown = () => {
+    Effect.runFork(Deferred.succeed(shutdown, void 0))
+  }
+  process.once("SIGINT", requestShutdown)
+  process.once("SIGTERM", requestShutdown)
+  const interceptCtrlC = (sequence: string) => {
+    if (sequence.includes("\x03")) {
+      requestShutdown()
+      return true
+    }
+    return false
+  }
+
+  yield* logMessage(runtime, "verbose", "Initializing Pylon v0.3 observational earning node...")
   const restoreTerminalScrollLock = installTerminalScrollLock()
 
   // Bootstrap OpenTUI Core
@@ -673,16 +666,35 @@ const runPylonNode = Effect.gen(function* () {
     try: () =>
       createCliRenderer({
         screenMode: "alternate-screen",
-        exitOnCtrlC: true,
+        exitOnCtrlC: false,
         useMouse: true,
         autoFocus: true,
         targetFps: 30,
-        prependInputHandlers: [handleRawLogWheel],
+        prependInputHandlers: [interceptCtrlC, handleRawLogWheel],
       }),
     catch: (error) => new Error(`Failed to initialize OpenTUI renderer: ${String(error)}`),
   })
 
   globalRenderer = renderer
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      // destroy() is OpenTUI's full teardown (leaves the alternate screen,
+      // restores the cursor); stop() alone keeps the terminal captured.
+      const teardown = renderer as { destroy?: () => void; stop?: () => void }
+      if (typeof teardown.destroy === "function") {
+        teardown.destroy()
+      } else {
+        teardown.stop?.()
+      }
+      restoreTerminalScrollLock()
+      globalRenderer = null
+      logScrollBox = null
+      balanceTextRenderable = null
+      statusTextRenderable = null
+      telemetryTextRenderable = null
+      operatorTextRenderable = null
+    }),
+  )
 
   // 1. Create Main Outer Layout (Height 100%, Width 100%)
   const outerContainer = new BoxRenderable(renderer, {
@@ -726,6 +738,20 @@ const runPylonNode = Effect.gen(function* () {
     onMouseScroll: routeLogMouse,
   })
   leftPanel.add(logScrollBox)
+
+  // Seed the feed before the first layout pass. The scrollbox silently
+  // swallows the first child added around its initial frame (observed
+  // OpenTUI 0.3.4 quirk; the old startup masked it under log spam), so the
+  // sacrificial line is this banner rather than a real log entry.
+  logScrollBox.add(
+    makeLogMarkdown(renderer, {
+      content: "*Pylon v0.3*",
+      syntaxStyle,
+      width: "100%",
+      conceal: true,
+      fg: parseColor("#3B5B82"),
+    }),
+  )
 
   // 3b. Telemetry & Balance Panel (Right Column, Fixed Width 35)
   const rightPanel = new BoxRenderable(renderer, {
@@ -905,41 +931,72 @@ const runPylonNode = Effect.gen(function* () {
   // Focus on Composer Input
   composerInput.focus()
 
+  // Attach the view to the runtime seam: render current state, then follow
+  // ref changes and log events. Services are forked only after this, so the
+  // feed replay misses nothing.
+  yield* subscribeUiToRuntime(runtime)
+
+  yield* logMessage(
+    runtime,
+    "info",
+    verboseMode
+      ? "Pylon v0.3 dashboard active (verbose logging)."
+      : "Pylon v0.3 ready. Logs are quiet by default - relaunch with --verbose for service detail.",
+  )
+
   const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
   const localState = yield* Effect.tryPromise({
     try: () => ensurePylonLocalState(bootstrapSummary),
     catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
   })
-  yield* log(`[Identity] Pylon Nostr npub: ${localState.identity.npub}`)
+  yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`)
 
-  // Start Background Services as Concurrent Fibers
-  yield* Effect.sync(() => {
-    runBackgroundEffect("Telemetry", startHardwareTelemetryLoop)
-    runBackgroundEffect("Wallet", startMdkWalletService)
-    runBackgroundEffect("Heartbeat", startPresenceHeartbeatLoop)
-    runBackgroundEffect("NIP-90", Effect.tryPromise({
-      try: () => startNip90ProviderLoop(bootstrapSummary, {
-        log: (message) => logToUi(message),
-      }).then(() => undefined),
-      catch: (error) => new Error(`NIP-90 provider loop failed: ${String(error)}`),
-    }))
-    if (!smokeDashboard && Bun.env.PYLON_DISABLE_OPENCODE_STARTUP !== "1") {
-      runBackgroundEffect("OpenCode", runOpencodeStartupInference)
-    }
+  // Fork node services into this Scope - interrupted on shutdown.
+  const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
+  yield* forkNodeServices(runtime, {
+    wallet: {
+      classify: () => classifyMdkWallet(),
+    },
+    telemetry: {
+      discoverInventory: () => discoverHostInventory(),
+      inspectPsionic: async () => {
+        const connector = await inspectPsionicConnector({ env: Bun.env })
+        return { phase: connector.phase }
+      },
+      makeOperatorText: operatorTextFromInventory,
+    },
+    heartbeat: {
+      baseUrl: presenceBaseUrl,
+      register: () => registerPylon(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
+      heartbeat: () => sendHeartbeat(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
+    },
   })
 
-  yield* log("Pylon v0.3 observational dashboard active.")
+  yield* superviseLoop(
+    runtime,
+    "NIP-90",
+    Effect.tryPromise({
+      try: () =>
+        startNip90ProviderLoop(bootstrapSummary, {
+          log: (message) => logToUi(message, classifyServiceLogLevel(message)),
+        }).then(() => undefined),
+      catch: (error) => new Error(`NIP-90 provider loop failed: ${String(error)}`),
+    }),
+  )
+
+  if (!smokeDashboard && Bun.env.PYLON_DISABLE_OPENCODE_STARTUP !== "1") {
+    yield* superviseLoop(runtime, "OpenCode", runOpencodeStartupInference)
+  }
 
   if (smokeDashboard) {
-    yield* log("Pylon v0.3 dashboard smoke complete.")
-    renderer.stop?.()
-    restoreTerminalScrollLock()
-    yield* Effect.sync(() => process.exit(0))
+    yield* logMessage(runtime, "info", "Pylon v0.3 dashboard smoke complete.")
     return
   }
 
-  // Enter the persistent execution block
-  yield* Effect.never
+  // Stay alive until Ctrl+C / SIGINT / SIGTERM requests shutdown; closing
+  // the surrounding Scope then interrupts every service fiber and runs the
+  // renderer/terminal finalizers.
+  yield* Deferred.await(shutdown)
 })
 
 const runtimeCommandNamespaces = new Set([
@@ -1677,12 +1734,16 @@ async function main() {
   }
 
   await Effect.runPromise(
-    runPylonNode.pipe(
+    Effect.scoped(runPylonNode).pipe(
       Effect.catch((error) =>
         Console.error(`Pylon v0.3 crashed on startup: ${error.message}`)
       )
     )
   )
+  // Scope is closed: services interrupted, renderer stopped, terminal
+  // restored. Exit explicitly so lingering library handles cannot hold the
+  // process open after a deliberate shutdown.
+  process.exit(0)
 }
 
 await main()

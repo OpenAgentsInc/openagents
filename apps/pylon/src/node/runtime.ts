@@ -1,0 +1,256 @@
+// Pylon node runtime: service-owned state behind SubscriptionRefs plus a
+// typed PylonEvent PubSub (issue #4736). Services update state through the
+// setters here and never touch a renderable; the TUI subscribes to refs and
+// events and never runs business logic. Loops are forked into the caller's
+// Scope so Ctrl+C interrupts them instead of orphaning them.
+
+import { Effect, PubSub, SubscriptionRef } from "effect"
+import {
+  appendLogEntry,
+  initialOperatorPaneState,
+  initialTelemetryPaneState,
+  initialWalletPaneState,
+  telemetryPaneStateFromInventory,
+  walletPaneStateFromStatus,
+  walletTransitionMessage,
+  type OperatorPaneState,
+  type PylonEvent,
+  type PylonLogEntry,
+  type PylonLogLevel,
+  type TelemetryInventoryInput,
+  type TelemetryPaneState,
+  type WalletPaneState,
+  type WalletStatusInput,
+} from "./state"
+
+export interface PylonNodeRuntime {
+  readonly wallet: SubscriptionRef.SubscriptionRef<WalletPaneState>
+  readonly telemetry: SubscriptionRef.SubscriptionRef<TelemetryPaneState>
+  readonly operator: SubscriptionRef.SubscriptionRef<OperatorPaneState>
+  readonly logFeed: SubscriptionRef.SubscriptionRef<ReadonlyArray<PylonLogEntry>>
+  readonly events: PubSub.PubSub<PylonEvent>
+}
+
+export const makePylonNodeRuntime: Effect.Effect<PylonNodeRuntime> = Effect.gen(function* () {
+  const wallet = yield* SubscriptionRef.make(initialWalletPaneState)
+  const telemetry = yield* SubscriptionRef.make(initialTelemetryPaneState)
+  const operator = yield* SubscriptionRef.make(initialOperatorPaneState)
+  const logFeed = yield* SubscriptionRef.make<ReadonlyArray<PylonLogEntry>>([])
+  const events = yield* PubSub.unbounded<PylonEvent>()
+  return { wallet, telemetry, operator, logFeed, events }
+})
+
+export const logMessage = (
+  runtime: PylonNodeRuntime,
+  level: PylonLogLevel,
+  message: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const entry: PylonLogEntry = { at: new Date().toISOString(), level, message }
+    yield* SubscriptionRef.update(runtime.logFeed, (entries) => appendLogEntry(entries, entry))
+    yield* PubSub.publish(runtime.events, { type: "log", ...entry })
+  })
+
+export const setWalletStatus = (
+  runtime: PylonNodeRuntime,
+  status: WalletStatusInput | null,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const previous = yield* SubscriptionRef.get(runtime.wallet)
+    const next = walletPaneStateFromStatus(status)
+    yield* SubscriptionRef.set(runtime.wallet, next)
+    yield* PubSub.publish(runtime.events, { type: "wallet", at: new Date().toISOString(), wallet: next })
+    const transition = walletTransitionMessage(previous, next)
+    if (transition) {
+      yield* logMessage(runtime, "verbose", transition)
+    }
+  })
+
+export const setTelemetry = (
+  runtime: PylonNodeRuntime,
+  inventory: TelemetryInventoryInput | null,
+  psionicPhase: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const next = telemetryPaneStateFromInventory(inventory, psionicPhase)
+    yield* SubscriptionRef.set(runtime.telemetry, next)
+    yield* PubSub.publish(runtime.events, { type: "telemetry", at: new Date().toISOString(), telemetry: next })
+  })
+
+export const setOperatorText = (
+  runtime: PylonNodeRuntime,
+  text: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* SubscriptionRef.set(runtime.operator, { text })
+    yield* PubSub.publish(runtime.events, { type: "operator", at: new Date().toISOString(), text })
+  })
+
+// --- Service loops --------------------------------------------------------
+// Dependencies are injected so the poll bodies are testable without the real
+// daemon, inventory probe, or network.
+
+export interface WalletServiceDeps {
+  classify: () => Promise<WalletStatusInput | null>
+  intervalMs?: number
+}
+
+export const walletPollOnce = (
+  runtime: PylonNodeRuntime,
+  classify: WalletServiceDeps["classify"],
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const status = yield* Effect.promise(async () => {
+      try {
+        return await classify()
+      } catch (error) {
+        return { error: String(error) } as const
+      }
+    })
+    if (status && "error" in status) {
+      yield* logMessage(runtime, "verbose", `[Wallet] MDK status unavailable: ${status.error}`)
+      yield* setWalletStatus(runtime, null)
+      return
+    }
+    yield* setWalletStatus(runtime, status)
+  })
+
+export const walletServiceLoop = (
+  runtime: PylonNodeRuntime,
+  deps: WalletServiceDeps,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* logMessage(runtime, "verbose", "[Wallet] Connecting to local MDK agent-wallet daemon...")
+    while (true) {
+      yield* walletPollOnce(runtime, deps.classify)
+      yield* Effect.sleep(`${deps.intervalMs ?? 10_000} millis`)
+    }
+  })
+
+export interface TelemetryServiceDeps<Inventory extends TelemetryInventoryInput = TelemetryInventoryInput> {
+  discoverInventory: () => Promise<Inventory>
+  inspectPsionic: () => Promise<{ phase: string }>
+  makeOperatorText: (inventory: Inventory) => string
+  intervalMs?: number
+}
+
+export const telemetryPollOnce = <Inventory extends TelemetryInventoryInput>(
+  runtime: PylonNodeRuntime,
+  deps: TelemetryServiceDeps<Inventory>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const inventory = yield* Effect.promise(async () => {
+      try {
+        return await deps.discoverInventory()
+      } catch (error) {
+        return { error: String(error) } as const
+      }
+    })
+    if ("error" in inventory) {
+      yield* logMessage(runtime, "verbose", `[Telemetry] Inventory unavailable: ${inventory.error}`)
+      yield* setTelemetry(runtime, null, "unknown")
+      return
+    }
+    yield* setTelemetry(runtime, inventory, "checking")
+    yield* setOperatorText(runtime, deps.makeOperatorText(inventory))
+    const psionic = yield* Effect.promise(async () => {
+      try {
+        return await deps.inspectPsionic()
+      } catch {
+        return { phase: "unknown" }
+      }
+    })
+    yield* setTelemetry(runtime, inventory, psionic.phase)
+  })
+
+export const telemetryServiceLoop = <Inventory extends TelemetryInventoryInput>(
+  runtime: PylonNodeRuntime,
+  deps: TelemetryServiceDeps<Inventory>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* logMessage(runtime, "verbose", "[Telemetry] Platform discovery initialized.")
+    while (true) {
+      yield* telemetryPollOnce(runtime, deps)
+      yield* Effect.sleep(`${deps.intervalMs ?? 10_000} millis`)
+    }
+  })
+
+export interface HeartbeatServiceDeps {
+  baseUrl: string | undefined
+  register: () => Promise<unknown>
+  heartbeat: () => Promise<unknown>
+  intervalMs?: number
+}
+
+export const heartbeatServiceLoop = (
+  runtime: PylonNodeRuntime,
+  deps: HeartbeatServiceDeps,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (!deps.baseUrl) {
+      yield* logMessage(
+        runtime,
+        "verbose",
+        "[Heartbeat] No OpenAgents base URL configured. Presence remains unregistered.",
+      )
+      return
+    }
+    yield* logMessage(runtime, "verbose", "[Heartbeat] Presence service initialized.")
+    const registered = yield* Effect.promise(async () => {
+      try {
+        await deps.register()
+        return true
+      } catch (error) {
+        return String(error)
+      }
+    })
+    if (registered !== true) {
+      yield* logMessage(runtime, "info", `[Heartbeat] Registration blocked: ${registered}`)
+    }
+    while (true) {
+      const sent = yield* Effect.promise(async () => {
+        try {
+          await deps.heartbeat()
+          return true
+        } catch (error) {
+          return String(error)
+        }
+      })
+      if (sent !== true) {
+        yield* logMessage(runtime, "verbose", `[Heartbeat] Heartbeat blocked: ${sent}`)
+      }
+      yield* Effect.sleep(`${deps.intervalMs ?? 30_000} millis`)
+    }
+  })
+
+export interface PylonNodeServiceDeps<Inventory extends TelemetryInventoryInput = TelemetryInventoryInput> {
+  wallet: WalletServiceDeps
+  telemetry: TelemetryServiceDeps<Inventory>
+  heartbeat: HeartbeatServiceDeps
+}
+
+// Forks a loop into the caller's Scope. A loop that dies on a failure or
+// defect logs an error instead of vanishing silently; closing the Scope
+// (Ctrl+C, smoke exit) interrupts it.
+export const superviseLoop = (
+  runtime: PylonNodeRuntime,
+  name: string,
+  loop: Effect.Effect<void, unknown>,
+) =>
+  Effect.forkScoped(
+    loop.pipe(
+      Effect.catchCause((cause) =>
+        logMessage(runtime, "error", `[${name}] Service stopped with error: ${String(cause)}`),
+      ),
+    ),
+  )
+
+export const forkNodeServices = <Inventory extends TelemetryInventoryInput>(
+  runtime: PylonNodeRuntime,
+  deps: PylonNodeServiceDeps<Inventory>,
+) =>
+  Effect.gen(function* () {
+    yield* superviseLoop(runtime, "Telemetry", telemetryServiceLoop(runtime, deps.telemetry))
+    yield* superviseLoop(runtime, "Wallet", walletServiceLoop(runtime, deps.wallet))
+    yield* superviseLoop(runtime, "Heartbeat", heartbeatServiceLoop(runtime, deps.heartbeat))
+  })

@@ -1,0 +1,145 @@
+// Pure, serializable domain state for the Pylon dashboard (issue #4736).
+//
+// Nothing in this module may import OpenTUI, Effect, or any service module.
+// These types and transitions are the seam between node services and the
+// view layer: services compute next states here, the runtime publishes them,
+// and the TUI renders them. Every event type must stay JSON-serializable so
+// the same union can become the attach-mode wire format later (issue #4740).
+
+export type PylonLogLevel = "error" | "info" | "verbose"
+
+export type PylonLogEntry = {
+  at: string
+  level: PylonLogLevel
+  message: string
+}
+
+export const maxLogEntries = 1000
+
+export type WalletPaneState = {
+  daemonOnline: boolean
+  balanceSats: number | null
+  readiness: string
+}
+
+export const initialWalletPaneState: WalletPaneState = {
+  daemonOnline: false,
+  balanceSats: null,
+  readiness: "daemon-offline",
+}
+
+export type WalletStatusInput = {
+  daemonOnline: boolean
+  balanceSats: number | null
+  readiness: string
+}
+
+export function walletPaneStateFromStatus(status: WalletStatusInput | null): WalletPaneState {
+  if (!status) return initialWalletPaneState
+  return {
+    daemonOnline: status.daemonOnline,
+    balanceSats: status.balanceSats,
+    readiness: status.readiness,
+  }
+}
+
+export function isWalletOnline(state: WalletPaneState): boolean {
+  return state.daemonOnline && state.balanceSats !== null
+}
+
+export function walletTransitionMessage(
+  previous: WalletPaneState,
+  next: WalletPaneState,
+): string | null {
+  const wasOnline = isWalletOnline(previous)
+  const nowOnline = isWalletOnline(next)
+  if (!wasOnline && nowOnline) {
+    return `[Wallet] MDK agent-wallet daemon connected. Readiness: ${next.readiness}.`
+  }
+  if (wasOnline && !nowOnline) {
+    return "[Wallet] Local MDK wallet balance is unavailable. Operating in OFFLINE mode."
+  }
+  return null
+}
+
+export type TelemetryPaneState = {
+  state: "IDLE" | "INVENTORY FRESH" | "INVENTORY BLOCKED" | "UNAVAILABLE"
+  model: string
+  vram: string
+  psionic: string
+}
+
+export const initialTelemetryPaneState: TelemetryPaneState = {
+  state: "IDLE",
+  model: "-",
+  vram: "-",
+  psionic: "unknown",
+}
+
+export type TelemetryInventoryInput = {
+  eligibleInventoryCount: number
+  accelerator: { vramGb: number | null }
+  backendHealth: ReadonlyArray<{ state: string; modelRef: string | null }>
+}
+
+export function telemetryPaneStateFromInventory(
+  inventory: TelemetryInventoryInput | null,
+  psionicPhase: string,
+): TelemetryPaneState {
+  if (!inventory) {
+    return { state: "UNAVAILABLE", model: "inventory unavailable", vram: "--", psionic: psionicPhase }
+  }
+  const readyBackends = inventory.backendHealth.filter(
+    (backend) => backend.state === "ready" || backend.state === "configured",
+  )
+  return {
+    state: inventory.eligibleInventoryCount > 0 ? "INVENTORY FRESH" : "INVENTORY BLOCKED",
+    model: readyBackends[0]?.modelRef ?? "None",
+    vram: inventory.accelerator.vramGb === null ? "--" : `${inventory.accelerator.vramGb.toFixed(1)} GB`,
+    psionic: psionicPhase,
+  }
+}
+
+export type OperatorPaneState = {
+  text: string
+}
+
+export const initialOperatorPaneState: OperatorPaneState = {
+  text: " Operate: loading\n Inspect: loading\n Recovery: loading",
+}
+
+export type PylonEvent =
+  | { type: "log"; at: string; level: PylonLogLevel; message: string }
+  | { type: "wallet"; at: string; wallet: WalletPaneState }
+  | { type: "telemetry"; at: string; telemetry: TelemetryPaneState }
+  | { type: "operator"; at: string; text: string }
+
+export function appendLogEntry(
+  entries: ReadonlyArray<PylonLogEntry>,
+  entry: PylonLogEntry,
+  max: number = maxLogEntries,
+): ReadonlyArray<PylonLogEntry> {
+  const next = [...entries, entry]
+  return next.length > max ? next.slice(next.length - max) : next
+}
+
+export function isLogEntryVisible(
+  entry: Pick<PylonLogEntry, "level">,
+  verbose: boolean,
+): boolean {
+  if (entry.level === "verbose") return verbose
+  return true
+}
+
+// For service callbacks whose message content we don't control (e.g. the
+// NIP-90 provider loop): failures stay visible, routine chatter is verbose.
+export function classifyServiceLogLevel(message: string): PylonLogLevel {
+  return /error|failed|crash/i.test(message) ? "error" : "verbose"
+}
+
+export function formatLogTimestamp(at: string): string {
+  const date = new Date(at)
+  if (Number.isNaN(date.getTime())) return "--:--:--"
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
