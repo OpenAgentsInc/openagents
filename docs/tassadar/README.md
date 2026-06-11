@@ -386,6 +386,16 @@ stack and cheap to begin.
   (verification ladder as shelf structure, mechanized admission,
   trace-decomposed revenue splits) and the store-is-built-last
   sequencing rule.
+- [`2026-06-11-coding-agent-primitive-wedge.md`](2026-06-11-coding-agent-primitive-wedge.md)
+  — the wedge essay following the marketplace audit: the coding agent
+  as a typed, dispatchable, verifiable work class is the marketplace's
+  first good — demanded by the market (six operations complaints, none
+  about intelligence), mostly built (live control plane, Claude Agent
+  bridge, proven settlement spine), consumed first by us, and improved
+  verifiably (validator re-execution, hash-gated benchmarks,
+  paid community improvement through its own rails) — with the
+  product → primitive → marketplace bootstrap sequence and the
+  compliance-boundary moat.
 - [`2026-06-11-chatgpt-pro-analysis-2.md`](2026-06-11-chatgpt-pro-analysis-2.md)
   — the second external (ChatGPT Pro) brief: the literature map
   (RASP/Tracr lineage, expressivity-versus-learnability,
