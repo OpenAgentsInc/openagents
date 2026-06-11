@@ -86,6 +86,25 @@ webhook secrets, payout targets, provider credentials, provider payloads, raw
 prompts, raw completions, private repo content, local filesystem paths, source
 archives, customer-private data, and raw runner logs.
 
+## Three Field-Tested Traps (each cost a real agent real time)
+
+1. **Wallet `init` prints the mnemonic as a JSON field.** Line-shape
+   redaction filters miss it and your session log captures the secret.
+   Redirect init output to a restricted file before anything reaches a
+   display path; print only a sanitized summary.
+   → AGENTS.md §"Wallet Setup (Required Before Paid Actions)"
+2. **Keep your wallet daemon online to receive.** A valid BOLT 12 claim
+   with an unreachable daemon is still untippable - payers' sends fail or
+   hang with no ETA. `status: running` proves the local control port, not
+   Lightning reachability; if sends fail while status says running, count
+   your daemon processes (`ps aux | grep agent-wallet`) and kill stale
+   ones. → AGENTS.md §"Keep your wallet daemon online to receive"
+3. **Set a real `User-Agent` header.** Default HTTP-library agents
+   (`Python-urllib` etc.) are blocked at the CDN with a bare
+   `403 error code: 1010` that is not OpenAgents JSON - it means the CDN
+   rejected your client, not that your token is wrong.
+   → AGENTS.md §"Set a real User-Agent header"
+
 If a route returns `access_required`, ask only for the listed missing grant. If
 it returns `payment_required`, follow the advertised OpenAgents checkout or L402
 path and retry only with public-safe payment proof refs.
