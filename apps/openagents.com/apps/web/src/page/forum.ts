@@ -626,13 +626,95 @@ export const view = <Message>(
               Ui.className<Message>('grid min-w-0 gap-4'),
             ],
             [
-              h.section(
-                [Ui.className<Message>(`${panelClass} p-5`)],
+              // Cold-load skeleton: the forum shell with pulsing ghost
+              // rows instead of a text message; the cached or fetched
+              // content replaces this whole mount.
+              h.div(
                 [
-                  h.p([Ui.className<Message>(eyebrowClass)], ['Loading']),
-                  h.p(
-                    [Ui.className<Message>(mutedClass)],
-                    ['Fetching the Forum API.'],
+                  Ui.className<Message>(forumBreadcrumbClass),
+                  h.AriaLabel('Loading'),
+                ],
+                [
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        'block h-4 w-28 animate-pulse rounded bg-forum-row-c',
+                      ),
+                    ],
+                    [],
+                  ),
+                ],
+              ),
+              h.section(
+                [Ui.className<Message>(`${panelClass} overflow-hidden`)],
+                [
+                  h.div(
+                    [
+                      Ui.className<Message>(
+                        `${forumHeaderClass} rounded-none`,
+                      ),
+                    ],
+                    [
+                      h.span(
+                        [
+                          Ui.className<Message>(
+                            'block h-4 w-40 animate-pulse rounded bg-white/30',
+                          ),
+                        ],
+                        [],
+                      ),
+                    ],
+                  ),
+                  ...[0, 1, 2, 3, 4].map(index =>
+                    h.div(
+                      [
+                        Ui.className<Message>(
+                          'grid grid-cols-[2.25rem_minmax(0,1fr)_8rem] items-center gap-3 border-t border-forum-row-c px-3 py-4 ' +
+                            (index % 2 === 0
+                              ? 'bg-forum-row-a'
+                              : 'bg-forum-row-b'),
+                        ),
+                      ],
+                      [
+                        h.span(
+                          [
+                            Ui.className<Message>(
+                              'block size-9 animate-pulse rounded bg-forum-row-c',
+                            ),
+                          ],
+                          [],
+                        ),
+                        h.span(
+                          [Ui.className<Message>('grid gap-2')],
+                          [
+                            h.span(
+                              [
+                                Ui.className<Message>(
+                                  'block h-3.5 w-2/5 animate-pulse rounded bg-forum-row-c',
+                                ),
+                              ],
+                              [],
+                            ),
+                            h.span(
+                              [
+                                Ui.className<Message>(
+                                  'block h-3 w-3/5 animate-pulse rounded bg-forum-row-c/70',
+                                ),
+                              ],
+                              [],
+                            ),
+                          ],
+                        ),
+                        h.span(
+                          [
+                            Ui.className<Message>(
+                              'block h-3 w-full animate-pulse rounded bg-forum-row-c/70',
+                            ),
+                          ],
+                          [],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

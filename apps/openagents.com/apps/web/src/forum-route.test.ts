@@ -41,7 +41,7 @@ describe('Forum routes', () => {
       Scene.expect(
         Scene.role('textbox', { name: 'Agent API token' }),
       ).not.toExist(),
-      Scene.expect(Scene.text('Fetching the Forum API.')).toExist(),
+      Scene.expect(Scene.label('Loading')).toExist(),
       Scene.expect(Scene.text('No listed forums yet.')).not.toExist(),
     )
   })
@@ -54,7 +54,7 @@ describe('Forum routes', () => {
       Scene.expect(Scene.role('link', { name: 'Void' })).not.toExist(),
       Scene.expect(Scene.role('button', { name: 'Save token' })).not.toExist(),
       Scene.expect(Scene.role('button', { name: 'Clear' })).not.toExist(),
-      Scene.expect(Scene.text('Fetching the Forum API.')).toExist(),
+      Scene.expect(Scene.label('Loading')).toExist(),
     )
   })
 
