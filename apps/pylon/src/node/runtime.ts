@@ -254,3 +254,34 @@ export const forkNodeServices = <Inventory extends TelemetryInventoryInput>(
     yield* superviseLoop(runtime, "Wallet", walletServiceLoop(runtime, deps.wallet))
     yield* superviseLoop(runtime, "Heartbeat", heartbeatServiceLoop(runtime, deps.heartbeat))
   })
+
+// Prepends persisted log entries (issue #4739) to the feed ref without
+// publishing events - restored scrollback is replayed by the view bridge,
+// not re-persisted or re-announced.
+export const seedLogFeed = (
+  runtime: PylonNodeRuntime,
+  entries: ReadonlyArray<PylonLogEntry>,
+): Effect.Effect<void> =>
+  SubscriptionRef.update(runtime.logFeed, (current) => [...entries, ...current])
+
+// Forks a scoped consumer that appends every live log event to the durable
+// feed log. Subscribed before services fork so no entry is missed.
+export const forkLogPersistence = (
+  runtime: PylonNodeRuntime,
+  writer: { append: (entry: PylonLogEntry) => Promise<void> },
+) =>
+  Effect.gen(function* () {
+    const subscription = yield* PubSub.subscribe(runtime.events)
+    yield* Effect.forkScoped(
+      Effect.gen(function* () {
+        while (true) {
+          const event = yield* PubSub.take(subscription)
+          if (event.type === "log") {
+            yield* Effect.promise(() =>
+              writer.append({ at: event.at, level: event.level, message: event.message }),
+            )
+          }
+        }
+      }),
+    )
+  })

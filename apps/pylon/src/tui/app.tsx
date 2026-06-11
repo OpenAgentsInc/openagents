@@ -11,22 +11,27 @@
 
 import {
   createCliRenderer,
-  MacOSScrollAccel,
   type CliRenderer,
-  type ScrollBoxRenderable,
+  type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
 import { render, useTerminalDimensions } from "@opentui/solid"
-import { ErrorBoundary, For, Show, type JSX } from "solid-js"
+import { ErrorBoundary, For, Show, createMemo, type JSX } from "solid-js"
 import { runOpencodeStream } from "../opencode-run"
 import { theme } from "./theme"
 import {
   appendChatFeedItem,
-  feedItems,
+  estimateMarkdownRows,
+  feedLineCount,
+  feedScrollOffset,
   operatorText,
+  registerFeedViewport,
+  scrollFeedBy,
   setVerboseMode,
+  streamingTails,
   telemetryState,
   verboseMode,
+  visibleFeedLines,
   walletState,
 } from "./store"
 import { DialogHost, registerDialogFocusHooks } from "./dialogs"
@@ -45,7 +50,7 @@ export type { WalletActions } from "./commands"
 
 // --- View-internal plumbing (focus, scroll, terminal modes) ---------------
 
-let scrollRef: ScrollBoxRenderable | undefined
+let scrollRef: Renderable | undefined
 let composerRef: TextareaRenderable | undefined
 let keymapRef: PylonKeymap | undefined
 
@@ -68,8 +73,8 @@ function installTerminalScrollLock() {
   return restore
 }
 
-function scrollLogBy(delta: number, unit: "absolute" | "viewport" | "content" | "step" = "absolute") {
-  scrollRef?.scrollBy(delta, unit)
+function scrollLogBy(delta: number, unit: "viewport" | "content" | "step" = "step") {
+  scrollFeedBy(delta, unit)
 }
 
 function isPointInsideLogScrollBox(x: number, y: number) {
@@ -83,23 +88,14 @@ function isPointInsideLogScrollBox(x: number, y: number) {
 }
 
 function scrollLogByWheelButton(button: number) {
-  if (!scrollRef) return false
   const wheelButton = button & 0b11
-  const step = Math.max(3, Math.ceil((scrollRef.viewport?.height ?? scrollRef.height ?? 15) / 6))
+  const step = 3
   if (wheelButton === 0) {
-    scrollRef.scrollBy(-step)
+    scrollFeedBy(-step)
     return true
   }
   if (wheelButton === 1) {
-    scrollRef.scrollBy(step)
-    return true
-  }
-  if (wheelButton === 2) {
-    scrollRef.scrollBy({ x: -step, y: 0 })
-    return true
-  }
-  if (wheelButton === 3) {
-    scrollRef.scrollBy({ x: step, y: 0 })
+    scrollFeedBy(step)
     return true
   }
   return false
@@ -122,8 +118,10 @@ function handleRawLogWheel(sequence: string) {
 }
 
 function scrollLogFromWheel(event: any) {
-  if (!scrollRef || event.type !== "scroll") return false
-  ;(scrollRef as any).onMouseEvent?.(event)
+  if (event.type !== "scroll") return false
+  const direction = event.scroll?.direction
+  if (direction === "up") scrollFeedBy(-3)
+  else if (direction === "down") scrollFeedBy(3)
   return true
 }
 
@@ -205,6 +203,20 @@ function Pane(props: { name: string; children: JSX.Element }) {
 }
 
 function LogFeed() {
+  const dimensions = useTerminalDimensions()
+  // Inner rows available for the virtual window: terminal height minus
+  // composer (5), footer (1), feed borders (2), banner line (1), and the
+  // estimated height of any live streaming tails.
+  const tailRows = createMemo(() =>
+    streamingTails.reduce(
+      (sum, tail) => sum + Math.min(12, estimateMarkdownRows(tail.markdown, dimensions().width - 4)),
+      0,
+    ),
+  )
+  const viewportRows = createMemo(() => Math.max(3, dimensions().height - 9 - tailRows()))
+  registerFeedViewport(() => viewportRows())
+  const visible = createMemo(() => visibleFeedLines(feedScrollOffset(), viewportRows()))
+  const scrolledUp = createMemo(() => feedScrollOffset() > 0)
   return (
     <box
       border
@@ -214,47 +226,44 @@ function LogFeed() {
       titleColor={theme.colors.title}
       flexGrow={1}
       height="100%"
+      flexDirection="column"
+      focusable
+      ref={(renderable: Renderable) => {
+        scrollRef = renderable
+        if (keymapRef) registerLogsScrollLayer(keymapRef, renderable)
+      }}
+      onMouseDown={routeLogMouse}
+      onMouseScroll={routeLogMouse}
     >
-      <scrollbox
-        ref={(renderable: ScrollBoxRenderable) => {
-          scrollRef = renderable
-          if (keymapRef) registerLogsScrollLayer(keymapRef, renderable)
-        }}
-        scrollY
-        stickyScroll
-        stickyStart="bottom"
-        scrollAcceleration={new MacOSScrollAccel()}
-        focusable
-        flexGrow={1}
-        width="100%"
-        height="100%"
-        onMouseDown={routeLogMouse}
-        onMouseScroll={routeLogMouse}
-      >
-        <markdown
-          content="*Pylon v0.3*"
-          syntaxStyle={theme.syntaxStyle}
-          width="100%"
-          conceal
-          fg={theme.colors.banner}
-          onMouseDown={routeLogMouse}
-          onMouseScroll={routeLogMouse}
-        />
-        <For each={feedItems}>
-          {(item) => (
-            <markdown
-              content={item.markdown}
-              syntaxStyle={theme.syntaxStyle}
-              width="100%"
-              conceal
-              fg={item.tone === "log" ? theme.colors.logText : item.tone === "logError" ? theme.colors.logError : undefined}
-              streaming={item.streaming}
-              onMouseDown={routeLogMouse}
-              onMouseScroll={routeLogMouse}
-            />
-          )}
-        </For>
-      </scrollbox>
+      <text height={1} width="100%" fg={theme.colors.banner}>
+        {scrolledUp()
+          ? ` Pylon v0.3 - scrolled up ${feedScrollOffset()} lines (end: bottom)`
+          : ` Pylon v0.3 - ${feedLineCount()} log lines`}
+      </text>
+      <For each={visible()}>
+        {(line) => (
+          <text
+            height={1}
+            width="100%"
+            fg={line.tone === "log" ? theme.colors.logText : line.tone === "logError" ? theme.colors.logError : theme.colors.text}
+          >
+            {line.text || " "}
+          </text>
+        )}
+      </For>
+      <For each={streamingTails}>
+        {(tail) => (
+          <markdown
+            content={tail.markdown}
+            syntaxStyle={theme.syntaxStyle}
+            width="100%"
+            conceal
+            streaming
+            onMouseDown={routeLogMouse}
+            onMouseScroll={routeLogMouse}
+          />
+        )}
+      </For>
     </box>
   )
 }
@@ -430,7 +439,7 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
       focusLogs: () => scrollRef?.focus(),
       focusComposer: () => composerRef?.focus(),
       focusedPane: () => ((scrollRef as { focused?: boolean } | undefined)?.focused ? "logs" : "composer"),
-      scrollLogs: (delta, unit) => scrollRef?.scrollBy(delta, unit ?? "step"),
+      scrollLogs: (delta, unit) => scrollFeedBy(delta, unit ?? "step"),
       submitComposer,
       toggleVerbose: () => {
         const next = !verboseMode()

@@ -21,14 +21,17 @@ import {
 import { Console, Deferred, Effect, SubscriptionRef } from "effect"
 import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state"
 import {
+  forkLogPersistence,
   forkNodeServices,
   logMessage,
   makePylonNodeRuntime,
+  seedLogFeed,
   superviseLoop,
   type PylonNodeRuntime,
 } from "./node/runtime"
 import { runOpencodeStream } from "./opencode-run"
 import { loadKeybindOverrides } from "./node/keybinds"
+import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -332,6 +335,20 @@ const runPylonNode = Effect.gen(function* () {
   dashboardUi = ui
 
   const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+
+  // Durable feed log (issue #4739): restore the tail of the previous
+  // session's scrollback, then persist every live log entry. The persister
+  // subscribes before services fork, so nothing is missed.
+  const persistedTail = yield* Effect.promise(() =>
+    readPersistedLogTail(bootstrapSummary.paths.home, 300).catch(() => []),
+  )
+  if (persistedTail.length > 0) {
+    yield* seedLogFeed(runtime, persistedTail)
+  }
+  const feedWriter = createFeedLogWriter(bootstrapSummary.paths.home, {
+    onError: (message) => logToUi(`[FeedLog] Persistence disabled: ${message}`, "info"),
+  })
+  yield* forkLogPersistence(runtime, feedWriter)
 
   // User keybind overrides (apps/pylon home keybinds.json, Effect-Schema
   // validated). Invalid files are reported and ignored.
