@@ -36,7 +36,13 @@ keyed by leaseRef and confirm-gated accept (local or over the control
 API when attached), a wallet surface with readiness and session balance
 history, and composer history/stash persisted across restarts (ctrl+p /
 ctrl+n). Slot-style plugin composition was deliberately skipped — no
-external TUI plugin authors yet, per the roadmap's non-goals.
+external TUI plugin authors yet, per the roadmap's non-goals. Phase 6
+shipped (#4742): an owned headless render harness (`src/tui/harness.tsx`,
+the Textual Pilot model on @opentui/solid's testRender) with programmatic
+key injection, character-frame capture, bun:test snapshots at three
+terminal sizes, dialog/palette interaction tests, and protocol tests that
+drive the real runtime+bridge with fake PylonEvent streams. All six
+roadmap phases are complete; the TUI is at the targeted opencode parity.
 
 ## Goal and non-goals
 

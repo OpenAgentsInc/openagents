@@ -75,6 +75,15 @@ composer (bottom), and a one-line key-hint footer.
 - The interactive `pylon` dashboard also serves the control API, so a
   second terminal can attach to it.
 
+### TUI test harness
+
+`src/tui/harness.tsx` mounts the real dashboard headlessly (no TTY) via
+`@opentui/solid`'s `testRender`: inject keys programmatically, capture
+character frames, snapshot them with `bun:test`, and drive the real
+runtime/bridge with fake `PylonEvent` streams. See
+`tests/tui-render-harness.test.ts`; the harness is importable by the
+runtime package's renderer tests as well.
+
 ## Bootstrap And Status
 
 ```sh

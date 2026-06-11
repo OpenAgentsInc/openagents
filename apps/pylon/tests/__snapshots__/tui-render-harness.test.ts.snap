@@ -1,0 +1,97 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`tui render harness (Pilot model) dashboard snapshot at 80x24 1`] = `
+"┌─ // Active Workroom Execution Logs ───────┐┌─ // Telemetry & Wallet ─────────┐
+│ Pylon v0.3 - 0 log lines                  ││ Wallet: OFFLINE                 │
+│                                           ││ Balance: -- Sats                │
+│                                           ││ --------------------------------│
+│                                           ││ State: IDLE                     │
+│                                           ││ Model: -                        │
+│                                           ││ VRAM:  -                        │
+│                                           ││ Psionic: unknown                │
+│                                           ││ --------------------------------│
+│                                           ││ Operate: loading                │
+│                                           ││ Inspect: loading                │
+│                                           ││ Recovery: loading               │
+│                                           ││                                 │
+│                                           ││                                 │
+│                                           ││                                 │
+│                                           ││                                 │
+│                                           ││                                 │
+└───────────────────────────────────────────┘└─────────────────────────────────┘
+┌─ // Composer (meta+return to submit) ────────────────────────────────────────┐
+│Ask your agent anything...                                                    │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ctrl+k open command palette  ·  f1 show keybindings  ·  ctrl+c quit pylon  ·   
+"
+`;
+
+exports[`tui render harness (Pilot model) dashboard snapshot at 120x40 1`] = `
+"┌─ // Active Workroom Execution Logs ───────────────────────────────────────────────┐┌─ // Telemetry & Wallet ─────────┐
+│ Pylon v0.3 - 0 log lines                                                          ││ Wallet: OFFLINE                 │
+│                                                                                   ││ Balance: -- Sats                │
+│                                                                                   ││ --------------------------------│
+│                                                                                   ││ State: IDLE                     │
+│                                                                                   ││ Model: -                        │
+│                                                                                   ││ VRAM:  -                        │
+│                                                                                   ││ Psionic: unknown                │
+│                                                                                   ││ --------------------------------│
+│                                                                                   ││ Operate: loading                │
+│                                                                                   ││ Inspect: loading                │
+│                                                                                   ││ Recovery: loading               │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+│                                                                                   ││                                 │
+└───────────────────────────────────────────────────────────────────────────────────┘└─────────────────────────────────┘
+┌─ // Composer (meta+return to submit) ────────────────────────────────────────────────────────────────────────────────┐
+│Ask your agent anything...                                                                                            │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ctrl+k open command palette  ·  f1 show keybindings  ·  ctrl+c quit pylon  ·  tab switch focus  ·  meta+return send    
+"
+`;
+
+exports[`tui render harness (Pilot model) narrow terminal collapses the sidebar 1`] = `
+"┌─ // Active Workroom Execution Logs ────────────┐
+│ Pylon v0.3 - 0 log lines                       │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+│                                                │
+└────────────────────────────────────────────────┘
+┌─ // Composer (meta+return to submit) ──────────┐
+│Ask your agent anything...                      │
+│                                                │
+│                                                │
+└────────────────────────────────────────────────┘
+ ctrl+k open command palette  ·  f1 show          
+"
+`;

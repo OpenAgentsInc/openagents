@@ -522,6 +522,57 @@ export function Dashboard() {
 
 // --- Mount ------------------------------------------------------------------
 
+// Shared chrome setup used by startDashboard (real terminal) and the test
+// harness (issue #4742): installs the command registry + keymap on the given
+// renderer and wires dialog focus hooks. Must run before <Dashboard/> mounts
+// so component ref callbacks can attach their focus-scoped layers.
+export function installDashboardChrome(
+  renderer: CliRenderer,
+  options: Pick<
+    StartDashboardOptions,
+    "walletActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"
+  >,
+  assignmentActions: AssignmentActions | null,
+): void {
+  keymapRef = installPylonKeymap(
+    renderer,
+    {
+      walletActions: options.walletActions,
+      assignmentActions,
+      setRoute: (route) => setActiveRoute(route),
+      refreshAssignments: () => refreshAssignmentsInto(assignmentActions),
+      currentAssignments: () => assignmentRows().map((row) => ({ leaseRef: row.leaseRef, goal: row.goal })),
+      cycleComposerHistory,
+      focusLogs: () => scrollRef?.focus(),
+      focusComposer: () => composerRef?.focus(),
+      focusedPane: () => ((scrollRef as { focused?: boolean } | undefined)?.focused ? "logs" : "composer"),
+      scrollLogs: (delta, unit) => scrollFeedBy(delta, unit ?? "step"),
+      submitComposer,
+      toggleVerbose: () => {
+        const next = !verboseMode()
+        setVerboseMode(next)
+        options.onVerboseChange?.(next)
+        return next
+      },
+      requestShutdown: options.onRequestShutdown,
+      log: (message) => {
+        appendChatFeedItem(message)
+      },
+    },
+    { overrides: options.keybindOverrides },
+  )
+
+  registerDialogFocusHooks({
+    capture: () => {
+      const wasLogs = (scrollRef as { focused?: boolean } | undefined)?.focused === true
+      return () => {
+        if (wasLogs) scrollRef?.focus()
+        else composerRef?.focus()
+      }
+    },
+  })
+}
+
 export interface StartDashboardOptions {
   onRequestShutdown: () => void
   verbose: boolean
@@ -586,45 +637,7 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
     prependInputHandlers: [interceptCtrlC, handleRawLogWheel],
   })
 
-  // Install the command registry + keymap before mounting so component ref
-  // callbacks can attach their focus-scoped layers.
-  keymapRef = installPylonKeymap(
-    renderer,
-    {
-      walletActions: options.walletActions,
-      assignmentActions,
-      setRoute: (route) => setActiveRoute(route),
-      refreshAssignments: () => refreshAssignmentsInto(assignmentActions),
-      currentAssignments: () => assignmentRows().map((row) => ({ leaseRef: row.leaseRef, goal: row.goal })),
-      cycleComposerHistory,
-      focusLogs: () => scrollRef?.focus(),
-      focusComposer: () => composerRef?.focus(),
-      focusedPane: () => ((scrollRef as { focused?: boolean } | undefined)?.focused ? "logs" : "composer"),
-      scrollLogs: (delta, unit) => scrollFeedBy(delta, unit ?? "step"),
-      submitComposer,
-      toggleVerbose: () => {
-        const next = !verboseMode()
-        setVerboseMode(next)
-        options.onVerboseChange?.(next)
-        return next
-      },
-      requestShutdown: options.onRequestShutdown,
-      log: (message) => {
-        appendChatFeedItem(message)
-      },
-    },
-    { overrides: options.keybindOverrides },
-  )
-
-  registerDialogFocusHooks({
-    capture: () => {
-      const wasLogs = (scrollRef as { focused?: boolean } | undefined)?.focused === true
-      return () => {
-        if (wasLogs) scrollRef?.focus()
-        else composerRef?.focus()
-      }
-    },
-  })
+  installDashboardChrome(renderer, options, assignmentActions)
 
   await render(
     () => (
