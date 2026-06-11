@@ -191,6 +191,7 @@
         "@openagents/nip90": "workspace:*",
         "@openagents/tassadar-executor": "workspace:*",
         "@opentui/core": "^0.3.4",
+        "@opentui/keymap": "0.3.4",
         "@opentui/solid": "0.3.4",
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
@@ -649,6 +650,8 @@
     "@opentui/core-win32-arm64": ["@opentui/core-win32-arm64@0.3.4", "", { "os": "win32", "cpu": "arm64" }, "sha512-sh432vPU+eLp8eA4I0KWKKn7D0VHbk01YTg6mA9/ihCNYHntc6LZ8/sLvsPv8CvKscMotfIkh3M5YhdS36BuXw=="],
 
     "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.3.4", "", { "os": "win32", "cpu": "x64" }, "sha512-dw8FcjUZaLAjw25P3/7BarobCh/QOHn3srYaWYQdysoqyvSlPkQumpI8kV/KgpJtdITU1GW02MQC4EeLIFFalA=="],
+
+    "@opentui/keymap": ["@opentui/keymap@0.3.4", "", { "dependencies": { "@opentui/core": "0.3.4" }, "peerDependencies": { "@opentui/react": "0.3.4", "@opentui/solid": "0.3.4", "react": ">=19.2.0", "solid-js": "1.9.12" }, "optionalPeers": ["@opentui/react", "@opentui/solid", "react", "solid-js"] }, "sha512-8fo6BZWQgCjANfbKkzPo0ghAzS1E7TlHjDDS+SUhrX01qEUO1clFTRssKluHbXd2UJY1Ehle01TV5bFmY78f8w=="],
 
     "@opentui/solid": ["@opentui/solid@0.3.4", "", { "dependencies": { "@babel/core": "7.28.0", "@babel/preset-typescript": "7.27.1", "@opentui/core": "0.3.4", "babel-plugin-module-resolver": "5.0.2", "babel-preset-solid": "1.9.12", "entities": "7.0.1", "s-js": "^0.4.9" }, "peerDependencies": { "solid-js": "1.9.12" } }, "sha512-gin1VnsVBahX0nrU3mpgh5U1qvyJBIZu4NE5mc0YnObWOEf9HVNxKY4/BpUvQPh91kT6zeOzTBvAvYK4R7g9MQ=="],
 

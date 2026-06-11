@@ -24,17 +24,30 @@ import {
   appendChatFeedItem,
   feedItems,
   operatorText,
+  setVerboseMode,
   telemetryState,
+  verboseMode,
   walletState,
 } from "./store"
+import { DialogHost, registerDialogFocusHooks } from "./dialogs"
+import {
+  footerHints,
+  installPylonKeymap,
+  registerComposerFocusLayer,
+  registerLogsScrollLayer,
+  type PylonKeymap,
+  type WalletActions,
+} from "./commands"
 
-export { appendChatFeedItem } from "./store"
+export { appendChatFeedItem, setVerboseMode } from "./store"
 export { attachRuntimeToView } from "./bridge"
+export type { WalletActions } from "./commands"
 
 // --- View-internal plumbing (focus, scroll, terminal modes) ---------------
 
 let scrollRef: ScrollBoxRenderable | undefined
 let composerRef: TextareaRenderable | undefined
+let keymapRef: PylonKeymap | undefined
 
 const terminalScrollLockOn = "\x1b[?1007h"
 const terminalScrollLockOff = "\x1b[?1007l"
@@ -134,34 +147,14 @@ function sinkRootScroll(event: any) {
   event.preventDefault?.()
 }
 
-function handleLogKey(key: any, focusComposer?: () => void) {
-  if (key.name === "tab") {
-    focusComposer?.()
-  } else if (key.name === "up") {
-    scrollLogBy(-1, "step")
-  } else if (key.name === "down") {
-    scrollLogBy(1, "step")
-  } else if (key.name === "pageup") {
-    scrollLogBy(-0.8, "viewport")
-  } else if (key.name === "pagedown") {
-    scrollLogBy(0.8, "viewport")
-  } else if (key.name === "home") {
-    scrollLogBy(-1, "content")
-  } else if (key.name === "end") {
-    scrollLogBy(1, "content")
-  } else if (key.meta && key.name === "up") {
-    scrollLogBy(-0.5, "viewport")
-  } else if (key.meta && key.name === "down") {
-    scrollLogBy(0.5, "viewport")
-  } else {
-    return false
-  }
-  key.preventDefault?.()
-  key.stopPropagation?.()
-  return true
-}
-
 // --- Composer -> OpenCode interaction --------------------------------------
+
+export function submitComposer(): void {
+  const prompt = composerRef?.plainText.trim()
+  if (!prompt) return
+  composerRef?.setText("")
+  void submitPrompt(prompt)
+}
 
 async function submitPrompt(prompt: string) {
   appendChatFeedItem(`**User**: ${prompt}`)
@@ -225,7 +218,7 @@ function LogFeed() {
       <scrollbox
         ref={(renderable: ScrollBoxRenderable) => {
           scrollRef = renderable
-          renderable.handleKeyPress = (key: any) => handleLogKey(key, () => composerRef?.focus()) || false
+          if (keymapRef) registerLogsScrollLayer(keymapRef, renderable)
         }}
         scrollY
         stickyScroll
@@ -346,29 +339,24 @@ function Composer() {
       <textarea
         ref={(renderable: TextareaRenderable) => {
           composerRef = renderable
+          if (keymapRef) registerComposerFocusLayer(keymapRef, renderable)
           queueMicrotask(() => renderable.focus())
         }}
         width="100%"
         height="100%"
         placeholder="Ask your agent anything..."
-        onKeyDown={(key: any) => {
-          if (key.name === "tab") {
-            scrollRef?.focus()
-            key.preventDefault?.()
-            key.stopPropagation?.()
-            return
-          }
-          handleLogKey(key)
-        }}
         onMouseDown={() => composerRef?.focus()}
-        onSubmit={() => {
-          const prompt = composerRef?.plainText.trim()
-          if (!prompt) return
-          composerRef?.setText("")
-          void submitPrompt(prompt)
-        }}
+        onSubmit={submitComposer}
       />
     </box>
+  )
+}
+
+function Footer() {
+  return (
+    <text height={1} width="100%" fg={theme.colors.textMuted}>
+      {`${footerHints()}  ·  meta+return send`}
+    </text>
   )
 }
 
@@ -392,6 +380,8 @@ export function Dashboard() {
       <Pane name="composer">
         <Composer />
       </Pane>
+      <Footer />
+      <DialogHost />
     </box>
   )
 }
@@ -400,6 +390,10 @@ export function Dashboard() {
 
 export interface StartDashboardOptions {
   onRequestShutdown: () => void
+  verbose: boolean
+  walletActions: WalletActions
+  keybindOverrides?: Record<string, string>
+  onVerboseChange?: (verbose: boolean) => void
 }
 
 export interface DashboardHandle {
@@ -408,6 +402,7 @@ export interface DashboardHandle {
 }
 
 export async function startDashboard(options: StartDashboardOptions): Promise<DashboardHandle> {
+  setVerboseMode(options.verbose)
   const restoreScrollLock = installTerminalScrollLock()
   const interceptCtrlC = (sequence: string) => {
     if (sequence.includes("\x03")) {
@@ -426,6 +421,41 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
     prependInputHandlers: [interceptCtrlC, handleRawLogWheel],
   })
 
+  // Install the command registry + keymap before mounting so component ref
+  // callbacks can attach their focus-scoped layers.
+  keymapRef = installPylonKeymap(
+    renderer,
+    {
+      walletActions: options.walletActions,
+      focusLogs: () => scrollRef?.focus(),
+      focusComposer: () => composerRef?.focus(),
+      focusedPane: () => ((scrollRef as { focused?: boolean } | undefined)?.focused ? "logs" : "composer"),
+      scrollLogs: (delta, unit) => scrollRef?.scrollBy(delta, unit ?? "step"),
+      submitComposer,
+      toggleVerbose: () => {
+        const next = !verboseMode()
+        setVerboseMode(next)
+        options.onVerboseChange?.(next)
+        return next
+      },
+      requestShutdown: options.onRequestShutdown,
+      log: (message) => {
+        appendChatFeedItem(message)
+      },
+    },
+    { overrides: options.keybindOverrides },
+  )
+
+  registerDialogFocusHooks({
+    capture: () => {
+      const wasLogs = (scrollRef as { focused?: boolean } | undefined)?.focused === true
+      return () => {
+        if (wasLogs) scrollRef?.focus()
+        else composerRef?.focus()
+      }
+    },
+  })
+
   await render(
     () => (
       <ErrorBoundary fallback={(error) => <PaneFallback name="dashboard" error={error} />}>
@@ -440,6 +470,7 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
     destroy: () => {
       scrollRef = undefined
       composerRef = undefined
+      keymapRef = undefined
       try {
         renderer.destroy()
       } catch {

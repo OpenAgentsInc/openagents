@@ -63,6 +63,7 @@
     "@openagents/nip90": "workspace:*",
     "@openagents/tassadar-executor": "workspace:*",
     "@opentui/core": "^0.3.4",
+    "@opentui/keymap": "0.3.4",
     "@opentui/solid": "0.3.4",
     "@scure/base": "1.2.4",
     "@scure/bip32": "1.6.2",
