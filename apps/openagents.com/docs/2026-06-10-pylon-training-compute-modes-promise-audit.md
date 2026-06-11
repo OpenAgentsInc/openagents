@@ -201,6 +201,15 @@ fresh, non-synthetic Pylons advertising `cap.gepa.retained.v1`.
 > `remote_qwen_training_missing` for the bounded claim; full-transformer
 > copy stays blocked by design. Lane B (operator funds worker payments).
 
+2026-06-11 update: the repeatable operator runbook and smoke verifier now live
+at `apps/openagents.com/docs/2026-06-11-qwen-remote-pylon-live-training-runbook.md`
+and `bun run smoke:qwen-remote-training` from
+`apps/openagents.com/workers/api`. The issue remains open because the current
+public fleet recheck has no two real non-synthetic Pylons advertising
+`capability.public.pylon.fine_tuning_training`, and there are no public signed
+worker/shard/merge/eval/admission/payment/settlement refs for the Lane B
+bounded run.
+
 **Issue 8 — `cluster: training/compute-modes verification sweep and registry proposals`**
 
 > The wrap. Verify both promises' blockers against live state in one pass;
