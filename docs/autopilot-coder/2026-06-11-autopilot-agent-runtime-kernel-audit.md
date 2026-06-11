@@ -41,7 +41,13 @@ Related open issues as of this audit:
 - #4782: Spare-capacity provider mode.
 
 I did not find a dedicated open issue for a shared Agent Runtime Kernel event
-contract. This should be filed under #4786 before implementation starts.
+contract at audit time. This is now filed (2026-06-11, after the original
+query — by then #4757, #4758, and #4759 had also closed): epic #4804 tracks
+the RK rung lane, with #4805 (RK1, the schema package this audit specifies),
+#4806 (RK2, existing loops behind the adapter contract), #4807 (RK3, native
+Effect AI loop), #4808 (RK4, worker ingestion + projections), and #4809
+(RK5, surfaces + failure smokes). The unified roadmap carries the matching
+RK addendum.
 
 ## Decision
 
@@ -236,8 +242,8 @@ The runtime kernel must preserve existing OpenAgents projection discipline:
 
 ## Implementation Plan
 
-1. File a new #4786 sub-issue titled:
-   `Autopilot: shared Agent Runtime Kernel event contract for native and external loops`.
+1. File a new #4786 sub-issue for the shared event contract. Done: filed as
+   #4805 (RK1) under epic #4804.
 2. Add `packages/agent-runtime-schema` with only Effect Schema definitions and
    fixtures.
 3. Add schema tests for every event tag, redaction class, adapter kind, and

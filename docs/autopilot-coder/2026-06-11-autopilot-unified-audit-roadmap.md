@@ -877,6 +877,64 @@ BYOK/no-resale, redaction, copy law — "Codex"/"your local Codex" as
 lane branding, no partnership implication) bind every CX rung exactly
 as they bind the ladder above.
 
+### Addendum (2026-06-11, later) — the Agent Runtime Kernel (RK rungs)
+
+This addendum extends the ladder without renumbering anything above.
+Rung prefix **RK** (Agent Runtime Kernel); tracked by **epic #4804**.
+Source audit:
+`docs/autopilot-coder/2026-06-11-autopilot-agent-runtime-kernel-audit.md`.
+
+**Why this lane exists.** The bootstrap block is complete (B1–B4 and M1
+all closed as of 2026-06-11) and the CX lane (#4793) closed with both
+local adapters live — which means Autopilot now runs at least four loop
+shapes (Claude Agent, Codex, OpenCode wrapping, fixtures) plus the SHC
+hosted lane, each speaking its own transcript dialect. The kernel
+decision: **OpenAgents owns a versioned Effect Schema runtime event
+contract and projects every other shape at the boundary.** No external
+agent transcript, provider SDK message, or UI stream format is the
+source of truth. Effect AI powers the native model loop (isolated
+behind OpenAgents services while it is upstream-experimental); AI SDK
+`ModelMessage`/`UIMessage` shapes are a bridge at provider/interop
+edges, never the durable storage shape. Adapters may know how to
+invoke a loop; they never decide whether work is accepted, public,
+stale, paid, redacted, or operator-approved.
+
+**What this lane is not.** Not a rewrite of the proven executor gates —
+RK2 wraps `executeClaudeAgentAssignment`, `executeCodexAgentAssignment`,
+`opencode-run.ts`, and the fixture paths where they stand, running
+inside the #4798/#4799 workspace materializer unchanged. Not a new
+wire contract: `git_checkout`, `claude_agent_task`, and
+`codex_agent_task` stay as shipped. Not the M13 (#4771) hosted
+provider-connect work.
+
+| # | Issue | Status / size | What it delivers | Depends on |
+| --- | --- | --- | --- | --- |
+| RK1 | **Shared kernel event contract** — `packages/agent-runtime-schema`, schema-only: `AgentRuntimeRun`/`AgentRuntimeEvent`/parts/tool + external invocations/usage/visibility/redaction, fixtures, exhaustive tag + lifecycle + redaction-class tests | [filed: #4805] / M | The one runtime log every loop writes and every surface reads. | nothing |
+| RK2 | **Existing loops behind `AgentRuntimeAdapter`** — wrap `claude_code`, `codex`, `opencode`, `test_fixture` with `canRun`/`start`/`cancel`, no execution behavior change; event-log replay test rebuilds projection state | [filed: #4806] / M–L | Fixture, Codex, and Claude/OpenCode runs all emit one contract — the first-slice acceptance core. | RK1 |
+| RK3 | **Native Effect AI loop** — `openagents_native` adapter: `LanguageModel`/`Toolkit`, typed tool success/failure schemas, scoped `Stream`s, test provider `Layer` running the same fixture contract | [filed: #4807] / L | OpenAgents' own model loop as a peer adapter, not a fifth dialect. | RK1, RK2 |
+| RK4 | **Worker ingestion + projections** — schema-decoded append-only event ingestion (no adapter-specific parsing), visibility split decided and documented, public projections rebuilt from the log with `generatedAt` under the #4800 deploy gate, routes in OpenAPI (#4752) | [filed: #4808] / M–L | One ingestion path for every loop; receipts and status derived from the kernel log. | RK1 (∥ RK2) |
+| RK5 | **Surfaces + failure smokes** — workroom/TUI read kernel projections (extends shipped B4 #4758, feeds M2 #4760 dual-surface truth); cancellation, `tool.denied`, budget-stop, adapter-failure smokes with redaction-clean projections | [filed: #4809] / M | Both windows show the same run truth from projections, and the failure paths are typed, not folklore. | RK2, RK4 |
+
+Sequencing: RK1 → RK2 → RK3, with RK4 parallel after RK1 and RK5 last.
+Keep RK1 boring and schema-only — per the audit, no new one-off loop
+path lands anywhere until `claude_code`, `codex`, `opencode`, the
+native Effect AI loop, and fixtures all map into the same contract.
+
+Rungs above that consume the kernel once it lands: M2 (#4760) reads
+the same run projection in both windows; M7 (#4765) subscribes its
+decision queue to `tool.approval_requested`/`tool.approved`/
+`tool.denied`; M6 (#4764) continuation policy acts on `run.paused`/
+`run.interrupted`; A1 (#4773) gets its event/status parity surface
+from RK4's ingestion rather than per-adapter routes; P2 (#4778)
+record unification gains the run/event layer both stacks share; P3
+(#4779) writeback consumes `artifact.recorded` +
+`external_agent.artifact_recorded` evidence; the cross-runner
+continuation claim (Phase 1.4) becomes expressible as one run whose
+events span adapters. The standing laws (#4751/#4800 staleness gates,
+#4752 OpenAPI freshness, redaction, typed routing — no prompt-keyword
+adapter inference, authority separation) bind every RK rung exactly
+as they bind the ladder above.
+
 ## Part 5 — Boundaries that hold across everything above
 
 - **BYOK and no-resale, every lane.** Lane A leases the *customer's
