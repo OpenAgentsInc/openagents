@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest'
 
 import {
-  handlePublicArtanisAdminTicksApi,
+  boundedTickMonitorLimit,
   projectArtanisTickMonitor,
+  readArtanisTickMonitor,
 } from './artanis-tick-monitor'
 
 const nowIso = '2026-06-11T01:20:00.000Z'
@@ -83,7 +84,14 @@ describe('artanis tick monitor projection', () => {
     expect(serialized).not.toContain('haunted')
   })
 
-  test('the HTTP handler serves GET with a bounded limit and no-store', async () => {
+  test('limits are bounded and defaulted without raw parsing surprises', () => {
+    expect(boundedTickMonitorLimit(null)).toBe(20)
+    expect(boundedTickMonitorLimit('999')).toBe(50)
+    expect(boundedTickMonitorLimit('0')).toBe(1)
+    expect(boundedTickMonitorLimit('not-a-number')).toBe(20)
+  })
+
+  test('the reader queries the decisions table with a bounded limit', async () => {
     const db = {
       prepare: (sql: string) => ({
         bind: (limit: number) => ({
@@ -95,23 +103,8 @@ describe('artanis tick monitor projection', () => {
         }),
       }),
     } as unknown as D1Database
-    const response = await handlePublicArtanisAdminTicksApi(
-      new Request('https://openagents.com/api/public/artanis/admin-ticks?limit=999'),
-      db,
-      nowIso,
-    )
-    expect(response.status).toBe(200)
-    expect(response.headers.get('cache-control')).toBe('no-store')
-    const body = (await response.json()) as { decisions: unknown[] }
-    expect(body.decisions).toHaveLength(4)
-
-    const post = await handlePublicArtanisAdminTicksApi(
-      new Request('https://openagents.com/api/public/artanis/admin-ticks', {
-        method: 'POST',
-      }),
-      db,
-      nowIso,
-    )
-    expect(post.status).toBe(405)
+    const monitor = await readArtanisTickMonitor(db, { limit: 999, nowIso })
+    expect(monitor.decisions).toHaveLength(4)
+    expect(monitor.dispatchedToday).toBe(1)
   })
 })

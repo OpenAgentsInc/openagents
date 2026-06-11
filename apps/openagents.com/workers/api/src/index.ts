@@ -63,7 +63,10 @@ import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import { runArtanisSpendDecision } from './artanis-spend'
 import { runArtanisAdminTickScheduled, runArtanisCloseoutVerifierScheduled } from './artanis-administrator-tick'
-import { handlePublicArtanisAdminTicksApi } from './artanis-tick-monitor'
+import {
+  boundedTickMonitorLimit,
+  readArtanisTickMonitor,
+} from './artanis-tick-monitor'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -6451,9 +6454,20 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/artanis/admin-ticks',
     handler: (request, env) =>
-      Effect.promise(() =>
-        handlePublicArtanisAdminTicksApi(request, openAgentsDatabase(env)),
-      ),
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const monitor = await readArtanisTickMonitor(openAgentsDatabase(env), {
+          limit: boundedTickMonitorLimit(
+            new URL(request.url).searchParams.get('limit'),
+          ),
+          nowIso: currentIsoTimestamp(),
+        })
+        return Response.json(monitor, {
+          headers: { 'cache-control': 'no-store' },
+        })
+      }),
   },
   {
     path: '/api/blueprint/program-registry',

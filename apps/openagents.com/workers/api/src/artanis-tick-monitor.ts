@@ -1,4 +1,5 @@
 import { ARTANIS_ADMIN_DISPATCH_PER_DAY } from './artanis-administrator-tick'
+import { parseJsonRecord } from './json-boundary'
 
 // Public Artanis administrator-tick monitor. Clears
 // blocker.product_promises.artanis_public_tick_monitor_missing on
@@ -9,6 +10,9 @@ import { ARTANIS_ADMIN_DISPATCH_PER_DAY } from './artanis-administrator-tick'
 // (disabled, mind unconfigured, daily bound, no eligible Pylons) are
 // not persisted rows by design - an empty day here plus online Pylons
 // means the tick is skipping before the mind runs.
+//
+// This module is projection-only: the HTTP Response is built by the
+// index route surface, and time arrives injected.
 
 export type ArtanisTickDecisionRow = Readonly<{
   id: unknown
@@ -49,24 +53,18 @@ const unsafeReasonPattern =
   /(\/Users\/|\/home\/|bearer\s+|sk-[a-z0-9]|lnbc|lntb|lno1|mnemonic|preimage|private[_-]?key|secret|api[_-]?key|token|xprv|password)/i
 
 const sanitizeReason = (actionJson: unknown): string => {
-  try {
-    const parsed = JSON.parse(String(actionJson ?? '{}')) as {
-      reason?: unknown
-      rationale?: unknown
-    }
-    const raw =
-      typeof parsed.reason === 'string'
-        ? parsed.reason
-        : typeof parsed.rationale === 'string'
-          ? parsed.rationale
-          : ''
-    const trimmed = raw.trim().slice(0, 200)
-    if (trimmed.length === 0) return 'reason.not_recorded'
-    if (unsafeReasonPattern.test(trimmed)) return 'reason.redacted'
-    return trimmed
-  } catch {
-    return 'reason.unparseable'
-  }
+  const parsed = parseJsonRecord(String(actionJson ?? '{}'))
+  if (parsed === undefined) return 'reason.unparseable'
+  const raw =
+    typeof parsed.reason === 'string'
+      ? parsed.reason
+      : typeof parsed.rationale === 'string'
+        ? parsed.rationale
+        : ''
+  const trimmed = raw.trim().slice(0, 200)
+  if (trimmed.length === 0) return 'reason.not_recorded'
+  if (unsafeReasonPattern.test(trimmed)) return 'reason.redacted'
+  return trimmed
 }
 
 export const projectArtanisTickMonitor = (
@@ -114,11 +112,22 @@ export const projectArtanisTickMonitor = (
   }
 }
 
+export const ARTANIS_TICK_MONITOR_MAX_LIMIT = 50
+
+export const boundedTickMonitorLimit = (raw: string | null): number => {
+  const parsed = Number(raw ?? '20')
+  if (!Number.isFinite(parsed)) return 20
+  return Math.min(
+    Math.max(1, Math.trunc(parsed)),
+    ARTANIS_TICK_MONITOR_MAX_LIMIT,
+  )
+}
+
 export const readArtanisTickMonitor = async (
   db: D1Database,
   input: Readonly<{ limit: number; nowIso: string }>,
 ): Promise<ArtanisTickMonitor> => {
-  const limit = Math.min(Math.max(1, Math.trunc(input.limit)), 50)
+  const limit = boundedTickMonitorLimit(String(input.limit))
   const result = await db
     .prepare(
       `SELECT id, state, action_json, assignment_ref, created_at
@@ -133,23 +142,4 @@ export const readArtanisTickMonitor = async (
     (result.results ?? []) as unknown as ReadonlyArray<ArtanisTickDecisionRow>,
     input.nowIso,
   )
-}
-
-export const handlePublicArtanisAdminTicksApi = async (
-  request: Request,
-  db: D1Database,
-  nowIso: string = new Date().toISOString(),
-): Promise<Response> => {
-  if (request.method !== 'GET') {
-    return Response.json({ error: 'method_not_allowed' }, { status: 405 })
-  }
-  const url = new URL(request.url)
-  const limit = Number(url.searchParams.get('limit') ?? '20')
-  const monitor = await readArtanisTickMonitor(db, {
-    limit: Number.isFinite(limit) ? limit : 20,
-    nowIso,
-  })
-  return Response.json(monitor, {
-    headers: { 'cache-control': 'no-store' },
-  })
 }
