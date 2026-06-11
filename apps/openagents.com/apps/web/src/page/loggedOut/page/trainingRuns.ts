@@ -364,6 +364,7 @@ const leaderboardLinks = (): Html => {
     ['All lanes', '/api/training/leaderboards'],
     ['A1 loss', '/api/training/leaderboards/a1_loss'],
     ['A2 throughput', '/api/training/leaderboards/a2_throughput'],
+    ['A3 IsoFLOP', '/api/training/leaderboards/a3_isoflop'],
     ['A4 eval delta', '/api/training/leaderboards/a4_eval_delta'],
     ['A5 accuracy', '/api/training/leaderboards/a5_accuracy'],
   ] as const

@@ -5,10 +5,15 @@ import type {
   TrainingRunRecord,
 } from './training-run-window-authority'
 import type { Cs336A5EvalDashboardProjection } from './cs336-a5-alignment-homework'
+import type {
+  ScalingSweepCell,
+  ScalingSweepProjection,
+} from './training-scaling-sweep'
 
 export const TrainingLeaderboardLanes = [
   'a1_loss',
   'a2_throughput',
+  'a3_isoflop',
   'a4_eval_delta',
   'a5_accuracy',
 ] as const
@@ -18,6 +23,7 @@ export type TrainingLeaderboardRow = Readonly<{
   contributorRef: string
   lane: TrainingLeaderboardLane
   metricRef: string
+  provenanceLabel: string
   rank: number
   receiptRefs: ReadonlyArray<string>
   score: number
@@ -52,14 +58,54 @@ const laneTitle = (lane: TrainingLeaderboardLane): string =>
     ? 'A1 Loss Under Budget'
     : lane === 'a2_throughput'
       ? 'A2 Throughput'
-      : lane === 'a4_eval_delta'
-        ? 'A4 Eval Delta'
-        : 'A5 Accuracy'
+      : lane === 'a3_isoflop'
+        ? 'A3 IsoFLOP Sweep'
+        : lane === 'a4_eval_delta'
+          ? 'A4 Eval Delta'
+          : 'A5 Accuracy'
+
+type TrainingLeaderboardDraftRow = Omit<
+  TrainingLeaderboardRow,
+  'provenanceLabel' | 'rank'
+>
+
+const rowProvenanceLabel =
+  'Ranked from verified closeout receipt evidence only; settledPayoutSats counts provider-confirmed settled receipts linked to this row and never counts pending, offered, claimed, or wallet-side records.'
+
+export const settledSatsFromPaymentAuthorityReceipt = (
+  record: Readonly<{ publicProjectionJson: string; receiptKind: string }>,
+): number => {
+  if (record.receiptKind !== 'settlement_recorded') {
+    return 0
+  }
+
+  const projection = parseJsonRecord(record.publicProjectionJson)
+  const amountSats = projection?.amountSats
+
+  return projection?.state === 'settled' &&
+    typeof amountSats === 'number' &&
+    Number.isInteger(amountSats) &&
+    amountSats > 0
+    ? amountSats
+    : 0
+}
 
 const sortRows = (
-  rows: ReadonlyArray<Omit<TrainingLeaderboardRow, 'rank'>>,
+  rows: ReadonlyArray<TrainingLeaderboardDraftRow>,
+  settledSatsByReceiptRef: ReadonlyMap<string, number>,
 ): ReadonlyArray<TrainingLeaderboardRow> =>
-  [...rows]
+  rows
+    .map(row => ({
+      ...row,
+      provenanceLabel: rowProvenanceLabel,
+      settledPayoutSats: Math.max(
+        row.settledPayoutSats,
+        row.receiptRefs.reduce(
+          (total, ref) => total + (settledSatsByReceiptRef.get(ref) ?? 0),
+          0,
+        ),
+      ),
+    }))
     .sort((left, right) =>
       left.scoreSortDirection === 'asc'
         ? left.score - right.score
@@ -69,7 +115,7 @@ const sortRows = (
 
 const a1Rows = (
   summaries: ReadonlyArray<TrainingRunPublicSummary>,
-): ReadonlyArray<Omit<TrainingLeaderboardRow, 'rank'>> =>
+): ReadonlyArray<TrainingLeaderboardDraftRow> =>
   summaries.flatMap(summary =>
     summary.realGradient.leaderboardRows
       .filter(
@@ -99,7 +145,7 @@ const a1Rows = (
 
 const a2Rows = (
   projections: ReadonlyArray<DeviceCapabilityDatasetProjection>,
-): ReadonlyArray<Omit<TrainingLeaderboardRow, 'rank'>> =>
+): ReadonlyArray<TrainingLeaderboardDraftRow> =>
   projections.flatMap(projection =>
     projection.classDistributions
       .filter(distribution => distribution.verified)
@@ -122,7 +168,7 @@ const a2Rows = (
 
 const a4RowsFromRun = (
   run: TrainingRunRecord,
-): ReadonlyArray<Omit<TrainingLeaderboardRow, 'rank'>> => {
+): ReadonlyArray<TrainingLeaderboardDraftRow> => {
   const projection = parseJsonRecord(run.publicProjectionJson)
   const a4 = isRecord(projection?.a4DataRefinery)
     ? projection?.a4DataRefinery
@@ -171,7 +217,7 @@ const a4RowsFromRun = (
 
 const a5Rows = (
   projections: ReadonlyArray<Cs336A5EvalDashboardProjection>,
-): ReadonlyArray<Omit<TrainingLeaderboardRow, 'rank'>> =>
+): ReadonlyArray<TrainingLeaderboardDraftRow> =>
   projections.flatMap(projection =>
     projection.evalSuites
       .filter(suite => suite.verificationRefs.length > 0)
@@ -192,25 +238,71 @@ const a5Rows = (
       })),
   )
 
+const rankableA3Cell = (
+  cell: ScalingSweepCell,
+): cell is ScalingSweepCell &
+  Readonly<{ pylonRef: string; validationLoss: number }> =>
+  cell.verified &&
+  cell.verificationRefs.length > 0 &&
+  cell.receiptRefs.length > 0 &&
+  cell.pylonRef !== null &&
+  cell.validationLoss !== null
+
+const a3Rows = (
+  projections: ReadonlyArray<ScalingSweepProjection>,
+): ReadonlyArray<TrainingLeaderboardDraftRow> => {
+  const bestCells = projections
+    .flatMap(projection => projection.cells)
+    .filter(rankableA3Cell)
+    .reduce((best, cell) => {
+      const key = `${cell.pylonRef}::${cell.computeBudgetFlops}`
+      const current = best.get(key)
+
+      return current !== undefined &&
+        current.validationLoss <= cell.validationLoss
+        ? best
+        : best.set(key, cell)
+    }, new Map<string, ScalingSweepCell & Readonly<{ pylonRef: string; validationLoss: number }>>())
+
+  return [...bestCells.values()].map(cell => ({
+    contributorRef: cell.pylonRef,
+    lane: 'a3_isoflop' as const,
+    metricRef: `metric.cs336_a3.validation_loss.c_${cell.computeBudgetFlops}`,
+    receiptRefs: cell.receiptRefs,
+    score: cell.validationLoss,
+    scoreLabel: `validation_loss_at_${cell.computeBudgetFlops}_planned_flops`,
+    scoreSortDirection: 'asc' as const,
+    settledPayoutSats: cell.settledPayoutSats,
+    sourceRefs: uniqueRefs([cell.cellRef, ...cell.sourceRefs]),
+    trainingRunRef: cell.trainingRunRef,
+    verifiedCloseoutRefs: cell.verificationRefs,
+  }))
+}
+
 export const buildTrainingLeaderboardsProjection = (
   input: Readonly<{
     a2Projections: ReadonlyArray<DeviceCapabilityDatasetProjection>
+    a3Projections: ReadonlyArray<ScalingSweepProjection>
     a5Projections: ReadonlyArray<Cs336A5EvalDashboardProjection>
     runs: ReadonlyArray<TrainingRunRecord>
+    settledSatsByReceiptRef?: ReadonlyMap<string, number>
     summaries: ReadonlyArray<TrainingRunPublicSummary>
   }>,
 ): TrainingLeaderboardsProjection => {
+  const settledSatsByReceiptRef =
+    input.settledSatsByReceiptRef ?? new Map<string, number>()
   const rowsByLane: Record<
     TrainingLeaderboardLane,
-    ReadonlyArray<Omit<TrainingLeaderboardRow, 'rank'>>
+    ReadonlyArray<TrainingLeaderboardDraftRow>
   > = {
     a1_loss: a1Rows(input.summaries),
     a2_throughput: a2Rows(input.a2Projections),
+    a3_isoflop: a3Rows(input.a3Projections),
     a4_eval_delta: input.runs.flatMap(a4RowsFromRun),
     a5_accuracy: a5Rows(input.a5Projections),
   }
   const lanes = TrainingLeaderboardLanes.map(lane => {
-    const rows = sortRows(rowsByLane[lane])
+    const rows = sortRows(rowsByLane[lane], settledSatsByReceiptRef)
 
     return {
       blockerRefs:

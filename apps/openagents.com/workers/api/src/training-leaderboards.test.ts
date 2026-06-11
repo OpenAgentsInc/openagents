@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildTrainingLeaderboardsProjection,
+  settledSatsFromPaymentAuthorityReceipt,
   TrainingLeaderboardLanes,
 } from './training-leaderboards'
+import { publicScalingSweepProjection } from './training-scaling-sweep'
 import {
   buildTrainingRunRecord,
   buildTrainingWindowRecord,
@@ -25,6 +27,7 @@ describe('training leaderboards', () => {
   it('keeps every configured lane visible when no verified rows exist', () => {
     const projection = buildTrainingLeaderboardsProjection({
       a2Projections: [],
+      a3Projections: [],
       a5Projections: [],
       runs: [],
       summaries: [],
@@ -223,12 +226,79 @@ describe('training leaderboards', () => {
         },
       }),
     }
+    const a3Run = {
+      ...buildTrainingRunRecord({
+        makeId: () => 'a3',
+        nowIso: '2026-06-10T14:00:00.000Z',
+        request: {
+          promiseRef: 'pylon.compute_revenue_modes.v1',
+          trainingRunRef: 'training.run.cs336.a3.leaderboard',
+        },
+      }),
+      publicProjectionJson: JSON.stringify({
+        a3ScalingSweep: {
+          cells: [
+            {
+              cellRef: 'cell.cs336.a3.leaderboard.verified.1',
+              computeBudgetFlops: 300000000,
+              parameterCount: 8192,
+              pylonRef: 'pylon.public.sweep.1',
+              receiptRefs: ['receipt.cs336.a3.cell.1'],
+              sourceRefs: ['commitment.cs336.a3.cell.1'],
+              tokenCount: 6103,
+              validationLoss: 4.91,
+              verificationRefs: ['challenge.cs336.a3.cell.1'],
+            },
+            {
+              cellRef: 'cell.cs336.a3.leaderboard.verified.2',
+              computeBudgetFlops: 300000000,
+              parameterCount: 16384,
+              pylonRef: 'pylon.public.sweep.1',
+              receiptRefs: ['receipt.cs336.a3.cell.2'],
+              sourceRefs: ['commitment.cs336.a3.cell.2'],
+              tokenCount: 3051,
+              validationLoss: 5.2,
+              verificationRefs: ['challenge.cs336.a3.cell.2'],
+            },
+            {
+              cellRef: 'cell.cs336.a3.leaderboard.unverified',
+              computeBudgetFlops: 300000000,
+              parameterCount: 4096,
+              pylonRef: 'pylon.public.sweep.unverified',
+              receiptRefs: ['receipt.cs336.a3.cell.unverified'],
+              sourceRefs: [],
+              tokenCount: 12207,
+              validationLoss: 0.01,
+            },
+            {
+              cellRef: 'cell.cs336.a3.leaderboard.unreceipted',
+              computeBudgetFlops: 300000000,
+              parameterCount: 2048,
+              pylonRef: 'pylon.public.sweep.unreceipted',
+              receiptRefs: [],
+              sourceRefs: [],
+              tokenCount: 24414,
+              validationLoss: 0.02,
+              verificationRefs: ['challenge.cs336.a3.cell.unreceipted'],
+            },
+          ],
+        },
+      }),
+    }
     const projection = buildTrainingLeaderboardsProjection({
       a2Projections: [
         publicDeviceCapabilityProjection({
           challenges: [],
           leases: [],
           run: a2Run,
+          windows: [],
+        }),
+      ],
+      a3Projections: [
+        publicScalingSweepProjection({
+          challenges: [],
+          leases: [],
+          run: a3Run,
           windows: [],
         }),
       ],
@@ -240,7 +310,11 @@ describe('training leaderboards', () => {
           windows: [],
         }),
       ],
-      runs: [a1Run, a2Run, a4Run, a5Run],
+      runs: [a1Run, a2Run, a3Run, a4Run, a5Run],
+      settledSatsByReceiptRef: new Map([
+        ['receipt.cs336.a3.cell.1', 10],
+        ['receipt.cs336.a3.cell.unverified', 500],
+      ]),
       summaries: [a1Summary],
     })
 
@@ -263,6 +337,25 @@ describe('training leaderboards', () => {
       }),
     ])
     expect(
+      projection.lanes.find(lane => lane.lane === 'a3_isoflop')?.rows,
+    ).toEqual([
+      expect.objectContaining({
+        contributorRef: 'pylon.public.sweep.1',
+        metricRef: 'metric.cs336_a3.validation_loss.c_300000000',
+        rank: 1,
+        receiptRefs: ['receipt.cs336.a3.cell.1'],
+        score: 4.91,
+        scoreSortDirection: 'asc',
+        settledPayoutSats: 10,
+        trainingRunRef: 'training.run.cs336.a3.leaderboard',
+      }),
+    ])
+    expect(
+      projection.lanes
+        .flatMap(lane => lane.rows)
+        .every(row => row.provenanceLabel.includes('provider-confirmed')),
+    ).toBe(true)
+    expect(
       projection.lanes.find(lane => lane.lane === 'a4_eval_delta')?.rows,
     ).toEqual([
       expect.objectContaining({
@@ -281,5 +374,38 @@ describe('training leaderboards', () => {
       }),
     ])
     expect(JSON.stringify(projection)).not.toContain('unverified')
+  })
+
+  it('counts settled sats only from provider-confirmed settlement receipts', () => {
+    expect(
+      settledSatsFromPaymentAuthorityReceipt({
+        publicProjectionJson: JSON.stringify({ amountSats: 30, state: 'settled' }),
+        receiptKind: 'settlement_recorded',
+      }),
+    ).toBe(30)
+    expect(
+      settledSatsFromPaymentAuthorityReceipt({
+        publicProjectionJson: JSON.stringify({ amountSats: 30, state: 'pending' }),
+        receiptKind: 'settlement_recorded',
+      }),
+    ).toBe(0)
+    expect(
+      settledSatsFromPaymentAuthorityReceipt({
+        publicProjectionJson: JSON.stringify({ amountSats: 30, state: 'settled' }),
+        receiptKind: 'payout_dispatched',
+      }),
+    ).toBe(0)
+    expect(
+      settledSatsFromPaymentAuthorityReceipt({
+        publicProjectionJson: JSON.stringify({ amountSats: 12.5, state: 'settled' }),
+        receiptKind: 'settlement_recorded',
+      }),
+    ).toBe(0)
+    expect(
+      settledSatsFromPaymentAuthorityReceipt({
+        publicProjectionJson: 'not-json',
+        receiptKind: 'settlement_recorded',
+      }),
+    ).toBe(0)
   })
 })

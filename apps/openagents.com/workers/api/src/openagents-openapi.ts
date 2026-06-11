@@ -259,7 +259,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe CS336 A1 real-gradient leaderboard envelope with leaderboardRows, sourceRefs, and scopeBoundaryRefs. Rows include trainingRunRef, pylonRef, rank, verifiedWindowCount, bestValidationLoss when public loss evidence exists, settledPayoutSats only from provider-confirmed settlement receipts, provenanceLabel, and sourceRefs.',
   ),
   TrainingLeaderboardsEnvelope: objectSummary(
-    'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, settled sats when provider-confirmed, and source refs, and exclude unverified results from ranking.',
+    'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
     'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, and earning estimates explicitly labeled modeled-from-measured. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
@@ -3051,7 +3051,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTrainingLeaderboardLane',
       summary: 'Read CS336 training leaderboard lane',
       description:
-        'Reads a single receipt-backed public leaderboard lane such as a1_loss, a2_throughput, a4_eval_delta, or a5_accuracy. Unverified rows cannot rank.',
+        'Reads a single receipt-backed public leaderboard lane such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, or a5_accuracy. Unverified rows cannot rank.',
       tags: ['Training'],
       security: publicRead,
       parameters: [pathParam('lane', 'Training leaderboard lane.')],

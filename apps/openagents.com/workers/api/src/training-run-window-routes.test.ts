@@ -170,8 +170,34 @@ describe('training run window routes', () => {
   it('lists runs with provenance-labeled public counts and never counts pending as paid', async () => {
     const store = makeMemoryStore()
     let counter = 0
+    const settlementReceipts = new Map([
+      [
+        'receipt.cs336.a2.measurement.1',
+        {
+          publicProjectionJson: JSON.stringify({
+            amountSats: 10,
+            state: 'settled',
+          }),
+          receiptKind: 'settlement_recorded',
+        },
+      ],
+      [
+        'receipt.cs336.a5.gsm8k.1',
+        {
+          publicProjectionJson: JSON.stringify({
+            amountSats: 999,
+            state: 'pending',
+          }),
+          receiptKind: 'settlement_recorded',
+        },
+      ],
+    ])
     const routes = makeTrainingRunWindowRoutes({
       makeId: () => String(++counter).padStart(4, '0'),
+      makePayoutLedgerStore: () => ({
+        readPaymentAuthorityReceiptByRef: async receiptRef =>
+          settlementReceipts.get(receiptRef),
+      }),
       makeStore: () => store,
       nowIso: () => '2026-06-10T10:00:00.000Z',
       requireAdminApiToken: async () => true,
@@ -467,6 +493,7 @@ describe('training run window routes', () => {
         contributorRef: 'device_class.apple_silicon.m3_pro_18gb',
         rank: 1,
         score: 2025,
+        settledPayoutSats: 10,
       }),
     ])
     expect(
@@ -476,6 +503,7 @@ describe('training run window routes', () => {
         contributorRef: 'eval.cs336.a5.gsm8k.seeded.1',
         rank: 1,
         score: 0.42,
+        settledPayoutSats: 0,
       }),
     ])
   })

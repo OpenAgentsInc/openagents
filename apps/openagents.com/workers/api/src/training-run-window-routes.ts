@@ -11,6 +11,7 @@ import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
   TrainingLeaderboardLanes,
   buildTrainingLeaderboardsProjection,
+  settledSatsFromPaymentAuthorityReceipt,
 } from './training-leaderboards'
 import {
   Cs336A2DeviceBenchmarkEvidenceRequest,
@@ -53,8 +54,20 @@ import {
 
 type HttpResponse = globalThis.Response
 
+type TrainingLeaderboardSettlementReceiptReader = Readonly<{
+  readPaymentAuthorityReceiptByRef: (
+    receiptRef: string,
+  ) => Promise<
+    | Readonly<{ publicProjectionJson: string; receiptKind: string }>
+    | undefined
+  >
+}>
+
 type TrainingRunWindowRouteDependencies<Bindings> = Readonly<{
   makeId?: () => string
+  makePayoutLedgerStore?: (
+    env: Bindings,
+  ) => TrainingLeaderboardSettlementReceiptReader
   makeStore: (env: Bindings) => TrainingAuthorityStore
   nowIso?: () => string
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
@@ -440,6 +453,61 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
     })
   })
 
+const maxSettlementReceiptLookups = 128
+
+const resolveSettledSatsByReceiptRef = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  env: Bindings,
+  draft: ReturnType<typeof buildTrainingLeaderboardsProjection>,
+): Effect.Effect<
+  ReadonlyMap<string, number>,
+  TrainingRunWindowRouteError
+> =>
+  Effect.gen(function* () {
+    const makePayoutLedgerStore = dependencies.makePayoutLedgerStore
+
+    if (makePayoutLedgerStore === undefined) {
+      return new Map<string, number>()
+    }
+
+    const receiptRefs = [
+      ...new Set(
+        draft.lanes.flatMap(lane =>
+          lane.rows.flatMap(row => row.receiptRefs),
+        ),
+      ),
+    ]
+      .sort()
+      .slice(0, maxSettlementReceiptLookups)
+
+    if (receiptRefs.length === 0) {
+      return new Map<string, number>()
+    }
+
+    const ledger = makePayoutLedgerStore(env)
+    const entries = yield* Effect.forEach(receiptRefs, receiptRef =>
+      Effect.tryPromise({
+        catch: trainingAuthorityStoreErrorFromUnknown,
+        try: async () => {
+          const record = await ledger.readPaymentAuthorityReceiptByRef(
+            receiptRef,
+          )
+
+          return [
+            receiptRef,
+            record === undefined
+              ? 0
+              : settledSatsFromPaymentAuthorityReceipt(record),
+          ] as const
+        },
+      }),
+    )
+
+    return new Map(entries.filter(([, settledSats]) => settledSats > 0))
+  })
+
 const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -475,6 +543,12 @@ const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
             run,
             windows,
           }),
+          a3Projection: publicScalingSweepProjection({
+            challenges,
+            leases,
+            run,
+            windows,
+          }),
           a5Projection: publicCs336A5EvalProjection({
             challenges,
             leases,
@@ -491,11 +565,21 @@ const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
         }
       }),
     )
-    const projection = buildTrainingLeaderboardsProjection({
+    const builderInput = {
       a2Projections: inputs.map(input => input.a2Projection),
+      a3Projections: inputs.map(input => input.a3Projection),
       a5Projections: inputs.map(input => input.a5Projection),
       runs,
       summaries: inputs.map(input => input.summary),
+    }
+    const settledSatsByReceiptRef = yield* resolveSettledSatsByReceiptRef(
+      dependencies,
+      env,
+      buildTrainingLeaderboardsProjection(builderInput),
+    )
+    const projection = buildTrainingLeaderboardsProjection({
+      ...builderInput,
+      settledSatsByReceiptRef,
     })
     const lanes =
       laneFilter === undefined

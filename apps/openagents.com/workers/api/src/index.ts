@@ -5881,6 +5881,8 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
+  makePayoutLedgerStore: env =>
+    makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
   makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
   requireAdminApiToken,
 })
