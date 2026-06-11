@@ -338,6 +338,12 @@ stack and cheap to begin.
 
 ## Companion Documents
 
+- [`2026-06-11-llm-computer-full-introduction.md`](2026-06-11-llm-computer-full-introduction.md)
+  — the assume-nothing deep introduction: both Percepta posts taught
+  from zero (encoding, parabolic-key memory, hull-cache decoding,
+  ALM/CALM, MILP scheduling, Futamura specialization), a tour of the
+  released `transformer-vm` code, the file-level map of our Rust
+  implementation, and the market reading. Start here if you are new.
 - [`2026-06-10-tassadar-percepta-audit.md`](2026-06-10-tassadar-percepta-audit.md)
   — the full audit: Tassadar's commit history across openagents and
   psionic, the Percepta material, the CS336 relationship, and the
