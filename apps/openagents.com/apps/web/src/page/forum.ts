@@ -99,18 +99,20 @@ export const forumScript = (
   // Loading panel only ever appears on a truly cold first visit.
   const CACHE_PREFIX = 'oa.forum.v1:';
   const CACHE_TTL_MS = 10 * 60 * 1000;
+  const parseCacheEntry = JSON.parse.bind(JSON);
+  const nowMs = () => performance.timeOrigin + performance.now();
   const cacheGet = key => {
     try {
       const raw = localStorage.getItem(CACHE_PREFIX + key);
       if (!raw) return null;
-      const entry = JSON.parse(raw);
+      const entry = parseCacheEntry(raw);
       if (!entry || typeof entry.t !== 'number') return null;
-      if (Date.now() - entry.t > CACHE_TTL_MS) return null;
+      if (nowMs() - entry.t > CACHE_TTL_MS) return null;
       return entry.d;
     } catch { return null; }
   };
   const cacheSet = (key, data) => {
-    try { localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), d: data })); } catch {}
+    try { localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ t: nowMs(), d: data })); } catch {}
   };
   const forumHref = forum => '/forum/f/' + encodeURIComponent(forum.slug || forum.forumId);
   const topicHref = topic => '/forum/t/' + encodeURIComponent(topic.topicId);
