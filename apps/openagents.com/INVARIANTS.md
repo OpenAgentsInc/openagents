@@ -153,6 +153,33 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy starts in
   `workers/api/src/autopilot-pack-a-ledger.test.ts`.
 
+## Autopilot Aperture Mission, Scope, And Writeback Contract
+
+- Every agent/API, web, terminal, Forum, autonomic, or workroom Autopilot
+  entry point that declares a per-mission data scope must keep repo refs,
+  bounded path prefixes, and tool refs explicit in the typed work request.
+  The declared repo scope must cover every task repository before a request
+  can be accepted.
+- Mission records and work orders must converge on a single canonical
+  `mission_work_order.*` linkage ref. Briefings, decision actions, artifact
+  refs, receipts, placement refs, data-scope refs, and continuation refs hang
+  off that shared key rather than creating orphan mission-only or work-order
+  only paths.
+- Placement explanations are projections over repo placement records. They
+  carry `generatedAt` and a declared staleness contract, redact non-public
+  repo refs outside operator-safe contexts, and never grant runtime, spend,
+  provider mutation, payout, settlement, accepted-work, or public-claim
+  authority by themselves.
+- Work-order writeback to PR drafts must route through artifact records and
+  explicit GitHub writeback authority receipts. Missing approval, missing
+  grants, expired grants, unusable connections, unsupported repositories, and
+  missing authority receipts become typed blocked artifacts or validation
+  errors; human/maintainer merge authority is not delegated to the market or
+  agent runtime.
+- Regression coverage starts in
+  `workers/api/src/autopilot-aperture-contracts.test.ts` and
+  `workers/api/src/autopilot-work-request.test.ts`.
+
 ## Typed Email Side Effects
 
 - Production email sends must pass through `EmailService`; route handlers and

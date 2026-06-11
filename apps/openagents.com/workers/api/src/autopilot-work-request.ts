@@ -1,8 +1,6 @@
 import { Schema as S } from 'effect'
 
-import {
-  openAgentsSerializedValueContainsUnsafeFixture,
-} from './redaction-regression-fixtures'
+import { openAgentsSerializedValueContainsUnsafeFixture } from './redaction-regression-fixtures'
 
 export const OpenAgentsAutopilotWorkRequestSchemaVersion = S.Literal(
   'openagents.autopilot_work_request.v1',
@@ -47,9 +45,7 @@ export const OpenAgentsAutopilotTaskKind = S.Literals([
 export type OpenAgentsAutopilotTaskKind =
   typeof OpenAgentsAutopilotTaskKind.Type
 
-export const OpenAgentsAutopilotRepositoryProvider = S.Literals([
-  'github',
-])
+export const OpenAgentsAutopilotRepositoryProvider = S.Literals(['github'])
 export type OpenAgentsAutopilotRepositoryProvider =
   typeof OpenAgentsAutopilotRepositoryProvider.Type
 
@@ -208,6 +204,14 @@ export class OpenAgentsAutopilotTaskRequest extends S.Class<OpenAgentsAutopilotT
   taskRef: S.String,
 }) {}
 
+export class OpenAgentsAutopilotDataScope extends S.Class<OpenAgentsAutopilotDataScope>(
+  'OpenAgentsAutopilotDataScope',
+)({
+  pathPrefixes: S.Array(S.String),
+  repoRefs: S.Array(S.String),
+  toolRefs: S.Array(S.String),
+}) {}
+
 export class OpenAgentsAutopilotPlacementPolicy extends S.Class<OpenAgentsAutopilotPlacementPolicy>(
   'OpenAgentsAutopilotPlacementPolicy',
 )({
@@ -251,6 +255,7 @@ export class OpenAgentsAutopilotWorkRequest extends S.Class<OpenAgentsAutopilotW
 )({
   caller: OpenAgentsAutopilotCaller,
   clientRequestRef: S.String,
+  dataScope: S.optionalKey(OpenAgentsAutopilotDataScope),
   intent: OpenAgentsAutopilotWorkRequestIntent,
   launchPolicy: S.optionalKey(OpenAgentsAutopilotScheduledLaunchPolicy),
   mode: OpenAgentsAutopilotWorkRequestMode,
@@ -291,8 +296,9 @@ const unsafeValuePattern =
 
 const normalizedUniqueStrings = (
   values: ReadonlyArray<string>,
-): ReadonlyArray<string> =>
-  [...new Set(values.map(value => value.trim()).filter(value => value !== ''))]
+): ReadonlyArray<string> => [
+  ...new Set(values.map(value => value.trim()).filter(value => value !== '')),
+]
 
 const scanForUnsafeValue = (
   value: unknown,
@@ -325,7 +331,7 @@ const scanForUnsafeValue = (
     .map(([key, item]) =>
       unsafeKeyPattern.test(key)
         ? [...path, key].join('.')
-        : scanForUnsafeValue(item, [...path, key])
+        : scanForUnsafeValue(item, [...path, key]),
     )
     .find((unsafePath): unsafePath is string => unsafePath !== undefined)
 }
@@ -376,10 +382,7 @@ const assertSafeOptionalRef = (
   }
 }
 
-const assertSafeNullableRef = (
-  label: string,
-  value: string | null,
-): void => {
+const assertSafeNullableRef = (label: string, value: string | null): void => {
   if (value !== null) {
     assertSafeRef(label, value)
   }
@@ -434,14 +437,15 @@ const assertVerificationCommand = (
   })
 }
 
-const assertCheckout = (
-  task: OpenAgentsAutopilotTaskRequest,
-): void => {
+const assertCheckout = (task: OpenAgentsAutopilotTaskRequest): void => {
   if (task.checkout === undefined) {
     return
   }
 
-  if (task.repository === undefined || task.repository.visibility !== 'public') {
+  if (
+    task.repository === undefined ||
+    task.repository.visibility !== 'public'
+  ) {
     throw new OpenAgentsAutopilotWorkRequestUnsafe({
       reason: 'git_checkout tasks require a public repository ref.',
     })
@@ -449,7 +453,8 @@ const assertCheckout = (
 
   if (!gitCommitShaPattern.test(task.checkout.commitSha)) {
     throw new OpenAgentsAutopilotWorkRequestUnsafe({
-      reason: 'git_checkout commitSha must be a pinned 40-character commit SHA.',
+      reason:
+        'git_checkout commitSha must be a pinned 40-character commit SHA.',
     })
   }
 
@@ -460,10 +465,7 @@ const assertTask = (task: OpenAgentsAutopilotTaskRequest): void => {
   assertSafeRef('taskRef', task.taskRef)
   assertSafeRepository(task.repository)
   assertCheckout(task)
-  assertNonEmptySafeRefs(
-    'acceptanceCriteriaRefs',
-    task.acceptanceCriteriaRefs,
-  )
+  assertNonEmptySafeRefs('acceptanceCriteriaRefs', task.acceptanceCriteriaRefs)
   task.accessRequests.forEach(accessRequest => {
     assertSafeRef('access request reasonRef', accessRequest.reasonRef)
   })
@@ -472,12 +474,86 @@ const assertTask = (task: OpenAgentsAutopilotTaskRequest): void => {
     task.forumReporting.targetForumRef,
   )
 
-  if (task.objective.trim().length < 8 || unsafeValuePattern.test(task.objective)) {
+  if (
+    task.objective.trim().length < 8 ||
+    unsafeValuePattern.test(task.objective)
+  ) {
     throw new OpenAgentsAutopilotWorkRequestUnsafe({
       reason:
         'Task objective must be a bounded public-safe summary, not a raw prompt or secret-shaped value.',
     })
   }
+}
+
+const cleanRepoRefSegment = (value: string): string =>
+  value.replace(/[^A-Za-z0-9_-]+/g, '_')
+
+export const autopilotGithubRepoRefForFullName = (fullName: string): string => {
+  const [owner = '', name = ''] = fullName.split('/')
+
+  return `repo.github.${cleanRepoRefSegment(owner)}.${cleanRepoRefSegment(name)}`
+}
+
+const dataScopePathPrefixPattern = /^[A-Za-z0-9][A-Za-z0-9_./-]{0,200}$/
+
+const assertDataScope = (request: OpenAgentsAutopilotWorkRequest): void => {
+  const dataScope = request.dataScope
+
+  if (dataScope === undefined) {
+    return
+  }
+
+  if (dataScope.repoRefs.length === 0) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason: 'dataScope.repoRefs must declare at least one repo ref.',
+    })
+  }
+
+  dataScope.repoRefs.forEach(repoRef => {
+    assertSafeRef('dataScope repoRef', repoRef)
+
+    if (!repoRef.startsWith('repo.')) {
+      throw new OpenAgentsAutopilotWorkRequestUnsafe({
+        reason: 'dataScope.repoRefs must be repo.* refs.',
+      })
+    }
+  })
+  dataScope.pathPrefixes.forEach(pathPrefix => {
+    if (
+      !dataScopePathPrefixPattern.test(pathPrefix) ||
+      pathPrefix.includes('..') ||
+      pathPrefix.includes('//') ||
+      pathPrefix.startsWith('/') ||
+      unsafeValuePattern.test(pathPrefix)
+    ) {
+      throw new OpenAgentsAutopilotWorkRequestUnsafe({
+        reason:
+          'dataScope.pathPrefixes must be bounded relative path prefixes without traversal, absolute paths, or secret-shaped values.',
+      })
+    }
+  })
+  dataScope.toolRefs.forEach(toolRef => {
+    assertSafeRef('dataScope toolRef', toolRef)
+
+    if (!toolRef.startsWith('tool.')) {
+      throw new OpenAgentsAutopilotWorkRequestUnsafe({
+        reason: 'dataScope.toolRefs must be tool.* refs.',
+      })
+    }
+  })
+  request.tasks.forEach(task => {
+    if (
+      task.repository !== undefined &&
+      !dataScope.repoRefs.includes(
+        autopilotGithubRepoRefForFullName(task.repository.fullName),
+      )
+    ) {
+      throw new OpenAgentsAutopilotWorkRequestUnsafe({
+        reason:
+          'dataScope.repoRefs must cover every task repository so the declared scope is the whole grant.',
+      })
+    }
+  })
 }
 
 const assertPaymentPolicy = (
@@ -512,11 +588,9 @@ const assertPlacementPolicy = (
 
   if (
     placementPolicy.publicTraceAllowed &&
-    (
-      placementPolicy.privacyTier === 'local_only' ||
+    (placementPolicy.privacyTier === 'local_only' ||
       placementPolicy.privacyTier === 'tee' ||
-      placementPolicy.privacyTier === 'maple_ai'
-    )
+      placementPolicy.privacyTier === 'maple_ai')
   ) {
     throw new OpenAgentsAutopilotWorkRequestUnsafe({
       reason:
@@ -550,13 +624,11 @@ const assertLaunchPolicy = (
 
   if (
     launchPolicy.launchWindowMinutes !== undefined &&
-    (
-      !Number.isInteger(launchPolicy.launchWindowMinutes) ||
+    (!Number.isInteger(launchPolicy.launchWindowMinutes) ||
       launchPolicy.launchWindowMinutes <
         AUTOPILOT_SCHEDULED_LAUNCH_MIN_WINDOW_MINUTES ||
       launchPolicy.launchWindowMinutes >
-        AUTOPILOT_SCHEDULED_LAUNCH_MAX_WINDOW_MINUTES
-    )
+        AUTOPILOT_SCHEDULED_LAUNCH_MAX_WINDOW_MINUTES)
   ) {
     throw new OpenAgentsAutopilotWorkRequestUnsafe({
       reason:
@@ -582,6 +654,7 @@ export const assertOpenAgentsAutopilotWorkRequest = (
   }
 
   request.tasks.forEach(assertTask)
+  assertDataScope(request)
   assertPlacementPolicy(request.placementPolicy)
   assertPaymentPolicy(request.paymentPolicy)
   assertPromiseRef(request.promiseRef)
@@ -642,6 +715,11 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
       pylonId: 'pylon.local.docs_agent',
     },
     clientRequestRef: 'client.example.20260609.001',
+    dataScope: {
+      pathPrefixes: ['docs/', 'apps/openagents.com/'],
+      repoRefs: ['repo.github.OpenAgentsInc.openagents'],
+      toolRefs: ['tool.git_checkout', 'tool.bun_test'],
+    },
     intent: 'delegate_to_autopilot',
     mode: 'free_slice_or_paid_quote_or_l402',
     paymentPolicy: {
@@ -705,6 +783,11 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
       ownerRef: 'owner_ref.paid_customer',
     },
     clientRequestRef: 'client.example.20260609.002',
+    dataScope: {
+      pathPrefixes: ['workers/api/src/'],
+      repoRefs: ['repo.github.OpenAgentsInc.openagents'],
+      toolRefs: ['tool.git_checkout', 'tool.bun_test'],
+    },
     intent: 'delegate_to_autopilot',
     mode: 'l402',
     paymentPolicy: {

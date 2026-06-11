@@ -7,11 +7,10 @@ import {
   OpenAgentsAutopilotWorkRequest,
   OpenAgentsAutopilotWorkRequestUnsafe,
   OpenAgentsAutopilotWorkResponseFixture,
+  autopilotGithubRepoRefForFullName,
   decodeOpenAgentsAutopilotWorkRequest,
 } from './autopilot-work-request'
-import {
-  OPENAGENTS_UNSAFE_REDACTION_FIXTURES,
-} from './redaction-regression-fixtures'
+import { OPENAGENTS_UNSAFE_REDACTION_FIXTURES } from './redaction-regression-fixtures'
 
 describe('OpenAgents Autopilot work request contract', () => {
   test('decodes public free-slice and paid L402 request fixtures', () => {
@@ -22,10 +21,12 @@ describe('OpenAgents Autopilot work request contract', () => {
       OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
     )
 
-    expect(S.decodeUnknownSync(OpenAgentsAutopilotWorkRequest)(freeSlice))
-      .toEqual(freeSlice)
-    expect(S.decodeUnknownSync(OpenAgentsAutopilotWorkRequest)(paid))
-      .toEqual(paid)
+    expect(
+      S.decodeUnknownSync(OpenAgentsAutopilotWorkRequest)(freeSlice),
+    ).toEqual(freeSlice)
+    expect(S.decodeUnknownSync(OpenAgentsAutopilotWorkRequest)(paid)).toEqual(
+      paid,
+    )
     expect(freeSlice).toMatchObject({
       mode: 'free_slice_or_paid_quote_or_l402',
       paymentPolicy: {
@@ -52,7 +53,7 @@ describe('OpenAgents Autopilot work request contract', () => {
 
   test('decodes response fixtures for accepted and payment-required states', () => {
     const decoded = OPENAGENTS_AUTOPILOT_WORK_RESPONSE_FIXTURES.map(fixture =>
-      S.decodeUnknownSync(OpenAgentsAutopilotWorkResponseFixture)(fixture)
+      S.decodeUnknownSync(OpenAgentsAutopilotWorkResponseFixture)(fixture),
     )
 
     expect(decoded.map(fixture => fixture.state)).toEqual([
@@ -78,6 +79,65 @@ describe('OpenAgents Autopilot work request contract', () => {
       decodeOpenAgentsAutopilotWorkRequest({
         ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
         tasks: [],
+      }),
+    ).toThrow(OpenAgentsAutopilotWorkRequestUnsafe)
+  })
+
+  test('decodes per-mission data scope from request fixtures', () => {
+    const decoded = decodeOpenAgentsAutopilotWorkRequest(
+      OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+    )
+
+    expect(decoded.dataScope).toMatchObject({
+      pathPrefixes: ['docs/', 'apps/openagents.com/'],
+      repoRefs: ['repo.github.OpenAgentsInc.openagents'],
+      toolRefs: ['tool.git_checkout', 'tool.bun_test'],
+    })
+    expect(autopilotGithubRepoRefForFullName('OpenAgentsInc/openagents')).toBe(
+      'repo.github.OpenAgentsInc.openagents',
+    )
+  })
+
+  test('rejects data scopes that do not cover every task repository', () => {
+    expect(() =>
+      decodeOpenAgentsAutopilotWorkRequest({
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+        dataScope: {
+          pathPrefixes: [],
+          repoRefs: ['repo.github.OpenAgentsInc.other_repo'],
+          toolRefs: [],
+        },
+      }),
+    ).toThrow(OpenAgentsAutopilotWorkRequestUnsafe)
+  })
+
+  test('rejects unsafe data-scope paths and non-tool refs', () => {
+    for (const pathPrefix of [
+      '../secrets',
+      '/etc/passwd',
+      'docs//',
+      'wallet_private_key',
+    ]) {
+      expect(() =>
+        decodeOpenAgentsAutopilotWorkRequest({
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+          dataScope: {
+            pathPrefixes: [pathPrefix],
+            repoRefs: ['repo.github.OpenAgentsInc.openagents'],
+            toolRefs: ['tool.git_checkout'],
+          },
+        }),
+      ).toThrow(OpenAgentsAutopilotWorkRequestUnsafe)
+    }
+
+    expect(() =>
+      decodeOpenAgentsAutopilotWorkRequest({
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+        dataScope: {
+          pathPrefixes: ['docs/'],
+          repoRefs: ['repo.github.OpenAgentsInc.openagents'],
+          toolRefs: ['bash'],
+        },
       }),
     ).toThrow(OpenAgentsAutopilotWorkRequestUnsafe)
   })
