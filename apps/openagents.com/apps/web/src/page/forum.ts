@@ -94,6 +94,24 @@ export const forumScript = (
     }
     return body;
   };
+  // Stale-while-revalidate cache (localStorage): pages render instantly
+  // from the last-seen payloads, then refresh in the background. The
+  // Loading panel only ever appears on a truly cold first visit.
+  const CACHE_PREFIX = 'oa.forum.v1:';
+  const CACHE_TTL_MS = 10 * 60 * 1000;
+  const cacheGet = key => {
+    try {
+      const raw = localStorage.getItem(CACHE_PREFIX + key);
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (!entry || typeof entry.t !== 'number') return null;
+      if (Date.now() - entry.t > CACHE_TTL_MS) return null;
+      return entry.d;
+    } catch { return null; }
+  };
+  const cacheSet = (key, data) => {
+    try { localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), d: data })); } catch {}
+  };
   const forumHref = forum => '/forum/f/' + encodeURIComponent(forum.slug || forum.forumId);
   const topicHref = topic => '/forum/t/' + encodeURIComponent(topic.topicId);
   const postAnchor = post => 'post-' + encodeURIComponent(post.postId);
@@ -513,34 +531,61 @@ export const forumScript = (
       '<div class="grid gap-2 border-t border-forum-row-c py-3 sm:grid-cols-[10rem_1fr]"><dt class="${eyebrowClass}">Recipient</dt><dd class="m-0 min-w-0 break-words text-forum-heading [overflow-wrap:anywhere]">' + escapeHtml(receipt.recipientActorRef || 'OpenAgents moderation pool') + '</dd></div>' +
       '</dl></div></section>';
   };
+  const routePlan = () => {
+    if (initial.kind === 'forum') {
+      return {
+        paths: [
+          '/api/forum/forums/' + encodeURIComponent(initial.ref),
+          '/api/forum/forums/' + encodeURIComponent(initial.ref) + '/topics',
+        ],
+        apply: results => {
+          state.forum = results[0]; state.topics = results[1].topics || [];
+          renderForum(state.forum, state.topics);
+        },
+      };
+    }
+    if (initial.kind === 'topic') {
+      return {
+        paths: [
+          '/api/forum/topics/' + encodeURIComponent(initial.id),
+          '/api/forum/launch-status',
+        ],
+        apply: results => {
+          state.topic = results[0].topic; state.posts = results[0].posts || [];
+          state.launchStatus = results[1];
+          renderTopic(state.topic, state.posts);
+        },
+      };
+    }
+    if (initial.kind === 'receipt') {
+      return {
+        paths: ['/api/forum/receipts/' + encodeURIComponent(initial.ref)],
+        apply: results => { state.receipt = results[0]; renderReceipt(state.receipt); },
+      };
+    }
+    return {
+      paths: ['/api/forum', '/api/forum/tip-leaderboards'],
+      apply: results => {
+        state.tipLeaderboards = results[1];
+        renderIndex(results[0]);
+      },
+    };
+  };
   const load = async () => {
+    const plan = routePlan();
+    const cached = plan.paths.map(cacheGet);
+    let renderedFromCache = false;
+    if (cached.every(entry => entry !== null)) {
+      try { plan.apply(cached); renderedFromCache = true; } catch {}
+    }
     try {
-      if (initial.kind === 'forum') {
-        const forum = await api('/api/forum/forums/' + encodeURIComponent(initial.ref));
-        const list = await api('/api/forum/forums/' + encodeURIComponent(initial.ref) + '/topics');
-        state.forum = forum; state.topics = list.topics || [];
-        renderForum(forum, state.topics);
-      } else if (initial.kind === 'topic') {
-        const [detail, launchStatus] = await Promise.all([
-          api('/api/forum/topics/' + encodeURIComponent(initial.id)),
-          api('/api/forum/launch-status'),
-        ]);
-        state.topic = detail.topic; state.posts = detail.posts || [];
-        state.launchStatus = launchStatus;
-        renderTopic(state.topic, state.posts);
-      } else if (initial.kind === 'receipt') {
-        state.receipt = await api('/api/forum/receipts/' + encodeURIComponent(initial.ref));
-        renderReceipt(state.receipt);
-      } else {
-        const [data, tipLeaderboards] = await Promise.all([
-          api('/api/forum'),
-          api('/api/forum/tip-leaderboards'),
-        ]);
-        state.tipLeaderboards = tipLeaderboards;
-        renderIndex(data);
-      }
+      const fresh = await Promise.all(plan.paths.map(path => api(path)));
+      fresh.forEach((data, index) => cacheSet(plan.paths[index], data));
+      plan.apply(fresh);
     } catch (error) {
-      main.innerHTML = '<section class="${panelClass} p-5"><p class="${eyebrowClass}">Forum unavailable</p><p class="${mutedClass}">' + escapeHtml(error.message || error) + '</p></section>';
+      if (!renderedFromCache) {
+        main.innerHTML = '<section class="${panelClass} p-5"><p class="${eyebrowClass}">Forum unavailable</p><p class="${mutedClass}">' + escapeHtml(error.message || error) + '</p></section>';
+      }
     }
   };
   load();

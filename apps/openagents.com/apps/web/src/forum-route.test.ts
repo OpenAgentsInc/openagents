@@ -140,7 +140,7 @@ describe('Forum routes', () => {
 
     expect(script).toContain("const authMode = initial.authMode || 'LoggedOut'")
     expect(script).toContain("authMode !== 'LoggedIn'")
-    expect(script).toContain("api('/api/forum/launch-status')")
+    expect(script).toContain("'/api/forum/launch-status'")
     expect(script).toContain('checkoutLaunchPath')
     expect(script).toContain(
       "result.receiptRef ? 'success' : 'payment_required'",
@@ -177,7 +177,7 @@ describe('Forum routes', () => {
   test('renders Forum tip leaderboards on the board index', () => {
     const script = forumScript(ForumRoute(), 'LoggedOut')
 
-    expect(script).toContain("api('/api/forum/tip-leaderboards')")
+    expect(script).toContain("'/api/forum/tip-leaderboards'")
     expect(script).toContain('Top tipped posts')
     expect(script).toContain('Top tipped creators')
     expect(script).toContain('post.postPermalink')
