@@ -46,6 +46,27 @@ surfaces. The next decision is not whether to build a runtime kernel. The next
 decision is which audits turn that landed kernel into repeatable, unattended,
 receipt-backed MVP proof.
 
+## Tracking Issues
+
+Pack A is now filed as GitHub issue #4813, with one child issue for each
+subsystem audit that should be operationalized during the current #4786 sprint:
+
+| Pack issue | Subsystem audit | Primary sprint pressure |
+| --- | --- | --- |
+| #4814 PA1 | Task And Background Execution | Scheduled/background run supervision for #4764, #4765, #4768, and #4773 |
+| #4815 PA2 | Scheduling And Cron | Schedule, continuation, skip, and no-double-fire receipts for #4764, #4768, and #4773 |
+| #4816 PA3 | Notifications And Attention | Decision/completion/failure attention state for #4765, #4768, and #4773 |
+| #4817 PA4 | Mobile And Web Companion | Phone-sized decision/review/status projection for #4765, #4768, and #4773 |
+| #4818 PA5 | Testing And Smoke | Proof-boundary and receipt discipline for #4767, #4768, #4772, and #4773 |
+| #4819 PA6 | Artifact And Receipt | Evidence refs for schedules, tasks, decisions, notifications, reviews, and smokes |
+| #4820 PA7 | Structured Event Log | Replayable Pack A projections across web, Pylon, API, companion, and public-safe views |
+| #4821 PA8 | Token And Cost Budgeting | Budget stops, usage refs, rate-limit blockers, and own-Pylon zero-credit proof |
+| #4822 PA9 | Permission And Approval | Shared approval contract for headless, background, mobile, Pylon, and API actions |
+| #4823 PA10 | Accessibility And Non-Interactive Mode | Structured output, CI/headless behavior, no-color status, and typed prompt blockers |
+
+The parent #4813 body carries the Pack A checklist. The #4786 epic has a
+matching Pack A addendum comment.
+
 ## Audit Finding
 
 The terminal-agent folder is a dependency graph, not a flat backlog. The 62

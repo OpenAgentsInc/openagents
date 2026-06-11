@@ -207,4 +207,5 @@ map. The audits below are the currently imported subsystem records.
 - `2026-06-11-terminal-agent-systems-operationalization-roadmap.md`: Decides
   which subsystem audits to operationalize during and after the active #4786
   Autopilot MVP sprint, grouped into proof/supervision, credential/policy,
-  repo/delivery, intake/market, and extension/polish packs.
+  repo/delivery, intake/market, and extension/polish packs. Pack A is tracked
+  by GitHub issue #4813 and child issues #4814-#4823.
