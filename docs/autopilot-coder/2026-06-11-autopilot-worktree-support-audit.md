@@ -105,8 +105,9 @@ native worktree manager. With #4792 now closed and both adapters consuming the
 same checkout runner out of `claude-agent-executor.ts`, the condition this
 audit set ("after #4792 exposes concrete duplication") is met: the shared
 logic exists but lives in an adapter-named module. Follow-up issues are filed
-under #4786 covering the adapter-neutral materializer extraction and the
-native shared-cache `git worktree` manager with TTL cleanup receipts.
+under #4786: #4798 (adapter-neutral materializer extraction, no behavior
+change) and #4799 (native shared-cache `git worktree` manager with leases and
+TTL cleanup receipts, behind the service from #4798).
 
 ## Design Boundary
 
