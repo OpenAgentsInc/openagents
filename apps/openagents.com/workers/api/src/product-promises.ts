@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.28'
+export const PublicProductPromisesVersion = '2026-06-10.29'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1312,23 +1312,24 @@ export const publicProductPromisesDocument = () => {
       claim:
         'A standing automated Artanis run advances the Tassadar executor lane in production: dispatching digest-pinned executor work to Pylons, verifying it by exact replay, accumulating the verified-trace corpus toward Tassadar model training, and publishing monitorable per-tick receipts on a public surface.',
       safeCopy:
-        'The Artanis spine exists and is deployed: a worker cron fires every minute and a config-gated scheduled runner persists loop, tick, runtime, Forum-intent, and health records under the tested autonomous-loop contract. The executor-trace work class is now modeled in that runner: enabled ticks record no-spend Pylon dispatch refs, exact-replay verdict refs, a pending wallet_spend approval requirement for the paid sample, and a Forum intent limited to compute.tassadar_executor_poc.v1 safeCopy. Production enablement, a sustained unattended streak, the public tick monitor, and the first curated distillation dataset remain gated.',
+        'The Artanis spine exists and is deployed: a worker cron fires every minute and a config-gated scheduled runner persists loop, tick, runtime, Forum-intent, and health records under the tested autonomous-loop contract. The loop has now run for real: on 2026-06-11 the administrator tick autonomously dispatched no-spend executor-trace work to newly online fleet Pylons (assignment.artanis_admin.20260611011429 dispatched, accepted, executed digest-true, and closed out with zero humans in the span), and the public tick monitor at GET /api/public/artanis/admin-ticks projects every persisted decision with redaction-scanned reasons, counts by state, and the daily dispatch bound. A sustained unattended streak with replay verdicts and the first curated distillation dataset remain gated.',
       unsafeCopy:
         'Do not claim a trained model executes exactly, that Artanis runs ungated autonomy (spend and publication stay approval-gated), that an autonomous work network is live, or any general LLM-computer or contributor-earning capability from this loop.',
       evidenceRefs: [
         'docs/artanis/2026-06-10-artanis-production-tick-and-tassadar-evolution-audit.md',
         'docs/artanis/2026-06-06-autonomous-loop-contract.md',
         'apps/openagents.com/workers/api/src/artanis-scheduled-runner.ts',
+        'apps/openagents.com/workers/api/src/artanis-tick-monitor.ts',
+        'route:/api/public/artanis/admin-ticks',
         'docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md',
         'https://github.com/OpenAgentsInc/openagents/issues/4697',
       ],
       blockerRefs: [
         'blocker.product_promises.artanis_unattended_tick_streak_missing',
-        'blocker.product_promises.artanis_public_tick_monitor_missing',
         'blocker.product_promises.tassadar_distillation_dataset_receipt_missing',
       ],
       verification:
-        'Executor-trace tick wiring landed under #4697. Green still requires ARTANIS_SCHEDULED_RUNNER_ENABLED during an operator-controlled window, at least ten consecutive unattended ticks whose receipts include executor dispatch and exact-replay verdicts, the public tick-ledger monitor surface, and the first dataset_curation receipt converting verified traces into a distillation dataset.',
+        'Executor-trace tick wiring landed under #4697; the public tick-ledger monitor is live at GET /api/public/artanis/admin-ticks and showed the first autonomous dispatch-execute-closeout span on 2026-06-11. Green still requires at least ten consecutive unattended ticks whose receipts include executor dispatch and exact-replay verdicts, and the first dataset_curation receipt converting verified traces into a distillation dataset.',
       authorityBoundary:
         'The loop acts only through existing gates: assignments for computation, approval requirements for risky kinds, owner authority for wallet spend, copy gates for publication. A green here proves a monitorable automated run, not model capability; Tassadar disclosure boundaries extend unchanged.',
     },

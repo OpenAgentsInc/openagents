@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-10.28')
+    expect(decoded.version).toBe('2026-06-10.29')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
