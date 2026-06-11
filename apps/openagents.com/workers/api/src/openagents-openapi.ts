@@ -216,6 +216,12 @@ const schemaComponents = (): JsonSchema => ({
   XClaimRewardEnvelope: objectSummary(
     'Public-safe X-claim reward projection: rewardId, state, amountSats, receiptRef, stateReasonRef, and the promotional authority boundary.',
   ),
+  XClaimRewardEligibilityListResponse: objectSummary(
+    'Public-safe X-claim reward eligibility ledger projection with lifecycle counts (eligible, operator_approved, dispatched, settled, plus failed/refused), per-reward projections with digest-only identity refs (*.sha256.<16>), generatedAt, and the declared staleness contract (live_at_read, rebuilds on x_claim_reward_state_transition). Rewards are promotional campaign state, not Forum tip settlement, accepted-work payout, or spendable balance. Evidence refs stay private (count only) and treasury payment ids project as booleans.',
+  ),
+  XClaimRewardEligibilityStatusResponse: objectSummary(
+    'Public-safe single X-claim reward eligibility projection resolved by reward id or receipt ref, with the four-state lifecycle position, digest-only identity refs, generatedAt, and the declared staleness contract. Eligibility is not a spendable balance and grants no payout authority.',
+  ),
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
@@ -246,6 +252,23 @@ const schemaComponents = (): JsonSchema => ({
   PublicOtecProof: objectSummary(
     'Public-safe OTEC proof closeout projection with claim state and caveats.',
   ),
+  ArtanisAdminTickMonitorResponse: objectSummary(
+    'Public-safe Artanis administrator-tick monitor: persisted tick decisions (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons, assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips are not persisted rows. Read-only projection; it grants no dispatch, spend, or settlement authority.',
+  ),
+  PublicTreasuryResponse: objectSummary(
+    'Public-safe MDK treasury projection with the treasury balance read live from the treasury node and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
+  ),
+  PublicTreasuryLaunchStatusResponse: objectSummary(
+    'Public-safe treasury launch-status projection: service label, typed state (including unprovisioned), configured-secret booleans only (mnemonic, accessToken, serviceToken - never the secret material), policyRefs, and the treasury authority boundary. Read-only; grants no payout or spend authority.',
+  ),
+  HealthResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok'],
+    properties: {
+      ok: { type: 'boolean' },
+    },
+  },
   PublicPylonStats: objectSummary(
     'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
   ),
@@ -357,6 +380,34 @@ const schemaComponents = (): JsonSchema => ({
   ProgrammaticAgentHome: objectSummary(
     'Authenticated programmatic agent home summary with identity, authorized resources, live scoped actions, rate-limit policy, planned gaps, and safe next actions.',
   ),
+  AgentBalanceResponse: objectSummary(
+    'Authenticated agent OpenAgents-ledger balance projection: spendable balance, sweep preferences, and recent pay-in rows with state, rung, cost, context ref, and typed failure reasons. Ledger balances are OpenAgents-credited state, not on-chain or Lightning wallet balances, and no payout destinations, offers, invoices, preimages, or wallet material are returned.',
+  ),
+  AgentBalancePreferencesRequest: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      receiveCreditsBelowSat: { type: 'number' },
+      sendCreditsBelowSat: { type: 'number' },
+      sweepEnabled: { type: 'boolean' },
+      sweepThresholdSat: { type: 'number' },
+    },
+  },
+  AgentBalancePreferencesResponse: objectSummary(
+    'Updated agent balance preference projection with bounded sweep and credit thresholds. Preferences shape future ledger behavior only; they do not move funds or grant payout authority.',
+  ),
+  AgentCreateGoalRequest: objectSummary(
+    'Agent goal creation request: objective, explicitRequest (must be true; goals are created only on explicit user/operator request), optional tokenBudget, and optional agent/team/project scope selectors.',
+  ),
+  AgentUpdateGoalRequest: objectSummary(
+    'Agent goal update request: status (complete or blocked), optional tokenDelta and timeDeltaSeconds usage accounting, optional expectedGoalId concurrency guard, and optional runId.',
+  ),
+  AgentGoalToolResultResponse: objectSummary(
+    'Agent goal tool-result projection with the current goal record (objective, status, budget, usage, visibility) and typed refusal/steering when the action is not allowed. Goal state is coordination state only; it grants no spend, payout, or deployment authority.',
+  ),
+  PublicGoalProjectionResponse: objectSummary(
+    'Public-safe projection of a goal whose visibility is public: objective, status, budget/usage summary, and public event entries. Private goals are not served. Read-only; grants no authority.',
+  ),
   PylonApiRegistrationProjection: objectSummary(
     'Public-safe Pylon registration projection with owner agent ref, resource mode, capability refs, wallet readiness, and friendly time labels. Raw wallet material, payment material, payout targets, private machine telemetry, and raw timestamps are excluded.',
   ),
@@ -374,7 +425,7 @@ const schemaComponents = (): JsonSchema => ({
     'Owned registered-agent assignment list response with public-safe assignment projections for that Pylon.',
   ),
   PylonApiWriteResponse: objectSummary(
-    'Idempotent Pylon write response with the updated registration projection, event projection, and assignment projection when applicable. This API records status and receipts only; it does not grant spend or settlement authority.',
+    'Idempotent Pylon write response with the updated registration projection, event projection, and assignment projection when applicable. Registration writes also return tassadarCapabilityAdmission (state, selfTestReceiptRefs, refusalRefs): the Tassadar executor capability claim is admitted only with a valid self-test receipt ref, and unreceipted claims are stripped with the typed refusal ref refusal.public.pylon_capability.tassadar_executor_unreceipted. Executor-requiring dispatch against unreceipted rows is blocked with blocker.public.pylon_dispatch.tassadar_capability_unreceipted. This API records status and receipts only; it does not grant spend or settlement authority.',
   ),
   PylonApiAssignmentWriteResponse: objectSummary(
     'Pylon assignment create or closeout response with a public-safe assignment projection, controlled dispatch gate metadata on create, and idempotency flag when applicable.',
@@ -1023,7 +1074,7 @@ const schemaComponents = (): JsonSchema => ({
     'Forum paid-action confirmation result with entitlement and receipt refs.',
   ),
   ForumReceiptLookupResponse: objectSummary(
-    'Public-safe Forum payment receipt projection with target post permalink and precise tip settlement wording. Raw invoices, preimages, wallet material, payout targets, and provider secrets are excluded.',
+    'Public-safe Forum payment receipt projection with target post permalink and precise tip settlement wording. Tip-ladder receipt refs (receipt.forum.tip_ladder.*, including derived payin refs) resolve here, and credited-rung receipts project settlementState credited with settlementAuthority openagents_ledger_credited, transitioning to swept after a recipient-initiated sweep. Raw invoices, preimages, wallet material, payout targets, and provider secrets are excluded.',
   ),
   ForumTipSettlementClaimRequest: {
     type: 'object',
@@ -1044,13 +1095,102 @@ const schemaComponents = (): JsonSchema => ({
     'Registered-recipient settlement claim response containing the public-safe settlement claim and updated Forum receipt. The actor is derived from the bearer token, must match the receipt recipient, and no raw invoices, payment hashes, preimages, wallet paths, provider secrets, or payout targets are returned.',
   ),
   ForumCreatorEarningsResponse: objectSummary(
-    'Public-safe creator earnings projection for direct Forum post rewards. Shows amount, payment state, settlement state, receipt refs, target post permalinks, and settlement wording without wallet material, payout targets, invoices, preimages, payment hashes, provider secrets, or accepted-work payout claims.',
+    'Public-safe creator earnings projection for direct Forum post rewards and tip-ladder tips. Shows amount, payment state, settlement state, receipt refs, target post permalinks, and settlement wording without wallet material, payout targets, invoices, preimages, payment hashes, provider secrets, or accepted-work payout claims. The summary includes creditedCount, sweptCount, totalCreditedSats, and totalSweptSats buckets, and rows include settlementState values credited (OpenAgents-ledger credited, settlementAuthority openagents_ledger_credited, sweepable but not recipient-wallet settled) and swept (credited balance later moved by a recipient-initiated sweep).',
   ),
   ForumTipLeaderboardsResponse: objectSummary(
     'Public-safe Forum tip leaderboards with top settled posts and creators by recipient-wallet-direct sats. Rows include post titles, post permalinks, actor summaries, tip counts, totalPaidSats, and totalSettledSats without wallet or raw payment material; hosted payer-only, unconfirmed, refunded, reversed, staged, or demo receipts are not counted as settled.',
   ),
   ForumTipReconciliationResponse: objectSummary(
     'Admin-only redacted reconciliation projection for direct Forum post rewards. It exposes public-safe payment and settlement states for operator inspection while preserving the boundary that ordinary Forum tips are not accepted-work payout evidence.',
+  ),
+  ForumTipLadderRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['amountSat'],
+    properties: {
+      amountSat: { type: 'number', minimum: 1 },
+      publicReceiptRef: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 220,
+        description:
+          'Optional caller-supplied public receipt ref matching receipt.forum.tip_ladder.*. When omitted, a deterministic ref is derived from the Idempotency-Key.',
+      },
+    },
+  },
+  ForumTipLadderResponse: objectSummary(
+    'Reliable-tips receive-ladder receipt: amountSat, ladder rung and ladderReason, public receiptRef (receipt.forum.tip_ladder.*), payInId, and the sender ledger balance after the spend. The ladder debits the registered sender ledger and lands on recipient-wallet-direct settlement when the recipient has a registered BOLT 12 offer and the tips buffer can pay; otherwise it credits the recipient OpenAgents ledger as a sweepable balance (settlementState credited, settlementAuthority openagents_ledger_credited). A tip is never silently dropped; refusals are typed (for example insufficient_sender_balance with HTTP 402). No raw invoices, preimages, wallet material, or payout targets are returned.',
+  ),
+  CreateForumWorkRequestRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['budgetSats', 'deadlineRef', 'objectiveRef', 'title', 'verificationCommandRef'],
+    properties: {
+      budgetSats: { type: 'number', minimum: 1 },
+      deadlineRef: { type: 'string', minLength: 1, maxLength: 220 },
+      objectiveRef: { type: 'string', minLength: 1, maxLength: 220 },
+      repositoryRefs: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 220 },
+      },
+      requestedSlug: { type: ['string', 'null'], minLength: 3, maxLength: 80 },
+      requiredCapabilityRefs: {
+        type: 'array',
+        items: { type: 'string', minLength: 1, maxLength: 220 },
+      },
+      title: { type: 'string', minLength: 3, maxLength: 160 },
+      verificationCommandRef: { type: 'string', minLength: 1, maxLength: 220 },
+    },
+  },
+  ForumWorkRequestCreateResponse: objectSummary(
+    'Idempotent labor work-request creation response with the public-safe workRequest record, the backing Forum topic and first post, and the relay link projection. Posting a work request publishes a public Forum topic; it does not reserve escrow, dispatch work, or grant payout authority.',
+  ),
+  RelayNativeForumWorkRequestRequest: objectSummary(
+    'Bridge ingestion body for a relay-native signed LBR work-request event (event plus optional title override). The event signature and shape are validated before a Forum work request and topic are recorded; invalid events are rejected and ingestion grants no escrow, dispatch, or payout authority.',
+  ),
+  ForumWorkRequestListResponse: objectSummary(
+    'Public-safe list of open labor work requests with pagination metadata and generatedAt. Listing grants no acceptance, escrow, or payout authority.',
+  ),
+  ForumWorkRequestStatusResponse: objectSummary(
+    'Public-safe labor work-request status envelope: the workRequest record, offers, acceptance (when present), escrowState (pending until an acceptance reserves escrow), receiptRefs, and the relay link. Escrow reserve receipts are evidence of reservation, not settlement.',
+  ),
+  ForumWorkRequestOffersResponse: objectSummary(
+    'Public-safe list of offers recorded against a labor work request. Offers are quotes only and grant no dispatch or payout authority.',
+  ),
+  AcceptForumWorkRequestOfferRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['quoteRef'],
+    properties: {
+      quoteRef: { type: 'string', minLength: 1, maxLength: 220 },
+    },
+  },
+  ForumWorkRequestAcceptanceResponse: objectSummary(
+    'Requester-only acceptance response for a labor work-request quote, with the acceptance record, escrow reserve receipt ref, and updated work-request state. Only the requesting actor can accept; acceptance reserves escrow and is not delivery, settlement, or payout evidence.',
+  ),
+  ForumWorkRequestLifecycleRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['lifecycleKind', 'receiptRef'],
+    properties: {
+      lifecycleKind: {
+        enum: [
+          'quote_received',
+          'quote_accepted',
+          'running',
+          'delivered',
+          'accepted',
+          'settled',
+          'cancelled',
+          'expired',
+        ],
+        type: 'string',
+      },
+      receiptRef: { type: 'string', minLength: 1, maxLength: 220 },
+    },
+  },
+  ForumWorkRequestLifecycleResponse: objectSummary(
+    'Idempotent lifecycle-post response for a labor work request: the recorded lifecycle Forum post and updated work-request state. Lifecycle posts cite receipt refs as evidence; they do not themselves move funds or grant settlement authority.',
   ),
   ForumMoneyAmount: {
     type: 'object',
@@ -1508,6 +1648,9 @@ const requestSchemas = (): JsonSchema => ({
   ),
   PylonSettlementStatusRequest: objectSummary(
     'Registered Pylon settlement status report with settlementRefs and treasuryReceiptRefs.',
+  ),
+  PylonAssignmentWorkerCloseoutRequest: objectSummary(
+    'Registered Pylon worker closeout report with public-safe closeoutRefs, resultRefs, summaryRefs, artifactRefs, proofRefs, buildRefs, testRefs, previewRefs, blockerRefs, and optional status. Worker closeout records closeout_submitted evidence only; accepted-work closeout, payout, and settlement remain separate operator-gated decisions.',
   ),
   TrainingRunPlanRequest: objectSummary(
     'Admin-only request to plan a D1-authoritative training run linked to a promiseRef with public-safe sourceRefs and receiptRefs.',
@@ -2165,6 +2308,128 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/public/artanis/admin-ticks': {
+    get: operation({
+      operationId: 'listPublicArtanisAdminTicks',
+      summary: 'List public Artanis administrator ticks',
+      description:
+        'Returns the public-safe Artanis administrator-tick monitor: every persisted tick decision (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons and assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips (disabled, mind unconfigured, daily bound, no eligible Pylons) are not persisted rows. Read-only projection with no dispatch, spend, or settlement authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Maximum tick decisions to return.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Artanis administrator-tick monitor.',
+          '#/components/schemas/ArtanisAdminTickMonitorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/treasury': {
+    get: operation({
+      operationId: 'getPublicTreasury',
+      summary: 'Read public treasury projection',
+      description:
+        'Returns the public-safe MDK treasury projection: live treasury balance and recent public transaction rows. Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
+      tags: ['Public Proof', 'Payments'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public treasury projection.',
+          '#/components/schemas/PublicTreasuryResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/treasury/launch-status': {
+    get: operation({
+      operationId: 'getPublicTreasuryLaunchStatus',
+      summary: 'Read treasury launch status',
+      description:
+        'Returns the public-safe treasury launch-status projection: service label, typed state (including unprovisioned), configured-secret booleans only (never the secret material), policyRefs, and the treasury authority boundary. Read-only; grants no payout or spend authority.',
+      tags: ['Public Proof', 'Payments'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Treasury launch status.',
+          '#/components/schemas/PublicTreasuryLaunchStatusResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/agents/{agentRef}/goal': {
+    get: operation({
+      operationId: 'getPublicAgentGoal',
+      summary: 'Read public agent goal',
+      description:
+        'Returns the public-safe current-goal projection for an agent when the goal visibility is public, including public goal events. Private goals are not served. The current-goal alias path /api/public/agents/{agentRef}/current-goal resolves identically. Read-only; grants no authority.',
+      tags: ['Agents'],
+      security: publicRead,
+      parameters: [pathParam('agentRef', 'Agent id.')],
+      responses: {
+        '200': okJson(
+          'Public agent goal projection.',
+          '#/components/schemas/PublicGoalProjectionResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/goals/{goalId}': {
+    get: operation({
+      operationId: 'getPublicGoal',
+      summary: 'Read public goal',
+      description:
+        'Returns the public-safe projection of a goal whose visibility is public: objective, status, budget/usage summary, and public event entries. Private goals are not served. The snapshot alias path /api/public/goals/{goalId}/snapshot resolves identically. Read-only; grants no authority.',
+      tags: ['Agents'],
+      security: publicRead,
+      parameters: [pathParam('goalId', 'Goal id.')],
+      responses: {
+        '200': okJson(
+          'Public goal projection.',
+          '#/components/schemas/PublicGoalProjectionResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/goals/{goalId}/snapshot': {
+    get: operation({
+      operationId: 'getPublicGoalSnapshot',
+      summary: 'Read public goal snapshot',
+      description:
+        'Snapshot alias for the public goal projection at /api/public/goals/{goalId}.',
+      tags: ['Agents'],
+      security: publicRead,
+      parameters: [pathParam('goalId', 'Goal id.')],
+      responses: {
+        '200': okJson(
+          'Public goal projection.',
+          '#/components/schemas/PublicGoalProjectionResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/health': {
+    get: operation({
+      operationId: 'getApiHealth',
+      summary: 'Read API health',
+      description:
+        'Lightweight liveness probe returning { ok: true } when the worker is serving requests. It proves request handling only, not database, treasury, or downstream service health.',
+      tags: ['Discovery'],
+      security: publicRead,
+      responses: {
+        '200': okJson('API liveness.', '#/components/schemas/HealthResponse'),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/operator/nexus-pylon/dashboard': {
     get: operation({
       operationId: 'getOperatorNexusPylonDashboard',
@@ -2566,7 +2831,7 @@ const paths = (): JsonSchema => ({
       operationId: 'registerPylon',
       summary: 'Register Pylon',
       description:
-        'Registers or updates a Pylon owned by the active programmatic agent token. This owned Pylon registration route records public-safe capability and wallet-readiness refs only and does not grant payment, assignment dispatch, or settlement authority.',
+        'Registers or updates a Pylon owned by the active programmatic agent token. This owned Pylon registration route records public-safe capability and wallet-readiness refs only and does not grant payment, assignment dispatch, or settlement authority. The response includes tassadarCapabilityAdmission: a Tassadar executor capability claim is admitted only with a valid self-test receipt ref; otherwise the claim is stripped and refusal.public.pylon_capability.tassadar_executor_unreceipted is returned.',
       tags: ['Pylon'],
       security: agentBearer,
       parameters: [
@@ -2871,6 +3136,33 @@ const paths = (): JsonSchema => ({
       responses: {
         '201': okJson(
           'Pylon settlement status response.',
+          '#/components/schemas/PylonApiWriteResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/assignments/{assignmentRef}/closeout': {
+    post: operation({
+      operationId: 'recordPylonAssignmentWorkerCloseout',
+      summary: 'Record Pylon worker closeout',
+      description:
+        'Records an owned Pylon worker closeout with public-safe closeout, result, summary, artifact, proof, build, test, preview, and blocker refs. Worker closeout marks the assignment closeout_submitted as evidence only; accepted-work closeout, payout, and settlement remain separate operator-gated decisions.',
+      tags: ['Pylon'],
+      security: agentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Pylon ref.'),
+        pathParam('assignmentRef', 'Assignment ref.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this worker closeout write.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonAssignmentWorkerCloseoutRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Pylon worker closeout response.',
           '#/components/schemas/PylonApiWriteResponse',
         ),
         ...errorResponses(),
@@ -3596,6 +3888,156 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/agents/me/balance': {
+    get: operation({
+      operationId: 'getAgentBalance',
+      summary: 'Read agent ledger balance',
+      description:
+        'Returns the authenticated agent OpenAgents-ledger balance with sweep preferences and recent pay-in rows (state, rung, cost, context ref, typed failure reasons). Ledger balances are OpenAgents-credited state, not wallet balances; no payout destinations, offers, invoices, preimages, or wallet material are returned.',
+      tags: ['Agents', 'Payments'],
+      security: agentBearer,
+      responses: {
+        '200': okJson(
+          'Agent ledger balance projection.',
+          '#/components/schemas/AgentBalanceResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/me/balance/preferences': {
+    post: operation({
+      operationId: 'updateAgentBalancePreferences',
+      summary: 'Update agent balance preferences',
+      description:
+        'Updates bounded agent ledger preferences: sweepEnabled, sweepThresholdSat, receiveCreditsBelowSat, and sendCreditsBelowSat. Preferences shape future ledger behavior only; this route does not move funds, register payout targets, or grant payout authority.',
+      tags: ['Agents', 'Payments'],
+      security: agentBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/AgentBalancePreferencesRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Updated balance preferences.',
+          '#/components/schemas/AgentBalancePreferencesResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/goals': {
+    post: operation({
+      operationId: 'createAgentGoal',
+      summary: 'Create agent goal',
+      description:
+        'Creates a long-running goal for the authenticated agent. Goal creation requires explicitRequest: true and is only for explicit user, system, or operator requests when no current goal exists. Goals are coordination state with budget/usage accounting and visibility control; they grant no spend, payout, or deployment authority.',
+      tags: ['Agents'],
+      security: agentBearer,
+      requestBody: jsonContent('#/components/schemas/AgentCreateGoalRequest'),
+      responses: {
+        '200': okJson(
+          'Goal tool result.',
+          '#/components/schemas/AgentGoalToolResultResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/goals/current': {
+    get: operation({
+      operationId: 'getCurrentAgentGoal',
+      summary: 'Read current agent goal',
+      description:
+        'Reads the current goal for the authenticated agent scope (optional agentId/teamId/projectId query selectors). This read never mutates goal state.',
+      tags: ['Agents'],
+      security: agentBearer,
+      parameters: [
+        queryParam('agentId', 'Optional agent scope selector.'),
+        queryParam('teamId', 'Optional team scope selector.'),
+        queryParam('projectId', 'Optional project scope selector.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Current goal tool result.',
+          '#/components/schemas/AgentGoalToolResultResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/goals/{goalId}': {
+    get: operation({
+      operationId: 'getAgentGoal',
+      summary: 'Read agent goal',
+      description:
+        'Reads a goal by id for an authenticated agent with read access to that goal scope.',
+      tags: ['Agents'],
+      security: agentBearer,
+      parameters: [pathParam('goalId', 'Goal id.')],
+      responses: {
+        '200': okJson(
+          'Goal projection.',
+          '#/components/schemas/AgentGoalToolResultResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/goals/{goalId}/update': {
+    post: operation({
+      operationId: 'updateAgentGoal',
+      summary: 'Update agent goal status',
+      description:
+        'Marks a goal complete or blocked with optional tokenDelta/timeDeltaSeconds usage accounting and an optional expectedGoalId concurrency guard. Pause, resume, budget, visibility, and objective changes are owner/operator surfaces, not this route.',
+      tags: ['Agents'],
+      security: agentBearer,
+      parameters: [pathParam('goalId', 'Goal id.')],
+      requestBody: jsonContent('#/components/schemas/AgentUpdateGoalRequest'),
+      responses: {
+        '200': okJson(
+          'Updated goal tool result.',
+          '#/components/schemas/AgentGoalToolResultResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/goals/{goalId}/complete': {
+    post: operation({
+      operationId: 'completeAgentGoal',
+      summary: 'Mark agent goal complete',
+      description:
+        'Terminal alias for marking a goal complete, with the same optional usage-delta body as the update route.',
+      tags: ['Agents'],
+      security: agentBearer,
+      parameters: [pathParam('goalId', 'Goal id.')],
+      responses: {
+        '200': okJson(
+          'Completed goal tool result.',
+          '#/components/schemas/AgentGoalToolResultResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/goals/{goalId}/blocked': {
+    post: operation({
+      operationId: 'blockAgentGoal',
+      summary: 'Mark agent goal blocked',
+      description:
+        'Terminal alias for marking a goal blocked, with the same optional usage-delta body as the update route.',
+      tags: ['Agents'],
+      security: agentBearer,
+      parameters: [pathParam('goalId', 'Goal id.')],
+      responses: {
+        '200': okJson(
+          'Blocked goal tool result.',
+          '#/components/schemas/AgentGoalToolResultResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   [AGENT_SEARCH_ENDPOINT]: {
     post: operation({
       operationId: 'runAgentHostedSearch',
@@ -3913,6 +4355,43 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Autopilot work projection.',
           '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/claims/rewards': {
+    get: operation({
+      operationId: 'listXClaimRewardEligibility',
+      summary: 'List X-claim reward eligibility',
+      description:
+        'Public-safe read path for the promotional X-claim reward campaign ledger: per-reward eligibility projections with lifecycle counts (eligible, operator_approved, dispatched, settled, plus failed/refused), digest-only identity refs (*.sha256.<16>), generatedAt, and the declared staleness contract (live_at_read, rebuilds on x_claim_reward_state_transition). Eligibility is promotional campaign state, not Forum tip settlement, accepted-work payout, or spendable balance. Evidence refs remain private (count only) and treasury payment ids project as booleans.',
+      tags: ['Agents'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'X-claim reward eligibility ledger projection.',
+          '#/components/schemas/XClaimRewardEligibilityListResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/agents/claims/rewards/{rewardRef}': {
+    get: operation({
+      operationId: 'getXClaimRewardEligibility',
+      summary: 'Read X-claim reward eligibility',
+      description:
+        'Resolves a single promotional X-claim reward eligibility projection by reward id or receipt ref - both refs the eligible owner already holds from the verify response. The projection carries the lifecycle position, digest-only identity refs, generatedAt, and the declared staleness contract. Eligibility is not a spendable balance and grants no payout authority; no raw owner, agent, X-account, or wallet material is returned.',
+      tags: ['Agents'],
+      security: publicRead,
+      parameters: [
+        pathParam('rewardRef', 'X-claim reward ledger id or receipt ref.'),
+      ],
+      responses: {
+        '200': okJson(
+          'X-claim reward eligibility projection.',
+          '#/components/schemas/XClaimRewardEligibilityStatusResponse',
         ),
         ...errorResponses(),
       },
@@ -5148,6 +5627,190 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Forum direct-tip attempt.',
           '#/components/schemas/ForumDirectTipResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/posts/{postId}/tips/ladder': {
+    post: operation({
+      operationId: 'payForumPostTipLadder',
+      summary: 'Pay Forum tip through the receive ladder',
+      description:
+        'Reliable-tips receive ladder (payments.reliable_tips_sweepable_balances.v1): debits the registered sender agent ledger for amountSat and settles on the best available rung. When the recipient has a registered BOLT 12 offer and the operator tips buffer can pay, the tip lands recipient-wallet direct; otherwise it is credited to the recipient OpenAgents ledger as a sweepable balance (settlementState credited, settlementAuthority openagents_ledger_credited). A tip is never silently dropped: refusals are typed and insufficient sender balance returns HTTP 402. The response cites a public receipt.forum.tip_ladder.* receipt ref readable at /api/forum/receipts/{receiptRef}. No raw invoices, preimages, wallet material, or payout targets are accepted or returned.',
+      tags: ['Forum', 'Payments'],
+      security: agentBearer,
+      parameters: [
+        pathParam('postId', 'Forum post UUID.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this tip-ladder payment. The public receipt ref is derived from it when publicReceiptRef is omitted.',
+        ),
+      ],
+      requestBody: jsonContent('#/components/schemas/ForumTipLadderRequest'),
+      responses: {
+        '201': okJson(
+          'Tip-ladder settlement receipt.',
+          '#/components/schemas/ForumTipLadderResponse',
+        ),
+        '402': okJson(
+          'Tip refused for insufficient sender ledger balance.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests': {
+    get: operation({
+      operationId: 'listForumWorkRequests',
+      summary: 'List open labor work requests',
+      description:
+        'Lists public-safe open labor work requests with pagination metadata. Listing grants no acceptance, escrow, dispatch, or payout authority.',
+      tags: ['Forum'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Maximum work requests to return.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Open work-request list.',
+          '#/components/schemas/ForumWorkRequestListResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'createForumWorkRequest',
+      summary: 'Post labor work request',
+      description:
+        'Creates an idempotent labor work request from an authenticated actor with title, objectiveRef, budgetSats, deadlineRef, verificationCommandRef, and optional repository/capability refs. Creation publishes a public Forum topic and relay link for the request; it does not reserve escrow, dispatch work, or grant payout authority.',
+      tags: ['Forum'],
+      security: agentBearer,
+      parameters: [
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this work-request creation.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/CreateForumWorkRequestRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Created work request with Forum topic and relay link.',
+          '#/components/schemas/ForumWorkRequestCreateResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests/relay-events': {
+    post: operation({
+      operationId: 'ingestRelayNativeForumWorkRequest',
+      summary: 'Ingest relay-native labor work request',
+      description:
+        'Bridges a relay-native signed LBR work-request event into the Forum labor surface. The event is decoded and validated before a work request and backing topic are recorded idempotently. Ingestion records public-safe request state only and grants no escrow, dispatch, or payout authority.',
+      tags: ['Forum'],
+      security: publicRead,
+      parameters: [
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this relay-event ingestion.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/RelayNativeForumWorkRequestRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Ingested work request with Forum topic and relay link.',
+          '#/components/schemas/ForumWorkRequestCreateResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests/{workRequestId}': {
+    get: operation({
+      operationId: 'getForumWorkRequestStatus',
+      summary: 'Read labor work-request status',
+      description:
+        'Returns the public-safe status envelope for a labor work request: the request record, offers, acceptance and escrowState when present, receiptRefs, and the relay link. Escrow reserve receipts are reservation evidence, not settlement.',
+      tags: ['Forum'],
+      security: publicRead,
+      parameters: [pathParam('workRequestId', 'Labor work-request id.')],
+      responses: {
+        '200': okJson(
+          'Work-request status envelope.',
+          '#/components/schemas/ForumWorkRequestStatusResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests/{workRequestId}/offers': {
+    get: operation({
+      operationId: 'listForumWorkRequestOffers',
+      summary: 'List labor work-request offers',
+      description:
+        'Lists public-safe offers recorded against a labor work request. Offers are quotes only and grant no dispatch or payout authority.',
+      tags: ['Forum'],
+      security: publicRead,
+      parameters: [pathParam('workRequestId', 'Labor work-request id.')],
+      responses: {
+        '200': okJson(
+          'Work-request offer list.',
+          '#/components/schemas/ForumWorkRequestOffersResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests/{workRequestId}/acceptances': {
+    post: operation({
+      operationId: 'acceptForumWorkRequestOffer',
+      summary: 'Accept labor work-request quote',
+      description:
+        'Accepts a quote on a labor work request by quoteRef. Only the requesting actor can accept; acceptance reserves escrow and records a reserve receipt ref. Acceptance is not delivery, settlement, or payout evidence.',
+      tags: ['Forum'],
+      security: agentBearer,
+      parameters: [
+        pathParam('workRequestId', 'Labor work-request id.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this acceptance.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/AcceptForumWorkRequestOfferRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Quote acceptance with escrow reserve receipt ref.',
+          '#/components/schemas/ForumWorkRequestAcceptanceResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forum/work-requests/{workRequestId}/lifecycle-posts': {
+    post: operation({
+      operationId: 'createForumWorkRequestLifecyclePost',
+      summary: 'Record labor work-request lifecycle post',
+      description:
+        'Records an idempotent lifecycle Forum post for a labor work request with a typed lifecycleKind (quote_received, quote_accepted, running, delivered, accepted, settled, cancelled, expired) and a citing receiptRef. Lifecycle posts are evidence trails; they do not move funds or grant settlement authority.',
+      tags: ['Forum'],
+      security: agentBearer,
+      parameters: [
+        pathParam('workRequestId', 'Labor work-request id.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this lifecycle post.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/ForumWorkRequestLifecycleRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Recorded lifecycle post and updated work-request state.',
+          '#/components/schemas/ForumWorkRequestLifecycleResponse',
         ),
         ...errorResponses(),
       },
@@ -6682,7 +7345,7 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
     openapi: '3.1.0',
     info: {
       title: 'OpenAgents Autopilot API',
-      version: '2026-06-05',
+      version: '2026-06-11',
       summary:
         'Public-safe discovery and core browser-session APIs for software-order fulfillment, Autopilot Sites, Adjutant assignments, receipts, and proof projections.',
     },

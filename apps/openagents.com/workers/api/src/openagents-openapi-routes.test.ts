@@ -768,3 +768,320 @@ describe('OpenAgents OpenAPI route', () => {
     })
   })
 })
+
+// Anti-staleness route coverage (#4752): openapi.json froze at 2026-06-05
+// while shipped routes (including the tips receive-ladder route a green
+// promise depends on) were missing from the contract surface. This suite
+// statically scans the worker source for registered /api routes and fails
+// when a registered route is neither documented in the OpenAPI paths nor
+// listed in the explicit intentionally-undocumented allowlist below. New
+// routes therefore cannot ship silently undocumented: either add an OpenAPI
+// entry or make the omission an explicit, reviewable decision here.
+import { readFileSync as fsReadFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
+const srcRoot = import.meta.dirname
+
+// Routes that are deliberately not part of the public OpenAPI contract
+// surface today: browser-session product app internals, owner/operator and
+// admin consoles, provider webhooks, and internal dispatcher patterns.
+// Removing a route from the OpenAPI document requires adding it here, which
+// keeps undocumented surface an explicit decision instead of silent drift.
+const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
+  // Owner/admin and operator consoles (admin session or admin bearer only):
+  '/api/admin/overview',
+  '/api/admin/sync/notify',
+  '/api/operator/adjutant/assignments/{param}/current-run/clear',
+  '/api/operator/adjutant/assignments/{param}/enrichment',
+  '/api/operator/adjutant/assignments/{param}/enrichment/briefs/{param}/review',
+  '/api/operator/adjutant/assignments/{param}/enrichment/enqueue',
+  '/api/operator/adjutant/assignments/{param}/enrichment/plan',
+  '/api/operator/adjutant/assignments/{param}/enrichment/refresh',
+  '/api/operator/adjutant/assignments/{param}/enrichment/run',
+  '/api/operator/adjutant/assignments/{param}/enrichment/source-cards/{param}/review',
+  '/api/operator/adjutant/assignments/{param}/enrichment/source-refs',
+  '/api/operator/adjutant/assignments/{param}/enrichment/source-refs/{param}/review',
+  '/api/operator/adjutant/assignments/{param}/preflight',
+  '/api/operator/adjutant/assignments/{param}/research-policy',
+  '/api/operator/adjutant/assignments/{param}/task-packet',
+  '/api/operator/adjutant/assignments/{param}/task-packet/keep-current',
+  '/api/operator/artanis/approval-gates/{param}/approve',
+  '/api/operator/artanis/approval-gates/{param}/reject',
+  '/api/operator/artanis/console',
+  '/api/operator/artanis/mind/smoke',
+  '/api/operator/artanis/spend-decision',
+  '/api/operator/autopilot/goals',
+  '/api/operator/autopilot/goals/current',
+  '/api/operator/autopilot/goals/{param}',
+  '/api/operator/autopilot/goals/{param}/clear',
+  '/api/operator/autopilot/goals/{param}/pause',
+  '/api/operator/autopilot/goals/{param}/resume',
+  '/api/operator/autopilot/goals/{param}/visibility',
+  '/api/operator/autopilot/preflight',
+  '/api/operator/buy-mode',
+  '/api/operator/buy-mode/dispatch',
+  '/api/operator/buy-mode/results/settle',
+  '/api/operator/buy-mode/start',
+  '/api/operator/buy-mode/stop',
+  '/api/operator/email-deliveries/review-ready-smoke',
+  '/api/operator/orders/triage',
+  '/api/operator/orders/triage/autopilot-foldover-inventory',
+  '/api/operator/orders/triage/first-batch/assign',
+  '/api/operator/orders/triage/first-batch/monitor',
+  '/api/operator/orders/triage/first-batch/payment-policy',
+  '/api/operator/orders/{param}/fulfillment/prepare',
+  '/api/operator/orders/{param}/triage',
+  '/api/operator/provider-accounts/chatgpt-codex/device-login/start',
+  '/api/operator/provider-accounts/chatgpt-codex/device-login/{param}',
+  '/api/operator/provider-accounts/chatgpt-codex/fleet-dashboard',
+  '/api/operator/provider-accounts/chatgpt-codex/leases',
+  '/api/operator/provider-accounts/chatgpt-codex/leases/active',
+  '/api/operator/provider-accounts/chatgpt-codex/leases/explain',
+  '/api/operator/provider-accounts/chatgpt-codex/leases/failover',
+  '/api/operator/provider-accounts/chatgpt-codex/leases/failover-history',
+  '/api/operator/provider-accounts/chatgpt-codex/leases/grant',
+  '/api/operator/provider-accounts/chatgpt-codex/leases/release',
+  '/api/operator/provider-accounts/chatgpt-codex/leases/touch',
+  '/api/operator/provider-accounts/chatgpt-codex/sanity',
+  '/api/operator/sites/builder-sessions/{param}/events',
+  '/api/operator/sites/builder-sessions/{param}/versions',
+  '/api/operator/sites/{param}/access',
+  '/api/operator/sites/{param}/access-grants',
+  '/api/operator/sites/{param}/build-validations/latest',
+  '/api/operator/sites/{param}/deployments/{param}/disable',
+  '/api/operator/sites/{param}/deployments/{param}/rollback',
+  '/api/operator/sites/{param}/environment-values',
+  '/api/operator/sites/{param}/events',
+  '/api/operator/sites/{param}/generate',
+  '/api/operator/sites/{param}/provisioning-plans',
+  '/api/operator/sites/{param}/versions/{param}/source-exports',
+  '/api/operator/tassadar/replay',
+  '/api/operator/tips-buffer/funding-destination',
+  '/api/operator/tips-buffer/status',
+  '/api/operator/treasury/funding-destination',
+  '/api/operator/treasury/payout',
+  '/api/operator/treasury/status',
+  // Browser-session product app internals (signed-in openagents.com app only):
+  '/api/auth/teams',
+  '/api/auth/totals',
+  '/api/autopilot/fleet',
+  '/api/autopilot/goals',
+  '/api/autopilot/goals/current',
+  '/api/autopilot/goals/{param}',
+  '/api/autopilot/goals/{param}/clear',
+  '/api/autopilot/goals/{param}/pause',
+  '/api/autopilot/goals/{param}/resume',
+  '/api/autopilot/goals/{param}/visibility',
+  '/api/autopilot/missions',
+  '/api/autopilot/token-leaderboards',
+  '/api/autopilot/work/{param}/review',
+  '/api/billing/checkout',
+  '/api/billing/coupons/redeem',
+  '/api/billing/stripe/checkout-return',
+  '/api/billing/stripe/webhook',
+  '/api/billing/summary',
+  '/api/github-write/connections',
+  '/api/github-write/connections/{param}/disconnect',
+  '/api/github-write/grants/resolve',
+  '/api/images/generate',
+  '/api/images/{param}',
+  '/api/onboarding/billing/skip',
+  '/api/onboarding/goal',
+  '/api/share',
+  '/api/share/{param}',
+  '/api/share/{param}/v1/data',
+  '/api/sites/referrals/overview',
+  '/api/sites/{param}/access',
+  '/api/sites/{param}/archive',
+  '/api/sites/{param}/commerce/{param}',
+  '/api/sites/{param}/delete',
+  '/api/stats/token-usage/aggregate',
+  '/api/stats/token-usage/events',
+  '/api/stats/token-usage/leaderboard-preference',
+  '/api/stats/token-usage/leaderboards',
+  '/api/sync/{param}/{param}/{param}',
+  '/api/teams/{param}/chat/messages',
+  '/api/teams/{param}/files',
+  '/api/teams/{param}/projects/{param}/chat/messages',
+  '/api/thread-files',
+  '/api/thread-files/{param}',
+  '/api/thread-files/{param}/download',
+  // Omni deployment/agent-run surfaces (session- or deployment-scoped app internals):
+  '/api/omni/agent-runs',
+  '/api/omni/agent-runs/{param}',
+  '/api/omni/agent-runs/{param}/events',
+  '/api/omni/agent-runs/{param}/events/ingest',
+  '/api/omni/deployments',
+  '/api/omni/deployments/{param}',
+  '/api/omni/deployments/{param}/events',
+  '/api/omni/deployments/{param}/events/ingest',
+  '/api/omni/operator/agent-runs',
+  '/api/omni/operator/agent-runs/{param}',
+  '/api/omni/operator/autopilot/checklist',
+  '/api/omni/operator/autopilot/preflight',
+  '/api/omni/operator/billing/credits',
+  '/api/omni/operator/deployments',
+  '/api/omni/operator/fleet',
+  '/api/omni/operator/team-chat/messages',
+  // Provider-account credential plumbing (owner-bound; never public contract surface):
+  '/api/provider-accounts',
+  '/api/provider-accounts/chatgpt-codex/device-login/start',
+  '/api/provider-accounts/chatgpt-codex/device-login/{param}',
+  '/api/provider-accounts/chatgpt-codex/device-login/{param}/connected',
+  '/api/provider-accounts/chatgpt-codex/device-login/{param}/failed',
+  '/api/provider-accounts/chatgpt-codex/grants/resolve',
+  '/api/provider-accounts/google-gemini/grants/resolve',
+  '/api/provider-accounts/google-gemini/models/{param}:streamGenerateContent',
+  '/api/provider-accounts/{param}/disconnect',
+  '/api/provider-accounts/{param}/grants',
+  '/api/provider-accounts/{param}/health',
+  // Blueprint program-registry internals:
+  '/api/blueprint/action-submissions',
+  '/api/blueprint/contracts',
+  '/api/blueprint/contributions',
+  '/api/blueprint/program-registry',
+  '/api/blueprint/program-runs',
+  // Provider webhooks and internal callbacks:
+  '/api/mdk',
+  '/api/webhooks/resend',
+  // Documented-alias and dispatcher patterns (concrete documented routes cover them):
+  '/api/agent/sites/{param}/{param}',
+  '/api/public/agents/{param}/current-goal',
+]
+
+const sourceFiles = (): ReadonlyArray<string> =>
+  readdirSync(srcRoot, { encoding: 'utf8', recursive: true })
+    .filter(file => file.endsWith('.ts'))
+    .filter(file => !file.endsWith('.test.ts'))
+    .filter(file => !file.includes('node_modules'))
+    .map(file => join(srcRoot, file))
+
+const expandRoutePattern = (pattern: string): ReadonlyArray<string> => {
+  const results: Array<string> = []
+  const queue: Array<string> = [pattern]
+
+  while (queue.length > 0) {
+    const current = queue.pop()
+
+    if (current === undefined) {
+      break
+    }
+
+    const optionalGroup = /\(\?:((?:[^()]|\([^()]*\))*)\)\?/.exec(current)
+    if (optionalGroup !== null) {
+      queue.push(current.replace(optionalGroup[0], ''))
+      queue.push(current.replace(optionalGroup[0], optionalGroup[1] ?? ''))
+      continue
+    }
+
+    const alternation = /\((?:\?:)?([A-Za-z0-9_|-]+\|[A-Za-z0-9_|-]+)\)/.exec(
+      current,
+    )
+    if (alternation !== null) {
+      for (const option of (alternation[1] ?? '').split('|')) {
+        queue.push(current.replace(alternation[0], option))
+      }
+      continue
+    }
+
+    const normalized = current
+      .replace(/\(\[\^\/\]\+\)/g, '{param}')
+      .replace(/\[\^\/\]\+/g, '{param}')
+      .replace(/\(\.\+\)/g, '{param}')
+
+    if (!/[()\\^$?*+[\]]/.test(normalized)) {
+      results.push(normalized)
+    }
+  }
+
+  return results
+}
+
+const registeredApiRoutes = (): ReadonlyArray<string> => {
+  const routes = new Set<string>()
+
+  for (const file of sourceFiles()) {
+    const content = fsReadFileSync(file, 'utf8')
+
+    for (const match of content.matchAll(
+      /pathname\s*===\s*\n?\s*'(\/api\/[^']*)'/g,
+    )) {
+      routes.add(match[1] ?? '')
+    }
+
+    if (file.endsWith('/index.ts')) {
+      for (const match of content.matchAll(/path:\s*'(\/api\/[^']*)'/g)) {
+        routes.add(match[1] ?? '')
+      }
+    }
+
+    for (const match of content.matchAll(/\/\^(\\\/api\\\/[^\n]*?)\$\//g)) {
+      const pattern = (match[1] ?? '').replace(/\\\//g, '/')
+      for (const expanded of expandRoutePattern(pattern)) {
+        routes.add(expanded)
+      }
+    }
+  }
+
+  return [...routes].sort()
+}
+
+const normalizeRouteParams = (path: string): string =>
+  path.replace(/\{[^}]+\}/g, '{param}')
+
+const routeMatchesDocumentedPath = (
+  route: string,
+  documented: string,
+): boolean => {
+  const routeSegments = route.split('/')
+  const documentedSegments = documented.split('/')
+
+  return (
+    routeSegments.length === documentedSegments.length &&
+    documentedSegments.every(
+      (segment, index) =>
+        segment === '{param}' || segment === routeSegments[index],
+    )
+  )
+}
+
+const documentedPaths = async (): Promise<ReadonlyArray<string>> => {
+  const response = await runRoute()
+  const body: { paths?: Record<string, unknown> } = JSON.parse(
+    await response.text(),
+  )
+
+  return Object.keys(body.paths ?? {})
+}
+
+describe('OpenAgents OpenAPI registered-route coverage', () => {
+  test('every registered /api route is documented or explicitly allowlisted', async () => {
+    const documented = (await documentedPaths()).map(normalizeRouteParams)
+    const allowlisted = new Set(
+      intentionallyUndocumentedApiRoutes.map(normalizeRouteParams),
+    )
+    const registered = registeredApiRoutes().map(normalizeRouteParams)
+
+    expect(registered.length).toBeGreaterThan(150)
+
+    const missing = registered.filter(
+      route =>
+        !allowlisted.has(route) &&
+        !documented.some(path => routeMatchesDocumentedPath(route, path)),
+    )
+
+    expect(missing).toEqual([])
+  })
+
+  test('allowlisted routes do not shadow documented paths', async () => {
+    const documented = (await documentedPaths()).map(normalizeRouteParams)
+
+    const shadowed = intentionallyUndocumentedApiRoutes
+      .map(normalizeRouteParams)
+      .filter(route =>
+        documented.some(path => routeMatchesDocumentedPath(route, path)),
+      )
+
+    expect(shadowed).toEqual([])
+  })
+})
