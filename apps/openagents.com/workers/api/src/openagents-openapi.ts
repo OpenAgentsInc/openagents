@@ -210,6 +210,9 @@ const schemaComponents = (): JsonSchema => ({
   AutopilotWorkEventsEnvelope: objectSummary(
     'Public-safe Autopilot work event list envelope. Events may include queued, needs_access, payment_required, running, delivered, accepted, blocked, and settled. They are progress signals only, not deploy authority, spend authority, accepted-work proof, payout authority, or settlement evidence.',
   ),
+  AutopilotWorkReviewDecisionRequest: objectSummary(
+    'Public-safe Autopilot work review request. action is accept, reject, or request_changes; the matching decisionRefs, rejectionRefs, or revisionRequestRefs array must contain public-safe refs only.',
+  ),
   XClaimRewardDispatchRequest: objectSummary(
     'Operator dispatch action for a promotional X-claim reward: action (approve_dispatch, mark_dispatched, mark_settled, mark_failed, refuse), optional public-safe evidenceRefs (required for mark_settled), optional stateReasonRef.',
   ),
@@ -4381,6 +4384,36 @@ const paths = (): JsonSchema => ({
       responses: {
         '200': okJson(
           'Autopilot work projection.',
+          '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/work/{workOrderRef}/review': {
+    post: operation({
+      operationId: 'reviewAutopilotWork',
+      summary: 'Review delivered Autopilot work',
+      description:
+        'Records an owner review decision for delivered Autopilot work using public-safe decision refs only. Review can accept, reject, or request changes. The decision does not grant deploy authority, worker payout authority, settlement authority, or Forum publication authority.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      parameters: [
+        pathParam('workOrderRef', 'Autopilot work-order reference.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this review decision.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/AutopilotWorkReviewDecisionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Idempotent existing Autopilot work review projection.',
+          '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        '201': okJson(
+          'Recorded Autopilot work review projection.',
           '#/components/schemas/AutopilotWorkEnvelope',
         ),
         ...errorResponses(),

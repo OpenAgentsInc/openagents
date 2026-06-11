@@ -132,7 +132,9 @@ const updateLoggedInRoute = (
   if (
     route._tag === 'Onboarding' ||
     route._tag === 'Order' ||
-    route._tag === 'OrderDetail'
+    route._tag === 'OrderDetail' ||
+    route._tag === 'AutopilotWork' ||
+    route._tag === 'AutopilotWorkDetail'
   ) {
     return [
       evo(routedModel, { threadRoute: () => ThreadRouteIdle() }),

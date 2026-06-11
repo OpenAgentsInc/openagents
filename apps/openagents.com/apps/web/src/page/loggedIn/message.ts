@@ -32,6 +32,11 @@ import {
   AgentRunLaunchResponse,
   ArtanisOperatorApprovalAction,
   ArtanisOperatorConsoleResponse,
+  AutopilotWorkBriefingResponse,
+  AutopilotWorkEventsResponse,
+  AutopilotWorkListResponse,
+  AutopilotWorkResponse,
+  AutopilotWorkReviewAction,
   CustomerFulfillmentArtifactsResponse,
   CustomerOrderResponse,
   CustomerOrdersResponse,
@@ -236,6 +241,79 @@ export const SucceededLoadCustomerOrders = m('SucceededLoadCustomerOrders', {
   response: CustomerOrdersResponse,
 })
 export const FailedLoadCustomerOrders = m('FailedLoadCustomerOrders', {
+  error: S.String,
+})
+export const RequestedLoadAutopilotWorkList = m(
+  'RequestedLoadAutopilotWorkList',
+)
+export const SucceededLoadAutopilotWorkList = m(
+  'SucceededLoadAutopilotWorkList',
+  {
+    response: AutopilotWorkListResponse,
+  },
+)
+export const FailedLoadAutopilotWorkList = m(
+  'FailedLoadAutopilotWorkList',
+  {
+    error: S.String,
+  },
+)
+export const RequestedLoadAutopilotWorkDetail = m(
+  'RequestedLoadAutopilotWorkDetail',
+  {
+    workOrderRef: S.String,
+  },
+)
+export const SucceededLoadAutopilotWorkDetail = m(
+  'SucceededLoadAutopilotWorkDetail',
+  {
+    response: AutopilotWorkResponse,
+  },
+)
+export const FailedLoadAutopilotWorkDetail = m(
+  'FailedLoadAutopilotWorkDetail',
+  {
+    error: S.String,
+  },
+)
+export const SucceededLoadAutopilotWorkEvents = m(
+  'SucceededLoadAutopilotWorkEvents',
+  {
+    response: AutopilotWorkEventsResponse,
+  },
+)
+export const FailedLoadAutopilotWorkEvents = m(
+  'FailedLoadAutopilotWorkEvents',
+  {
+    error: S.String,
+  },
+)
+export const SucceededLoadAutopilotWorkBriefing = m(
+  'SucceededLoadAutopilotWorkBriefing',
+  {
+    response: AutopilotWorkBriefingResponse,
+  },
+)
+export const FailedLoadAutopilotWorkBriefing = m(
+  'FailedLoadAutopilotWorkBriefing',
+  {
+    error: S.String,
+  },
+)
+export const SubmittedAutopilotWorkReview = m(
+  'SubmittedAutopilotWorkReview',
+  {
+    action: AutopilotWorkReviewAction,
+    workOrderRef: S.String,
+  },
+)
+export const SucceededAutopilotWorkReview = m(
+  'SucceededAutopilotWorkReview',
+  {
+    response: AutopilotWorkResponse,
+  },
+)
+export const FailedAutopilotWorkReview = m('FailedAutopilotWorkReview', {
   error: S.String,
 })
 export const UpdatedCustomerOrderDraft = m('UpdatedCustomerOrderDraft', {
@@ -996,6 +1074,19 @@ export const Message = S.Union([
   RequestedLoadCustomerOrders,
   SucceededLoadCustomerOrders,
   FailedLoadCustomerOrders,
+  RequestedLoadAutopilotWorkList,
+  SucceededLoadAutopilotWorkList,
+  FailedLoadAutopilotWorkList,
+  RequestedLoadAutopilotWorkDetail,
+  SucceededLoadAutopilotWorkDetail,
+  FailedLoadAutopilotWorkDetail,
+  SucceededLoadAutopilotWorkEvents,
+  FailedLoadAutopilotWorkEvents,
+  SucceededLoadAutopilotWorkBriefing,
+  FailedLoadAutopilotWorkBriefing,
+  SubmittedAutopilotWorkReview,
+  SucceededAutopilotWorkReview,
+  FailedAutopilotWorkReview,
   UpdatedCustomerOrderDraft,
   SubmittedCustomerOrder,
   SucceededSubmitCustomerOrder,

@@ -340,6 +340,7 @@ export type AutopilotWorkOrderProjection = Readonly<{
   executionCloseout: AutopilotWorkExecutionCloseoutProjection | null
   fallbackLeaseIntents: ReadonlyArray<AutopilotFallbackLeaseIntentProjection>
   funding: AutopilotWorkFundingProjection
+  generatedAt: string
   idempotent: boolean
   nextAction: AutopilotWorkNextActionProjection
   paymentChallenge: AutopilotWorkPaymentChallengeProjection | null
@@ -1305,6 +1306,7 @@ const paymentRequiredResponse = <Bindings extends AutopilotWorkRouteEnv>(
   return noStoreJsonResponse(
     {
       error: 'payment_required',
+      generatedAt: input.projection.generatedAt,
       work: input.projection,
     },
     { headers, status: 402 },
@@ -1583,6 +1585,7 @@ const projectionForRecord = (
     executionCloseout: executionCloseoutForRecord(record),
     fallbackLeaseIntents: [],
     funding,
+    generatedAt: nowIso,
     idempotent,
     nextAction: nextActionForRecord(record, funding, placementDecision),
     paymentChallenge: paymentChallengeForRecord(record),
@@ -2236,7 +2239,10 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
             projection,
             record: dispatchedRecord,
           })
-        : noStoreJsonResponse({ work: projection }, { status: 200 })
+        : noStoreJsonResponse(
+            { generatedAt: nowIso, work: projection },
+            { status: 200 },
+          )
     }
 
     const workRequest = yield* decodeWorkRequest(request)
@@ -2306,7 +2312,7 @@ const createWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
           record: dispatchedRecord,
         })
       : noStoreJsonResponse(
-          { work: projection },
+          { generatedAt: nowIso, work: projection },
           { status: created.idempotent ? 200 : 202 },
         )
   }).pipe(
@@ -2356,6 +2362,7 @@ const readWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     }
 
     return noStoreJsonResponse({
+      generatedAt: nowIso,
       work: projectionForRecord(record, false, nowIso, pylonRegistrations),
     })
   }).pipe(
@@ -2477,6 +2484,7 @@ const reviewWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
 
     return noStoreJsonResponse(
       {
+        generatedAt: nowIso,
         idempotent: result.idempotent,
         work: projectionForRecord(
           result.record,
@@ -2594,6 +2602,7 @@ const readWorkOrderEvents = <Bindings extends AutopilotWorkRouteEnv>(
 
     return noStoreJsonResponse({
       events,
+      generatedAt: nowIso,
       nextAfter: events.length === 0
         ? after
         : events[events.length - 1]?.sequence ?? after,
@@ -2731,15 +2740,21 @@ const listWorkOrders = <Bindings extends AutopilotWorkRouteEnv>(
     )
 
     return noStoreJsonResponse({
+      generatedAt: nowIso,
       promiseId,
       workOrders: matching.map(record => ({
         createdAt: record.createdAt,
+        generatedAt: nowIso,
+        issueRefs: record.taskRefs
+          .flatMap(ref => /^task\.github_issue\.issue_(\d+)\./.exec(ref)?.[1] ?? [])
+          .map(issueNumber => `github.issue.${issueNumber}`),
         promiseRef: {
           blockerRefs: record.request.promiseRef?.blockerRefs ?? [],
           promiseId: record.request.promiseRef?.promiseId ?? promiseId,
           registryVersion: record.request.promiseRef?.registryVersion ?? null,
         },
         state: record.state,
+        taskRefs: record.taskRefs,
         updatedAt: record.updatedAt,
         workOrderRef: record.workOrderRef,
       })),

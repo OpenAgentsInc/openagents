@@ -2,6 +2,7 @@ import { Match as M } from 'effect'
 
 import { updateAdmin } from './admin/transitions'
 import { updateArtanisConsole } from './artanis-console/transitions'
+import { updateAutopilotWork } from './autopilot-work/transitions'
 import { updateBilling } from './billing/transitions'
 import { updateCustomerOrder } from './customer-order/transitions'
 import { updateAgentGoals } from './goals/transitions'
@@ -33,7 +34,7 @@ export { personalChatThreadId, teamChatRoomKey, teamChatThreadId, teamProjectCha
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
 
 export const update = (model: Model, message: Message): UpdateReturn => {
-  const customerOrder = () => updateCustomerOrder(model, message); const artanisConsole = () => updateArtanisConsole(model, message)
+  const customerOrder = () => updateCustomerOrder(model, message); const artanisConsole = () => updateArtanisConsole(model, message); const autopilotWork = () => updateAutopilotWork(model, message)
 
   return M.value(message).pipe(
     withUpdateReturn,
@@ -80,6 +81,19 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       RequestedLoadCustomerOrders: customerOrder,
       SucceededLoadCustomerOrders: customerOrder,
       FailedLoadCustomerOrders: customerOrder,
+      RequestedLoadAutopilotWorkList: autopilotWork,
+      SucceededLoadAutopilotWorkList: autopilotWork,
+      FailedLoadAutopilotWorkList: autopilotWork,
+      RequestedLoadAutopilotWorkDetail: autopilotWork,
+      SucceededLoadAutopilotWorkDetail: autopilotWork,
+      FailedLoadAutopilotWorkDetail: autopilotWork,
+      SucceededLoadAutopilotWorkEvents: autopilotWork,
+      FailedLoadAutopilotWorkEvents: autopilotWork,
+      SucceededLoadAutopilotWorkBriefing: autopilotWork,
+      FailedLoadAutopilotWorkBriefing: autopilotWork,
+      SubmittedAutopilotWorkReview: autopilotWork,
+      SucceededAutopilotWorkReview: autopilotWork,
+      FailedAutopilotWorkReview: autopilotWork,
       UpdatedCustomerOrderDraft: customerOrder,
       SubmittedCustomerOrder: customerOrder,
       SucceededSubmitCustomerOrder: customerOrder,

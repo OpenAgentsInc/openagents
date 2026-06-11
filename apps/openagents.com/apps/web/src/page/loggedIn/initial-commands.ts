@@ -4,6 +4,12 @@ import { loggedInPermissionGate } from '../../product-policy'
 import { LoadAdminOverview } from './admin/transitions'
 import { artanisOperatorInitialCommands } from './artanis-console/transitions'
 import {
+  LoadAutopilotWorkDetail,
+  LoadAutopilotWorkBriefing,
+  LoadAutopilotWorkEvents,
+  LoadAutopilotWorkList,
+} from './autopilot-work/transitions'
+import {
   teamChatMessagesRequestForRoute,
   threadFileDetailRequestForRoute,
   threadFilesRequestForRoute,
@@ -55,6 +61,19 @@ export const initialCommands = (
       LoadCustomerOrder({
         orderId: model.route.orderId,
       }),
+    ]
+  }
+
+  if (model.route._tag === 'AutopilotWork') {
+    return [InstallAccountMenuOutsideClick(), LoadAutopilotWorkList({})]
+  }
+
+  if (model.route._tag === 'AutopilotWorkDetail') {
+    return [
+      InstallAccountMenuOutsideClick(),
+      LoadAutopilotWorkDetail({ workOrderRef: model.route.workOrderRef }),
+      LoadAutopilotWorkEvents({ workOrderRef: model.route.workOrderRef }),
+      LoadAutopilotWorkBriefing({ workOrderRef: model.route.workOrderRef }),
     ]
   }
 

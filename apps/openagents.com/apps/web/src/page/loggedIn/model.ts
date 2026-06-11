@@ -28,6 +28,7 @@ import {
 import {
   LoggedInRoute,
   adminRouter,
+  autopilotWorkRouter,
   mulletRouter,
   statsRouter,
   teamChatRouter,
@@ -1544,6 +1545,337 @@ export const CustomerFulfillmentArtifactsState = S.Union([
 export type CustomerFulfillmentArtifactsState =
   typeof CustomerFulfillmentArtifactsState.Type
 
+export const AUTOPILOT_WORK_LIST_PROMISE_ID =
+  'autopilot.mission_briefing.v1'
+
+export const AutopilotWorkState = S.Literals([
+  'access_required',
+  'accepted',
+  'accepted_free_slice',
+  'blocked',
+  'delivered',
+  'invalid',
+  'paid_ready',
+  'payment_required',
+  'queued_or_running',
+  'rejected',
+  'revision_required',
+])
+export type AutopilotWorkState = typeof AutopilotWorkState.Type
+
+export const AutopilotWorkEventKind = S.Literals([
+  'accepted',
+  'blocked',
+  'delivered',
+  'needs_access',
+  'payment_required',
+  'queued',
+  'rejected',
+  'revision_required',
+  'running',
+  'settled',
+])
+export type AutopilotWorkEventKind = typeof AutopilotWorkEventKind.Type
+
+export const AutopilotWorkReviewAction = S.Literals([
+  'accept',
+  'reject',
+  'request_changes',
+])
+export type AutopilotWorkReviewAction =
+  typeof AutopilotWorkReviewAction.Type
+
+export const AutopilotWorkPromiseRef = S.Struct({
+  blockerRefs: S.Array(S.String),
+  promiseId: S.String,
+  registryVersion: S.NullOr(S.String),
+})
+export type AutopilotWorkPromiseRef = typeof AutopilotWorkPromiseRef.Type
+
+export const AutopilotWorkSummary = S.Struct({
+  createdAt: S.String,
+  generatedAt: S.optionalKey(S.String),
+  issueRefs: S.optionalKey(S.Array(S.String)),
+  promiseRef: AutopilotWorkPromiseRef,
+  state: AutopilotWorkState,
+  taskRefs: S.optionalKey(S.Array(S.String)),
+  updatedAt: S.String,
+  workOrderRef: S.String,
+})
+export type AutopilotWorkSummary = typeof AutopilotWorkSummary.Type
+
+export const AutopilotWorkListResponse = S.Struct({
+  generatedAt: S.String,
+  promiseId: S.String,
+  workOrders: S.Array(AutopilotWorkSummary),
+})
+export type AutopilotWorkListResponse =
+  typeof AutopilotWorkListResponse.Type
+
+export const AutopilotWorkExecutionCloseout = S.Struct({
+  acceptedWorkAuthority: S.Boolean,
+  artifactRefs: S.optionalKey(S.Array(S.String)),
+  assignmentRefs: S.Array(S.String),
+  blockerRefs: S.optionalKey(S.Array(S.String)),
+  buildRefs: S.optionalKey(S.Array(S.String)),
+  closeoutRefs: S.Array(S.String),
+  forumAutoPublishAllowed: S.Boolean,
+  previewRefs: S.optionalKey(S.Array(S.String)),
+  proofRefs: S.Array(S.String),
+  publicSafe: S.Boolean,
+  resultRefs: S.Array(S.String),
+  runnerKind: S.String,
+  summaryRefs: S.optionalKey(S.Array(S.String)),
+  testRefs: S.optionalKey(S.Array(S.String)),
+  workerPayoutAuthority: S.Boolean,
+})
+export type AutopilotWorkExecutionCloseout =
+  typeof AutopilotWorkExecutionCloseout.Type
+
+export const AutopilotWorkReviewDecision = S.Struct({
+  acceptedWorkAuthority: S.Boolean,
+  action: AutopilotWorkReviewAction,
+  actorAgentCredentialId: S.String,
+  actorAgentUserId: S.String,
+  decisionRefs: S.Array(S.String),
+  deployAuthority: S.Boolean,
+  forumAutoPublishAllowed: S.Boolean,
+  idempotencyKeyHash: S.String,
+  publicSafe: S.Boolean,
+  recordedAt: S.String,
+  rejectionRefs: S.Array(S.String),
+  revisionRequestRefs: S.Array(S.String),
+  settlementAuthority: S.Boolean,
+  workerPayoutAuthority: S.Boolean,
+})
+export type AutopilotWorkReviewDecision =
+  typeof AutopilotWorkReviewDecision.Type
+
+export const AutopilotWorkProjection = S.Struct({
+  accessRequestRefs: S.Array(S.String),
+  accessRequirements: S.Array(S.Unknown),
+  assignmentIntents: S.Array(S.Unknown),
+  buyerPaymentProofRef: S.NullOr(S.String),
+  clientRequestRef: S.String,
+  createdAt: S.String,
+  eventStreamRef: S.String,
+  executionCloseout: S.NullOr(AutopilotWorkExecutionCloseout),
+  fallbackLeaseIntents: S.Array(S.Unknown),
+  funding: S.Unknown,
+  generatedAt: S.String,
+  idempotent: S.Boolean,
+  nextAction: S.Struct({
+    callerActionRefs: S.Array(S.String),
+    reasonRefs: S.Array(S.String),
+    retryAfterSeconds: S.NullOr(S.Number),
+    state: S.String,
+  }),
+  paymentChallenge: S.NullOr(S.Unknown),
+  paymentChallengeRef: S.NullOr(S.String),
+  placementDecision: S.Unknown,
+  placementPolicy: S.Unknown,
+  promiseRef: S.NullOr(AutopilotWorkPromiseRef),
+  pylonAssignmentIntents: S.Array(S.Unknown),
+  quote: S.Unknown,
+  repositoryAuthorities: S.Array(S.Unknown),
+  reviewDecision: S.NullOr(AutopilotWorkReviewDecision),
+  state: AutopilotWorkState,
+  statusUrlRef: S.String,
+  taskRefs: S.Array(S.String),
+  tasks: S.Array(S.Unknown),
+  updatedAt: S.String,
+  workOrderRef: S.String,
+})
+export type AutopilotWorkProjection = typeof AutopilotWorkProjection.Type
+
+export const AutopilotWorkResponse = S.Struct({
+  generatedAt: S.String,
+  work: AutopilotWorkProjection,
+})
+export type AutopilotWorkResponse = typeof AutopilotWorkResponse.Type
+
+export const AutopilotWorkEvent = S.Struct({
+  eventKind: AutopilotWorkEventKind,
+  eventRef: S.String,
+  occurredAt: S.String,
+  publicSafe: S.Boolean,
+  sequence: S.Number,
+  state: AutopilotWorkState,
+  taskRefs: S.Array(S.String),
+  workOrderRef: S.String,
+})
+export type AutopilotWorkEvent = typeof AutopilotWorkEvent.Type
+
+export const AutopilotWorkEventsResponse = S.Struct({
+  events: S.Array(AutopilotWorkEvent),
+  generatedAt: S.String,
+  nextAfter: S.Number,
+  workOrderRef: S.String,
+})
+export type AutopilotWorkEventsResponse =
+  typeof AutopilotWorkEventsResponse.Type
+
+export const AutopilotMissionBriefing = S.Struct({
+  briefingRef: S.String,
+  costs: S.Unknown,
+  decisionsWaiting: S.Struct({
+    callerActionRefs: S.Array(S.String),
+    nextActionState: S.String,
+    reasonRefs: S.Array(S.String),
+    reviewAction: S.NullOr(S.String),
+    reviewRecordedAt: S.NullOr(S.String),
+  }),
+  drilldown: S.Array(
+    S.Struct({
+      kind: S.String,
+      refs: S.Array(S.String),
+    }),
+  ),
+  generatedAt: S.String,
+  kind: S.String,
+  promiseRef: S.NullOr(AutopilotWorkPromiseRef),
+  publicSafe: S.Boolean,
+  state: AutopilotWorkState,
+  whatChanged: S.Struct({
+    artifactRefs: S.Array(S.String),
+    resultRefs: S.Array(S.String),
+    runnerKind: S.NullOr(S.String),
+    summaryRefs: S.Array(S.String),
+  }),
+  whatHappened: S.Array(
+    S.Struct({
+      eventKind: AutopilotWorkEventKind,
+      eventRef: S.String,
+      occurredAt: S.String,
+      sequence: S.Number,
+    }),
+  ),
+  whatIsBlocked: S.Struct({
+    accessRequirementRefs: S.Array(S.String),
+    blockerRefs: S.Array(S.String),
+    placementRefusalReasonRefs: S.Array(S.String),
+  }),
+  whatIsRunning: S.Struct({
+    pylonAssignmentIntentRefs: S.Array(S.String),
+    running: S.Boolean,
+    selectedRunnerKind: S.NullOr(S.String),
+    taskRefs: S.Array(S.String),
+  }),
+  workOrderRef: S.String,
+})
+export type AutopilotMissionBriefing =
+  typeof AutopilotMissionBriefing.Type
+
+export const AutopilotWorkBriefingResponse = S.Struct({
+  briefing: AutopilotMissionBriefing,
+})
+export type AutopilotWorkBriefingResponse =
+  typeof AutopilotWorkBriefingResponse.Type
+
+export const AutopilotWorkListIdle = ts('AutopilotWorkListIdle', {})
+export const AutopilotWorkListLoading = ts('AutopilotWorkListLoading', {})
+export const AutopilotWorkListLoaded = ts('AutopilotWorkListLoaded', {
+  response: AutopilotWorkListResponse,
+})
+export const AutopilotWorkListFailed = ts('AutopilotWorkListFailed', {
+  error: S.String,
+})
+export const AutopilotWorkListState = S.Union([
+  AutopilotWorkListIdle,
+  AutopilotWorkListLoading,
+  AutopilotWorkListLoaded,
+  AutopilotWorkListFailed,
+])
+export type AutopilotWorkListState = typeof AutopilotWorkListState.Type
+
+export const AutopilotWorkDetailIdle = ts('AutopilotWorkDetailIdle', {})
+export const AutopilotWorkDetailLoading = ts(
+  'AutopilotWorkDetailLoading',
+  {},
+)
+export const AutopilotWorkDetailLoaded = ts('AutopilotWorkDetailLoaded', {
+  response: AutopilotWorkResponse,
+})
+export const AutopilotWorkDetailFailed = ts('AutopilotWorkDetailFailed', {
+  error: S.String,
+})
+export const AutopilotWorkDetailState = S.Union([
+  AutopilotWorkDetailIdle,
+  AutopilotWorkDetailLoading,
+  AutopilotWorkDetailLoaded,
+  AutopilotWorkDetailFailed,
+])
+export type AutopilotWorkDetailState = typeof AutopilotWorkDetailState.Type
+
+export const AutopilotWorkEventsIdle = ts('AutopilotWorkEventsIdle', {})
+export const AutopilotWorkEventsLoading = ts(
+  'AutopilotWorkEventsLoading',
+  {},
+)
+export const AutopilotWorkEventsLoaded = ts('AutopilotWorkEventsLoaded', {
+  response: AutopilotWorkEventsResponse,
+})
+export const AutopilotWorkEventsFailed = ts('AutopilotWorkEventsFailed', {
+  error: S.String,
+})
+export const AutopilotWorkEventsState = S.Union([
+  AutopilotWorkEventsIdle,
+  AutopilotWorkEventsLoading,
+  AutopilotWorkEventsLoaded,
+  AutopilotWorkEventsFailed,
+])
+export type AutopilotWorkEventsState = typeof AutopilotWorkEventsState.Type
+
+export const AutopilotWorkBriefingIdle = ts('AutopilotWorkBriefingIdle', {})
+export const AutopilotWorkBriefingLoading = ts(
+  'AutopilotWorkBriefingLoading',
+  {},
+)
+export const AutopilotWorkBriefingLoaded = ts(
+  'AutopilotWorkBriefingLoaded',
+  {
+    response: AutopilotWorkBriefingResponse,
+  },
+)
+export const AutopilotWorkBriefingFailed = ts(
+  'AutopilotWorkBriefingFailed',
+  {
+    error: S.String,
+  },
+)
+export const AutopilotWorkBriefingState = S.Union([
+  AutopilotWorkBriefingIdle,
+  AutopilotWorkBriefingLoading,
+  AutopilotWorkBriefingLoaded,
+  AutopilotWorkBriefingFailed,
+])
+export type AutopilotWorkBriefingState =
+  typeof AutopilotWorkBriefingState.Type
+
+export const AutopilotWorkReviewIdle = ts('AutopilotWorkReviewIdle', {})
+export const AutopilotWorkReviewSubmitting = ts(
+  'AutopilotWorkReviewSubmitting',
+  {
+    action: AutopilotWorkReviewAction,
+  },
+)
+export const AutopilotWorkReviewSucceeded = ts(
+  'AutopilotWorkReviewSucceeded',
+  {
+    response: AutopilotWorkResponse,
+  },
+)
+export const AutopilotWorkReviewFailed = ts('AutopilotWorkReviewFailed', {
+  error: S.String,
+})
+export const AutopilotWorkReviewState = S.Union([
+  AutopilotWorkReviewIdle,
+  AutopilotWorkReviewSubmitting,
+  AutopilotWorkReviewSucceeded,
+  AutopilotWorkReviewFailed,
+])
+export type AutopilotWorkReviewState = typeof AutopilotWorkReviewState.Type
+
 export const CustomerSiteRevisionsIdle = ts('CustomerSiteRevisionsIdle', {})
 export const CustomerSiteRevisionsLoading = ts(
   'CustomerSiteRevisionsLoading',
@@ -2325,6 +2657,11 @@ export const Model = ts('LoggedIn', {
   adminOverview: AdminOverviewState,
   adminSiteDeploymentAction: AdminSiteDeploymentActionState,
   auth: AuthBootstrap,
+  autopilotWorkBriefing: AutopilotWorkBriefingState,
+  autopilotWorkDetail: AutopilotWorkDetailState,
+  autopilotWorkEvents: AutopilotWorkEventsState,
+  autopilotWorkList: AutopilotWorkListState,
+  autopilotWorkReview: AutopilotWorkReviewState,
   billingAction: BillingAction,
   billingCouponCode: S.String,
   chatComposerValue: S.String,
@@ -2755,6 +3092,10 @@ export const initSidebar = (auth: AuthBootstrap): SidebarModel =>
   SidebarModel({
     footerRows: [],
     primaryItems: [
+      {
+        href: autopilotWorkRouter(),
+        label: 'Work',
+      },
       ...(auth.isAdmin
         ? [
             {
@@ -2851,6 +3192,11 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
       scopeKey: '',
     }),
     auth,
+    autopilotWorkBriefing: AutopilotWorkBriefingIdle(),
+    autopilotWorkDetail: AutopilotWorkDetailIdle(),
+    autopilotWorkEvents: AutopilotWorkEventsIdle(),
+    autopilotWorkList: AutopilotWorkListIdle(),
+    autopilotWorkReview: AutopilotWorkReviewIdle(),
     billingAction: IdleBillingAction(),
     billingCouponCode: '',
     chatComposerValue: '',

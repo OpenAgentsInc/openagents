@@ -7,6 +7,7 @@ import {
   incompleteOnboardingStatus,
 } from '../domain/session'
 import {
+  AutopilotWorkRoute,
   ChatRoute,
   DemoOrderRoute,
   DemoRoute,
@@ -401,6 +402,7 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(InviteRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(OnboardingRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(OrderRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(AutopilotWorkRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(MulletRoute())).toBe(true)
     expect(
       routeRequiresAuthBootstrap(TeamChatRoute({ teamRef: 'openagents' })),
