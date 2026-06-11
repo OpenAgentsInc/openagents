@@ -28,6 +28,14 @@ Forum reporting.
   labor stream, coding-runtime successor, Artanis evolution loop) and the top
   three next moves (first paid local-Claude labor job, real-repo work class +
   `pylon work` entry, Artanis coding tick action).
+- `2026-06-11-autopilot-unified-audit-roadmap.md`: the unified audit and
+  roadmap — full inventory of the live `/autopilot` web product (chat
+  workrooms, goals, SHC container execution, provider-account lease routing,
+  billing/metering, token accounting, the coding-autopilot record layer)
+  measured against the six wedge problems, the two-stacks finding (the web
+  product and the work-order/labor spine don't know each other exist), the
+  three-lane placement model anchored by Pylons (hosted SHC / owner Pylon /
+  labor market), and the phased productize → unify → market roadmap.
 - `implementation-log.md`: running issue-by-issue implementation notes for the
   Autopilot coder backlog.
 - `no-spend-e2e-smoke.md`: documented command and retained-evidence checks for
