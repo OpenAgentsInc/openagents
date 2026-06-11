@@ -162,10 +162,11 @@ export const forumScript = (
     const subject = lastPost.subject || lastPost.title || lastPost.topicTitle || 'Last post';
     const author = lastPost.author?.displayName || lastPost.author?.actorRef || lastPost.authorDisplayName || lastPost.actorRef || 'Unknown';
     const time = friendlyTime(lastPost.createdAt || lastPost.updatedAt || lastPost.timestamp);
-    const href = lastPost.permalink || lastPost.href || lastPost.url || '';
-    const subjectHtml = href
-      ? '<a class="font-bold text-forum-link hover:text-forum-link-hover hover:underline" href="' + escapeHtml(href) + '">' + escapeHtml(subject) + '</a>'
-      : '<span class="font-bold text-forum-heading">' + escapeHtml(subject) + '</span>';
+    // This cell lives inside the row's own <a>; a nested anchor here
+    // makes the browser split the outer anchor and eject this cell out
+    // of the grid as a full-width sibling (the broken white bands).
+    // The subject stays a span; the row link covers navigation.
+    const subjectHtml = '<span class="font-bold text-forum-heading">' + escapeHtml(subject) + '</span>';
     // NOTE: this cell renders inside anchor rows; author names stay
     // plain text here to avoid nested <a>. Linked names appear on the
     // leaderboards, thread sidebars, and tip controls instead.
@@ -561,7 +562,7 @@ export const view = <Message>(
           h.div(
             [
               h.DataAttribute('forum-main', ''),
-              Ui.className<Message>('min-w-0'),
+              Ui.className<Message>('grid min-w-0 gap-4'),
             ],
             [
               h.section(
