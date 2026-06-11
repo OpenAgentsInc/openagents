@@ -61,6 +61,7 @@
   "dependencies": {
     "@noble/curves": "1.8.1",
     "@noble/hashes": "1.7.1",
+    "@openagents/agent-runtime-schema": "workspace:*",
     "@openagents/nip90": "workspace:*",
     "@openagents/tassadar-executor": "workspace:*",
     "@opentui/core": "^0.3.4",

@@ -254,8 +254,13 @@ The runtime kernel must preserve existing OpenAgents projection discipline:
    one to match the earlier prose count.
 4. Wrap existing Pylon `claude_code`, `codex`, `opencode`, and `test_fixture`
    paths behind the adapter contract without changing their execution behavior.
+   Done in RK2 (#4806): Pylon now exposes `AgentRuntimeAdapter` wrappers for
+   Claude, Codex, OpenCode, test fixtures, and a reserved Hermes adapter. The
+   wrappers project existing executor closeout records into kernel events.
 5. Add an event-log replay test that rebuilds current workroom/projection state
-   from runtime events.
+   from runtime events. Done in RK2 (#4806): the replay reducer rebuilds
+   terminal state, external status, artifact refs, blocker refs, freshness
+   timestamp, and event count from events alone.
 6. Add the native OpenAgents Effect AI loop behind the same adapter contract.
 7. Add worker ingestion for runtime events and public-safe projections.
 8. Add workroom/TUI status views that read projections rather than raw adapter

@@ -1050,3 +1050,34 @@ Verification:
 
 - `bun run --cwd packages/agent-runtime-schema test`
 - `bun run --cwd packages/agent-runtime-schema typecheck`
+
+## RK2 / Issue #4806: Existing Pylon Loops Behind AgentRuntimeAdapter
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4806`
+
+Status: complete for the no-behavior-change Pylon adapter wrap.
+
+Implemented:
+
+- Added `apps/pylon/src/agent-runtime-adapter.ts` with the shared
+  `AgentRuntimeAdapter` contract: `kind`, `canRun`, `start`, and `cancel`.
+- Wrapped the existing Claude and Codex assignment executors without changing
+  their inputs, execution behavior, or closeout wire records.
+- Added OpenCode normalization through the existing `runOpencodeStream` helper.
+- Added deterministic `test_fixture` and reserved `hermes` adapters.
+- Added a replay reducer that rebuilds projection state from runtime events
+  alone.
+- Added typed `tool.denied` event construction and cancellation coverage that
+  emits `run.cancelled`.
+
+Verification:
+
+- `bun run --cwd apps/pylon test tests/agent-runtime-adapter.test.ts tests/claude-agent-executor.test.ts tests/codex-agent-executor.test.ts`
+- `bun run --cwd packages/agent-runtime-schema test`
+- `bun run --cwd apps/pylon smoke:claude-agent-task`
+- `bun run --cwd apps/pylon smoke:codex-agent-task`
+
+Note: direct `bunx tsc -p apps/pylon/tsconfig.json --noEmit` remains blocked
+by preexisting repo-wide import-extension, implicit-unknown, and TUI typing
+issues. The new adapter source does not appear in the remaining typecheck
+diagnostics after its imports were made NodeNext-clean.
