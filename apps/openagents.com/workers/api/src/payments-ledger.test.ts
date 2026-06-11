@@ -5,6 +5,7 @@ import {
   type PayInPlan,
   PayInPlanError,
   createPayInStatements,
+  decodeAgentBalanceRow,
   markPayInFailedStatements,
   markPayInPaidStatements,
   payInTransitionAllowed,
@@ -252,6 +253,25 @@ describe('payments ledger', () => {
     expect(payInTransitionAllowed('forwarding', 'failed')).toBe(true)
     expect(payInTransitionAllowed('paid', 'failed')).toBe(false)
     expect(payInTransitionAllowed('failed', 'paid')).toBe(false)
+  })
+
+  test('agent balance decoder exposes held and available balance separately', () => {
+    expect(
+      decodeAgentBalanceRow({
+        actor_ref: 'agent:alice',
+        balance_msat: 100_000,
+        held_msat: 40_000,
+        receive_credits_below_sat: 10,
+        send_credits_below_sat: 10,
+        sweep_enabled: 1,
+        sweep_threshold_sat: 210,
+      }),
+    ).toMatchObject({
+      actorRef: 'agent:alice',
+      availableMsat: 60_000,
+      balanceMsat: 100_000,
+      heldMsat: 40_000,
+    })
   })
 
   test('plan invariants reject uncovered cost and bad amounts', () => {

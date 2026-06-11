@@ -72,14 +72,18 @@ export const handleAgentBalanceApi = (
       balance:
         balance === null
           ? {
+              availableMsat: 0,
               balanceMsat: 0,
+              heldMsat: 0,
               receiveCreditsBelowSat: 10,
               sendCreditsBelowSat: 10,
               sweepEnabled: true,
               sweepThresholdSat: 210,
             }
           : {
+              availableMsat: balance.availableMsat,
               balanceMsat: balance.balanceMsat,
+              heldMsat: balance.heldMsat,
               receiveCreditsBelowSat: balance.receiveCreditsBelowSat,
               sendCreditsBelowSat: balance.sendCreditsBelowSat,
               sweepEnabled: balance.sweepEnabled,

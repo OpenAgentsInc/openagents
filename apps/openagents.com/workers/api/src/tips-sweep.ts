@@ -24,6 +24,7 @@ export const TIPS_SWEEP_FAILURE_BACKOFF_MINUTES = 30
 
 export type SweepCandidate = Readonly<{
   actorRef: string
+  // Available balance, excluding escrow-held claims.
   balanceMsat: number
   sweepThresholdSat: number
   // Registered source only: the wallet claim ref identifies the offer's
@@ -118,7 +119,9 @@ export const selectSweepCandidates = async (
 
   const result = await db
     .prepare(
-      `SELECT b.actor_ref, b.balance_msat, b.sweep_threshold_sat,
+      `SELECT b.actor_ref,
+              b.balance_msat - COALESCE(b.held_msat, 0) AS available_balance_msat,
+              b.sweep_threshold_sat,
               w.wallet_ref, w.bolt12_offer
          FROM agent_balances b
          JOIN forum_tip_recipient_wallets w
@@ -127,7 +130,8 @@ export const selectSweepCandidates = async (
           AND w.archived_at IS NULL
           AND w.bolt12_offer IS NOT NULL
         WHERE b.sweep_enabled = 1
-          AND b.balance_msat >= (b.sweep_threshold_sat + ?) * 1000
+          AND b.balance_msat - COALESCE(b.held_msat, 0)
+                >= (b.sweep_threshold_sat + ?) * 1000
           AND NOT EXISTS (
             SELECT 1 FROM pay_ins p
              WHERE p.pay_in_type = 'sweep'
@@ -137,7 +141,7 @@ export const selectSweepCandidates = async (
                  OR (p.state = 'failed' AND p.state_changed_at > ?)
                )
           )
-        ORDER BY b.balance_msat DESC
+        ORDER BY available_balance_msat DESC
         LIMIT ?`,
     )
     .bind(TIPS_SWEEP_MIN_SAT, backoffCutoff, limit)
@@ -146,7 +150,7 @@ export const selectSweepCandidates = async (
   return ((result.results ?? []) as Array<Record<string, unknown>>).map(
     row => ({
       actorRef: String(row.actor_ref),
-      balanceMsat: Number(row.balance_msat),
+      balanceMsat: Number(row.available_balance_msat ?? row.balance_msat),
       bolt12Offer: String(row.bolt12_offer),
       sweepThresholdSat: Number(row.sweep_threshold_sat),
       walletClaimRef: String(row.wallet_ref),

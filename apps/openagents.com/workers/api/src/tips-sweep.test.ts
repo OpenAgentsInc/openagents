@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   TIPS_SWEEP_MIN_SAT,
   runTipsSweepTick,
+  selectSweepCandidates,
   sweepAmountSat,
   sweepCreateStatements,
 } from './tips-sweep'
@@ -121,5 +122,48 @@ describe('sweep tick', () => {
     // create+forwarding batch, then settle batch, then create+forwarding
     // batch, then fail/refund batch.
     expect(executed.length).toBe(4)
+  })
+
+  test('candidate selection excludes escrow-held balance from sweepable amount', async () => {
+    let capturedSql = ''
+    const fakeDb = {
+      prepare: (sql: string) => {
+        capturedSql = sql
+        return {
+          bind: (..._params: unknown[]) => ({
+            all: async () => ({
+              results: [
+                {
+                  actor_ref: 'agent:alice',
+                  available_balance_msat: 510_000,
+                  balance_msat: 710_000,
+                  bolt12_offer: 'lno1test',
+                  sweep_threshold_sat: 210,
+                  wallet_ref: 'wallet.public.alice.redacted',
+                },
+              ],
+            }),
+          }),
+        }
+      },
+    } as never
+
+    const candidates = await selectSweepCandidates(
+      fakeDb,
+      '2026-06-10T21:00:00.000Z',
+      1,
+    )
+
+    expect(capturedSql).toContain('COALESCE(b.held_msat, 0)')
+    expect(candidates).toEqual([
+      {
+        actorRef: 'agent:alice',
+        balanceMsat: 510_000,
+        bolt12Offer: 'lno1test',
+        sweepThresholdSat: 210,
+        walletClaimRef: 'wallet.public.alice.redacted',
+      },
+    ])
+    expect(sweepAmountSat(candidates[0]!)).toBe(300)
   })
 })

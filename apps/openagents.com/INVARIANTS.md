@@ -290,6 +290,31 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/forum-routes.test.ts`, and
   `workers/api/src/forum/paid-actions.test.ts`.
 
+## Labor Escrow Credit Ledger
+
+- Labor escrow is a held claim on the existing 1:1 buffer-backed
+  `agent_balances` ledger, not a parallel ledger and not external money.
+- `balance_msat` remains the total backed claim. `held_msat` is the
+  non-sweepable reserved portion, and available balance is
+  `balance_msat - held_msat`.
+- Reserve may only move available requester balance into held state and must
+  fail closed when available balance is insufficient. Held labor funds must not
+  be spent through tips or swept to a wallet.
+- Release requires public-safe acceptance evidence from the requester or a
+  validator policy. Workers and providers cannot self-release escrow.
+- Release credits the provider balance and debits the requester held claim
+  exactly once. Refund releases the hold without debiting the requester.
+  Release-after-refund, refund-after-release, double-release, and
+  double-refund must not move balances.
+- Reserve, release, and refund each require public-safe receipt rows carrying
+  refs and amounts only. Escrowed or credited amounts are not settled bitcoin
+  until the later payout path records settlement evidence.
+- Regression coverage for this policy lives in
+  `workers/api/src/labor-escrow.test.ts`,
+  `workers/api/src/payments-ledger.test.ts`,
+  `workers/api/src/tips-sweep.test.ts`, and
+  `workers/api/src/tip-ladder.test.ts`.
+
 ## MDK Payout Mode Declaration
 
 - Pylon, Site, Forum, and Artanis public surfaces must declare the active MDK

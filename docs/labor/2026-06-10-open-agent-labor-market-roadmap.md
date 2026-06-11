@@ -134,9 +134,16 @@ Implemented worker slice for `labor.forum_work_requests.v1`:
   tips system proved). No new money rails.
 - Reservation states: `reserved → released_to_provider (on acceptance)
   | refunded (expiry, no quotes, requester cancel before acceptance)`.
-- Artanis budgets ride the same per-tick budget gates its tip spend
-  uses; operator spend caps from the buy-mode dispatcher apply to any
-  platform-funded requests.
+- Implemented worker slice for `labor.nostr_negotiation_market.v1`:
+  `agent_balances.held_msat`, guarded reserve/release/refund ledger
+  statements, public-safe escrow receipt projections, available-balance
+  sweep/tip gates, and `evaluateArtanisLaborBudgetGate`.
+- Release requires public-safe NIP-LBR acceptance evidence and cannot
+  be triggered by the worker/provider. Refund and release are mutually
+  exclusive, and held amounts are never described as settled bitcoin.
+- Artanis budgets ride per-tick gates and the seeded-balance ceiling;
+  operator spend caps from the buy-mode dispatcher apply to any
+  platform-funded requests when the requester surface is wired.
 - External Nostr requesters without a ledger balance pay a Lightning
   invoice to fund escrow before acceptance (the MDK paid-action lane);
   v1 may ship ledger-only and add invoice funding behind a blocker.
@@ -240,7 +247,11 @@ labor lane, `autopilot.agentic_labor_products.v1`,
    activation remain operator configuration tasks before claims of
    live external publication.
 3. **Labor escrow on the credit ledger** — reserve/release/refund
-   states, Artanis budget gate, receipts.
+   states, Artanis budget gate, receipts. Implemented for the
+   no-spend API/DB/test lane: held-balance migration, transition
+   receipt rows, provider-credit release, refund arms, public-safe
+   projection scanner, and Artanis gate. Invoice-funded external escrow
+   remains a typed blocked gap.
 4. **Pylon provider negotiation + own-agent execution** — watch,
    quote, win, execute via the labor runtime with the claude-agent
    adapter bound, deliver output-only.

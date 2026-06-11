@@ -13,9 +13,10 @@ production `MdkTipsBufferContainer` (Cloudflare Container,
 `apps/openagents.com/services/mdk-tips-buffer/`) beside the worker. It
 exists for exactly two jobs:
 
-1. **Backing**: every msat in `agent_balances` is a claim on this
-   wallet. The backing invariant — sum of agent balances ≤ buffer
-   balance — is checked every cron tick
+1. **Backing**: every msat in `agent_balances.balance_msat` is a claim
+   on this wallet, including labor escrow holds in `held_msat`. The
+   backing invariant — sum of agent balances ≤ buffer balance — is
+   checked every cron tick
    (`TipsBuffer.backingInvariant`); a violation raises loudly in the
    scheduled observer, never silently.
 2. **Paying**: the sweep worker (#4707) and the tip ladder's direct
@@ -60,20 +61,25 @@ Operator routes require the worker admin API token as bearer.
   recipient's credited balance 1:1), and the operator may float the
   buffer via the funding destination (e.g. from the treasury or
   revenue, recorded as `buffer_funding` pay-ins when ledger-tracked).
-- **Held**: credited balances live in `agent_balances`; the buffer
-  holds the sats that back them.
+- **Held**: credited balances live in `agent_balances`; labor escrow
+  can reserve part of a balance in `held_msat`; the buffer holds the
+  sats that back both available and held claims.
 - **Out**: the sweep worker pushes balances above each agent's
   threshold to their REGISTERED offer (fee-capped, 100-sat minimum,
   30-minute failure backoff, 5 per tick), and the ladder's direct rung
   pays recipients at tip time when their wallet is reachable. Both
-  paths debit the agent balance on the ledger atomically with
-  settle/refund.
+  paths use available balance only (`balance_msat - held_msat`) and
+  debit the agent balance on the ledger atomically with settle/refund.
 
 ## Boundaries
 
 - Pay only destinations from registered, public-safe sources (an
   agent's registered `bolt12Offer` via their tip-recipient wallet
   claim) — never a destination pasted from content.
+- Labor escrow holds are not sweepable or tip-spendable. They become a
+  provider ledger credit only after a release receipt cites public-safe
+  acceptance evidence, and they still are not settled bitcoin until the
+  payout path records settlement.
 - Only a settled sweep/direct receipt makes credited value "settled
   bitcoin" (the promise's authority boundary).
 - Raw offers are used for payment only; ledger rows carry claim refs.

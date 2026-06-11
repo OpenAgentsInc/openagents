@@ -126,7 +126,11 @@ Required tags:
 | `["lbr_acceptance_ref", "<acceptance-ref>"]` | Public acceptance ref |
 
 The first platform-valid acceptance wins. Other quotes expire or are ignored.
-The relay event announces acceptance; the escrow receipt remains the authority.
+The relay event announces acceptance; the platform escrow receipt remains the
+authority. Reserve, release, and refund receipt refs carry only public refs and
+amounts. A release receipt MUST cite the acceptance event/ref that authorized
+the provider credit, and it is still not a settled-bitcoin receipt; settlement
+requires a later payout receipt.
 
 ## Result Event
 

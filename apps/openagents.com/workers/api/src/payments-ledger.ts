@@ -462,7 +462,9 @@ export const retryPayInStatements = (
 
 export type AgentBalanceRow = Readonly<{
   actorRef: string
+  availableMsat: number
   balanceMsat: number
+  heldMsat: number
   sweepEnabled: boolean
   sweepThresholdSat: number
   sendCreditsBelowSat: number
@@ -472,13 +474,19 @@ export type AgentBalanceRow = Readonly<{
 export const decodeAgentBalanceRow = (row: {
   actor_ref: unknown
   balance_msat: unknown
+  held_msat?: unknown
   sweep_enabled: unknown
   sweep_threshold_sat: unknown
   send_credits_below_sat: unknown
   receive_credits_below_sat: unknown
 }): AgentBalanceRow => ({
+  availableMsat: Math.max(
+    0,
+    Number(row.balance_msat) - Number(row.held_msat ?? 0),
+  ),
   actorRef: String(row.actor_ref),
   balanceMsat: Number(row.balance_msat),
+  heldMsat: Number(row.held_msat ?? 0),
   receiveCreditsBelowSat: Number(row.receive_credits_below_sat),
   sendCreditsBelowSat: Number(row.send_credits_below_sat),
   sweepEnabled: Number(row.sweep_enabled) === 1,
@@ -491,7 +499,7 @@ export const readAgentBalance = async (
 ): Promise<AgentBalanceRow | null> => {
   const row = await db
     .prepare(
-      `SELECT actor_ref, balance_msat, sweep_enabled, sweep_threshold_sat,
+      `SELECT actor_ref, balance_msat, held_msat, sweep_enabled, sweep_threshold_sat,
               send_credits_below_sat, receive_credits_below_sat
        FROM agent_balances WHERE actor_ref = ?`,
     )

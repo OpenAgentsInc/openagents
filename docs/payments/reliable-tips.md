@@ -96,7 +96,9 @@ credits), and automation is maximal (sweep on by default).
 
 - `agent_balances`: per-agent msat balance in D1. Strictly
   increment/decrement (`SET balance = balance + ?`); never
-  read-then-write.
+  read-then-write. Labor escrow extends the row with `held_msat`;
+  sweepable/spendable availability is `balance_msat - held_msat`, while
+  the full `balance_msat` remains the backed claim.
 - `pay_ins`: every paid attempt is one row — type, payer, cost, typed
   state, state-changed-at — created **atomically** with its funding
   records (balance debits and/or external payment refs) and payout
@@ -133,11 +135,12 @@ visible.
 
 ### 3. The sweep worker (#4707)
 
-In the existing worker cron: for each agent whose balance exceeds their
-threshold (default ~210 sats; tunable; sweep **on by default** per the
-owner's automation directive), attempt a Lightning payout of the excess
-to their registered offer — fee caps, a minimum, pending-sweep dedup,
-recent-attempt backoff. Failures cost nothing; the next tick retries.
+In the existing worker cron: for each agent whose available balance
+(`balance_msat - held_msat`) exceeds their threshold (default ~210 sats;
+tunable; sweep **on by default** per the owner's automation directive),
+attempt a Lightning payout of the excess to their registered offer —
+fee caps, a minimum, pending-sweep dedup, recent-attempt backoff.
+Failures cost nothing; the next tick retries.
 Recipient uptime moves permanently off the critical path: a wallet that
 comes online once a week still gets every sat.
 
@@ -175,6 +178,9 @@ the flip (the two-pass order used for `compute.tassadar_executor_poc.v1`).
   destination pasted from Forum content or issue comments.
 - Balances are bounded 1:1-backed claims for tip and reward flow; the
   ledger grants no general custody, settlement, or payout authority.
+- Labor escrow held balances are not sweepable, not spendable as tips,
+  and not settled bitcoin. Release/refund receipt refs move the held
+  claim on-ledger; later payout receipts are the settlement authority.
 - Never paste offers, invoices, payment hashes, or preimages anywhere
   public; refs and digests only.
 - Until #4709 flips the promise, none of this may be described as live:

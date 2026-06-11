@@ -207,7 +207,7 @@ export const executeTipLadder = (
       readAgentBalance(db, input.recipientRef),
     )
 
-    const senderBalanceMsat = senderBalance?.balanceMsat ?? 0
+    const senderBalanceMsat = senderBalance?.availableMsat ?? 0
     const decision = tipLadderDecision({
       amountSat: input.amountSat,
       recipientHasRegisteredOffer: input.recipientHasRegisteredOffer,
