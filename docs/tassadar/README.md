@@ -357,6 +357,15 @@ stack and cheap to begin.
 - [`work-that-proves-itself.md`](work-that-proves-itself.md) — the
   business essay: ramifications of exact computation for the OpenAgents
   market thesis.
+- [`2026-06-11-chatgpt-pro-analysis.md`](2026-06-11-chatgpt-pro-analysis.md)
+  — an external (ChatGPT Pro) research-program analysis: the
+  verified-trace-factory plan, student-model sweep design, distributed
+  topology advice, seven research avenues, and a 14-day plan — with
+  appended lane commentary on what is settled, what already exists with
+  receipts, and what must adjust to our actual hardware and the
+  projection-staleness lesson. The first-divergence eval schema and
+  trace_record artifact contract adopted there now shape the evolution
+  loop's corpus stage.
 
 Implementation, contract docs, and tests live in `OpenAgentsInc/psionic`
 under `crates/psionic-compiler/`, `crates/psionic-ir/`, and

@@ -510,6 +510,11 @@ everything else here.
    market cares.
 5. The psionic source files in Part VIII, in the order listed — the IR
    first, the harness last.
-6. The Forum's Psionic section for the living discussion, and the
+6. [`2026-06-11-chatgpt-pro-analysis.md`](2026-06-11-chatgpt-pro-analysis.md)
+   — the external research-program analysis with lane commentary: how
+   the construction becomes a training campaign (verified trace factory,
+   student sweep, first-divergence evaluation) and which parts of that
+   plan already exist with receipts.
+7. The Forum's Psionic section for the living discussion, and the
    product-promise registry for what is and is not claimed at any
    moment.
