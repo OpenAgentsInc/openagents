@@ -166,6 +166,9 @@ export const forumScript = (
     const subjectHtml = href
       ? '<a class="font-bold text-forum-link hover:text-forum-link-hover hover:underline" href="' + escapeHtml(href) + '">' + escapeHtml(subject) + '</a>'
       : '<span class="font-bold text-forum-heading">' + escapeHtml(subject) + '</span>';
+    // NOTE: this cell renders inside anchor rows; author names stay
+    // plain text here to avoid nested <a>. Linked names appear on the
+    // leaderboards, thread sidebars, and tip controls instead.
     return subjectHtml + '<br><span>by ' + escapeHtml(author) + '</span><br><span>' + escapeHtml(time) + '</span>';
   };
   const actionBar = html => '<div class="flex flex-wrap items-center justify-between gap-2 rounded-md bg-forum-navbar px-3 py-2 text-xs text-forum-heading">' + html + '</div>';
@@ -175,6 +178,13 @@ export const forumScript = (
     actor?.actorId && actor?.slug
       ? '/forum/u/' + encodeURIComponent(actor.actorId) + '/' + encodeURIComponent(actor.slug)
       : null;
+  const actorNameHtml = (actor, extraClass = '') => {
+    const name = escapeHtml(actorDisplayName(actor));
+    const href = actorProfileHref(actor);
+    return href
+      ? '<a class="text-forum-link hover:text-forum-link-hover hover:underline ' + extraClass + '" href="' + escapeHtml(href) + '">' + name + '</a>'
+      : '<span class="' + extraClass + '">' + name + '</span>';
+  };
   const actorInitial = actor => actorDisplayName(actor).trim().slice(0, 1).toUpperCase() || 'A';
   const actorRole = actor => actor?.role || actor?.rank || actor?.kind || 'Member';
   const forumBadge = forum => forum.discoverability === 'unlisted'
@@ -205,7 +215,7 @@ export const forumScript = (
     const creatorRows = creators.length === 0
       ? '<div class="border-t border-forum-row-c py-3 text-sm text-forum-text">No tipped creators yet.</div>'
       : creators.map(creator => '<div class="grid gap-1 border-t border-forum-row-c py-3">' +
-          '<span class="text-sm font-bold text-forum-heading">' + escapeHtml(creator.actor?.displayName || creator.actor?.actorRef || 'creator') + '</span>' +
+          '<span class="text-sm font-bold">' + actorNameHtml(creator.actor) + '</span>' +
           '<span class="font-mono text-sm text-forum-payment">' + escapeHtml(tipTotalsLabel(creator)) + '</span></div>').join('');
     return '<section class="${panelClass} p-4 sm:p-5"><div class="grid gap-5 md:grid-cols-2">' +
       '<div><p class="${eyebrowClass}">Top tipped posts</p><div class="mt-3">' + postRows + '</div></div>' +
@@ -311,7 +321,7 @@ export const forumScript = (
     return '<div class="flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-1" data-forum-tip-control="' + escapeHtml(postId) + '">' +
       '<label class="flex items-center gap-1 font-mono text-xs text-forum-text"><span>Tip</span><input class="h-8 w-20 rounded border border-forum-row-c bg-forum-panel px-2 text-right text-forum-heading" data-forum-tip-amount="' + escapeHtml(postId) + '" inputmode="numeric" min="1" step="1" type="number" value="' + String(defaultPostRewardSats) + '"><span>sats</span></label>' +
       '<button type="button" class="min-h-8 rounded border border-forum-payment bg-forum-panel px-3 py-1.5 font-mono text-xs font-bold text-forum-payment hover:bg-forum-post-link-hover-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header" data-forum-tip-post-id="' + escapeHtml(postId) + '">Send tip</button>' +
-      '<span class="font-mono text-xs text-forum-text">to ' + escapeHtml(recipient) + '</span>' +
+      '<span class="font-mono text-xs text-forum-text">to ' + (post.author && actorProfileHref(post.author) ? actorNameHtml(post.author) : escapeHtml(recipient)) + '</span>' +
       '<span class="min-w-0 break-words font-mono text-xs text-forum-text">' + postRewardCaveat + '</span>' +
       '<span class="basis-full text-right text-xs text-forum-text" data-forum-tip-panel="' + escapeHtml(postId) + '"></span>' +
       '</div>';
