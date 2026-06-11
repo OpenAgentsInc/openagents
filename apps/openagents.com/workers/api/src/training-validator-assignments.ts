@@ -14,9 +14,27 @@ export const TrainingValidatorNoSelfValidationPolicyRef =
 export const TrainingValidatorFreivaldsQuorumPolicyRef =
   'policy.public.training_validator.freivalds_rejection_quorum'
 
+/**
+ * The challenge fields the bridge actually reads. A full
+ * `TrainingVerificationChallengeRecord` satisfies this, and so does the
+ * public challenge projection returned by
+ * `GET /api/training/verification/challenges/:challengeRef`, which is what
+ * the live dispatch script feeds in.
+ */
+export type TrainingValidatorChallengeSummary = Pick<
+  TrainingVerificationChallengeRecord,
+  | 'challengeRef'
+  | 'contributionRef'
+  | 'homeworkKind'
+  | 'samplingPolicy'
+  | 'trainingRunRef'
+  | 'verificationClass'
+  | 'windowRef'
+>
+
 export type TrainingValidatorAssignmentBridgeInput = Readonly<{
   assignmentRef?: string
-  challenge: TrainingVerificationChallengeRecord
+  challenge: TrainingValidatorChallengeSummary
   leaseSeconds?: number
   nowIso: string
   validatorPylonRef: string
@@ -71,11 +89,11 @@ const uniqueRefs = (
 const publicSafe = (value: unknown): boolean =>
   !unsafePublicMaterialPattern.test(JSON.stringify(value))
 
-const classTaskRef = (challenge: TrainingVerificationChallengeRecord): string =>
+const classTaskRef = (challenge: TrainingValidatorChallengeSummary): string =>
   `task.public.training_validator.${challenge.verificationClass}`
 
 const expectedResultRef = (
-  challenge: TrainingVerificationChallengeRecord,
+  challenge: TrainingValidatorChallengeSummary,
 ): string => `result.public.training_validator.${challenge.verificationClass}`
 
 export const trainingValidatorSelfValidationBlockers = (

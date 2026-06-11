@@ -49,3 +49,27 @@ bun run smoke:training-validator:no-spend
 The smoke covers assignment construction, Pylon public projection, the
 self-validation blockers, and the Freivalds rejection quorum without creating a
 wallet payment.
+
+## Live Paid Closeout (2026-06-11)
+
+The first paid weak-device validator closeout ran end to end on
+production: validator Pylon `pylon.4f4ef3d029e57674be98` (fresh home,
+registered with `capability.public.training_verification`) claimed
+`training.verification.challenge.8a74a531-8b0d-4392-a49d-ede5179f23f7`,
+independently re-executed the `freivalds_merkle` class over the #4675
+worker contribution, closed out through assignment
+`assignment.public.training_validator.recheck_20260611053500`, and was
+paid 30 sats with public settled receipt
+`receipt.nexus_pylon.settlement.assignment_public_training_validator_recheck_20260611053500`.
+The self-validation guard was also exercised live: a dispatch attempt
+with validator == worker was blocked before any request reached the
+Worker. Full ref bundle and named gaps:
+`docs/2026-06-11-training-validator-paid-closeout-evidence.md`.
+
+Live tooling added for this lane:
+
+- `scripts/training-validator-live-verify.ts` — validator-side local
+  re-execution and independent verdict (no network, no secrets).
+- `scripts/training-validator-live-dispatch.ts` — operator dispatch that
+  routes through `buildTrainingValidatorAssignmentRequest`, so the
+  no-self-validation guard is enforced on the real dispatch path.

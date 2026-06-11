@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.5'
+export const PublicProductPromisesVersion = '2026-06-11.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1199,24 +1199,27 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'training.verification_classes.v1',
       productArea: 'training',
       audience: ['contributor', 'operator', 'agent'],
-      state: 'planned',
+      state: 'yellow',
       claim:
         'Every training-pipeline stage carries a named pluggable verification class — deterministic_recompute, seeded_replication, freivalds_merkle, statistical_cross_check, exact_trace_replay — routed to the cheapest sufficient supply, with weak devices as paid validators.',
       safeCopy:
-        'Psionic ships an exact_trace_replay reference implementation and the executor-trace dispatch wiring has passing no-spend smokes; the per-stage verification map is written in the pipeline plan. The Worker-side pluggable class registry, challenge queues, and the paid weak-device validator lane remain in flight (#4674, #4676), and the April-era aggregate-only validation compromise must be re-decided per class in writing.',
+        'The Worker-side pluggable class registry is live with three classes exercised on real dispatched production work (exact_trace_replay, deterministic_recompute, freivalds_merkle with commitment-then-challenge matrix flow), and one weak-device validator Pylon has claimed, independently re-executed, and been paid for a Freivalds recheck with a settled public receipt (#4676). The April-era aggregate-only validation compromise must still be re-decided per class in writing (#4674), and seeded_replication plus statistical_cross_check have not yet run on real dispatched work.',
       unsafeCopy:
-        'Do not claim training work is currently verified end to end on paid assignments, or that validator work is currently earning contributors bitcoin.',
+        'Do not claim training work is currently verified end to end on paid assignments at scale, that all five classes have run on real work, or that validator work is a standing income stream beyond the receipted closeouts.',
       evidenceRefs: [
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'docs/training/2026-06-10-qvac-edge-stack-analysis.md',
         'apps/openagents.com/workers/api/src/tassadar-executor-trace-homework.test.ts',
+        'apps/openagents.com/docs/2026-06-11-training-validator-paid-closeout-evidence.md',
+        'receipt.nexus_pylon.settlement.assignment_public_training_validator_recheck_20260611053500',
+        'verdict.training.freivalds_merkle.verified.training.verification.challenge.8a74a531-8b0d-4392-a49d-ede5179f',
+        'promise_transition_0bfce0c5-e4dd-4d19-9221-4bc9504f2055',
         'https://github.com/OpenAgentsInc/openagents/issues/4674',
         'https://github.com/OpenAgentsInc/openagents/issues/4676',
         'https://github.com/OpenAgentsInc/psionic/issues/1115',
         'https://github.com/OpenAgentsInc/psionic/issues/1116',
       ],
       blockerRefs: [
-        'blocker.product_promises.verification_class_registry_missing',
         'blocker.product_promises.aggregate_only_policy_redecision_missing',
       ],
       verification:

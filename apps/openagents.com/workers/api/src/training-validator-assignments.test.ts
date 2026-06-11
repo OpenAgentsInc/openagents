@@ -71,6 +71,38 @@ describe('training validator assignment bridge', () => {
     ])
   })
 
+  it('accepts the public challenge projection as the bridge challenge summary', () => {
+    // The live dispatch script feeds the projection returned by
+    // GET /api/training/verification/challenges/:challengeRef into the
+    // bridge; this pins the summary-field contract it relies on.
+    const result = buildTrainingValidatorAssignmentRequest({
+      challenge: {
+        challengeRef: 'training.verification.challenge.projection_summary',
+        contributionRef: 'contribution.training.worker_one',
+        homeworkKind: 'validator_recheck',
+        samplingPolicy: 'per_contribution',
+        trainingRunRef: 'run.cs336.a1.demo',
+        verificationClass: 'freivalds_merkle',
+        windowRef: 'training.window.cs336_a1.demo.20260611.w1',
+      },
+      nowIso,
+      validatorPylonRef: 'pylon.validator_one',
+      workerPylonRef: 'pylon.worker_one',
+    })
+
+    expect(result.kind).toBe('assignment_request')
+    if (result.kind !== 'assignment_request') {
+      return
+    }
+
+    expect(result.assignmentRequest.codingAssignment).toMatchObject({
+      challengeRef: 'training.verification.challenge.projection_summary',
+      homeworkKind: 'validator_recheck',
+      verificationClass: 'freivalds_merkle',
+      workerPylonRef: 'pylon.worker_one',
+    })
+  })
+
   it('makes self-validation structurally impossible', () => {
     const samePylon = buildTrainingValidatorAssignmentRequest({
       challenge: buildChallenge(),

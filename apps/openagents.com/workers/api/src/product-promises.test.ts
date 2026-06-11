@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-11.5')
+    expect(decoded.version).toBe('2026-06-11.6')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -144,7 +144,11 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'training.verification_classes.v1',
-          state: 'planned',
+          state: 'yellow',
+          evidenceRefs: expect.arrayContaining([
+            'receipt.nexus_pylon.settlement.assignment_public_training_validator_recheck_20260611053500',
+            'promise_transition_0bfce0c5-e4dd-4d19-9221-4bc9504f2055',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'proof.demand_provenance.v1',
