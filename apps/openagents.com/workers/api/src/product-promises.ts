@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.25'
+export const PublicProductPromisesVersion = '2026-06-10.26'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -282,7 +282,7 @@ export const publicProductPromisesDocument = () => {
       state: 'yellow',
       claim: 'A new version of Pylon releases.',
       safeCopy:
-        'Pylon v0.3 is a release candidate in the monorepo; it is not stable 0.3.0 and not universal-platform software.',
+        'Pylon v0.3 is a release candidate in the monorepo targeting macOS and Linux; it is not stable 0.3.0. Windows/WSL is deliberately out of scope by owner decision (2026-06-10), not a pending gap.',
       unsafeCopy:
         'Do not claim a stable universal Pylon release works on every computer.',
       evidenceRefs: [
@@ -292,7 +292,6 @@ export const publicProductPromisesDocument = () => {
       ],
       blockerRefs: [
         'blocker.product_promises.pylon_v03_stable_release_not_green',
-        'blocker.product_promises.native_windows_wsl_unproven',
       ],
       verification:
         'Run apps/pylon local release gates and separate install smokes before changing this to green.',

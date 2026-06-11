@@ -9,8 +9,11 @@ Blocker: `blocker.product_promises.native_windows_wsl_unproven`
 ## Current Support Claim
 
 Pylon v0.3 release-candidate support is limited to macOS and Linux. Native
-Windows and WSL Ubuntu are not supported claims until install and bootstrap
-smokes run on real hosts and their results are recorded here.
+Windows and WSL Ubuntu are DELIBERATELY OUT OF SCOPE by owner decision
+(2026-06-10): strongly deprioritized for the foreseeable future, removed
+from roadmaps and promise blockers. This is a scope decision, not an
+unproven claim awaiting evidence. The supported targets are macOS arm64
+and Linux x64/arm64.
 
 The package manifest currently restricts installs to:
 
