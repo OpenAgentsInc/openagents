@@ -338,6 +338,11 @@ stack and cheap to begin.
 
 ## Companion Documents
 
+- [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) — the unified Tassadar + Psion
+  research directive: thesis, the two-lane/one-substrate rule, settled
+  results versus ranked hypotheses with falsifiers, four workstreams
+  (substrate, trace factory, student program, hybridization), method
+  rules, sequencing, and kill conditions. The program's standing orders.
 - [`2026-06-11-llm-computer-full-introduction.md`](2026-06-11-llm-computer-full-introduction.md)
   — the assume-nothing deep introduction: both Percepta posts taught
   from zero (encoding, parabolic-key memory, hull-cache decoding,
