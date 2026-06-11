@@ -8,6 +8,10 @@ import {
   localMdkAgentWalletBridgePayoutGate,
 } from './mdk-payout-mode-gate'
 import { OmniProjectionAudience } from './omni-data-classification'
+import {
+  publicRefTriggersAgentSecretScanner,
+  publicScannerSafeRefs,
+} from './public-ref-scanner-safety'
 
 export const PylonV02OmegaReleaseGateCheckKind = S.Literals([
   'agents_openapi_current',
@@ -189,10 +193,13 @@ const refsForAudience = (
   const safe = uniqueRefs(refs)
 
   if (audience === 'operator' || audience === 'private') {
-    return safe
+    return publicScannerSafeRefs('evidence.public.pylon_v0_2.omega_gate', safe)
   }
 
-  return safe.filter(ref => !publicUnsafeRefPattern.test(ref))
+  return publicScannerSafeRefs(
+    'evidence.public.pylon_v0_2.omega_gate',
+    safe.filter(ref => !publicUnsafeRefPattern.test(ref)),
+  )
 }
 
 const stringValues = (value: unknown): ReadonlyArray<string> => {
@@ -377,6 +384,7 @@ const assertProjectionSafe = (
   const unsafe = publicProjectionStrings(projection).find(
     value =>
       containsProviderSecretMaterial(value) ||
+      publicRefTriggersAgentSecretScanner(value) ||
       unsafeRefPattern.test(value) ||
       rawTimestampPattern.test(value),
   )

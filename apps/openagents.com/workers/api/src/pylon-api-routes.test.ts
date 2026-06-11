@@ -5,6 +5,7 @@ import {
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
 } from './agent-registration'
+import { publicScannerSafeRef } from './public-ref-scanner-safety'
 import {
   type PylonApiAssignmentRecord,
   type PylonApiEventRecord,
@@ -13,9 +14,9 @@ import {
   type PylonApiStore,
   PylonApiStoreError,
   buildPylonApiAssignmentRecord,
-  providerJobLifecycleRecordFromAssignment,
   buildPylonApiRegistrationRecord,
   makeD1PylonApiStore,
+  providerJobLifecycleRecordFromAssignment,
   pylonClientVersionMeetsMinimum,
 } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
@@ -52,6 +53,7 @@ type PylonRouteJson = Readonly<{
   events?: ReadonlyArray<unknown>
   idempotent?: boolean
   pylon?: Readonly<{
+    capabilityRefs?: ReadonlyArray<string>
     clientProtocolVersion?: string | null
     clientVersion?: string | null
     createdAtDisplay?: string
@@ -64,7 +66,12 @@ type PylonRouteJson = Readonly<{
     pylonRef?: string
     walletReady?: boolean
   }>
-  pylons?: ReadonlyArray<unknown>
+  pylons?: ReadonlyArray<
+    Readonly<{
+      capabilityRefs?: ReadonlyArray<string>
+      pylonRef?: string
+    }>
+  >
 }>
 
 class MemoryPylonApiStore implements PylonApiStore {
@@ -308,7 +315,9 @@ class AssignmentBatchStatement implements D1PreparedStatement {
   }
 
   run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
-    return Promise.reject(new Error('D1 run should not be used for assignment lifecycle writes'))
+    return Promise.reject(
+      new Error('D1 run should not be used for assignment lifecycle writes'),
+    )
   }
 
   all<T = unknown>(): Promise<D1Result<T>> {
@@ -333,8 +342,8 @@ class AssignmentBatchD1 implements D1Database {
   batch<T = unknown>(
     statements: D1PreparedStatement[],
   ): Promise<Array<D1Result<T>>> {
-    this.batchQueries = statements.map(statement =>
-      (statement as AssignmentBatchStatement).query,
+    this.batchQueries = statements.map(
+      statement => (statement as AssignmentBatchStatement).query,
     )
 
     if (this.failBatch) {
@@ -641,7 +650,9 @@ describe('Pylon API routes', () => {
 
     expect(db.batchQueries).toHaveLength(2)
     expect(db.batchQueries[0]).toContain('INSERT INTO pylon_api_assignments')
-    expect(db.batchQueries[1]).toContain('INSERT INTO pylon_provider_job_lifecycle')
+    expect(db.batchQueries[1]).toContain(
+      'INSERT INTO pylon_provider_job_lifecycle',
+    )
 
     const failingDb = new AssignmentBatchD1()
     failingDb.failBatch = true
@@ -667,6 +678,42 @@ describe('Pylon API routes', () => {
     expect(JSON.stringify(createdJson)).not.toMatch(/2026-06-07T00:10/)
     expect((await responseJson<PylonRouteJson>(list)).pylons).toHaveLength(1)
     expect((await responseJson<PylonRouteJson>(detail)).events).toHaveLength(1)
+  })
+
+  test('renders scanner-shaped Pylon public refs as short dotted aliases', async () => {
+    const store = new MemoryPylonApiStore()
+    const scannerShapedCapabilityRef =
+      'edge-pylon-capability-8b378373002501f3e896dcd3'
+    const expectedCapabilityRef = publicScannerSafeRef(
+      'capability.public.pylon',
+      scannerShapedCapabilityRef,
+    )
+    const created = await registerPylon(store, {
+      capabilityRefs: [scannerShapedCapabilityRef, 'capability.public.gpu'],
+    })
+    const createdJson = await responseJson<PylonRouteJson>(created)
+    const listJson = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons'),
+    )
+    const detailJson = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons/pylon.test.one'),
+    )
+
+    expect(createdJson.pylon?.capabilityRefs).toEqual([
+      'capability.public.gpu',
+      expectedCapabilityRef,
+    ])
+    expect(listJson.pylons?.[0]?.capabilityRefs).toEqual([
+      'capability.public.gpu',
+      expectedCapabilityRef,
+    ])
+    expect(detailJson.pylon?.capabilityRefs).toEqual([
+      'capability.public.gpu',
+      expectedCapabilityRef,
+    ])
+    expect(JSON.stringify({ createdJson, listJson, detailJson })).not.toContain(
+      scannerShapedCapabilityRef,
+    )
   })
 
   test('parses Pylon client versions with a v0.2.5 minimum helper', () => {

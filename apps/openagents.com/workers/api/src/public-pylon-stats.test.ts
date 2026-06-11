@@ -8,16 +8,17 @@ import type {
   NexusTreasuryPayoutIntentRecord,
   NexusTreasuryPayoutReconciliationEventRecord,
 } from './nexus-treasury-payout-ledger'
+import type {
+  Nip90MarketReceiptStore,
+  Nip90MarketSettlementReceiptRecord,
+} from './nip90-market-receipts'
 import {
   PUBLIC_PYLON_STATS_URL,
   publicPylonStatsFromNexusPayload,
   publicPylonStatsFromRegistrations,
 } from './public-pylon-stats'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
-import type {
-  Nip90MarketReceiptStore,
-  Nip90MarketSettlementReceiptRecord,
-} from './nip90-market-receipts'
+import { publicScannerSafeRef } from './public-ref-scanner-safety'
 import type { PylonApiRegistrationRecord } from './pylon-api'
 
 const nowUnixMs = Date.parse('2026-06-08T14:00:00.000Z')
@@ -417,6 +418,32 @@ describe('public pylon stats', () => {
     expect(JSON.stringify(stats)).not.toMatch(
       /wallet\.secret|lnbc|preimage|\/Users\/|provider_secret|customer@example.com|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
     )
+  })
+
+  test('renders scanner-shaped capability refs safely in recent Pylon products', () => {
+    const scannerShapedCapabilityRef =
+      'edge-pylon-capability-8b378373002501f3e896dcd3'
+    const stats = publicPylonStatsFromRegistrations(
+      [
+        registration({
+          capabilityRefs: [
+            scannerShapedCapabilityRef,
+            'capability.public.inference',
+          ],
+          pylonRef: 'pylon.public.online_wallet_ready',
+        }),
+      ],
+      nowUnixMs,
+    )
+
+    expect(stats.recentPylons[0]?.products).toEqual([
+      'capability.public.inference',
+      publicScannerSafeRef(
+        'capability.public.pylon_stats',
+        scannerShapedCapabilityRef,
+      ),
+    ])
+    expect(JSON.stringify(stats)).not.toContain(scannerShapedCapabilityRef)
   })
 
   test('blocks public earning copy and exposes blocker refs when counters are zero', () => {

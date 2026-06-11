@@ -22,6 +22,7 @@ import {
   type PublicNip90MarketSettlementReceipt,
   publicNip90MarketReceiptFromRecord,
 } from './nip90-market-receipts'
+import { publicScannerSafeRefs } from './public-ref-scanner-safety'
 import {
   type PylonApiRegistrationRecord,
   pylonApiStoreErrorFromUnknown,
@@ -431,23 +432,24 @@ export const emptyUnavailableMarketSettlementTotals = (
     sourceRefs: ['route:/api/public/pylon-stats'],
   })
 
-const emptyAvailableMarketSettlementTotals = (): PublicNip90MarketSettlementTotals =>
-  new PublicNip90MarketSettlementStats({
-    available: true,
-    caveatRefs: [
-      'caveat.public.nip90_market.settled_receipts_only',
-      'caveat.public.nip90_market.pending_records_excluded',
-      'caveat.public.no_private_settlement_material',
-    ],
-    compute: emptyMarketStreamStats('compute'),
-    data: emptyMarketStreamStats('data'),
-    error: null,
-    labor: emptyMarketStreamStats('labor'),
-    sourceRefs: [
-      'route:/api/public/pylon-stats',
-      'route:/api/public/nip90-market/receipts/{receiptRef}',
-    ],
-  })
+const emptyAvailableMarketSettlementTotals =
+  (): PublicNip90MarketSettlementTotals =>
+    new PublicNip90MarketSettlementStats({
+      available: true,
+      caveatRefs: [
+        'caveat.public.nip90_market.settled_receipts_only',
+        'caveat.public.nip90_market.pending_records_excluded',
+        'caveat.public.no_private_settlement_material',
+      ],
+      compute: emptyMarketStreamStats('compute'),
+      data: emptyMarketStreamStats('data'),
+      error: null,
+      labor: emptyMarketStreamStats('labor'),
+      sourceRefs: [
+        'route:/api/public/pylon-stats',
+        'route:/api/public/nip90-market/receipts/{receiptRef}',
+      ],
+    })
 
 const emptyAvailableSettlementTotals = (): PublicPylonSettlementTotals => ({
   available: true,
@@ -540,7 +542,7 @@ const marketStreamStatsFromReceipts = (
     receipt => receipt.streamKind === input.streamKind,
   )
   const streamReceipts24h = streamReceipts.filter(receipt =>
-    settledWithin24h(receipt.settledAt, input.nowUnixMs)
+    settledWithin24h(receipt.settledAt, input.nowUnixMs),
   )
 
   return new PublicNip90MarketStreamStats({
@@ -565,10 +567,13 @@ const publicNip90MarketSettlementTotalsFromReceipts = async (
     nowUnixMs: number
   }>,
 ): Promise<PublicNip90MarketSettlementTotals> => {
-  const receipts = (await input.marketReceiptStore.listSettledMarketReceipts(1000))
+  const receipts = (
+    await input.marketReceiptStore.listSettledMarketReceipts(1000)
+  )
     .map(publicNip90MarketReceiptFromRecord)
-    .filter((receipt): receipt is PublicNip90MarketSettlementReceipt =>
-      receipt !== null
+    .filter(
+      (receipt): receipt is PublicNip90MarketSettlementReceipt =>
+        receipt !== null,
     )
   const base = emptyAvailableMarketSettlementTotals()
 
@@ -594,8 +599,9 @@ const publicNip90MarketSettlementTotalsFromReceipts = async (
     sourceRefs: uniqueRefs([
       ...base.sourceRefs,
       ...receipts.map(receipt => receipt.receiptRef),
-      ...receipts.map(receipt =>
-        `route:/api/public/nip90-market/receipts/${receipt.receiptRef}`
+      ...receipts.map(
+        receipt =>
+          `route:/api/public/nip90-market/receipts/${receipt.receiptRef}`,
       ),
     ]),
   })
@@ -723,7 +729,10 @@ const recentPylonFromRegistration = (
     lastSeenAtLabel: friendlyTimestampLabel(lastSeenAtUnixMs, nowUnixMs),
     eligibleProductCount: 0,
     relayUrls: [],
-    products: [...registration.capabilityRefs],
+    products: publicScannerSafeRefs(
+      'capability.public.pylon_stats',
+      registration.capabilityRefs,
+    ),
   })
 }
 
@@ -1025,7 +1034,7 @@ export const publicPylonStatsSnapshot = (
             Effect.catch(error =>
               Effect.succeed(
                 emptyUnavailableMarketSettlementTotals(error.reason),
-              )
+              ),
             ),
           )
 

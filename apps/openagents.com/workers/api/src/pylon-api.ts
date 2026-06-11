@@ -3,6 +3,10 @@ import { Option, Schema as S } from 'effect'
 
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
+import {
+  publicScannerSafeRef,
+  publicScannerSafeRefs,
+} from './public-ref-scanner-safety'
 import { PylonResourceMode } from './pylon-resource-mode-setup'
 import { isoTimestampAfterIso } from './runtime-primitives'
 
@@ -620,7 +624,10 @@ export const publicPylonApiRegistrationProjection = (
   record: PylonApiRegistrationRecord,
   nowIso: string,
 ): PylonApiRegistrationProjection => ({
-  capabilityRefs: uniqueRefs(record.capabilityRefs),
+  capabilityRefs: publicScannerSafeRefs(
+    'capability.public.pylon',
+    record.capabilityRefs,
+  ),
   clientProtocolVersion: record.clientProtocolVersion,
   clientVersion: record.clientVersion,
   createdAtDisplay: friendlyBlueprintMissionBriefingTime(
@@ -628,14 +635,23 @@ export const publicPylonApiRegistrationProjection = (
     nowIso,
   ),
   displayName: record.displayName,
-  latestCapacityRefs: uniqueRefs(record.latestCapacityRefs),
+  latestCapacityRefs: publicScannerSafeRefs(
+    'capacity.public.pylon',
+    record.latestCapacityRefs,
+  ),
   latestHeartbeatDisplay:
     record.latestHeartbeatAt === null
       ? null
       : friendlyBlueprintMissionBriefingTime(record.latestHeartbeatAt, nowIso),
   latestHeartbeatStatus: record.latestHeartbeatStatus,
-  latestHealthRefs: uniqueRefs(record.latestHealthRefs),
-  latestLoadRefs: uniqueRefs(record.latestLoadRefs),
+  latestHealthRefs: publicScannerSafeRefs(
+    'health.public.pylon',
+    record.latestHealthRefs,
+  ),
+  latestLoadRefs: publicScannerSafeRefs(
+    'load.public.pylon',
+    record.latestLoadRefs,
+  ),
   latestResourceMode: record.latestResourceMode,
   ownerAgentRef: `agent:${record.ownerAgentUserId}`,
   pylonRef: record.pylonRef,
@@ -646,7 +662,10 @@ export const publicPylonApiRegistrationProjection = (
     nowIso,
   ),
   walletReady: record.walletReady,
-  walletRef: record.walletRef,
+  walletRef:
+    record.walletRef === null
+      ? null
+      : publicScannerSafeRef('wallet.public.pylon', record.walletRef),
 })
 
 export const publicPylonApiEventProjection = (
@@ -696,11 +715,23 @@ export const publicPylonApiAssignmentProjection = (
   record: PylonApiAssignmentRecord,
   nowIso: string,
 ): PylonApiAssignmentProjection => ({
-  acceptanceCriteriaRefs: uniqueRefs(record.acceptanceCriteriaRefs),
-  acceptedWorkRefs: uniqueRefs(record.acceptedWorkRefs),
-  artifactRefs: uniqueRefs(record.artifactRefs),
+  acceptanceCriteriaRefs: publicScannerSafeRefs(
+    'acceptance_criteria.public.pylon_assignment',
+    record.acceptanceCriteriaRefs,
+  ),
+  acceptedWorkRefs: publicScannerSafeRefs(
+    'accepted_work.public.pylon_assignment',
+    record.acceptedWorkRefs,
+  ),
+  artifactRefs: publicScannerSafeRefs(
+    'artifact.public.pylon_assignment',
+    record.artifactRefs,
+  ),
   assignmentRef: record.assignmentRef,
-  closeoutRefs: uniqueRefs(record.closeoutRefs),
+  closeoutRefs: publicScannerSafeRefs(
+    'closeout.public.pylon_assignment',
+    record.closeoutRefs,
+  ),
   codingAssignment: record.codingAssignment,
   createdAtDisplay: friendlyBlueprintMissionBriefingTime(
     record.createdAt,
@@ -709,13 +740,25 @@ export const publicPylonApiAssignmentProjection = (
   jobKind: record.jobKind,
   leaseExpiresInSeconds: assignmentLeaseExpiresInSeconds(record, nowIso),
   leaseState: assignmentLeaseState(record, nowIso),
-  proofRefs: uniqueRefs(record.proofRefs),
+  proofRefs: publicScannerSafeRefs(
+    'proof.public.pylon_assignment',
+    record.proofRefs,
+  ),
   pylonRef: record.pylonRef,
-  rejectionRefs: uniqueRefs(record.rejectionRefs),
-  resultExpectationRefs: uniqueRefs(record.resultExpectationRefs),
+  rejectionRefs: publicScannerSafeRefs(
+    'rejection.public.pylon_assignment',
+    record.rejectionRefs,
+  ),
+  resultExpectationRefs: publicScannerSafeRefs(
+    'result_expectation.public.pylon_assignment',
+    record.resultExpectationRefs,
+  ),
   state:
     assignmentLeaseState(record, nowIso) === 'expired' ? 'stale' : record.state,
-  taskRefs: uniqueRefs(record.taskRefs),
+  taskRefs: publicScannerSafeRefs(
+    'task.public.pylon_assignment',
+    record.taskRefs,
+  ),
   updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
     record.updatedAt,
     nowIso,
@@ -914,7 +957,11 @@ export const nextAssignmentForEvent = (
                 ),
               ),
               proofRefs: uniqueRefs(
-                stringRefsFromEventBody(body, 'proofRefs', assignment.proofRefs),
+                stringRefsFromEventBody(
+                  body,
+                  'proofRefs',
+                  assignment.proofRefs,
+                ),
               ),
               state: 'proof_submitted',
               updatedAt: nowIso,
@@ -946,10 +993,10 @@ export const nextAssignmentForEvent = (
                 state: 'closeout_submitted',
                 updatedAt: nowIso,
               }
-          : {
-              ...assignment,
-              updatedAt: nowIso,
-            }
+            : {
+                ...assignment,
+                updatedAt: nowIso,
+              }
   const projection = publicPylonApiAssignmentProjection(next, nowIso)
 
   return {

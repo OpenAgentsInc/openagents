@@ -1,6 +1,7 @@
 import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { publicScannerSafeRef } from './public-ref-scanner-safety'
 import {
   PYLON_V02_OMEGA_RELEASE_GATE_NO_AUTHORITY,
   PylonV02OmegaReleaseGateProjection,
@@ -11,6 +12,11 @@ import {
 } from './pylon-v02-omega-release-gate'
 
 const nowIso = '2026-06-07T12:30:00.000Z'
+const scannerShapedBridgeRef = 'artanis-mdk-bridge-8b378373002501f3e896dcd3'
+const scannerSafeBridgeRef = publicScannerSafeRef(
+  'evidence.public.pylon_v0_2.omega_gate',
+  scannerShapedBridgeRef,
+)
 
 describe('Pylon v0.2 Omega release gate', () => {
   test('projects the current multi-Pylon proof as a limited shipped launcher release', () => {
@@ -55,7 +61,7 @@ describe('Pylon v0.2 Omega release gate', () => {
         'smoke.public.issue_438.artanis_real_assignment.issue_438_artanis_1780822221',
         'assignment.public.issue_438.issue_438_artanis_1780822221',
         'receipt.nexus.issue_438.settlement.issue_438_artanis_1780822221',
-        'artanis-mdk-bridge-8b378373002501f3e896dcd3',
+        scannerSafeBridgeRef,
         'pylon.public.artanis.bridge.8b378373',
         'receipt.nexus_pylon.settlement.artanis_mdk_bridge_8b378373002501f3e896dcd3',
         'forum.public.artanis.nexus_pylon.release_gate_pass.issue_438_artanis_1780822221',
@@ -66,9 +72,13 @@ describe('Pylon v0.2 Omega release gate', () => {
     expect(projection.optionalTransitionEvidenceRefs).toEqual([
       'transition.public.old_google_cloud_nexus.not_release_gate',
     ])
+    expect(projection.multiPylonProofRefs).toEqual(
+      expect.arrayContaining([scannerSafeBridgeRef]),
+    )
     expect(JSON.stringify(projection)).not.toMatch(
       /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
     )
+    expect(JSON.stringify(projection)).not.toContain(scannerShapedBridgeRef)
   })
 
   test('projects a fully satisfied evidence packet as a limited shipped launcher release without granting release authority', () => {

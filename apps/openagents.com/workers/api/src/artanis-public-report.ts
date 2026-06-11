@@ -79,6 +79,7 @@ import {
   PublicPylonEarningLaunchGate,
   PublicPylonStats,
 } from './public-pylon-stats'
+import { publicRefTriggersAgentSecretScanner } from './public-ref-scanner-safety'
 import {
   PylonV02OmegaReleaseGateProjection,
   currentPylonV02OmegaReleaseGateRecord,
@@ -336,6 +337,7 @@ export const artanisPublicReportHasPrivateMaterial = (
   publicReportStrings(report).some(
     value =>
       containsProviderSecretMaterial(value) ||
+      publicRefTriggersAgentSecretScanner(value) ||
       unsafePublicReportPattern.test(value) ||
       rawTimestampPattern.test(value),
   )
@@ -419,7 +421,9 @@ const currentArtanisHealthSnapshot = (input: {
       caveatRefs: ['caveat.public.approval_needed_before_dispatch'],
       count: productionReady ? 0 : 1,
       kind: 'pending_approvals',
-      label: productionReady ? 'No pending launch approvals' : 'Approval pending',
+      label: productionReady
+        ? 'No pending launch approvals'
+        : 'Approval pending',
       observedAtIso: nowIso,
       operatorDetailRefs: ['health.operator.artanis.pending_approval_detail'],
       publicRecoveryActionRefs: productionReady
@@ -591,7 +595,9 @@ const currentArtanisHealthSnapshot = (input: {
       : ['recovery.operator.artanis.inspect_current_evidence'],
     overallState: healthy ? 'healthy' : 'stale',
     overclaimBlocked: !healthy,
-    overclaimBlockerRefs: healthy ? [] : ['overclaim.public.artanis.health_stale'],
+    overclaimBlockerRefs: healthy
+      ? []
+      : ['overclaim.public.artanis.health_stale'],
     pendingApprovalRefs: productionReady
       ? []
       : ['approval.public.artanis.pylon_dispatch_pending'],

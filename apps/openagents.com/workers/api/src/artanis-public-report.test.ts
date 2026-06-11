@@ -11,8 +11,14 @@ import {
 } from './artanis-public-report'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { publicPylonStatsFromNexusPayload } from './public-pylon-stats'
+import { publicScannerSafeRef } from './public-ref-scanner-safety'
 
 const nowIso = '2026-06-07T02:00:00.000Z'
+const scannerShapedBridgeRef = 'artanis-mdk-bridge-8b378373002501f3e896dcd3'
+const scannerSafeBridgeRef = publicScannerSafeRef(
+  'evidence.public.pylon_v0_2.omega_gate',
+  scannerShapedBridgeRef,
+)
 
 const deliveredForumQueue = (): ArtanisForumPublicationQueueRecord => {
   const queue = exampleArtanisForumPublicationQueue()
@@ -421,12 +427,13 @@ describe('Artanis public report', () => {
         'assignment.public.issue_438.issue_438_artanis_1780822221',
         'pylon.public.issue_438_edge_wallet',
         'receipt.nexus.issue_438.settlement.issue_438_artanis_1780822221',
-        'artanis-mdk-bridge-8b378373002501f3e896dcd3',
+        scannerSafeBridgeRef,
         'pylon.public.artanis.bridge.8b378373',
         'receipt.nexus_pylon.settlement.artanis_mdk_bridge_8b378373002501f3e896dcd3',
       ]),
     )
     expect(artanisPublicReportHasPrivateMaterial(report)).toBe(false)
+    expect(serialized).not.toContain(scannerShapedBridgeRef)
     expect(serialized).not.toContain('https://openagents.com/autopilot')
     expect(serialized).toContain('route:/autopilot')
     expect(serialized).not.toContain('authGrantRef')
