@@ -736,6 +736,134 @@ describe('training run window routes', () => {
     expect(dashboardBody.shards).toHaveLength(1)
   })
 
+  it('admits receipted A5 alignment evidence through the admin route and serves the eval dashboard', async () => {
+    const store = makeMemoryStore()
+    let counter = 0
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => `a5-evidence-${++counter}`,
+      makeStore: () => store,
+      nowIso: () => '2026-06-11T08:00:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+    const adminHeaders = { authorization: 'Bearer admin-token-test' }
+    const evidencePath =
+      '/api/training/runs/run.cs336.a5.alignment.demo/alignment-eval-evidence'
+    const suite = {
+      evalSuiteRef: 'eval.cs336_a5.synthetic_math.bounded.1',
+      metric: 'accuracy' as const,
+      receiptRefs: ['receipt.cs336_a5.settlement.reward_grading.split_a'],
+      sampleCount: 256,
+      score: 0.66,
+      sourceRefs: [
+        'workload.cs336_a5.seeded_rollout_and_reference_grading.v1',
+      ],
+      splitRef: 'split.cs336_a5.synthetic_math.bounded_combined.v1',
+      taskSetRef: 'math' as const,
+      verificationRefs: [
+        'verdict.training.deterministic_recompute.reward_grading',
+      ],
+      verifiedSampleCount: 256,
+    }
+
+    store._testSeedRun(
+      buildTrainingRunRecord({
+        makeId: () => 'a5-admit',
+        nowIso: '2026-06-11T08:00:00.000Z',
+        request: {
+          promiseRef: 'training.post_training_arc.v1',
+          trainingRunRef: 'run.cs336.a5.alignment.demo',
+        },
+      }),
+    )
+
+    const unauthorized = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(evidencePath, { evalSuites: [suite] }),
+        {},
+      ),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const unreceipted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          { evalSuites: [{ ...suite, receiptRefs: [] }] },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+
+    expect(unreceipted.status).toBe(400)
+
+    const admitted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          {
+            evalSuites: [suite],
+            receiptRefs: ['approval.operator.20260611.focus_cs336_issue4682'],
+            shards: [
+              {
+                jobKind: 'cs336_a5_reward_grading',
+                outputDigestRef:
+                  'digest.cs336_a5.reward_grading.split_a.sha256_abcd',
+                pylonRef: 'pylon.24819249b4634a4c9d5e',
+                receiptRefs: [
+                  'receipt.cs336_a5.settlement.reward_grading.split_a',
+                ],
+                rolloutCount: 128,
+                splitRef: 'split_a',
+                verificationRefs: [
+                  'verdict.training.deterministic_recompute.reward_grading',
+                ],
+              },
+            ],
+            sourceRefs: ['issue.github.openagents.4682'],
+          },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const admittedBody = (await admitted.json()) as Readonly<{
+      evals: Readonly<{
+        blockerRefs: ReadonlyArray<string>
+        evalSuites: ReadonlyArray<Record<string, unknown>>
+      }>
+    }>
+
+    expect(admitted.status).toBe(200)
+    expect(admittedBody.evals.blockerRefs).toEqual([])
+    expect(admittedBody.evals.evalSuites[0]).toMatchObject({
+      evalSuiteRef: 'eval.cs336_a5.synthetic_math.bounded.1',
+      score: 0.66,
+      taskSetRef: 'math',
+    })
+
+    const dashboard = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request('https://openagents.test/api/training/evals/a5'),
+        {},
+      ),
+    )
+    const dashboardBody = (await dashboard.json()) as Readonly<{
+      blockerRefs: ReadonlyArray<string>
+      evalSuites: ReadonlyArray<unknown>
+      schemaVersion: string
+    }>
+
+    expect(dashboard.status).toBe(200)
+    expect(dashboardBody.schemaVersion).toBe(
+      'openagents.training.a5_eval_dashboard.v1',
+    )
+    expect(dashboardBody.evalSuites).toHaveLength(1)
+    expect(dashboardBody.blockerRefs).toEqual([])
+  })
+
   it('admits receipted device benchmark evidence through the admin route and rejects unsafe or unreceipted rows', async () => {
     const store = makeMemoryStore()
     let counter = 0

@@ -46,6 +46,10 @@ import {
   admitCs336A4DataRefineryEvidence,
   publicDataRefineryProjection,
 } from './training-data-refinery'
+import {
+  Cs336A5AlignmentEvidenceRequest,
+  admitCs336A5AlignmentEvidence,
+} from './training-alignment-evals'
 
 type HttpResponse = globalThis.Response
 
@@ -952,6 +956,68 @@ const routeAttachDataRefineryEvidence = <
     })
   })
 
+const routeAttachAlignmentEvalEvidence = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, Cs336A5AlignmentEvidenceRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const admitted = yield* Effect.try({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        admitCs336A5AlignmentEvidence({ nowIso, request: body, run }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.attachRunEvidence(admitted),
+    })
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+
+    return noStoreJsonResponse({
+      evals: publicCs336A5EvalProjection({
+        challenges,
+        leases,
+        run: stored,
+        windows,
+      }),
+      run: publicTrainingRunProjection(stored, nowIso),
+    })
+  })
+
 const routeReadWindow = <Bindings extends TrainingRunWindowRouteEnv>(
   dependencies: TrainingRunWindowRouteDependencies<Bindings>,
   env: Bindings,
@@ -1161,6 +1227,24 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(refineryEvidenceMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const alignmentEvidenceMatch =
+      /^\/api\/training\/runs\/([^/]+)\/alignment-eval-evidence$/.exec(
+        url.pathname,
+      )
+
+    if (alignmentEvidenceMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeAttachAlignmentEvalEvidence(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(alignmentEvidenceMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

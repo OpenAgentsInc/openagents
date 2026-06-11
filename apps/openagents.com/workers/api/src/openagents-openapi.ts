@@ -288,6 +288,12 @@ const schemaComponents = (): JsonSchema => ({
   TrainingA4DataRefineryEvidenceEnvelope: objectSummary(
     'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A4 data-refinery projection for that run.',
   ),
+  TrainingA5AlignmentEvidenceRequest: objectSummary(
+    'Admin-only request to admit receipted CS336 A5 alignment evidence into a training run projection. Eval suites carry a bounded task-set label (gsm8k, mmlu, or math), split ref, metric, score, sample counts, receipt refs, and verification refs; optional work shards record the rollout/grading assignments with their job kinds and output-digest commitments. Unreceipted suites and shards are not admissible, and raw prompts, answers, completions, wallet, payment, invoice, and private-path material are rejected by the public-safety guard at admission time.',
+  ),
+  TrainingA5AlignmentEvidenceEnvelope: objectSummary(
+    'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A5 eval dashboard projection for that run.',
+  ),
   TrainingA5EvalDashboardEnvelope: objectSummary(
     'Public-safe CS336 A5 alignment eval dashboard envelope with rollout/grading/SFT job-kind blockers, receipted MMLU/GSM8K eval suite summaries, update-boundary refs, and scope labels. Eval rows are eval evidence only, not model capability claims, and exclude raw prompts, answers, completions, wallet material, and payment material.',
   ),
@@ -2980,6 +2986,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Admitted refinery evidence with the recomputed data-refinery projection.',
           '#/components/schemas/TrainingA4DataRefineryEvidenceEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/alignment-eval-evidence': {
+    post: operation({
+      operationId: 'admitTrainingA5AlignmentEvalEvidence',
+      summary: 'Admit CS336 A5 alignment eval evidence',
+      description:
+        'Admin-only route to admit receipted CS336 A5 rollout/grading evidence and eval-suite summaries into a training run projection for the public A5 eval dashboard. Eval rows are eval evidence about the named bounded task set only, never model capability claims; the policy-gradient update step stays behind the #4669 training boundary. Unreceipted suites and shards are not admissible, and the public-safety guard rejects raw prompts, answers, completions, wallet, payment, and private-path material at admission.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingA5AlignmentEvidenceRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Admitted alignment evidence with the recomputed A5 eval dashboard projection.',
+          '#/components/schemas/TrainingA5AlignmentEvidenceEnvelope',
         ),
         ...errorResponses(),
       },
