@@ -38,6 +38,13 @@ Forum reporting.
   labor market), and the phased productize → unify → market roadmap.
 - `implementation-log.md`: running issue-by-issue implementation notes for the
   Autopilot coder backlog.
+- `terminal-agent-systems/`: dated OpenAgents-native audits for 32 terminal
+  agent subsystems plus the broader systems index, including the runtime
+  kernel, workspace materialization, conversation/query, tools, file and shell
+  authority, permission approval, sandbox boundaries, task supervision,
+  context assembly, compaction, providers, memory, retrieval, LSP diagnostics,
+  TUI, command, review, notification, session navigation, MCP, plugin, skill,
+  and hook systems.
 - `no-spend-e2e-smoke.md`: documented command and retained-evidence checks for
   the public no-spend Autopilot Coder smoke.
 - `paid-e2e-smoke.md`: documented command and retained-evidence checks for the
