@@ -1,0 +1,190 @@
+{
+  "note": "Temporary grandfather list for public/forum projection surfaces that predate the deploy gate. Each entry must carry the projection-staleness epic issue ref and should be removed when that surface declares generatedAt/lastRebuiltAt plus maxStalenessSeconds/staleness.",
+  "entries": [
+    {
+      "id": "workers/api/src/artanis-admin-closeout-receipts.ts::publicProjection::254",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum/paid-actions.ts::publicProjection::1188",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/work-requests",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/work-requests/relay-events",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/search",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/launch-status",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/tip-leaderboards",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/moderation/tip-earnings",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/moderation/queue",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/posts",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/paid-actions/preview",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/tip-recipient-wallets/admissions",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/tip-recipient-wallets/claims",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/paid-actions/private-payment",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/paid-actions/redeem",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/forum-routes.ts::route::/api/forum/paid-actions/mdk/webhooks",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/proof/otec",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/home",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/product-promises",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/product-promises/transitions",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/pylon-stats",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/pylon-capacity-funnel",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/pylon-capacity-funnel/history",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/launch-dashboard",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/treasury/launch-status",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/artanis/report",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/artanis/admin-ticks",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/index.ts::route::/api/public/adjutant/activity",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/nexus-pylon-visibility-routes.ts::route::/api/public/nexus-pylon/receipts/",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/omni-api-sdk-seed.ts::route::/api/public/proof/otec",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/product-promises.ts::route::/api/public/product-promises",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/public-launch-dashboard.ts::route::/api/public/launch-dashboard",
+      "issueRef": "#4751",
+      "reason": "missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/public-nip90-market-receipt-routes.ts::route::/api/public/nip90-market/receipts/",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/sync-notifier.ts::route::/api/public/goals/${goal.id}",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    },
+    {
+      "id": "workers/api/src/treasury-page-routes.ts::route::/api/public/treasury",
+      "issueRef": "#4751",
+      "reason": "missing generatedAt/lastRebuiltAt; missing maxStalenessSeconds/staleness declaration"
+    }
+  ]
+}
