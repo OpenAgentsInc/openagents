@@ -114,6 +114,22 @@ match the NIP-LBR public-ref pattern (lowercase dotted refs, no colons
 except one trailing `:suffix`); the `pylon work` CLI converts an ISO
 `--deadline` into a `deadline.public.pylon_work.*` ref automatically.
 
+P5 backlog-faucet decoration (#4781): when the target comes from a
+maintainer-selected issue list, use the checked-in `backlog-faucet`
+contract to create the Forum work-request input and issue mirror comment.
+The filing must contain only objective/repository/verification/deadline refs,
+the max-bid budget, and a bounded title. It must not copy issue bodies, raw
+prompts, local paths, wallet/payment material, provider payloads, or secrets.
+The source issue may have one active channel only: an in-house Autopilot work
+order or an open-market work request.
+
+P6/P7 gates (#4782/#4783): spare-capacity provider mode is default-off until
+the owner supplies consent, pricing, capability, settlement, preemption, and
+earnings-visibility refs. Product Lane C fanout remains blocked unless owned
+capacity is dark/limited, the customer explicitly opts in, the job is public
+tier, P2/P4/P5 prerequisites are present, the quote fits the budget cap, and
+validator/artifact authority is ready.
+
 Owner/Pylon path:
 
 ```bash

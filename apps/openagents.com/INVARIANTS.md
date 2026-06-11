@@ -589,6 +589,35 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 
+## Open Labor Market Pylon Gates
+
+- A GitHub issue may be routed through either an in-house Autopilot work order
+  or an open-market work request, not both at once. Backlog faucet filings must
+  use ref-only objective, repository, verification command, budget, and
+  deadline fields; issue bodies, raw prompts, private repo material, provider
+  payloads, wallet/payment material, local paths, secrets, and customer data
+  must not enter the market filing or lifecycle comments.
+- Open-market listing comments are mirrors over Forum/NIP-LBR records. They
+  cannot grant acceptance, settlement, payout, merge, writeback, or public
+  claim authority by themselves.
+- Spare-capacity provider mode is default-off. A Pylon may serve other
+  people's jobs only after explicit owner consent, a public provider ref,
+  pricing policy, min/max sats policy, declared capability refs, own-work
+  preemption, payout/settlement readiness, and earnings visibility refs exist.
+  Owned work preempts market serving.
+- Lane C fanout is opt-in and public-tier only. Owned capacity wins when it is
+  available; market fanout requires customer opt-in, public or public-beta
+  privacy tier, mission/work-order unification, USD-to-sats settlement
+  readiness, market inventory, artifact authority, validator policy, budget
+  cap compliance, and a provider trust tier at the public floor.
+- P1/P5/P6/P7 live paid-labor claims remain blocked until the corresponding
+  real Forum/relay/quote/acceptance/execution/validator/release/settlement
+  receipts are public and dereferenceable.
+- Regression coverage for this policy lives in
+  `workers/api/src/backlog-faucet.test.ts`,
+  `workers/api/src/market-provider-policy.test.ts`, and
+  `workers/api/src/lane-c-fanout-policy.test.ts`.
+
 ## Data Trace Marketplace Gate
 
 - Local trace submission is marketplace evidence only. It must not imply a
