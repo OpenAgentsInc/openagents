@@ -209,3 +209,7 @@ map. The audits below are the currently imported subsystem records.
   Autopilot MVP sprint, grouped into proof/supervision, credential/policy,
   repo/delivery, intake/market, and extension/polish packs. Pack A is tracked
   by GitHub issue #4813 and child issues #4814-#4823.
+- `2026-06-11-open-issue-delegation-plan.md`: Splits the open Autopilot MVP,
+  Pack A, market, and W3 evaluation issue set across eight named delegated
+  agents, including worktree/branch rules, issue status comment templates,
+  merge waves, deferred E2E policy, and parent closeout order.

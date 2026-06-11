@@ -39,6 +39,10 @@ Forum reporting.
   carries the Pack A timing overlay for proof/supervision operationalization:
   #4813 tracks the parent, #4814-#4823 track the child subsystem issues, and
   Pack A affects proof/claim closure without pausing unrelated rungs.
+- `terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`: delegation
+  plan for the current open issue set, assigning the MVP ladder, Pack A,
+  market, and W3 evaluation work across eight named agent worktrees with
+  status-comment, rebase/merge, deferred E2E, and closeout rules.
 - `implementation-log.md`: running issue-by-issue implementation notes for the
   Autopilot coder backlog.
 - `terminal-agent-systems/`: dated OpenAgents-native audits for 62 terminal
