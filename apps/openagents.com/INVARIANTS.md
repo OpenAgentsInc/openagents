@@ -204,6 +204,31 @@ This is the invariant ledger for `openagents`.
 - Regression coverage starts in
   `workers/api/src/autopilot-bridge-contracts.test.ts`.
 
+## Autopilot Gate Proof Authority
+
+- MVP and Pack A proof issues may close only from a Gate decision record that
+  names the exact claim, issue refs, source commit refs, required receipt
+  kinds, smoke receipt authority refs, live evidence refs, missing evidence,
+  and any accepted deferrals.
+- Smoke receipt authority records are evidence-only records backed by
+  `smoke_passed` or `smoke_failed` Pack A receipts plus artifact and verifier
+  refs. They never grant runtime, spend, provider mutation, payout,
+  settlement, accepted-work, or public-claim authority by themselves.
+- #4768 M10 and #4772 M14 require typed Pack A lifecycle receipts, smoke
+  authority, required child-issue status, and live evidence refs before Gate
+  may mark them ready. Missing live two-account rotation, non-Codex run,
+  overnight unattended proof, or usage-budget evidence must remain a typed
+  blocker/deferred boundary, not prose acceptance.
+- #4786 and #4813 parent closeout must preserve the exact open tail. Post-MVP
+  market issues, W3 evaluation work, and credentialed live legs may be
+  explicitly deferred only when the parent decision records the issue refs and
+  prevents broad MVP/public-readiness claims from depending on them.
+- #4749 W3 remains a separate research/evaluation track. It must not be used
+  as MVP readiness evidence, and it stays blocked until the four-baseline
+  report and hypothesis verdict refs exist.
+- Regression coverage starts in
+  `workers/api/src/autopilot-gate-proof-authority.test.ts`.
+
 ## Typed Email Side Effects
 
 - Production email sends must pass through `EmailService`; route handlers and
