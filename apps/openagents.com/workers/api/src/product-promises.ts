@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.2'
+export const PublicProductPromisesVersion = '2026-06-11.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -118,7 +118,7 @@ export const publicProductPromisesDocument = () => {
       'Pylon v0.3 is a release candidate, not stable 0.3.0.',
       'macOS and Linux are the first supported operator platforms for the v0.3 launch path.',
       'Pylon v0.3 local release gates and a no-spend live worker-loop smoke exist, but broad earning, paid assignment, settlement, and stable-release claims still need fresh public evidence before they go green.',
-      'Qwen/training, sellable local inference, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned.',
+      'Training, data revenue, provider-capacity resale, referral payouts, and signature revenue remain gated or planned. Local-inference and Qwen products are out of scope by owner decision (2026-06-10): no inference products at this time; model-training focus is Tassadar.',
       'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
       'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
       'The full training-pipeline program (the training.* promises) is planned scope from docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md; no Psion model rung above the retained tri-host rehearsal exists, and no pipeline stage is live as a broadly paid network workload.',
@@ -310,17 +310,16 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim the first public remote Pylon model-training run is live.',
       evidenceRefs: [
-        'apps/openagents.com/docs/2026-06-08-qwen-remote-pylon-finetune-gate.md',
         'apps/pylon/docs/2026-06-09-pylon-psionic-ml-connection-audit.md',
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
+        'directive.owner.20260611.no_inference_focus_tassadar',
       ],
       blockerRefs: [
         'blocker.product_promises.remote_multi_device_training_missing',
-        'blocker.product_promises.qwen_training_postponed_after_gepa',
       ],
       verification:
-        'Requires public remote worker, shard, merge/eval/admission, payment, settlement, and projection refs before green copy. The honest green path is the model ladder’s R2 rung (training.model_ladder.v1): network pretraining windows on real contributor devices with commitment-backed verification, paid closeouts, and a published economics gate against a rented-cluster comparator.',
+        'Requires public remote worker, shard, merge/eval/admission, payment, settlement, and projection refs before green copy. The honest green path is Tassadar executor training: curated verified-trace corpora through the CS336 rails (artanis.tassadar_evolution_loop.v1 Stages 1-3) graded by exact replay, then the model ladder’s network rungs (training.model_ladder.v1) on real contributor devices with commitment-backed verification and paid closeouts. Qwen fine-tuning is out of scope by owner decision.',
       authorityBoundary:
         'GEPA/text optimization and local loopback rehearsals are not neural-network training on public contributor devices.',
     },
@@ -363,21 +362,20 @@ export const publicProductPromisesDocument = () => {
       audience: ['contributor', 'public'],
       state: 'red',
       claim:
-        'Compute revenue includes local model inference, GEPA optimization slices, and Qwen fine-tuning on people’s devices.',
+        'Compute revenue comes from GEPA optimization slices and Tassadar executor-trace work on people’s devices.',
       safeCopy:
-        'Pylon v0.3 has GEPA-first local capability contracts, but sellable local inference, paid full-network GEPA, and remote Qwen fine-tuning are not green.',
+        'Pylon v0.3 has GEPA-first local capability contracts and live no-spend Tassadar executor-trace dispatch with one operator-funded settled closeout, but paid full-network GEPA is not green. Local-inference and Qwen fine-tune revenue are out of scope by owner decision (2026-06-10): no inference products at this time.',
       unsafeCopy:
-        'Do not claim live local-inference revenue, full-network GEPA revenue, or remote Qwen fine-tune revenue.',
+        'Do not claim full-network GEPA revenue, and do not describe local-inference or Qwen fine-tune products as existing or planned.',
       evidenceRefs: [
         'apps/pylon/docs/gepa-capability-envelope.md',
-        'apps/pylon/docs/2026-06-09-pylon-qwen35-local-inference-roadmap.md',
         'apps/openagents.com/docs/2026-06-08-probe-gepa-paid-mode-campaign-ladder.md',
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'transition:promise_transition_4ba43958-3084-4c90-ab0d-10562a863117',
+        'directive.owner.20260611.no_inference_focus_tassadar',
       ],
       blockerRefs: [
         'blocker.product_promises.live_gepa_network_missing',
-        'blocker.product_promises.sellable_local_inference_missing',
-        'blocker.product_promises.remote_qwen_training_missing',
       ],
       verification:
         'Requires live OpenAgents endpoint smokes, fresh Pylon heartbeats, accepted closeouts, and payment-mode evidence before broad compute revenue copy.',
@@ -1565,7 +1563,7 @@ export const publicProductPromisesDocument = () => {
     `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
     'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
     'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
-    'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, Qwen/training, data revenue, referral payout, and labor-market claims remain gated.',
+    'Pylon v0.3 is present in the monorepo as a release candidate, but broad Pylon earning, paid settlement, training, data revenue, referral payout, and labor-market claims remain gated.',
     'OpenAgents does not resell, rent, proxy, or broker subscription or API provider capacity. The labor market pays contributors for accepted work output produced with their own compliant provider usage; the former subscription/prepaid capacity promises are folded into provider.compliant_usage_labor.v1 under that boundary.',
     'The five-streams implementation plan is tracked in GitHub issues #4635-#4653 (rails, compute, data, labor, referrals, stacking smoke, tips polish); the lane map and binding delegation contract live in apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md.',
     'Owner decision 2026-06-10: the Tassadar research lane previously held no registry promise by design. The owner approved one scoped exception: compute.tassadar_executor_poc.v1, a bounded proof-of-concept promise for executor-trace work on real Pylons. All other Tassadar publication gates remain closed; the research essay is docs/tassadar/README.md.',

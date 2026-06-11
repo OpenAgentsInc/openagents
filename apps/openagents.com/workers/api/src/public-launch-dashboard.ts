@@ -83,8 +83,8 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
       'blocker.launch_dashboard.model_training.remote_multi_device_missing',
     ],
     evidenceRefs: [
-      'docs/2026-06-08-qwen-remote-pylon-finetune-gate.md',
       'docs/2026-06-08-probe-gepa-stage0-no-spend-campaign-gate.md',
+      'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
     ],
     promiseId: 'first_real_model_training_run',
     promiseText: 'Pylon starts the first real model-training run.',
@@ -115,20 +115,19 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
   {
     baseStatus: 'red',
     blockerRefs: [
-      'blocker.launch_dashboard.compute_revenue.remote_gepa_qwen_marketplace_missing',
+      'blocker.launch_dashboard.compute_revenue.remote_gepa_marketplace_missing',
     ],
     evidenceRefs: [
       'docs/2026-06-08-probe-gepa-paid-mode-campaign-ladder.md',
-      'docs/2026-06-08-qwen-remote-pylon-finetune-gate.md',
     ],
     promiseId: 'compute_revenue_modes',
     promiseText:
-      'Compute revenue includes local model inference, GEPA optimization slices, and Qwen 3.6 fine-tuning on people’s devices.',
+      'Compute revenue comes from GEPA optimization slices and Tassadar executor-trace work on people’s devices.',
     safeCopy:
-      'GEPA and Qwen gates exist, but public sellable local inference, paid full-network GEPA, and remote Qwen fine-tuning are not green.',
+      'GEPA gates and live no-spend Tassadar executor-trace dispatch exist, but paid full-network GEPA is not green. Local-inference and Qwen products are out of scope by owner decision (2026-06-10).',
     staleSensitive: true,
     unsafeCopy:
-      'Do not claim live local-inference revenue, full-network GEPA revenue, or remote Qwen fine-tune revenue.',
+      'Do not claim full-network GEPA revenue, and do not describe local-inference or Qwen fine-tune products as existing or planned.',
   },
   {
     baseStatus: 'red',
