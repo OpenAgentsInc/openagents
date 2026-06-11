@@ -7,7 +7,7 @@
 
 import { appendFile, mkdir, rename, stat } from "node:fs/promises"
 import { join } from "node:path"
-import type { PylonLogEntry, PylonLogLevel } from "./state"
+import { isSessionBannerMessage, type PylonLogEntry, type PylonLogLevel } from "./state"
 
 export const feedLogFileName = "feed-log.jsonl"
 export const feedLogRotatedFileName = "feed-log.jsonl.1"
@@ -79,6 +79,9 @@ export function createFeedLogWriter(
 
   return {
     append: (entry) => {
+      // Session banners are shown live but never persisted - restored
+      // scrollback must not accumulate one banner set per launch.
+      if (entry.transient) return chain
       chain = chain.then(() => writeOne(entry))
       return chain
     },
@@ -96,7 +99,7 @@ export async function readPersistedLogTail(homeDir: string, max: number): Promis
     const text = await file.text()
     for (const line of text.split("\n")) {
       const entry = parseFeedLogLine(line)
-      if (entry) entries.push(entry)
+      if (entry && !isSessionBannerMessage(entry.message)) entries.push(entry)
     }
   }
   return entries.slice(-max)

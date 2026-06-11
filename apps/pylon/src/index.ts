@@ -491,13 +491,14 @@ const runPylonNode = Effect.gen(function* () {
     verboseMode
       ? "Pylon v0.3 dashboard active (verbose logging)."
       : "Pylon v0.3 ready. Logs are quiet by default - relaunch with --verbose for service detail.",
+    { transient: true },
   )
 
   const localState = yield* Effect.tryPromise({
     try: () => ensurePylonLocalState(bootstrapSummary),
     catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
   })
-  yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`)
+  yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`, { transient: true })
 
   // Fork node services into this Scope - interrupted on shutdown.
   const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
@@ -537,7 +538,7 @@ const runPylonNode = Effect.gen(function* () {
   }
 
   if (smokeDashboard) {
-    yield* logMessage(runtime, "info", "Pylon v0.3 dashboard smoke complete.")
+    yield* logMessage(runtime, "info", "Pylon v0.3 dashboard smoke complete.", { transient: true })
     return
   }
 
@@ -607,13 +608,14 @@ const runHeadlessNode = Effect.gen(function* () {
     runtime,
     "info",
     `Pylon node-core running headless. Attach with: pylon attach ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
+    { transient: true },
   )
 
   const localState = yield* Effect.tryPromise({
     try: () => ensurePylonLocalState(bootstrapSummary),
     catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
   })
-  yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`)
+  yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`, { transient: true })
 
   const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
   yield* forkNodeServices(runtime, {
@@ -706,7 +708,7 @@ const runPylonAttach = (baseUrl: string, token: string) =>
     )
 
     yield* ui.attachRuntimeToView(runtime, { verbose: verboseMode })
-    yield* logMessage(runtime, "info", `Attaching to Pylon node at ${baseUrl}...`)
+    yield* logMessage(runtime, "info", `Attaching to Pylon node at ${baseUrl}...`, { transient: true })
 
     let snapshotSeen = false
     yield* runControlClient(baseUrl, token, {
@@ -717,9 +719,9 @@ const runPylonAttach = (baseUrl: string, token: string) =>
             if (!snapshotSeen) {
               snapshotSeen = true
               yield* publishLogEntries(runtime, snapshot.logFeed)
-              yield* logMessage(runtime, "info", `Attached. Restored ${snapshot.logFeed.length} log lines from the node.`)
+              yield* logMessage(runtime, "info", `Attached. Restored ${snapshot.logFeed.length} log lines from the node.`, { transient: true })
             } else {
-              yield* logMessage(runtime, "info", "Reconnected to node.")
+              yield* logMessage(runtime, "info", "Reconnected to node.", { transient: true })
             }
           }),
         )

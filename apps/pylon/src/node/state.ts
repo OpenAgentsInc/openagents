@@ -12,6 +12,24 @@ export type PylonLogEntry = {
   at: string
   level: PylonLogLevel
   message: string
+  // Transient entries are session banners (ready line, identity, attach
+  // notices): shown live but never persisted, so restored scrollback does
+  // not accumulate one copy per launch.
+  transient?: boolean
+}
+
+// Legacy cleanup: feed logs written before the transient flag existed are
+// full of per-launch banners; drop them when restoring scrollback.
+export function isSessionBannerMessage(message: string): boolean {
+  return (
+    message.startsWith("Pylon v0.3 ready.") ||
+    message.startsWith("Pylon v0.3 dashboard active") ||
+    message.startsWith("Pylon node-core running headless.") ||
+    message.startsWith("[Identity] Pylon Nostr npub:") ||
+    message.startsWith("Attaching to Pylon node") ||
+    message.startsWith("Attached. Restored ") ||
+    message.startsWith("Pylon v0.3 dashboard smoke complete.")
+  )
 }
 
 export const maxLogEntries = 1000

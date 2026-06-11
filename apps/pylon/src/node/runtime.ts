@@ -44,9 +44,15 @@ export const logMessage = (
   runtime: PylonNodeRuntime,
   level: PylonLogLevel,
   message: string,
+  options?: { transient?: boolean },
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const entry: PylonLogEntry = { at: new Date().toISOString(), level, message }
+    const entry: PylonLogEntry = {
+      at: new Date().toISOString(),
+      level,
+      message,
+      ...(options?.transient ? { transient: true } : {}),
+    }
     yield* SubscriptionRef.update(runtime.logFeed, (entries) => appendLogEntry(entries, entry))
     yield* PubSub.publish(runtime.events, { type: "log", ...entry })
   })

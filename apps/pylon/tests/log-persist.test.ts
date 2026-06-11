@@ -83,3 +83,33 @@ describe("feed log persistence", () => {
     expect(errors.length).toBe(1)
   })
 })
+
+describe("session banner hygiene (no per-launch spam)", () => {
+  test("transient entries are never persisted", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pylon-feedlog-"))
+    const writer = createFeedLogWriter(dir)
+    await writer.append({ ...entry(1), transient: true })
+    await writer.append(entry(2))
+    const tail = await readPersistedLogTail(dir, 10)
+    expect(tail).toHaveLength(1)
+    expect(tail[0]?.message).toBe("message 2")
+  })
+
+  test("legacy boot banners are dropped when restoring scrollback", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pylon-feedlog-"))
+    const banner = (message: string) => JSON.stringify({ at: new Date(0).toISOString(), level: "info", message })
+    writeFileSync(
+      join(dir, feedLogFileName),
+      [
+        banner("Pylon v0.3 ready. Logs are quiet by default - relaunch with --verbose for service detail."),
+        banner("[Identity] Pylon Nostr npub: npub1xyz"),
+        banner("Pylon node-core running headless. Attach with: pylon attach http://x"),
+        banner("a real log line that should survive"),
+        "",
+      ].join("\n"),
+    )
+    const tail = await readPersistedLogTail(dir, 10)
+    expect(tail).toHaveLength(1)
+    expect(tail[0]?.message).toContain("should survive")
+  })
+})
