@@ -9,11 +9,12 @@ import {
   type CodexAgentSandboxMode,
 } from "./codex-agent"
 import {
-  defaultClaudeAgentCheckoutRunner,
+  defaultGitCheckoutRunner,
   gitCheckoutWorkspaceFrom,
-  type ClaudeAgentCheckoutRunner,
-  type ClaudeAgentGitCheckoutWorkspace,
-} from "./claude-agent-executor"
+  materializeGitCheckoutWorkspace,
+  type GitCheckoutWorkspace,
+  type WorkspaceCheckoutRunner,
+} from "./workspace-materializer"
 import type { PylonLocalState } from "./state"
 
 /**
@@ -41,9 +42,10 @@ export const CODEX_AGENT_TASK_AGENT_KIND = "codex_sdk"
 export const CODEX_AGENT_SUM_REPAIR_FIXTURE_REF = "fixture.public.pylon.codex_agent.sum_repair.v1"
 
 // The git_checkout workspace contract is shared with the Claude Agent
-// lane (B2 #4756) — same validator, same checkout runner, never forked.
-export type CodexAgentGitCheckoutWorkspace = ClaudeAgentGitCheckoutWorkspace
-export type CodexAgentCheckoutRunner = ClaudeAgentCheckoutRunner
+// lane (B2 #4756) through the adapter-neutral materializer module
+// (#4798) — same validator, same checkout runner, never forked.
+export type CodexAgentGitCheckoutWorkspace = GitCheckoutWorkspace
+export type CodexAgentCheckoutRunner = WorkspaceCheckoutRunner
 
 export type CodexAgentTaskPayload = {
   schema: typeof CODEX_AGENT_TASK_SCHEMA
@@ -290,20 +292,22 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
 }
 
 async function materializeCodexAgentWorkspace(input: {
-  checkoutRunner: CodexAgentCheckoutRunner
+  checkoutRunner: WorkspaceCheckoutRunner
   leaseRef: string
   state: PylonLocalState
   task: CodexAgentTaskPayload
 }) {
-  const workspaceRef = stableRef("workspace.pylon.codex_agent_task", input.leaseRef)
-  const workspace = join(input.state.paths.cache, "codex-agent-tasks", workspaceRef)
-
   if (input.task.workspace !== undefined) {
-    await mkdir(join(input.state.paths.cache, "codex-agent-tasks"), { recursive: true })
-    await input.checkoutRunner(workspace, input.task.workspace)
+    const materialized = await materializeGitCheckoutWorkspace({
+      cacheRoot: join(input.state.paths.cache, "codex-agent-tasks"),
+      checkout: input.task.workspace,
+      checkoutRunner: input.checkoutRunner,
+      leaseRef: input.leaseRef,
+      refPrefix: "workspace.pylon.codex_agent_task",
+    })
     return {
       acceptanceResultRef: "git_checkout_verified",
-      artifactSourceRef: `${input.task.workspace.repository.fullName}:${input.task.workspace.repository.commitSha}`,
+      artifactSourceRef: materialized.sourceRef,
       instructions: [
         "You are working in a bounded public repository checkout.",
         `Task objective: ${input.task.objectiveSummary ?? "complete the referenced Autopilot task"}.`,
@@ -311,11 +315,13 @@ async function materializeCodexAgentWorkspace(input: {
         `Run the verification command ref ${input.task.workspace.verificationCommand.commandRef} before finishing.`,
       ].join(" "),
       verificationArgs: input.task.workspace.verificationCommand.args,
-      workspace,
-      workspaceRef,
+      workspace: materialized.workingDirectory,
+      workspaceRef: materialized.workspaceRef,
     }
   }
 
+  const workspaceRef = stableRef("workspace.pylon.codex_agent_task", input.leaseRef)
+  const workspace = join(input.state.paths.cache, "codex-agent-tasks", workspaceRef)
   const fixtureRef = input.task.fixtureRef ?? CODEX_AGENT_SUM_REPAIR_FIXTURE_REF
   const fixture = CODEX_AGENT_FIXTURES[fixtureRef] ?? CODEX_AGENT_FIXTURES[CODEX_AGENT_SUM_REPAIR_FIXTURE_REF]
   await mkdir(workspace, { recursive: true })
@@ -402,7 +408,7 @@ export async function executeCodexAgentAssignment(
   let materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
   try {
     materialized = await materializeCodexAgentWorkspace({
-      checkoutRunner: options.checkoutRunner ?? defaultClaudeAgentCheckoutRunner,
+      checkoutRunner: options.checkoutRunner ?? defaultGitCheckoutRunner,
       leaseRef: lease.leaseRef,
       state,
       task,

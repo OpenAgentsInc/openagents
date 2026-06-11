@@ -333,10 +333,12 @@ projected.
 
 1. Done: #4792 closed on 2026-06-11 with `codex_agent_task` consuming the
    existing `git_checkout` workspace contract end to end, receipt-backed.
-2. Extract the shared validator and checkout runner from
-   `apps/pylon/src/claude-agent-executor.ts` into an adapter-neutral Pylon
-   workspace materializer module that both executors consume, with the
-   `MaterializedWorkspace` return shape above and no behavior change.
+2. Done (#4798): the shared validator and checkout runner now live in the
+   adapter-neutral `apps/pylon/src/workspace-materializer.ts`, consumed by
+   both executors, with the `MaterializedWorkspace` return shape above, a
+   cache-root-guarded cleanup primitive, and no behavior change (refs,
+   directories, and closeouts unchanged; full Pylon suite and both CI-safe
+   smokes green).
 3. Add native shared-cache `git worktree` support behind that service, with
    the bare-repo cache, retention policy, and cleanup receipts described in
    the architecture section.

@@ -198,8 +198,9 @@ The API path is B2's (#4756) exactly: `POST /api/autopilot/work` with
 a `git_checkout` task → own-Pylon placement → the synthesizer picks
 the work class per the policy above → durable `codex_agent_task`
 assignment whose `codingAssignment.codex` payload rides the **same**
-`workspace` contract (shared validator and checkout runner imported
-from the Claude executor — never forked) → own-Pylon pickup →
+`workspace` contract (shared validator and checkout runner owned by
+the adapter-neutral `workspace-materializer` module since #4798 —
+never forked) → own-Pylon pickup →
 `executeCodexAgentAssignment` → independent verification → ref-only
 closeout → delivered → review.
 
