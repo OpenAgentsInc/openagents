@@ -273,8 +273,14 @@ The runtime kernel must preserve existing OpenAgents projection discipline:
    fields. No HTTP route was added in this slice, so there was no OpenAPI
    surface to register.
 8. Add workroom/TUI status views that read projections rather than raw adapter
-   logs.
+   logs. Done in RK5 (#4809): `packages/agent-runtime-schema` now exports a
+   shared surface-status presenter, the Worker workroom helper and Pylon TUI
+   store both derive rows from kernel projections, and neither surface needs
+   adapter transcripts.
 9. Add cancellation, permission-denial, budget-stop, and adapter-failure smokes.
+   Done in RK5 (#4809): the smoke test drives the real adapter event streams,
+   rebuilds the Worker public projection, feeds the exact projection into the
+   TUI store, and asserts equal public-safe rows for all four failure paths.
 
 ## Acceptance Criteria
 
@@ -293,12 +299,15 @@ The first complete slice is done when:
 - The native Effect AI loop can run the same fixture contract under a test
   provider layer.
 
+As of RK5 (#4809), the first complete slice above is implemented and tested.
+
 ## Open Questions
 
 - Should `packages/agent-runtime-schema` be schema-only permanently, or should
   execution helpers move there after the contract stabilizes?
-- Should the worker store full private runtime events, public-safe projections
-  only, or both with an explicit visibility split?
+- The worker now stores events with an explicit visibility split and rebuilds
+  public projections only from public-visible events. A durable private-event
+  storage backend remains a later product/storage decision.
 - Should AI SDK compatibility be implemented in the first slice or deferred
   until a provider/agent needs it?
 - Should Hermes enter as a first-class adapter kind now, or remain reserved

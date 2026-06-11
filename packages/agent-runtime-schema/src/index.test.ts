@@ -10,9 +10,11 @@ import {
   assertAgentRuntimeEventLogSafe,
   assertAgentRuntimePublicEventSafe,
   assertAgentRuntimeRunStateTransition,
+  agentRuntimeSurfaceStatusHasUnsafeMaterial,
   decodeAgentRuntimeEvent,
   decodeAgentRuntimeEventLog,
   decodeAgentRuntimeRun,
+  projectAgentRuntimeSurfaceStatus,
 } from "./index.js"
 import { agentRuntimeFixtureEventLogs } from "./fixtures.js"
 
@@ -129,5 +131,36 @@ describe("@openagents/agent-runtime-schema", () => {
     expect(schemas).not.toContain("ai-sdk")
     expect(schemas).not.toContain("providerEvent")
     expect(schemas).not.toContain("sdkMessage")
+  })
+
+  test("projects one public-safe status row for workroom and TUI surfaces", () => {
+    const row = projectAgentRuntimeSurfaceStatus({
+      runId: "run.public.schema_test",
+      state: "failed",
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      eventCount: 7,
+      artifactRefs: ["artifact.public.schema_test.patch"],
+      blockerRefs: ["blocker.agent_runtime.test_fixture.failed"],
+      latestEventId: "event.public.schema_test.7",
+      staleness: {
+        maxStalenessSeconds: 0,
+        transitionRefs: ["agent_runtime_event_ingested"],
+      },
+    })
+
+    expect(row).toMatchObject({
+      runId: "run.public.schema_test",
+      status: "failed",
+      label: "Failed",
+      eventCount: 7,
+      freshness: {
+        generatedAt: "2026-06-11T00:00:00.000Z",
+        maxStalenessSeconds: 0,
+        transitionRefs: ["agent_runtime_event_ingested"],
+      },
+      verificationRefs: ["artifact.public.schema_test.patch"],
+      reviewActionRefs: ["review.public.agent_runtime.blocker.agent_runtime.test_fixture.failed"],
+    })
+    expect(agentRuntimeSurfaceStatusHasUnsafeMaterial(row)).toBe(false)
   })
 })

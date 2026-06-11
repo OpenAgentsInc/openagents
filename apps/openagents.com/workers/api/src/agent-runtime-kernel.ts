@@ -1,8 +1,10 @@
 import {
   assertAgentRuntimePublicEventSafe,
   decodeAgentRuntimeEvent,
+  projectAgentRuntimeSurfaceStatus,
   type AgentRuntimeEvent as AgentRuntimeEventShape,
   type AgentRuntimeRunId,
+  type AgentRuntimeSurfaceStatusRow,
 } from '@openagents/agent-runtime-schema'
 import { Schema as S } from 'effect'
 
@@ -197,3 +199,24 @@ export const agentRuntimeProjectionHasPrivateMaterial = (
   projection: AgentRuntimePublicRunProjection,
 ): boolean => /raw[_-]?(prompt|log|provider|payload)|\/Users\/|\/home\/|secret|bearer|sk-[a-z0-9]|provider[_-]?payload/i
   .test(JSON.stringify(projection))
+
+export const projectAgentRuntimeWorkroomStatus = (
+  projection: AgentRuntimePublicRunProjection,
+): AgentRuntimeSurfaceStatusRow =>
+  projectAgentRuntimeSurfaceStatus(
+    {
+      runId: projection.runId,
+      state: projection.state,
+      generatedAt: projection.generatedAt,
+      eventCount: projection.eventCount,
+      artifactRefs: projection.artifactRefs,
+      blockerRefs: projection.blockerRefs,
+      ...(projection.latestEventId === undefined
+        ? {}
+        : { latestEventId: projection.latestEventId }),
+      staleness: {
+        maxStalenessSeconds: projection.staleness.maxStalenessSeconds,
+        transitionRefs: projection.staleness.rebuildsOn,
+      },
+    },
+  )

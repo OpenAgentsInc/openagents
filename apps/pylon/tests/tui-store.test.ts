@@ -3,6 +3,7 @@ import {
   appendChatFeedItem,
   appendFeedText,
   appendRuntimeLogEntry,
+  agentRuntimeStatusRows,
   collapseFeedLine,
   computeFeedWindow,
   feedLineCount,
@@ -12,6 +13,7 @@ import {
   scrollFeedBy,
   feedScrollOffset,
   registerFeedViewport,
+  setAgentRuntimeSurfaceProjections,
   setWalletState,
   streamingTails,
   visibleFeedLines,
@@ -110,5 +112,41 @@ describe("tui view store (virtualized feed)", () => {
   test("wallet signal reflects the latest set", () => {
     setWalletState({ daemonOnline: true, balanceSats: 7, readiness: "receive-ready" })
     expect(walletState().balanceSats).toBe(7)
+  })
+
+  test("agent runtime rows are derived from kernel projections only", () => {
+    setAgentRuntimeSurfaceProjections([
+      {
+        runId: "run.public.tui.rk5",
+        state: "cancelled",
+        generatedAt: "2026-06-11T15:00:00.000Z",
+        eventCount: 2,
+        artifactRefs: [],
+        blockerRefs: ["blocker.agent_runtime.test_fixture.cancelled"],
+        staleness: {
+          maxStalenessSeconds: 0,
+          transitionRefs: ["agent_runtime_event_ingested"],
+        },
+      },
+    ])
+
+    expect(agentRuntimeStatusRows()).toEqual([
+      {
+        runId: "run.public.tui.rk5",
+        status: "cancelled",
+        label: "Cancelled",
+        generatedAt: "2026-06-11T15:00:00.000Z",
+        eventCount: 2,
+        artifactRefs: [],
+        blockerRefs: ["blocker.agent_runtime.test_fixture.cancelled"],
+        freshness: {
+          generatedAt: "2026-06-11T15:00:00.000Z",
+          maxStalenessSeconds: 0,
+          transitionRefs: ["agent_runtime_event_ingested"],
+        },
+        verificationRefs: [],
+        reviewActionRefs: ["review.public.agent_runtime.blocker.agent_runtime.test_fixture.cancelled"],
+      },
+    ])
   })
 })

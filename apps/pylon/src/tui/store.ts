@@ -8,6 +8,11 @@
 import { createSignal } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import {
+  projectAgentRuntimeSurfaceStatus,
+  type AgentRuntimeSurfaceProjection,
+  type AgentRuntimeSurfaceStatusRow,
+} from "@openagents/agent-runtime-schema"
+import {
   formatLogTimestamp,
   initialOperatorPaneState,
   initialTelemetryPaneState,
@@ -215,6 +220,14 @@ export type AssignmentRow = {
 export const [assignmentRows, setAssignmentRows] = createSignal<AssignmentRow[]>([])
 export const [assignmentsStatus, setAssignmentsStatus] = createSignal<string>("not refreshed yet")
 
+export const [agentRuntimeStatusRows, setAgentRuntimeStatusRows] = createSignal<AgentRuntimeSurfaceStatusRow[]>([])
+
+export function setAgentRuntimeSurfaceProjections(
+  projections: ReadonlyArray<AgentRuntimeSurfaceProjection>,
+): void {
+  setAgentRuntimeStatusRows(projections.map(projectAgentRuntimeSurfaceStatus))
+}
+
 // Wallet balance history: appended by the bridge whenever the balance
 // changes; rendered by the wallet surface.
 export type BalancePoint = { at: string; sats: number | null }
@@ -238,5 +251,6 @@ export function resetSurfaceState(): void {
   setActiveRoute("dashboard")
   setAssignmentRows([])
   setAssignmentsStatus("not refreshed yet")
+  setAgentRuntimeStatusRows([])
   setBalanceHistory([])
 }

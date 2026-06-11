@@ -7,6 +7,7 @@ import {
   agentRuntimeProjectionHasPrivateMaterial,
   ingestAgentRuntimeEvents,
   projectPublicAgentRuntimeRun,
+  projectAgentRuntimeWorkroomStatus,
 } from './agent-runtime-kernel'
 
 const at = '2026-06-11T14:00:00.000Z'
@@ -169,5 +170,45 @@ describe('Agent Runtime Kernel worker ingestion (RK4)', () => {
       projectedVisibility: 'public',
     })
     expect(agentRuntimeProjectionHasPrivateMaterial(projection)).toBe(false)
+  })
+
+  test('projects the web workroom status row from the same public run projection', async () => {
+    const repository = new MemoryAgentRuntimeEventRepository()
+    await ingestAgentRuntimeEvents(repository, [
+      event('run.public.workroom', 1, 'run.started'),
+      event('run.public.workroom', 2, 'run.interrupted', {
+        blockerRefs: ['blocker.agent_runtime.openagents_native.budget_stop'],
+      }),
+      event('run.public.workroom', 3, 'run.failed', {
+        blockerRefs: ['blocker.agent_runtime.openagents_native.budget_stop'],
+      }),
+    ])
+
+    const projection = await projectPublicAgentRuntimeRun(
+      repository,
+      'run.public.workroom',
+      at,
+    )
+    const row = projectAgentRuntimeWorkroomStatus(projection)
+
+    expect(row).toMatchObject({
+      runId: 'run.public.workroom',
+      status: 'failed',
+      label: 'Failed',
+      generatedAt: at,
+      eventCount: 3,
+      freshness: {
+        generatedAt: at,
+        maxStalenessSeconds: 0,
+        transitionRefs: [
+          'agent_runtime_event_ingested',
+          'agent_runtime_run_state_transition',
+        ],
+      },
+      blockerRefs: ['blocker.agent_runtime.openagents_native.budget_stop'],
+      reviewActionRefs: [
+        'review.public.agent_runtime.blocker.agent_runtime.openagents_native.budget_stop',
+      ],
+    })
   })
 })

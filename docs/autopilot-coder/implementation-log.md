@@ -1182,3 +1182,33 @@ OpenAPI note:
 - RK4 did not add an HTTP route in this slice, so there was no new served
   OpenAPI path to register. The ingestion/projection module is route-ready and
   remains adapter-agnostic.
+
+## RK5 / Issue #4809: Projection-Backed Status Surfaces And Failure Smokes
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4809`
+
+Status: complete for the shared workroom/TUI projection-presenter slice.
+
+Implemented:
+
+- Added a shared `projectAgentRuntimeSurfaceStatus` presenter in
+  `packages/agent-runtime-schema` so web workroom and Pylon TUI status rows
+  derive from the same kernel projection fields.
+- Added Worker `projectAgentRuntimeWorkroomStatus` over the RK4 public run
+  projection, carrying `generatedAt`, staleness, event count, artifact refs,
+  blocker refs, review refs, and verification refs without raw adapter logs.
+- Added Pylon TUI store state for agent-runtime status rows populated only from
+  projections, not adapter transcripts.
+- Added RK5 smokes for cancellation, `tool.denied`, budget stop, and adapter
+  failure. Each smoke drives real adapter event streams, rebuilds the Worker
+  public projection, feeds that exact projection into the TUI store, and
+  asserts identical public-safe status rows.
+- Verified the decision-queue-ready tool denial event carries invocation id,
+  tool ref, status, and blocker refs without starting or completing the tool.
+
+Verification:
+
+- `bun run --cwd apps/pylon test tests/agent-runtime-surface-smokes.test.ts tests/tui-store.test.ts tests/openagents-native-runtime.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api test src/agent-runtime-kernel.test.ts src/public-projection-staleness.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
+- `bun run --cwd packages/agent-runtime-schema test`

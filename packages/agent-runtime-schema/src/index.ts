@@ -270,6 +270,40 @@ export const AgentRuntimeEventLog = S.Struct({
 })
 export type AgentRuntimeEventLog = typeof AgentRuntimeEventLog.Type
 
+export type AgentRuntimeSurfaceProjection = {
+  readonly runId: AgentRuntimeRunId
+  readonly state: Exclude<AgentRuntimeRunState, "pending">
+  readonly generatedAt: string
+  readonly eventCount: number
+  readonly artifactRefs: ReadonlyArray<string>
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly latestEventId?: string
+  readonly staleness?: {
+    readonly maxStalenessSeconds?: number
+    readonly rebuildsOn?: ReadonlyArray<string>
+    readonly transitionRefs?: ReadonlyArray<string>
+  }
+}
+
+export type AgentRuntimeSurfaceStatus = "running" | "attention" | "completed" | "failed" | "cancelled"
+
+export type AgentRuntimeSurfaceStatusRow = {
+  readonly runId: AgentRuntimeRunId
+  readonly status: AgentRuntimeSurfaceStatus
+  readonly label: string
+  readonly generatedAt: string
+  readonly eventCount: number
+  readonly artifactRefs: ReadonlyArray<string>
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly freshness: {
+    readonly generatedAt: string
+    readonly maxStalenessSeconds?: number
+    readonly transitionRefs: ReadonlyArray<string>
+  }
+  readonly verificationRefs: ReadonlyArray<string>
+  readonly reviewActionRefs: ReadonlyArray<string>
+}
+
 export const decodeAgentRuntimeRun = S.decodeUnknownSync(AgentRuntimeRun)
 export const decodeAgentRuntimeEvent = S.decodeUnknownSync(AgentRuntimeEvent)
 export const decodeAgentRuntimeEventLog = S.decodeUnknownSync(AgentRuntimeEventLog)
@@ -293,6 +327,58 @@ export function assertAgentRuntimeEventLogSafe(log: AgentRuntimeEventLog): Agent
     assertAgentRuntimePublicEventSafe(event)
   }
   return log
+}
+
+export function projectAgentRuntimeSurfaceStatus(
+  projection: AgentRuntimeSurfaceProjection,
+): AgentRuntimeSurfaceStatusRow {
+  const transitionRefs = projection.staleness?.transitionRefs ?? projection.staleness?.rebuildsOn ?? []
+  const status: AgentRuntimeSurfaceStatus =
+    projection.state === "completed"
+      ? "completed"
+      : projection.state === "cancelled"
+        ? "cancelled"
+        : projection.state === "failed"
+          ? "failed"
+          : projection.state === "paused" || projection.state === "interrupted"
+            ? "attention"
+            : "running"
+
+  const label =
+    status === "completed"
+      ? "Completed"
+      : status === "cancelled"
+        ? "Cancelled"
+        : status === "failed"
+          ? "Failed"
+          : status === "attention"
+            ? "Needs attention"
+            : "Running"
+
+  return {
+    runId: projection.runId,
+    status,
+    label,
+    generatedAt: projection.generatedAt,
+    eventCount: projection.eventCount,
+    artifactRefs: [...projection.artifactRefs],
+    blockerRefs: [...projection.blockerRefs],
+    freshness: {
+      generatedAt: projection.generatedAt,
+      ...(projection.staleness?.maxStalenessSeconds === undefined
+        ? {}
+        : { maxStalenessSeconds: projection.staleness.maxStalenessSeconds }),
+      transitionRefs: [...transitionRefs],
+    },
+    verificationRefs: projection.artifactRefs.filter(ref =>
+      /^(artifact|proof|result|test)\.public\./.test(ref),
+    ),
+    reviewActionRefs: projection.blockerRefs.map(ref => `review.public.agent_runtime.${ref}`),
+  }
+}
+
+export function agentRuntimeSurfaceStatusHasUnsafeMaterial(row: AgentRuntimeSurfaceStatusRow): boolean {
+  return unsafePublicMaterialPattern.test(JSON.stringify(row))
 }
 
 const terminalRunStates: ReadonlySet<AgentRuntimeRunState> = new Set([
