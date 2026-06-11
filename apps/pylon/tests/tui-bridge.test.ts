@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { logMessage, makePylonNodeRuntime, setWalletStatus } from "../src/node/runtime"
 import { attachRuntimeToView } from "../src/tui/bridge"
-import { feedItems, resetViewState, walletState } from "../src/tui/store"
+import { feedLineCount, resetViewState, visibleFeedLines, walletState } from "../src/tui/store"
 
 describe("tui bridge", () => {
   beforeEach(() => {
@@ -17,14 +17,14 @@ describe("tui bridge", () => {
           // Logged before attach: must be replayed.
           yield* logMessage(runtime, "info", "before attach")
           yield* attachRuntimeToView(runtime, { verbose: false, batchWindowMs: 1 })
-          expect(feedItems.length).toBe(1)
-          expect(feedItems[0]?.markdown).toContain("before attach")
+          expect(feedLineCount()).toBe(1)
+          expect(visibleFeedLines(0, 5)[0]?.text).toContain("before attach")
           // Logged after attach: must arrive via the batched event tail.
           yield* logMessage(runtime, "info", "after attach")
           yield* logMessage(runtime, "verbose", "hidden chatter")
           yield* Effect.sleep("80 millis")
-          expect(feedItems.length).toBe(2)
-          expect(feedItems[1]?.markdown).toContain("after attach")
+          expect(feedLineCount()).toBe(2)
+          expect(visibleFeedLines(0, 5)[1]?.text).toContain("after attach")
         }),
       ),
     )
@@ -56,10 +56,10 @@ describe("tui bridge", () => {
         }),
       ),
     )
-    const before = feedItems.length
+    const before = feedLineCount()
     // Scope closed: further runtime logs must not reach the view store.
     await Effect.runPromise(logMessage(runtime, "info", "post-detach"))
     await new Promise((resolve) => setTimeout(resolve, 60))
-    expect(feedItems.length).toBe(before)
+    expect(feedLineCount()).toBe(before)
   })
 })

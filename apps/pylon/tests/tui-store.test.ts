@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import {
   appendChatFeedItem,
+  appendFeedText,
   appendRuntimeLogEntry,
-  feedItems,
-  maxFeedItems,
+  collapseFeedLine,
+  computeFeedWindow,
+  feedLineCount,
+  maxFeedLineChars,
+  maxFeedLines,
   resetViewState,
+  scrollFeedBy,
+  feedScrollOffset,
+  registerFeedViewport,
   setWalletState,
+  streamingTails,
+  visibleFeedLines,
   walletState,
 } from "../src/tui/store"
 
@@ -15,40 +24,87 @@ const entry = (level: "error" | "info" | "verbose", message: string) => ({
   message,
 })
 
-describe("tui view store", () => {
+describe("tui view store (virtualized feed)", () => {
   beforeEach(() => {
     resetViewState()
+    registerFeedViewport(() => 10)
   })
 
   test("verbose log entries are filtered out unless verbose mode is on", () => {
     appendRuntimeLogEntry(entry("verbose", "chatter"), false)
     appendRuntimeLogEntry(entry("info", "ready"), false)
     appendRuntimeLogEntry(entry("error", "boom"), false)
-    expect(feedItems.length).toBe(2)
-    expect(feedItems[0]?.markdown).toContain("ready")
-    expect(feedItems[1]?.tone).toBe("logError")
+    expect(feedLineCount()).toBe(2)
+    const lines = visibleFeedLines(0, 10)
+    expect(lines[0]?.text).toContain("ready")
+    expect(lines[1]?.tone).toBe("logError")
 
     resetViewState()
     appendRuntimeLogEntry(entry("verbose", "chatter"), true)
-    expect(feedItems.length).toBe(1)
+    expect(feedLineCount()).toBe(1)
   })
 
-  test("feed is capped at maxFeedItems", () => {
-    for (let i = 0; i < maxFeedItems + 25; i += 1) {
-      appendRuntimeLogEntry(entry("info", `line ${i}`), false)
+  test("line buffer is capped at maxFeedLines with flat growth", () => {
+    for (let i = 0; i < maxFeedLines + 50; i += 1) {
+      appendFeedText("log", `line ${i}`)
     }
-    expect(feedItems.length).toBe(maxFeedItems)
-    expect(feedItems[feedItems.length - 1]?.markdown).toContain(`line ${maxFeedItems + 24}`)
+    expect(feedLineCount()).toBe(maxFeedLines)
+    const tail = visibleFeedLines(0, 1)
+    expect(tail[0]?.text).toBe(`line ${maxFeedLines + 49}`)
   })
 
-  test("chat feed items stream updates in place and finish", () => {
+  test("100k appends stay fast and the visible window stays viewport-sized", () => {
+    const startedAt = performance.now()
+    for (let i = 0; i < 100_000; i += 1) {
+      appendFeedText("log", `entry ${i}`)
+    }
+    const elapsed = performance.now() - startedAt
+    expect(elapsed).toBeLessThan(5_000)
+    expect(visibleFeedLines(0, 40).length).toBe(40)
+    expect(visibleFeedLines(50_000, 40).length).toBe(40)
+  })
+
+  test("window math clamps offsets and slices from the bottom", () => {
+    expect(computeFeedWindow(100, 0, 10)).toEqual({ start: 90, end: 100 })
+    expect(computeFeedWindow(100, 95, 10)).toEqual({ start: 0, end: 10 })
+    expect(computeFeedWindow(5, 0, 10)).toEqual({ start: 0, end: 5 })
+  })
+
+  test("long lines are collapsed with an elision marker", () => {
+    const long = "x".repeat(maxFeedLineChars + 120)
+    expect(collapseFeedLine(long)).toContain("...(+120 chars)")
+    appendFeedText("log", long)
+    expect(visibleFeedLines(0, 5)[0]?.text.length).toBeLessThan(maxFeedLineChars + 40)
+  })
+
+  test("scrollFeedBy moves the window and sticky-bottom is offset zero", () => {
+    for (let i = 0; i < 100; i += 1) appendFeedText("log", `l${i}`)
+    expect(feedScrollOffset()).toBe(0)
+    scrollFeedBy(-5)
+    expect(feedScrollOffset()).toBe(5)
+    scrollFeedBy(1, "content")
+    expect(feedScrollOffset()).toBe(0)
+    scrollFeedBy(-1, "content")
+    expect(feedScrollOffset()).toBe(90)
+  })
+
+  test("streaming chat items update a live tail and flatten on finish", () => {
     const handle = appendChatFeedItem("**OpenCode**: thinking", { streaming: true })
-    expect(feedItems.length).toBe(1)
-    expect(feedItems[0]?.streaming).toBe(true)
+    expect(streamingTails.length).toBe(1)
     handle.update("**OpenCode**: partial answer")
-    expect(feedItems[0]?.markdown).toContain("partial answer")
+    expect(streamingTails[0]?.markdown).toContain("partial answer")
+    const linesBefore = feedLineCount()
     handle.finish()
-    expect(feedItems[0]?.streaming).toBe(false)
+    expect(streamingTails.length).toBe(0)
+    expect(feedLineCount()).toBeGreaterThan(linesBefore)
+    const tail = visibleFeedLines(0, 3)
+    expect(tail.some((line) => line.text.includes("OpenCode: partial answer"))).toBe(true)
+  })
+
+  test("non-streaming chat items append directly as flattened lines", () => {
+    appendChatFeedItem("**User**: hello\nworld")
+    expect(feedLineCount()).toBe(2)
+    expect(visibleFeedLines(0, 5)[0]?.text).toBe("User: hello")
   })
 
   test("wallet signal reflects the latest set", () => {

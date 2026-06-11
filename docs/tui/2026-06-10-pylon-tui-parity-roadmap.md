@@ -18,7 +18,12 @@ preload in dev/tests and a one-shot `--preload` re-exec for the packaged
 bin. Phase 2 shipped (#4738): @opentui/keymap command registry, dialog
 stack (alert/confirm/prompt/select + toasts), ctrl+k palette, f1 help,
 footer hints, f2 verbose toggle, confirm-gated wallet commands, and
-user keybinds via `keybinds.json`.
+user keybinds via `keybinds.json`. Phase 3 shipped (#4739): the feed is
+a virtualized 100k-line buffer (Textual Line-API style — only the visible
+window renders), long lines collapse with elision, streaming responses
+render as live markdown tails that flatten on finish, and every log entry
+persists to `feed-log.jsonl` in the Pylon home dir (size-capped rotation)
+with the previous session's tail restored at startup.
 
 ## Goal and non-goals
 
