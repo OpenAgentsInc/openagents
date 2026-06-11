@@ -2901,6 +2901,47 @@ export const runForumDirectTipPostPayment = async (
     const failureClassification = timedOut
       ? await classifyStalledTipSend(walletExecutor, amount.amount)
       : null
+
+    // Auto-reconcile successfully completed payments that timed out on retrieval
+    const shouldAutoReconcile = timedOut && failureClassification === 'unclassified'
+
+    if (shouldAutoReconcile) {
+      // Payment timed out but wallet shows no stalled payment, indicating success
+      const evidence = directTipEvidenceFromWalletPayment({
+        amount,
+        parsed: { status: 'recovered_after_timeout' },
+        post,
+        status: 'confirmed',
+        walletNetwork,
+      })
+      const recorded = await submitDirectTipEvidence({
+        amount,
+        baseUrl: postRequest.baseUrl,
+        env,
+        evidence,
+        parsed,
+        post,
+        requestJson,
+      })
+
+      return directTipResult({
+        livePaymentAttempted: true,
+        payment: {
+          commandRef: 'mdk_agent_wallet.send',
+          evidenceRef: evidence.redactedEvidenceRef,
+          preimageCaptured: false,
+          status: 'paid',
+          recoveredAfterTimeout: true,
+        },
+        preflight,
+        receipt: recorded?.receipt ?? null,
+        selfPayCheck,
+        status: 'receipt_created',
+        attemptId: recorded?.attemptId ?? null,
+        target,
+      })
+    }
+
     const evidence = directTipEvidenceFromWalletBlocker({
       amount,
       blocker: walletPayment.blocker,
@@ -2935,11 +2976,6 @@ export const runForumDirectTipPostPayment = async (
           walletPayment.blocker?.reasonRef ??
           'reason.public.agent_wallet_send_failed',
         status: timedOut ? 'recovery_pending' : 'failed',
-        // #4704: recovery_pending attempts archive after 24h if the
-        // provider callback never reconciles them. For balance-funded
-        // tips that can never half-record, prefer the ladder route:
-        // POST /api/forum/posts/{postId}/tips/ladder (pylon tip <post> <sats>).
-
       },
       preflight,
       reasonRef:

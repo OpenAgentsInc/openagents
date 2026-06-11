@@ -1896,4 +1896,300 @@ describe('forum tip failure classification and self-pay preflight', () => {
     expect(output).not.toContain(recipientOffer)
     expect(output).not.toContain(payerOffer)
   })
+
+  test('auto-reconciles timeout-recovered payment with unclassified status (payment succeeded)', async () => {
+    const recipientOffer = syntheticOffer([pathRecord(0x55)])
+    const payerOffer = syntheticOffer([pathRecord(0x66)])
+    const walletExecutor = vi.fn(async (commandSpec: any) => {
+      if (commandSpec.command === 'send') {
+        return { exitCode: 124, stdout: '', timedOut: true }
+      }
+
+      if (commandSpec.command === 'receive-bolt12') {
+        return { exitCode: 0, stdout: JSON.stringify({ offer: payerOffer }) }
+      }
+
+      if (commandSpec.command === 'payments') {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            payments: [],
+          }),
+        }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+    const requestJson = vi.fn(async (request: any) => {
+      if (request.path === '/api/forum/posts/post_recovered') {
+        return {
+          post: {
+            permalink: 'https://openagents.com/forum/t/topic_1#post-post_recovered',
+            postId: 'post_recovered',
+            tipRecipientReadiness: {
+              actorRef: 'actor.recipient',
+              directPayment: {
+                bolt12Offer: recipientOffer,
+                kind: 'bolt12_offer',
+                settlementAuthority: 'recipient_wallet_direct',
+              },
+              state: 'ready',
+              tippingAvailable: true,
+            },
+            tipStats: { tipCount: 0, totalPaidSats: 0, totalSettledSats: 0 },
+          },
+        }
+      }
+
+      if (request.path === '/api/forum/posts/post_recovered/direct-tips') {
+        return {
+          amount: { amount: 20, asset: 'sats' },
+          attemptId: '99999999-9999-4999-9999-999999999999',
+          idempotent: false,
+          payerActorRef: 'agent:payer',
+          paymentEvidence: request.body.paymentEvidence,
+          postId: 'post_recovered',
+          receipt: {
+            receiptRef: 'receipt.forum.direct_tip.recovered',
+            settlement: {
+              creatorReceivedSpendableValue: true,
+              label: 'Payment verified',
+              state: 'settled',
+            },
+          },
+          recipientActorRef: 'actor.recipient',
+          status: 'receipt_created',
+          targetPostPermalink:
+            'https://openagents.com/forum/t/topic_1#post-post_recovered',
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+
+    const output = await forumCli.runForumCli(
+      [
+        'tip-post',
+        '--post',
+        'post_recovered',
+        '--tip-amount',
+        '20',
+        '--approve-live-spend',
+      ],
+      { OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123' },
+      { requestJson, walletExecutor },
+    )
+    const body = JSON.parse(output)
+
+    expect(body).toMatchObject({
+      directTip: {
+        status: 'receipt_created',
+        payment: {
+          status: 'paid',
+          recoveredAfterTimeout: true,
+        },
+      },
+      status: 'success',
+    })
+    expect(output).not.toContain(recipientOffer)
+    expect(output).not.toContain(payerOffer)
+  })
+
+  test('returns recovery_pending on timeout with route_unresolved classification (payment failed)', async () => {
+    const recipientOffer = syntheticOffer([pathRecord(0x55)])
+    const payerOffer = syntheticOffer([pathRecord(0x66)])
+    const walletExecutor = vi.fn(async (commandSpec: any) => {
+      if (commandSpec.command === 'send') {
+        return { exitCode: 124, stdout: '', timedOut: true }
+      }
+
+      if (commandSpec.command === 'receive-bolt12') {
+        return { exitCode: 0, stdout: JSON.stringify({ offer: payerOffer }) }
+      }
+
+      if (commandSpec.command === 'payments') {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            payments: [
+              {
+                amountSats: 20,
+                direction: 'outbound',
+                paymentHash: 'abc123def456',
+                status: 'pending',
+                timestamp: 99,
+              },
+            ],
+          }),
+        }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+    const requestJson = vi.fn(async (request: any) => {
+      if (request.path === '/api/forum/posts/post_unresolved') {
+        return {
+          post: {
+            permalink: 'https://openagents.com/forum/t/topic_1#post-post_unresolved',
+            postId: 'post_unresolved',
+            tipRecipientReadiness: {
+              actorRef: 'actor.recipient',
+              directPayment: {
+                bolt12Offer: recipientOffer,
+                kind: 'bolt12_offer',
+                settlementAuthority: 'recipient_wallet_direct',
+              },
+              state: 'ready',
+              tippingAvailable: true,
+            },
+            tipStats: { tipCount: 0, totalPaidSats: 0, totalSettledSats: 0 },
+          },
+        }
+      }
+
+      if (request.path === '/api/forum/posts/post_unresolved/direct-tips') {
+        return {
+          amount: { amount: 20, asset: 'sats' },
+          attemptId: '77777777-7777-4777-7777-777777777777',
+          idempotent: false,
+          payerActorRef: 'agent:payer',
+          paymentEvidence: request.body.paymentEvidence,
+          postId: 'post_unresolved',
+          receipt: null,
+          recipientActorRef: 'actor.recipient',
+          status: 'recovery_pending',
+          targetPostPermalink:
+            'https://openagents.com/forum/t/topic_1#post-post_unresolved',
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+
+    const output = await forumCli.runForumCli(
+      [
+        'tip-post',
+        '--post',
+        'post_unresolved',
+        '--tip-amount',
+        '20',
+        '--approve-live-spend',
+      ],
+      { OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123' },
+      { requestJson, walletExecutor },
+    )
+    const body = JSON.parse(output)
+
+    expect(body).toMatchObject({
+      directTip: {
+        status: 'recovery_pending',
+        failureClassification: 'route_unresolved',
+        payment: {
+          status: 'recovery_pending',
+        },
+      },
+      status: 'recovery_pending',
+    })
+    expect(output).not.toContain(recipientOffer)
+    expect(output).not.toContain(payerOffer)
+  })
+
+  test('returns recovery_pending on timeout with no_invoice_fetched classification (payment failed)', async () => {
+    const recipientOffer = syntheticOffer([pathRecord(0x55)])
+    const payerOffer = syntheticOffer([pathRecord(0x66)])
+    const walletExecutor = vi.fn(async (commandSpec: any) => {
+      if (commandSpec.command === 'send') {
+        return { exitCode: 124, stdout: '', timedOut: true }
+      }
+
+      if (commandSpec.command === 'receive-bolt12') {
+        return { exitCode: 0, stdout: JSON.stringify({ offer: payerOffer }) }
+      }
+
+      if (commandSpec.command === 'payments') {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            payments: [
+              {
+                amountSats: 20,
+                direction: 'outbound',
+                paymentHash: null,
+                status: 'pending',
+                timestamp: 99,
+              },
+            ],
+          }),
+        }
+      }
+
+      return readyWalletExecutor()(commandSpec)
+    })
+    const requestJson = vi.fn(async (request: any) => {
+      if (request.path === '/api/forum/posts/post_no_invoice') {
+        return {
+          post: {
+            permalink: 'https://openagents.com/forum/t/topic_1#post-post_no_invoice',
+            postId: 'post_no_invoice',
+            tipRecipientReadiness: {
+              actorRef: 'actor.recipient',
+              directPayment: {
+                bolt12Offer: recipientOffer,
+                kind: 'bolt12_offer',
+                settlementAuthority: 'recipient_wallet_direct',
+              },
+              state: 'ready',
+              tippingAvailable: true,
+            },
+            tipStats: { tipCount: 0, totalPaidSats: 0, totalSettledSats: 0 },
+          },
+        }
+      }
+
+      if (request.path === '/api/forum/posts/post_no_invoice/direct-tips') {
+        return {
+          amount: { amount: 20, asset: 'sats' },
+          attemptId: '66666666-6666-4666-6666-666666666666',
+          idempotent: false,
+          payerActorRef: 'agent:payer',
+          paymentEvidence: request.body.paymentEvidence,
+          postId: 'post_no_invoice',
+          receipt: null,
+          recipientActorRef: 'actor.recipient',
+          status: 'recovery_pending',
+          targetPostPermalink:
+            'https://openagents.com/forum/t/topic_1#post-post_no_invoice',
+        }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    })
+
+    const output = await forumCli.runForumCli(
+      [
+        'tip-post',
+        '--post',
+        'post_no_invoice',
+        '--tip-amount',
+        '20',
+        '--approve-live-spend',
+      ],
+      { OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123' },
+      { requestJson, walletExecutor },
+    )
+    const body = JSON.parse(output)
+
+    expect(body).toMatchObject({
+      directTip: {
+        status: 'recovery_pending',
+        failureClassification: 'no_invoice_fetched',
+        payment: {
+          status: 'recovery_pending',
+        },
+      },
+      status: 'recovery_pending',
+    })
+    expect(output).not.toContain(recipientOffer)
+    expect(output).not.toContain(payerOffer)
+  })
 })
