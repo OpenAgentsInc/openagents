@@ -23,7 +23,13 @@ a virtualized 100k-line buffer (Textual Line-API style — only the visible
 window renders), long lines collapse with elision, streaming responses
 render as live markdown tails that flatten on finish, and every log entry
 persists to `feed-log.jsonl` in the Pylon home dir (size-capped rotation)
-with the previous session's tail restored at startup.
+with the previous session's tail restored at startup. Phase 4 shipped
+(#4740): `pylon node` runs node-core headless with a token-authenticated
+loopback control API (HTTP command endpoint + SSE event stream with a
+snapshot-on-connect), `pylon attach [url]` mirrors a running node in the
+full dashboard with 1s–30s reconnect backoff, wallet commands round-trip
+the control API node-side, and detaching never interrupts the node. The
+interactive dashboard serves the same API for second-terminal attach.
 
 ## Goal and non-goals
 

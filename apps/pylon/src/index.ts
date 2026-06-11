@@ -18,13 +18,16 @@ import {
   readMemories,
   resolveModelAdapter,
 } from "./agent-surface"
-import { Console, Deferred, Effect, SubscriptionRef } from "effect"
+import { Console, Deferred, Effect, PubSub, SubscriptionRef } from "effect"
 import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state"
 import {
+  applyRemoteEvent,
+  applyRemotePanes,
   forkLogPersistence,
   forkNodeServices,
   logMessage,
   makePylonNodeRuntime,
+  publishLogEntries,
   seedLogFeed,
   superviseLoop,
   type PylonNodeRuntime,
@@ -32,6 +35,14 @@ import {
 import { runOpencodeStream } from "./opencode-run"
 import { loadKeybindOverrides } from "./node/keybinds"
 import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist"
+import {
+  defaultControlPort,
+  ensureControlToken,
+  controlTokenPath,
+  startControlServer,
+  type ControlCommandActions,
+} from "./node/control-server"
+import { runControlClient, sendControlCommand } from "./node/control-client"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -153,6 +164,16 @@ async function ensureSolidRuntime(): Promise<void> {
     })
   }
   process.exit(await child.exited)
+}
+
+// Node-side wallet actions: the single execution path for money commands,
+// used by the local dashboard, the control server (attach mode), and the
+// headless node (issue #4740).
+const nodeWalletActions: ControlCommandActions = {
+  walletSend: (destinationRef, amountSats) => sendWithMdk(destinationRef, amountSats),
+  walletReceive: (amountSats) => receiveWithMdk(amountSats),
+  walletAdmitPayoutTarget: (kind, ref) =>
+    Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
 }
 
 // Builds the operator-pane text the telemetry service publishes. The wallet
@@ -350,6 +371,31 @@ const runPylonNode = Effect.gen(function* () {
   })
   yield* forkLogPersistence(runtime, feedWriter)
 
+  // Control server (issue #4740): a second terminal can attach to this
+  // running node. Port conflicts (another node already serving) are reported
+  // and non-fatal.
+  const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
+  const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const controlServer = yield* startControlServer(runtime, {
+    token: controlToken,
+    actions: nodeWalletActions,
+    port: controlPort,
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        yield* logMessage(runtime, "info", `[Control] Attach API unavailable: ${error.message}`)
+        return null
+      }),
+    ),
+  )
+  if (controlServer) {
+    yield* logMessage(
+      runtime,
+      "verbose",
+      `[Control] Attach API on ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
+    )
+  }
+
   // User keybind overrides (apps/pylon home keybinds.json, Effect-Schema
   // validated). Invalid files are reported and ignored.
   const keybinds = yield* Effect.promise(() => loadKeybindOverrides(bootstrapSummary.paths.home))
@@ -450,6 +496,174 @@ const runPylonNode = Effect.gen(function* () {
   // renderer/terminal finalizers.
   yield* Deferred.await(shutdown)
 })
+
+// Headless node-core (issue #4740): services + event stream + control API,
+// no TUI, no Solid. Logs print to stdout with the same verbosity rules.
+const runHeadlessNode = Effect.gen(function* () {
+  verboseMode = Bun.argv.includes("--verbose") || Bun.env.PYLON_VERBOSE === "1"
+  const runtime = yield* makePylonNodeRuntime
+  nodeRuntime = runtime
+
+  const shutdown = yield* Deferred.make<void>()
+  const requestShutdown = () => {
+    Effect.runFork(Deferred.succeed(shutdown, void 0))
+  }
+  process.once("SIGINT", requestShutdown)
+  process.once("SIGTERM", requestShutdown)
+
+  // Stdout logger: live events only (the persisted tail is for attach
+  // scrollback, not for replaying onto stdout).
+  const subscription = yield* PubSub.subscribe(runtime.events)
+  yield* Effect.forkScoped(
+    Effect.gen(function* () {
+      while (true) {
+        const event = yield* PubSub.take(subscription)
+        if (event.type === "log" && (event.level !== "verbose" || verboseMode)) {
+          process.stdout.write(`[${formatLogTimestamp(event.at)}] ${event.message}\n`)
+        }
+      }
+    }),
+  )
+
+  const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+  const persistedTail = yield* Effect.promise(() =>
+    readPersistedLogTail(bootstrapSummary.paths.home, 300).catch(() => []),
+  )
+  if (persistedTail.length > 0) {
+    yield* seedLogFeed(runtime, persistedTail)
+  }
+  const feedWriter = createFeedLogWriter(bootstrapSummary.paths.home, {
+    onError: (message) => logToUi(`[FeedLog] Persistence disabled: ${message}`, "info"),
+  })
+  yield* forkLogPersistence(runtime, feedWriter)
+
+  const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
+  const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const controlServer = yield* startControlServer(runtime, {
+    token: controlToken,
+    actions: nodeWalletActions,
+    port: controlPort,
+  })
+  yield* logMessage(
+    runtime,
+    "info",
+    `Pylon node-core running headless. Attach with: pylon attach ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
+  )
+
+  const localState = yield* Effect.tryPromise({
+    try: () => ensurePylonLocalState(bootstrapSummary),
+    catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
+  })
+  yield* logMessage(runtime, "info", `[Identity] Pylon Nostr npub: ${localState.identity.npub}`)
+
+  const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
+  yield* forkNodeServices(runtime, {
+    wallet: { classify: () => classifyMdkWallet() },
+    telemetry: {
+      discoverInventory: () => discoverHostInventory(),
+      inspectPsionic: async () => {
+        const connector = await inspectPsionicConnector({ env: Bun.env })
+        return { phase: connector.phase }
+      },
+      makeOperatorText: operatorTextFromInventory,
+    },
+    heartbeat: {
+      baseUrl: presenceBaseUrl,
+      register: () => registerPylon(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
+      heartbeat: () => sendHeartbeat(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
+    },
+  })
+  yield* superviseLoop(
+    runtime,
+    "NIP-90",
+    Effect.tryPromise({
+      try: () =>
+        startNip90ProviderLoop(bootstrapSummary, {
+          log: (message) => logToUi(message, classifyServiceLogLevel(message)),
+        }).then(() => undefined),
+      catch: (error) => new Error(`NIP-90 provider loop failed: ${String(error)}`),
+    }),
+  )
+
+  yield* Deferred.await(shutdown)
+})
+
+// Attached TUI (issue #4740): full dashboard, but the local runtime mirrors
+// a remote node over SSE and money commands round-trip the control API.
+const runPylonAttach = (baseUrl: string, token: string) =>
+  Effect.gen(function* () {
+    verboseMode = Bun.argv.includes("--verbose") || Bun.env.PYLON_VERBOSE === "1"
+    const runtime = yield* makePylonNodeRuntime
+    nodeRuntime = runtime
+
+    const shutdown = yield* Deferred.make<void>()
+    const requestShutdown = () => {
+      Effect.runFork(Deferred.succeed(shutdown, void 0))
+    }
+    process.once("SIGINT", requestShutdown)
+    process.once("SIGTERM", requestShutdown)
+
+    const ui = yield* Effect.tryPromise({
+      try: () => import("./tui/app"),
+      catch: (error) => new Error(`Failed to load dashboard view: ${String(error)}`),
+    })
+    dashboardUi = ui
+
+    const dashboard = yield* Effect.tryPromise({
+      try: () =>
+        ui.startDashboard({
+          onRequestShutdown: requestShutdown,
+          verbose: verboseMode,
+          onVerboseChange: (verbose) => {
+            verboseMode = verbose
+          },
+          walletActions: {
+            send: (destinationRef, amountSats) =>
+              sendControlCommand(baseUrl, token, { type: "wallet.send", destinationRef, amountSats }),
+            receive: (amountSats) =>
+              sendControlCommand(baseUrl, token, { type: "wallet.receive", amountSats }),
+            admitPayoutTarget: (kind, ref) =>
+              sendControlCommand(baseUrl, token, { type: "wallet.admit-payout-target", kind, ref }),
+          },
+        }),
+      catch: (error) => new Error(`Failed to initialize OpenTUI renderer: ${String(error)}`),
+    })
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        dashboard.destroy()
+        dashboardUi = null
+      }),
+    )
+
+    yield* ui.attachRuntimeToView(runtime, { verbose: verboseMode })
+    yield* logMessage(runtime, "info", `Attaching to Pylon node at ${baseUrl}...`)
+
+    let snapshotSeen = false
+    yield* runControlClient(baseUrl, token, {
+      onSnapshot: (snapshot) => {
+        Effect.runFork(
+          Effect.gen(function* () {
+            yield* applyRemotePanes(runtime, snapshot)
+            if (!snapshotSeen) {
+              snapshotSeen = true
+              yield* publishLogEntries(runtime, snapshot.logFeed)
+              yield* logMessage(runtime, "info", `Attached. Restored ${snapshot.logFeed.length} log lines from the node.`)
+            } else {
+              yield* logMessage(runtime, "info", "Reconnected to node.")
+            }
+          }),
+        )
+      },
+      onEvent: (event) => {
+        Effect.runFork(applyRemoteEvent(runtime, event))
+      },
+      onStatus: (status, detail) => {
+        if (status === "reconnecting") logToUi(`[Attach] ${detail ?? "reconnecting"}`, "info")
+      },
+    })
+
+    yield* Deferred.await(shutdown)
+  })
 
 const runtimeCommandNamespaces = new Set([
   "apple-fm",
@@ -1174,6 +1388,42 @@ async function main() {
       process.exitCode = 1
       return
     }
+  }
+
+  if (args[0] === "node") {
+    await Effect.runPromise(
+      Effect.scoped(runHeadlessNode).pipe(
+        Effect.catch((error) => Console.error(`Pylon node-core crashed: ${error.message}`)),
+      ),
+    )
+    process.exit(0)
+  }
+
+  if (args[0] === "attach") {
+    const attachArgs = args.slice(1).filter((arg) => !arg.startsWith("--"))
+    const options = parseKeyValueOptions(args.slice(1).filter((arg, index, list) => {
+      if (arg.startsWith("--")) return true
+      return index > 0 && (list[index - 1] ?? "").startsWith("--")
+    }))
+    const baseUrl = (attachArgs[0] ?? `http://127.0.0.1:${Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort}`).replace(/\/$/, "")
+    let token = options.token ?? Bun.env.PYLON_CONTROL_TOKEN
+    if (!token) {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const tokenFile = Bun.file(controlTokenPath(summary.paths.home))
+      token = (await tokenFile.exists()) ? (await tokenFile.text()).trim() : undefined
+    }
+    if (!token) {
+      process.stderr.write("pylon attach requires --token, PYLON_CONTROL_TOKEN, or a local control-token file\n")
+      process.exitCode = 1
+      return
+    }
+    await ensureSolidRuntime()
+    await Effect.runPromise(
+      Effect.scoped(runPylonAttach(baseUrl, token)).pipe(
+        Effect.catch((error) => Console.error(`Pylon attach failed: ${error.message}`)),
+      ),
+    )
+    process.exit(0)
   }
 
   if (args[0] === "runtime" || runtimeCommandNamespaces.has(args[0] ?? "")) {

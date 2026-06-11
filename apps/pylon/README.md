@@ -57,6 +57,19 @@ composer (bottom), and a one-line key-hint footer.
 - The composer submits with `meta+return` and streams OpenCode responses
   into the feed.
 
+### Headless node and attach
+
+- `pylon node` runs node-core headless: all services, durable feed log, and
+  a loopback control API (default port 4716, `PYLON_CONTROL_PORT` to
+  change) authenticated by the bearer token in `<pylon-home>/control-token`.
+- `pylon attach [url]` opens the dashboard as a client of a running node:
+  it restores the node's scrollback from the connection snapshot, follows
+  live events over SSE (reconnecting with 1s-30s backoff), and routes
+  wallet commands through the node's control API after the usual confirm
+  dialogs. Detaching (`ctrl+c`) never interrupts the node.
+- The interactive `pylon` dashboard also serves the control API, so a
+  second terminal can attach to it.
+
 ## Bootstrap And Status
 
 ```sh

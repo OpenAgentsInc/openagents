@@ -285,3 +285,52 @@ export const forkLogPersistence = (
       }),
     )
   })
+
+// --- Attach-mode mirroring (issue #4740) ------------------------------------
+// An attached TUI runs its own local PylonNodeRuntime as a mirror of the
+// remote node: snapshots set the pane refs, and remote events are re-applied
+// so the same view bridge renders them.
+
+export const applyRemotePanes = (
+  runtime: PylonNodeRuntime,
+  snapshot: { wallet: WalletPaneState; telemetry: TelemetryPaneState; operatorText: string },
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* SubscriptionRef.set(runtime.wallet, snapshot.wallet)
+    yield* SubscriptionRef.set(runtime.telemetry, snapshot.telemetry)
+    yield* SubscriptionRef.set(runtime.operator, { text: snapshot.operatorText })
+  })
+
+export const applyRemoteEvent = (
+  runtime: PylonNodeRuntime,
+  event: PylonEvent,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    switch (event.type) {
+      case "log": {
+        const entry: PylonLogEntry = { at: event.at, level: event.level, message: event.message }
+        yield* SubscriptionRef.update(runtime.logFeed, (entries) => appendLogEntry(entries, entry))
+        yield* PubSub.publish(runtime.events, event)
+        return
+      }
+      case "wallet":
+        yield* SubscriptionRef.set(runtime.wallet, event.wallet)
+        return
+      case "telemetry":
+        yield* SubscriptionRef.set(runtime.telemetry, event.telemetry)
+        return
+      case "operator":
+        yield* SubscriptionRef.set(runtime.operator, { text: event.text })
+        return
+    }
+  })
+
+export const publishLogEntries = (
+  runtime: PylonNodeRuntime,
+  entries: ReadonlyArray<PylonLogEntry>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    for (const entry of entries) {
+      yield* PubSub.publish(runtime.events, { type: "log", ...entry })
+    }
+  })
