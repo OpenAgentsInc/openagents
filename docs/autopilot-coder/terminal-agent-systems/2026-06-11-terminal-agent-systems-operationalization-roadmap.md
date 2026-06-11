@@ -67,6 +67,35 @@ subsystem audit that should be operationalized during the current #4786 sprint:
 The parent #4813 body carries the Pack A checklist. The #4786 epic has a
 matching Pack A addendum comment.
 
+## Timing Impact On Other Open Issues
+
+Pack A is an acceptance overlay, not a replacement ladder. It should change
+when a broader claim can close, not stop all other work.
+
+- **Do not pause unrelated open rungs.** M8 account-pool work, M11 repo/scope,
+  M12 team budgets, M13 provider review, A2-A4, and the post-MVP P-rungs can
+  continue when they do not depend on unattended execution, decision
+  notifications, proof smokes, or headless/API parity.
+- **Close product-surface rungs on their own scoped acceptance, but leave Pack
+  A follow-up issues open when the proof/supervision contract is not complete.**
+  For example, M6 and M7 can stay closed as product features while #4815,
+  #4816, #4817, #4820, #4822, or #4823 carry the remaining operational
+  hardening.
+- **Do not close MVP-gating proof or door-open issues until the relevant Pack A
+  children are satisfied.** M10 (#4768), M14 (#4772), and the proof side of A1
+  (#4773) should wait on the Pack A receipts they cite, especially #4814,
+  #4815, #4816, #4818, #4819, #4820, #4821, #4822, and #4823.
+- **Treat M9 (#4767) as a split proof.** Its CI-safe deterministic leg can stay
+  documented, but live smart-routing copy should wait on the live two-account
+  proof plus the Pack A smoke/artifact/event/usage receipts (#4818-#4821).
+- **Start Pack B/C design in parallel only where it de-risks active work.**
+  M8/M13 can pull credential/policy decisions forward; M11/P3 can pull
+  repo/delivery design forward. Those should not block the Pack A
+  unattended-proof slice unless they are directly needed by M10 or A1.
+- **Avoid retroactively reopening closed rungs only to hold operational debt.**
+  Use the PA issues for that debt, cross-link the original rung, and update
+  closeout notes if a claim boundary needs clarification.
+
 ## Audit Finding
 
 The terminal-agent folder is a dependency graph, not a flat backlog. The 62
