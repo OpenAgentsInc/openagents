@@ -42,6 +42,10 @@ import {
   publicScalingSweepProjection,
 } from './training-scaling-sweep'
 import {
+  Cs336A1RealGradientEvidenceRequest,
+  admitCs336A1RealGradientEvidence,
+} from './training-real-gradient-evidence'
+import {
   Cs336A4DataRefineryEvidenceRequest,
   Cs336A4RequiredVerifiedStageCount,
   admitCs336A4DataRefineryEvidence,
@@ -978,6 +982,70 @@ const routeAttachScalingSweepEvidence = <
     })
   })
 
+const routeAttachRealGradientEvidence = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* decodeBody(request, Cs336A1RealGradientEvidenceRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const admitted = yield* Effect.try({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        admitCs336A1RealGradientEvidence({ nowIso, request: body, run }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.attachRunEvidence(admitted),
+    })
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const leases = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowLeasesForRun(trainingRunRef, 1000),
+    })
+    const challenges = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listVerificationChallengesForRun(trainingRunRef, 1000),
+    })
+    const summary = publicTrainingRunSummary({
+      challenges,
+      leases,
+      nowIso,
+      run: stored,
+      windows,
+    })
+
+    return noStoreJsonResponse({
+      realGradient: summary.realGradient,
+      run: publicTrainingRunProjection(stored, nowIso),
+    })
+  })
+
 const routeAttachDataRefineryEvidence = <
   Bindings extends TrainingRunWindowRouteEnv,
 >(
@@ -1293,6 +1361,24 @@ export const makeTrainingRunWindowRoutes = <
         request,
         env,
         decodeURIComponent(sweepEvidenceMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const realGradientEvidenceMatch =
+      /^\/api\/training\/runs\/([^/]+)\/real-gradient-evidence$/.exec(
+        url.pathname,
+      )
+
+    if (realGradientEvidenceMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeAttachRealGradientEvidence(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(realGradientEvidenceMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

@@ -296,6 +296,12 @@ const schemaComponents = (): JsonSchema => ({
   TrainingA3IsoFlopDashboardEnvelope: objectSummary(
     'Public-safe CS336 A3 IsoFLOP dashboard envelope with receipt-backed sweep cells, fit artifacts, projections, blockerRefs, and sourceRefs. Cells include public N/D/compute/loss fields and settlement remains zero unless provider-confirmed payout receipts are linked. Fit artifacts are analysis artifacts citing cell receipts, not capability claims.',
   ),
+  TrainingA1RealGradientEvidenceRequest: objectSummary(
+    'Admin-only request to admit receipted CS336 A1 real-gradient training evidence into a training run projection. Carries the validation-loss curve with strictly increasing steps, the declared loss budget, merge/eval refs, Freivalds commitment refs, gradient closeout refs, and per-step shard contributions with gradient digest commitments, public pylon provenance, and settlement receipt refs. Shard contributions from fewer than two distinct contributor devices, unreceipted shards, and final losses above the declared budget are rejected. Wallet, payment, invoice, and private-path material are rejected by the public-safety guard at admission time.',
+  ),
+  TrainingA1RealGradientEvidenceEnvelope: objectSummary(
+    'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A1 real-gradient status (device requirement, closeout requirement, loss-under-budget, loss curve, and leaderboard rows) for that run.',
+  ),
   TrainingA3ScalingSweepEvidenceRequest: objectSummary(
     'Admin-only request to admit receipted CS336 A3 scaling-sweep cells into a training run projection. Each cell carries public parameter/data/compute counts, the measured validation loss, receipt refs, verification refs, and optional public pylon provenance. A Psionic-fitted IsoFLOP artifact is admissible only over a sweep of at least 20 receipted cells. Wallet, payment, invoice, and private-path material are rejected by the public-safety guard at admission time.',
   ),
@@ -3236,6 +3242,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Admitted benchmark evidence with the recomputed dataset projection.',
           '#/components/schemas/TrainingA2DeviceBenchmarkEvidenceEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/real-gradient-evidence': {
+    post: operation({
+      operationId: 'admitTrainingA1RealGradientEvidence',
+      summary: 'Admit CS336 A1 real-gradient evidence',
+      description:
+        'Admin-only route to admit receipted CS336 A1 real-gradient training evidence (loss curve, loss budget, merge/eval refs, Freivalds commitment refs, gradient closeout refs, and per-step shard contributions with gradient digest commitments) into a training run projection for the public A1 real-gradient status and loss leaderboard. Shard contributions must come from at least two distinct contributor devices, every shard must carry settlement receipt refs, the final validation loss must be at or below the declared budget, and the public-safety guard rejects wallet, payment, and private-path material at admission.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingA1RealGradientEvidenceRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Admitted real-gradient evidence with the recomputed A1 real-gradient status.',
+          '#/components/schemas/TrainingA1RealGradientEvidenceEnvelope',
         ),
         ...errorResponses(),
       },

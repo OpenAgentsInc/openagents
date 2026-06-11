@@ -78,21 +78,23 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
       'Do not claim a universal new Rust Pylon release works on every computer.',
   },
   {
-    baseStatus: 'red',
+    baseStatus: 'yellow',
     blockerRefs: [
-      'blocker.launch_dashboard.model_training.remote_multi_device_missing',
+      'blocker.launch_dashboard.model_training.network_scale_rungs_not_run',
     ],
     evidenceRefs: [
-      'docs/2026-06-08-probe-gepa-stage0-no-spend-campaign-gate.md',
+      'transition:promise_transition_7e5325b3-c06b-484b-9724-1e4fb41421c0',
+      'route:/api/training/runs/run.cs336.a1.real_gradient.demo',
+      'apps/openagents.com/docs/2026-06-11-cs336-a1-multi-device-real-gradient-evidence.md',
       'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
     ],
     promiseId: 'first_real_model_training_run',
     promiseText: 'Pylon starts the first real model-training run.',
     safeCopy:
-      'Local and loopback training rehearsals exist, but no public remote multi-device model-training run is live.',
+      'A bounded public remote two-device real-gradient training run (CS336 A1 scale) is live with verified gradient closeouts and settled Lightning payouts; network-scale model-ladder rungs have not run.',
     staleSensitive: true,
     unsafeCopy:
-      'Do not claim the first public remote Pylon model-training run is live.',
+      'Do not claim network-scale or unbounded Pylon model training is live; the live evidence is one bounded two-device A1-scale run.',
   },
   {
     baseStatus: 'red',

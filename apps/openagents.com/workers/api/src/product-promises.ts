@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.7'
+export const PublicProductPromisesVersion = '2026-06-11.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -303,20 +303,25 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.first_real_model_training_run.v1',
       productArea: 'training',
       audience: ['contributor', 'public'],
-      state: 'red',
+      state: 'yellow',
       claim: 'Pylon starts the first real model-training run.',
       safeCopy:
-        'Local and loopback training rehearsals exist, but no public remote multi-device model-training run is live.',
+        'A bounded public remote two-device real-gradient training run (CS336 A1 scale, run.cs336.a1.real_gradient.demo) is live with digest-committed shard gradients computed on two physical contributor machines, cross-device deterministic-recompute and Freivalds-Merkle verification, merge/eval refs, a published loss-under-budget curve, and settled Lightning closeouts. The model ladder’s network-scale rungs have not run.',
       unsafeCopy:
-        'Do not claim the first public remote Pylon model-training run is live.',
+        'Do not claim network-scale or unbounded Pylon model training is live; the live evidence is one bounded two-device A1-scale run.',
       evidenceRefs: [
+        'transition:promise_transition_7e5325b3-c06b-484b-9724-1e4fb41421c0',
+        'route:/api/training/runs/run.cs336.a1.real_gradient.demo',
+        'route:/api/training/leaderboards/a1',
+        'apps/openagents.com/docs/2026-06-11-cs336-a1-multi-device-real-gradient-evidence.md',
+        'https://github.com/OpenAgentsInc/openagents/issues/4678',
         'apps/pylon/docs/2026-06-09-pylon-psionic-ml-connection-audit.md',
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
         'directive.owner.20260611.no_inference_focus_tassadar',
       ],
       blockerRefs: [
-        'blocker.product_promises.remote_multi_device_training_missing',
+        'blocker.product_promises.model_ladder_network_rungs_not_run',
       ],
       verification:
         'Requires public remote worker, shard, merge/eval/admission, payment, settlement, and projection refs before green copy. The honest green path is Tassadar executor training: curated verified-trace corpora through the CS336 rails (artanis.tassadar_evolution_loop.v1 Stages 1-3) graded by exact replay, then the model ladder’s network rungs (training.model_ladder.v1) on real contributor devices with commitment-backed verification and paid closeouts. Qwen fine-tuning is out of scope by owner decision.',

@@ -80,7 +80,7 @@ describe('public launch dashboard', () => {
     )
     expect(dashboard.rows.map(row => [row.promiseId, row.status])).toEqual([
       ['pylon_release_tomorrow', 'yellow'],
-      ['first_real_model_training_run', 'red'],
+      ['first_real_model_training_run', 'yellow'],
       ['five_bitcoin_revenue_streams', 'red'],
       ['compute_revenue_modes', 'red'],
       ['data_trace_revenue', 'red'],
@@ -98,8 +98,8 @@ describe('public launch dashboard', () => {
       ['cursor_agent_forum_wallet', 'yellow'],
       ['prepaid_provider_capacity_monetization', 'red'],
     ])
-    expect(dashboard.redCount).toBe(9)
-    expect(dashboard.yellowCount).toBe(8)
+    expect(dashboard.redCount).toBe(8)
+    expect(dashboard.yellowCount).toBe(9)
     expect(dashboard.greenCount).toBe(1)
     expect(dashboard.status).toBe('red')
     expect(dashboard.rows.every(row => row.evidenceRefs.length > 0)).toBe(true)
