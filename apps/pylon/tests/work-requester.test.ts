@@ -2,10 +2,15 @@ import { describe, expect, test } from "bun:test"
 
 import {
   acceptPylonWorkOffer,
+  buildPylonAutopilotWorkRequestBody,
   buildPylonWorkRequestBody,
   createPylonWorkRequest,
   listPylonWorkOffers,
+  readPylonAutopilotWorkEvents,
+  readPylonAutopilotWorkStatus,
   readPylonWorkStatus,
+  reviewPylonAutopilotWork,
+  submitPylonAutopilotWork,
   workAcceptanceMemoryEntry,
   workRequestMemoryEntry,
 } from "../src/work-requester"
@@ -44,6 +49,53 @@ describe("pylon work requester body", () => {
         budgetSats: 2_000,
         objective: "safe public task",
         repository: "ssh://github.com/private/repo",
+      }),
+    ).toThrow(/private, payment/)
+  })
+})
+
+describe("pylon autopilot work order body", () => {
+  test("builds the shared Autopilot work-order request projection from CLI input", () => {
+    const body = buildPylonAutopilotWorkRequestBody({
+      branch: "main",
+      budgetCents: 2500,
+      objective: "fix the public failing test",
+      repository: "https://github.com/OpenAgentsInc/openagents",
+      verificationCommand: "bun test sum.test.ts",
+    }) as {
+      paymentPolicy: { buyerPaymentMode: string; maxSpendCents: number }
+      promiseRef: { promiseId: string }
+      tasks: Array<{
+        checkout: { verificationCommand: { args: string[] } }
+        repository: { fullName: string }
+      }>
+    }
+
+    expect(body.paymentPolicy).toMatchObject({
+      buyerPaymentMode: "l402",
+      maxSpendCents: 2500,
+    })
+    expect(body.promiseRef.promiseId).toBe("autopilot.mission_briefing.v1")
+    expect(body.tasks[0]?.repository.fullName).toBe("OpenAgentsInc/openagents")
+    expect(body.tasks[0]?.checkout.verificationCommand.args).toEqual([
+      "bun",
+      "test",
+      "sum.test.ts",
+    ])
+  })
+
+  test("rejects unsafe Autopilot work-order input before API calls", () => {
+    expect(() =>
+      buildPylonAutopilotWorkRequestBody({
+        budgetCents: 0,
+        objective: "use secret bearer material",
+      }),
+    ).toThrow(/private, payment/)
+    expect(() =>
+      buildPylonAutopilotWorkRequestBody({
+        budgetCents: 0,
+        objective: "safe public work",
+        repository: "ssh://github.com/OpenAgentsInc/private",
       }),
     ).toThrow(/private, payment/)
   })
@@ -189,5 +241,66 @@ describe("pylon work requester API", () => {
         { quoteRef: "quote.public.two", requestRef: "work_request_1" },
       ),
     ).rejects.toThrow("quote_already_accepted")
+  })
+
+  test("submit, status, events, and review use the Autopilot work-order API", async () => {
+    const calls: Array<{ body: unknown; method: string; path: string }> = []
+    const fetcher = async (url: URL | RequestInfo, init?: RequestInit) => {
+      const parsed = new URL(String(url))
+      calls.push({
+        body: init?.body === undefined ? null : JSON.parse(String(init.body)),
+        method: init?.method ?? "GET",
+        path: parsed.pathname,
+      })
+      if (parsed.pathname.endsWith("/events")) {
+        return new Response(JSON.stringify({ events: [], generatedAt: "2026-06-11T00:00:00.000Z" }))
+      }
+      if (parsed.pathname.endsWith("/review")) {
+        return new Response(JSON.stringify({ work: { state: "accepted", workOrderRef: "autopilot_work_order.test" } }), { status: 201 })
+      }
+      if (parsed.pathname === "/api/autopilot/work") {
+        return new Response(JSON.stringify({
+          error: "payment_required",
+          work: { state: "payment_required", workOrderRef: "autopilot_work_order.test" },
+        }), { status: 402 })
+      }
+      return new Response(JSON.stringify({ work: { state: "delivered", workOrderRef: "autopilot_work_order.test" } }))
+    }
+    const options = {
+      agentToken: "agent-token-test",
+      baseUrl: "https://openagents.test",
+      fetch: fetcher,
+      now: () => new Date("2026-06-11T00:00:00.000Z"),
+    }
+
+    await expect(submitPylonAutopilotWork(options, {
+      budgetCents: 2500,
+      objective: "fix public work",
+    })).resolves.toMatchObject({
+      work: { state: "payment_required" },
+    })
+    await expect(readPylonAutopilotWorkStatus(options, "autopilot_work_order.test")).resolves.toMatchObject({
+      work: { state: "delivered" },
+    })
+    await expect(readPylonAutopilotWorkEvents(options, "autopilot_work_order.test")).resolves.toMatchObject({
+      events: [],
+    })
+    await expect(reviewPylonAutopilotWork(options, {
+      action: "accept",
+      workOrderRef: "autopilot_work_order.test",
+    })).resolves.toMatchObject({
+      work: { state: "accepted" },
+    })
+
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "POST /api/autopilot/work",
+      "GET /api/autopilot/work/autopilot_work_order.test",
+      "GET /api/autopilot/work/autopilot_work_order.test/events",
+      "POST /api/autopilot/work/autopilot_work_order.test/review",
+    ])
+    expect(calls[3]?.body).toMatchObject({
+      action: "accept",
+      decisionRefs: ["review.pylon_cli.accept.autopilot_work_order_test"],
+    })
   })
 })
