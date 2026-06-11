@@ -1,6 +1,11 @@
 import type { AutopilotWorkAssignmentIntentProjection } from './autopilot-work-assignment-planner'
 import type { AutopilotPlacementDecisionProjection } from './autopilot-work-placement-selector'
-import { localCodingAgentCapabilityRefs } from './autopilot-work-placement-selector'
+import {
+  DEFAULT_CODING_ADAPTER,
+  adapterCapabilityRefs,
+  adapterJobKinds,
+  selectCodingAdapter,
+} from './autopilot-work-adapter-selection'
 import type { AutopilotWorkTaskRecordProjection } from './autopilot-work-routes'
 import type { PylonApiAssignmentJobKind } from './pylon-api'
 
@@ -21,16 +26,36 @@ export type AutopilotPylonAssignmentIntentProjection = Readonly<{
   taskRef: string
 }>
 
-const jobKindForAssignment = (
-  assignment: AutopilotWorkAssignmentIntentProjection,
-): PylonApiAssignmentJobKind => {
-  switch (assignment.assignmentKind) {
-    case 'repo_change':
-    case 'research_and_patch':
-    case 'site_adjustment':
-    case 'site_generation':
-    case 'test_repair':
-      return 'claude_agent_task'
+// CX5 (#4792): the work class is chosen per placed Pylon by the typed
+// adapter-selection policy — requester-required adapter wins, a
+// single-capability Pylon gets its one adapter, dual-capability Pylons
+// get the documented default. Never a silent substitution: the emitted
+// jobKind, capability ref, and reason ref all name the choice.
+const codingAdapterForPlacement = (
+  placementDecision: AutopilotPlacementDecisionProjection,
+  pylonRef: string,
+): Readonly<{
+  capabilityRef: string
+  jobKind: PylonApiAssignmentJobKind
+  reasonRef: string
+}> => {
+  const candidate = placementDecision.pylonCandidates.find(
+    entry => entry.selected && entry.pylonRef === pylonRef,
+  )
+  const selection = selectCodingAdapter({
+    pylonCapabilityRefs: candidate?.capabilityRefs ?? [],
+  })
+  if (selection.selected) {
+    return {
+      capabilityRef: selection.capabilityRef,
+      jobKind: selection.jobKind,
+      reasonRef: selection.reasonRef,
+    }
+  }
+  return {
+    capabilityRef: adapterCapabilityRefs[DEFAULT_CODING_ADAPTER],
+    jobKind: adapterJobKinds[DEFAULT_CODING_ADAPTER],
+    reasonRef: 'adapter_selection.default_no_candidate_capabilities',
   }
 }
 
@@ -50,6 +75,7 @@ export const pylonAssignmentIntentsForAutopilotWork = (
   }
 
   const pylonRef = input.placementDecision.selectedPylonRef
+  const adapter = codingAdapterForPlacement(input.placementDecision, pylonRef)
   const tasksByRef = new Map(input.tasks.map(task => [task.taskRef, task]))
 
   return input.assignmentIntents
@@ -68,7 +94,7 @@ export const pylonAssignmentIntentsForAutopilotWork = (
           `closeout.${assignmentRef}.accepted_work_not_implied`,
         ],
         forumAutoPublishAllowed: false,
-        jobKind: jobKindForAssignment(assignment),
+        jobKind: adapter.jobKind,
         noForumAutoPublishRefs: [
           `forum_autopublish_disabled.${assignmentRef}`,
         ],
@@ -78,7 +104,7 @@ export const pylonAssignmentIntentsForAutopilotWork = (
         pylonRef,
         requiredCapabilityRefs: [
           'capability.pylon.assignment_ready',
-          ...localCodingAgentCapabilityRefs,
+          adapter.capabilityRef,
         ],
         resultExpectationRefs: [
           `result.${assignmentRef}.public_safe_closeout`,
@@ -86,7 +112,10 @@ export const pylonAssignmentIntentsForAutopilotWork = (
         rollbackRefs: [
           `rollback.${assignmentRef}.no_deploy_without_owner_acceptance`,
         ],
-        selectionPolicyRefs: input.placementDecision.reasonRefs,
+        selectionPolicyRefs: [
+          ...input.placementDecision.reasonRefs,
+          adapter.reasonRef,
+        ],
         spendCapRefs: task?.paymentState === 'funded'
           ? ['spend_cap.buyer_funded.autopilot_pylon_assignment']
           : ['spend_cap.no_spend.autopilot_pylon_assignment'],

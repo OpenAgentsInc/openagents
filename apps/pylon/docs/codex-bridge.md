@@ -172,6 +172,37 @@ that does not carry the `codex_sdk` work class. When it does run:
   mock runner, full worker-loop lifecycle, redaction scan) and the
   `--live` leg for CX4. Runbook: `codex-agent-task-smoke.md`.
 
+## Adapter selection and the API path (CX5, #4792)
+
+Two adapters, one deterministic rule set
+(`workers/api/src/autopilot-work-adapter-selection.ts`):
+
+1. **Requester intent wins.** An order naming an adapter (explicit
+   request or an adapter capability ref in its required refs) gets
+   that adapter, and placement refuses — never substitutes — when the
+   Pylon cannot honor it.
+2. **Owner preference is capability declaration.** Adapter-agnostic
+   orders go to the placed Pylon's declared lanes; disabling a lane in
+   `~/.pylon/config.json` strips its capability at go-online, which is
+   how an owner expresses preference. A single-capability Pylon gets
+   its one adapter.
+3. **Dual-capability default is `claude_agent`** (documented, matches
+   the executor chain order), with the selection reason ref carried in
+   the assignment's `selectionPolicyRefs`.
+4. **The closeout names the adapter.** Run, result, and summary refs
+   are adapter-prefixed (`…pylon.codex_agent_task.…` vs
+   `…pylon.claude_agent_task.…`), and each Pylon gate executes only
+   its own work class.
+
+The API path is B2's (#4756) exactly: `POST /api/autopilot/work` with
+a `git_checkout` task → own-Pylon placement → the synthesizer picks
+the work class per the policy above → durable `codex_agent_task`
+assignment whose `codingAssignment.codex` payload rides the **same**
+`workspace` contract (shared validator and checkout runner imported
+from the Claude executor — never forked) → own-Pylon pickup →
+`executeCodexAgentAssignment` → independent verification → ref-only
+closeout → delivered → review.
+
 ## Current status
 
 CX1 (#4788) ships the probe, capability declaration, credential-policy

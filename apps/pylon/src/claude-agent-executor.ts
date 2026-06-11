@@ -158,7 +158,9 @@ const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
 const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
 
-function gitCheckoutWorkspaceFrom(codingAssignment: unknown): ClaudeAgentGitCheckoutWorkspace | null {
+// Exported so the Codex executor gate (CX5 #4792) consumes the identical
+// git_checkout validation contract instead of forking it.
+export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): ClaudeAgentGitCheckoutWorkspace | null {
   const workspace = (codingAssignment as { workspace?: unknown } | null)?.workspace
   if (workspace === null || typeof workspace !== "object") return null
   const payload = workspace as ClaudeAgentGitCheckoutWorkspace
