@@ -500,14 +500,34 @@ export const readPylonCapacityFunnelAggregate = async (
     ReadonlyArray<PylonApiProviderJobLifecycleRecord>
   >()
 
-  for (const registration of registrations) {
-    assignmentsByPylonRef.set(
-      registration.pylonRef,
-      await input.store.listAssignmentsForPylon(
-        registration.pylonRef,
-        assignmentListLimit,
-      ),
+  // One batched query when the store supports it: the per-registration
+  // loop is an N+1 that exceeds the Workers subrequest cap once enough
+  // Pylons register (the live funnel 500 of 2026-06-11).
+  if (input.store.listAssignmentsForPylons !== undefined) {
+    const allAssignments = await input.store.listAssignmentsForPylons(
+      registrations.map(registration => registration.pylonRef),
+      registrationListLimit * assignmentListLimit,
     )
+    for (const assignment of allAssignments) {
+      const existing = assignmentsByPylonRef.get(assignment.pylonRef) ?? []
+      if (existing.length >= assignmentListLimit) continue
+      assignmentsByPylonRef.set(assignment.pylonRef, [...existing, assignment])
+    }
+    for (const registration of registrations) {
+      if (!assignmentsByPylonRef.has(registration.pylonRef)) {
+        assignmentsByPylonRef.set(registration.pylonRef, [])
+      }
+    }
+  } else {
+    for (const registration of registrations) {
+      assignmentsByPylonRef.set(
+        registration.pylonRef,
+        await input.store.listAssignmentsForPylon(
+          registration.pylonRef,
+          assignmentListLimit,
+        ),
+      )
+    }
   }
 
   const lifecycleRecords = await input.store.listProviderJobLifecycleForPylons(

@@ -17,6 +17,7 @@ import {
   handlePylonCapacityFunnelApi,
   handlePylonCapacityFunnelHistoryApi,
   pylonCapacityFunnelRecordsFromStore,
+  readPylonCapacityFunnelAggregate,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import { aggregatePylonCapacityFunnel } from './pylon-capacity-funnel'
@@ -555,5 +556,39 @@ describe('pylon capacity funnel live bridge', () => {
     )
 
     expect(wrongMethod.status).toBe(405)
+  })
+})
+
+describe('funnel aggregate subrequest discipline', () => {
+  test('uses one batched assignments query when the store supports it (no N+1)', async () => {
+    let batchedCalls = 0
+    let perPylonCalls = 0
+    const registrations = Array.from({ length: 60 }, (_, index) =>
+      registration({ pylonRef: `pylon.test.batch_${index}` }),
+    )
+    const store = {
+      listAssignmentsForPylon: () => {
+        perPylonCalls += 1
+        return Promise.resolve([])
+      },
+      listAssignmentsForPylons: (pylonRefs: ReadonlyArray<string>) => {
+        batchedCalls += 1
+        expect(pylonRefs).toHaveLength(60)
+        return Promise.resolve([
+          assignment({ pylonRef: 'pylon.test.batch_0' }),
+        ])
+      },
+      listProviderJobLifecycleForPylons: () => Promise.resolve([]),
+      listRegistrations: () => Promise.resolve(registrations),
+    } as unknown as PylonApiStore
+
+    const aggregate = await readPylonCapacityFunnelAggregate({
+      nowIso,
+      store,
+    })
+
+    expect(batchedCalls).toBe(1)
+    expect(perPylonCalls).toBe(0)
+    expect(aggregate.totalCount).toBe(60)
   })
 })

@@ -425,6 +425,10 @@ export type PylonApiStore = Readonly<{
     pylonRef: string,
     limit: number,
   ) => Promise<ReadonlyArray<PylonApiAssignmentRecord>>
+  listAssignmentsForPylons?: (
+    pylonRefs: ReadonlyArray<string>,
+    limit: number,
+  ) => Promise<ReadonlyArray<PylonApiAssignmentRecord>>
   listEventsForPylon: (
     pylonRef: string,
     limit: number,
@@ -1378,6 +1382,27 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
           LIMIT ?`,
       )
       .bind(pylonRef, limit)
+      .all<PylonApiAssignmentRow>()
+
+    return (result.results ?? []).map(rowToAssignment)
+  },
+
+  listAssignmentsForPylons: async (pylonRefs, limit) => {
+    if (pylonRefs.length === 0) {
+      return []
+    }
+
+    const placeholders = pylonRefs.map(() => '?').join(', ')
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM pylon_api_assignments
+          WHERE pylon_ref IN (${placeholders})
+            AND archived_at IS NULL
+          ORDER BY updated_at DESC
+          LIMIT ?`,
+      )
+      .bind(...pylonRefs, limit)
       .all<PylonApiAssignmentRow>()
 
     return (result.results ?? []).map(rowToAssignment)
