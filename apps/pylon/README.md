@@ -7,11 +7,43 @@
 - [Effect](https://effect.website/)
 - [OpenTUI](https://github.com/anomalyco/opentui)
 
-## Launch Package
+## Launch Package And Version Truth
 
-The v0.3 release-candidate package is `@openagentsinc/pylon@0.3.0-rc1` and
-exposes the `pylon` binary. Do not treat `0.3.0` as stable until the launch
-gates pass.
+**The only published, installable Pylon is `@openagentsinc/pylon@0.2.5`**
+(`npm view @openagentsinc/pylon dist-tags` → `latest: 0.2.5`). That launcher
+is the supported operator path and the one AGENTS.md tells agents about.
+
+**v0.3 is a source-only release candidate.** This directory is at
+`0.3.0-rc2` per `package.json`; no `0.3.0-rc*` artifact has been published
+to npm (verified 2026-06-11: `@openagentsinc/pylon@0.3.0-rc1` returns 404).
+Do not write public copy that names an installable v0.3 package until the
+release gates pass and the publish actually happens (#4662 tracks the
+stable release).
+
+### Running the v0.3 RC from source (testing only)
+
+```sh
+git clone https://github.com/OpenAgentsInc/openagents
+cd openagents && bun install
+bun run --cwd apps/pylon start     # equivalently: bun apps/pylon/src/index.ts
+```
+
+**Non-readiness warnings — read before running:**
+
+- This is a release candidate behind open launch gates. Expect breakage,
+  unannounced behavior changes, and TUI/runtime surfaces that are mid-build.
+- Nothing about running the RC creates earning expectations: paid work
+  classes, settlement, and marketplace routing are gated by the
+  product-promise registry exactly as for v0.2, and no v0.3-only feature
+  (TUI dashboard, runtime backends, Nostr credentials) may be described
+  publicly as released until the registry says so.
+- Run it only with explicit owner approval, on a machine whose owner
+  understands it is pre-release software with wallet-adjacent surfaces.
+  Wallet operations always end in an explicit confirmation dialog, but the
+  posture is: test with sats you can afford to lose, or with none.
+- The local gate (`bun run release:gate`) is the bar the RC has to pass;
+  if you run the RC and find a gate the suite misses, that report is more
+  valuable than the testing itself - file it or post it on the Forum.
 
 Initial supported operator platforms are macOS and Linux. No other operator
 platforms are in scope for the first v0.3 launch path.
