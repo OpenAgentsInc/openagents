@@ -83,6 +83,27 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/agent-runtime-kernel.test.ts`.
 
+## Pack A Autopilot Runtime Supervision
+
+- Pack A task and schedule supervision events must schema-decode
+  `PackARuntimeEvent` at the boundary and append by subject ref plus exact
+  sequence. Duplicate event ids, sequence gaps, duplicate fired schedule
+  occurrences, and duplicate delivered task notifications must fail closed
+  before persistence.
+- Task, schedule, and continuation status must be replayable from typed events.
+  Derived web, Pylon, agent/API, companion, and public-safe views are
+  projections, not separate authority stores.
+- Pack A task events may record public-safe task refs, run refs, schedule refs,
+  output refs, artifact refs, usage refs, blocker refs, notification refs,
+  cursors, truncation/redaction state, and terminal state. They must not store
+  raw prompts, raw shell logs, provider payloads, secrets, private repo paths,
+  wallet/payment material, or customer/private data in public events.
+- Schedule fired, skipped, failed, cancelled, and continuation-queued
+  occurrences must emit receipt refs and must not create payout, accepted-work,
+  settlement, or public-claim authority by themselves.
+- Regression coverage for this policy lives in
+  `workers/api/src/autopilot-pack-a-runtime-supervision.test.ts`.
+
 ## Typed Email Side Effects
 
 - Production email sends must pass through `EmailService`; route handlers and

@@ -1257,3 +1257,45 @@ Timing rule:
   receipts.
 - Closed rungs should not be reopened only to hold operational debt; cross-link
   the relevant Pack A issue and clarify the claim boundary instead.
+
+## Pack A Chronos / Issues #4814, #4815, #4820: Runtime Supervision Events
+
+Issue refs:
+
+- `https://github.com/OpenAgentsInc/openagents/issues/4814`
+- `https://github.com/OpenAgentsInc/openagents/issues/4815`
+- `https://github.com/OpenAgentsInc/openagents/issues/4820`
+
+Status: complete for the Wave 1 shared event/replay foundation. Full
+overnight SHC/own-Pylon/cloud-Pylon proof remains Gate-owned under #4768 and
+#4772.
+
+Implemented:
+
+- Added `autopilot-pack-a-runtime-supervision.ts` with a typed
+  `PackARuntimeEvent` boundary for Pack A task and schedule subjects.
+- Added a `TaskSupervisor` boundary over an append-only repository contract for
+  created, started, output, artifact, usage, waiting, completion, failure,
+  cancellation, and notification events.
+- Added schedule event helpers for created, fired, skipped, failed, cancelled,
+  and continuation-queued receipts, including no-double-fire protection by
+  occurrence ref.
+- Added replay reducers for task and schedule projections carrying
+  `generatedAt`, the shared staleness contract, refs-only output/artifact/usage
+  evidence, blocker refs, receipt refs, and explicit non-authority flags.
+- Updated the `apps/openagents.com` invariant ledger with the Pack A
+  supervision append/replay/redaction contract.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-pack-a-runtime-supervision.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck` is currently
+  blocked by unrelated pre-existing errors in
+  `src/autopilot-decision-routes.test.ts` and
+  `src/autopilot-rate-limit-rotation-smoke.test.ts`; no reported error
+  references the Chronos files.
+
+Deferred to Gate:
+
+- Cross-lane M10 overnight proof across SHC and own-Pylon/cloud-Pylon.
+- M14 door-open closeout and parent #4786/#4813 proof comments.
