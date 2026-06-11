@@ -86,6 +86,14 @@ suite rows, it returns blockers:
 - `blocker.cs336_a5.requires_public_eval_suite_receipt`
 - `blocker.cs336_a5.policy_gradient_update_waits_on_4669`
 
-The issue should remain open until at least one real receipted public MMLU or
-GSM8K eval suite is published in production with rollout/grading verification
-receipts.
+Update (2026-06-11): the first paid + verified rollout/grading run cleared
+those route blockers on production with a receipted bounded synthetic `math`
+eval suite (`eval.cs336_a5.synthetic_math.bounded_combined.4682.1`). The real
+workload lives in `src/cs336-a5-rollout-workload.ts`, the admission seam in
+`src/training-alignment-evals.ts` plus
+`POST /api/training/runs/{trainingRunRef}/alignment-eval-evidence`, and the
+full live evidence in
+`docs/2026-06-11-cs336-a5-rollout-grading-paid-evidence.md`. A real GSM8K or
+MMLU suite remains blocked behind the Psionic parser fixture-conformance ask
+and a model-backed rollout source; the policy-gradient update still waits on
+#4669.
