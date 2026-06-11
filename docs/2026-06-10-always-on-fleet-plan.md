@@ -42,6 +42,22 @@ on crash and login:
 - Acceptance: `pylonsOnlineNow >= 1` on `/api/public/pylon-stats` for
   24 unbroken hours, and the admin tick's first autonomous dispatch
   recorded in `artanis_admin_tick_decisions`.
+- **Executed 2026-06-11 ~01:00 UTC.** Operational notes from the live
+  bring-up, for every future host:
+  - Use a dedicated `PYLON_HOME` per identity; the shared default home
+    hits the registration-ownership 401 when another agent's token
+    registered it first.
+  - `pylon provider go-online` is required once per home (writes
+    `lifecycle: online` and auto-declares the executor/NIP-90/labor
+    capabilities); without it admission denies with
+    `blocker.assignment.lifecycle_offline`.
+  - The supervised loop is `presence heartbeat` + `assignment
+    run-no-spend` every 60s (`run-no-spend` is the full
+    poll→accept→execute→closeout cycle).
+  - Within 25 minutes of bring-up the full autonomous span completed
+    twice: mind-dispatched assignments `…011429`/`…011629` executed,
+    worker-replayed byte-identically (digest `f2995c4e…`), and accepted
+    to `accepted_work` on the digest predicate — zero humans.
 
 ### Rung 1 — Tailnet remotes (hardware we already own)
 
