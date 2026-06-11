@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url'
 
 const DEFAULT_BASE_URL = 'https://openagents.com'
 const DEFAULT_AGENT_WALLET_TIMEOUT_MS = 5_000
+const DEFAULT_TIP_SEND_RECOVERY_DEADLINE_MS = 120_000
+const DEFAULT_TIP_SEND_RECOVERY_POLL_INTERVAL_MS = 1_000
 
 export const usage = () => `Usage:
   node scripts/forum.mjs board
@@ -71,6 +73,11 @@ Options:
   --diagnostic              Let tip-post-smoke report recovery as a known blocker instead of failing.
   --reward-amount <n>       Optional sats amount for Forum post rewards.
   --tip-amount <n>          Required sats amount for direct BOLT 12 Forum tips.
+  --recovery-wait-ms <n>    Direct-tip send-timeout recovery polling deadline. Defaults to 120000.
+  --tip-send-recovery-deadline-ms <n>
+                            Alias for --recovery-wait-ms.
+  --tip-send-recovery-poll-interval-ms <n>
+                            Direct-tip send-timeout recovery poll interval. Defaults to 1000.
   --target-forum <id>       Generic paid-action forum target.
   --target-post <id>        Generic paid-action post target.
   --target-topic <id>       Generic paid-action topic target.
@@ -155,6 +162,8 @@ const valueFlags = new Set([
   'readinessRef',
   'receive-capability-ref',
   'receiveCapabilityRef',
+  'recovery-wait-ms',
+  'recoveryWaitMs',
   'request-body-digest',
   'requestBodyDigest',
   'receipt',
@@ -180,7 +189,11 @@ const valueFlags = new Set([
   'targetPost',
   'targetTopic',
   'tip-amount',
+  'tip-send-recovery-deadline-ms',
+  'tip-send-recovery-poll-interval-ms',
   'tipAmount',
+  'tipSendRecoveryDeadlineMs',
+  'tipSendRecoveryPollIntervalMs',
   'title',
   'topic',
   'wallet-ref',
@@ -238,6 +251,7 @@ const canonicalFlagName = name =>
     quotePost: 'quote-post',
     readinessRef: 'readiness-ref',
     receiveCapabilityRef: 'receive-capability-ref',
+    recoveryWaitMs: 'recovery-wait-ms',
     requestBodyDigest: 'request-body-digest',
     rewardAmount: 'reward-amount',
     routeParamsJson: 'route-params-json',
@@ -251,6 +265,8 @@ const canonicalFlagName = name =>
     targetPost: 'target-post',
     targetTopic: 'target-topic',
     tipAmount: 'tip-amount',
+    tipSendRecoveryDeadlineMs: 'tip-send-recovery-deadline-ms',
+    tipSendRecoveryPollIntervalMs: 'tip-send-recovery-poll-interval-ms',
     walletRef: 'wallet-ref',
     walletTimeoutMs: 'wallet-timeout-ms',
   })[name] || name
@@ -543,21 +559,53 @@ const directTipSpendCapFromFlags = (flags, amount) => {
   return spendCap
 }
 
-const walletTimeoutMsFromFlags = flags => {
-  const raw = flagText(flags, 'wallet-timeout-ms')
+const positiveIntegerFlagFromFlags = (flags, name, defaultValue) => {
+  const raw = flagText(flags, name)
 
   if (raw === undefined) {
-    return DEFAULT_AGENT_WALLET_TIMEOUT_MS
+    return defaultValue
   }
 
   const parsed = Number(raw)
 
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error('--wallet-timeout-ms must be a positive integer.')
+    throw new Error(`--${name} must be a positive integer.`)
   }
 
   return parsed
 }
+
+const walletTimeoutMsFromFlags = flags =>
+  positiveIntegerFlagFromFlags(
+    flags,
+    'wallet-timeout-ms',
+    DEFAULT_AGENT_WALLET_TIMEOUT_MS,
+  )
+
+const tipSendRecoveryDeadlineMsFromFlags = flags => {
+  const rawRecoveryWait = flagText(flags, 'recovery-wait-ms')
+
+  if (rawRecoveryWait !== undefined) {
+    return positiveIntegerFlagFromFlags(
+      flags,
+      'recovery-wait-ms',
+      DEFAULT_TIP_SEND_RECOVERY_DEADLINE_MS,
+    )
+  }
+
+  return positiveIntegerFlagFromFlags(
+    flags,
+    'tip-send-recovery-deadline-ms',
+    DEFAULT_TIP_SEND_RECOVERY_DEADLINE_MS,
+  )
+}
+
+const tipSendRecoveryPollIntervalMsFromFlags = flags =>
+  positiveIntegerFlagFromFlags(
+    flags,
+    'tip-send-recovery-poll-interval-ms',
+    DEFAULT_TIP_SEND_RECOVERY_POLL_INTERVAL_MS,
+  )
 
 const normalizedWalletNetwork = value => {
   const normalized = String(value || 'any')
@@ -947,6 +995,119 @@ const classifyStalledTipSend = async (executor, amountSats) => {
   }
 }
 
+const terminalTipPaymentStatus = status => {
+  const normalized = String(status ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (
+    normalized === 'completed' ||
+    normalized === 'paid' ||
+    normalized === 'settled' ||
+    normalized === 'succeeded' ||
+    normalized === 'success'
+  ) {
+    return 'completed'
+  }
+
+  if (
+    normalized === 'failed' ||
+    normalized === 'canceled' ||
+    normalized === 'cancelled' ||
+    normalized === 'error'
+  ) {
+    return 'failed'
+  }
+
+  return null
+}
+
+const latestMatchingOutboundTipPayment = (rows, amountSats, paymentIdentifier) => {
+  if (!Array.isArray(rows) || typeof paymentIdentifier !== 'string') {
+    return null
+  }
+
+  const matching = rows.filter(
+    row =>
+      row !== null &&
+      typeof row === 'object' &&
+      row.direction === 'outbound' &&
+      walletPaymentIdentifiersFromOutput(row).includes(paymentIdentifier) &&
+      Number(row.amountSats ?? row.amount_sats ?? row.amount) ===
+        Number(amountSats),
+  )
+
+  if (matching.length === 0) {
+    return null
+  }
+
+  return matching.reduce((latest, row) =>
+    Number(row.timestamp ?? row.createdAt ?? row.created_at ?? 0) >=
+    Number(latest.timestamp ?? latest.createdAt ?? latest.created_at ?? 0)
+      ? row
+      : latest,
+  )
+}
+
+const observeTipSendRecoveryPayment = async (
+  executor,
+  amountSats,
+  paymentIdentifier,
+) => {
+  try {
+    const result = await executor(walletCommandSpecs.payments)
+    const parsed = walletJsonObjectFromOutput(result?.stdout)
+    const rows = Array.isArray(parsed?.payments) ? parsed.payments : null
+    const row = latestMatchingOutboundTipPayment(
+      rows,
+      amountSats,
+      paymentIdentifier,
+    )
+    const terminalStatus = terminalTipPaymentStatus(row?.status)
+
+    return row === null
+      ? {
+          classification: classifyStalledTipSendFromPayments(rows, amountSats),
+          row: null,
+          terminalStatus: null,
+        }
+      : {
+          classification: classifyStalledTipSendFromPayments(rows, amountSats),
+          row,
+          terminalStatus,
+        }
+  } catch {
+    return { classification: 'unclassified', row: null, terminalStatus: null }
+  }
+}
+
+const wait = ms =>
+  ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve()
+
+const pollTipSendRecoveryPayment = async ({
+  amountSats,
+  deadlineMs = 0,
+  executor,
+  intervalMs = 1000,
+  paymentIdentifier,
+}) => {
+  const startedAt = Date.now()
+
+  while (true) {
+    const observed = await observeTipSendRecoveryPayment(
+      executor,
+      amountSats,
+      paymentIdentifier,
+    )
+
+    if (observed.terminalStatus !== null || Date.now() - startedAt >= deadlineMs) {
+      return observed
+    }
+
+    await wait(Math.min(intervalMs, deadlineMs - (Date.now() - startedAt)))
+  }
+}
+
 const checkPassed = spec => ({
   commandRef: spec.publicCommandRef,
   name: spec.publicCommandRef.replace('mdk_agent_wallet.', ''),
@@ -991,6 +1152,9 @@ const publicBlocker = (code, message, extra = {}) => ({
   ...extra,
 })
 
+const walletJsonObjectFromTimedOutResult = result =>
+  walletJsonObjectFromOutput(typeof result?.stdout === 'string' ? result.stdout : '')
+
 const parseWalletJson = (spec, result) => {
   if (result?.timedOut === true) {
     return {
@@ -998,7 +1162,7 @@ const parseWalletJson = (spec, result) => {
         `agent_wallet_${spec.publicCommandRef.split('.').at(-1)}_timeout`,
         'The MDK agent-wallet command timed out before returning JSON.',
       ),
-      parsed: null,
+      parsed: walletJsonObjectFromTimedOutResult(result),
     }
   }
 
@@ -1193,17 +1357,36 @@ const privateL402CredentialFromPreview = preview => {
 const paymentPreimageFromWalletOutput = value =>
   firstStringField(value, ['payment_preimage', 'paymentPreimage', 'preimage'])
 
-const walletPaymentIdentifierFromOutput = value =>
+const walletPaymentIdentifierNames = [
+  'payment_hash',
+  'paymentHash',
+  'payment_id',
+  'paymentId',
+  'payment_ref',
+  'paymentRef',
+  'hash',
+  'id',
+]
+
+const walletPaymentIdentifiersFromOutput = value =>
+  walletPaymentIdentifierNames
+    .map(name => firstStringField(value, [name]))
+    .filter(value => typeof value === 'string')
+
+const initiatedPaymentIdentifierFromOutput = value =>
   firstStringField(value, [
-    'payment_hash',
-    'paymentHash',
     'payment_id',
     'paymentId',
+    'id',
     'payment_ref',
     'paymentRef',
+    'payment_hash',
+    'paymentHash',
     'hash',
-    'id',
   ])
+
+const walletPaymentIdentifierFromOutput = value =>
+  walletPaymentIdentifiersFromOutput(value)[0]
 
 const publicRefDigest = value =>
   createHash('sha256').update(String(value)).digest('hex').slice(0, 32)
@@ -1616,7 +1799,7 @@ const runAgentWalletSendPayment = async ({ amount, destination, executor }) => {
   if (parsed.blocker !== null) {
     return {
       blocker: parsed.blocker,
-      parsed: null,
+      parsed: parsed.parsed,
       status: 'blocked',
     }
   }
@@ -2898,8 +3081,114 @@ export const runForumDirectTipPostPayment = async (
     const timedOut =
       walletPayment.blocker?.reasonRef ===
       'reason.public.agent_wallet_send_timeout'
+    const recoveryPaymentIdentifier = initiatedPaymentIdentifierFromOutput(
+      walletPayment.parsed,
+    )
+    const recoveryObservation = timedOut
+      ? await pollTipSendRecoveryPayment({
+          amountSats: amount.amount,
+          deadlineMs: Number(
+            options.tipSendRecoveryDeadlineMs ??
+              tipSendRecoveryDeadlineMsFromFlags(parsed.flags),
+          ),
+          executor: walletExecutor,
+          intervalMs: Number(
+            options.tipSendRecoveryPollIntervalMs ??
+              tipSendRecoveryPollIntervalMsFromFlags(parsed.flags),
+          ),
+          paymentIdentifier: recoveryPaymentIdentifier,
+        })
+      : null
+
+    if (recoveryObservation?.terminalStatus === 'completed') {
+      const evidence = directTipEvidenceFromWalletPayment({
+        amount,
+        parsed: recoveryObservation.row,
+        post,
+        status: 'confirmed',
+        walletNetwork,
+      })
+      const recorded = await submitDirectTipEvidence({
+        amount,
+        baseUrl: postRequest.baseUrl,
+        env,
+        evidence,
+        parsed,
+        post,
+        requestJson,
+      })
+
+      return directTipResult({
+        livePaymentAttempted: true,
+        payment: {
+          commandRef: 'mdk_agent_wallet.send',
+          evidenceRef: evidence.redactedEvidenceRef,
+          preimageCaptured:
+            paymentPreimageFromWalletOutput(recoveryObservation.row) !== undefined,
+          recoveredAfterTimeout: true,
+          status: 'paid',
+          walletPaymentRef: 'wallet_payment.public.mdk_agent_wallet.redacted',
+        },
+        preflight,
+        receipt: recorded.receipt ?? null,
+        selfPayCheck,
+        status: recorded.status === 'settled' ? 'settled' : recorded.status,
+        attemptId: recorded.attemptId ?? null,
+        target: {
+          ...target,
+          postLink: recorded.targetPostPermalink ?? target.postLink,
+        },
+      })
+    }
+
+    if (recoveryObservation?.terminalStatus === 'failed') {
+      const failureBlocker = publicBlocker(
+        'agent_wallet_send_failed',
+        'The MDK agent-wallet payment failed after timeout recovery polling.',
+      )
+      const evidence = directTipEvidenceFromWalletBlocker({
+        amount,
+        blocker: failureBlocker,
+        post,
+        status: 'failed',
+        walletNetwork,
+      })
+      const recorded = await submitDirectTipEvidence({
+        amount,
+        baseUrl: postRequest.baseUrl,
+        env,
+        evidence,
+        parsed,
+        post,
+        requestJson,
+      }).catch(() => null)
+
+      return directTipResult({
+        failureClassification: recoveryObservation.classification,
+        livePaymentAttempted: true,
+        payment: {
+          commandRef: 'mdk_agent_wallet.send',
+          evidenceRef: evidence.redactedEvidenceRef,
+          failureClassification: recoveryObservation.classification,
+          failureClassificationReasonRef: tipFailureClassificationReasonRef(
+            recoveryObservation.classification,
+          ),
+          reasonRef: failureBlocker.reasonRef,
+          recoveredAfterTimeout: true,
+          status: 'failed',
+        },
+        preflight,
+        reasonRef: failureBlocker.reasonRef,
+        receipt: recorded?.receipt ?? null,
+        selfPayCheck,
+        status: 'payment_failed',
+        attemptId: recorded?.attemptId ?? null,
+        target,
+      })
+    }
+
     const failureClassification = timedOut
-      ? await classifyStalledTipSend(walletExecutor, amount.amount)
+      ? (recoveryObservation?.classification ?? 'unclassified')
       : null
     const evidence = directTipEvidenceFromWalletBlocker({
       amount,
@@ -2934,6 +3223,12 @@ export const runForumDirectTipPostPayment = async (
         reasonRef:
           walletPayment.blocker?.reasonRef ??
           'reason.public.agent_wallet_send_failed',
+        ...(timedOut
+          ? {
+              recoveryDeadlineNote:
+                'No terminal wallet payment observed before recovery polling deadline.',
+            }
+          : {}),
         status: timedOut ? 'recovery_pending' : 'failed',
         // #4704: recovery_pending attempts archive after 24h if the
         // provider callback never reconciles them. For balance-funded
