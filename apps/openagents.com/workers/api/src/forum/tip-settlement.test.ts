@@ -64,12 +64,20 @@ describe('Forum tip settlement model', () => {
   test('answers spendable creator value only for recipient-wallet settlement', () => {
     ForumTipSettlementStates.forEach(state => {
       const projection = forumTipSettlementProjectionForState(state)
+      // 'settled' (direct payment) and 'swept' (settled sweep payout to
+      // the registered receive code) are the only recipient-wallet
+      // settlement states; spendable-value and settlement-evidence
+      // claims stay tied to that authority.
+      const recipientWalletSettled = state === 'settled' || state === 'swept'
 
+      expect(projection.settlementAuthority === 'recipient_wallet_direct').toBe(
+        recipientWalletSettled,
+      )
       expect(projection.creatorReceivedSpendableValue).toBe(
-        state === 'settled',
+        recipientWalletSettled,
       )
       expect(projection.recipientSettlementEvidence).toBe(
-        state === 'settled',
+        recipientWalletSettled,
       )
     })
   })
@@ -133,6 +141,37 @@ describe('Forum tip settlement model', () => {
       recipientSettlementEvidence: false,
       settlementAuthority: 'buyer_payment_evidence_only',
       state: 'paid',
+    })
+  })
+
+  test('labels the credited and swept ladder buckets without settled/paid conflation (#4753)', () => {
+    expect(forumTipSettlementProjectionForState('credited')).toMatchObject({
+      contentRewardEvidence: true,
+      creatorReceivedSpendableValue: false,
+      recipientSettlementEvidence: false,
+      settlementAuthority: 'openagents_ledger_credited',
+      state: 'credited',
+      treasuryDispatchAllowed: false,
+    })
+    expect(forumTipSettlementProjectionForState('swept')).toMatchObject({
+      contentRewardEvidence: true,
+      creatorReceivedSpendableValue: true,
+      recipientSettlementEvidence: true,
+      settlementAuthority: 'recipient_wallet_direct',
+      state: 'swept',
+      treasuryDispatchAllowed: false,
+    })
+    // A confirmed ledger-credited payment event projects 'credited',
+    // never 'paid' or 'settled'.
+    expect(
+      forumTipSettlementProjectionForReceipt({
+        ...confirmedPaymentEvent,
+        settlementAuthority: 'openagents_ledger_credited',
+      }),
+    ).toMatchObject({
+      creatorReceivedSpendableValue: false,
+      recipientSettlementEvidence: false,
+      state: 'credited',
     })
   })
 

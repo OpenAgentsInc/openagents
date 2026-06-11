@@ -26,8 +26,12 @@ import {
   ForumTipReconciliationResponse as ForumTipReconciliationResponseSchema,
   type ForumTipSettlementClaimProjection,
   ForumTipSettlementClaimProjection as ForumTipSettlementClaimProjectionSchema,
+  type ForumTipSettlementState,
 } from './schemas'
-import { forumTipSettlementProjectionForReceipt } from './tip-settlement'
+import {
+  forumTipSettlementProjectionForReceipt,
+  forumTipSettlementProjectionForState,
+} from './tip-settlement'
 
 type ForumTipEarningRow = Readonly<{
   action_kind: ForumPaidActionKind
@@ -49,10 +53,15 @@ type ForumTipEarningRow = Readonly<{
 type TipLadderEarningRow = Readonly<{
   cost_msat: number
   created_at: string
+  // Cumulative credited msat for this recipient through this row
+  // (oldest-credited-first), used for the swept-coverage convention.
+  credited_through_msat: number | null
   pay_in_id: string
   public_receipt_ref: string
   payer_ref: string
   recipient_actor_ref: string
+  // Total settled sweep payout msat for this recipient.
+  recipient_swept_msat: number | null
   rung: 'credited' | 'direct_bolt12' | null
   state_changed_at: string
   target_forum_id: string | null
@@ -215,18 +224,41 @@ const tipLadderPaymentEventFromRow = (
     settlementAuthority:
       row.rung === 'direct_bolt12'
         ? 'recipient_wallet_direct'
-        : 'buyer_payment_evidence_only',
+        : 'openagents_ledger_credited',
     status: 'confirmed',
   })
+
+// Swept coverage (#4753): a credited tip counts as swept once settled
+// sweep payouts to the recipient's registered receive code cover its
+// cumulative credited value, oldest-credited-first. The ledger amount
+// is fungible, so the attribution order is a documented projection
+// convention rather than a per-sat trace.
+export const tipLadderCreditedTipIsSwept = (
+  input: Readonly<{
+    creditedThroughMsat: number
+    recipientSweptMsat: number
+  }>,
+): boolean =>
+  input.creditedThroughMsat > 0 &&
+  input.recipientSweptMsat >= input.creditedThroughMsat
+
+const tipLadderSettlementForRow = (
+  row: TipLadderEarningRow,
+  paymentEvent: ForumPaymentEventProjection,
+) =>
+  row.rung === 'credited' &&
+  tipLadderCreditedTipIsSwept({
+    creditedThroughMsat: Math.max(0, Number(row.credited_through_msat ?? 0)),
+    recipientSweptMsat: Math.max(0, Number(row.recipient_swept_msat ?? 0)),
+  })
+    ? forumTipSettlementProjectionForState('swept')
+    : forumTipSettlementProjectionForReceipt(paymentEvent, null)
 
 const tipLadderEarningFromRow = (
   row: TipLadderEarningRow,
 ): ForumCreatorEarning => {
   const paymentEvent = tipLadderPaymentEventFromRow(row)
-  const tipSettlement = forumTipSettlementProjectionForReceipt(
-    paymentEvent,
-    null,
-  )
+  const tipSettlement = tipLadderSettlementForRow(row, paymentEvent)
 
   return decodeCreatorEarning({
     acceptedWorkPayoutEvidence: false,
@@ -258,16 +290,20 @@ const tipLadderEarningFromRow = (
 const summarizeEarnings = (
   earnings: ReadonlyArray<ForumCreatorEarning>,
 ): ForumCreatorEarningsSummary => {
+  const satsTotalForState = (state: ForumTipSettlementState): number =>
+    earnings
+      .filter(earning => earning.amount.asset === 'sats')
+      .filter(earning => earning.settlementState === state)
+      .reduce((sum, earning) => sum + earning.amount.amount, 0)
   const totalPaidSats = earnings
     .filter(earning => earning.amount.asset === 'sats')
     .filter(earning => earning.paymentState === 'confirmed')
     .reduce((sum, earning) => sum + earning.amount.amount, 0)
-  const totalSettledSats = earnings
-    .filter(earning => earning.amount.asset === 'sats')
-    .filter(earning => earning.settlementState === 'settled')
-    .reduce((sum, earning) => sum + earning.amount.amount, 0)
 
   return {
+    creditedCount: earnings.filter(
+      earning => earning.settlementState === 'credited',
+    ).length,
     failedCount: earnings.filter(
       earning => earning.settlementState === 'failed',
     ).length,
@@ -287,9 +323,14 @@ const summarizeEarnings = (
     settledCount: earnings.filter(
       earning => earning.settlementState === 'settled',
     ).length,
+    sweptCount: earnings.filter(
+      earning => earning.settlementState === 'swept',
+    ).length,
     totalCount: earnings.length,
+    totalCreditedSats: satsTotalForState('credited'),
     totalPaidSats,
-    totalSettledSats,
+    totalSettledSats: satsTotalForState('settled'),
+    totalSweptSats: satsTotalForState('swept'),
   }
 }
 
@@ -387,14 +428,42 @@ const readTipLadderEarningRows = (
   db: D1Database,
   input: Readonly<{ actorRef: string | null; limit: number }>,
 ): Effect.Effect<ReadonlyArray<TipLadderEarningRow>, ForumStorageError> => {
+  // Every paid ladder tip projects a receipt ref the recipient can cite
+  // (#4753): rows written before the public-receipt column (or by the
+  // credited reconciliation fallback) get the deterministic
+  // receipt-equivalent ref 'receipt.forum.tip_ladder.payin.<payInId>'.
   const baseQuery = `SELECT p.id AS pay_in_id,
-                           p.public_receipt_ref AS public_receipt_ref,
+                           COALESCE(
+                             p.public_receipt_ref,
+                             'receipt.forum.tip_ladder.payin.' || p.id
+                           ) AS public_receipt_ref,
                            p.payer_ref AS payer_ref,
                            p.cost_msat AS cost_msat,
                            p.rung AS rung,
                            p.created_at AS created_at,
                            p.state_changed_at AS state_changed_at,
                            payout.party_ref AS recipient_actor_ref,
+                           CASE WHEN p.rung = 'credited' THEN (
+                             SELECT COALESCE(SUM(p2.cost_msat), 0)
+                               FROM pay_ins p2
+                               JOIN pay_in_legs payout2
+                                 ON payout2.pay_in_id = p2.id
+                                AND payout2.direction = 'out'
+                                AND payout2.party_ref = payout.party_ref
+                              WHERE p2.pay_in_type = 'tip'
+                                AND p2.rung = 'credited'
+                                AND p2.state = 'paid'
+                                AND p2.context_ref LIKE 'forum.post.%'
+                                AND (p2.created_at < p.created_at
+                                     OR (p2.created_at = p.created_at
+                                         AND p2.id <= p.id))
+                           ) ELSE 0 END AS credited_through_msat,
+                           (SELECT COALESCE(SUM(s.cost_msat), 0)
+                              FROM pay_ins s
+                             WHERE s.pay_in_type = 'sweep'
+                               AND s.state = 'paid'
+                               AND s.payer_ref = payout.party_ref
+                           ) AS recipient_swept_msat,
                            forum_posts.id AS target_post_id,
                            forum_posts.topic_id AS target_topic_id,
                            forum_posts.forum_id AS target_forum_id
@@ -410,7 +479,6 @@ const readTipLadderEarningRows = (
                        AND forum_posts.archived_at IS NULL
                      WHERE p.pay_in_type = 'tip'
                        AND p.state = 'paid'
-                       AND p.public_receipt_ref IS NOT NULL
                        AND p.context_ref LIKE 'forum.post.%'
                        AND payout.party_ref IS NOT NULL`
   const scopedQuery =
@@ -442,7 +510,6 @@ const countTipLadderEarningRows = (
                        AND payout.direction = 'out'
                      WHERE p.pay_in_type = 'tip'
                        AND p.state = 'paid'
-                       AND p.public_receipt_ref IS NOT NULL
                        AND p.context_ref LIKE 'forum.post.%'
                        AND payout.party_ref IS NOT NULL`
   const scopedQuery =

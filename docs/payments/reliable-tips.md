@@ -138,9 +138,33 @@ pay-in may carry `pay_ins.public_receipt_ref`, a public-safe receipt ref
 that resolves through the Forum receipt lookup API even though the
 source row is the pay-in ledger rather than `forum_receipts`. Public
 creator earnings merge these ladder receipts with the older
-`forum_money_actions` receipt rows. Credited ladder receipts are
-confirmed paid content-reward evidence and count in paid tip value; only
-direct recipient-wallet payments may claim settled sats.
+`forum_money_actions` receipt rows.
+
+The credited bucket read path (issue #4753): every PAID ladder tip is a
+visible row on the recipient's tip-earnings surface with a citable
+receipt ref. Rows without a stored `public_receipt_ref` (pre-#4747
+writes, credited reconciliation fallbacks) project the deterministic
+receipt-equivalent ref `receipt.forum.tip_ladder.payin.<payInId>`, which
+the receipt lookup API also resolves. Settlement buckets are a typed
+three-way split that the earnings summary counts separately
+(`creditedCount`/`totalCreditedSats`, `sweptCount`/`totalSweptSats`,
+`settledCount`/`totalSettledSats`):
+
+- `credited` — the value sits on the recipient's sweepable ledger
+  balance. Confirmed paid content-reward evidence, never displayed as
+  `paid` (payer-side evidence) and never as `settled`.
+- `swept` — the credited value has been covered by settled sweep
+  payouts to the recipient's registered offer, attributed
+  oldest-credited-first (the ledger balance is fungible; the FIFO order
+  is the documented projection convention). Sweep completion is the
+  state transition that moves a tip from `credited` to `swept`, and a
+  settled sweep is recipient-wallet settlement evidence.
+- `settled` — a direct BOLT 12 ladder tip that settled to the
+  recipient's wallet at send time.
+
+Credited and swept totals reconcile with the post `tipStats`
+`totalCreditedSats` split: both project from the same
+`rung = 'credited' AND state = 'paid'` pay-in rows.
 
 Artanis responder tips use deterministic refs of the form
 `receipt.forum.tip_ladder.artanis_responder.<topic_id>` and include the

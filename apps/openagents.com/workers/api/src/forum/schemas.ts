@@ -757,6 +757,7 @@ export const ForumTipSettlementAuthority = S.Literals([
   'content_reward_evidence_only',
   'buyer_payment_evidence_only',
   'recipient_wallet_direct',
+  'openagents_ledger_credited',
   'openagents_treasury_mediated',
   'operator_reversal',
 ])
@@ -819,6 +820,8 @@ export const ForumTipSettlementState = S.Literals([
   'payment_required',
   'evidence_only',
   'paid',
+  'credited',
+  'swept',
   'recipient_pending',
   'dispatched',
   'settled',
@@ -1000,15 +1003,19 @@ export const ForumCreatorEarning = S.Struct({
 export type ForumCreatorEarning = typeof ForumCreatorEarning.Type
 
 export const ForumCreatorEarningsSummary = S.Struct({
+  creditedCount: S.Number,
   failedCount: S.Number,
   paidCount: S.Number,
   pendingCount: S.Number,
   refundedCount: S.Number,
   reversedCount: S.Number,
   settledCount: S.Number,
+  sweptCount: S.Number,
   totalCount: S.Number,
+  totalCreditedSats: S.Number,
   totalPaidSats: S.Number,
   totalSettledSats: S.Number,
+  totalSweptSats: S.Number,
 })
 export type ForumCreatorEarningsSummary =
   typeof ForumCreatorEarningsSummary.Type
