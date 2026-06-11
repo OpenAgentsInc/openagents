@@ -1,0 +1,442 @@
+import { mkdir, writeFile } from "node:fs/promises"
+import { isAbsolute, join, resolve } from "node:path"
+import { createHash } from "node:crypto"
+import {
+  CODEX_AGENT_SDK_PACKAGE,
+  loadCodexAgentConfig,
+  probeCodexAgentReadiness,
+  type CodexAgentProbeOptions,
+  type CodexAgentSandboxMode,
+} from "./codex-agent"
+import type { PylonLocalState } from "./state"
+
+/**
+ * The local Codex executor gate (issue #4789, epic #4793, promise
+ * autopilot.codex_probe_pylon_successor.v1).
+ *
+ * Recognizes the codex_sdk coding work class on a Pylon assignment,
+ * materializes a bounded fixture workspace, drives one Codex SDK thread
+ * inside it, verifies the result with the fixture's real test command, and
+ * digests everything into public-safe closeout refs. Raw SDK events,
+ * prompts, file contents, and local paths never leave the device; the
+ * instruction text lives in the locally-shipped fixture, not on the wire,
+ * so assignment payloads stay ref-only.
+ *
+ * Boundary law (the design delta from the Claude Agent gate): the Codex
+ * SDK has no PreToolUse hook, so the workspace boundary is enforced by the
+ * SDK sandbox (workspace-write pinned to the bounded working directory, no
+ * additional directories, network disabled) plus post-hoc validation that
+ * every reported file change stayed inside the workspace. A violation
+ * produces a typed rejected closeout; danger-full-access is never used.
+ */
+
+export const CODEX_AGENT_TASK_SCHEMA = "openagents.pylon.codex_agent_task.v0.3"
+export const CODEX_AGENT_TASK_AGENT_KIND = "codex_sdk"
+export const CODEX_AGENT_SUM_REPAIR_FIXTURE_REF = "fixture.public.pylon.codex_agent.sum_repair.v1"
+
+export type CodexAgentTaskPayload = {
+  schema: typeof CODEX_AGENT_TASK_SCHEMA
+  agentKind: typeof CODEX_AGENT_TASK_AGENT_KIND
+  fixtureRef: string
+  sandboxMode?: CodexAgentSandboxMode
+  timeoutSeconds?: number
+}
+
+export type CodexAgentRunInput = {
+  cwd: string
+  instructions: string
+  sandboxMode: CodexAgentSandboxMode
+  timeoutMs: number
+  model?: string
+}
+
+export type CodexAgentRunOutcome =
+  | "completed"
+  | "budget_exceeded"
+  | "workspace_escape_blocked"
+  | "refused"
+
+export type CodexAgentRunResult = {
+  outcome: CodexAgentRunOutcome
+  turnCount: number
+  editedFileCount: number
+  commandCount: number
+  sessionRef: string | null
+}
+
+export type CodexAgentRunner = (input: CodexAgentRunInput) => Promise<CodexAgentRunResult>
+
+export type CodexAgentExecutionOptions = {
+  codexAgentRunner?: CodexAgentRunner
+  codexAgentProbe?: CodexAgentProbeOptions
+}
+
+type CodexAgentFixture = {
+  files: Record<string, string>
+  instructions: string
+  verificationArgs: string[]
+}
+
+const DEFAULT_TIMEOUT_SECONDS = 300
+const MAX_TIMEOUT_SECONDS = 1200
+
+const CODEX_AGENT_FIXTURES: Record<string, CodexAgentFixture> = {
+  [CODEX_AGENT_SUM_REPAIR_FIXTURE_REF]: {
+    files: {
+      "package.json": `${JSON.stringify(
+        {
+          private: true,
+          scripts: { test: "bun test sum.test.ts" },
+          type: "module",
+        },
+        null,
+        2,
+      )}\n`,
+      "sum.ts": "export const sum = (left: number, right: number) => left - right\n",
+      "sum.test.ts": [
+        'import { describe, expect, test } from "bun:test"',
+        'import { sum } from "./sum"',
+        "",
+        'describe("sum fixture", () => {',
+        '  test("adds two numbers", () => {',
+        "    expect(sum(2, 3)).toBe(5)",
+        "  })",
+        "})",
+        "",
+      ].join("\n"),
+    },
+    instructions: [
+      "You are working in a bounded fixture workspace.",
+      "The test in sum.test.ts fails because sum.ts has a bug.",
+      "Fix the implementation in sum.ts so the test passes, then run",
+      "`bun test sum.test.ts` to confirm. Only modify files inside this",
+      "working directory.",
+    ].join(" "),
+    verificationArgs: ["bun", "test", "sum.test.ts"],
+  },
+}
+
+function stableRef(prefix: string, value: string) {
+  return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+}
+
+export function codexAgentTaskFrom(codingAssignment: unknown): CodexAgentTaskPayload | null {
+  const codex = (codingAssignment as { codex?: unknown } | null)?.codex
+  if (codex === null || typeof codex !== "object") return null
+  const payload = codex as CodexAgentTaskPayload
+  if (payload.schema !== CODEX_AGENT_TASK_SCHEMA) return null
+  if (payload.agentKind !== CODEX_AGENT_TASK_AGENT_KIND) return null
+  if (typeof payload.fixtureRef !== "string") return null
+  if (CODEX_AGENT_FIXTURES[payload.fixtureRef] === undefined) return null
+  return payload
+}
+
+function boundedNumber(value: number | undefined, fallback: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return fallback
+  return Math.min(Math.floor(value), max)
+}
+
+/**
+ * Resolves the effective sandbox mode: read-only requested anywhere wins;
+ * otherwise workspace-write. Config and dispatch can narrow, never expand,
+ * and danger-full-access does not exist on this code path at all.
+ */
+export function effectiveSandboxMode(
+  taskMode: CodexAgentSandboxMode | undefined,
+  configMode: CodexAgentSandboxMode | undefined,
+): CodexAgentSandboxMode {
+  if (taskMode === "read-only" || configMode === "read-only") return "read-only"
+  return "workspace-write"
+}
+
+/**
+ * Post-hoc boundary check: returns true when a file change reported by the
+ * Codex thread resolves outside the bounded workspace. The SDK sandbox is
+ * the enforcement layer; this is the independent verification of it.
+ */
+export function fileChangeEscapesWorkspace(path: string, workspace: string): boolean {
+  if (typeof path !== "string" || path.length === 0) return false
+  const workspaceRoot = resolve(workspace)
+  const resolved = isAbsolute(path) ? resolve(path) : resolve(workspaceRoot, path)
+  return resolved !== workspaceRoot && !resolved.startsWith(`${workspaceRoot}/`)
+}
+
+async function runCommand(input: { args: string[]; cwd: string }) {
+  const proc = Bun.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).arrayBuffer(),
+    new Response(proc.stderr).arrayBuffer(),
+    proc.exited,
+  ])
+  return { exitCode, stderrBytes: stderr.byteLength, stdoutBytes: stdout.byteLength }
+}
+
+type CodexThreadEvent = {
+  type?: string
+  thread_id?: string
+  error?: { message?: string }
+  item?: {
+    type?: string
+    status?: string
+    changes?: Array<{ path?: string; kind?: string }>
+  }
+}
+
+/**
+ * The production runner: one Codex SDK thread pinned to the bounded
+ * workspace with approvalPolicy "never" (unattended, nothing to approve
+ * against), the configured sandbox mode, network disabled inside the
+ * thread, and a wall-clock budget enforced through the turn AbortSignal.
+ * Every reported file change is validated against the workspace post hoc.
+ * Lazy-imports the optional SDK dependency.
+ */
+export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexAgentRunResult> {
+  const sdk = (await import(CODEX_AGENT_SDK_PACKAGE)) as {
+    Codex: new () => {
+      startThread: (options: Record<string, unknown>) => {
+        runStreamed: (
+          prompt: string,
+          turnOptions?: Record<string, unknown>,
+        ) => Promise<{ events: AsyncIterable<unknown> }>
+      }
+    }
+  }
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), input.timeoutMs)
+  let escaped = false
+  let editedFileCount = 0
+  let commandCount = 0
+  let turnCount = 0
+  let threadId: string | null = null
+  let failed = false
+
+  try {
+    const codex = new sdk.Codex()
+    const thread = codex.startThread({
+      workingDirectory: input.cwd,
+      sandboxMode: input.sandboxMode,
+      approvalPolicy: "never",
+      skipGitRepoCheck: true,
+      networkAccessEnabled: false,
+      ...(input.model === undefined ? {} : { model: input.model }),
+    })
+    const { events } = await thread.runStreamed(input.instructions, { signal: abort.signal })
+    for await (const raw of events) {
+      const event = raw as CodexThreadEvent
+      if (event.type === "thread.started" && typeof event.thread_id === "string") {
+        threadId = event.thread_id
+      }
+      if (event.type === "turn.completed") turnCount += 1
+      if (event.type === "turn.failed" || event.type === "error") failed = true
+      if (event.type === "item.completed" && event.item?.type === "command_execution") {
+        commandCount += 1
+      }
+      if (event.type === "item.completed" && event.item?.type === "file_change") {
+        const changes = Array.isArray(event.item.changes) ? event.item.changes : []
+        editedFileCount += changes.length
+        for (const change of changes) {
+          if (typeof change.path === "string" && fileChangeEscapesWorkspace(change.path, input.cwd)) {
+            escaped = true
+            abort.abort()
+          }
+        }
+      }
+    }
+  } catch (error) {
+    if (escaped) {
+      return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef: null }
+    }
+    if (abort.signal.aborted) {
+      return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef: null }
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+
+  const sessionRef = threadId === null ? null : stableRef("session.pylon.codex_agent", threadId)
+  if (escaped) {
+    return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef }
+  }
+  if (abort.signal.aborted) {
+    return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef }
+  }
+  if (failed) {
+    return { outcome: "refused", turnCount, editedFileCount, commandCount, sessionRef }
+  }
+  return { outcome: "completed", turnCount, editedFileCount, commandCount, sessionRef }
+}
+
+type CodexAgentLease = {
+  assignmentRef: string
+  leaseRef: string
+  codingAssignment?: unknown
+}
+
+function refusalRecord(input: {
+  lease: CodexAgentLease
+  runRef: string
+  blockerRefs: string[]
+  resultRef: string
+  summaryRef: string
+  message: string
+}) {
+  const failureRef = stableRef(
+    "proof.pylon.codex_agent_task.refused",
+    `${input.lease.leaseRef}:${input.blockerRefs.join(",")}`,
+  )
+  return {
+    artifactRefs: [],
+    blockerRefs: input.blockerRefs,
+    buildRefs: [input.runRef],
+    message: input.message,
+    previewRefs: [],
+    proofRefs: [failureRef],
+    resultRefs: [input.resultRef],
+    runRefs: [input.runRef],
+    status: "rejected" as const,
+    summaryRefs: [input.summaryRef],
+    testRefs: [failureRef],
+  }
+}
+
+/**
+ * Executes a codex_sdk coding assignment. Returns null when the assignment
+ * does not carry this work class, a typed refusal record when the lane is
+ * not ready or the thread breaks its bounds, and an accepted closeout
+ * record only when the agent's change passes the fixture's real
+ * verification command on this device.
+ */
+export async function executeCodexAgentAssignment(
+  state: PylonLocalState,
+  lease: CodexAgentLease,
+  now: Date,
+  options: CodexAgentExecutionOptions = {},
+) {
+  const task = codexAgentTaskFrom(lease.codingAssignment)
+  if (task === null) return null
+
+  const runRef = stableRef(
+    "run.pylon.codex_agent_task",
+    `${lease.leaseRef}:${task.fixtureRef}:${now.toISOString()}`,
+  )
+
+  const config = await loadCodexAgentConfig({ paths: { config: state.paths.config } })
+  const probed = await probeCodexAgentReadiness({ ...options.codexAgentProbe, config })
+  if (probed.state !== "ready") {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_unavailable", ...probed.blockerRefs],
+      resultRef: "result.public.pylon.codex_agent_task.unavailable",
+      summaryRef: "summary.public.pylon.codex_agent_task.unavailable",
+      message: `Local Codex lane is not ready on this device (${probed.state}).`,
+    })
+  }
+
+  const fixture = CODEX_AGENT_FIXTURES[task.fixtureRef]
+  const workspaceRef = stableRef("workspace.pylon.codex_agent_task", lease.leaseRef)
+  const workspace = join(state.paths.cache, "codex-agent-tasks", workspaceRef)
+  await mkdir(workspace, { recursive: true })
+  for (const [relativePath, contents] of Object.entries(fixture.files)) {
+    await writeFile(join(workspace, relativePath), contents)
+  }
+
+  const runner = options.codexAgentRunner ?? runWithCodexSdk
+  let run: CodexAgentRunResult
+  try {
+    run = await runner({
+      cwd: workspace,
+      instructions: fixture.instructions,
+      sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
+      timeoutMs:
+        boundedNumber(
+          task.timeoutSeconds ?? config.timeoutSeconds,
+          DEFAULT_TIMEOUT_SECONDS,
+          MAX_TIMEOUT_SECONDS,
+        ) * 1000,
+      ...(config.model === undefined ? {} : { model: config.model }),
+    })
+  } catch {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_execution_refused"],
+      resultRef: "result.public.pylon.codex_agent_task.execution_refused",
+      summaryRef: "summary.public.pylon.codex_agent_task.execution_refused",
+      message: "Local Codex thread refused with a typed execution error.",
+    })
+  }
+
+  if (run.outcome === "workspace_escape_blocked") {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_workspace_escape_blocked"],
+      resultRef: "result.public.pylon.codex_agent_task.workspace_escape_blocked",
+      summaryRef: "summary.public.pylon.codex_agent_task.workspace_escape_blocked",
+      message: "Local Codex thread was stopped: a reported file change targeted paths outside the bounded workspace.",
+    })
+  }
+  if (run.outcome === "budget_exceeded") {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_budget_exceeded"],
+      resultRef: "result.public.pylon.codex_agent_task.budget_exceeded",
+      summaryRef: "summary.public.pylon.codex_agent_task.budget_exceeded",
+      message: "Local Codex thread exceeded its wall-clock budget before completing the task.",
+    })
+  }
+  if (run.outcome === "refused") {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_execution_refused"],
+      resultRef: "result.public.pylon.codex_agent_task.execution_refused",
+      summaryRef: "summary.public.pylon.codex_agent_task.execution_refused",
+      message: "Local Codex thread ended with an execution error before completing the task.",
+    })
+  }
+
+  const verification = await runCommand({ args: fixture.verificationArgs, cwd: workspace })
+  const commandRef = stableRef(
+    "command.pylon.codex_agent_task.verification",
+    `${lease.leaseRef}:${verification.exitCode}:${verification.stdoutBytes}:${verification.stderrBytes}`,
+  )
+  const artifactRef = stableRef(
+    "artifact.pylon.codex_agent_task.patch",
+    `${lease.assignmentRef}:${task.fixtureRef}:${run.editedFileCount}`,
+  )
+  const proofRef = stableRef(
+    "proof.pylon.codex_agent_task.test",
+    `${artifactRef}:${commandRef}`,
+  )
+  const passed = verification.exitCode === 0
+  const sessionRefs = run.sessionRef === null ? [] : [run.sessionRef]
+
+  return {
+    artifactRefs: [artifactRef],
+    blockerRefs: passed ? [] : ["blocker.assignment.codex_agent_test_failed"],
+    buildRefs: [commandRef],
+    message: passed
+      ? `Local Codex completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.`
+      : "Local Codex thread completed but the verification test command failed; the change is not accepted.",
+    previewRefs: [workspaceRef],
+    proofRefs: [proofRef],
+    resultRefs: [
+      passed
+        ? "result.public.pylon.codex_agent_task.fixture_repair_passed"
+        : "result.public.pylon.codex_agent_task.fixture_repair_failed",
+      `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
+    ],
+    runRefs: [runRef, ...sessionRefs],
+    status: passed ? ("accepted" as const) : ("rejected" as const),
+    summaryRefs: [
+      passed
+        ? "summary.public.pylon.codex_agent_task.fixture_repair_passed"
+        : "summary.public.pylon.codex_agent_task.fixture_repair_failed",
+    ],
+    testRefs: [commandRef],
+  }
+}

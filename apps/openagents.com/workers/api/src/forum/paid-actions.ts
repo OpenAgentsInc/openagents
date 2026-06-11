@@ -54,6 +54,7 @@ import {
   ForumTipSettlementClaimProjection as ForumTipSettlementClaimProjectionSchema,
   type ForumTipSettlementClaimResponse,
   ForumTipSettlementClaimResponse as ForumTipSettlementClaimResponseSchema,
+  type ForumTipSettlementProjection,
   type ForumWriteDenialKind,
   decodeForumPublicProjection,
 } from './schemas'
@@ -63,7 +64,10 @@ import {
   forumTipImmediatePreviewPolicyDenial,
   forumTipRateLimitPreviewPolicyDenial,
 } from './tip-abuse-policy'
-import { forumTipSettlementProjectionForReceipt } from './tip-settlement'
+import {
+  forumTipSettlementProjectionForReceipt,
+  forumTipSettlementProjectionForState,
+} from './tip-settlement'
 
 export type ForumPaidActionRuntime = Readonly<{
   challengeTtlMs: number
@@ -286,11 +290,13 @@ type ReceiptLookupRow = ReceiptRow &
 type TipLadderReceiptLookupRow = Readonly<{
   cost_msat: number
   created_at: string
+  credited_through_msat?: number | null
   pay_in_id: string
   public_receipt_ref: string
   payer_ref: string
   payout_external_ref: string | null
   recipient_actor_ref: string
+  recipient_swept_msat?: number | null
   rung: 'credited' | 'direct_bolt12' | null
   state: 'paid' | 'forwarding'
   state_changed_at: string
@@ -1138,9 +1144,33 @@ const tipLadderPaymentEventFromRow = (
     settlementAuthority:
       row.state === 'paid' && row.rung === 'direct_bolt12'
         ? 'recipient_wallet_direct'
-        : 'buyer_payment_evidence_only',
+        : row.state === 'paid' && row.rung === 'credited'
+          ? 'openagents_ledger_credited'
+          : 'buyer_payment_evidence_only',
     status: row.state === 'paid' ? 'confirmed' : 'observed',
   })
+
+// Swept coverage for the receipt lookup (#4753): a paid credited-rung
+// tip whose cumulative credited value is covered by settled sweep
+// payouts (oldest-credited-first) reads as 'swept', so sweep
+// completion transitions the public bucket instead of freezing it.
+const tipLadderSettlementFromRow = (
+  row: TipLadderReceiptLookupRow,
+  paymentEvent: ForumPaymentEventProjection,
+): ForumTipSettlementProjection => {
+  const creditedThroughMsat = Math.max(
+    0,
+    Number(row.credited_through_msat ?? 0),
+  )
+  const recipientSweptMsat = Math.max(0, Number(row.recipient_swept_msat ?? 0))
+
+  return row.state === 'paid' &&
+    row.rung === 'credited' &&
+    creditedThroughMsat > 0 &&
+    recipientSweptMsat >= creditedThroughMsat
+    ? forumTipSettlementProjectionForState('swept')
+    : forumTipSettlementProjectionForReceipt(paymentEvent, null)
+}
 
 const tipLadderReceiptLookupFromRow = (
   row: TipLadderReceiptLookupRow,
@@ -1179,7 +1209,7 @@ const tipLadderReceiptLookupFromRow = (
     },
     targetPostPermalink: tipLadderTargetPostPermalink(row),
     settlementClaim: null,
-    tipSettlement: forumTipSettlementProjectionForReceipt(paymentEvent, null),
+    tipSettlement: tipLadderSettlementFromRow(row, paymentEvent),
   })
 }
 
@@ -1544,8 +1574,15 @@ const readTipLadderReceiptLookupRowByRef = (
     ? d1Effect('forumPaidActions.readTipLadderReceiptLookupRowByRef', () =>
         db
           .prepare(
+            // The ref resolves either as the stored public receipt ref
+            // or as the deterministic receipt-equivalent ref
+            // 'receipt.forum.tip_ladder.payin.<payInId>' projected for
+            // ladder rows that predate the stored column (#4753).
             `SELECT p.id AS pay_in_id,
-                    p.public_receipt_ref AS public_receipt_ref,
+                    COALESCE(
+                      p.public_receipt_ref,
+                      'receipt.forum.tip_ladder.payin.' || p.id
+                    ) AS public_receipt_ref,
                     p.payer_ref AS payer_ref,
                     p.cost_msat AS cost_msat,
                     p.state AS state,
@@ -1554,6 +1591,27 @@ const readTipLadderReceiptLookupRowByRef = (
                     p.state_changed_at AS state_changed_at,
                     payout.party_ref AS recipient_actor_ref,
                     payout.external_ref AS payout_external_ref,
+                    CASE WHEN p.rung = 'credited' AND p.state = 'paid' THEN (
+                      SELECT COALESCE(SUM(p2.cost_msat), 0)
+                        FROM pay_ins p2
+                        JOIN pay_in_legs payout2
+                          ON payout2.pay_in_id = p2.id
+                         AND payout2.direction = 'out'
+                         AND payout2.party_ref = payout.party_ref
+                       WHERE p2.pay_in_type = 'tip'
+                         AND p2.rung = 'credited'
+                         AND p2.state = 'paid'
+                         AND p2.context_ref LIKE 'forum.post.%'
+                         AND (p2.created_at < p.created_at
+                              OR (p2.created_at = p.created_at
+                                  AND p2.id <= p.id))
+                    ) ELSE 0 END AS credited_through_msat,
+                    (SELECT COALESCE(SUM(s.cost_msat), 0)
+                       FROM pay_ins s
+                      WHERE s.pay_in_type = 'sweep'
+                        AND s.state = 'paid'
+                        AND s.payer_ref = payout.party_ref
+                    ) AS recipient_swept_msat,
                     forum_posts.id AS target_post_id,
                     forum_posts.topic_id AS target_topic_id,
                     forum_posts.forum_id AS target_forum_id
@@ -1568,7 +1626,9 @@ const readTipLadderReceiptLookupRowByRef = (
                     )
                 AND forum_posts.archived_at IS NULL
               WHERE p.pay_in_type = 'tip'
-                AND p.public_receipt_ref = ?
+                AND (p.public_receipt_ref = ?
+                     OR (p.public_receipt_ref IS NULL
+                         AND 'receipt.forum.tip_ladder.payin.' || p.id = ?))
                 AND p.state IN ('paid', 'forwarding')
                 AND p.context_ref LIKE 'forum.post.%'
               ORDER BY CASE WHEN p.state = 'paid' THEN 0 ELSE 1 END,
@@ -1576,7 +1636,7 @@ const readTipLadderReceiptLookupRowByRef = (
                        p.id DESC
               LIMIT 1`,
           )
-          .bind(receiptRef)
+          .bind(receiptRef, receiptRef)
           .first<TipLadderReceiptLookupRow>(),
       )
     : Effect.succeed(null)

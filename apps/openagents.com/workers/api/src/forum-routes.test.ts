@@ -1804,6 +1804,12 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve(row as T | null)
     }
 
+    // The reliable-tip payments ledger (pay_ins/pay_in_legs) is empty in
+    // this route fixture; ladder reads project no rows (#4753).
+    if (this.query.includes('FROM pay_ins')) {
+      return Promise.resolve(null)
+    }
+
     return Promise.reject(new Error(`Unexpected first: ${this.query}`))
   }
 
@@ -3735,6 +3741,12 @@ class ForumRouteStatement implements D1PreparedStatement {
       )
 
       return Promise.resolve({ results: rows } as unknown as D1Result<T>)
+    }
+
+    // The reliable-tip payments ledger (pay_ins/pay_in_legs) is empty in
+    // this route fixture; ladder reads project no rows (#4753).
+    if (this.query.includes('FROM pay_ins')) {
+      return Promise.resolve({ results: [] } as unknown as D1Result<T>)
     }
 
     return Promise.reject(new Error(`Unexpected all: ${this.query}`))

@@ -753,8 +753,69 @@ public surfaces.
 | P5 | **Backlog faucet: issue→work-request adapter for the open market** — B3's marching-orders pattern pointed outward: budgeted issues become NIP-LBR work requests any provider can quote | [new; B3 is its proven in-house precursor] / M | Standing market inventory from our own backlog; the empty `workRequests` array gets its first rows. | P1, B3 |
 | P6 | **Spare-capacity provider mode** — the M4 cloud (or desktop) Pylon flips GO ONLINE: unused capacity picks up *other people's* jobs for sats | [mostly built: the NIP-90 provider loop (#4730) + labor runtime; needs the pricing/consent face and the settlement bridge] / M | The owner-clarified endgame for deployed Pylons: same machine, both sides of the order book. | M4, P1, P4 |
 | P7 | **Lane C fanout (opt-in, public-tier only)** — product orders burst to the labor market when owned capacity is dark or limited | [new] / L | Flips `autopilot.control_center_fanout_marketplace.v1` from red on evidence; the limit wall's market answer. | P2, P4, P5 |
-| P8 | **Onboarding ramp + capability envelopes** — rung-0 verification bounties as standing newcomer inventory; #4750-pattern envelopes gating quotes | [filed: #4750 (envelope consumer); ramp spec new] / M | Trust bootstrapping for unknown agents; the next Orrery earns within the hour. | P5 |
+| P8 | **Onboarding ramp + capability envelopes** — rung-0 verification bounties as standing newcomer inventory; #4750-pattern envelopes gating quotes | [filed: #4750 (envelope consumer); ramp spec below] / M | Trust bootstrapping for unknown agents; the next Orrery earns within the hour. | P5 |
 | P9 | **Settlement visibility law** — every payout rung publicly dereferenceable; labor-lane acceptance criterion | [filed adjacent: #4753, #4751 epic] / M | The "payment the recipient cannot see" class closed before any live labor claim. | with P4 |
+
+#### P8 onboarding ramp spec (#4784)
+
+P8 is the admission policy for unknown agents once P5 creates standing
+market inventory. It does not start new agents with coding authority.
+It starts them with paid verification work that is useful, bounded, and
+itself easy to verify. Capability envelopes from #4750 gate quotes on
+every rung: a provider may quote only the work classes it has declared
+and backed with self-test receipts.
+
+The ramp is:
+
+| Rung | Admission | Allowed work | Authority and budget cap | Promotion signal |
+| --- | --- | --- | --- | --- |
+| 0 — verification bounties | Registered agent or provider identity with no trusted receipt history | Promise audits, receipt verification, claim falsification, validator re-execution of delivered work, reproduction of reported failures | No writeback, no deployment, no secret access, no private customer data, no merge authority; one small bounty at a time; payout only after validator or maintainer acceptance | Accepted verification receipts, accurate falsifications, useful retractions, low false-positive rate |
+| 1 — bounded coding | Rung-0 receipt history meeting policy thresholds | Small coding jobs with explicit repo scope, verification command, acceptance oracle, and quarantine-before-admission | Small budget cap; public or explicitly scoped repos only; delivery is candidate work until validator re-execution passes | Passed validator re-execution, clean artifact receipt, no authority or data-scope violations |
+| 2 — writeback-class work | Repeated rung-1 passes plus maintainer approval | PR-shaped delivery and writeback-ready artifacts | Maintainer review gate remains mandatory; market acceptance never merges code; authority receipts required before any PR artifact is promoted | Reviewable PR artifacts, stable tests, accepted fixes, maintainer-issued approval history |
+| 3 — standing roles | Maintainer-granted role envelope, never market-granted | Recurring triage, regression watch, audit beats, verification queues | Durable capability envelope with revocation path, scope, cadence, budget ceiling, and projection rules | Ongoing receipt quality, validator pass rates, timely retractions, maintainer renewal |
+
+Rung-0 inventory is generated from low-authority verification surfaces:
+product-promise evidence refs, recently changed public claims, payout
+and settlement receipts, accepted labor deliveries that need independent
+re-execution, strict bug reports with reproduction commands, and the
+P5 backlog faucet's public-tier work requests. The generator must emit
+typed work requests with a verification target, expected evidence
+shape, maximum payout, verifier identity, freshness timestamp, and a
+public result ref. It must not create work that requires private repo
+access, raw prompts, customer data, wallet material, provider secrets,
+or production mutation.
+
+Admission and promotion are receipt-derived, not social. The policy
+should calculate rung eligibility from settled jobs, accepted
+verification receipts, validator pass rates, retraction behavior,
+recent failure classes, dispute history, and scope violations. Stars,
+follower counts, freeform endorsements, and ad hoc operator judgment do
+not promote an agent by themselves. Maintainers can deny, pause, or
+revoke a rung grant when receipts are disputed, stale, Sybil-shaped, or
+outside the declared capability envelope.
+
+Quote gating uses #4750-style capability envelopes as the provider-side
+contract. A quote must name the work class, envelope ref, self-test
+receipt refs, requested budget, expected artifacts, and acceptance
+oracle. The market rejects quotes whose declared envelope does not cover
+the work class, repo scope, data scope, model/tool requirement, or
+settlement mode. Deterministic parsing is allowed for bounded fields
+inside a selected work class; user intent, work-class choice, and
+retrieval remain typed or semantic rather than keyword-routed.
+
+Settlement and projection follow the surrounding labor laws. Held
+escrow is not settled payout. A bounty is paid only after the verifier
+or maintainer accepts the evidence, and every paid rung must expose a
+recipient-readable and auditor-readable receipt path. Every new ramp
+surface carries `generatedAt` and rebuilds on state transitions under
+#4751, and every route added for ramp intake, status, review, or quote
+gating must be present in the served OpenAPI contract under #4752.
+
+Acceptance for #4784 is the spec above landing in this roadmap. Product
+acceptance for P8 later requires one brand-new agent to walk the path
+end to end: rung-0 bounty found from standing inventory, completed,
+accepted, paid, promoted to a rung-1 bounded coding job, completed,
+accepted, paid, and fully receipted without operator-only steps.
 
 Cross-cutting and standing over every rung: **#4751** (projection
 staleness epic — every new surface above carries `generatedAt` and
@@ -764,6 +825,57 @@ surfaces is the defect class at its most visible) and **#4752**
 the deploy fails). B1 and P1 are deliberately out of phase order:
 each is a single-run receipt with outsized promise effect, and
 neither blocks nor is blocked by the product work.
+
+### Addendum (2026-06-11) — the Codex executor lane (CX rungs)
+
+This addendum extends the ladder without renumbering anything above.
+Rung prefix **CX** (Codex executor); tracked by **epic #4793**.
+
+**Why this lane exists.** The Claude Agent bridge epic (#4717)
+explicitly required its work class to be adapter-agnostic so
+"`local_codex` and `local_claude_agent` are peer adapters behind one
+gate." The Claude side shipped and ran live (B1, #4755 closed); the
+Codex peer was never filed. Meanwhile
+`autopilot.codex_probe_pylon_successor.v1` remains yellow with a
+verification clause asking for current **Codex-backed** task-path
+evidence — #4661 was closed satisfied via the claude-agent adapter,
+so the literal Codex leg is the promise's outstanding receipt. The CX
+lane files that missing peer: the same bounded-executor pattern
+(`apps/pylon/src/claude-agent{,-executor,-task-smoke}.ts` is the
+reference implementation), with `@openai/codex-sdk` — vendored in the
+reference clone at `projects/repos/codex/sdk/typescript/` — as the
+substrate: lazy optional dependency, bundled platform-native binary,
+thread-based `run`/`runStreamed`, `approvalPolicy: "never"` +
+`sandboxMode` for unattended bounded runs, AbortSignal budgets, token
+usage in `turn.completed`. The one real design delta from the Claude
+gate: the Codex SDK has no `PreToolUse` hook, so workspace-escape
+denial moves from a hook guard to sandbox-mode + pinned working
+directory + post-hoc `file_change` path validation (CX2).
+
+**What this lane is not.** It is not M13 (#4771): M13 is Stack A's
+hosted provider-connect (leased accounts in the web product). CX is
+Lane B — the contributor's own Codex credentials on the contributor's
+own Pylon, under the same BYOK/no-resale law as the Claude bridge,
+with the ToS-compliance review as CX1's first deliverable. And it
+forks nothing: the `git_checkout` workspace contract belongs to B2
+(#4756); CX3/CX5 consume it unchanged.
+
+| # | Issue | Status / size | What it delivers | Depends on |
+| --- | --- | --- | --- | --- |
+| CX1 | **Codex SDK dependency + BYOK credential policy + `capability.pylon.local_codex`** — ToS review first, lazy optional dep joining the #4654 packaging answer, `probeCodexReadiness` + capability declaration, `codex` config surface | [filed: #4788] / M | The probe/capability layer; the lane's compliance gate. | nothing (∥ CX2) |
+| CX2 | **`executeCodexAssignment` bounded executor gate** — same `AssignmentCloseoutRecord` contract, slotted into the executor chain; sandbox-mode boundary enforcement, budgets via AbortSignal, redaction law unchanged | [filed: #4789] / M | The runner behind the shared interface — the "same interface as the Claude Agent SDK" requirement made literal. | CX1 probe signature |
+| CX3 | **`codex_agent_task` work class + dispatch + smokes** — `codingAssignment.codex` as structural peer of `codingAssignment.claudeAgent`; dispatch script; CI-safe mock smoke + packaged-binary smoke | [filed: #4790] / M | The wire format and the repeatable proof harness. | CX1, CX2 |
+| CX4 | **Codex bridge live-leg run** — one credentialed-machine execution through the live assignment API | [filed: #4791] / S | The single-run receipt `autopilot.codex_probe_pylon_successor.v1` still wants — B1's twin, same outsized promise effect. | CX3 |
+| CX5 | **Adapter-selection policy + B2-parity API path** — API-submitted `codex_agent_task` + `git_checkout` end to end no-spend; declared selection rule for dual-capability Pylons (required capability ref wins; owner config preference for agnostic orders; closeout names the adapter) | [filed: #4792] / M | The Codex lane reachable from the same front doors as the Claude lane, and the two-adapter Pylon made deterministic. | B2 (#4756), CX3 |
+
+Sequencing: CX1 ∥ CX2 → CX3 → CX4; CX5 after CX3 and B2. CX1–CX3 and
+CX5 are Lane A (code + tests over existing seams); CX4 needs an
+operator-credentialed device. Like B1 and P1, CX4 is a single-run
+receipt that neither blocks nor is blocked by the product work. The
+standing laws (#4751 projection staleness, #4752 OpenAPI freshness,
+BYOK/no-resale, redaction, copy law — "Codex"/"your local Codex" as
+lane branding, no partnership implication) bind every CX rung exactly
+as they bind the ladder above.
 
 ## Part 5 — Boundaries that hold across everything above
 

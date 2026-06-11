@@ -751,7 +751,16 @@ class ForumPaidActionStatement implements D1PreparedStatement {
 }
 
 const paidActionDb = (store: ForumPaidActionStore): D1Database => ({
-  batch: () => Promise.reject(new Error('D1 batch should not be used')),
+  // redeemWriteBatch commits its receipt/money-action/payment-event
+  // writes in ONE db.batch; the fixture applies the statements in order.
+  batch: async (statements: ReadonlyArray<D1PreparedStatement>) => {
+    const results: Array<D1Result<unknown>> = []
+    for (const statement of statements) {
+      results.push(await statement.run())
+    }
+
+    return results as never
+  },
   dump: () => Promise.reject(new Error('D1 dump should not be used')),
   exec: () => Promise.reject(new Error('D1 exec should not be used')),
   prepare: query => new ForumPaidActionStatement(query, store),

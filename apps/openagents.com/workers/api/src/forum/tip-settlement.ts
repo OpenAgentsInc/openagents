@@ -26,6 +26,8 @@ export const ForumTipSettlementStates: ReadonlyArray<ForumTipSettlementState> =
     'payment_required',
     'evidence_only',
     'paid',
+    'credited',
+    'swept',
     'recipient_pending',
     'dispatched',
     'settled',
@@ -42,6 +44,27 @@ const statePolicies: Record<
   ForumTipSettlementState,
   ForumTipSettlementStatePolicy
 > = {
+  // The credited rung of the reliable-tip ladder (#4706/#4753): the tip
+  // value moved atomically onto the recipient's sweepable platform
+  // ledger amount. It is real, citable value on the OpenAgents ledger,
+  // but it is NOT recipient-wallet settlement until a sweep settles.
+  credited: {
+    contentRewardEvidence: true,
+    creatorReceivedSpendableValue: false,
+    recipientSettlementEvidence: false,
+    settlementAuthority: 'openagents_ledger_credited',
+    treasuryDispatchAllowed: false,
+    wording: {
+      agent:
+        'This tip is credited to the recipient on the OpenAgents ledger (the sweepable amount); do not claim recipient-wallet settlement until a sweep settles it.',
+      operator:
+        'Credited-rung ladder tip: the value sits on the recipient sweepable ledger amount. The automated sweep moves it to the registered receive code; reconcile sweeps before any settlement claim.',
+      publicPage:
+        'This tip is credited to the recipient on the OpenAgents ledger and will be swept to their registered receive code. It is not yet recipient settlement.',
+      recipient:
+        'This tip is credited to your sweepable ledger amount. A settled sweep to your registered receive code makes it spendable bitcoin.',
+    },
+  },
   dispatched: {
     contentRewardEvidence: true,
     creatorReceivedSpendableValue: false,
@@ -201,6 +224,28 @@ const statePolicies: Record<
       recipient: 'Spendable settlement is verified for this reward.',
     },
   },
+  // A credited-rung tip whose value has been covered by settled sweep
+  // payouts to the recipient's registered receive code, under the
+  // documented oldest-credited-first attribution convention (#4707,
+  // #4753). Sweep settlement is a real Lightning payout to the
+  // registered wallet, so this is recipient settlement evidence.
+  swept: {
+    contentRewardEvidence: true,
+    creatorReceivedSpendableValue: true,
+    recipientSettlementEvidence: true,
+    settlementAuthority: 'recipient_wallet_direct',
+    treasuryDispatchAllowed: false,
+    wording: {
+      agent:
+        'This credited tip was covered by a settled sweep payout to the recipient registered receive code (oldest-credited-first attribution); recipient settlement evidence exists.',
+      operator:
+        'Swept ladder tip: settled sweep payouts cover this credited value under the oldest-credited-first convention. The sweep pay-in rows are the settlement evidence.',
+      publicPage:
+        'This tip was credited on the OpenAgents ledger and has since been swept to the recipient registered receive code.',
+      recipient:
+        'This credited tip was included in a settled sweep payout to your registered receive code.',
+    },
+  },
 }
 
 const paymentEventStatusToState: Record<
@@ -243,6 +288,16 @@ export const forumTipSettlementProjectionForReceipt = (
     paymentEvent.settlementAuthority === 'recipient_wallet_direct'
   ) {
     return forumTipSettlementProjectionForState('settled')
+  }
+
+  // Credited-rung ladder tips (#4753): confirmed ledger credit to the
+  // recipient's sweepable amount is its own bucket, never 'paid' (which
+  // claims only payer-side evidence) and never 'settled'.
+  if (
+    paymentEvent?.status === 'confirmed' &&
+    paymentEvent.settlementAuthority === 'openagents_ledger_credited'
+  ) {
+    return forumTipSettlementProjectionForState('credited')
   }
 
   if (paymentEvent === null) {

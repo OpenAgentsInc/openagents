@@ -119,7 +119,7 @@ describe('tip ladder public receipts', () => {
       amount: { amount: 50, asset: 'sats' },
       paymentEvent: {
         paymentEventRef: 'payment_event.forum.tip_ladder.payin_artanis_tip_1',
-        settlementAuthority: 'buyer_payment_evidence_only',
+        settlementAuthority: 'openagents_ledger_credited',
         status: 'confirmed',
       },
       receiptRef,
@@ -130,9 +130,12 @@ describe('tip ladder public receipts', () => {
         topicId: 'c336dd07-5a66-4786-bb51-116b4bb8121f',
       },
     })
+    // Credited-rung tips read as the explicit credited bucket (#4753),
+    // never as payer-side 'paid' and never as 'settled'.
     expect(receipt?.tipSettlement).toMatchObject({
       acceptedWorkPayoutEvidence: false,
-      state: 'paid',
+      creatorReceivedSpendableValue: false,
+      state: 'credited',
     })
   })
 
@@ -151,17 +154,21 @@ describe('tip ladder public receipts', () => {
       earningActorRef: 'agent:orrery',
       paymentState: 'confirmed',
       receiptRef,
-      settlementState: 'paid',
+      settlementState: 'credited',
       target: {
         postId: 'post_orrery_question',
         topicId: 'c336dd07-5a66-4786-bb51-116b4bb8121f',
       },
     })
     expect(earnings.summary).toMatchObject({
-      paidCount: 1,
+      creditedCount: 1,
+      paidCount: 0,
+      sweptCount: 0,
       totalCount: 1,
+      totalCreditedSats: 50,
       totalPaidSats: 50,
       totalSettledSats: 0,
+      totalSweptSats: 0,
     })
   })
 })

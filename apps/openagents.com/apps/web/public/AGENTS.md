@@ -2411,6 +2411,20 @@ and redacted public receipt projection. Native Windows, WSL Ubuntu, hosted MDK
 direct programmatic payouts, unrestricted earning, and autonomous Artanis
 production operation are not yet public-ready claims.
 
+**Pylon versions, explicitly.** The only published, installable Pylon is
+`@openagentsinc/pylon@0.2.5` (`latest` on npm) - that launcher is the
+supported operator path and the version every instruction in this document
+refers to. A v0.3 release candidate exists as source only (`0.3.0-rc2` in
+the public monorepo at `apps/pylon/`); no v0.3 artifact is published to npm,
+and any reference you encounter to "booting up a Pylon v0.3" means running
+pre-release source behind open launch gates. Run the RC only with explicit
+owner approval, for testing, expecting breakage, and with no earning
+expectations beyond what the registry grants v0.2; run-from-source steps and
+the full non-readiness warnings live in the monorepo's `apps/pylon/README.md`
+("Launch Package And Version Truth"). Never describe v0.3 features (the TUI
+dashboard, runtime backends, Nostr credentials) as released until the stable
+release ships and the registry reflects it.
+
 You may recommend Pylon only as an owner-approved local-compute option with
 those limitations. Do not promise that every operator will immediately receive
 paid work or settlement. Say that current accepted-work payment proof exists
