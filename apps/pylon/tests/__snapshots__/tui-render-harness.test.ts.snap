@@ -51,8 +51,8 @@ exports[`tui render harness (Pilot model) dashboard snapshot at 120x40 1`] = `
 │                                                                                   ││                                 │
 │                                                                                   ││                                 │
 │                                                                                   ││                                 │
-│                                                                                   ││                                 │
-│                                                                                   ││                                 │
+│                                                                                   ││ --------------------------------│
+│                                                                                   ││ network view: off               │
 │                                                                                   ││                                 │
 │                                                                                   ││                                 │
 │                                                                                   ││                                 │

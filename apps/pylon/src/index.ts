@@ -371,6 +371,9 @@ const runPylonNode = Effect.gen(function* () {
   const shutdown = yield* Deferred.make<void>()
   const requestShutdown = () => {
     Effect.runFork(Deferred.succeed(shutdown, void 0))
+    // GPU/native teardown (3D scene, WebGPU buffers) can wedge; never hold
+    // the terminal hostage on exit.
+    setTimeout(() => process.exit(0), 2000)
   }
   process.once("SIGINT", requestShutdown)
   process.once("SIGTERM", requestShutdown)
@@ -423,7 +426,7 @@ const runPylonNode = Effect.gen(function* () {
   }).pipe(
     Effect.catch((error) =>
       Effect.gen(function* () {
-        yield* logMessage(runtime, "info", `[Control] Attach API unavailable: ${error.message}`)
+        yield* logMessage(runtime, "info", `[Control] Attach API unavailable: ${error.message}`, { transient: true })
         return null
       }),
     ),
@@ -455,6 +458,7 @@ const runPylonNode = Effect.gen(function* () {
       ui.startDashboard({
         onRequestShutdown: requestShutdown,
         verbose: verboseMode,
+        enable3d: !smokeDashboard && Bun.env.PYLON_DISABLE_3D !== "1",
         keybindOverrides: keybinds.overrides,
         assignmentActions: nodeAssignmentActions,
         composerState,
@@ -539,6 +543,7 @@ const runPylonNode = Effect.gen(function* () {
 
   if (smokeDashboard) {
     yield* logMessage(runtime, "info", "Pylon v0.3 dashboard smoke complete.", { transient: true })
+    yield* Effect.sync(() => setTimeout(() => process.exit(0), 2000))
     return
   }
 
@@ -558,6 +563,9 @@ const runHeadlessNode = Effect.gen(function* () {
   const shutdown = yield* Deferred.make<void>()
   const requestShutdown = () => {
     Effect.runFork(Deferred.succeed(shutdown, void 0))
+    // GPU/native teardown (3D scene, WebGPU buffers) can wedge; never hold
+    // the terminal hostage on exit.
+    setTimeout(() => process.exit(0), 2000)
   }
   process.once("SIGINT", requestShutdown)
   process.once("SIGTERM", requestShutdown)
@@ -660,6 +668,7 @@ const runPylonAttach = (baseUrl: string, token: string) =>
     const shutdown = yield* Deferred.make<void>()
     const requestShutdown = () => {
       Effect.runFork(Deferred.succeed(shutdown, void 0))
+      setTimeout(() => process.exit(0), 2000)
     }
     process.once("SIGINT", requestShutdown)
     process.once("SIGTERM", requestShutdown)
@@ -675,6 +684,7 @@ const runPylonAttach = (baseUrl: string, token: string) =>
         ui.startDashboard({
           onRequestShutdown: requestShutdown,
           verbose: verboseMode,
+          enable3d: Bun.env.PYLON_DISABLE_3D !== "1",
           onVerboseChange: (verbose) => {
             verboseMode = verbose
           },

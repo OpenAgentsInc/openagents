@@ -58,6 +58,12 @@ composer (bottom), and a one-line key-hint footer.
   into the feed. Submitted prompts persist across restarts: cycle them with
   `ctrl+p` / `ctrl+n`, and an unsent draft is stashed on exit and restored
   on the next launch.
+- The sidebar renders a live 3D network view (`@opentui/three` on a native
+  WebGPU device, quantized to terminal glyphs): satellites orbit the market
+  core, wallet status drives color and speed, new feed activity pulses
+  nodes, and a balance increase fires a bitcoin-orange burst. It soft-fails
+  to a placeholder without a GPU, hides on terminals under 32 rows, and
+  `PYLON_DISABLE_3D=1` turns it off.
 - Views: `f3` dashboard, `f4` assignments (poll/accept work leases - accept
   always confirms first), `f5` wallet (status, readiness, session balance
   history). All views are also reachable from the palette.

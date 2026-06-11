@@ -28,7 +28,8 @@ export function isSessionBannerMessage(message: string): boolean {
     message.startsWith("[Identity] Pylon Nostr npub:") ||
     message.startsWith("Attaching to Pylon node") ||
     message.startsWith("Attached. Restored ") ||
-    message.startsWith("Pylon v0.3 dashboard smoke complete.")
+    message.startsWith("Pylon v0.3 dashboard smoke complete.") ||
+    message.startsWith("[Control] Attach API unavailable")
   )
 }
 

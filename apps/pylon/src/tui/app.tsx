@@ -15,8 +15,8 @@ import {
   type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
-import { render, useTerminalDimensions } from "@opentui/solid"
-import { ErrorBoundary, For, Show, createMemo, type JSX } from "solid-js"
+import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { ErrorBoundary, For, Show, createMemo, createSignal, onMount, type JSX } from "solid-js"
 import { runOpencodeStream } from "../opencode-run"
 import { theme } from "./theme"
 import {
@@ -42,6 +42,7 @@ import {
   walletState,
 } from "./store"
 import { DialogHost, registerDialogFocusHooks } from "./dialogs"
+import { mountNetworkOverlay } from "./network-scene"
 import {
   footerHints,
   installPylonKeymap,
@@ -68,6 +69,10 @@ let composerHistory: string[] = []
 let composerHistoryIndex: number | null = null
 let persistComposer: ((state: { history: string[]; stash: string }) => void) | null = null
 let restoredStash = ""
+// 3D network scene (sidebar). Soft-fails to a text placeholder; disabled in
+// the test harness and via PYLON_DISABLE_3D=1.
+let enable3dFlag = false
+let networkSceneDispose: (() => void) | null = null
 
 function recordComposerSubmission(prompt: string): void {
   const trimmed = prompt.trim()
@@ -345,6 +350,56 @@ function OperatorPane() {
   )
 }
 
+// Minimum terminal height for the 3D pane: below this the sidebar's
+// operator snapshot would be evicted, which matters more than the visual.
+export const networkPaneMinRows = 32
+
+function NetworkPane() {
+  const renderer = useRenderer()
+  const dimensions = useTerminalDimensions()
+  const roomy = () => dimensions().height >= networkPaneMinRows
+  const [sceneState, setSceneState] = createSignal<"off" | "loading" | "active" | "unavailable">(
+    enable3dFlag ? "loading" : "off",
+  )
+  onMount(() => {
+    if (!enable3dFlag) return
+    // Live state feed: wallet status colors the scene, new feed lines pulse
+    // satellites, balance increases fire a payment burst.
+    const readState = () => ({
+      online: walletState().daemonOnline && walletState().balanceSats !== null,
+      balanceSats: walletState().balanceSats,
+      activityCount: feedLineCount(),
+    })
+    void mountNetworkOverlay(renderer as never, readState).then((handle) => {
+      if (!handle) {
+        setSceneState("unavailable")
+        return
+      }
+      networkSceneDispose = handle.dispose
+      setSceneState("active")
+    })
+  })
+  // Reserves the sidebar cells the absolutely-positioned overlay paints.
+  // The overlay itself also hides below the height threshold (see
+  // mountNetworkOverlay), covering live resizes.
+  return (
+    <Show when={roomy()}>
+      <Separator />
+      <box width="100%" height={10} flexGrow={0} flexShrink={0}>
+        <Show when={sceneState() !== "active"}>
+          <text fg={theme.colors.textMuted} width="100%">
+            {sceneState() === "loading"
+              ? " network view: starting..."
+              : sceneState() === "unavailable"
+                ? " network view: gpu unavailable"
+                : " network view: off"}
+          </text>
+        </Show>
+      </box>
+    </Show>
+  )
+}
+
 function Sidebar() {
   return (
     <box
@@ -365,6 +420,7 @@ function Sidebar() {
       <TelemetryPane />
       <Separator />
       <OperatorPane />
+      <NetworkPane />
     </box>
   )
 }
@@ -576,6 +632,7 @@ export function installDashboardChrome(
 export interface StartDashboardOptions {
   onRequestShutdown: () => void
   verbose: boolean
+  enable3d?: boolean
   walletActions: WalletActions
   assignmentActions?: AssignmentActions | null
   composerState?: { history: string[]; stash: string }
@@ -616,6 +673,7 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
   setVerboseMode(options.verbose)
   composerHistory = options.composerState?.history ?? []
   restoredStash = options.composerState?.stash ?? ""
+  enable3dFlag = options.enable3d ?? true
   composerHistoryIndex = null
   persistComposer = options.onComposerPersist ?? null
   const assignmentActions = options.assignmentActions ?? null
@@ -651,6 +709,8 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
   return {
     renderer,
     destroy: () => {
+      networkSceneDispose?.()
+      networkSceneDispose = null
       const draft = composerRef?.plainText ?? ""
       persistComposer?.({ history: composerHistory, stash: draft })
       scrollRef = undefined

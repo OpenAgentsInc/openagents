@@ -60,6 +60,9 @@ export async function createTuiHarness(options: TuiHarnessOptions = {}): Promise
 
   const runtime = await Effect.runPromise(makePylonNodeRuntime)
 
+  // Note: the 3D network pane stays disabled in the harness (enable3dFlag
+  // defaults to false and only startDashboard turns it on), keeping frames
+  // deterministic and CI GPU-free.
   const chromeOptions: Pick<
     StartDashboardOptions,
     "walletActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"

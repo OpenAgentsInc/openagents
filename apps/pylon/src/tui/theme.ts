@@ -22,6 +22,7 @@ export type PylonThemeJson = {
     logText: string
     logError: string
     banner: string
+    payment: string
   }
   syntax: Record<string, { ref: string; bold?: boolean; italic?: boolean; underline?: boolean; bgRef?: string }>
 }
@@ -47,6 +48,7 @@ export const openagentsThemeJson: PylonThemeJson = {
     cyanBright: "#00D7FF",
     bgRaw: "#161B22",
     grayDim: "#6E7681",
+    bitcoin: "#F7931A",
   },
   theme: {
     border: "skyBlue",
@@ -60,6 +62,7 @@ export const openagentsThemeJson: PylonThemeJson = {
     logText: "slate",
     logError: "red",
     banner: "deepBlue",
+    payment: "bitcoin",
   },
   syntax: {
     default: { ref: "fgDefault" },
