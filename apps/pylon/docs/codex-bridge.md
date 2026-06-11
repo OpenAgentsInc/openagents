@@ -154,12 +154,30 @@ that does not carry the `codex_sdk` work class. When it does run:
   `codex_agent_execution_refused`, `codex_agent_budget_exceeded`,
   `codex_agent_workspace_escape_blocked`, `codex_agent_test_failed`.
 
+## Work class, dispatch, and smokes (CX3, #4790)
+
+- Wire format: `jobKind: "codex_agent_task"` with
+  `codingAssignment.codex` (`schema:
+  openagents.pylon.codex_agent_task.v0.3`, `agentKind: "codex_sdk"`,
+  `fixtureRef`, optional `sandboxMode`/`timeoutSeconds`) — the
+  structural peer of `codingAssignment.claudeAgent`, inside the same
+  normalized assignment payload. `requiredCapabilityRefs` travels
+  inside the codingAssignment so Pylon-side admission enforces the
+  capability too, not just operator dispatch.
+- Operator dispatch:
+  `apps/openagents.com/workers/api/scripts/codex-task-dispatch.ts`
+  (twin of `claude-agent-task-dispatch.ts`), `unpaid_smoke` only,
+  ref-only payload, no instruction text on the wire.
+- Smokes: `bun run smoke:codex-agent-task` (CI-safe: local harness,
+  mock runner, full worker-loop lifecycle, redaction scan) and the
+  `--live` leg for CX4. Runbook: `codex-agent-task-smoke.md`.
+
 ## Current status
 
 CX1 (#4788) ships the probe, capability declaration, credential-policy
 review, and config surface; CX2 (#4789) ships the bounded executor
-gate in the worker loop. Work-class dispatch and smokes (CX3 #4790),
-the live-device leg (CX4 #4791), and the API-parity path (CX5 #4792)
-follow on the epic. Until CX4's receipts exist, product copy must keep
-saying the Codex bridge is implemented but not proven live in
-production.
+gate in the worker loop; CX3 (#4790) ships the `codex_agent_task` work
+class, operator dispatch, and the CI-safe + live smoke harness. The
+live-device leg (CX4 #4791) and the API-parity path (CX5 #4792) follow
+on the epic. Until CX4's receipts exist, product copy must keep saying
+the Codex bridge is implemented but not proven live in production.
