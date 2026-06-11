@@ -57,6 +57,7 @@ import {
   ImageGenerationImageSize,
   ImageGenerationModelId,
   ImageGenerationProvider,
+  ProviderAccountPoolResponse,
   SubmitCustomerSiteFeedbackResponse,
   TeamChatMessagesResponse,
   TeamChatPostResponse,
@@ -107,6 +108,21 @@ export const SucceededPollProviderDeviceLogin = m(
 )
 export const FailedPollProviderDeviceLogin = m(
   'FailedPollProviderDeviceLogin',
+  {
+    error: S.String,
+  },
+)
+export const RequestedLoadProviderAccountPool = m(
+  'RequestedLoadProviderAccountPool',
+)
+export const SucceededLoadProviderAccountPool = m(
+  'SucceededLoadProviderAccountPool',
+  {
+    response: ProviderAccountPoolResponse,
+  },
+)
+export const FailedLoadProviderAccountPool = m(
+  'FailedLoadProviderAccountPool',
   {
     error: S.String,
   },
@@ -1131,6 +1147,9 @@ export const Message = S.Union([
   FailedStartProviderDeviceLogin,
   SucceededPollProviderDeviceLogin,
   FailedPollProviderDeviceLogin,
+  RequestedLoadProviderAccountPool,
+  SucceededLoadProviderAccountPool,
+  FailedLoadProviderAccountPool,
   ClickedBillingPackage,
   UpdatedBillingCouponCode,
   SubmittedBillingCoupon,

@@ -508,6 +508,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Registered agents can idempotently mark public-safe notification ids read. Read state does not grant authority.',
       },
       {
+        id: 'account_pool_dashboard',
+        href: 'https://openagents.com/api/provider-accounts/pool',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        description:
+          'Signed-in or owner-granted agent account-pool dashboard projection: connected provider accounts with provider-tagged lease eligibility, active lease load vs limit, cooldown/reset timers, low-credit flags, reconnect nudges, active leases, and the next-selection explain row. Read-only; no provider secrets and no lease or spend authority.',
+      },
+      {
         id: 'customer_active_order',
         href: 'https://openagents.com/api/customer-orders/active',
         method: 'GET',

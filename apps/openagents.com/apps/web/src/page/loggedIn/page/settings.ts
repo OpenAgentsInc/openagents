@@ -1,9 +1,11 @@
+import { Match as M } from 'effect'
 import { html } from 'foldkit/html'
 import type { Html } from 'foldkit/html'
 
 import type { OnboardingGitHubRepository } from '../../../domain/session'
 import { iconView } from '../../../icon'
 import { settingsSectionRouter } from '../../../route'
+import { formatIsoDateTime } from '../../../time-format'
 import * as Ui from '../../../ui'
 import {
   ClickedLogout,
@@ -13,13 +15,19 @@ import {
   ClickedStartProviderDeviceLogin,
   type Message,
   RequestedLoadOnboardingRepositories,
+  RequestedLoadProviderAccountPool,
   SelectedOnboardingRepository,
   SubmittedOnboardingRepository,
   UpdatedOnboardingManualRepositoryName,
   UpdatedOnboardingManualRepositoryOwner,
   UpdatedOnboardingRepositorySearch,
 } from '../message'
-import type { Model } from '../model'
+import type {
+  Model,
+  ProviderAccountPoolAccount,
+  ProviderAccountPoolLease,
+  ProviderAccountPoolResponse,
+} from '../model'
 import {
   ONBOARDING_REPOSITORY_PAGE_SIZE,
   clampOnboardingRepositoryPageIndex,
@@ -488,6 +496,305 @@ const settingsGitHubRepositoryPanel = (model: Model): Html => {
   )
 }
 
+const poolValueRow = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid grid-cols-[minmax(8rem,0.42fr)_minmax(0,1fr)] gap-4 border-b border-[#222] py-2 text-sm last:border-b-0',
+      ),
+    ],
+    [
+      h.span([Ui.className<Message>('min-w-0 text-white/35')], [label]),
+      h.span(
+        [
+          Ui.className<Message>(
+            'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-white/80',
+          ),
+        ],
+        [value],
+      ),
+    ],
+  )
+}
+
+const poolCooldownLabel = (account: ProviderAccountPoolAccount): string =>
+  account.cooldownUntil === null
+    ? 'none'
+    : account.cooldownRemainingSeconds === null
+      ? `ended ${formatIsoDateTime(account.cooldownUntil)}`
+      : `until ${formatIsoDateTime(account.cooldownUntil)} (~${Math.max(1, Math.ceil(account.cooldownRemainingSeconds / 60))}m)`
+
+const poolAccountTone = (account: ProviderAccountPoolAccount): string =>
+  account.reconnect.needed
+    ? 'text-[#d32f2f]'
+    : account.eligibility === 'eligible'
+      ? 'text-[#00c853]'
+      : 'text-[#ff6f00]'
+
+const poolAccountHeadline = (account: ProviderAccountPoolAccount): string =>
+  account.reconnect.needed
+    ? 'reconnect needed'
+    : account.eligibility === 'eligible'
+      ? 'ready'
+      : (account.eligibilityReasons[0] ?? 'unavailable')
+
+const poolAccountView = (account: ProviderAccountPoolAccount): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid gap-2 bg-[#010102] p-3')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('min-w-0')],
+            [
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'm-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-[#f1efe8]',
+                  ),
+                ],
+                [account.accountLabel ?? account.providerAccountRef],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    `m-0 mt-1 text-xs ${poolAccountTone(account)}`,
+                  ),
+                ],
+                [poolAccountHeadline(account)],
+              ),
+              h.p(
+                [Ui.className<Message>('m-0 mt-1 text-xs text-white/35')],
+                [account.provider.replaceAll('_', ' ')],
+              ),
+            ],
+          ),
+          account.reconnect.needed && account.provider === 'chatgpt_codex'
+            ? Ui.button<Message>({
+                label: 'Reconnect',
+                size: 'sm',
+                variant: 'primary',
+                attrs: [
+                  h.OnClick(
+                    ClickedStartProviderDeviceLogin({
+                      providerAccountRef: account.providerAccountRef,
+                    }),
+                  ),
+                ],
+              })
+            : account.reconnect.needed
+              ? h.span(
+                  [Ui.className<Message>('text-xs text-[#d32f2f]')],
+                  ['Reconnect required'],
+                )
+              : h.span(
+                  [Ui.className<Message>('text-xs text-white/35')],
+                  [`priority ${account.operatorPriority}`],
+                ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid border-t border-[#222]')],
+        [
+          poolValueRow(
+            'Leases',
+            `${account.activeLeaseCount}/${account.leaseLimit} active`,
+          ),
+          poolValueRow('Status', `${account.status} / ${account.health}`),
+          poolValueRow('Cooldown', poolCooldownLabel(account)),
+          ...(account.lowCredit ? [poolValueRow('Credits', 'low')] : []),
+          ...(account.recentFailureClass === null
+            ? []
+            : [poolValueRow('Recent failure', account.recentFailureClass)]),
+          poolValueRow(
+            'Last selected',
+            account.lastSelectedAt === null
+              ? 'never'
+              : formatIsoDateTime(account.lastSelectedAt),
+          ),
+          ...(account.lastSanityCheckAt === null
+            ? []
+            : [
+                poolValueRow(
+                  'Last check',
+                  `${account.lastSanityCheckResult ?? 'unknown'} at ${formatIsoDateTime(account.lastSanityCheckAt)}`,
+                ),
+              ]),
+          ...(account.eligibility === 'ineligible'
+            ? [
+                poolValueRow(
+                  'Unavailable',
+                  account.eligibilityReasons.join(', '),
+                ),
+              ]
+            : []),
+        ],
+      ),
+    ],
+  )
+}
+
+const poolLeaseView = (lease: ProviderAccountPoolLease): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid gap-1 bg-[#010102] p-3 text-sm')],
+    [
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 overflow-hidden text-ellipsis whitespace-nowrap text-white/80',
+          ),
+        ],
+        [
+          `${lease.accountLabel ?? lease.providerAccountRef} - ${lease.requestedAction}`,
+        ],
+      ),
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-white/40',
+          ),
+        ],
+        [
+          `${lease.runId ?? lease.orderId ?? lease.leaseRef} - expires ${formatIsoDateTime(lease.expiresAt)}`,
+        ],
+      ),
+    ],
+  )
+}
+
+const poolLoadedView = (pool: ProviderAccountPoolResponse): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid gap-4')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-center justify-between gap-2',
+          ),
+        ],
+        [
+          h.p(
+            [Ui.className<Message>('m-0 text-sm text-white/50')],
+            [
+              `${pool.summary.eligible}/${pool.summary.total} ready - ${pool.summary.activeLeaseCount} active lease(s) - generated ${formatIsoDateTime(pool.generatedAt)}`,
+            ],
+          ),
+          Ui.button<Message>({
+            label: 'Refresh',
+            size: 'sm',
+            variant: 'secondary',
+            attrs: [h.OnClick(RequestedLoadProviderAccountPool())],
+          }),
+        ],
+      ),
+      pool.accounts.length === 0
+        ? h.div(
+            [
+              Ui.className<Message>(
+                'border border-[#222] p-4 text-sm text-white/45',
+              ),
+            ],
+            ['No provider account connected.'],
+          )
+        : h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-px border border-[#222] bg-[#222]',
+              ),
+            ],
+            pool.accounts.map(poolAccountView),
+          ),
+      h.div(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.p([Ui.className<Message>(Ui.eyebrowClass)], ['Active leases']),
+          pool.activeLeases.length === 0
+            ? h.p(
+                [Ui.className<Message>('m-0 text-sm text-white/45')],
+                ['No active leases.'],
+              )
+            : h.div(
+                [
+                  Ui.className<Message>(
+                    'grid gap-px border border-[#222] bg-[#222]',
+                  ),
+                ],
+                pool.activeLeases.map(poolLeaseView),
+              ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.p([Ui.className<Message>(Ui.eyebrowClass)], ['Next account']),
+          h.p(
+            [Ui.className<Message>('m-0 text-sm text-white/60')],
+            [
+              pool.nextSelection.status === 'selected'
+                ? `${pool.nextSelection.accountLabel ?? pool.nextSelection.providerAccountRef ?? 'unknown'}${pool.nextSelection.provider === null ? '' : ` - ${pool.nextSelection.provider.replaceAll('_', ' ')}`} (${pool.nextSelection.activeLeaseCount ?? 0}/${pool.nextSelection.leaseLimit ?? 1} leases)`
+                : 'No account is currently available for new work.',
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+export const accountPoolPanel = (model: Model): Html => {
+  const h = html<Message>()
+
+  return M.value(model.providerAccountPool).pipe(
+    M.tagsExhaustive({
+      ProviderAccountPoolIdle: () =>
+        h.div(
+          [
+            Ui.className<Message>(
+              'border border-[#222] p-4 text-sm text-white/45',
+            ),
+          ],
+          ['Loading account pool...'],
+        ),
+      ProviderAccountPoolLoading: () =>
+        h.div(
+          [
+            Ui.className<Message>(
+              'border border-[#222] p-4 text-sm text-white/45',
+            ),
+          ],
+          ['Loading account pool...'],
+        ),
+      ProviderAccountPoolFailed: ({ error }) =>
+        h.div(
+          [Ui.className<Message>('grid gap-3 border border-[#333] p-4')],
+          [
+            h.p([Ui.className<Message>('m-0 text-sm text-[#d32f2f]')], [error]),
+            Ui.button<Message>({
+              label: 'Retry',
+              size: 'sm',
+              variant: 'secondary',
+              attrs: [h.OnClick(RequestedLoadProviderAccountPool())],
+            }),
+          ],
+        ),
+      ProviderAccountPoolLoaded: ({ response }) => poolLoadedView(response),
+    }),
+  )
+}
+
 export const view = (model: Model, section: SettingsSectionKey): Html => {
   const h = html<Message>()
   const providerAccounts = providerAccountBundleFromAuth(model.auth)
@@ -534,6 +841,7 @@ export const view = (model: Model, section: SettingsSectionKey): Html => {
     providerConnectionAction: providerConnectionAction(model),
     currentRepositoryDetail: currentRepositoryDetail(model),
     githubRepositoryPanel: settingsGitHubRepositoryPanel(model),
+    accountPoolPanel: accountPoolPanel(model),
     startProviderLoginAttrs: [
       h.OnClick(ClickedStartProviderDeviceLogin({ createNew: true })),
     ],

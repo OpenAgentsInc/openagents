@@ -49,6 +49,11 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     ctx: ExecutionContext,
     providerRouteSegment: string,
   ) => RouteEffect
+  handleProviderAccountPoolApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => RouteEffect
   handleProviderAccountsListApi: (
     request: Request,
     env: Bindings,
@@ -90,6 +95,12 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     if (url.pathname === '/api/provider-accounts') {
       return routeEffectOrResponse(
         dependencies.handleProviderAccountsListApi(request, env, ctx),
+      )
+    }
+
+    if (url.pathname === '/api/provider-accounts/pool') {
+      return routeEffectOrResponse(
+        dependencies.handleProviderAccountPoolApi(request, env, ctx),
       )
     }
 

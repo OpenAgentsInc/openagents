@@ -958,6 +958,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     compliant (`generatedAt`, contract, `x_verified_agent` state).
   - `GET /api/agents/claims/rewards` and `/{rewardRef}` — live at read —
     compliant (#4754).
+  - `GET /api/provider-accounts/pool` — live at read over provider-account,
+    lease, and failover state — compliant (`generatedAt`, contract, typed
+    eligibility reasons and reconnect nudges; lease refs and typed state only,
+    no provider secret material) (#4766).
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

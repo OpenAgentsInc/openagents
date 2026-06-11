@@ -5,16 +5,16 @@ import { AGENT_TOKEN_PREFIX } from './agent-registration'
 import type { AgentRegistrationStore } from './agent-registration'
 import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
 import {
+  OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES,
+  decodeOpenAgentsAutopilotWorkRequest,
+} from './autopilot-work-request'
+import {
   type AutopilotWorkExecutionCloseoutRecord,
   type AutopilotWorkOrderRecord,
   type AutopilotWorkReviewDecisionRecord,
   type AutopilotWorkStore,
   AutopilotWorkStoreError,
 } from './autopilot-work-routes'
-import {
-  OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES,
-  decodeOpenAgentsAutopilotWorkRequest,
-} from './autopilot-work-request'
 
 const agentToken = `${AGENT_TOKEN_PREFIX}autopilot-decision-test`
 const fixtureNowIso = '2026-06-11T17:30:00.000Z'
@@ -29,8 +29,7 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
     return { idempotent: false, record }
   }
 
-  readWorkOrder = async (workOrderRef: string) =>
-    this.records.get(workOrderRef)
+  readWorkOrder = async (workOrderRef: string) => this.records.get(workOrderRef)
 
   readWorkOrderByIdempotency = async () => undefined
 
@@ -41,19 +40,57 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
       .filter(record => record.ownerUserId === input.ownerUserId)
       .slice(0, input.limit)
 
+  listPendingScheduledWorkOrders = async (input: Readonly<{ limit: number }>) =>
+    [...this.records.values()]
+      .filter(
+        record =>
+          record.scheduledLaunch !== null &&
+          record.scheduledLaunch.dispatchedAt === null &&
+          record.scheduledLaunch.expiredAt === null,
+      )
+      .slice(0, input.limit)
+
+  recordScheduledLaunchTransition = async (
+    input: Readonly<{
+      scheduledLaunch: NonNullable<AutopilotWorkOrderRecord['scheduledLaunch']>
+      state: AutopilotWorkOrderRecord['state']
+      updatedAt: string
+      workOrderRef: string
+    }>,
+  ) => {
+    const existing = this.records.get(input.workOrderRef)
+
+    if (existing === undefined || existing.scheduledLaunch === null) {
+      return undefined
+    }
+
+    const updated = {
+      ...existing,
+      scheduledLaunch: input.scheduledLaunch,
+      state: input.state,
+      updatedAt: input.updatedAt,
+    }
+
+    this.records.set(existing.workOrderRef, updated)
+
+    return updated
+  }
+
   recordPylonAssignmentDispatch = async () => undefined
 
   recordExecutionCloseout = async () => undefined
 
   recordBuyerPaymentProof = async () => undefined
 
-  recordReviewDecision = async (input: Readonly<{
-    ownerUserId: string
-    reviewDecision: AutopilotWorkReviewDecisionRecord
-    state: 'accepted' | 'rejected' | 'revision_required'
-    updatedAt: string
-    workOrderRef: string
-  }>) => {
+  recordReviewDecision = async (
+    input: Readonly<{
+      ownerUserId: string
+      reviewDecision: AutopilotWorkReviewDecisionRecord
+      state: 'accepted' | 'rejected' | 'revision_required'
+      updatedAt: string
+      workOrderRef: string
+    }>,
+  ) => {
     const existing = this.records.get(input.workOrderRef)
 
     if (existing === undefined || existing.ownerUserId !== input.ownerUserId) {
@@ -160,6 +197,7 @@ const workOrderRecord = (
   paymentChallengeRef: null,
   request: fixtureRequest,
   reviewDecision: null,
+  scheduledLaunch: null,
   state: 'queued_or_running',
   statusUrlRef: 'status.autopilot_work_order.decision_test_1',
   taskRefs: ['task.autopilot_coder.docs_contract'],
@@ -235,29 +273,31 @@ const route = async (
 }
 
 type DecisionListBody = Readonly<{
-  decisions: ReadonlyArray<Readonly<{
-    decision: Readonly<{
-      actionKind: string
-      actionLabel: string
-      actionRef: string
-      actionSubmissionRequired: boolean
-      audience: string
-      blockedReasonRefs: ReadonlyArray<string>
-      customerNextActionRef: string
-      directEffectPermitted: boolean
-      id: string
-      receiptRefs: ReadonlyArray<string>
-      safeSummaryRef: string
-      status: string
-      statusLabel: string
+  decisions: ReadonlyArray<
+    Readonly<{
+      decision: Readonly<{
+        actionKind: string
+        actionLabel: string
+        actionRef: string
+        actionSubmissionRequired: boolean
+        audience: string
+        blockedReasonRefs: ReadonlyArray<string>
+        customerNextActionRef: string
+        directEffectPermitted: boolean
+        id: string
+        receiptRefs: ReadonlyArray<string>
+        safeSummaryRef: string
+        status: string
+        statusLabel: string
+      }>
+      work: Readonly<{
+        state: string
+        taskRefs: ReadonlyArray<string>
+        updatedAt: string
+        workOrderRef: string
+      }>
     }>
-    work: Readonly<{
-      state: string
-      taskRefs: ReadonlyArray<string>
-      updatedAt: string
-      workOrderRef: string
-    }>
-  }>>
+  >
   directEffectPermitted: boolean
   generatedAt: string
   pendingCount: number
@@ -304,7 +344,7 @@ describe('autopilot decision queue routes', () => {
     await store.createWorkOrder(deliveredWorkOrderRecord())
 
     const response = await route(store, '/api/autopilot/decisions')
-    const body = await response.json() as DecisionListBody
+    const body = (await response.json()) as DecisionListBody
 
     expect(response.status).toBe(200)
     expect(body.generatedAt).toBe(fixtureNowIso)
@@ -326,9 +366,7 @@ describe('autopilot decision queue routes', () => {
       'decision_action.autopilot_work_order.decision_test_1.approve_pr_draft',
     )
     expect(item?.work.state).toBe('delivered')
-    expect(item?.work.workOrderRef).toBe(
-      'autopilot_work_order.decision_test_1',
-    )
+    expect(item?.work.workOrderRef).toBe('autopilot_work_order.decision_test_1')
     expect(JSON.stringify(item?.decision)).not.toMatch(
       /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
     )
@@ -354,7 +392,7 @@ describe('autopilot decision queue routes', () => {
     )
 
     const response = await route(store, '/api/autopilot/decisions')
-    const body = await response.json() as DecisionListBody
+    const body = (await response.json()) as DecisionListBody
 
     expect(response.status).toBe(200)
     expect(body.pendingCount).toBe(2)
@@ -397,7 +435,7 @@ describe('autopilot decision queue routes', () => {
       sessionUserId: ownerUserId,
       token: '',
     })
-    const body = await response.json() as DecisionListBody
+    const body = (await response.json()) as DecisionListBody
 
     expect(response.status).toBe(200)
     expect(body.decisions).toHaveLength(1)
@@ -437,7 +475,7 @@ describe('autopilot decision queue routes', () => {
         method: 'POST',
       },
     )
-    const body = await response.json() as DecisionActBody
+    const body = (await response.json()) as DecisionActBody
 
     expect(response.status).toBe(201)
     expect(body.idempotent).toBe(false)
@@ -479,7 +517,7 @@ describe('autopilot decision queue routes', () => {
         method: 'POST',
       },
     )
-    const replayBody = await replay.json() as DecisionActBody
+    const replayBody = (await replay.json()) as DecisionActBody
 
     expect(first.status).toBe(201)
     expect(replay.status).toBe(200)
@@ -517,9 +555,7 @@ describe('autopilot decision queue routes', () => {
   test('rejects acting on non-actionable decision kinds', async () => {
     const store = new MemoryAutopilotWorkStore()
 
-    await store.createWorkOrder(
-      workOrderRecord({ state: 'access_required' }),
-    )
+    await store.createWorkOrder(workOrderRecord({ state: 'access_required' }))
 
     const response = await route(
       store,
@@ -571,7 +607,7 @@ describe('autopilot decision queue routes', () => {
     )
 
     const response = await route(store, '/api/autopilot/decisions')
-    const body = await response.json() as DecisionListBody
+    const body = (await response.json()) as DecisionListBody
 
     expect(body.pendingCount).toBe(0)
     expect(body.decisions).toHaveLength(1)

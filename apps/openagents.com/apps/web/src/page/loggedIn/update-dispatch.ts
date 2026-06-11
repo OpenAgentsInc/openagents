@@ -106,6 +106,9 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       FailedStartProviderDeviceLogin: () => updateProviders(model, message),
       SucceededPollProviderDeviceLogin: () => updateProviders(model, message),
       FailedPollProviderDeviceLogin: () => updateProviders(model, message),
+      RequestedLoadProviderAccountPool: () => updateProviders(model, message),
+      SucceededLoadProviderAccountPool: () => updateProviders(model, message),
+      FailedLoadProviderAccountPool: () => updateProviders(model, message),
 
       RequestedLoadOnboardingRepositories: () =>
         updateOnboarding(model, message),

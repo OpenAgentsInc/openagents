@@ -934,6 +934,107 @@ export const ProviderConnectionAction = S.Union([
 ])
 export type ProviderConnectionAction = typeof ProviderConnectionAction.Type
 
+export const ProviderAccountPoolReconnect = S.Struct({
+  needed: S.Boolean,
+  reason: S.NullOr(S.String),
+})
+export type ProviderAccountPoolReconnect =
+  typeof ProviderAccountPoolReconnect.Type
+
+export const ProviderAccountPoolAccount = S.Struct({
+  providerAccountRef: S.String,
+  provider: S.String,
+  accountLabel: S.NullOr(S.String),
+  status: S.String,
+  health: S.String,
+  eligibility: S.Literals(['eligible', 'ineligible']),
+  eligibilityReasons: S.Array(S.String),
+  operatorPriority: S.Number,
+  activeLeaseCount: S.Number,
+  leaseLimit: S.Number,
+  cooldownUntil: S.NullOr(S.String),
+  cooldownRemainingSeconds: S.NullOr(S.Number),
+  lowCredit: S.Boolean,
+  recentFailureClass: S.NullOr(S.String),
+  lastSelectedAt: S.NullOr(S.String),
+  lastSanityCheckAt: S.NullOr(S.String),
+  lastSanityCheckResult: S.NullOr(S.String),
+  lastParallelProbeAt: S.NullOr(S.String),
+  lastParallelProbeResult: S.NullOr(S.String),
+  lastSuccessfulLaunchAt: S.NullOr(S.String),
+  lastFailedLaunchAt: S.NullOr(S.String),
+  connectedAt: S.NullOr(S.String),
+  reconnect: ProviderAccountPoolReconnect,
+})
+export type ProviderAccountPoolAccount = typeof ProviderAccountPoolAccount.Type
+
+export const ProviderAccountPoolLease = S.Struct({
+  leaseRef: S.String,
+  providerAccountRef: S.String,
+  provider: S.String,
+  accountLabel: S.NullOr(S.String),
+  requestedAction: S.String,
+  runId: S.NullOr(S.String),
+  assignmentId: S.NullOr(S.String),
+  orderId: S.NullOr(S.String),
+  startedAt: S.String,
+  expiresAt: S.String,
+  lastTouchedAt: S.NullOr(S.String),
+  status: S.String,
+})
+export type ProviderAccountPoolLease = typeof ProviderAccountPoolLease.Type
+
+export const ProviderAccountPoolNextSelection = S.Struct({
+  status: S.Literals(['selected', 'none']),
+  providerAccountRef: S.NullOr(S.String),
+  provider: S.NullOr(S.String),
+  accountLabel: S.NullOr(S.String),
+  selectionReason: S.String,
+  activeLeaseCount: S.NullOr(S.Number),
+  leaseLimit: S.NullOr(S.Number),
+})
+export type ProviderAccountPoolNextSelection =
+  typeof ProviderAccountPoolNextSelection.Type
+
+export const ProviderAccountPoolSummary = S.Struct({
+  total: S.Number,
+  eligible: S.Number,
+  activeLeaseCount: S.Number,
+  lowCredit: S.Number,
+  requiresReauth: S.Number,
+  cooldown: S.Number,
+  unhealthy: S.Number,
+})
+export type ProviderAccountPoolSummary = typeof ProviderAccountPoolSummary.Type
+
+export const ProviderAccountPoolResponse = S.Struct({
+  generatedAt: S.String,
+  provider: S.String,
+  policyVersion: S.String,
+  accounts: S.Array(ProviderAccountPoolAccount),
+  activeLeases: S.Array(ProviderAccountPoolLease),
+  nextSelection: ProviderAccountPoolNextSelection,
+  summary: ProviderAccountPoolSummary,
+})
+export type ProviderAccountPoolResponse =
+  typeof ProviderAccountPoolResponse.Type
+
+export const ProviderAccountPoolIdle = ts('ProviderAccountPoolIdle', {})
+export const ProviderAccountPoolLoading = ts('ProviderAccountPoolLoading', {})
+export const ProviderAccountPoolLoaded = ts('ProviderAccountPoolLoaded', {
+  response: ProviderAccountPoolResponse,
+})
+export const ProviderAccountPoolFailed = ts('ProviderAccountPoolFailed', {
+  error: S.String,
+})
+export const ProviderAccountPoolState = S.Union([
+  ProviderAccountPoolIdle,
+  ProviderAccountPoolLoading,
+  ProviderAccountPoolLoaded,
+  ProviderAccountPoolFailed,
+])
+export type ProviderAccountPoolState = typeof ProviderAccountPoolState.Type
+
 export const IdleOnboardingRepositories = ts('OnboardingRepositoriesIdle', {})
 export const LoadingOnboardingRepositories = ts(
   'OnboardingRepositoriesLoading',
@@ -1650,18 +1751,12 @@ export const AutopilotMorningReportLoading = ts(
   'AutopilotMorningReportLoading',
   {},
 )
-export const AutopilotMorningReportLoaded = ts(
-  'AutopilotMorningReportLoaded',
-  {
-    response: AutopilotMorningReportResponse,
-  },
-)
-export const AutopilotMorningReportFailed = ts(
-  'AutopilotMorningReportFailed',
-  {
-    error: S.String,
-  },
-)
+export const AutopilotMorningReportLoaded = ts('AutopilotMorningReportLoaded', {
+  response: AutopilotMorningReportResponse,
+})
+export const AutopilotMorningReportFailed = ts('AutopilotMorningReportFailed', {
+  error: S.String,
+})
 export const AutopilotMorningReportState = S.Union([
   AutopilotMorningReportIdle,
   AutopilotMorningReportLoading,
@@ -2035,8 +2130,7 @@ export const AutopilotDecisionQueueItem = S.Struct({
   decision: AutopilotDecisionProjection,
   work: AutopilotDecisionWorkContext,
 })
-export type AutopilotDecisionQueueItem =
-  typeof AutopilotDecisionQueueItem.Type
+export type AutopilotDecisionQueueItem = typeof AutopilotDecisionQueueItem.Type
 
 export const AutopilotDecisionListResponse = S.Struct({
   decisions: S.Array(AutopilotDecisionQueueItem),
@@ -2096,8 +2190,7 @@ export const AutopilotDecisionActState = S.Union([
   AutopilotDecisionActSucceeded,
   AutopilotDecisionActFailed,
 ])
-export type AutopilotDecisionActState =
-  typeof AutopilotDecisionActState.Type
+export type AutopilotDecisionActState = typeof AutopilotDecisionActState.Type
 
 export const CustomerSiteRevisionsIdle = ts('CustomerSiteRevisionsIdle', {})
 export const CustomerSiteRevisionsLoading = ts(
@@ -2924,6 +3017,7 @@ export const Model = ts('LoggedIn', {
   inviteCodeValue: S.String,
   mullet: MulletModel,
   onboarding: OnboardingFlowModel,
+  providerAccountPool: ProviderAccountPoolState,
   providerConnectionAction: ProviderConnectionAction,
   runMetadataDialog: RunMetadataDialog,
   route: LoggedInRoute,
@@ -3471,6 +3565,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     inviteCodeValue: '',
     mullet: initMullet(),
     onboarding: initOnboardingFlow(auth.onboarding),
+    providerAccountPool: ProviderAccountPoolIdle(),
     providerConnectionAction: IdleProviderConnectionAction(),
     runMetadataDialog: ClosedRunMetadataDialog(),
     route,

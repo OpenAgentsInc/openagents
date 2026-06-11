@@ -432,6 +432,11 @@ const publicProjectionSurfaces = [
     route: '/api/agents/claims/rewards',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/provider-account-pool-routes.ts',
+    route: '/api/provider-accounts/pool',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',

@@ -26,6 +26,7 @@ const fleetAccount = (
   overrides: Partial<ProviderAccountLeaseCandidate> = {},
 ): ProviderAccountLeaseCandidate => ({
   providerAccountRef,
+  provider: 'chatgpt_codex',
   status: 'connected',
   health: 'healthy',
   hasSecretRef: true,
@@ -100,7 +101,7 @@ describe('M9 rate-limit rotation smoke', () => {
       inducedAtTurnRef: 'implement',
       previousLeaseRef: 'account_lease.rotation_smoke_m9.lease_1',
       nextLeaseRef: 'account_lease.rotation_smoke_m9.lease_2',
-      policyVersion: 'provider-account-lease-policy:v1',
+      policyVersion: 'provider-account-lease-policy:v2',
       customerSafeStatus:
         'Work is retrying with another account after a temporary provider limit.',
     })
@@ -270,7 +271,9 @@ describe('M9 rate-limit rotation smoke', () => {
     )
 
     expect(receiptText).not.toMatch(/codex-auth|secret|bearer|oauth/i)
-    expect(receiptText).not.toMatch(/provider[_-]?(account|grant|payload|token)/i)
+    expect(receiptText).not.toMatch(
+      /provider[_-]?(account|grant|payload|token)/i,
+    )
     expect(receiptText).not.toMatch(/\btoken\b|wallet|mnemonic|lnbc/i)
   })
 })

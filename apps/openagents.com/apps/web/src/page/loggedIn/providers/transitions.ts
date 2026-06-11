@@ -10,13 +10,20 @@ import {
   FailedProviderConnectionAction,
   Model,
   PollingProviderDeviceLogin,
+  ProviderAccountPoolFailed,
+  ProviderAccountPoolLoaded,
+  ProviderAccountPoolLoading,
   StartingProviderDeviceLogin,
   SucceededProviderConnectionAction,
   authWithProviderAccounts,
   providerAccountBundleFromAuth,
 } from '../model'
 import { type UpdateReturn, noUpdate } from '../transition'
-import { PollProviderDeviceLogin, StartProviderDeviceLogin } from './commands'
+import {
+  LoadProviderAccountPool,
+  PollProviderDeviceLogin,
+  StartProviderDeviceLogin,
+} from './commands'
 
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
 
@@ -69,6 +76,27 @@ export const updateProviders = (model: Model, message: Message): UpdateReturn =>
         [PollProviderDeviceLogin({ attemptId })],
         Option.none(),
       ],
+      RequestedLoadProviderAccountPool: () => [
+        evo(model, {
+          providerAccountPool: () => ProviderAccountPoolLoading(),
+        }),
+        [LoadProviderAccountPool({})],
+        Option.none(),
+      ],
+      SucceededLoadProviderAccountPool: ({ response }) => [
+        evo(model, {
+          providerAccountPool: () => ProviderAccountPoolLoaded({ response }),
+        }),
+        [],
+        Option.none(),
+      ],
+      FailedLoadProviderAccountPool: ({ error }) => [
+        evo(model, {
+          providerAccountPool: () => ProviderAccountPoolFailed({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
       SucceededStartProviderDeviceLogin: ({ response }) => {
         const nextModel = applyProviderConnection(model, response)
 
@@ -80,7 +108,7 @@ export const updateProviders = (model: Model, message: Message): UpdateReturn =>
                   message: 'ChatGPT account connected.',
                 }),
             }),
-            [],
+            [LoadProviderAccountPool({})],
             Option.none(),
           ]
         }
@@ -118,7 +146,7 @@ export const updateProviders = (model: Model, message: Message): UpdateReturn =>
                   message: 'ChatGPT account connected.',
                 }),
             }),
-            [],
+            [LoadProviderAccountPool({})],
             Option.none(),
           ]
         }

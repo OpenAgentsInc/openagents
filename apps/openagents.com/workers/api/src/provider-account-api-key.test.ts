@@ -1,7 +1,6 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { makeProviderAccountRoutes } from './provider-account-routes'
 import {
   PROVIDER_API_KEY_CONNECT_POLICIES,
   connectProviderApiKeyAccount,
@@ -23,6 +22,7 @@ import {
   ProviderApiKeyInvalid,
   ProviderApiKeyRejected,
 } from './provider-account-errors'
+import { makeProviderAccountRoutes } from './provider-account-routes'
 import {
   providerAccountTestIdFactory,
   providerAccountTestNow,
@@ -134,10 +134,8 @@ class MemoryRepository implements ProviderAccountRepository {
 const recordedKeys: Array<string> = []
 
 const dependencies = (probeStatus: number) => ({
-  probeApiKey: probeProviderApiKey(
-    (() =>
-      Promise.resolve(new Response('{}', { status: probeStatus }))) as never,
-  ),
+  probeApiKey: probeProviderApiKey((() =>
+    Promise.resolve(new Response('{}', { status: probeStatus }))) as never),
   storeConnectedApiKey: (
     input: Readonly<{
       providerAccountRef: string
@@ -177,13 +175,18 @@ describe('provider api key connect policy', () => {
 
     expect(
       providerApiKeyUserSecretRef(anthropic, 'provider-account_ref_1'),
-    ).toBe(
-      'provider-account://anthropic/user-api-key/provider-account_ref_1',
-    )
+    ).toBe('provider-account://anthropic/user-api-key/provider-account_ref_1')
   })
 
   test('rejects empty, whitespace, and oversized key shapes without echoing them', () => {
-    for (const value of [undefined, '', '   ', 'short', 'two words', `k${'a'.repeat(600)}`]) {
+    for (const value of [
+      undefined,
+      '',
+      '   ',
+      'short',
+      'two words',
+      `k${'a'.repeat(600)}`,
+    ]) {
       try {
         requireProviderApiKeyShape(value)
         expect.unreachable('expected ProviderApiKeyInvalid')
@@ -225,9 +228,10 @@ describe('provider api key connect policy', () => {
     const failingProbe = probeProviderApiKey((() =>
       Promise.reject(new Error('network down'))) as never)
 
-    await expect(
-      failingProbe(anthropic, FAKE_ANTHROPIC_KEY),
-    ).resolves.toEqual({ health: 'unknown', probeStatus: undefined })
+    await expect(failingProbe(anthropic, FAKE_ANTHROPIC_KEY)).resolves.toEqual({
+      health: 'unknown',
+      probeStatus: undefined,
+    })
   })
 })
 
@@ -269,9 +273,7 @@ describe('connectProviderApiKeyAccount', () => {
     expect(JSON.stringify(repository.accounts)).not.toContain(
       FAKE_ANTHROPIC_KEY,
     )
-    expect(JSON.stringify(repository.events)).not.toContain(
-      FAKE_ANTHROPIC_KEY,
-    )
+    expect(JSON.stringify(repository.events)).not.toContain(FAKE_ANTHROPIC_KEY)
   })
 
   test('connects a Gemini account with user-scoped secret ref', async () => {
@@ -424,6 +426,7 @@ describe('provider api key connect route dispatch', () => {
 
         return Effect.succeed(new Response(null, { status: 204 }))
       },
+      handleProviderAccountPoolApi: stub('pool', calls),
       handleProviderAccountsListApi: stub('list', calls),
       handleProviderDeviceLoginConnectedApi: stub('deviceConnected', calls),
       handleProviderDeviceLoginFailedApi: stub('deviceFailed', calls),

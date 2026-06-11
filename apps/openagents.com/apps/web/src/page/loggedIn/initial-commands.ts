@@ -30,6 +30,7 @@ import { Message } from './message'
 import { Model } from './model'
 import { LoadMulletBootstrap } from './mullet/transitions'
 import { LoadOnboardingRepositories } from './onboarding/transitions'
+import { LoadProviderAccountPool } from './providers/commands'
 import { LoadTokenUsageStats } from './stats/transitions'
 import { LoadSyncSnapshot } from './sync/commands'
 import { syncSnapshotHref } from './sync/projection'
@@ -130,6 +131,11 @@ export const initialCommands = (
     model.route._tag === 'Thread'
       ? [FocusChatComposer()]
       : []
+  const providerAccountPoolCommands =
+    model.route._tag === 'SettingsSection' &&
+    model.route.section === 'connections'
+      ? [LoadProviderAccountPool({})]
+      : []
 
   return [
     ...baseCommands,
@@ -140,5 +146,6 @@ export const initialCommands = (
     ...fileCommands,
     ...fileDetailCommands,
     ...chatCommands,
+    ...providerAccountPoolCommands,
   ]
 }

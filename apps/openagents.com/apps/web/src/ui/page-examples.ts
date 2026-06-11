@@ -1704,6 +1704,7 @@ export const settingsWorkspacePage = <Message>(input: {
   providerConnectionAction: SettingsProviderConnectionAction
   currentRepositoryDetail: string
   githubRepositoryPanel?: Html | undefined
+  accountPoolPanel?: Html | undefined
   startProviderLoginAttrs: ReadonlyArray<Attribute<Message>>
   reconnectProviderLoginAttrs: ReadonlyArray<
     SettingsProviderAccountAction<Message>
@@ -1824,38 +1825,52 @@ export const settingsWorkspacePage = <Message>(input: {
           general ??
             (input.section === 'connections'
               ? h.div(
-                  [h.Class('grid gap-4 xl:grid-cols-2')],
+                  [h.Class('grid gap-4')],
                   [
-                    settingsProviderConnectionPanel<Message>({
-                      accounts: input.providerAccounts,
-                      attempts: input.providerAttempts,
-                      action: input.providerConnectionAction,
-                      startAttrs: input.startProviderLoginAttrs,
-                      reconnectAttrs: input.reconnectProviderLoginAttrs,
-                      pollAttrs: input.pollProviderLoginAttrs,
-                    }),
-                    settingsWorkspacePanel<Message>({
-                      eyebrow: 'Connections',
-                      title: 'GitHub',
-                      children: [
-                        settingsWorkspaceRows<Message>([
-                          {
-                            label: 'Account',
-                            value:
-                              input.githubLogin === undefined
-                                ? 'not connected'
-                                : input.githubLogin,
-                          },
-                          {
-                            label: 'GitHub ID',
-                            value: settingsWorkspaceFallback(input.githubId),
-                          },
-                        ]),
-                        ...(input.githubRepositoryPanel === undefined
-                          ? []
-                          : [input.githubRepositoryPanel]),
+                    h.div(
+                      [h.Class('grid gap-4 xl:grid-cols-2')],
+                      [
+                        settingsProviderConnectionPanel<Message>({
+                          accounts: input.providerAccounts,
+                          attempts: input.providerAttempts,
+                          action: input.providerConnectionAction,
+                          startAttrs: input.startProviderLoginAttrs,
+                          reconnectAttrs: input.reconnectProviderLoginAttrs,
+                          pollAttrs: input.pollProviderLoginAttrs,
+                        }),
+                        settingsWorkspacePanel<Message>({
+                          eyebrow: 'Connections',
+                          title: 'GitHub',
+                          children: [
+                            settingsWorkspaceRows<Message>([
+                              {
+                                label: 'Account',
+                                value:
+                                  input.githubLogin === undefined
+                                    ? 'not connected'
+                                    : input.githubLogin,
+                              },
+                              {
+                                label: 'GitHub ID',
+                                value: settingsWorkspaceFallback(
+                                  input.githubId,
+                                ),
+                              },
+                            ]),
+                            ...(input.githubRepositoryPanel === undefined
+                              ? []
+                              : [input.githubRepositoryPanel]),
+                          ],
+                        }),
                       ],
-                    }),
+                    ),
+                    input.accountPoolPanel === undefined
+                      ? null
+                      : settingsWorkspacePanel<Message>({
+                          eyebrow: 'Connections',
+                          title: 'Account pool',
+                          children: [input.accountPoolPanel],
+                        }),
                   ],
                 )
               : input.section === 'organization'

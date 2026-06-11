@@ -268,6 +268,7 @@ import {
 } from './promise-transition-receipt-routes'
 import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
+import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 import {
@@ -5520,6 +5521,12 @@ const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
   requireProviderServiceActor,
 })
 
+const providerAccountPoolRoutes = makeProviderAccountPoolRoutes({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  appendRefreshedSessionCookies,
+  requireBrowserSession,
+})
+
 const operatorProviderAccountRoutes = makeOperatorProviderAccountRoutes({
   deleteStartedCodexDeviceLogin,
   readConnectedCodexAuthMaterial,
@@ -5612,6 +5619,8 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         providerAccountRef,
       ),
     ),
+  handleProviderAccountPoolApi: (request, env, ctx) =>
+    providerAccountPoolRoutes.handleProviderAccountPoolApi(request, env, ctx),
   handleProviderAccountsListApi: (request, env, ctx) =>
     routeEffect('handle_provider_accounts_list_api', () =>
       providerAccountBrowserHandlers.handleProviderAccountsListApi(

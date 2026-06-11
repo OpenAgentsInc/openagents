@@ -7,11 +7,14 @@ import {
 } from '../../../domain/session'
 import { errorMessageFromUnknown, requestJson } from '../commands/api'
 import {
+  FailedLoadProviderAccountPool,
   FailedPollProviderDeviceLogin,
   FailedStartProviderDeviceLogin,
+  SucceededLoadProviderAccountPool,
   SucceededPollProviderDeviceLogin,
   SucceededStartProviderDeviceLogin,
 } from '../message'
+import { ProviderAccountPoolResponse } from '../model'
 
 export const StartProviderDeviceLogin = Command.define(
   'StartProviderDeviceLogin',
@@ -47,6 +50,36 @@ export const StartProviderDeviceLogin = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedStartProviderDeviceLogin({
+          error: errorMessageFromUnknown(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadProviderAccountPool = Command.define(
+  'LoadProviderAccountPool',
+  {},
+  SucceededLoadProviderAccountPool,
+  FailedLoadProviderAccountPool,
+)(() =>
+  Effect.gen(function* () {
+    const response = yield* requestJson({
+      init: {
+        cache: 'no-store',
+        credentials: 'include',
+        headers: { accept: 'application/json' },
+      },
+      name: 'loggedIn.providerAccountPool.load',
+      request: '/api/provider-accounts/pool',
+      schema: ProviderAccountPoolResponse,
+    })
+
+    return SucceededLoadProviderAccountPool({ response })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadProviderAccountPool({
           error: errorMessageFromUnknown(error),
         }),
       ),

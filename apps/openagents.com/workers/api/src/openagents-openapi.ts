@@ -243,6 +243,9 @@ const schemaComponents = (): JsonSchema => ({
   XClaimRewardEligibilityStatusResponse: objectSummary(
     'Public-safe single X-claim reward eligibility projection resolved by reward id or receipt ref, with the four-state lifecycle position, digest-only identity refs, generatedAt, and the declared staleness contract. Eligibility is not a spendable balance and grants no payout authority.',
   ),
+  ProviderAccountPoolResponse: objectSummary(
+    'Account-pool dashboard projection over the connected provider accounts owned by the signed-in user or the agent grant owner: provider-tagged per-account status/health, lease eligibility with typed reasons, active lease count vs lease limit, cooldown-until plus remaining seconds, low-credit flags, recent failure class, last-selected/sanity-check/probe/launch timestamps, and reconnect nudges for expired or reauth-required accounts; plus the active lease list, the next-selection explain row, summary counts, generatedAt, and the declared staleness contract (live_at_read, rebuilds on provider-account connect/disconnect/health/lease/failover transitions). Read-only projection: lease refs and typed state only. Provider tokens, secrets, grants, and raw provider payloads are never returned, and the projection grants no lease, spend, or provider-mutation authority.',
+  ),
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
@@ -1151,7 +1154,13 @@ const schemaComponents = (): JsonSchema => ({
   CreateForumWorkRequestRequest: {
     type: 'object',
     additionalProperties: false,
-    required: ['budgetSats', 'deadlineRef', 'objectiveRef', 'title', 'verificationCommandRef'],
+    required: [
+      'budgetSats',
+      'deadlineRef',
+      'objectiveRef',
+      'title',
+      'verificationCommandRef',
+    ],
     properties: {
       budgetSats: { type: 'number', minimum: 1 },
       deadlineRef: { type: 'string', minLength: 1, maxLength: 220 },
@@ -2343,9 +2352,7 @@ const paths = (): JsonSchema => ({
         'Returns the public-safe Artanis administrator-tick monitor: every persisted tick decision (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons and assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips (disabled, mind unconfigured, daily bound, no eligible Pylons) are not persisted rows. Read-only projection with no dispatch, spend, or settlement authority.',
       tags: ['Public Proof'],
       security: publicRead,
-      parameters: [
-        queryParam('limit', 'Maximum tick decisions to return.'),
-      ],
+      parameters: [queryParam('limit', 'Maximum tick decisions to return.')],
       responses: {
         '200': okJson(
           'Artanis administrator-tick monitor.',
@@ -5529,9 +5536,18 @@ const paths = (): JsonSchema => ({
       security: publicRead,
       parameters: [
         pathParam('actorRef', 'URL-encoded Forum actor ref.'),
-        queryParam('recipientPubkey', '64-character hex Nostr pubkey to receive the badge award.'),
-        queryParam('issuerPubkey', '64-character hex Nostr pubkey that will sign the badge definition and award.'),
-        queryParam('relay', 'Optional relay URL. Repeat to include multiple relay hints.'),
+        queryParam(
+          'recipientPubkey',
+          '64-character hex Nostr pubkey to receive the badge award.',
+        ),
+        queryParam(
+          'issuerPubkey',
+          '64-character hex Nostr pubkey that will sign the badge definition and award.',
+        ),
+        queryParam(
+          'relay',
+          'Optional relay URL. Repeat to include multiple relay hints.',
+        ),
       ],
       responses: {
         '200': okJson(
@@ -5854,9 +5870,7 @@ const paths = (): JsonSchema => ({
         'Lists public-safe open labor work requests with pagination metadata. Listing grants no acceptance, escrow, dispatch, or payout authority.',
       tags: ['Forum'],
       security: publicRead,
-      parameters: [
-        queryParam('limit', 'Maximum work requests to return.'),
-      ],
+      parameters: [queryParam('limit', 'Maximum work requests to return.')],
       responses: {
         '200': okJson(
           'Open work-request list.',
@@ -6318,6 +6332,23 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Forum tip settlement claim.',
           '#/components/schemas/ForumTipSettlementClaimResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/provider-accounts/pool': {
+    get: operation({
+      operationId: 'getProviderAccountPool',
+      summary: 'Read account-pool dashboard projection',
+      description:
+        'Returns the account-pool dashboard projection for the signed-in user or an agent with an owner-bound customer_orders.read grant: connected provider accounts with provider-tagged lease eligibility, active lease load vs limit, cooldown/reset timers, low-credit flags, recent failure class, reconnect nudges, the active lease list, and the next-selection explain row. The payload carries generatedAt and the declared live_at_read staleness contract. Read-only; no provider secrets or tokens are returned and no lease, spend, or provider-mutation authority is granted.',
+      tags: ['Provider Accounts'],
+      security: browserSessionOrAgentBearer,
+      responses: {
+        '200': okJson(
+          'Account-pool dashboard projection.',
+          '#/components/schemas/ProviderAccountPoolResponse',
         ),
         ...errorResponses(),
       },
