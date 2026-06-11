@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url'
 
 const DEFAULT_BASE_URL = 'https://openagents.com'
 const DEFAULT_AGENT_WALLET_TIMEOUT_MS = 5_000
+const DEFAULT_DIRECT_TIP_RECOVERY_WAIT_MS = 120_000
+const DEFAULT_DIRECT_TIP_RECOVERY_POLL_MS = 1_000
 
 export const usage = () => `Usage:
   node scripts/forum.mjs board
@@ -70,6 +72,7 @@ Options:
   --strict-smooth           Fail tip-post-smoke when timeout recovery is needed.
   --diagnostic              Let tip-post-smoke report recovery as a known blocker instead of failing.
   --reward-amount <n>       Optional sats amount for Forum post rewards.
+  --recovery-wait-ms <n>    tip-post timeout recovery wait. Defaults to 120000.
   --tip-amount <n>          Required sats amount for direct BOLT 12 Forum tips.
   --target-forum <id>       Generic paid-action forum target.
   --target-post <id>        Generic paid-action post target.
@@ -157,6 +160,8 @@ const valueFlags = new Set([
   'receiveCapabilityRef',
   'request-body-digest',
   'requestBodyDigest',
+  'recovery-wait-ms',
+  'recoveryWaitMs',
   'receipt',
   'reward-amount',
   'rewardAmount',
@@ -239,6 +244,7 @@ const canonicalFlagName = name =>
     readinessRef: 'readiness-ref',
     receiveCapabilityRef: 'receive-capability-ref',
     requestBodyDigest: 'request-body-digest',
+    recoveryWaitMs: 'recovery-wait-ms',
     rewardAmount: 'reward-amount',
     routeParamsJson: 'route-params-json',
     sourceRef: 'source-ref',
@@ -558,6 +564,25 @@ const walletTimeoutMsFromFlags = flags => {
 
   return parsed
 }
+
+const recoveryWaitMsFromFlags = flags => {
+  const raw = flagText(flags, 'recovery-wait-ms')
+
+  if (raw === undefined) {
+    return DEFAULT_DIRECT_TIP_RECOVERY_WAIT_MS
+  }
+
+  const parsed = Number(raw)
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error('--recovery-wait-ms must be a positive integer.')
+  }
+
+  return parsed
+}
+
+const sleep = ms =>
+  ms <= 0 ? Promise.resolve() : new Promise(resolve => setTimeout(resolve, ms))
 
 const normalizedWalletNetwork = value => {
   const normalized = String(value || 'any')
@@ -1043,6 +1068,8 @@ const parseWalletJson = (spec, result) => {
 
   return { blocker: null, exitCode, parsed }
 }
+
+const timedOutWalletJson = result => walletJsonObjectFromOutput(result?.stdout)
 
 const walletErrorText = parsed =>
   parsed === null || typeof parsed !== 'object'
@@ -1616,7 +1643,10 @@ const runAgentWalletSendPayment = async ({ amount, destination, executor }) => {
   if (parsed.blocker !== null) {
     return {
       blocker: parsed.blocker,
-      parsed: null,
+      parsed:
+        parsed.blocker.reasonRef === 'reason.public.agent_wallet_send_timeout'
+          ? timedOutWalletJson(result)
+          : null,
       status: 'blocked',
     }
   }
@@ -1728,11 +1758,99 @@ const directTipEvidenceFromWalletBlocker = ({
   }
 }
 
+const paymentRowStatus = row =>
+  typeof row?.status === 'string' ? row.status.trim().toLowerCase() : null
+
+const paymentRowMatches = (row, paymentIdentifier) => {
+  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+    return false
+  }
+
+  if (paymentIdentifier === null) {
+    return false
+  }
+
+  if (row.direction !== undefined && row.direction !== 'outbound') {
+    return false
+  }
+
+  const rowIdentifier = walletPaymentIdentifierFromOutput(row)
+
+  return rowIdentifier === paymentIdentifier
+}
+
+const newestPaymentRow = rows =>
+  rows.reduce((latest, row) =>
+    Number(row.timestamp ?? row.createdAtUnixMs ?? row.updatedAtUnixMs ?? 0) >=
+    Number(
+      latest.timestamp ?? latest.createdAtUnixMs ?? latest.updatedAtUnixMs ?? 0,
+    )
+      ? row
+      : latest,
+  )
+
+const walletPaymentsRows = result => {
+  const parsed = walletJsonObjectFromOutput(result?.stdout)
+
+  return Array.isArray(parsed?.payments) ? parsed.payments : []
+}
+
+const pollDirectTipPaymentRecovery = async ({
+  executor,
+  paymentIdentifier,
+  pollMs = DEFAULT_DIRECT_TIP_RECOVERY_POLL_MS,
+  sleepFn = sleep,
+  waitMs,
+}) => {
+  const maxAttempts = Math.max(1, Math.ceil(waitMs / Math.max(pollMs, 1)) + 1)
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const payments = await executor(walletCommandSpecs.payments).catch(
+      () => null,
+    )
+    const matching = walletPaymentsRows(payments).filter(row =>
+      paymentRowMatches(row, paymentIdentifier),
+    )
+
+    if (matching.length > 0) {
+      const row = newestPaymentRow(matching)
+      const status = paymentRowStatus(row)
+
+      if (status === 'completed') {
+        return {
+          payment: row,
+          polls: attempt + 1,
+          status: 'completed',
+        }
+      }
+
+      if (status === 'failed') {
+        return {
+          payment: row,
+          polls: attempt + 1,
+          status: 'failed',
+        }
+      }
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await sleepFn(pollMs)
+    }
+  }
+
+  return {
+    payment: null,
+    polls: maxAttempts,
+    status: 'deadline',
+  }
+}
+
 const submitDirectTipEvidence = async ({
   amount,
   baseUrl,
   env,
   evidence,
+  idempotencyKey = null,
   parsed,
   post,
   requestJson,
@@ -1743,11 +1861,13 @@ const submitDirectTipEvidence = async ({
       amount,
       paymentEvidence: evidence,
     },
-    idempotencyKey: idempotencyKeyFor(parsed.flags, 'direct-tip', {
-      amount,
-      externalRef: evidence.externalRef,
-      post,
-    }),
+    idempotencyKey:
+      idempotencyKey ??
+      idempotencyKeyFor(parsed.flags, 'direct-tip', {
+        amount,
+        externalRef: evidence.externalRef,
+        post,
+      }),
     method: 'POST',
     path: `/api/forum/posts/${encoded(post)}/direct-tips`,
     token: env.OPENAGENTS_AGENT_TOKEN,
@@ -2799,6 +2919,7 @@ export const runForumDirectTipPostPayment = async (
   const amount = requiredSatsAmountFromFlags(parsed.flags, 'tip-amount')
   const spendCap = directTipSpendCapFromFlags(parsed.flags, amount)
   const timeoutMs = walletTimeoutMsFromFlags(parsed.flags)
+  const recoveryWaitMs = recoveryWaitMsFromFlags(parsed.flags)
   const walletNetwork = walletNetworkFromFlags(parsed.flags, env)
   const walletExecutor =
     options.walletExecutor || createAgentWalletExecutor({ timeoutMs })
@@ -2898,6 +3019,92 @@ export const runForumDirectTipPostPayment = async (
     const timedOut =
       walletPayment.blocker?.reasonRef ===
       'reason.public.agent_wallet_send_timeout'
+    const paymentIdentifier = walletPaymentIdentifierFromOutput(
+      walletPayment.parsed,
+    )
+
+    if (timedOut) {
+      const recovery = await pollDirectTipPaymentRecovery({
+        executor: walletExecutor,
+        paymentIdentifier: paymentIdentifier ?? null,
+        pollMs:
+          typeof options.recoveryPollMs === 'number'
+            ? options.recoveryPollMs
+            : DEFAULT_DIRECT_TIP_RECOVERY_POLL_MS,
+        sleepFn: options.sleep || sleep,
+        waitMs: recoveryWaitMs,
+      })
+
+      if (recovery.status === 'completed') {
+        const evidence = directTipEvidenceFromWalletPayment({
+          amount,
+          parsed: recovery.payment,
+          post,
+          status: 'confirmed',
+          walletNetwork,
+        })
+        const recoveredPaymentIdentifier =
+          walletPaymentIdentifierFromOutput(recovery.payment) ??
+          paymentIdentifier ??
+          evidence.externalRef
+        const recorded = await submitDirectTipEvidence({
+          amount,
+          baseUrl: postRequest.baseUrl,
+          env,
+          evidence,
+          idempotencyKey: stableIdempotencyKey('direct-tip-recovered-payment', {
+            paymentIdentifier: recoveredPaymentIdentifier,
+            post,
+          }),
+          parsed,
+          post,
+          requestJson,
+        })
+
+        return directTipResult({
+          livePaymentAttempted: true,
+          payment: {
+            commandRef: 'mdk_agent_wallet.send',
+            evidenceRef: evidence.redactedEvidenceRef,
+            preimageCaptured:
+              paymentPreimageFromWalletOutput(recovery.payment) !== undefined,
+            recoveredAfterTimeout: true,
+            recoveryPolls: recovery.polls,
+            status: 'paid',
+            walletPaymentRef: 'wallet_payment.public.mdk_agent_wallet.redacted',
+          },
+          preflight,
+          receipt: recorded.receipt ?? null,
+          selfPayCheck,
+          status: recorded.status === 'settled' ? 'settled' : recorded.status,
+          attemptId: recorded.attemptId ?? null,
+          target: {
+            ...target,
+            postLink: recorded.targetPostPermalink ?? target.postLink,
+          },
+        })
+      }
+
+      if (recovery.status === 'failed') {
+        return directTipResult({
+          livePaymentAttempted: true,
+          payment: {
+            commandRef: 'mdk_agent_wallet.send',
+            reasonRef: 'reason.public.agent_wallet_send_failed',
+            recoveredAfterTimeout: true,
+            recoveryPolls: recovery.polls,
+            status: 'failed',
+          },
+          preflight,
+          reasonRef: 'reason.public.agent_wallet_send_failed',
+          receipt: null,
+          selfPayCheck,
+          status: 'payment_failed',
+          target,
+        })
+      }
+    }
+
     const failureClassification = timedOut
       ? await classifyStalledTipSend(walletExecutor, amount.amount)
       : null
@@ -2928,18 +3135,24 @@ export const runForumDirectTipPostPayment = async (
           ? {}
           : {
               failureClassification,
-              failureClassificationReasonRef:
-                tipFailureClassificationReasonRef(failureClassification),
+              failureClassificationReasonRef: tipFailureClassificationReasonRef(
+                failureClassification,
+              ),
             }),
         reasonRef:
           walletPayment.blocker?.reasonRef ??
           'reason.public.agent_wallet_send_failed',
         status: timedOut ? 'recovery_pending' : 'failed',
+        ...(timedOut
+          ? {
+              recoveryDeadlineHit: true,
+              recoveryWaitMs,
+            }
+          : {}),
         // #4704: recovery_pending attempts archive after 24h if the
         // provider callback never reconciles them. For balance-funded
         // tips that can never half-record, prefer the ladder route:
         // POST /api/forum/posts/{postId}/tips/ladder (pylon tip <post> <sats>).
-
       },
       preflight,
       reasonRef:
