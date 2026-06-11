@@ -339,9 +339,15 @@ projected.
    cache-root-guarded cleanup primitive, and no behavior change (refs,
    directories, and closeouts unchanged; full Pylon suite and both CI-safe
    smokes green).
-3. Add native shared-cache `git worktree` support behind that service, with
-   the bare-repo cache, retention policy, and cleanup receipts described in
-   the architecture section.
+3. Done (#4799): native `git worktree` support is the default strategy
+   behind the service — shared bare-repo cache keyed by hashed repository
+   full name, commit-object verification before materialization, detached
+   assignment-scoped worktrees, workspace lease records with TTL/retention
+   and cleanup receipt refs, opportunistic expiry sweeps, the two workspace
+   capability refs declared at go-online, and a public-safe lease projection
+   carrying `generatedAt`. Live-proven against the B2 fixture repository:
+   cold materialization ~0.7s, warm cross-adapter ~70ms. See
+   `apps/pylon/docs/workspace-materializer.md`.
 
 The desired end state is one OpenAgents workspace contract, one Pylon
 materializer, multiple adapters, and ref-only evidence across every surface.

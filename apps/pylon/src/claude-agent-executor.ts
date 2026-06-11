@@ -11,7 +11,7 @@ import {
 import {
   defaultGitCheckoutRunner,
   gitCheckoutWorkspaceFrom,
-  materializeGitCheckoutWorkspace,
+  materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
 } from "./workspace-materializer"
@@ -249,18 +249,20 @@ async function runCommand(input: { args: string[]; cwd: string }) {
 }
 
 async function materializeClaudeAgentWorkspace(input: {
-  checkoutRunner: WorkspaceCheckoutRunner
+  checkoutRunner?: WorkspaceCheckoutRunner
   leaseRef: string
   state: PylonLocalState
   task: ClaudeAgentTaskPayload
 }) {
   if (input.task.workspace !== undefined) {
-    const materialized = await materializeGitCheckoutWorkspace({
+    const materialized = await materializeGitCheckoutWorkspaceWithLease({
       cacheRoot: join(input.state.paths.cache, "claude-agent-tasks"),
       checkout: input.task.workspace,
-      checkoutRunner: input.checkoutRunner,
+      ...(input.checkoutRunner === undefined ? {} : { checkoutRunner: input.checkoutRunner }),
       leaseRef: input.leaseRef,
       refPrefix: "workspace.pylon.claude_agent_task",
+      repositoryCacheRoot: join(input.state.paths.cache, "workspace-git-cache"),
+      workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
     })
     return {
       acceptanceResultRef: "git_checkout_verified",
@@ -462,7 +464,7 @@ export async function executeClaudeAgentAssignment(
   let materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
   try {
     materialized = await materializeClaudeAgentWorkspace({
-      checkoutRunner: options.checkoutRunner ?? defaultGitCheckoutRunner,
+      ...(options.checkoutRunner === undefined ? {} : { checkoutRunner: options.checkoutRunner }),
       leaseRef: lease.leaseRef,
       state,
       task,

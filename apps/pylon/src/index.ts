@@ -17,6 +17,7 @@ import {
   probeCodexAgentReadiness,
   withCodexAgentCapability,
 } from "./codex-agent"
+import { withWorkspaceMaterializerCapability } from "./workspace-materializer"
 import { claimTipReadiness, readBalance, setTipPreferences, sweepStatus, tipPost } from "./tips"
 import {
   ARTANIS_FORUM_SLUG,
@@ -1428,16 +1429,18 @@ async function main() {
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
-          capabilityRefs: withCodexAgentCapability(
-            withClaudeAgentCapability(
-              [...new Set([
-                ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
-                PYLON_NIP90_PROVIDER_CAPABILITY_REF,
-                PYLON_LABOR_CAPABILITY_REF,
-              ])],
-              claudeAgentReadiness,
+          capabilityRefs: withWorkspaceMaterializerCapability(
+            withCodexAgentCapability(
+              withClaudeAgentCapability(
+                [...new Set([
+                  ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
+                  PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+                  PYLON_LABOR_CAPABILITY_REF,
+                ])],
+                claudeAgentReadiness,
+              ),
+              codexAgentReadiness,
             ),
-            codexAgentReadiness,
           ),
           blockerRefs: [...new Set([
             ...state.runtime.blockerRefs.filter((ref) =>
