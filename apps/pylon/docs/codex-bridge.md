@@ -177,7 +177,19 @@ that does not carry the `codex_sdk` work class. When it does run:
 CX1 (#4788) ships the probe, capability declaration, credential-policy
 review, and config surface; CX2 (#4789) ships the bounded executor
 gate in the worker loop; CX3 (#4790) ships the `codex_agent_task` work
-class, operator dispatch, and the CI-safe + live smoke harness. The
-live-device leg (CX4 #4791) and the API-parity path (CX5 #4792) follow
-on the epic. Until CX4's receipts exist, product copy must keep saying
-the Codex bridge is implemented but not proven live in production.
+class, operator dispatch, and the CI-safe + live smoke harness.
+
+**The live-device leg (CX4 #4791) has run.** On 2026-06-11 a
+contributor machine with the owner's own Codex CLI login
+(`credential.source.codex_agent.codex_cli_login`) went online with
+`capability.pylon.local_codex`, a production `codex_agent_task`
+assignment (`assignment.codex_agent_task.1781191118187`,
+`unpaid_smoke`) was dispatched through the controlled gate, the real
+Codex SDK executed the bounded fixture task in a sandboxed workspace,
+the independent verification command passed on-device, and the
+closeout reached the deployed API as `accepted`
+(`assignment.closeout.f264043a9f173b20514521da`) with the redaction
+scan clean and the no-spend boundary intact. A green transition for
+`autopilot.codex_probe_pylon_successor.v1` was proposed receipt-first;
+the maintainer flips the registry. The API-parity path (CX5 #4792)
+follows on the epic.
