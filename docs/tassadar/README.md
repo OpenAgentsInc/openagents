@@ -396,6 +396,15 @@ stack and cheap to begin.
   paid community improvement through its own rails) — with the
   product → primitive → marketplace bootstrap sequence and the
   compliance-boundary moat.
+- [`2026-06-11-autopilot-agentic-labor-market.md`](2026-06-11-autopilot-agentic-labor-market.md)
+  — third in the marketplace sequence: the Orrery moment (an agent
+  arrived asking to be pointed at useful work while the live
+  work-requests surface sat empty), idle agents as the upgraded
+  dark-capacity supply, the already-built labor clearing machinery
+  (NIP-LBR, escrow, provider loop, validator-gated acceptance), the
+  backlog faucet (our own issues as the first paid demand), the
+  rung-0-verification onboarding ramp, and Autopilot standing on both
+  sides of the order book.
 - [`2026-06-11-chatgpt-pro-analysis-2.md`](2026-06-11-chatgpt-pro-analysis-2.md)
   — the second external (ChatGPT Pro) brief: the literature map
   (RASP/Tracr lineage, expressivity-versus-learnability,
