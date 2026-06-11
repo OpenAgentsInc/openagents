@@ -130,11 +130,36 @@ Optional `codex` section in the Pylon config file
   nothing about this lane may be described as shipped or autonomous
   before its receipts exist.
 
+## Executor gate (CX2, #4789)
+
+`executeCodexAgentAssignment` (`src/codex-agent-executor.ts`) sits in
+the worker loop's executor chain after the Claude Agent gate and
+before the runtime-gate fallback, returning `null` for any assignment
+that does not carry the `codex_sdk` work class. When it does run:
+
+- the fixture workspace is materialized under
+  `~/.pylon/cache/codex-agent-tasks/<hashed-ref>`;
+- the production runner (`runWithCodexSdk`) opens one Codex SDK
+  thread pinned to that directory with `approvalPolicy: "never"`,
+  `skipGitRepoCheck`, network disabled, and the effective sandbox
+  mode (`read-only` requested anywhere wins; default
+  `workspace-write`; full access does not exist on this code path);
+- the wall-clock budget is enforced through the turn `AbortSignal`;
+- every `file_change` the thread reports is validated post hoc
+  against the workspace — an escape aborts the thread and produces
+  `blocker.assignment.codex_agent_workspace_escape_blocked`;
+- the fixture's verification command runs independently in the gate;
+  only a passing exit code yields an accepted closeout;
+- typed refusal arms: `codex_agent_unavailable` (+ probe blockers),
+  `codex_agent_execution_refused`, `codex_agent_budget_exceeded`,
+  `codex_agent_workspace_escape_blocked`, `codex_agent_test_failed`.
+
 ## Current status
 
 CX1 (#4788) ships the probe, capability declaration, credential-policy
-review, and config surface. The executor gate (CX2 #4789), work-class
-dispatch and smokes (CX3 #4790), the live-device leg (CX4 #4791), and
-the API-parity path (CX5 #4792) follow on the epic. Until CX4's
-receipts exist, product copy must keep saying the Codex bridge is
-implemented but not proven live in production.
+review, and config surface; CX2 (#4789) ships the bounded executor
+gate in the worker loop. Work-class dispatch and smokes (CX3 #4790),
+the live-device leg (CX4 #4791), and the API-parity path (CX5 #4792)
+follow on the epic. Until CX4's receipts exist, product copy must keep
+saying the Codex bridge is implemented but not proven live in
+production.

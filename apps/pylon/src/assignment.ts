@@ -12,6 +12,8 @@ import {
 import type { BootstrapSummary } from "./bootstrap"
 import type { ClaudeAgentProbeOptions } from "./claude-agent"
 import { executeClaudeAgentAssignment, type ClaudeAgentRunner } from "./claude-agent-executor"
+import type { CodexAgentProbeOptions } from "./codex-agent"
+import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor"
 import { createSignedHeaders } from "./presence"
 import {
   assertPublicProjectionSafe,
@@ -120,6 +122,8 @@ export type AssignmentClientOptions = {
   psionicQwenAdmission?: PsionicQwenModelAdmission
   claudeAgentRunner?: ClaudeAgentRunner
   claudeAgentProbe?: ClaudeAgentProbeOptions
+  codexAgentRunner?: CodexAgentRunner
+  codexAgentProbe?: CodexAgentProbeOptions
 }
 
 type AssignmentStore = {
@@ -808,6 +812,10 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
       ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
       ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
+    })) ??
+    (await executeCodexAgentAssignment(state, lease, observedAtDate, {
+      ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
+      ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
     })) ??
     (await executeRuntimeGate(state, lease, observedAtDate))
   const artifactRefs = runtimeGate?.artifactRefs ?? [stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)]
