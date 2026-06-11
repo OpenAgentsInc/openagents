@@ -161,22 +161,24 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
       'Do not claim every Forum post or creator has spendable settled sats.',
   },
   {
-    baseStatus: 'red',
+    baseStatus: 'yellow',
     blockerRefs: [
-      'blocker.launch_dashboard.no_wallet_knowledge.receive_send_readiness_incomplete',
+      'blocker.launch_dashboard.no_wallet_knowledge.self_serve_without_operator_staging_missing',
     ],
     evidenceRefs: [
       'docs/live/AGENTS.md#pylon-registration-status-and-receipts',
       'docs/2026-06-08-pylon-agentic-revenue-gap-audit.md#money-dev-kit',
+      'docs/2026-06-11-pylon-live-install-to-bitcoin-smoke-evidence.md',
+      'route:/api/public/nexus-pylon/receipts/{receiptRef}',
     ],
     promiseId: 'no_wallet_knowledge_bitcoin',
     promiseText:
       'Anyone can install Pylon without Bitcoin wallet knowledge, without loading bitcoin, and start turning a computer into bitcoin.',
     safeCopy:
-      'Pylon can report public wallet-readiness refs, but send readiness and broad earning still require explicit wallet and receipt evidence.',
+      'A live operator-approved small-sats install-to-bitcoin smoke passed end to end on a real machine on 2026-06-11 with a public settled receipt; the run was operator-staged and self-serve no-wallet-knowledge earning is not yet live.',
     staleSensitive: true,
     unsafeCopy:
-      'Do not claim no-wallet-knowledge installs immediately earn spendable Bitcoin.',
+      'Do not claim no-wallet-knowledge installs immediately earn spendable Bitcoin without operator staging.',
   },
   {
     baseStatus: 'yellow',

@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.3'
+export const PublicProductPromisesVersion = '2026-06-11.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -444,23 +444,28 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.install_without_wallet_knowledge.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'public'],
-      state: 'red',
+      state: 'yellow',
       claim:
         'Anyone can install Pylon without Bitcoin wallet knowledge, without loading bitcoin, and start turning a computer into bitcoin.',
       safeCopy:
-        'Pylon can classify wallet configured, receive-ready, send-ready, payout-target, payable, settlement, and receipt states, but broad no-wallet-knowledge earning is not live.',
+        'A live operator-approved small-sats install-to-bitcoin smoke passed end to end on a real machine on 2026-06-11: fresh packaged install, fresh registration, heartbeat, MDK wallet readiness in original funded wallet-home mode, payout-target admission, paid assignment lease, accepted-work closeout, a real 21-sat Lightning payment, and a public settled receipt. The run was operator-staged; self-serve no-wallet-knowledge earning is not yet live.',
       unsafeCopy:
-        'Do not claim no-wallet-knowledge installs immediately earn spendable Bitcoin.',
+        'Do not claim no-wallet-knowledge installs immediately earn spendable Bitcoin without operator staging.',
       evidenceRefs: [
         'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
         'apps/openagents.com/docs/2026-06-08-pylon-install-to-bitcoin-launch-smoke.md',
+        'apps/pylon/docs/2026-06-10-mdk-restore-send-readiness-preflight.md',
+        'apps/openagents.com/docs/2026-06-11-pylon-live-install-to-bitcoin-smoke-evidence.md',
+        'receipt.nexus_pylon.settlement.assignment_public_install_to_bitcoin_20260611033900',
+        'route:/api/public/nexus-pylon/receipts/{receiptRef}',
+        'transition:promise_transition_b9d568b5-0d02-476b-8205-9503f9060744',
+        'transition:promise_transition_73746398-0096-4962-b0c6-060e81fc70c4',
       ],
       blockerRefs: [
-        'blocker.product_promises.mdk_send_readiness_not_proven_for_restore',
-        'blocker.product_promises.live_install_to_bitcoin_smoke_incomplete',
+        'blocker.product_promises.install_to_bitcoin_self_serve_without_operator_staging_missing',
       ],
       verification:
-        'Requires live-small-sats install-to-bitcoin smoke with operator approval, spend cap, MDK send readiness, payment receipt, settlement receipt, and public projection refs.',
+        'The live-small-sats install-to-bitcoin smoke passed with operator approval ref, amount within spend cap, original funded MDK wallet-home mode (mnemonic-only restore is not send-ready per the #4657 re-scope), payout readiness, payment receipt, public settled settlement receipt, and public projection refs; the red-to-yellow transition receipt was recorded before this registry edit. Green requires the same chain to run self-serve without operator staging (operator-funded wallets, operator assignment dispatch, operator closeout, and operator payout execution were all in the loop, and hosted-MDK programmatic payouts remain disabled on the production account).',
       authorityBoundary:
         'Receive readiness and balance are not send readiness, payout dispatch, or settled earning.',
     },

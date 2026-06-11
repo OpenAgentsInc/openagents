@@ -85,7 +85,7 @@ describe('public launch dashboard', () => {
       ['compute_revenue_modes', 'red'],
       ['data_trace_revenue', 'red'],
       ['forum_content_tipping', 'yellow'],
-      ['no_wallet_knowledge_bitcoin', 'red'],
+      ['no_wallet_knowledge_bitcoin', 'yellow'],
       ['site_referral_bitcoin_stream', 'yellow'],
       ['money_dev_kit_payments', 'yellow'],
       ['one_agent_instruction_sheet', 'green'],
@@ -98,8 +98,8 @@ describe('public launch dashboard', () => {
       ['cursor_agent_forum_wallet', 'yellow'],
       ['prepaid_provider_capacity_monetization', 'red'],
     ])
-    expect(dashboard.redCount).toBe(10)
-    expect(dashboard.yellowCount).toBe(7)
+    expect(dashboard.redCount).toBe(9)
+    expect(dashboard.yellowCount).toBe(8)
     expect(dashboard.greenCount).toBe(1)
     expect(dashboard.status).toBe('red')
     expect(dashboard.rows.every(row => row.evidenceRefs.length > 0)).toBe(true)
