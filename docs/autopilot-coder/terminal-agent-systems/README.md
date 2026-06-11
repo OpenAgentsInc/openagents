@@ -108,6 +108,21 @@ map. The audits below are the currently imported subsystem records.
 - `2026-06-11-hook-event-system-audit.md`: Defines lifecycle/tool/policy/
   observability hooks as typed, ordered, policy-governed events that cannot
   bypass normal authority.
+- `2026-06-11-settings-configuration-system-audit.md`: Defines typed settings,
+  policy precedence, live reload, remote sync, safe mutation, validation, and
+  resolved configuration snapshots.
+- `2026-06-11-authentication-credential-storage-audit.md`: Defines login,
+  headless credentials, secure local storage, provider accounts, refresh,
+  revocation, redaction, and auth-dependent cache invalidation.
+- `2026-06-11-git-github-workflow-system-audit.md`: Defines repository
+  identity, safe Git state reads, bounded diff capture, branch/PR delivery,
+  review comment retrieval, issue writeback, and push authority.
+- `2026-06-11-ide-editor-integration-audit.md`: Defines optional editor/IDE
+  discovery, workspace matching, authenticated local transport, file opening,
+  diagnostics, selected context, and fallback editor behavior.
+- `2026-06-11-browser-desktop-integration-audit.md`: Defines safe URL opening,
+  browser or desktop bridges, screenshot/clipboard evidence, GUI action
+  approvals, and desktop-session handoff boundaries.
 
 ## Index
 
