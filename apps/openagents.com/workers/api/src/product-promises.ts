@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-10.29'
+export const PublicProductPromisesVersion = '2026-06-11.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -67,7 +67,7 @@ export const publicProductPromisesDocument = () => {
   const document = {
   schemaVersion: PublicProductPromisesSchemaVersion,
   version: PublicProductPromisesVersion,
-  lastUpdated: '2026-06-10',
+  lastUpdated: '2026-06-11',
   canonicalDocsUrl:
     'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
   sourceRefs,
@@ -413,7 +413,7 @@ export const publicProductPromisesDocument = () => {
       state: 'yellow',
       claim: 'Forum content tipping is like Stacker News for agents.',
       safeCopy:
-        'Forum tipping uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts, and the funded strict smooth-path production smoke has passed against two independent live ready recipients with verified creator-spendable settlement and no timeout recovery (2026-06-09). Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence. The promise remains yellow until webhook callback, refund/reversal, browser checkout polish, and broader wallet coverage land.',
+        'Forum tipping uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts. Funded strict smooth-path production smokes have passed against multiple independent live ready recipients (2026-06-09 and 2026-06-10), and on 2026-06-11 a funded live webhook smoke passed at the deployed MDK webhook route: a recovery-pending direct tip was promoted to a settled recipient-wallet-direct receipt by a live callback, duplicate callback replay stayed idempotent, payer retry converged to the same receipt, and a real 21-sat refund was paid back and projected publicly as refunded with settled totals excluding it. Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence. The green flip awaits a passing post-deploy transition receipt.',
       unsafeCopy:
         'Do not claim every Forum post or creator is tip-ready, do not show pending/demo/staged tips as paid, do not describe hosted L402 payments as creator spendable settlement, and do not describe ordinary Forum tips as accepted-work payouts.',
       evidenceRefs: [
@@ -429,15 +429,15 @@ export const publicProductPromisesDocument = () => {
         'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
         'apps/openagents.com/docs/forum-tip-payout-smoke.md',
         'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+        'apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md',
+        'transition:promise_transition_c106102b-e51b-4d2f-84ed-a588f1a26316',
+        'transition:promise_transition_feab90da-aead-49e1-9097-bd0b8bb5c11a',
+        'transition:promise_transition_e632649a-acfa-4e69-ad4b-269e92c963b3',
+        'transition:promise_transition_0cfba5d7-40ff-48bd-81a3-4b0758b0acd8',
       ],
-      blockerRefs: [
-        'blocker.product_promises.forum_tip_browser_checkout_polish',
-        'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
-        'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
-        'blocker.product_promises.forum_tip_broader_wallet_coverage',
-      ],
+      blockerRefs: [],
       verification:
-        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, smoke:forum:mdk-readiness, and `tip-post-smoke --strict-smooth` against at least two independent live ready recipients from a funded payer wallet. Forum launch status, post stats, direct-tip status, direct-tip webhook reconciliation, and tip leaderboards must distinguish wallet recipient readiness, user-specified tip amount, confirmed MDK/provider direct payment evidence, recipient-wallet-direct settlement authority, timeout recovery, and refund/reversal state. Public settled totals count only MDK-authoritative direct recipient-wallet tips and exclude hosted payer-only, pending, demo, staged, refunded, reversed, observed, recovery-pending, or unconfirmed receipts.',
+        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, smoke:forum:mdk-readiness, and `tip-post-smoke --strict-smooth` against at least two independent live ready recipients from a funded payer wallet. Forum launch status, post stats, direct-tip status, direct-tip webhook reconciliation, and tip leaderboards must distinguish wallet recipient readiness, user-specified tip amount, confirmed MDK/provider direct payment evidence, recipient-wallet-direct settlement authority, timeout recovery, and refund/reversal state. Public settled totals count only MDK-authoritative direct recipient-wallet tips and exclude hosted payer-only, pending, demo, staged, refunded, reversed, observed, recovery-pending, or unconfirmed receipts. Wallet-class scope for this promise version: self-custodial MDK agent wallets for direct-tip payers and recipients; hosted checkout actions accept any Lightning wallet payer. The 2026-06-11 live webhook/refund smoke evidence and per-blocker transition receipts are recorded in the evidence refs; the yellow-to-green flip requires a passing post-deploy transition receipt.',
       authorityBoundary:
         'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, accepted-work payout, provider-payout, or Treasury settlement authority.',
     },
@@ -513,10 +513,11 @@ export const publicProductPromisesDocument = () => {
         'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
         'apps/openagents.com/docs/forum-tip-payout-smoke.md',
         'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+        'apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md',
+        'transition:promise_transition_c30b7327-e82b-4696-8886-97aafa454284',
       ],
       blockerRefs: [
         'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
-        'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
       ],
       verification:
         'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',

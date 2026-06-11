@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-10.29')
+    expect(decoded.version).toBe('2026-06-11.1')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -176,12 +176,7 @@ describe('public product promises document', () => {
           state: 'green',
         }),
         expect.objectContaining({
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.forum_tip_browser_checkout_polish',
-            'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
-            'blocker.product_promises.forum_tip_refund_reversal_public_smoke',
-            'blocker.product_promises.forum_tip_broader_wallet_coverage',
-          ]),
+          blockerRefs: [],
           evidenceRefs: expect.arrayContaining([
             'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
             'route:/api/forum/paid-actions/mdk/webhooks',
@@ -189,6 +184,11 @@ describe('public product promises document', () => {
             'apps/openagents.com/docs/forum-tip-wallet-onboarding-smoke.md',
             'apps/openagents.com/docs/forum-tip-payout-smoke.md',
             'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+            'apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md',
+            'transition:promise_transition_c106102b-e51b-4d2f-84ed-a588f1a26316',
+            'transition:promise_transition_feab90da-aead-49e1-9097-bd0b8bb5c11a',
+            'transition:promise_transition_e632649a-acfa-4e69-ad4b-269e92c963b3',
+            'transition:promise_transition_0cfba5d7-40ff-48bd-81a3-4b0758b0acd8',
           ]),
           promiseId: 'forum.content_tipping.v1',
           state: 'yellow',
@@ -196,7 +196,6 @@ describe('public product promises document', () => {
         expect.objectContaining({
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
-            'blocker.product_promises.forum_tip_webhook_live_callback_smoke_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',

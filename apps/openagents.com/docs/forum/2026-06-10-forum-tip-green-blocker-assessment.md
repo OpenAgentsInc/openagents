@@ -76,3 +76,13 @@ transition receipts before any registry edit.
 
 The exact one-sitting operator procedure is now recorded in
 `apps/openagents.com/docs/forum/2026-06-10-forum-tip-yellow-to-green-operator-runbook.md`.
+
+## Update 2026-06-11
+
+The funded live webhook callback smoke, the public refund smoke, and the
+checkout/wallet-coverage assessments were completed with operator approval
+(`approval.operator.20260611.blocker_wave2_issue4653`). All four blockers were
+cleared in registry version `2026-06-11.1` with per-blocker transition
+receipts recorded first. Evidence, receipts, and honest caveats live in
+`apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md`.
+The promise stays yellow until a post-deploy green transition passes.
