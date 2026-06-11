@@ -179,11 +179,27 @@ export class OpenAgentsAutopilotForumReportingPolicy extends S.Class<OpenAgentsA
   targetForumRef: S.optionalKey(S.String),
 }) {}
 
+export class OpenAgentsAutopilotVerificationCommand extends S.Class<OpenAgentsAutopilotVerificationCommand>(
+  'OpenAgentsAutopilotVerificationCommand',
+)({
+  args: S.Array(S.String),
+  commandRef: S.String,
+}) {}
+
+export class OpenAgentsAutopilotGitCheckout extends S.Class<OpenAgentsAutopilotGitCheckout>(
+  'OpenAgentsAutopilotGitCheckout',
+)({
+  commitSha: S.String,
+  kind: S.Literal('git_checkout'),
+  verificationCommand: OpenAgentsAutopilotVerificationCommand,
+}) {}
+
 export class OpenAgentsAutopilotTaskRequest extends S.Class<OpenAgentsAutopilotTaskRequest>(
   'OpenAgentsAutopilotTaskRequest',
 )({
   acceptanceCriteriaRefs: S.Array(S.String),
   accessRequests: S.Array(OpenAgentsAutopilotAccessRequest),
+  checkout: S.optionalKey(OpenAgentsAutopilotGitCheckout),
   forumReporting: OpenAgentsAutopilotForumReportingPolicy,
   kind: OpenAgentsAutopilotTaskKind,
   objective: S.String,
@@ -256,6 +272,8 @@ export class OpenAgentsAutopilotWorkRequestUnsafe extends S.TaggedErrorClass<Ope
 
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
 const unsafeKeyPattern =
   /(access[_-]?token|bearer|callback[_-]?token|checkout[_-]?id|cookie|customer[_-]?(email|name)|email[_-]?(address|body)|invoice|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?key|provider[_-]?(account|grant|payload|token)|raw[_-]?(auth|email|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|tool[_-]?log|webhook)|secret[_-]?(material|value)|source[_-]?archive|token|webhook[_-]?secret)/i
 const unsafeValuePattern =
@@ -380,9 +398,58 @@ const assertSafeRepository = (
   assertSafeRef('repository branch', repository.branch)
 }
 
+const assertVerificationCommand = (
+  command: OpenAgentsAutopilotVerificationCommand,
+): void => {
+  assertSafeRef('verification commandRef', command.commandRef)
+
+  if (command.args.length === 0) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason: 'verificationCommand.args must contain at least one argv token.',
+    })
+  }
+
+  command.args.forEach(arg => {
+    if (
+      !verificationCommandArgPattern.test(arg) ||
+      arg.includes('..') ||
+      arg.startsWith('/')
+    ) {
+      throw new OpenAgentsAutopilotWorkRequestUnsafe({
+        reason:
+          'verificationCommand.args must be bounded argv tokens without absolute paths, traversal, shell, or secret material.',
+      })
+    }
+    assertSafeRef('verification command arg', arg)
+  })
+}
+
+const assertCheckout = (
+  task: OpenAgentsAutopilotTaskRequest,
+): void => {
+  if (task.checkout === undefined) {
+    return
+  }
+
+  if (task.repository === undefined || task.repository.visibility !== 'public') {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason: 'git_checkout tasks require a public repository ref.',
+    })
+  }
+
+  if (!gitCommitShaPattern.test(task.checkout.commitSha)) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason: 'git_checkout commitSha must be a pinned 40-character commit SHA.',
+    })
+  }
+
+  assertVerificationCommand(task.checkout.verificationCommand)
+}
+
 const assertTask = (task: OpenAgentsAutopilotTaskRequest): void => {
   assertSafeRef('taskRef', task.taskRef)
   assertSafeRepository(task.repository)
+  assertCheckout(task)
   assertNonEmptySafeRefs(
     'acceptanceCriteriaRefs',
     task.acceptanceCriteriaRefs,
@@ -555,6 +622,14 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
             reasonRef: 'access.github.public_read',
           },
         ],
+        checkout: {
+          commitSha: '1111111111111111111111111111111111111111',
+          kind: 'git_checkout',
+          verificationCommand: {
+            args: ['bun', 'test'],
+            commandRef: 'command.public.autopilot_coder.bun_test',
+          },
+        },
         forumReporting: {
           mode: 'public_safe_summary',
           targetForumRef: 'forum.product_promises.autopilot_coder',
@@ -605,6 +680,14 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
           'acceptance.tests.pass',
         ],
         accessRequests: [],
+        checkout: {
+          commitSha: '2222222222222222222222222222222222222222',
+          kind: 'git_checkout',
+          verificationCommand: {
+            args: ['bun', 'test'],
+            commandRef: 'command.public.autopilot_coder.bun_test',
+          },
+        },
         forumReporting: {
           mode: 'operator_approved_only',
         },

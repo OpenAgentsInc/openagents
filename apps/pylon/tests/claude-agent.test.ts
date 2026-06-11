@@ -51,11 +51,43 @@ describe("claude agent readiness probe", () => {
       env: {},
       platform: "darwin",
       importer: sdkPresent,
+      localSessionProbe: async () => false,
     })
     expect(probed.state).toBe("credentials_missing")
     expect(probed.capabilityRefs).toEqual([])
     expect(probed.blockerRefs).toEqual(["blocker.claude_agent.credentials_missing"])
     expect(probed.credentialSourceRef).toBeNull()
+  })
+
+  test("ready via the local Claude session when no env source exists", async () => {
+    const probed = await probeClaudeAgentReadiness({
+      env: {},
+      platform: "darwin",
+      importer: sdkPresent,
+      localSessionProbe: async () => true,
+    })
+    expect(probed.state).toBe("ready")
+    expect(probed.capabilityRefs).toEqual([CLAUDE_AGENT_CAPABILITY_REF])
+    expect(probed.blockerRefs).toEqual([])
+    expect(probed.credentialSourceRef).toBe(
+      "credential.source.claude_agent.local_claude_session",
+    )
+  })
+
+  test("env API key wins over the local session source", async () => {
+    let detectorCalled = false
+    const probed = await probeClaudeAgentReadiness({
+      env: { ANTHROPIC_API_KEY: "test-key-shape" },
+      platform: "darwin",
+      importer: sdkPresent,
+      localSessionProbe: async () => {
+        detectorCalled = true
+        return true
+      },
+    })
+    expect(probed.state).toBe("ready")
+    expect(probed.credentialSourceRef).toBe("credential.source.claude_agent.anthropic_api_key")
+    expect(detectorCalled).toBe(false)
   })
 
   test("platform_unsupported outside the supported platform set", async () => {

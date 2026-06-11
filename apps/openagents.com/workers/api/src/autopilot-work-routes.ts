@@ -266,8 +266,10 @@ export type AutopilotWorkTaskRecordProjection = Readonly<{
   acceptanceCriteriaRefs: ReadonlyArray<string>
   accessRequirements: ReadonlyArray<AutopilotWorkAccessRequirementProjection>
   accessState: AutopilotWorkTaskAccessState
+  checkout: OpenAgentsAutopilotWorkRequest['tasks'][number]['checkout'] | null
   kind: OpenAgentsAutopilotWorkRequest['tasks'][number]['kind']
   lifecycleState: AutopilotWorkTaskLifecycleState
+  objective: string
   paymentState: AutopilotWorkFundingProjection['buyerFundingState']
   placementState: AutopilotWorkTaskPlacementState
   repository: OpenAgentsAutopilotWorkRequest['tasks'][number]['repository'] | null
@@ -930,7 +932,7 @@ const safePaymentProofRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const safeExecutionCloseoutRefPattern =
   /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const unsafeExecutionCloseoutRefPattern =
-  /(\/Users\/|\/home\/|access[_-]?token|bearer\s+|checkout|cookie|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage)|payout[_-]?(address|destination|target)|preimage|private[_-]?(key|repo)|provider[_-]?(account|grant|payload|token)|raw[_-]?(auth|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|tool[_-]?log|webhook)|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet[_-]?(home|material|mnemonic|path|private|secret|state)|webhook[_-]?secret)/iu
+  /(\/Users\/|\/home\/|access[_-]?token|bearer\s+|cookie|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage)|payout[_-]?(address|destination|target)|preimage|private[_-]?(key|repo)|provider[_-]?(account|grant|payload|token)|raw[_-]?(auth|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|tool[_-]?log|webhook)|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet[_-]?(home|material|mnemonic|path|private|secret|state)|webhook[_-]?secret)/iu
 const AutopilotWorkReviewPublicSafeRef = S.Trim.check(
   S.isNonEmpty(),
   S.isMinLength(3),
@@ -1462,8 +1464,10 @@ const taskRecordsForRecord = (
       accessState: accessRequirements.length === 0
         ? 'satisfied'
         : 'missing_required_access',
+      checkout: task.checkout ?? null,
       kind: task.kind,
       lifecycleState,
+      objective: task.objective,
       paymentState: funding.buyerFundingState,
       placementState: placementStateForLifecycle(lifecycleState),
       repository: task.repository ?? null,

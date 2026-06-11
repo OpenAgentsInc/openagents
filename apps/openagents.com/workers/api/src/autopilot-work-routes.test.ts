@@ -596,7 +596,7 @@ const pylonRegistration = (
 ): PylonApiRegistrationRecord => ({
   capabilityRefs: [
     'capability.pylon.assignment_ready',
-    'capability.pylon.local_codex',
+    'capability.pylon.local_claude_agent',
   ],
   clientProtocolVersion: '0.2.5',
   clientVersion: '0.2.5',
@@ -1362,8 +1362,7 @@ describe('Autopilot work routes', () => {
         pylonRef: 'pylon.local.docs_agent',
         requiredCapabilityRefs: [
           'capability.pylon.assignment_ready',
-          'capability.pylon.local_codex',
-          'capability.pylon.local_coding_agent',
+          'capability.pylon.local_claude_agent',
         ],
         spendCapRefs: ['spend_cap.no_spend.autopilot_pylon_assignment'],
         taskRef: 'task.autopilot_coder.docs_contract',
@@ -1420,7 +1419,7 @@ describe('Autopilot work routes', () => {
     ])
   })
 
-  test('creates one durable no-spend Pylon assignment lease for requester Pylon work', async () => {
+  test('creates one durable no-spend Pylon claude_agent_task git_checkout lease for requester Pylon work', async () => {
     const store = new MemoryAutopilotWorkStore()
     const pylonApiStore = new MemoryPylonApiStore([
       pylonRegistration({
@@ -1491,10 +1490,21 @@ describe('Autopilot work routes', () => {
             paymentMode: 'unpaid_smoke',
             workerPayoutAuthority: false,
           }),
+          claudeAgent: expect.objectContaining({
+            agentKind: 'claude_agent_sdk',
+            schema: 'openagents.pylon.claude_agent_task.v0.3',
+          }),
           closeoutSchema: expect.objectContaining({
             acceptedWorkAuthority: false,
           }),
+          objective: expect.objectContaining({
+            publicSummary: 'Add public-safe Autopilot coder contract docs.',
+          }),
           publicSafe: true,
+          requiredCapabilityRefs: [
+            'capability.pylon.assignment_ready',
+            'capability.pylon.local_claude_agent',
+          ],
           runnerKind: 'requester_pylon',
           schema: 'openagents.autopilot_coding_assignment.v1',
           tracePolicy: expect.objectContaining({
@@ -1503,7 +1513,20 @@ describe('Autopilot work routes', () => {
             rawRunnerLogAllowed: false,
             rawSourceArchiveAllowed: false,
           }),
+          workspace: expect.objectContaining({
+            kind: 'git_checkout',
+            repository: expect.objectContaining({
+              commitSha: '1111111111111111111111111111111111111111',
+              fullName: 'OpenAgentsInc/openagents',
+              visibility: 'public',
+            }),
+            verificationCommand: {
+              args: ['bun', 'test'],
+              commandRef: 'command.public.autopilot_coder.bun_test',
+            },
+          }),
         }),
+        jobKind: 'claude_agent_task',
         leaseState: 'active',
         state: 'offered',
         taskRefs: [
@@ -1560,7 +1583,10 @@ describe('Autopilot work routes', () => {
           closeoutRefs: ['closeout.public.autopilot_docs.worker_summary'],
           previewRefs: ['preview.public.autopilot_docs.not_required'],
           proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
-          resultRefs: ['result.public.autopilot_docs.delivered'],
+          resultRefs: [
+            'result.public.autopilot_docs.delivered',
+            'result.public.pylon.claude_agent_task.git_checkout_verified_passed',
+          ],
           status: 'closeout_submitted',
           summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
           testRefs: ['test.public.autopilot_docs.not_required'],
@@ -1613,7 +1639,10 @@ describe('Autopilot work routes', () => {
         previewRefs: ['preview.public.autopilot_docs.not_required'],
         proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
         publicSafe: true,
-        resultRefs: ['result.public.autopilot_docs.delivered'],
+        resultRefs: [
+          'result.public.autopilot_docs.delivered',
+          'result.public.pylon.claude_agent_task.git_checkout_verified_passed',
+        ],
         runnerKind: 'requester_pylon',
         summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
         testRefs: ['test.public.autopilot_docs.not_required'],
@@ -1658,7 +1687,10 @@ describe('Autopilot work routes', () => {
       state: 'delivered',
       whatChanged: {
         artifactRefs: ['artifact.public.autopilot_docs.patch_summary'],
-        resultRefs: ['result.public.autopilot_docs.delivered'],
+        resultRefs: [
+          'result.public.autopilot_docs.delivered',
+          'result.public.pylon.claude_agent_task.git_checkout_verified_passed',
+        ],
         runnerKind: 'requester_pylon',
         summaryRefs: ['summary.public.autopilot_docs.customer_safe'],
       },

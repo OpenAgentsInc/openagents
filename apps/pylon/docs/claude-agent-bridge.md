@@ -30,7 +30,19 @@ that bind the lane.
 
 ## BYOK setup (bring your own key — always)
 
-The bridge uses your own credentials, never platform-supplied ones:
+The bridge uses your own credentials, never platform-supplied ones.
+
+**If you are logged in to Claude Code on this machine, no setup is
+required.** The probe detects your local Claude session (presence only:
+the credentials file or the macOS keychain entry — values are never
+read) and reports
+`credential.source.claude_agent.local_claude_session`; the bundled SDK
+binary reuses that same session for inference. This is still BYOK —
+the session is your own subscription and you pay for your own
+inference from it.
+
+Otherwise, export an API key (an env key takes precedence over the
+local session when both exist):
 
 ```sh
 export ANTHROPIC_API_KEY=your-api-key   # from platform.claude.com
@@ -94,11 +106,18 @@ Optional `claudeAgent` section in the Pylon config file
 ## Current status
 
 The probe, capability declaration, config surface, bounded executor gate,
-dispatch work class, and CI-safe packaged-binary smoke are built and merged
-(#4718, #4719, #4720). The promise remains yellow because the live-device leg
-has not run yet: an operator-credentialed contributor machine must go online
-with `capability.pylon.local_claude_agent`, execute the deployed
-`claude_agent_task` assignment with the real Claude Agent SDK and user-owned
-credentials, and post public-safe assignment, closeout, result, dispatch, and
-redaction-scan refs. Until those receipts exist, product copy must keep saying
-the bridge is implemented but not proven live in production.
+dispatch work class, CI-safe packaged-binary smoke, and first production
+live-device leg are built and receipt-backed (#4718, #4719, #4720, #4755).
+The #4755 leg ran a deployed no-spend `claude_agent_task` assignment on an
+operator-credentialed contributor machine with local-session Claude credentials
+and posted public-safe closeout ref
+`assignment.closeout.ae84ca67ada1584130b823d5`.
+
+The #4756 proof boundary is also receipt-backed: production work order
+`autopilot_work_order.46dc8c38-04c5-4f1c-9814-f35bfc00e7c3` carried
+`claude_agent_task` plus `git_checkout` through API submission, own-Pylon
+placement, local Claude Agent execution, independent `bun test` verification,
+and public-safe delivered closeout
+`assignment.closeout.2dc83bdc0d8481ebba14621e` against public repo
+`AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040` at pinned
+commit `1745cd4b54b8a12a50922f80b5d345314c91d70d`.

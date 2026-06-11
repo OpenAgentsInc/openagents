@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { realpathSync } from "node:fs"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -8,6 +9,7 @@ import {
   claudeAgentTaskFrom,
   executeClaudeAgentAssignment,
   toolInputEscapesWorkspace,
+  type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
 } from "../src/claude-agent-executor"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
@@ -43,6 +45,33 @@ const claudeAgentCodingAssignment = {
   },
 }
 
+const gitCheckoutCodingAssignment = {
+  objective: {
+    publicSummary: "Repair the public sum fixture.",
+  },
+  claudeAgent: {
+    schema: CLAUDE_AGENT_TASK_SCHEMA,
+    agentKind: "claude_agent_sdk",
+    allowedToolKinds: ["edit", "file", "git", "shell", "test_runner"],
+    maxTurns: 8,
+    timeoutSeconds: 120,
+  },
+  workspace: {
+    kind: "git_checkout",
+    repository: {
+      branch: "main",
+      commitSha: "3333333333333333333333333333333333333333",
+      fullName: "OpenAgentsInc/public-sum-fixture",
+      provider: "github",
+      visibility: "public",
+    },
+    verificationCommand: {
+      args: ["bun", "test", "sum.test.ts"],
+      commandRef: "command.public.autopilot_coder.bun_test_sum",
+    },
+  },
+}
+
 const lease = {
   assignmentRef: "assignment.public.claude_agent.test",
   leaseRef: "lease.public.claude_agent.test",
@@ -55,6 +84,29 @@ const fixingRunner: ClaudeAgentRunner = async (input) => {
     "export const sum = (left: number, right: number) => left + right\n",
   )
   return { outcome: "completed", turnCount: 3, editedFileCount: 1, commandCount: 1, sessionRef: null }
+}
+
+const checkoutRunner: ClaudeAgentCheckoutRunner = async (workspace) => {
+  await mkdir(workspace, { recursive: true })
+  await writeFile(
+    join(workspace, "package.json"),
+    `${JSON.stringify({ private: true, scripts: { test: "bun test sum.test.ts" }, type: "module" }, null, 2)}\n`,
+  )
+  await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left - right\n")
+  await writeFile(
+    join(workspace, "sum.test.ts"),
+    [
+      'import { describe, expect, test } from "bun:test"',
+      'import { sum } from "./sum"',
+      "",
+      'describe("sum checkout", () => {',
+      '  test("adds two numbers", () => {',
+      "    expect(sum(2, 3)).toBe(5)",
+      "  })",
+      "})",
+      "",
+    ].join("\n"),
+  )
 }
 
 const idleRunner: ClaudeAgentRunner = async () => ({
@@ -82,6 +134,7 @@ describe("claude agent task recognition", () => {
     expect(claudeAgentTaskFrom({ kind: "job.public.tassadar_executor_trace", tassadar: {} })).toBeNull()
     expect(claudeAgentTaskFrom({ claudeAgent: { schema: "wrong", agentKind: "claude_agent_sdk", fixtureRef: CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF } })).toBeNull()
     expect(claudeAgentTaskFrom({ claudeAgent: { schema: CLAUDE_AGENT_TASK_SCHEMA, agentKind: "claude_agent_sdk", fixtureRef: "fixture.unknown" } })).toBeNull()
+    expect(claudeAgentTaskFrom(gitCheckoutCodingAssignment)?.workspace?.kind).toBe("git_checkout")
     expect(claudeAgentTaskFrom(undefined)).toBeNull()
 
     await withState(async (state) => {
@@ -111,6 +164,48 @@ describe("claude agent task recognition", () => {
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
       expect(projected).not.toContain("bounded fixture workspace")
+    })
+  })
+
+  test("executes a public git_checkout task and verifies with caller-supplied argv", async () => {
+    await withState(async (state) => {
+      let workspaceDir: string | null = null
+      const observingRunner: ClaudeAgentRunner = async (input) => {
+        workspaceDir = input.cwd
+        expect(input.instructions).toContain("command.public.autopilot_coder.bun_test_sum")
+        expect(input.instructions).toContain("Repair the public sum fixture.")
+        expect(input.allowedTools).toEqual(["Edit", "Read", "Bash"])
+        return fixingRunner(input)
+      }
+      const record = await executeClaudeAgentAssignment(
+        state,
+        {
+          ...lease,
+          codingAssignment: gitCheckoutCodingAssignment,
+          leaseRef: "lease.public.claude_agent.git_checkout",
+        },
+        now,
+        {
+          checkoutRunner,
+          claudeAgentRunner: observingRunner,
+          claudeAgentProbe: readyProbe,
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(record?.blockerRefs).toEqual([])
+      expect(record?.resultRefs).toContain("result.public.pylon.claude_agent_task.git_checkout_verified_passed")
+      expect(record?.artifactRefs[0]).toStartWith("artifact.pylon.claude_agent_task.patch.")
+      expect(record?.testRefs[0]).toStartWith("command.pylon.claude_agent_task.verification.")
+      expect(record?.previewRefs[0]).toStartWith("workspace.pylon.claude_agent_task.")
+      expect(workspaceDir).not.toBeNull()
+      const fixed = await readFile(join(workspaceDir as unknown as string, "sum.ts"), "utf8")
+      expect(fixed).toContain("left + right")
+      assertPublicProjectionSafe(record)
+      const projected = JSON.stringify(record)
+      expect(projected).not.toContain(state.paths.cache)
+      expect(projected).not.toContain("OpenAgentsInc/public-sum-fixture")
+      expect(projected).not.toContain("Repair the public sum fixture.")
     })
   })
 
@@ -225,5 +320,28 @@ describe("workspace boundary checks", () => {
     expect(toolInputEscapesWorkspace("Bash", { command: "bun test sum.test.ts" }, workspace)).toBe(false)
     expect(toolInputEscapesWorkspace("Bash", { command: `cat ${workspace}/sum.ts` }, workspace)).toBe(false)
     expect(toolInputEscapesWorkspace("Bash", { command: "/usr/bin/env bun test" }, workspace)).toBe(false)
+  })
+
+  test("symlinked workspace roots accept realpath spellings without widening", async () => {
+    // macOS /tmp is a symlink to /private/tmp; the SDK canonicalizes its cwd,
+    // so tool paths arrive realpath'd. Found live on 2026-06-11: the first
+    // real local-session run was falsely refused as a workspace escape.
+    const symlinked = await mkdtemp(join(tmpdir(), "pylon-claude-boundary-"))
+    try {
+      const real = realpathSync(symlinked)
+      // inside, spelled both ways: never an escape
+      expect(toolInputEscapesWorkspace("Edit", { file_path: join(real, "sum.ts") }, symlinked)).toBe(false)
+      expect(toolInputEscapesWorkspace("Edit", { file_path: join(symlinked, "sum.ts") }, symlinked)).toBe(false)
+      expect(
+        toolInputEscapesWorkspace("Bash", { command: `cat ${join(real, "sum.ts")}` }, symlinked),
+      ).toBe(false)
+      // outside stays outside under both spellings
+      expect(toolInputEscapesWorkspace("Edit", { file_path: "/etc/passwd" }, symlinked)).toBe(true)
+      expect(
+        toolInputEscapesWorkspace("Edit", { file_path: join(real, "..", "outside.ts") }, symlinked),
+      ).toBe(true)
+    } finally {
+      await rm(symlinked, { recursive: true, force: true })
+    }
   })
 })
