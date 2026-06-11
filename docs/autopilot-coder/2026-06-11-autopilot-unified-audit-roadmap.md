@@ -47,11 +47,31 @@ The normalized assignment payload
 (`openagents.autopilot_coding_assignment.v1`) was explicitly designed
 to be shared across both stacks' lanes and is the seam they unify on.**
 
-One blunt gating fact before anything else: **the live `/autopilot`
-product is core-team-gated.** `loggedInWorkroomAllowed` requires
-`authHasCoreTeamAccess` plus completed onboarding
-(`apps/web/src/main.ts`). Whatever else this roadmap says,
-"operationalize" begins with letting customers in.
+One gating fact before anything else, stated with its intent: **the
+live `/autopilot` product is core-team-gated, and that is policy, not
+a gap.** `loggedInWorkroomAllowed` requires `authHasCoreTeamAccess`
+plus completed onboarding (`apps/web/src/main.ts`). The core team is
+the dogfood cohort; the gate opens beyond it only when the six
+problems are actually tested and ready — proofs first, door second.
+The positioning that opening carries is already written:
+
+> **The best agents are built from all of us.**
+> **Built for all of us. Built from all of us.**
+
+The dogfood phase is that line made operational: the team building
+the agent is its first workload, and the receipts from that use are
+the readiness evidence the public opening waits on.
+
+A second design decision is also policy and shapes everything in
+Part 3 and Part 4: **credits are spent in dollars; work is paid out
+in bitcoin.** Customers connect a credit card through Stripe in the
+web UI and buy USD credits; they order software work through either
+the web UI or their connected Pylon; and when that work is performed
+by contributors or market providers, settlement to them is in sats.
+The platform sits at the fiat-in/bitcoin-out seam, which is both the
+mainstream-buyer on-ramp (no customer needs to know what a satoshi
+is) and the contributor promise (every provider is paid in money
+nobody can print).
 
 ## Part 1 — Inventory: what is actually live at /autopilot
 
@@ -290,11 +310,20 @@ Pylon, SHC, cloud-sandbox, and hosted lanes. Today each stack uses its
 own subset. The unification target is **one placement policy over
 three execution lanes**:
 
-| Lane | Runner | Inference paid by | Settlement | Status |
-| --- | --- | --- | --- | --- |
-| **A — Hosted SHC** | platform container | user's leased account (or platform-metered) | Stripe credits | live (Stack A's only lane) |
-| **B — Owner's Pylon** | the customer's own machine | the customer's own BYOK key/subscription | none (their device, their key) | built in Stack B (Claude Agent bridge, capability declaration, worker loop); never reachable from the product |
-| **C — Labor market** | someone else's idle agent | the provider's own account | sats escrow → ladder settlement | plumbed end-to-end, zero inventory |
+| Lane | Runner | Inference paid by | Buyer pays | Provider receives | Status |
+| --- | --- | --- | --- | --- | --- |
+| **A — Hosted SHC** | platform container | user's leased account (or platform-metered) | USD credits (Stripe) | n/a (platform infra) | live (Stack A's only lane) |
+| **B — Owner's Pylon** | the customer's own machine | the customer's own BYOK key/subscription | nothing (their device, their key) | n/a (self-serve) | built in Stack B (Claude Agent bridge, capability declaration, worker loop); never reachable from the product |
+| **C — Labor market** | someone else's idle agent | the provider's own account | USD credits (Stripe) | **sats** (escrow → ladder settlement) | plumbed end-to-end, zero inventory |
+
+The money model across the table is the policy stated in the
+executive finding: **dollars in, bitcoin out.** The buyer side is one
+currency (USD credits bought by card through Stripe — checkout,
+ledger, metering, and out-of-credits enforcement already live, §1.5);
+the provider side is one currency (sats over the proven ladder). On
+Lane C the platform bridges the two: a buyer's USD credit debit funds
+the sats escrow that settles to the provider on acceptance. The
+buyer never needs a wallet; the provider never needs a card.
 
 **Repo placement trust tiers are the lane selector**, and the policy
 already exists: regulated tiers → Lane A only (shipped behavior);
@@ -330,10 +359,16 @@ sats — the currently-red
    Stack B deliveries through Stack A's artifact/authority layer so a
    labor-market job can end in a PR draft behind the same receipts.
    This closes the full-flow audit's leg 9 with code that exists.
-4. **Settlement symmetry.** Lane A meters credits; Lane C escrows
-   sats. The accepted-work → payout-eligibility bridge (P0.6 of the
-   gap audit, still unbuilt) is the one money seam that must land
-   before Lane C jobs pay providers from product demand.
+4. **Settlement symmetry — the dollars-to-sats bridge.** Lane A
+   meters USD credits; Lane C escrows and settles sats. Unification
+   means a buyer's credit debit funds a provider's sats escrow: the
+   accepted-work → payout-eligibility bridge (P0.6 of the gap audit,
+   still unbuilt) plus a USD→sats conversion seam with its own
+   receipts (rate ref, conversion ref, both ledger entries linked).
+   This is the one money seam that must land before Lane C jobs pay
+   providers from product demand — and it is also where the
+   platform's margin and the contributor's bitcoin promise live, so
+   its receipts must be the cleanest in the system.
 5. **Capability envelopes (#4750).** Lane B/C honesty: a Pylon quotes
    only work classes it is capability-true for, declared with
    self-test receipts — the W4.1 pattern doing product duty.
@@ -357,12 +392,19 @@ document) and the promises its receipts feed.
 
 ### Phase 0 — Operationalize /autopilot against the six problems (the wedge launch)
 
-The productization pass over shipped engines:
+The productization pass over shipped engines. **The cohort for all of
+it is the core team — this phase is dogfooding by design.** The
+public door (last item) opens only when the phase's proofs exist; the
+team is the test fleet, and "Built from all of us" starts with us.
 
-1. **Open the door**: public signup path replacing the core-team gate;
-   onboarding = connect ChatGPT/Codex (and GitHub when wanted), get
-   launch-grant credits, first mission. *(Gate: the existing
-   redaction/copy law; no capability claimed beyond smokes.)*
+1. **Buy-side completeness**: credit-card connect through Stripe in
+   the web UI as a first-class onboarding step (checkout/ledger/
+   metering already live, §1.5; add card-on-file and optional
+   auto-top-up so an overnight run never dies broke), and **ordering
+   through the Pylon**: a customer who connects their account to
+   their Pylon can order software work from the terminal
+   (`pylon work submit` spending the same USD credit balance the web
+   UI spends). One credit ledger, two front doors.
 2. **Account-pool dashboard** (problem 1's face): connected accounts,
    lease load, cooldowns/resets, low-credit, reconnect nudges — over
    the lease policy as-is.
@@ -388,6 +430,13 @@ The productization pass over shipped engines:
    ChatGPT/Codex (the "non-Codex flow" promised at launch), with the
    ToS-compliance review as the first deliverable per the wedge
    essay's router law.
+9. **Open the door — gated on the above.** Public signup replaces the
+   core-team gate only when the phase's proof smokes pass and the
+   dogfood cohort's receipts say the six problems are actually
+   solved. Onboarding at opening: connect a card, connect
+   ChatGPT/Codex (and GitHub when wanted), launch-grant credits,
+   first mission — under the launch positioning: *the best agents are
+   built from all of us; built for all of us, built from all of us.*
 
 Promises fed: `autopilot.free_coding_task_beta.v1`,
 `autopilot.issue_to_pr_loop.v1` (with Phase 1.3),
@@ -401,8 +450,11 @@ Promises fed: `autopilot.free_coding_task_beta.v1`,
 2. **Lane B live**: Pylon connect in settings; owner-Pylon placement
    in product; the Claude Agent bridge live-leg run (clears
    `pylon.local_claude_agent_bridge.v1` and
-   `autopilot.codex_probe_pylon_successor.v1`'s last blocker); the
-   `pylon work submit|status|review` entry command.
+   `autopilot.codex_probe_pylon_successor.v1`'s last blocker). The
+   `pylon work submit|status|review` command from Phase 0.1 gains its
+   execution leg here: in Phase 0 it is an ordering front door that
+   dispatches to SHC; in Phase 1 the same order can place onto the
+   customer's own Pylon.
 3. **Writeback symmetry** (§3.2.3): work-order deliveries through the
    artifact/authority layer to PR drafts — the "issue to PR" sentence
    becomes claimable end to end.
@@ -463,10 +515,17 @@ Lane-C.
   SHC-only; Lane C admits public-tier work only until a real privacy
   lane earns more; the tier policy's typed reasons ship to the user,
   not just the log.
+- **Money honesty across the bridge.** USD credits are never
+  described as bitcoin; held escrow is never described as settled;
+  every dollars-to-sats conversion carries its rate ref and links
+  both ledger entries; provider payout claims require settlement
+  receipts on the ladder, same as everywhere else in the system.
 - **Copy law.** Nothing in this roadmap is claimable before its smoke
   or receipt; "Autopilot" is the product name, "Claude Agent"/"your
   local Claude" the bridge lane's only branding; internal names
-  (Adjutant, SHC) stay internal.
+  (Adjutant, SHC) stay internal. The launch line — *built for all of
+  us, built from all of us* — becomes public copy only when the door
+  opens, and the door opens only on the Phase 0 proofs.
 - **Projection law.** Every new surface (account pool, decisions,
   team budgets, work-request inventory) rebuilds on state transitions
   and carries `generatedAt` — the #4751 epic applies to the wedge
@@ -478,14 +537,17 @@ Lane-C.
 The live `/autopilot` product already contains the hard half of all
 six wedge problems — background container execution, multi-account
 lease routing, regulated-tier isolation, metering, and a typed
-decision/artifact record layer — but it is core-team-gated,
-operator-faced, SHC-only, and unaware of the Pylon work-order spine
-and sats-settled labor market built beside it; the roadmap is
-therefore productization (faces, proofs, signup) before unification
-(one payload, three lanes) before market (faucet, fanout, first
-negotiated job), with Pylons anchoring lanes B and C and the existing
-trust-tier placement policy deciding, for every mission, whose
-computer is allowed to earn it.
+decision/artifact record layer — but it is deliberately
+core-team-gated for dogfooding, operator-faced, SHC-only, and unaware
+of the Pylon work-order spine and sats-settled labor market built
+beside it; the roadmap is therefore productization proven on
+ourselves (faces, proofs, card-and-Pylon ordering on one USD credit
+ledger) before the door opens, then unification (one payload, three
+lanes) and market (faucet, fanout, first negotiated job) — with
+Pylons anchoring lanes B and C, dollars coming in through Stripe,
+bitcoin going out over the ladder, and the existing trust-tier
+placement policy deciding, for every mission, whose computer is
+allowed to earn it.
 
 ## Source set
 
