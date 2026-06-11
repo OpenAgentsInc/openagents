@@ -63,6 +63,7 @@ import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import { runArtanisSpendDecision } from './artanis-spend'
 import { runArtanisAdminTickScheduled, runArtanisCloseoutVerifierScheduled } from './artanis-administrator-tick'
+import { handlePublicArtanisAdminTicksApi } from './artanis-tick-monitor'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -6446,6 +6447,13 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: '/api/public/artanis/report',
     handler: (request, env) => handlePublicArtanisReportApi(request, env),
+  },
+  {
+    path: '/api/public/artanis/admin-ticks',
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handlePublicArtanisAdminTicksApi(request, openAgentsDatabase(env)),
+      ),
   },
   {
     path: '/api/blueprint/program-registry',
