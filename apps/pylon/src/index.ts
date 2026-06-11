@@ -43,6 +43,7 @@ import {
   type ControlCommandActions,
 } from "./node/control-server"
 import { runControlClient, sendControlCommand } from "./node/control-client"
+import { loadComposerState, saveComposerState } from "./node/composer-store"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -174,6 +175,35 @@ const nodeWalletActions: ControlCommandActions = {
   walletReceive: (amountSats) => receiveWithMdk(amountSats),
   walletAdmitPayoutTarget: (kind, ref) =>
     Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
+}
+
+// Node-side assignment actions (issue #4741). Available only when an
+// OpenAgents base URL is configured; leases are cached between poll and
+// accept so accept can resolve a leaseRef back to the full lease payload.
+function makeAssignmentActions() {
+  const baseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
+  if (!baseUrl) return null
+  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+  const agentToken = Bun.env.OPENAGENTS_AGENT_TOKEN
+  const clientOptions = { ...(agentToken ? { agentToken } : {}), baseUrl }
+  let cachedLeases: PylonAssignmentLease[] = []
+  return {
+    poll: async () => {
+      cachedLeases = await pollAssignments(summary, clientOptions)
+      return cachedLeases.map((lease) => ({
+        assignmentRef: lease.assignmentRef,
+        leaseRef: lease.leaseRef,
+        goal: lease.goal,
+        paymentMode: lease.paymentMode,
+        expiresAt: lease.expiresAt,
+      }))
+    },
+    accept: async (leaseRef: string) => {
+      const lease = cachedLeases.find((candidate) => candidate.leaseRef === leaseRef)
+      if (!lease) throw new Error("lease not found - refresh assignments first")
+      return acceptAssignment(summary, lease, clientOptions)
+    },
+  }
 }
 
 // Builds the operator-pane text the telemetry service publishes. The wallet
@@ -371,6 +401,8 @@ const runPylonNode = Effect.gen(function* () {
   })
   yield* forkLogPersistence(runtime, feedWriter)
 
+  const nodeAssignmentActions = makeAssignmentActions()
+
   // Control server (issue #4740): a second terminal can attach to this
   // running node. Port conflicts (another node already serving) are reported
   // and non-fatal.
@@ -378,7 +410,15 @@ const runPylonNode = Effect.gen(function* () {
   const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
-    actions: nodeWalletActions,
+    actions: {
+      ...nodeWalletActions,
+      ...(nodeAssignmentActions
+        ? {
+            assignmentsPoll: () => nodeAssignmentActions.poll(),
+            assignmentsAccept: (leaseRef: string) => nodeAssignmentActions.accept(leaseRef),
+          }
+        : {}),
+    },
     port: controlPort,
   }).pipe(
     Effect.catch((error) =>
@@ -403,12 +443,22 @@ const runPylonNode = Effect.gen(function* () {
     yield* logMessage(runtime, "info", `[Keybinds] Ignoring invalid ${keybinds.path}: ${keybinds.error}`)
   }
 
+  const composerState = yield* Effect.promise(() =>
+    loadComposerState(bootstrapSummary.paths.home).catch(() => ({ history: [], stash: "" })),
+  )
+  const persistComposerState = (state: { history: string[]; stash: string }) => {
+    void saveComposerState(bootstrapSummary.paths.home, state).catch(() => {})
+  }
+
   const dashboard = yield* Effect.tryPromise({
     try: () =>
       ui.startDashboard({
         onRequestShutdown: requestShutdown,
         verbose: verboseMode,
         keybindOverrides: keybinds.overrides,
+        assignmentActions: nodeAssignmentActions,
+        composerState,
+        onComposerPersist: persistComposerState,
         onVerboseChange: (verbose) => {
           verboseMode = verbose
         },
@@ -539,9 +589,18 @@ const runHeadlessNode = Effect.gen(function* () {
 
   const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
   const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const headlessAssignmentActions = makeAssignmentActions()
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
-    actions: nodeWalletActions,
+    actions: {
+      ...nodeWalletActions,
+      ...(headlessAssignmentActions
+        ? {
+            assignmentsPoll: () => headlessAssignmentActions.poll(),
+            assignmentsAccept: (leaseRef: string) => headlessAssignmentActions.accept(leaseRef),
+          }
+        : {}),
+    },
     port: controlPort,
   })
   yield* logMessage(
@@ -624,6 +683,17 @@ const runPylonAttach = (baseUrl: string, token: string) =>
               sendControlCommand(baseUrl, token, { type: "wallet.receive", amountSats }),
             admitPayoutTarget: (kind, ref) =>
               sendControlCommand(baseUrl, token, { type: "wallet.admit-payout-target", kind, ref }),
+          },
+          assignmentActions: {
+            poll: async () =>
+              (await sendControlCommand(baseUrl, token, { type: "assignments.poll" })) as Array<{
+                assignmentRef: string
+                leaseRef: string
+                goal: string
+                paymentMode: string
+                expiresAt: string
+              }>,
+            accept: (leaseRef) => sendControlCommand(baseUrl, token, { type: "assignments.accept", leaseRef }),
           },
         }),
       catch: (error) => new Error(`Failed to initialize OpenTUI renderer: ${String(error)}`),

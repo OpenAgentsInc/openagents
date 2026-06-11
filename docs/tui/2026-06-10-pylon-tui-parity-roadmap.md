@@ -30,6 +30,13 @@ snapshot-on-connect), `pylon attach [url]` mirrors a running node in the
 full dashboard with 1s–30s reconnect backoff, wallet commands round-trip
 the control API node-side, and detaching never interrupts the node. The
 interactive dashboard serves the same API for second-terminal attach.
+Phase 5 shipped (#4741): route system (f3 dashboard / f4 assignments /
+f5 wallet, palette-discoverable), an assignments surface with lease rows
+keyed by leaseRef and confirm-gated accept (local or over the control
+API when attached), a wallet surface with readiness and session balance
+history, and composer history/stash persisted across restarts (ctrl+p /
+ctrl+n). Slot-style plugin composition was deliberately skipped — no
+external TUI plugin authors yet, per the roadmap's non-goals.
 
 ## Goal and non-goals
 

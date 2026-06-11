@@ -20,13 +20,20 @@ import { ErrorBoundary, For, Show, createMemo, type JSX } from "solid-js"
 import { runOpencodeStream } from "../opencode-run"
 import { theme } from "./theme"
 import {
+  activeRoute,
   appendChatFeedItem,
+  assignmentRows,
+  assignmentsStatus,
+  balanceHistory,
   estimateMarkdownRows,
   feedLineCount,
   feedScrollOffset,
   operatorText,
   registerFeedViewport,
   scrollFeedBy,
+  setActiveRoute,
+  setAssignmentRows,
+  setAssignmentsStatus,
   setVerboseMode,
   streamingTails,
   telemetryState,
@@ -40,19 +47,46 @@ import {
   installPylonKeymap,
   registerComposerFocusLayer,
   registerLogsScrollLayer,
+  type AssignmentActions,
   type PylonKeymap,
   type WalletActions,
 } from "./commands"
 
 export { appendChatFeedItem, setVerboseMode } from "./store"
 export { attachRuntimeToView } from "./bridge"
-export type { WalletActions } from "./commands"
+export type { AssignmentActions, WalletActions } from "./commands"
 
 // --- View-internal plumbing (focus, scroll, terminal modes) ---------------
 
 let scrollRef: Renderable | undefined
 let composerRef: TextareaRenderable | undefined
 let keymapRef: PylonKeymap | undefined
+
+// Composer history/stash (issue #4741): cycled with ctrl+p / ctrl+n while
+// composing; persisted via the node-side composer store between sessions.
+let composerHistory: string[] = []
+let composerHistoryIndex: number | null = null
+let persistComposer: ((state: { history: string[]; stash: string }) => void) | null = null
+let restoredStash = ""
+
+function recordComposerSubmission(prompt: string): void {
+  const trimmed = prompt.trim()
+  if (!trimmed) return
+  composerHistory = [...composerHistory.filter((entry) => entry !== trimmed), trimmed].slice(-50)
+  composerHistoryIndex = null
+  persistComposer?.({ history: composerHistory, stash: "" })
+}
+
+function cycleComposerHistory(direction: -1 | 1): void {
+  if (composerHistory.length === 0 || !composerRef) return
+  if (composerHistoryIndex === null) {
+    composerHistoryIndex = direction === -1 ? composerHistory.length - 1 : null
+  } else {
+    const next = composerHistoryIndex + direction
+    composerHistoryIndex = next < 0 ? 0 : next >= composerHistory.length ? null : next
+  }
+  composerRef.setText(composerHistoryIndex === null ? "" : composerHistory[composerHistoryIndex] ?? "")
+}
 
 const terminalScrollLockOn = "\x1b[?1007h"
 const terminalScrollLockOff = "\x1b[?1007l"
@@ -151,6 +185,7 @@ export function submitComposer(): void {
   const prompt = composerRef?.plainText.trim()
   if (!prompt) return
   composerRef?.setText("")
+  recordComposerSubmission(prompt)
   void submitPrompt(prompt)
 }
 
@@ -349,7 +384,13 @@ function Composer() {
         ref={(renderable: TextareaRenderable) => {
           composerRef = renderable
           if (keymapRef) registerComposerFocusLayer(keymapRef, renderable)
-          queueMicrotask(() => renderable.focus())
+          queueMicrotask(() => {
+            renderable.focus()
+            if (restoredStash) {
+              renderable.setText(restoredStash)
+              restoredStash = ""
+            }
+          })
         }}
         width="100%"
         height="100%"
@@ -357,6 +398,78 @@ function Composer() {
         onMouseDown={() => composerRef?.focus()}
         onSubmit={submitComposer}
       />
+    </box>
+  )
+}
+
+function AssignmentsSurface() {
+  return (
+    <box
+      border
+      borderStyle="single"
+      borderColor={theme.colors.border}
+      title=" // Assignments "
+      titleColor={theme.colors.title}
+      flexGrow={1}
+      height="100%"
+      flexDirection="column"
+    >
+      <text height={1} width="100%" fg={theme.colors.textMuted}>
+        {` ${assignmentsStatus()}  ·  ctrl+k -> "Assignments: refresh" / "accept a lease"  ·  f3 dashboard`}
+      </text>
+      <text height={1} width="100%" fg={theme.colors.accent}>
+        {" LEASE                    PAYMENT     EXPIRES               GOAL"}
+      </text>
+      <For each={assignmentRows()}>
+        {(row) => (
+          <text height={1} width="100%" fg={theme.colors.text}>
+            {` ${row.leaseRef.slice(0, 24).padEnd(24)} ${row.paymentMode.padEnd(11)} ${row.expiresAt.slice(0, 19).padEnd(21)} ${row.goal.slice(0, 60)}`}
+          </text>
+        )}
+      </For>
+      <Show when={assignmentRows().length === 0}>
+        <text height={1} width="100%" fg={theme.colors.textMuted}>{" (no leases)"}</text>
+      </Show>
+    </box>
+  )
+}
+
+function WalletSurface() {
+  const online = () => walletState().daemonOnline && walletState().balanceSats !== null
+  return (
+    <box
+      border
+      borderStyle="single"
+      borderColor={theme.colors.border}
+      title=" // Wallet "
+      titleColor={theme.colors.title}
+      flexGrow={1}
+      height="100%"
+      flexDirection="column"
+    >
+      <text height={1} width="100%" fg={online() ? theme.colors.online : theme.colors.error}>
+        {online() ? " Status: ONLINE" : " Status: OFFLINE"}
+      </text>
+      <text height={1} width="100%" fg={theme.colors.accent}>
+        {` Balance: ${walletState().balanceSats === null ? "--" : walletState().balanceSats?.toLocaleString()} sats`}
+      </text>
+      <text height={1} width="100%" fg={theme.colors.text}>
+        {` Readiness: ${walletState().readiness}`}
+      </text>
+      <text height={1} width="100%" fg={theme.colors.separator}>{" ---"}</text>
+      <text height={1} width="100%" fg={theme.colors.textMuted}>
+        {" Balance history (this session):"}
+      </text>
+      <For each={balanceHistory.slice(-12)}>
+        {(point) => (
+          <text height={1} width="100%" fg={theme.colors.text}>
+            {` ${point.at.slice(11, 19)}  ${point.sats === null ? "--" : point.sats.toLocaleString()} sats`}
+          </text>
+        )}
+      </For>
+      <text width="100%" fg={theme.colors.textMuted} flexGrow={1}>
+        {" Wallet operations (send / receive / admit payout target) run from the\n command palette (ctrl+k) and always require an explicit confirmation."}
+      </text>
     </box>
   )
 }
@@ -376,16 +489,28 @@ export function Dashboard() {
   const dimensions = useTerminalDimensions()
   return (
     <box flexDirection="column" width="100%" height="100%" onMouseScroll={sinkRootScroll}>
-      <box flexDirection="row" width="100%" flexGrow={1}>
-        <Pane name="logs">
-          <LogFeed />
-        </Pane>
-        <Show when={dimensions().width >= 60}>
-          <Pane name="telemetry">
-            <Sidebar />
+      <Show when={activeRoute() === "dashboard"}>
+        <box flexDirection="row" width="100%" flexGrow={1}>
+          <Pane name="logs">
+            <LogFeed />
           </Pane>
-        </Show>
-      </box>
+          <Show when={dimensions().width >= 60}>
+            <Pane name="telemetry">
+              <Sidebar />
+            </Pane>
+          </Show>
+        </box>
+      </Show>
+      <Show when={activeRoute() === "assignments"}>
+        <Pane name="assignments">
+          <AssignmentsSurface />
+        </Pane>
+      </Show>
+      <Show when={activeRoute() === "wallet"}>
+        <Pane name="wallet">
+          <WalletSurface />
+        </Pane>
+      </Show>
       <Pane name="composer">
         <Composer />
       </Pane>
@@ -401,6 +526,9 @@ export interface StartDashboardOptions {
   onRequestShutdown: () => void
   verbose: boolean
   walletActions: WalletActions
+  assignmentActions?: AssignmentActions | null
+  composerState?: { history: string[]; stash: string }
+  onComposerPersist?: (state: { history: string[]; stash: string }) => void
   keybindOverrides?: Record<string, string>
   onVerboseChange?: (verbose: boolean) => void
 }
@@ -410,8 +538,36 @@ export interface DashboardHandle {
   destroy: () => void
 }
 
+async function refreshAssignmentsInto(actions: AssignmentActions | null): Promise<void> {
+  if (!actions) {
+    setAssignmentsStatus("PYLON_OPENAGENTS_BASE_URL not configured")
+    return
+  }
+  setAssignmentsStatus("refreshing...")
+  try {
+    const leases = await actions.poll()
+    setAssignmentRows(
+      leases.map((lease) => ({
+        assignmentRef: lease.assignmentRef,
+        leaseRef: lease.leaseRef,
+        goal: lease.goal,
+        paymentMode: lease.paymentMode,
+        expiresAt: lease.expiresAt,
+      })),
+    )
+    setAssignmentsStatus(`${leases.length} lease(s) at ${new Date().toISOString().slice(11, 19)}`)
+  } catch (error) {
+    setAssignmentsStatus(`refresh failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 export async function startDashboard(options: StartDashboardOptions): Promise<DashboardHandle> {
   setVerboseMode(options.verbose)
+  composerHistory = options.composerState?.history ?? []
+  restoredStash = options.composerState?.stash ?? ""
+  composerHistoryIndex = null
+  persistComposer = options.onComposerPersist ?? null
+  const assignmentActions = options.assignmentActions ?? null
   const restoreScrollLock = installTerminalScrollLock()
   const interceptCtrlC = (sequence: string) => {
     if (sequence.includes("\x03")) {
@@ -436,6 +592,11 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
     renderer,
     {
       walletActions: options.walletActions,
+      assignmentActions,
+      setRoute: (route) => setActiveRoute(route),
+      refreshAssignments: () => refreshAssignmentsInto(assignmentActions),
+      currentAssignments: () => assignmentRows().map((row) => ({ leaseRef: row.leaseRef, goal: row.goal })),
+      cycleComposerHistory,
       focusLogs: () => scrollRef?.focus(),
       focusComposer: () => composerRef?.focus(),
       focusedPane: () => ((scrollRef as { focused?: boolean } | undefined)?.focused ? "logs" : "composer"),
@@ -477,6 +638,8 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
   return {
     renderer,
     destroy: () => {
+      const draft = composerRef?.plainText ?? ""
+      persistComposer?.({ history: composerHistory, stash: draft })
       scrollRef = undefined
       composerRef = undefined
       keymapRef = undefined

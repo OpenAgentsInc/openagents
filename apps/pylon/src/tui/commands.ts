@@ -18,8 +18,19 @@ export interface WalletActions {
   admitPayoutTarget: (kind: string, ref: string) => Promise<unknown>
 }
 
+export interface AssignmentActions {
+  poll: () => Promise<Array<{ assignmentRef: string; leaseRef: string; goal: string; paymentMode: string; expiresAt: string }>>
+  accept: (leaseRef: string) => Promise<unknown>
+}
+
 export interface CommandContext {
   walletActions: WalletActions
+  // null when no OpenAgents base URL is configured for this node.
+  assignmentActions: AssignmentActions | null
+  setRoute: (route: "dashboard" | "assignments" | "wallet") => void
+  refreshAssignments: () => Promise<void>
+  currentAssignments: () => Array<{ leaseRef: string; goal: string }>
+  cycleComposerHistory: (direction: -1 | 1) => void
   focusLogs: () => void
   focusComposer: () => void
   focusedPane: () => "logs" | "composer"
@@ -211,6 +222,94 @@ export function buildCommandSpecs(ctx: CommandContext): CommandSpec[] {
         }
       },
     },
+    {
+      name: "view.dashboard",
+      title: "View: dashboard",
+      category: "View",
+      key: "f3",
+      palette: true,
+      run: () => ctx.setRoute("dashboard"),
+    },
+    {
+      name: "view.assignments",
+      title: "View: assignments",
+      category: "View",
+      key: "f4",
+      palette: true,
+      run: async () => {
+        ctx.setRoute("assignments")
+        await ctx.refreshAssignments()
+      },
+    },
+    {
+      name: "view.wallet",
+      title: "View: wallet",
+      category: "View",
+      key: "f5",
+      palette: true,
+      run: () => ctx.setRoute("wallet"),
+    },
+    {
+      name: "assignments.refresh",
+      title: "Assignments: refresh leases",
+      category: "Assignments",
+      palette: true,
+      run: async () => {
+        await ctx.refreshAssignments()
+      },
+    },
+    {
+      name: "assignments.accept",
+      title: "Assignments: accept a lease",
+      category: "Assignments",
+      palette: true,
+      run: async () => {
+        if (!ctx.assignmentActions) {
+          await openAlert({ title: "Assignments", body: "PYLON_OPENAGENTS_BASE_URL is not configured." })
+          return
+        }
+        const leases = ctx.currentAssignments()
+        if (leases.length === 0) {
+          await openAlert({ title: "Assignments", body: "No leases available. Refresh first (f4)." })
+          return
+        }
+        const chosen = await openSelect({
+          title: "Accept assignment lease",
+          items: leases.map((lease) => ({ id: lease.leaseRef, label: lease.goal.slice(0, 70), detail: lease.leaseRef.slice(0, 24) })),
+        })
+        if (!chosen) return
+        const confirmed = await openConfirm({
+          title: "Confirm lease acceptance",
+          body: `Accept lease ${chosen.slice(0, 50)}? The node commits to working this assignment.`,
+          confirmLabel: "Accept",
+        })
+        if (!confirmed) return
+        try {
+          await ctx.assignmentActions.accept(chosen)
+          showToast("lease accepted")
+          ctx.log(`[Assignments] Lease accepted: ${chosen.slice(0, 40)}`)
+          await ctx.refreshAssignments()
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`accept failed: ${message}`, "error")
+          ctx.log(`[Assignments] Accept failed: ${message}`)
+        }
+      },
+    },
+    {
+      name: "composer.history-prev",
+      title: "Composer: previous history entry",
+      category: "Composer",
+      palette: false,
+      run: () => ctx.cycleComposerHistory(-1),
+    },
+    {
+      name: "composer.history-next",
+      title: "Composer: next history entry",
+      category: "Composer",
+      palette: false,
+      run: () => ctx.cycleComposerHistory(1),
+    },
     // Scroll commands: bound on the logs pane, hidden from the palette.
     { name: "logs.scroll.up", title: "Scroll logs up", category: "Logs", run: () => ctx.scrollLogs(-1, "step") },
     { name: "logs.scroll.down", title: "Scroll logs down", category: "Logs", run: () => ctx.scrollLogs(1, "step") },
@@ -354,6 +453,10 @@ export function registerComposerFocusLayer(keymap: PylonKeymap, target: Renderab
   return keymap.registerLayer({
     target,
     targetMode: "focus",
-    bindings: [{ key: activeOverrides["focus.toggle"] ?? "tab", cmd: "focus.toggle", desc: "Switch focus" }],
+    bindings: [
+      { key: activeOverrides["focus.toggle"] ?? "tab", cmd: "focus.toggle", desc: "Switch focus" },
+      { key: activeOverrides["composer.history-prev"] ?? "ctrl+p", cmd: "composer.history-prev", desc: "History prev" },
+      { key: activeOverrides["composer.history-next"] ?? "ctrl+n", cmd: "composer.history-next", desc: "History next" },
+    ],
   })
 }

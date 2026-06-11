@@ -122,6 +122,51 @@ describe("control protocol", () => {
     )
   })
 
+  test("assignments commands round-trip and report unavailability", async () => {
+    const calls: Array<Record<string, unknown>> = []
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions(calls),
+              assignmentsPoll: async () => [{ leaseRef: "lease-1", goal: "g", assignmentRef: "a", paymentMode: "no-spend", expiresAt: "x" }],
+              assignmentsAccept: async (leaseRef: string) => {
+                calls.push({ type: "accept", leaseRef })
+                return { accepted: true }
+              },
+            },
+            port: 0,
+          })
+          const leases = yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "assignments.poll" }),
+          )
+          expect(Array.isArray(leases)).toBe(true)
+          yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "assignments.accept", leaseRef: "lease-1" }),
+          )
+          expect(calls).toContainEqual({ type: "accept", leaseRef: "lease-1" })
+
+          // A node without assignment actions reports unavailability.
+          const bare = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: stubActions(calls),
+            port: 0,
+          })
+          const failure = yield* Effect.promise(() =>
+            sendControlCommand(bare.url, "test-token-0123456789abcdef", { type: "assignments.poll" }).then(
+              () => null,
+              (error: unknown) => (error instanceof Error ? error.message : String(error)),
+            ),
+          )
+          expect(failure).toMatch(/unavailable/)
+        }),
+      ),
+    )
+  })
+
   test("backoff doubles to a 30s ceiling", () => {
     expect(nextBackoffMs(0)).toBe(1000)
     expect(nextBackoffMs(1000)).toBe(2000)
