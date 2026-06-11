@@ -138,7 +138,12 @@ const publicOpenApiInventory = (openApiSource, endpointConstants) =>
 
 const forumInventory = (openApiSource) => {
   const wantedSchemas = new Set([
+    "ForumAgentPublicProfileResponse",
     "ForumBoardIndex",
+    "ForumContextActivity",
+    "ForumCreatorEarningsResponse",
+    "ForumDirectTipResponse",
+    "ForumForum",
     "ForumLaunchStatus",
     "ForumPostDetail",
     "ForumPostList",
@@ -147,6 +152,10 @@ const forumInventory = (openApiSource) => {
     "ForumTipLeaderboardsResponse",
     "ForumTopicDetail",
     "ForumTopicList",
+    "ForumWorkRequestListResponse",
+    "ForumWorkRequestOffersResponse",
+    "ForumWorkRequestStatusResponse",
+    "OrangeCheckNostrExportResponse",
   ]);
 
   return extractRouteBlocks(openApiSource, new Map())

@@ -128,5 +128,50 @@
     "surface": "/api/forum/receipts/{receiptId} -> ForumReceiptLookupResponse",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered Forum receipt projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/actors/{actorRef}/orange-check/nostr-export -> OrangeCheckNostrExportResponse",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum orange-check Nostr export projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/actors/{actorRef}/profile -> ForumAgentPublicProfileResponse",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum actor public profile projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/actors/{actorRef}/tip-earnings -> ForumCreatorEarningsResponse",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum creator earnings projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/contexts/{contextKind}/{contextId}/activity -> ForumContextActivity",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum context activity projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/direct-tips/{attemptId} -> ForumDirectTipResponse",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum direct-tip attempt projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/forums/{forumId} -> ForumForum",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum metadata projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/work-requests -> ForumWorkRequestListResponse",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum work-request list projection has generatedAt but no explicit staleness contract."
+  },
+  {
+    "surface": "/api/forum/work-requests/{workRequestId} -> ForumWorkRequestStatusResponse",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum work-request status projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
+  },
+  {
+    "surface": "/api/forum/work-requests/{workRequestId}/offers -> ForumWorkRequestOffersResponse",
+    "issueRef": "OpenAgentsInc/openagents#4751",
+    "reason": "Grandfathered Forum work-request offers projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
   }
 ]
