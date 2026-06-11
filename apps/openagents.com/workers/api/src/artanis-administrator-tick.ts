@@ -139,6 +139,8 @@ const assembleContext = async (db: D1Database, nowIso: string) => {
           `SELECT pylon_ref, capability_refs_json, latest_heartbeat_at
              FROM pylon_api_registrations
             WHERE latest_heartbeat_at > ?
+              AND wallet_ready = 1
+              AND status = 'active'
             ORDER BY latest_heartbeat_at DESC LIMIT 10`,
         )
         .bind(epochMillisToIsoTimestamp(Date.parse(nowIso) - 10 * 60_000))
