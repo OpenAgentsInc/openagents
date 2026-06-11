@@ -30,7 +30,7 @@ const jobKindForAssignment = (
     case 'site_adjustment':
     case 'site_generation':
     case 'test_repair':
-      return 'validation'
+      return 'claude_agent_task'
   }
 }
 

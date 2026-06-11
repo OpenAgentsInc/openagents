@@ -8,7 +8,7 @@ const registration = (
 ): PylonApiRegistrationRecord => ({
   capabilityRefs: [
     'capability.pylon.assignment_ready',
-    'capability.pylon.local_codex',
+    'capability.pylon.local_claude_agent',
   ],
   clientProtocolVersion: '0.2.5',
   clientVersion: '0.2.5',

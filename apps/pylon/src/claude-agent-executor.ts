@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { realpathSync } from "node:fs"
+import { mkdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import {
@@ -26,13 +27,30 @@ export const CLAUDE_AGENT_TASK_SCHEMA = "openagents.pylon.claude_agent_task.v0.3
 export const CLAUDE_AGENT_TASK_AGENT_KIND = "claude_agent_sdk"
 export const CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF = "fixture.public.pylon.claude_agent.sum_repair.v1"
 
+export type ClaudeAgentGitCheckoutWorkspace = {
+  kind: "git_checkout"
+  repository: {
+    branch: string
+    commitSha: string
+    fullName: string
+    provider: "github"
+    visibility: "public"
+  }
+  verificationCommand: {
+    args: string[]
+    commandRef: string
+  }
+}
+
 export type ClaudeAgentTaskPayload = {
   schema: typeof CLAUDE_AGENT_TASK_SCHEMA
   agentKind: typeof CLAUDE_AGENT_TASK_AGENT_KIND
-  fixtureRef: string
+  fixtureRef?: string
   allowedToolKinds?: string[]
   maxTurns?: number
+  objectiveSummary?: string
   timeoutSeconds?: number
+  workspace?: ClaudeAgentGitCheckoutWorkspace
 }
 
 export type ClaudeAgentRunInput = {
@@ -59,8 +77,13 @@ export type ClaudeAgentRunResult = {
 }
 
 export type ClaudeAgentRunner = (input: ClaudeAgentRunInput) => Promise<ClaudeAgentRunResult>
+export type ClaudeAgentCheckoutRunner = (
+  workspace: string,
+  checkout: ClaudeAgentGitCheckoutWorkspace,
+) => Promise<void>
 
 export type ClaudeAgentExecutionOptions = {
+  checkoutRunner?: ClaudeAgentCheckoutRunner
   claudeAgentRunner?: ClaudeAgentRunner
   claudeAgentProbe?: ClaudeAgentProbeOptions
 }
@@ -71,13 +94,18 @@ type ClaudeAgentFixture = {
   verificationArgs: string[]
 }
 
-const TOOL_KIND_MAP: Record<string, string> = {
-  read: "Read",
-  edit: "Edit",
-  write: "Write",
-  bash: "Bash",
-  glob: "Glob",
-  grep: "Grep",
+const TOOL_KIND_MAP: Record<string, string[]> = {
+  read: ["Read"],
+  edit: ["Edit"],
+  write: ["Write"],
+  file: ["Read"],
+  git: ["Bash"],
+  shell: ["Bash"],
+  test_runner: ["Bash"],
+  search: ["Grep", "Glob"],
+  bash: ["Bash"],
+  glob: ["Glob"],
+  grep: ["Grep"],
 }
 
 const DEFAULT_ALLOWED_TOOLS = ["Read", "Edit", "Write", "Bash", "Glob", "Grep"]
@@ -126,22 +154,54 @@ function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
+const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
+
+function gitCheckoutWorkspaceFrom(codingAssignment: unknown): ClaudeAgentGitCheckoutWorkspace | null {
+  const workspace = (codingAssignment as { workspace?: unknown } | null)?.workspace
+  if (workspace === null || typeof workspace !== "object") return null
+  const payload = workspace as ClaudeAgentGitCheckoutWorkspace
+  if (payload.kind !== "git_checkout") return null
+  if (payload.repository?.provider !== "github" || payload.repository.visibility !== "public") return null
+  if (!githubFullNamePattern.test(payload.repository.fullName)) return null
+  if (!gitCommitShaPattern.test(payload.repository.commitSha)) return null
+  if (typeof payload.repository.branch !== "string" || payload.repository.branch.includes("..")) return null
+  if (!Array.isArray(payload.verificationCommand?.args) || payload.verificationCommand.args.length === 0) return null
+  if (typeof payload.verificationCommand.commandRef !== "string") return null
+  const safeArgs = payload.verificationCommand.args.every((arg) =>
+    typeof arg === "string" &&
+    verificationCommandArgPattern.test(arg) &&
+    !arg.includes("..") &&
+    !arg.startsWith("/")
+  )
+  return safeArgs ? payload : null
+}
+
 export function claudeAgentTaskFrom(codingAssignment: unknown): ClaudeAgentTaskPayload | null {
   const claudeAgent = (codingAssignment as { claudeAgent?: unknown } | null)?.claudeAgent
   if (claudeAgent === null || typeof claudeAgent !== "object") return null
   const payload = claudeAgent as ClaudeAgentTaskPayload
   if (payload.schema !== CLAUDE_AGENT_TASK_SCHEMA) return null
   if (payload.agentKind !== CLAUDE_AGENT_TASK_AGENT_KIND) return null
-  if (typeof payload.fixtureRef !== "string") return null
-  if (CLAUDE_AGENT_FIXTURES[payload.fixtureRef] === undefined) return null
-  return payload
+  const workspace = gitCheckoutWorkspaceFrom(codingAssignment)
+  const objective = (codingAssignment as { objective?: { publicSummary?: unknown } } | null)?.objective
+  const hasFixture =
+    typeof payload.fixtureRef === "string" &&
+    CLAUDE_AGENT_FIXTURES[payload.fixtureRef] !== undefined
+  if (!hasFixture && workspace === null) return null
+  return {
+    ...payload,
+    ...(typeof objective?.publicSummary === "string" ? { objectiveSummary: objective.publicSummary } : {}),
+    ...(workspace === null ? {} : { workspace }),
+  }
 }
 
 function allowedToolsFrom(payload: ClaudeAgentTaskPayload): string[] {
   const kinds = payload.allowedToolKinds
   if (!Array.isArray(kinds) || kinds.length === 0) return [...DEFAULT_ALLOWED_TOOLS]
   const tools = kinds
-    .map((kind) => TOOL_KIND_MAP[String(kind).toLowerCase()])
+    .flatMap((kind) => TOOL_KIND_MAP[String(kind).toLowerCase()] ?? [])
     .filter((tool): tool is string => tool !== undefined)
   return tools.length > 0 ? [...new Set(tools)] : [...DEFAULT_ALLOWED_TOOLS]
 }
@@ -165,25 +225,39 @@ export function toolInputEscapesWorkspace(
   if (toolInput === null || typeof toolInput !== "object") return false
   const input = toolInput as Record<string, unknown>
   const workspaceRoot = resolve(workspace)
+  // The SDK canonicalizes its cwd, so on platforms where the workspace sits
+  // behind a symlink (macOS /tmp -> /private/tmp, $TMPDIR under /var) tool
+  // paths arrive in realpath form. Accept both spellings of the same root —
+  // and only those two; this widens nothing beyond the workspace itself.
+  let workspaceRealRoot = workspaceRoot
+  try {
+    workspaceRealRoot = realpathSync(workspaceRoot)
+  } catch {
+    // unmaterialized workspace: fall back to the resolved root only
+  }
+  const roots =
+    workspaceRealRoot === workspaceRoot ? [workspaceRoot] : [workspaceRoot, workspaceRealRoot]
+  const insideWorkspace = (candidate: string) =>
+    roots.some((root) => candidate === root || candidate.startsWith(`${root}/`))
 
   for (const key of ["file_path", "path", "notebook_path"]) {
     const value = input[key]
     if (typeof value !== "string" || value.length === 0) continue
-    const resolved = isAbsolute(value) ? resolve(value) : resolve(workspaceRoot, value)
-    if (resolved !== workspaceRoot && !resolved.startsWith(`${workspaceRoot}/`)) return true
+    const resolved = isAbsolute(value) ? resolve(value) : resolve(workspaceRealRoot, value)
+    if (!insideWorkspace(resolved)) return true
   }
 
   if (toolName === "Bash") {
     const command = input.command
     if (typeof command === "string") {
       if (command.includes("..")) return true
-      const allowedPrefixes = [`${workspaceRoot}/`, "/dev/", "/usr/", "/bin/", "/sbin/", "/opt/"]
+      const systemPrefixes = ["/dev/", "/usr/", "/bin/", "/sbin/", "/opt/"]
       const absolutePaths = command.match(/(?:^|[\s='"])(\/[^\s'"]+)/g) ?? []
       for (const match of absolutePaths) {
         const candidate = resolve(match.replace(/^[\s='"]+/, ""))
         const allowed =
-          candidate === workspaceRoot ||
-          allowedPrefixes.some((prefix) => candidate.startsWith(prefix))
+          insideWorkspace(candidate) ||
+          systemPrefixes.some((prefix) => candidate.startsWith(prefix))
         if (!allowed) return true
       }
     }
@@ -200,6 +274,80 @@ async function runCommand(input: { args: string[]; cwd: string }) {
     proc.exited,
   ])
   return { exitCode, stderrBytes: stderr.byteLength, stdoutBytes: stdout.byteLength }
+}
+
+async function runCheckedCommand(args: string[], cwd: string): Promise<void> {
+  const result = await runCommand({ args, cwd })
+  if (result.exitCode !== 0) {
+    throw new Error(`command failed: ${args[0] ?? "unknown"}`)
+  }
+}
+
+export const defaultClaudeAgentCheckoutRunner: ClaudeAgentCheckoutRunner = async (
+  workspace,
+  checkout,
+) => {
+  await rm(workspace, { recursive: true, force: true })
+  await mkdir(workspace, { recursive: true })
+  await runCheckedCommand(["git", "init"], workspace)
+  await runCheckedCommand(
+    [
+      "git",
+      "remote",
+      "add",
+      "origin",
+      `https://github.com/${checkout.repository.fullName}.git`,
+    ],
+    workspace,
+  )
+  await runCheckedCommand(
+    ["git", "fetch", "--depth", "1", "origin", checkout.repository.commitSha],
+    workspace,
+  )
+  await runCheckedCommand(["git", "checkout", "--detach", checkout.repository.commitSha], workspace)
+}
+
+async function materializeClaudeAgentWorkspace(input: {
+  checkoutRunner: ClaudeAgentCheckoutRunner
+  leaseRef: string
+  state: PylonLocalState
+  task: ClaudeAgentTaskPayload
+}) {
+  const workspaceRef = stableRef("workspace.pylon.claude_agent_task", input.leaseRef)
+  const workspace = join(input.state.paths.cache, "claude-agent-tasks", workspaceRef)
+
+  if (input.task.workspace !== undefined) {
+    await mkdir(join(input.state.paths.cache, "claude-agent-tasks"), { recursive: true })
+    await input.checkoutRunner(workspace, input.task.workspace)
+    return {
+      acceptanceResultRef: "git_checkout_verified",
+      artifactSourceRef: `${input.task.workspace.repository.fullName}:${input.task.workspace.repository.commitSha}`,
+      instructions: [
+        "You are working in a bounded public repository checkout.",
+        `Task objective: ${input.task.objectiveSummary ?? "complete the referenced Autopilot task"}.`,
+        "Only modify files inside this checkout.",
+        `Run the verification command ref ${input.task.workspace.verificationCommand.commandRef} before finishing.`,
+      ].join(" "),
+      verificationArgs: input.task.workspace.verificationCommand.args,
+      workspace,
+      workspaceRef,
+    }
+  }
+
+  const fixtureRef = input.task.fixtureRef ?? CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF
+  const fixture = CLAUDE_AGENT_FIXTURES[fixtureRef] ?? CLAUDE_AGENT_FIXTURES[CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF]
+  await mkdir(workspace, { recursive: true })
+  for (const [relativePath, contents] of Object.entries(fixture.files)) {
+    await writeFile(join(workspace, relativePath), contents)
+  }
+  return {
+    acceptanceResultRef: "fixture_repair",
+    artifactSourceRef: fixtureRef,
+    instructions: fixture.instructions,
+    verificationArgs: fixture.verificationArgs,
+    workspace,
+    workspaceRef,
+  }
 }
 
 /**
@@ -366,20 +514,31 @@ export async function executeClaudeAgentAssignment(
     })
   }
 
-  const fixture = CLAUDE_AGENT_FIXTURES[task.fixtureRef]
-  const workspaceRef = stableRef("workspace.pylon.claude_agent_task", lease.leaseRef)
-  const workspace = join(state.paths.cache, "claude-agent-tasks", workspaceRef)
-  await mkdir(workspace, { recursive: true })
-  for (const [relativePath, contents] of Object.entries(fixture.files)) {
-    await writeFile(join(workspace, relativePath), contents)
+  let materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
+  try {
+    materialized = await materializeClaudeAgentWorkspace({
+      checkoutRunner: options.checkoutRunner ?? defaultClaudeAgentCheckoutRunner,
+      leaseRef: lease.leaseRef,
+      state,
+      task,
+    })
+  } catch {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.claude_agent_workspace_checkout_failed"],
+      resultRef: "result.public.pylon.claude_agent_task.workspace_checkout_failed",
+      summaryRef: "summary.public.pylon.claude_agent_task.workspace_checkout_failed",
+      message: "Local Claude Agent session refused because the bounded workspace checkout could not be materialized.",
+    })
   }
 
   const runner = options.claudeAgentRunner ?? runWithClaudeAgentSdk
   let run: ClaudeAgentRunResult
   try {
     run = await runner({
-      cwd: workspace,
-      instructions: fixture.instructions,
+      cwd: materialized.workspace,
+      instructions: materialized.instructions,
       allowedTools: allowedToolsFrom(task),
       maxTurns: boundedNumber(task.maxTurns ?? config.maxTurns, DEFAULT_MAX_TURNS, MAX_MAX_TURNS),
       timeoutMs:
@@ -432,14 +591,14 @@ export async function executeClaudeAgentAssignment(
     })
   }
 
-  const verification = await runCommand({ args: fixture.verificationArgs, cwd: workspace })
+  const verification = await runCommand({ args: materialized.verificationArgs, cwd: materialized.workspace })
   const commandRef = stableRef(
     "command.pylon.claude_agent_task.verification",
     `${lease.leaseRef}:${verification.exitCode}:${verification.stdoutBytes}:${verification.stderrBytes}`,
   )
   const artifactRef = stableRef(
     "artifact.pylon.claude_agent_task.patch",
-    `${lease.assignmentRef}:${task.fixtureRef}:${run.editedFileCount}`,
+    `${lease.assignmentRef}:${materialized.artifactSourceRef}:${run.editedFileCount}`,
   )
   const proofRef = stableRef(
     "proof.pylon.claude_agent_task.test",
@@ -455,20 +614,20 @@ export async function executeClaudeAgentAssignment(
     message: passed
       ? `Local Claude Agent completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.`
       : "Local Claude Agent session completed but the verification test command failed; the change is not accepted.",
-    previewRefs: [workspaceRef],
+    previewRefs: [materialized.workspaceRef],
     proofRefs: [proofRef],
     resultRefs: [
       passed
-        ? "result.public.pylon.claude_agent_task.fixture_repair_passed"
-        : "result.public.pylon.claude_agent_task.fixture_repair_failed",
+        ? `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_passed`
+        : `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.claude_agent_task.edited_files.${run.editedFileCount}`,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),
     summaryRefs: [
       passed
-        ? "summary.public.pylon.claude_agent_task.fixture_repair_passed"
-        : "summary.public.pylon.claude_agent_task.fixture_repair_failed",
+        ? `summary.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_passed`
+        : `summary.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_failed`,
     ],
     testRefs: [commandRef],
   }

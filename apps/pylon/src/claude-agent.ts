@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises"
+import { access, readFile } from "node:fs/promises"
+import { homedir } from "node:os"
+import { join } from "node:path"
 
 /**
  * The local Claude Agent bridge probe (issue #4718, promise
@@ -43,6 +45,47 @@ export type ClaudeAgentProbeOptions = {
   platform?: string
   importer?: (specifier: string) => Promise<unknown>
   config?: ClaudeAgentConfig
+  /**
+   * Presence-only detector for a local Claude Code session (the user's own
+   * logged-in Claude on this machine). Injected by tests; defaults to the
+   * real filesystem/keychain presence check. Never reads credential values.
+   */
+  localSessionProbe?: () => Promise<boolean>
+}
+
+export const CLAUDE_AGENT_LOCAL_SESSION_SOURCE_REF =
+  "credential.source.claude_agent.local_claude_session"
+
+/**
+ * Detects whether this machine has a logged-in local Claude Code session —
+ * the user's own subscription credentials, which the bundled SDK binary
+ * reuses when no API key is exported. Presence only: the file check tests
+ * existence without reading contents, and the macOS keychain check discards
+ * all output. BYOK still holds — the session is the user's own credential.
+ */
+export async function localClaudeSessionPresent(
+  platform: string = process.platform,
+  env: Record<string, string | undefined> = Bun.env as Record<string, string | undefined>,
+): Promise<boolean> {
+  const home = (env.HOME ?? "").trim().length > 0 ? (env.HOME as string) : homedir()
+  try {
+    await access(join(home, ".claude", ".credentials.json"))
+    return true
+  } catch {
+    // fall through to the platform keychain check
+  }
+  if (platform === "darwin") {
+    try {
+      const proc = Bun.spawn(
+        ["security", "find-generic-password", "-s", "Claude Code-credentials"],
+        { stdout: "ignore", stderr: "ignore" },
+      )
+      return (await proc.exited) === 0
+    } catch {
+      return false
+    }
+  }
+  return false
 }
 
 const SUPPORTED_PLATFORMS = new Set(["darwin", "linux"])
@@ -133,15 +176,24 @@ export async function probeClaudeAgentReadiness(
     })
   }
 
-  if (credentialSourceRef === null) {
+  let resolvedSourceRef = credentialSourceRef
+  if (resolvedSourceRef === null) {
+    const detectLocalSession =
+      options.localSessionProbe ?? (() => localClaudeSessionPresent(platform, env))
+    if (await detectLocalSession()) {
+      resolvedSourceRef = CLAUDE_AGENT_LOCAL_SESSION_SOURCE_REF
+    }
+  }
+
+  if (resolvedSourceRef === null) {
     return readiness("credentials_missing", {
       enabled,
-      credentialSourceRef,
+      credentialSourceRef: resolvedSourceRef,
       blockerRef: "blocker.claude_agent.credentials_missing",
     })
   }
 
-  return readiness("ready", { enabled, credentialSourceRef })
+  return readiness("ready", { enabled, credentialSourceRef: resolvedSourceRef })
 }
 
 /**

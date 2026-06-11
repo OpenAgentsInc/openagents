@@ -13,8 +13,17 @@ const baseTask = {
   ],
   accessRequirements: [],
   accessState: 'satisfied',
+  checkout: {
+    commitSha: '1111111111111111111111111111111111111111',
+    kind: 'git_checkout',
+    verificationCommand: {
+      args: ['bun', 'test'],
+      commandRef: 'command.public.autopilot_coder.bun_test',
+    },
+  },
   kind: 'code_change',
   lifecycleState: 'ready_for_assignment',
+  objective: 'Add public-safe Autopilot coder contract docs.',
   paymentState: 'not_required',
   placementState: 'ready_for_assignment',
   repository: {
@@ -36,7 +45,7 @@ const pylonIntent = {
     'closeout.pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract.accepted_work_not_implied',
   ],
   forumAutoPublishAllowed: false,
-  jobKind: 'validation',
+  jobKind: 'claude_agent_task',
   noForumAutoPublishRefs: [
     'forum_autopublish_disabled.pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract',
   ],
@@ -44,8 +53,7 @@ const pylonIntent = {
   pylonRef: 'pylon.production.docs_agent',
   requiredCapabilityRefs: [
     'capability.pylon.assignment_ready',
-    'capability.pylon.local_codex',
-    'capability.pylon.local_coding_agent',
+    'capability.pylon.local_claude_agent',
   ],
   resultExpectationRefs: [
     'result.pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract.public_safe_closeout',
@@ -156,14 +164,21 @@ describe('Autopilot coding assignment contract', () => {
         diffOrSummaryRequired: true,
         testsOrBlockerRequired: true,
       },
+      claudeAgent: {
+        agentKind: 'claude_agent_sdk',
+        allowedToolKinds: ['edit', 'file', 'git', 'shell', 'test_runner'],
+        schema: 'openagents.pylon.claude_agent_task.v0.3',
+      },
       objective: {
         mode: 'ref_only',
         objectiveRef:
           'objective.autopilot_work_order.test_1.task.autopilot_coder.docs_contract',
+        publicSummary: 'Add public-safe Autopilot coder contract docs.',
       },
       publicSafe: true,
       repository: {
         branch: 'main',
+        commitSha: '1111111111111111111111111111111111111111',
         fullName: 'OpenAgentsInc/openagents',
         visibility: 'public',
       },
@@ -177,8 +192,15 @@ describe('Autopilot coding assignment contract', () => {
         rawSourceArchiveAllowed: false,
       },
       workOrderRef: 'autopilot_work_order.test_1',
+      workspace: {
+        kind: 'git_checkout',
+        verificationCommand: {
+          args: ['bun', 'test'],
+          commandRef: 'command.public.autopilot_coder.bun_test',
+        },
+      },
     })
-    expect(JSON.stringify(payload)).not.toContain('Update docs')
+    expect(JSON.stringify(payload)).not.toContain('raw prompt')
     expect(decodeOpenAgentsAutopilotCodingAssignmentPayload(payload)).toEqual(
       payload,
     )

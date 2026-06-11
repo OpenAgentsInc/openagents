@@ -34,8 +34,10 @@ const task = {
   acceptanceCriteriaRefs: ['acceptance.docs.updated'],
   accessRequirements: [],
   accessState: 'satisfied',
+  checkout: null,
   kind: 'code_change',
   lifecycleState: 'ready_for_assignment',
+  objective: 'Update public docs.',
   paymentState: 'not_required',
   placementState: 'ready_for_assignment',
   repository: readyAssignment.repository,
@@ -76,7 +78,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
           'closeout.pylon_assignment.autopilot_work_order.test.task.docs.accepted_work_not_implied',
         ],
         forumAutoPublishAllowed: false,
-        jobKind: 'validation',
+        jobKind: 'claude_agent_task',
         noForumAutoPublishRefs: [
           'forum_autopublish_disabled.pylon_assignment.autopilot_work_order.test.task.docs',
         ],
@@ -84,8 +86,7 @@ describe('Autopilot Pylon assignment synthesizer', () => {
         pylonRef: 'pylon.local.docs_agent',
         requiredCapabilityRefs: [
           'capability.pylon.assignment_ready',
-          'capability.pylon.local_codex',
-          'capability.pylon.local_coding_agent',
+          'capability.pylon.local_claude_agent',
         ],
         resultExpectationRefs: [
           'result.pylon_assignment.autopilot_work_order.test.task.docs.public_safe_closeout',

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -15,6 +15,12 @@ import { sendHeartbeat } from "../src/presence"
 import { verifyNip98Authorization } from "../src/nostr-identity"
 import { assertPublicProjectionSafe, ensurePylonLocalState, writePresenceState } from "../src/state"
 import { PSIONIC_QWEN_MODEL_REFS, type PsionicQwenModelAdmission } from "../packages/runtime/src/index"
+import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
+import {
+  CLAUDE_AGENT_TASK_SCHEMA,
+  type ClaudeAgentCheckoutRunner,
+  type ClaudeAgentRunner,
+} from "../src/claude-agent-executor"
 
 const servers: ReturnType<typeof Bun.serve>[] = []
 
@@ -120,23 +126,23 @@ function fakeAssignmentServer(input: { leases?: PylonAssignmentLease[]; rejectAc
   return { baseUrl: `http://127.0.0.1:${server.port}`, requests }
 }
 
-async function readySummary(home: string) {
+async function readySummary(home: string, capabilityRefs: string[] = ["cap.gepa.retained.v1"]) {
   const summary = createBootstrapSummary(
-    parseBootstrapArgs(["--display-name", "Assignment Test", "--capability-ref", "cap.gepa.retained.v1"]),
+    parseBootstrapArgs(["--display-name", "Assignment Test", ...capabilityRefs.flatMap(ref => ["--capability-ref", ref])]),
     { PYLON_HOME: home },
     "darwin",
   )
   const state = await ensurePylonLocalState(summary)
   await writeFile(
     state.paths.runtimeState,
-    `${JSON.stringify({
-      lifecycle: "assignment-ready",
-      displayName: "Assignment Test",
-      resourceMode: "background_20",
-      capabilityRefs: ["cap.gepa.retained.v1"],
-      blockerRefs: [],
-      updatedAt: "2026-06-09T00:00:00.000Z",
-    })}\n`,
+      `${JSON.stringify({
+        lifecycle: "assignment-ready",
+        displayName: "Assignment Test",
+        resourceMode: "background_20",
+        capabilityRefs,
+        blockerRefs: [],
+        updatedAt: "2026-06-09T00:00:00.000Z",
+      })}\n`,
   )
   return summary
 }
@@ -276,6 +282,120 @@ describe("Pylon assignment lease flow", () => {
           paymentMode: "no-spend",
         }),
       ])
+    })
+  })
+
+  test("runs a projected claude_agent_task git_checkout assignment through no-spend closeout", async () => {
+    await withTempHome(async (home) => {
+      const codingAssignment = {
+        assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.public_sum_repair",
+        budget: {
+          paymentMode: "unpaid_smoke",
+        },
+        objective: {
+          objectiveRef: "objective.autopilot_work_order.test_1.task.public_sum_repair",
+          publicSummary: "Repair the public sum fixture.",
+        },
+        publicSafe: true,
+        requiredCapabilityRefs: ["capability.pylon.local_claude_agent"],
+        claudeAgent: {
+          agentKind: "claude_agent_sdk",
+          allowedToolKinds: ["edit", "file", "git", "shell", "test_runner"],
+          maxTurns: 8,
+          schema: CLAUDE_AGENT_TASK_SCHEMA,
+          timeoutSeconds: 120,
+        },
+        schema: "openagents.autopilot_coding_assignment.v1",
+        workspace: {
+          kind: "git_checkout",
+          repository: {
+            branch: "main",
+            commitSha: "4444444444444444444444444444444444444444",
+            fullName: "OpenAgentsInc/public-sum-fixture",
+            provider: "github",
+            visibility: "public",
+          },
+          verificationCommand: {
+            args: ["bun", "test", "sum.test.ts"],
+            commandRef: "command.public.autopilot_coder.bun_test_sum",
+          },
+        },
+      }
+      const checkoutRunner: ClaudeAgentCheckoutRunner = async (workspace) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, scripts: { test: "bun test sum.test.ts" }, type: "module" }, null, 2)}\n`,
+        )
+        await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left - right\n")
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            "",
+            'describe("sum checkout", () => {',
+            '  test("adds two numbers", () => {',
+            "    expect(sum(2, 3)).toBe(5)",
+            "  })",
+            "})",
+            "",
+          ].join("\n"),
+        )
+      }
+      const claudeAgentRunner: ClaudeAgentRunner = async (input) => {
+        expect(input.cwd).toContain("claude-agent-tasks")
+        expect(input.instructions).toContain("command.public.autopilot_coder.bun_test_sum")
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        return { commandCount: 1, editedFileCount: 1, outcome: "completed", sessionRef: null, turnCount: 3 }
+      }
+      const fake = fakeAssignmentServer({
+        leases: [
+          {
+            assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.public_sum_repair",
+            codingAssignment,
+            jobKind: "claude_agent_task",
+            leaseExpiresInSeconds: 600,
+            state: "offered",
+            taskRefs: ["autopilot_work_order.test_1", "task.public_sum_repair"],
+          } as unknown as PylonAssignmentLease,
+        ],
+      })
+      const summary = await readySummary(home, ["capability.pylon.local_claude_agent"])
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        claudeAgentCheckoutRunner: checkoutRunner,
+        claudeAgentProbe: {
+          env: { ANTHROPIC_API_KEY: "test-key-shape" },
+          importer: async (specifier: string) => {
+            if (specifier !== CLAUDE_AGENT_SDK_PACKAGE) throw new Error("unexpected import")
+            return {}
+          },
+          platform: "darwin",
+        },
+        claudeAgentRunner,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected claude_agent_task git checkout assignment to run")
+      expect(result.closeout.resultRefs).toContain("result.public.pylon.claude_agent_task.git_checkout_verified_passed")
+      expect(result.closeout.blockerRefs).toEqual([])
+      expect(result.closeout.artifactRefs[0]).toStartWith("artifact.pylon.claude_agent_task.patch.")
+      expect(result.closeout.testRefs[0]).toStartWith("command.pylon.claude_agent_task.verification.")
+      expect(result.closeout.previewRefs[0]).toStartWith("workspace.pylon.claude_agent_task.")
+      const serverBodies = JSON.stringify(fake.requests.map((request) => request.body))
+      expect(serverBodies).not.toContain(home)
+      expect(serverBodies).not.toContain("/Users/")
+      expect(serverBodies).not.toContain("OpenAgentsInc/public-sum-fixture")
+      expect(serverBodies).not.toContain("Repair the public sum fixture.")
+      expect(serverBodies).not.toContain("left + right")
+      assertPublicProjectionSafe(result.closeout)
     })
   })
 

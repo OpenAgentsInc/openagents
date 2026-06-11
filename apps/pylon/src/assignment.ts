@@ -11,7 +11,11 @@ import {
 } from "@openagents/tassadar-executor"
 import type { BootstrapSummary } from "./bootstrap"
 import type { ClaudeAgentProbeOptions } from "./claude-agent"
-import { executeClaudeAgentAssignment, type ClaudeAgentRunner } from "./claude-agent-executor"
+import {
+  executeClaudeAgentAssignment,
+  type ClaudeAgentCheckoutRunner,
+  type ClaudeAgentRunner,
+} from "./claude-agent-executor"
 import type { CodexAgentProbeOptions } from "./codex-agent"
 import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor"
 import { createSignedHeaders } from "./presence"
@@ -120,6 +124,7 @@ export type AssignmentClientOptions = {
   walletRunner?: WalletCommandRunner
   gepaEnvelope?: PylonGepaCapabilityEnvelope
   psionicQwenAdmission?: PsionicQwenModelAdmission
+  claudeAgentCheckoutRunner?: ClaudeAgentCheckoutRunner
   claudeAgentRunner?: ClaudeAgentRunner
   claudeAgentProbe?: ClaudeAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
@@ -810,6 +815,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   const runtimeGate =
     (await executeTassadarAssignment(lease, observedAtDate)) ??
     (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
+      ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
       ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
       ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
     })) ??

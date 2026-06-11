@@ -19,9 +19,9 @@ export const onlineHeartbeatStatuses = new Set([
 
 const onlineWindowMs = 5 * 60 * 1000
 export const assignmentReadyCapabilityRef = 'capability.pylon.assignment_ready'
+export const localClaudeAgentCapabilityRef = 'capability.pylon.local_claude_agent'
 export const localCodingAgentCapabilityRefs = [
-  'capability.pylon.local_codex',
-  'capability.pylon.local_coding_agent',
+  localClaudeAgentCapabilityRef,
 ] as const
 
 export type AutopilotPylonPlacementCandidateProjection = Readonly<{
