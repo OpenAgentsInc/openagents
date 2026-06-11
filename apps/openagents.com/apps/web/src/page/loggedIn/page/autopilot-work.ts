@@ -65,14 +65,15 @@ const badge = (label: string, tone: ReturnType<typeof stateTone>): Html => {
   )
 }
 
-const ageLabel = (iso: string): string => {
+const ageLabel = (iso: string, generatedAt: string): string => {
   const then = Date.parse(iso)
+  const now = Date.parse(generatedAt)
 
-  if (!Number.isFinite(then)) {
+  if (!Number.isFinite(then) || !Number.isFinite(now)) {
     return 'Unknown age'
   }
 
-  const minutes = Math.max(0, Math.floor((Date.now() - then) / 60_000))
+  const minutes = Math.max(0, Math.floor((now - then) / 60_000))
 
   if (minutes < 60) {
     return `${minutes}m`
@@ -119,7 +120,10 @@ const emptyView = (): Html => {
   )
 }
 
-const workRow = (summary: AutopilotWorkSummary): Html => {
+const workRow = (
+  summary: AutopilotWorkSummary,
+  generatedAt: string,
+): Html => {
   const h = html<Message>()
   const href = autopilotWorkDetailRouter({
     workOrderRef: summary.workOrderRef,
@@ -160,7 +164,7 @@ const workRow = (summary: AutopilotWorkSummary): Html => {
       h.div([Ui.className<Message>('flex items-center gap-2 md:justify-end')], [
         badge(stateLabel(summary.state), stateTone(summary.state)),
         h.span([Ui.className<Message>('text-xs text-white/35')], [
-          ageLabel(summary.createdAt),
+          ageLabel(summary.createdAt, summary.generatedAt ?? generatedAt),
         ]),
       ]),
     ],
@@ -211,7 +215,7 @@ const listLoadedView = (
                 h.div([Ui.className<Message>('text-right')], ['Status']),
               ],
             ),
-            ...workOrders.map(workRow),
+            ...workOrders.map(workOrder => workRow(workOrder, generatedAt)),
           ],
         ),
   ])

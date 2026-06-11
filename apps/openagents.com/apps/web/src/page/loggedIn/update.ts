@@ -1,23 +1,14 @@
 import { Match as M } from 'effect'
 
-import { updateAdmin } from './admin/transitions'
-import { updateArtanisConsole } from './artanis-console/transitions'
-import { updateAutopilotWork } from './autopilot-work/transitions'
-import { updateBilling } from './billing/transitions'
-import { updateCustomerOrder } from './customer-order/transitions'
-import { updateAgentGoals } from './goals/transitions'
-import { updateImages } from './images/transitions'
+import { updateAdmin } from './admin/transitions'; import { updateArtanisConsole } from './artanis-console/transitions'
+import { updateAutopilotWork } from './autopilot-work/transitions'; import { updateBilling } from './billing/transitions'
+import { updateCustomerOrder } from './customer-order/transitions'; import { updateAgentGoals } from './goals/transitions'; import { updateImages } from './images/transitions'
 import { Message } from './message'
 import { Model } from './model'
 import { updateMullet } from './mullet/transitions'
-import { updateOnboarding } from './onboarding/transitions'
-import { updateProviders } from './providers/transitions'
-import { updateRunState } from './runs/transitions'
-import { updateSessionChrome } from './session/transitions'
-import { updateStats } from './stats/transitions'
-import { updateSync } from './sync/transitions'
-import { updateTeamChat } from './team-chat/transitions'
-import { updateThreadFiles } from './thread-files/transitions'
+import { updateOnboarding } from './onboarding/transitions'; import { updateProviders } from './providers/transitions'; import { updateRunState } from './runs/transitions'
+import { updateSessionChrome } from './session/transitions'; import { updateStats } from './stats/transitions'; import { updateSync } from './sync/transitions'
+import { updateTeamChat } from './team-chat/transitions'; import { updateThreadFiles } from './thread-files/transitions'
 import { type UpdateReturn } from './transition'
 
 export { FocusChatComposer, ScrollChatTimelineToEnd, SetAutopilotThreadUrl } from './commands/dom'
@@ -81,19 +72,10 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       RequestedLoadCustomerOrders: customerOrder,
       SucceededLoadCustomerOrders: customerOrder,
       FailedLoadCustomerOrders: customerOrder,
-      RequestedLoadAutopilotWorkList: autopilotWork,
-      SucceededLoadAutopilotWorkList: autopilotWork,
-      FailedLoadAutopilotWorkList: autopilotWork,
-      RequestedLoadAutopilotWorkDetail: autopilotWork,
-      SucceededLoadAutopilotWorkDetail: autopilotWork,
-      FailedLoadAutopilotWorkDetail: autopilotWork,
-      SucceededLoadAutopilotWorkEvents: autopilotWork,
-      FailedLoadAutopilotWorkEvents: autopilotWork,
-      SucceededLoadAutopilotWorkBriefing: autopilotWork,
-      FailedLoadAutopilotWorkBriefing: autopilotWork,
-      SubmittedAutopilotWorkReview: autopilotWork,
-      SucceededAutopilotWorkReview: autopilotWork,
-      FailedAutopilotWorkReview: autopilotWork,
+      RequestedLoadAutopilotWorkList: autopilotWork, SucceededLoadAutopilotWorkList: autopilotWork, FailedLoadAutopilotWorkList: autopilotWork,
+      RequestedLoadAutopilotWorkDetail: autopilotWork, SucceededLoadAutopilotWorkDetail: autopilotWork, FailedLoadAutopilotWorkDetail: autopilotWork,
+      SucceededLoadAutopilotWorkEvents: autopilotWork, FailedLoadAutopilotWorkEvents: autopilotWork, SucceededLoadAutopilotWorkBriefing: autopilotWork,
+      FailedLoadAutopilotWorkBriefing: autopilotWork, SubmittedAutopilotWorkReview: autopilotWork, SucceededAutopilotWorkReview: autopilotWork, FailedAutopilotWorkReview: autopilotWork,
       UpdatedCustomerOrderDraft: customerOrder,
       SubmittedCustomerOrder: customerOrder,
       SucceededSubmitCustomerOrder: customerOrder,
