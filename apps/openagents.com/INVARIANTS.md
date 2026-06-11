@@ -104,6 +104,30 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/autopilot-pack-a-runtime-supervision.test.ts`.
 
+## Pack A Supervision Contract
+
+- Background, scheduled, companion, Pylon, and agent/API Autopilot surfaces
+  must consume the shared Pack A supervision contract for attention events,
+  companion projections, permission decisions, and non-interactive structured
+  output before adding new approval or notification behavior.
+- Attention events must dedupe/fold by typed keys, clear through typed
+  invalidation or resolution events, and record delivery-failure receipts
+  without failing or retrying the underlying run indefinitely.
+- Companion projections are read/action projections only. They may expose
+  status, waiting decision refs, action refs, public-safe artifact refs,
+  budget refs, caveats, `generatedAt`, and the staleness contract, but they do
+  not grant deploy, spend, provider mutation, payout, settlement, or accepted
+  work authority.
+- Permission decisions must fail closed when prompts are unavailable and no
+  remote approval resolver exists. Deny rules and hard safety checks beat saved
+  allow rules, and background approvals become typed waiting states instead of
+  hidden prompts.
+- Non-interactive, JSON, CI, and headless modes must return schema-validated
+  public-safe envelopes with stable exit codes, blocker refs, receipt refs,
+  generatedAt, and caveats rather than color-only or TUI-only status.
+- Regression coverage for this policy starts in
+  `workers/api/src/autopilot-pack-a-supervision.test.ts`.
+
 ## Typed Email Side Effects
 
 - Production email sends must pass through `EmailService`; route handlers and
@@ -886,7 +910,7 @@ This is the invariant ledger for `openagents`.
   invent a second staleness vocabulary.
 - New public projections must ship compliant. The zero-debt architecture check
   (`scripts/check-zero-debt-architecture.mjs`, run by `bun run
-  check:architecture` inside `check:deploy`) discovers `/api/public/...`
+check:architecture` inside `check:deploy`) discovers `/api/public/...`
   route literals, fails any route missing from its projection-surface ledger,
   greps `staleness_declared` modules for the shared contract, and freezes the
   legacy count as an exact ratchet budget that may only shrink as retrofits
