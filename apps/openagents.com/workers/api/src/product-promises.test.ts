@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-11.8')
+    expect(decoded.version).toBe('2026-06-11.9')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -141,6 +141,33 @@ describe('public product promises document', () => {
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.r1_full_rehearsal_missing',
           ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.public_distributed_training_run.v1',
+          state: 'red',
+          evidenceRefs: expect.arrayContaining(['docs/transcripts/236.md']),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.monday_decentralized_training_launch.v1',
+          state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.monday_training_launch_receipts_missing',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'pylon.largest_decentralized_training_claim.v1',
+          state: 'red',
+        }),
+        expect.objectContaining({
+          promiseId: 'models.tasadar_percepta_executor.v1',
+          state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.tasadar_tassadar_naming_boundary_missing',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'pylon.v0_3_multi_earning_node.v1',
+          state: 'red',
         }),
         expect.objectContaining({
           promiseId: 'training.verification_classes.v1',

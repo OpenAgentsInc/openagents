@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.8'
+export const PublicProductPromisesVersion = '2026-06-11.9'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -21,6 +21,7 @@ const sourceRefs = [
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
   'docs/transcripts/199.md',
+  'docs/transcripts/236.md',
 ]
 
 const basePromiseFields = {
@@ -122,6 +123,7 @@ export const publicProductPromisesDocument = () => {
       'Episode 199 Claude Code-first mech-suit language is historical source material, not current public positioning. Current coding-agent runtime work is Codex-oriented where applicable, with useful ideas folded into Probe/Pylon.',
       'Open-source availability covers public product code and docs in the OpenAgentsInc/openagents repository; it does not publish secrets, production data, Cloudflare account bindings, wallet material, provider credentials, customer-private workroom content, or third-party service internals.',
       'The full training-pipeline program (the training.* promises) is planned scope from docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md; no Psion model rung above the retained tri-host rehearsal exists, and no pipeline stage is live as a broadly paid network workload.',
+      'Episode 236 is launch-direction source material only: the Monday decentralized training run, Pylon v0.3 multi-earning node, largest-run comparison, and Tasadar/Tassadar executor-model language stay red until run, participant, work, validation, payment, settlement, naming, and projection receipts exist.',
     ],
   },
   promises: [
@@ -330,6 +332,118 @@ export const publicProductPromisesDocument = () => {
     },
     {
       ...basePromiseFields,
+      promiseId: 'training.public_distributed_training_run.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'public'],
+      state: 'red',
+      claim:
+        'Pylons participate in public distributed model-training runs with visible run state, verified work, reported results, and contributor payment for useful work.',
+      safeCopy:
+        'A bounded two-device CS336 A1-scale run is evidenced under pylon.first_real_model_training_run.v1, but a broad public distributed training run is not green.',
+      unsafeCopy:
+        'Do not claim a public network-scale training run is live, open for broad contribution, or paying contributors until the run, work, validation, and settlement receipts exist.',
+      evidenceRefs: [
+        'docs/transcripts/224.md',
+        'docs/transcripts/227.md',
+        'docs/transcripts/236.md',
+        'docs/promises/registry.md',
+        'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+        'promise:pylon.first_real_model_training_run.v1',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.public_distributed_training_run_receipts_missing',
+        'blocker.product_promises.public_training_settlement_receipts_missing',
+      ],
+      verification:
+        'Green requires a public run definition, start/end state, participant admission and count methodology, task/work receipts, verification/eval evidence, payment and settlement refs, and stale-state handling.',
+      authorityBoundary:
+        'A launch transcript or bounded demo run does not authorize network-scale training, contributor admission, payout, or model-quality claims.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'training.monday_decentralized_training_launch.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'public'],
+      state: 'red',
+      claim:
+        'OpenAgents/Pylon plans a Monday launch of a large decentralized training run where contributors install node software and earn Bitcoin for useful training contribution.',
+      safeCopy:
+        'Episode 236 says a launch is targeted for Monday; treat it as a planned launch claim until receipts and public run state exist.',
+      unsafeCopy:
+        'Do not claim the Monday launch has happened, is accepting contributors, is paying, or is the largest run until evidence exists.',
+      evidenceRefs: [
+        'docs/transcripts/236.md',
+        'docs/promises/registry.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.monday_training_launch_receipts_missing',
+        'blocker.product_promises.training_run_public_state_missing',
+        'blocker.product_promises.training_launch_payment_settlement_missing',
+      ],
+      verification:
+        'Green requires a public run identifier, run status projection, participant rules, task receipts, validation/eval receipts, payment/settlement refs, and freshness degradation for stale state.',
+      authorityBoundary:
+        'A dated target does not itself create runtime availability, admission, dispatch, validation, or spend authority.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'pylon.largest_decentralized_training_claim.v1',
+      productArea: 'training',
+      audience: ['contributor', 'operator', 'public'],
+      state: 'red',
+      claim:
+        'OpenAgents/Pylon can make or beat a largest decentralized training run claim against a 200-contributor benchmark.',
+      safeCopy:
+        'Do not make a largest-run claim yet; Episode 236 renews the target, but count methodology and comparable training-run evidence are missing.',
+      unsafeCopy:
+        'Do not say OpenAgents has the largest decentralized training run, has beaten Bittensor, or has 200+ contributors unless current comparable evidence exists.',
+      evidenceRefs: [
+        'docs/transcripts/222.md',
+        'docs/transcripts/223.md',
+        'docs/transcripts/236.md',
+        'docs/promises/registry.md',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.largest_training_participant_methodology_missing',
+        'blocker.product_promises.comparable_training_run_evidence_missing',
+        'blocker.product_promises.public_training_contributor_receipts_missing',
+      ],
+      verification:
+        'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable.',
+      authorityBoundary:
+        'Marketing comparisons do not grant proof. Public copy must degrade to the receipts actually available.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'models.tasadar_percepta_executor.v1',
+      productArea: 'models',
+      audience: ['contributor', 'operator', 'public'],
+      state: 'red',
+      claim:
+        'The Tasadar model direction uses a Percepta Executor Class architecture, with CPU computation transformation support added to Pylon v0.3 for experimental training.',
+      safeCopy:
+        'Episode 236 names a Tasadar/Percepta Executor Class direction. Existing code and product records use Tassadar for the executor lane; treat spelling, scope, model spec, and training evidence as unresolved until the docs and receipts settle them.',
+      unsafeCopy:
+        'Do not claim a Tasadar/Tassadar model exists, is trained, outperforms CPUs, replaces a CPU, or is earning contributors Bitcoin.',
+      evidenceRefs: [
+        'docs/transcripts/236.md',
+        'docs/promises/registry.md',
+        'promise:compute.tassadar_executor_poc.v1',
+        'promise:artanis.tassadar_evolution_loop.v1',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.tasadar_tassadar_naming_boundary_missing',
+        'blocker.product_promises.tasadar_model_spec_missing',
+        'blocker.product_promises.percepta_executor_architecture_receipts_missing',
+        'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing',
+      ],
+      verification:
+        'Green requires the model name/spec, runtime boundary, Pylon integration, training/eval plan, artifact lineage, safety notes, and public-safe evidence refs.',
+      authorityBoundary:
+        'The scoped Tassadar executor PoC proves bounded exact replay only; it does not prove a model-training architecture, general model capability, or paid earning path.',
+    },
+    {
+      ...basePromiseFields,
       promiseId: 'pylon.five_bitcoin_revenue_streams.v1',
       productArea: 'payments',
       audience: ['contributor', 'public'],
@@ -361,6 +475,37 @@ export const publicProductPromisesDocument = () => {
         'Each revenue stream needs its own evidence refs, public-safe receipts, policy gates, and settlement state. The labor stream is the NIP-90 job market where contributors use their own agent capacity and sell results; it is not subscription resale.',
       authorityBoundary:
         'Forum, Sites, agent labor, data, and Pylon settlement are separate authorities.',
+    },
+    {
+      ...basePromiseFields,
+      promiseId: 'pylon.v0_3_multi_earning_node.v1',
+      productArea: 'Pylon',
+      audience: ['contributor', 'agent', 'public'],
+      state: 'red',
+      claim:
+        'Pylon v0.3 becomes one piece of node software that can earn Bitcoin in multiple ways, including training, Forum or coding-agent-adjacent work, and payment-integrated tasks.',
+      safeCopy:
+        'Pylon v0.3 is a release candidate with scoped green/yellow subclaims; one-install multi-earning remains red until each earning mode has its own evidence.',
+      unsafeCopy:
+        'Do not claim one Pylon install currently earns Bitcoin across multiple modes automatically.',
+      evidenceRefs: [
+        'docs/transcripts/236.md',
+        'docs/promises/registry.md',
+        'promise:pylon.v03_release_candidate.v1',
+        'promise:pylon.five_bitcoin_revenue_streams.v1',
+        'promise:forum.content_tipping.v1',
+        'promise:pylon.install_without_wallet_knowledge.v1',
+      ],
+      blockerRefs: [
+        'blocker.product_promises.pylon_v03_stable_release_not_green',
+        'blocker.product_promises.multi_earning_mode_receipts_missing',
+        'blocker.product_promises.multi_earning_settlement_refs_missing',
+        'blocker.product_promises.safe_public_projection_missing',
+      ],
+      verification:
+        'Green requires stable v0.3 release evidence, install/platform smokes, assignment/work receipts, per-mode payment evidence, settlement evidence, and public projections that distinguish modeled, observed, pending, paid, and settled amounts.',
+      authorityBoundary:
+        'Separate Forum tipping, accepted-work closeout, training dispatch, labor-market, referral, data, and settlement authorities do not collapse into one broad earning claim.',
     },
     {
       ...basePromiseFields,

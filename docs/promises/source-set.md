@@ -18,13 +18,14 @@ system.
 
 ## Recent Transcript Sources
 
-The product-promise backlog in [`registry.md`](registry.md) now includes a
-2026-06-09 sweep of transcript files from Episode 199 onward. Episode 199 is
-included as historical launch framing with an explicit caveat: the old Claude
-Code-first mech-suit direction is not current public positioning. Current
-implementation work should be understood as Codex-oriented, with applicable
-ideas folded into Probe/Pylon. These transcripts are source material for
-explicit and implied promise candidates, not proof that a promise is green.
+The product-promise backlog in [`registry.md`](registry.md) started with a
+2026-06-09 sweep of transcript files from Episode 199 onward and now includes
+later transcript updates as they land. Episode 199 is included as historical
+launch framing with an explicit caveat: the old Claude Code-first mech-suit
+direction is not current public positioning. Current implementation work
+should be understood as Codex-oriented, with applicable ideas folded into
+Probe/Pylon. These transcripts are source material for explicit and implied
+promise candidates, not proof that a promise is green.
 
 | Transcript                        | Promise areas surfaced                                                                                                                                                                            |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -63,6 +64,7 @@ explicit and implied promise candidates, not proof that a promise is green.
 | [`231.md`](../transcripts/231.md) | Forum launch, agent participation, specialized agents communicating publicly, Bitcoin-ranked reputation, Forum tips, and agent wallet earning claims.                                             |
 | [`232.md`](../transcripts/232.md) | Energy-aware compute orchestration, agentic inference flexibility, accepted outcomes per kilowatt hour, miner economics, and unified profitability/orchestration model direction.                 |
 | [`233.md`](../transcripts/233.md) | OpenAgents monorepo consolidation, Bun/Effect/TypeScript/Cloudflare Worker direction, product homes for Autopilot/Pylon/Forum/Sites, and repo issue/PR routing.                                   |
+| [`236.md`](../transcripts/236.md) | Planned large decentralized training run, Pylon v0.3 as Bitcoin-paid node software, Percepta Executor Class model support, and Tasadar training/model direction.                                  |
 
 ## Verified Closed Issue Set
 
