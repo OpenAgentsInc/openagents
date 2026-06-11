@@ -461,6 +461,39 @@ type WorkRequestLifecyclePostRow = Readonly<{
   work_request_id: string
 }>
 
+type WorkRequestOfferRow = Readonly<{
+  amount_msats: number
+  amount_sats: number
+  archived_at: string | null
+  capability_refs_json: string
+  created_at: string
+  id: string
+  provider_actor_ref: string
+  public_projection_json: string
+  quote_ref: string
+  relay_event_ref: string | null
+  state: 'accepted' | 'expired' | 'offered' | 'rejected'
+  updated_at: string
+  work_request_id: string
+}>
+
+type WorkRequestAcceptanceRow = Readonly<{
+  acceptance_event_ref: string
+  amount_msats: number
+  archived_at: string | null
+  created_at: string
+  escrow_id: string
+  id: string
+  idempotency_key: string
+  offer_id: string
+  provider_actor_ref: string
+  public_projection_json: string
+  quote_ref: string
+  requester_actor_ref: string
+  reserve_receipt_ref: string
+  work_request_id: string
+}>
+
 const projectionJson = JSON.stringify({
   classificationCaveatRef: 'classification.public_forum_projection',
   customerSafe: true,
@@ -1171,6 +1204,8 @@ class ForumRouteStore {
   workRequests: Array<WorkRequestRow> = []
   workRequestRelayLinks: Array<WorkRequestRelayLinkRow> = []
   workRequestLifecyclePosts: Array<WorkRequestLifecyclePostRow> = []
+  workRequestOffers: Array<WorkRequestOfferRow> = []
+  workRequestAcceptances: Array<WorkRequestAcceptanceRow> = []
 }
 
 class ForumRouteStatement implements D1PreparedStatement {
@@ -1575,6 +1610,35 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve(row as T | null)
     }
 
+    if (this.query.includes('FROM forum_work_request_offers')) {
+      const workRequestId = String(this.values[0])
+      const quoteRef = String(this.values[1])
+      const row =
+        this.store.workRequestOffers.find(
+          item =>
+            item.work_request_id === workRequestId &&
+            item.quote_ref === quoteRef &&
+            item.archived_at === null,
+        ) ?? null
+
+      return Promise.resolve(row as T | null)
+    }
+
+    if (this.query.includes('FROM forum_work_request_acceptances')) {
+      const ref = String(this.values[0])
+      const row = this.query.includes('idempotency_key =')
+        ? (this.store.workRequestAcceptances.find(
+            item =>
+              item.idempotency_key === ref && item.archived_at === null,
+          ) ?? null)
+        : (this.store.workRequestAcceptances.find(
+            item =>
+              item.work_request_id === ref && item.archived_at === null,
+          ) ?? null)
+
+      return Promise.resolve(row as T | null)
+    }
+
     if (this.query.includes('FROM forum_work_requests')) {
       const ref = String(this.values[0])
       const row = this.query.includes('idempotency_key =')
@@ -1792,11 +1856,76 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve({ success: true } as D1Result<T>)
     }
 
+    if (this.query.includes('INSERT INTO forum_work_request_offers')) {
+      this.store.workRequestOffers.push({
+        amount_msats: Number(this.values[5]),
+        amount_sats: Number(this.values[4]),
+        archived_at: null,
+        capability_refs_json: String(this.values[6]),
+        created_at: String(this.values[9]),
+        id: String(this.values[0]),
+        provider_actor_ref: String(this.values[3]),
+        public_projection_json: String(this.values[8]),
+        quote_ref: String(this.values[2]),
+        relay_event_ref:
+          this.values[7] === null ? null : String(this.values[7]),
+        state: 'offered',
+        updated_at: String(this.values[10]),
+        work_request_id: String(this.values[1]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('INSERT INTO forum_work_request_acceptances')) {
+      this.store.workRequestAcceptances.push({
+        acceptance_event_ref: String(this.values[10]),
+        amount_msats: Number(this.values[7]),
+        archived_at: null,
+        created_at: String(this.values[12]),
+        escrow_id: String(this.values[8]),
+        id: String(this.values[0]),
+        idempotency_key: String(this.values[1]),
+        offer_id: String(this.values[3]),
+        provider_actor_ref: String(this.values[6]),
+        public_projection_json: String(this.values[11]),
+        quote_ref: String(this.values[4]),
+        requester_actor_ref: String(this.values[5]),
+        reserve_receipt_ref: String(this.values[9]),
+        work_request_id: String(this.values[2]),
+      })
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE forum_work_request_offers')) {
+      const quoteRef = String(this.values[0])
+      const updatedAt = String(this.values[1])
+      const workRequestId = String(this.values[2])
+
+      this.store.workRequestOffers = this.store.workRequestOffers.map(offer =>
+        offer.work_request_id === workRequestId &&
+        offer.state === 'offered' &&
+        offer.archived_at === null
+          ? {
+              ...offer,
+              state: offer.quote_ref === quoteRef ? 'accepted' : 'rejected',
+              updated_at: updatedAt,
+            }
+          : offer,
+      )
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
     if (this.query.includes('UPDATE forum_work_requests')) {
-      const state = this.values[0] as WorkRequestRow['state']
-      const lifecycleKind = String(this.values[1])
-      const updatedAt = String(this.values[2])
-      const workRequestId = String(this.values[3])
+      const quoteAccepted = this.query.includes("state = 'quote_accepted'")
+      const state = quoteAccepted
+        ? 'quote_accepted'
+        : (this.values[0] as WorkRequestRow['state'])
+      const lifecycleKind = quoteAccepted ? 'quote_accepted' : String(this.values[1])
+      const updatedAt = String(quoteAccepted ? this.values[0] : this.values[2])
+      const workRequestId = String(quoteAccepted ? this.values[1] : this.values[3])
       const existingIndex = this.store.workRequests.findIndex(
         item => item.id === workRequestId && item.archived_at === null,
       )
@@ -2665,6 +2794,23 @@ class ForumRouteStatement implements D1PreparedStatement {
   }
 
   all<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    if (this.query.includes('FROM forum_work_request_offers')) {
+      const workRequestId = String(this.values[0])
+      const rows = this.store.workRequestOffers
+        .filter(
+          item =>
+            item.work_request_id === workRequestId &&
+            item.archived_at === null,
+        )
+        .sort(
+          (left, right) =>
+            right.created_at.localeCompare(left.created_at) ||
+            right.id.localeCompare(left.id),
+        )
+
+      return Promise.resolve({ results: rows } as unknown as D1Result<T>)
+    }
+
     if (this.query.includes('FROM forum_work_requests')) {
       const limit = Number(this.values[0] ?? 50)
       const rows = this.store.workRequests
@@ -3675,6 +3821,9 @@ const route = async (
     headers?: HeadersInit
     moderator?: 'admin' | 'non_admin'
     method?: string
+    workRequestEscrowReserver?: NonNullable<
+      Parameters<typeof makeForumRoutes>[0]
+    >['forumWorkRequestEscrowReserver']
     workRequestRelayPublisher?: ReturnType<typeof fakeWorkRequestRelayPublisher>
     workRequestRelayUrl?: string
   }> = {},
@@ -3696,6 +3845,9 @@ const route = async (
   const request = new Request(`https://openagents.com${path}`, init)
   const effect = makeForumRoutes({
     agentStore: testAgentStore(options.agentMetadata),
+    ...(options.workRequestEscrowReserver === undefined
+      ? {}
+      : { forumWorkRequestEscrowReserver: options.workRequestEscrowReserver }),
     ...(options.workRequestRelayPublisher === undefined
       ? {}
       : { forumWorkRequestRelayPublisher: options.workRequestRelayPublisher }),
@@ -4023,6 +4175,279 @@ describe('Forum routes', () => {
     expect(
       store.posts.filter(post => post.topic_id === store.workRequests[0]?.topic_id),
     ).toHaveLength(2)
+  })
+
+  test('lists and accepts Forum work-request offers with escrow reserve enforcement', async () => {
+    const store = new ForumRouteStore()
+    const captured: Array<CapturedWorkRequestRelayPublish> = []
+    const created = await route(store, '/api/forum/work-requests', {
+      body: {
+        budgetSats: 2_000,
+        deadlineRef: 'deadline.public.lbr.20260612',
+        objectiveRef: 'objective.public.openagents.requester_accept',
+        repositoryRefs: ['repo.public.openagents'],
+        requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+        title: 'Requester accept request',
+        verificationCommandRef: 'command.public.bun_requester_accept',
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'work-request-accept-root',
+      },
+      method: 'POST',
+      workRequestRelayPublisher: fakeWorkRequestRelayPublisher(captured),
+    })
+    const createdBody = (await created.json()) as Readonly<{
+      workRequest: Readonly<{ workRequestId: string }>
+    }>
+    const workRequestId = createdBody.workRequest.workRequestId
+
+    store.workRequestOffers.push(
+      {
+        amount_msats: 1_500_000,
+        amount_sats: 1_500,
+        archived_at: null,
+        capability_refs_json: JSON.stringify([
+          'capability.pylon.local_claude_agent',
+        ]),
+        created_at: '2026-06-05T20:01:00.000Z',
+        id: 'offer_route_1',
+        provider_actor_ref: 'agent:provider-one',
+        public_projection_json: '{}',
+        quote_ref: 'quote.public.route.one',
+        relay_event_ref: 'nostr.event.' + '1'.repeat(64),
+        state: 'offered',
+        updated_at: '2026-06-05T20:01:00.000Z',
+        work_request_id: workRequestId,
+      },
+      {
+        amount_msats: 1_600_000,
+        amount_sats: 1_600,
+        archived_at: null,
+        capability_refs_json: JSON.stringify([
+          'capability.pylon.local_claude_agent',
+        ]),
+        created_at: '2026-06-05T20:02:00.000Z',
+        id: 'offer_route_2',
+        provider_actor_ref: 'agent:provider-two',
+        public_projection_json: '{}',
+        quote_ref: 'quote.public.route.two',
+        relay_event_ref: 'nostr.event.' + '2'.repeat(64),
+        state: 'offered',
+        updated_at: '2026-06-05T20:02:00.000Z',
+        work_request_id: workRequestId,
+      },
+    )
+
+    const reservedInputs: unknown[] = []
+    const escrowReserver: NonNullable<
+      Parameters<typeof makeForumRoutes>[0]
+    >['forumWorkRequestEscrowReserver'] = async input => {
+      reservedInputs.push(input)
+      return {
+        escrow: {
+          amountMsat: input.amountMsat,
+          createdAt: input.nowIso,
+          escrowId: input.escrowId,
+          fundingSource: 'ledger_balance',
+          idempotencyKey: input.idempotencyKey,
+          jobEventId: input.jobEventId,
+          providerActorRef: null,
+          publicProjection: {
+            amountMsat: input.amountMsat,
+            escrowRef: `labor_escrow.public.${input.escrowId}`,
+            evidenceRef: 'nostr.event.' + input.jobEventId,
+            jobEventRef: 'nostr.event.' + input.jobEventId,
+            providerActorRef: null,
+            receiptRef: input.reserveReceiptRef,
+            requesterActorRef: input.requesterActorRef,
+            stateAfter: 'reserved',
+            transitionKind: 'reserve',
+            workRequestRef: `work_request.public.${input.workRequestId}`,
+          },
+          requesterActorRef: input.requesterActorRef,
+          reserveReceiptRef: input.reserveReceiptRef,
+          releaseReceiptRef: null,
+          refundReceiptRef: null,
+          state: 'reserved',
+          updatedAt: input.nowIso,
+          workRequestId: input.workRequestId,
+        },
+        ok: true,
+        reserveReceiptRef: input.reserveReceiptRef,
+      }
+    }
+
+    const offers = await route(
+      store,
+      `/api/forum/work-requests/${workRequestId}/offers`,
+    )
+    const accepted = await route(
+      store,
+      `/api/forum/work-requests/${workRequestId}/acceptances`,
+      {
+        body: { quoteRef: 'quote.public.route.one' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'work-request-accept-quote-one',
+        },
+        method: 'POST',
+        workRequestEscrowReserver: escrowReserver,
+      },
+    )
+    const retry = await route(
+      store,
+      `/api/forum/work-requests/${workRequestId}/acceptances`,
+      {
+        body: { quoteRef: 'quote.public.route.one' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'work-request-accept-quote-one',
+        },
+        method: 'POST',
+        workRequestEscrowReserver: escrowReserver,
+      },
+    )
+    const unauthenticatedRetry = await route(
+      store,
+      `/api/forum/work-requests/${workRequestId}/acceptances`,
+      {
+        body: { quoteRef: 'quote.public.route.one' },
+        headers: {
+          'idempotency-key': 'work-request-accept-quote-one',
+        },
+        method: 'POST',
+        workRequestEscrowReserver: escrowReserver,
+      },
+    )
+    const doubleAccept = await route(
+      store,
+      `/api/forum/work-requests/${workRequestId}/acceptances`,
+      {
+        body: { quoteRef: 'quote.public.route.two' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'work-request-accept-quote-two',
+        },
+        method: 'POST',
+        workRequestEscrowReserver: escrowReserver,
+      },
+    )
+    const status = await route(store, `/api/forum/work-requests/${workRequestId}`)
+
+    expect(offers.status).toBe(200)
+    await expect(offers.json()).resolves.toMatchObject({
+      offers: [
+        { quoteRef: 'quote.public.route.two' },
+        { quoteRef: 'quote.public.route.one' },
+      ],
+    })
+    expect(accepted.status).toBe(201)
+    expect(retry.status).toBe(200)
+    expect(unauthenticatedRetry.status).toBe(401)
+    expect(doubleAccept.status).toBe(409)
+    expect(reservedInputs).toHaveLength(1)
+    await expect(accepted.json()).resolves.toMatchObject({
+      acceptance: {
+        providerActorRef: 'agent:provider-one',
+        quoteRef: 'quote.public.route.one',
+      },
+      acceptedOffer: { quoteRef: 'quote.public.route.one' },
+      escrowState: {
+        reserveReceiptRef: expect.stringContaining(
+          'receipt.labor_escrow.reserve',
+        ),
+        state: 'reserved',
+      },
+      idempotent: false,
+      workRequest: { state: 'quote_accepted' },
+    })
+    await expect(retry.json()).resolves.toMatchObject({ idempotent: true })
+    await expect(doubleAccept.json()).resolves.toMatchObject({
+      error: 'quote_already_accepted',
+    })
+    await expect(status.json()).resolves.toMatchObject({
+      acceptance: { quoteRef: 'quote.public.route.one' },
+      offers: expect.arrayContaining([
+        expect.objectContaining({
+          quoteRef: 'quote.public.route.one',
+          state: 'accepted',
+        }),
+        expect.objectContaining({
+          quoteRef: 'quote.public.route.two',
+          state: 'rejected',
+        }),
+      ]),
+    })
+  })
+
+  test('refuses work-request quote acceptance when escrow reserve lacks balance', async () => {
+    const store = new ForumRouteStore()
+    const captured: Array<CapturedWorkRequestRelayPublish> = []
+    const created = await route(store, '/api/forum/work-requests', {
+      body: {
+        budgetSats: 2_000,
+        deadlineRef: 'deadline.public.lbr.20260612',
+        objectiveRef: 'objective.public.openagents.requester_balance',
+        repositoryRefs: ['repo.public.openagents'],
+        requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+        title: 'Requester balance request',
+        verificationCommandRef: 'command.public.bun_requester_balance',
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'work-request-balance-root',
+      },
+      method: 'POST',
+      workRequestRelayPublisher: fakeWorkRequestRelayPublisher(captured),
+    })
+    const createdBody = (await created.json()) as Readonly<{
+      workRequest: Readonly<{ workRequestId: string }>
+    }>
+    const workRequestId = createdBody.workRequest.workRequestId
+    store.workRequestOffers.push({
+      amount_msats: 1_500_000,
+      amount_sats: 1_500,
+      archived_at: null,
+      capability_refs_json: JSON.stringify([
+        'capability.pylon.local_claude_agent',
+      ]),
+      created_at: '2026-06-05T20:01:00.000Z',
+      id: 'offer_balance_1',
+      provider_actor_ref: 'agent:provider-one',
+      public_projection_json: '{}',
+      quote_ref: 'quote.public.balance.one',
+      relay_event_ref: 'nostr.event.' + '3'.repeat(64),
+      state: 'offered',
+      updated_at: '2026-06-05T20:01:00.000Z',
+      work_request_id: workRequestId,
+    })
+
+    const refused = await route(
+      store,
+      `/api/forum/work-requests/${workRequestId}/acceptances`,
+      {
+        body: { quoteRef: 'quote.public.balance.one' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'work-request-balance-accept',
+        },
+        method: 'POST',
+        workRequestEscrowReserver: async () => ({
+          availableMsat: 0,
+          ok: false,
+          reason: 'insufficient_available_balance',
+        }),
+      },
+    )
+
+    expect(refused.status).toBe(409)
+    await expect(refused.json()).resolves.toMatchObject({
+      error: 'labor_escrow_refused',
+      reason: 'insufficient_available_balance',
+    })
+    expect(store.workRequestAcceptances).toHaveLength(0)
+    expect(store.workRequestOffers[0]?.state).toBe('offered')
   })
 
   test('ingests relay-native NIP-LBR requests into twin Forum work-request topics', async () => {

@@ -173,12 +173,19 @@ Extension of the existing GO ONLINE provider loop:
   registered identity — the owner's entry point ("through my Pylon, ask
   for work"). Request goes through the Forum API (which bridges to the
   relay), so every CLI request is also a public Forum request.
+  The implemented requester slice includes the Pylon CLI command family,
+  local memory entries for request/acceptance refs, and Worker status,
+  offer-list, and accept-quote routes. Acceptance is requester-authenticated,
+  accepts at most one quote, and reserves escrow through the labor ledger.
 - **Artanis:** a `request_labor` tick action — the mind proposes a
   bounded work request (schema-validated, per-tick labor budget,
   escrowed from its seeded balance); gates hold. Artanis acceptance of
   delivered work is **not** discretionary in v1: it accepts only on
   validator re-execution of the stated verification command
   (the coding analogue of `exact_trace_replay`).
+  The Worker implementation is a default-off typed action surface with
+  injected proposal, request publication, escrow, validator, and tick-ledger
+  side effects so live enablement remains an operator-gated config change.
 - **Anyone else:** registered agents use the same Forum API; external
   Nostr agents can speak raw NIP-90 to the relay (the Forum twin is
   created by the bridge for relay-native requests too, keeping one
@@ -257,6 +264,12 @@ labor lane, `autopilot.agentic_labor_products.v1`,
    adapter bound, deliver output-only.
 5. **Requester surfaces** — `pylon work` CLI family + the Artanis
    `request_labor` tick action with validator-gated acceptance.
+   Implemented for the API/test lane: CLI request/offers/accept/status,
+   durable offer and single-acceptance tables, quote acceptance escrow
+   reserve, status envelopes, Artanis per-tick budget/schema gate,
+   validator-pass release, validator-fail refund, and tick receipts. Live
+   Artanis enablement remains off by default until operator config supplies
+   the proposal, validator, and publication dependencies.
 6. **The live demonstration** — one real negotiated, escrowed,
    executed, accepted, settled labor job with public receipts
    (coordinates #4648, whose acceptance this run satisfies); registry

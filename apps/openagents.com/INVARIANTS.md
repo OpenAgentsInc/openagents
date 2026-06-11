@@ -302,6 +302,15 @@ This is the invariant ledger for `openagents`.
   be spent through tips or swept to a wallet.
 - Release requires public-safe acceptance evidence from the requester or a
   validator policy. Workers and providers cannot self-release escrow.
+- Forum work-request acceptance is requester-authenticated and single-winner:
+  only the original requester actor may accept a quote, at most one quote may
+  be accepted for a work request, and the accepted quote amount must not exceed
+  the request budget.
+- Artanis labor requests are disabled by default. When enabled by explicit
+  operator configuration, the tick action may only propose ref-only requests
+  that pass schema validation, the per-tick labor budget gate, and the seeded
+  balance ceiling. Delivered Artanis-requested work releases escrow only on a
+  passing validator re-execution; failing validator verdicts refund escrow.
 - Release credits the provider balance and debits the requester held claim
   exactly once. Refund releases the hold without debiting the requester.
   Release-after-refund, refund-after-release, double-release, and
@@ -310,6 +319,8 @@ This is the invariant ledger for `openagents`.
   refs and amounts only. Escrowed or credited amounts are not settled bitcoin
   until the later payout path records settlement evidence.
 - Regression coverage for this policy lives in
+  `workers/api/src/artanis-labor-requester.test.ts`,
+  `workers/api/src/forum-routes.test.ts`,
   `workers/api/src/labor-escrow.test.ts`,
   `workers/api/src/payments-ledger.test.ts`,
   `workers/api/src/tips-sweep.test.ts`, and

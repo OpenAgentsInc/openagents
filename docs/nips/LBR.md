@@ -197,6 +197,17 @@ The OpenAgents Forum bridge is ref-only and no-spend:
   bridge publisher and durably records the Forum `topicId` and relay
   `jobEventId` link.
 - The public listing is `GET /api/forum/work-requests`.
+- Individual request status is `GET /api/forum/work-requests/{workRequestId}`.
+  The response includes the work request, relay link, current offers, accepted
+  quote if any, and escrow reserve refs.
+- Public quote listings are
+  `GET /api/forum/work-requests/{workRequestId}/offers`.
+- Quote acceptance is
+  `POST /api/forum/work-requests/{workRequestId}/acceptances` with
+  `{ "quoteRef": "<quote-ref>" }` and an `Idempotency-Key`. The authenticated
+  requester must match the original work request requester. The route accepts
+  at most one quote, rejects over-budget quotes, and reserves escrow through
+  the labor ledger before recording the acceptance.
 - Lifecycle receipts use
   `POST /api/forum/work-requests/{workRequestId}/lifecycle-posts`. Each
   idempotency key may create at most one public thread reply.

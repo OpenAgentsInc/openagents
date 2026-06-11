@@ -78,6 +78,14 @@ import {
   startNip90ProviderLoop,
 } from "./provider-nip90"
 import { PYLON_LABOR_CAPABILITY_REF, approveLaborFirstRun } from "./labor"
+import {
+  acceptPylonWorkOffer,
+  createPylonWorkRequest,
+  listPylonWorkOffers,
+  readPylonWorkStatus,
+  workAcceptanceMemoryEntry,
+  workRequestMemoryEntry,
+} from "./work-requester"
 
 // Global UI references for log aggregation and balance updates
 let globalRenderer: CliRenderer | null = null
@@ -1345,6 +1353,79 @@ async function main() {
       const result = await claimTipReadiness(networkOptions, { pylonRef: state.identity.pylonRef })
       process.stdout.write(`${JSON.stringify({ claimed: true, tipRecipientReadiness: (result as { tipRecipientReadiness?: unknown }).tipRecipientReadiness ?? null }, null, 2)}\n`)
       return
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "work") {
+    try {
+      const command = args[1]
+      const workArgs = args.slice(2)
+      const options = parseKeyValueOptions(workArgs)
+      const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      if (!baseUrl) throw new Error("work commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const networkOptions = {
+        agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        baseUrl,
+      }
+
+      if (command === "request") {
+        const objective = args[2]
+        const budgetSats = Number(options.budget)
+        if (!objective || objective.startsWith("--") || !Number.isInteger(budgetSats) || budgetSats <= 0) {
+          throw new Error('usage: pylon work request "<objective>" --budget <sats> [--repo URL] [--verify command] [--deadline iso]')
+        }
+        const result = await createPylonWorkRequest(networkOptions, {
+          budgetSats,
+          deadline: options.deadline,
+          objective,
+          repository: options.repo,
+          verificationCommand: options.verify,
+        })
+        await appendMemory(summary.paths.home, workRequestMemoryEntry({
+          at: new Date().toISOString(),
+          result,
+        }))
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+
+      if (command === "offers") {
+        const requestRef = args[2]
+        if (!requestRef) throw new Error("usage: pylon work offers <request-ref>")
+        const result = await listPylonWorkOffers(networkOptions, requestRef)
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+
+      if (command === "accept") {
+        const requestRef = args[2]
+        const quoteRef = args[3]
+        if (!requestRef || !quoteRef) throw new Error("usage: pylon work accept <request-ref> <quote-ref>")
+        const result = await acceptPylonWorkOffer(networkOptions, { quoteRef, requestRef })
+        await appendMemory(summary.paths.home, workAcceptanceMemoryEntry({
+          at: new Date().toISOString(),
+          quoteRef,
+          requestRef,
+          result,
+        }))
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+
+      if (command === "status") {
+        const requestRef = args[2]
+        if (!requestRef) throw new Error("usage: pylon work status <request-ref>")
+        const result = await readPylonWorkStatus(networkOptions, requestRef)
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
+
+      throw new Error("usage: pylon work request|offers|accept|status ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1
