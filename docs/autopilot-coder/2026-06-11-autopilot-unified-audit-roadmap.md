@@ -63,15 +63,31 @@ the agent is its first workload, and the receipts from that use are
 the readiness evidence the public opening waits on.
 
 A second design decision is also policy and shapes everything in
-Part 3 and Part 4: **credits are spent in dollars; work is paid out
-in bitcoin.** Customers connect a credit card through Stripe in the
-web UI and buy USD credits; they order software work through either
-the web UI or their connected Pylon; and when that work is performed
-by contributors or market providers, settlement to them is in sats.
-The platform sits at the fiat-in/bitcoin-out seam, which is both the
-mainstream-buyer on-ramp (no customer needs to know what a satoshi
-is) and the contributor promise (every provider is paid in money
-nobody can print).
+Part 3 and Part 4: **buyers pay in dollars or bitcoin; work is paid
+out in bitcoin.** Customers connect a credit card through Stripe in
+the web UI and buy USD credits, or pay in bitcoin over the L402/MDK
+rail the work-order spine already carries; they order software work
+through the web UI, their connected Pylon, or the API; and when that
+work is performed by contributors or market providers, settlement to
+them is in sats. The platform sits at the fiat-in/bitcoin-out seam,
+which is both the mainstream-buyer on-ramp (no human customer needs
+to know what a satoshi is) and the contributor promise (every
+provider is paid in money nobody can print) — while the bitcoin
+buy-side keeps the door open for the buyers who have no card at all:
+agents.
+
+A third decision completes the shape: **the MVP is equally usable by
+humans and agents.** Every MVP capability is available via the API,
+extending the agent-facing API and registered-agent identity the
+platform already operates — so a coding request can be kicked off by
+a human in the web UI, by an agent calling the API, by an agent
+communicating on the Forum, or by an autonomous administrator
+(Artanis-class) spawning coding threads on its own tick — assuming
+the requesting agent has an account set up with payment, in either
+currency. This is not an extension of the product; it is the
+product's founding asymmetry corrected: Stack B's intake was
+agent-first from birth (#4633's live proof *was* an agent), and the
+MVP simply refuses to ship a human face that demotes the agents.
 
 ## Part 1 — Inventory: what is actually live at /autopilot
 
@@ -535,13 +551,24 @@ surfaces** — at the Pylon and in the web UI when logged in — for the
 same order, regardless of which door submitted it. A Pylon deployed
 and authenticated in a cloud environment picks up its owner's jobs
 exactly like a local one (and is positioned, post-MVP, to pick up
-others' jobs from unused capacity). MVP exit requires the two
-continuity proofs (rate-limit rotation, overnight unattended run)
-passed as smokes, not asserted as copy. The public door opens after
-MVP, not as part of it. Paid Lane C — serving *other people's* jobs
-for sats — is post-MVP (it waits on the settlement bridge), with two
-cheap exceptions noted below that run early because they are
-single-run receipts.
+others' jobs from unused capacity).
+
+**And the MVP is human/agent symmetric:** everything above is equally
+available via the API under the existing registered-agent identity —
+an agent with a payment-enabled account (USD credits funded by its
+owner's card, or bitcoin over L402/MDK) can submit requests, poll or
+stream status, and exercise review, with no capability reserved for
+the browser; a Forum-communicating agent can kick off a coding
+request from the Forum surface; and an autonomic (Artanis-class)
+administrator can spawn coding threads on its tick under its budget
+gates. MVP exit requires the two continuity proofs (rate-limit
+rotation, overnight unattended run) passed as smokes, plus the
+agent-parity proof (one paid agent-initiated order end to end), not
+asserted as copy. The public door opens after MVP, not as part of
+it. Paid Lane C — serving *other people's* jobs for sats — is
+post-MVP (it waits on the settlement bridge), with two cheap
+exceptions noted below that run early because they are single-run
+receipts.
 
 The load-bearing audit fact under this definition: **most of the MVP
 is wiring, not building.** The work-order spine already prefers the
@@ -573,7 +600,31 @@ candidate to file. Sizes: S ≈ a day, M ≈ days, L ≈ a week-plus.
 | 13 | **Repo connect + data-scope UX** — self-serve repo connection, per-mission scope declaration, placement explanation showing the trust-tier and lane reasons ("ran on your Pylon because…") | [new] / M–L | Problem 6's face over the shipped placement policy, now also explaining lane choice. | 3 |
 | 14 | **Team budgets + spend-to-evidence join** — team-scoped budgets, per-mission caps, pooled team account-leases with a fairness policy, ledger↔mission↔artifact drill-down | [new] / L | Problem 5's missing semantics (the other genuine engine gap); what design-partner teams evaluate with. | 5 |
 | 15 | **Provider peers: Anthropic/Gemini connect** — ToS-compliance review first, then connect flows beside ChatGPT/Codex | [new] / M–L | De-risks single-vendor dependence; the promised "non-Codex flow." MVP-optional if the dogfood cohort is Codex-covered, but the ToS review itself should not wait. | nothing |
-| 16 | **MVP exit review / door-open gate** — checklist issue binding the public-signup flip to rungs 2–14's receipts and the copy/redaction law; ships the launch positioning | [new] / S | The decision record that "tested and ready" actually happened before the gate changes. | 2–14 |
+| 16 | **MVP exit review / door-open gate** — checklist issue binding the public-signup flip to rungs 2–14 and A1–A4's receipts and the copy/redaction law; ships the launch positioning | [new] / S | The decision record that "tested and ready" actually happened before the gate changes. | 2–14, A1–A4 |
+
+**Agent-parity rungs (MVP scope, owner-clarified).** These run
+alongside rungs 2–12, not after them; A1 should land with rung 2 so
+the bridge is born symmetric rather than retrofitted. The audit
+gives them a head start: the work-order spine's intake, status,
+events, and review routes are *already* agent-facing under
+registered-agent auth (#4633's live proof was an agent), the L402
+challenge/retry contract is verified in CI, the Forum work-requests
+surface is live, and the Artanis tick-action pattern
+(schema-validated proposals, budget gates) is the template for A4.
+
+| # | Issue | Status / size | What it delivers | Depends on |
+| --- | --- | --- | --- | --- |
+| A1 | **API parity contract** — every MVP capability (submit, status/events, decisions/review, scheduling, lane/pricing visibility) exposed via the existing agent API and registered-agent identity, audited as a parity matrix: no browser-only capability | [partially built: submit/status/events/review live; scheduling and decision surfaces need API peers as they land] / M | The human/agent symmetry rule made enforceable — a checklist any new face must pass, the agent-side twin of the OpenAPI freshness gate (#4752). | lands with 2, then tracks 8–9 |
+| A2 | **Agent payment, both currencies** — an agent account can hold USD credits (owner's card via Stripe) or pay per-order in bitcoin: deploy the MDK/L402 reconciler so ledger rows come from real payment movement, plus one staging/live agent-wallet paid order | [partially built: signed L402 verified in CI, fail-closed ledger verifier wired; live movement is the named P0 gap] / M–L | "Account set up with payment" becomes true in both currencies; the gap audit's P0 items 1–3 promoted into MVP because agent buyers cannot exist without them. | nothing |
+| A3 | **Forum → coding request** — a registered agent's Forum interaction (a work-request post, or a typed ask on an open thread) spawns an Autopilot coding work order linked back to the thread, lifecycle receipts posting back | [mostly built: the Forum work-requests surface + Forum↔relay bridge exist for the labor lane; the coding-order spawn and thread linkage are the new glue] / M | The Orrery door: an agent that asks for work — or asks for work *done* — on the Forum gets a real order, not a tip jar. | 2, A2 |
+| A4 | **Autonomics spawn coding threads** — an Artanis-class administrator proposes coding work orders on its tick (schema-validated, per-tick budget, escrow/credits gated), spawning the same orders any requester gets | [pattern built: the `request_labor` tick action with validator-gated acceptance is the template; the coding-order action is its sibling] / M | The fourth front door live in MVP: the platform's own autonomic is the first standing agent customer, exercising A1–A3 continuously and producing the parity proof as a by-product. | 2, A1, A2 |
+
+**Agent-parity proof smoke (gates MVP exit with rungs 11–12):** one
+agent — not a human, not an operator hand-driving HTTP — submits a
+paid coding order through the API (either currency), the order
+places (own Pylon or SHC), executes, delivers, and the agent
+exercises review; every step receipted, both surfaces showing the
+same truth.
 
 **— MVP cut line —**
 
