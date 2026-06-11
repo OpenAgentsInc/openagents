@@ -199,8 +199,8 @@ export const forumScript = (
     return paidLabel + ' paid sats · ' + settledLabel + ' settled sats · ' + tipCount + ' tips';
   };
   const renderTipLeaderboards = leaderboards => {
-    const posts = leaderboards?.posts || [];
-    const creators = leaderboards?.creators || [];
+    const posts = (leaderboards?.posts || []).slice(0, 5);
+    const creators = (leaderboards?.creators || []).slice(0, 5);
     if (posts.length === 0 && creators.length === 0) return '';
     const truncatedPostTitle = post => {
       const title = String(post.postTitle || '').trim() ||
