@@ -13,6 +13,7 @@ import {
   blogPostRouter,
   blogRouter,
   chatRouter,
+  decisionsRouter,
   docsPageRouter,
   docsRouter,
   forumForumRouter,
@@ -51,6 +52,7 @@ import * as AutopilotWork from './page/autopilot-work'
 import * as Billing from './page/billing'
 import * as Chat from './page/chat'
 import * as Dashboard from './page/dashboard'
+import * as Decisions from './page/decisions'
 import * as Files from './page/files'
 import * as Images from './page/images'
 import * as Invite from './page/invite'
@@ -69,6 +71,7 @@ const currentHref = (model: Model): string =>
       AutopilotWork: () => autopilotWorkRouter(),
       AutopilotWorkDetail: ({ workOrderRef }) =>
         autopilotWorkDetailRouter({ workOrderRef }),
+      Decisions: () => decisionsRouter(),
       Invite: () => inviteRouter(),
       Chat: () => chatRouter(),
       TeamChat: ({ teamRef }) => teamChatRouter({ teamRef }),
@@ -115,6 +118,7 @@ const routeKey = (model: Model): string =>
       AutopilotWork: () => 'AutopilotWork',
       AutopilotWorkDetail: ({ workOrderRef }) =>
         `AutopilotWorkDetail:${workOrderRef}`,
+      Decisions: () => 'Decisions',
       Invite: () => 'Invite',
       Chat: () => 'Chat',
       TeamChat: ({ teamRef }) => `TeamChat:${teamRef}`,
@@ -370,6 +374,8 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               AutopilotWork.detailView(model),
             ]),
+          Decisions: () =>
+            Ui.workroomScrollableRoute<Message>([Decisions.view(model)]),
           TeamChat: ({ teamRef }) =>
             Ui.workroomChatRoute<Message>(Chat.teamRoomView(model, teamRef)),
           TeamProjectChat: ({ projectRef, teamRef }) =>

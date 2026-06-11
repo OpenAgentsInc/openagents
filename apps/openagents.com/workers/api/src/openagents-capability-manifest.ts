@@ -572,6 +572,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Owner-granted agents can read the Mission Briefing projection for a work order: what happened, what changed, what is blocked, what is running, which decision is waiting, cost rollup, and grouped drill-down refs. Read projection only; no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
       },
       {
+        id: 'autopilot_decisions_queue',
+        href: 'https://openagents.com/api/autopilot/decisions',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        description:
+          'Signed-in owners or owner-granted agents read the Autopilot decision queue: pending review decisions for delivered work, blocked customer-input decisions, and recent completed decisions with receipt refs. Every decision carries directEffectPermitted: false and the projection carries generatedAt rebuilt from live work-order records on each read.',
+      },
+      {
         id: 'site_builder_sessions',
         href: 'https://openagents.com/api/sites/builder-sessions',
         method: 'POST',
@@ -1027,6 +1035,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         status: 'available',
         description:
           'Owners or owner-granted agents read the "what ran while you slept" report: delivered work awaiting decision, reviewed, blocked, running, launched, and scheduled work plus auto-continuation attempts, served live-at-read with generatedAt and a declared staleness contract.',
+      },
+      {
+        id: 'act_on_autopilot_decision',
+        href: 'https://openagents.com/api/autopilot/decisions/{decisionRef}/actions',
+        method: 'POST',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.write_and_idempotency_key',
+        status: 'available',
+        description:
+          'Signed-in owners or owner-granted agents act on a pending approve_pr_draft decision with accept, reject, or request_changes. The action records a gated review submission only (directEffectPermitted: false); it grants no deploy, spend, worker payout, settlement, or Forum publication authority.',
       },
       {
         id: 'submit_site_feedback',

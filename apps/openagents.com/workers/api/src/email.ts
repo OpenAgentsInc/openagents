@@ -1,7 +1,10 @@
 import {
+  AutopilotDecisionEmailKind,
+  AutopilotDecisionTemplateProps,
   DripTemplateProps,
   ORDER_SITES_LIFECYCLE_EMAIL_KINDS,
   OrderSitesLifecycleTemplateProps,
+  renderAutopilotDecisionEmail,
   renderDripEmail,
   renderOrderSitesLifecycleEmail,
 } from '@openagents/email-templates'
@@ -137,6 +140,17 @@ export type SendAdjutantCustomerNotificationInput = Readonly<{
   stage: AdjutantCustomerNotificationStage
   to: string
 }>
+
+export class AutopilotDecisionEmailInput extends S.Class<AutopilotDecisionEmailInput>(
+  'AutopilotDecisionEmailInput',
+)({
+  appOrigin: S.String,
+  displayName: S.String,
+  idempotencyKey: S.String,
+  kind: AutopilotDecisionEmailKind,
+  to: S.String,
+  workOrderRef: S.String,
+}) {}
 
 export class DripCampaignEmailInput extends S.Class<DripCampaignEmailInput>(
   'DripCampaignEmailInput',
@@ -334,6 +348,10 @@ export type EmailServiceShape = Readonly<{
     config: ResendEmailConfig,
     input: SendAdjutantCustomerNotificationInput,
   ) => Effect.Effect<RenderedEmail>
+  renderAutopilotDecisionNotificationEmail: (
+    config: ResendEmailConfig,
+    input: AutopilotDecisionEmailInput,
+  ) => Effect.Effect<RenderedEmail, EmailServiceError>
   renderDripCampaignEmail: (
     config: ResendEmailConfig,
     input: DripCampaignEmailInput,
@@ -365,6 +383,14 @@ export type EmailServiceShape = Readonly<{
     db: D1Database,
     config: ResendEmailConfig,
     input: SendAdjutantCustomerNotificationInput,
+    context?: EmailIntentContext | undefined,
+    fetcher?: typeof fetch,
+    runtime?: EmailRuntime,
+  ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
+  sendAutopilotDecisionEmailWithLedger: (
+    db: D1Database,
+    config: ResendEmailConfig,
+    input: AutopilotDecisionEmailInput,
     context?: EmailIntentContext | undefined,
     fetcher?: typeof fetch,
     runtime?: EmailRuntime,
@@ -808,6 +834,71 @@ const renderedDripCampaignEmail = (
     subject: renderedTemplate.subject,
     tags: [
       new EmailTag({ name: 'category', value: 'drip' }),
+      new EmailTag({ name: 'event', value: input.kind }),
+    ],
+    templateContextJson: jsonValue(renderedTemplate.templateContext),
+    templateSlug: renderedTemplate.templateSlug,
+    text: renderedTemplate.text,
+    to: input.to,
+  })
+}
+
+const autopilotDecisionSecretCheckPayload = (
+  input: AutopilotDecisionEmailInput,
+): unknown => ({
+  displayName: input.displayName,
+  kind: input.kind,
+  to: input.to,
+  workOrderRef: input.workOrderRef,
+})
+
+const assertAutopilotDecisionEmailInputSafe = (
+  input: AutopilotDecisionEmailInput,
+): Effect.Effect<void, EmailServiceError> => {
+  const json = JSON.stringify(autopilotDecisionSecretCheckPayload(input))
+
+  return containsProviderSecretMaterial(json) ||
+    LIFECYCLE_EMAIL_FORBIDDEN_PATTERNS.some(pattern => pattern.test(json))
+    ? Effect.fail(
+        new EmailServiceError({
+          message:
+            'Autopilot decision email input contains secret-shaped material.',
+          operation: 'EmailService.renderAutopilotDecisionEmail',
+        }),
+      )
+    : Effect.void
+}
+
+const renderedAutopilotDecisionEmail = (
+  config: ResendEmailConfig,
+  input: AutopilotDecisionEmailInput,
+): RenderedEmail => {
+  const renderedTemplate = renderAutopilotDecisionEmail(
+    new AutopilotDecisionTemplateProps({
+      appOrigin: input.appOrigin,
+      displayName: input.displayName,
+      kind: input.kind,
+      workOrderRef: input.workOrderRef,
+    }),
+  )
+
+  return new RenderedEmail({
+    from: config.fromEmail,
+    html: renderedTemplate.html,
+    idempotencyKey: input.idempotencyKey,
+    kind: 'crm_transactional',
+    metadataJson: jsonValue({
+      decisionKind: input.kind,
+      emailSubtype: 'autopilot_decision_queue',
+      policy: 'system.autopilot_decision_notification.v1',
+      workOrderRef: input.workOrderRef,
+    }),
+    ...(config.replyToEmail === undefined
+      ? {}
+      : { replyTo: config.replyToEmail }),
+    subject: renderedTemplate.subject,
+    tags: [
+      new EmailTag({ name: 'category', value: 'autopilot_decisions' }),
       new EmailTag({ name: 'event', value: input.kind }),
     ],
     templateContextJson: jsonValue(renderedTemplate.templateContext),
@@ -1591,6 +1682,16 @@ export const makeEmailService = (): EmailServiceShape => {
     Effect.succeed(renderedDripCampaignEmail(config, input)),
   )
 
+  const renderAutopilotDecisionNotificationEmail = Effect.fn(
+    'EmailService.renderAutopilotDecisionNotificationEmail',
+  )((config: ResendEmailConfig, input: AutopilotDecisionEmailInput) =>
+    Effect.gen(function* () {
+      yield* assertAutopilotDecisionEmailInputSafe(input)
+
+      return renderedAutopilotDecisionEmail(config, input)
+    }),
+  )
+
   const renderSiteReferralOnboardingEmail = Effect.fn(
     'EmailService.renderSiteReferralOnboardingEmail',
   )((config: ResendEmailConfig, input: SiteReferralOnboardingEmailInput) =>
@@ -1906,6 +2007,83 @@ export const makeEmailService = (): EmailServiceShape => {
       }),
   )
 
+  const sendAutopilotDecisionEmailWithLedger = Effect.fn(
+    'EmailService.sendAutopilotDecisionEmailWithLedger',
+  )(
+    (
+      db: D1Database,
+      config: ResendEmailConfig,
+      input: AutopilotDecisionEmailInput,
+      context: EmailIntentContext | undefined = undefined,
+      fetcher: typeof fetch = fetch,
+      runtime: EmailRuntime = systemEmailRuntime,
+    ) =>
+      Effect.gen(function* () {
+        const rendered = yield* renderAutopilotDecisionNotificationEmail(
+          config,
+          input,
+        )
+        const message = yield* reserveEmailMessage(
+          db,
+          rendered,
+          {
+            ...context,
+            metadata: {
+              ...(context?.metadata ?? {}),
+              decisionKind: input.kind,
+              workOrderRef: input.workOrderRef,
+            },
+            sourceAuthorityRef:
+              context?.sourceAuthorityRef ??
+              'system.autopilot_decision_notification.v1',
+          },
+          runtime,
+        )
+
+        if (message.status === 'accepted') {
+          return {
+            emailMessageId: message.id,
+            ok: true as const,
+            providerMessageId: message.providerMessageId,
+          }
+        }
+
+        const result = yield* sendRenderedEmail(config, rendered, fetcher)
+
+        yield* result._tag === 'EmailProviderAccepted'
+          ? markEmailMessageAccepted(
+              db,
+              message.id,
+              result.provider,
+              result.providerMessageId,
+              runtime,
+            )
+          : markEmailMessageFailed(
+              db,
+              message.id,
+              result.provider,
+              result,
+              runtime,
+            )
+        yield* recordEmailDelivery(db, message.id, rendered, result, runtime)
+
+        if (result._tag === 'EmailProviderAccepted') {
+          return {
+            emailMessageId: message.id,
+            ok: true as const,
+            providerMessageId: result.providerMessageId,
+          }
+        }
+
+        return {
+          emailMessageId: message.id,
+          errorMessage: result.errorMessage,
+          errorName: result.errorName,
+          ok: false as const,
+        }
+      }),
+  )
+
   const sendOrderSitesTransactionalEmailWithLedger = Effect.fn(
     'EmailService.sendOrderSitesTransactionalEmailWithLedger',
   )(
@@ -2063,6 +2241,7 @@ export const makeEmailService = (): EmailServiceShape => {
       buildOrderSitesTransactionalEmailIdempotencyKey,
     recordDraft,
     renderAdjutantCustomerNotificationEmail,
+    renderAutopilotDecisionNotificationEmail,
     renderDripCampaignEmail,
     renderOrderSitesTransactionalEmail,
     renderOutOfCreditsEmail,
@@ -2070,6 +2249,7 @@ export const makeEmailService = (): EmailServiceShape => {
     renderTargetedRemakeOutreachEmail,
     reserveMessage: reserveEmailMessage,
     sendAdjutantCustomerNotificationWithLedger,
+    sendAutopilotDecisionEmailWithLedger,
     sendDripCampaignEmailWithLedger,
     sendOrderSitesTransactionalEmailWithLedger,
     sendOutOfCreditsEmail: sendOutOfCreditsEmailEffect,
@@ -2279,6 +2459,23 @@ export const sendAdjutantCustomerNotificationWithLedger = (
   runtime: EmailRuntime = systemEmailRuntime,
 ): Effect.Effect<EmailLedgerSendResult, EmailServiceError> =>
   defaultEmailService.sendAdjutantCustomerNotificationWithLedger(
+    db,
+    config,
+    input,
+    context,
+    fetcher,
+    runtime,
+  )
+
+export const sendAutopilotDecisionEmailWithLedger = (
+  db: D1Database,
+  config: ResendEmailConfig,
+  input: AutopilotDecisionEmailInput,
+  context?: EmailIntentContext | undefined,
+  fetcher: typeof fetch = fetch,
+  runtime: EmailRuntime = systemEmailRuntime,
+): Effect.Effect<EmailLedgerSendResult, EmailServiceError> =>
+  defaultEmailService.sendAutopilotDecisionEmailWithLedger(
     db,
     config,
     input,

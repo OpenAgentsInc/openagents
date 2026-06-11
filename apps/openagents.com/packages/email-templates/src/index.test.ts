@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  AUTOPILOT_DECISION_EMAIL_KINDS,
+  AutopilotDecisionTemplateProps,
   DRIP_EMAIL_KINDS,
   ORDER_SITES_LIFECYCLE_EMAIL_KINDS,
   DripTemplateProps,
   OrderSitesLifecycleTemplateProps,
+  renderAutopilotDecisionEmail,
   renderDripEmail,
   renderEmailTemplatePreviewCatalog,
   renderOrderSitesLifecycleEmail,
@@ -113,6 +116,51 @@ describe('email template package', () => {
     }
   })
 
+  test('renders Autopilot decision-queue templates with the decisions link', () => {
+    for (const kind of AUTOPILOT_DECISION_EMAIL_KINDS) {
+      const rendered = renderAutopilotDecisionEmail(
+        new AutopilotDecisionTemplateProps({
+          appOrigin: 'https://openagents.com',
+          displayName: 'Alex <Customer>',
+          kind,
+          workOrderRef: 'autopilot_work_order.decision_test_1',
+        }),
+      )
+
+      expect(rendered.templateSlug).toBe(`autopilot_decisions.${kind}.v1`)
+      expect(rendered.subject.length).toBeGreaterThan(0)
+      expect(rendered.text).toContain('https://openagents.com/decisions')
+      expect(rendered.text).toContain(
+        'Work order: autopilot_work_order.decision_test_1',
+      )
+      expect(rendered.html).toContain('https://openagents.com/decisions')
+      expect(rendered.html).toContain('Alex &lt;Customer&gt;')
+      expect(rendered.html).not.toContain('Alex <Customer>')
+      expect(rendered.templateContext).toMatchObject({
+        decisionsUrl: 'https://openagents.com/decisions',
+        kind,
+        workOrderRef: 'autopilot_work_order.decision_test_1',
+      })
+    }
+  })
+
+  test('asks decision-required recipients to act from the decision queue', () => {
+    const rendered = renderAutopilotDecisionEmail(
+      new AutopilotDecisionTemplateProps({
+        appOrigin: 'https://openagents.com',
+        displayName: 'Alex Customer',
+        kind: 'decision_required',
+        workOrderRef: 'autopilot_work_order.decision_test_1',
+      }),
+    )
+
+    expect(rendered.subject).toBe(
+      'Autopilot work delivered - your decision is required',
+    )
+    expect(rendered.text).toContain('approve, request changes, or reject')
+    expect(rendered.text).toContain('gated submission')
+  })
+
   test('builds a local preview catalog', () => {
     const catalog = renderEmailTemplatePreviewCatalog('https://openagents.com')
 
@@ -121,6 +169,8 @@ describe('email template package', () => {
       'drip.signup_day_0.v1',
       'drip.signup_day_1.v1',
       'drip.signup_day_2.v1',
+      'autopilot_decisions.decision_required.v1',
+      'autopilot_decisions.work_delivered.v1',
     ])
   })
 })

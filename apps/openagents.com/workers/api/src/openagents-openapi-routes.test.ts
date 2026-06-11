@@ -254,6 +254,25 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/autopilot/work/{workOrderRef}/events', 'get')
         .operationId,
     ).toBe('listAutopilotWorkEvents')
+    expect(
+      operationAt(body, '/api/autopilot/decisions', 'get').operationId,
+    ).toBe('listAutopilotDecisions')
+    expect(
+      operationAt(body, '/api/autopilot/decisions/{decisionRef}/actions', 'post')
+        .operationId,
+    ).toBe('actOnAutopilotDecision')
+    expect(
+      operationAt(body, '/api/autopilot/decisions/{decisionRef}/actions', 'post')
+        .parameters,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          in: 'header',
+          name: 'Idempotency-Key',
+          required: true,
+        }),
+      ]),
+    )
     expect(operationAt(body, '/api/auth/session', 'get').operationId).toBe(
       'getAuthSession',
     )

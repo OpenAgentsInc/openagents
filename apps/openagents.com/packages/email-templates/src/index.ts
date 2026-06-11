@@ -34,6 +34,18 @@ export const ORDER_SITES_LIFECYCLE_EMAIL_KINDS = [
   'adjustment_completed',
 ] as const satisfies ReadonlyArray<OrderSitesLifecycleEmailKind>
 
+export const AutopilotDecisionEmailKind = S.Literals([
+  'decision_required',
+  'work_delivered',
+])
+export type AutopilotDecisionEmailKind =
+  typeof AutopilotDecisionEmailKind.Type
+
+export const AUTOPILOT_DECISION_EMAIL_KINDS = [
+  'decision_required',
+  'work_delivered',
+] as const satisfies ReadonlyArray<AutopilotDecisionEmailKind>
+
 export const DripEmailKind = S.Literals([
   'signup_day_0',
   'signup_day_1',
@@ -72,6 +84,15 @@ export class DripTemplateProps extends S.Class<DripTemplateProps>(
   displayName: S.String,
   kind: DripEmailKind,
   managePreferencesUrl: S.String,
+}) {}
+
+export class AutopilotDecisionTemplateProps extends S.Class<AutopilotDecisionTemplateProps>(
+  'AutopilotDecisionTemplateProps',
+)({
+  appOrigin: S.String,
+  displayName: S.String,
+  kind: AutopilotDecisionEmailKind,
+  workOrderRef: S.String,
 }) {}
 
 export type RenderedEmailTemplate = Readonly<{
@@ -360,6 +381,79 @@ export const renderDripEmail = (
   }
 }
 
+const autopilotDecisionCopy = (
+  input: AutopilotDecisionTemplateProps,
+): Readonly<{ lead: string; nextAction: string; subject: string }> => {
+  switch (input.kind) {
+    case 'decision_required':
+      return {
+        lead:
+          'Autopilot delivered work that is now waiting on your decision. Nothing proceeds until you review it, and your decision is recorded as a gated submission with a receipt trail.',
+        nextAction:
+          'Open your decision queue and approve, request changes, or reject the delivered work.',
+        subject: 'Autopilot work delivered - your decision is required',
+      }
+    case 'work_delivered':
+      return {
+        lead:
+          'Autopilot delivered work on your order. You can inspect the delivered refs and receipts from your decision queue.',
+        nextAction: 'Open your decision queue to review the delivered work.',
+        subject: 'Your Autopilot work order was delivered',
+      }
+  }
+}
+
+const decisionsUrl = (appOrigin: string): string =>
+  `${appOrigin.replace(/\/+$/, '')}/decisions`
+
+export const renderAutopilotDecisionEmail = (
+  input: AutopilotDecisionTemplateProps,
+): RenderedEmailTemplate => {
+  const copy = autopilotDecisionCopy(input)
+  const queueUrl = decisionsUrl(input.appOrigin)
+  const escapedQueueUrl = escapeHtml(queueUrl)
+  const text = [
+    `Hi ${input.displayName},`,
+    '',
+    copy.lead,
+    '',
+    `Work order: ${input.workOrderRef}`,
+    `Next action: ${copy.nextAction}`,
+    `Decision queue: ${queueUrl}`,
+    '',
+    'OpenAgents',
+  ].join('\n')
+  const html = `<!doctype html>
+<html>
+  <body style="margin:0;background:#ffffff;color:#111318;font-family:Inter,Arial,sans-serif;">
+    <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+      <p style="margin:0 0 24px;color:#6a6f78;font-size:14px;">OpenAgents</p>
+      <h1 style="margin:0;color:#111318;font-size:26px;font-weight:600;line-height:1.2;">${escapeHtml(copy.subject)}</h1>
+      <p style="margin:18px 0 0;color:#252a31;font-size:15px;line-height:1.6;">Hi ${escapeHtml(input.displayName)}, ${escapeHtml(copy.lead)}</p>
+      <p style="margin:18px 0 0;color:#252a31;font-size:15px;line-height:1.6;"><strong>Work order:</strong> ${escapeHtml(input.workOrderRef)}</p>
+      <p style="margin:10px 0 0;color:#252a31;font-size:15px;line-height:1.6;"><strong>Next action:</strong> ${escapeHtml(copy.nextAction)}</p>
+      <p style="margin:28px 0 0;">
+        <a href="${escapedQueueUrl}" style="display:inline-block;border-radius:999px;background:#11384c;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:11px 18px;">Open decision queue</a>
+      </p>
+    </div>
+  </body>
+</html>`
+
+  return {
+    html,
+    subject: copy.subject,
+    templateContext: {
+      decisionsUrl: queueUrl,
+      displayName: input.displayName,
+      kind: input.kind,
+      nextAction: copy.nextAction,
+      workOrderRef: input.workOrderRef,
+    },
+    templateSlug: `autopilot_decisions.${input.kind}.v1`,
+    text,
+  }
+}
+
 export const renderEmailTemplatePreviewCatalog = (
   appOrigin: string,
 ): ReadonlyArray<RenderedEmailTemplate> => [
@@ -388,6 +482,16 @@ export const renderEmailTemplatePreviewCatalog = (
         displayName: 'Alex Customer',
         kind,
         managePreferencesUrl: `${appOrigin.replace(/\/+$/, '')}/email/preferences`,
+      }),
+    ),
+  ),
+  ...AUTOPILOT_DECISION_EMAIL_KINDS.map(kind =>
+    renderAutopilotDecisionEmail(
+      new AutopilotDecisionTemplateProps({
+        appOrigin,
+        displayName: 'Alex Customer',
+        kind,
+        workOrderRef: 'autopilot_work_order.preview',
       }),
     ),
   ),

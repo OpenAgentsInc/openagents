@@ -91,6 +91,7 @@ import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
 } from './auth/session'
+import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
 import {
   listAutopilotContinuationRunCandidates,
   makeD1AutopilotContinuationStore,
@@ -100,6 +101,7 @@ import { makeAutopilotContinuationPolicyRoutes } from './autopilot-continuation-
 import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
 import {
   dispatchDueScheduledAutopilotWork,
+  type AutopilotWorkOrderRecord,
   makeAutopilotWorkRoutes,
   makeD1AutopilotWorkStore,
   recordAutopilotWorkerCloseoutFromPylon,
@@ -140,8 +142,10 @@ import {
   redactedValue,
 } from './config'
 import {
+  AutopilotDecisionEmailInput,
   OrderSitesTransactionalEmailInput,
   buildOrderSitesTransactionalEmailIdempotencyKey,
+  sendAutopilotDecisionEmailWithLedger,
   sendOrderSitesTransactionalEmailWithLedger,
   sendOutOfCreditsEmailWithLedger,
 } from './email'
@@ -3664,6 +3668,67 @@ const cleanupCanceledAgentRunOnShc = async (
   }
 }
 
+const sendAutopilotDecisionRequiredEmailOnce = async (
+  env: Env,
+  record: AutopilotWorkOrderRecord,
+): Promise<void> => {
+  const resend = getOpenAgentsWorkerConfig(env).email.resend
+
+  if (resend === undefined) {
+    logWorkerRouteWarning('autopilot_decision_email_config_missing', {
+      workOrderRef: record.workOrderRef,
+    })
+
+    return
+  }
+
+  const contact = await openAgentsDatabase(env)
+    .prepare(
+      `SELECT display_name, primary_email
+       FROM users
+       WHERE id = ?`,
+    )
+    .bind(record.ownerUserId)
+    .first<Readonly<{ display_name: string; primary_email: string | null }>>()
+  const email = contact?.primary_email?.trim()
+
+  if (email === undefined || email === '') {
+    logWorkerRouteWarning('autopilot_decision_email_missing_recipient', {
+      workOrderRef: record.workOrderRef,
+    })
+
+    return
+  }
+
+  const delivery = await observedEffect(
+    'Email.sendAutopilotDecisionEmailWithLedger',
+    sendAutopilotDecisionEmailWithLedger(
+      openAgentsDatabase(env),
+      resend,
+      new AutopilotDecisionEmailInput({
+        appOrigin: getAppOrigin(env),
+        displayName: contact?.display_name.trim() || 'there',
+        idempotencyKey:
+          `autopilot:decision_required:${record.workOrderRef}`,
+        kind: 'decision_required',
+        to: email,
+        workOrderRef: record.workOrderRef,
+      }),
+      {
+        sourceAuthorityRef: 'system.autopilot_decision_notification.v1',
+        targetUserId: record.ownerUserId,
+      },
+    ),
+  )
+
+  if (!delivery.ok) {
+    logWorkerRouteWarning('autopilot_decision_email_failed', {
+      error: delivery.errorMessage,
+      workOrderRef: record.workOrderRef,
+    })
+  }
+}
+
 const sendOutOfCreditsNotificationOnce = async (
   env: Env,
   input: Readonly<{
@@ -5701,6 +5766,12 @@ const autopilotMorningReportRoutes =
     requireBrowserSession,
   })
 
+const autopilotDecisionRoutes = makeAutopilotDecisionRoutes<WorkerBindings>({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+  requireBrowserSession,
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -5945,11 +6016,25 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   makeStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
-  recordAutopilotWorkerCloseout: (env, input) =>
-    recordAutopilotWorkerCloseoutFromPylon(
+  recordAutopilotWorkerCloseout: async (env, input) => {
+    const delivered = await recordAutopilotWorkerCloseoutFromPylon(
       makeD1AutopilotWorkStore(openAgentsDatabase(env)),
       input,
-    ),
+    )
+
+    if (delivered?.state === 'delivered') {
+      try {
+        await sendAutopilotDecisionRequiredEmailOnce(env, delivered)
+      } catch (error) {
+        logWorkerRouteWarning('autopilot_decision_email_failed', {
+          error: errorMessage(error),
+          workOrderRef: delivered.workOrderRef,
+        })
+      }
+    }
+
+    return delivered
+  },
   requireAdminApiToken,
 })
 
@@ -6823,7 +6908,9 @@ const routeRequest = makeWorkerRouteRequest({
       handleThreadPage(request, env, ctx, threadId),
     ),
   optionalUuid,
-  routeAutopilotWorkRequest: autopilotWorkRoutes.routeAutopilotWorkRequest,
+  routeAutopilotWorkRequest: (request, env, ctx) =>
+    autopilotDecisionRoutes.routeAutopilotDecisionRequest(request, env, ctx) ??
+    autopilotWorkRoutes.routeAutopilotWorkRequest(request, env, ctx),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,

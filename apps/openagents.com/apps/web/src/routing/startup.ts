@@ -207,6 +207,7 @@ const startupRouteForCompleteOnboarding = (
     ),
     M.tag(
       'Chat',
+      'Decisions',
       'Order',
       'OrderDetail',
       'TeamChat',

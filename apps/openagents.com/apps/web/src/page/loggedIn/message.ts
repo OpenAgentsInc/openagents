@@ -33,6 +33,8 @@ import {
   AgentRunLaunchResponse,
   ArtanisOperatorApprovalAction,
   ArtanisOperatorConsoleResponse,
+  AutopilotDecisionActionResponse,
+  AutopilotDecisionListResponse,
   AutopilotMorningReportResponse,
   AutopilotWorkBriefingResponse,
   AutopilotWorkComposerField,
@@ -382,6 +384,37 @@ export const SucceededAutopilotWorkReview = m('SucceededAutopilotWorkReview', {
 export const FailedAutopilotWorkReview = m('FailedAutopilotWorkReview', {
   error: S.String,
 })
+export const RequestedLoadAutopilotDecisions = m(
+  'RequestedLoadAutopilotDecisions',
+)
+export const SucceededLoadAutopilotDecisions = m(
+  'SucceededLoadAutopilotDecisions',
+  {
+    response: AutopilotDecisionListResponse,
+  },
+)
+export const FailedLoadAutopilotDecisions = m('FailedLoadAutopilotDecisions', {
+  error: S.String,
+})
+export const SubmittedAutopilotDecisionAction = m(
+  'SubmittedAutopilotDecisionAction',
+  {
+    action: AutopilotWorkReviewAction,
+    decisionRef: S.String,
+  },
+)
+export const SucceededAutopilotDecisionAction = m(
+  'SucceededAutopilotDecisionAction',
+  {
+    response: AutopilotDecisionActionResponse,
+  },
+)
+export const FailedAutopilotDecisionAction = m(
+  'FailedAutopilotDecisionAction',
+  {
+    error: S.String,
+  },
+)
 export const UpdatedCustomerOrderDraft = m('UpdatedCustomerOrderDraft', {
   value: S.String,
 })
@@ -1167,6 +1200,12 @@ export const Message = S.Union([
   SubmittedAutopilotWorkReview,
   SucceededAutopilotWorkReview,
   FailedAutopilotWorkReview,
+  RequestedLoadAutopilotDecisions,
+  SucceededLoadAutopilotDecisions,
+  FailedLoadAutopilotDecisions,
+  SubmittedAutopilotDecisionAction,
+  SucceededAutopilotDecisionAction,
+  FailedAutopilotDecisionAction,
   UpdatedCustomerOrderDraft,
   SubmittedCustomerOrder,
   SucceededSubmitCustomerOrder,

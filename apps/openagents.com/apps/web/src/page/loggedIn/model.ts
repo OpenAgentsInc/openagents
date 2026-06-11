@@ -29,6 +29,7 @@ import {
   LoggedInRoute,
   adminRouter,
   autopilotWorkRouter,
+  decisionsRouter,
   mulletRouter,
   statsRouter,
   teamChatRouter,
@@ -1990,6 +1991,114 @@ export const AutopilotWorkReviewState = S.Union([
 ])
 export type AutopilotWorkReviewState = typeof AutopilotWorkReviewState.Type
 
+export const AutopilotDecisionProjection = S.Struct({
+  accountLeaseRefs: S.Array(S.String),
+  actionKind: S.String,
+  actionLabel: S.String,
+  actionRef: S.String,
+  actionSubmissionRefs: S.Array(S.String),
+  actionSubmissionRequired: S.Boolean,
+  assignmentRefs: S.Array(S.String),
+  audience: S.String,
+  blockedReasonRefs: S.Array(S.String),
+  createdAtDisplay: S.String,
+  customerNextActionRef: S.String,
+  directEffectPermitted: S.Boolean,
+  evidenceRefs: S.Array(S.String),
+  id: S.String,
+  missionRef: S.String,
+  prerequisiteRefs: S.Array(S.String),
+  programRunRef: S.NullOr(S.String),
+  receiptRefs: S.Array(S.String),
+  routeRefs: S.Array(S.String),
+  safeSummaryRef: S.String,
+  sourceAuthorityRefs: S.Array(S.String),
+  status: S.String,
+  statusLabel: S.String,
+  updatedAtDisplay: S.String,
+  workroomRefs: S.Array(S.String),
+})
+export type AutopilotDecisionProjection =
+  typeof AutopilotDecisionProjection.Type
+
+export const AutopilotDecisionWorkContext = S.Struct({
+  createdAt: S.String,
+  state: AutopilotWorkState,
+  taskRefs: S.Array(S.String),
+  updatedAt: S.String,
+  workOrderRef: S.String,
+})
+export type AutopilotDecisionWorkContext =
+  typeof AutopilotDecisionWorkContext.Type
+
+export const AutopilotDecisionQueueItem = S.Struct({
+  decision: AutopilotDecisionProjection,
+  work: AutopilotDecisionWorkContext,
+})
+export type AutopilotDecisionQueueItem =
+  typeof AutopilotDecisionQueueItem.Type
+
+export const AutopilotDecisionListResponse = S.Struct({
+  decisions: S.Array(AutopilotDecisionQueueItem),
+  directEffectPermitted: S.Boolean,
+  generatedAt: S.String,
+  pendingCount: S.Number,
+})
+export type AutopilotDecisionListResponse =
+  typeof AutopilotDecisionListResponse.Type
+
+export const AutopilotDecisionActionResponse = S.Struct({
+  decision: S.NullOr(AutopilotDecisionProjection),
+  directEffectPermitted: S.Boolean,
+  generatedAt: S.String,
+  idempotent: S.Boolean,
+  work: AutopilotDecisionWorkContext,
+})
+export type AutopilotDecisionActionResponse =
+  typeof AutopilotDecisionActionResponse.Type
+
+export const AutopilotDecisionsIdle = ts('AutopilotDecisionsIdle', {})
+export const AutopilotDecisionsLoading = ts('AutopilotDecisionsLoading', {})
+export const AutopilotDecisionsLoaded = ts('AutopilotDecisionsLoaded', {
+  response: AutopilotDecisionListResponse,
+})
+export const AutopilotDecisionsFailed = ts('AutopilotDecisionsFailed', {
+  error: S.String,
+})
+export const AutopilotDecisionsState = S.Union([
+  AutopilotDecisionsIdle,
+  AutopilotDecisionsLoading,
+  AutopilotDecisionsLoaded,
+  AutopilotDecisionsFailed,
+])
+export type AutopilotDecisionsState = typeof AutopilotDecisionsState.Type
+
+export const AutopilotDecisionActIdle = ts('AutopilotDecisionActIdle', {})
+export const AutopilotDecisionActSubmitting = ts(
+  'AutopilotDecisionActSubmitting',
+  {
+    action: AutopilotWorkReviewAction,
+    decisionRef: S.String,
+  },
+)
+export const AutopilotDecisionActSucceeded = ts(
+  'AutopilotDecisionActSucceeded',
+  {
+    response: AutopilotDecisionActionResponse,
+  },
+)
+export const AutopilotDecisionActFailed = ts('AutopilotDecisionActFailed', {
+  error: S.String,
+})
+export const AutopilotDecisionActState = S.Union([
+  AutopilotDecisionActIdle,
+  AutopilotDecisionActSubmitting,
+  AutopilotDecisionActSucceeded,
+  AutopilotDecisionActFailed,
+])
+export type AutopilotDecisionActState =
+  typeof AutopilotDecisionActState.Type
+
 export const CustomerSiteRevisionsIdle = ts('CustomerSiteRevisionsIdle', {})
 export const CustomerSiteRevisionsLoading = ts(
   'CustomerSiteRevisionsLoading',
@@ -2779,6 +2888,8 @@ export const Model = ts('LoggedIn', {
   autopilotWorkComposer: AutopilotWorkComposerState,
   autopilotWorkComposerDraft: AutopilotWorkComposerDraft,
   autopilotWorkReview: AutopilotWorkReviewState,
+  autopilotDecisions: AutopilotDecisionsState,
+  autopilotDecisionAct: AutopilotDecisionActState,
   billingAction: BillingAction,
   billingCouponCode: S.String,
   chatComposerValue: S.String,
@@ -3213,6 +3324,10 @@ export const initSidebar = (auth: AuthBootstrap): SidebarModel =>
         href: autopilotWorkRouter(),
         label: 'Work',
       },
+      {
+        href: decisionsRouter(),
+        label: 'Decisions',
+      },
       ...(auth.isAdmin
         ? [
             {
@@ -3323,6 +3438,8 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
       verificationCommand: 'bun test',
     },
     autopilotWorkReview: AutopilotWorkReviewIdle(),
+    autopilotDecisions: AutopilotDecisionsIdle(),
+    autopilotDecisionAct: AutopilotDecisionActIdle(),
     billingAction: IdleBillingAction(),
     billingCouponCode: '',
     chatComposerValue: '',

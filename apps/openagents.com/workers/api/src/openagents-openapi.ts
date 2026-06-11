@@ -222,6 +222,15 @@ const schemaComponents = (): JsonSchema => ({
   AutopilotWorkReviewDecisionRequest: objectSummary(
     'Public-safe Autopilot work review request. action is accept, reject, or request_changes; the matching decisionRefs, rejectionRefs, or revisionRequestRefs array must contain public-safe refs only.',
   ),
+  AutopilotDecisionListEnvelope: objectSummary(
+    'Autopilot decision queue envelope with generatedAt, pendingCount, directEffectPermitted: false, and decision items. Each item pairs a customer-audience decision-action projection (actionKind, actionLabel, status, statusLabel, safeSummaryRef, customerNextActionRef, blockedReasonRefs, evidenceRefs, receiptRefs, actionSubmissionRequired, directEffectPermitted: false) with the public-safe work-order context (workOrderRef, state, taskRefs, updatedAt). Decisions are evidence pointers to gated submissions; the queue grants no deploy, spend, payout, or settlement authority.',
+  ),
+  AutopilotDecisionActionRequest: objectSummary(
+    'Public-safe Autopilot decision action request. action is accept, reject, or request_changes; optional decisionRefs, rejectionRefs, and revisionRequestRefs arrays must contain public-safe refs only. A default decision.queue.<action>.<workOrderRef> ref is recorded when none is supplied.',
+  ),
+  AutopilotDecisionActionEnvelope: objectSummary(
+    'Autopilot decision action envelope with generatedAt, idempotent flag, directEffectPermitted: false, the completed decision-action projection, and the public-safe work-order context after the gated review submission was recorded.',
+  ),
   XClaimRewardDispatchRequest: objectSummary(
     'Operator dispatch action for a promotional X-claim reward: action (approve_dispatch, mark_dispatched, mark_settled, mark_failed, refuse), optional public-safe evidenceRefs (required for mark_settled), optional stateReasonRef.',
   ),
@@ -4482,6 +4491,56 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Recorded Autopilot work review projection.',
           '#/components/schemas/AutopilotWorkEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/decisions': {
+    get: operation({
+      operationId: 'listAutopilotDecisions',
+      summary: 'List the Autopilot decision queue',
+      description:
+        'Returns the public-safe decision queue for the authenticated owner across their Autopilot work orders: pending review decisions for delivered work, blocked customer-input decisions for access- or payment-gated work, and recently completed decisions with receipt refs. Every decision row carries directEffectPermitted: false; acting on a decision only records a gated submission. The projection carries generatedAt and is rebuilt from the live work-order records on every read, so decision-state transitions appear immediately. Requires customer_orders.read for registered agents or a browser session.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      responses: {
+        '200': okJson(
+          'Autopilot decision queue projection.',
+          '#/components/schemas/AutopilotDecisionListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/decisions/{decisionRef}/actions': {
+    post: operation({
+      operationId: 'actOnAutopilotDecision',
+      summary: 'Act on a pending Autopilot decision',
+      description:
+        'Records a one-tap decision action (accept, reject, or request_changes) for a pending approve_pr_draft decision as a gated review submission on the underlying delivered work order. Decision actions are evidence pointers only: directEffectPermitted stays false and the action grants no deploy authority, worker payout authority, settlement authority, or Forum publication authority. Requires customer_orders.write and Idempotency-Key; retrying the same idempotency key replays the recorded decision.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      parameters: [
+        pathParam(
+          'decisionRef',
+          'Autopilot decision reference, like decision_action.<workOrderRef>.approve_pr_draft.',
+        ),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this decision action.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/AutopilotDecisionActionRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Idempotent existing Autopilot decision projection.',
+          '#/components/schemas/AutopilotDecisionActionEnvelope',
+        ),
+        '201': okJson(
+          'Recorded Autopilot decision projection.',
+          '#/components/schemas/AutopilotDecisionActionEnvelope',
         ),
         ...errorResponses(),
       },

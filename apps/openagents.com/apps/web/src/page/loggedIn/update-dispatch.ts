@@ -5,6 +5,7 @@ import { updateArtanisConsole } from './artanis-console/transitions'
 import { updateAutopilotWork } from './autopilot-work/transitions'
 import { updateBilling } from './billing/transitions'
 import { updateCustomerOrder } from './customer-order/transitions'
+import { updateAutopilotDecisions } from './decisions/transitions'
 import { updateAgentGoals } from './goals/transitions'
 import { updateImages } from './images/transitions'
 import { Message } from './message'
@@ -66,6 +67,7 @@ export const update = (model: Model, message: Message): UpdateReturn => {
   const customerOrder = () => updateCustomerOrder(model, message)
   const artanisConsole = () => updateArtanisConsole(model, message)
   const autopilotWork = () => updateAutopilotWork(model, message)
+  const autopilotDecisions = () => updateAutopilotDecisions(model, message)
 
   return M.value(message).pipe(
     withUpdateReturn,
@@ -162,6 +164,12 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       SubmittedAutopilotWorkReview: autopilotWork,
       SucceededAutopilotWorkReview: autopilotWork,
       FailedAutopilotWorkReview: autopilotWork,
+      RequestedLoadAutopilotDecisions: autopilotDecisions,
+      SucceededLoadAutopilotDecisions: autopilotDecisions,
+      FailedLoadAutopilotDecisions: autopilotDecisions,
+      SubmittedAutopilotDecisionAction: autopilotDecisions,
+      SucceededAutopilotDecisionAction: autopilotDecisions,
+      FailedAutopilotDecisionAction: autopilotDecisions,
       UpdatedCustomerOrderDraft: customerOrder,
       SubmittedCustomerOrder: customerOrder,
       SucceededSubmitCustomerOrder: customerOrder,

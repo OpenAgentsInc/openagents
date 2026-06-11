@@ -23,6 +23,7 @@ import {
   LoadCustomerOrder,
   LoadCustomerOrders,
 } from './customer-order/transitions'
+import { LoadAutopilotDecisions } from './decisions/transitions'
 import { LoadAgentGoal } from './goals/commands'
 import { agentGoalScopeForRoute } from './goals/scope'
 import { Message } from './message'
@@ -71,6 +72,10 @@ export const initialCommands = (
       LoadAutopilotWorkList({}),
       LoadAutopilotMorningReport({}),
     ]
+  }
+
+  if (model.route._tag === 'Decisions') {
+    return [InstallAccountMenuOutsideClick(), LoadAutopilotDecisions({})]
   }
 
   if (model.route._tag === 'AutopilotWorkDetail') {

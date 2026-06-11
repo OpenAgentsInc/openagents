@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import { EmailAddress, ResendEmailSender, WorkerSecret } from './config'
 import {
+  AutopilotDecisionEmailInput,
   ORDER_SITES_TRANSACTIONAL_EMAIL_KINDS,
   OrderSitesTransactionalEmailInput,
   SiteReferralOnboardingEmailInput,
@@ -501,6 +502,101 @@ describe('emails', () => {
       ),
     ).rejects.toMatchObject({
       operation: 'EmailService.renderTargetedRemakeOutreachEmail',
+    })
+  })
+
+  test('renders and ledgers the Autopilot decision-required email', async () => {
+    const { db, deliveries, messagesByIdempotencyKey } = makeEmailLedgerD1()
+    const decisionInput = new AutopilotDecisionEmailInput({
+      appOrigin: 'https://openagents.com',
+      displayName: 'Alex <Customer>',
+      idempotencyKey:
+        'autopilot:decision_required:autopilot_work_order.decision_test_1',
+      kind: 'decision_required',
+      to: 'alex.customer@example.com',
+      workOrderRef: 'autopilot_work_order.decision_test_1',
+    })
+    const requests: Array<Request> = []
+    const fetcher: typeof fetch = async (input, init) => {
+      requests.push(input instanceof Request ? input : new Request(input, init))
+
+      return new Response(JSON.stringify({ id: 'email_decision_test' }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    }
+    const runtime = {
+      nowIso: () => '2026-06-11T12:00:00.000Z',
+      randomId: (prefix: string) => `${prefix}_fixed`,
+    }
+
+    const rendered = await Effect.runPromise(
+      makeEmailService().renderAutopilotDecisionNotificationEmail(
+        resendConfig(),
+        decisionInput,
+      ),
+    )
+
+    expect(rendered.kind).toBe('crm_transactional')
+    expect(rendered.templateSlug).toBe('autopilot_decisions.decision_required.v1')
+    expect(rendered.text).toContain('https://openagents.com/decisions')
+    expect(rendered.text).toContain(
+      'Work order: autopilot_work_order.decision_test_1',
+    )
+
+    const result = await Effect.runPromise(
+      makeEmailService().sendAutopilotDecisionEmailWithLedger(
+        db,
+        resendConfig(),
+        decisionInput,
+        {
+          sourceAuthorityRef: 'system.autopilot_decision_notification.v1',
+          targetUserId: 'github:autopilot-owner',
+        },
+        fetcher,
+        runtime,
+      ),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      providerMessageId: 'email_decision_test',
+    })
+    expect(requests[0]?.headers.get('Idempotency-Key')).toBe(
+      decisionInput.idempotencyKey,
+    )
+    expect(messagesByIdempotencyKey.get(decisionInput.idempotencyKey)).toMatchObject({
+      kind: 'crm_transactional',
+      source_authority_ref: 'system.autopilot_decision_notification.v1',
+      status: 'accepted',
+      target_user_id: 'github:autopilot-owner',
+    })
+    expect(deliveries).toEqual([
+      expect.objectContaining({
+        provider_idempotency_key: decisionInput.idempotencyKey,
+        provider_message_id: 'email_decision_test',
+        status: 'accepted',
+      }),
+    ])
+  })
+
+  test('rejects Autopilot decision email input containing secret-shaped material', async () => {
+    await expect(
+      Effect.runPromise(
+        makeEmailService().renderAutopilotDecisionNotificationEmail(
+          resendConfig(),
+          new AutopilotDecisionEmailInput({
+            appOrigin: 'https://openagents.com',
+            displayName: 'Alex Customer',
+            idempotencyKey: 'autopilot:decision_required:unsafe',
+            kind: 'decision_required',
+            to: 'alex.customer@example.com',
+            workOrderRef: 'autopilot_work_order.access_token.leak',
+          }),
+        ),
+      ),
+    ).rejects.toMatchObject({
+      operation: 'EmailService.renderAutopilotDecisionEmail',
     })
   })
 

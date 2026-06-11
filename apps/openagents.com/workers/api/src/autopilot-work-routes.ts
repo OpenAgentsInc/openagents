@@ -630,18 +630,27 @@ const routeMakeId = <Bindings>(
   dependencies: AutopilotWorkRoutesDependencies<Bindings>,
 ): string => (dependencies.makeId ?? randomUuid)()
 
-type AutopilotWorkRouteAuth = Readonly<{
+export type AutopilotWorkRouteAuth = Readonly<{
   actorAgentCredentialId: string
   actorAgentUserId: string
   ownerUserId: string
+}>
+
+export type AutopilotWorkAuthDependencies<Bindings> = Readonly<{
+  agentStore: (env: Bindings) => AgentRegistrationStore
+  requireBrowserSession?: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => Promise<Readonly<{ user: Readonly<{ userId: string }> }> | undefined>
 }>
 
 const hasBearerAuthorization = (request: Request): boolean =>
   request.headers.get('authorization')?.trim().toLowerCase().startsWith('bearer ') ===
   true
 
-const authenticateAutopilotWorkRequest = <Bindings extends AutopilotWorkRouteEnv>(
-  dependencies: AutopilotWorkRoutesDependencies<Bindings>,
+export const authenticateAutopilotWorkRequest = <Bindings extends AutopilotWorkRouteEnv>(
+  dependencies: AutopilotWorkAuthDependencies<Bindings>,
   request: Request,
   env: Bindings,
   input: Readonly<{

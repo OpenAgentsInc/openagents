@@ -12,6 +12,7 @@ export const AutopilotWorkRoute = r('AutopilotWork')
 export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
   workOrderRef: S.String,
 })
+export const DecisionsRoute = r('Decisions')
 export const ChatRoute = r('Chat')
 export const TeamChatRoute = r('TeamChat', { teamRef: S.String })
 export const TeamProjectChatRoute = r('TeamProjectChat', {
@@ -75,6 +76,7 @@ export type OrderDetailRoute = typeof OrderDetailRoute.Type
 export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
 export type AutopilotWorkDetailRoute =
   typeof AutopilotWorkDetailRoute.Type
+export type DecisionsRoute = typeof DecisionsRoute.Type
 export type ChatRoute = typeof ChatRoute.Type
 export type TeamChatRoute = typeof TeamChatRoute.Type
 export type TeamProjectChatRoute = typeof TeamProjectChatRoute.Type
@@ -144,6 +146,7 @@ export const LoggedInRoute = S.Union([
   OrderDetailRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
+  DecisionsRoute,
   ChatRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
@@ -183,6 +186,7 @@ export const AppRoute = S.Union([
   OrderDetailRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
+  DecisionsRoute,
   ChatRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
@@ -250,6 +254,10 @@ export const autopilotWorkDetailRouter = pipe(
   slash(literal('work')),
   slash(string('workOrderRef')),
   Route.mapTo(AutopilotWorkDetailRoute),
+)
+export const decisionsRouter = pipe(
+  literal('decisions'),
+  Route.mapTo(DecisionsRoute),
 )
 export const teamChatRouter = pipe(
   literal('teams'),
@@ -430,6 +438,7 @@ const routeParser = Route.oneOf(
   onboardingRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
+  decisionsRouter,
   orderDetailRouter,
   orderRouter,
   teamProjectChatRouter,
