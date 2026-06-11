@@ -142,6 +142,7 @@ import {
 } from './email-campaign-dispatcher'
 import type { OnboardingDripOrderState } from './email-onboarding-drip'
 import { makeForumRoutes } from './forum-routes'
+import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import {
   GITHUB_WRITE_REQUIRED_SCOPES,
@@ -6790,6 +6791,14 @@ const routeRequest = makeWorkerRouteRequest({
     forumRoutes.routeForumRequest(request, openAgentsDatabase(env), {
       tipsBufferPay: tipsBufferPayFnForEnv(env),
       agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      ...(() => {
+        const forumWorkRequestRelayPublisher =
+          forumWorkRequestRelayPublisherForEnv(env)
+
+        return forumWorkRequestRelayPublisher === undefined
+          ? {}
+          : { forumWorkRequestRelayPublisher }
+      })(),
       hostedMdkClient: hostedMdkClientForEnv(env),
       l402SigningBoundary: () => forumL402SigningBoundaryForEnv(env),
       mdkWebhookConfig: hostedMdkWebhookConfigForEnv(env),
