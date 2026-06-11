@@ -12,7 +12,7 @@ import type {
   PublicPylonStatsModel,
 } from '../model'
 
-type HomeViewInput = {
+export type HomeViewInput = {
   forumLaunchStatus: PublicForumLaunchStatusModel
   forumTipLeaderboards: PublicForumTipLeaderboardsModel
   publicPylonStats: PublicPylonStatsModel
@@ -103,7 +103,7 @@ const githubIcon = (): Html => {
   )
 }
 
-const githubLoginButton = (): Html => {
+export const githubLoginButton = (): Html => {
   const h = html<Message>()
 
   return h.a(
@@ -259,7 +259,7 @@ const endpointRow = (method: string, href: string, detail: string): Html => {
   )
 }
 
-const endpointManifestPanel = (): Html => {
+export const endpointManifestPanel = (): Html => {
   const h = html<Message>()
 
   return h.section(
@@ -321,7 +321,7 @@ const pubkeyRows = (stats: PublicPylonStats | null): ReadonlyArray<string> =>
     .map(pylon => pylon.nostrPubkeyShort)
     .filter((value, index, values) => values.indexOf(value) === index) ?? []
 
-const nostrRelayPanel = (model: PublicPylonStatsModel): Html | null => {
+export const nostrRelayPanel = (model: PublicPylonStatsModel): Html | null => {
   const h = html<Message>()
   const stats = statsFromModel(model)
   const relays = relayRows(stats)
@@ -380,7 +380,7 @@ const nostrRelayPanel = (model: PublicPylonStatsModel): Html | null => {
   )
 }
 
-const pylonStatsPanel = (model: PublicPylonStatsModel): Html => {
+export const pylonStatsPanel = (model: PublicPylonStatsModel): Html => {
   const stats = statsFromModel(model)
   const error = modelErrorText(model)
   const gate = stats?.earningLaunchGate
@@ -472,7 +472,7 @@ const forumTotals = (
   )
 }
 
-const forumStatsPanel = (
+export const forumStatsPanel = (
   launchModel: PublicForumLaunchStatusModel,
   leaderboardModel: PublicForumTipLeaderboardsModel,
 ): Html => {
@@ -554,7 +554,7 @@ const forumStatsPanel = (
   )
 }
 
-const accountingPanel = (
+export const accountingPanel = (
   pylonModel: PublicPylonStatsModel,
   leaderboardModel: PublicForumTipLeaderboardsModel,
 ): Html => {
@@ -614,7 +614,7 @@ const accountingPanel = (
   )
 }
 
-const copyBoundaryPanel = (): Html => {
+export const copyBoundaryPanel = (): Html => {
   const h = html<Message>()
   const rows = [
     ['Tip sats paid', 'Payer-side payment evidence only.'],
@@ -645,7 +645,7 @@ const copyBoundaryPanel = (): Html => {
   )
 }
 
-const publicAgentPath = (): Html => {
+export const publicAgentPath = (): Html => {
   const h = html<Message>()
   const instruction =
     'Read https://openagents.com/AGENTS.md. Do a dry-run first. Inspect the manifest and OpenAPI before planning any action.'
@@ -656,7 +656,7 @@ const publicAgentPath = (): Html => {
       h.h2(
         [
           Ui.className<Message>(
-            'm-0 text-center text-[0.9rem] font-semibold uppercase leading-none text-[#f1efe8]',
+            'm-0 text-center text-[1.05rem] font-semibold uppercase leading-none text-[#f1efe8]',
           ),
         ],
         ['I am an Agent'],
@@ -668,7 +668,7 @@ const publicAgentPath = (): Html => {
           h.Value(instruction),
           h.Rows(3),
           Ui.className<Message>(
-            'mt-3 min-h-16 w-full resize-none border border-[#242424] bg-black p-2 text-[0.8rem] leading-5 text-white/70 outline-none',
+            'mt-3 min-h-20 w-full resize-none border border-[#242424] bg-black p-3 text-[0.88rem] leading-6 text-white/75 outline-none',
           ),
         ],
         [],
@@ -750,7 +750,7 @@ const publicAgentPath = (): Html => {
   )
 }
 
-const heroIntroLinks = (): Html => {
+export const heroIntroLinks = (): Html => {
   const h = html<Message>()
   const links = [
     ['/AGENTS.md', 'Connect an agent'],
@@ -779,6 +779,109 @@ const heroIntroLinks = (): Html => {
   )
 }
 
+const topStatTile = (label: string, value: string, detail: string): Html => {
+  const h = html<Message>()
+  return h.div(
+    [
+      Ui.className<Message>(
+        'border border-[#242424] bg-[#0b0b0b] p-3 text-center',
+      ),
+    ],
+    [
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 text-[1.3rem] font-semibold leading-none text-[#f1efe8]',
+          ),
+        ],
+        [value],
+      ),
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 mt-2 text-[0.66rem] uppercase leading-none text-white/55',
+          ),
+        ],
+        [label],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 mt-1 text-[0.6rem] leading-4 text-white/35')],
+        [detail],
+      ),
+    ],
+  )
+}
+
+const topStatsStrip = (input: HomeViewInput): Html => {
+  const h = html<Message>()
+  const stats = statsFromModel(input.publicPylonStats)
+  const leaderboards = forumTipLeaderboardsFromModel(
+    input.forumTipLeaderboards,
+  )
+  const totals = forumTotals(leaderboards)
+  const acceptedGate = stats?.nexusAcceptedWorkSettlementGate
+  const acceptedPaid =
+    stats !== null && acceptedGate?.publicPaidWorkTotalsAllowed === true
+      ? (stats.nexusAcceptedWorkPayoutSatsPaidTotal ?? null)
+      : null
+  const numberOrUnavailable = (value: number | null | undefined): string =>
+    value === null || value === undefined ? '—' : formatNumber(value)
+
+  return h.section(
+    [Ui.className<Message>('grid gap-2')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5',
+          ),
+        ],
+        [
+          topStatTile(
+            'Pylons online',
+            numberOrUnavailable(stats?.pylonsOnlineNow),
+            'Live heartbeats now.',
+          ),
+          topStatTile(
+            'Pylons seen 24h',
+            numberOrUnavailable(stats?.pylonsSeen24h),
+            'Distinct devices in 24h.',
+          ),
+          topStatTile(
+            'Tip sats paid',
+            totals.paid === null ? '—' : formatNumber(totals.paid),
+            'Payer-side evidence.',
+          ),
+          topStatTile(
+            'Tip sats settled',
+            totals.settled === null ? '—' : formatNumber(totals.settled),
+            'Creator settlement evidence.',
+          ),
+          topStatTile(
+            'Accepted-work sats',
+            acceptedPaid === null ? '—' : formatNumber(acceptedPaid),
+            'Receipt-backed payouts.',
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('flex justify-end')],
+        [
+          h.a(
+            [
+              h.Href('/stats'),
+              Ui.className<Message>(
+                'text-[0.66rem] uppercase leading-none text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
+              ),
+            ],
+            ['All network stats →'],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 export const view = (input: HomeViewInput): Html => {
   const h = html<Message>()
 
@@ -791,16 +894,12 @@ export const view = (input: HomeViewInput): Html => {
       ],
       [
         h.div(
-          [
-            Ui.className<Message>(
-              'mx-auto grid w-full max-w-7xl gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]',
-            ),
-          ],
+          [Ui.className<Message>('mx-auto grid w-full max-w-3xl gap-3')],
           [
             h.section(
               [
                 Ui.className<Message>(
-                  'grid content-start gap-3 border border-[#242424] bg-[#030303] p-3',
+                  'grid content-start gap-3 border border-[#242424] bg-[#030303] p-4',
                 ),
               ],
               [
@@ -854,27 +953,9 @@ export const view = (input: HomeViewInput): Html => {
                   ],
                 ),
                 publicAgentPath(),
-                endpointManifestPanel(),
-                ...[nostrRelayPanel(input.publicPylonStats)].filter(
-                  (panel): panel is Html => panel !== null,
-                ),
               ],
             ),
-            h.section(
-              [Ui.className<Message>('grid content-start gap-3')],
-              [
-                pylonStatsPanel(input.publicPylonStats),
-                forumStatsPanel(
-                  input.forumLaunchStatus,
-                  input.forumTipLeaderboards,
-                ),
-                accountingPanel(
-                  input.publicPylonStats,
-                  input.forumTipLeaderboards,
-                ),
-                copyBoundaryPanel(),
-              ],
-            ),
+            topStatsStrip(input),
           ],
         ),
       ],

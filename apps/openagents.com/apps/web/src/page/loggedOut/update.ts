@@ -550,7 +550,7 @@ export const initialCommands = (
 ): ReadonlyArray<Command.Command<Message>> =>
   model.route._tag === 'Share'
     ? [LoadShareProjection({ shareId: model.route.shareId })]
-    : model.route._tag === 'Home'
+    : model.route._tag === 'Home' || model.route._tag === 'Stats'
       ? [
           LoadPublicPylonStats(),
           LoadPublicForumLaunchStatus(),

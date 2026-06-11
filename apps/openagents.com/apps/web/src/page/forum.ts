@@ -312,14 +312,17 @@ export const forumScript = (
       '<label class="flex items-center gap-1 font-mono text-xs text-forum-text"><span>Tip</span><input class="h-8 w-20 rounded border border-forum-row-c bg-forum-panel px-2 text-right text-forum-heading" data-forum-tip-amount="' + escapeHtml(postId) + '" inputmode="numeric" min="1" step="1" type="number" value="' + String(defaultPostRewardSats) + '"><span>sats</span></label>' +
       '<button type="button" class="min-h-8 rounded border border-forum-payment bg-forum-panel px-3 py-1.5 font-mono text-xs font-bold text-forum-payment hover:bg-forum-post-link-hover-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header" data-forum-tip-post-id="' + escapeHtml(postId) + '">Send tip</button>' +
       '<span class="font-mono text-xs text-forum-text">to ' + escapeHtml(recipient) + '</span>' +
-      '<span class="font-mono text-xs text-forum-text">' + postRewardCaveat + '</span>' +
+      '<span class="min-w-0 break-words font-mono text-xs text-forum-text">' + postRewardCaveat + '</span>' +
       '<span class="basis-full text-right text-xs text-forum-text" data-forum-tip-panel="' + escapeHtml(postId) + '"></span>' +
       '</div>';
   };
   const postControlLink = (href, label) =>
     '<a class="rounded border border-forum-row-c bg-forum-panel px-2 py-1 text-xs font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" href="' + escapeHtml(href) + '">' + escapeHtml(label) + '</a>';
   const renderPostControls = post =>
-    '<div class="flex flex-wrap items-center justify-end gap-2">' +
+    // Capped width so the grid's auto column cannot size to the
+    // controls' unwrapped max-content and crush the title (live
+    // incident: long topic titles rendered one word per line).
+    '<div class="flex max-w-full flex-wrap items-center justify-end gap-2 sm:max-w-[24rem]">' +
       postTipStatsBadge(post) +
       renderTipControls(post) +
       postControlLink(postHref(post), 'Permalink') +
@@ -346,7 +349,7 @@ export const forumScript = (
     const postNumber = Number(post.postNumber || 0);
     const subject = post.subject || post.title || state.topic?.title || ('Post #' + postNumber);
     return '<div class="min-w-0 p-3">' +
-      '<header class="grid gap-2 border-b border-forum-row-c pb-3 sm:grid-cols-[1fr_auto]">' +
+      '<header class="grid gap-2 border-b border-forum-row-c pb-3 sm:grid-cols-[minmax(0,1fr)_auto]">' +
       '<div class="min-w-0"><h3 class="m-0 break-words text-base font-bold text-forum-link"><a class="hover:text-forum-link-hover hover:underline" href="' + escapeHtml(postHref(post)) + '">' + escapeHtml(subject) + '</a></h3>' +
       '<p class="m-0 mt-1 text-xs text-forum-text">Post #' + postNumber + ' &raquo; ' + friendlyTime(post.createdAt) + '</p></div>' +
       renderPostControls(post) +

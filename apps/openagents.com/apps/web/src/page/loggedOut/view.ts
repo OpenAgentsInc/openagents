@@ -17,6 +17,7 @@ import * as Onboarding from './page/onboarding'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
 import * as Share from './page/share'
+import * as Stats from './page/stats'
 import * as TrainingRuns from './page/trainingRuns'
 
 export const view = Submodel.defineView<Model, Message>((model): Html => {
@@ -38,6 +39,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
             M.tagsExhaustive({
               Home: () =>
                 Home.view({
+                  forumLaunchStatus: model.publicForumLaunchStatus,
+                  forumTipLeaderboards: model.publicForumTipLeaderboards,
+                  publicPylonStats: model.publicPylonStats,
+                }),
+              Stats: () =>
+                Stats.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
                   publicPylonStats: model.publicPylonStats,

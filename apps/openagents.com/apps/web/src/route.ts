@@ -110,6 +110,7 @@ export type NotFoundRoute = typeof NotFoundRoute.Type
 
 export const LoggedOutRoute = S.Union([
   HomeRoute,
+  StatsRoute,
   InviteRoute,
   OnboardingRoute,
   DocsRoute,

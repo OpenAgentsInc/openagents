@@ -149,14 +149,14 @@ describe('maintenance landing scene', () => {
           }),
       },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(Scene.text('Pylon Stats')).toExist(),
-      Scene.expect(Scene.text('Online now')).toExist(),
-      Scene.expect(Scene.text('Seen 24h')).toExist(),
-      Scene.expect(Scene.text('Wallet ready')).toExist(),
-      Scene.expect(Scene.text('Assigned now')).toExist(),
-      Scene.expect(Scene.text('Ready')).toExist(),
-      Scene.expect(Scene.text('Accepted-work sats paid')).toExist(),
+      // The homepage now carries the headline strip; the detailed
+      // panels live on /stats.
+      Scene.expect(Scene.text('Pylons online')).toExist(),
+      Scene.expect(Scene.text('Pylons seen 24h')).toExist(),
       Scene.expect(Scene.text('Tip sats paid')).toExist(),
+      Scene.expect(Scene.text('Tip sats settled')).toExist(),
+      Scene.expect(Scene.text('Accepted-work sats')).toExist(),
+      Scene.expect(Scene.text('All network stats →')).toExist(),
     )
   })
 
