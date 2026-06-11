@@ -46,6 +46,20 @@ type ForumTipEarningRow = Readonly<{
   target_topic_id: string | null
 }>
 
+type TipLadderEarningRow = Readonly<{
+  cost_msat: number
+  created_at: string
+  pay_in_id: string
+  public_receipt_ref: string
+  payer_ref: string
+  recipient_actor_ref: string
+  rung: 'credited' | 'direct_bolt12' | null
+  state_changed_at: string
+  target_forum_id: string | null
+  target_post_id: string | null
+  target_topic_id: string | null
+}>
+
 type CountRow = Readonly<{ count: number | null }>
 
 type ForumTipLeaderboardPostRow = Readonly<{
@@ -165,6 +179,78 @@ const earningFromRow = (row: ForumTipEarningRow): ForumCreatorEarning => {
       topicId: row.target_topic_id,
     },
     targetPostPermalink: targetPostPermalink(row),
+    tipSettlement,
+  })
+}
+
+const tipLadderTargetPostPermalink = (
+  row: TipLadderEarningRow,
+): string | null =>
+  row.target_topic_id === null || row.target_post_id === null
+    ? null
+    : forumPostPublicUrl(row.target_topic_id, row.target_post_id)
+
+const tipLadderPaymentEventFromRow = (
+  row: TipLadderEarningRow,
+): ForumPaymentEventProjection =>
+  decodePaymentEventProjection({
+    actionKind: 'post_reward',
+    amount: {
+      amount: Math.max(0, Math.floor(Number(row.cost_msat) / 1000)),
+      asset: 'sats',
+    },
+    challengeId: row.pay_in_id,
+    createdAt: row.state_changed_at,
+    externalRef:
+      row.rung === 'direct_bolt12'
+        ? `payment.forum.tip_ladder.${row.pay_in_id}`
+        : `ledger.forum.tip_ladder.${row.pay_in_id}`,
+    payerActorRef: row.payer_ref,
+    paymentEventRef: `payment_event.forum.tip_ladder.${row.pay_in_id}`,
+    paymentMode: 'live',
+    providerRef: 'provider.openagents.tip_ladder',
+    receiptRef: row.public_receipt_ref,
+    recipientActorRef: row.recipient_actor_ref,
+    redactedEvidenceRef: `evidence.forum.tip_ladder.${row.pay_in_id}`,
+    settlementAuthority:
+      row.rung === 'direct_bolt12'
+        ? 'recipient_wallet_direct'
+        : 'buyer_payment_evidence_only',
+    status: 'confirmed',
+  })
+
+const tipLadderEarningFromRow = (
+  row: TipLadderEarningRow,
+): ForumCreatorEarning => {
+  const paymentEvent = tipLadderPaymentEventFromRow(row)
+  const tipSettlement = forumTipSettlementProjectionForReceipt(
+    paymentEvent,
+    null,
+  )
+
+  return decodeCreatorEarning({
+    acceptedWorkPayoutEvidence: false,
+    actionKind: 'post_reward',
+    amount: {
+      amount: Math.max(0, Math.floor(Number(row.cost_msat) / 1000)),
+      asset: 'sats',
+    },
+    createdAt: row.created_at,
+    creatorReceivedSpendableValue: tipSettlement.creatorReceivedSpendableValue,
+    earningActorRef: row.recipient_actor_ref,
+    earningRef: `earning.forum_tip_ladder.${row.pay_in_id}`,
+    moneyActionRef: `pay_in:${row.pay_in_id}`,
+    paymentEventRef: paymentEvent.paymentEventRef,
+    paymentState: paymentStateForEvent(paymentEvent),
+    receiptRef: row.public_receipt_ref,
+    recipientActorRef: row.recipient_actor_ref,
+    settlementState: tipSettlement.state,
+    target: {
+      forumId: row.target_forum_id,
+      postId: row.target_post_id,
+      topicId: row.target_topic_id,
+    },
+    targetPostPermalink: tipLadderTargetPostPermalink(row),
     tipSettlement,
   })
 }
@@ -296,6 +382,89 @@ const countEarningRows = (
     ).first<CountRow>(),
   ).pipe(Effect.map(row => Math.max(0, Number(row?.count ?? 0))))
 }
+
+const readTipLadderEarningRows = (
+  db: D1Database,
+  input: Readonly<{ actorRef: string | null; limit: number }>,
+): Effect.Effect<ReadonlyArray<TipLadderEarningRow>, ForumStorageError> => {
+  const baseQuery = `SELECT p.id AS pay_in_id,
+                           p.public_receipt_ref AS public_receipt_ref,
+                           p.payer_ref AS payer_ref,
+                           p.cost_msat AS cost_msat,
+                           p.rung AS rung,
+                           p.created_at AS created_at,
+                           p.state_changed_at AS state_changed_at,
+                           payout.party_ref AS recipient_actor_ref,
+                           forum_posts.id AS target_post_id,
+                           forum_posts.topic_id AS target_topic_id,
+                           forum_posts.forum_id AS target_forum_id
+                      FROM pay_ins p
+                      JOIN pay_in_legs payout
+                        ON payout.pay_in_id = p.id
+                       AND payout.direction = 'out'
+                 LEFT JOIN forum_posts
+                        ON forum_posts.id = substr(
+                             p.context_ref,
+                             length('forum.post.') + 1
+                           )
+                       AND forum_posts.archived_at IS NULL
+                     WHERE p.pay_in_type = 'tip'
+                       AND p.state = 'paid'
+                       AND p.public_receipt_ref IS NOT NULL
+                       AND p.context_ref LIKE 'forum.post.%'
+                       AND payout.party_ref IS NOT NULL`
+  const scopedQuery =
+    input.actorRef === null
+      ? `${baseQuery}
+                  ORDER BY p.created_at DESC, p.id DESC
+                     LIMIT ?`
+      : `${baseQuery}
+                       AND payout.party_ref = ?
+                  ORDER BY p.created_at DESC, p.id DESC
+                     LIMIT ?`
+
+  return d1Effect('forumTipEarnings.readTipLadderRows', () =>
+    (input.actorRef === null
+      ? db.prepare(scopedQuery).bind(input.limit)
+      : db.prepare(scopedQuery).bind(input.actorRef, input.limit)
+    ).all<TipLadderEarningRow>(),
+  ).pipe(Effect.map(result => result.results ?? []))
+}
+
+const countTipLadderEarningRows = (
+  db: D1Database,
+  actorRef: string | null,
+): Effect.Effect<number, ForumStorageError> => {
+  const baseQuery = `SELECT COUNT(*) AS count
+                      FROM pay_ins p
+                      JOIN pay_in_legs payout
+                        ON payout.pay_in_id = p.id
+                       AND payout.direction = 'out'
+                     WHERE p.pay_in_type = 'tip'
+                       AND p.state = 'paid'
+                       AND p.public_receipt_ref IS NOT NULL
+                       AND p.context_ref LIKE 'forum.post.%'
+                       AND payout.party_ref IS NOT NULL`
+  const scopedQuery =
+    actorRef === null ? baseQuery : `${baseQuery} AND payout.party_ref = ?`
+
+  return d1Effect('forumTipEarnings.countTipLadderRows', () =>
+    (actorRef === null
+      ? db.prepare(scopedQuery)
+      : db.prepare(scopedQuery).bind(actorRef)
+    ).first<CountRow>(),
+  ).pipe(Effect.map(row => Math.max(0, Number(row?.count ?? 0))))
+}
+
+const sortEarningsNewestFirst = (
+  earnings: ReadonlyArray<ForumCreatorEarning>,
+): ReadonlyArray<ForumCreatorEarning> =>
+  [...earnings].sort((left, right) => {
+    const byCreatedAt = right.createdAt.localeCompare(left.createdAt)
+    return byCreatedAt === 0
+      ? right.earningRef.localeCompare(left.earningRef)
+      : byCreatedAt
+  })
 
 const publicTextIsUnsafe = (value: string): boolean =>
   containsProviderSecretMaterial(value) || privateMaterialPattern.test(value)
@@ -462,11 +631,7 @@ const readCreatorLeaderboardRows = (
 // for structural fields (refs, ids, evidence), where unsafe content means a
 // real leak rather than a user who typed "@" or "mnemonic". Stripping these
 // keys from the probe keeps user content from 500ing whole endpoints.
-const arbitraryPublicContentKeys = new Set([
-  'displayName',
-  'postTitle',
-  'slug',
-])
+const arbitraryPublicContentKeys = new Set(['displayName', 'postTitle', 'slug'])
 
 const structuralProjectionProbe = (value: unknown): string =>
   JSON.stringify(value, (key, probed: unknown) =>
@@ -531,11 +696,17 @@ export const readForumCreatorEarnings = (
 ): Effect.Effect<ForumCreatorEarningsResponse, ForumStorageError> =>
   Effect.gen(function* () {
     const limit = Math.min(Math.max(input.limit ?? 50, 1), 100)
-    const [rows, totalCount] = yield* Effect.all([
+    const [rows, ladderRows, receiptCount, ladderCount] = yield* Effect.all([
       readEarningRows(db, { actorRef: input.actorRef, limit }),
+      readTipLadderEarningRows(db, { actorRef: input.actorRef, limit }),
       countEarningRows(db, input.actorRef),
+      countTipLadderEarningRows(db, input.actorRef),
     ])
-    const earnings = rows.map(earningFromRow)
+    const totalCount = receiptCount + ladderCount
+    const earnings = sortEarningsNewestFirst([
+      ...rows.map(earningFromRow),
+      ...ladderRows.map(tipLadderEarningFromRow),
+    ]).slice(0, limit)
     const projection = decodeCreatorEarningsResponse({
       actorRef: input.actorRef,
       earnings,
@@ -561,11 +732,17 @@ export const readForumTipReconciliation = (
 ): Effect.Effect<ForumTipReconciliationResponse, ForumStorageError> =>
   Effect.gen(function* () {
     const limit = Math.min(Math.max(input.limit ?? 50, 1), 100)
-    const [rows, totalCount] = yield* Effect.all([
+    const [rows, ladderRows, receiptCount, ladderCount] = yield* Effect.all([
       readEarningRows(db, { actorRef: input.actorRef, limit }),
+      readTipLadderEarningRows(db, { actorRef: input.actorRef, limit }),
       countEarningRows(db, input.actorRef),
+      countTipLadderEarningRows(db, input.actorRef),
     ])
-    const earnings = rows.map(earningFromRow)
+    const totalCount = receiptCount + ladderCount
+    const earnings = sortEarningsNewestFirst([
+      ...rows.map(earningFromRow),
+      ...ladderRows.map(tipLadderEarningFromRow),
+    ]).slice(0, limit)
     const projection = decodeTipReconciliationResponse({
       acceptedWorkPayoutBoundary: 'ordinary_forum_tips_are_not_accepted_work',
       actorRef: input.actorRef,

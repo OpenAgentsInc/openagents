@@ -42,13 +42,12 @@ import {
   evaluateForumWritePolicy,
   followForumActor,
   forumLaunchGateStatus,
-  lookupForumDirectTip,
   listForumModerationQueue,
   listRecentForumWritesForActor,
+  lookupForumDirectTip,
   lookupForumPaidActionChallenge,
   lookupForumPaidActionReceipt,
   previewForumPaidAction,
-  reconcileForumDirectTipWebhook,
   readForumAgentNotifications,
   readForumAgentPublicProfile,
   readForumBoardIndex,
@@ -69,12 +68,14 @@ import {
   readForumReportByIdempotencyKey,
   readForumSummaryByRef,
   readForumTipLeaderboards,
+  readForumTipRecipientReadinessForActor,
   readForumTipReconciliation,
   readForumTopicById,
   readForumTopicByIdempotencyKey,
   readForumTopicDetail,
   readForumTopicList,
   readForumWatchByIdempotencyKey,
+  reconcileForumDirectTipWebhook,
   recordForumModerationEvent,
   recordForumNotificationRead,
   recordForumReport,
@@ -86,43 +87,29 @@ import {
   updateForumReportStatus,
   updateForumTopicModerationState,
   updateForumTopicPinState,
-  readForumTipRecipientReadinessForActor,
   upsertForumTipRecipientWallet,
   watchForumTarget,
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
-import {
-  countActiveOrangeChecks,
-  grantOrangeCheckEntitlement,
-  orangeCheckBadgeProjection,
-  readActiveOrangeCheckByActorRef,
-} from './orange-check-entitlements'
-import {
-  OrangeCheckNostrExportError,
-  buildOrangeCheckNostrExport,
-} from './orange-check-nostr-export'
 import { verifyOpenAgentsForumMdkWebhook } from './forum-mdk-webhooks'
 import {
-  type ForumL402SigningBoundaryProvider,
-  verifyForumL402PaymentEvent,
-} from './forum/l402-payment-verification'
-import {
-  type ForumAgentPublicProfile,
-  ForumTipRecipientProviderClass,
-} from './forum/schemas'
-import type { OpenAgentsHostedMdkClient } from './hosted-mdk-client'
-import type { OpenAgentsSiteMdkWebhookConfig } from './site-mdk-webhooks'
-import {
-  methodNotAllowed,
-  noStoreJsonResponse,
-  redirectResponse,
-  serverError,
-} from './http/responses'
+  type ForumWorkRequestAcceptanceRecord,
+  type ForumWorkRequestOfferRecord,
+  listForumWorkRequestOffers,
+  readForumWorkRequestAcceptanceByIdempotencyKey,
+  readForumWorkRequestAcceptanceByWorkRequestId,
+  readForumWorkRequestOfferByQuoteRef,
+  recordForumWorkRequestAcceptance,
+} from './forum-work-request-negotiation'
 import {
   DefaultForumWorkRequestBridgeActorRef,
   DefaultForumWorkRequestRelayUrl,
   ForumWorkRequestLifecycleKind,
+  type ForumWorkRequestRecord,
+  type ForumWorkRequestRelayLink,
+  type ForumWorkRequestRelayPublisher,
   ForumWorkRequestsForumSlug,
+  type NormalizedForumWorkRequestInput,
   buildForumWorkRequestLbrDraft,
   decodeRelayNativeLbrWorkRequest,
   defaultForumWorkRequestRelayPublisher,
@@ -139,32 +126,50 @@ import {
   readForumWorkRequestRelayLinkByWorkRequestId,
   recordForumWorkRequest,
   recordForumWorkRequestLifecyclePost,
-  type ForumWorkRequestRecord,
-  type ForumWorkRequestRelayLink,
-  type ForumWorkRequestRelayPublisher,
-  type NormalizedForumWorkRequestInput,
 } from './forum-work-requests'
 import {
-  listForumWorkRequestOffers,
-  readForumWorkRequestAcceptanceByIdempotencyKey,
-  readForumWorkRequestAcceptanceByWorkRequestId,
-  readForumWorkRequestOfferByQuoteRef,
-  recordForumWorkRequestAcceptance,
-  type ForumWorkRequestAcceptanceRecord,
-  type ForumWorkRequestOfferRecord,
-} from './forum-work-request-negotiation'
+  type ForumL402SigningBoundaryProvider,
+  verifyForumL402PaymentEvent,
+} from './forum/l402-payment-verification'
+import {
+  type ForumAgentPublicProfile,
+  ForumTipRecipientProviderClass,
+} from './forum/schemas'
+import type { OpenAgentsHostedMdkClient } from './hosted-mdk-client'
+import {
+  methodNotAllowed,
+  noStoreJsonResponse,
+  redirectResponse,
+  serverError,
+} from './http/responses'
+import {
+  type LaborEscrowRecord,
+  type ReserveLaborEscrowInput,
+  reserveLaborEscrow,
+} from './labor-escrow'
+import {
+  countActiveOrangeChecks,
+  grantOrangeCheckEntitlement,
+  orangeCheckBadgeProjection,
+  readActiveOrangeCheckByActorRef,
+} from './orange-check-entitlements'
+import {
+  OrangeCheckNostrExportError,
+  buildOrangeCheckNostrExport,
+} from './orange-check-nostr-export'
 import {
   currentEpochMillis,
   currentIsoTimestamp,
   epochMillisToIsoTimestamp,
   randomUuid,
 } from './runtime-primitives'
+import type { OpenAgentsSiteMdkWebhookConfig } from './site-mdk-webhooks'
 import {
-  reserveLaborEscrow,
-  type LaborEscrowRecord,
-  type ReserveLaborEscrowInput,
-} from './labor-escrow'
-import { TipLadderError, executeTipLadder } from './tip-ladder'
+  TipLadderError,
+  executeTipLadder,
+  isTipLadderReceiptRef,
+  tipLadderReceiptRefFromIdempotencyKey,
+} from './tip-ladder'
 
 type ForumWorkRequestEscrowReserveResult =
   | Readonly<{ ok: true; escrow: LaborEscrowRecord; reserveReceiptRef: string }>
@@ -247,10 +252,7 @@ const CreateForumReplyBody = S.Struct({
   quotePostId: S.optionalKey(S.NullOr(S.String)),
 })
 
-const ForumWorkRequestRef = S.Trim.check(
-  S.isNonEmpty(),
-  S.isMaxLength(220),
-)
+const ForumWorkRequestRef = S.Trim.check(S.isNonEmpty(), S.isMaxLength(220))
 const ForumWorkRequestRefs = S.Array(ForumWorkRequestRef)
 
 const CreateForumWorkRequestBody = S.Struct({
@@ -284,8 +286,7 @@ const ForumWorkRequestLifecycleBody = S.Struct({
   lifecycleKind: ForumWorkRequestLifecycleKind,
   receiptRef: ForumWorkRequestRef,
 })
-type ForumWorkRequestLifecycleBody =
-  typeof ForumWorkRequestLifecycleBody.Type
+type ForumWorkRequestLifecycleBody = typeof ForumWorkRequestLifecycleBody.Type
 
 const AcceptForumWorkRequestOfferBody = S.Struct({
   quoteRef: ForumWorkRequestRef,
@@ -430,6 +431,7 @@ const ForumDirectTipSubmitBody = S.Struct({
 
 const ForumTipLadderBody = S.Struct({
   amountSat: S.Number,
+  publicReceiptRef: S.optionalKey(S.String),
 })
 
 const ForumTipSettlementClaimBody = S.Struct({
@@ -834,7 +836,8 @@ const arraysEqual = (
   left: ReadonlyArray<string>,
   right: ReadonlyArray<string>,
 ): boolean =>
-  left.length === right.length && left.every((value, index) => value === right[index])
+  left.length === right.length &&
+  left.every((value, index) => value === right[index])
 
 const workRequestMatchesInput = (
   record: ForumWorkRequestRecord,
@@ -1997,11 +2000,9 @@ const createForumWorkRequestResponse = (
       })
     }
 
-    const forum = yield* readForumSummaryByRef(
-      db,
-      ForumWorkRequestsForumSlug,
-      { allowUnlisted: true },
-    )
+    const forum = yield* readForumSummaryByRef(db, ForumWorkRequestsForumSlug, {
+      allowUnlisted: true,
+    })
 
     if (forum === null) {
       return notFound()
@@ -2240,11 +2241,9 @@ const ingestRelayNativeForumWorkRequestResponse = (
       return idempotencyConflictResponse()
     }
 
-    const forum = yield* readForumSummaryByRef(
-      db,
-      ForumWorkRequestsForumSlug,
-      { allowUnlisted: true },
-    )
+    const forum = yield* readForumSummaryByRef(db, ForumWorkRequestsForumSlug, {
+      allowUnlisted: true,
+    })
 
     if (forum === null) {
       return notFound()
@@ -2588,7 +2587,10 @@ const acceptForumWorkRequestOfferResponse = (
       )
     }
 
-    if (workRequest.state !== 'open' && workRequest.state !== 'quote_received') {
+    if (
+      workRequest.state !== 'open' &&
+      workRequest.state !== 'quote_received'
+    ) {
       return noStoreJsonResponse(
         {
           error: 'work_request_not_accepting_quotes',
@@ -2715,10 +2717,8 @@ const createForumWorkRequestLifecycleResponse = (
       request,
       decodeForumWorkRequestLifecycleBody,
     )
-    const existingLifecycle = yield* readForumWorkRequestLifecycleByIdempotencyKey(
-      db,
-      idempotencyKey,
-    )
+    const existingLifecycle =
+      yield* readForumWorkRequestLifecycleByIdempotencyKey(db, idempotencyKey)
 
     if (existingLifecycle !== null) {
       if (
@@ -2754,7 +2754,11 @@ const createForumWorkRequestLifecycleResponse = (
 
     const topic = yield* readForumTopicById(db, workRequest.topicId)
 
-    if (topic === null || topic.state === 'archived' || topic.state === 'hidden') {
+    if (
+      topic === null ||
+      topic.state === 'archived' ||
+      topic.state === 'hidden'
+    ) {
       return notFound()
     }
 
@@ -3845,9 +3849,20 @@ const tipLadderResponse = (
 
     const makeId = dependencies.makeId ?? randomUuid
     const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
+    const publicReceiptRef =
+      body.publicReceiptRef === undefined
+        ? yield* Effect.promise(() =>
+            tipLadderReceiptRefFromIdempotencyKey(idempotencyKey),
+          )
+        : body.publicReceiptRef
 
-    const directPayment =
-      readiness.directPayment as { bolt12Offer?: string } | null
+    if (!isTipLadderReceiptRef(publicReceiptRef)) {
+      return badRequest('publicReceiptRef is malformed')
+    }
+
+    const directPayment = readiness.directPayment as {
+      bolt12Offer?: string
+    } | null
     const tipsBufferPay = dependencies.tipsBufferPay ?? null
 
     const result = yield* executeTipLadder(db, {
@@ -3857,6 +3872,7 @@ const tipLadderResponse = (
       nowIso,
       payFromBuffer: tipsBufferPay,
       postId: postDetail.post.postId,
+      publicReceiptRef,
       recipientBolt12Offer: directPayment?.bolt12Offer ?? null,
       recipientHasRegisteredOffer,
       recipientRef: postDetail.post.author.actorRef,
@@ -3894,6 +3910,7 @@ const tipLadderResponse = (
         amountSat: result.amountSat,
         ladderReason: result.ladderReason,
         payInId: result.payInId,
+        receiptRef: result.receiptRef,
         rung: result.rung,
         senderBalanceMsatAfter: result.senderBalanceMsatAfter,
       },
@@ -4534,8 +4551,9 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
     requestDependencies: ForumRouteDependencies = dependencies,
   ) => {
     const url = new URL(request.url)
-    const forumAgentProfilePageMatch =
-      /^\/forum\/u\/([^/]+)\/([^/]+)$/.exec(url.pathname)
+    const forumAgentProfilePageMatch = /^\/forum\/u\/([^/]+)\/([^/]+)$/.exec(
+      url.pathname,
+    )
 
     if (forumAgentProfilePageMatch !== null) {
       const actorId = decodePathSegment(forumAgentProfilePageMatch[1])
@@ -4554,7 +4572,9 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
     )
 
     if (registeredAgentProfileRedirectMatch !== null) {
-      const profileRef = decodePathSegment(registeredAgentProfileRedirectMatch[1])
+      const profileRef = decodePathSegment(
+        registeredAgentProfileRedirectMatch[1],
+      )
       const reservedPublicAgentRefs = new Set(['adjutant', 'artanis'])
 
       if (
@@ -4648,9 +4668,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
     }
 
     const workRequestAcceptanceMatch =
-      /^\/api\/forum\/work-requests\/([^/]+)\/acceptances$/.exec(
-        url.pathname,
-      )
+      /^\/api\/forum\/work-requests\/([^/]+)\/acceptances$/.exec(url.pathname)
 
     if (workRequestAcceptanceMatch !== null) {
       const workRequestId = decodePathSegment(workRequestAcceptanceMatch[1])
@@ -5313,12 +5331,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? orangeCheckNostrExportResponse(
-            db,
-            actorRef,
-            url,
-            requestDependencies,
-          )
+        ? orangeCheckNostrExportResponse(db, actorRef, url, requestDependencies)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 

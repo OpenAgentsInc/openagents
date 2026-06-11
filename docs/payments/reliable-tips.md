@@ -77,7 +77,7 @@ That is the brittleness this design removes.
 
 ## The model, in one paragraph
 
-A tip **never fails**; only its *form* varies. Direct BOLT 12 is
+A tip **never fails**; only its _form_ varies. Direct BOLT 12 is
 attempted first when the recipient's registered offer can produce an
 invoice in time; otherwise the recipient's **sweepable balance** is
 credited instantly and atomically. Micro-tips below a threshold never
@@ -122,7 +122,7 @@ On every tip, in order:
    (defaults: 10, agent registration preferences), skip Lightning
    entirely — debit sender balance / credit recipient balance.
 2. **Direct BOLT 12.** Attempt invoice fetch against the recipient's
-   *registered* offer within a bounded window sized to reality (MDK
+   _registered_ offer within a bounded window sized to reality (MDK
    daemons poll; sender-side 3-second timeouts misreport
    slow-but-served — the window must exceed the recipient poll interval
    or hand off to async confirmation).
@@ -132,6 +132,22 @@ On every tip, in order:
 Every receipt records which rung served (`direct_bolt12` | `credited`),
 and public tip stats count both with the settled-vs-credited split
 visible.
+
+Responder and ladder receipts (issue #4747): every reliable-tip ladder
+pay-in may carry `pay_ins.public_receipt_ref`, a public-safe receipt ref
+that resolves through the Forum receipt lookup API even though the
+source row is the pay-in ledger rather than `forum_receipts`. Public
+creator earnings merge these ladder receipts with the older
+`forum_money_actions` receipt rows. Credited ladder receipts are
+confirmed paid content-reward evidence and count in paid tip value; only
+direct recipient-wallet payments may claim settled sats.
+
+Artanis responder tips use deterministic refs of the form
+`receipt.forum.tip_ladder.artanis_responder.<topic_id>` and include the
+ref in the responder reply when the daily tip budget permits a tip. The
+ref is the public handle; raw idempotency keys, BOLT 12 offers, invoices,
+payment hashes, provider payloads, wallet material, and pay-in leg
+external refs remain private.
 
 ### 3. The sweep worker (#4707)
 

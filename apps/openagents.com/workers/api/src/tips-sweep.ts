@@ -1,6 +1,5 @@
 import { Effect } from 'effect'
 
-import { epochMillisToIsoTimestamp } from './runtime-primitives'
 import {
   type LedgerStatement,
   createPayInStatements,
@@ -9,6 +8,7 @@ import {
   markPayInPaidStatements,
   runLedgerStatements,
 } from './payments-ledger'
+import { epochMillisToIsoTimestamp } from './runtime-primitives'
 
 // The automated sweep worker (issue #4707; design:
 // docs/payments/reliable-tips.md §3). On the worker cron: for each
@@ -37,8 +37,7 @@ export type SweepCandidate = Readonly<{
 export const sweepAmountSat = (
   candidate: Pick<SweepCandidate, 'balanceMsat' | 'sweepThresholdSat'>,
 ): number => {
-  const excessMsat =
-    candidate.balanceMsat - candidate.sweepThresholdSat * 1000
+  const excessMsat = candidate.balanceMsat - candidate.sweepThresholdSat * 1000
   const amountSat = Math.floor(excessMsat / 1000)
   return amountSat >= TIPS_SWEEP_MIN_SAT ? amountSat : 0
 }
@@ -65,6 +64,7 @@ export const sweepCreateStatements = (
       costMsat: amountMsat,
       genesisId: null,
       idempotencyKey: plan.idempotencyKey,
+      publicReceiptRef: null,
       legs: [
         {
           amountMsat,
@@ -295,9 +295,10 @@ export const checkTipsBufferBackingInvariant = async (
   )
   const bufferBalanceSat = await fetchBufferBalance()
 
-  const ok = bufferBalanceSat === null
-    ? agentBalancesSat === 0
-    : agentBalancesSat <= bufferBalanceSat
+  const ok =
+    bufferBalanceSat === null
+      ? agentBalancesSat === 0
+      : agentBalancesSat <= bufferBalanceSat
 
   if (!ok) {
     throw new Error(
@@ -321,13 +322,14 @@ export const reconcileForwardingBufferPayments = async (
     makeId: () => string
     nowIso: string
   }>,
-): Promise<Readonly<{ settled: number; refunded: number; waiting: number }>> => {
-  const rows = (
-    (
-      await db
-        .prepare(
-          `SELECT p.id AS pay_in_id, p.pay_in_type, p.payer_ref, p.cost_msat,
-                  p.context_ref, p.idempotency_key,
+): Promise<
+  Readonly<{ settled: number; refunded: number; waiting: number }>
+> => {
+  const rows = ((
+    await db
+      .prepare(
+        `SELECT p.id AS pay_in_id, p.pay_in_type, p.payer_ref, p.cost_msat,
+                  p.context_ref, p.idempotency_key, p.public_receipt_ref,
                   l.id AS leg_id, l.external_ref,
                   fin.id AS funding_leg_id, fin.party_ref AS funding_party_ref
              FROM pay_ins p
@@ -339,10 +341,9 @@ export const reconcileForwardingBufferPayments = async (
               AND fin.direction = 'in' AND fin.refund_of_leg_id IS NULL
             WHERE p.state = 'forwarding'
             LIMIT 10`,
-        )
-        .all()
-    ).results ?? []
-  ) as Array<Record<string, unknown>>
+      )
+      .all()
+  ).results ?? []) as Array<Record<string, unknown>>
 
   let settled = 0
   let refunded = 0
@@ -436,6 +437,10 @@ export const reconcileForwardingBufferPayments = async (
                 payInId: fallbackPayInId,
                 payoutLegId: payoutLeg,
                 postId,
+                publicReceiptRef:
+                  typeof row.public_receipt_ref === 'string'
+                    ? row.public_receipt_ref
+                    : null,
                 recipientRef: recipientRow.party_ref,
                 senderRef: String(row.payer_ref),
               },

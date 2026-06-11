@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 
 import { artanisMindComplete } from './artanis-mind'
 import { publicProductPromisesDocument } from './product-promises'
+import { artanisResponderTipReceiptRef } from './tip-ladder'
 
 // The Artanis grounded reply composer + tip budget (issue #4715;
 // promise artanis.pylon_support_responder.v1). For each proposed
@@ -28,7 +29,16 @@ export type ComposerTip = (input: {
   postId: string
   amountSat: number
   idempotencyKey: string
-}) => Promise<{ rung: string } | { error: string }>
+  publicReceiptRef: string
+}) => Promise<
+  | {
+      ladderReason: string
+      payInId: string
+      receiptRef: string
+      rung: string
+    }
+  | { error: string }
+>
 
 export type ComposerTickOutcome = Readonly<{
   considered: number
@@ -76,11 +86,10 @@ export const runArtanisComposerTick = async (
     }
   }
 
-  const proposals = (
-    (
-      await db
-        .prepare(
-          `SELECT a.id, a.topic_id, a.first_post_id, a.question_class, a.asked_at,
+  const proposals = ((
+    await db
+      .prepare(
+        `SELECT a.id, a.topic_id, a.first_post_id, a.question_class, a.asked_at,
                   t.title, COALESCE(b.body_text, '') AS body_text
              FROM artanis_responder_actions a
              JOIN forum_topics t ON t.id = a.topic_id
@@ -88,11 +97,10 @@ export const runArtanisComposerTick = async (
             WHERE a.state = 'proposed'
             ORDER BY a.created_at ASC
             LIMIT ?`,
-        )
-        .bind(ARTANIS_COMPOSER_MAX_PER_TICK)
-        .all()
-    ).results ?? []
-  ) as Array<Record<string, unknown>>
+      )
+      .bind(ARTANIS_COMPOSER_MAX_PER_TICK)
+      .all()
+  ).results ?? []) as Array<Record<string, unknown>>
 
   if (proposals.length === 0) {
     return {
@@ -169,8 +177,14 @@ export const runArtanisComposerTick = async (
       continue
     }
 
+    const tipReceiptRef = artanisResponderTipReceiptRef(topicId)
+    const shouldTip = tipBudgetLeftSat >= ARTANIS_TIP_AMOUNT_SAT
+    const replyBodyText = shouldTip
+      ? `${mindResult.text}\n\nResponder tip receipt: ${tipReceiptRef}`
+      : mindResult.text
+
     const posted = await deps.forumPost({
-      bodyText: mindResult.text,
+      bodyText: replyBodyText,
       idempotencyKey: `artanis-responder:${topicId}`,
       topicId,
     })
@@ -215,11 +229,12 @@ export const runArtanisComposerTick = async (
 
     // Tip the question post under the budget; failure to tip never blocks
     // the response.
-    if (tipBudgetLeftSat >= ARTANIS_TIP_AMOUNT_SAT) {
+    if (shouldTip) {
       const tipResult = await deps.tip({
         amountSat: ARTANIS_TIP_AMOUNT_SAT,
         idempotencyKey: `artanis-responder-tip:${topicId}`,
         postId: String(proposal.first_post_id),
+        publicReceiptRef: tipReceiptRef,
       })
       if (!('error' in tipResult)) {
         tipped += 1
@@ -227,10 +242,22 @@ export const runArtanisComposerTick = async (
         await db
           .prepare(
             `UPDATE artanis_responder_actions
-             SET state = 'tipped', updated_at = ?
+             SET state = 'tipped',
+                 tip_receipt_ref = ?,
+                 tip_pay_in_id = ?,
+                 tip_ladder_rung = ?,
+                 tip_ladder_reason = ?,
+                 updated_at = ?
              WHERE id = ?`,
           )
-          .bind(deps.nowIso, actionId)
+          .bind(
+            tipResult.receiptRef,
+            tipResult.payInId,
+            tipResult.rung,
+            tipResult.ladderReason,
+            deps.nowIso,
+            actionId,
+          )
           .run()
       }
     }

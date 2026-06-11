@@ -20,6 +20,10 @@ import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
+import {
+  handleAgentBalanceApi,
+  handleAgentBalancePreferencesApi,
+} from './agent-balance-routes'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
 import { handleProgrammaticAgentHome } from './agent-home-routes'
 import {
@@ -47,22 +51,24 @@ import {
 } from './agent-scoped-grant-routes'
 import { makeAgentSearchRoutes } from './agent-search-routes'
 import { makeAgentSiteRoutes } from './agent-site-routes'
-import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
-import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
-import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
-import { type BufferPayFn, checkTipsBufferBackingInvariant, reconcileForwardingBufferPayments, runTipsSweepScheduled } from './tips-sweep'
 import {
-  handleAgentBalanceApi,
-  handleAgentBalancePreferencesApi,
-} from './agent-balance-routes'
+  runArtanisAdminTickScheduled,
+  runArtanisCloseoutVerifierScheduled,
+} from './artanis-administrator-tick'
+import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
+import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
+import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
 import {
   ARTANIS_REGISTERED_ACTOR_REF,
   runArtanisResponderScanScheduled,
 } from './artanis-forum-responder'
+import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
+import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
+import { saveArtanisForumPublicationIntent } from './artanis-persistence'
+import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
-import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
+import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
 import { runArtanisSpendDecision } from './artanis-spend'
-import { runArtanisAdminTickScheduled, runArtanisCloseoutVerifierScheduled } from './artanis-administrator-tick'
 import {
   boundedTickMonitorLimit,
   readArtanisTickMonitor,
@@ -85,6 +91,12 @@ import {
   makeBrowserSessionBoundary,
 } from './auth/session'
 import {
+  makeAutopilotWorkRoutes,
+  makeD1AutopilotWorkStore,
+  recordAutopilotWorkerCloseoutFromPylon,
+  verifyAutopilotL402PaymentProofFromBuyerLedger,
+} from './autopilot-work-routes'
+import {
   type BillingSummary,
   markOutOfCreditsNotificationFailed,
   markOutOfCreditsNotificationSent,
@@ -94,12 +106,6 @@ import {
   suspendBillingAccountIfOutOfCredits,
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
-import {
-  makeAutopilotWorkRoutes,
-  makeD1AutopilotWorkStore,
-  recordAutopilotWorkerCloseoutFromPylon,
-  verifyAutopilotL402PaymentProofFromBuyerLedger,
-} from './autopilot-work-routes'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
@@ -115,7 +121,9 @@ import {
   listBlueprintProgramRuns,
   recordBlueprintProgramRun,
 } from './blueprint/repositories/program-runs'
+import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { makeD1BuyerPaymentLedgerStore } from './buyer-payment-ledger'
+import { makeCheckoutPageRoutes } from './checkout-page-routes'
 import {
   type OpenAgentsWorkerConfigEnv,
   getOpenAgentsWorkerConfig,
@@ -133,6 +141,7 @@ import {
 } from './email-campaign-dispatcher'
 import type { OnboardingDripOrderState } from './email-onboarding-drip'
 import { makeForumRoutes } from './forum-routes'
+import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import {
   GITHUB_WRITE_REQUIRED_SCOPES,
   GitHubWriteApiFailure,
@@ -160,10 +169,7 @@ import {
   makeMissingOpenAgentsHostedMdkClient,
   makeOpenAgentsHostedMdkRouteClient,
 } from './hosted-mdk-client'
-import {
-  mdkContainerEnvVars,
-  optionalMdkContainerSecret,
-} from './mdk-container-env'
+import type { ContainerPathFetch } from './http/container-fetch'
 import {
   forbidden,
   methodNotAllowed,
@@ -188,9 +194,14 @@ import {
   stringArrayFromUnknown,
 } from './json-boundary'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
+import {
+  mdkContainerEnvVars,
+  optionalMdkContainerSecret,
+} from './mdk-container-env'
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNexusPylonVisibilityRoutes } from './nexus-pylon-visibility-routes'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
+import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
 import {
   logWorkerRouteError,
   logWorkerRouteWarning,
@@ -223,7 +234,6 @@ import {
   makeOperatorAdjutantRoutes,
 } from './operator-adjutant-routes'
 import { makeOperatorBillingHandlers } from './operator-billing-routes'
-import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
@@ -234,20 +244,7 @@ import {
   type OperatorTargetUser,
   readOperatorTargetUser,
 } from './operator-targets'
-import { makeCheckoutPageRoutes } from './checkout-page-routes'
 import { publicProductPromisesDocument } from './product-promises'
-import {
-  TassadarReplayRequest,
-  runTassadarReplayValidation,
-} from './tassadar-replay-validator'
-import {
-  ArtanisMindSmokeSystem,
-  artanisMindComplete,
-} from './artanis-mind'
-import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
-import { saveArtanisForumPublicationIntent } from './artanis-persistence'
-import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
-import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
 import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
@@ -268,16 +265,15 @@ import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
+import { makeD1PylonApiStore } from './pylon-api'
+import { makePylonApiRoutes } from './pylon-api-routes'
 import {
   handlePylonCapacityFunnelApi,
   handlePylonCapacityFunnelHistoryApi,
   makeD1PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
-import { makeD1PylonApiStore } from './pylon-api'
-import { makePylonApiRoutes } from './pylon-api-routes'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
-import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
 import { handleResendWebhook } from './resend-webhooks'
 import {
   OpenAgentsWorkerRequest,
@@ -319,6 +315,10 @@ import {
 } from './sync-notifier'
 import { type ParsedSyncPath, makeSyncRoutes } from './sync-routes'
 import {
+  TassadarReplayRequest,
+  runTassadarReplayValidation,
+} from './tassadar-replay-validator'
+import {
   type TeamChatMessage,
   type TeamChatRunSummary,
   insertTeamChatMessage,
@@ -353,15 +353,26 @@ import {
   readThreadFileById,
 } from './thread-files'
 import {
+  type BufferPayFn,
+  checkTipsBufferBackingInvariant,
+  reconcileForwardingBufferPayments,
+  runTipsSweepScheduled,
+} from './tips-sweep'
+import {
   type AutopilotTokenLeaderboards,
   TokenUsageLeaderboards,
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
-import type { ContainerPathFetch } from './http/container-fetch'
+import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
+import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
+import { makeD1TrainingVerificationStore } from './training-verification'
+import { makeTrainingVerificationRoutes } from './training-verification-routes'
 import {
   makeD1TreasuryTransactionStore,
   makeTreasuryPageRoutes,
 } from './treasury-page-routes'
+import { makeTreasuryPaymentAuthority } from './treasury-payment-authority'
+import { makeHostedMdkPayoutAdapter } from './treasury-payment-hosted-mdk-payout-adapter'
 import {
   TREASURY_SERVICE_TOKEN_HEADER,
   handleOperatorTreasuryFundingDestinationApi,
@@ -369,12 +380,6 @@ import {
   handleOperatorTreasuryStatusApi,
   handlePublicTreasuryLaunchStatusApi,
 } from './treasury-routes'
-import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
-import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
-import { makeD1TrainingVerificationStore } from './training-verification'
-import { makeTrainingVerificationRoutes } from './training-verification-routes'
-import { makeTreasuryPaymentAuthority } from './treasury-payment-authority'
-import { makeHostedMdkPayoutAdapter } from './treasury-payment-hosted-mdk-payout-adapter'
 import {
   type ViralAgentFunnelEventKind,
   recordViralAgentFunnelEvent,
@@ -447,9 +452,7 @@ const mdkTreasuryContainerEnvVars = (
   const accessToken = optionalMdkContainerSecret(
     environment.MDK_TREASURY_ACCESS_TOKEN,
   )
-  const mnemonic = optionalMdkContainerSecret(
-    environment.MDK_TREASURY_MNEMONIC,
-  )
+  const mnemonic = optionalMdkContainerSecret(environment.MDK_TREASURY_MNEMONIC)
   const serviceToken = optionalMdkContainerSecret(
     environment.MDK_TREASURY_SERVICE_TOKEN,
   )
@@ -649,7 +652,16 @@ const artanisComposerTipForEnv =
     postId: string
     amountSat: number
     idempotencyKey: string
-  }): Promise<{ rung: string } | { error: string }> => {
+    publicReceiptRef: string
+  }): Promise<
+    | {
+        ladderReason: string
+        payInId: string
+        receiptRef: string
+        rung: string
+      }
+    | { error: string }
+  > => {
     const token = (environment as { ARTANIS_AGENT_TOKEN?: string })
       .ARTANIS_AGENT_TOKEN
     if (token === undefined || token === '') {
@@ -661,7 +673,10 @@ const artanisComposerTipForEnv =
           new Request(
             `https://openagents.com/api/forum/posts/${input.postId}/tips/ladder`,
             {
-              body: JSON.stringify({ amountSat: input.amountSat }),
+              body: JSON.stringify({
+                amountSat: input.amountSat,
+                publicReceiptRef: input.publicReceiptRef,
+              }),
               headers: {
                 Authorization: `Bearer ${token}`,
                 'Content-Type': 'application/json',
@@ -684,11 +699,22 @@ const artanisComposerTipForEnv =
       }
       const payload = (await response.json()) as {
         error?: string
+        ladderReason?: string
+        payInId?: string
+        receiptRef?: string
         rung?: string
       }
-      return payload.rung === undefined
+      return payload.rung === undefined ||
+        payload.receiptRef === undefined ||
+        payload.payInId === undefined ||
+        payload.ladderReason === undefined
         ? { error: String(payload.error ?? response.status) }
-        : { rung: payload.rung }
+        : {
+            ladderReason: payload.ladderReason,
+            payInId: payload.payInId,
+            receiptRef: payload.receiptRef,
+            rung: payload.rung,
+          }
     } catch (error) {
       return {
         error:
@@ -738,7 +764,8 @@ const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
     } catch (error) {
       return {
         ok: false as const,
-        reason: error instanceof Error ? error.message.slice(0, 80) : 'fetch_failed',
+        reason:
+          error instanceof Error ? error.message.slice(0, 80) : 'fetch_failed',
       }
     }
   }
@@ -5036,9 +5063,10 @@ export const handleProgrammaticAgentRegistration = async (
 
     if (parsed.bolt12Offer !== undefined && parsed.bolt12Offer !== null) {
       // Automatically register the tip wallet so the user doesn't have to call claim-tip-wallet
-      const { upsertForumTipRecipientWallet } = await import('./forum/repository')
+      const { upsertForumTipRecipientWallet } =
+        await import('./forum/repository')
       const db = openAgentsDatabase(env)
-      
+
       await Effect.runPromise(
         upsertForumTipRecipientWallet(db, {
           actorRef: `agent:${registration.user.id}`,
@@ -5059,13 +5087,14 @@ export const handleProgrammaticAgentRegistration = async (
           readinessRefs: [
             'readiness.public.mdk_agent.daemon_running',
             'readiness.public.mdk_agent.receive_ready',
-            'readiness.public.mdk_agent.setup_present'
+            'readiness.public.mdk_agent.setup_present',
           ],
           receiveCapabilityRef: `receive_capability.public.auto_${registration.user.id}.redacted`,
-          sourceRef: 'source.public.forum_tip_recipient.agent_registration_auto_claim',
+          sourceRef:
+            'source.public.forum_tip_recipient.agent_registration_auto_claim',
           state: 'ready',
-          walletRef: `wallet.public.auto_${registration.user.id}.redacted`
-        })
+          walletRef: `wallet.public.auto_${registration.user.id}.redacted`,
+        }),
       )
     }
 
@@ -5855,8 +5884,7 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
 
 const trainingVerificationRoutes =
   makeTrainingVerificationRoutes<WorkerBindings>({
-    makeStore: env =>
-      makeD1TrainingVerificationStore(openAgentsDatabase(env)),
+    makeStore: env => makeD1TrainingVerificationStore(openAgentsDatabase(env)),
     requireAdminApiToken,
   })
 
@@ -6024,7 +6052,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.gen(function* () {
         if (request.method !== 'POST') {
-          return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+          return noStoreJsonResponse(
+            { error: 'method_not_allowed' },
+            { status: 405 },
+          )
         }
         const authorized = yield* Effect.promise(() =>
           requireAdminApiToken(request, env),
@@ -6034,7 +6065,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         }
         const apiKey = (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY
         if (apiKey === undefined || apiKey === '') {
-          return noStoreJsonResponse({ error: 'gemini_api_key_missing' }, { status: 503 })
+          return noStoreJsonResponse(
+            { error: 'gemini_api_key_missing' },
+            { status: 503 },
+          )
         }
         const body = yield* Effect.promise(async () => {
           try {
@@ -6055,7 +6089,9 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         const result = yield* Effect.promise(() =>
           artanisMindComplete({
             apiKey,
-            ...(body.gatewayId === undefined ? {} : { gatewayId: body.gatewayId }),
+            ...(body.gatewayId === undefined
+              ? {}
+              : { gatewayId: body.gatewayId }),
             ...(gatewayToken === undefined || gatewayToken === ''
               ? {}
               : { gatewayToken }),
@@ -6105,11 +6141,9 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 intent,
               ),
             ),
-            Effect.map(
-              (post): { postRef?: string; error?: string } => ({
-                postRef: post.postRef,
-              }),
-            ),
+            Effect.map((post): { postRef?: string; error?: string } => ({
+              postRef: post.postRef,
+            })),
             Effect.catch(error =>
               Effect.succeed({
                 error: `forum_delivery_failed: ${String(
@@ -6135,7 +6169,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(async () => {
         if (request.method !== 'POST') {
-          return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+          return noStoreJsonResponse(
+            { error: 'method_not_allowed' },
+            { status: 405 },
+          )
         }
         if (!(await requireAdminApiToken(request, env))) {
           return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
@@ -6344,7 +6381,10 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.gen(function* () {
         if (request.method !== 'POST') {
-          return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+          return noStoreJsonResponse(
+            { error: 'method_not_allowed' },
+            { status: 405 },
+          )
         }
         const authorized = yield* Effect.promise(() =>
           requireAdminApiToken(request, env),
@@ -6372,15 +6412,16 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         }
         // Registered destinations only: the recipient's tip-recipient
         // wallet claim is the public-safe source of the offer.
-        const wallet = yield* Effect.promise(async () =>
-          (await openAgentsDatabase(env)
-            .prepare(
-              `SELECT wallet_ref, bolt12_offer FROM forum_tip_recipient_wallets
+        const wallet = yield* Effect.promise(
+          async () =>
+            (await openAgentsDatabase(env)
+              .prepare(
+                `SELECT wallet_ref, bolt12_offer FROM forum_tip_recipient_wallets
                WHERE actor_ref = ? AND state = 'ready' AND archived_at IS NULL
                  AND bolt12_offer IS NOT NULL`,
-            )
-            .bind(body.recipientActorRef)
-            .first()) as { wallet_ref: string; bolt12_offer: string } | null,
+              )
+              .bind(body.recipientActorRef)
+              .first()) as { wallet_ref: string; bolt12_offer: string } | null,
         )
         if (wallet === null) {
           return noStoreJsonResponse(
@@ -6666,8 +6707,7 @@ const routeRequest = makeWorkerRouteRequest({
       handleThreadPage(request, env, ctx, threadId),
     ),
   optionalUuid,
-  routeAutopilotWorkRequest:
-    autopilotWorkRoutes.routeAutopilotWorkRequest,
+  routeAutopilotWorkRequest: autopilotWorkRoutes.routeAutopilotWorkRequest,
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
@@ -7149,7 +7189,10 @@ export default {
             if (response === undefined) {
               return { detail: 'route_unmatched', ok: false }
             }
-            return { detail: (await response.text()).slice(0, 200), ok: response.ok }
+            return {
+              detail: (await response.text()).slice(0, 200),
+              ok: response.ok,
+            }
           },
           enabled:
             (env as { ARTANIS_ADMIN_TICK_ENABLED?: string })

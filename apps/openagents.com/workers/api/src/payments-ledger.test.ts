@@ -40,6 +40,7 @@ const tipPlan = (overrides?: Partial<PayInPlan>): PayInPlan => ({
   payInId: 'payin_1',
   payInType: 'tip',
   payerRef: 'agent:sender',
+  publicReceiptRef: null,
   rung: 'credited',
   ...overrides,
 })
@@ -126,8 +127,8 @@ class LedgerModel {
 
     if (sql.startsWith('INSERT INTO pay_ins') && sql.includes('SELECT ?')) {
       const id = String(params[0])
-      const lockedId = String(params[10])
-      const expectedSuccessor = String(params[11])
+      const lockedId = String(params[11])
+      const expectedSuccessor = String(params[12])
       const locked = this.payIns.get(lockedId)
       if (locked === undefined || locked.successorId !== expectedSuccessor) {
         return
@@ -181,7 +182,10 @@ class LedgerModel {
       return
     }
 
-    if (sql.startsWith('UPDATE pay_ins') && sql.includes("SET state = 'paid'")) {
+    if (
+      sql.startsWith('UPDATE pay_ins') &&
+      sql.includes("SET state = 'paid'")
+    ) {
       const id = String(params[2])
       const payIn = this.payIns.get(id)
       if (
@@ -193,7 +197,10 @@ class LedgerModel {
       return
     }
 
-    if (sql.startsWith('UPDATE pay_ins') && sql.includes("SET state = 'failed'")) {
+    if (
+      sql.startsWith('UPDATE pay_ins') &&
+      sql.includes("SET state = 'failed'")
+    ) {
       const id = String(params[2])
       const payIn = this.payIns.get(id)
       if (
@@ -332,7 +339,11 @@ describe('payments ledger', () => {
       markPayInPaidStatements(
         {
           balancePayoutLegs: [
-            { amountMsat: 50_000, legId: 'leg_out', partyRef: 'agent:recipient' },
+            {
+              amountMsat: 50_000,
+              legId: 'leg_out',
+              partyRef: 'agent:recipient',
+            },
           ],
           payInId: 'payin_1',
         },

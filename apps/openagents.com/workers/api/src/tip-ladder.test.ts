@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
-import { creditedTipStatements, tipLadderDecision } from './tip-ladder'
+import {
+  artanisResponderTipReceiptRef,
+  creditedTipStatements,
+  isTipLadderReceiptRef,
+  tipLadderCanonicalIdempotencyKey,
+  tipLadderDecision,
+  tipLadderReceiptRefFromIdempotencyKey,
+} from './tip-ladder'
 
 const baseDecisionInput = {
   amountSat: 50,
@@ -68,6 +75,8 @@ describe('tip ladder decision', () => {
 
 describe('credited tip statements', () => {
   test('one atomic batch: create debits sender, paid credits recipient', () => {
+    const publicReceiptRef =
+      'receipt.forum.tip_ladder.artanis_responder.topic_abc'
     const statements = creditedTipStatements(
       {
         amountSat: 50,
@@ -77,6 +86,7 @@ describe('credited tip statements', () => {
         payInId: 'payin_1',
         payoutLegId: 'leg_out',
         postId: 'post_abc',
+        publicReceiptRef,
         recipientRef: 'agent:recipient',
         senderRef: 'agent:sender',
       },
@@ -99,6 +109,33 @@ describe('credited tip statements', () => {
     const insertParams = statements[0]!.params
     expect(insertParams).toContain('forum.post.post_abc')
     expect(insertParams).toContain('credited')
+    expect(insertParams).toContain(publicReceiptRef)
     expect(insertParams).toContain(50_000)
+  })
+})
+
+describe('tip ladder public receipt refs', () => {
+  test('normalizes fallback idempotency keys before hashing', async () => {
+    await expect(
+      tipLadderReceiptRefFromIdempotencyKey('tip:post:sender:1'),
+    ).resolves.toBe(
+      await tipLadderReceiptRefFromIdempotencyKey(
+        'tip:post:sender:1:credited_fallback',
+      ),
+    )
+    expect(
+      tipLadderCanonicalIdempotencyKey('tip:post:sender:1:credited_fallback'),
+    ).toBe('tip:post:sender:1')
+  })
+
+  test('creates public-safe Artanis responder receipt refs', () => {
+    const receiptRef = artanisResponderTipReceiptRef(
+      'c336dd07-5a66-4786-bb51-116b4bb8121f',
+    )
+
+    expect(receiptRef).toBe(
+      'receipt.forum.tip_ladder.artanis_responder.c336dd07-5a66-4786-bb51-116b4bb8121f',
+    )
+    expect(isTipLadderReceiptRef(receiptRef)).toBe(true)
   })
 })

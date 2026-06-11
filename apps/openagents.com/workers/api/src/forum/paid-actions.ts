@@ -25,15 +25,16 @@ import {
   epochMillisToIsoTimestamp,
   randomUuid,
 } from '../runtime-primitives'
+import { isTipLadderReceiptRef } from '../tip-ladder'
 import {
-  type ForumL402Challenge,
-  ForumL402Challenge as ForumL402ChallengeSchema,
   type ForumDirectTipAttemptStatus,
   type ForumDirectTipPaymentEvidence,
   type ForumDirectTipResponse,
   ForumDirectTipResponse as ForumDirectTipResponseSchema,
   type ForumDirectTipWebhookReconciliation,
   ForumDirectTipWebhookReconciliation as ForumDirectTipWebhookReconciliationSchema,
+  type ForumL402Challenge,
+  ForumL402Challenge as ForumL402ChallengeSchema,
   type ForumL402PaymentChallenge,
   type ForumMoneyAmount,
   type ForumPaidActionKind,
@@ -282,6 +283,22 @@ type ReceiptLookupRow = ReceiptRow &
     settlement_claim_projection_json: string | null
   }>
 
+type TipLadderReceiptLookupRow = Readonly<{
+  cost_msat: number
+  created_at: string
+  pay_in_id: string
+  public_receipt_ref: string
+  payer_ref: string
+  payout_external_ref: string | null
+  recipient_actor_ref: string
+  rung: 'credited' | 'direct_bolt12' | null
+  state: 'paid' | 'forwarding'
+  state_changed_at: string
+  target_forum_id: string | null
+  target_post_id: string | null
+  target_topic_id: string | null
+}>
+
 type PaymentEventRow = Readonly<{
   archived_at: string | null
   external_ref: string
@@ -385,7 +402,9 @@ const decodeRedeemResponse = S.decodeUnknownSync(
 const decodeReceiptLookup = S.decodeUnknownSync(
   ForumReceiptLookupResponseSchema,
 )
-const decodeDirectTipResponse = S.decodeUnknownSync(ForumDirectTipResponseSchema)
+const decodeDirectTipResponse = S.decodeUnknownSync(
+  ForumDirectTipResponseSchema,
+)
 const decodeDirectTipWebhookReconciliation = S.decodeUnknownSync(
   ForumDirectTipWebhookReconciliationSchema,
 )
@@ -737,9 +756,7 @@ const directTipStatusForPaymentEvent = (
 ): ForumDirectTipAttemptStatus =>
   status === 'confirmed'
     ? 'settled'
-    : status === 'failed' ||
-        status === 'refunded' ||
-        status === 'reversed'
+    : status === 'failed' || status === 'refunded' || status === 'reversed'
       ? 'failed'
       : 'recovery_pending'
 
@@ -1086,6 +1103,83 @@ const receiptLookupFromRow = (
       paymentEvent,
       settlementClaim,
     ),
+  })
+}
+
+const tipLadderTargetPostPermalink = (
+  row: TipLadderReceiptLookupRow,
+): string | null =>
+  row.target_topic_id === null || row.target_post_id === null
+    ? null
+    : forumPostPublicUrl(row.target_topic_id, row.target_post_id)
+
+const tipLadderPaymentEventFromRow = (
+  row: TipLadderReceiptLookupRow,
+): ForumPaymentEventProjection =>
+  decodePaymentEventProjection({
+    actionKind: 'post_reward',
+    amount: {
+      amount: Math.max(0, Math.floor(Number(row.cost_msat) / 1000)),
+      asset: 'sats',
+    },
+    challengeId: row.pay_in_id,
+    createdAt: row.state_changed_at,
+    externalRef:
+      row.rung === 'direct_bolt12'
+        ? `payment.forum.tip_ladder.${row.pay_in_id}`
+        : `ledger.forum.tip_ladder.${row.pay_in_id}`,
+    payerActorRef: row.payer_ref,
+    paymentEventRef: `payment_event.forum.tip_ladder.${row.pay_in_id}`,
+    paymentMode: 'live',
+    providerRef: 'provider.openagents.tip_ladder',
+    receiptRef: row.public_receipt_ref,
+    recipientActorRef: row.recipient_actor_ref,
+    redactedEvidenceRef: `evidence.forum.tip_ladder.${row.pay_in_id}`,
+    settlementAuthority:
+      row.state === 'paid' && row.rung === 'direct_bolt12'
+        ? 'recipient_wallet_direct'
+        : 'buyer_payment_evidence_only',
+    status: row.state === 'paid' ? 'confirmed' : 'observed',
+  })
+
+const tipLadderReceiptLookupFromRow = (
+  row: TipLadderReceiptLookupRow,
+): ForumReceiptLookupResponse => {
+  const paymentEvent = tipLadderPaymentEventFromRow(row)
+
+  return decodeReceiptLookup({
+    actionKind: 'post_reward',
+    amount: {
+      amount: Math.max(0, Math.floor(Number(row.cost_msat) / 1000)),
+      asset: 'sats',
+    },
+    createdAt: row.created_at,
+    paymentEvent,
+    publicProjection: {
+      classificationCaveatRef:
+        'caveat.public.forum_tip_ladder.receipt_redacted',
+      customerSafe: true,
+      dataClassification: 'public',
+      excludedPrivateRefs: [
+        'pay_ins.idempotency_key',
+        'pay_in_legs.external_ref.raw',
+      ],
+      publicSafe: true,
+      redactionPolicyRef: 'redaction.public.forum_tip_ladder.receipt.v1',
+      safeArtifactRefs: [`pay_in.public.${row.pay_in_id}`],
+      safeReceiptRefs: [row.public_receipt_ref],
+      trustTier: 'verified',
+    },
+    receiptRef: row.public_receipt_ref,
+    recipientActorRef: row.recipient_actor_ref,
+    target: {
+      forumId: row.target_forum_id,
+      postId: row.target_post_id,
+      topicId: row.target_topic_id,
+    },
+    targetPostPermalink: tipLadderTargetPostPermalink(row),
+    settlementClaim: null,
+    tipSettlement: forumTipSettlementProjectionForReceipt(paymentEvent, null),
   })
 }
 
@@ -1442,6 +1536,51 @@ const readReceiptLookupRowByRef = (
       .first<ReceiptLookupRow>(),
   )
 
+const readTipLadderReceiptLookupRowByRef = (
+  db: D1Database,
+  receiptRef: string,
+): Effect.Effect<TipLadderReceiptLookupRow | null, ForumPaidActionError> =>
+  isTipLadderReceiptRef(receiptRef)
+    ? d1Effect('forumPaidActions.readTipLadderReceiptLookupRowByRef', () =>
+        db
+          .prepare(
+            `SELECT p.id AS pay_in_id,
+                    p.public_receipt_ref AS public_receipt_ref,
+                    p.payer_ref AS payer_ref,
+                    p.cost_msat AS cost_msat,
+                    p.state AS state,
+                    p.rung AS rung,
+                    p.created_at AS created_at,
+                    p.state_changed_at AS state_changed_at,
+                    payout.party_ref AS recipient_actor_ref,
+                    payout.external_ref AS payout_external_ref,
+                    forum_posts.id AS target_post_id,
+                    forum_posts.topic_id AS target_topic_id,
+                    forum_posts.forum_id AS target_forum_id
+               FROM pay_ins p
+               JOIN pay_in_legs payout
+                 ON payout.pay_in_id = p.id
+                AND payout.direction = 'out'
+          LEFT JOIN forum_posts
+                 ON forum_posts.id = substr(
+                      p.context_ref,
+                      length('forum.post.') + 1
+                    )
+                AND forum_posts.archived_at IS NULL
+              WHERE p.pay_in_type = 'tip'
+                AND p.public_receipt_ref = ?
+                AND p.state IN ('paid', 'forwarding')
+                AND p.context_ref LIKE 'forum.post.%'
+              ORDER BY CASE WHEN p.state = 'paid' THEN 0 ELSE 1 END,
+                       p.created_at DESC,
+                       p.id DESC
+              LIMIT 1`,
+          )
+          .bind(receiptRef)
+          .first<TipLadderReceiptLookupRow>(),
+      )
+    : Effect.succeed(null)
+
 const receiptStatement = (
   db: D1Database,
   challenge: ChallengeRow,
@@ -1452,7 +1591,7 @@ const receiptStatement = (
 ): D1PreparedStatement =>
   db
     .prepare(
-        `INSERT INTO forum_receipts (
+      `INSERT INTO forum_receipts (
            id,
            receipt_ref,
            action_kind,
@@ -1467,21 +1606,21 @@ const receiptStatement = (
            created_at
          )
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        receiptId,
-        receiptRef,
-        challenge.action_kind,
-        challenge.target_forum_id,
-        challenge.target_topic_id,
-        challenge.target_post_id,
-        challenge.price_asset,
-        challenge.price_value,
-        input.recipientActorRef,
-        input.l402ProofRef,
-        challenge.public_projection_json,
-        runtime.nowIso(),
-      )
+    )
+    .bind(
+      receiptId,
+      receiptRef,
+      challenge.action_kind,
+      challenge.target_forum_id,
+      challenge.target_topic_id,
+      challenge.target_post_id,
+      challenge.price_asset,
+      challenge.price_value,
+      input.recipientActorRef,
+      input.l402ProofRef,
+      challenge.public_projection_json,
+      runtime.nowIso(),
+    )
 
 const moneyActionStatement = (
   db: D1Database,
@@ -1494,7 +1633,7 @@ const moneyActionStatement = (
 ): D1PreparedStatement =>
   db
     .prepare(
-        `INSERT OR IGNORE INTO forum_money_actions (
+      `INSERT OR IGNORE INTO forum_money_actions (
            id,
            idempotency_key,
            actor_ref,
@@ -1511,23 +1650,23 @@ const moneyActionStatement = (
            created_at
          )
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        moneyActionId,
-        `money:${input.idempotencyKey}`,
-        input.actorRef,
-        challenge.action_kind,
-        challenge.target_forum_id,
-        challenge.target_topic_id,
-        challenge.target_post_id,
-        challenge.price_asset,
-        challenge.price_value,
-        paymentEventId,
-        receiptId,
-        input.recipientActorRef,
-        challenge.public_projection_json,
-        runtime.nowIso(),
-      )
+    )
+    .bind(
+      moneyActionId,
+      `money:${input.idempotencyKey}`,
+      input.actorRef,
+      challenge.action_kind,
+      challenge.target_forum_id,
+      challenge.target_topic_id,
+      challenge.target_post_id,
+      challenge.price_asset,
+      challenge.price_value,
+      paymentEventId,
+      receiptId,
+      input.recipientActorRef,
+      challenge.public_projection_json,
+      runtime.nowIso(),
+    )
 
 const readPaymentEventByProviderExternal = (
   db: D1Database,
@@ -1564,7 +1703,7 @@ const paymentEventStatement = (
 ): D1PreparedStatement =>
   db
     .prepare(
-        `INSERT INTO forum_payment_events (
+      `INSERT INTO forum_payment_events (
            id,
            money_action_id,
            provider_ref,
@@ -1576,27 +1715,27 @@ const paymentEventStatement = (
            created_at
          )
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        eventId,
-        moneyActionId,
-        event.providerRef,
-        event.externalRef,
-        challenge.price_asset,
-        challenge.price_value,
-        event.redactedEvidenceRef,
-        JSON.stringify(
-          paymentEventProjection({
-            challenge,
-            event,
-            eventId,
-            input,
-            receiptRef,
-            runtime,
-          }),
-        ),
-        runtime.nowIso(),
-      )
+    )
+    .bind(
+      eventId,
+      moneyActionId,
+      event.providerRef,
+      event.externalRef,
+      challenge.price_asset,
+      challenge.price_value,
+      event.redactedEvidenceRef,
+      JSON.stringify(
+        paymentEventProjection({
+          challenge,
+          event,
+          eventId,
+          input,
+          receiptRef,
+          runtime,
+        }),
+      ),
+      runtime.nowIso(),
+    )
 
 const readDirectTipAttemptById = (
   db: D1Database,
@@ -2161,7 +2300,7 @@ const redemptionStatement = (
 ): D1PreparedStatement =>
   db
     .prepare(
-        `INSERT INTO forum_l402_redemptions (
+      `INSERT INTO forum_l402_redemptions (
            id,
            idempotency_key,
            challenge_id,
@@ -2174,18 +2313,18 @@ const redemptionStatement = (
            created_at
          )
          VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-      )
-      .bind(
-        runtime.makeRedemptionId(),
-        input.idempotencyKey,
-        challenge.id,
-        input.actorRef,
-        input.l402ProofRef,
-        entitlementRef,
-        receiptId,
-        challenge.public_projection_json,
-        runtime.nowIso(),
-      )
+    )
+    .bind(
+      runtime.makeRedemptionId(),
+      input.idempotencyKey,
+      challenge.id,
+      input.actorRef,
+      input.l402ProofRef,
+      entitlementRef,
+      receiptId,
+      challenge.public_projection_json,
+      runtime.nowIso(),
+    )
 
 export const previewForumPaidAction = (
   db: D1Database,
@@ -2779,7 +2918,8 @@ export const reconcileForumDirectTipWebhook = (
     if (input.amount.asset !== 'sats' || input.amount.amount <= 0) {
       return yield* new ForumPaidActionError({
         kind: 'over_spend_cap',
-        reason: 'Forum direct-tip webhooks must reconcile positive sats amounts.',
+        reason:
+          'Forum direct-tip webhooks must reconcile positive sats amounts.',
       })
     }
 
@@ -3078,6 +3218,14 @@ export const lookupForumPaidActionReceipt = (
   db: D1Database,
   receiptRef: string,
 ): Effect.Effect<ForumReceiptLookupResponse | null, ForumPaidActionError> =>
-  readReceiptLookupRowByRef(db, receiptRef).pipe(
-    Effect.map(row => (row === null ? null : receiptLookupFromRow(row))),
-  )
+  Effect.gen(function* () {
+    const receiptRow = yield* readReceiptLookupRowByRef(db, receiptRef)
+
+    if (receiptRow !== null) {
+      return receiptLookupFromRow(receiptRow)
+    }
+
+    const ladderRow = yield* readTipLadderReceiptLookupRowByRef(db, receiptRef)
+
+    return ladderRow === null ? null : tipLadderReceiptLookupFromRow(ladderRow)
+  })

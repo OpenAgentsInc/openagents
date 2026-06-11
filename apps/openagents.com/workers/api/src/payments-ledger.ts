@@ -70,6 +70,7 @@ export type PayInPlan = Readonly<{
   rung: PayInRung | null
   contextRef: string | null
   idempotencyKey: string
+  publicReceiptRef: string | null
   genesisId: string | null
   legs: ReadonlyArray<PayInLegPlan>
 }>
@@ -94,9 +95,7 @@ const assertPlanInvariants = (plan: PayInPlan): void => {
     .reduce((sum, leg) => sum + leg.amountMsat, 0)
 
   if (inMsat !== plan.costMsat) {
-    throw new PayInPlanError(
-      'funding legs must cover the pay-in cost exactly',
-    )
+    throw new PayInPlanError('funding legs must cover the pay-in cost exactly')
   }
 
   const outMsat = plan.legs
@@ -211,14 +210,16 @@ export const createPayInStatements = (
         plan.rung,
         plan.contextRef,
         plan.idempotencyKey,
+        plan.publicReceiptRef,
         plan.genesisId,
         nowIso,
         nowIso,
       ],
       sql: `INSERT INTO pay_ins
             (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
-             idempotency_key, genesis_id, created_at, state_changed_at)
-            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+             idempotency_key, public_receipt_ref, genesis_id, created_at,
+             state_changed_at)
+            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
     },
   ]
 
@@ -387,6 +388,7 @@ export const retryPayInStatements = (
       input.newPlan.rung,
       input.newPlan.contextRef,
       input.newPlan.idempotencyKey,
+      input.newPlan.publicReceiptRef,
       input.newPlan.genesisId,
       nowIso,
       nowIso,
@@ -395,8 +397,9 @@ export const retryPayInStatements = (
     ],
     sql: `INSERT INTO pay_ins
           (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
-           idempotency_key, genesis_id, created_at, state_changed_at)
-          SELECT ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?
+           idempotency_key, public_receipt_ref, genesis_id, created_at,
+           state_changed_at)
+          SELECT ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (
             SELECT 1 FROM pay_ins WHERE id = ? AND successor_id = ?
           )`,
@@ -520,11 +523,11 @@ export const runLedgerStatements = async (
   )
 }
 
-export const sumAgentBalancesMsat = async (
-  db: D1Database,
-): Promise<number> => {
+export const sumAgentBalancesMsat = async (db: D1Database): Promise<number> => {
   const row = await db
-    .prepare('SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances')
+    .prepare(
+      'SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances',
+    )
     .first()
 
   return Number((row as { total?: unknown } | null)?.total ?? 0)

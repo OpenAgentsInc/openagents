@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 
+import { sha256Hex } from './agent-registration'
 import {
   type LedgerStatement,
   type PayInPlan,
@@ -25,8 +26,36 @@ import type { BufferPayFn } from './tips-sweep'
 
 export const TIP_LADDER_DEFAULT_SEND_CREDITS_BELOW_SAT = 10
 export const TIP_LADDER_DEFAULT_RECEIVE_CREDITS_BELOW_SAT = 10
+export const TIP_LADDER_RECEIPT_REF_PREFIX = 'receipt.forum.tip_ladder.'
+
+const tipLadderReceiptRefPattern =
+  /^receipt\.forum\.tip_ladder\.[A-Za-z0-9_.:-]{8,180}$/
+const creditedFallbackSuffix = ':credited_fallback'
 
 export type TipLadderRung = 'credited' | 'direct_bolt12'
+
+export const tipLadderCanonicalIdempotencyKey = (
+  idempotencyKey: string,
+): string =>
+  idempotencyKey.endsWith(creditedFallbackSuffix)
+    ? idempotencyKey.slice(0, -creditedFallbackSuffix.length)
+    : idempotencyKey
+
+export const tipLadderReceiptRefFromDigest = (digestHex: string): string =>
+  `${TIP_LADDER_RECEIPT_REF_PREFIX}sha256.${digestHex.slice(0, 32)}`
+
+export const tipLadderReceiptRefFromIdempotencyKey = async (
+  idempotencyKey: string,
+): Promise<string> =>
+  tipLadderReceiptRefFromDigest(
+    await sha256Hex(tipLadderCanonicalIdempotencyKey(idempotencyKey)),
+  )
+
+export const isTipLadderReceiptRef = (receiptRef: string): boolean =>
+  tipLadderReceiptRefPattern.test(receiptRef)
+
+export const artanisResponderTipReceiptRef = (topicId: string): string =>
+  `${TIP_LADDER_RECEIPT_REF_PREFIX}artanis_responder.${topicId}`
 
 export type TipLadderDecision =
   | Readonly<{
@@ -96,6 +125,7 @@ export type CreditedTipPlanInput = Readonly<{
   amountSat: number
   postId: string
   idempotencyKey: string
+  publicReceiptRef: string | null
   ladderReason: string
 }>
 
@@ -114,6 +144,7 @@ export const creditedTipStatements = (
     costMsat: amountMsat,
     genesisId: null,
     idempotencyKey: input.idempotencyKey,
+    publicReceiptRef: input.publicReceiptRef,
     legs: [
       {
         amountMsat,
@@ -163,6 +194,7 @@ export type TipLadderResult =
       rung: TipLadderRung
       ladderReason: string
       payInId: string
+      receiptRef: string
       amountSat: number
       senderBalanceMsatAfter: number
     }>
@@ -195,11 +227,21 @@ export const executeTipLadder = (
     tipsBufferConfigured: boolean
     postId: string
     idempotencyKey: string
+    publicReceiptRef: string
     makeId: () => string
     nowIso: string
   }>,
 ): Effect.Effect<TipLadderResult, TipLadderError> =>
   Effect.gen(function* () {
+    if (!isTipLadderReceiptRef(input.publicReceiptRef)) {
+      return yield* Effect.fail(
+        new TipLadderError(
+          'invalid_public_receipt_ref',
+          'Tip ladder public receipt ref is not public-safe.',
+        ),
+      )
+    }
+
     const senderBalance = yield* Effect.promise(() =>
       readAgentBalance(db, input.senderRef),
     )
@@ -259,6 +301,7 @@ export const executeTipLadder = (
                 costMsat: amountMsat,
                 genesisId: null,
                 idempotencyKey: input.idempotencyKey,
+                publicReceiptRef: input.publicReceiptRef,
                 legs: [
                   {
                     amountMsat,
@@ -320,6 +363,7 @@ export const executeTipLadder = (
           kind: 'tipped' as const,
           ladderReason: 'direct_forwarding',
           payInId: directPayInId,
+          receiptRef: input.publicReceiptRef,
           rung: 'direct_bolt12' as const,
           senderBalanceMsatAfter: senderBalanceMsat - amountMsat,
         }
@@ -352,6 +396,7 @@ export const executeTipLadder = (
           kind: 'tipped' as const,
           ladderReason: 'direct_settled',
           payInId: directPayInId,
+          receiptRef: input.publicReceiptRef,
           rung: 'direct_bolt12' as const,
           senderBalanceMsatAfter: senderBalanceMsat - amountMsat,
         }
@@ -404,6 +449,7 @@ export const executeTipLadder = (
         payInId,
         payoutLegId: input.makeId(),
         postId: input.postId,
+        publicReceiptRef: input.publicReceiptRef,
         recipientRef: input.recipientRef,
         senderRef: input.senderRef,
       },
@@ -424,6 +470,7 @@ export const executeTipLadder = (
       kind: 'tipped' as const,
       ladderReason,
       payInId,
+      receiptRef: input.publicReceiptRef,
       rung: 'credited' as const,
       senderBalanceMsatAfter: senderBalanceMsat - input.amountSat * 1000,
     }
