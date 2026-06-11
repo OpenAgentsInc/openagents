@@ -180,6 +180,30 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/autopilot-aperture-contracts.test.ts` and
   `workers/api/src/autopilot-work-request.test.ts`.
 
+## Autopilot Bridge API Parity And Work-Creation Contract
+
+- Every MVP browser/workroom Autopilot capability must have a registered-agent
+  API peer in the checked-in parity matrix, or carry an explicit waiver with an
+  issue ref and reason ref. A new user-facing route without an API peer or
+  waiver is a contract failure, not a documentation gap.
+- The Bridge parity projection is public-safe evidence only. It carries
+  `generatedAt`, the shared staleness contract, web/API/proof/test refs, and
+  waiver refs; it must not grant runtime, spend, provider mutation, payout,
+  settlement, accepted-work, or public-claim authority by itself.
+- Forum `request-coding` and work-request interactions may spawn Autopilot
+  coding orders only as ref-only links between the registered agent, Forum
+  thread/action, mission, work order, budget/payment mode, and lifecycle
+  receipts. Raw prompts, private repo material, provider payloads, wallet
+  material, payment secrets, customer data, and raw runner logs must not cross
+  the Forum boundary.
+- Autonomic `request_coding_work` ticks are proposal records gated by
+  operator enablement, per-tick budget, funded payment authority, validator
+  re-execution, and repo-authority review. The autonomic may propose a work
+  order draft and reserve intent; it must not self-execute, self-accept, or
+  bypass human review where repo authority is involved.
+- Regression coverage starts in
+  `workers/api/src/autopilot-bridge-contracts.test.ts`.
+
 ## Typed Email Side Effects
 
 - Production email sends must pass through `EmailService`; route handlers and
