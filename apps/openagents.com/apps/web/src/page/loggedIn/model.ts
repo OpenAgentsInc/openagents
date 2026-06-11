@@ -886,6 +886,12 @@ export const RedeemingBillingCoupon = ts('BillingRedeemingCoupon', {
 export const OpeningBillingCheckout = ts('BillingOpeningCheckout', {
   packageId: S.String,
 })
+export const PreparingBillingCardSetup = ts('BillingPreparingCardSetup', {})
+export const SavingBillingAutoTopUpPolicy = ts(
+  'BillingSavingAutoTopUpPolicy',
+  {},
+)
+export const RunningBillingAutoTopUp = ts('BillingRunningAutoTopUp', {})
 export const SucceededBillingAction = ts('BillingSucceeded', {
   message: S.String,
 })
@@ -896,6 +902,9 @@ export const BillingAction = S.Union([
   IdleBillingAction,
   RedeemingBillingCoupon,
   OpeningBillingCheckout,
+  PreparingBillingCardSetup,
+  SavingBillingAutoTopUpPolicy,
+  RunningBillingAutoTopUp,
   SucceededBillingAction,
   FailedBillingAction,
 ])
@@ -1545,8 +1554,7 @@ export const CustomerFulfillmentArtifactsState = S.Union([
 export type CustomerFulfillmentArtifactsState =
   typeof CustomerFulfillmentArtifactsState.Type
 
-export const AUTOPILOT_WORK_LIST_PROMISE_ID =
-  'autopilot.mission_briefing.v1'
+export const AUTOPILOT_WORK_LIST_PROMISE_ID = 'autopilot.mission_briefing.v1'
 
 export const AutopilotWorkState = S.Literals([
   'access_required',
@@ -1582,8 +1590,7 @@ export const AutopilotWorkReviewAction = S.Literals([
   'reject',
   'request_changes',
 ])
-export type AutopilotWorkReviewAction =
-  typeof AutopilotWorkReviewAction.Type
+export type AutopilotWorkReviewAction = typeof AutopilotWorkReviewAction.Type
 
 export const AutopilotWorkPromiseRef = S.Struct({
   blockerRefs: S.Array(S.String),
@@ -1609,8 +1616,7 @@ export const AutopilotWorkListResponse = S.Struct({
   promiseId: S.String,
   workOrders: S.Array(AutopilotWorkSummary),
 })
-export type AutopilotWorkListResponse =
-  typeof AutopilotWorkListResponse.Type
+export type AutopilotWorkListResponse = typeof AutopilotWorkListResponse.Type
 
 export const AutopilotWorkExecutionCloseout = S.Struct({
   acceptedWorkAuthority: S.Boolean,
@@ -1763,8 +1769,7 @@ export const AutopilotMissionBriefing = S.Struct({
   }),
   workOrderRef: S.String,
 })
-export type AutopilotMissionBriefing =
-  typeof AutopilotMissionBriefing.Type
+export type AutopilotMissionBriefing = typeof AutopilotMissionBriefing.Type
 
 export const AutopilotWorkBriefingResponse = S.Struct({
   briefing: AutopilotMissionBriefing,
@@ -1795,8 +1800,7 @@ export const AutopilotWorkComposerField = S.Literals([
   'repositoryFullName',
   'verificationCommand',
 ])
-export type AutopilotWorkComposerField =
-  typeof AutopilotWorkComposerField.Type
+export type AutopilotWorkComposerField = typeof AutopilotWorkComposerField.Type
 
 export const AutopilotWorkComposerDraft = S.Struct({
   branch: S.String,
@@ -1805,8 +1809,7 @@ export const AutopilotWorkComposerDraft = S.Struct({
   repositoryFullName: S.String,
   verificationCommand: S.String,
 })
-export type AutopilotWorkComposerDraft =
-  typeof AutopilotWorkComposerDraft.Type
+export type AutopilotWorkComposerDraft = typeof AutopilotWorkComposerDraft.Type
 
 export const AutopilotWorkComposerIdle = ts('AutopilotWorkComposerIdle', {})
 export const AutopilotWorkComposerSubmitting = ts(
@@ -1828,14 +1831,10 @@ export const AutopilotWorkComposerState = S.Union([
   AutopilotWorkComposerSucceeded,
   AutopilotWorkComposerFailed,
 ])
-export type AutopilotWorkComposerState =
-  typeof AutopilotWorkComposerState.Type
+export type AutopilotWorkComposerState = typeof AutopilotWorkComposerState.Type
 
 export const AutopilotWorkDetailIdle = ts('AutopilotWorkDetailIdle', {})
-export const AutopilotWorkDetailLoading = ts(
-  'AutopilotWorkDetailLoading',
-  {},
-)
+export const AutopilotWorkDetailLoading = ts('AutopilotWorkDetailLoading', {})
 export const AutopilotWorkDetailLoaded = ts('AutopilotWorkDetailLoaded', {
   response: AutopilotWorkResponse,
 })
@@ -1851,10 +1850,7 @@ export const AutopilotWorkDetailState = S.Union([
 export type AutopilotWorkDetailState = typeof AutopilotWorkDetailState.Type
 
 export const AutopilotWorkEventsIdle = ts('AutopilotWorkEventsIdle', {})
-export const AutopilotWorkEventsLoading = ts(
-  'AutopilotWorkEventsLoading',
-  {},
-)
+export const AutopilotWorkEventsLoading = ts('AutopilotWorkEventsLoading', {})
 export const AutopilotWorkEventsLoaded = ts('AutopilotWorkEventsLoaded', {
   response: AutopilotWorkEventsResponse,
 })
@@ -1874,26 +1870,19 @@ export const AutopilotWorkBriefingLoading = ts(
   'AutopilotWorkBriefingLoading',
   {},
 )
-export const AutopilotWorkBriefingLoaded = ts(
-  'AutopilotWorkBriefingLoaded',
-  {
-    response: AutopilotWorkBriefingResponse,
-  },
-)
-export const AutopilotWorkBriefingFailed = ts(
-  'AutopilotWorkBriefingFailed',
-  {
-    error: S.String,
-  },
-)
+export const AutopilotWorkBriefingLoaded = ts('AutopilotWorkBriefingLoaded', {
+  response: AutopilotWorkBriefingResponse,
+})
+export const AutopilotWorkBriefingFailed = ts('AutopilotWorkBriefingFailed', {
+  error: S.String,
+})
 export const AutopilotWorkBriefingState = S.Union([
   AutopilotWorkBriefingIdle,
   AutopilotWorkBriefingLoading,
   AutopilotWorkBriefingLoaded,
   AutopilotWorkBriefingFailed,
 ])
-export type AutopilotWorkBriefingState =
-  typeof AutopilotWorkBriefingState.Type
+export type AutopilotWorkBriefingState = typeof AutopilotWorkBriefingState.Type
 
 export const AutopilotWorkReviewIdle = ts('AutopilotWorkReviewIdle', {})
 export const AutopilotWorkReviewSubmitting = ts(
@@ -1902,12 +1891,9 @@ export const AutopilotWorkReviewSubmitting = ts(
     action: AutopilotWorkReviewAction,
   },
 )
-export const AutopilotWorkReviewSucceeded = ts(
-  'AutopilotWorkReviewSucceeded',
-  {
-    response: AutopilotWorkResponse,
-  },
-)
+export const AutopilotWorkReviewSucceeded = ts('AutopilotWorkReviewSucceeded', {
+  response: AutopilotWorkResponse,
+})
 export const AutopilotWorkReviewFailed = ts('AutopilotWorkReviewFailed', {
   error: S.String,
 })

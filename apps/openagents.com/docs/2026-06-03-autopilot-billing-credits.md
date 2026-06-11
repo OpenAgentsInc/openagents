@@ -3,7 +3,8 @@
 Autopilot now has a first-party USD credit ledger in D1. The balance is not a
 mutable account number; it is derived from ledger entries:
 
-- positive entries: launch grant, coupon credit, Stripe checkout purchase
+- positive entries: launch grant, coupon credit, Stripe checkout purchase,
+  Stripe auto top-up
 - negative entries: SHC container usage and Codex token usage
 
 ## Tables
@@ -25,6 +26,12 @@ Session attempt records, webhook receipts, and the `stripe_checkout` ledger
 source. The D1 ledger remains the product balance authority; Stripe confirms
 payment, then OpenAgents product surface appends one idempotent positive ledger row per paid Checkout
 Session.
+
+Migration `0170_billing_auto_top_up.sql` adds Stripe saved-payment-method
+metadata, auto-top-up policy rows, auto-top-up event rows, and the
+`stripe_auto_top_up` ledger source. OpenAgents stores Stripe IDs, card brand,
+last4, expiry, policy amounts, and event status only. Raw card data remains
+owned by Stripe.
 
 New users receive an initial $10.00 launch credit so existing authenticated
 workflows do not dead-end after deploy.
@@ -56,6 +63,18 @@ pricing config before external billing is finalized.
 - `GET /api/billing/stripe/checkout-return`
   - retries idempotent fulfillment for the returned Checkout Session and
     redirects to clean `/billing`.
+- `POST /api/billing/stripe/setup-intents`
+  - creates a Stripe SetupIntent for saving a card for future off-session
+    top-ups.
+- `POST /api/billing/stripe/setup-intents/save`
+  - verifies a succeeded SetupIntent and stores only Stripe payment-method
+    metadata in D1.
+- `POST /api/billing/auto-top-up-policy`
+  - saves the user's threshold, top-up amount, monthly cap, and enabled state.
+- `POST /api/billing/auto-top-up/run`
+  - checks the current balance and policy, charges the saved Stripe payment
+    method off-session when the threshold is crossed, writes one idempotent
+    `stripe_auto_top_up` credit, and records declined/cap-reached events.
 - `POST /api/omni/operator/billing/credits`
   - admin-token-only support endpoint for positive manual ledger credits.
   - accepts `email`, `userId`, or `githubLogin` selector fields plus
@@ -100,6 +119,14 @@ Coupon redemption and paid Stripe checkout fulfillment reactivate the billing
 account after applying credit, so a user can recover from suspension without
 manual database edits.
 
+Auto top-up runs before suspension when invoked by the metering path or the
+manual billing-page check. A successful charge writes a linked Stripe
+PaymentIntent event plus a positive ledger entry and reactivates the account.
+If the monthly cap is reached, the saved card is missing, or Stripe declines
+the off-session charge, the event is recorded and the policy is paused or left
+blocked without retry loops. The normal out-of-credits suspend/cancel/email
+path still applies when the cap blocks recovery.
+
 The product state changes are authoritative even if the SHC control API fails
 or does not expose a cancel route yet. SHC still needs a fully documented
 session lifecycle endpoint before remote cleanup can be treated as guaranteed.
@@ -124,6 +151,8 @@ Billing is usage-only; there is no subscription plan surface. The page shows:
 - current USD credit balance;
 - SHC and Codex rates;
 - payment-method status for the server-side checkout flow;
+- card-on-file status, auto-top-up threshold, top-up amount, monthly cap, and
+  recent auto-top-up events;
 - buy-credit packages;
 - coupon redemption;
 - active metered runs;
@@ -134,6 +163,11 @@ hosted Checkout Session and the browser navigates to the returned provider URL.
 Success and cancellation return to clean `/billing`; product URLs do not carry
 Checkout result query parameters.
 
+The auto-top-up controls call the authenticated billing APIs above. The page
+does not collect raw card data; Stripe SetupIntent confirmation must happen
+through a Stripe-owned card collection flow before
+`/api/billing/stripe/setup-intents/save` can persist a payment-method ref.
+
 ## Stripe Deployment Notes
 
 Stripe checkout remains gated by Worker configuration. Operators must configure
@@ -141,6 +175,14 @@ test-mode API key material, webhook signing, and credit package Price IDs before
 local or staging verification. Do not enable live card checkout until test-mode
 Checkout creation, webhook delivery, duplicate webhook handling, and return-page
 fulfillment have been verified against the D1 ledger.
+
+Auto top-up uses the same Stripe API key boundary. It creates SetupIntents for
+card-on-file setup and PaymentIntents with `off_session: true` for threshold
+charges. Do not pass `payment_method_types`; let Stripe choose eligible payment
+methods from the configured account and saved card. Use restricted Stripe keys
+where possible, keep webhook/API secrets out of logs and docs, and verify
+declined-card, missing-card, monthly-cap, duplicate idempotency, and successful
+charge cases in test mode before enabling live top-ups.
 
 ## 2026-06-03 Artanis Smoke Credit
 

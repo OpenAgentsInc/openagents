@@ -1,4 +1,8 @@
-import { readBillingSummary, redeemBillingCoupon } from './billing'
+import {
+  readBillingSummary,
+  redeemBillingCoupon,
+  upsertBillingAutoTopUpPolicy,
+} from './billing'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { readJsonObject } from './json-boundary'
 import { firstText } from './omni-runs'
@@ -66,6 +70,20 @@ const billingRouteErrorResponse = (error: unknown): Response => {
   )
 }
 
+const firstNumber = (...values: ReadonlyArray<unknown>): number | undefined => {
+  const number = values
+    .map(value =>
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number(value)
+          : Number.NaN,
+    )
+    .find(value => Number.isFinite(value))
+
+  return number === undefined ? undefined : Math.trunc(number)
+}
+
 type BillingApiDependencies<
   Session extends BillingSession,
   Env extends BillingEnv,
@@ -95,6 +113,25 @@ type BillingApiDependencies<
       payload: string
       signature: string | null
     }) => Promise<unknown>
+    createSetupIntent: (input: {
+      db: D1Database
+      email?: string | undefined
+      userId: string
+    }) => Promise<
+      Readonly<{ clientSecret: string; setupIntentId: string; status: string }>
+    >
+    saveSetupIntentPaymentMethod: (input: {
+      db: D1Database
+      setupIntentId: string
+      userId: string
+    }) => Promise<unknown>
+    chargeAutoTopUp: (input: {
+      db: D1Database
+      idempotencyKey?: string | undefined
+      userId: string
+    }) => Promise<
+      Readonly<{ billing: unknown; message?: string; status: string }>
+    >
   }>
 }>
 
@@ -237,6 +274,235 @@ export const makeBillingApiHandlers = <
           message: 'Opening secure checkout.',
           packageId,
           status: 'checkout_created',
+        }),
+        session,
+      )
+    } catch (error) {
+      return dependencies.appendRefreshedSessionCookies(
+        billingRouteErrorResponse(error),
+        session,
+      )
+    }
+  },
+
+  handleBillingStripeSetupIntentApi: async (
+    request: Request,
+    environment: Env,
+    ctx: ExecutionContext,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await dependencies.requireBrowserSession(
+      request,
+      environment,
+      ctx,
+    )
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    try {
+      const stripe =
+        dependencies.stripe ?? makeStripeCheckoutServiceForRoutes(environment)
+      const setupIntent = await stripe.createSetupIntent({
+        db: openAgentsDatabase(environment),
+        email: session.user.email,
+        userId: session.user.userId,
+      })
+
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse({
+          clientSecret: setupIntent.clientSecret,
+          setupIntentId: setupIntent.setupIntentId,
+          status: setupIntent.status,
+        }),
+        session,
+      )
+    } catch (error) {
+      return dependencies.appendRefreshedSessionCookies(
+        billingRouteErrorResponse(error),
+        session,
+      )
+    }
+  },
+
+  handleBillingStripeSetupIntentSaveApi: async (
+    request: Request,
+    environment: Env,
+    ctx: ExecutionContext,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await dependencies.requireBrowserSession(
+      request,
+      environment,
+      ctx,
+    )
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const setupIntentId = firstText(body.setupIntentId, body.setup_intent)
+
+    if (setupIntentId === undefined) {
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse(
+          {
+            error: 'setup_intent_required',
+            message: 'SetupIntent is required.',
+          },
+          { status: 400 },
+        ),
+        session,
+      )
+    }
+
+    try {
+      const stripe =
+        dependencies.stripe ?? makeStripeCheckoutServiceForRoutes(environment)
+
+      await stripe.saveSetupIntentPaymentMethod({
+        db: openAgentsDatabase(environment),
+        setupIntentId,
+        userId: session.user.userId,
+      })
+
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse({
+          billing: await readBillingSummary(
+            openAgentsDatabase(environment),
+            session.user.userId,
+          ),
+          message: 'Card saved.',
+          status: 'payment_method_saved',
+        }),
+        session,
+      )
+    } catch (error) {
+      return dependencies.appendRefreshedSessionCookies(
+        billingRouteErrorResponse(error),
+        session,
+      )
+    }
+  },
+
+  handleBillingAutoTopUpPolicyApi: async (
+    request: Request,
+    environment: Env,
+    ctx: ExecutionContext,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await dependencies.requireBrowserSession(
+      request,
+      environment,
+      ctx,
+    )
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const enabled = body.enabled === true || body.enabled === 'true'
+    const thresholdCents = firstNumber(body.thresholdCents)
+    const amountCents = firstNumber(body.amountCents)
+    const monthlyCapCents = firstNumber(body.monthlyCapCents)
+
+    if (
+      thresholdCents === undefined ||
+      amountCents === undefined ||
+      monthlyCapCents === undefined
+    ) {
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse(
+          {
+            error: 'auto_top_up_policy_invalid',
+            message:
+              'Auto top-up threshold, amount, and monthly cap are required.',
+          },
+          { status: 400 },
+        ),
+        session,
+      )
+    }
+
+    const billing = await upsertBillingAutoTopUpPolicy(
+      openAgentsDatabase(environment),
+      {
+        amountCents,
+        enabled,
+        monthlyCapCents,
+        thresholdCents,
+        userId: session.user.userId,
+      },
+    )
+
+    return dependencies.appendRefreshedSessionCookies(
+      noStoreJsonResponse({
+        billing,
+        message: enabled ? 'Auto top-up enabled.' : 'Auto top-up disabled.',
+      }),
+      session,
+    )
+  },
+
+  handleBillingAutoTopUpRunApi: async (
+    request: Request,
+    environment: Env,
+    ctx: ExecutionContext,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await dependencies.requireBrowserSession(
+      request,
+      environment,
+      ctx,
+    )
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const idempotencyKey = firstText(body.idempotencyKey)
+
+    try {
+      const stripe =
+        dependencies.stripe ?? makeStripeCheckoutServiceForRoutes(environment)
+      const result = await stripe.chargeAutoTopUp({
+        db: openAgentsDatabase(environment),
+        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+        userId: session.user.userId,
+      })
+
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse({
+          billing: result.billing,
+          message:
+            result.status === 'succeeded'
+              ? 'Auto top-up completed.'
+              : 'message' in result
+                ? result.message
+                : 'Auto top-up checked.',
+          status: result.status,
         }),
         session,
       )

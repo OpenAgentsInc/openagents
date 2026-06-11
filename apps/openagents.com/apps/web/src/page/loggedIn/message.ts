@@ -12,6 +12,7 @@ import { m } from 'foldkit/message'
 
 import {
   BillingCheckoutResponse,
+  BillingSetupIntentResponse,
   BillingSummaryResponse,
   OnboardingRepositoriesResponse,
   OnboardingStatusResponse,
@@ -57,8 +58,8 @@ import {
   TeamChatMessagesResponse,
   TeamChatPostResponse,
   ThreadFileDetailResponse,
-  TokenUsageStatsFilters,
   TokenUsageStatsFilterKey,
+  TokenUsageStatsFilters,
 } from './model'
 import { ThreadFileUploadResponse, ThreadFilesResponse } from './model'
 import { MulletBootstrapResponse } from './mullet/model'
@@ -114,6 +115,14 @@ export const UpdatedBillingCouponCode = m('UpdatedBillingCouponCode', {
   value: S.String,
 })
 export const SubmittedBillingCoupon = m('SubmittedBillingCoupon')
+export const ClickedPrepareBillingCardSetup = m(
+  'ClickedPrepareBillingCardSetup',
+)
+export const ClickedEnableBillingAutoTopUp = m('ClickedEnableBillingAutoTopUp')
+export const ClickedDisableBillingAutoTopUp = m(
+  'ClickedDisableBillingAutoTopUp',
+)
+export const ClickedRunBillingAutoTopUp = m('ClickedRunBillingAutoTopUp')
 export const SucceededRedeemBillingCoupon = m('SucceededRedeemBillingCoupon', {
   response: BillingSummaryResponse,
 })
@@ -127,6 +136,36 @@ export const SucceededCreateBillingCheckout = m(
   },
 )
 export const FailedCreateBillingCheckout = m('FailedCreateBillingCheckout', {
+  error: S.String,
+})
+export const SucceededPrepareBillingCardSetup = m(
+  'SucceededPrepareBillingCardSetup',
+  {
+    response: BillingSetupIntentResponse,
+  },
+)
+export const FailedPrepareBillingCardSetup = m(
+  'FailedPrepareBillingCardSetup',
+  {
+    error: S.String,
+  },
+)
+export const SucceededUpdateBillingAutoTopUpPolicy = m(
+  'SucceededUpdateBillingAutoTopUpPolicy',
+  {
+    response: BillingSummaryResponse,
+  },
+)
+export const FailedUpdateBillingAutoTopUpPolicy = m(
+  'FailedUpdateBillingAutoTopUpPolicy',
+  {
+    error: S.String,
+  },
+)
+export const SucceededRunBillingAutoTopUp = m('SucceededRunBillingAutoTopUp', {
+  response: BillingSummaryResponse,
+})
+export const FailedRunBillingAutoTopUp = m('FailedRunBillingAutoTopUp', {
   error: S.String,
 })
 export const UpdatedInviteCode = m('UpdatedInviteCode', {
@@ -253,12 +292,9 @@ export const SucceededLoadAutopilotWorkList = m(
     response: AutopilotWorkListResponse,
   },
 )
-export const FailedLoadAutopilotWorkList = m(
-  'FailedLoadAutopilotWorkList',
-  {
-    error: S.String,
-  },
-)
+export const FailedLoadAutopilotWorkList = m('FailedLoadAutopilotWorkList', {
+  error: S.String,
+})
 export const UpdatedAutopilotWorkComposerField = m(
   'UpdatedAutopilotWorkComposerField',
   {
@@ -266,7 +302,9 @@ export const UpdatedAutopilotWorkComposerField = m(
     value: S.String,
   },
 )
-export const SubmittedAutopilotWorkComposer = m('SubmittedAutopilotWorkComposer')
+export const SubmittedAutopilotWorkComposer = m(
+  'SubmittedAutopilotWorkComposer',
+)
 export const SucceededAutopilotWorkComposer = m(
   'SucceededAutopilotWorkComposer',
   {
@@ -318,19 +356,13 @@ export const FailedLoadAutopilotWorkBriefing = m(
     error: S.String,
   },
 )
-export const SubmittedAutopilotWorkReview = m(
-  'SubmittedAutopilotWorkReview',
-  {
-    action: AutopilotWorkReviewAction,
-    workOrderRef: S.String,
-  },
-)
-export const SucceededAutopilotWorkReview = m(
-  'SucceededAutopilotWorkReview',
-  {
-    response: AutopilotWorkResponse,
-  },
-)
+export const SubmittedAutopilotWorkReview = m('SubmittedAutopilotWorkReview', {
+  action: AutopilotWorkReviewAction,
+  workOrderRef: S.String,
+})
+export const SucceededAutopilotWorkReview = m('SucceededAutopilotWorkReview', {
+  response: AutopilotWorkResponse,
+})
 export const FailedAutopilotWorkReview = m('FailedAutopilotWorkReview', {
   error: S.String,
 })
@@ -542,13 +574,10 @@ export const FailedLoadTokenUsageStats = m('FailedLoadTokenUsageStats', {
   error: S.String,
   filters: TokenUsageStatsFilters,
 })
-export const UpdatedTokenUsageStatsFilter = m(
-  'UpdatedTokenUsageStatsFilter',
-  {
-    field: TokenUsageStatsFilterKey,
-    value: S.String,
-  },
-)
+export const UpdatedTokenUsageStatsFilter = m('UpdatedTokenUsageStatsFilter', {
+  field: TokenUsageStatsFilterKey,
+  value: S.String,
+})
 export const RequestedGenerateAdminSite = m('RequestedGenerateAdminSite', {
   siteId: S.String,
 })
@@ -1056,10 +1085,20 @@ export const Message = S.Union([
   ClickedBillingPackage,
   UpdatedBillingCouponCode,
   SubmittedBillingCoupon,
+  ClickedPrepareBillingCardSetup,
+  ClickedEnableBillingAutoTopUp,
+  ClickedDisableBillingAutoTopUp,
+  ClickedRunBillingAutoTopUp,
   SucceededRedeemBillingCoupon,
   FailedRedeemBillingCoupon,
   SucceededCreateBillingCheckout,
   FailedCreateBillingCheckout,
+  SucceededPrepareBillingCardSetup,
+  FailedPrepareBillingCardSetup,
+  SucceededUpdateBillingAutoTopUpPolicy,
+  FailedUpdateBillingAutoTopUpPolicy,
+  SucceededRunBillingAutoTopUp,
+  FailedRunBillingAutoTopUp,
   UpdatedInviteCode,
   SubmittedInviteCode,
   RequestedLoadOnboardingRepositories,

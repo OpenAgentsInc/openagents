@@ -5,6 +5,10 @@ import { html } from 'foldkit/html'
 import * as Ui from '../../../ui'
 import {
   ClickedBillingPackage,
+  ClickedDisableBillingAutoTopUp,
+  ClickedEnableBillingAutoTopUp,
+  ClickedPrepareBillingCardSetup,
+  ClickedRunBillingAutoTopUp,
   Message,
   SubmittedBillingCoupon,
   UpdatedBillingCouponCode,
@@ -17,6 +21,9 @@ const actionStatus = (model: Model): 'idle' | 'busy' | 'success' | 'error' => {
       return 'idle'
     case 'BillingRedeemingCoupon':
     case 'BillingOpeningCheckout':
+    case 'BillingPreparingCardSetup':
+    case 'BillingSavingAutoTopUpPolicy':
+    case 'BillingRunningAutoTopUp':
       return 'busy'
     case 'BillingSucceeded':
       return 'success'
@@ -31,10 +38,26 @@ const actionMessage = (model: Model): string | undefined =>
       BillingIdle: () => undefined,
       BillingRedeemingCoupon: ({ code }) => `Applying coupon ${code}...`,
       BillingOpeningCheckout: () => 'Opening credit checkout...',
+      BillingPreparingCardSetup: () => 'Preparing secure card setup...',
+      BillingSavingAutoTopUpPolicy: () => 'Saving auto top-up policy...',
+      BillingRunningAutoTopUp: () => 'Checking auto top-up...',
       BillingSucceeded: ({ message }) => message,
       BillingFailed: ({ error }) => error,
     }),
   )
+
+const cardLabel = (billing: Model['auth']['billing']): string => {
+  const paymentMethod = billing.autoTopUp.savedPaymentMethod
+
+  if (paymentMethod === null) {
+    return 'No card saved'
+  }
+
+  const brand = paymentMethod.brand ?? 'Card'
+  const last4 = paymentMethod.last4 ?? 'saved'
+
+  return `${brand} ${last4}`
+}
 
 export const view = (model: Model): Html => {
   const h = html<Message>()
@@ -102,5 +125,43 @@ export const view = (model: Model): Html => {
       accruedSeconds: run.accruedSeconds,
       estimatedDebitFormatted: run.estimatedDebitFormatted,
     })),
+    autoTopUp: {
+      amountFormatted: billing.autoTopUp.policy.amountFormatted,
+      cardLabel: cardLabel(billing),
+      enabled: billing.autoTopUp.policy.enabled,
+      events: billing.autoTopUp.events.map(event => ({
+        amountFormatted: event.amountFormatted,
+        createdAt: event.createdAt,
+        id: event.id,
+        status: event.status,
+      })),
+      monthlyCapFormatted: billing.autoTopUp.policy.monthlyCapFormatted,
+      pauseReason: billing.autoTopUp.policy.pauseReason,
+      spentThisMonthFormatted: billing.autoTopUp.policy.spentThisMonthFormatted,
+      status: billing.autoTopUp.policy.status,
+      thresholdFormatted: billing.autoTopUp.policy.thresholdFormatted,
+      cardSetupAttrs: [
+        h.Type('button'),
+        ...(busy ? [h.Disabled(true)] : []),
+        h.OnClick(ClickedPrepareBillingCardSetup()),
+      ],
+      enableAttrs: [
+        h.Type('button'),
+        ...(busy || billing.autoTopUp.policy.enabled ? [h.Disabled(true)] : []),
+        h.OnClick(ClickedEnableBillingAutoTopUp()),
+      ],
+      disableAttrs: [
+        h.Type('button'),
+        ...(busy || !billing.autoTopUp.policy.enabled
+          ? [h.Disabled(true)]
+          : []),
+        h.OnClick(ClickedDisableBillingAutoTopUp()),
+      ],
+      runAttrs: [
+        h.Type('button'),
+        ...(busy ? [h.Disabled(true)] : []),
+        h.OnClick(ClickedRunBillingAutoTopUp()),
+      ],
+    },
   })
 }

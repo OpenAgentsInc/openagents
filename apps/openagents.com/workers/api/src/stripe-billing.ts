@@ -5,8 +5,12 @@ import Stripe from 'stripe'
 import {
   BILLING_CURRENCY,
   type BillingSummary,
+  applyStripeAutoTopUpCredit,
   applyStripeCheckoutCredit,
+  pauseBillingAutoTopUpPolicy,
+  readBillingBalanceCents,
   readBillingSummary,
+  recordBillingAutoTopUpEvent,
   systemBillingRuntime,
 } from './billing'
 import { WorkerSecret, redactedValue } from './config'
@@ -24,6 +28,12 @@ export const StripeEventId = S.String.pipe(S.brand('StripeEventId'))
 export type StripeEventId = typeof StripeEventId.Type
 export const StripePriceId = S.String.pipe(S.brand('StripePriceId'))
 export type StripePriceId = typeof StripePriceId.Type
+export const StripeSetupIntentId = S.String.pipe(S.brand('StripeSetupIntentId'))
+export type StripeSetupIntentId = typeof StripeSetupIntentId.Type
+export const StripePaymentIntentId = S.String.pipe(
+  S.brand('StripePaymentIntentId'),
+)
+export type StripePaymentIntentId = typeof StripePaymentIntentId.Type
 
 export const BillingCreditPackageId = S.String.pipe(
   S.brand('BillingCreditPackageId'),
@@ -54,6 +64,31 @@ export type StripeWebhookResult = Readonly<{
   status: 'processed' | 'ignored'
   type: string
 }>
+
+export type StripeSetupIntentSnapshot = Readonly<{
+  clientSecret: string
+  customerId: StripeCustomerId
+  setupIntentId: StripeSetupIntentId
+  status: string
+}>
+
+export type StripeSavedPaymentMethodSnapshot = Readonly<{
+  brand: string | null
+  expMonth: number | null
+  expYear: number | null
+  last4: string | null
+  paymentMethodId: string
+  setupIntentId: StripeSetupIntentId
+  status: string
+}>
+
+export type StripeAutoTopUpChargeResult =
+  | Readonly<{ billing: BillingSummary; status: 'succeeded' }>
+  | Readonly<{
+      billing: BillingSummary
+      message: string
+      status: 'cap_reached' | 'declined' | 'requires_payment_method' | 'skipped'
+    }>
 
 export class StripeConfigError extends S.TaggedErrorClass<StripeConfigError>()(
   'StripeConfigError',
@@ -201,6 +236,30 @@ export type StripeCheckoutServiceShape = Readonly<{
     db: D1Database
     sessionId: string
   }) => Effect.Effect<BillingSummary, StripeCheckoutError | StripeProviderError>
+  createSetupIntent: (input: {
+    db: D1Database
+    email?: string | undefined
+    userId: string
+  }) => Effect.Effect<
+    StripeSetupIntentSnapshot,
+    StripeCheckoutError | StripeProviderError
+  >
+  saveSetupIntentPaymentMethod: (input: {
+    db: D1Database
+    setupIntentId: string
+    userId: string
+  }) => Effect.Effect<
+    StripeSavedPaymentMethodSnapshot,
+    StripeCheckoutError | StripeProviderError
+  >
+  chargeAutoTopUp: (input: {
+    db: D1Database
+    idempotencyKey?: string | undefined
+    userId: string
+  }) => Effect.Effect<
+    StripeAutoTopUpChargeResult,
+    StripeCheckoutError | StripeProviderError
+  >
 }>
 
 export class StripeCheckoutService extends Context.Service<
@@ -224,6 +283,21 @@ export const StripeCheckoutServiceLive = Layer.effect(
         Effect.tryPromise({
           catch: error => checkoutError(error),
           try: () => fulfillCheckoutSession(config, stripeClient, input),
+        }),
+      createSetupIntent: input =>
+        Effect.tryPromise({
+          catch: error => checkoutError(error),
+          try: () => createSetupIntent(stripeClient, input),
+        }),
+      saveSetupIntentPaymentMethod: input =>
+        Effect.tryPromise({
+          catch: error => checkoutError(error),
+          try: () => saveSetupIntentPaymentMethod(stripeClient, input),
+        }),
+      chargeAutoTopUp: input =>
+        Effect.tryPromise({
+          catch: error => checkoutError(error),
+          try: () => chargeAutoTopUp(stripeClient, input),
         }),
     }
   }),
@@ -634,6 +708,325 @@ const fulfillCheckoutSession = async (
   return summary
 }
 
+const createSetupIntent = async (
+  stripeClient: StripeClientShape,
+  input: Readonly<{
+    db: D1Database
+    email?: string | undefined
+    userId: string
+  }>,
+): Promise<StripeSetupIntentSnapshot> => {
+  const customerId = await ensureStripeCustomer(stripeClient, {
+    db: input.db,
+    email: input.email,
+    userId: input.userId,
+  })
+  const stripe = stripeClient.unsafeClient()
+  const setupIntent = await stripe.setupIntents.create(
+    {
+      customer: customerId,
+      metadata: {
+        omega_user_id: input.userId,
+        product: 'openagents_autopilot_credits',
+      },
+      usage: 'off_session',
+    },
+    {
+      idempotencyKey: `billing:stripe-setup-intent:${input.userId}:${systemBillingRuntime.randomId('attempt')}`,
+    },
+  )
+
+  if (setupIntent.client_secret === null) {
+    throw new StripeCheckoutError({
+      reason: 'Stripe did not return a SetupIntent client secret.',
+    })
+  }
+
+  return {
+    clientSecret: setupIntent.client_secret,
+    customerId,
+    setupIntentId: StripeSetupIntentId.make(setupIntent.id),
+    status: setupIntent.status,
+  }
+}
+
+const paymentMethodCardSnapshot = (
+  paymentMethod: Stripe.PaymentMethod,
+): Readonly<{
+  brand: string | null
+  expMonth: number | null
+  expYear: number | null
+  last4: string | null
+}> => ({
+  brand: paymentMethod.card?.brand ?? null,
+  expMonth: paymentMethod.card?.exp_month ?? null,
+  expYear: paymentMethod.card?.exp_year ?? null,
+  last4: paymentMethod.card?.last4 ?? null,
+})
+
+const setupIntentPaymentMethodId = (
+  setupIntent: Stripe.SetupIntent,
+): string | undefined => {
+  const value = setupIntent.payment_method
+
+  return typeof value === 'string' ? value : value?.id
+}
+
+const saveSetupIntentPaymentMethod = async (
+  stripeClient: StripeClientShape,
+  input: Readonly<{
+    db: D1Database
+    setupIntentId: string
+    userId: string
+  }>,
+): Promise<StripeSavedPaymentMethodSnapshot> => {
+  const stripe = stripeClient.unsafeClient()
+  const setupIntent = await stripe.setupIntents.retrieve(input.setupIntentId, {
+    expand: ['payment_method'],
+  })
+
+  if (setupIntent.status !== 'succeeded') {
+    throw new StripeCheckoutError({
+      reason: 'SetupIntent has not succeeded.',
+    })
+  }
+
+  const paymentMethodId = setupIntentPaymentMethodId(setupIntent)
+  const customerId =
+    typeof setupIntent.customer === 'string'
+      ? setupIntent.customer
+      : setupIntent.customer?.id
+
+  if (paymentMethodId === undefined || customerId === undefined) {
+    throw new StripeCheckoutError({
+      reason: 'SetupIntent is missing payment method or customer.',
+    })
+  }
+
+  const rawPaymentMethod =
+    typeof setupIntent.payment_method === 'string'
+      ? await stripe.paymentMethods.retrieve(paymentMethodId)
+      : setupIntent.payment_method
+  const paymentMethod = rawPaymentMethod as Stripe.PaymentMethod
+  const card = paymentMethodCardSnapshot(paymentMethod)
+  const now = systemBillingRuntime.nowIso()
+
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  })
+  await input.db
+    .prepare(
+      `INSERT INTO stripe_saved_payment_methods
+        (user_id, currency, livemode, stripe_customer_id,
+         stripe_payment_method_id, setup_intent_id, brand, last4, exp_month,
+         exp_year, status, created_at, updated_at)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+       ON CONFLICT(user_id, currency, livemode) DO UPDATE SET
+         stripe_customer_id = excluded.stripe_customer_id,
+         stripe_payment_method_id = excluded.stripe_payment_method_id,
+         setup_intent_id = excluded.setup_intent_id,
+         brand = excluded.brand,
+         last4 = excluded.last4,
+         exp_month = excluded.exp_month,
+         exp_year = excluded.exp_year,
+         status = 'active',
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      input.userId,
+      BILLING_CURRENCY,
+      customerId,
+      paymentMethodId,
+      setupIntent.id,
+      card.brand,
+      card.last4,
+      card.expMonth,
+      card.expYear,
+      now,
+      now,
+    )
+    .run()
+
+  return {
+    ...card,
+    paymentMethodId,
+    setupIntentId: StripeSetupIntentId.make(setupIntent.id),
+    status: 'active',
+  }
+}
+
+type AutoTopUpChargeRow = Readonly<{
+  amount_cents: number
+  enabled: number
+  monthly_cap_cents: number
+  spent_this_month_cents: number
+  status: string
+  stripe_customer_id: string | null
+  stripe_payment_method_id: string | null
+  threshold_cents: number
+}>
+
+const chargeAutoTopUp = async (
+  stripeClient: StripeClientShape,
+  input: Readonly<{
+    db: D1Database
+    idempotencyKey?: string | undefined
+    userId: string
+  }>,
+): Promise<StripeAutoTopUpChargeResult> => {
+  const balanceBeforeCents = await readBillingBalanceCents(
+    input.db,
+    input.userId,
+  )
+  const policy = await input.db
+    .prepare(
+      `SELECT p.enabled, p.threshold_cents, p.amount_cents,
+              p.monthly_cap_cents, p.spent_this_month_cents, p.status,
+              pm.stripe_customer_id, pm.stripe_payment_method_id
+       FROM billing_auto_top_up_policies p
+       LEFT JOIN stripe_saved_payment_methods pm
+         ON pm.user_id = p.user_id
+        AND pm.currency = p.currency
+        AND pm.livemode = 0
+        AND pm.status = 'active'
+       WHERE p.user_id = ? AND p.currency = ?`,
+    )
+    .bind(input.userId, BILLING_CURRENCY)
+    .first<AutoTopUpChargeRow>()
+
+  if (
+    policy === null ||
+    policy.enabled !== 1 ||
+    policy.status !== 'active' ||
+    balanceBeforeCents > policy.threshold_cents
+  ) {
+    return {
+      billing: await readBillingSummary(input.db, input.userId),
+      message: 'Auto top-up was not needed.',
+      status: 'skipped',
+    }
+  }
+
+  const idempotencyKey =
+    input.idempotencyKey ??
+    `billing:stripe-auto-top-up:${input.userId}:${systemBillingRuntime.nowIso().slice(0, 10)}:${policy.spent_this_month_cents}`
+
+  if (
+    policy.spent_this_month_cents + policy.amount_cents >
+    policy.monthly_cap_cents
+  ) {
+    await recordBillingAutoTopUpEvent(input.db, {
+      amountCents: policy.amount_cents,
+      balanceBeforeCents,
+      idempotencyKey: `${idempotencyKey}:cap`,
+      reason: 'Monthly auto top-up cap reached.',
+      status: 'cap_reached',
+      userId: input.userId,
+    })
+
+    return {
+      billing: await readBillingSummary(input.db, input.userId),
+      message: 'Monthly auto top-up cap reached.',
+      status: 'cap_reached',
+    }
+  }
+
+  if (
+    policy.stripe_customer_id === null ||
+    policy.stripe_payment_method_id === null
+  ) {
+    await pauseBillingAutoTopUpPolicy(input.db, {
+      reason: 'No saved payment method.',
+      userId: input.userId,
+    })
+    await recordBillingAutoTopUpEvent(input.db, {
+      amountCents: policy.amount_cents,
+      balanceBeforeCents,
+      idempotencyKey: `${idempotencyKey}:missing-payment-method`,
+      reason: 'No saved payment method.',
+      status: 'requires_payment_method',
+      userId: input.userId,
+    })
+
+    return {
+      billing: await readBillingSummary(input.db, input.userId),
+      message: 'Add a card before enabling auto top-up.',
+      status: 'requires_payment_method',
+    }
+  }
+
+  try {
+    const stripe = stripeClient.unsafeClient()
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: policy.amount_cents,
+        confirm: true,
+        currency: BILLING_CURRENCY.toLowerCase(),
+        customer: policy.stripe_customer_id,
+        metadata: {
+          omega_user_id: input.userId,
+          product: 'openagents_autopilot_auto_top_up',
+        },
+        off_session: true,
+        payment_method: policy.stripe_payment_method_id,
+      },
+      { idempotencyKey },
+    )
+
+    if (paymentIntent.status !== 'succeeded') {
+      await pauseBillingAutoTopUpPolicy(input.db, {
+        reason: `Payment requires ${paymentIntent.status}.`,
+        userId: input.userId,
+      })
+      await recordBillingAutoTopUpEvent(input.db, {
+        amountCents: policy.amount_cents,
+        balanceBeforeCents,
+        idempotencyKey: `${idempotencyKey}:requires-action`,
+        paymentIntentId: paymentIntent.id,
+        reason: `Payment requires ${paymentIntent.status}.`,
+        status: 'declined',
+        userId: input.userId,
+      })
+
+      return {
+        billing: await readBillingSummary(input.db, input.userId),
+        message: 'Auto top-up payment requires attention.',
+        status: 'declined',
+      }
+    }
+
+    return {
+      billing: await applyStripeAutoTopUpCredit(input.db, {
+        amountCents: policy.amount_cents,
+        balanceBeforeCents,
+        idempotencyKey,
+        paymentIntentId: paymentIntent.id,
+        userId: input.userId,
+      }),
+      status: 'succeeded',
+    }
+  } catch (error) {
+    await pauseBillingAutoTopUpPolicy(input.db, {
+      reason: safeReason(error),
+      userId: input.userId,
+    })
+    await recordBillingAutoTopUpEvent(input.db, {
+      amountCents: policy.amount_cents,
+      balanceBeforeCents,
+      idempotencyKey: `${idempotencyKey}:declined`,
+      reason: safeReason(error),
+      status: 'declined',
+      userId: input.userId,
+    })
+
+    return {
+      billing: await readBillingSummary(input.db, input.userId),
+      message: 'Auto top-up was declined.',
+      status: 'declined',
+    }
+  }
+}
+
 const processStripeWebhook = async (
   config: StripeConfigShape,
   checkout: StripeCheckoutServiceShape,
@@ -754,6 +1147,21 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
     }) => createCreditCheckout(config, stripeClient, input),
     fulfillCheckoutSession: (input: { db: D1Database; sessionId: string }) =>
       fulfillCheckoutSession(config, stripeClient, input),
+    createSetupIntent: (input: {
+      db: D1Database
+      email?: string | undefined
+      userId: string
+    }) => createSetupIntent(stripeClient, input),
+    saveSetupIntentPaymentMethod: (input: {
+      db: D1Database
+      setupIntentId: string
+      userId: string
+    }) => saveSetupIntentPaymentMethod(stripeClient, input),
+    chargeAutoTopUp: (input: {
+      db: D1Database
+      idempotencyKey?: string | undefined
+      userId: string
+    }) => chargeAutoTopUp(stripeClient, input),
     processWebhook: (input: {
       db: D1Database
       payload: string
@@ -771,6 +1179,21 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
             catch: error => checkoutError(error),
             try: () =>
               fulfillCheckoutSession(config, stripeClient, checkoutInput),
+          }),
+        createSetupIntent: setupInput =>
+          Effect.tryPromise({
+            catch: error => checkoutError(error),
+            try: () => createSetupIntent(stripeClient, setupInput),
+          }),
+        saveSetupIntentPaymentMethod: setupInput =>
+          Effect.tryPromise({
+            catch: error => checkoutError(error),
+            try: () => saveSetupIntentPaymentMethod(stripeClient, setupInput),
+          }),
+        chargeAutoTopUp: chargeInput =>
+          Effect.tryPromise({
+            catch: error => checkoutError(error),
+            try: () => chargeAutoTopUp(stripeClient, chargeInput),
           }),
       }
 

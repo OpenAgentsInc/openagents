@@ -51,11 +51,11 @@ import {
 } from './agent-scoped-grant-routes'
 import { makeAgentSearchRoutes } from './agent-search-routes'
 import { makeAgentSiteRoutes } from './agent-site-routes'
+import { makeD1ArtanisAdminCloseoutReceiptStore } from './artanis-admin-closeout-receipts'
 import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
 } from './artanis-administrator-tick'
-import { makeD1ArtanisAdminCloseoutReceiptStore } from './artanis-admin-closeout-receipts'
 import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
 import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
@@ -5907,6 +5907,14 @@ const omniRoutes = makeOmniRoutes({
     routeEffect('handle_billing_checkout_api', () =>
       billingApiHandlers.handleBillingCheckoutApi(request, env, ctx),
     ),
+  handleBillingAutoTopUpPolicyApi: (request, env, ctx) =>
+    routeEffect('handle_billing_auto_top_up_policy_api', () =>
+      billingApiHandlers.handleBillingAutoTopUpPolicyApi(request, env, ctx),
+    ),
+  handleBillingAutoTopUpRunApi: (request, env, ctx) =>
+    routeEffect('handle_billing_auto_top_up_run_api', () =>
+      billingApiHandlers.handleBillingAutoTopUpRunApi(request, env, ctx),
+    ),
   handleBillingCouponRedeemApi: (request, env, ctx) =>
     routeEffect('handle_billing_coupon_redeem_api', () =>
       billingApiHandlers.handleBillingCouponRedeemApi(request, env, ctx),
@@ -5920,6 +5928,18 @@ const omniRoutes = makeOmniRoutes({
       billingApiHandlers.handleBillingStripeCheckoutReturnApi(
         request,
         environment,
+      ),
+    ),
+  handleBillingStripeSetupIntentApi: (request, env, ctx) =>
+    routeEffect('handle_billing_stripe_setup_intent_api', () =>
+      billingApiHandlers.handleBillingStripeSetupIntentApi(request, env, ctx),
+    ),
+  handleBillingStripeSetupIntentSaveApi: (request, env, ctx) =>
+    routeEffect('handle_billing_stripe_setup_intent_save_api', () =>
+      billingApiHandlers.handleBillingStripeSetupIntentSaveApi(
+        request,
+        env,
+        ctx,
       ),
     ),
   handleBillingStripeWebhookApi: (request, environment) =>

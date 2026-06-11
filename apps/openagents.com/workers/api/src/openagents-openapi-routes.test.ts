@@ -1,5 +1,15 @@
 import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
 import { Effect } from 'effect'
+// Anti-staleness route coverage (#4752): openapi.json froze at 2026-06-05
+// while shipped routes (including the tips receive-ladder route a green
+// promise depends on) were missing from the contract surface. This suite
+// statically scans the worker source for registered /api routes and fails
+// when a registered route is neither documented in the OpenAPI paths nor
+// listed in the explicit intentionally-undocumented allowlist below. New
+// routes therefore cannot ship silently undocumented: either add an OpenAPI
+// entry or make the omission an explicit, reviewable decision here.
+import { readFileSync as fsReadFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { OpenAgentsOpenApiEndpoint } from './openagents-openapi'
@@ -109,8 +119,7 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/training/leaderboards', 'get').operationId,
     ).toBe('listTrainingLeaderboards')
     expect(
-      operationAt(body, '/api/training/leaderboards/{lane}', 'get')
-        .operationId,
+      operationAt(body, '/api/training/leaderboards/{lane}', 'get').operationId,
     ).toBe('getTrainingLeaderboardLane')
     expect(operationAt(body, '/api/training/evals/a5', 'get').operationId).toBe(
       'readTrainingA5EvalDashboard',
@@ -776,17 +785,6 @@ describe('OpenAgents OpenAPI route', () => {
   })
 })
 
-// Anti-staleness route coverage (#4752): openapi.json froze at 2026-06-05
-// while shipped routes (including the tips receive-ladder route a green
-// promise depends on) were missing from the contract surface. This suite
-// statically scans the worker source for registered /api routes and fails
-// when a registered route is neither documented in the OpenAPI paths nor
-// listed in the explicit intentionally-undocumented allowlist below. New
-// routes therefore cannot ship silently undocumented: either add an OpenAPI
-// entry or make the omission an explicit, reviewable decision here.
-import { readFileSync as fsReadFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
-
 const srcRoot = import.meta.dirname
 
 // Routes that are deliberately not part of the public OpenAPI contract
@@ -881,9 +879,13 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/autopilot/goals/{param}/visibility',
   '/api/autopilot/missions',
   '/api/autopilot/token-leaderboards',
+  '/api/billing/auto-top-up-policy',
+  '/api/billing/auto-top-up/run',
   '/api/billing/checkout',
   '/api/billing/coupons/redeem',
   '/api/billing/stripe/checkout-return',
+  '/api/billing/stripe/setup-intents',
+  '/api/billing/stripe/setup-intents/save',
   '/api/billing/stripe/webhook',
   '/api/billing/summary',
   '/api/github-write/connections',

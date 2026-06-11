@@ -8,13 +8,22 @@ import {
   IdleBillingAction,
   Model,
   OpeningBillingCheckout,
+  PreparingBillingCardSetup,
   RedeemingBillingCoupon,
+  RunningBillingAutoTopUp,
+  SavingBillingAutoTopUpPolicy,
   SucceededBillingAction,
   authWithBilling,
   sidebarWithBilling,
 } from '../model'
 import { type UpdateReturn, noUpdate } from '../transition'
-import { CreateBillingCheckout, RedeemBillingCoupon } from './commands'
+import {
+  CreateBillingCheckout,
+  PrepareBillingCardSetup,
+  RedeemBillingCoupon,
+  RunBillingAutoTopUp,
+  UpdateBillingAutoTopUpPolicy,
+} from './commands'
 
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
 
@@ -68,6 +77,50 @@ export const updateBilling = (model: Model, message: Message): UpdateReturn =>
           Option.none(),
         ]
       },
+      ClickedPrepareBillingCardSetup: () => [
+        evo(model, {
+          billingAction: () => PreparingBillingCardSetup(),
+        }),
+        [PrepareBillingCardSetup({})],
+        Option.none(),
+      ],
+      ClickedEnableBillingAutoTopUp: () => [
+        evo(model, {
+          billingAction: () => SavingBillingAutoTopUpPolicy(),
+        }),
+        [
+          UpdateBillingAutoTopUpPolicy({
+            amountCents: model.auth.billing.autoTopUp.policy.amountCents,
+            enabled: true,
+            monthlyCapCents:
+              model.auth.billing.autoTopUp.policy.monthlyCapCents,
+            thresholdCents: model.auth.billing.autoTopUp.policy.thresholdCents,
+          }),
+        ],
+        Option.none(),
+      ],
+      ClickedDisableBillingAutoTopUp: () => [
+        evo(model, {
+          billingAction: () => SavingBillingAutoTopUpPolicy(),
+        }),
+        [
+          UpdateBillingAutoTopUpPolicy({
+            amountCents: model.auth.billing.autoTopUp.policy.amountCents,
+            enabled: false,
+            monthlyCapCents:
+              model.auth.billing.autoTopUp.policy.monthlyCapCents,
+            thresholdCents: model.auth.billing.autoTopUp.policy.thresholdCents,
+          }),
+        ],
+        Option.none(),
+      ],
+      ClickedRunBillingAutoTopUp: () => [
+        evo(model, {
+          billingAction: () => RunningBillingAutoTopUp(),
+        }),
+        [RunBillingAutoTopUp({})],
+        Option.none(),
+      ],
       SucceededRedeemBillingCoupon: ({ response }) => [
         evo(applyBillingSummary(model, response.billing), {
           billingAction: () =>
@@ -97,6 +150,57 @@ export const updateBilling = (model: Model, message: Message): UpdateReturn =>
         Option.none(),
       ],
       FailedCreateBillingCheckout: ({ error }) => [
+        evo(model, {
+          billingAction: () => FailedBillingAction({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
+      SucceededPrepareBillingCardSetup: ({ response }) => [
+        evo(model, {
+          billingAction: () =>
+            SucceededBillingAction({
+              message: `Card setup ready: ${response.setupIntentId}`,
+            }),
+        }),
+        [],
+        Option.none(),
+      ],
+      FailedPrepareBillingCardSetup: ({ error }) => [
+        evo(model, {
+          billingAction: () => FailedBillingAction({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
+      SucceededUpdateBillingAutoTopUpPolicy: ({ response }) => [
+        evo(applyBillingSummary(model, response.billing), {
+          billingAction: () =>
+            SucceededBillingAction({
+              message: response.message ?? 'Auto top-up policy updated.',
+            }),
+        }),
+        [],
+        Option.none(),
+      ],
+      FailedUpdateBillingAutoTopUpPolicy: ({ error }) => [
+        evo(model, {
+          billingAction: () => FailedBillingAction({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
+      SucceededRunBillingAutoTopUp: ({ response }) => [
+        evo(applyBillingSummary(model, response.billing), {
+          billingAction: () =>
+            SucceededBillingAction({
+              message: response.message ?? 'Auto top-up checked.',
+            }),
+        }),
+        [],
+        Option.none(),
+      ],
+      FailedRunBillingAutoTopUp: ({ error }) => [
         evo(model, {
           billingAction: () => FailedBillingAction({ error }),
         }),

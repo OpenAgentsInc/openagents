@@ -13,6 +13,7 @@ export type BillingLedgerSource =
   | 'coupon'
   | 'credit_card_placeholder'
   | 'stripe_checkout'
+  | 'stripe_auto_top_up'
   | 'container_usage'
   | 'codex_usage'
   | 'manual_adjustment'
@@ -38,6 +39,51 @@ export type BillingActiveRun = Readonly<{
   startedAt: string | null
 }>
 
+export type BillingSavedPaymentMethod = Readonly<{
+  brand: string | null
+  expMonth: number | null
+  expYear: number | null
+  last4: string | null
+  status: 'active' | 'detached' | 'failed' | 'requires_action'
+  stripePaymentMethodId: string
+  updatedAt: string
+}>
+
+export type BillingAutoTopUpPolicy = Readonly<{
+  amountCents: number
+  amountFormatted: string
+  enabled: boolean
+  monthlyCapCents: number
+  monthlyCapFormatted: string
+  pauseReason: string | null
+  spentThisMonthCents: number
+  spentThisMonthFormatted: string
+  status: 'active' | 'disabled' | 'paused'
+  thresholdCents: number
+  thresholdFormatted: string
+  updatedAt: string
+}>
+
+export type BillingAutoTopUpEvent = Readonly<{
+  amountCents: number
+  amountFormatted: string
+  createdAt: string
+  id: string
+  reason: string | null
+  status:
+    | 'cap_reached'
+    | 'declined'
+    | 'requires_payment_method'
+    | 'skipped'
+    | 'succeeded'
+}>
+
+export type BillingAutoTopUpState = Readonly<{
+  events: ReadonlyArray<BillingAutoTopUpEvent>
+  policy: BillingAutoTopUpPolicy
+  savedPaymentMethod: BillingSavedPaymentMethod | null
+}>
+
 export type BillingSummary = Readonly<{
   currency: 'USD'
   status: 'active' | 'suspended'
@@ -51,6 +97,7 @@ export type BillingSummary = Readonly<{
   }>
   recentEntries: ReadonlyArray<BillingLedgerEntry>
   activeRuns: ReadonlyArray<BillingActiveRun>
+  autoTopUp: BillingAutoTopUpState
 }>
 
 export type BillingCreditExhaustionResult =
@@ -106,6 +153,32 @@ type ActiveRunRow = Readonly<{
 type UsageCursorRow = Readonly<{
   last_billed_at: string
   total_billed_quantity: number
+}>
+type SavedPaymentMethodRow = Readonly<{
+  brand: string | null
+  exp_month: number | null
+  exp_year: number | null
+  last4: string | null
+  status: BillingSavedPaymentMethod['status']
+  stripe_payment_method_id: string
+  updated_at: string
+}>
+type AutoTopUpPolicyRow = Readonly<{
+  amount_cents: number
+  enabled: number
+  monthly_cap_cents: number
+  pause_reason: string | null
+  spent_this_month_cents: number
+  status: BillingAutoTopUpPolicy['status']
+  threshold_cents: number
+  updated_at: string
+}>
+type AutoTopUpEventRow = Readonly<{
+  amount_cents: number
+  created_at: string
+  id: string
+  reason: string | null
+  status: BillingAutoTopUpEvent['status']
 }>
 
 export type BillingRuntime = Readonly<{
@@ -250,6 +323,8 @@ const readBalanceCents = async (
   return Math.trunc(Number(row?.balance_cents ?? 0))
 }
 
+export const readBillingBalanceCents = readBalanceCents
+
 const readAccountStatus = async (
   db: D1Database,
   userId: string,
@@ -331,6 +406,220 @@ const readActiveRuns = async (
   })
 }
 
+const defaultAutoTopUpPolicy = (
+  runtime: BillingRuntime = systemBillingRuntime,
+): BillingAutoTopUpPolicy => ({
+  amountCents: 2_500,
+  amountFormatted: formatUsdCents(2_500),
+  enabled: false,
+  monthlyCapCents: 10_000,
+  monthlyCapFormatted: formatUsdCents(10_000),
+  pauseReason: null,
+  spentThisMonthCents: 0,
+  spentThisMonthFormatted: formatUsdCents(0),
+  status: 'disabled',
+  thresholdCents: 500,
+  thresholdFormatted: formatUsdCents(500),
+  updatedAt: runtime.nowIso(),
+})
+
+const policyProjection = (row: AutoTopUpPolicyRow): BillingAutoTopUpPolicy => ({
+  amountCents: row.amount_cents,
+  amountFormatted: formatUsdCents(row.amount_cents),
+  enabled: row.enabled === 1,
+  monthlyCapCents: row.monthly_cap_cents,
+  monthlyCapFormatted: formatUsdCents(row.monthly_cap_cents),
+  pauseReason: row.pause_reason,
+  spentThisMonthCents: row.spent_this_month_cents,
+  spentThisMonthFormatted: formatUsdCents(row.spent_this_month_cents),
+  status: row.status,
+  thresholdCents: row.threshold_cents,
+  thresholdFormatted: formatUsdCents(row.threshold_cents),
+  updatedAt: row.updated_at,
+})
+
+export const readBillingAutoTopUpState = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingAutoTopUpState> => {
+  const [paymentMethod, policy, events] = await Promise.all([
+    db
+      .prepare(
+        `SELECT stripe_payment_method_id, brand, last4, exp_month, exp_year,
+                status, updated_at
+         FROM stripe_saved_payment_methods
+         WHERE user_id = ? AND currency = ? AND livemode = 0`,
+      )
+      .bind(userId, BILLING_CURRENCY)
+      .first<SavedPaymentMethodRow>(),
+    db
+      .prepare(
+        `SELECT enabled, threshold_cents, amount_cents, monthly_cap_cents,
+                spent_this_month_cents, status, pause_reason, updated_at
+         FROM billing_auto_top_up_policies
+         WHERE user_id = ? AND currency = ?`,
+      )
+      .bind(userId, BILLING_CURRENCY)
+      .first<AutoTopUpPolicyRow>(),
+    db
+      .prepare(
+        `SELECT id, status, amount_cents, reason, created_at
+         FROM billing_auto_top_up_events
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT 6`,
+      )
+      .bind(userId)
+      .all<AutoTopUpEventRow>(),
+  ])
+
+  return {
+    events: events.results.map(row => ({
+      amountCents: row.amount_cents,
+      amountFormatted: formatUsdCents(row.amount_cents),
+      createdAt: row.created_at,
+      id: row.id,
+      reason: row.reason,
+      status: row.status,
+    })),
+    policy:
+      policy === null
+        ? defaultAutoTopUpPolicy(runtime)
+        : policyProjection(policy),
+    savedPaymentMethod:
+      paymentMethod === null
+        ? null
+        : {
+            brand: paymentMethod.brand,
+            expMonth: paymentMethod.exp_month,
+            expYear: paymentMethod.exp_year,
+            last4: paymentMethod.last4,
+            status: paymentMethod.status,
+            stripePaymentMethodId: paymentMethod.stripe_payment_method_id,
+            updatedAt: paymentMethod.updated_at,
+          },
+  }
+}
+
+export const upsertBillingAutoTopUpPolicy = async (
+  db: D1Database,
+  input: Readonly<{
+    amountCents: number
+    enabled: boolean
+    monthlyCapCents: number
+    thresholdCents: number
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingSummary> => {
+  await ensureBillingAccount(db, input.userId, runtime)
+
+  const thresholdCents = Math.max(100, Math.trunc(input.thresholdCents))
+  const amountCents = Math.max(500, Math.trunc(input.amountCents))
+  const monthlyCapCents = Math.max(
+    amountCents,
+    Math.trunc(input.monthlyCapCents),
+  )
+  const now = runtime.nowIso()
+
+  await db
+    .prepare(
+      `INSERT INTO billing_auto_top_up_policies
+        (user_id, currency, enabled, threshold_cents, amount_cents,
+         monthly_cap_cents, spent_this_month_cents, cap_period_yyyymm,
+         status, pause_reason, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, substr(?, 1, 7), ?, NULL, ?, ?)
+       ON CONFLICT(user_id, currency) DO UPDATE SET
+         enabled = excluded.enabled,
+         threshold_cents = excluded.threshold_cents,
+         amount_cents = excluded.amount_cents,
+         monthly_cap_cents = excluded.monthly_cap_cents,
+         status = excluded.status,
+         pause_reason = NULL,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      input.userId,
+      BILLING_CURRENCY,
+      input.enabled ? 1 : 0,
+      thresholdCents,
+      amountCents,
+      monthlyCapCents,
+      now,
+      input.enabled ? 'active' : 'disabled',
+      now,
+      now,
+    )
+    .run()
+
+  return readBillingSummary(db, input.userId, runtime)
+}
+
+export const pauseBillingAutoTopUpPolicy = async (
+  db: D1Database,
+  input: Readonly<{ reason: string; userId: string }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<void> => {
+  const now = runtime.nowIso()
+
+  await db
+    .prepare(
+      `UPDATE billing_auto_top_up_policies
+       SET enabled = 0,
+           status = 'paused',
+           pause_reason = ?,
+           updated_at = ?
+       WHERE user_id = ? AND currency = ?`,
+    )
+    .bind(compactText(input.reason, 240), now, input.userId, BILLING_CURRENCY)
+    .run()
+}
+
+export const recordBillingAutoTopUpEvent = async (
+  db: D1Database,
+  input: Readonly<{
+    amountCents: number
+    balanceAfterCents?: number | undefined
+    balanceBeforeCents?: number | undefined
+    idempotencyKey: string
+    ledgerEntryId?: string | null | undefined
+    paymentIntentId?: string | null | undefined
+    reason?: string | null | undefined
+    status: BillingAutoTopUpEvent['status']
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<void> => {
+  const now = runtime.nowIso()
+
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO billing_auto_top_up_events
+        (id, user_id, status, amount_cents, currency, balance_before_cents,
+         balance_after_cents, stripe_payment_intent_id, ledger_entry_id,
+         reason, idempotency_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      runtime.randomId('topup'),
+      input.userId,
+      input.status,
+      Math.max(0, Math.trunc(input.amountCents)),
+      BILLING_CURRENCY,
+      input.balanceBeforeCents ?? null,
+      input.balanceAfterCents ?? null,
+      input.paymentIntentId ?? null,
+      input.ledgerEntryId ?? null,
+      input.reason === undefined || input.reason === null
+        ? null
+        : compactText(input.reason, 240),
+      input.idempotencyKey,
+      now,
+    )
+    .run()
+}
+
 export const readBillingSummary = async (
   db: D1Database,
   userId: string,
@@ -338,12 +627,14 @@ export const readBillingSummary = async (
 ): Promise<BillingSummary> => {
   await ensureBillingAccount(db, userId, runtime)
 
-  const [status, balanceCents, recentEntries, activeRuns] = await Promise.all([
-    readAccountStatus(db, userId),
-    readBalanceCents(db, userId),
-    readRecentLedgerEntries(db, userId),
-    readActiveRuns(db, userId, runtime),
-  ])
+  const [status, balanceCents, recentEntries, activeRuns, autoTopUp] =
+    await Promise.all([
+      readAccountStatus(db, userId),
+      readBalanceCents(db, userId),
+      readRecentLedgerEntries(db, userId),
+      readActiveRuns(db, userId, runtime),
+      readBillingAutoTopUpState(db, userId, runtime),
+    ])
 
   return {
     currency: BILLING_CURRENCY,
@@ -358,6 +649,7 @@ export const readBillingSummary = async (
     },
     recentEntries,
     activeRuns,
+    autoTopUp,
   }
 }
 
@@ -482,6 +774,99 @@ export const applyStripeCheckoutCredit = async (
       )
       .bind(now, input.userId),
   ])
+
+  return readBillingSummary(db, input.userId, runtime)
+}
+
+export const applyStripeAutoTopUpCredit = async (
+  db: D1Database,
+  input: Readonly<{
+    amountCents: number
+    balanceBeforeCents: number
+    idempotencyKey: string
+    paymentIntentId: string
+    userId: string
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingSummary> => {
+  await ensureBillingAccount(db, input.userId, runtime)
+
+  const amountCents = Math.max(1, Math.trunc(input.amountCents))
+  const now = runtime.nowIso()
+  const period = now.slice(0, 7)
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO billing_ledger_entries
+          (id, user_id, team_id, run_id, source, description, amount_cents,
+           currency, quantity, unit, unit_rate_cents, metadata_json,
+           idempotency_key, created_at)
+         VALUES (?, ?, NULL, NULL, 'stripe_auto_top_up', ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      )
+      .bind(
+        runtime.randomId('bill'),
+        input.userId,
+        'Stripe auto top-up',
+        amountCents,
+        BILLING_CURRENCY,
+        amountCents,
+        'credit_cents',
+        metadataJson({ paymentIntentId: input.paymentIntentId }),
+        input.idempotencyKey,
+        now,
+      ),
+    db
+      .prepare(
+        `UPDATE billing_accounts
+         SET status = 'active',
+             updated_at = ?
+         WHERE user_id = ?`,
+      )
+      .bind(now, input.userId),
+    db
+      .prepare(
+        `UPDATE billing_auto_top_up_policies
+         SET spent_this_month_cents =
+               CASE
+                 WHEN cap_period_yyyymm = ? THEN spent_this_month_cents + ?
+                 ELSE ?
+               END,
+             cap_period_yyyymm = ?,
+             updated_at = ?
+         WHERE user_id = ? AND currency = ?`,
+      )
+      .bind(
+        period,
+        amountCents,
+        amountCents,
+        period,
+        now,
+        input.userId,
+        BILLING_CURRENCY,
+      ),
+  ])
+
+  const ledger = await db
+    .prepare(`SELECT id FROM billing_ledger_entries WHERE idempotency_key = ?`)
+    .bind(input.idempotencyKey)
+    .first<Readonly<{ id: string }>>()
+  const balanceAfterCents = await readBalanceCents(db, input.userId)
+
+  await recordBillingAutoTopUpEvent(
+    db,
+    {
+      amountCents,
+      balanceAfterCents,
+      balanceBeforeCents: input.balanceBeforeCents,
+      idempotencyKey: `${input.idempotencyKey}:event`,
+      ledgerEntryId: ledger?.id ?? null,
+      paymentIntentId: input.paymentIntentId,
+      status: 'succeeded',
+      userId: input.userId,
+    },
+    runtime,
+  )
 
   return readBillingSummary(db, input.userId, runtime)
 }

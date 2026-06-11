@@ -108,7 +108,50 @@ type TestStripe = NonNullable<
 const defaultStripe: TestStripe = {
   createCreditCheckout: () =>
     Promise.resolve({ checkoutUrl: 'https://checkout.stripe.test/session' }),
+  createSetupIntent: () =>
+    Promise.resolve({
+      clientSecret: 'seti_secret_test',
+      setupIntentId: 'seti_test',
+      status: 'requires_payment_method',
+    }),
   fulfillCheckoutSession: () => Promise.resolve({ ok: true }),
+  saveSetupIntentPaymentMethod: () => Promise.resolve({ ok: true }),
+  chargeAutoTopUp: input =>
+    Promise.resolve({
+      billing: {
+        activeRuns: [],
+        autoTopUp: {
+          events: [],
+          policy: {
+            amountCents: 2500,
+            amountFormatted: '$25.00',
+            enabled: true,
+            monthlyCapCents: 10000,
+            monthlyCapFormatted: '$100.00',
+            pauseReason: null,
+            spentThisMonthCents: 2500,
+            spentThisMonthFormatted: '$25.00',
+            status: 'active',
+            thresholdCents: 500,
+            thresholdFormatted: '$5.00',
+            updatedAt: '2026-06-11T00:00:00.000Z',
+          },
+          savedPaymentMethod: null,
+        },
+        balanceCents: 2500,
+        balanceFormatted: '$25.00',
+        currency: 'USD',
+        minimumRunCreditCents: 5,
+        minimumRunCreditFormatted: '$0.05',
+        rates: {
+          codexCentsPerThousandTokens: 2,
+          containerCentsPerMinute: 5,
+        },
+        recentEntries: [],
+        status: 'active',
+      },
+      status: input.idempotencyKey === 'skip' ? 'skipped' : 'succeeded',
+    }),
   processWebhook: () =>
     Promise.resolve({
       eventId: 'evt_test',
@@ -188,6 +231,69 @@ describe('billing API handlers', () => {
       checkoutUrl: 'https://checkout.stripe.test/session',
       packageId: 'pro',
       status: 'checkout_created',
+    })
+  })
+
+  test('creates Stripe SetupIntent payload for card-on-file setup', async () => {
+    const { db } = makeBillingD1()
+    const response = await makeHandlers().handleBillingStripeSetupIntentApi(
+      new Request('https://openagents.com/api/billing/stripe/setup-intents', {
+        body: '{}',
+        method: 'POST',
+      }),
+      { OPENAGENTS_DB: db },
+      executionContext(),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      clientSecret: 'seti_secret_test',
+      setupIntentId: 'seti_test',
+    })
+  })
+
+  test('saves bounded auto top-up policy', async () => {
+    const { bindings, db } = makeBillingD1()
+    const response = await makeHandlers().handleBillingAutoTopUpPolicyApi(
+      new Request('https://openagents.com/api/billing/auto-top-up-policy', {
+        body: JSON.stringify({
+          amountCents: 2500,
+          enabled: true,
+          monthlyCapCents: 10000,
+          thresholdCents: 500,
+        }),
+        method: 'POST',
+      }),
+      { OPENAGENTS_DB: db },
+      executionContext(),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'Auto top-up enabled.',
+    })
+    expect(
+      bindings.some(binding =>
+        binding.query.includes('billing_auto_top_up_policies'),
+      ),
+    ).toBe(true)
+  })
+
+  test('runs auto top-up trigger through Stripe service', async () => {
+    const { db } = makeBillingD1()
+    const response = await makeHandlers().handleBillingAutoTopUpRunApi(
+      new Request('https://openagents.com/api/billing/auto-top-up/run', {
+        body: JSON.stringify({}),
+        method: 'POST',
+      }),
+      { OPENAGENTS_DB: db },
+      executionContext(),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'Auto top-up completed.',
+      status: 'succeeded',
     })
   })
 

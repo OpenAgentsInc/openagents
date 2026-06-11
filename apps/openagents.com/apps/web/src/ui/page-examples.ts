@@ -63,6 +63,29 @@ export type BillingActiveRunDisplayItem = Readonly<{
   estimatedDebitFormatted: string
 }>
 
+export type BillingAutoTopUpDisplay<Message> = Readonly<{
+  amountFormatted: string
+  cardLabel: string
+  enabled: boolean
+  events: ReadonlyArray<
+    Readonly<{
+      amountFormatted: string
+      createdAt: string
+      id: string
+      status: string
+    }>
+  >
+  monthlyCapFormatted: string
+  pauseReason: string | null
+  spentThisMonthFormatted: string
+  status: string
+  thresholdFormatted: string
+  cardSetupAttrs: ReadonlyArray<Attribute<Message>>
+  disableAttrs: ReadonlyArray<Attribute<Message>>
+  enableAttrs: ReadonlyArray<Attribute<Message>>
+  runAttrs: ReadonlyArray<Attribute<Message>>
+}>
+
 export type UsageTotalsDisplay = Readonly<{
   inputTokens: string
   outputTokens: string
@@ -111,6 +134,7 @@ export const billingCreditsPage = <Message>(input: {
   packages: ReadonlyArray<BillingCreditPackage<Message>>
   recentEntries: ReadonlyArray<BillingLedgerDisplayItem>
   activeRuns: ReadonlyArray<BillingActiveRunDisplayItem>
+  autoTopUp: BillingAutoTopUpDisplay<Message>
 }): Html => {
   const h = html<Message>()
   const actionTone =
@@ -290,6 +314,109 @@ export const billingCreditsPage = <Message>(input: {
             [h.Class('min-w-0')],
           ),
         ],
+      ),
+      section<Message>(
+        [
+          headingBlock<Message>({
+            eyebrow: 'Auto top-up',
+            title: 'Card on file',
+            body: 'Saved cards are stored by Stripe. OpenAgents stores only card metadata and Stripe payment-method IDs.',
+            level: 2,
+          }),
+          h.div(
+            [
+              h.Class(
+                'mt-4 grid gap-px border border-[#222] bg-[#222] lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]',
+              ),
+            ],
+            [
+              h.div(
+                [h.Class('grid gap-4 bg-[#010102] p-4')],
+                [
+                  descriptionList<Message>([
+                    { label: 'Card', value: input.autoTopUp.cardLabel },
+                    {
+                      label: 'Policy',
+                      value: input.autoTopUp.enabled ? 'Enabled' : 'Disabled',
+                    },
+                    {
+                      label: 'Threshold',
+                      value: input.autoTopUp.thresholdFormatted,
+                    },
+                    { label: 'Top-up', value: input.autoTopUp.amountFormatted },
+                    {
+                      label: 'Monthly cap',
+                      value: input.autoTopUp.monthlyCapFormatted,
+                    },
+                    {
+                      label: 'Used this month',
+                      value: input.autoTopUp.spentThisMonthFormatted,
+                    },
+                    {
+                      label: 'Status',
+                      value:
+                        input.autoTopUp.pauseReason === null
+                          ? input.autoTopUp.status
+                          : `${input.autoTopUp.status} - ${input.autoTopUp.pauseReason}`,
+                    },
+                  ]),
+                  h.div(
+                    [h.Class('grid gap-2 sm:grid-cols-4')],
+                    [
+                      button<Message>({
+                        label: 'Manage card',
+                        size: 'sm',
+                        variant: 'secondary',
+                        attrs: input.autoTopUp.cardSetupAttrs,
+                      }),
+                      button<Message>({
+                        label: 'Enable',
+                        size: 'sm',
+                        variant: 'secondary',
+                        attrs: input.autoTopUp.enableAttrs,
+                      }),
+                      button<Message>({
+                        label: 'Disable',
+                        size: 'sm',
+                        variant: 'secondary',
+                        attrs: input.autoTopUp.disableAttrs,
+                      }),
+                      button<Message>({
+                        label: 'Check now',
+                        size: 'sm',
+                        variant: 'secondary',
+                        attrs: input.autoTopUp.runAttrs,
+                      }),
+                    ],
+                  ),
+                ],
+              ),
+              h.div(
+                [h.Class('grid gap-px bg-[#222]')],
+                input.autoTopUp.events.length === 0
+                  ? [
+                      h.div(
+                        [h.Class('bg-[#010102] p-4 text-sm text-white/45')],
+                        ['No auto top-up events yet.'],
+                      ),
+                    ]
+                  : input.autoTopUp.events.map(event =>
+                      h.div(
+                        [h.Class('grid gap-1 bg-[#010102] p-4')],
+                        [
+                          h.p([h.Class(titleClass)], [event.status]),
+                          h.p(
+                            [h.Class(metaClass)],
+                            [`${event.amountFormatted} - ${event.createdAt}`],
+                          ),
+                        ],
+                      ),
+                    ),
+              ),
+            ],
+          ),
+        ],
+        [h.Class('mt-4 min-w-0')],
       ),
       h.div(
         [h.Class('mt-4 grid gap-4 lg:grid-cols-2')],

@@ -334,9 +334,7 @@ describe('Omni Effect services', () => {
     expect(redactedEvent[0]?.sequence).toBe(6)
     expect(redactedEvent[0]?.payloadJson).not.toContain('refresh_token')
     await expect(
-      Effect.runPromise(
-        service.decodeCallbackEvent('runner.started'),
-      ),
+      Effect.runPromise(service.decodeCallbackEvent('runner.started')),
     ).rejects.toThrow(OmniRunnerCallbackDecodeError)
   })
 
@@ -568,6 +566,24 @@ describe('Omni Effect services', () => {
       requireMinimumRunCredits: async (_db, _userId, _runtime) => ({
         billing: {
           activeRuns: [],
+          autoTopUp: {
+            events: [],
+            policy: {
+              amountCents: 2500,
+              amountFormatted: '$25.00',
+              enabled: false,
+              monthlyCapCents: 10000,
+              monthlyCapFormatted: '$100.00',
+              pauseReason: null,
+              spentThisMonthCents: 0,
+              spentThisMonthFormatted: '$0.00',
+              status: 'disabled',
+              thresholdCents: 500,
+              thresholdFormatted: '$5.00',
+              updatedAt: '2026-06-11T00:00:00.000Z',
+            },
+            savedPaymentMethod: null,
+          },
           balanceCents: 0,
           balanceFormatted: '$0.00',
           currency: 'USD',

@@ -1114,3 +1114,37 @@ Typecheck note:
 - `bunx tsc -p apps/pylon/tsconfig.json --noEmit` remains blocked by the same
   preexisting broad Pylon issues noted in RK2. The new native runtime and
   adapter files do not appear in the remaining typecheck diagnostics.
+
+## MVP M5 / Issue #4763: Card-On-File And Auto Top-Up
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4763`
+
+Status: complete for the Stripe/D1 card-on-file policy surface and the
+server-side auto-top-up trigger.
+
+Implemented:
+
+- Added migration `0170_billing_auto_top_up.sql` for Stripe saved payment
+  method metadata, auto-top-up policy rows, auto-top-up events, and the
+  `stripe_auto_top_up` ledger source.
+- Extended the billing summary with saved-card status, policy state, monthly
+  cap usage, and recent auto-top-up events. The D1 ledger remains the balance
+  authority.
+- Added Stripe SetupIntent creation and succeeded-SetupIntent save handling.
+  OpenAgents stores Stripe customer/payment-method IDs plus brand/last4/expiry
+  only; raw card data remains with Stripe.
+- Added the auto-top-up policy API and an off-session PaymentIntent trigger
+  that writes exactly one idempotent positive ledger row on success.
+- Recorded missing-card, declined-card, skipped, and monthly-cap events. A
+  declined or missing-card path pauses the policy; a cap-reached path leaves
+  the out-of-credits suspend/cancel/notify behavior intact.
+- Updated the logged-in Billing page to show card status, policy values,
+  cap usage, event history, and actions for card setup, enable/disable, and
+  manual top-up check.
+- Updated billing docs and the OpenAPI anti-staleness route allowlist.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test -- src/billing.test.ts src/billing-routes.test.ts src/openagents-openapi-routes.test.ts src/omni-services.test.ts`
+- `cd apps/openagents.com && bunx tsc -p workers/api/tsconfig.json --noEmit`
+- `cd apps/openagents.com && bunx tsc -p apps/web/tsconfig.json --noEmit`
