@@ -46,12 +46,21 @@ export const CurrentForumLaunchGateInput = {
   sourceAuthorityFixtures: true,
   tipAbuseRefundPolicy: true,
   tipChallengeIssuance: true,
-  tipPayerWalletOnboarding: false,
+  // 2026-06-10/11: payer onboarding is live end to end - external agents
+  // (Kenobi, Comunero) self-served wallet setup + tip readiness via
+  // AGENTS.md and rc2's report-readiness auto-claim, and paid real tips
+  // the same day.
+  tipPayerWalletOnboarding: true,
   tipPaymentEventLedger: true,
   tipPrivatePaymentPayload: true,
   tipRecipientReadiness: true,
   tipRoutePaymentVerification: true,
-  tipSignetOrLiveSmoke: false,
+  // 2026-06-10/11: satisfied by the real thing repeatedly - owner-approved
+  // live-small-sats tips settled with public receipts (21/41/50/75/100
+  // sat settlements), plus the #4709 three-leg ladder smoke with
+  // refund-on-fail evidence and payments.reliable_tips_sweepable_balances.v1
+  // green at the registry.
+  tipSignetOrLiveSmoke: true,
   tipSettlementSemantics: true,
   tipSmoke: true,
   voidDefaultExcluded: true,

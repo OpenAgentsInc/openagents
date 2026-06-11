@@ -6,7 +6,7 @@ import {
 } from './launch-gates'
 
 describe('Forum launch gates', () => {
-  test('reports Forum posting as ready while self-serve tipping remains gated on wallet onboarding', () => {
+  test('reports Forum posting and self-serve tipping as ready', () => {
     const status = forumLaunchGateStatus()
 
     expect(status.status).toBe('ready')
@@ -16,14 +16,7 @@ describe('Forum launch gates', () => {
     })
     expect(status.publicTipping).toMatchObject({
       onboarding: {
-        payerReadiness: {
-          blockerRefs: ['blocker.public.forum_tip_payer.wallet_missing'],
-          state: 'missing',
-          tippingSpendAllowed: false,
-        },
-        publicCopyRefs: [
-          'copy.public.forum_tips.self_serve_blocked_until_wallet_gates',
-        ],
+        publicCopyRefs: ['copy.public.forum_tips.self_serve_ready'],
         recipientStateRefs: [
           'state.public.forum_post_tip.recipient_missing',
           'state.public.forum_post_tip.recipient_receive_ready',
@@ -33,20 +26,16 @@ describe('Forum launch gates', () => {
           'state.public.forum_post_tip.settled',
         ],
       },
-      postTips: 'gated',
-      remainingBeforeLiveTips: [
-        'Tip payer wallet onboarding',
-        'Tip signet/live smoke',
-      ],
-      summary:
-        'Forum post tips remain gated until these gates pass: Tip payer wallet onboarding, Tip signet/live smoke.',
+      postTips: 'ready',
+      remainingBeforeLiveTips: [],
+      summary: 'Forum post tips are ready for the public browser action.',
     })
     expect(status.publicTipping.gates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'tip_payer_wallet_onboarding',
           severity: 'required',
-          state: 'gated',
+          state: 'ready',
         }),
         expect.objectContaining({
           id: 'tip_route_payment_verification',
@@ -71,7 +60,7 @@ describe('Forum launch gates', () => {
         expect.objectContaining({
           id: 'tip_signet_or_live_smoke',
           severity: 'required',
-          state: 'gated',
+          state: 'ready',
         }),
       ]),
     )

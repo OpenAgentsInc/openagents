@@ -7385,9 +7385,9 @@ describe('Forum routes', () => {
       publicTipping: {
         onboarding: {
           payerReadiness: {
-            blockerRefs: ['blocker.public.forum_tip_payer.wallet_missing'],
-            state: 'missing',
-            tippingSpendAllowed: false,
+            blockerRefs: [],
+            state: 'send_ready',
+            tippingSpendAllowed: true,
           },
           recipientStateRefs: [
             'state.public.forum_post_tip.recipient_missing',
@@ -7398,11 +7398,8 @@ describe('Forum routes', () => {
             'state.public.forum_post_tip.settled',
           ],
         },
-        postTips: 'gated',
-        remainingBeforeLiveTips: [
-          'Tip payer wallet onboarding',
-          'Tip signet/live smoke',
-        ],
+        postTips: 'ready',
+        remainingBeforeLiveTips: [],
       },
       status: 'ready',
     })
