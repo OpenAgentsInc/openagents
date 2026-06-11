@@ -105,6 +105,10 @@ composer (bottom), and a one-line key-hint footer.
 - `pylon node` runs node-core headless: all services, durable feed log, and
   a loopback control API (default port 4716, `PYLON_CONTROL_PORT` to
   change) authenticated by the bearer token in `<pylon-home>/control-token`.
+- On a Linux VM, use `scripts/install-cloud-node.sh` plus
+  `docs/cloud-node-deployment.md` to install the headless node as a systemd
+  service. Set `PYLON_ASSIGNMENT_WORKER=1` to continuously pick up eligible
+  no-spend owner assignments while the VM stays online.
 - `pylon attach [url]` opens the dashboard as a client of a running node:
   it restores the node's scrollback from the connection snapshot, follows
   live events over SSE (reconnecting with 1s-30s backoff), and routes

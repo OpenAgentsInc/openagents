@@ -221,6 +221,33 @@ function makeAssignmentActions() {
   }
 }
 
+const assignmentWorkerIntervalMs = () => {
+  const seconds = Number(Bun.env.PYLON_ASSIGNMENT_WORKER_INTERVAL_SECONDS ?? 30)
+  return Number.isFinite(seconds) && seconds >= 5 ? seconds * 1000 : 30_000
+}
+
+async function runHeadlessAssignmentWorkerLoop(
+  summary: ReturnType<typeof createBootstrapSummary>,
+  options: { agentToken?: string; baseUrl: string },
+  log: (message: string, level?: PylonLogLevel) => void,
+) {
+  const intervalMs = assignmentWorkerIntervalMs()
+  log(`[Assignments] Headless worker loop enabled; polling every ${Math.round(intervalMs / 1000)}s.`)
+  while (true) {
+    try {
+      const result = await runNoSpendAssignment(summary, options)
+      if (result.ok) {
+        log(`[Assignments] Completed no-spend assignment ${result.closeout.assignmentRef}.`)
+      } else if (result.reason !== "no no-spend assignment lease available") {
+        log(`[Assignments] No-spend run skipped: ${JSON.stringify(result)}`, "verbose")
+      }
+    } catch (error) {
+      log(`[Assignments] Worker loop error: ${error instanceof Error ? error.message : String(error)}`, "info")
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
 // Builds the operator-pane text the telemetry service publishes. The wallet
 // projection here is the pre-seam placeholder (always offline) — wiring the
 // live wallet state into the snapshot is follow-up work, kept behavior-equal
@@ -657,6 +684,24 @@ const runHeadlessNode = Effect.gen(function* () {
       heartbeat: () => sendHeartbeat(bootstrapSummary, { baseUrl: presenceBaseUrl ?? "" }),
     },
   })
+  if (presenceBaseUrl && Bun.env.PYLON_ASSIGNMENT_WORKER === "1") {
+    yield* superviseLoop(
+      runtime,
+      "Assignments",
+      Effect.tryPromise({
+        try: () =>
+          runHeadlessAssignmentWorkerLoop(
+            bootstrapSummary,
+            {
+              ...(Bun.env.OPENAGENTS_AGENT_TOKEN ? { agentToken: Bun.env.OPENAGENTS_AGENT_TOKEN } : {}),
+              baseUrl: presenceBaseUrl,
+            },
+            (message, level) => logToUi(message, level ?? classifyServiceLogLevel(message)),
+          ),
+        catch: (error) => new Error(`assignment worker loop failed: ${String(error)}`),
+      }),
+    )
+  }
   yield* superviseLoop(
     runtime,
     "NIP-90",

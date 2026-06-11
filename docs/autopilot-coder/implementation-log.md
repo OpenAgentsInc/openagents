@@ -991,3 +991,35 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts`
+
+## MVP M4 / Issue #4762: Cloud Pylon Deployment Path
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4762`
+
+Status: complete for the supported headless install/auth/supervision path and
+the code affordance that lets a cloud node pick up owner no-spend assignments.
+
+Implemented:
+
+- Added `apps/pylon/scripts/install-cloud-node.sh`, a Linux/systemd installer
+  for the Pylon v0.3 source RC. It creates a dedicated service user, installs
+  the repo, bootstraps Pylon state, writes a root-owned env file, installs a
+  restart-on-boot service, and redacts secrets in dry-run output.
+- Added an opt-in headless assignment worker loop for `pylon node`, enabled by
+  `PYLON_ASSIGNMENT_WORKER=1`, so a cloud Pylon can continuously poll and run
+  eligible no-spend owner assignments.
+- Added `apps/pylon/docs/cloud-node-deployment.md` covering owner identity,
+  BYOK credential posture, Claude Agent capability verification, loopback-only
+  attach, restart/upgrade, compromise response, and the public-safe evidence
+  bundle for the 24h unattended run.
+- Linked the cloud deployment path from `apps/pylon/README.md`.
+
+Verification:
+
+- `bash -n apps/pylon/scripts/install-cloud-node.sh`
+- `OPENAGENTS_AGENT_TOKEN=dummy-token ANTHROPIC_API_KEY=dummy-key PYLON_REF=pylon.cloud.test PYLON_DISPLAY_NAME='Test Cloud Pylon' apps/pylon/scripts/install-cloud-node.sh --dry-run`
+- `cd apps/pylon && bun test tests/control-protocol.test.ts tests/assignment.test.ts`
+
+Note: direct `bunx tsc -p tsconfig.json --noEmit` in `apps/pylon` remains
+blocked by preexisting repo-wide node16/import-extension and TUI type issues;
+the focused runtime tests and script syntax/dry-run checks pass.
