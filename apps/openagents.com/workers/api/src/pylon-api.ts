@@ -107,6 +107,7 @@ export type PylonApiEventKind = typeof PylonApiEventKind.Type
 export const PylonApiAssignmentJobKind = S.Literals([
   'artifact_review',
   'claude_agent_task',
+  'codex_agent_task',
   'cs336_a1_homework',
   'cs336_a2_device_benchmark',
   'cs336_a3_scaling_sweep',
