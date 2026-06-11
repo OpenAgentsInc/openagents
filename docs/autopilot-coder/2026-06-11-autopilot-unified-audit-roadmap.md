@@ -595,8 +595,17 @@ dogfood traffic the loop generates.
 
 Rung IDs are stable (B = bootstrap, M = MVP ladder, A = agent
 parity, P = post-MVP) so cross-references survive reordering.
-`[filed]` = exists on the tracker today; `[new]` = candidate to
-file. Sizes: S ≈ a day, M ≈ days, L ≈ a week-plus.
+Sizes: S ≈ a day, M ≈ days, L ≈ a week-plus.
+
+**All rungs are now filed (2026-06-11), tracked by epic #4786:**
+B1 #4755 · B2 #4756 · B3 #4757 · B4 #4758 · M1 #4759 · M2 #4760 ·
+M3 #4761 · M4 #4762 · M5 #4763 · M6 #4764 · M7 #4765 · M8 #4766 ·
+M9 #4767 · M10 #4768 · M11 #4769 · M12 #4770 · M13 #4771 ·
+M14 #4772 · A1 #4773 · A2 #4774 · A3 #4775 · A4 #4776 · P1 #4777 ·
+P2 #4778 · P3 #4779 · P4 #4780 · P5 #4781 · P6 #4782 · P7 #4783 ·
+P8 #4784 · P9 #4785. The `[filed]`/`[new]` markers in the tables
+below record state at authoring time; the issue numbers above are
+current.
 
 #### The bootstrap block — dogfood loop first (days, no payment dependencies)
 
