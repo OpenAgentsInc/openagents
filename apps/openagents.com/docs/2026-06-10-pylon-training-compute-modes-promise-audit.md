@@ -163,6 +163,12 @@ posture is default-yes (recorded 2026-06-10).
 > resource/verifier refs, Probe closeout imports, Psionic import dry-run
 > refs, public summary refs. No spend; this is the campaign's wiring proof.
 
+2026-06-11 update: the repeatable operator runbook and smoke verifier now live
+at `apps/openagents.com/docs/2026-06-11-probe-gepa-stage0-live-campaign-runbook.md`
+and `bun run smoke:probe-gepa-stage0` from `apps/openagents.com/workers/api`.
+The issue remains open because the current public fleet recheck found no two
+fresh, non-synthetic Pylons advertising `cap.gepa.retained.v1`.
+
 **Issue 5 — `gepa: paid campaign through the payment-mode ladder to settled_bitcoin`**
 
 > Take the Stage 0 campaign through the nine-step ladder:
