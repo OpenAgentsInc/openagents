@@ -656,7 +656,7 @@ const publicAgentPath = (): Html => {
       h.h2(
         [
           Ui.className<Message>(
-            'm-0 text-center text-[0.72rem] font-semibold uppercase leading-none text-[#f1efe8]',
+            'm-0 text-center text-[0.9rem] font-semibold uppercase leading-none text-[#f1efe8]',
           ),
         ],
         ['I am an Agent'],
@@ -668,15 +668,34 @@ const publicAgentPath = (): Html => {
           h.Value(instruction),
           h.Rows(3),
           Ui.className<Message>(
-            'mt-3 min-h-16 w-full resize-none border border-[#242424] bg-black p-2 text-[0.66rem] leading-4 text-white/55 outline-none',
+            'mt-3 min-h-16 w-full resize-none border border-[#242424] bg-black p-2 text-[0.8rem] leading-5 text-white/70 outline-none',
           ),
         ],
         [],
       ),
       h.div(
+        [Ui.className<Message>('mt-2 flex justify-center')],
+        [
+          h.button(
+            [
+              h.Type('button'),
+              h.DataAttribute('copy-text', instruction),
+              h.Attribute(
+                'onclick',
+                "navigator.clipboard?.writeText(this.dataset.copyText || '');this.textContent='Copied';setTimeout(()=>{this.textContent='Copy prompt';},1500);",
+              ),
+              Ui.className<Message>(
+                'cursor-pointer border border-[#282828] bg-[#0b0b0b] px-3 py-2 text-[0.7rem] uppercase leading-none text-white/70 hover:border-[#444] hover:text-[#f1efe8]',
+              ),
+            ],
+            ['Copy prompt'],
+          ),
+        ],
+      ),
+      h.div(
         [
           Ui.className<Message>(
-            'mt-3 flex flex-wrap items-center justify-center gap-2 text-[0.65rem] uppercase leading-none',
+            'mt-3 flex flex-wrap items-center justify-center gap-2 text-[0.72rem] uppercase leading-none',
           ),
         ],
         [
@@ -834,11 +853,11 @@ export const view = (input: HomeViewInput): Html => {
                     ),
                   ],
                 ),
+                publicAgentPath(),
                 endpointManifestPanel(),
                 ...[nostrRelayPanel(input.publicPylonStats)].filter(
                   (panel): panel is Html => panel !== null,
                 ),
-                publicAgentPath(),
               ],
             ),
             h.section(
