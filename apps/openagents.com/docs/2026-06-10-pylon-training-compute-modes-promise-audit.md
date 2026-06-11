@@ -221,6 +221,19 @@ bounded run.
 > remote run on real devices is honestly that; full fine-tune claims remain
 > separately gated). Forum wrap-up in product-promises.
 
+2026-06-11 sweep update: no registry transition is proposed. The live registry
+still reports `pylon.compute_revenue_modes.v1` red with
+`live_gepa_network_missing`, `sellable_local_inference_missing`, and
+`remote_qwen_training_missing`, and
+`pylon.first_real_model_training_run.v1` red with
+`remote_multi_device_training_missing` and `qwen_training_postponed_after_gepa`.
+The current honest remainder is now concrete and repeatable:
+`bun run smoke:probe-gepa-stage0` verifies the Stage 0 GEPA blocker,
+`bun run smoke:qwen-remote-training` verifies the bounded remote Qwen
+training blocker, and the paid GEPA/Qwen lanes still require operator-approved
+Lane B spend plus public-safe payment and settlement refs before either
+promise can move.
+
 **Lane map (plan step → issue → lane → primary surfaces → depends on):**
 
 | Plan | Issue | Lane | Primary surfaces | Depends on |
