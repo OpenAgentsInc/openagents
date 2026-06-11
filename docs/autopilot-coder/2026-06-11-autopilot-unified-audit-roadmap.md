@@ -579,52 +579,84 @@ stream run state. What the MVP adds is the web UI → work-order
 bridge, the pricing policy declaration, the dual-surface status
 faces, and the proofs.
 
-Ordered by effect — each rung unblocks or de-risks the most of what
-remains below it. `[filed]` = exists on the tracker today; `[new]` =
-candidate to file. Sizes: S ≈ a day, M ≈ days, L ≈ a week-plus.
+**The ordering principle (owner direction):** get the base system —
+the API part — working as soon as possible so dogfooding starts at
+the earliest opportunity, with this exact scenario as the target: *an
+agent takes the outstanding issue list as its marching orders, files
+them through the API, our Pylon picks them up with the Claude Agent
+SDK and fulfills them, and everything is appropriately visible in the
+web UI.* The decisive audit fact: this loop needs **no payment work
+at all** — the work-order API is live, placement already prefers the
+owner's Pylon, the no-spend worker loop is live-proven, and the
+Claude Agent executor is merged. So the bootstrap block runs first,
+in days; pricing, payments, scheduling, and the polished faces follow
+*behind* a working loop instead of in front of it, hardened by the
+dogfood traffic the loop generates.
+
+Rung IDs are stable (B = bootstrap, M = MVP ladder, A = agent
+parity, P = post-MVP) so cross-references survive reordering.
+`[filed]` = exists on the tracker today; `[new]` = candidate to
+file. Sizes: S ≈ a day, M ≈ days, L ≈ a week-plus.
+
+#### The bootstrap block — dogfood loop first (days, no payment dependencies)
 
 | # | Issue | Status / size | What it delivers | Depends on |
 | --- | --- | --- | --- | --- |
-| 1 | **Claude Agent bridge live-leg run** — execute the three-command operator runbook on a credentialed machine | [filed: epic #4717 follow-up; satisfies #4661's acceptance via the claude-agent adapter] / S | The single highest receipt-per-effort action in the program: flips `pylon.local_claude_agent_bridge.v1` green-proposable and clears `autopilot.codex_probe_pylon_successor.v1`'s last blocker — and proves the MVP's own-Pylon executor on a real machine. One run, two promises. | nothing |
-| 2 | **Web UI → work-order bridge** — a logged-in web request creates a work order on the spine (intake, placement, lease, delivery, review), replacing direct-to-SHC dispatch as the product path | [new] / M–L | The MVP's backbone: the owner-clarified "user makes requests in a web UI" lands on the machinery that already ran live (#4633). Minimal unification now; full mission↔work-order record unification stays post-MVP. | nothing |
-| 3 | **Own-Pylon-first placement + the free self-serve lane** — placement policy: requester's connected online capable Pylon wins; own-Pylon pickup of own job charges zero credits; SHC is the metered fallback | [mostly built: OA-AUTO-019 owner-linkage preference + the live no-spend worker loop; productize as declared pricing policy] / S–M | The owner-clarified pricing and priority rules. The free lane is the existing no-spend mode given a product name; the fallback is the existing SHC metering. | 2 |
-| 4 | **Dual-surface status** — the same order visible and steerable from both doors: `pylon work submit\|status\|review` on the terminal, and live status in the web UI (sync scopes) for logged-in users, regardless of which door submitted | [new; the `pylon work` command has been named unowned since the full-flow audit] / M | One order, two windows — the owner-clarified visibility requirement. Web sync scopes already stream run state; the Pylon side needs the command family; both need to render the same work-order projection. | 2 |
-| 5 | **Mission/work list + detail UI** — browse orders, status, artifacts, briefing; the join from ledger entries to what they bought | [new] / M | The visibility spine every later face hangs off (decision queue links here; budgets drill into here; the dogfood cohort cannot evaluate what it cannot see). Records and routes exist; this is projection UI only. | 2 |
-| 6 | **Cloud-Pylon deployment path** — runbook + auth flow for running your Pylon on a VPS you control: deploy, authenticate, and it picks up your jobs exactly like a local Pylon | [new; prior art: the SHC-box agent-deployment runbook and the existing registration/heartbeat/capability flow] / M | Lane B without the laptop: free background execution on the user's own cloud credentials. Also stages the post-MVP provider flip (same deployment + GO ONLINE = serving others). | 1, 3 |
-| 7 | **Card-on-file + auto-top-up** — saved payment method and a user-set top-up policy on the existing Stripe/D1 ledger | [new] / S–M | The SHC fallback never dies broke overnight; the buy-side becomes set-and-forget. | nothing |
-| 8 | **Scheduled launches + auto-continuation policy** — queue work for later; user-settable continuation under budget gates; "what ran while you slept" | [new] / M–L | Problem 2's missing policy half (one of only two genuine engine gaps). Converts the operator-only `continue` API into product behavior, on both lanes. | 3, 5, 7 |
-| 9 | **Decision queue + notifications** — mobile-responsive `/decisions` page over decision-action records; email on decision-required and delivered events | [new] / M | Problem 3 end-to-end at the responsive-web tier; approvals leave the admin console. Push and native later. | 5 |
-| 10 | **Account-pool dashboard** — connected accounts, lease load, cooldown/reset timers, low-credit flags, reconnect nudges | [new] / M | Problem 1's face over the shipped lease policy; retires the "note where I track the limits." | nothing |
-| 11 | **Proof smoke: rate-limit rotation with context intact** — induced limit mid-run → lease rotation → completion; assert continuity | [new] / M | Problems 1+4's proof; "smartly routes between accounts" becomes a receipt. Gates MVP exit. | 10 useful, not required |
-| 12 | **Proof smoke: overnight unattended run, both lanes** — queue at night → scheduled launch → background completion (once on SHC, once on a cloud or local own-Pylon) → notification → morning review on both surfaces | [new] / S–M (once 4, 6, 8, 9 land) | Problems 2+3's proof and the dual-surface requirement's proof in one smoke. Gates MVP exit. | 4, 6, 8, 9 |
-| 13 | **Repo connect + data-scope UX** — self-serve repo connection, per-mission scope declaration, placement explanation showing the trust-tier and lane reasons ("ran on your Pylon because…") | [new] / M–L | Problem 6's face over the shipped placement policy, now also explaining lane choice. | 3 |
-| 14 | **Team budgets + spend-to-evidence join** — team-scoped budgets, per-mission caps, pooled team account-leases with a fairness policy, ledger↔mission↔artifact drill-down | [new] / L | Problem 5's missing semantics (the other genuine engine gap); what design-partner teams evaluate with. | 5 |
-| 15 | **Provider peers: Anthropic/Gemini connect** — ToS-compliance review first, then connect flows beside ChatGPT/Codex | [new] / M–L | De-risks single-vendor dependence; the promised "non-Codex flow." MVP-optional if the dogfood cohort is Codex-covered, but the ToS review itself should not wait. | nothing |
-| 16 | **MVP exit review / door-open gate** — checklist issue binding the public-signup flip to rungs 2–14 and A1–A4's receipts and the copy/redaction law; ships the launch positioning | [new] / S | The decision record that "tested and ready" actually happened before the gate changes. | 2–14, A1–A4 |
+| B1 | **Claude Agent bridge live-leg run** — execute the three-command operator runbook on a credentialed machine | [filed: epic #4717 follow-up; satisfies #4661's acceptance via the claude-agent adapter] / S | Proves the loop's executor on a real machine; flips `pylon.local_claude_agent_bridge.v1` green-proposable and clears `autopilot.codex_probe_pylon_successor.v1`'s last blocker. One run, two promises. | nothing |
+| B2 | **Claude-agent work class through the Autopilot API, end to end** — API-submitted orders carry the `claude_agent_task` work class + capability ref through placement → lease → own-Pylon pickup → Claude Agent executor → delivered → review, no-spend; includes the `git_checkout` workspace kind (public repos, pinned commit, caller-supplied verification command) so orders are real repo work, not fixtures | [mostly built: the SDK audit records "no Worker-side schema change is required to pilot this lane in no-spend mode"; the dispatch shape exists operator-side; the repo work class is the leverage audit's named move 2] / M | The base system working: the live API drives the live executor on real repos. Everything else in the MVP is a face or a proof on top of this. | B1 |
+| B3 | **The marching-orders agent** — a registered agent reads the outstanding GitHub issue list, decorates each issue with a bounded objective and verification command, and files them as work orders through the live API under its own identity; review/acceptance stays human | [new; the in-house precursor of both A4 (autonomics) and P5 (the labor-market faucet)] / M | The owner's dogfood scenario made literal: the backlog becomes the order book, our Pylon becomes the worker, and every closed issue is a receipt the system earned about itself. Also the first standing exerciser of the agent API (A1's living test). | B2 |
+| B4 | **Work list + detail visibility in the web UI** — browse orders, status, artifacts, delivered refs; live status via the existing sync scopes | [new; records and routes exist — projection UI only] / M | "Seeing everything appropriately in the web UI": the dogfood cohort watches B3's orders flow without touching a terminal or D1. The visibility spine all later faces (decisions, budgets) hang off. | B2 |
+
+**Bootstrap exit:** B1–B4 standing means the dogfood process is live —
+issues in, verified work out, watched from the browser — before a
+single payment, pricing, or scheduling feature exists. Run it daily
+from then on; every subsequent rung ships into live traffic.
+
+#### The MVP ladder (behind the loop, ordered by effect)
+
+| # | Issue | Status / size | What it delivers | Depends on |
+| --- | --- | --- | --- | --- |
+| M1 | **Web UI request composer → work-order spine** — a logged-in human's web request creates the same work orders B3 files, replacing direct-to-SHC dispatch as the product path | [new] / M–L | The human front door onto the proven loop. Minimal unification now; full record unification stays post-MVP (P2). | B2 |
+| M2 | **Dual-surface status + `pylon work submit\|status\|review`** — the same order visible and steerable from the terminal and the web UI, regardless of entry door | [new; the command family has been named unowned since the full-flow audit] / M | One order, two windows — the owner-clarified visibility requirement, completing what B4 starts. | B4 |
+| M3 | **Own-Pylon-first placement + the free self-serve lane, declared** — requester's connected online capable Pylon wins; own-Pylon pickup of own job charges zero credits; SHC is the metered fallback | [mostly built: OA-AUTO-019 owner-linkage preference + the live no-spend loop; productize as declared pricing policy] / S–M | The owner-clarified pricing and priority rules, formalizing what the bootstrap loop already does in practice. | B2 |
+| M4 | **Cloud-Pylon deployment path** — runbook + auth flow for running your Pylon on a VPS you control; it picks up your jobs headlessly | [new; prior art: the SHC-box deployment runbook + existing registration/heartbeat/capability flow] / M | Lane B without the laptop; lets the marching-orders loop run around the clock on a box that never sleeps. Stages the post-MVP provider flip (P6). | B1, M3 |
+| M5 | **Card-on-file + auto-top-up** — saved payment method and user-set top-up policy on the existing Stripe/D1 ledger | [new] / S–M | The SHC fallback never dies broke overnight; the buy-side becomes set-and-forget. | nothing |
+| M6 | **Scheduled launches + auto-continuation policy** — queue work for later; user-settable continuation under budget gates; "what ran while you slept" | [new] / M–L | Problem 2's missing policy half (one of two genuine engine gaps). Converts the operator-only `continue` API into product behavior, on both lanes. | M3, B4, M5 |
+| M7 | **Decision queue + notifications** — mobile-responsive `/decisions` page over decision-action records; email on decision-required and delivered events | [new] / M | Problem 3 end-to-end at the responsive-web tier; also how the human reviews B3's deliveries from a phone. | B4 |
+| M8 | **Account-pool dashboard** — connected accounts, lease load, cooldown/reset timers, low-credit flags, reconnect nudges | [new] / M | Problem 1's face over the shipped lease policy. | nothing |
+| M9 | **Proof smoke: rate-limit rotation with context intact** — induced limit mid-run → lease rotation → completion | [new] / M | Problems 1+4's proof. Gates MVP exit. | M8 useful, not required |
+| M10 | **Proof smoke: overnight unattended run, both lanes** — queue at night → scheduled launch → background completion (once on SHC, once on a cloud or local own-Pylon) → notification → morning review on both surfaces | [new] / S–M (once M2, M4, M6, M7 land) | Problems 2+3's proof and the dual-surface proof in one smoke. Gates MVP exit. | M2, M4, M6, M7 |
+| M11 | **Repo connect + data-scope UX** — self-serve repo connection, per-mission scope declaration, placement explanation showing trust-tier and lane reasons | [new] / M–L | Problem 6's face over the shipped placement policy. | M3 |
+| M12 | **Team budgets + spend-to-evidence join** — team-scoped budgets, per-mission caps, pooled team account-leases, ledger↔mission↔artifact drill-down | [new] / L | Problem 5's missing semantics (the other engine gap); what design-partner teams evaluate with. | B4 |
+| M13 | **Provider peers: Anthropic/Gemini connect** — ToS-compliance review first, then connect flows | [new] / M–L | De-risks single-vendor dependence; the ToS review itself should not wait. | nothing |
+| M14 | **MVP exit review / door-open gate** — checklist binding the public-signup flip to the B/M/A receipts and the copy/redaction law; ships the launch positioning | [new] / S | The decision record that "tested and ready" actually happened. | B1–B4, M1–M12, A1–A4 |
 
 **Agent-parity rungs (MVP scope, owner-clarified).** These run
-alongside rungs 2–12, not after them; A1 should land with rung 2 so
-the bridge is born symmetric rather than retrofitted. The audit
-gives them a head start: the work-order spine's intake, status,
-events, and review routes are *already* agent-facing under
-registered-agent auth (#4633's live proof was an agent), the L402
-challenge/retry contract is verified in CI, the Forum work-requests
-surface is live, and the Artanis tick-action pattern
-(schema-validated proposals, budget gates) is the template for A4.
+alongside the M-ladder, not after it — and the bootstrap block gives
+them a flying start: B3's marching-orders agent *is* A1's living
+test and A4's in-house precursor, exercising the agent API daily
+from week one. The audit gives the rest a head start too: the
+work-order spine's intake, status, events, and review routes are
+*already* agent-facing under registered-agent auth (#4633's live
+proof was an agent), the L402 challenge/retry contract is verified
+in CI, the Forum work-requests surface is live, and the Artanis
+tick-action pattern (schema-validated proposals, budget gates) is
+the template for A4.
 
 | # | Issue | Status / size | What it delivers | Depends on |
 | --- | --- | --- | --- | --- |
-| A1 | **API parity contract** — every MVP capability (submit, status/events, decisions/review, scheduling, lane/pricing visibility) exposed via the existing agent API and registered-agent identity, audited as a parity matrix: no browser-only capability | [partially built: submit/status/events/review live; scheduling and decision surfaces need API peers as they land] / M | The human/agent symmetry rule made enforceable — a checklist any new face must pass, the agent-side twin of the OpenAPI freshness gate (#4752). | lands with 2, then tracks 8–9 |
-| A2 | **Agent payment, both currencies** — an agent account can hold USD credits (owner's card via Stripe) or pay per-order in bitcoin: deploy the MDK/L402 reconciler so ledger rows come from real payment movement, plus one staging/live agent-wallet paid order | [partially built: signed L402 verified in CI, fail-closed ledger verifier wired; live movement is the named P0 gap] / M–L | "Account set up with payment" becomes true in both currencies; the gap audit's P0 items 1–3 promoted into MVP because agent buyers cannot exist without them. | nothing |
-| A3 | **Forum → coding request** — a registered agent's Forum interaction (a work-request post, or a typed ask on an open thread) spawns an Autopilot coding work order linked back to the thread, lifecycle receipts posting back | [mostly built: the Forum work-requests surface + Forum↔relay bridge exist for the labor lane; the coding-order spawn and thread linkage are the new glue] / M | The Orrery door: an agent that asks for work — or asks for work *done* — on the Forum gets a real order, not a tip jar. | 2, A2 |
-| A4 | **Autonomics spawn coding threads** — an Artanis-class administrator proposes coding work orders on its tick (schema-validated, per-tick budget, escrow/credits gated), spawning the same orders any requester gets | [pattern built: the `request_labor` tick action with validator-gated acceptance is the template; the coding-order action is its sibling] / M | The fourth front door live in MVP: the platform's own autonomic is the first standing agent customer, exercising A1–A3 continuously and producing the parity proof as a by-product. | 2, A1, A2 |
+| A1 | **API parity contract** — every MVP capability (submit, status/events, decisions/review, scheduling, lane/pricing visibility) exposed via the existing agent API and registered-agent identity, audited as a parity matrix: no browser-only capability | [partially built: submit/status/events/review live; B3 exercises them daily; scheduling and decision surfaces need API peers as they land] / M | The human/agent symmetry rule made enforceable — a checklist any new face must pass, the agent-side twin of the OpenAPI freshness gate (#4752). | lands with B2, then tracks M6–M7 |
+| A2 | **Agent payment, both currencies** — an agent account can hold USD credits (owner's card via Stripe) or pay per-order in bitcoin: deploy the MDK/L402 reconciler so ledger rows come from real payment movement, plus one staging/live agent-wallet paid order | [partially built: signed L402 verified in CI, fail-closed ledger verifier wired; live movement is the named P0 gap] / M–L | "Account set up with payment" becomes true in both currencies; the gap audit's P0 items 1–3 promoted into MVP because agent buyers cannot exist without them. Not needed for the no-spend bootstrap loop — needed before any *external* agent buys. | nothing |
+| A3 | **Forum → coding request** — a registered agent's Forum interaction (a work-request post, or a typed ask on an open thread) spawns an Autopilot coding work order linked back to the thread, lifecycle receipts posting back | [mostly built: the Forum work-requests surface + Forum↔relay bridge exist for the labor lane; the coding-order spawn and thread linkage are the new glue] / M | The Orrery door: an agent that asks for work — or asks for work *done* — on the Forum gets a real order, not a tip jar. | B2, A2 |
+| A4 | **Autonomics spawn coding threads** — an Artanis-class administrator proposes coding work orders on its tick (schema-validated, per-tick budget, escrow/credits gated), spawning the same orders any requester gets | [pattern built: the `request_labor` tick action is the template; B3 is the bounded in-house rehearsal] / M | The fourth front door live in MVP: the platform's own autonomic as the first standing agent customer, exercising A1–A3 continuously. | B3, A1, A2 |
 
-**Agent-parity proof smoke (gates MVP exit with rungs 11–12):** one
+**Agent-parity proof smoke (gates MVP exit with M9–M10):** one
 agent — not a human, not an operator hand-driving HTTP — submits a
 paid coding order through the API (either currency), the order
 places (own Pylon or SHC), executes, delivers, and the agent
 exercises review; every step receipted, both surfaces showing the
-same truth.
+same truth. (B3 proves the no-spend half from week one; this smoke
+adds the payment leg.)
 
 ### Pylon v0.3 is the MVP's client (owner direction)
 
@@ -635,28 +667,29 @@ provider loop, wallet readiness, NIP-90 quoting) — it must fully
 support the MVP described above. Concretely, the v0.3 package must
 carry:
 
-- the **`pylon work submit|status|review`** ordering family (rung 4)
+- the **`pylon work submit|status|review`** ordering family (rung M2)
   under the registered identity, spending the same credit balance as
   the web UI;
 - the **own-Pylon worker path**: assignment polling, the Claude Agent
   executor gate (shipped in epic #4717, optional/lazy dependency,
   release-gate-wired), capability declaration with the BYOK probe,
-  and the free own-job pickup behavior (rung 3);
+  the `claude_agent_task` + `git_checkout` work classes (rung B2),
+  and the free own-job pickup behavior (rung M3);
 - **dual-surface status**: the Pylon renders the same work-order
-  projection the web UI shows (rung 4);
+  projection the web UI shows (rung M2);
 - the **cloud deployment path**: install + authenticate on a VPS the
   user controls, register, heartbeat, and pick up the owner's jobs
-  headlessly (rung 6);
+  headlessly (rung M4);
 - the **approved-user gate**: during dogfood, coding-agent features
   activate only for approved (core-team, then design-partner)
   identities — the Pylon-side twin of the web gate, enforced at the
   API rather than shipped as a separate binary.
 
 This binds the v0.3 release cluster (#4663's sweep, the rc2 vehicle
-#4711, the npm credential chain #4662) to the MVP ladder: rungs 3, 4,
-and 6 are v0.3 release scope, not post-release additions. A v0.3
-that ships without them is a labor-market client only; the owner
-direction is that it ships as the coding agent's client too.
+#4711, the npm credential chain #4662) to the MVP ladder: rungs B2,
+M2, M3, and M4 are v0.3 release scope, not post-release additions. A
+v0.3 that ships without them is a labor-market client only; the
+owner direction is that it ships as the coding agent's client too.
 
 ### Verified: the register → signal → tips → coding-task loop
 
@@ -704,23 +737,23 @@ public surfaces.
 
 | # | Issue | Status / size | What it delivers | Depends on |
 | --- | --- | --- | --- | --- |
-| 17 | **First live negotiated labor job on a real backlog issue** — run the existing runbook (#4648 coordinates) with the job pointed at a real repo issue | [filed: #4648 + runbook] / S–M | The labor lane's plumbing→market flip and the faucet's first proof; like rung 1, a single-run receipt that should not wait for the product phases. | operator config (market-key signing) |
-| 18 | **Full mission ↔ work-order unification** — deepen rung 2 from entry bridge to record unification (missions, briefings, artifacts 1:1 with orders) | [new] / L | One primitive, four front doors, one record layer; prerequisite for clean Lane C fanout. | MVP stable |
-| 19 | **Writeback symmetry** — work-order deliveries through the artifact/authority layer to PR drafts | [new] / M–L | Closes the full-flow audit's leg 9 with code that exists; "issue to PR" becomes claimable end to end. | 18 |
-| 20 | **Settlement bridge: USD→sats** — accepted-work → payout eligibility → conversion seam (rate ref, linked ledger entries) → ladder settlement | [new] / L | The dollars-in/bitcoin-out policy made real; hard-gates any paid Lane C. | 18 |
-| 21 | **Backlog faucet: issue→work-request adapter** — maintainer decorates an issue (budget, verification command, capability refs); adapter posts via the live work-requests API | [new] / M | Standing market inventory from our own backlog; the empty `workRequests` array gets its first rows. | 17 |
-| 22 | **Spare-capacity provider mode** — the rung-6 cloud (or desktop) Pylon flips GO ONLINE: unused capacity picks up *other people's* jobs for sats | [mostly built: the NIP-90 provider loop (#4730) + labor runtime; needs the pricing/consent face and the settlement bridge] / M | The owner-clarified endgame for deployed Pylons: same machine, both sides of the order book. Every MVP cloud-Pylon user is one toggle from being a market provider. | 6, 17, 20 |
-| 23 | **Lane C fanout (opt-in, public-tier only)** — product orders burst to the labor market when owned capacity is dark or limited | [new] / L | Flips `autopilot.control_center_fanout_marketplace.v1` from red on evidence; the limit wall's market answer. | 18, 20, 21 |
-| 24 | **Onboarding ramp + capability envelopes** — rung-0 verification bounties as standing newcomer inventory; #4750-pattern envelopes gating quotes | [filed: #4750 (envelope consumer); ramp spec new] / M | Trust bootstrapping for unknown agents; the next Orrery earns within the hour. | 21 |
-| 25 | **Settlement visibility law** — every payout rung publicly dereferenceable; labor-lane acceptance criterion | [filed adjacent: #4753, #4751 epic] / M | The "payment the recipient cannot see" class closed before any live labor claim. | with 20 |
+| P1 | **First live negotiated labor job on a real backlog issue** — run the existing runbook (#4648 coordinates) with the job pointed at a real repo issue | [filed: #4648 + runbook] / S–M | The labor lane's plumbing→market flip and the faucet's first proof; like B1, a single-run receipt that should not wait for the product phases. | operator config (market-key signing) |
+| P2 | **Full mission ↔ work-order unification** — deepen B2/M1 from entry bridge to record unification (missions, briefings, artifacts 1:1 with orders) | [new] / L | One primitive, four front doors, one record layer; prerequisite for clean Lane C fanout. | MVP stable |
+| P3 | **Writeback symmetry** — work-order deliveries through the artifact/authority layer to PR drafts | [new] / M–L | Closes the full-flow audit's leg 9 with code that exists; "issue to PR" becomes claimable end to end — and upgrades B3's loop from delivered-refs to mergeable PRs. | P2 |
+| P4 | **Settlement bridge: USD→sats** — accepted-work → payout eligibility → conversion seam (rate ref, linked ledger entries) → ladder settlement | [new] / L | The dollars-in/bitcoin-out policy made real; hard-gates any paid Lane C. | P2 |
+| P5 | **Backlog faucet: issue→work-request adapter for the open market** — B3's marching-orders pattern pointed outward: budgeted issues become NIP-LBR work requests any provider can quote | [new; B3 is its proven in-house precursor] / M | Standing market inventory from our own backlog; the empty `workRequests` array gets its first rows. | P1, B3 |
+| P6 | **Spare-capacity provider mode** — the M4 cloud (or desktop) Pylon flips GO ONLINE: unused capacity picks up *other people's* jobs for sats | [mostly built: the NIP-90 provider loop (#4730) + labor runtime; needs the pricing/consent face and the settlement bridge] / M | The owner-clarified endgame for deployed Pylons: same machine, both sides of the order book. | M4, P1, P4 |
+| P7 | **Lane C fanout (opt-in, public-tier only)** — product orders burst to the labor market when owned capacity is dark or limited | [new] / L | Flips `autopilot.control_center_fanout_marketplace.v1` from red on evidence; the limit wall's market answer. | P2, P4, P5 |
+| P8 | **Onboarding ramp + capability envelopes** — rung-0 verification bounties as standing newcomer inventory; #4750-pattern envelopes gating quotes | [filed: #4750 (envelope consumer); ramp spec new] / M | Trust bootstrapping for unknown agents; the next Orrery earns within the hour. | P5 |
+| P9 | **Settlement visibility law** — every payout rung publicly dereferenceable; labor-lane acceptance criterion | [filed adjacent: #4753, #4751 epic] / M | The "payment the recipient cannot see" class closed before any live labor claim. | with P4 |
 
 Cross-cutting and standing over every rung: **#4751** (projection
 staleness epic — every new surface above carries `generatedAt` and
 rebuilds on transitions; a stale status pane on either of the two
 surfaces is the defect class at its most visible) and **#4752**
 (OpenAPI freshness — every new route lands in the served contract or
-the deploy fails). Rungs 1 and 17 are deliberately out of phase
-order: each is a single-run receipt with outsized promise effect, and
+the deploy fails). B1 and P1 are deliberately out of phase order:
+each is a single-run receipt with outsized promise effect, and
 neither blocks nor is blocked by the product work.
 
 ## Part 5 — Boundaries that hold across everything above
