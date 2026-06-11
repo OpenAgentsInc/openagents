@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.4'
+export const PublicProductPromisesVersion = '2026-06-11.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -328,7 +328,7 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.five_bitcoin_revenue_streams.v1',
       productArea: 'payments',
       audience: ['contributor', 'public'],
-      state: 'red',
+      state: 'planned',
       claim:
         'Pylon stacks compute, data, Forum tips, referrals, and agent labor markets in one install.',
       safeCopy:
@@ -336,6 +336,8 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim one Pylon install creates five live Bitcoin revenue streams, and do not describe the labor stream as provider-capacity resale; it sells agent work output, not account access.',
       evidenceRefs: [
+        'transition:promise_transition_872cca1d-f6ae-4c43-97e5-2f527a70603f',
+        'directive.owner.20260611.focus_tassadar_psion_cs336',
         'docs/transcripts/213.md',
         'docs/transcripts/214.md',
         'docs/transcripts/215.md',
@@ -360,7 +362,7 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.compute_revenue_modes.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'public'],
-      state: 'red',
+      state: 'planned',
       claim:
         'Compute revenue comes from GEPA optimization slices and Tassadar executor-trace work on people’s devices.',
       safeCopy:
@@ -368,6 +370,8 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim full-network GEPA revenue, and do not describe local-inference or Qwen fine-tune products as existing or planned.',
       evidenceRefs: [
+        'transition:promise_transition_774d0db0-1a2c-4f72-861e-6996a6684f0b',
+        'directive.owner.20260611.focus_tassadar_psion_cs336',
         'apps/pylon/docs/gepa-capability-envelope.md',
         'apps/openagents.com/docs/2026-06-08-probe-gepa-paid-mode-campaign-ladder.md',
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
@@ -387,7 +391,7 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.data_trace_revenue.v1',
       productArea: 'data',
       audience: ['contributor', 'public'],
-      state: 'red',
+      state: 'planned',
       claim:
         'Data revenue includes mining valuable local traces from Claude Code, Codex, and other agent work.',
       safeCopy:
@@ -395,6 +399,8 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim local traces are currently bought, valued, paid, or settled.',
       evidenceRefs: [
+        'transition:promise_transition_6e6c3f7c-92f8-4e9a-b82c-f28c6271b396',
+        'directive.owner.20260611.focus_tassadar_psion_cs336',
         'apps/openagents.com/docs/2026-06-08-data-trace-marketplace-gate.md',
       ],
       blockerRefs: ['blocker.product_promises.settled_trace_sale_missing'],
@@ -1002,7 +1008,7 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'pylon.gepa_worker_loop_v03.v1',
       productArea: 'Pylon',
       audience: ['contributor', 'operator'],
-      state: 'yellow',
+      state: 'planned',
       claim:
         'Pylon v0.3 can run GEPA-first assignment work through the in-repo runtime.',
       safeCopy:
@@ -1010,6 +1016,8 @@ export const publicProductPromisesDocument = () => {
       unsafeCopy:
         'Do not claim Pylon v0.3 runs the full live GEPA network or settles paid GEPA work.',
       evidenceRefs: [
+        'transition:promise_transition_5decf651-f137-4bd2-b3c6-df26144ac79e',
+        'directive.owner.20260611.focus_tassadar_psion_cs336',
         'apps/pylon/src/assignment.ts',
         'apps/pylon/src/gepa-capability.ts',
         'apps/pylon/packages/runtime/src/benchmark',
