@@ -61,6 +61,8 @@ describe('Autopilot work placement selector', () => {
       reasonRefs: [
         'placement.selected.requester_pylon',
         'placement.pylon.preferred_before_fallback',
+        'pricing.autopilot_work.own_pylon_free',
+        'placement.reason.placed_on_your_pylon_free',
       ],
       selectedPylonRef: 'pylon.local.docs_agent',
       selectedRunnerKind: 'requester_pylon',
@@ -104,6 +106,8 @@ describe('Autopilot work placement selector', () => {
       reasonRefs: [
         'placement.selected.fallback',
         'placement.fallback.openagents_shc',
+        'pricing.autopilot_work.hosted_runner_metered',
+        'placement.reason.your_pylon_unavailable_hosted_metered',
       ],
       selectedPylonRef: null,
       selectedRunnerKind: 'openagents_shc',

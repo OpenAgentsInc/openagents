@@ -967,3 +967,27 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api smoke:autopilot-coder:paid`
 - `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-routes.test.ts src/buyer-payment-ledger.test.ts src/l402-credential-service.test.ts src/l402-payment-headers.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## MVP M3 / Issue #4761: Own-Pylon Free Lane Policy
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4761`
+
+Status: complete for the product-policy projection and route-level guarantee.
+
+Implemented:
+
+- Added a typed Autopilot work pricing policy with lane-to-meter mappings:
+  `requester_pylon` own-job work has no buyer debit and `openagents_shc`
+  fallback work uses USD-credit metering.
+- Surfaced policy-derived placement reason refs in work-order projections:
+  `placement.reason.placed_on_your_pylon_free` and
+  `placement.reason.your_pylon_unavailable_hosted_metered`.
+- Added `pricingPolicy.activeLane` to Autopilot work-order projections so web
+  and Pylon clients can render lane/meter state from typed data.
+- Bound route tests to the free-lane guarantee: requester-Pylon work creates a
+  no-spend assignment, has no payment challenge, and writes zero buyer debit
+  rows; SHC fallback projects the metered lane.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/autopilot-work-placement-selector.test.ts src/autopilot-work-routes.test.ts`

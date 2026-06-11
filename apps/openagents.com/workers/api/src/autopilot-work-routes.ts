@@ -71,6 +71,12 @@ import {
   makeAutopilotWorkQuote,
 } from './autopilot-work-quote'
 import {
+  type AutopilotWorkPricingLanePolicy,
+  type AutopilotWorkPricingPolicy,
+  autopilotWorkPricingPolicy,
+  pricingLaneForRunnerKind,
+} from './autopilot-work-pricing-policy'
+import {
   type OpenAgentsAutopilotAccessRequestKind,
   OpenAgentsAutopilotRunnerKind,
   type OpenAgentsAutopilotRunnerKind as OpenAgentsAutopilotRunnerKindType,
@@ -349,6 +355,9 @@ export type AutopilotWorkOrderProjection = Readonly<{
   paymentChallengeRef: string | null
   placementDecision: AutopilotPlacementDecisionProjection
   placementPolicy: AutopilotWorkPlacementPolicyRecordProjection
+  pricingPolicy: AutopilotWorkPricingPolicy & Readonly<{
+    activeLane: AutopilotWorkPricingLanePolicy | null
+  }>
   pylonAssignmentIntents: ReadonlyArray<AutopilotPylonAssignmentIntentProjection>
   promiseRef: Readonly<{
     blockerRefs: ReadonlyArray<string>
@@ -1460,6 +1469,13 @@ const placementPolicyForRecord = (
   }
 }
 
+const pricingPolicyForPlacement = (
+  placementDecision: AutopilotPlacementDecisionProjection,
+): AutopilotWorkOrderProjection['pricingPolicy'] => ({
+  ...autopilotWorkPricingPolicy,
+  activeLane: pricingLaneForRunnerKind(placementDecision.selectedRunnerKind),
+})
+
 const executionCloseoutForRecord = (
   record: AutopilotWorkOrderRecord,
 ): AutopilotWorkExecutionCloseoutProjection | null =>
@@ -1679,6 +1695,7 @@ const projectionForRecord = (
     paymentChallengeRef: record.paymentChallengeRef,
     placementDecision,
     placementPolicy: placementPolicyForRecord(record),
+    pricingPolicy: pricingPolicyForPlacement(placementDecision),
     promiseRef:
       record.request.promiseRef === undefined
         ? null

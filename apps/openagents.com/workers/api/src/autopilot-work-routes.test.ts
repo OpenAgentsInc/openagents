@@ -18,6 +18,7 @@ import {
   type AutopilotWorkExecutionCloseoutRecord,
   type AutopilotWorkL402PaymentVerificationInput,
   type AutopilotWorkL402PaymentVerificationResult,
+  type AutopilotWorkOrderProjection,
   type AutopilotWorkOrderRecord,
   type AutopilotWorkReviewDecisionRecord,
   type AutopilotWorkStore,
@@ -1188,22 +1189,51 @@ describe('Autopilot work routes', () => {
     )
     const ownPylonJson = await responseJson(ownPylonResponse)
     const fallbackJson = await responseJson(fallbackResponse)
+    const ownPylonWork =
+      ownPylonJson.work as AutopilotWorkOrderProjection | undefined
+    const fallbackWork =
+      fallbackJson.work as AutopilotWorkOrderProjection | undefined
     const listJson = (await listResponse.json()) as Readonly<{
       workOrders: ReadonlyArray<Readonly<{ workOrderRef: string }>>
     }>
 
     expect(ownPylonResponse.status).toBe(202)
-    expect(ownPylonJson.work?.state).toBe('queued_or_running')
-    expect(ownPylonJson.work?.placementDecision?.selectedRunnerKind).toBe(
+    expect(ownPylonWork?.state).toBe('queued_or_running')
+    expect(ownPylonWork?.placementDecision?.selectedRunnerKind).toBe(
       'requester_pylon',
     )
+    expect(ownPylonWork?.placementDecision?.reasonRefs).toEqual([
+      'placement.selected.requester_pylon',
+      'placement.pylon.preferred_before_fallback',
+      'pricing.autopilot_work.own_pylon_free',
+      'placement.reason.placed_on_your_pylon_free',
+    ])
+    expect(ownPylonWork?.pricingPolicy.activeLane).toMatchObject({
+      buyerDebitRequired: false,
+      laneRef: 'lane.autopilot_work.requester_pylon_own_job',
+      meterKind: 'none',
+      runnerKind: 'requester_pylon',
+      unitAmountCents: 0,
+    })
     expect([...ownPylon.assignments.values()]).toHaveLength(1)
     expect(fallbackResponse.status).toBe(402)
-    expect(fallbackJson.work?.state).toBe('payment_required')
+    expect(fallbackWork?.state).toBe('payment_required')
     expect(
-      fallbackJson.work?.placementDecision?.fallbackRunnerKind ??
-        fallbackJson.work?.placementDecision?.selectedRunnerKind,
+      fallbackWork?.placementDecision?.fallbackRunnerKind ??
+        fallbackWork?.placementDecision?.selectedRunnerKind,
     ).toBe('openagents_shc')
+    expect(fallbackWork?.placementDecision?.reasonRefs).toEqual([
+      'placement.selected.fallback',
+      'placement.fallback.openagents_shc',
+      'pricing.autopilot_work.hosted_runner_metered',
+      'placement.reason.your_pylon_unavailable_hosted_metered',
+    ])
+    expect(fallbackWork?.pricingPolicy.activeLane).toMatchObject({
+      buyerDebitRequired: true,
+      laneRef: 'lane.autopilot_work.openagents_shc_fallback',
+      meterKind: 'usd_credits',
+      runnerKind: 'openagents_shc',
+    })
     expect(listJson.workOrders.map(order => order.workOrderRef)).toEqual(
       expect.arrayContaining([
         ownPylonJson.work?.workOrderRef,
@@ -1433,6 +1463,8 @@ describe('Autopilot work routes', () => {
       reasonRefs: [
         'placement.selected.requester_pylon',
         'placement.pylon.preferred_before_fallback',
+        'pricing.autopilot_work.own_pylon_free',
+        'placement.reason.placed_on_your_pylon_free',
       ],
       selectedPylonRef: 'pylon.local.docs_agent',
       selectedRunnerKind: 'requester_pylon',
@@ -1521,6 +1553,7 @@ describe('Autopilot work routes', () => {
 
   test('creates one durable no-spend Pylon claude_agent_task git_checkout lease for requester Pylon work', async () => {
     const store = new MemoryAutopilotWorkStore()
+    const buyerPaymentLedgerStore = new MemoryBuyerPaymentLedgerStore()
     const pylonApiStore = new MemoryPylonApiStore([
       pylonRegistration({
         pylonRef: 'pylon.production.docs_agent',
@@ -1528,6 +1561,7 @@ describe('Autopilot work routes', () => {
     ])
     const create = await route(store, '/api/autopilot/work', {
       body: OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      buyerPaymentLedgerStore,
       idempotencyKey: 'idem-autopilot-work-pylon-lease',
       pylonApiStore,
     })
@@ -1569,13 +1603,35 @@ describe('Autopilot work routes', () => {
         }),
       ],
       placementDecision: {
+        reasonRefs: [
+          'placement.selected.requester_pylon',
+          'placement.pylon.preferred_before_fallback',
+          'pricing.autopilot_work.own_pylon_free',
+          'placement.reason.placed_on_your_pylon_free',
+        ],
         selectedPylonRef: 'pylon.production.docs_agent',
         selectedRunnerKind: 'requester_pylon',
         source: 'requester_pylon',
       },
+      pricingPolicy: {
+        activeLane: {
+          buyerDebitRequired: false,
+          laneRef: 'lane.autopilot_work.requester_pylon_own_job',
+          meterKind: 'none',
+          runnerKind: 'requester_pylon',
+          unitAmountCents: 0,
+        },
+        policyRef: 'pricing_policy.autopilot_work.v0_3.lane_meter_mapping',
+      },
       pylonAssignmentIntents: [],
       state: 'queued_or_running',
     })
+    expect(createJson.work?.paymentChallengeRef).toBeNull()
+    expect(createJson.work?.funding).toMatchObject({
+      buyerFundingState: 'not_required',
+      fundedAmountCents: 0,
+    })
+    expect(buyerPaymentLedgerStore.creditDebits.size).toBe(0)
     expect(pylonApiStore.assignments.size).toBe(1)
     expect(replay.status).toBe(200)
     expect(replayJson.work?.state).toBe('queued_or_running')
