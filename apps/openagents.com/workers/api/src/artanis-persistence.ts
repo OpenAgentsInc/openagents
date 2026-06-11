@@ -3,8 +3,8 @@ import { Effect, Schema as S } from 'effect'
 import {
   ARTANIS_LOOP_READ_ONLY_AUTHORITY,
   ArtanisLoopLedgerRecord,
+  ArtanisLoopTickRecord,
   type ArtanisLoopRecord,
-  type ArtanisLoopTickRecord,
   artanisLoopProjectionHasPrivateMaterial,
   projectArtanisLoopLedger,
 } from './artanis-loop'
@@ -507,6 +507,38 @@ const deliveredForumPublicationIntent = (
     updatedAtIso: input.updatedAtIso,
   })
 
+const loopTickProjection = (
+  record: ArtanisLoopTickRecord,
+  nowIso: string,
+) =>
+  projectArtanisLoopLedger(
+    new ArtanisLoopLedgerRecord({
+      agentId: 'agent_artanis',
+      authority: ARTANIS_LOOP_READ_ONLY_AUTHORITY,
+      caveatRefs: record.caveatRefs,
+      createdAtIso: record.createdAtIso,
+      ledgerRef: 'ledger.public.artanis.persistence.tick',
+      loops: [
+        {
+          active: !['completed', 'failed', 'paused'].includes(record.state),
+          agentId: 'agent_artanis',
+          blockerRefs: record.blockerRefs,
+          caveatRefs: record.caveatRefs,
+          createdAtIso: record.createdAtIso,
+          goalRefs: [record.goalRef],
+          loopRef: record.loopRef,
+          scopeRef: 'scope.public.artanis.persistence.tick',
+          state: record.state,
+          ticks: [record],
+          updatedAtIso: record.updatedAtIso,
+        },
+      ],
+      updatedAtIso: record.updatedAtIso,
+    }),
+    'public',
+    nowIso,
+  )
+
 export const saveArtanisRuntimeSnapshot = (
   db: D1Database,
   record: ArtanisRuntimeRecord,
@@ -581,33 +613,7 @@ export const saveArtanisLoopTick = (
   nowIso: string,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
   Effect.gen(function* () {
-    const projection = projectArtanisLoopLedger(
-      new ArtanisLoopLedgerRecord({
-        agentId: 'agent_artanis',
-        authority: ARTANIS_LOOP_READ_ONLY_AUTHORITY,
-        caveatRefs: record.caveatRefs,
-        createdAtIso: record.createdAtIso,
-        ledgerRef: 'ledger.public.artanis.persistence.tick',
-        loops: [
-          {
-            active: !['completed', 'failed', 'paused'].includes(record.state),
-            agentId: 'agent_artanis',
-            blockerRefs: record.blockerRefs,
-            caveatRefs: record.caveatRefs,
-            createdAtIso: record.createdAtIso,
-            goalRefs: [record.goalRef],
-            loopRef: record.loopRef,
-            scopeRef: 'scope.public.artanis.persistence.tick',
-            state: record.state,
-            ticks: [record],
-            updatedAtIso: record.updatedAtIso,
-          },
-        ],
-        updatedAtIso: record.updatedAtIso,
-      }),
-      'public',
-      nowIso,
-    )
+    const projection = loopTickProjection(record, nowIso)
     yield* ensurePublicSafeProjection(
       artanisLoopProjectionHasPrivateMaterial(projection),
       'Artanis loop tick',
@@ -982,8 +988,31 @@ export const closeArtanisPersistedLoopTick = (
       })
     }
 
+    const current = yield* Effect.try({
+      catch: () =>
+        new ArtanisPersistenceError({
+          kind: 'unsafe_record',
+          reason: 'Stored Artanis loop tick record could not be decoded for closeout.',
+        }),
+      try: () => decodeUnknownWithSchema(ArtanisLoopTickRecord, existing.record),
+    })
+    const closeoutReceiptRefs = uniqueRefs([
+      ...current.closeoutReceiptRefs,
+      ...input.closeoutReceiptRefs,
+    ])
+    const record = new ArtanisLoopTickRecord({
+      ...current,
+      closeoutReceiptRefs,
+      state: input.state,
+      updatedAtIso: input.updatedAtIso,
+    })
+    const projection = loopTickProjection(record, input.updatedAtIso)
+    yield* ensurePublicSafeProjection(
+      artanisLoopProjectionHasPrivateMaterial(projection),
+      'Artanis loop tick closeout',
+    )
     const closeoutJson = stableJson({
-      closeoutReceiptRefs: input.closeoutReceiptRefs,
+      closeoutReceiptRefs,
       state: input.state,
     })
 
@@ -1002,6 +1031,13 @@ export const closeArtanisPersistedLoopTick = (
       })
     }
 
+    const recordJson = stableJson(record)
+    const projectionJson = stableJson(projection)
+    const contentHash = stableJson({
+      projection,
+      record,
+    })
+
     yield* storageEffect(
       'close Artanis loop tick',
       () =>
@@ -1010,6 +1046,9 @@ export const closeArtanisPersistedLoopTick = (
             `UPDATE ${spec.tableName}
                 SET state = ?,
                     closeout_json = ?,
+                    record_json = ?,
+                    public_projection_json = ?,
+                    content_hash = ?,
                     updated_at = ?,
                     closed_at = ?
               WHERE record_ref = ?
@@ -1018,6 +1057,9 @@ export const closeArtanisPersistedLoopTick = (
           .bind(
             input.state,
             closeoutJson,
+            recordJson,
+            projectionJson,
+            contentHash,
             input.updatedAtIso,
             input.closedAtIso,
             tickRef,
@@ -1025,7 +1067,7 @@ export const closeArtanisPersistedLoopTick = (
           .run(),
     )
 
-    return writeReceipt(spec.kind, existing.recordRef, existing.publicProjection, {
+    return writeReceipt(spec.kind, existing.recordRef, projection, {
       closedAtIso: input.closedAtIso,
       idempotent: false,
       state: 'closed',

@@ -342,6 +342,64 @@ describe('pylon capacity funnel live bridge', () => {
     ])
   })
 
+  test('counts accepted-work assignment rows when lifecycle rows lag', async () => {
+    const store: PylonApiStore = {
+      createAssignment: () => Promise.reject(new Error('unused')),
+      createEvent: () => Promise.reject(new Error('unused')),
+      listAssignmentsForPylon: () => Promise.resolve([]),
+      listAssignmentsForPylons: () =>
+        Promise.resolve([
+          assignment({
+            acceptedWorkRefs: ['accepted_work.public.assignment_lag'],
+            closeoutRefs: ['closeout.public.assignment_lag'],
+            pylonRef: 'pylon.test.accepted_lag',
+            state: 'accepted_work',
+          }),
+        ]),
+      listEventsForPylon: () => Promise.resolve([]),
+      listEventsForAssignment: () => Promise.resolve([]),
+      listRegistrations: () =>
+        Promise.resolve([
+          registration({ pylonRef: 'pylon.test.accepted_lag' }),
+        ]),
+      listProviderJobLifecycleForPylons: () => Promise.resolve([]),
+      readEventByIdempotencyKeyHash: () => Promise.resolve(undefined),
+      readAssignment: () => Promise.resolve(undefined),
+      readAssignmentByIdempotencyKeyHash: () => Promise.resolve(undefined),
+      readRegistrationByPylonRef: () => Promise.resolve(undefined),
+      updateAssignment: () => Promise.reject(new Error('unused')),
+      upsertProviderJobLifecycle: () => Promise.reject(new Error('unused')),
+      upsertRegistration: () => Promise.reject(new Error('unused')),
+    } as unknown as PylonApiStore
+
+    const response = await Effect.runPromise(
+      handlePylonCapacityFunnelApi(
+        new Request('https://openagents.com/api/public/pylon-capacity-funnel'),
+        { nowIso: () => nowIso, store },
+      ),
+    )
+    const body = (await response.json()) as Readonly<{
+      funnel: Readonly<{
+        acceptedCount: number
+        byStage: ReadonlyArray<Readonly<{ count: number; key: string }>>
+        totalCount: number
+      }>
+    }>
+
+    expect(response.status).toBe(200)
+    expect(body.funnel.totalCount).toBe(1)
+    expect(body.funnel.acceptedCount).toBe(1)
+    expect(body.funnel.byStage).toEqual([
+      {
+        count: 1,
+        key: 'accepted',
+      },
+    ])
+    expect(JSON.stringify(body)).not.toMatch(
+      /pylon\.test\.|user_test|oa_agent|accepted_lag/,
+    )
+  })
+
   test('serves the public funnel route with counts only', async () => {
     const store: PylonApiStore = {
       createAssignment: () => Promise.reject(new Error('unused')),

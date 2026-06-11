@@ -9,6 +9,8 @@ Nexus/Pylon rebuild. It is a visibility layer, not a payout executor.
 
 Public:
 
+- `GET /api/public/artanis/report`
+- `GET /api/public/pylon-capacity-funnel`
 - `GET /api/public/nexus-pylon/receipts/{receiptRef}`
 - `GET /nexus-pylon/receipts/{receiptRef}`
 
@@ -41,6 +43,15 @@ returns an `artanis_admin_assignment_closeout` receipt when the assignment row
 exists. The projection includes assignment state, public-safe closeout/proof
 refs, the trace digest or prefix, verdict ref, and relative timestamp displays.
 It remains a closeout proof, not a payout or terminal settlement claim.
+
+The public Artanis report composes its autonomous-loop summary from recent
+persisted Artanis loop-tick rows when D1 has them. Tick closeout writes refresh
+both `record_json` and `public_projection_json`; the report reader also overlays
+closed-row `closeout_json` onto decoded tick records so older closed rows do not
+remain stuck on example-loop refs. The public Pylon capacity funnel composes
+from live Pylon registrations, assignment rows, and provider lifecycle rows; if
+the lifecycle row lags an `accepted_work` assignment, the count-only public
+funnel still reports that capacity as accepted.
 
 This is intentional. It proves the receipt and dashboard projection surfaces
 before #431 moves real bitcoin through isolated MDK test wallets.

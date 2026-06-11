@@ -140,14 +140,71 @@ export const darkCapacityReasonRefForPylon = (
   return null
 }
 
+const stageRank: Record<PylonCapacityFunnelStage, number> = {
+  accepted: 6,
+  artifact_producing: 5,
+  assigned: 3,
+  benchmarked: 1,
+  dark: -1,
+  eligible: 2,
+  paid: 7,
+  registered: 0,
+  running: 4,
+  settled: 8,
+}
+
+const assignmentStage = (
+  assignment: PylonApiAssignmentRecord,
+): PylonCapacityFunnelStage | null => {
+  switch (assignment.state) {
+    case 'accepted_work':
+      return 'accepted'
+    case 'closeout_submitted':
+    case 'proof_submitted':
+      return 'artifact_producing'
+    case 'running':
+      return 'running'
+    case 'accepted':
+    case 'offered':
+      return 'assigned'
+    default:
+      return null
+  }
+}
+
+const lifecycleStage = (
+  lifecycle: PylonApiProviderJobLifecycleRecord,
+): PylonCapacityFunnelStage => {
+  switch (lifecycle.stage) {
+    case 'accepted_work':
+      return 'accepted'
+    case 'artifact_submitted':
+    case 'closeout_submitted':
+      return 'artifact_producing'
+    case 'running':
+      return 'running'
+    case 'accepted':
+    case 'offered':
+      return 'assigned'
+  }
+}
+
+const highestStage = (
+  stages: ReadonlyArray<PylonCapacityFunnelStage | null>,
+): PylonCapacityFunnelStage | null =>
+  stages
+    .filter((stage): stage is PylonCapacityFunnelStage => stage !== null)
+    .sort((left, right) => stageRank[right] - stageRank[left])[0] ?? null
+
 const stageForPylon = (
   input: Readonly<{
+    assignments: ReadonlyArray<PylonApiAssignmentRecord>
     darkReasonRef: PylonDarkCapacityReasonRef | null
     eligible: boolean
     lifecycle: ReadonlyArray<PylonApiProviderJobLifecycleRecord>
   }>,
 ): PylonCapacityFunnelStage => {
-  const { darkReasonRef, eligible, lifecycle } = input
+  const { assignments, darkReasonRef, eligible, lifecycle } = input
 
   if (
     darkReasonRef !== null &&
@@ -156,29 +213,13 @@ const stageForPylon = (
     return 'dark'
   }
 
-  if (lifecycle.some(record => record.stage === 'accepted_work')) {
-    return 'accepted'
-  }
+  const projectedStage = highestStage([
+    ...lifecycle.map(lifecycleStage),
+    ...assignments.map(assignmentStage),
+  ])
 
-  if (
-    lifecycle.some(record =>
-      record.stage === 'artifact_submitted' ||
-      record.stage === 'closeout_submitted',
-    )
-  ) {
-    return 'artifact_producing'
-  }
-
-  if (lifecycle.some(record => record.stage === 'running')) {
-    return 'running'
-  }
-
-  if (
-    lifecycle.some(record =>
-      record.stage === 'accepted' || record.stage === 'offered',
-    )
-  ) {
-    return 'assigned'
+  if (projectedStage !== null) {
+    return projectedStage
   }
 
   return eligible ? 'eligible' : 'registered'
@@ -224,22 +265,11 @@ export const pylonCapacityFunnelRecordsFromStore = (
     })
     const ordinal = index + 1
     const stage = stageForPylon({
+      assignments,
       darkReasonRef,
       eligible,
       lifecycle,
     })
-    const stageRank: Record<PylonCapacityFunnelStage, number> = {
-      accepted: 6,
-      artifact_producing: 5,
-      assigned: 3,
-      benchmarked: 1,
-      dark: -1,
-      eligible: 2,
-      paid: 7,
-      registered: 0,
-      running: 4,
-      settled: 8,
-    }
     const reached = (threshold: PylonCapacityFunnelStage): boolean =>
       stageRank[stage] >= stageRank[threshold]
 

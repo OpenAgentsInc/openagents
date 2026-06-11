@@ -65,10 +65,12 @@ repo material, customer-private data, and raw timestamps.
 ## Provider Job Lifecycle
 
 The live public route projects assigned, running, artifact-producing, and
-accepted stages from durable `pylon_provider_job_lifecycle` rows rather than
-from assignment inference. Assignment creation and assignment-state updates
-write the assignment row and matching lifecycle row in one D1 `db.batch`, so a
-job transition cannot land without the corresponding funnel accounting record.
+accepted stages from durable `pylon_provider_job_lifecycle` rows, then falls
+back to the public-safe assignment state when a lifecycle row is missing or
+lagging. Assignment creation and assignment-state updates write the assignment
+row and matching lifecycle row in one D1 `db.batch`; the fallback prevents the
+public count route from showing zero accepted work if a lifecycle projection
+lags behind the accepted-work assignment row.
 
 Lifecycle stages are:
 

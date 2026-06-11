@@ -34,6 +34,11 @@ import {
   projectArtanisHealthSnapshot,
 } from './artanis-health'
 import {
+  ARTANIS_LOOP_READ_ONLY_AUTHORITY,
+  ArtanisLoopLedgerRecord,
+  ArtanisLoopRecord,
+  type ArtanisLoopState,
+  type ArtanisLoopTickRecord,
   exampleArtanisLoopLedger,
   projectArtanisLoopLedger,
 } from './artanis-loop'
@@ -711,6 +716,76 @@ export const publicNexusPylonReceiptRouteRefsFromRefs = (
       .map(ref => `route:/api/public/nexus-pylon/receipts/${ref}`),
   )
 
+const persistedLoopTerminalStates = new Set<ArtanisLoopState>([
+  'blocked',
+  'failed',
+  'paused',
+])
+
+const persistedLoopStateForLatestTick = (
+  tick: ArtanisLoopTickRecord,
+): ArtanisLoopState => tick.state === 'completed' ? 'running' : tick.state
+
+const sortLoopTicks = (
+  ticks: ReadonlyArray<ArtanisLoopTickRecord>,
+): ReadonlyArray<ArtanisLoopTickRecord> =>
+  [...ticks].sort((left, right) => {
+    const updated = left.updatedAtIso.localeCompare(right.updatedAtIso)
+
+    return updated === 0 ? left.tickRef.localeCompare(right.tickRef) : updated
+  })
+
+const artanisLoopLedgerForReport = (
+  loopTicks: ReadonlyArray<ArtanisLoopTickRecord> | undefined,
+): ArtanisLoopLedgerRecord => {
+  const sortedTicks = sortLoopTicks(loopTicks ?? [])
+
+  if (sortedTicks.length === 0) {
+    return exampleArtanisLoopLedger()
+  }
+
+  const latestTick = sortedTicks[sortedTicks.length - 1]!
+  const ticksByLoopRef = sortedTicks.reduce(
+    (groups, tick) => {
+      groups.set(tick.loopRef, [...(groups.get(tick.loopRef) ?? []), tick])
+
+      return groups
+    },
+    new Map<string, ReadonlyArray<ArtanisLoopTickRecord>>(),
+  )
+  const loops = [...ticksByLoopRef.entries()].map(([loopRef, ticks]) => {
+    const first = ticks[0]!
+    const newest = ticks[ticks.length - 1]!
+    const state = persistedLoopStateForLatestTick(newest)
+
+    return new ArtanisLoopRecord({
+      active:
+        newest.tickRef === latestTick.tickRef &&
+        !persistedLoopTerminalStates.has(state),
+      agentId: 'agent_artanis',
+      blockerRefs: uniqueRefs(ticks.flatMap(tick => tick.blockerRefs)),
+      caveatRefs: uniqueRefs(ticks.flatMap(tick => tick.caveatRefs)),
+      createdAtIso: first.createdAtIso,
+      goalRefs: uniqueRefs(ticks.map(tick => tick.goalRef)),
+      loopRef,
+      scopeRef: 'scope.public.artanis.persistence.tick',
+      state,
+      ticks,
+      updatedAtIso: newest.updatedAtIso,
+    })
+  })
+
+  return new ArtanisLoopLedgerRecord({
+    agentId: 'agent_artanis',
+    authority: ARTANIS_LOOP_READ_ONLY_AUTHORITY,
+    caveatRefs: uniqueRefs(sortedTicks.flatMap(tick => tick.caveatRefs)),
+    createdAtIso: sortedTicks[0]!.createdAtIso,
+    ledgerRef: 'ledger.public.artanis.persistence.report',
+    loops,
+    updatedAtIso: latestTick.updatedAtIso,
+  })
+}
+
 const probeGepaOutcomeSnapshot = (
   overrides: Partial<ProbeGepaCodingOutcomeMetricSnapshot> = {},
 ): ProbeGepaCodingOutcomeMetricSnapshot =>
@@ -782,6 +857,7 @@ const exampleProbeGepaOutcomeMetricsProjection =
 
 export const artanisPublicReportSnapshot = (input: {
   forumPublicationQueue?: ArtanisForumPublicationQueueRecord | undefined
+  loopTicks?: ReadonlyArray<ArtanisLoopTickRecord> | undefined
   nowIso?: string | undefined
   pylonStats: PublicPylonStats
 }): ArtanisPublicReport => {
@@ -792,7 +868,7 @@ export const artanisPublicReportSnapshot = (input: {
     nowIso,
   )
   const loop = projectArtanisLoopLedger(
-    exampleArtanisLoopLedger(),
+    artanisLoopLedgerForReport(input.loopTicks),
     'public',
     nowIso,
   )

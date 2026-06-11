@@ -15,6 +15,7 @@ import {
 import {
   exampleArtanisLoopLedger,
 } from './artanis-loop'
+import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import {
   ArtanisPersistenceError,
   closeArtanisPersistedLoopTick,
@@ -155,7 +156,7 @@ class ArtanisPersistenceStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('UPDATE artanis_loop_ticks')) {
-      const recordRef = String(this.values[4])
+      const recordRef = String(this.values[7])
       const index = rows.findIndex(
         row => row.record_ref === recordRef && row.closed_at === null,
       )
@@ -164,10 +165,13 @@ class ArtanisPersistenceStatement implements D1PreparedStatement {
         const existing = rows[index]!
         rows[index] = {
           ...existing,
-          closed_at: String(this.values[3]),
+          closed_at: String(this.values[6]),
           closeout_json: String(this.values[1]),
+          content_hash: String(this.values[4]),
+          public_projection_json: String(this.values[3]),
+          record_json: String(this.values[2]),
           state: String(this.values[0]),
-          updated_at: String(this.values[2]),
+          updated_at: String(this.values[5]),
         }
       }
 
@@ -178,6 +182,17 @@ class ArtanisPersistenceStatement implements D1PreparedStatement {
   }
 
   all<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    const table = tableName(this.query)
+    const rows = this.store.rows(table)
+
+    if (this.query.includes('ORDER BY updated_at DESC')) {
+      return Promise.resolve({
+        results: [...rows]
+          .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+          .slice(0, Number(this.values[0])),
+      } as unknown as D1Result<T>)
+    }
+
     return Promise.resolve({ results: [] } as unknown as D1Result<T>)
   }
 }
@@ -392,6 +407,26 @@ describe('Artanis persistence', () => {
         updatedAtIso: '2026-06-07T05:02:00.000Z',
       }),
     )
+    const stored = await Effect.runPromise(
+      readArtanisPersistedRecord(db, 'loop_tick', tick.tickRef),
+    )
+    const reportResponse = await Effect.runPromise(
+      handlePublicArtanisReportApi(
+        new Request('https://openagents.com/api/public/artanis/report'),
+        {
+          OPENAGENTS_DB: db,
+          store: { listRegistrations: () => Promise.resolve([]) },
+        },
+      ),
+    )
+    const report = (await reportResponse.json()) as Readonly<{
+      autonomousLoop?: Readonly<{
+        latestTickRef?: string | null
+        latestTickState?: string | null
+        receiptRefs?: ReadonlyArray<string>
+        tickCount?: number
+      }>
+    }>
 
     await expect(
       Effect.runPromise(
@@ -409,10 +444,55 @@ describe('Artanis persistence', () => {
       executableAuthority: false,
       state: 'closed',
     })
+    expect(closed.publicProjection).toMatchObject({
+      loops: [
+        {
+          ticks: [
+            {
+              closeoutReceiptRefs: [
+                'receipt.public.artanis.tick_closeout',
+              ],
+              state: 'completed',
+            },
+          ],
+        },
+      ],
+    })
     expect(retry).toMatchObject({
       closedAtIso: '2026-06-07T05:01:00.000Z',
       idempotent: true,
       state: 'closed',
+    })
+    expect(stored).toMatchObject({
+      closedAtIso: '2026-06-07T05:01:00.000Z',
+      state: 'completed',
+      record: {
+        closeoutReceiptRefs: ['receipt.public.artanis.tick_closeout'],
+        state: 'completed',
+      },
+      publicProjection: {
+        loops: [
+          {
+            ticks: [
+              {
+                closeoutReceiptRefs: [
+                  'receipt.public.artanis.tick_closeout',
+                ],
+                state: 'completed',
+              },
+            ],
+          },
+        ],
+      },
+    })
+    expect(reportResponse.status).toBe(200)
+    expect(report.autonomousLoop).toMatchObject({
+      latestTickRef: tick.tickRef,
+      latestTickState: 'completed',
+      receiptRefs: expect.arrayContaining([
+        'receipt.public.artanis.tick_closeout',
+      ]),
+      tickCount: 1,
     })
   })
 })
