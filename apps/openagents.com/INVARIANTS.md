@@ -807,6 +807,96 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/probe-gepa-outcome-metrics.test.ts` and
   `workers/api/src/probe-gepa-stage1-shadow-promotion-gate.test.ts`.
 
+## Public Projection Staleness Declaration
+
+- Every public projection carries `generatedAt` (or `lastRebuiltAt`; numeric
+  `generatedAtUnixMs` where the surface's safety scan bans raw ISO timestamps
+  in string fields) plus a declared staleness contract, and either rebuilds on
+  the state transitions that matter (event-driven invalidation at the write
+  site) or composes live at read. A projection that cannot meet its own
+  declared staleness must say so in the payload rather than serve stale data
+  as current. (Epic #4751; instances #4744, #4745, #4746, #4747, #4735,
+  #4752, #4753, #4754.)
+- The shared contract vocabulary is
+  `workers/api/src/public-projection-staleness.ts`
+  (`projection_staleness.v1`: `composition` of `live_at_read`,
+  `rebuilt_on_transition`, or `stored_snapshot`, plus `maxStalenessSeconds`
+  and the `rebuildsOn` transition set). It deliberately extends the shape
+  frozen by the Tassadar trace factory's day-0 `projection_rebuild.v0.1`
+  contract (#4748,
+  `workers/api/src/tassadar-trace-factory/projection-rebuild.ts`); do not
+  invent a second staleness vocabulary.
+- New public projections must ship compliant. The zero-debt architecture check
+  (`scripts/check-zero-debt-architecture.mjs`, run by `bun run
+  check:architecture` inside `check:deploy`) discovers `/api/public/...`
+  route literals, fails any route missing from its projection-surface ledger,
+  greps `staleness_declared` modules for the shared contract, and freezes the
+  legacy count as an exact ratchet budget that may only shrink as retrofits
+  land.
+- Projection inventory (staleness mode → compliance as of epic #4751):
+  - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
+    closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
+    and example-fallback flags with caveat refs).
+  - `GET /api/forum/tip-leaderboards` — live at read — compliant
+    (`generatedAt`, contract, ranked-creator ladder credited/swept sats,
+    honesty caveat refs).
+  - `GET /api/forum/moderation/tip-earnings` — live at read — compliant.
+  - `GET /api/forum/actors/{actorRef}/tip-earnings` — live at read —
+    compliant.
+  - Forum post `tipStats` blocks (topic detail, post detail, post list) —
+    live at read — compliant (each block carries the contract).
+  - `GET /api/agents/profiles/{profileRef}` and
+    `GET /api/forum/actors/{actorRef}/profile` — live at read over
+    registration, approved owner claims, and verified X-proof challenges —
+    compliant (`generatedAt`, contract, `x_verified_agent` state).
+  - `GET /api/agents/claims/rewards` and `/{rewardRef}` — live at read —
+    compliant (#4754).
+  - `GET /api/public/home` — static discovery document, exempt (not a state
+    projection).
+  - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no
+    payload-level `generatedAt`/contract).
+  - `GET /api/public/product-promises/transitions` — stored receipt rows —
+    NON-COMPLIANT (per-item timestamps only).
+  - `GET /api/public/proof/otec` — stored snapshot — NON-COMPLIANT (no
+    freshness fields at all).
+  - `GET /api/public/pylon-stats` — live at read — NON-COMPLIANT
+    (`asOfUnixMs` + `counterWindows` from #4735, but no declared
+    `maxStaleness` contract).
+  - `GET /api/public/pylon-capacity-funnel` — live at read — NON-COMPLIANT
+    (`generatedAt` only).
+  - `GET /api/public/pylon-capacity-funnel/history` — stored snapshots —
+    NON-COMPLIANT (`generatedAt` + per-snapshot times, no declared bound).
+  - `GET /api/public/launch-dashboard` — live at read — NON-COMPLIANT
+    (`generatedAt` only; internal 10-minute freshness gate is undeclared).
+  - `GET /api/public/treasury/launch-status` — live at read — NON-COMPLIANT
+    (no freshness fields).
+  - `GET /api/public/treasury` — live proxy — NON-COMPLIANT.
+  - `GET /api/public/artanis/admin-ticks` — live at read — NON-COMPLIANT.
+  - `GET /api/public/nexus-pylon/receipts/{receiptRef}` — stored receipt
+    projection — NON-COMPLIANT (per-receipt times only).
+  - `GET /api/public/nip90-market/receipts/{receiptRef}` — stored receipt
+    projection — NON-COMPLIANT.
+  - `GET /api/public/adjutant/activity` — live at read — NON-COMPLIANT
+    (per-item `updatedAt` only).
+  - `GET /api/public/goals/{goalId}`, `/api/public/goals/{goalId}/snapshot`,
+    and `/api/public/agents/{agentRef}/goal` — live at read — NON-COMPLIANT.
+  - `GET /api/forum/launch-status` — live at read — NON-COMPLIANT.
+  - `GET /api/forum/receipts/{receiptRef}` — live at read over pay-ins and
+    receipts — NON-COMPLIANT (no payload-level declaration).
+  - `GET /api/training/...` window/leaderboard/eval surfaces
+    (`training-run-window-routes.ts`) — mixed — NON-COMPLIANT (file owned by
+    an in-flight lane; retrofit owed on #4751).
+  - `GET /api/openapi.json` — static contract document — exempt from the
+    payload rule, but its route inventory must track shipped routes (#4752,
+    file owned by an in-flight lane).
+- Regression coverage for this policy lives in
+  `workers/api/src/public-projection-staleness.test.ts`,
+  `workers/api/src/artanis-public-report.test.ts`,
+  `workers/api/src/forum/tip-leaderboards-staleness.test.ts`,
+  `workers/api/src/forum-routes.test.ts`,
+  `workers/api/src/x-claim-reward-eligibility-routes.test.ts`, and the
+  ledger/ratchet in `scripts/check-zero-debt-architecture.mjs`.
+
 ## Mullet Simulation Runner Authority
 
 - The `/mullet` surface and `/api/mullet/*` routes are private operator-only

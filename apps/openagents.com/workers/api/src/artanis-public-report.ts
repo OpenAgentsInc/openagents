@@ -80,6 +80,13 @@ import {
 } from './probe-gepa-outcome-metrics'
 import { PublicClaimState } from './public-claim-state'
 import {
+  PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+  projectionDataAgeSeconds,
+  projectionStalenessExceeded,
+  rebuiltOnTransitionStaleness,
+} from './public-projection-staleness'
+import {
   PublicPylonAcceptedWorkSettlementGate,
   PublicPylonEarningLaunchGate,
   PublicPylonStats,
@@ -137,11 +144,27 @@ export class ArtanisPublicReportLoopSummary extends S.Class<ArtanisPublicReportL
   blockerRefs: S.Array(S.String),
   caveatRefs: S.Array(S.String),
   forumPublicationIntentRefs: S.Array(S.String),
+  /**
+   * Age in whole seconds of the newest persisted loop tick at
+   * generation time; null when no persisted tick backs this summary
+   * (the typed-example fallback, which `source` then labels).
+   */
+  latestTickAgeSeconds: S.NullOr(S.Number),
   latestTickRef: S.NullOr(S.String),
   latestTickState: S.NullOr(ArtanisPublicReportLoopState),
   loopRef: S.String,
   nextTickDisplay: S.NullOr(S.String),
+  /** True when the newest persisted tick's own next-tick promise has passed. */
+  nextTickOverdue: S.Boolean,
+  /**
+   * True when this summary cannot meet its declared staleness contract
+   * — the projection says so instead of asserting stale state as
+   * current (epic #4751).
+   */
+  projectionStale: S.Boolean,
   receiptRefs: S.Array(S.String),
+  source: S.Literals(['persisted_loop_ticks', 'typed_example_fallback']),
+  staleness: PublicProjectionStalenessContract,
   state: ArtanisPublicReportLoopState,
   tickCount: S.Number,
 }) {}
@@ -273,6 +296,11 @@ export class ArtanisPublicReport extends S.Class<ArtanisPublicReport>(
   forumLinks: S.Array(ArtanisPublicReportForumLink),
   forumRewardSmoke: ArtanisForumRewardSmokeProjection,
   forumRewardVisibility: ArtanisForumRewardVisibilityProjection,
+  /**
+   * Numeric because this payload's safety scan bans raw ISO timestamps
+   * in string fields; epoch milliseconds carry the same fact safely.
+   */
+  generatedAtUnixMs: S.Number,
   healthSummary: ArtanisPublicReportHealthSummary,
   modelLabSummary: ArtanisPublicReportModelLabSummary,
   nexusPublicRefs: S.Array(S.String),
@@ -292,6 +320,7 @@ export class ArtanisPublicReport extends S.Class<ArtanisPublicReport>(
   receiptRefs: S.Array(S.String),
   reportRef: S.String,
   runtimeState: S.String,
+  staleness: PublicProjectionStalenessContract,
   standaloneClaims: S.Array(ArtanisPublicReportClaimSummary),
   updatedAtDisplay: S.String,
 }) {}
@@ -735,6 +764,80 @@ const sortLoopTicks = (
     return updated === 0 ? left.tickRef.localeCompare(right.tickRef) : updated
   })
 
+/**
+ * Declared staleness contracts for this surface (epic #4751). The
+ * report itself composes live at read from persisted tick rows plus a
+ * live pylon-stats snapshot; the loop summary inside it projects a
+ * stored tick ledger that rebuilds on tick closeout (#4745) and must
+ * flag itself stale instead of asserting an old tick as current.
+ */
+export const ARTANIS_PUBLIC_REPORT_STALENESS = liveAtReadStaleness([
+  'artanis_loop_tick_closeout',
+  'public_pylon_stats_source_write',
+])
+
+export const ARTANIS_LOOP_TICK_PROJECTION_MAX_STALENESS_SECONDS = 86_400
+
+export const ARTANIS_LOOP_TICK_PROJECTION_STALENESS =
+  rebuiltOnTransitionStaleness(
+    ARTANIS_LOOP_TICK_PROJECTION_MAX_STALENESS_SECONDS,
+    ['artanis_loop_tick_closeout'],
+  )
+
+export const ARTANIS_LOOP_PROJECTION_STALE_CAVEAT_REF =
+  'caveat.public.artanis.loop_tick_projection_exceeds_declared_staleness'
+
+export const ARTANIS_LOOP_PROJECTION_EXAMPLE_FALLBACK_CAVEAT_REF =
+  'caveat.public.artanis.loop_projection_example_fallback_not_live_state'
+
+type ArtanisLoopProjectionFreshness = Readonly<{
+  latestTickAgeSeconds: number | null
+  nextTickOverdue: boolean
+  projectionStale: boolean
+  source: 'persisted_loop_ticks' | 'typed_example_fallback'
+}>
+
+const artanisLoopProjectionFreshness = (
+  loopTicks: ReadonlyArray<ArtanisLoopTickRecord> | undefined,
+  nowIso: string,
+): ArtanisLoopProjectionFreshness => {
+  const sortedTicks = sortLoopTicks(loopTicks ?? [])
+  const latestTick = sortedTicks[sortedTicks.length - 1]
+
+  if (latestTick === undefined) {
+    return {
+      latestTickAgeSeconds: null,
+      nextTickOverdue: false,
+      // Example-composed loop state is never current loop truth; the
+      // summary must say so rather than present it as a live tick.
+      projectionStale: true,
+      source: 'typed_example_fallback',
+    }
+  }
+
+  const latestTickAgeSeconds = projectionDataAgeSeconds(
+    latestTick.updatedAtIso,
+    nowIso,
+  )
+  const nextTickAtMs =
+    latestTick.nextTickAtIso === null
+      ? Number.NaN
+      : Date.parse(latestTick.nextTickAtIso)
+  const nextTickOverdue =
+    !Number.isNaN(nextTickAtMs) && Date.parse(nowIso) > nextTickAtMs
+
+  return {
+    latestTickAgeSeconds,
+    nextTickOverdue,
+    projectionStale:
+      projectionStalenessExceeded(
+        ARTANIS_LOOP_TICK_PROJECTION_STALENESS,
+        latestTickAgeSeconds,
+      ) || nextTickOverdue,
+    source: 'persisted_loop_ticks',
+  }
+}
+
 const artanisLoopLedgerForReport = (
   loopTicks: ReadonlyArray<ArtanisLoopTickRecord> | undefined,
 ): ArtanisLoopLedgerRecord => {
@@ -963,6 +1066,15 @@ export const artanisPublicReportSnapshot = (input: {
   const activeLoop =
     loop.loops.find(candidate => candidate.active) ?? loop.loops[0]
   const latestTick = activeLoop?.ticks[activeLoop.ticks.length - 1] ?? null
+  const loopFreshness = artanisLoopProjectionFreshness(input.loopTicks, nowIso)
+  const loopFreshnessCaveatRefs = [
+    ...(loopFreshness.source === 'typed_example_fallback'
+      ? [ARTANIS_LOOP_PROJECTION_EXAMPLE_FALLBACK_CAVEAT_REF]
+      : []),
+    ...(loopFreshness.projectionStale
+      ? [ARTANIS_LOOP_PROJECTION_STALE_CAVEAT_REF]
+      : []),
+  ]
   const r10Claims = campaign.entries.map(entry => ({
     area: entry.area,
     blockedByRefs: entry.blockedByRefs,
@@ -1194,16 +1306,22 @@ export const artanisPublicReportSnapshot = (input: {
       caveatRefs: uniqueRefs([
         ...(activeLoop?.caveatRefs ?? []),
         ...(latestTick?.caveatRefs ?? []),
+        ...loopFreshnessCaveatRefs,
       ]),
       forumPublicationIntentRefs: latestTick?.forumPublicationIntentRefs ?? [],
+      latestTickAgeSeconds: loopFreshness.latestTickAgeSeconds,
       latestTickRef: latestTick?.tickRef ?? null,
       latestTickState: latestTick?.state ?? null,
       loopRef: activeLoop?.loopRef ?? 'loop.public.artanis.none',
       nextTickDisplay: latestTick?.nextTickDisplay ?? null,
+      nextTickOverdue: loopFreshness.nextTickOverdue,
+      projectionStale: loopFreshness.projectionStale,
       receiptRefs: uniqueRefs([
         ...(latestTick?.receiptRefs ?? []),
         ...(latestTick?.closeoutReceiptRefs ?? []),
       ]),
+      source: loopFreshness.source,
+      staleness: ARTANIS_LOOP_TICK_PROJECTION_STALENESS,
       state: activeLoop?.state ?? 'blocked',
       tickCount: activeLoop?.tickCount ?? 0,
     },
@@ -1213,6 +1331,7 @@ export const artanisPublicReportSnapshot = (input: {
     forumLinks,
     forumRewardSmoke,
     forumRewardVisibility,
+    generatedAtUnixMs: Date.parse(nowIso),
     healthSummary: {
       attentionLabels: uniqueRefs(healthAttentionLabels),
       blockerRefs: uniqueRefs([
@@ -1267,6 +1386,7 @@ export const artanisPublicReportSnapshot = (input: {
     publicBlockerRefs,
     publicCaveatRefs: uniqueRefs([
       ...runtime.caveatRefs,
+      ...loopFreshnessCaveatRefs,
       ...loop.caveatRefs,
       ...health.caveatRefs,
       ...health.signals.flatMap(signal => signal.caveatRefs),
@@ -1328,6 +1448,7 @@ export const artanisPublicReportSnapshot = (input: {
     ]),
     reportRef: 'report.public.artanis.status_aggregator',
     runtimeState: runtime.state,
+    staleness: ARTANIS_PUBLIC_REPORT_STALENESS,
     standaloneClaims,
     updatedAtDisplay: runtime.updatedAtDisplay,
   }

@@ -1,6 +1,10 @@
 import { Effect, Schema as S } from 'effect'
 
 import { parseJsonRecord, parseJsonStringArray } from '../json-boundary'
+import {
+  type PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from '../public-projection-staleness'
 import { currentIsoTimestamp, randomUuid } from '../runtime-primitives'
 import {
   type ForumTipRecipientWalletRecord,
@@ -483,6 +487,14 @@ type AgentProfileOwnerClaimRow = Readonly<{
   updated_at: string
 }>
 
+type AgentProfileXChallengeRow = Readonly<{
+  id: string
+  receipt_ref: string | null
+  state: string
+  updated_at: string | null
+  verified_at: string | null
+}>
+
 type ForumTipRecipientWalletRow = Readonly<{
   actor_ref: string
   archived_at: string | null
@@ -590,11 +602,21 @@ type ForumNotificationReceiptRow = Readonly<{
 }>
 
 type ForumPostTipStats = Readonly<{
+  staleness: PublicProjectionStalenessContract
   tipCount: number
   totalCreditedSats: number
   totalPaidSats: number
   totalSettledSats: number
 }>
+
+// Post tip stats compose live at read (epic #4751, the #4753
+// remainder): the block declares its own staleness contract so paid /
+// settled / credited totals never imply a frozen snapshot.
+const forumPostTipStatsStaleness = liveAtReadStaleness([
+  'forum_payment_event_confirmed',
+  'forum_tip_settlement_claimed',
+  'tip_ladder_pay_in_paid',
+])
 
 type ForumPostTipStatsRow = Readonly<{
   post_id: string
@@ -1125,13 +1147,20 @@ const postActivityFromRow = (
 const agentProfileFromRow = (
   row: AgentProfileRow,
   ownerClaim: AgentProfileOwnerClaimRow | null,
+  xChallenge: AgentProfileXChallengeRow | null,
   stats: typeof actorStatsDefault,
   activity: ReadonlyArray<ForumAgentProfileActivityItem>,
 ): ForumAgentPublicProfile => {
+  // The verified X proof only outranks an approved owner claim — the
+  // challenge ladder requires the claim, so a challenge without one is
+  // ignored rather than upgrading an unclaimed profile (#4751 inst. 2).
+  const verifiedXChallenge = ownerClaim === null ? null : xChallenge
   const updatedAt = latestIso([
     row.updated_at,
     ownerClaim?.decided_at ?? null,
     ownerClaim?.updated_at ?? null,
+    verifiedXChallenge?.verified_at ?? null,
+    verifiedXChallenge?.updated_at ?? null,
   ])
 
   return decodeForumAgentPublicProfileResponse({
@@ -1159,8 +1188,14 @@ const agentProfileFromRow = (
         safeArtifactRefs: [
           `agent_profile:${row.user_id}`,
           ...(ownerClaim === null ? [] : [ownerClaim.id]),
+          ...(verifiedXChallenge === null ? [] : [verifiedXChallenge.id]),
         ],
-        safeReceiptRefs: ownerClaim === null ? [] : [ownerClaim.receipt_ref],
+        safeReceiptRefs: [
+          ...(ownerClaim === null ? [] : [ownerClaim.receipt_ref]),
+          ...(verifiedXChallenge?.receipt_ref == null
+            ? []
+            : [verifiedXChallenge.receipt_ref]),
+        ],
         trustTier: ownerClaim === null ? 'reviewed' : 'verified',
       }),
       publicUrl: publicProfileUrl(
@@ -1171,7 +1206,11 @@ const agentProfileFromRow = (
       stats,
       updatedAt,
       verificationState:
-        ownerClaim === null ? 'registered_agent' : 'owner_claimed_agent',
+        ownerClaim === null
+          ? 'registered_agent'
+          : verifiedXChallenge === null
+            ? 'owner_claimed_agent'
+            : 'x_verified_agent',
     },
   }).profile
 }
@@ -1353,6 +1392,7 @@ const postWithTipRecipientReadiness = (
   })
 
 const zeroPostTipStats: ForumPostTipStats = {
+  staleness: forumPostTipStatsStaleness,
   tipCount: 0,
   totalCreditedSats: 0,
   totalPaidSats: 0,
@@ -1527,6 +1567,7 @@ const readForumPostTipStats = (
           [
             row.post_id,
             {
+              staleness: forumPostTipStatsStaleness,
               tipCount: Math.max(0, Number(row.tip_count ?? 0)),
               totalCreditedSats: 0 as number,
               totalPaidSats: Math.max(0, Number(row.total_paid_sats ?? 0)),
@@ -1920,6 +1961,33 @@ const readApprovedOwnerClaimForAgent = (
       .first<AgentProfileOwnerClaimRow>(),
   )
 
+// The verified X-proof challenge is the second write that the profile
+// projection used to lose (#4751 instance 2, documented on #4744):
+// composing it live keeps the public trust surface aligned with the
+// verification ledger.
+const readVerifiedXChallengeForAgent = (
+  db: D1Database,
+  agentUserId: string,
+): Effect.Effect<AgentProfileXChallengeRow | null, ForumStorageError> =>
+  d1Effect('forum.readAgentPublicProfile.xChallenge', () =>
+    db
+      .prepare(
+        `SELECT id,
+                receipt_ref,
+                state,
+                updated_at,
+                verified_at
+           FROM agent_owner_x_claim_challenges
+          WHERE agent_user_id = ?
+            AND state IN ('verified', 'approved')
+            AND tweet_ref IS NOT NULL
+          ORDER BY verified_at DESC, updated_at DESC
+          LIMIT 1`,
+      )
+      .bind(agentUserId)
+      .first<AgentProfileXChallengeRow>(),
+  )
+
 export const readForumAgentPublicProfile = (
   db: D1Database,
   profileRef: string,
@@ -1953,13 +2021,14 @@ export const readForumAgentPublicProfile = (
 
     if (row !== null) {
       const actorRef = `agent:${row.user_id}`
-      const [ownerClaim, stats, activity] = yield* Effect.all([
+      const [ownerClaim, xChallenge, stats, activity] = yield* Effect.all([
         readApprovedOwnerClaimForAgent(db, row.user_id),
+        readVerifiedXChallengeForAgent(db, row.user_id),
         readActorStats(db, actorRef),
         readForumAgentProfileActivity(db, actorRef),
       ])
 
-      return agentProfileFromRow(row, ownerClaim, stats, activity)
+      return agentProfileFromRow(row, ownerClaim, xChallenge, stats, activity)
     }
 
     const snapshot = yield* d1Effect(

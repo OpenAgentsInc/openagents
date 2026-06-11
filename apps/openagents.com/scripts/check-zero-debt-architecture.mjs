@@ -365,6 +365,238 @@ const deletedFileChecks = [
   },
 ]
 
+// ---------------------------------------------------------------------------
+// Public projection staleness ratchet (epic #4751).
+//
+// Invariant: every public projection carries generatedAt (or
+// generatedAtUnixMs) plus a declared staleness contract from
+// workers/api/src/public-projection-staleness.ts. The inventory below
+// is the projection-surface ledger; the enforced rules are:
+//   1. Every `/api/public/...` route literal discovered in route
+//      modules must be covered by a ledger row — a NEW public
+//      projection route fails this check until it is added here, and
+//      it can only be added as `staleness_declared` because the legacy
+//      set is a frozen budget.
+//   2. Every `staleness_declared` row's payload module must actually
+//      reference the shared staleness contract (the grep token is
+//      `maxStalenessSeconds` or the module import path).
+//   3. The count of `legacy_missing_staleness_contract` rows must
+//      EXACTLY equal the frozen budget: retrofitting a legacy surface
+//      requires flipping its row and lowering the budget in the same
+//      change, and no new legacy rows can be smuggled in.
+//
+// The check is module-granular: a shared route module with one
+// declared projection does not prove every route in it is compliant.
+// Route-level truth lives in the inventory in
+// apps/openagents.com/INVARIANTS.md ("Public Projection Staleness
+// Declaration"); rows below mirror it.
+// ---------------------------------------------------------------------------
+
+const publicProjectionComplianceToken =
+  /maxStalenessSeconds|public-projection-staleness/
+
+const publicProjectionSurfaces = [
+  // Declared surfaces (payload carries generatedAt + staleness contract).
+  {
+    module: 'workers/api/src/artanis-public-report.ts',
+    route: '/api/public/artanis/report',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/forum/tip-earnings.ts',
+    route: '/api/forum/tip-leaderboards',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/forum/tip-earnings.ts',
+    route: '/api/forum/moderation/tip-earnings',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/forum/tip-earnings.ts',
+    route: '/api/forum/actors/{actorRef}/tip-earnings',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/forum/repository.ts',
+    route: 'forum post tipStats blocks (topic/post/list payloads)',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/forum-routes.ts',
+    route: '/api/agents/profiles/{profileRef}',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/x-claim-reward-eligibility-routes.ts',
+    route: '/api/agents/claims/rewards',
+    status: 'staleness_declared',
+  },
+  // Static contract documents, not state projections.
+  {
+    module: 'workers/api/src/index.ts',
+    route: '/api/public/home',
+    status: 'static_contract_exempt',
+  },
+  // Legacy surfaces that predate the invariant (frozen budget; shrink only).
+  {
+    module: 'workers/api/src/product-promises.ts',
+    route: '/api/public/product-promises',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/promise-transition-receipt-routes.ts',
+    route: '/api/public/product-promises/transitions',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/public-otec-proof.ts',
+    route: '/api/public/proof/otec',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/public-pylon-stats.ts',
+    route: '/api/public/pylon-stats',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/pylon-capacity-funnel-live-routes.ts',
+    route: '/api/public/pylon-capacity-funnel',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/pylon-capacity-funnel-live-routes.ts',
+    route: '/api/public/pylon-capacity-funnel/history',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/public-launch-dashboard.ts',
+    route: '/api/public/launch-dashboard',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/treasury-routes.ts',
+    route: '/api/public/treasury/launch-status',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/treasury-page-routes.ts',
+    route: '/api/public/treasury',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/artanis-tick-monitor.ts',
+    route: '/api/public/artanis/admin-ticks',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/nexus-pylon-visibility.ts',
+    route: '/api/public/nexus-pylon/receipts/{receiptRef}',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/nip90-market-receipts.ts',
+    route: '/api/public/nip90-market/receipts/{receiptRef}',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/adjutant-public-activity.ts',
+    route: '/api/public/adjutant/activity',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/agent-goal-public-projection.ts',
+    route: '/api/public/goals/{goalId}',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/agent-goal-public-projection.ts',
+    route: '/api/public/agents/{agentRef}/goal',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/forum-routes.ts',
+    route: '/api/forum/launch-status',
+    status: 'legacy_missing_staleness_contract',
+  },
+  {
+    module: 'workers/api/src/forum-routes.ts',
+    route: '/api/forum/receipts/{receiptRef}',
+    status: 'legacy_missing_staleness_contract',
+  },
+  // Locked by the in-flight OpenAPI/training lanes; owed retrofit is
+  // recorded on epic #4751.
+  {
+    module: 'workers/api/src/training-run-window-routes.ts',
+    route: '/api/training/runs (window/leaderboard/eval surfaces)',
+    status: 'legacy_missing_staleness_contract',
+  },
+]
+
+const PUBLIC_PROJECTION_LEGACY_BUDGET = 18
+
+const normalizedPublicRoute = value =>
+  value.replaceAll('\\', '').replace(/\/+$/, '')
+
+const discoveredPublicRoutes = [
+  ...new Set(
+    routeFiles.flatMap(path =>
+      Array.from(
+        read(path).matchAll(
+          /\/api\\?\/public(?:\\?\/[A-Za-z0-9_.$-]+)*/g,
+        ),
+      ).map(match => normalizedPublicRoute(match[0])),
+    ),
+  ),
+].sort()
+
+const ledgerRoutePaths = publicProjectionSurfaces
+  .map(surface => surface.route.split(' ')[0].replace(/\{[^}]+\}.*$/, ''))
+  .map(route => route.replace(/\/+$/, ''))
+  .filter(route => route.startsWith('/api/'))
+
+const publicRouteIsKnown = route =>
+  ledgerRoutePaths.some(
+    known => route === known || route.startsWith(`${known}/`),
+  )
+
+const publicProjectionProblems = [
+  ...discoveredPublicRoutes
+    .filter(route => route !== '/api/public' && !publicRouteIsKnown(route))
+    .map(
+      route =>
+        `public projection route ${route} is not in the projection-surface ledger. ` +
+        'New public projections must declare generatedAt plus the staleness contract from ' +
+        'workers/api/src/public-projection-staleness.ts, be added to this ledger as ' +
+        "'staleness_declared', and be added to the inventory in INVARIANTS.md (epic #4751).",
+    ),
+  ...publicProjectionSurfaces
+    .filter(surface => surface.status === 'staleness_declared')
+    .filter(
+      surface =>
+        !existsSync(surface.module) ||
+        !publicProjectionComplianceToken.test(read(surface.module)),
+    )
+    .map(
+      surface =>
+        `public projection module ${surface.module} (${surface.route}) is marked ` +
+        'staleness_declared but does not reference the shared staleness contract.',
+    ),
+  ...(() => {
+    const legacyCount = publicProjectionSurfaces.filter(
+      surface => surface.status === 'legacy_missing_staleness_contract',
+    ).length
+
+    return legacyCount === PUBLIC_PROJECTION_LEGACY_BUDGET
+      ? []
+      : [
+          `public projection legacy count ${legacyCount} does not equal the frozen ` +
+            `budget ${PUBLIC_PROJECTION_LEGACY_BUDGET}. Retrofits must flip the ledger row to ` +
+            "'staleness_declared' and lower the budget; new legacy rows are not allowed.",
+        ]
+  })(),
+]
+
 const budgetProblems = budgetChecks.flatMap(check => {
   const count = totalCount(check.details)
 
@@ -422,11 +654,24 @@ deletedFileChecks.forEach(check => {
 })
 console.log('')
 
+const legacyProjectionCount = publicProjectionSurfaces.filter(
+  surface => surface.status === 'legacy_missing_staleness_contract',
+).length
+console.log(
+  `public projection staleness ledger (epic #4751): ${publicProjectionSurfaces.length} surfaces, ` +
+    `${legacyProjectionCount}/${PUBLIC_PROJECTION_LEGACY_BUDGET} legacy without a declared contract`,
+)
+publicProjectionSurfaces.forEach(surface => {
+  console.log(`  ${surface.status}: ${surface.route} (${surface.module})`)
+})
+console.log('')
+
 const problems = [
   ...budgetProblems,
   ...runPromiseProblems,
   ...lineBudgetProblems,
   ...deletedFileProblems,
+  ...publicProjectionProblems,
 ]
 
 if (problems.length > 0) {

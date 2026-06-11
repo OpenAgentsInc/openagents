@@ -157,6 +157,7 @@ import {
   OrangeCheckNostrExportError,
   buildOrangeCheckNostrExport,
 } from './orange-check-nostr-export'
+import { liveAtReadStaleness } from './public-projection-staleness'
 import {
   currentEpochMillis,
   currentIsoTimestamp,
@@ -4138,6 +4139,16 @@ const tipReconciliationResponse = (
     ).pipe(Effect.map(noStoreJsonResponse))
   }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
 
+// The public agent profile composes registration, approved owner
+// claims, verified X-proof challenges, and orange-check entitlement
+// live at read, and declares so (epic #4751 instances 1-2, #4744).
+const agentProfileProjectionStaleness = liveAtReadStaleness([
+  'agent_owner_claim_approved',
+  'agent_owner_x_claim_verified',
+  'agent_registration_updated',
+  'orange_check_entitlement_changed',
+])
+
 const agentProfileResponse = (db: D1Database, profileRef: string) =>
   readForumAgentPublicProfile(db, profileRef).pipe(
     Effect.flatMap(profile =>
@@ -4146,8 +4157,10 @@ const agentProfileResponse = (db: D1Database, profileRef: string) =>
         : readActiveOrangeCheckByActorRef(db, profile.actor.actorRef).pipe(
             Effect.map(entitlement =>
               noStoreJsonResponse({
+                generatedAt: currentIsoTimestamp(),
                 orangeCheck: orangeCheckBadgeProjection(entitlement),
                 profile,
+                staleness: agentProfileProjectionStaleness,
               }),
             ),
           ),
