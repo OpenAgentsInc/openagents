@@ -21,6 +21,8 @@ import type {
   ForumWorkRequestRelayPublishReceipt,
   ForumWorkRequestRelayPublisher,
 } from './forum-work-requests'
+import { parseJsonUnknown } from './json-boundary'
+import { currentEpochSeconds } from './runtime-primitives'
 
 export type ForumWorkRequestRelaySocket = Readonly<{
   addEventListener: (
@@ -48,6 +50,15 @@ const MarketSecretKeyHexPattern = /^[0-9a-f]{64}$/i
 
 const DefaultPublishTimeoutMs = 10_000
 
+export class ForumWorkRequestRelayConnectionError extends Error {
+  readonly _tag = 'ForumWorkRequestRelayConnectionError'
+
+  constructor(reason: string) {
+    super(reason)
+    this.name = 'ForumWorkRequestRelayConnectionError'
+  }
+}
+
 const hexToBytes = (hex: string): Uint8Array => {
   const bytes = new Uint8Array(hex.length / 2)
 
@@ -72,7 +83,9 @@ export const workersFetchRelayConnector: ForumWorkRequestRelayConnector =
     const socket = (response as { webSocket?: WebSocket | null }).webSocket
 
     if (socket === undefined || socket === null) {
-      throw new Error('relay refused websocket upgrade')
+      throw new ForumWorkRequestRelayConnectionError(
+        'relay refused websocket upgrade',
+      )
     }
 
     ;(socket as unknown as { accept: () => void }).accept()
@@ -111,7 +124,7 @@ const awaitRelayOk = (
 
     socket.addEventListener('message', event => {
       try {
-        const parsed: unknown = JSON.parse(String(event.data))
+        const parsed = parseJsonUnknown(String(event.data))
 
         if (
           Array.isArray(parsed) &&
@@ -136,8 +149,7 @@ export const makeLiveForumWorkRequestRelayPublisher = (
   options: LiveForumWorkRequestRelayPublisherOptions,
 ): ForumWorkRequestRelayPublisher => {
   const connect = options.connect ?? workersFetchRelayConnector
-  const nowEpochSeconds =
-    options.nowEpochSeconds ?? (() => Math.floor(Date.now() / 1000))
+  const nowEpochSeconds = options.nowEpochSeconds ?? currentEpochSeconds
   const publishTimeoutMs = options.publishTimeoutMs ?? DefaultPublishTimeoutMs
 
   return {

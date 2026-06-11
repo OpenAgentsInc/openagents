@@ -1,10 +1,10 @@
+import { type Event as SignedNostrEvent, verifyEvent } from 'nostr-effect/pure'
 import { describe, expect, it } from 'vitest'
-import { verifyEvent, type Event as SignedNostrEvent } from 'nostr-effect/pure'
 
 import {
+  type ForumWorkRequestRelaySocket,
   forumWorkRequestRelayPublisherForEnv,
   makeLiveForumWorkRequestRelayPublisher,
-  type ForumWorkRequestRelaySocket,
 } from './forum-work-request-live-publisher'
 import type { ForumWorkRequestRelayPublishInput } from './forum-work-requests'
 
@@ -17,7 +17,11 @@ const publishInput = (): ForumWorkRequestRelayPublishInput => ({
     kind: 5934,
     tags: [
       ['i', 'issue.public.openagents.4781', 'text'],
-      ['param', 'verification_command_ref', 'command.public.pylon.labor.bun_test'],
+      [
+        'param',
+        'verification_command_ref',
+        'command.public.pylon.labor.bun_test',
+      ],
       ['bid', '2000000'],
       ['output', 'output_only'],
     ],
@@ -106,6 +110,24 @@ describe('makeLiveForumWorkRequestRelayPublisher', () => {
     const publisher = makeLiveForumWorkRequestRelayPublisher({
       connect: async () => ackingSocket(false),
       marketSecretKeyHex: testMarketSecretKeyHex,
+    })
+
+    const receipt = await publisher.publishWorkRequest(publishInput())
+
+    expect(receipt.accepted).toBe(false)
+    expect(receipt.relayRef).toMatch(/^relay\.public\.relay_publish_rejected\./)
+  })
+
+  it('returns a rejected receipt when the relay sends malformed JSON', async () => {
+    const publisher = makeLiveForumWorkRequestRelayPublisher({
+      connect: async () =>
+        makeFakeSocket((_data, socket) => {
+          queueMicrotask(() => {
+            socket.emit('message', '{')
+          })
+        }),
+      marketSecretKeyHex: testMarketSecretKeyHex,
+      publishTimeoutMs: 20,
     })
 
     const receipt = await publisher.publishWorkRequest(publishInput())

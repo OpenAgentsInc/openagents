@@ -4,6 +4,9 @@ export const currentIsoTimestamp = (): string => currentDate().toISOString()
 
 export const currentEpochMillis = (): number => Date.now()
 
+export const currentEpochSeconds = (): number =>
+  Math.floor(currentEpochMillis() / 1000)
+
 export const randomUuid = (): string => crypto.randomUUID()
 
 export const compactRandomId = (prefix: string): string =>

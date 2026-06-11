@@ -203,9 +203,12 @@ Blockers:
   accepted post-MVP/open tail.
 - Live paid Forum order, live autonomic funded tick, live provider routing,
   and MVP exit proof remain Gate/operator evidence.
-- Current architecture guard still reports pre-existing unrelated debt:
-  Worker throw budget overage plus raw `JSON.parse` and raw time/id/random in
-  `forum-work-request-live-publisher.ts`.
+
+Recently unblocked:
+
+- The zero-debt architecture guard no longer blocks the parent on
+  `forum-work-request-live-publisher.ts`: Worker throw count is back within
+  budget and raw `JSON.parse` plus raw time/id/random counts are at zero.
 
 Next unblock:
 
@@ -217,30 +220,30 @@ Next unblock:
 These issues are closed for their scoped implementation but still feed the open
 proof gates above.
 
-| Issue | Closed scope | Deferred blocker carried forward |
-| --- | --- | --- |
-| #4766 M8 | Provider account pool dashboard | #4767 and #4771 still need credentialed live legs. |
-| #4769 M11 | Repo connect, data scope, placement explanations | Broader #4772/#4786 proof remains Gate-owned. |
-| #4770 M12 | Team budgets and spend-to-evidence joins | Live funded payment/settlement evidence remains operator/Gate-owned where claims cite it. |
-| #4773 A1 | API parity contract | Final MVP proof still depends on live Gate evidence. |
-| #4774 A2 | Agent payment in both currencies | Live MDK/L402/card-funded movement remains a live evidence boundary where cited. |
-| #4775 A3 | Forum-to-coding work-order linkage | Live paid Forum order remains operator/Gate evidence. |
-| #4776 A4 | Autonomic coding-thread proposal contract | Live funded autonomic tick remains operator/Gate evidence. |
-| #4778 P2 | Mission/work-order unification | Lane C live fanout still requires proof using the merged contract. |
-| #4779 P3 | Writeback symmetry | Live real-repo PR draft/human merge proof remains dependent evidence where claimed. |
-| #4780 P4 | USD-credit-to-sats settlement bridge | Live settlement receipts are still required for paid labor claims. |
-| #4785 P9 | Settlement visibility law | Every cited payout rung still needs dereferenceable visibility receipts. |
-| #4813 Pack A parent | Pack A implementation closeout | Live MVP proof remains in #4768/#4772. |
-| #4814 PA1 | Task supervisor | Feeds #4768 proof receipts. |
-| #4815 PA2 | Schedule and continuation receipts | Feeds #4768 proof receipts. |
-| #4816 PA3 | Notification and attention coordinator | Feeds #4768 proof receipts. |
-| #4817 PA4 | Companion projection | Feeds #4768 dual-surface proof. |
-| #4818 PA5 | Smoke receipt authority | Evidence-only scaffold; live receipts still required. |
-| #4819 PA6 | Artifact and receipt ledger | Feeds #4768/#4772 proof trail. |
-| #4820 PA7 | Structured event replay | Feeds #4768/#4772 proof trail. |
-| #4821 PA8 | Usage budget and cost-stop projections | Feeds M9/M10/M14 budget and smart-routing claims. |
-| #4822 PA9 | Permission/approval contract | Feeds unattended/headless proof boundaries. |
-| #4823 PA10 | Accessibility/non-interactive contract | Feeds agent/Pylon non-interactive proof boundaries. |
+| Issue               | Closed scope                                     | Deferred blocker carried forward                                                          |
+| ------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| #4766 M8            | Provider account pool dashboard                  | #4767 and #4771 still need credentialed live legs.                                        |
+| #4769 M11           | Repo connect, data scope, placement explanations | Broader #4772/#4786 proof remains Gate-owned.                                             |
+| #4770 M12           | Team budgets and spend-to-evidence joins         | Live funded payment/settlement evidence remains operator/Gate-owned where claims cite it. |
+| #4773 A1            | API parity contract                              | Final MVP proof still depends on live Gate evidence.                                      |
+| #4774 A2            | Agent payment in both currencies                 | Live MDK/L402/card-funded movement remains a live evidence boundary where cited.          |
+| #4775 A3            | Forum-to-coding work-order linkage               | Live paid Forum order remains operator/Gate evidence.                                     |
+| #4776 A4            | Autonomic coding-thread proposal contract        | Live funded autonomic tick remains operator/Gate evidence.                                |
+| #4778 P2            | Mission/work-order unification                   | Lane C live fanout still requires proof using the merged contract.                        |
+| #4779 P3            | Writeback symmetry                               | Live real-repo PR draft/human merge proof remains dependent evidence where claimed.       |
+| #4780 P4            | USD-credit-to-sats settlement bridge             | Live settlement receipts are still required for paid labor claims.                        |
+| #4785 P9            | Settlement visibility law                        | Every cited payout rung still needs dereferenceable visibility receipts.                  |
+| #4813 Pack A parent | Pack A implementation closeout                   | Live MVP proof remains in #4768/#4772.                                                    |
+| #4814 PA1           | Task supervisor                                  | Feeds #4768 proof receipts.                                                               |
+| #4815 PA2           | Schedule and continuation receipts               | Feeds #4768 proof receipts.                                                               |
+| #4816 PA3           | Notification and attention coordinator           | Feeds #4768 proof receipts.                                                               |
+| #4817 PA4           | Companion projection                             | Feeds #4768 dual-surface proof.                                                           |
+| #4818 PA5           | Smoke receipt authority                          | Evidence-only scaffold; live receipts still required.                                     |
+| #4819 PA6           | Artifact and receipt ledger                      | Feeds #4768/#4772 proof trail.                                                            |
+| #4820 PA7           | Structured event replay                          | Feeds #4768/#4772 proof trail.                                                            |
+| #4821 PA8           | Usage budget and cost-stop projections           | Feeds M9/M10/M14 budget and smart-routing claims.                                         |
+| #4822 PA9           | Permission/approval contract                     | Feeds unattended/headless proof boundaries.                                               |
+| #4823 PA10          | Accessibility/non-interactive contract           | Feeds agent/Pylon non-interactive proof boundaries.                                       |
 
 ## Claim Boundaries
 
