@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  OpenAgentsAgentCoreSha256,
   OpenAgentsAgentOnboardingSha256,
   OpenAgentsAgentOnboardingVersion,
 } from './openagents-agent-onboarding'
@@ -66,16 +67,32 @@ describe('OpenAgents capability manifest route', () => {
     expect(body.docs.probeSource).toBe(
       'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
     )
-    expect(body.docs.agent).toBe('https://openagents.com/AGENTS.md')
-    expect(body.docs.instruction).toBe('https://openagents.com/AGENTS.md')
+    expect(body.docs.agent).toBe('https://openagents.com/AGENTS-CORE.md')
+    expect(body.docs.instruction).toBe(
+      'https://openagents.com/AGENTS-CORE.md',
+    )
+    expect(body.docs.agentFullReference).toBe(
+      'https://openagents.com/AGENTS.md',
+    )
+    expect(body.docs.instructionFullReference).toBe(
+      'https://openagents.com/AGENTS.md',
+    )
     expect(body.docs.heartbeat).toBe('https://openagents.com/HEARTBEAT.md')
     expect(body.docs.rules).toBe('https://openagents.com/RULES.md')
     expect(body.docs.packageMetadata).toBe('https://openagents.com/skill.json')
-    expect(body.docs.instructionSha256).toBe(OpenAgentsAgentOnboardingSha256)
+    expect(body.docs.instructionCoreSha256).toBe(OpenAgentsAgentCoreSha256)
+    expect(body.docs.instructionSha256).toBe(OpenAgentsAgentCoreSha256)
+    expect(body.docs.instructionCoreSourceRef).toBe(
+      'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS-CORE.md',
+    )
     expect(body.docs.instructionVersion).toBe(OpenAgentsAgentOnboardingVersion)
-    expect(body.docs.skill).toBe('https://openagents.com/AGENTS.md')
-    expect(body.docs.skillSha256).toBe(OpenAgentsAgentOnboardingSha256)
+    expect(body.docs.skill).toBe('https://openagents.com/AGENTS-CORE.md')
+    expect(body.docs.skillSha256).toBe(OpenAgentsAgentCoreSha256)
     expect(body.docs.skillVersion).toBe(OpenAgentsAgentOnboardingVersion)
+    expect(body.docs.instructionFullReference).toBe(
+      'https://openagents.com/AGENTS.md',
+    )
+    expect(OpenAgentsAgentOnboardingSha256).toMatch(/^[a-f0-9]{64}$/u)
     expect(body.authModes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'public', status: 'available' }),
@@ -102,8 +119,13 @@ describe('OpenAgents capability manifest route', () => {
       expect.arrayContaining([
         expect.objectContaining({
           auth: 'public',
-          href: 'https://openagents.com/AGENTS.md',
+          href: 'https://openagents.com/AGENTS-CORE.md',
           id: 'agent_instructions',
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/AGENTS.md',
+          id: 'agent_full_reference',
         }),
         expect.objectContaining({
           auth: 'public',

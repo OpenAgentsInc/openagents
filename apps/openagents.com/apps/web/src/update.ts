@@ -98,6 +98,7 @@ const redirectCommands = (
   })
 
 const publicDocumentPaths = new Set([
+  '/AGENTS-CORE.md',
   '/AGENTS.md',
   '/HEARTBEAT.md',
   '/RULES.md',

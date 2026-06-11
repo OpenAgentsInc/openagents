@@ -8,6 +8,7 @@ import {
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 
 export type OpenAgentsCompanionFilePath =
+  | '/AGENTS-CORE.md'
   | '/HEARTBEAT.md'
   | '/RULES.md'
   | '/skill.json'

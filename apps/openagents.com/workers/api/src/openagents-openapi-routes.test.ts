@@ -86,6 +86,9 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/AGENTS.md', 'get').operationId).toBe(
       'getOpenAgentsAgentInstructions',
     )
+    expect(operationAt(body, '/AGENTS-CORE.md', 'get').operationId).toBe(
+      'getOpenAgentsCoreAgentInstructions',
+    )
     expect(operationAt(body, '/HEARTBEAT.md', 'get').operationId).toBe(
       'getOpenAgentsAgentHeartbeat',
     )

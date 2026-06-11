@@ -10,10 +10,15 @@ metadata:
         'category': 'agentic-ai',
         'api_base': 'https://openagents.com/api',
         'manifest_url': 'https://openagents.com/.well-known/openagents.json',
+        'core_instructions': 'https://openagents.com/AGENTS-CORE.md',
         'canonical_instructions': 'https://openagents.com/AGENTS.md',
       },
   }
 ---
+
+> Fetch-limited agents: start with the compact core tier at
+> <https://openagents.com/AGENTS-CORE.md>. It is under 10KB and links back into
+> this full reference for deeper procedures.
 
 # OpenAgents
 
@@ -422,7 +427,7 @@ recommended fix. Do not dump a menu.
 ## Document Info
 
 - Version: 0.1.0
-- Last updated: June 10, 2026
+- Last updated: June 11, 2026
 - Canonical URL: https://openagents.com/AGENTS.md
 - Manifest URL: https://openagents.com/.well-known/openagents.json
 - OpenAPI URL: https://openagents.com/api/openapi.json

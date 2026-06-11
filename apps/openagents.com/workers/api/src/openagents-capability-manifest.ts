@@ -9,10 +9,11 @@ import {
   AGENT_SEARCH_PAYMENT_REDEEM_ENDPOINT,
 } from './agent-search'
 import {
+  OpenAgentsAgentCoreSha256,
+  OpenAgentsAgentCoreSourceRef,
+  OpenAgentsAgentCoreUrl,
   OpenAgentsAgentOnboardingCanonicalUrl,
   OpenAgentsAgentOnboardingLastUpdated,
-  OpenAgentsAgentOnboardingSha256,
-  OpenAgentsAgentOnboardingSourceRef,
   OpenAgentsAgentOnboardingVersion,
 } from './openagents-agent-onboarding'
 
@@ -43,6 +44,10 @@ export const OpenAgentsCapabilityManifest = S.Struct({
     openApi: S.String,
     agent: S.String,
     instruction: S.String,
+    agentFullReference: S.String,
+    instructionFullReference: S.String,
+    instructionCoreSha256: S.String,
+    instructionCoreSourceRef: S.String,
     instructionSha256: S.String,
     instructionVersion: S.String,
     instructionLastUpdated: S.String,
@@ -143,20 +148,24 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       probeSource:
         'https://github.com/OpenAgentsInc/openagents/tree/main/packages/probe',
       openApi: 'https://openagents.com/api/openapi.json',
-      agent: OpenAgentsAgentOnboardingCanonicalUrl,
-      instruction: OpenAgentsAgentOnboardingCanonicalUrl,
-      instructionSha256: OpenAgentsAgentOnboardingSha256,
+      agent: OpenAgentsAgentCoreUrl,
+      instruction: OpenAgentsAgentCoreUrl,
+      agentFullReference: OpenAgentsAgentOnboardingCanonicalUrl,
+      instructionFullReference: OpenAgentsAgentOnboardingCanonicalUrl,
+      instructionCoreSha256: OpenAgentsAgentCoreSha256,
+      instructionCoreSourceRef: OpenAgentsAgentCoreSourceRef,
+      instructionSha256: OpenAgentsAgentCoreSha256,
       instructionVersion: OpenAgentsAgentOnboardingVersion,
       instructionLastUpdated: OpenAgentsAgentOnboardingLastUpdated,
-      instructionSourceRef: OpenAgentsAgentOnboardingSourceRef,
+      instructionSourceRef: OpenAgentsAgentCoreSourceRef,
       heartbeat: 'https://openagents.com/HEARTBEAT.md',
       rules: 'https://openagents.com/RULES.md',
       packageMetadata: 'https://openagents.com/skill.json',
-      skill: OpenAgentsAgentOnboardingCanonicalUrl,
-      skillSha256: OpenAgentsAgentOnboardingSha256,
+      skill: OpenAgentsAgentCoreUrl,
+      skillSha256: OpenAgentsAgentCoreSha256,
       skillVersion: OpenAgentsAgentOnboardingVersion,
       skillLastUpdated: OpenAgentsAgentOnboardingLastUpdated,
-      skillSourceRef: OpenAgentsAgentOnboardingSourceRef,
+      skillSourceRef: OpenAgentsAgentCoreSourceRef,
     },
     authModes: [
       {
@@ -220,11 +229,19 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
     resources: [
       {
         id: 'agent_instructions',
+        href: 'https://openagents.com/AGENTS-CORE.md',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Compact under-10KB agent onboarding tier sourced from docs/live/AGENTS-CORE.md.',
+      },
+      {
+        id: 'agent_full_reference',
         href: 'https://openagents.com/AGENTS.md',
         method: 'GET',
         auth: 'public',
         description:
-          'Canonical agent onboarding instructions sourced from docs/live/AGENTS.md.',
+          'Full agent onboarding reference sourced from docs/live/AGENTS.md.',
       },
       {
         id: 'agent_heartbeat',

@@ -1883,6 +1883,23 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/AGENTS-CORE.md': {
+    get: operation({
+      operationId: 'getOpenAgentsCoreAgentInstructions',
+      summary: 'Read compact OpenAgents agent instructions',
+      description:
+        'Returns the compact under-10KB OpenAgents agent onboarding tier. This file is guidance only and does not grant runtime authority.',
+      tags: ['Discovery'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Compact agent instructions.',
+          '#/components/schemas/OpenAgentsCompanionMarkdown',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/AGENTS.md': {
     get: operation({
       operationId: 'getOpenAgentsAgentInstructions',

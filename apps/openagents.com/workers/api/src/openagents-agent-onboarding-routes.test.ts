@@ -5,6 +5,10 @@ import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import {
+  OpenAgentsAgentCorePath,
+  OpenAgentsAgentCoreSha256,
+  OpenAgentsAgentCoreSourceRef,
+  OpenAgentsAgentCoreUrl,
   OpenAgentsAgentOnboardingCanonicalPath,
   OpenAgentsAgentOnboardingLastUpdated,
   OpenAgentsAgentOnboardingSha256,
@@ -18,18 +22,25 @@ import {
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
 const liveAgentDocPath = resolve(repoRoot, 'docs/live/AGENTS.md')
+const liveAgentCoreDocPath = resolve(repoRoot, 'docs/live/AGENTS-CORE.md')
 const liveHeartbeatPath = resolve(repoRoot, 'docs/live/HEARTBEAT.md')
 const liveRulesPath = resolve(repoRoot, 'docs/live/RULES.md')
 const liveSkillJsonPath = resolve(repoRoot, 'docs/live/skill.json')
 const publicAgentDocPath = resolve(repoRoot, 'apps/web/public/AGENTS.md')
+const publicAgentCoreDocPath = resolve(
+  repoRoot,
+  'apps/web/public/AGENTS-CORE.md',
+)
 const publicHeartbeatPath = resolve(repoRoot, 'apps/web/public/HEARTBEAT.md')
 const publicRulesPath = resolve(repoRoot, 'apps/web/public/RULES.md')
 const publicSkillJsonPath = resolve(repoRoot, 'apps/web/public/skill.json')
 const liveAgentDocMarkdown = readFileSync(liveAgentDocPath, 'utf8')
+const liveAgentCoreMarkdown = readFileSync(liveAgentCoreDocPath, 'utf8')
 const liveHeartbeatMarkdown = readFileSync(liveHeartbeatPath, 'utf8')
 const liveRulesMarkdown = readFileSync(liveRulesPath, 'utf8')
 const liveSkillJson = readFileSync(liveSkillJsonPath, 'utf8')
 const publicAgentDocMarkdown = readFileSync(publicAgentDocPath, 'utf8')
+const publicAgentCoreMarkdown = readFileSync(publicAgentCoreDocPath, 'utf8')
 const publicHeartbeatMarkdown = readFileSync(publicHeartbeatPath, 'utf8')
 const publicRulesMarkdown = readFileSync(publicRulesPath, 'utf8')
 const publicSkillJson = readFileSync(publicSkillJsonPath, 'utf8')
@@ -53,6 +64,7 @@ const liveAssets: Fetcher = {
   fetch: (request: Request) => {
     const path = new URL(request.url).pathname
     const bodyByPath: Record<string, string> = {
+      '/AGENTS-CORE.md': liveAgentCoreMarkdown,
       '/AGENTS.md': liveAgentDocMarkdown,
       '/HEARTBEAT.md': liveHeartbeatMarkdown,
       '/RULES.md': liveRulesMarkdown,
@@ -77,7 +89,7 @@ const runRoute = (path: string, method = 'GET'): Promise<Response> =>
   )
 
 const runCompanionRoute = (
-  path: '/HEARTBEAT.md' | '/RULES.md' | '/skill.json',
+  path: '/AGENTS-CORE.md' | '/HEARTBEAT.md' | '/RULES.md' | '/skill.json',
   method = 'GET',
 ): Promise<Response> =>
   Effect.runPromise(
@@ -101,8 +113,12 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(markdown).toContain('# OpenAgents')
     expect(markdown).toBe(liveAgentDocMarkdown)
     expect(markdown).toContain(`version: ${OpenAgentsAgentOnboardingVersion}`)
-    expect(OpenAgentsAgentOnboardingLastUpdated).toBe('2026-06-10')
-    expect(markdown).toContain('Last updated: June 10, 2026')
+    expect(OpenAgentsAgentOnboardingLastUpdated).toBe('2026-06-11')
+    expect(markdown).toContain('Last updated: June 11, 2026')
+    expect(markdown).toContain('https://openagents.com/AGENTS-CORE.md')
+    expect(markdown.indexOf('https://openagents.com/AGENTS-CORE.md')).toBeLessThan(
+      markdown.indexOf('# OpenAgents'),
+    )
     expect(markdown).toContain(
       'Canonical URL: https://openagents.com/AGENTS.md',
     )
@@ -181,13 +197,42 @@ describe('OpenAgents agent onboarding routes', () => {
     await expect(sha256Hex(liveAgentDocMarkdown)).resolves.toBe(
       OpenAgentsAgentOnboardingSha256,
     )
+    await expect(sha256Hex(liveAgentCoreMarkdown)).resolves.toBe(
+      OpenAgentsAgentCoreSha256,
+    )
     expect(OpenAgentsAgentOnboardingSourceRef).toBe(
       'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS.md',
+    )
+    expect(OpenAgentsAgentCoreSourceRef).toBe(
+      'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS-CORE.md',
     )
   })
 
   test('keeps the deployed public asset synced from docs/live/AGENTS.md', () => {
     expect(publicAgentDocMarkdown).toBe(liveAgentDocMarkdown)
+    expect(publicAgentCoreMarkdown).toBe(liveAgentCoreMarkdown)
+    expect(new TextEncoder().encode(liveAgentCoreMarkdown).byteLength).toBeLessThan(
+      10_000,
+    )
+  })
+
+  test('serves the compact core tier from the public asset bundle', async () => {
+    const response = await runCompanionRoute(OpenAgentsAgentCorePath)
+    const markdown = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('content-type')).toBe(
+      'text/markdown; charset=utf-8',
+    )
+    expect(OpenAgentsAgentCoreUrl).toBe('https://openagents.com/AGENTS-CORE.md')
+    expect(markdown).toBe(liveAgentCoreMarkdown)
+    expect(markdown).toContain('# OpenAgents Core Agent Instructions')
+    expect(markdown).toContain('## Five-Step Start')
+    expect(markdown).toContain('## Public Endpoints')
+    expect(markdown).toContain('## Security Rules')
+    expect(markdown).toContain('https://openagents.com/AGENTS.md')
+    expect(containsProviderSecretMaterial(markdown)).toBe(false)
   })
 
   test('serves public companion files with matching versions and references', async () => {
@@ -200,6 +245,7 @@ describe('OpenAgents agent onboarding routes', () => {
     const metadata = JSON.parse(metadataText) as {
       openagents: {
         api_base: string
+        core_instructions_url: string
         files: Record<string, string>
         omni_sdk_seed_url: string
         openapi_url: string
@@ -234,8 +280,12 @@ describe('OpenAgents agent onboarding routes', () => {
     expect(metadata.openagents.omni_sdk_seed_url).toBe(
       'https://openagents.com/api/omni/sdk-seed',
     )
+    expect(metadata.openagents.core_instructions_url).toBe(
+      'https://openagents.com/AGENTS-CORE.md',
+    )
     expect(metadata.openagents.requires.bins).toContain('curl')
     expect(Object.values(metadata.openagents.files).sort()).toEqual([
+      'https://openagents.com/AGENTS-CORE.md',
       'https://openagents.com/AGENTS.md',
       'https://openagents.com/HEARTBEAT.md',
       'https://openagents.com/RULES.md',

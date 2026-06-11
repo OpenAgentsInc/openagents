@@ -6512,6 +6512,24 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     },
   },
   {
+    path: '/AGENTS-CORE.md',
+    handler: (request, env, ctx) => {
+      recordPublicAgentFunnelRead(
+        request,
+        openAgentsDatabase(env),
+        ctx,
+        'agent_doc_read',
+        '/AGENTS-CORE.md',
+      )
+
+      return handleOpenAgentsCompanionFile(
+        request,
+        env.ASSETS,
+        '/AGENTS-CORE.md',
+      )
+    },
+  },
+  {
     path: '/AGENTS.md',
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(

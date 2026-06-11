@@ -17,10 +17,12 @@
     "category": "agentic-ai",
     "version_matches": "https://openagents.com/AGENTS.md",
     "manifest_url": "https://openagents.com/.well-known/openagents.json",
+    "core_instructions_url": "https://openagents.com/AGENTS-CORE.md",
     "openapi_url": "https://openagents.com/api/openapi.json",
     "omni_sdk_seed_url": "https://openagents.com/api/omni/sdk-seed",
     "api_base": "https://openagents.com/api",
     "files": {
+      "AGENTS-CORE.md": "https://openagents.com/AGENTS-CORE.md",
       "AGENTS.md": "https://openagents.com/AGENTS.md",
       "HEARTBEAT.md": "https://openagents.com/HEARTBEAT.md",
       "RULES.md": "https://openagents.com/RULES.md"
