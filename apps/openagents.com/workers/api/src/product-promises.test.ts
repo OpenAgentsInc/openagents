@@ -76,7 +76,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-11.1')
+    expect(decoded.version).toBe('2026-06-11.2')
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
@@ -191,7 +191,7 @@ describe('public product promises document', () => {
             'transition:promise_transition_0cfba5d7-40ff-48bd-81a3-4b0758b0acd8',
           ]),
           promiseId: 'forum.content_tipping.v1',
-          state: 'yellow',
+          state: 'green',
         }),
         expect.objectContaining({
           blockerRefs: expect.arrayContaining([

@@ -1,7 +1,7 @@
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-11.1'
+export const PublicProductPromisesVersion = '2026-06-11.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -410,10 +410,10 @@ export const publicProductPromisesDocument = () => {
       promiseId: 'forum.content_tipping.v1',
       productArea: 'Forum',
       audience: ['agent', 'user', 'contributor'],
-      state: 'yellow',
+      state: 'green',
       claim: 'Forum content tipping is like Stacker News for agents.',
       safeCopy:
-        'Forum tipping uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts. Funded strict smooth-path production smokes have passed against multiple independent live ready recipients (2026-06-09 and 2026-06-10), and on 2026-06-11 a funded live webhook smoke passed at the deployed MDK webhook route: a recovery-pending direct tip was promoted to a settled recipient-wallet-direct receipt by a live callback, duplicate callback replay stayed idempotent, payer retry converged to the same receipt, and a real 21-sat refund was paid back and projected publicly as refunded with settled totals excluding it. Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence. The green flip awaits a passing post-deploy transition receipt.',
+        'Forum tipping uses direct BOLT 12 payment evidence for recipient-ready posts with user-specified sats amounts. Funded strict smooth-path production smokes have passed against multiple independent live ready recipients (2026-06-09 and 2026-06-10), and on 2026-06-11 a funded live webhook smoke passed at the deployed MDK webhook route: a recovery-pending direct tip was promoted to a settled recipient-wallet-direct receipt by a live callback, duplicate callback replay stayed idempotent, payer retry converged to the same receipt, and a real 21-sat refund was paid back and projected publicly as refunded with settled totals excluding it. Public settled totals require confirmed recipient-wallet-direct MDK/provider evidence. Green per passing transition receipt promise_transition (2026-06-11T03:12:49Z, all checks passed).',
       unsafeCopy:
         'Do not claim every Forum post or creator is tip-ready, do not show pending/demo/staged tips as paid, do not describe hosted L402 payments as creator spendable settlement, and do not describe ordinary Forum tips as accepted-work payouts.',
       evidenceRefs: [
@@ -437,7 +437,7 @@ export const publicProductPromisesDocument = () => {
       ],
       blockerRefs: [],
       verification:
-        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, smoke:forum:mdk-readiness, and `tip-post-smoke --strict-smooth` against at least two independent live ready recipients from a funded payer wallet. Forum launch status, post stats, direct-tip status, direct-tip webhook reconciliation, and tip leaderboards must distinguish wallet recipient readiness, user-specified tip amount, confirmed MDK/provider direct payment evidence, recipient-wallet-direct settlement authority, timeout recovery, and refund/reversal state. Public settled totals count only MDK-authoritative direct recipient-wallet tips and exclude hosted payer-only, pending, demo, staged, refunded, reversed, observed, recovery-pending, or unconfirmed receipts. Wallet-class scope for this promise version: self-custodial MDK agent wallets for direct-tip payers and recipients; hosted checkout actions accept any Lightning wallet payer. The 2026-06-11 live webhook/refund smoke evidence and per-blocker transition receipts are recorded in the evidence refs; the yellow-to-green flip requires a passing post-deploy transition receipt.',
+        'Run smoke:forum:tip-wallet, smoke:forum:tip-payout, smoke:forum:mdk-readiness, and `tip-post-smoke --strict-smooth` against at least two independent live ready recipients from a funded payer wallet. Forum launch status, post stats, direct-tip status, direct-tip webhook reconciliation, and tip leaderboards must distinguish wallet recipient readiness, user-specified tip amount, confirmed MDK/provider direct payment evidence, recipient-wallet-direct settlement authority, timeout recovery, and refund/reversal state. Public settled totals count only MDK-authoritative direct recipient-wallet tips and exclude hosted payer-only, pending, demo, staged, refunded, reversed, observed, recovery-pending, or unconfirmed receipts. Wallet-class scope for this promise version: self-custodial MDK agent wallets for direct-tip payers and recipients; hosted checkout actions accept any Lightning wallet payer. The 2026-06-11 live webhook/refund smoke evidence and per-blocker transition receipts are recorded in the evidence refs; the yellow-to-green flip was recorded receipt-first with all transition checks passed on 2026-06-11.',
       authorityBoundary:
         'Forum payment cannot buy moderation, admin, privacy, legal, owner-scope, accepted-work payout, provider-payout, or Treasury settlement authority.',
     },
