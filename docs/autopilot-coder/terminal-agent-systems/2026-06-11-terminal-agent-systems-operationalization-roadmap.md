@@ -232,6 +232,16 @@ Timing rule:
   depends on repo identity, change capture, file/shell/workspace evidence, or
   delivery/PR readiness receipts.
 
+Implementation status:
+
+- #4832 PC1 is implemented by
+  `apps/openagents.com/workers/api/src/pack-c-repo-worktree-identity.ts`,
+  `apps/openagents.com/workers/api/src/pack-c-repo-worktree-identity.test.ts`,
+  and `docs/autopilot-coder/2026-06-12-pack-c-repo-worktree-identity.md`.
+  It defines safe repository/worktree identity projections with freshness
+  metadata, typed blockers, branch-ref parsing, and private material
+  rejection.
+
 ## Audit Finding
 
 The terminal-agent folder is a dependency graph, not a flat backlog. The 62

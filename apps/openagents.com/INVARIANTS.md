@@ -180,6 +180,24 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/autopilot-aperture-contracts.test.ts` and
   `workers/api/src/autopilot-work-request.test.ts`.
 
+## Pack C Repo Scope, Delivery, And Evidence
+
+- Pack C repository/worktree identity snapshots are evidence records only.
+  They may carry repository refs, host, owner/name, visibility, trust tier,
+  default branch, pinned commit refs, remote digest refs, data-scope refs,
+  workspace refs, worktree refs, branch refs, base/head refs, cleanliness,
+  sandbox profile refs, retention refs, caveats, freshness metadata, and typed
+  blockers. They do not grant writeback, merge, acceptance, payout,
+  settlement, provider mutation, or public-claim authority.
+- Public and agent-readable repo/worktree identity projections must reject
+  private remotes, private repo content, raw prompts, raw shell material, local
+  filesystem paths, credentials, provider payloads, wallet/payment material,
+  and customer-private data before projection. Branch refs must be parseable
+  safe Git refs and must not contain shell fragments, path traversal,
+  lockfile suffixes, or ambiguous Git ref syntax.
+- Regression coverage for Pack C repository/worktree identity snapshots lives
+  in `workers/api/src/pack-c-repo-worktree-identity.test.ts`.
+
 ## Autopilot Bridge API Parity And Work-Creation Contract
 
 - Every MVP browser/workroom Autopilot capability must have a registered-agent

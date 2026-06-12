@@ -1545,3 +1545,32 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-managed-policy.test.ts src/provider-account-retention-policy.test.ts src/provider-account-telemetry-privacy.test.ts src/provider-account-security-review.test.ts src/provider-account-effective-config.test.ts src/provider-account-credential-boundary.test.ts`
+
+## PC1 / Issue #4832: Repository And Worktree Identity Snapshots
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4832`
+
+Status: implemented for the Pack C repository/worktree identity projection
+contract.
+
+Implemented:
+
+- Added `pack-c-repo-worktree-identity.ts` with typed repository and worktree
+  identity projections for Pack C delivery evidence.
+- Repository snapshots carry repository refs, host, owner/name, visibility,
+  trust tier, default branch, pinned commit refs, remote digest refs,
+  data-scope refs, and caveat refs.
+- Worktree snapshots carry workspace refs, worktree refs, branch refs,
+  base/head commit refs, cleanliness, sandbox profile refs, and retention refs.
+- Projections include `generatedAt`, `observedAt`, `staleAt`, `ageMs`,
+  freshness, status, and typed blocker refs for incomplete identity.
+- Added branch-ref parsing and unsafe material rejection for private remotes,
+  local paths, shell fragments, credentials, raw prompts, and private repo
+  content.
+- Added
+  `docs/autopilot-coder/2026-06-12-pack-c-repo-worktree-identity.md` and
+  updated the original terminal-agent-systems roadmap and app invariant ledger.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/pack-c-repo-worktree-identity.test.ts`
