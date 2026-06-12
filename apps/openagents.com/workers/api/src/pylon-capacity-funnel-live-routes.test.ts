@@ -452,6 +452,18 @@ describe('pylon capacity funnel live bridge', () => {
         runningCount: number
         totalCount: number
       }>
+      joinLifecycleLadder: Readonly<{
+        byState: ReadonlyArray<Readonly<{ count: number; key: string }>>
+        entries: ReadonlyArray<
+          Readonly<{
+            capacityRef: string
+            ladderRank: number
+            state: string
+            stateLabel: string
+          }>
+        >
+        totalCount: number
+      }>
       kind: string
       publicSafe: boolean
     }>
@@ -467,6 +479,25 @@ describe('pylon capacity funnel live bridge', () => {
         count: 1,
         key: 'dark_capacity.public.never_heartbeated',
       }),
+    ])
+    expect(body.joinLifecycleLadder.totalCount).toBe(2)
+    expect(body.joinLifecycleLadder.entries).toEqual([
+      {
+        capacityRef: 'capacity.public.pylon_live.entry_1',
+        ladderRank: 3,
+        state: 'warmup',
+        stateLabel: 'Warmup',
+      },
+      {
+        capacityRef: 'capacity.public.pylon_live.entry_2',
+        ladderRank: 0,
+        state: 'registered',
+        stateLabel: 'Registered',
+      },
+    ])
+    expect(body.joinLifecycleLadder.byState).toEqual([
+      { count: 1, key: 'registered' },
+      { count: 1, key: 'warmup' },
     ])
     expect(JSON.stringify(body)).not.toMatch(
       /pylon\.test\.|user_test|oa_agent/,

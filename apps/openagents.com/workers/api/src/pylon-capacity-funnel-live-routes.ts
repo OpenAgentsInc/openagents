@@ -28,6 +28,7 @@ import {
   type PylonCapacityFunnelStage,
   aggregatePylonCapacityFunnel,
 } from './pylon-capacity-funnel'
+import { pylonJoinLifecycleLadderForFunnel } from './pylon-join-lifecycle'
 import { PUBLIC_PYLON_STATS_MINIMUM_CLIENT_VERSION } from './public-pylon-stats'
 
 export const PylonDarkCapacityReasonRefs = [
@@ -516,12 +517,12 @@ export const makeD1PylonCapacityFunnelSnapshotStore = (
   },
 })
 
-export const readPylonCapacityFunnelAggregate = async (
+export const readPylonCapacityFunnelRecords = async (
   input: Readonly<{
     nowIso: string
     store: PylonApiStore
   }>,
-): Promise<PylonCapacityFunnelAggregate> => {
+): Promise<ReadonlyArray<PylonCapacityFunnelRecord>> => {
   const registrations = await input.store.listRegistrations(
     registrationListLimit,
   )
@@ -576,15 +577,25 @@ export const readPylonCapacityFunnelAggregate = async (
     ])
   }
 
-  const records = pylonCapacityFunnelRecordsFromStore({
+  return pylonCapacityFunnelRecordsFromStore({
     assignmentsByPylonRef,
     lifecycleByPylonRef,
     nowIso: input.nowIso,
     registrations,
   })
-
-  return aggregatePylonCapacityFunnel(records, 'public', input.nowIso)
 }
+
+export const readPylonCapacityFunnelAggregate = async (
+  input: Readonly<{
+    nowIso: string
+    store: PylonApiStore
+  }>,
+): Promise<PylonCapacityFunnelAggregate> =>
+  aggregatePylonCapacityFunnel(
+    await readPylonCapacityFunnelRecords(input),
+    'public',
+    input.nowIso,
+  )
 
 export const recordPylonCapacityFunnelSnapshots = async (
   input: Readonly<{
@@ -675,10 +686,16 @@ export const handlePylonCapacityFunnelApi = (
     input.store ?? makeD1PylonApiStore(input.OPENAGENTS_DB as D1Database)
 
   return Effect.promise(async () => {
-    const funnel = await readPylonCapacityFunnelAggregate({
+    const records = await readPylonCapacityFunnelRecords({
       nowIso,
       store,
     })
+    const funnel = aggregatePylonCapacityFunnel(records, 'public', nowIso)
+    const joinLifecycleLadder = pylonJoinLifecycleLadderForFunnel(
+      records,
+      'public',
+      nowIso,
+    )
 
     return noStoreJsonResponse({
       authority: PYLON_CAPACITY_FUNNEL_ACCOUNTING_READ_ONLY_AUTHORITY,
@@ -688,6 +705,7 @@ export const handlePylonCapacityFunnelApi = (
       ],
       funnel,
       generatedAt: nowIso,
+      joinLifecycleLadder,
       kind: 'pylon_capacity_funnel_live',
       publicSafe: true,
     })
