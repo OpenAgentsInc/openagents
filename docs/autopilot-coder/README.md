@@ -54,6 +54,9 @@ Forum reporting.
   controlled source-checkout dogfood is minimally usable, but full daily-driver
   replacement is blocked by v0.3 packaging, `pylon work submit` commit pinning,
   explicit adapter preference, delivery ergonomics, and live unattended proof.
+  It also proposes a local owner-only Pylon Dev Mode for improving Pylon from
+  inside Pylon with Codex fixes, optional Fable review, targeted checks, and
+  safe reloads.
 - `terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`: delegation
   plan for the current open issue set, assigning the MVP ladder, Pack A, Pack
   B, market, and W3 evaluation work across eight named agent worktrees with

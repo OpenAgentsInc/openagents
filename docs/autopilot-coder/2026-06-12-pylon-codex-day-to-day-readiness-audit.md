@@ -423,3 +423,174 @@ is a focused P0 pass on the CLI and adapter preference, followed by one real
 owner daily-driver proof. After that pass, the answer can change from
 "controlled dogfood only" to "minimally usable for the owner's day-to-day
 public-repo tasks, with PR/writeback and paid-market still gated."
+
+## Proposed Addendum: Pylon Dev Mode
+
+The owner should add a first-class **Pylon Dev Mode** before trying to make
+Pylon the broad daily-driver surface. The purpose is narrow: make Pylon a good
+tool for improving Pylon itself.
+
+Dev Mode should be explicitly local, owner-only, and source-checkout based. It
+should not be a market lane, paid-work lane, public promise, or autonomous
+writeback path. It is the shortest bridge between "source-checkout dogfood" and
+"I can actually work in Pylon all day."
+
+### Shape
+
+Command surface:
+
+```sh
+pylon dev
+pylon dev doctor --json
+pylon dev fix "the assignment view is not refreshing"
+pylon dev fix --from-last-error
+pylon dev check
+pylon dev reload
+pylon dev review --adapter fable
+```
+
+TUI surface:
+
+- A Dev pane that shows the active source checkout, branch, dirty-state
+  summary, Pylon version, node status, adapter readiness, and last check
+  result.
+- A "Fix this" action on error rows, failed command rows, and stale assignment
+  rows.
+- A "Run checks" action that runs the relevant focused checks before broader
+  release gates.
+- A "Review with Fable" action when the Claude Agent lane is ready with
+  `claude-fable-5`.
+- Explicit "Apply", "Reload", and "Discard" actions. No silent commit, push,
+  branch switch, or destructive cleanup.
+
+### Dev Task Contract
+
+Dev Mode should create a local-only Pylon dev task, not a normal public
+Autopilot work order.
+
+Minimum task fields:
+
+- objective summary;
+- source checkout identity;
+- current commit ref;
+- dirty-state summary;
+- failing command ref;
+- last error summary ref;
+- targeted file refs;
+- adapter preference, defaulting to Codex;
+- optional reviewer adapter, usually Fable through Claude Agent;
+- expected check command refs;
+- redaction receipt refs;
+- local-only evidence refs.
+
+The task can use the same Agent Runtime Kernel and workspace authority
+contracts as normal Pylon assignments, but the projection boundary must be
+different: private local diagnostics may stay local, while anything written to
+OpenAgents or GitHub must be ref-only and public-safe.
+
+### Built-In Debug Context
+
+`pylon dev doctor --json` should assemble one redacted context bundle:
+
+- `pylon status --json`;
+- local package version and source commit;
+- adapter readiness for Codex and Claude/Fable;
+- `PYLON_HOME` layout health without raw paths in public refs;
+- current node/control server state;
+- recent Pylon log summaries, not raw logs;
+- last failed command ref and exit code;
+- current dirty-state summary;
+- relevant test files and command refs;
+- open assignment refs when present;
+- environment capability refs, never raw env values.
+
+That bundle is what Codex receives by default for `pylon dev fix`. Raw tokens,
+provider payloads, wallet material, local absolute paths, private repo content,
+and raw shell logs must be stripped unless the user explicitly keeps the task
+purely local and unexported.
+
+### Codex Main, Fable Review
+
+Dev Mode should match the owner's desired operating pattern:
+
+- Codex is the default implementer.
+- Fable is an optional reviewer, planner, or second-pass debugger through the
+  Claude Agent lane.
+- The UI should say "Fable review" only when the configured Claude Agent model
+  is `claude-fable-5` and readiness is green.
+- If Fable is not ready, the command should degrade to a typed blocker, not
+  silently choose another model.
+
+This is cleaner than trying to make Fable a separate adapter today. The system
+already has a proven Claude Agent bridge; Dev Mode should consume it with a
+model preference.
+
+### Check And Reload Loop
+
+The core loop should be:
+
+1. User hits "Fix this" or runs `pylon dev fix`.
+2. Dev Mode creates a local dev task with a redacted diagnostic bundle.
+3. Codex edits the source checkout in a bounded workspace policy.
+4. Dev Mode runs focused checks first.
+5. If focused checks pass, Dev Mode can run a broader Pylon check subset.
+6. The TUI shows a patch summary, changed file refs, check refs, and blockers.
+7. User explicitly applies or discards.
+8. If applied, Dev Mode restarts or reloads the Pylon node/TUI.
+
+Initial check ladder:
+
+- touched-file formatting;
+- targeted unit tests;
+- relevant Pylon smoke, for example `smoke:default-start`,
+  `smoke:codex-agent-task`, or `smoke:claude-agent-task`;
+- only then `bun run --cwd apps/pylon release:gate` when release-bearing.
+
+Reload should be process supervision, not hot mutation. A safe first version is
+"restart the local Pylon node and reattach the TUI after checks pass."
+
+### Guardrails
+
+Dev Mode should be stricter than normal coding, because it edits the tool the
+owner is standing on:
+
+- Require an explicit `--allow-dirty` if the checkout is dirty.
+- Snapshot dirty-state before edits.
+- Never switch branches in this workspace.
+- Never commit or push unless the user asks in a separate explicit command.
+- Never run destructive Git commands.
+- Keep command execution on an allowlist.
+- Keep file edits under the source checkout.
+- Do not route through market/provider lanes.
+- Do not spend money by default.
+- Do not turn local diagnostics into public evidence without a redaction scan.
+
+### Minimal Milestones
+
+Recommended issue slice:
+
+1. **DM1: Dev doctor.** Add `pylon dev doctor --json` with redacted local
+   diagnostics and adapter readiness.
+2. **DM2: Dev fix.** Add `pylon dev fix` that creates a local Codex-backed dev
+   task, edits in place, and runs targeted checks.
+3. **DM3: Dev reload.** Add a safe restart-and-reattach loop for the node/TUI.
+4. **DM4: Fable review.** Add optional Claude/Fable review of the local patch
+   summary and check refs.
+5. **DM5: Retained proof.** Use Dev Mode to fix one real Pylon bug, retain the
+   local refs, checks, patch summary, and reload evidence.
+
+### Effect On This Audit
+
+Dev Mode does not make Pylon broadly daily-driver ready by itself. It does make
+the immediate dogfood recommendation much stronger:
+
+- It gives the owner a built-in way to repair Pylon while using it.
+- It turns failures into bounded local work instead of context pasted into an
+  unrelated coding tool.
+- It makes Codex-primary plus occasional Fable review a product workflow rather
+  than a config workaround.
+- It creates the retained proof needed to graduate from "controlled dogfood" to
+  "minimally usable for the owner's day-to-day Pylon work."
+
+The recommendation is to file Dev Mode as a new P0 owner-dogfood issue before
+or alongside the `pylon work submit` commit-pin and adapter-preference fixes.

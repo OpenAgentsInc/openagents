@@ -1889,3 +1889,26 @@ Implemented:
 Verification:
 
 - `git diff --check`
+
+## Pylon Dev Mode Readiness Audit Addendum
+
+Issue context:
+
+- Owner asked to extend the Pylon/Codex day-to-day readiness audit with a
+  suggestion for a mode that helps improve Pylon from inside Pylon.
+
+Status: docs-only addendum; no product promise, route, runtime behavior, or
+invariant changed.
+
+Implemented:
+
+- Added a proposed Pylon Dev Mode section to
+  `docs/autopilot-coder/2026-06-12-pylon-codex-day-to-day-readiness-audit.md`.
+- Defined the intended command/TUI surface, local-only dev task contract,
+  redacted diagnostic bundle, Codex-main/Fable-review workflow, check/reload
+  loop, guardrails, and minimal milestones DM1-DM5.
+- Updated the Autopilot Coder README entry for the audit.
+
+Verification:
+
+- `git diff --check`
