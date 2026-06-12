@@ -728,6 +728,13 @@ This is the invariant ledger for `openagents`.
 - Open-market listing comments are mirrors over Forum/NIP-LBR records. They
   cannot grant acceptance, settlement, payout, merge, writeback, or public
   claim authority by themselves.
+- Backlog faucet records reach `approved_for_publication` only through the
+  typed operator approval transition carrying an `operator.*` ref and an
+  integer spend cap covering the filing budget; `published` additionally
+  requires a relay-accepted publish receipt with a real job event id. The
+  generic market-state transition cannot reach either gated state, the
+  dry-run path never publishes or escrows, and the `delivered → accepted`
+  transition requires a validator verdict ref on top of the receipt ref.
 - Spare-capacity provider mode is default-off. A Pylon may serve other
   people's jobs only after explicit owner consent, a public provider ref,
   pricing policy, min/max sats policy, declared capability refs, own-work

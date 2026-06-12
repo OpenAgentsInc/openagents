@@ -234,13 +234,18 @@ const d1Effect = <A>(
 const publicProjectionFromJson = (value: string): ForumPublicProjection =>
   decodeForumPublicProjection(parseJsonRecord(value) ?? {})
 
-const assertNoUnsafePublicMaterial = (value: unknown, field: string): void => {
+export const assertPublicSafeWorkRequestMaterial = (
+  value: unknown,
+  field: string,
+): void => {
   if (unsafePublicWorkRequestPattern.test(JSON.stringify(value))) {
     throw new ForumWorkRequestUnsafe(
       `${field} contains private, payment, credential, or raw prompt material.`,
     )
   }
 }
+
+const assertNoUnsafePublicMaterial = assertPublicSafeWorkRequestMaterial
 
 const uniquePublicRefs = (
   refs: ReadonlyArray<string> | undefined,

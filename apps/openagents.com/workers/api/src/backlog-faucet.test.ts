@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  BacklogFaucetGateError,
+  DefaultBacklogFaucetMaxBudgetSats,
+  advanceBacklogFaucetState,
+  approveBacklogFaucetForPublication,
   backlogFaucetDeadlineRef,
   backlogFaucetIdempotencyKey,
   backlogFaucetIssueUrlForObjectiveRef,
@@ -9,9 +13,13 @@ import {
   backlogFaucetRepositoryRef,
   buildBacklogWorkRequestFiling,
   detectBacklogIssueChannels,
+  draftBacklogFaucetRecord,
+  dryRunBacklogFaucetItem,
   lifecycleIssueCommentBody,
   listedIssueCommentBody,
+  markBacklogFaucetPublished,
   parseBacklogFaucetBudgetAssignments,
+  parseBacklogFaucetIssueRef,
   proposeBacklogFaucetIssues,
 } from './backlog-faucet'
 import {
@@ -346,6 +354,367 @@ describe('backlog-faucet lifecycle linkage', () => {
         workRequestId: 'wr-test',
       }),
     ).toThrowError(/require a receipt ref/)
+  })
+})
+
+// EXAMPLE payload only: issue #4781 decorated as a budgeted backlog item.
+// This fixture demonstrates the no-spend contract; it is not a live filing,
+// not a published event, and not an escrow reservation.
+const exampleBacklogItem4781 = {
+  boundedScope:
+    'Example only: validate the faucet contract for one budgeted backlog issue without publishing or escrowing anything.',
+  budgetSats: 2_000,
+  deadlineDate: '2026-06-19',
+  issueRef: 'https://github.com/OpenAgentsInc/openagents/issues/4781',
+  title:
+    'P5: backlog faucet for the open market - budgeted issues become NIP-LBR work requests',
+  verificationCommandRef: 'command.public.autopilot_coder.bun_test',
+}
+
+const dryRunOptions = { nowIso: '2026-06-12T23:00:00.000Z' }
+
+describe('backlog-faucet record contract (no-spend dry run)', () => {
+  test('dry run builds, validates, and records without publishing or escrowing', () => {
+    const report = dryRunBacklogFaucetItem(exampleBacklogItem4781, dryRunOptions)
+
+    expect(report.published).toBe(false)
+    expect(report.escrowed).toBe(false)
+    expect(report.record.state).toBe('drafted')
+    expect(report.record.spendGate).toEqual({ kind: 'not_approved' })
+    expect(report.record.publication).toEqual({ kind: 'not_published' })
+    expect(report.record.history).toEqual([])
+    expect(report.record.repository).toBe('OpenAgentsInc/openagents')
+    expect(report.record.filing.objectiveRef).toBe(
+      'objective.public.github_issue.openagentsinc_openagents.4781',
+    )
+    expect(report.previewDraft.kind).toBe(5934)
+    expect(report.previewDraft.tags).toContainEqual([
+      'param',
+      'lbr_objective_ref',
+      'objective.public.github_issue.openagentsinc_openagents.4781',
+    ])
+    expect(report.previewDraft.tags).toContainEqual([
+      'param',
+      'lbr_verification_command_ref',
+      'command.public.autopilot_coder.bun_test',
+    ])
+    expect(report.previewDraft.tags).toContainEqual(['bid', '2000000'])
+  })
+
+  test('records carry a public-safe projection with freshness metadata', () => {
+    const record = draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions)
+    const projection = JSON.parse(record.publicProjectionJson)
+
+    expect(projection).toMatchObject({
+      budgetSats: 2_000,
+      generatedAt: '2026-06-12T23:00:00.000Z',
+      issueRef: 'https://github.com/OpenAgentsInc/openagents/issues/4781',
+      publication: { kind: 'not_published' },
+      spendGate: { kind: 'not_approved' },
+      stalenessContract: 'rebuilt_on_faucet_state_transition',
+      state: 'drafted',
+      workRequestKind: 5934,
+    })
+    expect(record.publicProjectionJson).not.toContain('lnbc')
+  })
+
+  test('parses issue refs and rejects non-GitHub or malformed refs', () => {
+    expect(
+      parseBacklogFaucetIssueRef(
+        'https://github.com/OpenAgentsInc/openagents/issues/4781',
+      ),
+    ).toEqual({ issueNumber: 4781, repository: 'OpenAgentsInc/openagents' })
+    expect(() =>
+      parseBacklogFaucetIssueRef('https://example.com/issues/1'),
+    ).toThrowError(BacklogFaucetGateError)
+    expect(() =>
+      draftBacklogFaucetRecord(
+        { ...exampleBacklogItem4781, issueRef: 'issue 4781' },
+        dryRunOptions,
+      ),
+    ).toThrowError(/public GitHub issue URL/)
+  })
+
+  test('enforces budget bounds with a typed error', () => {
+    expect(() =>
+      draftBacklogFaucetRecord(
+        { ...exampleBacklogItem4781, budgetSats: 0 },
+        dryRunOptions,
+      ),
+    ).toThrowError(/positive integer sat amount/)
+    expect(() =>
+      draftBacklogFaucetRecord(
+        {
+          ...exampleBacklogItem4781,
+          budgetSats: DefaultBacklogFaucetMaxBudgetSats + 1,
+        },
+        dryRunOptions,
+      ),
+    ).toThrowError(/faucet cap/)
+  })
+
+  test('requires a verification command because acceptance is validator-gated', () => {
+    expect(() =>
+      draftBacklogFaucetRecord(
+        { ...exampleBacklogItem4781, verificationCommandRef: '   ' },
+        dryRunOptions,
+      ),
+    ).toThrowError(/validator-verdict-gated/)
+  })
+
+  test('rejects unsafe or unbounded scope lines before any record exists', () => {
+    expect(() =>
+      draftBacklogFaucetRecord(
+        { ...exampleBacklogItem4781, boundedScope: 'short' },
+        dryRunOptions,
+      ),
+    ).toThrowError(/public-safe line/)
+    expect(() =>
+      draftBacklogFaucetRecord(
+        {
+          ...exampleBacklogItem4781,
+          boundedScope: 'Use the wallet seed_phrase from the operator vault.',
+        },
+        dryRunOptions,
+      ),
+    ).toThrowError(/private, payment, credential/)
+    expect(() =>
+      draftBacklogFaucetRecord(
+        { ...exampleBacklogItem4781, boundedScope: 'x'.repeat(300) },
+        dryRunOptions,
+      ),
+    ).toThrowError(/public-safe line/)
+  })
+
+  test('rejects clockless violations: timestamps must be caller-supplied ISO instants', () => {
+    expect(() =>
+      draftBacklogFaucetRecord(exampleBacklogItem4781, { nowIso: 'today' }),
+    ).toThrowError(/never reads a clock/)
+  })
+})
+
+describe('backlog-faucet operator spend gate', () => {
+  const approval = {
+    approvedAtIso: '2026-06-12T23:05:00.000Z',
+    operatorRef: 'operator.openagents.maintainer',
+    spendCapSats: 2_000,
+  }
+  const publishReceipt = {
+    accepted: true,
+    jobEventId: 'c'.repeat(64),
+    publishedAtIso: '2026-06-12T23:10:00.000Z',
+    relayRef: 'relay.public.market.test',
+    relayUrl: 'wss://relay.openagents.com',
+    topicId: 'backlog-issue-4781',
+    workRequestId: 'wr-4781-test',
+  }
+
+  test('approved_for_publication requires the typed operator ref', () => {
+    const record = draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions)
+    const approved = approveBacklogFaucetForPublication(record, approval)
+
+    expect(approved.state).toBe('approved_for_publication')
+    expect(approved.spendGate).toEqual({
+      approvedAtIso: '2026-06-12T23:05:00.000Z',
+      kind: 'operator_approved',
+      operatorRef: 'operator.openagents.maintainer',
+      spendCapSats: 2_000,
+    })
+    expect(approved.history).toEqual([
+      {
+        atIso: '2026-06-12T23:05:00.000Z',
+        fromState: 'drafted',
+        refs: [
+          'operator.openagents.maintainer',
+          'objective.public.github_issue.openagentsinc_openagents.4781',
+        ],
+        toState: 'approved_for_publication',
+      },
+    ])
+    expect(JSON.parse(approved.publicProjectionJson)).toMatchObject({
+      generatedAt: '2026-06-12T23:05:00.000Z',
+      spendGate: { kind: 'operator_approved' },
+      state: 'approved_for_publication',
+    })
+  })
+
+  test('rejects approvals without a well-formed operator ref or covering spend cap', () => {
+    const record = draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions)
+
+    expect(() =>
+      approveBacklogFaucetForPublication(record, {
+        ...approval,
+        operatorRef: 'someone',
+      }),
+    ).toThrowError(/typed operator ref/)
+    expect(() =>
+      approveBacklogFaucetForPublication(record, {
+        ...approval,
+        spendCapSats: 1_999,
+      }),
+    ).toThrowError(/spend cap/)
+    expect(() =>
+      approveBacklogFaucetForPublication(
+        approveBacklogFaucetForPublication(record, approval),
+        approval,
+      ),
+    ).toThrowError(/only drafted faucet records/)
+  })
+
+  test('publication cannot bypass the spend gate', () => {
+    const record = draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions)
+
+    expect(() => markBacklogFaucetPublished(record, publishReceipt)).toThrowError(
+      /requires a prior operator approval/,
+    )
+    try {
+      markBacklogFaucetPublished(record, publishReceipt)
+    } catch (error) {
+      expect(error).toBeInstanceOf(BacklogFaucetGateError)
+      expect((error as BacklogFaucetGateError).reasonRef).toBe(
+        'faucet.transition.requires_operator_approval',
+      )
+    }
+  })
+
+  test('published requires a relay-accepted receipt with a real job event id', () => {
+    const approved = approveBacklogFaucetForPublication(
+      draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions),
+      approval,
+    )
+
+    expect(() =>
+      markBacklogFaucetPublished(approved, {
+        ...publishReceipt,
+        accepted: false,
+      }),
+    ).toThrowError(/relay-accepted/)
+    expect(() =>
+      markBacklogFaucetPublished(approved, {
+        ...publishReceipt,
+        jobEventId: 'event.unpublished.abc',
+      }),
+    ).toThrowError(/64-hex/)
+
+    const published = markBacklogFaucetPublished(approved, publishReceipt)
+
+    expect(published.state).toBe('published')
+    expect(published.publication).toMatchObject({
+      jobEventId: 'c'.repeat(64),
+      kind: 'published',
+      workRequestId: 'wr-4781-test',
+    })
+  })
+
+  test('market lifecycle advances by receipt ref and gates acceptance on a validator verdict', () => {
+    const published = markBacklogFaucetPublished(
+      approveBacklogFaucetForPublication(
+        draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions),
+        approval,
+      ),
+      publishReceipt,
+    )
+    const quoted = advanceBacklogFaucetState(published, {
+      atIso: '2026-06-12T23:20:00.000Z',
+      receiptRef: 'receipt.work_request.quote_received.test',
+      toState: 'quoted',
+    })
+    const delivered = advanceBacklogFaucetState(
+      advanceBacklogFaucetState(
+        advanceBacklogFaucetState(quoted, {
+          atIso: '2026-06-12T23:25:00.000Z',
+          receiptRef: 'receipt.labor_escrow.reserve.test',
+          toState: 'quote_accepted',
+        }),
+        {
+          atIso: '2026-06-12T23:30:00.000Z',
+          receiptRef: 'receipt.work_request.running.test',
+          toState: 'running',
+        },
+      ),
+      {
+        atIso: '2026-06-12T23:40:00.000Z',
+        receiptRef: 'receipt.work_request.delivered.test',
+        toState: 'delivered',
+      },
+    )
+
+    expect(() =>
+      advanceBacklogFaucetState(delivered, {
+        atIso: '2026-06-12T23:45:00.000Z',
+        receiptRef: 'receipt.work_request.accepted.test',
+        toState: 'accepted',
+      }),
+    ).toThrowError(/validator-verdict-gated/)
+
+    const accepted = advanceBacklogFaucetState(delivered, {
+      atIso: '2026-06-12T23:45:00.000Z',
+      receiptRef: 'receipt.work_request.accepted.test',
+      toState: 'accepted',
+      validatorVerdictRef: 'verdict.validator.bun_test.pass.test',
+    })
+    const settled = advanceBacklogFaucetState(accepted, {
+      atIso: '2026-06-12T23:50:00.000Z',
+      receiptRef: 'receipt.labor_escrow.release.test',
+      toState: 'settled',
+    })
+
+    expect(settled.state).toBe('settled')
+    expect(settled.history.map(entry => entry.toState)).toEqual([
+      'approved_for_publication',
+      'published',
+      'quoted',
+      'quote_accepted',
+      'running',
+      'delivered',
+      'accepted',
+      'settled',
+    ])
+    expect(() =>
+      advanceBacklogFaucetState(settled, {
+        atIso: '2026-06-12T23:55:00.000Z',
+        receiptRef: 'receipt.test',
+        toState: 'cancelled',
+      }),
+    ).toThrowError(/cannot move from settled/)
+  })
+
+  test('transitions require receipt refs and reject skipped states', () => {
+    const published = markBacklogFaucetPublished(
+      approveBacklogFaucetForPublication(
+        draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions),
+        approval,
+      ),
+      publishReceipt,
+    )
+
+    expect(() =>
+      advanceBacklogFaucetState(published, {
+        atIso: '2026-06-12T23:20:00.000Z',
+        receiptRef: '   ',
+        toState: 'quoted',
+      }),
+    ).toThrowError(/receipt ref/)
+    expect(() =>
+      advanceBacklogFaucetState(published, {
+        atIso: '2026-06-12T23:20:00.000Z',
+        receiptRef: 'receipt.test',
+        toState: 'settled',
+      }),
+    ).toThrowError(/cannot move from published to settled/)
+  })
+
+  test('drafted records can be cancelled without ever touching the gate', () => {
+    const record = draftBacklogFaucetRecord(exampleBacklogItem4781, dryRunOptions)
+    const cancelled = advanceBacklogFaucetState(record, {
+      atIso: '2026-06-12T23:59:00.000Z',
+      receiptRef: 'refusal.backlog_faucet.withdrawn_before_approval',
+      toState: 'cancelled',
+    })
+
+    expect(cancelled.state).toBe('cancelled')
+    expect(cancelled.spendGate).toEqual({ kind: 'not_approved' })
+    expect(cancelled.publication).toEqual({ kind: 'not_published' })
   })
 })
 
