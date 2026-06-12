@@ -29,6 +29,19 @@ cd openagents && bun install
 bun run --cwd apps/pylon start     # equivalently: bun apps/pylon/src/index.ts
 ```
 
+### Owner install pin (unpublished-0.3.0 fallback, #4858)
+
+Until the stable 0.3.0 npm publish lands (blocked on @openagentsinc scope
+credentials), the owner daily-driver command should not depend on
+unpublished package semantics. `scripts/owner-install-pin.sh` installs a
+`pylon-dev` launcher into `~/.local/bin` pinned to this source checkout and
+writes an inspectable pin manifest (checkout path, pinned commit, dirty
+state, installedAt) to `~/.config/openagents/pylon-pin.json`. Re-run the
+script after pulling to refresh the recorded commit. This is owner-only
+dogfood convenience; it does **not** satisfy the
+`pylon.local_claude_agent_bridge.v1` packaged-binary blocker, which requires
+the published stable binary (#4859).
+
 **Non-readiness warnings — read before running:**
 
 - This is a release candidate behind open launch gates. Expect breakage,
