@@ -1605,3 +1605,31 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/pack-c-repo-worktree-identity.test.ts`
+
+## PC2 / Issue #4833: Change Capture And Diff Review Artifacts
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4833`
+
+Status: implemented for the Pack C change-capture and diff-review artifact
+projection contract.
+
+Implemented:
+
+- Added `pack-c-change-capture.ts` with digest-and-summary-only change capture
+  projections for Pack C delivery evidence.
+- Change captures carry repository/worktree refs, base/head refs, file summary
+  refs, patch digest refs, verification refs, diagnostic refs, review caveat
+  refs, authority receipt refs, visibility, public-safety state, freshness
+  metadata, and typed blocker refs.
+- Captures block on missing verification, missing patch digest, missing
+  writeback authority, stale or blocked worktree identity, and unsafe public
+  visibility.
+- Added unsafe material rejection for raw patches, raw file contents, raw
+  shell material, private repo data, local paths, provider payloads,
+  credentials, wallet/payment material, and raw prompts.
+- Added `docs/autopilot-coder/2026-06-12-pack-c-change-capture.md` and
+  updated the original terminal-agent-systems roadmap and app invariant ledger.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`

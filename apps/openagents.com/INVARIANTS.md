@@ -195,8 +195,20 @@ This is the invariant ledger for `openagents`.
   and customer-private data before projection. Branch refs must be parseable
   safe Git refs and must not contain shell fragments, path traversal,
   lockfile suffixes, or ambiguous Git ref syntax.
+- Pack C change captures may expose change refs, repository/worktree refs,
+  base/head refs, file summary refs, patch digest refs, verification refs,
+  diagnostic refs, review caveat refs, authority receipt refs, file counts,
+  visibility, public-safety state, freshness metadata, and typed blockers.
+  They must not expose raw patches, raw file contents, raw shell logs, private
+  repo data, local filesystem paths, provider payloads, credentials,
+  wallet/payment material, customer-private data, or raw prompts. Missing
+  verification, missing patch digest, missing writeback authority, stale or
+  blocked worktree identity, and unsafe public visibility must become typed
+  blockers before a change capture can be treated as review-ready.
 - Regression coverage for Pack C repository/worktree identity snapshots lives
   in `workers/api/src/pack-c-repo-worktree-identity.test.ts`.
+- Regression coverage for Pack C change capture and diff review artifacts
+  lives in `workers/api/src/pack-c-change-capture.test.ts`.
 
 ## Autopilot Bridge API Parity And Work-Creation Contract
 

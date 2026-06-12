@@ -241,6 +241,12 @@ Implementation status:
   It defines safe repository/worktree identity projections with freshness
   metadata, typed blockers, branch-ref parsing, and private material
   rejection.
+- #4833 PC2 is implemented by
+  `apps/openagents.com/workers/api/src/pack-c-change-capture.ts`,
+  `apps/openagents.com/workers/api/src/pack-c-change-capture.test.ts`, and
+  `docs/autopilot-coder/2026-06-12-pack-c-change-capture.md`. It defines
+  digest-and-summary-only change capture projections with verification,
+  diagnostic, caveat, authority, freshness, and typed blocker refs.
 
 ## Audit Finding
 
