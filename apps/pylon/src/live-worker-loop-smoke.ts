@@ -160,7 +160,7 @@ export async function runLiveWorkerLoopSmoke(
     body: {
       capabilityRefs,
       clientProtocolVersion: "0.3.0",
-      clientVersion: "openagents.pylon@0.3.0-rc1",
+      clientVersion: "openagents.pylon@0.3.0-rc2",
       displayName: "Pylon live worker-loop smoke",
       pylonRef: options.pylonRef,
       resourceMode: "background_20",
@@ -176,7 +176,7 @@ export async function runLiveWorkerLoopSmoke(
     body: {
       capacityRefs: ["capacity.public.operator_smoke"],
       clientProtocolVersion: "0.3.0",
-      clientVersion: "openagents.pylon@0.3.0-rc1",
+      clientVersion: "openagents.pylon@0.3.0-rc2",
       healthRefs: ["health.public.live_worker_loop_smoke.ok"],
       loadRefs: ["load.public.low"],
       resourceMode: "background_20",

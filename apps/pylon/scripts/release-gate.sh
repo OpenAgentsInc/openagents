@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-rm -f openagentsinc-pylon-0.3.0-rc1.tgz
+rm -f openagentsinc-pylon-*.tgz
 
 echo "== unit and runtime tests =="
 bun run test
@@ -20,10 +20,10 @@ bun run smoke:default-start
 
 echo "== package dry-run =="
 bun pm pack --dry-run >/tmp/pylon-release-pack.log
-rm -f openagentsinc-pylon-0.3.0-rc1.tgz
+rm -f openagentsinc-pylon-*.tgz
 
 echo "== local package install smoke =="
 bun run smoke:install:local
-rm -f openagentsinc-pylon-0.3.0-rc1.tgz
+rm -f openagentsinc-pylon-*.tgz
 
 echo "release gate passed"

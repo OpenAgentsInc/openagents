@@ -16,7 +16,7 @@ export type BootstrapOptions = {
 
 export type BootstrapSummary = {
   packageName: "@openagentsinc/pylon"
-  version: "0.3.0-rc1"
+  version: "0.3.0-rc2"
   bin: "pylon"
   platform: {
     current: NodeJS.Platform
@@ -117,7 +117,7 @@ export function createBootstrapSummary(
 ): BootstrapSummary {
   return {
     packageName: "@openagentsinc/pylon",
-    version: "0.3.0-rc1",
+    version: "0.3.0-rc2",
     bin: "pylon",
     platform: {
       current: currentPlatform,

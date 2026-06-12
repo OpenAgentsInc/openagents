@@ -44,7 +44,7 @@ export type PylonRuntimeState = {
 export type PylonLocalState = {
   schema: "openagents.pylon.local_state.v0.3"
   packageName: "@openagentsinc/pylon"
-  version: "0.3.0-rc1"
+  version: "0.3.0-rc2"
   paths: PylonPaths
   identity: PylonIdentity
   runtime: PylonRuntimeState
@@ -248,7 +248,7 @@ export async function ensurePylonLocalState(summary: BootstrapSummary): Promise<
   return {
     schema: "openagents.pylon.local_state.v0.3",
     packageName: "@openagentsinc/pylon",
-    version: "0.3.0-rc1",
+    version: "0.3.0-rc2",
     paths,
     identity,
     runtime,
