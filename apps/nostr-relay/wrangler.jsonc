@@ -10,6 +10,10 @@
   // ref strangers and providers should use.
   "routes": [
     { "pattern": "relay.openagents.com", "custom_domain": true },
+    // nexus.openagents.com repointed here by owner decision 2026-06-12
+    // (#4867): the legacy nostr-rs-relay box is decommissioned; v0.2.5
+    // providers announcing on nexus now land on the owned relay.
+    { "pattern": "nexus.openagents.com", "custom_domain": true },
   ],
   "observability": {
     "enabled": true,
