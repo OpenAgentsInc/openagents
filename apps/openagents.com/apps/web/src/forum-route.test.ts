@@ -108,7 +108,7 @@ describe('Forum routes', () => {
     expect(script).toContain(
       '<h3 class="m-0 break-words text-base font-bold text-forum-link"><a class="hover:text-forum-link-hover hover:underline" href="',
     )
-    expect(script).toContain("data-forum-copy-permalink")
+    expect(script).toContain('data-forum-copy-permalink')
     expect(script).toContain(
       "window.addEventListener('hashchange', scrollPostAnchorIntoView);",
     )
@@ -186,6 +186,72 @@ describe('Forum routes', () => {
     expect(markdown?.querySelector('script')).toBeNull()
     expect(markdown?.innerHTML).toContain('&lt;script&gt;bad&lt;/script&gt;')
     expect(markdown?.textContent).toContain('bad')
+  })
+
+  test('keeps loose ordered markdown lists in one native counter', async () => {
+    document.body.innerHTML =
+      '<div data-forum-app><main data-forum-main></main></div>'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const path = String(input)
+
+      if (path.includes('/api/forum/topics/')) {
+        return jsonResponse({
+          posts: [
+            {
+              author: {
+                actorRef: 'agent.public.markdown',
+                displayName: 'Markdown Agent',
+              },
+              bodyText:
+                '1. accepted outcomes per agent-hour\n\n1. dark-share cap\n\n1. challenge-adjusted acceptance',
+              createdAt: '2026-06-12T00:00:00.000Z',
+              postId: '263543ec-8196-4a87-8bdc-a4d1ca499d99',
+              postNumber: 1,
+              subject: 'Markdown post',
+              topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+            },
+          ],
+          topic: {
+            forumId: 'product-promises',
+            postCount: 1,
+            title: 'Markdown topic',
+            topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+          },
+        })
+      }
+
+      return jsonResponse({
+        publicTipping: {
+          postTips: 'blocked',
+          remainingBeforeLiveTips: ['payer wallet'],
+        },
+      })
+    })
+
+    new Function(
+      forumScript(
+        ForumTopicRoute({
+          topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+        }),
+      ),
+    )()
+    await flushForumScript()
+
+    const markdown = document.querySelector('[data-forum-markdown]')
+    const orderedLists = markdown?.querySelectorAll('ol')
+    const orderedItems = Array.from(
+      markdown?.querySelectorAll('ol li') ?? [],
+    ).map(item => item.textContent)
+
+    expect(orderedLists).toHaveLength(1)
+    expect(orderedItems).toEqual([
+      'accepted outcomes per agent-hour',
+      'dark-share cap',
+      'challenge-adjusted acceptance',
+    ])
+    expect(markdown?.querySelector('ol')?.className).toContain('space-y-1')
+    expect(markdown?.querySelector('ol')?.className).not.toContain('grid')
   })
 
   test('renders post tip controls only behind tipping launch and recipient readiness gates', () => {
@@ -289,9 +355,13 @@ describe('Forum routes', () => {
     expect(script).toContain('const statusMarker = label =>')
     expect(script).toContain('const lastPostCell = item =>')
     expect(script).toContain('const actionBar = html =>')
-    expect(script).toContain('<div class="min-w-0"><span class="text-sm font-bold">')
+    expect(script).toContain(
+      '<div class="min-w-0"><span class="text-sm font-bold">',
+    )
     expect(script).toContain('<div class="\' + lastPostCellClass + \'">')
-    expect(script).not.toContain('<span class="min-w-0"><span class="text-sm font-bold">')
+    expect(script).not.toContain(
+      '<span class="min-w-0"><span class="text-sm font-bold">',
+    )
     expect(script).not.toContain('<span class="\' + lastPostCellClass + \'">')
     expect(script).toContain('forumRows(forums)')
     expect(script).toContain('topicRows(topics)')
@@ -313,7 +383,7 @@ describe('Forum routes', () => {
     expect(script).toContain('<div class="flex items-start gap-2">')
     expect(script).toContain('md:grid-cols-[12rem_minmax(0,1fr)]')
     expect(script).toContain('renderAuthorProfile(post) + renderPostBody(post)')
-    expect(script).toContain("actionBar('<a class=\"min-h-8 rounded")
+    expect(script).toContain('actionBar(\'<a class="min-h-8 rounded')
     expect(script).toContain("pageSummary(posts.length, 'post')")
   })
 })

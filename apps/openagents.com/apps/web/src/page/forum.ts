@@ -23,8 +23,7 @@ const shellClass =
 const containerClass =
   'mx-auto grid w-[min(100%,1180px)] gap-4 border-x border-forum-wrap-border bg-forum-wrap px-3 py-4 font-sans shadow-[0_0_0_1px_rgba(237,237,237,0.8)] sm:px-4 sm:py-5'
 const panelClass = 'rounded-md border border-forum-row-c bg-forum-panel'
-const eyebrowClass =
-  'font-sans text-xs font-bold uppercase text-forum-heading'
+const eyebrowClass = 'font-sans text-xs font-bold uppercase text-forum-heading'
 const mutedClass = 'text-sm/6 text-forum-text'
 const ghostButtonClass =
   'min-h-8 rounded border border-forum-row-c bg-forum-panel px-3 py-1.5 text-sm font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header'
@@ -207,16 +206,24 @@ export const forumScript = (
     const pattern = ordered
       ? /^\\s*\\d+[.)]\\s+(.+)$/
       : /^\\s*[-*+]\\s+(.+)$/;
+    const nextContentLineIndex = candidate =>
+      candidate < lines.length && (lines[candidate] || '').trim() === ''
+        ? nextContentLineIndex(candidate + 1)
+        : candidate;
     while (index < lines.length) {
       const match = pattern.exec(lines[index] || '');
       if (!match) break;
       items.push('<li class="pl-1">' + renderInlineMarkdown(match[1] || '') + '</li>');
       index += 1;
+      const nextIndex = nextContentLineIndex(index);
+      if (nextIndex !== index && pattern.test(lines[nextIndex] || '')) {
+        index = nextIndex;
+      }
     }
     const tag = ordered ? 'ol' : 'ul';
     const className = ordered
-      ? 'm-0 grid list-decimal gap-1 pl-6 text-sm/6 text-forum-heading'
-      : 'm-0 grid list-disc gap-1 pl-6 text-sm/6 text-forum-heading';
+      ? 'm-0 list-decimal space-y-1 pl-6 text-sm/6 text-forum-heading'
+      : 'm-0 list-disc space-y-1 pl-6 text-sm/6 text-forum-heading';
     return { html: '<' + tag + ' class="' + className + '">' + items.join('') + '</' + tag + '>', nextIndex: index };
   };
   const renderMarkdown = value => {
@@ -792,11 +799,7 @@ export const view = <Message>(
                 [Ui.className<Message>(`${panelClass} overflow-hidden`)],
                 [
                   h.div(
-                    [
-                      Ui.className<Message>(
-                        `${forumHeaderClass} rounded-none`,
-                      ),
-                    ],
+                    [Ui.className<Message>(`${forumHeaderClass} rounded-none`)],
                     [
                       h.span(
                         [
