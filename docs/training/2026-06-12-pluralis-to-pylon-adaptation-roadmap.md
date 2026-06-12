@@ -305,6 +305,28 @@ and real contributor devices existing (the funnel currently reports the
 fleet dark; this roadmap does not pretend otherwise). P3 gates on R2
 economics, twice.
 
+**Implementation status** (same day, 2026-06-12): the contract/code scope
+of P0–P2 landed on main within hours of filing. openagents: #4848
+(`8f9bdd040` join-lifecycle ladder + funnel projection), #4849
+(`25e07afdd` seal staleness/churn/overhead metadata + `maxAllowedStale`,
+migration 0174), #4850+#4851 (`31368c250` bootstrap-from-durable-seal
+grants + seal-in-flight join barrier, migration 0175), #4852 (`41d8c858f`
+reasoned admission gates + host-RAM/thermal probe schema), #4853
+(`244d35aca` staleness-priced acceptance — no reject arm exists by type;
+over-stale routes to sync_reentry), #4854 (`9a4150273` presence/compute
+receipt tiers, per-identity-per-day Sybil-priced cap). psionic: #1124 +
+#1128 (`5b5cf6a2` derisking ledger + PowerSGD×Freivalds answer: composes
+with the algebra, not the provenance), #1125 (`a2b1d269` shadow-window
+ramp with type-level merge exclusion via the `MergeEligibleReceipt`
+proof token), #1126 (`e8869eca` collective failure semantics: chunked
+timeouts, ban-for-round, partial preservation, standby-gated abort),
+#1127 (SPARTA canary harness). Every hardware/settlement-gated
+acceptance bullet (live R1/R2 receipts, real devices, settled payments)
+remains open and is recorded per-issue — none are claimed. Side finding:
+psionic#1129 (68 pre-existing psionic-train test failures from
+cwd-relative fixture paths, surfaced by the #1125 merge triage). P3.1
+remains deliberately unfiled.
+
 **Issues of record** (filed 2026-06-12; master tracking issue
 openagents#4855): P0.1 funnel join-lifecycle
 ladder — openagents#4848; P0.2 staleness contract fields — #4849; P0.3
