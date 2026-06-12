@@ -69,7 +69,7 @@ describe("NIP-LBR typed labor contract helpers", () => {
       bidMsats: 2_000_000,
       deadline: "deadline.public.lbr.20260610",
       forumTopicRef: "topic.public.forum.labor_1",
-      relays: ["wss://openagents-market-relay.openagents.workers.dev"],
+      relays: ["wss://relay.openagents.com"],
     })
 
     const draft = lbrAgenticCodingRequestToDraft(request)
@@ -98,7 +98,7 @@ describe("NIP-LBR typed labor contract helpers", () => {
       capabilityRefs: ["capability.pylon.local_claude_agent"],
       quoteRef: "quote.public.lbr.1",
       expiresAt: "expiry.public.lbr.20260610",
-      requestRelay: "wss://openagents-market-relay.openagents.workers.dev",
+      requestRelay: "wss://relay.openagents.com",
     })
     const parsedQuote = decodeLbrQuoteEvent(
       eventFromDraft(lbrQuoteToDraft(quote), { pubkey: providerPubkey }),
@@ -115,7 +115,7 @@ describe("NIP-LBR typed labor contract helpers", () => {
       providerPubkey,
       escrowReceiptRef: "receipt.public.escrow.1",
       acceptanceRef: "acceptance.public.lbr.1",
-      requestRelay: "wss://openagents-market-relay.openagents.workers.dev",
+      requestRelay: "wss://relay.openagents.com",
     })
     const parsedAcceptance = decodeLbrAcceptanceEvent(
       eventFromDraft(lbrAcceptanceToDraft(acceptance)),
@@ -134,7 +134,7 @@ describe("NIP-LBR typed labor contract helpers", () => {
       summaryRef: "summary.public.lbr.1",
       testRef: "test.public.lbr.bun",
       buildRef: "build.public.lbr.1",
-      requestRelay: "wss://openagents-market-relay.openagents.workers.dev",
+      requestRelay: "wss://relay.openagents.com",
     })
     const parsedResult = decodeLbrResultEvent(
       eventFromDraft(lbrResultToDraft(result), { pubkey: providerPubkey }),

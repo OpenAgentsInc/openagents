@@ -34,7 +34,7 @@ market is composition over them, not greenfield:
 
 | Piece | Where | State |
 | --- | --- | --- |
-| Scoped market relay (NIP-90 kinds 5000–5999, 6000–6999, 7000; NIP-DS 30404/30406; NIP-89) | `apps/nostr-relay` wrapping the `nostr-effect` Durable Object relay | live (`wss://openagents-market-relay.openagents.workers.dev`, #4636) |
+| Scoped market relay (NIP-90 kinds 5000–5999, 6000–6999, 7000; NIP-DS 30404/30406; NIP-89) | `apps/nostr-relay` wrapping the `nostr-effect` Durable Object relay | live (`wss://relay.openagents.com`, #4636) |
 | NIP-90 typed primitives | `packages/nip90` → re-export of `nostr-effect/nip90` | live (#4635) |
 | Pylon NIP-90 provider loop behind GO ONLINE | `apps/pylon/src/provider-nip90.ts` | live (#4638) |
 | Labor runtime contracts (sandbox, first-run approval, auth-exfiltration blocking, `LaborLocalAgentKind` incl. `claude_code`) | `apps/pylon/src/labor.ts`, runtime contracts | live (#4647) |

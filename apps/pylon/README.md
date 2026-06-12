@@ -10,9 +10,10 @@
 
 ## Launch Package And Version Truth
 
-**The only published, installable Pylon is `@openagentsinc/pylon@0.2.5`**
-(`npm view @openagentsinc/pylon dist-tags` → `latest: 0.2.5`). That launcher
-is the supported operator path and the one AGENTS.md tells agents about.
+**The default published Pylon is `@openagentsinc/pylon@0.2.5`** — the
+`latest` dist-tag — and that launcher remains the supported operator path
+AGENTS.md tells agents about. The v0.3 release candidate is additionally
+installable via the opt-in `rc` dist-tag (see below).
 
 **v0.3 is published as a release candidate under the `rc` dist-tag.**
 As of 2026-06-12, `@openagentsinc/pylon@0.3.0-rc2` is on npm under the
@@ -35,11 +36,10 @@ cd openagents && bun install
 bun run --cwd apps/pylon start     # equivalently: bun apps/pylon/src/index.ts
 ```
 
-### Owner install pin (unpublished-0.3.0 fallback, #4858)
+### Owner install pin (source-checkout daily driver, #4858)
 
-Until the stable 0.3.0 npm publish lands (blocked on @openagentsinc scope
-credentials), the owner daily-driver command should not depend on
-unpublished package semantics. `scripts/owner-install-pin.sh` installs a
+For owner dogfood that should track the source checkout rather than any
+published artifact (rc included), `scripts/owner-install-pin.sh` installs a
 `pylon-dev` launcher into `~/.local/bin` pinned to this source checkout and
 writes an inspectable pin manifest (checkout path, pinned commit, dirty
 state, installedAt) to `~/.config/openagents/pylon-pin.json`. Re-run the
@@ -284,7 +284,7 @@ which re-exports the local `nostr-effect` protocol helpers.
 Environment controls:
 
 - `PYLON_NIP90_RELAYS`: comma-separated relay URLs; defaults to
-  `wss://openagents-market-relay.openagents.workers.dev`.
+  `wss://relay.openagents.com`.
 - `PYLON_NIP90_PRICE_MSATS`: price floor and requested invoice amount;
   defaults to `1000`.
 - `PYLON_NIP90_REQUEST_TTL_SECONDS`: request age limit; defaults to one year.

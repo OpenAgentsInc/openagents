@@ -36,7 +36,7 @@ does not claim paid settlement.
 Default relay:
 
 ```text
-wss://openagents-market-relay.openagents.workers.dev
+wss://relay.openagents.com
 ```
 
 The loop:

@@ -53,7 +53,7 @@ import {
 } from "./labor"
 
 export const NIP89_HANDLER_INFO_KIND = 31990
-export const OPENAGENTS_MARKET_RELAY_URL = "wss://openagents-market-relay.openagents.workers.dev"
+export const OPENAGENTS_MARKET_RELAY_URL = "wss://relay.openagents.com"
 export const PYLON_NIP90_PROVIDER_CAPABILITY_REF = "capability.public.pylon.nip90.text_inference.v0.3"
 export const DEFAULT_PROVIDER_PRICE_MSATS = 1_000
 export const DEFAULT_PROVIDER_REQUEST_TTL_SECONDS = 365 * 24 * 60 * 60

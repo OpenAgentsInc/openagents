@@ -5,6 +5,12 @@
   "compatibility_date": "2026-06-09",
   "workers_dev": true,
   "preview_urls": true,
+  // Canonical public market-relay domain (#4863). The workers.dev URL
+  // stays live for compatibility; relay.openagents.com is the published
+  // ref strangers and providers should use.
+  "routes": [
+    { "pattern": "relay.openagents.com", "custom_domain": true },
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,

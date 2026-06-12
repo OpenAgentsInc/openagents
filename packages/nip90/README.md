@@ -66,7 +66,7 @@ For the integrated scoped-relay proof:
 
 ```bash
 bun apps/openagents.com/scripts/nip-ds.ts smoke \
-  --relay https://openagents-market-relay.openagents.workers.dev
+  --relay https://relay.openagents.com
 ```
 
 The script signs and publishes a `30404` listing, `30406` offer, `5960` access
