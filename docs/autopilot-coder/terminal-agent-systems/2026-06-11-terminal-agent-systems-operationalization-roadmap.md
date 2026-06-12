@@ -139,6 +139,14 @@ Implementation status:
   It declares Pack B data-class retention, deletion behavior, projection/cache
   invalidation, lease blockers, reconnect actions, tombstones, receipts, and
   retained audit refs.
+- #4830 PB6 is implemented by
+  `apps/openagents.com/workers/api/src/provider-account-managed-policy.ts`,
+  `apps/openagents.com/workers/api/src/provider-account-managed-policy.test.ts`,
+  and
+  `docs/autopilot-coder/2026-06-11-provider-account-managed-policy-snapshots.md`.
+  It resolves minimal organization, team, repository, user, device/local,
+  provider, budget, retention, and telemetry refs into stable effective policy
+  snapshots with typed allow, deny, stale, and unknown outcomes.
 
 ## Timing Impact On Other Open Issues
 

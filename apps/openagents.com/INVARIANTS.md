@@ -626,6 +626,18 @@ This is the invariant ledger for `openagents`.
   must reject raw credentials, OAuth material, raw prompts, transcripts, shell
   output, private repo data, raw provider responses, wallet/payment material,
   customer-private data, and local paths before projection.
+- Pack B managed-policy snapshots are minimal evidence records, not a broad
+  enterprise admin product. Provider/account and team-budget decisions must
+  resolve organization, team, repository, user, device/local, provider, budget,
+  retention, and telemetry policy refs into a stable `effectivePolicyRef`.
+  Denials for provider allowlists, approved-user gates, budget limits,
+  retention blocks, stale policy, or unknown policy must be typed refs visible
+  to web and agent/API surfaces without exposing raw policy internals, raw
+  credentials, OAuth material, raw prompts, transcripts, shell output, private
+  repo data, raw provider responses, wallet/payment material, customer-private
+  data, or local paths. Policy caveats and allow/deny refs may attach to runs,
+  leases, work orders, and receipts, but do not override the credential,
+  security-review, telemetry, retention, or ToS gates.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
   `workers/api/src/provider-account-lease-policy.test.ts`.
@@ -639,6 +651,8 @@ This is the invariant ledger for `openagents`.
   lives in `workers/api/src/provider-account-telemetry-privacy.test.ts`.
 - Regression coverage for Pack B provider-account retention/deletion policy
   lives in `workers/api/src/provider-account-retention-policy.test.ts`.
+- Regression coverage for Pack B managed-policy snapshots lives in
+  `workers/api/src/provider-account-managed-policy.test.ts`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 

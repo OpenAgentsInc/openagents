@@ -1493,3 +1493,33 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-retention-policy.test.ts`
+
+## PB6 / Issue #4830: Minimal Managed Policy Snapshots
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4830`
+
+Status: implemented for the minimal provider-account and team-budget managed
+policy snapshot contract.
+
+Implemented:
+
+- Added `provider-account-managed-policy.ts` with a typed resolver for
+  provider-account lease/run, work-order, receipt, and team-budget decisions.
+- The resolver turns organization, team, repository, user, device/local,
+  provider, budget, retention, and telemetry policy refs into a stable
+  `effectivePolicyRef`.
+- Provider allowlists, provider disallow reason refs, approved-user gates,
+  budget caveats, retention caveats, telemetry caveats, and run/lease/work
+  order/receipt attachment refs are projected as public-safe evidence refs.
+- Active policy can allow or deny with typed denial refs. Stale and unknown
+  policy states produce typed public denial refs before normal allowlist or
+  budget checks.
+- Added
+  `docs/autopilot-coder/2026-06-11-provider-account-managed-policy-snapshots.md`
+  to document the minimal managed-policy boundary and non-goals.
+- Updated the `apps/openagents.com` invariant ledger with the Pack B
+  managed-policy snapshot rule.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-managed-policy.test.ts`
