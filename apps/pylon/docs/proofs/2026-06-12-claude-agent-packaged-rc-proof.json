@@ -1,0 +1,136 @@
+{
+  "schema": "openagents.pylon.packaged_binary_repeat_proof.v0.1",
+  "observedAt": "2026-06-12T23:14:09.405Z",
+  "completedAt": "2026-06-12T23:14:23.904Z",
+  "adapter": "claude_agent",
+  "issueRefs": [
+    "issue.openagents.4859"
+  ],
+  "promiseRef": "pylon.local_claude_agent_bridge.v1",
+  "blockerRef": "blocker.product_promises.pylon_claude_agent_packaged_binary_repeat_missing",
+  "supervision": {
+    "label": "agent_supervised_owner_directed_session",
+    "ownerDirected": true,
+    "sourceCheckout": false,
+    "executionMode": "local_bounded"
+  },
+  "artifact": {
+    "packageName": "@openagentsinc/pylon",
+    "version": "0.3.0-rc2",
+    "artifactTag": "rc",
+    "stableTagExists": false,
+    "latestTagVersion": "0.2.5",
+    "registry": "npm",
+    "distShasum": "9c2511287536cc437f260c78cdb3f3a85614b858",
+    "distIntegrity": "sha512-2RCtjbwuWDfb9FiTFFDYcKt/OYstEWuF7MUuw8v0/UQjJrhEj2ycd3C1O+PxMtlDkCk6lYbImfigmT2PhBBrkw==",
+    "installIsolation": "fresh bun prefix in an isolated temporary directory outside the source checkout; the pylon bin and every executed module resolved to the installed node_modules package",
+    "installedVersionVerified": true,
+    "bootstrapJsonRan": true
+  },
+  "readiness": {
+    "schema": "openagents.pylon.claude_agent_readiness.v0.3",
+    "state": "ready",
+    "enabled": true,
+    "capabilityRefs": [
+      "capability.pylon.local_claude_agent"
+    ],
+    "blockerRefs": [],
+    "credentialSourceRef": "credential.source.claude_agent.local_claude_session"
+  },
+  "task": {
+    "objective": "Repeat the bounded claude_agent_task (sum-repair fixture) from the published packaged binary: poll, capability-gated admission, accept, one real Claude Agent SDK session in the bounded fixture workspace, real bun test verification, closeout through the assignment client",
+    "jobKind": "claude_agent_task",
+    "assignmentRef": "assignment.public.claude_agent_task.packaged_rc_repeat_4859",
+    "goalRef": "goal.public.claude_agent_task.fixture.public.pylon.claude_agent.sum_repair.v1",
+    "fixtureRef": "fixture.public.pylon.claude_agent.sum_repair.v1",
+    "paymentMode": "no-spend",
+    "maxTurns": 12,
+    "timeoutSeconds": 300
+  },
+  "executor": {
+    "executionPathRef": "assignment.run_no_spend.worker_loop",
+    "executionMode": "local_bounded",
+    "boundary": {
+      "adapter": "claude_agent",
+      "workspaceEscapeGuard": "pre_tool_use_deny_abort",
+      "settingSourcesExcluded": true,
+      "allowedToolsProfile": "executor_default"
+    },
+    "outcome": "completed",
+    "editedFileCount": 1,
+    "sessionRef": "session.pylon.claude_agent.294b4ccba7b9be010ffbb2b8",
+    "sessionRefHashVerifiedAgainstLocalStore": true,
+    "runRef": "run.pylon.claude_agent_task.e461902f0b50a08e41b50165",
+    "workspaceRef": "workspace.pylon.claude_agent_task.e251b177cdfc388f12c5db5f"
+  },
+  "verification": {
+    "result": "passed",
+    "commandRef": "command.pylon.claude_agent_task.verification.3d4261c6790b31fe4fb1576b",
+    "proofRefs": [
+      "proof.pylon.claude_agent_task.test.c8d410bac506fb04e37b20bc"
+    ],
+    "artifactRefs": [
+      "artifact.pylon.claude_agent_task.patch.97d13bf82c8002ab8ec0e5d6"
+    ],
+    "resultRefs": [
+      "result.public.pylon.claude_agent_task.fixture_repair_passed",
+      "result.public.pylon.claude_agent_task.edited_files.1"
+    ],
+    "summaryRefs": [
+      "summary.public.pylon.claude_agent_task.fixture_repair_passed"
+    ]
+  },
+  "closeout": {
+    "status": "accepted",
+    "closeoutRef": "assignment.closeout.assignment.public.claude_agent_task.packaged_rc_repeat_4859",
+    "closeoutSummaryRef": "assignment.closeout.summary.e251b177cdfc388f12c5db5f",
+    "paymentMode": "no-spend",
+    "settlementState": "not_applicable",
+    "payoutClaimAllowed": false,
+    "redacted": true,
+    "receiptRefs": [
+      "assignment.accepted.assignment.public.claude_agent_task.packaged_rc_repeat_4859",
+      "assignment.progress.assignment.public.claude_agent_task.packaged_rc_repeat_4859",
+      "assignment.artifacts.assignment.public.claude_agent_task.packaged_rc_repeat_4859",
+      "run.pylon.claude_agent_task.e461902f0b50a08e41b50165",
+      "session.pylon.claude_agent.294b4ccba7b9be010ffbb2b8"
+    ]
+  },
+  "harness": {
+    "shape": "claude_agent_task_smoke.local_harness_with_real_probe_and_real_sdk_runner",
+    "leaseSource": "local_assignment_api_harness",
+    "liveDispatch": false,
+    "smokeRedactionScan": {
+      "scannedRequestCount": 6,
+      "violations": []
+    },
+    "precedentRefs": [
+      "issue.openagents.4661",
+      "issue.openagents.4720",
+      "issue.openagents.4755"
+    ]
+  },
+  "wordingBoundary": {
+    "promiseVerificationSays": "published stable packaged binary",
+    "thisRunArtifactTag": "rc",
+    "claimsBlockerCleared": false,
+    "ownerDecisionRequired": "whether an rc dist-tag artifact satisfies the promise's stable wording, or whether a stable 0.3.0 publish must precede the green flip; recorded on issues 4858 and 4859"
+  },
+  "redactionScan": {
+    "state": "clean",
+    "patternRefs": [
+      "redaction.local_user_path",
+      "redaction.local_home_path",
+      "redaction.tmp_path",
+      "redaction.sk_prefix",
+      "redaction.provider_key_name",
+      "redaction.auth_scheme",
+      "redaction.credential_file",
+      "redaction.raw_session_uuid"
+    ]
+  },
+  "deviations": [
+    "the published 0.3.0-rc2 artifact self-reports version 0.3.0-rc1 through hardcoded constants in its bootstrap and state modules; the installed package.json and the npm registry record 0.3.0-rc2, and install verification used the package.json version",
+    "one dependency lifecycle script (nostr-effect prepare) was blocked by bun's default postinstall policy during the isolated install; runtime behavior of the executed lane was unaffected"
+  ]
+}
