@@ -198,10 +198,11 @@ They should change when broader claims can close, not stop unrelated work.
   PR writeback, live labor settlement, accepted work, payout, or the #4772
   door-open proof. #4777, #4781, #4782, and #4783 still need live market or
   provider receipts; #4768 and #4772 still need MVP proof receipts.
-- **Do not file Pack D yet.** As of the final Pack C closeout, #4768 and
-  #4772 are still open, and #4836/#4837 show that public product-promise and
-  Forum work-request surfaces still need freshness/order-book hygiene before a
-  broad intake/market-unification pack would be well-scoped.
+- **Do not file Pack D yet.** As of the 2026-06-12 follow-up review, #4768
+  and #4772 are still open. #4836 is implemented as the product-promises
+  freshness/announcement gate, but #4837 still shows that the Forum
+  work-request surface needs order-book hygiene before a broad
+  intake/market-unification pack would be well-scoped.
 - **Keep #4786, #4768, and #4772 focused on their proof gates.** They should
   cite Pack B only when their proof evidence relies on provider credentials,
   account telemetry, managed policy snapshots, or retention/deletion behavior,
@@ -253,8 +254,20 @@ Final implementation pass:
 - Pack C now supplies typed evidence surfaces for repository/worktree identity,
   bounded change capture, workspace authority, and delivery/PR readiness.
 - No additional Pack C child issues are needed now. The next issue set should
-  not be Pack D until #4768/#4772 MVP proof and #4836/#4837 public
-  freshness/order-book hygiene are closed or explicitly scoped.
+  not be Pack D until #4768/#4772 MVP proof and public freshness/order-book
+  hygiene are closed or explicitly scoped. #4836 now closes the
+  product-promises freshness/announcement half; #4837 remains the open
+  Forum work-request order-book half.
+
+Follow-up hygiene status:
+
+- #4836 is implemented by adding `generatedAt`, `registryVersion`,
+  `maxStalenessSeconds`, and a `live_at_read` staleness contract to
+  `/api/public/product-promises`, plus an announcement-readiness helper that
+  blocks announcement copy when the announced version does not match the
+  served version.
+- #4837 remains the next sequential blocker: Forum work requests must not
+  advertise closed GitHub issues as open market work.
 
 Implementation status:
 

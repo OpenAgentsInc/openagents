@@ -76,6 +76,7 @@ export const publicProductPromisesDocument = () => {
   const document = {
   schemaVersion: PublicProductPromisesSchemaVersion,
   version: PublicProductPromisesVersion,
+  registryVersion: PublicProductPromisesVersion,
   generatedAt: currentIsoTimestamp(),
   maxStalenessSeconds: staleness.maxStalenessSeconds,
   staleness,
@@ -1767,5 +1768,29 @@ export const publicProductPromisesDocument = () => {
   return {
     ...document,
     verificationSummary: summarizePromiseVerification(document.promises),
+  }
+}
+
+export const publicProductPromisesAnnouncementReadiness = (
+  expectedVersion: string,
+  document = publicProductPromisesDocument(),
+) => {
+  const expected = expectedVersion.trim()
+  const servedVersion = document.version
+  const status = servedVersion === expected ? 'ready' : 'blocked'
+
+  return {
+    blockerRefs:
+      status === 'ready'
+        ? []
+        : [
+            `product-promises-announcement-blocker:expected-version-not-served:${expected}`,
+          ],
+    expectedVersion: expected,
+    generatedAt: document.generatedAt,
+    maxStalenessSeconds: document.maxStalenessSeconds,
+    servedVersion,
+    status,
+    staleness: document.staleness,
   }
 }

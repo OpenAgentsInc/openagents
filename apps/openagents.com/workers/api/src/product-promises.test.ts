@@ -1,7 +1,10 @@
 import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { publicProductPromisesDocument } from './product-promises'
+import {
+  publicProductPromisesAnnouncementReadiness,
+  publicProductPromisesDocument,
+} from './product-promises'
 
 const ProductPromiseState = S.Literals([
   'degraded',
@@ -57,6 +60,7 @@ const ProductPromisesDocument = S.Struct({
     rule: S.String,
     strictBugForm: S.String,
   }),
+  registryVersion: S.String,
   schemaVersion: S.String,
   sourceRefs: S.Array(S.String),
   staleness: S.Struct({
@@ -85,6 +89,7 @@ describe('public product promises document', () => {
     )
 
     expect(decoded.version).toBe('2026-06-11.9')
+    expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
     expect(decoded.staleness.maxStalenessSeconds).toBe(0)
@@ -273,5 +278,29 @@ describe('public product promises document', () => {
         }),
       ]),
     )
+  })
+
+  test('blocks announcement copy until the live endpoint serves the announced version', () => {
+    const document = publicProductPromisesDocument()
+
+    expect(
+      publicProductPromisesAnnouncementReadiness('2026-06-11.9', document),
+    ).toMatchObject({
+      blockerRefs: [],
+      expectedVersion: '2026-06-11.9',
+      maxStalenessSeconds: 0,
+      servedVersion: '2026-06-11.9',
+      status: 'ready',
+    })
+    expect(
+      publicProductPromisesAnnouncementReadiness('2026-06-12.1', document),
+    ).toMatchObject({
+      blockerRefs: [
+        'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
+      ],
+      expectedVersion: '2026-06-12.1',
+      servedVersion: '2026-06-11.9',
+      status: 'blocked',
+    })
   })
 })

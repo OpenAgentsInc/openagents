@@ -1751,3 +1751,28 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-retention-policy.test.ts src/pack-c-delivery-readiness.test.ts src/pack-c-workspace-authority.test.ts src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## Issue #4836: Product-Promises Freshness And Announcement Gate
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4836`
+
+Status: implemented for the public product-promises projection.
+
+Implemented:
+
+- Added `generatedAt`, `registryVersion`, `maxStalenessSeconds`, and the
+  shared `live_at_read` projection staleness contract to the top-level
+  `/api/public/product-promises` document.
+- Added a regression-tested announcement-readiness helper that returns
+  `blocked` when a proposed announcement version does not match the registry
+  version actually served by the endpoint.
+- Updated OpenAPI descriptions so agents know the endpoint exposes the
+  deployed registry version and freshness contract.
+- Updated the original terminal-agent-systems roadmap to mark the
+  product-promises freshness half of the public hygiene blocker complete while
+  keeping #4837 as the remaining Forum order-book blocker before Pack D.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/product-promises.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

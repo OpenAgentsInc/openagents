@@ -265,7 +265,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe Autopilot Mission Briefing envelope: event rollup, changed artifact/result refs, blocked access requirements and blocker refs, running state, waiting decision, cost rollup, and grouped drill-down refs. A briefing is a read projection and grants no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
   ),
   ProductPromises: objectSummary(
-    'Versioned public OpenAgents product-promise registry with generatedAt and the declared live_at_read staleness contract. Records classify claims as green, yellow, red, degraded, or planned and include evidence refs, verification guidance, report paths, and authority boundaries.',
+    'Versioned public OpenAgents product-promise registry with generatedAt, registryVersion, maxStalenessSeconds, and the declared live_at_read staleness contract. Records classify claims as green, yellow, red, degraded, or planned and include evidence refs, verification guidance, report paths, and authority boundaries.',
   ),
   PublicAdjutantActivity: objectSummary(
     'Public-safe Autopilot activity milestones and Site projections.',
@@ -2275,7 +2275,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicProductPromises',
       summary: 'Read product promises',
       description:
-        'Returns the versioned public OpenAgents product-promise registry for agents and users with generatedAt and a declared staleness contract. Each promise record states what is live, scoped, gated, degraded, or planned, and includes evidence refs, verification guidance, report paths, and authority boundaries. Reports should include the registry version and promiseId so maintainers are not responding to an old claim version.',
+        'Returns the versioned public OpenAgents product-promise registry for agents and users with generatedAt, registryVersion, maxStalenessSeconds, and a declared staleness contract. Agents should compare the announced registry version to the served registryVersion before trusting launch or Forum copy. Each promise record states what is live, scoped, gated, degraded, or planned, and includes evidence refs, verification guidance, report paths, and authority boundaries. Reports should include the registry version and promiseId so maintainers are not responding to an old claim version.',
       tags: ['Public Proof'],
       security: publicRead,
       responses: {
