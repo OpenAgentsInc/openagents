@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-12.4'
+export const PublicProductPromisesVersion = '2026-06-12.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -21,6 +21,7 @@ const sourceRefs = [
   'docs/promises/2026-06-09-product-promises-gap-audit.md',
   'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
   'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+  'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
   'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
@@ -1240,6 +1241,8 @@ export const publicProductPromisesDocument = () => {
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
+          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4855',
           'https://github.com/OpenAgentsInc/psionic/tree/main/docs/smol',
           'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
         ],
@@ -1315,12 +1318,15 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Psion models train up a receipt-gated ladder — R0 tri-host rehearsal, R1 operator-scale full rehearsal, R2 network pretraining with paid verified windows, R3 1B-class, R4 3B-class — each rung re-running the whole pipeline behind an engineering gate and an economics gate.',
         safeCopy:
-          'R0 exists: a retained tri-host 12-step rehearsal (3,992 train tokens at 2.74 effective tokens per second) recorded in psionic’s actual-pretraining runbook. No rung above R0 has started. Rung promises are written before each run and transition only on receipts; no rung is scheduled against a date.',
+          'R0 exists: a retained tri-host 12-step rehearsal (3,992 train tokens at 2.74 effective tokens per second) recorded in psionic’s actual-pretraining runbook. No rung above R0 has started. Rung promises are written before each run and transition only on receipts; no rung is scheduled against a date. As of 2026-06-12 the contributor join path R1/R2 will use is contract-complete on main (join-lifecycle ladder, bootstrap-from-durable-seal, shadow-window ramp with type-level merge exclusion, staleness-priced acceptance), and the economics gate gained its first concrete field: verification overhead as a fraction of window cost, recorded per rung on the window-seal contract (#4849). The rungs themselves have not run.',
         unsafeCopy:
           'Do not claim any Psion rung above R0 is trained, in progress, or scheduled, do not present the ladder as a commitment to reach R4, and do not present R0 rehearsal throughput as network training capability.',
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
+          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4849',
+          'https://github.com/OpenAgentsInc/openagents/issues/4855',
         ],
         blockerRefs: [
           'blocker.product_promises.r1_full_rehearsal_missing',
@@ -1340,13 +1346,18 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Long training runs operate with marathon discipline: preflight qualification, monitoring against a reference trajectory, loss-spike triage with window rewind, durable checkpoint-sealed windows, standby contributors, written restart criteria, and a schedulable curtailment drill.',
         safeCopy:
-          'Psionic’s actual-pretraining lane has local hardware qualification, checkpoint/resume drills, and continue/hold/restart checkpoint decisions. Durable remote checkpoint storage bound into the window seal, standby-Pylon dispatch, public run monitoring against a prior rung’s eval series, restart-decision receipts, and the scheduled curtailment drill are planned.',
+          'Psionic’s actual-pretraining lane has local hardware qualification, checkpoint/resume drills, and continue/hold/restart checkpoint decisions. Durable remote checkpoint storage bound into the window seal, standby-Pylon dispatch, public run monitoring against a prior rung’s eval series, restart-decision receipts, and the scheduled curtailment drill are planned. Contract-level pieces landed 2026-06-12: window-seal metadata carrying staleness, churn, and verification-overhead fields (#4849), bootstrap-from-durable-seal grants behind a seal-in-flight join barrier that fails toward queueing (#4850/#4851), and collective failure semantics with ban-for-round, partial-result preservation, and standby-gated abort (psionic#1126). Durable remote checkpoint storage, a live standby promotion, and the drill itself remain unproven.',
         unsafeCopy:
           'Do not claim multi-day or multi-week network training runs are operationally supported, or that training load is proven dispatchable/curtailable for grid value.',
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4673',
+          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4849',
+          'https://github.com/OpenAgentsInc/openagents/issues/4850',
+          'https://github.com/OpenAgentsInc/openagents/issues/4851',
+          'https://github.com/OpenAgentsInc/psionic/issues/1126',
         ],
         blockerRefs: [
           'blocker.product_promises.durable_checkpoint_seal_missing',
@@ -1396,7 +1407,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Every training-pipeline stage carries a named pluggable verification class — deterministic_recompute, seeded_replication, freivalds_merkle, statistical_cross_check, exact_trace_replay — routed to the cheapest sufficient supply, with weak devices as paid validators.',
         safeCopy:
-          'The Worker-side pluggable class registry is live with three classes exercised on real dispatched production work (exact_trace_replay, deterministic_recompute, freivalds_merkle with commitment-then-challenge matrix flow), and one weak-device validator Pylon has claimed, independently re-executed, and been paid for a Freivalds recheck with a settled public receipt (#4676). The April-era aggregate-only validation compromise must still be re-decided per class in writing (#4674), and seeded_replication plus statistical_cross_check have not yet run on real dispatched work.',
+          'The Worker-side pluggable class registry is live with three classes exercised on real dispatched production work (exact_trace_replay, deterministic_recompute, freivalds_merkle with commitment-then-challenge matrix flow), and one weak-device validator Pylon has claimed, independently re-executed, and been paid for a Freivalds recheck with a settled public receipt (#4676). The April-era aggregate-only validation compromise must still be re-decided per class in writing (#4674), and seeded_replication plus statistical_cross_check have not yet run on real dispatched work. As of 2026-06-12 every class also carries a contract-level staleness dimension: per-class steps_behind thresholds whose over-stale outcome is sync_reentry routing with typed events, never bare rejection (#4853); no real contribution has yet been staleness-routed.',
         unsafeCopy:
           'Do not claim training work is currently verified end to end on paid assignments at scale, that all five classes have run on real work, or that validator work is a standing income stream beyond the receipted closeouts.',
         evidenceRefs: [
@@ -1409,6 +1420,9 @@ export const publicProductPromisesDocument = () => {
           'promise_transition_0bfce0c5-e4dd-4d19-9221-4bc9504f2055',
           'https://github.com/OpenAgentsInc/openagents/issues/4674',
           'https://github.com/OpenAgentsInc/openagents/issues/4676',
+          'https://github.com/OpenAgentsInc/openagents/issues/4853',
+          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'apps/openagents.com/workers/api/src/training-staleness-acceptance.ts',
           'https://github.com/OpenAgentsInc/psionic/issues/1115',
           'https://github.com/OpenAgentsInc/psionic/issues/1116',
         ],
@@ -1430,7 +1444,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Benchmark assignments produce a public device-capability dataset across heterogeneous contributor hardware — matmul throughput, memory bandwidth, attention-kernel performance, sustained-versus-burst thermals — that honestly prices what each machine can earn.',
         safeCopy:
-          'The public device-capability dataset is live with its first receipted rows: two paid benchmark assignments ran the bounded CS336 A2 suite on two registered Pylons, the production Worker verified all four metrics with statistical_cross_check on real cross-device agreement scores, both 30-sat closeouts settled over real Lightning with public receipts, and the dataset serves class-level distributions with earning estimates labeled modeled-from-measured (#4681). Coverage is one device class from two Pylons on a single physical host; thermal-throttle detection and a second device class are still missing.',
+          'The public device-capability dataset is live with its first receipted rows: two paid benchmark assignments ran the bounded CS336 A2 suite on two registered Pylons, the production Worker verified all four metrics with statistical_cross_check on real cross-device agreement scores, both 30-sat closeouts settled over real Lightning with public receipts, and the dataset serves class-level distributions with earning estimates labeled modeled-from-measured (#4681). Coverage is one device class from two Pylons on a single physical host; thermal-throttle detection and a second device class are still missing. As of 2026-06-12 the qualification-probe schema additionally defines host-RAM-headroom and sustained-versus-burst thermal-ratio measurement kinds plus reasoned admission-gate definitions where every admit/exclude decision must carry a stated measured reason (#4852); these are contract definitions only — no live device has reported the new kinds and no live admission decision has run.',
         unsafeCopy:
           'Do not claim multi-class or fleet-scale dataset coverage, that the two same-host Pylons prove cross-machine replication, that benchmark work is a standing paid market beyond the receipted closeouts, or quote earning estimates as guarantees rather than modeled-from-measured labels.',
         evidenceRefs: [
@@ -1444,6 +1458,9 @@ export const publicProductPromisesDocument = () => {
           'verdict.training.statistical_cross_check.verified.training.verification.challenge.c80ba722-0d0e-4e06-9e33-599ad784',
           'promise_transition_af246d4d-f37e-456a-b5ee-fba2d5ba3017',
           'https://github.com/OpenAgentsInc/openagents/issues/4681',
+          'https://github.com/OpenAgentsInc/openagents/issues/4852',
+          'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'apps/openagents.com/workers/api/src/training-device-admission-gates.ts',
         ],
         blockerRefs: [
           'blocker.product_promises.second_device_class_missing',
@@ -1796,6 +1813,7 @@ export const publicProductPromisesDocument = () => {
       'Demand-provenance rule (proof.demand_provenance.v1): internal or first-party demand — including the training pipeline’s own ablations, sweeps, and corpus work — is plumbing proof, not market proof. No external dollar, no demand claim; revenue-bearing public numbers must carry an internal/external split alongside modeled/measured/settled provenance.',
       'The Smol Training Playbook chapters mirrored at psionic docs/smol guide the pipeline’s operational shape; its measurements (MFU, bandwidth, mixture ratios) are external priors on other hardware, never OpenAgents claims.',
       'External-reference absorption 2026-06-10: the QVAC edge-stack analysis (docs/training/2026-06-10-qvac-edge-stack-analysis.md) feeds the training workstreams through psionic issues #1115-#1118 (ternary determinism receipts, Philox seeded-work RNG, instruct SFT lane, derisking-ledger entries) and spec input on #4681. It creates no new promises, and by owner decision local image/video generation via that stack is not pursued at this time.',
+      'External-reference absorption 2026-06-12 (registry 2026-06-12.5): the Pluralis-to-Pylon adaptation roadmap (docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md, master issue #4855) landed its full P0-P2 contract scope same day across openagents #4848-#4854 and psionic #1124-#1128: contributor join-lifecycle ladder, window-seal staleness/churn/verification-overhead fields, bootstrap-from-durable-seal with a join barrier, reasoned device-admission gates with host-RAM and thermal probe kinds, staleness-priced acceptance with sync_reentry routing, presence/compute receipt tiers with a Sybil-priced cap, shadow-window join ramp with type-level merge exclusion, collective failure semantics, the pre-registered SPARTA canary harness behind the W3 no-public-gradients standing order, and the PowerSGD-Freivalds answer (compression composes with verification algebra, not provenance). Everything is contract/harness-level: no promise changes state on this work, every hardware- and settlement-gated acceptance bullet is recorded per issue, and the SPARTA canary outcome is pending by typed rule until a real gated run binds its pre-registration digest.',
       'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
       'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
       'Claude/Codex parity pass 2026-06-12 (registry 2026-06-12.4): both coding-agent lanes now carry live production task receipts — Claude via #4755/#4756 closeouts, Codex via the CX lane (epic #4793, live device closeout assignment.closeout.f264043a9f173b20514521da plus the API-parity git_checkout leg). The stale "no live Claude run" copy was corrected; the Claude bridge blocker narrowed to packaged-binary repeatability; the Codex successor blocker live_probe_pylon_runtime_gates_incomplete was cleared on the CX4 evidence, which is the maintainer edit the receipt-first transition proposal on the Forum asked for. No state flips were auto-applied: both promises stay yellow, and the codex successor green flip should be recorded receipt-first per proof.claim_upgrade_receipts.v1 after this version deploys. The local supervised daily-driver surface exists for Codex in source (#4839-#4841) and is tracked for Claude as issues #4844-#4847; the parity audit is docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md.',
