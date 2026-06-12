@@ -209,16 +209,11 @@ workflow does not yet return a convenient repo/context, patch/check/reload
 handoff."
 
 The implementation decision for the local lane is to use the TypeScript SDK,
-not a raw CLI parser. The raw Codex flag remains the behavior reference for
-#4840:
-
-```sh
-codex exec --json -C <active-repo> --dangerously-bypass-approvals-and-sandbox <prompt>
-```
-
-The SDK equivalent is `sandboxMode: "danger-full-access"` with
-`approvalPolicy: "never"` on a local-only `pylon dev` / composer path, not the
-public assignment executor.
+not a raw CLI parser. Pylon should create a Codex SDK thread with the active
+repo as `workingDirectory`, then stream `thread.runStreamed(prompt)` events
+into the TUI. The local supervised danger path maps to SDK
+`sandboxMode: "danger-full-access"` with `approvalPolicy: "never"` on
+`pylon dev` / the local composer path, not the public assignment executor.
 
 ### Fable
 
@@ -477,11 +472,16 @@ pylon dev doctor --json --codex-danger
 pylon dev fix "make this repo change"
 ```
 
-The SDK should continue to mirror the behavior of this raw Codex invocation:
+The SDK path should continue to use `@openai/codex-sdk` directly:
 
-```sh
-codex exec --json -C <active-repo> --dangerously-bypass-approvals-and-sandbox <prompt>
+```ts
+const thread = await codex.startThread({ workingDirectory: activeRepo });
+await thread.runStreamed(prompt);
 ```
+
+For the supervised danger lane, Pylon should pass SDK options equivalent to
+local unrestricted owner-watched execution: `sandboxMode: "danger-full-access"`
+and `approvalPolicy: "never"`.
 
 This path should not require:
 
