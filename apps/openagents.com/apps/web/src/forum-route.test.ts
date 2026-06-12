@@ -1,6 +1,6 @@
 import { Option } from 'effect'
 import { Scene } from 'foldkit'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { Flags, init } from './main'
 import { LoggedOut } from './model'
@@ -16,6 +16,26 @@ const appUrl = (pathname: string) => ({
   pathname,
   search: Option.none(),
   hash: Option.none(),
+})
+
+const jsonResponse = (body: unknown): Response =>
+  new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json' },
+    status: 200,
+  })
+
+const flushForumScript = async (): Promise<void> => {
+  await Promise.resolve()
+  await Promise.resolve()
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  document.body.innerHTML = ''
+  if (typeof localStorage.clear === 'function') {
+    localStorage.clear()
+  }
 })
 
 describe('Forum routes', () => {
@@ -96,6 +116,76 @@ describe('Forum routes', () => {
     expect(script).toContain(
       "href=\"/forum/t/' + encodeURIComponent(target.topicId) + '#post-",
     )
+  })
+
+  test('renders topic post bodies as safe markdown', async () => {
+    document.body.innerHTML =
+      '<div data-forum-app><main data-forum-main></main></div>'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const path = String(input)
+
+      if (path.includes('/api/forum/topics/')) {
+        return jsonResponse({
+          posts: [
+            {
+              author: {
+                actorRef: 'agent.public.markdown',
+                displayName: 'Markdown Agent',
+              },
+              bodyText:
+                '# Launch note\n\nThis is **bold** and `code` with [safe](/docs/forum) and [bad](javascript:alert(1)).\n\n- item one\n- item two\n\n> quoted text\n\n```ts\n<script>alert(1)</script>\n```\n\n<script>bad</script>',
+              createdAt: '2026-06-12T00:00:00.000Z',
+              postId: '263543ec-8196-4a87-8bdc-a4d1ca499d99',
+              postNumber: 1,
+              subject: 'Markdown post',
+              topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+            },
+          ],
+          topic: {
+            forumId: 'product-promises',
+            postCount: 1,
+            title: 'Markdown topic',
+            topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+          },
+        })
+      }
+
+      return jsonResponse({
+        publicTipping: {
+          postTips: 'blocked',
+          remainingBeforeLiveTips: ['payer wallet'],
+        },
+      })
+    })
+
+    new Function(
+      forumScript(
+        ForumTopicRoute({
+          topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+        }),
+      ),
+    )()
+    await flushForumScript()
+
+    const main = document.querySelector('[data-forum-main]')
+    const markdown = main?.querySelector('[data-forum-markdown]')
+
+    expect(markdown).not.toBeNull()
+    expect(markdown?.querySelector('h4')?.textContent).toBe('Launch note')
+    expect(markdown?.querySelector('strong')?.textContent).toBe('bold')
+    expect(markdown?.querySelector('code')?.textContent).toBe('code')
+    expect(markdown?.querySelector('ul li')?.textContent).toBe('item one')
+    expect(markdown?.querySelector('blockquote')?.textContent).toContain(
+      'quoted text',
+    )
+    expect(markdown?.querySelector('a[href="/docs/forum"]')?.textContent).toBe(
+      'safe',
+    )
+    expect(markdown?.querySelector('a[href^="javascript:"]')).toBeNull()
+    expect(markdown?.querySelector('script')).toBeNull()
+    expect(markdown?.innerHTML).toContain('&lt;script&gt;bad&lt;/script&gt;')
+    expect(markdown?.textContent).toContain('bad')
   })
 
   test('renders post tip controls only behind tipping launch and recipient readiness gates', () => {

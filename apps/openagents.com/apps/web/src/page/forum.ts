@@ -140,6 +140,149 @@ export const forumScript = (
       (tipCount > 1 ? ' · ' + String(tipCount) + ' payments' : '');
     return '<span data-forum-post-tip-total data-forum-post-tip-settlement="' + settlement + '" class="font-sans text-sm text-forum-payment sm:text-xs" title="' + escapeHtml(detail) + '" aria-label="' + escapeHtml(detail) + '">' + escapeHtml(String(totalPaidSats) + ' sats ' + settlementIcon) + '</span>';
   };
+  const markdownParagraphClass = 'm-0 break-words text-sm/6 text-forum-heading [overflow-wrap:anywhere]';
+  const markdownHeadingClass = 'm-0 break-words pt-1 font-semibold text-forum-heading [overflow-wrap:anywhere]';
+  const markdownLinkClass = 'text-forum-link underline underline-offset-4 hover:text-forum-link-hover';
+  const safeMarkdownHref = href => {
+    const trimmed = String(href || '').trim();
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+    try {
+      const parsed = new URL(trimmed, window.location.origin);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : '';
+    } catch {
+      return '';
+    }
+  };
+  const renderInlineEmphasis = value =>
+    escapeHtml(value)
+      .replace(/\\*\\*([^*]+)\\*\\*/g, (_match, body) => '<strong class="font-semibold text-forum-heading">' + body + '</strong>')
+      .replace(/__([^_]+)__/g, (_match, body) => '<strong class="font-semibold text-forum-heading">' + body + '</strong>')
+      .replace(/(^|[\\s(])\\*([^*]+)\\*/g, (_match, prefix, body) => prefix + '<em class="italic">' + body + '</em>')
+      .replace(/(^|[\\s(])_([^_]+)_/g, (_match, prefix, body) => prefix + '<em class="italic">' + body + '</em>');
+  const renderInlineWithoutLinks = value => {
+    const delimiter = String.fromCharCode(96);
+    const segments = String(value || '').split(delimiter);
+    if (segments.length % 2 === 0) return renderInlineEmphasis(value);
+    return segments.map((segment, index) =>
+      index % 2 === 1
+        ? '<code class="rounded border border-forum-row-c bg-forum-panel px-1 py-0.5 font-mono text-[0.8125rem] text-forum-heading">' + escapeHtml(segment) + '</code>'
+        : renderInlineEmphasis(segment)
+    ).join('');
+  };
+  const renderInlineMarkdown = value => {
+    const text = String(value || '');
+    const linkPattern = /\\[([^\\]\\n]+)\\]\\(([^)\\s]+)\\)/g;
+    let cursor = 0;
+    let html = '';
+    for (const match of text.matchAll(linkPattern)) {
+      const index = match.index ?? 0;
+      html += renderInlineWithoutLinks(text.slice(cursor, index));
+      const label = match[1] || match[2] || 'Link';
+      const href = safeMarkdownHref(match[2]);
+      html += href === ''
+        ? renderInlineWithoutLinks(label)
+        : '<a class="' + markdownLinkClass + '" href="' + escapeHtml(href) + '"' + (href.startsWith('/') ? '' : ' target="_blank" rel="noreferrer"') + '>' + renderInlineWithoutLinks(label) + '</a>';
+      cursor = index + match[0].length;
+    }
+    return html + renderInlineWithoutLinks(text.slice(cursor));
+  };
+  const isFenceLine = line => {
+    const trimmed = line.trim();
+    return trimmed.startsWith('\`\`\`') || trimmed.startsWith('~~~');
+  };
+  const isMarkdownBoundary = line => {
+    const trimmed = line.trim();
+    return trimmed === '' ||
+      isFenceLine(line) ||
+      /^#{1,6}\\s+/.test(trimmed) ||
+      /^[-*_]{3,}$/.test(trimmed) ||
+      /^\\s*>/.test(line) ||
+      /^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)/.test(line);
+  };
+  const renderMarkdownBlock = (tag, text, extraClass = '') =>
+    '<' + tag + ' class="' + (extraClass || markdownParagraphClass) + '">' + renderInlineMarkdown(text) + '</' + tag + '>';
+  const renderMarkdownList = (lines, startIndex, ordered) => {
+    let index = startIndex;
+    const items = [];
+    const pattern = ordered
+      ? /^\\s*\\d+[.)]\\s+(.+)$/
+      : /^\\s*[-*+]\\s+(.+)$/;
+    while (index < lines.length) {
+      const match = pattern.exec(lines[index] || '');
+      if (!match) break;
+      items.push('<li class="pl-1">' + renderInlineMarkdown(match[1] || '') + '</li>');
+      index += 1;
+    }
+    const tag = ordered ? 'ol' : 'ul';
+    const className = ordered
+      ? 'm-0 grid list-decimal gap-1 pl-6 text-sm/6 text-forum-heading'
+      : 'm-0 grid list-disc gap-1 pl-6 text-sm/6 text-forum-heading';
+    return { html: '<' + tag + ' class="' + className + '">' + items.join('') + '</' + tag + '>', nextIndex: index };
+  };
+  const renderMarkdown = value => {
+    const lines = String(value || '').replace(/\\r\\n?/g, '\\n').split('\\n');
+    const blocks = [];
+    let index = 0;
+    while (index < lines.length) {
+      const line = lines[index] || '';
+      const trimmed = line.trim();
+      if (trimmed === '') {
+        index += 1;
+        continue;
+      }
+      if (isFenceLine(line)) {
+        const fence = trimmed.slice(0, 3);
+        const codeLines = [];
+        index += 1;
+        while (index < lines.length && !(lines[index] || '').trim().startsWith(fence)) {
+          codeLines.push(lines[index] || '');
+          index += 1;
+        }
+        if (index < lines.length) index += 1;
+        blocks.push('<pre class="m-0 overflow-x-auto rounded border border-forum-row-c bg-forum-wrap p-3 text-xs/6 text-forum-heading"><code>' + escapeHtml(codeLines.join('\\n')) + '</code></pre>');
+        continue;
+      }
+      const heading = /^(#{1,6})\\s+(.+)$/.exec(trimmed);
+      if (heading) {
+        const depth = Math.min((heading[1] || '').length + 3, 6);
+        const sizeClass = depth <= 4 ? 'text-base' : 'text-sm';
+        blocks.push(renderMarkdownBlock('h' + depth, heading[2] || '', markdownHeadingClass + ' ' + sizeClass));
+        index += 1;
+        continue;
+      }
+      if (/^[-*_]{3,}$/.test(trimmed)) {
+        blocks.push('<hr class="m-0 border-forum-row-c">');
+        index += 1;
+        continue;
+      }
+      if (/^\\s*>/.test(line)) {
+        const quoteLines = [];
+        while (index < lines.length && /^\\s*>/.test(lines[index] || '')) {
+          quoteLines.push((lines[index] || '').replace(/^\\s*>\\s?/, '').trim());
+          index += 1;
+        }
+        blocks.push('<blockquote class="m-0 border-l-4 border-forum-header bg-forum-panel px-3 py-2 text-sm/6 text-forum-text">' + renderInlineMarkdown(quoteLines.join(' ')) + '</blockquote>');
+        continue;
+      }
+      const ordered = /^\\s*\\d+[.)]\\s+/.test(line);
+      const unordered = /^\\s*[-*+]\\s+/.test(line);
+      if (ordered || unordered) {
+        const list = renderMarkdownList(lines, index, ordered);
+        blocks.push(list.html);
+        index = list.nextIndex;
+        continue;
+      }
+      const paragraphLines = [];
+      while (index < lines.length && !isMarkdownBoundary(lines[index] || '')) {
+        paragraphLines.push((lines[index] || '').trim());
+        index += 1;
+      }
+      blocks.push(renderMarkdownBlock('p', paragraphLines.join(' ')));
+    }
+    return blocks.length === 0
+      ? '<p class="' + markdownParagraphClass + '"></p>'
+      : blocks.join('');
+  };
   const topicCountText = count => countText(count, 'topic', 'topics');
   const postCountText = count => countText(count, 'post', 'posts');
   const replyCountText = count => countText(count, 'reply', 'replies');
@@ -400,7 +543,7 @@ export const forumScript = (
       '<p class="m-0 mt-1 text-xs text-forum-text">Post #' + postNumber + ' &raquo; ' + friendlyTime(post.createdAt) + '</p></div>' +
       renderPostControls(post) +
       '</header>' +
-      '<div class="mt-3 whitespace-pre-wrap break-words text-sm/6 text-forum-heading [overflow-wrap:anywhere]">' + escapeHtml(post.bodyText || post.contentRef || '') + '</div>' +
+      '<div data-forum-markdown class="mt-3 grid gap-3 break-words text-sm/6 text-forum-heading [overflow-wrap:anywhere]">' + renderMarkdown(post.bodyText || post.contentRef || '') + '</div>' +
       '</div>';
   };
   const renderTipResult = (post, result) => {
