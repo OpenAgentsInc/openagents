@@ -73,6 +73,14 @@ previous repository shape.
   reports should be rejected by the issue form or moved back to the Forum.
 - Do not commit secrets, dependency caches, build output, `target/`, `dist/`,
   `node_modules/`, or local runtime state.
+- Before publishing ANY npm package from this repo, read
+  `apps/pylon/docs/npm-publishing-runbook.md`. The scope is
+  `@openagentsinc/` (never `@openagents/`), the auth token lives in
+  workspace `.secrets/npm-publish.env`, `bun publish` is broken against
+  npmjs (use `bun pm pack` + `npm publish <tarball>`), Pylon pre-stable
+  releases publish under `--tag rc` only, and registry-CDN propagation
+  makes fresh publishes look 404 to bun for minutes — the runbook covers
+  all of it.
 - Keep Git operations scoped to this repository when working here.
 - Do not put individual people’s names in commit messages, commit trailers, or
   other committed metadata unless the user explicitly asks for a legally or
