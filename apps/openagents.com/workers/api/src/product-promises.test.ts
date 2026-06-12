@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-12.5')
+    expect(decoded.version).toBe('2026-06-12.6')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -291,12 +291,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-12.5', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-12.6', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-12.5',
+      expectedVersion: '2026-06-12.6',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-12.5',
+      servedVersion: '2026-06-12.6',
       status: 'ready',
     })
     expect(
@@ -306,7 +306,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-12.5',
+      servedVersion: '2026-06-12.6',
       status: 'blocked',
     })
   })
