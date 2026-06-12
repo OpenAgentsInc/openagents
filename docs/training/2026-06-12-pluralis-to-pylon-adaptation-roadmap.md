@@ -305,7 +305,8 @@ and real contributor devices existing (the funnel currently reports the
 fleet dark; this roadmap does not pretend otherwise). P3 gates on R2
 economics, twice.
 
-**Issues of record** (filed 2026-06-12): P0.1 funnel join-lifecycle
+**Issues of record** (filed 2026-06-12; master tracking issue
+openagents#4855): P0.1 funnel join-lifecycle
 ladder — openagents#4848; P0.2 staleness contract fields — #4849; P0.3
 derisking-ledger entries — psionic#1124; P1.1 shadow-window ramp —
 psionic#1125; P1.2 bootstrap-from-durable-seal rule — #4850; P1.3
