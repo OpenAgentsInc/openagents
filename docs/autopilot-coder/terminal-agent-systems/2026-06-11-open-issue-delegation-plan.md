@@ -7,8 +7,10 @@ Date: 2026-06-11
 This document splits the currently outstanding Autopilot and Pack A issues
 into parallel workstreams for delegated agents.
 
-It covers the open issue set checked with `gh issue list` on 2026-06-11:
-#4749, #4766-#4783, #4785-#4786, and #4813-#4823.
+It initially covered the open issue set checked with `gh issue list` on
+2026-06-11: #4749, #4766-#4783, #4785-#4786, and #4813-#4823. The later Pack B
+readiness pass added #4824-#4830 for account, credential, and policy
+hardening.
 
 The goal is to let multiple agents make progress concurrently without making
 each issue carry a full product end-to-end verification burden. Individual
@@ -362,6 +364,30 @@ Expected output:
 
 Merge wave: Wave 1 for smoke authority scaffolding, Wave 4 for full E2E and
 parent closeout.
+
+## Pack B Addendum: Provider, Account, And Policy Hardening
+
+Pack B was filed after the initial delegation plan as #4824-#4830. These
+issues should not reopen closed M8/M9 work. They should gate broad
+provider-peer claims in #4771 and any later work that depends on raw
+credentials, account telemetry, managed policy state, retention guarantees, or
+provider security review.
+
+Primary ownership:
+
+| Issue | Owner | Responsibility |
+| --- | --- | --- |
+| #4824 PACK B | Agent Scope | Parent tracking for Pack B readiness, child status, and #4771 timing |
+| #4825 PB1 | Agent Scope | Authentication and credential storage boundary for provider accounts |
+| #4827 PB3 | Agent Scope | Security review gate for provider peers and account leases |
+| #4828 PB4 | Agent Scope | Telemetry/privacy fixtures for account health and provider routing |
+| #4826 PB2 | Agent Ledger | Resolved settings/configuration snapshots for provider, budget, and policy decisions |
+| #4829 PB5 | Agent Ledger | Retention/deletion rules for credential, lease, telemetry, and policy records |
+| #4830 PB6 | Agent Ledger | Minimal managed policy snapshots for team and approved-user gates |
+
+Agent Gate should cite Pack B only if #4768 or #4772 proof evidence relies on
+provider credentials, account telemetry, or managed policy state. Otherwise the
+Gate lane should keep Pack B parallel to the proof closeout.
 
 ## Merge Waves
 

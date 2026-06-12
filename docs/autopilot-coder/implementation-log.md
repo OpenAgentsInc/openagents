@@ -1299,3 +1299,49 @@ Deferred to Gate:
 
 - Cross-lane M10 overnight proof across SHC and own-Pylon/cloud-Pylon.
 - M14 door-open closeout and parent #4786/#4813 proof comments.
+
+## Pack B Operationalization / Issues #4824-#4830
+
+Issue parent: `https://github.com/OpenAgentsInc/openagents/issues/4824`
+
+Status: filed and documented as the account, credential, and policy hardening
+overlay for provider/account expansion.
+
+Readiness assessment:
+
+- Reviewed
+  `docs/autopilot-coder/terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`.
+- Checked the current open issue set with `gh issue list`. The remaining open
+  Autopilot set is #4768, #4771, #4772, #4777, #4781, #4782, #4783, and #4786;
+  #4749 remains open as a separate W3 evaluation issue.
+- M8 (#4766) and M9 (#4767) are now closed, while M13 provider peers (#4771)
+  remains open. That matches the roadmap trigger for Pack B: credential,
+  policy, telemetry, security, and retention guardrails should be tracked
+  before broad provider-peer claims close.
+
+Implemented:
+
+- Added Pack B as a tracked issue set:
+  - #4824 parent issue.
+  - #4825 authentication and credential storage boundary.
+  - #4826 resolved settings/configuration snapshots.
+  - #4827 security review gate for provider peers and account leases.
+  - #4828 telemetry/privacy fixtures for account health and provider routing.
+  - #4829 retention/deletion rules for credential, lease, telemetry, and
+    policy records.
+  - #4830 minimal managed policy snapshots for team and approved-user gates.
+- Updated the terminal-agent operationalization roadmap with the Pack B
+  readiness assessment, tracking table, and timing rule.
+- Updated the terminal-agent README, the top-level Autopilot Coder README, and
+  the open-issue delegation plan so Pack B ownership and discoverability are
+  explicit.
+
+Timing rule:
+
+- Pack B should run in parallel with remaining #4786 Gate work.
+- Pack B should not reopen closed M8/M9 issues just to hold operational debt.
+- Pack B should gate broad provider-peer closure in #4771 and future work that
+  relies on provider credentials, account telemetry, managed policy state,
+  retention guarantees, or provider security review.
+- #4768 and #4772 should cite Pack B only if their proof evidence depends on
+  those provider/account/policy surfaces.

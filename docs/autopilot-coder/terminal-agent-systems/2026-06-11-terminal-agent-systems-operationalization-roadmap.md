@@ -67,6 +67,39 @@ subsystem audit that should be operationalized during the current #4786 sprint:
 The parent #4813 body carries the Pack A checklist. The #4786 epic has a
 matching Pack A addendum comment.
 
+## Pack B Readiness And Tracking Issues
+
+As of the Pack B `gh issue list` check on 2026-06-11, the open Autopilot issue
+set has narrowed to #4768, #4771, #4772, #4777, #4781, #4782, #4783, and the
+parent #4786. The separate W3 evaluation issue #4749 also remains open, but it
+is not part of the Autopilot MVP proof gate.
+
+Pack A (#4813-#4823) is closed as a tracked issue set. M8 account-pool
+visibility (#4766) and M9 rate-limit proof (#4767) are also closed. M13
+provider peers (#4771) remains open, and its current issue comments identify
+the remaining live non-Codex credentialed-run proof as the unresolved part of
+that provider-peer lane.
+
+That makes Pack B ready to file now. The reason is not that Pack B should block
+all remaining work; it is that the roadmap already treats account, credential,
+and policy hardening as the prerequisite for broad provider-peer claims. Pack B
+should run in parallel with the remaining #4786 Gate work and should affect
+timing only where an issue depends on provider credentials, account telemetry,
+managed policy state, retention guarantees, or provider-peer security review.
+
+Pack B is now filed as GitHub issue #4824, with one child issue for each
+subsystem audit that should harden the provider/account/policy lane:
+
+| Pack issue | Subsystem audit | Primary sprint pressure |
+| --- | --- | --- |
+| #4824 PACK B | Account, Credential, And Policy Hardening | Parent tracker for provider/account hardening after M8/M9 and before broad M13 claims |
+| #4825 PB1 | Authentication And Credential Storage | Provider accounts, credential refs, leases, refresh, revocation, and stale-lease invalidation for #4771 |
+| #4826 PB2 | Settings And Configuration | Effective config snapshots for provider, budget, approval, telemetry, retention, and routing decisions |
+| #4827 PB3 | Security Review | ToS/credential-boundary/threat review before broad provider-peer work closes |
+| #4828 PB4 | Telemetry And Privacy | Redacted account-health, rate-limit, provider-routing, and reconnect telemetry fixtures |
+| #4829 PB5 | Data Retention And Deletion | Retention classes, deletion behavior, tombstones, and projection invalidation for Pack B records |
+| #4830 PB6 | Enterprise Managed Policy | Minimal policy snapshots and denial reasons for team, repo, provider, budget, retention, telemetry, and approved-user gates |
+
 ## Timing Impact On Other Open Issues
 
 Pack A is an acceptance overlay, not a replacement ladder. It should change
@@ -95,6 +128,12 @@ when a broader claim can close, not stop all other work.
 - **Avoid retroactively reopening closed rungs only to hold operational debt.**
   Use the PA issues for that debt, cross-link the original rung, and update
   closeout notes if a claim boundary needs clarification.
+- **Pack B now applies to provider/account/policy claims.** Do not reopen M8
+  or M9 only to hold Pack B debt. Do use #4824-#4830 to gate broad provider
+  peer claims in #4771 and any future work that depends on raw credentials,
+  account telemetry, policy denial reasons, or retention guarantees. M10
+  (#4768) and M14 (#4772) should cite Pack B only if their proof evidence
+  depends on those provider/account/policy surfaces.
 
 ## Audit Finding
 
@@ -462,10 +501,14 @@ Operationalize Pack A during the current #4786 sprint. It is the smallest set
 that turns the already-landed runtime kernel and work-order loop into
 unattended, inspectable, MVP-gating proof.
 
-Start Pack B in parallel only where it directly serves M8 and M13. Start Pack
-C design now, but implement it with M11/P3 rather than before the M6/M7/M10
-proof slice. Hold Pack D and Pack E until the product can run, notify, resume,
-show status, and produce public-safe receipts from the same event log.
+Pack B is now filed as #4824-#4830 and is ready to run in parallel where it
+directly serves M13 and later provider/account/policy claims. It should not
+reopen closed M8/M9 work, and it should not become a blanket blocker for
+Gate-owned #4768/#4772 proof unless that proof relies on provider credentials,
+account telemetry, or managed policy state. Start Pack C design now, but
+implement it with M11/P3 rather than before the M6/M7/M10 proof slice. Hold
+Pack D and Pack E until the product can run, notify, resume, show status, and
+produce public-safe receipts from the same event log.
 
 The audit rule for future work is simple: if a capability changes work state,
 spends money, touches credentials, mutates files, pushes code, asks for
