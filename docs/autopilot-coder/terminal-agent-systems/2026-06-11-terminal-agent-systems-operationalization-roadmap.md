@@ -116,6 +116,13 @@ Implementation status:
   It resolves provider/account settings through explicit precedence into safe
   effective config refs, source-layer/value-tag projections, and typed
   blockers for missing or invalid required settings.
+- #4827 PB3 is implemented by
+  `apps/openagents.com/workers/api/src/provider-account-security-review.ts`,
+  `apps/openagents.com/workers/api/src/provider-account-security-review.test.ts`,
+  and `docs/autopilot-coder/2026-06-11-provider-peer-security-review.md`.
+  It gates broad provider-peer claims on ToS, credential, threat, telemetry,
+  retention, redaction, revocation, and high-risk control refs while preserving
+  scoped-exception blockers.
 
 ## Timing Impact On Other Open Issues
 

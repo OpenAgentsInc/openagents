@@ -599,6 +599,13 @@ This is the invariant ledger for `openagents`.
   expose config refs, caveat refs, source layers, and value tags only; raw
   environment values, API keys, OAuth material, private repo data, raw prompts,
   shell logs, and provider payloads must be rejected before projection.
+- Pack B provider-peer security reviews must cite ToS review refs, credential
+  boundary refs, threat-model refs, telemetry/privacy refs, retention-policy
+  refs, redaction fixture refs, and revocation/stale-lease fixture refs before
+  broad provider-peer claims can close. High-risk provider-account flows must
+  also carry approval, denial, rollback, incident-boundary, and debug-boundary
+  refs. Scoped exceptions may keep a narrow existing slice alive, but must
+  preserve visible blocker refs and cannot broaden provider-peer readiness.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
   `workers/api/src/provider-account-lease-policy.test.ts`.
@@ -606,6 +613,8 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/provider-account-credential-boundary.test.ts`.
 - Regression coverage for Pack B effective config snapshots lives in
   `workers/api/src/provider-account-effective-config.test.ts`.
+- Regression coverage for Pack B provider-peer security review gates lives in
+  `workers/api/src/provider-account-security-review.test.ts`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 

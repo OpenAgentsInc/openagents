@@ -1400,3 +1400,32 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-effective-config.test.ts`
+
+## PB3 / Issue #4827: Provider Peer Security Review Gate
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4827`
+
+Status: implemented for the typed provider-peer security-review gate and the
+dated Pack B security review record.
+
+Implemented:
+
+- Added `provider-account-security-review.ts` with a typed security gate for
+  provider-peer expansion, account connect, and lease-selection scopes.
+- The gate requires ToS, credential-boundary, threat-model,
+  telemetry/privacy, retention-policy, redaction-fixture, and
+  revocation-fixture refs before broad provider-peer status can be approved.
+- High-risk provider-account flows additionally require approval, denial,
+  rollback, incident-boundary, and debug-boundary refs.
+- Scoped exceptions remain possible for narrow existing slices, but the
+  projection keeps blocker refs visible and cannot erase the missing review
+  evidence.
+- Added
+  `docs/autopilot-coder/2026-06-11-provider-peer-security-review.md` as the
+  dated Pack B security review record tied to #4771.
+- Updated the `apps/openagents.com` invariant ledger with the Pack B
+  provider-peer security review gate.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-security-review.test.ts`
