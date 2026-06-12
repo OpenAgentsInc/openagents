@@ -254,6 +254,73 @@ describe('Forum routes', () => {
     expect(markdown?.querySelector('ol')?.className).not.toContain('grid')
   })
 
+  test('honors explicit ordered markdown starts for sectioned posts', async () => {
+    document.body.innerHTML =
+      '<div data-forum-app><main data-forum-main></main></div>'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const path = String(input)
+
+      if (path.includes('/api/forum/topics/')) {
+        return jsonResponse({
+          posts: [
+            {
+              author: {
+                actorRef: 'agent.public.markdown',
+                displayName: 'Markdown Agent',
+              },
+              bodyText:
+                '1. CLAIM\n\nClaim body.\n\n2. EVIDENCE\n\nEvidence body.\n\n3. ACTION\n\nAction body.',
+              createdAt: '2026-06-12T00:00:00.000Z',
+              postId: '67c0d7c0-3531-4dfb-b48d-3cabde2ec67e',
+              postNumber: 7,
+              subject: 'Markdown post',
+              topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+            },
+          ],
+          topic: {
+            forumId: 'product-promises',
+            postCount: 1,
+            title: 'Markdown topic',
+            topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+          },
+        })
+      }
+
+      return jsonResponse({
+        publicTipping: {
+          postTips: 'blocked',
+          remainingBeforeLiveTips: ['payer wallet'],
+        },
+      })
+    })
+
+    new Function(
+      forumScript(
+        ForumTopicRoute({
+          topicId: 'a265c252-614b-4d72-9e9a-0159140b52a4',
+        }),
+      ),
+    )()
+    await flushForumScript()
+
+    const orderedLists = Array.from(
+      document.querySelectorAll('[data-forum-markdown] ol'),
+    )
+
+    expect(orderedLists).toHaveLength(3)
+    expect(orderedLists.map(list => list.getAttribute('start'))).toEqual([
+      null,
+      '2',
+      '3',
+    ])
+    expect(orderedLists.map(list => list.textContent)).toEqual([
+      'CLAIM',
+      'EVIDENCE',
+      'ACTION',
+    ])
+  })
+
   test('renders post tip controls only behind tipping launch and recipient readiness gates', () => {
     const script = forumScript(
       ForumTopicRoute({

@@ -203,8 +203,9 @@ export const forumScript = (
   const renderMarkdownList = (lines, startIndex, ordered) => {
     let index = startIndex;
     const items = [];
+    let startNumber = 1;
     const pattern = ordered
-      ? /^\\s*\\d+[.)]\\s+(.+)$/
+      ? /^\\s*(\\d+)[.)]\\s+(.+)$/
       : /^\\s*[-*+]\\s+(.+)$/;
     const nextContentLineIndex = candidate =>
       candidate < lines.length && (lines[candidate] || '').trim() === ''
@@ -213,7 +214,12 @@ export const forumScript = (
     while (index < lines.length) {
       const match = pattern.exec(lines[index] || '');
       if (!match) break;
-      items.push('<li class="pl-1">' + renderInlineMarkdown(match[1] || '') + '</li>');
+      if (ordered && items.length === 0) {
+        const parsed = Number(match[1]);
+        startNumber = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+      }
+      const body = ordered ? match[2] : match[1];
+      items.push('<li class="pl-1">' + renderInlineMarkdown(body || '') + '</li>');
       index += 1;
       const nextIndex = nextContentLineIndex(index);
       if (nextIndex !== index && pattern.test(lines[nextIndex] || '')) {
@@ -224,7 +230,8 @@ export const forumScript = (
     const className = ordered
       ? 'm-0 list-decimal space-y-1 pl-6 text-sm/6 text-forum-heading'
       : 'm-0 list-disc space-y-1 pl-6 text-sm/6 text-forum-heading';
-    return { html: '<' + tag + ' class="' + className + '">' + items.join('') + '</' + tag + '>', nextIndex: index };
+    const startAttribute = ordered && startNumber > 1 ? ' start="' + String(startNumber) + '"' : '';
+    return { html: '<' + tag + startAttribute + ' class="' + className + '">' + items.join('') + '</' + tag + '>', nextIndex: index };
   };
   const renderMarkdown = value => {
     const lines = String(value || '').replace(/\\r\\n?/g, '\\n').split('\\n');
