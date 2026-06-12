@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-12.7'
+export const PublicProductPromisesVersion = '2026-06-12.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1687,7 +1687,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.local_claude_agent_bridge.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'operator'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'Pylon can talk to your local Claude: the Pylon worker loop hands a coding assignment to the Claude Agent SDK (TypeScript) running on the contributor machine with the user own credentials, drives a bounded read/edit/test session inside a sandboxed working directory with an assignment-derived tool allowlist, and returns public-safe closeout refs - making the user local Claude a real execution lane for delegated coding work.',
         safeCopy:
@@ -1695,6 +1695,7 @@ export const publicProductPromisesDocument = () => {
         unsafeCopy:
           'Do not claim Pylon commands Claude today or that any coding assignment has been executed by this lane. Do not call the lane "Claude Code" in product copy; permitted terms are "Claude Agent", "your local Claude", or "Powered by Claude" per Anthropic branding terms. Do not imply OpenAgents supplies Claude access, login, or rate limits - the user brings their own API key or provider configuration. Do not describe local SDK transcripts as shareable artifacts; only public-safe refs leave the device.',
         evidenceRefs: [
+          'transition:promise_transition_76ee046e-870f-4fd3-9044-a26846bfc786',
           'apps/pylon/docs/proofs/2026-06-12-claude-agent-packaged-rc-proof.json',
           'https://github.com/OpenAgentsInc/openagents/issues/4859',
           'npm:@openagentsinc/pylon@0.3.0-rc2:shasum:9c2511287536cc437f260c78cdb3f3a85614b858',
@@ -1714,7 +1715,7 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [],
         verification:
-          'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs. The live-device and API-parity legs ran and are receipt-backed (#4755/#4756). By owner decision 2026-06-12 a published packaged artifact under the rc dist-tag satisfies the packaged-binary requirement (stable 0.3.0 is deliberately untagged). The repeat ran from the registry-installed @openagentsinc/pylon@0.3.0-rc2 (dist.shasum 9c2511287536cc437f260c78cdb3f3a85614b858): real Claude Agent SDK session, bounded workspace, real test-command verification, accepted closeout, retained redaction-clean proof apps/pylon/docs/proofs/2026-06-12-claude-agent-packaged-rc-proof.json. The yellow-to-green flip must be recorded receipt-first once this version serves.',
+          'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs. The live-device and API-parity legs ran and are receipt-backed (#4755/#4756). By owner decision 2026-06-12 a published packaged artifact under the rc dist-tag satisfies the packaged-binary requirement (stable 0.3.0 is deliberately untagged). The repeat ran from the registry-installed @openagentsinc/pylon@0.3.0-rc2 (dist.shasum 9c2511287536cc437f260c78cdb3f3a85614b858): real Claude Agent SDK session, bounded workspace, real test-command verification, accepted closeout, retained redaction-clean proof apps/pylon/docs/proofs/2026-06-12-claude-agent-packaged-rc-proof.json. The yellow-to-green flip was recorded receipt-first: transition receipt promise_transition_76ee046e-870f-4fd3-9044-a26846bfc786, recorded after registry 2026-06-12.7 served from worker 5816fdae with all mechanical checks passing.',
         authorityBoundary:
           'The bridge acts only with the local user identity, credentials, and machine; allowed tools and the working directory are bounded per assignment; raw SDK messages, prompts, file contents, and provider payloads stay on the device as operator-local evidence; worker closeout grants no accepted-work, settlement, payout, deploy, spend, or Forum publication authority.',
       },
