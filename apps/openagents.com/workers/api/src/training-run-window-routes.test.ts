@@ -1081,17 +1081,85 @@ describe('training run window routes', () => {
     )
     expect(plannedWindow.status).toBe(200)
 
-    for (const action of ['activate', 'seal', 'reconcile']) {
-      const response = await runRoute(
-        routes.routeTrainingRunWindowRequest(
-          jsonRequest(`/api/training/windows/training.window.4673/${action}`, {
-            receiptRef: `receipt.training.${action}`,
-          }),
-          {},
-        ),
-      )
-      expect(response.status).toBe(200)
+    const activated = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/windows/training.window.4673/activate', {
+          receiptRef: 'receipt.training.activate',
+        }),
+        {},
+      ),
+    )
+    expect(activated.status).toBe(200)
+
+    const sealMetadata = {
+      churn: {
+        events: [{ eventRef: 'event.churn.loss.pylon.device2', kind: 'loss' }],
+        joinCount: 0,
+        lossCount: 1,
+        standbyPromotionCount: 0,
+      },
+      staleness: {
+        contributionCount: 2,
+        contributions: [
+          {
+            contributionRef: 'contribution.window.4673.pylon.device1',
+            stepsBehind: 0,
+          },
+          {
+            contributionRef: 'contribution.window.4673.pylon.device2',
+            stepsBehind: 3,
+          },
+        ],
+        stepsBehindMax: 3,
+        stepsBehindMin: 0,
+        stepsBehindP50: 1.5,
+        stepsBehindP90: 3,
+      },
+      verificationOverhead: {
+        fraction: 0.22,
+        ladderRungRef: 'ladder.rung.r1',
+      },
     }
+    const rejectedSeal = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/windows/training.window.4673/seal', {
+          receiptRef: 'receipt.training.seal',
+          sealMetadata: {
+            ...sealMetadata,
+            verificationOverhead: {
+              fraction: 1.5,
+              ladderRungRef: 'ladder.rung.r1',
+            },
+          },
+        }),
+        {},
+      ),
+    )
+    expect(rejectedSeal.status).toBe(400)
+
+    const sealed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/windows/training.window.4673/seal', {
+          receiptRef: 'receipt.training.seal',
+          sealMetadata,
+        }),
+        {},
+      ),
+    )
+    expect(sealed.status).toBe(200)
+    await expect(sealed.json()).resolves.toMatchObject({
+      window: { sealMetadata, state: 'sealed' },
+    })
+
+    const reconciledWindow = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/windows/training.window.4673/reconcile', {
+          receiptRef: 'receipt.training.reconcile',
+        }),
+        {},
+      ),
+    )
+    expect(reconciledWindow.status).toBe(200)
 
     const readRun = await runRoute(
       routes.routeTrainingRunWindowRequest(
@@ -1116,7 +1184,11 @@ describe('training run window routes', () => {
     )
     expect(readWindow.status).toBe(200)
     await expect(readWindow.json()).resolves.toMatchObject({
-      window: { state: 'reconciled', windowRef: 'training.window.4673' },
+      window: {
+        sealMetadata,
+        state: 'reconciled',
+        windowRef: 'training.window.4673',
+      },
     })
 
     const leaseResponse = await runRoute(

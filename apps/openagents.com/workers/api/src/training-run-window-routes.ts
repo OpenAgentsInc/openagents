@@ -247,6 +247,7 @@ const routeTransitionWindow = <Bindings extends TrainingRunWindowRouteEnv>(
       nextState,
       nowIso,
       receiptRef: body.receiptRef,
+      sealMetadata: body.sealMetadata,
       transitionKind,
       window: current,
     })

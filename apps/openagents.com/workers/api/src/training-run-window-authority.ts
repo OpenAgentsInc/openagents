@@ -1,4 +1,4 @@
-import { Schema as S } from 'effect'
+import { Option, Schema as S } from 'effect'
 
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 import {
@@ -52,7 +52,106 @@ export const TrainingWindowHomeworkKind = S.Literals([
 ])
 export type TrainingWindowHomeworkKind = typeof TrainingWindowHomeworkKind.Type
 
+/**
+ * Default sync-reentry staleness trigger in optimizer steps.
+ *
+ * Rationale: a merged contribution that is more than this many steps behind
+ * the sealed window head routes to sync re-entry instead of being merged or
+ * rejected (Pluralis roadmap P0.2; forum post 6197bd1b). Pluralis node0 ships
+ * `max_allowed_stale: 5` as prior art for this default. Ours is a stated
+ * per-run contract value, not an inherited constant: the value is provisional
+ * until R1 rehearsal seal records carry measured steps-behind distributions,
+ * and any revision lands as a run-config change with its own receipt.
+ */
+export const DefaultMaxAllowedStaleSteps = 5
+
+export const MaxTrainingWindowSealContributionEntries = 64
+export const MaxTrainingWindowSealChurnEventEntries = 64
+
+const TrainingWindowSealStepsBehind = S.Number.check(
+  S.isInt(),
+  S.isBetween({ minimum: 0, maximum: 1_000_000 }),
+)
+const TrainingWindowSealNonNegativeCount = S.Number.check(
+  S.isInt(),
+  S.isBetween({ minimum: 0, maximum: 1_000_000 }),
+)
+const TrainingWindowSealPercentileSteps = S.Number.check(
+  S.isFinite(),
+  S.isBetween({ minimum: 0, maximum: 1_000_000 }),
+)
+
+export const TrainingWindowSealContributionStaleness = S.Struct({
+  contributionRef: PublicSafeRef,
+  stepsBehind: TrainingWindowSealStepsBehind,
+})
+export type TrainingWindowSealContributionStaleness =
+  typeof TrainingWindowSealContributionStaleness.Type
+
+export const TrainingWindowSealStalenessSummary = S.Struct({
+  contributionCount: TrainingWindowSealNonNegativeCount,
+  contributions: S.optionalKey(
+    S.Array(TrainingWindowSealContributionStaleness).check(
+      S.isMaxLength(MaxTrainingWindowSealContributionEntries),
+    ),
+  ),
+  stepsBehindMax: TrainingWindowSealStepsBehind,
+  stepsBehindMin: TrainingWindowSealStepsBehind,
+  stepsBehindP50: TrainingWindowSealPercentileSteps,
+  stepsBehindP90: TrainingWindowSealPercentileSteps,
+})
+export type TrainingWindowSealStalenessSummary =
+  typeof TrainingWindowSealStalenessSummary.Type
+
+export const TrainingWindowChurnEventKind = S.Literals([
+  'join',
+  'loss',
+  'standby_promotion',
+])
+export type TrainingWindowChurnEventKind =
+  typeof TrainingWindowChurnEventKind.Type
+
+export const TrainingWindowChurnEvent = S.Struct({
+  eventRef: PublicSafeRef,
+  kind: TrainingWindowChurnEventKind,
+})
+export type TrainingWindowChurnEvent = typeof TrainingWindowChurnEvent.Type
+
+export const TrainingWindowSealChurnSummary = S.Struct({
+  events: S.optionalKey(
+    S.Array(TrainingWindowChurnEvent).check(
+      S.isMaxLength(MaxTrainingWindowSealChurnEventEntries),
+    ),
+  ),
+  joinCount: TrainingWindowSealNonNegativeCount,
+  lossCount: TrainingWindowSealNonNegativeCount,
+  standbyPromotionCount: TrainingWindowSealNonNegativeCount,
+})
+export type TrainingWindowSealChurnSummary =
+  typeof TrainingWindowSealChurnSummary.Type
+
+export const TrainingWindowSealVerificationOverhead = S.Struct({
+  fraction: S.Number.check(
+    S.isFinite(),
+    S.isBetween({ minimum: 0, maximum: 1 }),
+  ),
+  ladderRungRef: PublicSafeRef,
+})
+export type TrainingWindowSealVerificationOverhead =
+  typeof TrainingWindowSealVerificationOverhead.Type
+
+export const TrainingWindowSealMetadata = S.Struct({
+  churn: TrainingWindowSealChurnSummary,
+  staleness: TrainingWindowSealStalenessSummary,
+  verificationOverhead: TrainingWindowSealVerificationOverhead,
+})
+export type TrainingWindowSealMetadata =
+  typeof TrainingWindowSealMetadata.Type
+
 export const TrainingRunPlanRequest = S.Struct({
+  maxAllowedStale: S.optionalKey(
+    S.Number.check(S.isInt(), S.isBetween({ minimum: 1, maximum: 100_000 })),
+  ),
   promiseRef: PublicSafeRef,
   receiptRefs: PublicSafeRefs,
   sourceRefs: PublicSafeRefs,
@@ -74,6 +173,7 @@ export type TrainingWindowPlanRequest = typeof TrainingWindowPlanRequest.Type
 export const TrainingWindowTransitionRequest = S.Struct({
   actorRef: S.optionalKey(PublicSafeRef),
   receiptRef: PublicSafeRef,
+  sealMetadata: S.optionalKey(TrainingWindowSealMetadata),
 })
 export type TrainingWindowTransitionRequest =
   typeof TrainingWindowTransitionRequest.Type
@@ -89,6 +189,7 @@ export type TrainingWindowLeaseClaimRequest =
 export type TrainingRunRecord = Readonly<{
   createdAt: string
   id: string
+  maxAllowedStale: number
   promiseRef: string
   publicProjectionJson: string
   receiptRefs: ReadonlyArray<string>
@@ -108,6 +209,7 @@ export type TrainingWindowRecord = Readonly<{
   publicProjectionJson: string
   receiptRefs: ReadonlyArray<string>
   reconciledAt: string | null
+  sealMetadata: TrainingWindowSealMetadata | null
   sealedAt: string | null
   sourceRefs: ReadonlyArray<string>
   state: TrainingWindowState
@@ -142,6 +244,7 @@ export type TrainingWindowEventRecord = Readonly<{
 
 export type TrainingRunProjection = Readonly<{
   createdAtDisplay: string
+  maxAllowedStale: number
   promiseRef: string
   receiptRefs: ReadonlyArray<string>
   sourceRefs: ReadonlyArray<string>
@@ -156,6 +259,7 @@ export type TrainingWindowProjection = Readonly<{
   plannedAtDisplay: string
   priority: number
   receiptRefs: ReadonlyArray<string>
+  sealMetadata: TrainingWindowSealMetadata | null
   sourceRefs: ReadonlyArray<string>
   state: TrainingWindowState
   trainingRunRef: string
@@ -309,6 +413,7 @@ export class TrainingAuthorityStoreError extends S.TaggedErrorClass<TrainingAuth
 export type TrainingRunRow = Readonly<{
   created_at: string
   id: string
+  max_allowed_stale: number
   promise_ref: string
   public_projection_json: string
   receipt_refs_json: string
@@ -328,6 +433,7 @@ export type TrainingWindowRow = Readonly<{
   public_projection_json: string
   receipt_refs_json: string
   reconciled_at: string | null
+  seal_metadata_json: string | null
   sealed_at: string | null
   source_refs_json: string
   state: TrainingWindowState
@@ -391,6 +497,7 @@ export const publicTrainingRunProjection = (
     record.createdAt,
     nowIso,
   ),
+  maxAllowedStale: record.maxAllowedStale,
   promiseRef: record.promiseRef,
   receiptRefs: uniqueRefs(record.receiptRefs),
   sourceRefs: uniqueRefs(record.sourceRefs),
@@ -414,6 +521,7 @@ export const publicTrainingWindowProjection = (
   ),
   priority: record.priority,
   receiptRefs: uniqueRefs(record.receiptRefs),
+  sealMetadata: record.sealMetadata,
   sourceRefs: uniqueRefs(record.sourceRefs),
   state: record.state,
   trainingRunRef: record.trainingRunRef,
@@ -779,6 +887,7 @@ export const buildTrainingRunRecord = (
   const record: TrainingRunRecord = {
     createdAt: input.nowIso,
     id: `training_run_${id}`,
+    maxAllowedStale: input.request.maxAllowedStale ?? DefaultMaxAllowedStaleSteps,
     promiseRef: input.request.promiseRef,
     publicProjectionJson: '{}',
     receiptRefs: uniqueRefs(input.request.receiptRefs),
@@ -814,6 +923,7 @@ export const buildTrainingWindowRecord = (
     publicProjectionJson: '{}',
     receiptRefs: uniqueRefs(input.request.receiptRefs),
     reconciledAt: null,
+    sealMetadata: null,
     sealedAt: null,
     sourceRefs: uniqueRefs(input.request.sourceRefs),
     state: 'planned',
@@ -830,6 +940,138 @@ export const buildTrainingWindowRecord = (
   }
 }
 
+const sealValidationError = (reason: string): TrainingAuthorityStoreError =>
+  new TrainingAuthorityStoreError({ kind: 'validation_error', reason })
+
+const requireNonNegativeStaleInteger = (value: number, label: string): void => {
+  if (!Number.isInteger(value) || value < 0) {
+    throw sealValidationError(`${label} must be a non-negative integer.`)
+  }
+}
+
+const requireNonNegativeFinite = (value: number, label: string): void => {
+  if (!Number.isFinite(value) || value < 0) {
+    throw sealValidationError(`${label} must be a non-negative finite number.`)
+  }
+}
+
+export const assertValidTrainingWindowSealMetadata = (
+  metadata: TrainingWindowSealMetadata,
+): void => {
+  const staleness = metadata.staleness
+  requireNonNegativeStaleInteger(
+    staleness.contributionCount,
+    'staleness.contributionCount',
+  )
+  requireNonNegativeStaleInteger(
+    staleness.stepsBehindMin,
+    'staleness.stepsBehindMin',
+  )
+  requireNonNegativeStaleInteger(
+    staleness.stepsBehindMax,
+    'staleness.stepsBehindMax',
+  )
+  requireNonNegativeFinite(staleness.stepsBehindP50, 'staleness.stepsBehindP50')
+  requireNonNegativeFinite(staleness.stepsBehindP90, 'staleness.stepsBehindP90')
+
+  if (
+    staleness.stepsBehindMin > staleness.stepsBehindP50 ||
+    staleness.stepsBehindP50 > staleness.stepsBehindP90 ||
+    staleness.stepsBehindP90 > staleness.stepsBehindMax
+  ) {
+    throw sealValidationError(
+      'Staleness distribution must satisfy min <= p50 <= p90 <= max.',
+    )
+  }
+
+  const contributions = staleness.contributions ?? []
+
+  if (contributions.length > MaxTrainingWindowSealContributionEntries) {
+    throw sealValidationError(
+      `staleness.contributions is bounded to ${MaxTrainingWindowSealContributionEntries} entries.`,
+    )
+  }
+
+  if (contributions.length > staleness.contributionCount) {
+    throw sealValidationError(
+      'staleness.contributions cannot exceed staleness.contributionCount.',
+    )
+  }
+
+  contributions.forEach(contribution => {
+    requireNonNegativeStaleInteger(
+      contribution.stepsBehind,
+      `staleness.contributions[${contribution.contributionRef}].stepsBehind`,
+    )
+
+    if (
+      contribution.stepsBehind < staleness.stepsBehindMin ||
+      contribution.stepsBehind > staleness.stepsBehindMax
+    ) {
+      throw sealValidationError(
+        'Per-contribution stepsBehind must lie within the declared min/max distribution bounds.',
+      )
+    }
+  })
+
+  if (
+    staleness.contributionCount === 0 &&
+    (staleness.stepsBehindMin !== 0 ||
+      staleness.stepsBehindP50 !== 0 ||
+      staleness.stepsBehindP90 !== 0 ||
+      staleness.stepsBehindMax !== 0 ||
+      contributions.length > 0)
+  ) {
+    throw sealValidationError(
+      'An empty staleness distribution must report all-zero steps-behind values.',
+    )
+  }
+
+  const churn = metadata.churn
+  requireNonNegativeStaleInteger(churn.joinCount, 'churn.joinCount')
+  requireNonNegativeStaleInteger(churn.lossCount, 'churn.lossCount')
+  requireNonNegativeStaleInteger(
+    churn.standbyPromotionCount,
+    'churn.standbyPromotionCount',
+  )
+
+  const churnEvents = churn.events ?? []
+
+  if (churnEvents.length > MaxTrainingWindowSealChurnEventEntries) {
+    throw sealValidationError(
+      `churn.events is bounded to ${MaxTrainingWindowSealChurnEventEntries} entries.`,
+    )
+  }
+
+  const declaredCountForKind: Record<TrainingWindowChurnEventKind, number> = {
+    join: churn.joinCount,
+    loss: churn.lossCount,
+    standby_promotion: churn.standbyPromotionCount,
+  }
+  const sampledCountByKind = churnEvents.reduce<
+    Record<TrainingWindowChurnEventKind, number>
+  >(
+    (counts, event) => ({ ...counts, [event.kind]: counts[event.kind] + 1 }),
+    { join: 0, loss: 0, standby_promotion: 0 },
+  )
+
+  TrainingWindowChurnEventKind.literals.forEach(kind => {
+    if (sampledCountByKind[kind] > declaredCountForKind[kind]) {
+      throw sealValidationError(
+        `churn.events carries more ${kind} refs than the declared ${kind} count.`,
+      )
+    }
+  })
+
+  const fraction = metadata.verificationOverhead.fraction
+
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) {
+    throw sealValidationError(
+      'verificationOverhead.fraction must be a number between 0 and 1.',
+    )
+  }
+}
+
 export const transitionTrainingWindowRecord = (
   input: Readonly<{
     actorRef: string
@@ -837,6 +1079,7 @@ export const transitionTrainingWindowRecord = (
     nextState: TrainingWindowState
     nowIso: string
     receiptRef: string
+    sealMetadata?: TrainingWindowSealMetadata | undefined
     transitionKind: string
     window: TrainingWindowRecord
   }>,
@@ -856,6 +1099,16 @@ export const transitionTrainingWindowRecord = (
     })
   }
 
+  if (input.sealMetadata !== undefined && input.nextState !== 'sealed') {
+    throw sealValidationError(
+      'Seal metadata is only accepted on the seal transition.',
+    )
+  }
+
+  if (input.sealMetadata !== undefined) {
+    assertValidTrainingWindowSealMetadata(input.sealMetadata)
+  }
+
   const nextWindow: TrainingWindowRecord = {
     ...input.window,
     activatedAt:
@@ -865,6 +1118,10 @@ export const transitionTrainingWindowRecord = (
       input.nextState === 'reconciled'
         ? input.nowIso
         : input.window.reconciledAt,
+    sealMetadata:
+      input.nextState === 'sealed'
+        ? (input.sealMetadata ?? null)
+        : input.window.sealMetadata,
     sealedAt:
       input.nextState === 'sealed' ? input.nowIso : input.window.sealedAt,
     state: input.nextState,
@@ -953,9 +1210,24 @@ export const trainingAuthorityStoreErrorFromUnknown = (
         reason: error instanceof Error ? error.message : String(error),
       })
 
+const decodeTrainingWindowSealMetadataOption = S.decodeUnknownOption(
+  TrainingWindowSealMetadata,
+)
+
+const sealMetadataFromJson = (
+  value: string | null,
+): TrainingWindowSealMetadata | null => {
+  const record = parseJsonRecord(value)
+
+  return record === undefined
+    ? null
+    : Option.getOrNull(decodeTrainingWindowSealMetadataOption(record))
+}
+
 export const rowToTrainingRun = (row: TrainingRunRow): TrainingRunRecord => ({
   createdAt: row.created_at,
   id: row.id,
+  maxAllowedStale: row.max_allowed_stale ?? DefaultMaxAllowedStaleSteps,
   promiseRef: row.promise_ref,
   publicProjectionJson: row.public_projection_json,
   receiptRefs: parseJsonStringArray(row.receipt_refs_json),
@@ -977,6 +1249,7 @@ export const rowToTrainingWindow = (
   publicProjectionJson: row.public_projection_json,
   receiptRefs: parseJsonStringArray(row.receipt_refs_json),
   reconciledAt: row.reconciled_at,
+  sealMetadata: sealMetadataFromJson(row.seal_metadata_json),
   sealedAt: row.sealed_at,
   sourceRefs: parseJsonStringArray(row.source_refs_json),
   state: row.state,
@@ -1141,16 +1414,17 @@ export const makeD1TrainingAuthorityStore = (
     await db
       .prepare(
         `INSERT INTO training_runs
-          (id, training_run_ref, promise_ref, state, source_refs_json,
-           receipt_refs_json, public_projection_json, created_at, updated_at,
-           archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+          (id, training_run_ref, promise_ref, state, max_allowed_stale,
+           source_refs_json, receipt_refs_json, public_projection_json,
+           created_at, updated_at, archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         run.id,
         run.trainingRunRef,
         run.promiseRef,
         run.state,
+        run.maxAllowedStale,
         JSON.stringify(run.sourceRefs),
         JSON.stringify(run.receiptRefs),
         run.publicProjectionJson,
@@ -1167,9 +1441,9 @@ export const makeD1TrainingAuthorityStore = (
         `INSERT INTO training_windows
           (id, window_ref, training_run_ref, state, homework_kind, priority,
            dataset_refs_json, source_refs_json, receipt_refs_json,
-           public_projection_json, planned_at, activated_at, sealed_at,
-           reconciled_at, updated_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           seal_metadata_json, public_projection_json, planned_at,
+           activated_at, sealed_at, reconciled_at, updated_at, archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         window.id,
@@ -1181,6 +1455,9 @@ export const makeD1TrainingAuthorityStore = (
         JSON.stringify(window.datasetRefs),
         JSON.stringify(window.sourceRefs),
         JSON.stringify(window.receiptRefs),
+        window.sealMetadata === null
+          ? null
+          : JSON.stringify(window.sealMetadata),
         window.publicProjectionJson,
         window.plannedAt,
         window.activatedAt,
@@ -1225,6 +1502,7 @@ export const makeD1TrainingAuthorityStore = (
           `UPDATE training_windows
               SET state = ?,
                   receipt_refs_json = ?,
+                  seal_metadata_json = ?,
                   public_projection_json = ?,
                   activated_at = ?,
                   sealed_at = ?,
@@ -1236,6 +1514,9 @@ export const makeD1TrainingAuthorityStore = (
         .bind(
           window.state,
           JSON.stringify(window.receiptRefs),
+          window.sealMetadata === null
+            ? null
+            : JSON.stringify(window.sealMetadata),
           window.publicProjectionJson,
           window.activatedAt,
           window.sealedAt,

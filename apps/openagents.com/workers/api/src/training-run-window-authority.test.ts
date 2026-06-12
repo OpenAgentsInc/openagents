@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DefaultMaxAllowedStaleSteps,
   TrainingAuthorityStoreError,
+  type TrainingWindowSealMetadata,
   buildTrainingRunRecord,
   buildTrainingWindowRecord,
+  publicTrainingRunProjection,
   publicTrainingRunSummary,
   selectTrainingLeaseCandidate,
   transitionTrainingWindowRecord,
@@ -99,6 +102,305 @@ describe('training run window authority', () => {
         window: active,
       }),
     ).toThrow(TrainingAuthorityStoreError)
+  })
+
+  it('seals a window carrying staleness, churn, and verification-overhead fields and projects them', () => {
+    const sealMetadata: TrainingWindowSealMetadata = {
+      churn: {
+        events: [
+          { eventRef: 'event.churn.join.pylon.device3', kind: 'join' },
+          { eventRef: 'event.churn.loss.pylon.device2', kind: 'loss' },
+          {
+            eventRef: 'event.churn.standby_promotion.pylon.device4',
+            kind: 'standby_promotion',
+          },
+        ],
+        joinCount: 1,
+        lossCount: 1,
+        standbyPromotionCount: 1,
+      },
+      staleness: {
+        contributionCount: 3,
+        contributions: [
+          {
+            contributionRef: 'contribution.window.0001.pylon.device1',
+            stepsBehind: 0,
+          },
+          {
+            contributionRef: 'contribution.window.0001.pylon.device3',
+            stepsBehind: 2,
+          },
+          {
+            contributionRef: 'contribution.window.0001.pylon.device4',
+            stepsBehind: 4,
+          },
+        ],
+        stepsBehindMax: 4,
+        stepsBehindMin: 0,
+        stepsBehindP50: 2,
+        stepsBehindP90: 4,
+      },
+      verificationOverhead: {
+        fraction: 0.18,
+        ladderRungRef: 'ladder.rung.r1',
+      },
+    }
+    const active = transitionTrainingWindowRecord({
+      actorRef: 'operator.training',
+      eventId: 'activate',
+      nextState: 'active',
+      nowIso: '2026-06-12T10:05:00.000Z',
+      receiptRef: 'receipt.training.activate',
+      transitionKind: 'window_activate',
+      window: buildTrainingWindowRecord({
+        makeId: () => 'window',
+        nowIso: '2026-06-12T10:00:00.000Z',
+        request: {
+          trainingRunRef: 'training.run.0001',
+          windowRef: 'training.window.0001',
+        },
+      }),
+    }).window
+    const sealed = transitionTrainingWindowRecord({
+      actorRef: 'operator.training',
+      eventId: 'seal',
+      nextState: 'sealed',
+      nowIso: '2026-06-12T10:10:00.000Z',
+      receiptRef: 'receipt.training.seal',
+      sealMetadata,
+      transitionKind: 'window_seal',
+      window: active,
+    }).window
+
+    expect(sealed.state).toBe('sealed')
+    expect(sealed.sealMetadata).toEqual(sealMetadata)
+    expect(JSON.parse(sealed.publicProjectionJson).sealMetadata).toEqual(
+      sealMetadata,
+    )
+
+    const reconciled = transitionTrainingWindowRecord({
+      actorRef: 'operator.training',
+      eventId: 'reconcile',
+      nextState: 'reconciled',
+      nowIso: '2026-06-12T10:15:00.000Z',
+      receiptRef: 'receipt.training.reconcile',
+      transitionKind: 'window_reconcile',
+      window: sealed,
+    }).window
+
+    expect(reconciled.sealMetadata).toEqual(sealMetadata)
+  })
+
+  it('keeps seal metadata optional so existing seal calls still work', () => {
+    const active = transitionTrainingWindowRecord({
+      actorRef: 'operator.training',
+      eventId: 'activate',
+      nextState: 'active',
+      nowIso: '2026-06-12T10:05:00.000Z',
+      receiptRef: 'receipt.training.activate',
+      transitionKind: 'window_activate',
+      window: buildTrainingWindowRecord({
+        makeId: () => 'window',
+        nowIso: '2026-06-12T10:00:00.000Z',
+        request: {
+          trainingRunRef: 'training.run.0001',
+          windowRef: 'training.window.0001',
+        },
+      }),
+    }).window
+    const sealed = transitionTrainingWindowRecord({
+      actorRef: 'operator.training',
+      eventId: 'seal',
+      nextState: 'sealed',
+      nowIso: '2026-06-12T10:10:00.000Z',
+      receiptRef: 'receipt.training.seal',
+      transitionKind: 'window_seal',
+      window: active,
+    }).window
+
+    expect(sealed.sealMetadata).toBeNull()
+    expect(JSON.parse(sealed.publicProjectionJson).sealMetadata).toBeNull()
+  })
+
+  it('rejects malformed or misplaced seal metadata', () => {
+    const validSealMetadata: TrainingWindowSealMetadata = {
+      churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
+      staleness: {
+        contributionCount: 1,
+        contributions: [
+          {
+            contributionRef: 'contribution.window.0001.pylon.device1',
+            stepsBehind: 1,
+          },
+        ],
+        stepsBehindMax: 1,
+        stepsBehindMin: 1,
+        stepsBehindP50: 1,
+        stepsBehindP90: 1,
+      },
+      verificationOverhead: {
+        fraction: 0.1,
+        ladderRungRef: 'ladder.rung.r1',
+      },
+    }
+    const planned = buildTrainingWindowRecord({
+      makeId: () => 'window',
+      nowIso: '2026-06-12T10:00:00.000Z',
+      request: {
+        trainingRunRef: 'training.run.0001',
+        windowRef: 'training.window.0001',
+      },
+    })
+    const sealAttempt = (
+      sealMetadata: TrainingWindowSealMetadata,
+    ): (() => unknown) => {
+      const active = transitionTrainingWindowRecord({
+        actorRef: 'operator.training',
+        eventId: 'activate',
+        nextState: 'active',
+        nowIso: '2026-06-12T10:05:00.000Z',
+        receiptRef: 'receipt.training.activate',
+        transitionKind: 'window_activate',
+        window: planned,
+      }).window
+
+      return () =>
+        transitionTrainingWindowRecord({
+          actorRef: 'operator.training',
+          eventId: 'seal',
+          nextState: 'sealed',
+          nowIso: '2026-06-12T10:10:00.000Z',
+          receiptRef: 'receipt.training.seal',
+          sealMetadata,
+          transitionKind: 'window_seal',
+          window: active,
+        })
+    }
+
+    const expectSealValidationError = (
+      run: () => unknown,
+      pattern: RegExp,
+    ): void => {
+      try {
+        run()
+      } catch (error) {
+        expect(error).toBeInstanceOf(TrainingAuthorityStoreError)
+        expect(error).toMatchObject({
+          kind: 'validation_error',
+          reason: expect.stringMatching(pattern),
+        })
+
+        return
+      }
+
+      expect.unreachable('expected a seal-metadata validation error')
+    }
+
+    expectSealValidationError(
+      () =>
+        transitionTrainingWindowRecord({
+          actorRef: 'operator.training',
+          eventId: 'activate',
+          nextState: 'active',
+          nowIso: '2026-06-12T10:05:00.000Z',
+          receiptRef: 'receipt.training.activate',
+          sealMetadata: validSealMetadata,
+          transitionKind: 'window_activate',
+          window: planned,
+        }),
+      /only accepted on the seal transition/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        staleness: {
+          ...validSealMetadata.staleness,
+          contributions: [
+            {
+              contributionRef: 'contribution.window.0001.pylon.device1',
+              stepsBehind: -1,
+            },
+          ],
+          stepsBehindMin: 0,
+        },
+      }),
+      /non-negative integer/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        verificationOverhead: {
+          fraction: 1.2,
+          ladderRungRef: 'ladder.rung.r1',
+        },
+      }),
+      /between 0 and 1/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        staleness: {
+          ...validSealMetadata.staleness,
+          stepsBehindMin: 3,
+        },
+      }),
+      /min <= p50 <= p90 <= max/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        staleness: {
+          ...validSealMetadata.staleness,
+          contributionCount: 0,
+        },
+      }),
+      /cannot exceed staleness.contributionCount/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        churn: {
+          events: [
+            { eventRef: 'event.churn.join.pylon.device3', kind: 'join' },
+          ],
+          joinCount: 0,
+          lossCount: 0,
+          standbyPromotionCount: 0,
+        },
+      }),
+      /more join refs than the declared join count/,
+    )
+  })
+
+  it('carries maxAllowedStale on the run record with the stated default', () => {
+    const defaulted = buildTrainingRunRecord({
+      makeId: () => 'run',
+      nowIso: '2026-06-12T10:00:00.000Z',
+      request: {
+        promiseRef: 'pylon.first_real_model_training_run.v1',
+        trainingRunRef: 'training.run.0001',
+      },
+    })
+    const explicit = buildTrainingRunRecord({
+      makeId: () => 'run',
+      nowIso: '2026-06-12T10:00:00.000Z',
+      request: {
+        maxAllowedStale: 8,
+        promiseRef: 'pylon.first_real_model_training_run.v1',
+        trainingRunRef: 'training.run.0002',
+      },
+    })
+
+    expect(DefaultMaxAllowedStaleSteps).toBe(5)
+    expect(defaulted.maxAllowedStale).toBe(5)
+    expect(explicit.maxAllowedStale).toBe(8)
+    expect(
+      publicTrainingRunProjection(defaulted, '2026-06-12T10:05:00.000Z')
+        .maxAllowedStale,
+    ).toBe(5)
+    expect(
+      JSON.parse(explicit.publicProjectionJson).maxAllowedStale,
+    ).toBe(8)
   })
 
   it('projects real-gradient blockers when Psionic and live-device evidence is missing', () => {
