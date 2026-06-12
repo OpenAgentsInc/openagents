@@ -201,6 +201,58 @@ describe('Autopilot Gate proof authority', () => {
     ])
   })
 
+  test('allows M9 closeout with rotation receipts and live continuity evidence', () => {
+    const decision = evaluateAutopilotGateProofDecision(
+      decisionInput({
+        claimKind: 'm9_live_rate_limit_rotation',
+        closedIssueRefs: [],
+        liveEvidenceRefs: ['evidence.live.rate_limit_rotation.1'],
+        receipts: [
+          receipt({
+            artifactRefs: ['artifact.m9_rotation.ci_safe_smoke'],
+            kind: 'smoke_passed',
+            receiptRef: 'receipt.m9_rotation.smoke_passed',
+            subjectRef: 'proof.m9_rotation.ci_safe',
+          }),
+          receipt({
+            artifactRefs: ['artifact.m9_rotation.work_order_closeout'],
+            kind: 'verification_passed',
+            receiptRef: 'receipt.m9_rotation.verification_passed',
+            subjectRef: 'proof.m9_rotation.continuity',
+          }),
+          receipt({
+            artifactRefs: ['artifact.m9_rotation.live_route_failover'],
+            kind: 'usage_threshold_crossed',
+            receiptRef: 'receipt.m9_rotation.usage_threshold_crossed',
+            subjectRef: 'proof.m9_rotation.route_rotation',
+          }),
+        ],
+        requiredIssueRefs: [],
+        requiredLiveEvidenceRefs: ['evidence.live.rate_limit_rotation.1'],
+        smokeAuthorities: [],
+        sourceCommitRefs: [
+          'commit.openagents.9cd15c4a0',
+          'commit.openagents.8b79ef2c2',
+        ],
+      }),
+    )
+
+    expect(decision).toMatchObject({
+      blockerRefs: [],
+      closeAllowed: true,
+      claimKind: 'm9_live_rate_limit_rotation',
+      liveEvidenceRefs: ['evidence.live.rate_limit_rotation.1'],
+      missingLiveEvidenceRefs: [],
+      missingReceiptKinds: [],
+      status: 'ready_to_close',
+    })
+    expect(decision.requiredReceiptKinds).toEqual([
+      'smoke_passed',
+      'verification_passed',
+      'usage_threshold_crossed',
+    ])
+  })
+
   test('keeps M14 and parent closeout deferred while live Gate dependencies remain open', () => {
     const m14 = evaluateAutopilotGateProofDecision(
       decisionInput({

@@ -32,32 +32,32 @@ Unblocked evidence already recorded:
 
 ### #4767 M9 live rate-limit rotation proof
 
-Status: open.
+Status: ready to close.
 
-Blockers:
+Resolved evidence:
 
 - The CI-safe deterministic rotation leg is landed.
 - Live fleet readiness and live failover route receipts were recorded on
-  2026-06-12 for `chris@openagents.com`: two new ChatGPT/Codex accounts
-  connected and sanity-checked healthy, an initial lease selected
-  `provider-account_ref_2dd6a8b25aad4d93a42947bec62c8465`, and a
-  live-induced `rate_limited` failover produced receipt
-  `provider_account_failover_receipt_c5f60166e739403799b2291c076d9801`
-  with next lease `provider-account-lease_ref_fd9a4982d0d34a54a07bcf72dadc46f0`
-  on `provider-account_ref_7b41e0634ec743b6a4855379b3e0fb18`.
-- The replacement lease was released and active lease count returned to zero.
-- The first account is intentionally on timed cooldown until
-  `2026-06-12T03:25:55.212Z`; until cooldown clears or another account is
-  connected, only one account is currently eligible for selection.
-- The remaining acceptance gap is mission continuity: a real Autopilot run must
-  resume under the rotated lease and attach mission/artifact refs showing
-  post-rotation work builds on pre-rotation state.
+  2026-06-12 for `chris@openagents.com`.
+- A third ChatGPT/Codex account was connected, leaving two eligible healthy
+  accounts and zero active leases before the final continuity run.
+- The final continuity run created
+  `autopilot_work_order.a52fa1ed-e509-42cb-8ef9-44ea98422313`, selected
+  `requester_pylon`, dispatched
+  `pylon_assignment.autopilot_work_order.a52fa1ed-e509-42cb-8ef9-44ea98422313.task.m9_rotation_continuity.20260612.artanis.01`,
+  recorded pre-rotation artifact/proof refs, induced a live `rate_limited`
+  failover from `provider-account-lease_ref_16d16655153347b1aa716acebab0e7d2`
+  to `provider-account-lease_ref_da937744a4f04e629ea99fcbffa3451b`, and then
+  delivered the same work order with post-rotation artifact/proof refs.
+- The replacement lease was released with status `succeeded`, and active lease
+  count returned to zero.
+- Gate record:
+  `docs/autopilot-coder/2026-06-12-m9-live-rate-limit-rotation-gate-record.md`.
 
-Next unblock:
+Remaining blocker:
 
-- After cooldown clears or another account is connected, run a real mission
-  through the same failover path and attach the mission continuity evidence
-  from steps 4-6 of `docs/autopilot-coder/rate-limit-rotation-smoke.md`.
+- None for #4767. The record is scoped to M9 only and does not unblock M10,
+  M13, M14, market proof, settlement, or parent MVP readiness by itself.
 
 ### #4768 M10 overnight unattended proof
 
@@ -107,7 +107,8 @@ Status: open.
 
 Blockers:
 
-- #4767 live two-account rotation remains open.
+- #4767 live two-account rotation is ready to close, but does not satisfy the
+  separate overnight, non-Codex, market, or MVP exit gates.
 - #4768 overnight unattended proof remains open.
 - #4771 non-Codex real-run evidence remains open.
 - Market live paid-labor proofs remain open where they affect public claims.
@@ -206,8 +207,8 @@ Status: open.
 
 Blockers:
 
-- The parent should not close while #4767, #4768, #4771, #4772, #4777, #4781,
-  #4782, #4783, and #4749 remain open unless the parent records the exact
+- The parent should not close while #4768, #4771, #4772, #4777, #4781, #4782,
+  #4783, and #4749 remain open unless the parent records the exact
   accepted post-MVP/open tail.
 - Live paid Forum order, live autonomic funded tick, live provider routing,
   and MVP exit proof remain Gate/operator evidence.
