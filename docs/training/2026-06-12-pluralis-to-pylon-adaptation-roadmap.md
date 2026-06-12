@@ -320,7 +320,10 @@ with the algebra, not the provenance), #1125 (`a2b1d269` shadow-window
 ramp with type-level merge exclusion via the `MergeEligibleReceipt`
 proof token), #1126 (`e8869eca` collective failure semantics: chunked
 timeouts, ban-for-round, partial preservation, standby-gated abort),
-#1127 (SPARTA canary harness). Every hardware/settlement-gated
+#1127 (`a48843a8` SPARTA canary harness: standing order enforced in
+code, pre-registration digest-pins the grid, toy artifacts cannot
+decide the canary by typed rule). All 12 child issues closed same day.
+Every hardware/settlement-gated
 acceptance bullet (live R1/R2 receipts, real devices, settled payments)
 remains open and is recorded per-issue — none are claimed. Side finding:
 psionic#1129 (68 pre-existing psionic-train test failures from
