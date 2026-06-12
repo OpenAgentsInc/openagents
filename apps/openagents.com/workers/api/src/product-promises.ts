@@ -1,3 +1,6 @@
+import { liveAtReadStaleness } from './public-projection-staleness'
+import { currentIsoTimestamp } from './runtime-primitives'
+
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
@@ -65,9 +68,17 @@ const summarizePromiseVerification = (
 }
 
 export const publicProductPromisesDocument = () => {
+  const staleness = liveAtReadStaleness([
+    'product_promise_registry_changed',
+    'product_promise_transition_receipt_recorded',
+    'product_promise_announcement_preflight',
+  ])
   const document = {
   schemaVersion: PublicProductPromisesSchemaVersion,
   version: PublicProductPromisesVersion,
+  generatedAt: currentIsoTimestamp(),
+  maxStalenessSeconds: staleness.maxStalenessSeconds,
+  staleness,
   lastUpdated: '2026-06-11',
   canonicalDocsUrl:
     'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',

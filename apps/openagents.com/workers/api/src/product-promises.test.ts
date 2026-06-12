@@ -43,8 +43,10 @@ const ProductPromisesDocument = S.Struct({
     status: S.String,
     summary: S.String,
   }),
+  generatedAt: S.String,
   latestGapAuditUrl: S.String,
   lastUpdated: S.String,
+  maxStalenessSeconds: S.Number,
   notes: S.Array(S.String),
   promises: S.Array(ProductPromise),
   publicDocsUrl: S.String,
@@ -57,6 +59,12 @@ const ProductPromisesDocument = S.Struct({
   }),
   schemaVersion: S.String,
   sourceRefs: S.Array(S.String),
+  staleness: S.Struct({
+    composition: S.Literal('live_at_read'),
+    contractVersion: S.Literal('projection_staleness.v1'),
+    maxStalenessSeconds: S.Number,
+    rebuildsOn: S.Array(S.String),
+  }),
   states: S.Record(S.String, S.String),
   verificationSummary: S.Struct({
     blockedPromiseCount: S.Int,
@@ -77,6 +85,16 @@ describe('public product promises document', () => {
     )
 
     expect(decoded.version).toBe('2026-06-11.9')
+    expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
+    expect(decoded.maxStalenessSeconds).toBe(0)
+    expect(decoded.staleness.maxStalenessSeconds).toBe(0)
+    expect(decoded.staleness.rebuildsOn).toEqual(
+      expect.arrayContaining([
+        'product_promise_registry_changed',
+        'product_promise_transition_receipt_recorded',
+        'product_promise_announcement_preflight',
+      ]),
+    )
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',

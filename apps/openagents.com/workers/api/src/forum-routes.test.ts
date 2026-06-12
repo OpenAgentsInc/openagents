@@ -4117,6 +4117,18 @@ describe('Forum routes', () => {
       },
     })
     await expect(list.json()).resolves.toMatchObject({
+      generatedAt: expect.any(String),
+      maxStalenessSeconds: 0,
+      staleness: {
+        composition: 'live_at_read',
+        contractVersion: 'projection_staleness.v1',
+        maxStalenessSeconds: 0,
+        rebuildsOn: expect.arrayContaining([
+          'forum_work_request_created',
+          'forum_work_request_lifecycle_recorded',
+          'forum_work_request_quote_recorded',
+        ]),
+      },
       workRequests: [
         {
           objectiveRef: 'objective.public.openagents.forum_bridge_smoke',

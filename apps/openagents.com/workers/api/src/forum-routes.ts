@@ -2385,16 +2385,27 @@ const listForumWorkRequestsResponse = (db: D1Database, url: URL) => {
 
   return publicListResponse(
     listOpenForumWorkRequests(db, limit).pipe(
-      Effect.map(workRequests => ({
-        generatedAt: currentIsoTimestamp(),
-        pagination: {
-          cursor: null,
-          hasMore: false,
-          limit,
-          nextCursor: null,
-        },
-        workRequests,
-      })),
+      Effect.map(workRequests => {
+        const staleness = liveAtReadStaleness([
+          'forum_work_request_created',
+          'forum_work_request_lifecycle_recorded',
+          'forum_work_request_archived',
+          'forum_work_request_quote_recorded',
+        ])
+
+        return {
+          generatedAt: currentIsoTimestamp(),
+          maxStalenessSeconds: staleness.maxStalenessSeconds,
+          pagination: {
+            cursor: null,
+            hasMore: false,
+            limit,
+            nextCursor: null,
+          },
+          staleness,
+          workRequests,
+        }
+      }),
     ),
   )
 }

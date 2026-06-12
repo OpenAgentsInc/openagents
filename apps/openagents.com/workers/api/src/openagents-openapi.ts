@@ -265,7 +265,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe Autopilot Mission Briefing envelope: event rollup, changed artifact/result refs, blocked access requirements and blocker refs, running state, waiting decision, cost rollup, and grouped drill-down refs. A briefing is a read projection and grants no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
   ),
   ProductPromises: objectSummary(
-    'Versioned public OpenAgents product-promise registry. Records classify claims as green, yellow, red, degraded, or planned and include evidence refs, verification guidance, report paths, and authority boundaries.',
+    'Versioned public OpenAgents product-promise registry with generatedAt and the declared live_at_read staleness contract. Records classify claims as green, yellow, red, degraded, or planned and include evidence refs, verification guidance, report paths, and authority boundaries.',
   ),
   PublicAdjutantActivity: objectSummary(
     'Public-safe Autopilot activity milestones and Site projections.',
@@ -1185,7 +1185,7 @@ const schemaComponents = (): JsonSchema => ({
     'Bridge ingestion body for a relay-native signed LBR work-request event (event plus optional title override). The event signature and shape are validated before a Forum work request and topic are recorded; invalid events are rejected and ingestion grants no escrow, dispatch, or payout authority.',
   ),
   ForumWorkRequestListResponse: objectSummary(
-    'Public-safe list of open labor work requests with pagination metadata and generatedAt. Listing grants no acceptance, escrow, or payout authority.',
+    'Public-safe list of open labor work requests with pagination metadata, generatedAt, and the declared live_at_read staleness contract. Listing grants no acceptance, escrow, or payout authority.',
   ),
   ForumWorkRequestStatusResponse: objectSummary(
     'Public-safe labor work-request status envelope: the workRequest record, offers, acceptance (when present), escrowState (pending until an acceptance reserves escrow), receiptRefs, and the relay link. Escrow reserve receipts are evidence of reservation, not settlement.',
@@ -2275,7 +2275,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicProductPromises',
       summary: 'Read product promises',
       description:
-        'Returns the versioned public OpenAgents product-promise registry for agents and users. Each promise record states what is live, scoped, gated, degraded, or planned, and includes evidence refs, verification guidance, report paths, and authority boundaries. Reports should include the registry version and promiseId so maintainers are not responding to an old claim version.',
+        'Returns the versioned public OpenAgents product-promise registry for agents and users with generatedAt and a declared staleness contract. Each promise record states what is live, scoped, gated, degraded, or planned, and includes evidence refs, verification guidance, report paths, and authority boundaries. Reports should include the registry version and promiseId so maintainers are not responding to an old claim version.',
       tags: ['Public Proof'],
       security: publicRead,
       responses: {
@@ -5867,7 +5867,7 @@ const paths = (): JsonSchema => ({
       operationId: 'listForumWorkRequests',
       summary: 'List open labor work requests',
       description:
-        'Lists public-safe open labor work requests with pagination metadata. Listing grants no acceptance, escrow, dispatch, or payout authority.',
+        'Lists public-safe open labor work requests with pagination metadata, generatedAt, and the declared live_at_read staleness contract. Listing grants no acceptance, escrow, dispatch, or payout authority.',
       tags: ['Forum'],
       security: publicRead,
       parameters: [queryParam('limit', 'Maximum work requests to return.')],

@@ -219,6 +219,19 @@ describe('backlog-faucet decoration contract', () => {
     ).toThrowError(/private, payment, credential/)
   })
 
+  test('rejects closed GitHub issues before producing an open work request', () => {
+    expect(() =>
+      buildBacklogWorkRequestFiling(
+        issue({
+          number: 4773,
+          state: 'closed',
+          title: 'A1 API parity matrix slice',
+        }),
+        filingConfig,
+      ),
+    ).toThrowError(/closed GitHub issues cannot be listed/)
+  })
+
   test('rejects non-positive budgets and malformed repositories', () => {
     expect(() =>
       buildBacklogWorkRequestFiling(issue({ number: 1, title: 'P9: fix' }), {

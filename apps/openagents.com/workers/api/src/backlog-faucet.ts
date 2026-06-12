@@ -220,6 +220,12 @@ export const buildBacklogWorkRequestFiling = (
 ): BacklogFaucetFiling => {
   const relistGeneration = config.relistGeneration ?? 0
 
+  if (issue.state !== 'open') {
+    throw new ForumWorkRequestUnsafe(
+      'closed GitHub issues cannot be listed as open-market work requests.',
+    )
+  }
+
   if (!repositoryPattern.test(config.repository)) {
     throw new ForumWorkRequestUnsafe(
       'repository must be an owner/name GitHub slug.',
