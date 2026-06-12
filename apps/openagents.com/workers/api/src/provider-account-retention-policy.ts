@@ -115,6 +115,13 @@ export type ProviderAccountRetentionPolicyProjection = Readonly<{
   affectedReceiptRefs: ReadonlyArray<string>
 }>
 
+class ProviderAccountRetentionPolicyUnsafe extends Error {
+  constructor(context: string) {
+    super(`${context} contains private retention material.`)
+    this.name = 'ProviderAccountRetentionPolicyUnsafe'
+  }
+}
+
 const assertNoPrivateRetentionMaterial = (
   value: unknown,
   context: string,
@@ -124,7 +131,7 @@ const assertNoPrivateRetentionMaterial = (
   const json = typeof value === 'string' ? value : JSON.stringify(value)
 
   if (RETENTION_PRIVATE_MARKERS.some(marker => marker.test(json))) {
-    throw new Error(`${context} contains private retention material.`)
+    throw new ProviderAccountRetentionPolicyUnsafe(context)
   }
 }
 

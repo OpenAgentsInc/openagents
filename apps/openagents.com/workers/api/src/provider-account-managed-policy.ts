@@ -1,6 +1,7 @@
 import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
 
 import type { ProviderAccountProvider } from './provider-account-domain'
+import { isoTimestampAfterIso } from './runtime-primitives'
 
 export const PROVIDER_ACCOUNT_MANAGED_POLICY_VERSION =
   'provider-account-managed-policy:v1' as const
@@ -124,6 +125,13 @@ export type ProviderAccountManagedPolicyProjection = Readonly<{
   }>
 }>
 
+class ProviderAccountManagedPolicyUnsafe extends Error {
+  constructor(context: string) {
+    super(`${context} contains private managed policy material.`)
+    this.name = 'ProviderAccountManagedPolicyUnsafe'
+  }
+}
+
 const assertNoPrivateManagedPolicyMaterial = (
   value: unknown,
   context: string,
@@ -133,7 +141,7 @@ const assertNoPrivateManagedPolicyMaterial = (
   const json = typeof value === 'string' ? value : JSON.stringify(value)
 
   if (MANAGED_POLICY_PRIVATE_MARKERS.some(marker => marker.test(json))) {
-    throw new Error(`${context} contains private managed policy material.`)
+    throw new ProviderAccountManagedPolicyUnsafe(context)
   }
 }
 
@@ -164,7 +172,7 @@ const governedByRefs = (
   ].filter((ref): ref is string => ref !== undefined))
 
 const staleAt = (evaluatedAt: string, staleAfterMs: number): string =>
-  new Date(Date.parse(evaluatedAt) + staleAfterMs).toISOString()
+  isoTimestampAfterIso(evaluatedAt, staleAfterMs)
 
 const ageMs = (generatedAt: string, evaluatedAt: string): number =>
   Math.max(0, Date.parse(generatedAt) - Date.parse(evaluatedAt))

@@ -145,6 +145,13 @@ const highRiskBlockers = (
       ]
     : []
 
+class ProviderAccountSecurityReviewMissingRef extends Error {
+  constructor() {
+    super('Provider account security review requires reviewRef.')
+    this.name = 'ProviderAccountSecurityReviewMissingRef'
+  }
+}
+
 export const reviewProviderAccountSecurityGate = (
   input: ProviderAccountSecurityReviewInput,
 ): ProviderAccountSecurityReviewProjection => {
@@ -154,7 +161,7 @@ export const reviewProviderAccountSecurityGate = (
   )
 
   if (reviewRef === null) {
-    throw new Error('Provider account security review requires reviewRef.')
+    throw new ProviderAccountSecurityReviewMissingRef()
   }
 
   const blockers = [

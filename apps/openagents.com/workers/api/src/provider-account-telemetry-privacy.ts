@@ -5,6 +5,7 @@ import type {
   ProviderAccountProvider,
   ProviderAccountStatus,
 } from './provider-account-domain'
+import { isoTimestampAfterIso } from './runtime-primitives'
 
 export const PROVIDER_ACCOUNT_TELEMETRY_PRIVACY_VERSION =
   'provider-account-telemetry-privacy:v1' as const
@@ -131,13 +132,20 @@ const REDACTION_REQUIRED_METRIC_KINDS: ReadonlySet<ProviderAccountTelemetryMetri
     'reset_hint',
   ])
 
+class ProviderAccountTelemetryPrivacyUnsafe extends Error {
+  constructor(context: string) {
+    super(`${context} contains private telemetry material.`)
+    this.name = 'ProviderAccountTelemetryPrivacyUnsafe'
+  }
+}
+
 const assertNoPrivateTelemetryMaterial = (value: unknown, context: string): void => {
   assertNoProviderSecretMaterial(value, context)
 
   const json = typeof value === 'string' ? value : JSON.stringify(value)
 
   if (TELEMETRY_PRIVATE_MARKERS.some(marker => marker.test(json))) {
-    throw new Error(`${context} contains private telemetry material.`)
+    throw new ProviderAccountTelemetryPrivacyUnsafe(context)
   }
 }
 
@@ -187,7 +195,7 @@ const sanitizeMetric = (
 }
 
 const staleAt = (observedAt: string, staleAfterMs: number): string =>
-  new Date(Date.parse(observedAt) + staleAfterMs).toISOString()
+  isoTimestampAfterIso(observedAt, staleAfterMs)
 
 const ageMs = (generatedAt: string, observedAt: string): number =>
   Math.max(0, Date.parse(generatedAt) - Date.parse(observedAt))
