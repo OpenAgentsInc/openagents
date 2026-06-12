@@ -18,6 +18,7 @@ import {
   type ForumPaidActionTargetType,
   ForumParticipationWriteResponse,
   type ForumPostRevisionRow,
+  type ForumPostThreadRef,
   ForumPublicProjectionUnsafe,
   ForumReadAccessDenied,
   type ForumReportRow,
@@ -42,6 +43,7 @@ import {
   evaluateForumWritePolicy,
   followForumActor,
   forumLaunchGateStatus,
+  forumPostThreadHasAncestor,
   listForumModerationQueue,
   listRecentForumWritesForActor,
   lookupForumDirectTip,
@@ -65,6 +67,7 @@ import {
   readForumPostDetail,
   readForumPostList,
   readForumPostRevisionByIdempotencyKey,
+  readForumPostThreadRef,
   readForumReportByIdempotencyKey,
   readForumSummaryByRef,
   readForumTipLeaderboards,
@@ -300,6 +303,7 @@ const EditForumPostBody = S.Struct({
     S.isNonEmpty(),
     S.isMaxLength(ForumPostBodyTextMaxLength),
   ),
+  parentPostId: S.optionalKey(S.NullOr(S.String)),
 })
 
 const TombstoneForumPostBody = S.Struct({
@@ -447,6 +451,23 @@ const decodeParticipationWriteResponse = S.decodeUnknownSync(
 
 const badRequest = (reason: string) =>
   noStoreJsonResponse({ error: 'bad_request', reason }, { status: 400 })
+
+// A parent ref is valid only when it points at an existing, visible post in
+// the same topic. Dangling refs (for example a truncated post ID) must reject
+// at the write boundary instead of persisting verbatim (#4856).
+const invalidParentPostReference = (
+  parent: ForumPostThreadRef | null,
+  topicId: string,
+): string | null =>
+  parent === null
+    ? 'parentPostId must reference an existing post'
+    : parent.topicId !== topicId
+      ? 'parentPostId must belong to the target topic'
+      : parent.state === 'tombstoned' ||
+          parent.state === 'hidden' ||
+          parent.state === 'held_for_review'
+        ? 'parentPostId must reference a visible post'
+        : null
 
 const notFound = () =>
   noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
@@ -1882,6 +1903,23 @@ const createReplyResponse = (
       }
     }
 
+    const requestedParentPostId = body.parentPostId ?? null
+
+    if (requestedParentPostId !== null) {
+      const parentRef = yield* readForumPostThreadRef(
+        db,
+        requestedParentPostId,
+      )
+      const parentDenialReason = invalidParentPostReference(
+        parentRef,
+        topic.topicId,
+      )
+
+      if (parentDenialReason !== null) {
+        return badRequest(parentDenialReason)
+      }
+    }
+
     const actor = yield* actorForRequest(request, dependencies)
     const nowEpochMillis = dependencies.nowEpochMillis ?? currentEpochMillis
     const requiredScope = forumWriteRequiredScopeForForum(forum.slug)
@@ -1933,7 +1971,7 @@ const createReplyResponse = (
       contentRef: `content.forum.post.${postId}`,
       forumId: forum.forumId,
       idempotencyKey,
-      parentPostId: body.parentPostId ?? topic.latestPostId,
+      parentPostId: requestedParentPostId ?? topic.latestPostId,
       postId,
       publicProjection: defaultPublicProjection(
         `artifact.forum.post.${postId}`,
@@ -3027,6 +3065,39 @@ const editPostResponse = (
       return forbidden('only the post author can edit this post')
     }
 
+    // Authors may repair threading: a supplied parentPostId is honored with
+    // the same validation as reply creation plus a bounded cycle guard, and
+    // an explicit null re-parents the post to top level (#4856).
+    const requestedParentPostId = body.parentPostId
+
+    if (requestedParentPostId !== undefined && requestedParentPostId !== null) {
+      if (requestedParentPostId === target.postDetail.post.postId) {
+        return badRequest('parentPostId must not reference the edited post')
+      }
+
+      const parentRef = yield* readForumPostThreadRef(
+        db,
+        requestedParentPostId,
+      )
+      const parentDenialReason = invalidParentPostReference(
+        parentRef,
+        target.topic.topicId,
+      )
+
+      if (parentDenialReason !== null) {
+        return badRequest(parentDenialReason)
+      }
+
+      const wouldCycle = yield* forumPostThreadHasAncestor(db, {
+        ancestorPostId: target.postDetail.post.postId,
+        startPostId: requestedParentPostId,
+      })
+
+      if (wouldCycle) {
+        return badRequest('parentPostId must not create a reply cycle')
+      }
+    }
+
     const makeId = dependencies.makeId ?? randomUuid
     const revisionId = makeId()
     const post = yield* editForumPostBody(db, {
@@ -3034,6 +3105,7 @@ const editPostResponse = (
       id: revisionId,
       idempotencyKey,
       nextBodyText: body.bodyText,
+      nextParentPostId: requestedParentPostId,
       postId: target.postDetail.post.postId,
       publicProjection: defaultPublicProjection(
         `artifact.forum.post_revision.${revisionId}`,

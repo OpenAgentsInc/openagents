@@ -2341,6 +2341,74 @@ export const readForumPostById = (
       .first<PostRow>(),
   ).pipe(Effect.map(row => (row === null ? null : postFromRow(row))))
 
+export type ForumPostThreadRef = Readonly<{
+  parentPostId: string | null
+  postId: string
+  state: 'visible' | 'edited' | 'tombstoned' | 'held_for_review' | 'hidden'
+  topicId: string
+}>
+
+export const readForumPostThreadRef = (
+  db: D1Database,
+  postId: string,
+): Effect.Effect<ForumPostThreadRef | null, ForumStorageError> =>
+  d1Effect('forum.readPostThreadRef', () =>
+    db
+      .prepare(
+        `SELECT id, topic_id, parent_post_id, state
+           FROM forum_posts
+          WHERE id = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(postId)
+      .first<Pick<PostRow, 'id' | 'parent_post_id' | 'state' | 'topic_id'>>(),
+  ).pipe(
+    Effect.map(row =>
+      row === null
+        ? null
+        : {
+            parentPostId: row.parent_post_id,
+            postId: row.id,
+            state: row.state,
+            topicId: row.topic_id,
+          },
+    ),
+  )
+
+const ForumPostAncestorWalkDepthLimit = 128
+
+export const forumPostThreadHasAncestor = (
+  db: D1Database,
+  input: Readonly<{ ancestorPostId: string; startPostId: string }>,
+): Effect.Effect<boolean, ForumStorageError> =>
+  d1Effect('forum.postThreadHasAncestor', () =>
+    db
+      .prepare(
+        `WITH RECURSIVE forum_post_ancestors (id, parent_post_id, depth) AS (
+           SELECT id, parent_post_id, 0
+             FROM forum_posts
+            WHERE id = ?
+              AND archived_at IS NULL
+           UNION ALL
+           SELECT forum_posts.id,
+                  forum_posts.parent_post_id,
+                  forum_post_ancestors.depth + 1
+             FROM forum_posts
+             JOIN forum_post_ancestors
+               ON forum_posts.id = forum_post_ancestors.parent_post_id
+            WHERE forum_posts.archived_at IS NULL
+              AND forum_post_ancestors.depth < ${ForumPostAncestorWalkDepthLimit}
+         )
+         SELECT 1 AS found
+           FROM forum_post_ancestors
+          WHERE id = ?
+          LIMIT 1`,
+      )
+      .bind(input.startPostId, input.ancestorPostId)
+      .first<Readonly<{ found: number }>>(),
+  ).pipe(Effect.map(row => row !== null))
+
 export const readForumTopicByIdempotencyKey = (
   db: D1Database,
   idempotencyKey: string,
@@ -3632,7 +3700,8 @@ export const editForumPostBody = (
   input: Omit<
     ForumPostRevisionInput,
     'actionKind' | 'nextState' | 'previousBodyText' | 'previousState'
-  >,
+  > &
+    Readonly<{ nextParentPostId?: string | null | undefined }>,
   runtime: ForumRepositoryRuntime = systemForumRepositoryRuntime,
 ): Effect.Effect<
   ForumPostSummary,
@@ -3652,8 +3721,9 @@ export const editForumPostBody = (
       })
     }
 
+    const { nextParentPostId, ...revisionBase } = input
     const revisionInput: ForumPostRevisionInput = {
-      ...input,
+      ...revisionBase,
       actionKind: 'edit',
       previousBodyText: existing.bodyText ?? null,
       previousState: existing.state,
@@ -3691,6 +3761,21 @@ export const editForumPostBody = (
         .bind(input.id, now, input.postId)
         .run(),
     )
+
+    if (nextParentPostId !== undefined) {
+      yield* d1Effect('forum.reparentPost', () =>
+        db
+          .prepare(
+            `UPDATE forum_posts
+                SET parent_post_id = ?,
+                    updated_at = ?
+              WHERE id = ?
+                AND archived_at IS NULL`,
+          )
+          .bind(nextParentPostId, now, input.postId)
+          .run(),
+      )
+    }
 
     const updated = yield* readForumPostById(db, input.postId)
 

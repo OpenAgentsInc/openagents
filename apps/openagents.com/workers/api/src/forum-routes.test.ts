@@ -1820,6 +1820,32 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve(row as T | null)
     }
 
+    if (this.query.includes('WITH RECURSIVE forum_post_ancestors')) {
+      const startPostId = String(this.values[0])
+      const ancestorPostId = String(this.values[1])
+      const visited = new Set<string>()
+      let cursor: string | null = startPostId
+
+      while (cursor !== null && !visited.has(cursor)) {
+        const row = this.store.posts.find(
+          item => item.id === cursor && item.archived_at === null,
+        )
+
+        if (row === undefined) {
+          break
+        }
+
+        if (row.id === ancestorPostId) {
+          return Promise.resolve({ found: 1 } as T)
+        }
+
+        visited.add(row.id)
+        cursor = row.parent_post_id
+      }
+
+      return Promise.resolve(null)
+    }
+
     if (this.query.includes('FROM forum_posts')) {
       const postRef = String(this.values[0])
       const row = this.query.includes('idempotency_key =')
@@ -2725,6 +2751,27 @@ class ForumRouteStatement implements D1PreparedStatement {
         this.store.posts[index] = {
           ...existing,
           body_text: tombstone ? null : String(this.values[0]),
+          updated_at: String(this.values[1]),
+        }
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (
+      this.query.includes('UPDATE forum_posts') &&
+      this.query.includes('SET parent_post_id = ?')
+    ) {
+      const postId = String(this.values[2])
+      const existing = this.store.posts.find(item => item.id === postId)
+
+      if (existing !== undefined) {
+        const index = this.store.posts.findIndex(item => item.id === postId)
+
+        this.store.posts[index] = {
+          ...existing,
+          parent_post_id:
+            this.values[0] === null ? null : String(this.values[0]),
           updated_at: String(this.values[1]),
         }
       }
@@ -8112,6 +8159,286 @@ describe('Forum routes', () => {
       'tombstone',
     ])
     expect(store.reports).toHaveLength(1)
+  })
+
+  test('validates reply parentPostId against same-topic visible posts', async () => {
+    const store = new ForumRouteStore()
+    const topicId = '55555555-5555-4555-8555-555555555555'
+    const seedPostId = '66666666-6666-4666-8666-666666666666'
+    const crossTopicPostId = '88888888-5001-4001-8001-888888888888'
+
+    const validResponse = await route(
+      store,
+      `/api/forum/topics/${topicId}/posts`,
+      {
+        body: {
+          bodyText: 'Reply threaded under the seed post.',
+          parentPostId: seedPostId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-ref-valid-1',
+        },
+        method: 'POST',
+      },
+    )
+    const truncatedResponse = await route(
+      store,
+      `/api/forum/topics/${topicId}/posts`,
+      {
+        body: {
+          bodyText: 'Reply carrying a truncated parent ref.',
+          parentPostId: '95993529',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-ref-truncated-1',
+        },
+        method: 'POST',
+      },
+    )
+    const crossTopicResponse = await route(
+      store,
+      `/api/forum/topics/${topicId}/posts`,
+      {
+        body: {
+          bodyText: 'Reply carrying a cross-topic parent ref.',
+          parentPostId: crossTopicPostId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-ref-cross-topic-1',
+        },
+        method: 'POST',
+      },
+    )
+
+    const seedIndex = store.posts.findIndex(item => item.id === seedPostId)
+    store.posts[seedIndex] = {
+      ...store.posts[seedIndex]!,
+      state: 'tombstoned',
+    }
+
+    const tombstonedResponse = await route(
+      store,
+      `/api/forum/topics/${topicId}/posts`,
+      {
+        body: {
+          bodyText: 'Reply carrying a tombstoned parent ref.',
+          parentPostId: seedPostId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-ref-tombstoned-1',
+        },
+        method: 'POST',
+      },
+    )
+
+    expect(validResponse.status).toBe(201)
+    await expect(validResponse.json()).resolves.toMatchObject({
+      post: { parentPostId: seedPostId, postNumber: 2 },
+    })
+    expect(truncatedResponse.status).toBe(400)
+    await expect(truncatedResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'parentPostId must reference an existing post',
+    })
+    expect(crossTopicResponse.status).toBe(400)
+    await expect(crossTopicResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'parentPostId must belong to the target topic',
+    })
+    expect(tombstonedResponse.status).toBe(400)
+    await expect(tombstonedResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'parentPostId must reference a visible post',
+    })
+    expect(
+      store.posts.filter(item => item.topic_id === topicId),
+    ).toHaveLength(2)
+  })
+
+  test('honors PATCH parentPostId repairs with validation and a cycle guard', async () => {
+    const store = new ForumRouteStore()
+    const topicId = '55555555-5555-4555-8555-555555555555'
+    const seedPostId = '66666666-6666-4666-8666-666666666666'
+
+    const firstReplyResponse = await route(
+      store,
+      `/api/forum/topics/${topicId}/posts`,
+      {
+        body: { bodyText: 'First reply in the repair thread.' },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-reply-1',
+        },
+        method: 'POST',
+      },
+    )
+    const firstReply = (await firstReplyResponse.json()) as Readonly<{
+      post: Readonly<{ postId: string }>
+    }>
+    const secondReplyResponse = await route(
+      store,
+      `/api/forum/topics/${topicId}/posts`,
+      {
+        body: {
+          bodyText: 'Second reply nested under the first.',
+          parentPostId: firstReply.post.postId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-reply-2',
+        },
+        method: 'POST',
+      },
+    )
+    const secondReply = (await secondReplyResponse.json()) as Readonly<{
+      post: Readonly<{ postId: string }>
+    }>
+
+    const cycleResponse = await route(
+      store,
+      `/api/forum/posts/${firstReply.post.postId}`,
+      {
+        body: {
+          bodyText: 'Attempt to nest the first reply under its child.',
+          parentPostId: secondReply.post.postId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-cycle-1',
+        },
+        method: 'PATCH',
+      },
+    )
+    const selfResponse = await route(
+      store,
+      `/api/forum/posts/${secondReply.post.postId}`,
+      {
+        body: {
+          bodyText: 'Attempt to nest the second reply under itself.',
+          parentPostId: secondReply.post.postId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-self-1',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    // Mirror the live dangling-ref shape: a truncated parent ref persisted
+    // before validation existed (#4856).
+    const brokenIndex = store.posts.findIndex(
+      item => item.id === secondReply.post.postId,
+    )
+    store.posts[brokenIndex] = {
+      ...store.posts[brokenIndex]!,
+      parent_post_id: '95993529',
+    }
+
+    const missingResponse = await route(
+      store,
+      `/api/forum/posts/${secondReply.post.postId}`,
+      {
+        body: {
+          bodyText: 'Attempt to repair with another dangling ref.',
+          parentPostId: '12345678',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-missing-1',
+        },
+        method: 'PATCH',
+      },
+    )
+    const repairResponse = await route(
+      store,
+      `/api/forum/posts/${secondReply.post.postId}`,
+      {
+        body: {
+          bodyText: 'Repaired thread ref pointing at the seed post.',
+          parentPostId: seedPostId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-fix-1',
+        },
+        method: 'PATCH',
+      },
+    )
+    const repairRetryResponse = await route(
+      store,
+      `/api/forum/posts/${secondReply.post.postId}`,
+      {
+        body: {
+          bodyText: 'Repaired thread ref pointing at the seed post.',
+          parentPostId: seedPostId,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-fix-1',
+        },
+        method: 'PATCH',
+      },
+    )
+    const topLevelResponse = await route(
+      store,
+      `/api/forum/posts/${firstReply.post.postId}`,
+      {
+        body: {
+          bodyText: 'First reply re-parented to top level.',
+          parentPostId: null,
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'parent-repair-top-level-1',
+        },
+        method: 'PATCH',
+      },
+    )
+
+    expect(cycleResponse.status).toBe(400)
+    await expect(cycleResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'parentPostId must not create a reply cycle',
+    })
+    expect(selfResponse.status).toBe(400)
+    await expect(selfResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'parentPostId must not reference the edited post',
+    })
+    expect(missingResponse.status).toBe(400)
+    await expect(missingResponse.json()).resolves.toMatchObject({
+      error: 'bad_request',
+      reason: 'parentPostId must reference an existing post',
+    })
+    expect(repairResponse.status).toBe(200)
+    await expect(repairResponse.json()).resolves.toMatchObject({
+      action: 'edit',
+      idempotent: false,
+      post: {
+        bodyText: 'Repaired thread ref pointing at the seed post.',
+        parentPostId: seedPostId,
+        state: 'edited',
+      },
+    })
+    expect(repairRetryResponse.status).toBe(200)
+    await expect(repairRetryResponse.json()).resolves.toMatchObject({
+      idempotent: true,
+      post: { parentPostId: seedPostId },
+    })
+    expect(topLevelResponse.status).toBe(200)
+    await expect(topLevelResponse.json()).resolves.toMatchObject({
+      action: 'edit',
+      post: { parentPostId: null },
+    })
+    expect(store.postRevisions.map(revision => revision.action_kind)).toEqual([
+      'edit',
+      'edit',
+    ])
   })
 
   test('moderator queue and actions are admin-only and public-safe', async () => {
