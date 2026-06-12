@@ -1350,7 +1350,7 @@ Timing rule:
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4771`
 
-Status: ready to close for the scoped M13 live non-Codex provider leg.
+Status: closed for the scoped M13 live non-Codex provider leg.
 
 Implemented and verified:
 
@@ -1401,6 +1401,9 @@ Implemented and verified:
   is retrievable.
 - Polled the work request eight times over two minutes; it remained `open`
   with zero offers and no accepted quote.
+- The #4773-backed row was later expired after #4773 closed, so the live
+  order book is correctly empty again and P1/P5 need a fresh currently-open
+  target.
 
 Evidence:
 
@@ -1741,11 +1744,12 @@ Implemented:
 - #4834 PC3 file/shell/workspace authority evidence.
 - #4835 PC4 delivery readiness and PR draft receipt projections.
 - Updated the original terminal-agent-systems roadmap with final Pack C
-  implementation status and the current timing rule for #4768, #4772, #4777,
-  #4781, #4782, #4783, #4786, #4836, and #4837.
+  implementation status and the then-current timing rule for #4768, #4772,
+  #4777, #4781, #4782, #4783, #4786, #4836, and #4837.
 - Recorded that no additional Pack C child issues are needed now and that Pack
   D should wait until the MVP proof gates and public freshness/order-book
-  hygiene issues are closed or explicitly scoped.
+  hygiene issues are closed or explicitly scoped. #4836/#4837 were later
+  closed, leaving #4768/#4772 as the broad Pack D timing gate.
 
 Verification:
 
@@ -1769,8 +1773,9 @@ Implemented:
 - Updated OpenAPI descriptions so agents know the endpoint exposes the
   deployed registry version and freshness contract.
 - Updated the original terminal-agent-systems roadmap to mark the
-  product-promises freshness half of the public hygiene blocker complete while
-  keeping #4837 as the remaining Forum order-book blocker before Pack D.
+  product-promises freshness half of the public hygiene blocker complete.
+  #4837 later closed the Forum order-book half, so Pack D now waits on
+  #4768/#4772 MVP proof closure or explicit proof-slice scoping.
 
 Verification:
 
@@ -1802,3 +1807,31 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/backlog-faucet.test.ts src/forum-routes.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## Terminal-Agent Systems Roadmap Follow-Up Review
+
+Issue context:
+
+- Reviewed #4749, #4768, #4772, #4777, #4781, #4782, #4783, and #4786 with
+  `gh issue view --comments`.
+- Rechecked #4755-#4786 and #4813-#4837 issue states via `gh issue view`.
+
+Status: docs-only synchronization; no new GitHub issues opened.
+
+Implemented:
+
+- Updated the original terminal-agent-systems roadmap so the current issue
+  state matches GitHub: Pack A/B/C and #4836/#4837 are closed, while #4768,
+  #4772, #4777, #4781, #4782, #4783, #4786, and W3 #4749 remain open.
+- Clarified that Pack D should still not be filed. The remaining blockers are
+  live overnight proof, the MVP exit decision, independent provider/settlement
+  evidence, and W3 training/eval completion rather than missing issue
+  decomposition.
+- Updated the open-issue blocker record so the expired #4773-backed market row
+  is not treated as active inventory.
+- Added a current-status guard to the delegation plan so agents do not claim
+  closed Pack A/B/C or #4836/#4837 work from the historical assignment map.
+
+Verification:
+
+- `git diff --check`

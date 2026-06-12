@@ -27,42 +27,46 @@ public claims, or change runtime invariants.
 
 ## Current State From The Issue Ladder
 
-As of the `gh` check on 2026-06-11:
+As of the `gh` check on 2026-06-12:
 
-- Closed: B1-B4 (#4755-#4758), M1-M5 (#4759-#4763), CX1-CX5
-  (#4788-#4792), the Codex executor epic (#4793), worktree/materializer
-  support (#4798, #4799), RK1-RK5 (#4805-#4809), the Agent Runtime Kernel epic
-  (#4804), and P8 (#4784).
-- Open: M6-M14 (#4764-#4772), A1-A4 (#4773-#4776), P1-P7 (#4777-#4783),
-  P9 (#4785), and the parent epic #4786.
-- M9 (#4767) is still open even though the roadmap records a CI-safe
-  rate-limit-rotation leg as done; the live two-account leg remains a separate
-  proof before smart-routing copy should broaden.
+- Closed: B1-B4 (#4755-#4758), M1-M9 (#4759-#4767), M11-M13
+  (#4769-#4771), A1-A4 (#4773-#4776), P2-P4 (#4778-#4780), P8-P9
+  (#4784-#4785), CX1-CX5 (#4788-#4792), the Codex executor epic (#4793),
+  worktree/materializer support (#4798, #4799), RK1-RK5 (#4805-#4809), the
+  Agent Runtime Kernel epic (#4804), Pack A (#4813-#4823), Pack B
+  (#4824-#4830), Pack C (#4831-#4835), and the public hygiene follow-ups
+  #4836/#4837.
+- Open: M10 overnight proof (#4768), M14 door-open decision (#4772), P1 first
+  live negotiated labor job (#4777), P5-P7 market-provider proof
+  (#4781-#4783), and the parent epic #4786. W3 (#4749) remains open as a
+  separate research/evaluation track and is not an Autopilot MVP door-open
+  dependency.
 
 The practical result: the sprint has already landed the base dogfood loop,
-the own-Pylon/free-lane policy, cloud Pylon, card-on-file, the Codex peer
-adapter, the shared runtime event contract, and kernel-derived status
-surfaces. The next decision is not whether to build a runtime kernel. The next
-decision is which audits turn that landed kernel into repeatable, unattended,
-receipt-backed MVP proof.
+own-Pylon/free-lane policy, cloud Pylon, card-on-file, provider/account
+hardening, repo/delivery evidence, the Codex and runtime-kernel lanes, agent
+parity contracts, and public freshness/order-book hygiene. The remaining work
+is not another broad operationalization pack. It is live evidence: overnight
+unattended proof, the MVP exit decision, and market-provider/settlement
+receipts.
 
 ## Tracking Issues
 
 Pack A is now filed as GitHub issue #4813, with one child issue for each
 subsystem audit that should be operationalized during the current #4786 sprint:
 
-| Pack issue | Subsystem audit | Primary sprint pressure |
-| --- | --- | --- |
-| #4814 PA1 | Task And Background Execution | Scheduled/background run supervision for #4764, #4765, #4768, and #4773 |
-| #4815 PA2 | Scheduling And Cron | Schedule, continuation, skip, and no-double-fire receipts for #4764, #4768, and #4773 |
-| #4816 PA3 | Notifications And Attention | Decision/completion/failure attention state for #4765, #4768, and #4773 |
-| #4817 PA4 | Mobile And Web Companion | Phone-sized decision/review/status projection for #4765, #4768, and #4773 |
-| #4818 PA5 | Testing And Smoke | Proof-boundary and receipt discipline for #4767, #4768, #4772, and #4773 |
-| #4819 PA6 | Artifact And Receipt | Evidence refs for schedules, tasks, decisions, notifications, reviews, and smokes |
-| #4820 PA7 | Structured Event Log | Replayable Pack A projections across web, Pylon, API, companion, and public-safe views |
-| #4821 PA8 | Token And Cost Budgeting | Budget stops, usage refs, rate-limit blockers, and own-Pylon zero-credit proof |
-| #4822 PA9 | Permission And Approval | Shared approval contract for headless, background, mobile, Pylon, and API actions |
-| #4823 PA10 | Accessibility And Non-Interactive Mode | Structured output, CI/headless behavior, no-color status, and typed prompt blockers |
+| Pack issue | Subsystem audit                        | Primary sprint pressure                                                                |
+| ---------- | -------------------------------------- | -------------------------------------------------------------------------------------- |
+| #4814 PA1  | Task And Background Execution          | Scheduled/background run supervision for #4764, #4765, #4768, and #4773                |
+| #4815 PA2  | Scheduling And Cron                    | Schedule, continuation, skip, and no-double-fire receipts for #4764, #4768, and #4773  |
+| #4816 PA3  | Notifications And Attention            | Decision/completion/failure attention state for #4765, #4768, and #4773                |
+| #4817 PA4  | Mobile And Web Companion               | Phone-sized decision/review/status projection for #4765, #4768, and #4773              |
+| #4818 PA5  | Testing And Smoke                      | Proof-boundary and receipt discipline for #4767, #4768, #4772, and #4773               |
+| #4819 PA6  | Artifact And Receipt                   | Evidence refs for schedules, tasks, decisions, notifications, reviews, and smokes      |
+| #4820 PA7  | Structured Event Log                   | Replayable Pack A projections across web, Pylon, API, companion, and public-safe views |
+| #4821 PA8  | Token And Cost Budgeting               | Budget stops, usage refs, rate-limit blockers, and own-Pylon zero-credit proof         |
+| #4822 PA9  | Permission And Approval                | Shared approval contract for headless, background, mobile, Pylon, and API actions      |
+| #4823 PA10 | Accessibility And Non-Interactive Mode | Structured output, CI/headless behavior, no-color status, and typed prompt blockers    |
 
 The parent #4813 body carries the Pack A checklist. The #4786 epic has a
 matching Pack A addendum comment.
@@ -70,15 +74,17 @@ matching Pack A addendum comment.
 ## Pack B Readiness And Tracking Issues
 
 As of the Pack B `gh issue list` check on 2026-06-11, the open Autopilot issue
-set has narrowed to #4768, #4771, #4772, #4777, #4781, #4782, #4783, and the
-parent #4786. The separate W3 evaluation issue #4749 also remains open, but it
-is not part of the Autopilot MVP proof gate.
+set had narrowed to #4768, #4771, #4772, #4777, #4781, #4782, #4783, and the
+parent #4786. The separate W3 evaluation issue #4749 also remained open, but it
+was not part of the Autopilot MVP proof gate.
 
 Pack A (#4813-#4823) is closed as a tracked issue set. M8 account-pool
-visibility (#4766) and M9 rate-limit proof (#4767) are also closed. M13
-provider peers (#4771) remains open, and its current issue comments identify
+visibility (#4766) and M9 rate-limit proof (#4767) were also closed. M13
+provider peers (#4771) was still open then, and its issue comments identified
 the remaining live non-Codex credentialed-run proof as the unresolved part of
-that provider-peer lane.
+that provider-peer lane. #4771 later closed on its scoped Gemini live-provider
+proof; Pack B remains the evidence layer future provider/account claims should
+cite, not a continuing blocker by itself.
 
 That makes Pack B ready to file now. The reason is not that Pack B should block
 all remaining work; it is that the roadmap already treats account, credential,
@@ -90,15 +96,15 @@ managed policy state, retention guarantees, or provider-peer security review.
 Pack B is now filed as GitHub issue #4824, with one child issue for each
 subsystem audit that should harden the provider/account/policy lane:
 
-| Pack issue | Subsystem audit | Primary sprint pressure |
-| --- | --- | --- |
-| #4824 PACK B | Account, Credential, And Policy Hardening | Parent tracker for provider/account hardening after M8/M9 and before broad M13 claims |
-| #4825 PB1 | Authentication And Credential Storage | Provider accounts, credential refs, leases, refresh, revocation, and stale-lease invalidation for #4771 |
-| #4826 PB2 | Settings And Configuration | Effective config snapshots for provider, budget, approval, telemetry, retention, and routing decisions |
-| #4827 PB3 | Security Review | ToS/credential-boundary/threat review before broad provider-peer work closes |
-| #4828 PB4 | Telemetry And Privacy | Redacted account-health, rate-limit, provider-routing, and reconnect telemetry fixtures |
-| #4829 PB5 | Data Retention And Deletion | Retention classes, deletion behavior, tombstones, and projection invalidation for Pack B records |
-| #4830 PB6 | Enterprise Managed Policy | Minimal policy snapshots and denial reasons for team, repo, provider, budget, retention, telemetry, and approved-user gates |
+| Pack issue   | Subsystem audit                           | Primary sprint pressure                                                                                                     |
+| ------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| #4824 PACK B | Account, Credential, And Policy Hardening | Parent tracker for provider/account hardening after M8/M9 and before broad M13 claims                                       |
+| #4825 PB1    | Authentication And Credential Storage     | Provider accounts, credential refs, leases, refresh, revocation, and stale-lease invalidation for #4771                     |
+| #4826 PB2    | Settings And Configuration                | Effective config snapshots for provider, budget, approval, telemetry, retention, and routing decisions                      |
+| #4827 PB3    | Security Review                           | ToS/credential-boundary/threat review before broad provider-peer work closes                                                |
+| #4828 PB4    | Telemetry And Privacy                     | Redacted account-health, rate-limit, provider-routing, and reconnect telemetry fixtures                                     |
+| #4829 PB5    | Data Retention And Deletion               | Retention classes, deletion behavior, tombstones, and projection invalidation for Pack B records                            |
+| #4830 PB6    | Enterprise Managed Policy                 | Minimal policy snapshots and denial reasons for team, repo, provider, budget, retention, telemetry, and approved-user gates |
 
 Final implementation pass:
 
@@ -199,10 +205,12 @@ They should change when broader claims can close, not stop unrelated work.
   door-open proof. #4777, #4781, #4782, and #4783 still need live market or
   provider receipts; #4768 and #4772 still need MVP proof receipts.
 - **Do not file Pack D yet.** As of the 2026-06-12 follow-up review, #4768
-  and #4772 are still open. #4836 is implemented as the product-promises
-  freshness/announcement gate, but #4837 still shows that the Forum
-  work-request surface needs order-book hygiene before a broad
-  intake/market-unification pack would be well-scoped.
+  and #4772 are still open. #4836/#4837 closed the public
+  freshness/order-book hygiene pair, and the live order book is now correctly
+  empty after the stale #4773-backed request was expired. That is cleaner, but
+  it is not market proof: #4777/#4781 still need a fresh currently-open target
+  plus independent provider quote, execution, validation, release, payout, and
+  settlement receipts before broad intake/market unification is well-scoped.
 - **Keep #4786, #4768, and #4772 focused on their proof gates.** They should
   cite Pack B only when their proof evidence relies on provider credentials,
   account telemetry, managed policy snapshots, or retention/deletion behavior,
@@ -217,8 +225,9 @@ UX (#4769), M12 spend-to-evidence joins (#4770), and P3 writeback symmetry
 defer live self-serve repo connection UI proof, live real-repo PR draft proof,
 and downstream receipt evidence. The open issue set had narrowed to the Gate
 proof and market/live-evidence lanes when Pack C was filed. At final Pack C
-closeout, #4771 is closed and the remaining open Autopilot set is #4768,
-#4772, #4777, #4781, #4782, #4783, #4786, #4836, and #4837, plus W3 #4749.
+closeout, #4771 was closed and the remaining open Autopilot set was #4768,
+#4772, #4777, #4781, #4782, #4783, and #4786, plus W3 #4749. The later
+#4836/#4837 public-hygiene follow-ups are also closed.
 
 That made Pack C ready to file. Pack C should not reopen M11/P3 or claim live
 PR writeback by itself. It hardens the repo/delivery evidence layer that
@@ -229,13 +238,13 @@ readiness receipts.
 Pack C was filed as GitHub issue #4831, with one child issue for each
 subsystem slice that should harden repo scope and delivery evidence:
 
-| Pack issue | Subsystem audit | Primary sprint pressure |
-| --- | --- | --- |
-| #4831 PACK C | Repo Scope, Delivery, And Evidence | Parent tracker for repo/delivery hardening after M11/M12/P3 contracts |
-| #4832 PC1 | Git/GitHub, Worktree, Repository Memory | Repository/worktree identity snapshots for scoped repo work |
-| #4833 PC2 | Diff/Patch Review, Artifact/Receipt, Diagnostics | Change capture and diff review artifacts |
-| #4834 PC3 | File Tool, Shell Execution, Sandbox/Workspace | File/shell/workspace authority boundary for delivery evidence |
-| #4835 PC4 | Git/GitHub Workflow, Artifact/Receipt, Writeback | Delivery authority and PR readiness receipt projections |
+| Pack issue   | Subsystem audit                                  | Primary sprint pressure                                               |
+| ------------ | ------------------------------------------------ | --------------------------------------------------------------------- |
+| #4831 PACK C | Repo Scope, Delivery, And Evidence               | Parent tracker for repo/delivery hardening after M11/M12/P3 contracts |
+| #4832 PC1    | Git/GitHub, Worktree, Repository Memory          | Repository/worktree identity snapshots for scoped repo work           |
+| #4833 PC2    | Diff/Patch Review, Artifact/Receipt, Diagnostics | Change capture and diff review artifacts                              |
+| #4834 PC3    | File Tool, Shell Execution, Sandbox/Workspace    | File/shell/workspace authority boundary for delivery evidence         |
+| #4835 PC4    | Git/GitHub Workflow, Artifact/Receipt, Writeback | Delivery authority and PR readiness receipt projections               |
 
 Timing rule:
 
@@ -277,6 +286,17 @@ Follow-up hygiene status:
   decision is sequencing: keep Pack D unfiled until #4768 and #4772 either
   close on Pack C evidence or are narrowed into explicit remaining proof
   slices.
+
+Second 2026-06-12 review:
+
+- Rechecked #4749, #4768, #4772, #4777, #4781, #4782, #4783, and #4786 with
+  `gh issue view --comments`.
+- No additional GitHub issues should be opened now. The open tail is blocked
+  on live/operator evidence, independent provider participation, settlement
+  receipts, or W3 training completion, not on missing issue decomposition.
+- The next issue-creation point is after #4768/#4772 close or narrow: file
+  Pack D only if the resulting market/intake work has a concrete acceptance
+  slice beyond the already-open #4777/#4781/#4782/#4783 issues.
 
 Implementation status:
 

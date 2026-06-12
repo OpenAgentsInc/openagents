@@ -12,6 +12,13 @@ It initially covered the open issue set checked with `gh issue list` on
 readiness pass added #4824-#4830 for account, credential, and policy
 hardening.
 
+Current status as of the 2026-06-12 follow-up review: Pack A (#4813-#4823),
+Pack B (#4824-#4830), Pack C (#4831-#4835), and public hygiene #4836/#4837
+are closed. Do not claim those issues from this historical plan. The remaining
+open tail is #4768, #4772, #4777, #4781, #4782, #4783, #4786, and W3 #4749.
+Those issues are now live-evidence or training/evaluation gates rather than
+new implementation-pack decomposition.
+
 The goal is to let multiple agents make progress concurrently without making
 each issue carry a full product end-to-end verification burden. Individual
 agents should run focused tests, contract checks, and local smokes for their
@@ -135,10 +142,10 @@ Closing.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4814 PA1 | Task supervisor for scheduled and background Autopilot runs |
-| #4815 PA2 | Schedule and continuation receipts for unattended work |
+| Issue     | Responsibility                                                |
+| --------- | ------------------------------------------------------------- |
+| #4814 PA1 | Task supervisor for scheduled and background Autopilot runs   |
+| #4815 PA2 | Schedule and continuation receipts for unattended work        |
 | #4820 PA7 | Structured event log replay discipline for Pack A projections |
 
 Secondary coordination:
@@ -163,12 +170,12 @@ Merge wave: Wave 1.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4816 PA3 | Notification and attention coordinator |
-| #4817 PA4 | Mobile and web companion projection |
-| #4822 PA9 | Permission and approval contract for headless/background actions |
-| #4823 PA10 | Accessibility and non-interactive contract |
+| Issue      | Responsibility                                                   |
+| ---------- | ---------------------------------------------------------------- |
+| #4816 PA3  | Notification and attention coordinator                           |
+| #4817 PA4  | Mobile and web companion projection                              |
+| #4822 PA9  | Permission and approval contract for headless/background actions |
+| #4823 PA10 | Accessibility and non-interactive contract                       |
 
 Secondary coordination:
 
@@ -190,11 +197,11 @@ Merge wave: Wave 1.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4766 M8 | Account-pool dashboard |
-| #4767 M9 | Rate-limit rotation proof, including live leg readiness |
-| #4771 M13 | Provider peers and ToS-compliance review |
+| Issue     | Responsibility                                          |
+| --------- | ------------------------------------------------------- |
+| #4766 M8  | Account-pool dashboard                                  |
+| #4767 M9  | Rate-limit rotation proof, including live leg readiness |
+| #4771 M13 | Provider peers and ToS-compliance review                |
 
 Secondary coordination:
 
@@ -218,14 +225,14 @@ readiness.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4770 M12 | Team budgets and spend-to-evidence joins |
-| #4774 A2 | Agent payment in both currencies |
-| #4780 P4 | Settlement bridge from USD credits to sats |
-| #4785 P9 | Settlement visibility law |
-| #4819 PA6 | Artifact and receipt ledger |
-| #4821 PA8 | Usage budget and cost-stop projections |
+| Issue     | Responsibility                             |
+| --------- | ------------------------------------------ |
+| #4770 M12 | Team budgets and spend-to-evidence joins   |
+| #4774 A2  | Agent payment in both currencies           |
+| #4780 P4  | Settlement bridge from USD credits to sats |
+| #4785 P9  | Settlement visibility law                  |
+| #4819 PA6 | Artifact and receipt ledger                |
+| #4821 PA8 | Usage budget and cost-stop projections     |
 
 Secondary coordination:
 
@@ -251,11 +258,11 @@ payments and settlement.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4769 M11 | Repo connect, per-mission data-scope UX, placement explanations |
-| #4778 P2 | Mission/work-order record unification |
-| #4779 P3 | Writeback symmetry through artifact/authority layer to PR drafts |
+| Issue     | Responsibility                                                   |
+| --------- | ---------------------------------------------------------------- |
+| #4769 M11 | Repo connect, per-mission data-scope UX, placement explanations  |
+| #4778 P2  | Mission/work-order record unification                            |
+| #4779 P3  | Writeback symmetry through artifact/authority layer to PR drafts |
 
 Secondary coordination:
 
@@ -277,11 +284,11 @@ Ledger receipts.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4773 A1 | API parity contract |
+| Issue    | Responsibility                                       |
+| -------- | ---------------------------------------------------- |
+| #4773 A1 | API parity contract                                  |
 | #4775 A3 | Forum interaction spawns a real Autopilot work order |
-| #4776 A4 | Autonomics spawn coding threads |
+| #4776 A4 | Autonomics spawn coding threads                      |
 
 Secondary coordination:
 
@@ -306,12 +313,12 @@ Wave 3 for final parity rows after dependent lanes merge.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4777 P1 | First live negotiated labor job |
+| Issue    | Responsibility                     |
+| -------- | ---------------------------------- |
+| #4777 P1 | First live negotiated labor job    |
 | #4781 P5 | Backlog faucet for the open market |
-| #4782 P6 | Spare-capacity provider mode |
-| #4783 P7 | Lane C fanout |
+| #4782 P6 | Spare-capacity provider mode       |
+| #4783 P7 | Lane C fanout                      |
 
 Secondary coordination:
 
@@ -335,14 +342,14 @@ market slices after Ledger and Scope gates are satisfied.
 
 Primary issues:
 
-| Issue | Responsibility |
-| --- | --- |
-| #4818 PA5 | Smoke receipt authority for Pack A MVP proofs |
-| #4768 M10 | Overnight unattended proof across lanes and surfaces |
-| #4772 M14 | MVP exit review and door-open decision record |
-| #4786 | Parent epic closeout tracking |
-| #4813 | Pack A parent closeout tracking |
-| #4749 W3 | Student-program evaluation issue, kept separate from MVP gate |
+| Issue     | Responsibility                                                |
+| --------- | ------------------------------------------------------------- |
+| #4818 PA5 | Smoke receipt authority for Pack A MVP proofs                 |
+| #4768 M10 | Overnight unattended proof across lanes and surfaces          |
+| #4772 M14 | MVP exit review and door-open decision record                 |
+| #4786     | Parent epic closeout tracking                                 |
+| #4813     | Pack A parent closeout tracking                               |
+| #4749 W3  | Student-program evaluation issue, kept separate from MVP gate |
 
 Secondary coordination:
 
@@ -375,15 +382,15 @@ provider security review.
 
 Primary ownership:
 
-| Issue | Owner | Responsibility |
-| --- | --- | --- |
-| #4824 PACK B | Agent Scope | Parent tracking for Pack B readiness, child status, and #4771 timing |
-| #4825 PB1 | Agent Scope | Authentication and credential storage boundary for provider accounts |
-| #4827 PB3 | Agent Scope | Security review gate for provider peers and account leases |
-| #4828 PB4 | Agent Scope | Telemetry/privacy fixtures for account health and provider routing |
-| #4826 PB2 | Agent Ledger | Resolved settings/configuration snapshots for provider, budget, and policy decisions |
-| #4829 PB5 | Agent Ledger | Retention/deletion rules for credential, lease, telemetry, and policy records |
-| #4830 PB6 | Agent Ledger | Minimal managed policy snapshots for team and approved-user gates |
+| Issue        | Owner        | Responsibility                                                                       |
+| ------------ | ------------ | ------------------------------------------------------------------------------------ |
+| #4824 PACK B | Agent Scope  | Parent tracking for Pack B readiness, child status, and #4771 timing                 |
+| #4825 PB1    | Agent Scope  | Authentication and credential storage boundary for provider accounts                 |
+| #4827 PB3    | Agent Scope  | Security review gate for provider peers and account leases                           |
+| #4828 PB4    | Agent Scope  | Telemetry/privacy fixtures for account health and provider routing                   |
+| #4826 PB2    | Agent Ledger | Resolved settings/configuration snapshots for provider, budget, and policy decisions |
+| #4829 PB5    | Agent Ledger | Retention/deletion rules for credential, lease, telemetry, and policy records        |
+| #4830 PB6    | Agent Ledger | Minimal managed policy snapshots for team and approved-user gates                    |
 
 Agent Gate should cite Pack B only if #4768 or #4772 proof evidence relies on
 provider credentials, account telemetry, or managed policy state. Otherwise the
@@ -483,15 +490,15 @@ without a concrete Gate-owned issue, proof boundary, and required evidence.
 
 Use this split:
 
-| Issue class | Lane agents must provide | Gate must provide |
-| --- | --- | --- |
-| Pack A child implementation | Focused tests, contracts, smokes, docs, issue comments | Cross-lane proof only when needed by M10/M14/A1 |
-| Product feature rungs | Scoped acceptance checks and route/UI/model tests | Only if the feature is part of the MVP proof claim |
-| M9 live routing | Deterministic leg and readiness evidence | Live two-account proof if not already completed |
-| M10 overnight proof | Dependencies and receipts | Final overnight run and proof record |
-| M14 exit gate | Evidence refs from all lanes | Final decision record and parent issue closeout |
-| P-rung market work | Dry-run/default-off proof where live settlement is blocked | No market go-live claim until settlement and visibility gates are merged |
-| W3 evaluation | Prep/design only while the W2 corpus is unavailable | Not part of MVP gate; keep blocked or separately verified |
+| Issue class                 | Lane agents must provide                                   | Gate must provide                                                        |
+| --------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Pack A child implementation | Focused tests, contracts, smokes, docs, issue comments     | Cross-lane proof only when needed by M10/M14/A1                          |
+| Product feature rungs       | Scoped acceptance checks and route/UI/model tests          | Only if the feature is part of the MVP proof claim                       |
+| M9 live routing             | Deterministic leg and readiness evidence                   | Live two-account proof if not already completed                          |
+| M10 overnight proof         | Dependencies and receipts                                  | Final overnight run and proof record                                     |
+| M14 exit gate               | Evidence refs from all lanes                               | Final decision record and parent issue closeout                          |
+| P-rung market work          | Dry-run/default-off proof where live settlement is blocked | No market go-live claim until settlement and visibility gates are merged |
+| W3 evaluation               | Prep/design only while the W2 corpus is unavailable        | Not part of MVP gate; keep blocked or separately verified                |
 
 ## Dependency Rules
 

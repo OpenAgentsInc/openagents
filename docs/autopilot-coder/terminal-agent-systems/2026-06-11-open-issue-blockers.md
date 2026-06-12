@@ -4,8 +4,9 @@ Date: 2026-06-11
 
 Updated: 2026-06-12
 
-Source set: #4749, #4766-#4783, #4785-#4786, and #4813-#4823, as
-delegated by
+Source set: current open tail #4749, #4768, #4772, #4777, #4781-#4783, and
+#4786, plus recently closed evidence and hygiene issues #4767, #4771, and
+#4836-#4837, as delegated by
 `docs/autopilot-coder/terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`.
 
 This file records blockers and deferred proof items from the current issue
@@ -32,35 +33,6 @@ Unblocked evidence already recorded:
   input bar.
 - Baseline (d) is complete with reported pass@1 and replay acceptance evidence.
 
-### #4767 M9 live rate-limit rotation proof
-
-Status: ready to close.
-
-Resolved evidence:
-
-- The CI-safe deterministic rotation leg is landed.
-- Live fleet readiness and live failover route receipts were recorded on
-  2026-06-12 for `chris@openagents.com`.
-- A third ChatGPT/Codex account was connected, leaving two eligible healthy
-  accounts and zero active leases before the final continuity run.
-- The final continuity run created
-  `autopilot_work_order.a52fa1ed-e509-42cb-8ef9-44ea98422313`, selected
-  `requester_pylon`, dispatched
-  `pylon_assignment.autopilot_work_order.a52fa1ed-e509-42cb-8ef9-44ea98422313.task.m9_rotation_continuity.20260612.artanis.01`,
-  recorded pre-rotation artifact/proof refs, induced a live `rate_limited`
-  failover from `provider-account-lease_ref_16d16655153347b1aa716acebab0e7d2`
-  to `provider-account-lease_ref_da937744a4f04e629ea99fcbffa3451b`, and then
-  delivered the same work order with post-rotation artifact/proof refs.
-- The replacement lease was released with status `succeeded`, and active lease
-  count returned to zero.
-- Gate record:
-  `docs/autopilot-coder/2026-06-12-m9-live-rate-limit-rotation-gate-record.md`.
-
-Remaining blocker:
-
-- None for #4767. The record is scoped to M9 only and does not unblock M10,
-  M13, M14, market proof, settlement, or parent MVP readiness by itself.
-
 ### #4768 M10 overnight unattended proof
 
 Status: open.
@@ -84,54 +56,17 @@ Next unblock:
 - Run the live operator proof in a credentialed environment, then evaluate the
   receipts through the Gate decision contract.
 
-### #4771 M13 provider peers and non-Codex live run
-
-Status: ready to close.
-
-Resolved evidence:
-
-- The ToS review is complete and API-key BYOK connect paths for Anthropic and
-  Gemini are built.
-- The account-pool dashboard can now show Anthropic/Gemini accounts.
-- Production D1 provider-account constraints were widened by
-  `0173_provider_account_peer_provider_checks.sql` so connected Gemini accounts
-  can be stored, leased, granted, sanity-checked, and projected.
-- A live Gemini BYOK account is connected for `github:14167547` with public ref
-  `provider-account_ref_m13_google_gemini_d2fc43560602`; D1 stores only the
-  public secret ref
-  `provider-account://google-gemini/user-api-key/provider-account_ref_m13_google_gemini_d2fc43560602`.
-- `GET /api/provider-accounts/pool` returned the Gemini account as
-  `eligible`, `healthy`, `connected`, and with zero active leases.
-- `POST /api/operator/provider-accounts/chatgpt-codex/leases` with
-  `requiredProvider: google_gemini` selected the Gemini account and created
-  `provider-account-lease_ref_6de27b1ad36944b382362ca73c23f20a`.
-- The lease grant
-  `provider-auth-grant_grant_ref_19dc435bf3204a70a6b7b853206f357d` resolved
-  through the registered-agent route to a `probe_gemini_api_key`
-  materialization targeting `GOOGLE_GENERATIVE_AI_API_KEY`.
-- A one-off Probe runner consumed the production-resolved grant payload and
-  completed a live `gemini_api` backend call with secret redaction verified.
-- The lease was released as `succeeded`, and the pool returned to zero active
-  leases for the account.
-- Gate record:
-  `docs/autopilot-coder/2026-06-12-m13-live-gemini-provider-gate-record.md`.
-
-Remaining blocker:
-
-- None for #4771. This does not unblock M10, M14, market proof, settlement, or
-  Pack B hardening by itself.
-
 ### #4772 M14 MVP exit review and door-open decision
 
 Status: open.
 
 Blockers:
 
-- #4767 live two-account rotation is ready to close, but does not satisfy the
-  separate overnight, non-Codex, market, or MVP exit gates.
+- #4767 live two-account rotation is closed, but does not satisfy the separate
+  overnight, market, or MVP exit gates.
 - #4768 overnight unattended proof remains open.
-- #4771 non-Codex real-run evidence is ready to close and no longer blocks
-  M14 once its issue is closed.
+- #4771 non-Codex real-run evidence is closed and no longer blocks M14, but it
+  does not substitute for #4768 or market proof.
 - Market live paid-labor proofs remain open where they affect public claims.
 - The final decision record must name exact dates, issue refs, commits, smokes,
   accepted deferrals, and remaining claim limits.
@@ -152,7 +87,7 @@ Blockers:
 - The market-key publisher is implemented, the dedicated market signing secret
   is configured, and Worker version
   `f87df619-8678-40ad-872d-5ae35e953a80` is deployed.
-- A ref-only no-spend work request now returns `201` with a retrievable relay
+- A ref-only no-spend work request returned `201` with a retrievable relay
   event instead of the default unconfigured/rejected path:
   - work request id: `f3da4627-246c-444d-885a-0f779964a779`
   - relay ref: `relay.public.market.0a2b94b3a5372b3a5cf8cbeb1325da9b`
@@ -160,6 +95,11 @@ Blockers:
     `d480e175984bb3afafa92162438c9b56a1399b5631f9f88110fea11673520327`
   - evidence:
     `docs/labor/2026-06-12-p1-market-key-live-publisher-probe.md`
+- That work request is no longer active: #4773 closed, so the row was expired
+  with receipt ref
+  `receipt.backlog_faucet.github_issue_closed.openagents.4773.20260612`.
+- The live order book is currently empty. P1 needs a fresh currently-open
+  bounded backlog target before the negotiated labor run can proceed.
 - An independent contributor Pylon must quote the job.
 - The requester must accept one quote with escrow reserve evidence.
 - The contributor must execute and deliver output-only refs.
@@ -170,8 +110,8 @@ Blockers:
 Next unblock:
 
 - Execute the runbook with an independent provider. The posted work request was
-  polled eight times over two minutes after publication and still had zero
-  offers.
+  expired after its backing issue closed, so select a new open target before
+  publication.
 
 ### #4781 P5 backlog faucet live market proof
 
@@ -180,8 +120,11 @@ Status: open.
 Blockers:
 
 - The backlog faucet adapter and contract tests are merged.
-- One live backlog work request is listed and relay-backed:
-  `f3da4627-246c-444d-885a-0f779964a779`.
+- The prior live backlog work request
+  `f3da4627-246c-444d-885a-0f779964a779` was relay-backed but is now expired
+  because its backing issue #4773 closed.
+- `/api/forum/work-requests` now correctly returns an empty order book with
+  `generatedAt`, `maxStalenessSeconds: 0`, and the shared staleness contract.
 - The live acceptance still requires real backlog issues to be listed through
   the open market.
 - At least one listed issue must be quoted and completed by a non-owner
@@ -190,8 +133,8 @@ Blockers:
 
 Next unblock:
 
-- After the P1 market key and provider path are live, list the selected backlog
-  issues and run at least one through non-owner completion.
+- Select fresh currently-open backlog issues, list them through the live
+  market, and run at least one through non-owner completion.
 
 ### #4782 P6 spare-capacity provider mode
 
@@ -200,8 +143,9 @@ Status: open.
 Blockers:
 
 - The default-off provider-mode gate is merged.
-- The market-key publisher is configured, so provider Pylons can now see a
-  live relay-backed work request if they are online and capability-matched.
+- The market-key publisher is configured. There is currently no open
+  relay-backed work request after the #4773 row expired, so provider proof
+  needs a new active listing.
 - Live GO ONLINE proof is still missing.
 - A provider Pylon needs explicit owner consent, pricing, capability,
   settlement readiness, own-work preemption, and earnings-visibility refs.
@@ -255,7 +199,11 @@ Recently unblocked:
   budget and raw `JSON.parse` plus raw time/id/random counts are at zero.
 - The P1/P5 market-key signing blocker is cleared: the Worker secret is
   configured, Worker version `f87df619-8678-40ad-872d-5ae35e953a80` is live,
-  and a no-spend work request produced a retrievable kind-5934 relay event.
+  and a no-spend work request produced a retrievable kind-5934 relay event
+  before it was later expired because the backing issue closed.
+- Public hygiene is cleared for the current order book: #4836/#4837 are
+  closed, closed GitHub issues are rejected before listing, and the live
+  work-request list now declares freshness.
 
 Next unblock:
 
@@ -269,7 +217,9 @@ proof gates above.
 
 | Issue               | Closed scope                                     | Deferred blocker carried forward                                                          |
 | ------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| #4766 M8            | Provider account pool dashboard                  | #4767 and #4771 still need credentialed live legs.                                        |
+| #4767 M9            | Live rate-limit rotation proof                   | Does not satisfy #4768, #4772, market proof, settlement, or parent MVP readiness.         |
+| #4766 M8            | Provider account pool dashboard                  | Provider live legs now live in closed #4767/#4771 records; #4768/#4772 remain separate.   |
+| #4771 M13           | Gemini provider-peer live run                    | Does not satisfy #4768, #4772, market proof, settlement, or parent MVP readiness.         |
 | #4769 M11           | Repo connect, data scope, placement explanations | Broader #4772/#4786 proof remains Gate-owned.                                             |
 | #4770 M12           | Team budgets and spend-to-evidence joins         | Live funded payment/settlement evidence remains operator/Gate-owned where claims cite it. |
 | #4773 A1            | API parity contract                              | Final MVP proof still depends on live Gate evidence.                                      |
@@ -291,6 +241,8 @@ proof gates above.
 | #4821 PA8           | Usage budget and cost-stop projections           | Feeds M9/M10/M14 budget and smart-routing claims.                                         |
 | #4822 PA9           | Permission/approval contract                     | Feeds unattended/headless proof boundaries.                                               |
 | #4823 PA10          | Accessibility/non-interactive contract           | Feeds agent/Pylon non-interactive proof boundaries.                                       |
+| #4836 hygiene       | Product-promises freshness and announcement gate | Public claims still require exact evidence refs and #4772 decision limits.                |
+| #4837 hygiene       | Forum work-request closed-issue/order-book guard | Market proof still requires fresh open listings and live provider/settlement receipts.    |
 
 ## Claim Boundaries
 
