@@ -204,10 +204,20 @@ export type TrainingVerificationVerdict = Readonly<{
   verdictRefs: ReadonlyArray<string>
 }>
 
+// Per-class staleness dimension (Pluralis roadmap P2.2, openagents
+// issue #4853). Additive and optional: a registration without a policy
+// inherits the run-level max_allowed_stale default. Class overrides may
+// only tighten — the acceptance-time decision clamps a looser override
+// to the run contract ceiling (see training-staleness-acceptance.ts).
+export type TrainingVerificationStalenessPolicy =
+  | Readonly<{ kind: 'inherit_run_default' }>
+  | Readonly<{ kind: 'max_steps_behind_override'; maxStepsBehind: number }>
+
 export type TrainingVerificationRegistration = Readonly<{
   className: TrainingVerificationClass
   defaultSamplingPolicy: TrainingVerificationSamplingPolicyKind
   failureCodes: ReadonlyArray<TrainingVerificationFailureCode>
+  stalenessPolicy?: TrainingVerificationStalenessPolicy
   verify: (
     input: TrainingVerificationVerifierInput,
   ) => Promise<TrainingVerificationVerdict> | TrainingVerificationVerdict
@@ -619,6 +629,7 @@ export const defaultTrainingVerificationRegistry = new Map<
         'MerkleProofInvalid',
         'RowOpeningMissing',
       ],
+      stalenessPolicy: { kind: 'inherit_run_default' },
       verify: verifyFreivaldsMerkle,
     },
   ],
@@ -628,6 +639,7 @@ export const defaultTrainingVerificationRegistry = new Map<
       className: 'deterministic_recompute',
       defaultSamplingPolicy: 'per_contribution',
       failureCodes: ['DigestMismatch', 'OutputDigestMissing'],
+      stalenessPolicy: { kind: 'inherit_run_default' },
       verify: verifyDeterministicRecompute,
     },
   ],
@@ -637,6 +649,7 @@ export const defaultTrainingVerificationRegistry = new Map<
       className: 'exact_trace_replay',
       defaultSamplingPolicy: 'per_contribution',
       failureCodes: ['ExecutorTraceMismatch', 'OutputDigestMissing'],
+      stalenessPolicy: { kind: 'inherit_run_default' },
       verify: verifyExactTraceReplay,
     },
   ],
@@ -646,6 +659,7 @@ export const defaultTrainingVerificationRegistry = new Map<
       className: 'statistical_cross_check',
       defaultSamplingPolicy: 'aggregate',
       failureCodes: ['StatisticalThresholdFailed'],
+      stalenessPolicy: { kind: 'max_steps_behind_override', maxStepsBehind: 2 },
       verify: input => verifyThreshold('statistical_cross_check', input),
     },
   ],
@@ -655,6 +669,7 @@ export const defaultTrainingVerificationRegistry = new Map<
       className: 'seeded_replication',
       defaultSamplingPolicy: 'aggregate',
       failureCodes: ['StatisticalThresholdFailed'],
+      stalenessPolicy: { kind: 'max_steps_behind_override', maxStepsBehind: 3 },
       verify: input => verifyThreshold('seeded_replication', input),
     },
   ],
