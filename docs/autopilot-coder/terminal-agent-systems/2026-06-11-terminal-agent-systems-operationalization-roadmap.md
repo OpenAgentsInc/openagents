@@ -254,10 +254,11 @@ Final implementation pass:
 - Pack C now supplies typed evidence surfaces for repository/worktree identity,
   bounded change capture, workspace authority, and delivery/PR readiness.
 - No additional Pack C child issues are needed now. The next issue set should
-  not be Pack D until #4768/#4772 MVP proof and public freshness/order-book
-  hygiene are closed or explicitly scoped. #4836 now closes the
-  product-promises freshness/announcement half; #4837 remains the open
-  Forum work-request order-book half.
+  not be Pack D until #4768/#4772 MVP proof is closed or explicitly scoped.
+  The immediate public freshness/order-book hygiene pair is now closed:
+  #4836 covers product-promises freshness and announcement readiness, while
+  #4837 covers Forum work-request closed-issue admission, live-at-read
+  freshness, and expiration of the stale #4773 row.
 
 Follow-up hygiene status:
 
@@ -266,8 +267,16 @@ Follow-up hygiene status:
   `/api/public/product-promises`, plus an announcement-readiness helper that
   blocks announcement copy when the announced version does not match the
   served version.
-- #4837 remains the next sequential blocker: Forum work requests must not
-  advertise closed GitHub issues as open market work.
+- #4837 is implemented in `9730f6728`: `/api/forum/work-requests` now carries
+  `generatedAt`, `maxStalenessSeconds`, and the shared `live_at_read`
+  staleness contract; `buildBacklogWorkRequestFiling` rejects closed GitHub
+  issues before producing an open-market work request; and the stale live
+  #4773-backed request was expired by lifecycle receipt.
+- No additional follow-up issues were created on 2026-06-12 from this review.
+  #4836/#4837 were the missing public hygiene blockers. The remaining
+  decision is sequencing: keep Pack D unfiled until #4768 and #4772 either
+  close on Pack C evidence or are narrowed into explicit remaining proof
+  slices.
 
 Implementation status:
 

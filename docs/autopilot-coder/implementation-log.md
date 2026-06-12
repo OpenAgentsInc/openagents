@@ -1776,3 +1776,29 @@ Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/product-promises.test.ts src/openagents-openapi-routes.test.ts`
 - `bun run --cwd apps/openagents.com/workers/api typecheck`
+
+## Issue #4837: Forum Work-Request Closed Objective Hygiene
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4837`
+
+Status: implemented and closed by `9730f6728`; this follow-up pass verified
+the state and synchronized the roadmap/docs.
+
+Implemented:
+
+- `/api/forum/work-requests` now returns `generatedAt`,
+  `maxStalenessSeconds`, and the shared `live_at_read` projection staleness
+  contract, with rebuild causes for work-request creation, lifecycle,
+  archival, and quote recording.
+- `buildBacklogWorkRequestFiling` rejects closed GitHub issues before they can
+  become open-market Forum work requests.
+- The stale live work request backed by closed issue #4773 was expired by
+  lifecycle receipt, and the detail route reports it as `expired`.
+- Updated the original terminal-agent-systems roadmap and Autopilot docs index
+  so #4837 is no longer treated as the remaining blocker. Pack D still waits
+  on #4768/#4772 MVP proof closure or explicit proof-slice scoping.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/backlog-faucet.test.ts src/forum-routes.test.ts src/openagents-openapi-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`

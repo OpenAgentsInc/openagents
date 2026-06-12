@@ -44,9 +44,10 @@ Forum reporting.
   settings, security review, telemetry/privacy, retention/deletion, and
   minimal managed policy. Pack C is now implemented as #4831-#4835, covering
   repository/worktree identity, change capture, file/shell/workspace authority,
-  and delivery/PR readiness receipts. The next pack is intentionally not filed
-  until the remaining MVP proof gates and live market/order-book hygiene issues
-  have consumed those receipts.
+  and delivery/PR readiness receipts. The public freshness/order-book hygiene
+  pair is closed by #4836/#4837; the next pack is intentionally not filed until
+  the remaining MVP proof gates (#4768/#4772) have consumed Pack C evidence or
+  been explicitly narrowed.
 - `terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`: delegation
   plan for the current open issue set, assigning the MVP ladder, Pack A, Pack
   B, market, and W3 evaluation work across eight named agent worktrees with
