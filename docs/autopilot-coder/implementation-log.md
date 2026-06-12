@@ -1429,3 +1429,33 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-security-review.test.ts`
+
+## PB4 / Issue #4828: Provider Account Telemetry Privacy Fixtures
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4828`
+
+Status: implemented for the shared provider-account telemetry/privacy
+projection and fixture contract.
+
+Implemented:
+
+- Added `provider-account-telemetry-privacy.ts` with a typed projection for
+  account-health, rate-limit, low-credit, cooldown, reset-hint, reconnect,
+  lease-utilization, and provider-routing telemetry.
+- Aggregate telemetry exposes metric refs, counters, durations, statuses,
+  provider ids, provider-account classes, caveat refs, source refs, redaction
+  fixture refs, debug/support bundle refs, and freshness metadata only.
+- `local_only` telemetry is ref-only outside the local/debug boundary, and
+  `off` telemetry remains disabled.
+- Account-health, rate-limit, low-credit, cooldown, reset-hint, and reconnect
+  telemetry now require redaction fixture refs or produce typed blockers.
+- Added
+  `docs/autopilot-coder/2026-06-11-provider-account-telemetry-privacy-fixtures.md`
+  to document telemetry modes, sharing policy, required fixtures, and
+  freshness/staleness semantics.
+- Updated the `apps/openagents.com` invariant ledger with the Pack B
+  telemetry/privacy projection rule.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-telemetry-privacy.test.ts`

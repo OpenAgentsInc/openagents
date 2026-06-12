@@ -606,6 +606,15 @@ This is the invariant ledger for `openagents`.
   also carry approval, denial, rollback, incident-boundary, and debug-boundary
   refs. Scoped exceptions may keep a narrow existing slice alive, but must
   preserve visible blocker refs and cannot broaden provider-peer readiness.
+- Pack B provider-account telemetry projections may expose refs, counters,
+  durations, statuses, provider ids, provider-account classes, aggregates,
+  caveat refs, and freshness metadata only. Account-health, rate-limit,
+  low-credit, cooldown, reset-hint, and reconnect telemetry must cite redaction
+  fixture refs or produce typed blockers. `local_only` projections are ref-only
+  outside the local/debug boundary, `off` projections remain disabled, and raw
+  prompts, transcripts, shell output, private repo data, raw provider responses,
+  provider credentials, OAuth material, wallet/payment material, and customer
+  data must be rejected before telemetry projection.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
   `workers/api/src/provider-account-lease-policy.test.ts`.
@@ -615,6 +624,8 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/provider-account-effective-config.test.ts`.
 - Regression coverage for Pack B provider-peer security review gates lives in
   `workers/api/src/provider-account-security-review.test.ts`.
+- Regression coverage for Pack B provider-account telemetry/privacy fixtures
+  lives in `workers/api/src/provider-account-telemetry-privacy.test.ts`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 

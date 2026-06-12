@@ -123,6 +123,14 @@ Implementation status:
   It gates broad provider-peer claims on ToS, credential, threat, telemetry,
   retention, redaction, revocation, and high-risk control refs while preserving
   scoped-exception blockers.
+- #4828 PB4 is implemented by
+  `apps/openagents.com/workers/api/src/provider-account-telemetry-privacy.ts`,
+  `apps/openagents.com/workers/api/src/provider-account-telemetry-privacy.test.ts`,
+  and
+  `docs/autopilot-coder/2026-06-11-provider-account-telemetry-privacy-fixtures.md`.
+  It defines aggregate, local-only, and opt-out telemetry projections with
+  freshness metadata, redaction fixture blockers, and ref-only debug/support
+  bundle boundaries.
 
 ## Timing Impact On Other Open Issues
 
