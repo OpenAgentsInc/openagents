@@ -161,8 +161,8 @@ Implementation status:
 
 ## Timing Impact On Other Open Issues
 
-Pack A and Pack B are acceptance overlays, not replacement ladders. They should
-change when broader claims can close, not stop unrelated work.
+Pack A, Pack B, and Pack C are acceptance overlays, not replacement ladders.
+They should change when broader claims can close, not stop unrelated work.
 
 - **Do not pause unrelated open rungs.** M8 account-pool work, M11 repo/scope,
   M12 team budgets, M13 provider review, A2-A4, and the post-MVP P-rungs can
@@ -183,17 +183,30 @@ change when broader claims can close, not stop unrelated work.
 - **Avoid retroactively reopening closed rungs only to hold operational debt.**
   Use the PA issues for that debt, cross-link the original rung, and update
   closeout notes if a claim boundary needs clarification.
-- **Pack B is now implemented and applies to provider/account/policy claims.**
+- **Pack B is implemented and applies to provider/account/policy claims.**
   Do not reopen M8 or M9 only to hold Pack B debt. Do cite #4825-#4830 for
-  broad provider-peer claims in #4771 and any future work that depends on
-  provider credential refs, account telemetry, policy denial reasons, or
-  retention guarantees.
-- **Do not close #4771 on Pack B alone.** Pack B removes the audit/policy
-  blocker, but #4771 still needs the live non-Codex credentialed-run evidence
-  or a documented scoped exception.
+  future work that depends on provider credential refs, account telemetry,
+  policy denial reasons, or retention guarantees. #4771 is now closed; do not
+  use Pack B to broaden provider-peer claims beyond the refs or scoped
+  exceptions named in that closeout.
+- **Pack C is implemented and applies to repo/delivery evidence claims.** Do
+  not reopen M11 or P3 only to hold Pack C debt. Do cite #4832-#4835 when
+  future writeback, market, proof, or order-book work depends on repo identity,
+  worktree identity, change capture, workspace authority, or delivery
+  readiness receipts.
+- **Do not close market or gate issues on Pack C alone.** Pack C is not live
+  PR writeback, live labor settlement, accepted work, payout, or the #4772
+  door-open proof. #4777, #4781, #4782, and #4783 still need live market or
+  provider receipts; #4768 and #4772 still need MVP proof receipts.
+- **Do not file Pack D yet.** As of the final Pack C closeout, #4768 and
+  #4772 are still open, and #4836/#4837 show that public product-promise and
+  Forum work-request surfaces still need freshness/order-book hygiene before a
+  broad intake/market-unification pack would be well-scoped.
 - **Keep #4786, #4768, and #4772 focused on their proof gates.** They should
   cite Pack B only when their proof evidence relies on provider credentials,
-  account telemetry, managed policy snapshots, or retention/deletion behavior.
+  account telemetry, managed policy snapshots, or retention/deletion behavior,
+  and cite Pack C only when their proof evidence relies on repo/delivery
+  evidence.
 
 ## Pack C Readiness And Tracking Issues
 
@@ -201,17 +214,18 @@ As of the Pack C `gh issue list` check on 2026-06-12, M11 repo/data-scope
 UX (#4769), M12 spend-to-evidence joins (#4770), and P3 writeback symmetry
 (#4779) are closed as backend/contract slices. Their issue closeouts still
 defer live self-serve repo connection UI proof, live real-repo PR draft proof,
-and downstream receipt evidence. The open issue set has narrowed to the Gate
-proof and market/live-evidence lanes: #4768, #4771, #4772, #4777, #4781,
-#4782, #4783, #4786, plus W3 #4749.
+and downstream receipt evidence. The open issue set had narrowed to the Gate
+proof and market/live-evidence lanes when Pack C was filed. At final Pack C
+closeout, #4771 is closed and the remaining open Autopilot set is #4768,
+#4772, #4777, #4781, #4782, #4783, #4786, #4836, and #4837, plus W3 #4749.
 
-That makes Pack C ready to file now. Pack C should not reopen M11/P3 or claim
-live PR writeback by itself. It should harden the repo/delivery evidence layer
-that future writeback, market, and proof issues need: repository/worktree
-identity, bounded change capture, file/shell/workspace authority, and
-delivery/PR readiness receipts.
+That made Pack C ready to file. Pack C should not reopen M11/P3 or claim live
+PR writeback by itself. It hardens the repo/delivery evidence layer that
+future writeback, market, and proof issues need: repository/worktree identity,
+bounded change capture, file/shell/workspace authority, and delivery/PR
+readiness receipts.
 
-Pack C is now filed as GitHub issue #4831, with one child issue for each
+Pack C was filed as GitHub issue #4831, with one child issue for each
 subsystem slice that should harden repo scope and delivery evidence:
 
 | Pack issue | Subsystem audit | Primary sprint pressure |
@@ -231,6 +245,16 @@ Timing rule:
 - #4768, #4772, and #4786 should cite Pack C only when their proof evidence
   depends on repo identity, change capture, file/shell/workspace evidence, or
   delivery/PR readiness receipts.
+
+Final implementation pass:
+
+- On 2026-06-12, #4832-#4835 were implemented, pushed to `main`, commented,
+  and closed. #4831 can close as the Pack C parent after this roadmap update.
+- Pack C now supplies typed evidence surfaces for repository/worktree identity,
+  bounded change capture, workspace authority, and delivery/PR readiness.
+- No additional Pack C child issues are needed now. The next issue set should
+  not be Pack D until #4768/#4772 MVP proof and #4836/#4837 public
+  freshness/order-book hygiene are closed or explicitly scoped.
 
 Implementation status:
 
@@ -630,11 +654,13 @@ that turns the already-landed runtime kernel and work-order loop into
 unattended, inspectable, MVP-gating proof.
 
 Pack B is implemented as #4824-#4830 and should be cited where it directly
-serves M13 and later provider/account/policy claims. Pack C is now filed as
-#4831-#4835 because M11/M12/P3 have landed their backend contract slices and
-their deferred proof needs typed repo/delivery evidence. Hold Pack D and Pack
-E until the product can run, notify, resume, show status, write back or defer
-writeback honestly, and produce public-safe receipts from the same event log.
+serves provider/account/policy claims. Pack C is implemented as #4831-#4835
+because M11/M12/P3 landed their backend contract slices and their deferred
+proof needs typed repo/delivery evidence. Do not file another broad
+operationalization pack now. Hold Pack D and Pack E until the product can run,
+notify, resume, show status, write back or defer writeback honestly, produce
+public-safe receipts from the same event log, and no longer advertises stale
+or closed-objective public market state.
 
 The audit rule for future work is simple: if a capability changes work state,
 spends money, touches credentials, mutates files, pushes code, asks for

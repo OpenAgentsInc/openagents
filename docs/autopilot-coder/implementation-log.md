@@ -1727,3 +1727,27 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/pack-c-delivery-readiness.test.ts src/pack-c-workspace-authority.test.ts src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`
+
+## Pack C Parent / Issue #4831: Repo Scope, Delivery, And Evidence
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4831`
+
+Status: implemented as the parent closeout for #4832-#4835.
+
+Implemented:
+
+- #4832 PC1 repository/worktree identity snapshots.
+- #4833 PC2 change capture and diff-review artifacts.
+- #4834 PC3 file/shell/workspace authority evidence.
+- #4835 PC4 delivery readiness and PR draft receipt projections.
+- Updated the original terminal-agent-systems roadmap with final Pack C
+  implementation status and the current timing rule for #4768, #4772, #4777,
+  #4781, #4782, #4783, #4786, #4836, and #4837.
+- Recorded that no additional Pack C child issues are needed now and that Pack
+  D should wait until the MVP proof gates and public freshness/order-book
+  hygiene issues are closed or explicitly scoped.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-retention-policy.test.ts src/pack-c-delivery-readiness.test.ts src/pack-c-workspace-authority.test.ts src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
