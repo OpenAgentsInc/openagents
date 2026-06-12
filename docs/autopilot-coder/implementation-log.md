@@ -1377,6 +1377,41 @@ Remaining boundary:
 - This closes M13's live non-Codex leg only. M10, M14, market proof,
   settlement visibility, and Pack B hardening remain separate gates.
 
+## P1 Market-Key Live Publisher Probe / Issues #4777 #4781 #4782 #4783
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4777`
+
+Status: market-key signing blocker cleared; live negotiated labor job remains
+open for independent-provider execution and settlement evidence.
+
+Implemented and verified:
+
+- Generated a dedicated market signing key, stored it only in ignored local
+  secrets, and uploaded it to `openagents-autopilot` as
+  `FORUM_WORK_REQUEST_MARKET_SECRET_KEY`.
+- Deployed `openagents-autopilot` Worker version
+  `f87df619-8678-40ad-872d-5ae35e953a80`.
+- Posted a ref-only no-spend Forum work request for the #4773 A1
+  parity-matrix slice.
+- Verified `POST /api/forum/work-requests` returned `201` with work request
+  `f3da4627-246c-444d-885a-0f779964a779`, relay ref
+  `relay.public.market.0a2b94b3a5372b3a5cf8cbeb1325da9b`, and kind-5934 job
+  event `d480e175984bb3afafa92162438c9b56a1399b5631f9f88110fea11673520327`.
+- Queried the owned market relay by event id and confirmed the kind-5934 event
+  is retrievable.
+- Polled the work request eight times over two minutes; it remained `open`
+  with zero offers and no accepted quote.
+
+Evidence:
+
+- `docs/labor/2026-06-12-p1-market-key-live-publisher-probe.md`
+
+Remaining boundary:
+
+- #4777/#4781/#4782/#4783 still require an independent contributor quote,
+  requester acceptance, escrow reserve, provider execution, validator
+  acceptance, release, payout ladder, and settlement visibility receipts.
+
 ## PB1 / Issue #4825: Provider Account Credential Boundary
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4825`

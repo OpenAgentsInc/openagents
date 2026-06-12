@@ -149,10 +149,17 @@ Status: open.
 
 Blockers:
 
-- The market-key publisher is implemented but the live run still needs the
-  dedicated market signing secret configured and deployed.
-- A ref-only work request must return a retrievable relay event instead of the
-  default unconfigured/rejected path.
+- The market-key publisher is implemented, the dedicated market signing secret
+  is configured, and Worker version
+  `f87df619-8678-40ad-872d-5ae35e953a80` is deployed.
+- A ref-only no-spend work request now returns `201` with a retrievable relay
+  event instead of the default unconfigured/rejected path:
+  - work request id: `f3da4627-246c-444d-885a-0f779964a779`
+  - relay ref: `relay.public.market.0a2b94b3a5372b3a5cf8cbeb1325da9b`
+  - job event id:
+    `d480e175984bb3afafa92162438c9b56a1399b5631f9f88110fea11673520327`
+  - evidence:
+    `docs/labor/2026-06-12-p1-market-key-live-publisher-probe.md`
 - An independent contributor Pylon must quote the job.
 - The requester must accept one quote with escrow reserve evidence.
 - The contributor must execute and deliver output-only refs.
@@ -162,8 +169,9 @@ Blockers:
 
 Next unblock:
 
-- Configure `FORUM_WORK_REQUEST_MARKET_SECRET_KEY`, deploy, rerun the no-spend
-  probe, then execute the runbook with an independent provider.
+- Execute the runbook with an independent provider. The posted work request was
+  polled eight times over two minutes after publication and still had zero
+  offers.
 
 ### #4781 P5 backlog faucet live market proof
 
@@ -172,6 +180,8 @@ Status: open.
 Blockers:
 
 - The backlog faucet adapter and contract tests are merged.
+- One live backlog work request is listed and relay-backed:
+  `f3da4627-246c-444d-885a-0f779964a779`.
 - The live acceptance still requires real backlog issues to be listed through
   the open market.
 - At least one listed issue must be quoted and completed by a non-owner
@@ -190,6 +200,8 @@ Status: open.
 Blockers:
 
 - The default-off provider-mode gate is merged.
+- The market-key publisher is configured, so provider Pylons can now see a
+  live relay-backed work request if they are online and capability-matched.
 - Live GO ONLINE proof is still missing.
 - A provider Pylon needs explicit owner consent, pricing, capability,
   settlement readiness, own-work preemption, and earnings-visibility refs.
@@ -209,6 +221,8 @@ Status: open.
 Blockers:
 
 - The opt-in public-tier Lane C fanout policy is merged.
+- The labor-market bridge now publishes retrievable relay-backed work requests,
+  but no live market quote/completion evidence exists yet.
 - No live product order has fanned out through the labor market.
 - The proof depends on mission/work-order unification, settlement bridge,
   market inventory, artifact authority, validator policy, customer opt-in,
@@ -239,6 +253,9 @@ Recently unblocked:
 - The zero-debt architecture guard no longer blocks the parent on
   `forum-work-request-live-publisher.ts`: Worker throw count is back within
   budget and raw `JSON.parse` plus raw time/id/random counts are at zero.
+- The P1/P5 market-key signing blocker is cleared: the Worker secret is
+  configured, Worker version `f87df619-8678-40ad-872d-5ae35e953a80` is live,
+  and a no-spend work request produced a retrievable kind-5934 relay event.
 
 Next unblock:
 

@@ -53,6 +53,18 @@ compensate for a failing rehearsal.
 
 ## Phase 0.5: Operator Config (Market-Key Signing)
 
+Status as of 2026-06-12: complete for the market-key configuration and
+relay-publish probe. The Worker secret is configured, Worker version
+`f87df619-8678-40ad-872d-5ae35e953a80` is deployed, and the no-spend probe
+`p1-4777-market-key-probe-20260612T034322Z` returned `201` with work request
+`f3da4627-246c-444d-885a-0f779964a779`, relay ref
+`relay.public.market.0a2b94b3a5372b3a5cf8cbeb1325da9b`, and retrievable
+kind-5934 job event
+`d480e175984bb3afafa92162438c9b56a1399b5631f9f88110fea11673520327`.
+Evidence: `docs/labor/2026-06-12-p1-market-key-live-publisher-probe.md`.
+The next blocker is an independent contributor quote and the live run phases
+below.
+
 The live bridge publisher is implemented in
 `apps/openagents.com/workers/api/src/forum-work-request-live-publisher.ts`
 and wired through `forumWorkRequestRelayPublisherForEnv` in the worker
@@ -65,7 +77,7 @@ keep the deterministic rejecting default, so
 no-spend registered-agent probe, idempotency key
 `p1-4777-live-probe-20260611b`).
 
-Operator steps (one-time):
+Operator steps (one-time, completed 2026-06-12):
 
 1. Generate a dedicated 64-char-hex Nostr secret key for the bridge-held
    market identity, offline. Do not reuse any wallet, treasury, or agent
