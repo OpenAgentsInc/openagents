@@ -63,10 +63,10 @@ and independent paid-capacity receipts are **not** gating. They matter for
 autonomous overnight runs, serving other people's work, and public readiness
 claims. They do not block a local supervised switch.
 
-The honest blocker is narrower and more immediate. After the #4839 and #4840
-implementation passes, the composer/current-repo Codex path and explicit local
-dangerous mode exist in source, but the full daily-driver loop is still
-incomplete:
+The honest blocker is now narrower and more operational. After the
+#4839/#4840/#4841/#4842 implementation passes, the composer/current-repo Codex
+path, explicit local dangerous mode, repo/context projection, and
+check/apply/reload loop exist in source:
 
 - The TUI composer now uses `@openai/codex-sdk` through
   `apps/pylon/src/codex-composer.ts`, defaulting to the current working
@@ -78,9 +78,10 @@ incomplete:
   `sandboxMode: "danger-full-access"` with `approvalPolicy: "never"` and is
   visibly labeled `Codex DANGER`. The assignment executor remains deliberately
   bounded to `read-only` / `workspace-write`.
-- Pylon does not yet have a first-class `pylon dev`/current-repo mode that
-  assembles repo context, instruction refs, account readiness, execution mode,
-  checks, patch summary, and reload in one loop.
+- `pylon dev doctor --json`, `pylon dev check --json`,
+  `pylon dev apply --json`, and `pylon dev reload --json` now provide the
+  first typed local dev loop around the Codex composer. The TUI command palette
+  exposes matching Dev actions.
 - `pylon work submit` exists, but its current request builder hard-codes a
   placeholder commit SHA (`1111111111111111111111111111111111111111`) instead
   of resolving the requested repo/branch to a real pinned commit or requiring a
@@ -91,11 +92,12 @@ incomplete:
   Pylon defaults to Claude, and the CLI does not expose `--adapter codex` /
   `--adapter fable` for work orders.
 
-The practical recommendation is now sharper: **finish the local supervised
-Pylon dev loop around the Codex composer: checks, patch summary, reload, and
-one retained proof.** The implementation no longer needs to wait for overnight
-unattended proof, paid market receipts, PR writeback, or work-order commit
-pinning before the owner can dogfood it while watching.
+The practical recommendation is now sharper: **use the source checkout for a
+retained supervised Pylon task, prove the Codex composer plus dev
+check/apply/reload loop end to end, then pin the owner install path.** The
+implementation no longer needs to wait for overnight unattended proof, paid
+market receipts, PR writeback, or work-order commit pinning before the owner can
+dogfood it while watching.
 
 Top-priority issues filed from this correction:
 
@@ -106,7 +108,8 @@ Top-priority issues filed from this correction:
 - #4841: P0 `pylon dev doctor` repo/instruction/account context projection.
   Implemented in source as a redacted JSON projection; #4838 still owns the
   right-side TUI pane.
-- #4842: P0 dev check/apply/reload loop.
+- #4842: P0 dev check/apply/reload loop. Implemented in source with typed
+  local projections and command-palette actions.
 - #4843: P1 work-order commit pinning and adapter intent.
 
 **Not minimally usable as a Pylon-only replacement today.** The core blockers
@@ -248,7 +251,7 @@ lane when the local Claude/Fable credential/session is ready.** There is no
 | Type a coding prompt into Pylon and run Codex  | Built in source (#4839)        | Composer routes through `@openai/codex-sdk`, uses the current working directory by default, and reports SDK/auth blockers before starting a thread.             |
 | Run Codex unrestricted while the owner watches | Built in source (#4840)        | `--codex-danger` or `dev.codexExecutionMode` maps the local dashboard composer to SDK `danger-full-access`; assignment/provider paths reject the flag.          |
 | Show active repo/instructions/accounts         | Projection built (#4841)       | `pylon dev doctor --json` emits a redacted typed projection; #4838 still owns the right-side TUI pane.                                                          |
-| Check/apply/reload after a Codex edit          | Not built                      | Needed for Pylon-to-Pylon daily work. This is #4842.                                                                                                           |
+| Check/apply/reload after a Codex edit          | Built in source (#4842)        | `pylon dev check/apply/reload --json` emits typed local projections; command-palette Dev actions call the same loop. Reload is explicit and currently no-op unless a controlled process exists. |
 | Keep a headless worker online                  | Source-ready                   | `pylon node` and `PYLON_ASSIGNMENT_WORKER=1` exist for no-spend owner assignments, but this is not required for local supervised daily-driver MVP.             |
 | Register / heartbeat / show status             | Built                          | Presence and status commands exist; live worker-loop smoke passed. Not required for the fastest local switch.                                                  |
 | Submit work from Pylon work-order lane         | Built but not day-to-day safe  | `pylon work submit` exists, but sends a placeholder commit SHA today. #4843 tracks the fix.                                                                    |
@@ -377,9 +380,8 @@ That workaround is too clumsy for normal daily work.
 
 ## Open Issue Tail
 
-Current issue tail after the #4839/#4840/#4841 implementation pass:
+Current issue tail after the #4839/#4840/#4841/#4842 implementation pass:
 
-- #4842 P0: add Pylon dev check/apply/reload loop for supervised Codex changes.
 - #4843 P1: make `pylon work submit` pin real commits and carry adapter intent.
 - #4838: add the TUI repo/account/instruction context pane.
 - #4786 parent epic: Autopilot MVP issue ladder.
@@ -393,9 +395,10 @@ Current issue tail after the #4839/#4840/#4841 implementation pass:
 
 The issue tail now has two lanes:
 
-1. **Owner supervised daily-driver lane:** #4842 plus #4838 for the visible
-   context pane. #4839, #4840, and #4841 are implemented in source. This
-   remains the ASAP switch path.
+1. **Owner supervised daily-driver lane:** #4838 for the visible context pane,
+   plus one retained supervised proof using the source checkout. #4839, #4840,
+   #4841, and #4842 are implemented in source. This remains the ASAP switch
+   path.
 2. **Autopilot/public readiness lane:** #4843, #4768, #4772, #4777, #4781,
    #4782, and #4783. These are still real, but they are not required for the
    owner to sit at Pylon and supervise Codex.
@@ -535,12 +538,15 @@ workflow while the owner is watching.
      changed filenames, or local absolute paths.
    - #4838 still owns rendering this projection in the right-side TUI pane.
 
-4. **Add dev check/apply/reload loop (#4842).**
-   - Show change summary and changed file refs.
-   - Run focused checks.
-   - Restart/reload Pylon explicitly after acceptance.
-   - Do not commit, push, branch switch, or destructive-clean without a
-     separate command.
+4. **Add dev check/apply/reload loop (#4842). Done in source.**
+   - `pylon dev check --json [--allow-dirty]` shows a dirty-state summary,
+     changed file refs, focused check command refs, exit codes, and output
+     digest refs.
+   - `pylon dev apply --json` records the current patch summary without
+     committing or pushing.
+   - `pylon dev reload --json` is explicit and currently returns a safe no-op
+     unless a controlled process exists.
+   - The TUI command palette exposes the same Dev check/apply/reload actions.
 
 5. **Run one retained supervised daily-driver proof.**
    - Use a real repo task while the owner watches.
@@ -573,12 +579,12 @@ At this exact commit, use Pylon today for:
 - validating the work-order spine and receipt discipline;
 - terminal/TUI/headless-node workflow testing.
 
-Do not yet use Pylon as the only daily-driver surface until #4842 lands and a
-supervised proof is retained, because the composer, local dangerous mode, and
-doctor projection exist but the check/reload loop is not in place.
+Do not yet use Pylon as the only daily-driver surface until one supervised
+proof is retained and the owner install path is pinned. The composer, local
+dangerous mode, doctor projection, and check/apply/reload loop now exist in
+source, but they still need a real Pylon-from-Pylon proof run.
 
-Once #4842 lands and one supervised proof is retained, the
-decision can become:
+Once that proof is retained, the decision can become:
 
 - **yes** for owner-supervised local Pylon + Codex daily work;
 - **still no** for unattended overnight runs until #4768;
@@ -630,8 +636,9 @@ pylon dev doctor --json
 pylon dev fix "the assignment view is not refreshing"
 pylon dev fix --codex-danger "fix the TUI composer"
 pylon dev fix --from-last-error
-pylon dev check
-pylon dev reload
+pylon dev check --json [--allow-dirty]
+pylon dev apply --json [--allow-dirty]
+pylon dev reload --json
 pylon dev review --adapter fable
 ```
 
@@ -685,8 +692,8 @@ OpenAgents or GitHub must be ref-only and public-safe.
 - active Codex execution mode and sandbox;
 - backend readiness refs.
 
-Remaining local loop fields, such as recent command/check refs, reload state,
-and pane rendering, belong to #4842/#4838.
+Remaining visible-pane work, such as rendering recent command/check refs and
+reload state without opening JSON, belongs to #4838.
 - environment capability refs, never raw env values.
 
 That bundle is what Codex receives by default for `pylon dev fix`. Raw tokens,
@@ -756,9 +763,13 @@ Recommended issue slice:
 
 1. **DM1: Dev doctor. Done in source.** `pylon dev doctor --json` emits
    redacted local diagnostics and adapter readiness.
-2. **DM2: Dev fix.** Add `pylon dev fix` that creates a local Codex-backed dev
-   task, edits in place, and runs targeted checks.
-3. **DM3: Dev reload.** Add a safe restart-and-reattach loop for the node/TUI.
+2. **DM2: Dev check/apply. Done in source.** `pylon dev check --json` and
+   `pylon dev apply --json` record safe changed-file refs, dirty-state counts,
+   command refs, exit codes, and output digest refs without committing or
+   pushing.
+3. **DM3: Dev reload. Source no-op landed.** `pylon dev reload --json` is an
+   explicit no-op when there is no controlled process; a real restart-and-reattach
+   path remains follow-up.
 4. **DM4: Fable review.** Add optional Claude/Fable review of the local patch
    summary and check refs.
 5. **DM5: Retained proof.** Use Dev Mode to fix one real Pylon bug, retain the

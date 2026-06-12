@@ -58,6 +58,13 @@ import { runControlClient, sendControlCommand } from "./node/control-client"
 import { loadComposerState, saveComposerState } from "./node/composer-store"
 import { collectPylonDevDoctor } from "./dev-doctor"
 import {
+  recordPylonDevCodexRun,
+  runPylonDevApply,
+  runPylonDevCheck,
+  runPylonDevReload,
+  type PylonDevCommandSpec,
+} from "./dev-loop"
+import {
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
   sandboxModeForCodexComposerExecutionMode,
@@ -137,6 +144,11 @@ type DashboardUiModule = typeof import("./tui/app")
 type ComposerBackend = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
   ? Options extends { composerBackend?: infer Backend }
     ? NonNullable<Backend>
+    : never
+  : never
+type DevActions = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
+  ? Options extends { devActions?: infer Actions }
+    ? NonNullable<Actions>
     : never
   : never
 let dashboardUi: DashboardUiModule | null = null
@@ -234,6 +246,15 @@ function makeAssignmentActions() {
   }
 }
 
+function makeDevActions(summary: ReturnType<typeof createBootstrapSummary>): DevActions {
+  const cwd = codexComposerWorkingDirectory()
+  return {
+    check: () => runPylonDevCheck({ allowDirty: true, cwd, env: Bun.env, summary }),
+    apply: () => runPylonDevApply({ allowDirty: true, cwd, env: Bun.env, summary }),
+    reload: () => runPylonDevReload({ cwd, env: Bun.env, summary }),
+  }
+}
+
 function codexComposerWorkingDirectory() {
   const configured = Bun.env.PYLON_CODEX_CWD ?? Bun.env.PYLON_ACTIVE_REPO
   return configured && configured.trim().length > 0 ? configured : process.cwd()
@@ -284,6 +305,27 @@ async function makeCodexComposerBackend(
           onUsage: (usage) => callbacks.onUsage?.({ label: "tokens", value: String(usage.totalTokens) }),
         },
       )
+      await recordPylonDevCodexRun(
+        {
+          commandCount: result.commandCount,
+          cwd,
+          editedFileCount: result.editedFileCount,
+          eventCount: result.eventCount,
+          executionMode,
+          sandboxMode,
+          totalTokens: result.totalTokens,
+        },
+        {
+          cwd,
+          env: Bun.env,
+          summary,
+        },
+      ).catch((error) => {
+        callbacks.onEvent?.(
+          `dev run record failed: ${error instanceof Error ? error.message : String(error)}`,
+          result.eventCount,
+        )
+      })
       const footerParts = [
         `mode: ${executionMode}`,
         `cwd: ${cwd}`,
@@ -581,6 +623,7 @@ const runPylonNode = Effect.gen(function* () {
       readDevConfig: true,
     }),
   )
+  const devActions = makeDevActions(bootstrapSummary)
 
   const dashboard = yield* Effect.tryPromise({
     try: () =>
@@ -592,6 +635,7 @@ const runPylonNode = Effect.gen(function* () {
         assignmentActions: nodeAssignmentActions,
         composerState,
         composerBackend,
+        devActions,
         onComposerPersist: persistComposerState,
         onVerboseChange: (verbose) => {
           verboseMode = verbose
@@ -845,6 +889,7 @@ const runPylonAttach = (baseUrl: string, token: string) =>
           verbose: verboseMode,
           enable3d: Bun.env.PYLON_DISABLE_3D !== "1",
           composerBackend,
+          devActions: null,
           onVerboseChange: (verbose) => {
             verboseMode = verbose
           },
@@ -1037,6 +1082,84 @@ function parsePsionicOptions(args: string[]) {
 function stringPsionicOption(options: Record<string, string | true>, key: string) {
   const value = options[key]
   return typeof value === "string" ? value : undefined
+}
+
+function parseDevLoopOptions(args: string[]) {
+  const options: { allowDirty: boolean; command?: string; json: boolean } = {
+    allowDirty: false,
+    json: false,
+  }
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === "--json") {
+      options.json = true
+      continue
+    }
+    if (arg === "--allow-dirty") {
+      options.allowDirty = true
+      continue
+    }
+    if (arg === "--command") {
+      const value = args[index + 1]
+      if (!value || value.startsWith("--")) throw new Error("--command requires a value")
+      options.command = value
+      index += 1
+      continue
+    }
+    throw new Error(`unknown dev option: ${arg}`)
+  }
+  return options
+}
+
+function splitDevCommand(value: string): string[] {
+  const argv: string[] = []
+  let current = ""
+  let quote: "'" | "\"" | null = null
+  let escaped = false
+  for (const char of value) {
+    if (escaped) {
+      current += char
+      escaped = false
+      continue
+    }
+    if (char === "\\") {
+      escaped = true
+      continue
+    }
+    if (quote) {
+      if (char === quote) quote = null
+      else current += char
+      continue
+    }
+    if (char === "'" || char === "\"") {
+      quote = char
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (current.length > 0) {
+        argv.push(current)
+        current = ""
+      }
+      continue
+    }
+    current += char
+  }
+  if (escaped) current += "\\"
+  if (quote) throw new Error("unterminated quote in --command")
+  if (current.length > 0) argv.push(current)
+  if (argv.length === 0) throw new Error("--command cannot be empty")
+  return argv
+}
+
+function devCommandSpecFromOption(command: string | undefined, cwd: string): PylonDevCommandSpec[] | undefined {
+  if (!command) return undefined
+  return [
+    {
+      argv: splitDevCommand(command),
+      cwd,
+      reasonRef: "check.dev.custom_command",
+    },
+  ]
 }
 
 async function main() {
@@ -1342,6 +1465,49 @@ async function main() {
       return
     } catch (error) {
       process.stderr.write(`Pylon dev doctor failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "dev" && (args[1] === "check" || args[1] === "apply" || args[1] === "reload")) {
+    try {
+      const command = args[1]
+      const options = parseDevLoopOptions(args.slice(2))
+      if (!options.json) {
+        throw new Error(`usage: pylon dev ${command} --json [--allow-dirty]${command === "check" ? " [--command <argv>]" : ""}`)
+      }
+      if (options.command && command !== "check") {
+        throw new Error("--command is only supported for pylon dev check")
+      }
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const cwd = codexComposerWorkingDirectory()
+      const result =
+        command === "check"
+          ? await runPylonDevCheck({
+              allowDirty: options.allowDirty,
+              commands: devCommandSpecFromOption(options.command, cwd),
+              cwd,
+              env: Bun.env,
+              summary,
+            })
+          : command === "apply"
+            ? await runPylonDevApply({
+                allowDirty: options.allowDirty,
+                cwd,
+                env: Bun.env,
+                summary,
+              })
+            : await runPylonDevReload({
+                cwd,
+                env: Bun.env,
+                summary,
+              })
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+      if (result.state === "blocked" || result.state === "failed") process.exitCode = 1
+      return
+    } catch (error) {
+      process.stderr.write(`Pylon dev ${args[1]} failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
       return
     }

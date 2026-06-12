@@ -23,10 +23,18 @@ export interface AssignmentActions {
   accept: (leaseRef: string) => Promise<unknown>
 }
 
+export interface DevActions {
+  check: () => Promise<unknown>
+  apply: () => Promise<unknown>
+  reload: () => Promise<unknown>
+}
+
 export interface CommandContext {
   walletActions: WalletActions
   // null when no OpenAgents base URL is configured for this node.
   assignmentActions: AssignmentActions | null
+  // null when attached to a remote node that does not expose local dev actions.
+  devActions: DevActions | null
   setRoute: (route: "dashboard" | "assignments" | "wallet") => void
   refreshAssignments: () => Promise<void>
   currentAssignments: () => Array<{ leaseRef: string; goal: string }>
@@ -54,6 +62,29 @@ export interface CommandSpec {
 }
 
 export const PAYOUT_TARGET_KINDS = ["bolt12_offer", "bolt11_invoice", "bip353_name", "lnurl_pay"] as const
+
+function summarizeDevResult(result: unknown): string {
+  const value = result as {
+    schema?: unknown
+    state?: unknown
+    action?: unknown
+    changeSummary?: { dirty?: { changedCount?: unknown; untrackedCount?: unknown } }
+    commandResults?: Array<{ status?: unknown; exitCode?: unknown }>
+    blockerRefs?: unknown[]
+  }
+  const summary = {
+    schema: typeof value.schema === "string" ? value.schema : "unknown",
+    action: typeof value.action === "string" ? value.action : "unknown",
+    state: typeof value.state === "string" ? value.state : "unknown",
+    changedCount: value.changeSummary?.dirty?.changedCount ?? null,
+    untrackedCount: value.changeSummary?.dirty?.untrackedCount ?? null,
+    checks: Array.isArray(value.commandResults)
+      ? value.commandResults.map((command) => ({ exitCode: command.exitCode ?? null, status: command.status ?? "unknown" }))
+      : [],
+    blockerRefs: Array.isArray(value.blockerRefs) ? value.blockerRefs.slice(0, 5) : [],
+  }
+  return JSON.stringify(summary)
+}
 
 export function buildCommandSpecs(ctx: CommandContext): CommandSpec[] {
   const specs: CommandSpec[] = [
@@ -117,6 +148,78 @@ export function buildCommandSpecs(ctx: CommandContext): CommandSpec[] {
       category: "Composer",
       palette: true,
       run: () => ctx.submitComposer(),
+    },
+    {
+      name: "dev.check",
+      title: "Dev: run focused checks",
+      category: "Dev",
+      palette: true,
+      run: async () => {
+        if (!ctx.devActions) {
+          await openAlert({ title: "Dev check", body: "Local dev actions are unavailable in this session." })
+          return
+        }
+        try {
+          const result = await ctx.devActions.check()
+          showToast("dev check complete")
+          ctx.log(`[Dev] Check ${summarizeDevResult(result)}`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`dev check failed: ${message}`, "error")
+          ctx.log(`[Dev] Check failed: ${message}`)
+        }
+      },
+    },
+    {
+      name: "dev.apply",
+      title: "Dev: capture apply summary",
+      category: "Dev",
+      palette: true,
+      run: async () => {
+        if (!ctx.devActions) {
+          await openAlert({ title: "Dev apply", body: "Local dev actions are unavailable in this session." })
+          return
+        }
+        try {
+          const result = await ctx.devActions.apply()
+          showToast("dev apply summary captured")
+          ctx.log(`[Dev] Apply ${summarizeDevResult(result)}`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`dev apply failed: ${message}`, "error")
+          ctx.log(`[Dev] Apply failed: ${message}`)
+        }
+      },
+    },
+    {
+      name: "dev.reload",
+      title: "Dev: reload Pylon session",
+      category: "Dev",
+      palette: true,
+      run: async () => {
+        if (!ctx.devActions) {
+          await openAlert({ title: "Dev reload", body: "Local dev actions are unavailable in this session." })
+          return
+        }
+        const confirmed = await openConfirm({
+          title: "Reload Pylon",
+          body: "Run the explicit dev reload action? This does not commit, push, clean, or switch branches.",
+          confirmLabel: "Reload",
+        })
+        if (!confirmed) {
+          showToast("dev reload cancelled")
+          return
+        }
+        try {
+          const result = await ctx.devActions.reload()
+          showToast("dev reload action complete")
+          ctx.log(`[Dev] Reload ${summarizeDevResult(result)}`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`dev reload failed: ${message}`, "error")
+          ctx.log(`[Dev] Reload failed: ${message}`)
+        }
+      },
     },
     {
       name: "wallet.send",

@@ -12,6 +12,11 @@ const stubCtx: CommandContext = {
     receive: async () => ({}),
     admitPayoutTarget: async () => ({}),
   },
+  assignmentActions: null,
+  devActions: null,
+  setRoute: () => {},
+  refreshAssignments: async () => {},
+  currentAssignments: () => [],
   focusLogs: () => {},
   focusComposer: () => {},
   focusedPane: () => "composer",
@@ -47,6 +52,22 @@ describe("command registry", () => {
       expect(spec?.palette).toBe(true)
     }
     expect(PAYOUT_TARGET_KINDS.length).toBe(4)
+  })
+
+  test("dev loop actions are registered as palette commands", () => {
+    const specs = buildCommandSpecs({
+      ...stubCtx,
+      devActions: {
+        check: async () => ({ action: "check", schema: "test", state: "passed" }),
+        apply: async () => ({ action: "apply", schema: "test", state: "no_op" }),
+        reload: async () => ({ action: "reload", schema: "test", state: "noop" }),
+      },
+    })
+    for (const name of ["dev.check", "dev.apply", "dev.reload"]) {
+      const spec = specs.find((candidate) => candidate.name === name)
+      expect(spec, `${name} missing`).toBeDefined()
+      expect(spec?.palette).toBe(true)
+    }
   })
 
   test("focus toggle flips based on the focused pane", () => {

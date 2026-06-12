@@ -2036,3 +2036,37 @@ Implemented:
 Verification:
 
 - `git diff --check`
+
+## Pylon Dev Check Apply Reload Loop
+
+Issue context:
+
+- #4842 asked for a local supervised post-Codex loop so Pylon can summarize
+  changes, run focused checks, and perform an explicit reload action without
+  committing, pushing, cleaning, or switching branches.
+
+Status: source implementation for the supervised daily-driver dev loop.
+
+Implemented:
+
+- Added `apps/pylon/src/dev-loop.ts` with typed projections for:
+  - `openagents.pylon.dev_check.v0.3`
+  - `openagents.pylon.dev_apply.v0.3`
+  - `openagents.pylon.dev_reload.v0.3`
+  - `openagents.pylon.dev_codex_run.v0.3`
+- Added `pylon dev check --json [--allow-dirty] [--command <argv>]`,
+  `pylon dev apply --json [--allow-dirty]`, and `pylon dev reload --json`.
+- Recorded safe latest-run metadata after Codex SDK composer runs.
+- Exposed Dev check/apply/reload actions in the TUI command palette.
+- Kept projections redacted to refs/counts/digests: no raw stdout/stderr,
+  changed filenames, local absolute paths, prompts, or credentials.
+- Updated README, Codex bridge docs, and the daily-driver audit.
+
+Verification:
+
+- `bun test tests/dev-loop.test.ts tests/dev-doctor.test.ts tests/tui-commands.test.ts tests/codex-composer.test.ts tests/codex-agent.test.ts`
+- `bun src/index.ts dev check --json --allow-dirty --command "bun --version"`
+- `bun src/index.ts dev apply --json --allow-dirty`
+- `bun src/index.ts dev reload --json`
+- `bun src/index.ts dev check --json --command "bun --version"` (expected
+  dirty-prestate block and exit 1)

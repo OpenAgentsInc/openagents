@@ -104,6 +104,13 @@ composer (bottom), and a one-line key-hint footer.
   Claude/Fable readiness, active Codex execution mode, and backend refs. It
   never prints raw keys, auth file paths, instruction text, changed filenames,
   or local absolute paths.
+- `pylon dev check --json`, `pylon dev apply --json`, and
+  `pylon dev reload --json` provide the local supervised check/apply/reload
+  loop. `check` emits changed file refs, dirty-state counts, command refs, exit
+  codes, and output digest refs; pass `--allow-dirty` when you intentionally
+  want to inspect an untracked dirty tree. The same actions are exposed in the
+  command palette as Dev commands. They never commit, push, clean, or switch
+  branches.
 - The sidebar renders a live 3D network view (`@opentui/three` on a native
   WebGPU device, quantized to terminal glyphs): satellites orbit the market
   core, wallet status drives color and speed, new feed activity pulses

@@ -139,6 +139,14 @@ repo, instruction, Codex, Claude/Fable, and backend readiness refs. It emits
 digest refs and bounded states only; raw credential values, auth file paths,
 instruction text, changed filenames, and local absolute paths are omitted.
 
+`pylon dev check --json`, `pylon dev apply --json`, and
+`pylon dev reload --json` provide the local supervised post-Codex loop.
+`check` returns a typed dirty-state summary, changed file refs, command refs,
+exit codes, and stdout/stderr digest refs; it requires `--allow-dirty` when
+untracked files make attribution ambiguous. `apply` records the current patch
+summary without committing or pushing. `reload` is an explicit action and is a
+safe no-op until Pylon has a controlled restart/reattach process.
+
 ## Boundaries
 
 - **Your identity, your credentials, your machine.** The lane acts only

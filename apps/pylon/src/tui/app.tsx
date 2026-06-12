@@ -48,13 +48,14 @@ import {
   registerComposerFocusLayer,
   registerLogsScrollLayer,
   type AssignmentActions,
+  type DevActions,
   type PylonKeymap,
   type WalletActions,
 } from "./commands"
 
 export { appendChatFeedItem, setVerboseMode } from "./store"
 export { attachRuntimeToView } from "./bridge"
-export type { AssignmentActions, WalletActions } from "./commands"
+export type { AssignmentActions, DevActions, WalletActions } from "./commands"
 
 // --- View-internal plumbing (focus, scroll, terminal modes) ---------------
 
@@ -619,7 +620,7 @@ export function installDashboardChrome(
   renderer: CliRenderer,
   options: Pick<
     StartDashboardOptions,
-    "walletActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"
+    "walletActions" | "devActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"
   >,
   assignmentActions: AssignmentActions | null,
 ): void {
@@ -628,6 +629,7 @@ export function installDashboardChrome(
     {
       walletActions: options.walletActions,
       assignmentActions,
+      devActions: options.devActions ?? null,
       setRoute: (route) => setActiveRoute(route),
       refreshAssignments: () => refreshAssignmentsInto(assignmentActions),
       currentAssignments: () => assignmentRows().map((row) => ({ leaseRef: row.leaseRef, goal: row.goal })),
@@ -668,6 +670,7 @@ export interface StartDashboardOptions {
   enable3d?: boolean
   walletActions: WalletActions
   assignmentActions?: AssignmentActions | null
+  devActions?: DevActions | null
   composerState?: { history: string[]; stash: string }
   onComposerPersist?: (state: { history: string[]; stash: string }) => void
   composerBackend?: ComposerBackend | null
