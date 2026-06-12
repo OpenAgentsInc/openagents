@@ -305,6 +305,17 @@ and real contributor devices existing (the funnel currently reports the
 fleet dark; this roadmap does not pretend otherwise). P3 gates on R2
 economics, twice.
 
+**Issues of record** (filed 2026-06-12): P0.1 funnel join-lifecycle
+ladder — openagents#4848; P0.2 staleness contract fields — #4849; P0.3
+derisking-ledger entries — psionic#1124; P1.1 shadow-window ramp —
+psionic#1125; P1.2 bootstrap-from-durable-seal rule — #4850; P1.3
+join-blocking window — #4851; P1.4 reasoned admission gates + host-RAM
+probe — #4852; P2.1 collective-op failure semantics — psionic#1126; P2.2
+staleness-priced acceptance — #4853; P2.3 presence/compute receipt
+split — #4854; P2.4 SPARTA canary — psionic#1127; P3.2
+compression/verification compatibility question — psionic#1128. P3.1
+remains deliberately unfiled, per its own text.
+
 The one-sentence version: adopt Pluralis's *lifecycle* (join ramp,
 staleness, failure semantics) wholesale because it prices availability
 and churn — things our receipts want to pay for anyway; adopt their
