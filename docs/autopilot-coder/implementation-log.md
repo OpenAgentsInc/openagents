@@ -1835,3 +1835,27 @@ Implemented:
 Verification:
 
 - `git diff --check`
+
+## Terminal-Agent Systems Roadmap Historical Status Refresh
+
+Issue context:
+
+- Re-reviewed the current open issue tail: #4749, #4768, #4772, #4777,
+  #4781, #4782, #4783, and #4786.
+- Searched the terminal-agent systems roadmap for stale "ready to file",
+  "can close", and Pack A/B/C pending-action language.
+
+Status: docs-only synchronization; no new GitHub issues opened.
+
+Implemented:
+
+- Updated the original terminal-agent-systems roadmap so Pack A, Pack B, Pack
+  C, and #4836/#4837 read as closed historical work rather than pending action.
+- Preserved the current sequencing rule: do not file Pack D until #4768/#4772
+  close or explicitly narrow, and until #4777/#4781/#4782/#4783 have concrete
+  live market evidence beyond the already-open issue bodies.
+
+Verification:
+
+- `git diff --check`
+- `bunx prettier --check docs/autopilot-coder/implementation-log.md docs/autopilot-coder/terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`

@@ -52,8 +52,9 @@ receipts.
 
 ## Tracking Issues
 
-Pack A is now filed as GitHub issue #4813, with one child issue for each
-subsystem audit that should be operationalized during the current #4786 sprint:
+Pack A was filed as GitHub issue #4813, with one child issue for each
+subsystem audit that needed MVP proof and supervision operationalization
+during the #4786 sprint:
 
 | Pack issue | Subsystem audit                        | Primary sprint pressure                                                                |
 | ---------- | -------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -68,8 +69,8 @@ subsystem audit that should be operationalized during the current #4786 sprint:
 | #4822 PA9  | Permission And Approval                | Shared approval contract for headless, background, mobile, Pylon, and API actions      |
 | #4823 PA10 | Accessibility And Non-Interactive Mode | Structured output, CI/headless behavior, no-color status, and typed prompt blockers    |
 
-The parent #4813 body carries the Pack A checklist. The #4786 epic has a
-matching Pack A addendum comment.
+Pack A is now implemented and closed. The parent #4813 body carries the Pack A
+checklist, and the #4786 epic has the matching Pack A addendum comment.
 
 ## Pack B Readiness And Tracking Issues
 
@@ -86,14 +87,15 @@ that provider-peer lane. #4771 later closed on its scoped Gemini live-provider
 proof; Pack B remains the evidence layer future provider/account claims should
 cite, not a continuing blocker by itself.
 
-That makes Pack B ready to file now. The reason is not that Pack B should block
-all remaining work; it is that the roadmap already treats account, credential,
-and policy hardening as the prerequisite for broad provider-peer claims. Pack B
-should run in parallel with the remaining #4786 Gate work and should affect
-timing only where an issue depends on provider credentials, account telemetry,
-managed policy state, retention guarantees, or provider-peer security review.
+That made Pack B ready to file at that point. The reason was not that Pack B
+should block all remaining work; it was that the roadmap already treated
+account, credential, and policy hardening as the prerequisite for broad
+provider-peer claims. Pack B ran in parallel with the remaining #4786 Gate work
+and now affects timing only where an issue depends on provider credentials,
+account telemetry, managed policy state, retention guarantees, or
+provider-peer security review.
 
-Pack B is now filed as GitHub issue #4824, with one child issue for each
+Pack B was filed as GitHub issue #4824, with one child issue for each
 subsystem audit that should harden the provider/account/policy lane:
 
 | Pack issue   | Subsystem audit                           | Primary sprint pressure                                                                                                     |
@@ -109,13 +111,14 @@ subsystem audit that should harden the provider/account/policy lane:
 Final implementation pass:
 
 - On 2026-06-12, #4825-#4830 were implemented, pushed to `main`, commented,
-  and closed. #4824 can close as the Pack B parent after this roadmap update.
+  and closed. #4824 is also closed as the Pack B parent.
 - Pack B now supplies typed evidence surfaces for credential boundaries,
   effective configuration, security review, telemetry/privacy,
   retention/deletion, and managed-policy snapshots.
 - Pack B does not prove live non-Codex provider readiness by itself. #4771
-  still owns the live Anthropic/Gemini credentialed-run proof and must cite the
-  Pack B refs or a scoped exception before making broad provider-peer claims.
+  later closed the scoped Gemini credentialed-run proof; future broad
+  provider-peer claims must cite the #4771 closeout plus Pack B refs or a
+  scoped exception.
 
 Implementation status:
 
@@ -259,7 +262,7 @@ Timing rule:
 Final implementation pass:
 
 - On 2026-06-12, #4832-#4835 were implemented, pushed to `main`, commented,
-  and closed. #4831 can close as the Pack C parent after this roadmap update.
+  and closed. #4831 is also closed as the Pack C parent.
 - Pack C now supplies typed evidence surfaces for repository/worktree identity,
   bounded change capture, workspace authority, and delivery/PR readiness.
 - No additional Pack C child issues are needed now. The next issue set should
@@ -297,6 +300,15 @@ Second 2026-06-12 review:
 - The next issue-creation point is after #4768/#4772 close or narrow: file
   Pack D only if the resulting market/intake work has a concrete acceptance
   slice beyond the already-open #4777/#4781/#4782/#4783 issues.
+
+Third 2026-06-12 review:
+
+- Rechecked the current open tail and recent comments with `gh issue view`.
+- No additional issues were opened. The existing open issues already own the
+  live proof and market evidence work; creating another issue now would
+  duplicate #4768/#4772 or #4777/#4781/#4782/#4783.
+- Updated this roadmap's historical Pack A/B/C wording so closed parents do
+  not read like pending action items.
 
 Implementation status:
 
@@ -691,18 +703,19 @@ Deliverables:
 
 ## Decision
 
-Operationalize Pack A during the current #4786 sprint. It is the smallest set
-that turns the already-landed runtime kernel and work-order loop into
-unattended, inspectable, MVP-gating proof.
+Pack A is implemented as #4813-#4823 and remains the proof/supervision overlay
+for the still-open M10/M14 gates. Pack B is implemented as #4824-#4830 and
+should be cited where provider/account/policy claims depend on its evidence.
+Pack C is implemented as #4831-#4835 and should be cited where repo/delivery
+claims depend on its evidence. #4836/#4837 closed the immediate public
+freshness/order-book hygiene pair.
 
-Pack B is implemented as #4824-#4830 and should be cited where it directly
-serves provider/account/policy claims. Pack C is implemented as #4831-#4835
-because M11/M12/P3 landed their backend contract slices and their deferred
-proof needs typed repo/delivery evidence. Do not file another broad
-operationalization pack now. Hold Pack D and Pack E until the product can run,
-notify, resume, show status, write back or defer writeback honestly, produce
-public-safe receipts from the same event log, and no longer advertises stale
-or closed-objective public market state.
+Do not file another broad operationalization pack now. Hold Pack D and Pack E
+until #4768/#4772 close or explicitly narrow, and until the market lane has a
+fresh currently-open target plus independent provider, validation, release,
+payout, and settlement receipts under #4777/#4781/#4782/#4783. The current open
+tail is already well-owned; the missing ingredient is live evidence, not
+another issue set.
 
 The audit rule for future work is simple: if a capability changes work state,
 spends money, touches credentials, mutates files, pushes code, asks for
