@@ -1836,6 +1836,39 @@ Verification:
 
 - `git diff --check`
 
+## Pylon Supervised Daily-Driver Correction
+
+Issue context:
+
+- Owner clarified that an overnight unattended run is not required for the
+  daily-driver MVP because the owner will sit at Pylon and supervise Codex.
+- Rechecked the TUI composer path, Codex SDK executor, local Codex CLI flags,
+  and current open issues.
+
+Status: docs-only correction plus GitHub issue filing; no product promise,
+runtime behavior, or invariant changed.
+
+Implemented:
+
+- Updated
+  `docs/autopilot-coder/2026-06-12-pylon-codex-day-to-day-readiness-audit.md`
+  to split supervised local daily-driver readiness from unattended/market
+  readiness.
+- Corrected the MVP bar: #4768 overnight proof is not required for
+  owner-watched Codex work inside Pylon.
+- Identified the ASAP switch path as local `pylon dev` / composer-to-Codex
+  work against the active repo, with explicit local supervised dangerous mode.
+- Filed top-priority issues:
+  - #4839: P0 composer/current-repo Codex mode.
+  - #4840: P0 local-only dangerous Codex execution.
+  - #4841: P0 dev doctor repo/instruction/account context.
+  - #4842: P0 dev check/apply/reload loop.
+  - #4843: P1 work-order commit pinning and adapter intent.
+
+Verification:
+
+- `git diff --check`
+
 ## Terminal-Agent Systems Roadmap Historical Status Refresh
 
 Issue context:

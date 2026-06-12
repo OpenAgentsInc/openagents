@@ -49,18 +49,61 @@ This is a docs-only audit. It does not create or change a product promise.
 
 ## Verdict
 
-**Not ready as the owner's supported default day-to-day coding environment.**
+**Not ready at this exact commit as the owner's Pylon-only daily-driver
+surface.**
 
-**Minimally usable for controlled dogfood from the source checkout: yes, with
-constraints.** If the owner runs Pylon v0.3 from `main`, has a registered
-OpenAgents agent token, has an online owner-linked Pylon, and has local Codex
-credentials ready, the Codex assignment path has live receipts and can execute
-bounded public-repo work. That is enough for deliberate dogfood tasks where the
-operator watches the refs and accepts manual rough edges.
+**Much closer than the earlier wording implied for supervised use.** The
+daily-driver MVP being asked for here is not "run all night unattended and
+prove the market." It is: the owner is sitting at the machine, watching Pylon,
+and wants Codex to make normal repo edits from inside Pylon, with Fable
+available occasionally as review/planning backup.
 
-**Not minimally usable as a frictionless replacement for Codex/Codex CLI in the
-owner's normal daily loop.** The core blockers are not deep architecture
-blockers; they are product and wiring blockers:
+For that bar, overnight unattended proof (#4768), market/provider settlement,
+and independent paid-capacity receipts are **not** gating. They matter for
+autonomous overnight runs, serving other people's work, and public readiness
+claims. They do not block a local supervised switch.
+
+The honest blocker is narrower and more immediate:
+
+- The TUI composer is still wired to OpenCode, not Codex. In
+  `apps/pylon/src/tui/app.tsx`, `submitPrompt()` looks up `opencode` and calls
+  `runOpencodeStream(...)`. A normal prompt typed into Pylon does not yet
+  start a Codex coding session.
+- Pylon's existing Codex SDK assignment executor is deliberately bounded to
+  `read-only` / `workspace-write`; it does not expose the owner-requested
+  supervised `--dangerously-bypass-approvals-and-sandbox` / `danger-full-access`
+  behavior. That is correct for public assignments, but too restrictive for
+  local supervised dev mode.
+- Pylon does not yet have a first-class `pylon dev`/current-repo mode that
+  assembles repo context, instruction refs, account readiness, execution mode,
+  checks, patch summary, and reload in one loop.
+- `pylon work submit` exists, but its current request builder hard-codes a
+  placeholder commit SHA (`1111111111111111111111111111111111111111`) instead
+  of resolving the requested repo/branch to a real pinned commit or requiring a
+  `--commit`. That blocks the network/work-order lane, not the fastest local
+  supervised lane.
+- "Codex primary, Fable occasionally" is not a first-class preference surface.
+  The adapter policy can represent Codex and Claude/Fable, but a dual-capable
+  Pylon defaults to Claude, and the CLI does not expose `--adapter codex` /
+  `--adapter fable` for work orders.
+
+The practical recommendation is now sharper: **switch the implementation focus
+immediately to a local supervised Pylon dev mode, with Codex as the composer
+backend and an explicit dangerous local execution option.** Once that lands,
+the owner can switch day-to-day coding to Pylon while still watching the run.
+Autopilot work-order commit pinning, paid market, PR writeback, and overnight
+proof remain follow-on lanes.
+
+Top-priority issues filed from this correction:
+
+- #4839: P0 composer/current-repo Codex mode.
+- #4840: P0 local-only dangerous Codex execution mode.
+- #4841: P0 `pylon dev doctor` repo/instruction/account context projection.
+- #4842: P0 dev check/apply/reload loop.
+- #4843: P1 work-order commit pinning and adapter intent.
+
+**Not minimally usable as a Pylon-only replacement today.** The core blockers
+are product and wiring blockers:
 
 - The only published installable package is still `@openagentsinc/pylon@0.2.5`.
   The v0.3 code with Codex/Claude/Fable paths is `0.3.0-rc2` in source and has
@@ -73,19 +116,14 @@ blockers; they are product and wiring blockers:
   The adapter policy can represent Codex and Claude/Fable, but a dual-capable
   Pylon defaults to Claude, and the CLI does not expose `--adapter codex` /
   `--adapter fable`.
-- Delivery is still evidence-first, not a normal coding handoff. Pack C
-  defines repo identity, change capture, workspace authority, and PR readiness
-  receipts, but live PR writeback / branch push / maintainer merge is not
-  something this path should claim yet.
-- The still-open gates are live proof gates: overnight unattended proof,
-  MVP door-open decision, independent market/provider settlement, and W3
-  research evals. Those do not prevent source-level Codex dogfood, but they do
-  prevent calling the system broadly ready.
+- Delivery is still evidence-first in the work-order lane, not a normal coding
+  handoff. That is acceptable for the local dev path if the first version shows
+  the changed files, focused checks, and reload state inside Pylon.
 
-The practical recommendation: **start dogfooding Pylon now as a supervised
-source-checkout lane, but do not switch the owner's full daily coding default
-until the small P0s in this audit are fixed and one real "owner asks, Codex
-edits, tests pass, review result is actionable" run is retained.**
+The minimum switch criterion is one retained supervised proof:
+the owner types a real repo request into Pylon, Pylon runs Codex in the active
+repo, Codex edits, focused checks pass, Pylon shows the patch/check summary,
+and the owner can reload or continue without leaving the Pylon loop.
 
 ## What Is Actually Working
 
@@ -143,7 +181,8 @@ Built:
 - Capability declaration: `capability.pylon.local_codex`.
 - Bounded executor in `apps/pylon/src/codex-agent-executor.ts`.
 - Optional `@openai/codex-sdk` lazy import.
-- No `danger-full-access`; only `read-only` or `workspace-write`.
+- Assignment executor intentionally has no `danger-full-access`; only
+  `read-only` or `workspace-write`.
 - Network disabled inside the Codex SDK thread.
 - Workspace escape detection through post-hoc file-change validation.
 - CI-safe and live smoke runbooks.
@@ -152,11 +191,22 @@ Built:
   codex-only Pylon against the public fixture repo, with independent `bun test`
   verification and accepted closeout.
 
-For bounded source-level dogfood, Codex is real.
+For bounded assignment dogfood, Codex is real.
 
 The gap is not "Codex cannot run." The gap is "the owner's daily CLI workflow
-does not yet force Codex cleanly, pin the requested repo commit correctly, and
-return a convenient patch/PR handoff."
+does not yet route the Pylon composer to Codex, does not expose the local
+supervised dangerous mode the owner is willing to use, and does not return a
+convenient patch/check/reload handoff."
+
+The local Codex CLI already exposes the needed supervised mechanism on this
+machine:
+
+```sh
+codex exec --json -C <active-repo> --dangerously-bypass-approvals-and-sandbox <prompt>
+```
+
+That should be consumed by a local-only `pylon dev` / composer path, not by the
+public assignment executor.
 
 ### Fable
 
@@ -185,29 +235,71 @@ lane when the local Claude/Fable credential/session is ready.** There is no
 
 ## Current Workflow Fit
 
-| Workflow need                             | Status                         | Notes                                                                                                                                                          |
-| ----------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Start Pylon locally                       | Source-ready                   | v0.3 runs from source; published stable package is not v0.3.                                                                                                   |
-| Keep a headless worker online             | Source-ready                   | `pylon node` and `PYLON_ASSIGNMENT_WORKER=1` exist for no-spend owner assignments.                                                                             |
-| Register / heartbeat / show status        | Built                          | Presence and status commands exist; live worker-loop smoke passed.                                                                                             |
-| Submit work from Pylon                    | Built but not day-to-day safe  | `pylon work submit` exists, but sends a placeholder commit SHA today.                                                                                          |
-| Read work status/events                   | Built                          | `pylon work status <work-order-ref> [--events]` exists.                                                                                                        |
-| Review delivered work                     | Built                          | `pylon work review <work-order-ref> --action ...` exists.                                                                                                      |
-| Prefer owner Pylon before paid fallback   | Built as policy                | Own-Pylon/free-lane policy is in the #4786 ladder and code.                                                                                                    |
-| Codex execution                           | Live-proven                    | Codex SDK task and `git_checkout` parity ran live with receipts.                                                                                               |
-| Fable execution                           | Via Claude Agent               | Use Claude Agent lane with `model: "claude-fable-5"`; live Claude lane is proven, but Fable-specific daily-driver proof is not recorded.                       |
-| Adapter choice per task                   | Partially built                | Policy can model adapter requirements, but `pylon work submit` does not expose them and the synthesizer currently selects from placed Pylon capabilities only. |
-| Codex as default on dual-capability Pylon | Not built                      | Dual-capability default is Claude. To force Codex today, disable Claude capability or use a codex-only Pylon.                                                  |
-| Real repo checkout from CLI               | Blocked by commit pin          | The CLI must resolve or accept a real commit SHA before this is safe.                                                                                          |
-| Change capture / delivery refs            | Built as Pack C contracts      | Digest/summary evidence exists; not equivalent to a convenient patch review UX.                                                                                |
-| PR draft/writeback                        | Contract-ready, not live claim | Delivery readiness exists; live PR writeback and maintainer merge remain separate authority.                                                                   |
-| Paid work / settlement                    | Not daily-driver ready         | Live market/settlement issues remain open.                                                                                                                     |
-| Overnight unattended run                  | Not proven                     | #4768 is still open.                                                                                                                                           |
-| Public or external market capacity        | Not ready                      | #4777/#4781/#4782/#4783 remain open for independent provider/settlement receipts.                                                                              |
+| Workflow need                                  | Status                         | Notes                                                                                                                                                          |
+| ---------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start Pylon locally                            | Source-ready                   | v0.3 runs from source; published stable package is not v0.3.                                                                                                   |
+| Type a coding prompt into Pylon and run Codex  | Not built                      | Composer currently routes to OpenCode, not Codex. This is #4839.                                                                                               |
+| Run Codex unrestricted while the owner watches | Not built in Pylon             | Codex CLI supports it; Pylon needs a local-only dangerous mode. This is #4840.                                                                                 |
+| Show active repo/instructions/accounts         | Not built                      | Needed for confidence before dangerous local Codex runs. #4838 covers the pane; #4841 covers the projection/doctor.                                            |
+| Check/apply/reload after a Codex edit          | Not built                      | Needed for Pylon-to-Pylon daily work. This is #4842.                                                                                                           |
+| Keep a headless worker online                  | Source-ready                   | `pylon node` and `PYLON_ASSIGNMENT_WORKER=1` exist for no-spend owner assignments, but this is not required for local supervised daily-driver MVP.             |
+| Register / heartbeat / show status             | Built                          | Presence and status commands exist; live worker-loop smoke passed. Not required for the fastest local switch.                                                  |
+| Submit work from Pylon work-order lane         | Built but not day-to-day safe  | `pylon work submit` exists, but sends a placeholder commit SHA today. #4843 tracks the fix.                                                                    |
+| Read work status/events                        | Built                          | `pylon work status <work-order-ref> [--events]` exists for the work-order lane.                                                                                |
+| Review delivered work                          | Built                          | `pylon work review <work-order-ref> --action ...` exists for the work-order lane.                                                                              |
+| Prefer owner Pylon before paid fallback        | Built as policy                | Own-Pylon/free-lane policy is in the #4786 ladder and code. Not required for local supervised dev mode.                                                        |
+| Codex assignment execution                     | Live-proven                    | Codex SDK task and `git_checkout` parity ran live with receipts.                                                                                               |
+| Fable execution                                | Via Claude Agent               | Use Claude Agent lane with `model: "claude-fable-5"`; live Claude lane is proven, but Fable-specific daily-driver review flow is not recorded.                 |
+| Adapter choice per work-order task             | Partially built                | Policy can model adapter requirements, but `pylon work submit` does not expose them and the synthesizer currently selects from placed Pylon capabilities only. |
+| Codex as default on dual-capability Pylon      | Not built for work orders      | Dual-capability default is Claude. Local dev mode should default to Codex independently of that placement policy.                                              |
+| PR draft/writeback                             | Contract-ready, not live claim | Delivery readiness exists; live PR writeback and maintainer merge remain separate authority. Not needed for supervised MVP.                                    |
+| Paid work / settlement                         | Not daily-driver MVP           | Live market/settlement issues remain open, but do not block owner-supervised local use.                                                                        |
+| Overnight unattended run                       | Not daily-driver MVP           | #4768 is still open, but it gates "start at night, review in the morning," not "sit here watching Codex."                                                      |
+| Public or external market capacity             | Not daily-driver MVP           | #4777/#4781/#4782/#4783 remain open for independent provider/settlement receipts.                                                                              |
 
-## The Two Most Important Implementation Findings
+## Most Important Implementation Findings
 
-### 1. `pylon work submit` does not pin the real repo state
+### 1. The TUI composer does not run Codex
+
+`apps/pylon/src/tui/app.tsx` still labels the composer path as:
+
+```ts
+// --- Composer -> OpenCode interaction --------------------------------------
+```
+
+`submitPrompt()` then looks up `opencode` and calls `runOpencodeStream(...)`.
+That means the first-screen Pylon experience cannot yet be "type request,
+Codex edits current repo."
+
+Required fix:
+
+- Add a Codex composer backend, defaulting to Codex for dev/daily-driver mode.
+- Drive the active repo/current checkout directly.
+- Stream Codex CLI JSONL or equivalent events into the existing feed.
+- Make missing Codex CLI/auth a visible typed blocker, not an OpenCode error.
+- Keep OpenCode as an optional backend if desired, not the default for the
+  owner daily-driver path.
+
+### 2. Pylon has no local supervised dangerous Codex mode
+
+The current Codex assignment executor intentionally never expands beyond
+`read-only` / `workspace-write`. That is the correct safety boundary for
+public assignment and provider lanes.
+
+For the supervised owner daily-driver MVP, the required mode is different:
+Pylon should be able to invoke the local Codex CLI with
+`--dangerously-bypass-approvals-and-sandbox`, or an equivalent explicit
+`danger-full-access`/approval-never configuration, while the owner is watching.
+
+Required fix:
+
+- Add a local-only execution mode such as `local_supervised_danger`.
+- Require explicit opt-in.
+- Show the active mode in the TUI/context projection.
+- Reject this mode for assignments, paid work, market/provider lanes, and
+  public execution claims.
+
+### 3. `pylon work submit` does not pin the real repo state
 
 `apps/pylon/src/work-requester.ts` builds an Autopilot work request with:
 
@@ -222,7 +314,8 @@ existence, so a real run should fail at checkout/materialization for normal
 repositories.
 
 This is acceptable for fixture-oriented tests that assert request shape. It is
-not acceptable for day-to-day coding.
+not acceptable for the work-order lane. It does not block the fastest local
+supervised path if Pylon runs Codex directly in the active checkout.
 
 Required fix:
 
@@ -233,7 +326,7 @@ Required fix:
 - Record the pinned commit in the command output so the user knows what code
   the agent worked on.
 
-### 2. Codex-primary preference is not exposed
+### 4. Codex-primary preference is not exposed for work orders
 
 The adapter-selection policy says requester intent wins, but the current
 Autopilot Pylon assignment synthesizer calls `selectCodingAdapter` with only
@@ -266,8 +359,14 @@ That workaround is too clumsy for normal daily work.
 
 ## Open Issue Tail
 
-Current open issues as of this audit:
+Current open issues after the correction:
 
+- #4839 P0: make Pylon composer run Codex in the current repo.
+- #4840 P0: add local-only dangerous Codex mode for supervised Pylon dev.
+- #4841 P0: add `pylon dev doctor` for repo, instruction, and account context.
+- #4842 P0: add Pylon dev check/apply/reload loop for supervised Codex changes.
+- #4843 P1: make `pylon work submit` pin real commits and carry adapter intent.
+- #4838: add the TUI repo/account/instruction context pane.
 - #4786 parent epic: Autopilot MVP issue ladder.
 - #4768 M10: overnight unattended proof, both lanes, both surfaces.
 - #4772 M14: MVP exit review / door-open decision.
@@ -277,24 +376,24 @@ Current open issues as of this audit:
 - #4783 P7: Lane C fanout.
 - #4749 W3: separate Tassadar/Psion research sweep, not an MVP dependency.
 
-The issue tail is not missing decomposition. The terminal-agent operational
-roadmap is explicit: Pack A, Pack B, Pack C, and #4836/#4837 are implemented
-and closed; Pack D should not be filed yet. The missing ingredient is live
-evidence:
+The issue tail now has two lanes:
 
-- M10 live overnight receipts;
-- M14 decision record with receipt refs and accepted deferrals;
-- fresh open-market target and independent provider quote/execution;
-- validator acceptance, release, payout, and settlement receipts;
-- W3 A/B/C baseline artifacts for the separate research issue.
+1. **Owner supervised daily-driver lane:** #4839, #4840, #4841, #4842, plus
+   #4838 for the visible context pane. This is the ASAP switch path.
+2. **Autopilot/public readiness lane:** #4843, #4768, #4772, #4777, #4781,
+   #4782, and #4783. These are still real, but they are not required for the
+   owner to sit at Pylon and supervise Codex.
 
-For the owner's local day-to-day switch, #4768 and #4772 matter most. The
-market issues matter for serving other people's work or using outside provider
-capacity, not for supervised owner-Pylon Codex dogfood.
+The terminal-agent operational roadmap is still correct that Pack A, Pack B,
+Pack C, and #4836/#4837 are implemented and closed, and Pack D should not be
+filed yet. The correction is that "missing live evidence" is not one category:
+overnight unattended and market settlement evidence are public/autonomous
+readiness evidence, not local supervised daily-driver evidence.
 
-## Minimal Dogfood Configuration
+## Minimal Supervised Daily-Driver Path
 
-This is the narrow path that is honest today.
+This is the narrow path to switch ASAP. It is local, owner-supervised, and
+source-checkout based.
 
 Run from source:
 
@@ -313,6 +412,10 @@ Prepare local Pylon config with Codex primary:
     "maxTurns": 12,
     "timeoutSeconds": 600,
     "sandboxMode": "workspace-write"
+  },
+  "dev": {
+    "defaultAdapter": "codex",
+    "codexExecutionMode": "local_supervised_danger"
   },
   "claudeAgent": {
     "enabled": false,
@@ -342,7 +445,32 @@ Then start:
 bun run --cwd apps/pylon start
 ```
 
-For headless owner-assignment dogfood:
+At this exact commit, that starts the TUI but does not yet make the composer
+Codex-backed. The required product delta is #4839 and #4840:
+
+```sh
+pylon dev --codex-danger
+pylon dev fix "make this repo change"
+```
+
+The direct Codex invocation Pylon should wrap for the first MVP is:
+
+```sh
+codex exec --json -C <active-repo> --dangerously-bypass-approvals-and-sandbox <prompt>
+```
+
+This path should not require:
+
+- `PYLON_OPENAGENTS_BASE_URL`;
+- `OPENAGENTS_AGENT_TOKEN`;
+- wallet readiness;
+- Pylon worker registration;
+- `pylon work submit`;
+- market/provider quotes;
+- overnight unattended proof.
+
+Those become relevant only when using the assignment/work-order path. For
+headless owner-assignment dogfood, the existing path remains:
 
 ```sh
 PYLON_OPENAGENTS_BASE_URL=https://openagents.com \
@@ -351,58 +479,64 @@ PYLON_ASSIGNMENT_WORKER=1 \
 bun apps/pylon/src/index.ts node
 ```
 
-Do not treat this as a broad production workflow yet. Until the commit-pin and
-adapter-choice fixes land, use existing Codex/Claude smoke paths for evidence
-or submit only carefully prepared assignments whose payloads you inspect.
+Do not confuse the two paths. The ASAP daily-driver path is local direct Codex
+inside Pylon. The assignment path is useful for proving Autopilot and worker
+behavior, but it is not the shortest route to the owner switching today.
 
-## P0 Fix List Before Full Daily-Driver Switch
+## P0 Fix List Before Supervised Daily-Driver Switch
 
-These are small, direct fixes. They should be done before replacing the
-owner's normal coding workflow.
+These are the small, direct fixes before replacing the owner's normal coding
+workflow while the owner is watching.
 
-1. **Fix `pylon work submit` commit pinning.**
-   - Add `--commit`.
-   - Or resolve `--repo`/`--branch` to a pinned SHA before submission.
-   - Reject placeholder commits outside tests.
+1. **Wire the composer/current repo to Codex (#4839).**
+   - Use Codex as the default daily-driver backend.
+   - Drive the active repo with `codex exec --json -C <repo> ...`.
+   - Stream output into the TUI feed.
+   - Stop requiring OpenCode for the owner path.
 
-2. **Expose adapter choice and default Codex.**
-   - Add `--adapter codex|fable|claude_agent`.
-   - Persist a local default adapter preference.
-   - Carry requester adapter intent through Autopilot work submission and
-     assignment synthesis.
-   - Keep Fable mapped to Claude Agent `model: "claude-fable-5"` unless a
-     dedicated adapter is introduced.
+2. **Add explicit local-only dangerous Codex mode (#4840).**
+   - Wrap `--dangerously-bypass-approvals-and-sandbox` or equivalent
+     `danger-full-access`/approval-never behavior.
+   - Require explicit opt-in.
+   - Show the mode in Pylon.
+   - Reject it for public assignment/provider/market lanes.
 
-3. **Run one retained owner daily-driver proof.**
-   - Use a real currently-open issue or bounded public repo task.
-   - Submit from `pylon work submit`.
-   - Route to codex-only or explicit Codex Pylon.
-   - Materialize a real pinned commit.
-   - Codex edits/tests in the bounded workspace.
-   - Work status/events show matching state.
-   - Review action records the result.
-   - Redaction scan and Pack C evidence refs stay clean.
+3. **Add dev doctor/context projection (#4841) and TUI pane (#4838).**
+   - Show repo, branch/commit, dirty state, instruction refs, Codex/OpenAI
+     readiness, Claude/Fable readiness, and current execution mode.
+   - Keep it typed and redacted.
 
-4. **Improve delivery ergonomics.**
-   - At minimum, show change summary, patch digest, verification result, and
-     where the local retained workspace lives to the operator.
-   - Next, wire PR draft readiness into a controlled PR-draft path. Do not
-     claim merge authority.
+4. **Add dev check/apply/reload loop (#4842).**
+   - Show change summary and changed file refs.
+   - Run focused checks.
+   - Restart/reload Pylon explicitly after acceptance.
+   - Do not commit, push, branch switch, or destructive-clean without a
+     separate command.
 
-5. **Publish or install-pin v0.3.**
+5. **Run one retained supervised daily-driver proof.**
+   - Use a real repo task while the owner watches.
+   - Submit from the Pylon composer or `pylon dev fix`, not `pylon work submit`.
+   - Codex edits in the active checkout.
+   - Focused checks pass.
+   - Pylon shows the patch/check/reload state.
+   - Fable review is optional, not blocking.
+
+6. **Install-pin v0.3 for the owner.**
    - Either publish `@openagentsinc/pylon@0.3.0` after release gates and npm
      credential repair, or define an owner-only install pin from the source
      checkout so the daily command does not depend on unpublished package
      semantics.
 
-6. **Run M10.**
-   - The system should prove one overnight unattended SHC run and one
-     own-Pylon/cloud-Pylon run, with matching terminal and web states, before
-     the owner relies on it for "start at night, review in the morning."
+Work-order lane follow-up:
+
+- Fix `pylon work submit` commit pinning and adapter intent (#4843).
+- Run M10 (#4768) before relying on "start at night, review in the morning."
+- Complete M14/market/provider issues before calling Pylon broadly/publicly
+  ready.
 
 ## Daily-Driver Decision
 
-Use Pylon today for:
+At this exact commit, use Pylon today for:
 
 - supervised Codex dogfood;
 - Codex and Claude/Fable bridge smokes;
@@ -410,19 +544,33 @@ Use Pylon today for:
 - validating the work-order spine and receipt discipline;
 - terminal/TUI/headless-node workflow testing.
 
+Do not yet use Pylon as the only daily-driver surface until #4839 and #4840
+land, because the current composer still invokes OpenCode and the local
+dangerous Codex mode does not exist in Pylon.
+
+Once #4839/#4840/#4841/#4842 land and one supervised proof is retained, the
+decision can become:
+
+- **yes** for owner-supervised local Pylon + Codex daily work;
+- **still no** for unattended overnight runs until #4768;
+- **still no** for market/provider/paid public capacity until #4777/#4781/
+  #4782/#4783 and #4772 complete;
+- **still no** for arbitrary `pylon work submit` repo tasks until #4843.
+
 Do not yet use Pylon as the default for:
 
 - arbitrary repo tasks from `pylon work submit`;
 - unattended overnight coding without operator watch;
 - paid work or market-provider work;
 - automatic PR writeback/merge;
-- broad "Codex primary with Fable fallback" routing.
+- broad public "Codex primary with Fable fallback" routing.
 
 The shortest honest path to "yes, switch" is not a new architecture pack. It
-is a focused P0 pass on the CLI and adapter preference, followed by one real
-owner daily-driver proof. After that pass, the answer can change from
-"controlled dogfood only" to "minimally usable for the owner's day-to-day
-public-repo tasks, with PR/writeback and paid-market still gated."
+is a focused P0 pass on the local Pylon dev/composer loop, followed by one
+real owner-watched proof. After that pass, the answer can change from
+"controlled dogfood only" to "minimally usable for the owner's supervised
+day-to-day repo tasks, with work-order, PR/writeback, unattended, and
+paid-market still gated."
 
 ## Proposed Addendum: Pylon Dev Mode
 
@@ -435,14 +583,23 @@ should not be a market lane, paid-work lane, public promise, or autonomous
 writeback path. It is the shortest bridge between "source-checkout dogfood" and
 "I can actually work in Pylon all day."
 
+This is no longer merely an addendum. It is the ASAP path:
+
+- #4839 implements the Codex composer/current-repo lane.
+- #4840 implements the explicit local supervised dangerous Codex mode.
+- #4841 implements the redacted dev doctor/context projection.
+- #4842 implements the check/apply/reload loop.
+
 ### Shape
 
 Command surface:
 
 ```sh
 pylon dev
+pylon dev --codex-danger
 pylon dev doctor --json
 pylon dev fix "the assignment view is not refreshing"
+pylon dev fix --codex-danger "fix the TUI composer"
 pylon dev fix --from-last-error
 pylon dev check
 pylon dev reload
