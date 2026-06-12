@@ -39,9 +39,12 @@ This is a docs-only audit. It does not create or change a product promise.
 
 **The Claude lane is already the platform peer of Codex on the
 assignment/work-order spine — and is in fact the dual-capability default. CL1
-now closes the largest local supervised gap by adding a Claude Agent SDK
-composer backend; the remaining parity work is the permissive local mode,
-doctor/context visibility for that mode, and a retained supervised proof.**
+closed the largest local supervised gap by adding a Claude Agent SDK composer
+backend; CL2 (#4845) added the local-only `bypassPermissions` supervised mode
+with the same opt-in/public-path-rejection guardrails as Codex, and CL3
+(#4846) projected the Claude execution mode through the dev doctor and the
+`Repo & AI Context` pane. The remaining parity work is the retained
+supervised proof (CL4 #4847), which needs an owner-watched run.**
 
 Concretely:
 
@@ -196,7 +199,7 @@ backed by either lane:
   follow-up prompts continue the conversation rather than starting cold. This
   is something the Codex composer thread model gets implicitly.
 
-### 2. Local-only supervised Claude permissive mode (the #4840 equivalent)
+### 2. Local-only supervised Claude permissive mode (implemented by #4845)
 
 The Codex danger mode maps to an OS-sandbox concept. The Claude Agent SDK's
 equivalent control is the permission system, so the mapping is:
@@ -231,7 +234,15 @@ delegated assignment lane, which rightly isolates with `settingSources: []`.
 That decision should be recorded in the implementation issue rather than
 inherited silently from the executor.
 
-### 3. Dev doctor parity (#4841 follow-through)
+**As implemented (#4845):** the bounded composer keeps the executor-style
+isolation it shipped with in CL1 (`allowedTools` allowlist, `acceptEdits`,
+`settingSources: []`); the supervised danger mode loads
+`settingSources: ["project"]` with no tool allowlist. The split is
+deliberate: project instruction layers activate exactly when the owner has
+explicitly opted into watching an unrestricted session on their own
+checkout.
+
+### 3. Dev doctor parity (implemented by #4846)
 
 Extend the `claudeAgent` section of the dev-doctor projection to match the
 `codex` section: active execution mode, effective permission posture, and
@@ -262,7 +273,7 @@ Claude, so #4843 is purely a transport/CLI gap, not a policy gap. The owner's
 flipping `DEFAULT_CODING_ADAPTER` — other requesters may reasonably want the
 platform default to remain Claude.
 
-### 6. TUI context pane (already filed as #4838)
+### 6. TUI context pane (#4838 closed; Claude mode added by #4846)
 
 #4838 already requires Claude/Fable readiness, credential source refs, model
 config (`claude-fable-5`), selected primary adapter, and fallback adapter in
@@ -287,8 +298,8 @@ New issues (CL lane, mirroring the CX convention):
 | ID  | Priority | Title                                                                                         | Acceptance sketch                                                                                                                                                                                                                                                                                                             |
 | --- | -------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CL1 | P0       | Make the Pylon composer run Claude in the current repo behind an adapter-neutral backend seam | Implemented in source by #4844: `claude-composer.ts` streams SDK messages into the TUI; `dev.defaultAdapter`/`--adapter` selects backend; readiness blockers pre-session; session continuity across prompts; `Claude` label + model shown; tests mirror the Codex composer coverage                                           |
-| CL2 | P0       | Add local-only supervised permissive Claude mode                                              | `--claude-danger`/`dev.claudeExecutionMode` maps to `permissionMode: "bypassPermissions"` on the local composer/dev path only; `Claude DANGER` label; public paths reject with `blocker.claude.local_supervised_danger_public_path`; assignment config still rejects permissive modes; tests prove accept-local/reject-public |
-| CL3 | P0       | Dev doctor and context pane show Claude execution mode                                        | `claudeAgent` doctor section gains `executionMode`/permission posture and blocker refs; #4838 pane renders it; redaction tests extended                                                                                                                                                                                       |
+| CL2 | P0       | Add local-only supervised permissive Claude mode                                              | Implemented in source by #4845: `--claude-danger`/`dev.claudeExecutionMode` maps to `permissionMode: "bypassPermissions"` on the local composer path only; `Claude DANGER` label; all five public command paths reject with `blocker.claude.local_supervised_danger_public_path`; assignment config never reads permissive modes; tests prove accept-local/reject-public and the settingSources split |
+| CL3 | P0       | Dev doctor and context pane show Claude execution mode                                        | Implemented in source by #4846: `claudeAgent` doctor section gains `executionMode`, `permissionMode`, and `dangerPublicPathBlockerRef`; `pylonConfig.claudeDevOverlayRef` names the dev overlay; the context pane shows `Claude DANGER` with Codex-equal prominence and error-colored text; redaction/fixture tests extended |
 | CL4 | P1       | Retained supervised Claude/Fable daily-driver proof                                           | One real owner-watched repo task through the Claude composer (model `claude-fable-5`), focused checks pass, patch/check/reload state shown in Pylon; local refs retained; copy updated from "built" to "proven"                                                                                                               |
 
 Amendments to existing open issues (comments, not new issues):

@@ -2189,3 +2189,62 @@ Verification:
 - `bun test tests/claude-composer.test.ts tests/codex-composer.test.ts tests/codex-agent.test.ts tests/context-projection.test.ts tests/dev-doctor.test.ts tests/tui-render-harness.test.ts tests/tui-commands.test.ts`
 - `bun src/index.ts context --json`
 - `git diff --check`
+
+## #4845 CL2: local-only supervised permissive Claude mode (2026-06-12)
+
+Status: source implementation merged to `main`. The retained supervised
+Claude/Fable daily-driver proof remains #4847.
+
+Implemented:
+
+- `ClaudeComposerExecutionMode` (`local_bounded` | `local_supervised_danger`)
+  and `permissionModeForClaudeComposerExecutionMode()` in
+  `apps/pylon/src/claude-composer.ts`: the danger mode maps to SDK
+  `permissionMode: "bypassPermissions"` with no tool allowlist, the
+  permission-system equivalent of Codex `danger-full-access`.
+- Explicit opt-in only: `pylon --claude-danger` or
+  `"dev": { "claudeExecutionMode": "local_supervised_danger" }` read by the
+  new `loadClaudeDevConfig()`; requesting `bypassPermissions` without the
+  execution mode throws
+  `blocker.claude.local_supervised_danger_requires_opt_in`.
+- settingSources decision recorded: bounded mode keeps `settingSources: []`
+  executor-style isolation; danger mode loads `settingSources: ["project"]`
+  so the owner's own `CLAUDE.md`/`.claude` layers are active exactly when
+  they have opted into watching an unrestricted session.
+- `Claude DANGER` TUI label plus `mode | permissions` status line and footer.
+- `pylon work`, `pylon assignment`, `pylon provider`, `pylon node`, and
+  `pylon attach` reject `--claude-danger` with
+  `blocker.claude.local_supervised_danger_public_path`; danger flags are
+  per-lane, so `--codex-danger` can never select a permissive Claude session.
+- `loadClaudeAgentConfig()` documented and tested as the assignment-safe
+  surface that never reads a permissive mode.
+- Root `INVARIANTS.md` records the per-lane local danger boundary.
+
+Verification:
+
+- `bun test tests/claude-composer.test.ts tests/claude-agent.test.ts tests/codex-composer.test.ts tests/dev-doctor.test.ts tests/context-projection.test.ts`
+- `bun run smoke:default-start`
+
+## #4846 CL3: dev doctor and context pane show Claude execution mode (2026-06-12)
+
+Status: source implementation merged to `main`.
+
+Implemented:
+
+- Dev-doctor `claudeAgent` section gains `executionMode`, `permissionMode`,
+  and `dangerPublicPathBlockerRef` (set while the permissive mode is active,
+  naming the typed public-path blocker); `pylonConfig` gains
+  `claudeDevOverlayRef` (`config.pylon.dev.claude_local_supervised_danger`).
+- `pylon dev doctor --json` accepts `--claude-danger` alongside
+  `--codex-danger`.
+- The `Repo & AI Context` pane renders `Claude DANGER` with the same
+  prominence as `Codex DANGER`, adds Claude `Mode:`/`Permissions:` lines,
+  colors the pane text as an error when either lane is permissive, and
+  treats the Claude overlay/mode as dev mode.
+- Redaction law unchanged and reasserted by fixture tests covering bounded,
+  danger-from-config, and danger-from-flag states.
+
+Verification:
+
+- `bun test tests/dev-doctor.test.ts tests/context-projection.test.ts tests/tui-commands.test.ts tests/tui-render-harness.test.ts tests/tui-store.test.ts tests/claude-composer.test.ts`
+- `bun run smoke:default-start`
