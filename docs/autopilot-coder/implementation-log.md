@@ -1346,6 +1346,37 @@ Timing rule:
 - #4768 and #4772 should cite Pack B only if their proof evidence depends on
   those provider/account/policy surfaces.
 
+## M13 Live Gemini Provider Gate / Issue #4771
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4771`
+
+Status: ready to close for the scoped M13 live non-Codex provider leg.
+
+Implemented and verified:
+
+- Added migration `0173_provider_account_peer_provider_checks.sql` so
+  provider-account, connection-attempt, grant, lease, and sanity-check tables
+  accept `anthropic_claude` and `google_gemini` beside `chatgpt_codex`.
+- Deployed `openagents-autopilot` Worker version
+  `a10d2d08-fd81-4f50-ba01-e06ee90822ed`.
+- Connected a production Google Gemini API-key BYOK account with public ref
+  `provider-account_ref_m13_google_gemini_d2fc43560602`.
+- Confirmed the provider pool projection returns that account as eligible,
+  healthy, connected, and visible to registered-agent readers.
+- Acquired a live required-provider lease, issued and resolved the grant, and
+  released the lease as succeeded.
+- Ran a Probe `gemini_api` backend call using the production-resolved grant
+  payload shape and verified secret redaction.
+
+Evidence:
+
+- `docs/autopilot-coder/2026-06-12-m13-live-gemini-provider-gate-record.md`
+
+Remaining boundary:
+
+- This closes M13's live non-Codex leg only. M10, M14, market proof,
+  settlement visibility, and Pack B hardening remain separate gates.
+
 ## PB1 / Issue #4825: Provider Account Credential Boundary
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4825`

@@ -17,6 +17,7 @@ import {
   type CodexOAuthAuth,
   type DeleteStartedCodexDeviceLogin,
   type PollCodexDeviceLogin,
+  type ProviderAccountProvider,
   type ProviderAccountRecord,
   type ProviderAccountRepository,
   type PublicProviderAccount,
@@ -29,8 +30,8 @@ import {
 } from './provider-account-domain'
 import {
   type ProviderAccountFailoverFailureClass,
-  classifyProviderAccountHealthEvent,
   classifyProviderAccountFailover,
+  classifyProviderAccountHealthEvent,
 } from './provider-account-failover-policy'
 import { PROVIDER_ACCOUNT_LEASE_POLICY_VERSION } from './provider-account-lease-policy'
 import {
@@ -66,6 +67,15 @@ type ProviderAccountProbeCollisionClass =
   | 'grant_account_mismatch'
   | 'lease_isolation_failed'
   | 'hidden_global_lock_detected'
+
+const providerAccountProvider = (
+  value: unknown,
+): ProviderAccountProvider | undefined =>
+  value === 'chatgpt_codex' ||
+  value === 'anthropic_claude' ||
+  value === 'google_gemini'
+    ? value
+    : undefined
 
 export type ProviderAccountSanityProbeResult =
   | ProviderAccountSanityClassification
@@ -510,8 +520,8 @@ const normalizeProbeResult = (
       ? 'hidden_global_lock_detected'
       : result.observedProviderAccountRef !== undefined &&
           result.observedProviderAccountRef !== expectedProviderAccountRef
-	        ? 'wrong_account_identity'
-	        : 'none')
+        ? 'wrong_account_identity'
+        : 'none')
   const failureClass =
     result.providerFailureClass ??
     (result.providerStatus !== undefined && result.providerStatus >= 500
@@ -816,6 +826,7 @@ type LeaseInsertRow = Readonly<{
 
 type ExistingLeaseRow = Readonly<{
   lease_ref: string
+  provider: ProviderAccountProvider
   provider_account_id: string
   provider_account_ref: string
   requested_action: string
@@ -841,6 +852,7 @@ const acquireProviderAccountLease = async (
   db: D1Database,
   input: Readonly<{
     userId: string
+    requiredProvider: ProviderAccountProvider | null
     requestedAction: string
     runId: string | null
     assignmentId: string | null
@@ -925,7 +937,7 @@ const acquireProviderAccountLease = async (
         AND active_leases.status = 'active'
         AND active_leases.expires_at > ?
        WHERE pa.user_id = ?
-         AND pa.provider = 'chatgpt_codex'
+         AND (? IS NULL OR pa.provider = ?)
          AND pa.status = 'connected'
          AND pa.health = 'healthy'
          AND pa.secret_ref IS NOT NULL
@@ -975,6 +987,8 @@ const acquireProviderAccountLease = async (
       input.now,
       input.now,
       input.userId,
+      input.requiredProvider ?? null,
+      input.requiredProvider ?? null,
       input.now,
     )
     .first<LeaseInsertRow>()
@@ -1036,6 +1050,7 @@ const findLeaseByRef = async (
   const row = await db
     .prepare(
       `SELECT lease_ref,
+              provider,
               provider_account_id,
               provider_account_ref,
               requested_action,
@@ -1655,7 +1670,8 @@ const recordFailoverReceipt = async (
     orderId: input.orderId,
     requestedAction: input.requestedAction,
     previousLeaseRef: input.previousLease?.lease_ref ?? null,
-    previousProviderAccountRef: input.previousLease?.provider_account_ref ?? null,
+    previousProviderAccountRef:
+      input.previousLease?.provider_account_ref ?? null,
     nextLeaseRef: input.nextLease?.leaseRef ?? null,
     nextProviderAccountRef: input.nextLease?.providerAccountRef ?? null,
     failureClass: input.action.failureClass,
@@ -2199,6 +2215,11 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     const requestedAction = optionalString(body.requestedAction)
+    const requiredProviderValue = optionalString(body.requiredProvider)
+    const requiredProvider =
+      requiredProviderValue === undefined
+        ? undefined
+        : providerAccountProvider(requiredProviderValue)
     const now = currentIsoTimestamp()
     const leaseTtlSeconds = clampLeaseTtlSeconds(
       optionalParallelNumber(body.ttlSeconds),
@@ -2215,12 +2236,24 @@ export const makeOperatorProviderAccountRoutes = <
       )
     }
 
+    if (requiredProviderValue !== undefined && requiredProvider === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'bad_request',
+          reason:
+            'requiredProvider must be chatgpt_codex, anthropic_claude, or google_gemini.',
+        },
+        { status: 400 },
+      )
+    }
+
     try {
       const lease = await acquireProviderAccountLease(openAgentsDatabase(env), {
         assignmentId: optionalString(body.assignmentId) ?? null,
         expiresAt,
         now,
         orderId: optionalString(body.orderId) ?? null,
+        requiredProvider: requiredProvider ?? null,
         requestedAction,
         runId: optionalString(body.runId) ?? null,
         userId: targetUser.userId,
@@ -2231,7 +2264,9 @@ export const makeOperatorProviderAccountRoutes = <
           {
             error: 'no_eligible_provider_account',
             reason:
-              'No connected healthy ChatGPT/Codex account is eligible for lease.',
+              requiredProvider === undefined
+                ? 'No connected healthy provider account is eligible for lease.'
+                : `No connected healthy ${requiredProvider} account is eligible for lease.`,
             selectedByPolicyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
           },
           { status: 409 },
@@ -2360,11 +2395,15 @@ export const makeOperatorProviderAccountRoutes = <
         { status: 201 },
       )
     } catch (error) {
-      logWorkerRouteError('operator_provider_account_lease_grant_failed', error, {
-        errorName: providerAccountRouteErrorName(error),
-        leaseRef,
-        targetUserId: targetUser.userId,
-      })
+      logWorkerRouteError(
+        'operator_provider_account_lease_grant_failed',
+        error,
+        {
+          errorName: providerAccountRouteErrorName(error),
+          leaseRef,
+          targetUserId: targetUser.userId,
+        },
+      )
 
       return noStoreJsonResponse(
         {
@@ -2451,6 +2490,7 @@ export const makeOperatorProviderAccountRoutes = <
               now,
               orderId:
                 optionalString(body.orderId) ?? previousLease.order_id ?? null,
+              requiredProvider: previousLease.provider,
               requestedAction,
               runId: optionalString(body.runId) ?? previousLease.run_id ?? null,
               userId: targetUser.userId,

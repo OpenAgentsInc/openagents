@@ -239,6 +239,7 @@ const db = (): D1Database =>
 
 type FakeLeaseRow = {
   lease_ref: string
+  provider?: string
   provider_account_id: string
   provider_account_ref: string
   requested_action: string
@@ -313,10 +314,10 @@ class FakeD1Statement {
   bind = (...values: Array<unknown>) =>
     new FakeD1Statement(this.database, this.query, values)
 
-  first = <T,>(): Promise<T | null> =>
+  first = <T>(): Promise<T | null> =>
     Promise.resolve((this.database.first(this.query, this.values) as T) ?? null)
 
-  all = <T,>(): Promise<{ results: Array<T> }> =>
+  all = <T>(): Promise<{ results: Array<T> }> =>
     Promise.resolve({
       results: this.database.all(this.query, this.values) as Array<T>,
     })
@@ -366,8 +367,13 @@ class FakeProviderAccountD1 {
       return lease
     }
 
-    if (query.includes('FROM provider_accounts') && query.includes('WHERE id = ?')) {
-      const account = this.accounts.find(candidate => candidate.id === values[0])
+    if (
+      query.includes('FROM provider_accounts') &&
+      query.includes('WHERE id = ?')
+    ) {
+      const account = this.accounts.find(
+        candidate => candidate.id === values[0],
+      )
 
       return account === undefined
         ? null
@@ -376,7 +382,10 @@ class FakeProviderAccountD1 {
           }
     }
 
-    if (query.includes('SELECT pa.provider_account_ref') && query.includes('LIMIT 1')) {
+    if (
+      query.includes('SELECT pa.provider_account_ref') &&
+      query.includes('LIMIT 1')
+    ) {
       const [now, userId] = values as [string, string, string]
       const selected = this.selectEligibleAccount(userId, now)
 
@@ -404,7 +413,17 @@ class FakeProviderAccountD1 {
         policyVersion,
         now,
         expiresAt,
-      ] = values as [string, string, string, string | null, string | null, string | null, string, string, string]
+      ] = values as [
+        string,
+        string,
+        string,
+        string | null,
+        string | null,
+        string | null,
+        string,
+        string,
+        string,
+      ]
       const selected = this.accounts
         .filter(account => {
           const activeLeaseCount = this.leases.filter(
@@ -416,7 +435,7 @@ class FakeProviderAccountD1 {
 
           return (
             account.user_id === values[11] &&
-            account.provider === 'chatgpt_codex' &&
+            (values[12] === null || account.provider === values[12]) &&
             account.status === 'connected' &&
             account.health === 'healthy' &&
             account.secret_ref !== null &&
@@ -424,7 +443,8 @@ class FakeProviderAccountD1 {
             account.low_credit_flag === 0 &&
             (account.reauth_required_reason === undefined ||
               account.reauth_required_reason === null) &&
-            (account.cooldown_until === null || account.cooldown_until <= now) &&
+            (account.cooldown_until === null ||
+              account.cooldown_until <= now) &&
             activeLeaseCount < account.lease_limit
           )
         })
@@ -435,7 +455,11 @@ class FakeProviderAccountD1 {
           return (
             leftActive - rightActive ||
             left.operator_priority - right.operator_priority ||
-            (left.last_selected_at ?? left.connected_at ?? left.created_at).localeCompare(
+            (
+              left.last_selected_at ??
+              left.connected_at ??
+              left.created_at
+            ).localeCompare(
               right.last_selected_at ?? right.connected_at ?? right.created_at,
             ) ||
             left.provider_account_ref.localeCompare(right.provider_account_ref)
@@ -452,6 +476,7 @@ class FakeProviderAccountD1 {
         expires_at: expiresAt,
         lease_ref: leaseRef,
         order_id: orderId,
+        provider: selected.provider,
         provider_account_id: selected.id,
         provider_account_ref: selected.provider_account_ref,
         requested_action: requestedAction,
@@ -536,7 +561,8 @@ class FakeProviderAccountD1 {
           last_sanity_check_at: account.last_sanity_check_at ?? null,
           last_sanity_check_result: account.last_sanity_check_result ?? null,
           last_parallel_probe_at: account.last_parallel_probe_at ?? null,
-          last_parallel_probe_result: account.last_parallel_probe_result ?? null,
+          last_parallel_probe_result:
+            account.last_parallel_probe_result ?? null,
           last_selected_at: account.last_selected_at,
           last_successful_launch_at: account.last_successful_launch_at ?? null,
           last_failed_launch_at: account.last_failed_launch_at ?? null,
@@ -568,7 +594,8 @@ class FakeProviderAccountD1 {
           return {
             lease_ref: lease.lease_ref,
             provider_account_ref: lease.provider_account_ref,
-            account_label: account?.operator_label ?? account?.account_label ?? null,
+            account_label:
+              account?.operator_label ?? account?.account_label ?? null,
             requested_action: lease.requested_action,
             run_id: lease.run_id,
             assignment_id: lease.assignment_id,
@@ -585,7 +612,10 @@ class FakeProviderAccountD1 {
   }
 
   run = (query: string, values: Array<unknown>) => {
-    if (query.includes('UPDATE provider_account_leases') && query.includes("SET status = 'failed'")) {
+    if (
+      query.includes('UPDATE provider_account_leases') &&
+      query.includes("SET status = 'failed'")
+    ) {
       const [, failureClass, leaseRef] = values as [string, string, string]
       this.leases = this.leases.map(lease =>
         lease.lease_ref === leaseRef
@@ -594,7 +624,10 @@ class FakeProviderAccountD1 {
       ) as Array<FakeLeaseRow>
     }
 
-    if (query.includes('UPDATE provider_accounts') && query.includes('last_failed_launch_at')) {
+    if (
+      query.includes('UPDATE provider_accounts') &&
+      query.includes('last_failed_launch_at')
+    ) {
       const accountId = values[values.length - 1]
       this.accounts = this.accounts.map(account =>
         account.id === accountId
@@ -604,9 +637,12 @@ class FakeProviderAccountD1 {
                 ? ((values[0] as string | null) ?? account.health)
                 : account.health,
               low_credit_flag:
-                query.includes('low_credit_flag') && values[3] === 1 ? 1 : account.low_credit_flag,
+                query.includes('low_credit_flag') && values[3] === 1
+                  ? 1
+                  : account.low_credit_flag,
               cooldown_until:
-                query.includes('cooldown_until') && typeof values[4] === 'string'
+                query.includes('cooldown_until') &&
+                typeof values[4] === 'string'
                   ? (values[4] as string)
                   : account.cooldown_until,
             }
@@ -614,7 +650,10 @@ class FakeProviderAccountD1 {
       )
     }
 
-    if (query.includes('UPDATE provider_accounts') && query.includes('last_selected_at')) {
+    if (
+      query.includes('UPDATE provider_accounts') &&
+      query.includes('last_selected_at')
+    ) {
       const accountId = values[2]
       this.accounts = this.accounts.map(account =>
         account.id === accountId
@@ -663,7 +702,9 @@ class FakeProviderAccountD1 {
         outcome: outcome as string,
         policy_version: policyVersion as string,
         previous_lease_ref: previousLeaseRef as string | null,
-        previous_provider_account_ref: previousProviderAccountRef as string | null,
+        previous_provider_account_ref: previousProviderAccountRef as
+          | string
+          | null,
         requested_action: requestedAction as string,
         run_id: runId as string | null,
         attempt_number: attemptNumber as number,
@@ -682,6 +723,7 @@ class FakeProviderAccountD1 {
   private selectEligibleAccount = (
     userId: string,
     now: string,
+    requiredProvider: string | null = null,
   ): FakeAccountRow | undefined =>
     this.accounts
       .filter(account => {
@@ -689,7 +731,8 @@ class FakeProviderAccountD1 {
 
         return (
           account.user_id === userId &&
-          account.provider === 'chatgpt_codex' &&
+          (requiredProvider === null ||
+            account.provider === requiredProvider) &&
           account.status === 'connected' &&
           account.health === 'healthy' &&
           account.secret_ref !== null &&
@@ -708,7 +751,11 @@ class FakeProviderAccountD1 {
         return (
           leftActive - rightActive ||
           left.operator_priority - right.operator_priority ||
-          (left.last_selected_at ?? left.connected_at ?? left.created_at).localeCompare(
+          (
+            left.last_selected_at ??
+            left.connected_at ??
+            left.created_at
+          ).localeCompare(
             right.last_selected_at ?? right.connected_at ?? right.created_at,
           ) ||
           left.provider_account_ref.localeCompare(right.provider_account_ref)
@@ -1682,14 +1729,18 @@ describe('operator provider account routes', () => {
     const repository = new FakeProviderAccountRepository()
     const database = new FakeProviderAccountD1()
     database.accounts.push(
-      fakeAccountRow('provider_account_healthy', 'provider-account_ref_healthy', {
-        account_label: 'healthy',
-        last_sanity_check_at: '2026-06-05T01:00:00.000Z',
-        last_sanity_check_result: 'healthy',
-        last_parallel_probe_at: '2026-06-05T01:05:00.000Z',
-        last_parallel_probe_result: 'healthy',
-        last_successful_launch_at: '2026-06-05T01:10:00.000Z',
-      }),
+      fakeAccountRow(
+        'provider_account_healthy',
+        'provider-account_ref_healthy',
+        {
+          account_label: 'healthy',
+          last_sanity_check_at: '2026-06-05T01:00:00.000Z',
+          last_sanity_check_result: 'healthy',
+          last_parallel_probe_at: '2026-06-05T01:05:00.000Z',
+          last_parallel_probe_result: 'healthy',
+          last_successful_launch_at: '2026-06-05T01:10:00.000Z',
+        },
+      ),
       fakeAccountRow(
         'provider_account_stale_reauth',
         'provider-account_ref_stale_reauth',
@@ -1699,11 +1750,15 @@ describe('operator provider account routes', () => {
           reauth_required_reason: 'token_invalidated',
         },
       ),
-      fakeAccountRow('provider_account_low_credit', 'provider-account_ref_low', {
-        account_label: 'low credit',
-        low_credit_flag: 1,
-        refill_note: 'Refill before overnight use.',
-      }),
+      fakeAccountRow(
+        'provider_account_low_credit',
+        'provider-account_ref_low',
+        {
+          account_label: 'low credit',
+          low_credit_flag: 1,
+          refill_note: 'Refill before overnight use.',
+        },
+      ),
       fakeAccountRow(
         'provider_account_rate_limited',
         'provider-account_ref_rate_limited',
@@ -1834,10 +1889,14 @@ describe('operator provider account routes', () => {
           reauth_required_reason: 'token_invalidated',
         },
       ),
-      fakeAccountRow('provider_account_healthy', 'provider-account_ref_healthy', {
-        account_label: 'healthy',
-        operator_priority: 100,
-      }),
+      fakeAccountRow(
+        'provider_account_healthy',
+        'provider-account_ref_healthy',
+        {
+          account_label: 'healthy',
+          operator_priority: 100,
+        },
+      ),
     )
 
     const response = await run(
@@ -1864,5 +1923,124 @@ describe('operator provider account routes', () => {
     expect(text).not.toContain('codex-auth://')
     expect(text).not.toContain('access-token')
     expect(text).not.toContain('grant')
+  })
+
+  test('leases and grants a required Google Gemini provider account', async () => {
+    const repository = new FakeProviderAccountRepository()
+    const database = new FakeProviderAccountD1()
+    repository.accounts.push(
+      connectedAccount({
+        authMode: 'api_key',
+        id: 'provider_account_gemini',
+        provider: 'google_gemini',
+        providerAccountRef: 'provider-account_ref_gemini',
+        secretRef:
+          'provider-account://google-gemini/user-api-key/provider-account_ref_gemini',
+      }),
+    )
+    database.accounts.push(
+      fakeAccountRow('provider_account_codex', 'provider-account_ref_codex', {
+        operator_priority: 1,
+      }),
+      fakeAccountRow('provider_account_gemini', 'provider-account_ref_gemini', {
+        operator_priority: 50,
+        provider: 'google_gemini',
+        secret_ref:
+          'provider-account://google-gemini/user-api-key/provider-account_ref_gemini',
+      }),
+    )
+
+    const leaseResponse = await run(
+      repository,
+      '/api/operator/provider-accounts/chatgpt-codex/leases',
+      {
+        body: JSON.stringify({
+          email: 'chris@openagents.com',
+          requestedAction: 'm13.google_gemini_live_run',
+          requiredProvider: 'google_gemini',
+          runId: 'run.m13.google_gemini.live',
+        }),
+        method: 'POST',
+      },
+      undefined,
+      database.asD1(),
+    )
+    const leaseText = await leaseResponse.text()
+    const leaseBody = JSON.parse(leaseText) as { leaseRef: string }
+
+    expect(leaseResponse.status).toBe(201)
+    expect(leaseBody).toMatchObject({
+      providerAccountRef: 'provider-account_ref_gemini',
+      requestedAction: 'm13.google_gemini_live_run',
+      runId: 'run.m13.google_gemini.live',
+    })
+    expect(leaseText).not.toContain('user-api-key')
+
+    const grantResponse = await run(
+      repository,
+      '/api/operator/provider-accounts/chatgpt-codex/leases/grant',
+      {
+        body: JSON.stringify({
+          email: 'chris@openagents.com',
+          leaseRef: leaseBody.leaseRef,
+          runnerSessionId: 'run.m13.google_gemini.live',
+        }),
+        method: 'POST',
+      },
+      undefined,
+      database.asD1(),
+    )
+    const grantText = await grantResponse.text()
+    const grantBody = JSON.parse(grantText)
+
+    expect(grantResponse.status).toBe(201)
+    expect(grantBody).toMatchObject({
+      leaseRef: leaseBody.leaseRef,
+      providerAccountRef: 'provider-account_ref_gemini',
+      grant: {
+        grantRef: expect.stringContaining('provider-auth-grant_'),
+        requestedAction: 'm13.google_gemini_live_run',
+        runnerSessionId: 'run.m13.google_gemini.live',
+        status: 'issued',
+      },
+    })
+    expect(grantText).not.toContain('user-api-key')
+    expect(repository.grants).toHaveLength(1)
+    expect(repository.grants[0]).toMatchObject({
+      provider: 'google_gemini',
+      providerAccountRef: 'provider-account_ref_gemini',
+      requestedAction: 'm13.google_gemini_live_run',
+      runnerSessionId: 'run.m13.google_gemini.live',
+      status: 'issued',
+    })
+  })
+
+  test('rejects an unknown required provider instead of leasing any account', async () => {
+    const repository = new FakeProviderAccountRepository()
+    const database = new FakeProviderAccountD1()
+    database.accounts.push(
+      fakeAccountRow('provider_account_codex', 'provider-account_ref_codex'),
+    )
+
+    const response = await run(
+      repository,
+      '/api/operator/provider-accounts/chatgpt-codex/leases',
+      {
+        body: JSON.stringify({
+          email: 'chris@openagents.com',
+          requestedAction: 'm13.google_gemini_live_run',
+          requiredProvider: 'gemini',
+          runId: 'run.m13.google_gemini.live',
+        }),
+        method: 'POST',
+      },
+      undefined,
+      database.asD1(),
+    )
+    const text = await response.text()
+
+    expect(response.status).toBe(400)
+    expect(text).toContain('requiredProvider')
+    expect(database.leases).toHaveLength(0)
   })
 })

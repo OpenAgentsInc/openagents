@@ -21,7 +21,9 @@ export type TreasuryTransactionRecord = Readonly<{
 
 export type TreasuryTransactionStore = Readonly<{
   insert: (record: TreasuryTransactionRecord) => Promise<void>
-  listRecent: (limit: number) => Promise<ReadonlyArray<TreasuryTransactionRecord>>
+  listRecent: (
+    limit: number,
+  ) => Promise<ReadonlyArray<TreasuryTransactionRecord>>
   read: (id: string) => Promise<TreasuryTransactionRecord | undefined>
   settle: (input: {
     amountSat: number
@@ -43,7 +45,9 @@ type TreasuryTransactionRow = Readonly<{
   expires_at: string | null
 }>
 
-const rowToRecord = (row: TreasuryTransactionRow): TreasuryTransactionRecord => ({
+const rowToRecord = (
+  row: TreasuryTransactionRow,
+): TreasuryTransactionRecord => ({
   amountSat: row.amount_sat,
   bolt11: row.bolt11,
   createdAt: row.created_at,
@@ -149,7 +153,10 @@ const publicTransaction = (record: TreasuryTransactionRecord) => ({
 
 const treasuryBalance = (
   fetchTreasury: ContainerPathFetch,
-): Effect.Effect<{ balanceSat: number; maxSendableSat: number | null } | null> =>
+): Effect.Effect<{
+  balanceSat: number
+  maxSendableSat: number | null
+} | null> =>
   Effect.tryPromise({
     catch: () => null,
     try: async () => {
@@ -253,7 +260,9 @@ ${visible
   .map(record => {
     const projection = publicTransaction(record)
     const time = escapeHtml(
-      (projection.settledAt ?? projection.createdAt).slice(0, 16).replace('T', ' '),
+      (projection.settledAt ?? projection.createdAt)
+        .slice(0, 16)
+        .replace('T', ' '),
     )
     const direction =
       projection.direction === 'in'
@@ -270,7 +279,9 @@ const donationExpired = (
   record: TreasuryTransactionRecord,
   nowIso: string,
 ): boolean =>
-  record.expiresAt !== null && record.state === 'pending' && record.expiresAt < nowIso
+  record.expiresAt !== null &&
+  record.state === 'pending' &&
+  record.expiresAt < nowIso
 
 export const handlePublicTreasuryApi = (
   request: Request,
@@ -461,7 +472,11 @@ const donationPage = (
 
       const nowIso = dependencies.nowIso()
 
-      if (record.state === 'pending' && fetchTreasury !== undefined && record.paymentRef !== null) {
+      if (
+        record.state === 'pending' &&
+        fetchTreasury !== undefined &&
+        record.paymentRef !== null
+      ) {
         const response = await fetchTreasury(`/received/${record.paymentRef}`)
 
         if (response.ok) {
@@ -473,7 +488,12 @@ const donationPage = (
 
             await store.settle({ amountSat, id: record.id, settledAt: nowIso })
 
-            return { ...record, amountSat, settledAt: nowIso, state: 'settled' as const }
+            return {
+              ...record,
+              amountSat,
+              settledAt: nowIso,
+              state: 'settled' as const,
+            }
           }
         }
 
@@ -487,7 +507,7 @@ const donationPage = (
       return record
     },
   }).pipe(
-    Effect.catch(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.void),
     Effect.map(record => {
       if (record === undefined) {
         return htmlPage(

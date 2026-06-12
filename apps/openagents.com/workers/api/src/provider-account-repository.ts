@@ -14,8 +14,8 @@ import {
   toGrantRecord,
 } from './provider-account-domain'
 import {
-  ProviderAccountReloadFailed,
   type ProviderAccountError,
+  ProviderAccountReloadFailed,
   providerAccountErrorFromUnknown,
 } from './provider-account-errors'
 
@@ -29,7 +29,6 @@ export const makeD1ProviderAccountRepository = (
          FROM provider_accounts
          WHERE user_id = ?
            AND provider_account_ref = ?
-           AND provider = 'chatgpt_codex'
            AND deleted_at IS NULL`,
       )
       .bind(userId, providerAccountRef)
@@ -44,7 +43,6 @@ export const makeD1ProviderAccountRepository = (
         `SELECT *
          FROM provider_accounts
          WHERE provider_account_ref = ?
-           AND provider = 'chatgpt_codex'
            AND deleted_at IS NULL`,
       )
       .bind(providerAccountRef)

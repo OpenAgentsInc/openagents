@@ -2,6 +2,8 @@
 
 Date: 2026-06-11
 
+Updated: 2026-06-12
+
 Source set: #4749, #4766-#4783, #4785-#4786, and #4813-#4823, as
 delegated by
 `docs/autopilot-coder/terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`.
@@ -84,22 +86,40 @@ Next unblock:
 
 ### #4771 M13 provider peers and non-Codex live run
 
-Status: open.
+Status: ready to close.
 
-Blockers:
+Resolved evidence:
 
 - The ToS review is complete and API-key BYOK connect paths for Anthropic and
   Gemini are built.
 - The account-pool dashboard can now show Anthropic/Gemini accounts.
-- The remaining acceptance leg requires one real Anthropic or Gemini
-  API-key-backed account to be leased and consumed by a real Autopilot run.
-- No obvious live Anthropic/Gemini key file or retained live non-Codex run
-  fixture was available in the Scope lane.
+- Production D1 provider-account constraints were widened by
+  `0173_provider_account_peer_provider_checks.sql` so connected Gemini accounts
+  can be stored, leased, granted, sanity-checked, and projected.
+- A live Gemini BYOK account is connected for `github:14167547` with public ref
+  `provider-account_ref_m13_google_gemini_d2fc43560602`; D1 stores only the
+  public secret ref
+  `provider-account://google-gemini/user-api-key/provider-account_ref_m13_google_gemini_d2fc43560602`.
+- `GET /api/provider-accounts/pool` returned the Gemini account as
+  `eligible`, `healthy`, `connected`, and with zero active leases.
+- `POST /api/operator/provider-accounts/chatgpt-codex/leases` with
+  `requiredProvider: google_gemini` selected the Gemini account and created
+  `provider-account-lease_ref_6de27b1ad36944b382362ca73c23f20a`.
+- The lease grant
+  `provider-auth-grant_grant_ref_19dc435bf3204a70a6b7b853206f357d` resolved
+  through the registered-agent route to a `probe_gemini_api_key`
+  materialization targeting `GOOGLE_GENERATIVE_AI_API_KEY`.
+- A one-off Probe runner consumed the production-resolved grant payload and
+  completed a live `gemini_api` backend call with secret redaction verified.
+- The lease was released as `succeeded`, and the pool returned to zero active
+  leases for the account.
+- Gate record:
+  `docs/autopilot-coder/2026-06-12-m13-live-gemini-provider-gate-record.md`.
 
-Next unblock:
+Remaining blocker:
 
-- Provide or connect a live Anthropic or Gemini API key, run a real non-Codex
-  Autopilot execution through the lease path, and link the run evidence here.
+- None for #4771. This does not unblock M10, M14, market proof, settlement, or
+  Pack B hardening by itself.
 
 ### #4772 M14 MVP exit review and door-open decision
 
@@ -110,7 +130,8 @@ Blockers:
 - #4767 live two-account rotation is ready to close, but does not satisfy the
   separate overnight, non-Codex, market, or MVP exit gates.
 - #4768 overnight unattended proof remains open.
-- #4771 non-Codex real-run evidence remains open.
+- #4771 non-Codex real-run evidence is ready to close and no longer blocks
+  M14 once its issue is closed.
 - Market live paid-labor proofs remain open where they affect public claims.
 - The final decision record must name exact dates, issue refs, commits, smokes,
   accepted deferrals, and remaining claim limits.
@@ -207,7 +228,7 @@ Status: open.
 
 Blockers:
 
-- The parent should not close while #4768, #4771, #4772, #4777, #4781, #4782,
+- The parent should not close while #4768, #4772, #4777, #4781, #4782,
   #4783, and #4749 remain open unless the parent records the exact
   accepted post-MVP/open tail.
 - Live paid Forum order, live autonomic funded tick, live provider routing,

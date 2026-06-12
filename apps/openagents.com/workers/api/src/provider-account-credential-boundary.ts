@@ -17,9 +17,7 @@ export const PROVIDER_ACCOUNT_CREDENTIAL_BOUNDARY_VERSION =
 const PROVIDER_ACCOUNT_CREDENTIAL_BOUNDARY_COLLECTION =
   'provider_account_credential_boundary_public'
 
-export type ProviderAccountCredentialLeaseAuthority =
-  | 'eligible'
-  | 'blocked'
+export type ProviderAccountCredentialLeaseAuthority = 'eligible' | 'blocked'
 
 export type ProviderAccountCredentialBlocker =
   | 'account_deleted'
@@ -41,10 +39,12 @@ export type ProviderAccountCredentialBoundaryInput = Readonly<{
   >
   activeLeaseRefs?: ReadonlyArray<string> | undefined
   artifactRefs?: ReadonlyArray<string> | undefined
-  grant?: Pick<
-    ProviderAccountAuthGrantRecord,
-    'expiresAt' | 'grantRef' | 'providerAccountRef' | 'status'
-  > | undefined
+  grant?:
+    | Pick<
+        ProviderAccountAuthGrantRecord,
+        'expiresAt' | 'grantRef' | 'providerAccountRef' | 'status'
+      >
+    | undefined
   now: string
   receiptRefs?: ReadonlyArray<string> | undefined
 }>
@@ -68,9 +68,9 @@ export type ProviderAccountCredentialBoundaryProjection = Readonly<{
   receiptRefs: ReadonlyArray<string>
 }>
 
-const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> => [
-  ...new Set(values),
-]
+const unique = <Value extends string>(
+  values: ReadonlyArray<Value>,
+): ReadonlyArray<Value> => [...new Set(values)]
 
 const grantBlockers = (
   grant: ProviderAccountCredentialBoundaryInput['grant'],
@@ -84,9 +84,7 @@ const grantBlockers = (
     return [`grant_status:${grant.status}`]
   }
 
-  return Date.parse(grant.expiresAt) <= Date.parse(now)
-    ? ['grant_expired']
-    : []
+  return Date.parse(grant.expiresAt) <= Date.parse(now) ? ['grant_expired'] : []
 }
 
 const accountBlockers = (
@@ -96,7 +94,9 @@ const accountBlockers = (
   ...(account.status === 'connected'
     ? []
     : ([`status:${account.status}`] as const)),
-  ...(account.health === 'healthy' ? [] : ([`health:${account.health}`] as const)),
+  ...(account.health === 'healthy'
+    ? []
+    : ([`health:${account.health}`] as const)),
   ...(account.secretRef === null ? (['missing_credential_ref'] as const) : []),
 ]
 
