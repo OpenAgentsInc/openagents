@@ -1869,6 +1869,34 @@ Verification:
 
 - `git diff --check`
 
+## Pylon Codex Composer SDK Backend
+
+Issue context:
+
+- #4839: make the Pylon composer run Codex in the current repo.
+- Owner decision: use the official TypeScript SDK rather than a raw
+  `codex exec` parser for this path.
+
+Status: source implementation for the supervised daily-driver composer path;
+local dangerous mode remains #4840.
+
+Implemented:
+
+- Added `apps/pylon/src/codex-composer.ts`, which lazy-loads
+  `@openai/codex-sdk`, probes Codex readiness before starting a thread, opens
+  `runStreamed()` in the selected working directory, and reports structured
+  event, usage, command, and file-change counts.
+- Replaced the TUI composer hard-code to OpenCode with a backend seam; the
+  default dashboard and attach mode now receive a Codex backend from
+  `apps/pylon/src/index.ts`.
+- Documented the source behavior in `apps/pylon/README.md`,
+  `apps/pylon/docs/codex-bridge.md`, and this daily-driver audit.
+
+Verification:
+
+- `bun test tests/codex-composer.test.ts tests/tui-render-harness.test.ts tests/tui-commands.test.ts tests/codex-agent.test.ts`
+- `git diff --check`
+
 ## Terminal-Agent Systems Roadmap Historical Status Refresh
 
 Issue context:

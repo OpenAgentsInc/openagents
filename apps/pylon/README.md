@@ -86,10 +86,13 @@ composer (bottom), and a one-line key-hint footer.
   directory: `{ "bindings": { "palette.open": "ctrl+p" } }`. Keys are
   command names (see `f1`); values are `@opentui/keymap` key strings.
   Invalid files are reported and ignored.
-- The composer submits with `meta+return` and streams OpenCode responses
-  into the feed. Submitted prompts persist across restarts: cycle them with
-  `ctrl+p` / `ctrl+n`, and an unsent draft is stashed on exit and restored
-  on the next launch.
+- The composer submits with `meta+return` and streams Codex SDK events into
+  the feed, running in the current working directory by default
+  (`PYLON_CODEX_CWD` or `PYLON_ACTIVE_REPO` can override it). Missing Codex
+  SDK/auth readiness is shown as a typed Codex blocker instead of falling
+  back to OpenCode. Submitted prompts persist across restarts: cycle them
+  with `ctrl+p` / `ctrl+n`, and an unsent draft is stashed on exit and
+  restored on the next launch.
 - The sidebar renders a live 3D network view (`@opentui/three` on a native
   WebGPU device, quantized to terminal glyphs): satellites orbit the market
   core, wallet status drives color and speed, new feed activity pulses

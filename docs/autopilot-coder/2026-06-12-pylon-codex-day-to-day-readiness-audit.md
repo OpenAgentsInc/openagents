@@ -63,12 +63,15 @@ and independent paid-capacity receipts are **not** gating. They matter for
 autonomous overnight runs, serving other people's work, and public readiness
 claims. They do not block a local supervised switch.
 
-The honest blocker is narrower and more immediate:
+The honest blocker is narrower and more immediate. After the #4839
+implementation pass, the composer/current-repo Codex path exists in source,
+but the full daily-driver loop is still incomplete:
 
-- The TUI composer is still wired to OpenCode, not Codex. In
-  `apps/pylon/src/tui/app.tsx`, `submitPrompt()` looks up `opencode` and calls
-  `runOpencodeStream(...)`. A normal prompt typed into Pylon does not yet
-  start a Codex coding session.
+- The TUI composer now uses `@openai/codex-sdk` through
+  `apps/pylon/src/codex-composer.ts`, defaulting to the current working
+  directory (`PYLON_CODEX_CWD` / `PYLON_ACTIVE_REPO` override it) and showing
+  typed SDK/auth readiness blockers before any thread starts. This closes the
+  original OpenCode-composer blocker for source dogfood.
 - Pylon's existing Codex SDK assignment executor is deliberately bounded to
   `read-only` / `workspace-write`; it does not expose the owner-requested
   supervised `--dangerously-bypass-approvals-and-sandbox` / `danger-full-access`
@@ -96,7 +99,8 @@ proof remain follow-on lanes.
 
 Top-priority issues filed from this correction:
 
-- #4839: P0 composer/current-repo Codex mode.
+- #4839: P0 composer/current-repo Codex mode. Implemented in source with the
+  TypeScript SDK stream path; close after commit/push.
 - #4840: P0 local-only dangerous Codex execution mode.
 - #4841: P0 `pylon dev doctor` repo/instruction/account context projection.
 - #4842: P0 dev check/apply/reload loop.
@@ -193,19 +197,20 @@ Built:
 
 For bounded assignment dogfood, Codex is real.
 
-The gap is not "Codex cannot run." The gap is "the owner's daily CLI workflow
-does not yet route the Pylon composer to Codex, does not expose the local
-supervised dangerous mode the owner is willing to use, and does not return a
-convenient patch/check/reload handoff."
+The gap is not "Codex cannot run." The gap is now "the owner's daily Pylon
+workflow does not yet expose the local supervised dangerous mode the owner is
+willing to use, and does not return a convenient patch/check/reload handoff."
 
-The local Codex CLI already exposes the needed supervised mechanism on this
-machine:
+The implementation decision for the local lane is to use the TypeScript SDK,
+not a raw CLI parser. The raw Codex flag remains the behavior reference for
+#4840:
 
 ```sh
 codex exec --json -C <active-repo> --dangerously-bypass-approvals-and-sandbox <prompt>
 ```
 
-That should be consumed by a local-only `pylon dev` / composer path, not by the
+The SDK equivalent is `sandboxMode: "danger-full-access"` with
+`approvalPolicy: "never"` on a local-only `pylon dev` / composer path, not the
 public assignment executor.
 
 ### Fable
@@ -238,7 +243,7 @@ lane when the local Claude/Fable credential/session is ready.** There is no
 | Workflow need                                  | Status                         | Notes                                                                                                                                                          |
 | ---------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Start Pylon locally                            | Source-ready                   | v0.3 runs from source; published stable package is not v0.3.                                                                                                   |
-| Type a coding prompt into Pylon and run Codex  | Not built                      | Composer currently routes to OpenCode, not Codex. This is #4839.                                                                                               |
+| Type a coding prompt into Pylon and run Codex  | Built in source (#4839)        | Composer routes through `@openai/codex-sdk`, uses the current working directory by default, and reports SDK/auth blockers before starting a thread.             |
 | Run Codex unrestricted while the owner watches | Not built in Pylon             | Codex CLI supports it; Pylon needs a local-only dangerous mode. This is #4840.                                                                                 |
 | Show active repo/instructions/accounts         | Not built                      | Needed for confidence before dangerous local Codex runs. #4838 covers the pane; #4841 covers the projection/doctor.                                            |
 | Check/apply/reload after a Codex edit          | Not built                      | Needed for Pylon-to-Pylon daily work. This is #4842.                                                                                                           |
@@ -259,26 +264,28 @@ lane when the local Claude/Fable credential/session is ready.** There is no
 
 ## Most Important Implementation Findings
 
-### 1. The TUI composer does not run Codex
+### 1. The TUI composer now runs Codex in source (#4839)
 
-`apps/pylon/src/tui/app.tsx` still labels the composer path as:
+The original blocker was:
 
 ```ts
 // --- Composer -> OpenCode interaction --------------------------------------
 ```
 
-`submitPrompt()` then looks up `opencode` and calls `runOpencodeStream(...)`.
-That means the first-screen Pylon experience cannot yet be "type request,
-Codex edits current repo."
+`submitPrompt()` looked up `opencode` and called `runOpencodeStream(...)`.
+That meant the first-screen Pylon experience could not be "type request, Codex
+edits current repo."
 
-Required fix:
+#4839 changes that in source:
 
-- Add a Codex composer backend, defaulting to Codex for dev/daily-driver mode.
-- Drive the active repo/current checkout directly.
-- Stream Codex CLI JSONL or equivalent events into the existing feed.
-- Make missing Codex CLI/auth a visible typed blocker, not an OpenCode error.
-- Keep OpenCode as an optional backend if desired, not the default for the
-  owner daily-driver path.
+- `apps/pylon/src/codex-composer.ts` uses `@openai/codex-sdk` `runStreamed()`
+  events, not hand-parsed CLI output.
+- `apps/pylon/src/tui/app.tsx` now accepts a composer backend instead of
+  importing OpenCode directly.
+- `apps/pylon/src/index.ts` wires the default dashboard and attach mode to a
+  Codex backend in the current working directory.
+- Missing SDK/auth readiness is a visible Codex blocker.
+- The assignment executor remains bounded; dangerous mode is still #4840.
 
 ### 2. Pylon has no local supervised dangerous Codex mode
 
@@ -359,9 +366,8 @@ That workaround is too clumsy for normal daily work.
 
 ## Open Issue Tail
 
-Current open issues after the correction:
+Current issue tail after the #4839 implementation pass:
 
-- #4839 P0: make Pylon composer run Codex in the current repo.
 - #4840 P0: add local-only dangerous Codex mode for supervised Pylon dev.
 - #4841 P0: add `pylon dev doctor` for repo, instruction, and account context.
 - #4842 P0: add Pylon dev check/apply/reload loop for supervised Codex changes.
@@ -378,8 +384,9 @@ Current open issues after the correction:
 
 The issue tail now has two lanes:
 
-1. **Owner supervised daily-driver lane:** #4839, #4840, #4841, #4842, plus
-   #4838 for the visible context pane. This is the ASAP switch path.
+1. **Owner supervised daily-driver lane:** #4840, #4841, #4842, plus #4838 for
+   the visible context pane. #4839 is implemented in source. This remains the
+   ASAP switch path.
 2. **Autopilot/public readiness lane:** #4843, #4768, #4772, #4777, #4781,
    #4782, and #4783. These are still real, but they are not required for the
    owner to sit at Pylon and supervise Codex.
@@ -445,15 +452,16 @@ Then start:
 bun run --cwd apps/pylon start
 ```
 
-At this exact commit, that starts the TUI but does not yet make the composer
-Codex-backed. The required product delta is #4839 and #4840:
+At this exact commit, that starts the TUI with a Codex SDK-backed composer in
+the current working directory. The remaining product delta for unrestricted
+owner-supervised work is #4840:
 
 ```sh
 pylon dev --codex-danger
 pylon dev fix "make this repo change"
 ```
 
-The direct Codex invocation Pylon should wrap for the first MVP is:
+The SDK should continue to mirror the behavior of this raw Codex invocation:
 
 ```sh
 codex exec --json -C <active-repo> --dangerously-bypass-approvals-and-sandbox <prompt>
@@ -488,11 +496,12 @@ behavior, but it is not the shortest route to the owner switching today.
 These are the small, direct fixes before replacing the owner's normal coding
 workflow while the owner is watching.
 
-1. **Wire the composer/current repo to Codex (#4839).**
-   - Use Codex as the default daily-driver backend.
-   - Drive the active repo with `codex exec --json -C <repo> ...`.
-   - Stream output into the TUI feed.
-   - Stop requiring OpenCode for the owner path.
+1. **Wire the composer/current repo to Codex (#4839). Done in source.**
+   - Uses Codex as the default daily-driver backend.
+   - Drives the active repo/current working directory through the TypeScript
+     SDK.
+   - Streams SDK events into the TUI feed.
+   - Stops requiring OpenCode for the owner path.
 
 2. **Add explicit local-only dangerous Codex mode (#4840).**
    - Wrap `--dangerously-bypass-approvals-and-sandbox` or equivalent
@@ -544,11 +553,11 @@ At this exact commit, use Pylon today for:
 - validating the work-order spine and receipt discipline;
 - terminal/TUI/headless-node workflow testing.
 
-Do not yet use Pylon as the only daily-driver surface until #4839 and #4840
-land, because the current composer still invokes OpenCode and the local
-dangerous Codex mode does not exist in Pylon.
+Do not yet use Pylon as the only daily-driver surface until #4840 lands and a
+supervised proof is retained, because the composer is now Codex-backed but the
+local dangerous Codex mode does not exist in Pylon yet.
 
-Once #4839/#4840/#4841/#4842 land and one supervised proof is retained, the
+Once #4840/#4841/#4842 land and one supervised proof is retained, the
 decision can become:
 
 - **yes** for owner-supervised local Pylon + Codex daily work;
@@ -585,7 +594,7 @@ writeback path. It is the shortest bridge between "source-checkout dogfood" and
 
 This is no longer merely an addendum. It is the ASAP path:
 
-- #4839 implements the Codex composer/current-repo lane.
+- #4839 implements the Codex composer/current-repo lane in source.
 - #4840 implements the explicit local supervised dangerous Codex mode.
 - #4841 implements the redacted dev doctor/context projection.
 - #4842 implements the check/apply/reload loop.

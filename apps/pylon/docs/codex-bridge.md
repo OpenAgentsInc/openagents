@@ -66,6 +66,13 @@ probe reports.
   bundles its own platform-native `codex` binary via npm platform
   packages, so no separate CLI install is required — and a Pylon
   without the SDK simply never declares the capability.
+- The local dashboard composer uses the same SDK package for direct
+  owner-supervised prompts: `src/codex-composer.ts` opens a typed SDK
+  stream in the current working directory, defaults to
+  `workspace-write`/`approvalPolicy: "never"`, surfaces structured
+  progress events in the TUI, and reports SDK/auth blockers before any
+  thread starts. This is the daily-driver path (#4839), separate from
+  public assignment execution.
 - `probeCodexAgentReadiness()` (`src/codex-agent.ts`): reports one of
   `ready`, `sdk_missing`, `credentials_missing`, `platform_unsupported`,
   or `disabled_by_config`. The probe checks **presence only** — it

@@ -55,6 +55,10 @@ import {
 } from "./node/control-server"
 import { runControlClient, sendControlCommand } from "./node/control-client"
 import { loadComposerState, saveComposerState } from "./node/composer-store"
+import {
+  runCodexComposerStream,
+  type CodexComposerSandboxMode,
+} from "./codex-composer"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -126,6 +130,11 @@ let verboseMode = false
 // never import it statically: the Solid transform plugin has to be active
 // before any .tsx (or solid-js) module loads — see ensureSolidRuntime().
 type DashboardUiModule = typeof import("./tui/app")
+type ComposerBackend = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
+  ? Options extends { composerBackend?: infer Backend }
+    ? NonNullable<Backend>
+    : never
+  : never
 let dashboardUi: DashboardUiModule | null = null
 
 // Routes a log message into the node runtime (which owns the feed and the
@@ -217,6 +226,56 @@ function makeAssignmentActions() {
       const lease = cachedLeases.find((candidate) => candidate.leaseRef === leaseRef)
       if (!lease) throw new Error("lease not found - refresh assignments first")
       return acceptAssignment(summary, lease, clientOptions)
+    },
+  }
+}
+
+function codexComposerWorkingDirectory() {
+  const configured = Bun.env.PYLON_CODEX_CWD ?? Bun.env.PYLON_ACTIVE_REPO
+  return configured && configured.trim().length > 0 ? configured : process.cwd()
+}
+
+async function makeCodexComposerBackend(
+  summary: ReturnType<typeof createBootstrapSummary>,
+): Promise<ComposerBackend> {
+  const config = await loadCodexAgentConfig(summary)
+  const timeoutMs =
+    typeof config.timeoutSeconds === "number" && Number.isFinite(config.timeoutSeconds) && config.timeoutSeconds > 0
+      ? Math.round(config.timeoutSeconds * 1000)
+      : undefined
+  const cwd = codexComposerWorkingDirectory()
+  return {
+    label: "Codex",
+    submit: async (prompt, callbacks) => {
+      const result = await runCodexComposerStream(
+        prompt,
+        {
+          config,
+          cwd,
+          model: config.model,
+          sandboxMode: (config.sandboxMode ?? "workspace-write") as CodexComposerSandboxMode,
+          approvalPolicy: "never",
+          networkAccessEnabled: false,
+          timeoutMs,
+        },
+        {
+          onText: callbacks.onText,
+          onEvent: callbacks.onEvent,
+          onUsage: (usage) => callbacks.onUsage?.({ label: "tokens", value: String(usage.totalTokens) }),
+        },
+      )
+      const footerParts = [
+        `cwd: ${cwd}`,
+        `sandbox: ${config.sandboxMode ?? "workspace-write"}`,
+        `events: ${result.eventCount}`,
+        `tokens: ${result.totalTokens}`,
+        `commands: ${result.commandCount}`,
+        `files: ${result.editedFileCount}`,
+      ]
+      return {
+        text: result.text || "(Codex completed without an assistant message.)",
+        footer: footerParts.join(" | "),
+      }
     },
   }
 }
@@ -494,6 +553,7 @@ const runPylonNode = Effect.gen(function* () {
   const persistComposerState = (state: { history: string[]; stash: string }) => {
     void saveComposerState(bootstrapSummary.paths.home, state).catch(() => {})
   }
+  const composerBackend = yield* Effect.promise(() => makeCodexComposerBackend(bootstrapSummary))
 
   const dashboard = yield* Effect.tryPromise({
     try: () =>
@@ -504,6 +564,7 @@ const runPylonNode = Effect.gen(function* () {
         keybindOverrides: keybinds.overrides,
         assignmentActions: nodeAssignmentActions,
         composerState,
+        composerBackend,
         onComposerPersist: persistComposerState,
         onVerboseChange: (verbose) => {
           verboseMode = verbose
@@ -738,6 +799,8 @@ const runPylonAttach = (baseUrl: string, token: string) =>
       catch: (error) => new Error(`Failed to load dashboard view: ${String(error)}`),
     })
     dashboardUi = ui
+    const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+    const composerBackend = yield* Effect.promise(() => makeCodexComposerBackend(bootstrapSummary))
 
     const dashboard = yield* Effect.tryPromise({
       try: () =>
@@ -745,6 +808,7 @@ const runPylonAttach = (baseUrl: string, token: string) =>
           onRequestShutdown: requestShutdown,
           verbose: verboseMode,
           enable3d: Bun.env.PYLON_DISABLE_3D !== "1",
+          composerBackend,
           onVerboseChange: (verbose) => {
             verboseMode = verbose
           },

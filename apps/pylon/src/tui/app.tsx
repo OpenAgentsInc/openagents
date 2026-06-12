@@ -17,7 +17,6 @@ import {
 } from "@opentui/core"
 import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { ErrorBoundary, For, Show, createMemo, createSignal, onMount, type JSX } from "solid-js"
-import { runOpencodeStream } from "../opencode-run"
 import { theme } from "./theme"
 import {
   activeRoute,
@@ -69,6 +68,7 @@ let composerHistory: string[] = []
 let composerHistoryIndex: number | null = null
 let persistComposer: ((state: { history: string[]; stash: string }) => void) | null = null
 let restoredStash = ""
+let composerBackend: ComposerBackend | null = null
 // 3D network scene (sidebar). Soft-fails to a text placeholder; disabled in
 // the test harness and via PYLON_DISABLE_3D=1.
 let enable3dFlag = false
@@ -184,7 +184,23 @@ function sinkRootScroll(event: any) {
   event.preventDefault?.()
 }
 
-// --- Composer -> OpenCode interaction --------------------------------------
+// --- Composer -> agent backend interaction ---------------------------------
+
+export interface ComposerBackendCallbacks {
+  onText?: (fullText: string) => void
+  onEvent?: (summary: string, eventCount: number) => void
+  onUsage?: (usage: { label: string; value: string }) => void
+}
+
+export interface ComposerBackendResult {
+  text: string
+  footer?: string
+}
+
+export interface ComposerBackend {
+  label: string
+  submit: (prompt: string, callbacks: ComposerBackendCallbacks) => Promise<ComposerBackendResult>
+}
 
 export function submitComposer(): void {
   const prompt = composerRef?.plainText.trim()
@@ -196,27 +212,39 @@ export function submitComposer(): void {
 
 async function submitPrompt(prompt: string) {
   appendChatFeedItem(`**User**: ${prompt}`)
-  const response = appendChatFeedItem("**OpenCode**: ... thinking ...", { streaming: true })
-  const opencodePath = Bun.which("opencode")
-  if (!opencodePath) {
-    response.update("**OpenCode**: Error - OpenCode CLI is not installed on this system.")
+  const backend = composerBackend
+  if (!backend) {
+    const response = appendChatFeedItem("**Composer**: Error - no composer backend is configured.", { streaming: true })
     response.finish()
     return
   }
+  const response = appendChatFeedItem(`**${backend.label}**: ... thinking ...`, { streaming: true })
   let lastText = ""
+  let lastEvent = "waiting for first event"
+  let lastUsage: { label: string; value: string } | null = null
+  const render = () => {
+    const visibleText = lastText.trim() || `_${lastEvent}_`
+    const usage = lastUsage ? ` | ${lastUsage.label}: ${lastUsage.value}` : ""
+    response.update(`**${backend.label}**: ${visibleText}\n\n*[events: ${lastEvent}${usage}]*`)
+  }
   try {
-    const result = await runOpencodeStream(opencodePath, prompt, {
+    const result = await backend.submit(prompt, {
       onText: (text) => {
         lastText = text
-        response.update(`**OpenCode**: ${text}`)
+        render()
       },
-      onUsage: ({ cost, tokens }) => {
-        response.update(`**OpenCode**: ${lastText}\n\n*[Cost: $${cost.toFixed(4)} | Tokens: ${tokens}]*`)
+      onEvent: (summary, count) => {
+        lastEvent = `${count} ${summary}`
+        render()
+      },
+      onUsage: (usage) => {
+        lastUsage = usage
+        render()
       },
     })
-    response.update(`**OpenCode**: ${result.text}\n\n*[Cost: $${result.cost.toFixed(4)} | Tokens: ${result.tokens}]*`)
+    response.update(`**${backend.label}**: ${result.text}${result.footer ? `\n\n*${result.footer}*` : ""}`)
   } catch (error) {
-    response.update(`**OpenCode**: Error - ${error instanceof Error ? error.message : String(error)}`)
+    response.update(`**${backend.label}**: Error - ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     response.finish()
   }
@@ -637,6 +665,7 @@ export interface StartDashboardOptions {
   assignmentActions?: AssignmentActions | null
   composerState?: { history: string[]; stash: string }
   onComposerPersist?: (state: { history: string[]; stash: string }) => void
+  composerBackend?: ComposerBackend | null
   keybindOverrides?: Record<string, string>
   onVerboseChange?: (verbose: boolean) => void
 }
@@ -676,6 +705,7 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
   enable3dFlag = options.enable3d ?? true
   composerHistoryIndex = null
   persistComposer = options.onComposerPersist ?? null
+  composerBackend = options.composerBackend ?? null
   const assignmentActions = options.assignmentActions ?? null
   const restoreScrollLock = installTerminalScrollLock()
   const interceptCtrlC = (sequence: string) => {
@@ -716,6 +746,7 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
       scrollRef = undefined
       composerRef = undefined
       keymapRef = undefined
+      composerBackend = null
       try {
         renderer.destroy()
       } catch {
