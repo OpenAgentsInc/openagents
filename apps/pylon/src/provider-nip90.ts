@@ -332,6 +332,22 @@ function providerSupportedKinds() {
   ] as const
 }
 
+const providerNip90LaneLabels: Record<number, string> = {
+  [KIND_JOB_TEXT_GENERATION]: "text_generation",
+  [KIND_JOB_LABOR_CODE_TASK]: "labor_code_task",
+  [KIND_JOB_LABOR_REVIEW]: "labor_review",
+  [KIND_JOB_LABOR_DOCUMENT_WORK]: "labor_document_work",
+}
+
+// #4864: the public-safe lane refs this provider declares in registration
+// and heartbeat presence writes, matching the NIP-90 kinds the provider
+// loop subscribes to and announces via NIP-89 handler info.
+export function providerNip90LaneRefs(): string[] {
+  return providerSupportedKinds().map(
+    (kind) => `lane.public.nip90.${kind}.${providerNip90LaneLabels[kind]}`,
+  )
+}
+
 function firstTagValue(tags: ReadonlyArray<readonly string[]>, name: string) {
   return tags.find((tag) => tag[0] === name)?.[1]
 }

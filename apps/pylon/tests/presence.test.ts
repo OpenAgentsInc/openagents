@@ -13,6 +13,7 @@ import {
   withPresenceRetry,
 } from "../src/presence"
 import { verifyNip98Authorization } from "../src/nostr-identity"
+import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState } from "../src/state"
 
 const servers: ReturnType<typeof Bun.serve>[] = []
@@ -205,6 +206,58 @@ describe("Pylon presence registration and heartbeat", () => {
       expect(neverHeartbeat.blockerRefs).toContain("blocker.presence.never_heartbeat")
       expect(staleHeartbeat.stale).toBe(true)
       expect(staleHeartbeat.blockerRefs).toContain("blocker.presence.stale_heartbeat")
+    })
+  })
+
+  test("carries provider discovery fields when the NIP-90 provider lane is declared (#4864)", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceServer()
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs([
+          "--display-name",
+          "Provider Discovery Test",
+          "--capability-ref",
+          PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+        ]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const localState = await ensurePylonLocalState(summary)
+      const env = { OPENAGENTS_MARKET_RELAY_URL: "wss://relay.openagents.com" }
+
+      await registerPylon(summary, { baseUrl: fake.baseUrl, env })
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, env })
+
+      const register = fake.requests.find((request) => request.path === "/api/pylons/register")
+      const heartbeat = fake.requests.find((request) => request.path.includes("/heartbeat"))
+      for (const request of [register, heartbeat]) {
+        expect(request?.body.providerNostrPubkey).toBe(localState.identity.publicKey)
+        expect(request?.body.providerNostrNpub).toBe(localState.identity.npub)
+        expect(request?.body.providerMarketRelayRefs).toEqual(["wss://relay.openagents.com"])
+        expect(request?.body.providerNip90LaneRefs).toEqual(providerNip90LaneRefs())
+      }
+      expect(register?.body.providerNip90LaneRefs).toContain("lane.public.nip90.5050.text_generation")
+    })
+  })
+
+  test("omits provider discovery fields when no NIP-90 provider lane is declared (#4864)", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceServer()
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "Non Provider Test"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+
+      await registerPylon(summary, { baseUrl: fake.baseUrl })
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl })
+
+      for (const request of fake.requests) {
+        expect(request.body.providerNostrPubkey).toBeUndefined()
+        expect(request.body.providerNostrNpub).toBeUndefined()
+        expect(request.body.providerMarketRelayRefs).toBeUndefined()
+        expect(request.body.providerNip90LaneRefs).toBeUndefined()
+      }
     })
   })
 

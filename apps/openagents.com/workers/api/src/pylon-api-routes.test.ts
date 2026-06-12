@@ -5,7 +5,10 @@ import {
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
 } from './agent-registration'
-import { publicScannerSafeRef } from './public-ref-scanner-safety'
+import {
+  publicRefTriggersAgentSecretScanner,
+  publicScannerSafeRef,
+} from './public-ref-scanner-safety'
 import {
   type PylonApiAssignmentRecord,
   type PylonApiEventRecord,
@@ -63,12 +66,20 @@ type PylonRouteJson = Readonly<{
     latestHealthRefs?: ReadonlyArray<string>
     latestLoadRefs?: ReadonlyArray<string>
     latestResourceMode?: string | null
+    providerMarketRelayRefs?: ReadonlyArray<string>
+    providerNip90LaneRefs?: ReadonlyArray<string>
+    providerNostrNpub?: string | null
+    providerNostrPubkey?: string | null
     pylonRef?: string
     walletReady?: boolean
   }>
   pylons?: ReadonlyArray<
     Readonly<{
       capabilityRefs?: ReadonlyArray<string>
+      providerMarketRelayRefs?: ReadonlyArray<string>
+      providerNip90LaneRefs?: ReadonlyArray<string>
+      providerNostrNpub?: string | null
+      providerNostrPubkey?: string | null
       pylonRef?: string
     }>
   >
@@ -471,6 +482,10 @@ const registerPylon = async (
   input: Readonly<{
     capabilityRefs?: ReadonlyArray<string>
     idempotencyKey?: string
+    providerMarketRelayRefs?: ReadonlyArray<string>
+    providerNip90LaneRefs?: ReadonlyArray<string>
+    providerNostrNpub?: string
+    providerNostrPubkey?: string
     pylonRef?: string
     tokenUserId?: string
   }> = {},
@@ -481,6 +496,18 @@ const registerPylon = async (
       clientProtocolVersion: '0.2.5',
       clientVersion: 'openagents.pylon@0.2.5',
       displayName: 'Edge Pylon',
+      ...(input.providerMarketRelayRefs === undefined
+        ? {}
+        : { providerMarketRelayRefs: input.providerMarketRelayRefs }),
+      ...(input.providerNip90LaneRefs === undefined
+        ? {}
+        : { providerNip90LaneRefs: input.providerNip90LaneRefs }),
+      ...(input.providerNostrNpub === undefined
+        ? {}
+        : { providerNostrNpub: input.providerNostrNpub }),
+      ...(input.providerNostrPubkey === undefined
+        ? {}
+        : { providerNostrPubkey: input.providerNostrPubkey }),
       pylonRef: input.pylonRef ?? 'pylon.test.one',
       resourceMode: 'background_20',
       walletRef: 'wallet.public.edge',
@@ -614,9 +641,9 @@ describe('Pylon API routes', () => {
     await store.upsertRegistration(record)
 
     expect(db.registrationInsertShape).toEqual({
-      bindCount: 22,
-      columnCount: 23,
-      valueCount: 23,
+      bindCount: 26,
+      columnCount: 27,
+      valueCount: 27,
     })
   })
 
@@ -810,6 +837,118 @@ describe('Pylon API routes', () => {
     expect(JSON.stringify({ createdJson, listJson, detailJson })).not.toContain(
       scannerShapedCapabilityRef,
     )
+  })
+
+  test('publishes provider Nostr pubkey, relay refs, and NIP-90 lane refs for provider Pylons (#4864)', async () => {
+    const store = new MemoryPylonApiStore()
+    const providerNostrPubkey =
+      'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
+    const providerNostrNpub =
+      'npub1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3jn54khce'
+    const providerMarketRelayRefs = [
+      'wss://openagents-market-relay.openagents.workers.dev',
+      'wss://relay.openagents.com',
+    ]
+    const providerNip90LaneRefs = [
+      'lane.public.nip90.5050.text_generation',
+      'lane.public.nip90.5934.labor_code_task',
+    ]
+
+    // The hex pubkey is exactly the shape the raw-id scanner aliases, so
+    // this test pins the deliberate identity-field allowlist: the value
+    // must survive projection verbatim or stranger buyers cannot map
+    // relay bids (event.pubkey) to registered capacity.
+    expect(publicRefTriggersAgentSecretScanner(providerNostrPubkey)).toBe(true)
+
+    const created = await registerPylon(store, {
+      providerMarketRelayRefs,
+      providerNip90LaneRefs,
+      providerNostrNpub,
+      providerNostrPubkey,
+    })
+    const createdJson = await responseJson<PylonRouteJson>(created)
+    const listJson = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons'),
+    )
+    const detailJson = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons/pylon.test.one'),
+    )
+
+    expect(created.status).toBe(201)
+    expect(createdJson.pylon?.providerNostrPubkey).toBe(providerNostrPubkey)
+    expect(createdJson.pylon?.providerNostrNpub).toBe(providerNostrNpub)
+    expect(createdJson.pylon?.providerMarketRelayRefs).toEqual(
+      providerMarketRelayRefs,
+    )
+    expect(createdJson.pylon?.providerNip90LaneRefs).toEqual(
+      providerNip90LaneRefs,
+    )
+    expect(listJson.pylons?.[0]?.providerNostrPubkey).toBe(providerNostrPubkey)
+    expect(listJson.pylons?.[0]?.providerNostrNpub).toBe(providerNostrNpub)
+    expect(listJson.pylons?.[0]?.providerMarketRelayRefs).toEqual(
+      providerMarketRelayRefs,
+    )
+    expect(listJson.pylons?.[0]?.providerNip90LaneRefs).toEqual(
+      providerNip90LaneRefs,
+    )
+    expect(detailJson.pylon?.providerNostrPubkey).toBe(providerNostrPubkey)
+  })
+
+  test('leaves provider discovery fields absent for non-provider or pre-upgrade registrations (#4864)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const listJson = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons'),
+    )
+
+    expect(listJson.pylons?.[0]?.providerNostrPubkey).toBeNull()
+    expect(listJson.pylons?.[0]?.providerNostrNpub).toBeNull()
+    expect(listJson.pylons?.[0]?.providerMarketRelayRefs).toEqual([])
+    expect(listJson.pylons?.[0]?.providerNip90LaneRefs).toEqual([])
+  })
+
+  test('upgrades provider discovery fields from a heartbeat without re-registration (#4864)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const providerNostrPubkey =
+      'f0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1'
+    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: {
+        capacityRefs: ['capacity.public.gpu_available'],
+        healthRefs: ['health.public.ok'],
+        loadRefs: ['load.public.low'],
+        providerMarketRelayRefs: ['wss://relay.openagents.com'],
+        providerNip90LaneRefs: ['lane.public.nip90.5050.text_generation'],
+        providerNostrPubkey,
+        status: 'online',
+      },
+      idempotencyKey: 'heartbeat-provider-discovery-upgrade',
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    const heartbeatJson = await responseJson<PylonRouteJson>(heartbeat)
+    const listJson = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons'),
+    )
+
+    expect(heartbeat.status).toBe(201)
+    expect(heartbeatJson.pylon?.providerNostrPubkey).toBe(providerNostrPubkey)
+    expect(listJson.pylons?.[0]?.providerNostrPubkey).toBe(providerNostrPubkey)
+    expect(listJson.pylons?.[0]?.providerMarketRelayRefs).toEqual([
+      'wss://relay.openagents.com',
+    ])
+    expect(listJson.pylons?.[0]?.providerNip90LaneRefs).toEqual([
+      'lane.public.nip90.5050.text_generation',
+    ])
+  })
+
+  test('rejects malformed provider discovery identity fields (#4864)', async () => {
+    const store = new MemoryPylonApiStore()
+    const rejected = await registerPylon(store, {
+      providerNostrPubkey: 'not-a-pubkey',
+    })
+
+    expect(rejected.status).toBe(400)
   })
 
   test('parses Pylon client versions with a v0.2.5 minimum helper', () => {

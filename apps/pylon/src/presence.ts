@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto"
 import type { BootstrapSummary } from "./bootstrap"
+import {
+  PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+  providerNip90LaneRefs,
+  relaysFromEnv,
+} from "./provider-nip90"
 import { publishableCapabilityRefs } from "./tassadar-capability"
 import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity"
 import {
@@ -15,8 +20,16 @@ import {
 export type PresenceClientOptions = {
   agentToken?: string
   baseUrl: string
+  env?: NodeJS.ProcessEnv
   fetch?: typeof fetch
   now?: () => Date
+}
+
+export type PylonProviderDiscoveryFields = {
+  providerNostrPubkey: string
+  providerNostrNpub: string
+  providerMarketRelayRefs: string[]
+  providerNip90LaneRefs: string[]
 }
 
 export type PylonRegistrationRequest = {
@@ -30,7 +43,7 @@ export type PylonRegistrationRequest = {
   capabilityRefs: string[]
   blockerRefs: string[]
   statusRefs: string[]
-}
+} & Partial<PylonProviderDiscoveryFields>
 
 export type PylonHeartbeatRequest = {
   schema: "openagents.pylon.heartbeat.v0.3"
@@ -49,7 +62,7 @@ export type PylonHeartbeatRequest = {
   assignmentReadiness: "not-ready" | "ready" | "blocked"
   capabilityRefs: string[]
   blockerRefs: string[]
-}
+} & Partial<PylonProviderDiscoveryFields>
 
 export type PylonLinkRequest = {
   schema: "openagents.pylon.link.v0.3"
@@ -141,6 +154,31 @@ async function postJson(
   return json
 }
 
+// #4864 provider discovery fields, included only for Pylons that have
+// declared the NIP-90 provider lane (the go-online path adds
+// PYLON_NIP90_PROVIDER_CAPABILITY_REF). Consent semantics: a provider
+// that goes online IS announcing publicly — its provider loop publishes
+// NIP-89 handler info signed with this same pubkey on these same relays.
+// Carrying pubkey + relay refs + lane refs into the worker registry adds
+// discoverability for stranger buyers, not exposure. The relay refs are
+// the values this Pylon actually listens on (relaysFromEnv), never a
+// worker-side constant, so the #4863 relay-domain cutover follows the
+// provider configuration automatically.
+export function providerDiscoveryFields(
+  state: PylonLocalState,
+  env: NodeJS.ProcessEnv = process.env,
+): Partial<PylonProviderDiscoveryFields> {
+  if (!state.runtime.capabilityRefs.includes(PYLON_NIP90_PROVIDER_CAPABILITY_REF)) {
+    return {}
+  }
+  return {
+    providerNostrPubkey: state.identity.publicKey,
+    providerNostrNpub: state.identity.npub,
+    providerMarketRelayRefs: relaysFromEnv(env),
+    providerNip90LaneRefs: providerNip90LaneRefs(),
+  }
+}
+
 export async function registerPylon(summary: BootstrapSummary, options: PresenceClientOptions) {
   const state = await ensurePylonLocalState(summary)
   const body: PylonRegistrationRequest = {
@@ -156,6 +194,7 @@ export async function registerPylon(summary: BootstrapSummary, options: Presence
     capabilityRefs: publishableCapabilityRefs(state.runtime.capabilityRefs),
     blockerRefs: state.runtime.blockerRefs,
     statusRefs: ["status.public.pylon_cli.registered"],
+    ...providerDiscoveryFields(state, options.env ?? process.env),
   }
   const response = await postJson(options, {
     action: "register",
@@ -196,6 +235,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
     assignmentReadiness: state.runtime.lifecycle === "assignment-ready" ? "ready" : "not-ready",
     capabilityRefs: publishableCapabilityRefs(state.runtime.capabilityRefs),
     blockerRefs: [...state.runtime.blockerRefs, ...presence.blockerRefs],
+    ...providerDiscoveryFields(state, options.env ?? process.env),
   }
   await postJson(options, {
     action: "heartbeat",

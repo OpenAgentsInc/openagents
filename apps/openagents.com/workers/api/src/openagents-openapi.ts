@@ -1656,10 +1656,10 @@ const requestSchemas = (): JsonSchema => ({
     ],
   },
   RegisterPylonRequest: objectSummary(
-    'Registered-agent request to register or update its own Pylon. Includes pylonRef, displayName, resourceMode, capabilityRefs, walletRef, and statusRefs as public-safe refs only.',
+    'Registered-agent request to register or update its own Pylon. Includes pylonRef, displayName, resourceMode, capabilityRefs, walletRef, and statusRefs as public-safe refs only. Provider Pylons may also carry providerNostrPubkey (hex), providerNostrNpub, providerMarketRelayRefs (the relay URLs the provider loop actually listens on), and providerNip90LaneRefs for stranger-buyer discoverability.',
   ),
   PylonHeartbeatRequest: objectSummary(
-    'Registered Pylon heartbeat with status, resourceMode, healthRefs, loadRefs, and capacityRefs. Raw telemetry, private paths, and raw timestamps are rejected.',
+    'Registered Pylon heartbeat with status, resourceMode, healthRefs, loadRefs, and capacityRefs, plus optional provider discovery fields (providerNostrPubkey, providerNostrNpub, providerMarketRelayRefs, providerNip90LaneRefs) that refresh the registration projection. Raw telemetry, private paths, and raw timestamps are rejected.',
   ),
   PylonWalletReadinessRequest: objectSummary(
     'Registered Pylon wallet readiness report with walletReady, walletRef, readinessRefs, balanceRefs, and liquidityRefs. Raw invoices, mnemonics, payment hashes, preimages, and wallet state are rejected.',
@@ -2857,7 +2857,7 @@ const paths = (): JsonSchema => ({
       operationId: 'listPylons',
       summary: 'List registered Pylons',
       description:
-        'Lists public-safe Pylon registration projections. Raw wallet material, private machine telemetry, payment material, and raw timestamps are excluded.',
+        'Lists public-safe Pylon registration projections. Provider Pylons that declare the NIP-90 lane also publish their Nostr pubkey (hex and npub), the market relay refs their provider loop actually listens on, and their declared NIP-90 lane refs, so stranger buyers can map relay bids to registered capacity; these values mirror the NIP-89 handler info the provider already announces publicly. Raw wallet material, private machine telemetry, payment material, and raw timestamps are excluded.',
       tags: ['Pylon'],
       security: publicRead,
       responses: {

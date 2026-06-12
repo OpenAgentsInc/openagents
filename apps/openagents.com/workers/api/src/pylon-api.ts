@@ -31,6 +31,28 @@ const PylonClientVersion = NonEmptyTrimmedString.check(
     /^(?:(?:pylon-v)|(?:openagents\.pylon@))?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.:-]+)?$/,
   ),
 )
+// #4864 provider discovery fields. A provider Pylon that goes online
+// already announces this same Nostr pubkey publicly: the NIP-90 provider
+// loop publishes NIP-89 handler info signed by this key on the market
+// relays it listens on. Carrying the pubkey, the relay refs, and the
+// declared NIP-90 lane refs into /api/pylons adds discoverability, not
+// exposure — a stranger buyer can map a relay bid (event.pubkey) to
+// registered capacity using public data only. The privacy boundary stays
+// pubkey + relay refs + lane refs: nothing wallet-adjacent, no payment
+// material, no credential-source detail.
+const ProviderNostrPubkeyHex = NonEmptyTrimmedString.check(
+  S.isPattern(/^[0-9a-f]{64}$/),
+)
+const ProviderNostrNpub = NonEmptyTrimmedString.check(
+  S.isPattern(/^npub1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/),
+)
+// The relay ref is a value carried from the Pylon (what its provider loop
+// actually listens on), never a worker-side constant, so the #4863
+// relay-domain cutover cannot strand this field.
+const ProviderMarketRelayRef = NonEmptyTrimmedString.check(
+  S.isMaxLength(200),
+  S.isPattern(/^wss?:\/\/[a-z0-9.-]+(?::\d{1,5})?(?:\/[A-Za-z0-9._/-]*)?$/),
+)
 
 export type NormalizedPylonClientVersion = Readonly<{
   label: 'openagents.pylon@' | 'plain' | 'pylon-v'
@@ -148,6 +170,10 @@ export const PylonApiRegistrationRequest = S.Struct({
   clientProtocolVersion: S.optionalKey(PylonClientVersion),
   clientVersion: S.optionalKey(PylonClientVersion),
   displayName: S.optionalKey(PylonDisplayName),
+  providerMarketRelayRefs: S.optionalKey(S.Array(ProviderMarketRelayRef)),
+  providerNip90LaneRefs: PublicSafeRefs,
+  providerNostrNpub: S.optionalKey(ProviderNostrNpub),
+  providerNostrPubkey: S.optionalKey(ProviderNostrPubkeyHex),
   pylonRef: S.optionalKey(PylonRef),
   resourceMode: S.optionalKey(PylonResourceMode),
   statusRefs: PublicSafeRefs,
@@ -162,6 +188,10 @@ export const PylonApiHeartbeatRequest = S.Struct({
   clientVersion: S.optionalKey(PylonClientVersion),
   healthRefs: PublicSafeRefs,
   loadRefs: PublicSafeRefs,
+  providerMarketRelayRefs: S.optionalKey(S.Array(ProviderMarketRelayRef)),
+  providerNip90LaneRefs: PublicSafeRefs,
+  providerNostrNpub: S.optionalKey(ProviderNostrNpub),
+  providerNostrPubkey: S.optionalKey(ProviderNostrPubkeyHex),
   resourceMode: S.optionalKey(PylonResourceMode),
   status: S.optionalKey(PylonEventStatus),
 })
@@ -300,6 +330,10 @@ export type PylonApiRegistrationRecord = Readonly<{
   ownerAgentCredentialId: string
   ownerAgentTokenPrefix: string
   ownerAgentUserId: string
+  providerMarketRelayRefs: ReadonlyArray<string>
+  providerNip90LaneRefs: ReadonlyArray<string>
+  providerNostrNpub: string | null
+  providerNostrPubkey: string | null
   publicProjectionJson: string
   pylonRef: string
   resourceMode: typeof PylonResourceMode.Type
@@ -359,6 +393,10 @@ export type PylonApiRegistrationProjection = Readonly<{
   latestLoadRefs: ReadonlyArray<string>
   latestResourceMode: typeof PylonResourceMode.Type | null
   ownerAgentRef: string
+  providerMarketRelayRefs: ReadonlyArray<string>
+  providerNip90LaneRefs: ReadonlyArray<string>
+  providerNostrNpub: string | null
+  providerNostrPubkey: string | null
   pylonRef: string
   resourceMode: typeof PylonResourceMode.Type
   status: PylonApiRegistrationStatus
@@ -506,6 +544,10 @@ type PylonApiRegistrationRow = Readonly<{
   owner_agent_credential_id: string
   owner_agent_token_prefix: string
   owner_agent_user_id: string
+  provider_market_relay_refs_json?: string | null
+  provider_nip90_lane_refs_json?: string | null
+  provider_nostr_npub?: string | null
+  provider_nostr_pubkey?: string | null
   public_projection_json: string
   pylon_ref: string
   resource_mode: typeof PylonResourceMode.Type
@@ -589,6 +631,14 @@ const uniqueRefs = (
     ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
   ].sort()
 
+// Relay refs keep the Pylon-declared listening order: the first entry is
+// the canonical market relay the provider loop announces on (#4864).
+const uniqueOrderedRefs = (
+  refs: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> => [
+  ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
+]
+
 export const pylonApiPayloadHasPrivateMaterial = (value: unknown): boolean => {
   const json = safeFalseTracePolicyJsonReplacements.reduce(
     (current, [pattern, replacement]) => current.replace(pattern, replacement),
@@ -659,6 +709,21 @@ export const publicPylonApiRegistrationProjection = (
   ),
   latestResourceMode: record.latestResourceMode,
   ownerAgentRef: `agent:${record.ownerAgentUserId}`,
+  // NOTE: the provider Nostr pubkey and npub are deliberately projected
+  // verbatim and never routed through publicScannerSafeRef. A 64-char hex
+  // pubkey matches the long-base64url raw-id scanner shape, and aliasing
+  // it would defeat the stranger-buyer mapping this field exists for: the
+  // same hex pubkey appears as event.pubkey on the provider's public
+  // NIP-89/NIP-90 relay traffic, so this is an allowlisted public
+  // identity, not a raw id leak. Intake validation pins the exact shapes
+  // (hex64 / npub bech32 / ws(s) relay URL).
+  providerMarketRelayRefs: record.providerMarketRelayRefs,
+  providerNip90LaneRefs: publicScannerSafeRefs(
+    'lane.public.pylon_nip90',
+    record.providerNip90LaneRefs,
+  ),
+  providerNostrNpub: record.providerNostrNpub,
+  providerNostrPubkey: record.providerNostrPubkey,
   pylonRef: record.pylonRef,
   resourceMode: record.resourceMode,
   status: record.status,
@@ -802,6 +867,12 @@ export const buildPylonApiRegistrationRecord = (
     ownerAgentCredentialId: input.credentialId,
     ownerAgentTokenPrefix: input.ownerAgentTokenPrefix,
     ownerAgentUserId: input.ownerAgentUserId,
+    providerMarketRelayRefs: uniqueOrderedRefs(
+      input.request.providerMarketRelayRefs,
+    ),
+    providerNip90LaneRefs: uniqueRefs(input.request.providerNip90LaneRefs),
+    providerNostrNpub: input.request.providerNostrNpub ?? null,
+    providerNostrPubkey: input.request.providerNostrPubkey ?? null,
     publicProjectionJson: '{}',
     pylonRef,
     resourceMode: input.request.resourceMode ?? 'background_20',
@@ -1092,6 +1163,28 @@ export const nextRegistrationForEvent = (
     typeof body.walletReady === 'boolean'
       ? body.walletReady
       : registration.walletReady
+  const providerNostrPubkey =
+    typeof body.providerNostrPubkey === 'string'
+      ? body.providerNostrPubkey
+      : registration.providerNostrPubkey
+  const providerNostrNpub =
+    typeof body.providerNostrNpub === 'string'
+      ? body.providerNostrNpub
+      : registration.providerNostrNpub
+  const providerMarketRelayRefs = Array.isArray(body.providerMarketRelayRefs)
+    ? uniqueOrderedRefs(
+        body.providerMarketRelayRefs.filter(
+          (ref): ref is string => typeof ref === 'string',
+        ),
+      )
+    : registration.providerMarketRelayRefs
+  const providerNip90LaneRefs = Array.isArray(body.providerNip90LaneRefs)
+    ? uniqueRefs(
+        body.providerNip90LaneRefs.filter(
+          (ref): ref is string => typeof ref === 'string',
+        ),
+      )
+    : registration.providerNip90LaneRefs
   const isHeartbeat = event.eventKind === 'heartbeat'
   const next: PylonApiRegistrationRecord = {
     ...registration,
@@ -1130,6 +1223,10 @@ export const nextRegistrationForEvent = (
     latestResourceMode: isHeartbeat
       ? resourceMode
       : registration.latestResourceMode,
+    providerMarketRelayRefs,
+    providerNip90LaneRefs,
+    providerNostrNpub,
+    providerNostrPubkey,
     resourceMode,
     updatedAt: nowIso,
     walletReady,
@@ -1164,6 +1261,14 @@ const rowToRegistration = (
   ownerAgentCredentialId: row.owner_agent_credential_id,
   ownerAgentTokenPrefix: row.owner_agent_token_prefix,
   ownerAgentUserId: row.owner_agent_user_id,
+  providerMarketRelayRefs: parseJsonStringArray(
+    row.provider_market_relay_refs_json ?? '[]',
+  ),
+  providerNip90LaneRefs: parseJsonStringArray(
+    row.provider_nip90_lane_refs_json ?? '[]',
+  ),
+  providerNostrNpub: row.provider_nostr_npub ?? null,
+  providerNostrPubkey: row.provider_nostr_pubkey ?? null,
   publicProjectionJson: row.public_projection_json,
   pylonRef: row.pylon_ref,
   resourceMode: row.resource_mode,
@@ -1667,9 +1772,11 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
              wallet_ref, wallet_ready, latest_heartbeat_at,
              latest_heartbeat_status, latest_resource_mode,
              latest_health_refs_json, latest_load_refs_json,
-             latest_capacity_refs_json, public_projection_json, created_at,
+             latest_capacity_refs_json, provider_nostr_pubkey,
+             provider_nostr_npub, provider_market_relay_refs_json,
+             provider_nip90_lane_refs_json, public_projection_json, created_at,
              updated_at, archived_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
         )
         .bind(
           record.id,
@@ -1691,6 +1798,10 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
           JSON.stringify(record.latestHealthRefs),
           JSON.stringify(record.latestLoadRefs),
           JSON.stringify(record.latestCapacityRefs),
+          record.providerNostrPubkey,
+          record.providerNostrNpub,
+          JSON.stringify(record.providerMarketRelayRefs),
+          JSON.stringify(record.providerNip90LaneRefs),
           record.publicProjectionJson,
           record.createdAt,
           record.updatedAt,
@@ -1728,6 +1839,10 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
                 latest_health_refs_json = ?,
                 latest_load_refs_json = ?,
                 latest_capacity_refs_json = ?,
+                provider_nostr_pubkey = ?,
+                provider_nostr_npub = ?,
+                provider_market_relay_refs_json = ?,
+                provider_nip90_lane_refs_json = ?,
                 public_projection_json = ?,
                 updated_at = ?
           WHERE pylon_ref = ?
@@ -1751,6 +1866,10 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         JSON.stringify(record.latestHealthRefs),
         JSON.stringify(record.latestLoadRefs),
         JSON.stringify(record.latestCapacityRefs),
+        record.providerNostrPubkey,
+        record.providerNostrNpub,
+        JSON.stringify(record.providerMarketRelayRefs),
+        JSON.stringify(record.providerNip90LaneRefs),
         publicProjectionJson,
         record.updatedAt,
         record.pylonRef,
