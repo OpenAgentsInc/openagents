@@ -14,12 +14,18 @@
 (`npm view @openagentsinc/pylon dist-tags` → `latest: 0.2.5`). That launcher
 is the supported operator path and the one AGENTS.md tells agents about.
 
-**v0.3 is a source-only release candidate.** This directory is at
-`0.3.0-rc2` per `package.json`; no `0.3.0-rc*` artifact has been published
-to npm (verified 2026-06-11: `@openagentsinc/pylon@0.3.0-rc1` returns 404).
-Do not write public copy that names an installable v0.3 package until the
-release gates pass and the publish actually happens (#4662 tracks the
-stable release).
+**v0.3 is published as a release candidate under the `rc` dist-tag.**
+As of 2026-06-12, `@openagentsinc/pylon@0.3.0-rc2` is on npm under the
+`rc` dist-tag (`npm view @openagentsinc/pylon dist-tags` →
+`latest: 0.2.5, rc: 0.3.0-rc2`), published after the full
+`release:gate` passed end to end, including the local package install
+smoke against the published `@openagentsinc/agent-runtime-schema`,
+`@openagentsinc/nip90`, and `@openagentsinc/tassadar-executor` 0.1.0
+deps (#4858). Install with `npm install -g @openagentsinc/pylon@rc`.
+**Stable 0.3.0 is deliberately not tagged** (owner decision 2026-06-12);
+`latest` remains 0.2.5, and public copy must not describe v0.3 as the
+default install until a stable tag exists. The publish flow is
+documented in `docs/npm-publishing-runbook.md`.
 
 ### Running the v0.3 RC from source (testing only)
 
