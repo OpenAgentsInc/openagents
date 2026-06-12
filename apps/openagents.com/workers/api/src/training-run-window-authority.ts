@@ -17,17 +17,20 @@ import {
 
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
-const PublicSafeRef = NonEmptyTrimmedString.check(
+export const TrainingPublicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+export const TrainingPublicSafeRef = NonEmptyTrimmedString.check(
   S.isMinLength(3),
   S.isMaxLength(260),
-  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/),
+  S.isPattern(TrainingPublicSafeRefPattern),
 )
+const PublicSafeRef = TrainingPublicSafeRef
 const PublicSafeRefs = S.optionalKey(S.Array(PublicSafeRef))
-const PublicSafePylonRef = NonEmptyTrimmedString.check(
+export const TrainingPublicSafePylonRef = NonEmptyTrimmedString.check(
   S.isMinLength(3),
   S.isMaxLength(120),
   S.isPattern(/^[a-z0-9][a-z0-9_.:-]*$/),
 )
+const PublicSafePylonRef = TrainingPublicSafePylonRef
 
 export const TrainingRunState = S.Literals([
   'planned',
@@ -64,6 +67,18 @@ export type TrainingWindowHomeworkKind = typeof TrainingWindowHomeworkKind.Type
  * and any revision lands as a run-config change with its own receipt.
  */
 export const DefaultMaxAllowedStaleSteps = 5
+
+/**
+ * Default seal/snapshot publication cadence in windows.
+ *
+ * Rationale: joiners bootstrap from the last durable seal only (Pluralis
+ * roadmap P1.2; openagents issue #4850), so how often a sealed checkpoint
+ * is published bounds how far behind a fresh joiner starts. The default of
+ * one (every window publishes a durable seal) matches the current
+ * window-lifecycle behavior; runs that seal less often must declare it
+ * here so the joiner-staleness bound stays a stated per-run contract value.
+ */
+export const DefaultSealPublicationCadenceWindows = 1
 
 export const MaxTrainingWindowSealContributionEntries = 64
 export const MaxTrainingWindowSealChurnEventEntries = 64
@@ -141,6 +156,7 @@ export type TrainingWindowSealVerificationOverhead =
   typeof TrainingWindowSealVerificationOverhead.Type
 
 export const TrainingWindowSealMetadata = S.Struct({
+  checkpointDigestRef: S.optionalKey(PublicSafeRef),
   churn: TrainingWindowSealChurnSummary,
   staleness: TrainingWindowSealStalenessSummary,
   verificationOverhead: TrainingWindowSealVerificationOverhead,
@@ -154,6 +170,9 @@ export const TrainingRunPlanRequest = S.Struct({
   ),
   promiseRef: PublicSafeRef,
   receiptRefs: PublicSafeRefs,
+  sealPublicationCadenceWindows: S.optionalKey(
+    S.Number.check(S.isInt(), S.isBetween({ minimum: 1, maximum: 10_000 })),
+  ),
   sourceRefs: PublicSafeRefs,
   trainingRunRef: S.optionalKey(PublicSafeRef),
 })
@@ -193,6 +212,8 @@ export type TrainingRunRecord = Readonly<{
   promiseRef: string
   publicProjectionJson: string
   receiptRefs: ReadonlyArray<string>
+  sealInFlightAt: string | null
+  sealPublicationCadenceWindows: number
   sourceRefs: ReadonlyArray<string>
   state: TrainingRunState
   trainingRunRef: string
@@ -247,6 +268,8 @@ export type TrainingRunProjection = Readonly<{
   maxAllowedStale: number
   promiseRef: string
   receiptRefs: ReadonlyArray<string>
+  sealInFlight: boolean
+  sealPublicationCadenceWindows: number
   sourceRefs: ReadonlyArray<string>
   state: TrainingRunState
   trainingRunRef: string
@@ -365,10 +388,23 @@ export type TrainingRunPublicSummary = Readonly<{
 
 export type TrainingAuthorityStore = Readonly<{
   attachRunEvidence: (run: TrainingRunRecord) => Promise<TrainingRunRecord>
+  // Run-level merge/seal barrier (Pluralis roadmap P1.3, openagents issue
+  // #4851). beginRunSealBarrier raises the durable seal-in-flight marker
+  // before the seal mutation is persisted and clearRunSealBarrier lowers it
+  // after; while the marker is up, the dispatcher queues joiner bootstrap
+  // grants and join-lifecycle transitions instead of handing out
+  // half-updated state. The marker is durable on purpose: a Worker that
+  // dies mid-seal leaves the barrier up rather than letting a joiner
+  // bootstrap from an unverified seal.
+  beginRunSealBarrier: (
+    trainingRunRef: string,
+    nowIso: string,
+  ) => Promise<void>
   claimLease: (
     lease: TrainingWindowLeaseRecord,
     nowIso: string,
   ) => Promise<TrainingWindowLeaseRecord>
+  clearRunSealBarrier: (trainingRunRef: string) => Promise<void>
   listClaimableWindows: (
     nowIso: string,
     limit: number,
@@ -417,6 +453,8 @@ export type TrainingRunRow = Readonly<{
   promise_ref: string
   public_projection_json: string
   receipt_refs_json: string
+  seal_in_flight_at: string | null
+  seal_publication_cadence_windows: number
   source_refs_json: string
   state: TrainingRunState
   training_run_ref: string
@@ -500,6 +538,8 @@ export const publicTrainingRunProjection = (
   maxAllowedStale: record.maxAllowedStale,
   promiseRef: record.promiseRef,
   receiptRefs: uniqueRefs(record.receiptRefs),
+  sealInFlight: record.sealInFlightAt !== null,
+  sealPublicationCadenceWindows: record.sealPublicationCadenceWindows,
   sourceRefs: uniqueRefs(record.sourceRefs),
   state: record.state,
   trainingRunRef: record.trainingRunRef,
@@ -891,6 +931,10 @@ export const buildTrainingRunRecord = (
     promiseRef: input.request.promiseRef,
     publicProjectionJson: '{}',
     receiptRefs: uniqueRefs(input.request.receiptRefs),
+    sealInFlightAt: null,
+    sealPublicationCadenceWindows:
+      input.request.sealPublicationCadenceWindows ??
+      DefaultSealPublicationCadenceWindows,
     sourceRefs: uniqueRefs(input.request.sourceRefs),
     state: 'planned',
     trainingRunRef: input.request.trainingRunRef ?? `training.run.${id}`,
@@ -1070,6 +1114,19 @@ export const assertValidTrainingWindowSealMetadata = (
       'verificationOverhead.fraction must be a number between 0 and 1.',
     )
   }
+
+  const checkpointDigestRef = metadata.checkpointDigestRef
+
+  if (
+    checkpointDigestRef !== undefined &&
+    (checkpointDigestRef.length < 3 ||
+      checkpointDigestRef.length > 260 ||
+      !TrainingPublicSafeRefPattern.test(checkpointDigestRef))
+  ) {
+    throw sealValidationError(
+      'checkpointDigestRef must be a public-safe ref.',
+    )
+  }
 }
 
 export const transitionTrainingWindowRecord = (
@@ -1231,6 +1288,10 @@ export const rowToTrainingRun = (row: TrainingRunRow): TrainingRunRecord => ({
   promiseRef: row.promise_ref,
   publicProjectionJson: row.public_projection_json,
   receiptRefs: parseJsonStringArray(row.receipt_refs_json),
+  sealInFlightAt: row.seal_in_flight_at ?? null,
+  sealPublicationCadenceWindows:
+    row.seal_publication_cadence_windows ??
+    DefaultSealPublicationCadenceWindows,
   sourceRefs: parseJsonStringArray(row.source_refs_json),
   state: row.state,
   trainingRunRef: row.training_run_ref,
@@ -1296,6 +1357,24 @@ export const makeD1TrainingAuthorityStore = (
 
     return run
   },
+  beginRunSealBarrier: async (trainingRunRef, nowIso) => {
+    const result = await db
+      .prepare(
+        `UPDATE training_runs
+            SET seal_in_flight_at = ?
+          WHERE training_run_ref = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(nowIso, trainingRunRef)
+      .run()
+
+    if ((result.meta?.changes ?? 0) === 0) {
+      throw new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found for seal barrier.',
+      })
+    }
+  },
   claimLease: async lease => {
     await db
       .prepare(
@@ -1320,6 +1399,17 @@ export const makeD1TrainingAuthorityStore = (
       .run()
 
     return lease
+  },
+  clearRunSealBarrier: async trainingRunRef => {
+    await db
+      .prepare(
+        `UPDATE training_runs
+            SET seal_in_flight_at = NULL
+          WHERE training_run_ref = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(trainingRunRef)
+      .run()
   },
   listClaimableWindows: async (nowIso, limit) => {
     const result = await db
@@ -1415,9 +1505,10 @@ export const makeD1TrainingAuthorityStore = (
       .prepare(
         `INSERT INTO training_runs
           (id, training_run_ref, promise_ref, state, max_allowed_stale,
+           seal_publication_cadence_windows, seal_in_flight_at,
            source_refs_json, receipt_refs_json, public_projection_json,
            created_at, updated_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .bind(
         run.id,
@@ -1425,6 +1516,8 @@ export const makeD1TrainingAuthorityStore = (
         run.promiseRef,
         run.state,
         run.maxAllowedStale,
+        run.sealPublicationCadenceWindows,
+        run.sealInFlightAt,
         JSON.stringify(run.sourceRefs),
         JSON.stringify(run.receiptRefs),
         run.publicProjectionJson,

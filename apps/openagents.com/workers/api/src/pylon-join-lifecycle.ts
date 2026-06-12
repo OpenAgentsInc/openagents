@@ -25,9 +25,16 @@ export const PylonJoinLifecycleState = S.Literals([
 ])
 export type PylonJoinLifecycleState = typeof PylonJoinLifecycleState.Type
 
+// `join_deferred_seal_in_flight` is a queue-visibility code, not a ladder
+// edge: it marks a join transition or bootstrap grant that the dispatcher
+// queued while a merge/seal operation was in flight (Pluralis roadmap
+// P1.3, openagents issue #4851). No transition in the closed set below
+// carries it; the deferred request replays unchanged once the seal
+// barrier clears.
 export const PylonJoinLifecycleReasonCodes = [
   'join_lifecycle.public.beyond_max_allowed_stale',
   'join_lifecycle.public.durable_seal_digest_synced',
+  'join_lifecycle.public.join_deferred_seal_in_flight',
   'join_lifecycle.public.qualification_gate_passed',
   'join_lifecycle.public.reentry_seal_digest_synced',
   'join_lifecycle.public.shadow_work_verified',

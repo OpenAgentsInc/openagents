@@ -1700,6 +1700,12 @@ const requestSchemas = (): JsonSchema => ({
   TrainingWindowLeaseClaimRequest: objectSummary(
     'Pylon request to claim the highest-priority active training window. Admin-dispatched homework is selected before auto-starter windows; request fields are pylonRef, optional leaseSeconds, and public-safe receiptRefs.',
   ),
+  TrainingWindowBootstrapGrantRequest: objectSummary(
+    'Joiner request for a bootstrap grant pinned to the last durable seal of a training run. Request fields are joinerRef and optional public-safe receiptRefs.',
+  ),
+  TrainingWindowBootstrapGrantEnvelope: objectSummary(
+    "Typed bootstrap outcome envelope. A granted outcome carries the grant ref, the sealed window ref, the seal's checkpoint digest ref, seal receipt refs, echoed joiner receipt refs, and a display-only seal age; a queued outcome carries the join-lifecycle seal-in-flight deferral reason code; a refused outcome carries a typed no-durable-seal reason. None of the outcomes grant payout, settlement, or wallet authority.",
+  ),
   TrainingVerificationChallengeCreateRequest: objectSummary(
     'Admin-only request to enqueue a training verification challenge with public-safe training/window/contribution refs, verificationClass, aggregate or per-contribution samplingPolicy, commitment refs, and class-specific payload metadata.',
   ),
@@ -3249,6 +3255,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training run projection.',
           '#/components/schemas/TrainingRunEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/bootstrap-grant': {
+    post: operation({
+      operationId: 'requestTrainingWindowBootstrapGrant',
+      summary: 'Request joiner bootstrap grant from the last durable seal',
+      description:
+        "Requests a typed bootstrap grant for a joining device. The authority only ever grants the run's last durable seal: the most recently sealed window whose seal record carries a durably stored checkpoint digest. Requests made while a merge/seal operation is in flight return a typed queued outcome with a join-lifecycle deferral reason code instead of an error, and runs without any durable seal return a typed refusal. The grant pins the seal's checkpoint digest for the joiner's acceptance echo and grants no payout, settlement, or wallet authority.",
+      tags: ['Training', 'Pylon'],
+      security: publicRead,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingWindowBootstrapGrantRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Typed bootstrap outcome: granted, queued, or refused.',
+          '#/components/schemas/TrainingWindowBootstrapGrantEnvelope',
         ),
         ...errorResponses(),
       },

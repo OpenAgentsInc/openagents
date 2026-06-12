@@ -116,10 +116,24 @@ const makeMemoryStore = (): MemoryTrainingAuthorityStore => {
 
       return run
     },
+    beginRunSealBarrier: async (trainingRunRef, nowIso) => {
+      const run = runs.get(trainingRunRef)
+
+      if (run !== undefined) {
+        runs.set(trainingRunRef, { ...run, sealInFlightAt: nowIso })
+      }
+    },
     claimLease: async lease => {
       leases.set(lease.leaseRef, lease)
 
       return lease
+    },
+    clearRunSealBarrier: async trainingRunRef => {
+      const run = runs.get(trainingRunRef)
+
+      if (run !== undefined) {
+        runs.set(trainingRunRef, { ...run, sealInFlightAt: null })
+      }
     },
     listClaimableWindows: async nowIso =>
       [...windows.values()].filter(
@@ -1260,6 +1274,212 @@ describe('training run window routes', () => {
     expect(leaseResponse.status).toBe(200)
     expect(body).toMatchObject({
       lease: { windowRef: 'training.window.admin' },
+    })
+  })
+
+  it('validates the seal publication cadence as run-authority config', async () => {
+    const store = makeMemoryStore()
+    let counter = 0
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => String(++counter).padStart(4, '0'),
+      makeStore: () => store,
+      nowIso: () => '2026-06-12T10:00:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+
+    const rejected = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs', {
+          promiseRef: 'promise.training.4850',
+          sealPublicationCadenceWindows: 0,
+          trainingRunRef: 'training.run.4850',
+        }),
+        {},
+      ),
+    )
+    expect(rejected.status).toBe(400)
+
+    const planned = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs', {
+          promiseRef: 'promise.training.4850',
+          sealPublicationCadenceWindows: 3,
+          trainingRunRef: 'training.run.4850',
+        }),
+        {},
+      ),
+    )
+    expect(planned.status).toBe(200)
+    await expect(planned.json()).resolves.toMatchObject({
+      run: {
+        sealInFlight: false,
+        sealPublicationCadenceWindows: 3,
+        trainingRunRef: 'training.run.4850',
+      },
+    })
+
+    const defaulted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs', {
+          promiseRef: 'promise.training.4850',
+          trainingRunRef: 'training.run.4850.defaulted',
+        }),
+        {},
+      ),
+    )
+    expect(defaulted.status).toBe(200)
+    await expect(defaulted.json()).resolves.toMatchObject({
+      run: { sealPublicationCadenceWindows: 1 },
+    })
+  })
+
+  it('grants bootstrap from the last durable seal, queues during an in-flight seal, and refuses without one', async () => {
+    const store = makeMemoryStore()
+    let counter = 0
+    let currentIso = '2026-06-12T10:00:00.000Z'
+    const barrierCalls: Array<string> = []
+    const instrumentedStore: MemoryTrainingAuthorityStore = {
+      ...store,
+      beginRunSealBarrier: async (trainingRunRef, nowIso) => {
+        barrierCalls.push(`begin:${trainingRunRef}`)
+        await store.beginRunSealBarrier(trainingRunRef, nowIso)
+      },
+      clearRunSealBarrier: async trainingRunRef => {
+        barrierCalls.push(`clear:${trainingRunRef}`)
+        await store.clearRunSealBarrier(trainingRunRef)
+      },
+    }
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => String(++counter).padStart(4, '0'),
+      makeStore: () => instrumentedStore,
+      nowIso: () => currentIso,
+      requireAdminApiToken: async () => true,
+    })
+    const sealMetadataWithDigest = (checkpointDigestRef: string) => ({
+      checkpointDigestRef,
+      churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
+      staleness: {
+        contributionCount: 0,
+        stepsBehindMax: 0,
+        stepsBehindMin: 0,
+        stepsBehindP50: 0,
+        stepsBehindP90: 0,
+      },
+      verificationOverhead: {
+        fraction: 0.2,
+        ladderRungRef: 'ladder.rung.r1',
+      },
+    })
+    const sealWindow = async (windowRef: string, digestRef: string) => {
+      await runRoute(
+        routes.routeTrainingRunWindowRequest(
+          jsonRequest('/api/training/windows/plan', {
+            trainingRunRef: 'training.run.4850',
+            windowRef,
+          }),
+          {},
+        ),
+      )
+      await runRoute(
+        routes.routeTrainingRunWindowRequest(
+          jsonRequest(`/api/training/windows/${windowRef}/activate`, {
+            receiptRef: `receipt.${windowRef}.activate`,
+          }),
+          {},
+        ),
+      )
+      const sealed = await runRoute(
+        routes.routeTrainingRunWindowRequest(
+          jsonRequest(`/api/training/windows/${windowRef}/seal`, {
+            receiptRef: `receipt.${windowRef}.seal`,
+            sealMetadata: sealMetadataWithDigest(digestRef),
+          }),
+          {},
+        ),
+      )
+      expect(sealed.status).toBe(200)
+    }
+    const requestGrant = async (): Promise<Record<string, unknown>> => {
+      const response = await runRoute(
+        routes.routeTrainingRunWindowRequest(
+          jsonRequest('/api/training/runs/training.run.4850/bootstrap-grant', {
+            joinerRef: 'pylon.joiner.1',
+            receiptRefs: ['receipt.joiner.qualification'],
+          }),
+          {},
+        ),
+      )
+      expect(response.status).toBe(200)
+
+      return (await response.json()) as Record<string, unknown>
+    }
+
+    await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest('/api/training/runs', {
+          promiseRef: 'promise.training.4850',
+          trainingRunRef: 'training.run.4850',
+        }),
+        {},
+      ),
+    )
+
+    // No durable seal yet: typed refusal, not an error.
+    expect(await requestGrant()).toMatchObject({
+      outcome: {
+        kind: 'refused',
+        reasonCode: 'training.bootstrap.public.no_durable_seal',
+      },
+    })
+
+    // First durable seal: grant pins its checkpoint digest. The seal
+    // route raised and cleared the run-level barrier around the write.
+    await sealWindow('training.window.4850.a', 'digest.checkpoint.a')
+    expect(barrierCalls).toEqual([
+      'begin:training.run.4850',
+      'clear:training.run.4850',
+    ])
+    expect(await requestGrant()).toMatchObject({
+      outcome: {
+        grant: {
+          checkpointDigestRef: 'digest.checkpoint.a',
+          joinerReceiptRefs: ['receipt.joiner.qualification'],
+          joinerRef: 'pylon.joiner.1',
+          sealReceiptRefs: [
+            'receipt.training.window.4850.a.activate',
+            'receipt.training.window.4850.a.seal',
+          ],
+          sealedWindowRef: 'training.window.4850.a',
+          trainingRunRef: 'training.run.4850',
+        },
+        kind: 'granted',
+      },
+    })
+
+    // Seal in flight: the same request queues with the join-lifecycle
+    // deferral reason code instead of being rejected.
+    await store.beginRunSealBarrier('training.run.4850', currentIso)
+    expect(await requestGrant()).toMatchObject({
+      outcome: {
+        joinerRef: 'pylon.joiner.1',
+        kind: 'queued',
+        reasonCode: 'join_lifecycle.public.join_deferred_seal_in_flight',
+      },
+    })
+
+    // Barrier clears and a newer window seals: the replayed request
+    // proceeds against the NEW last durable seal.
+    await store.clearRunSealBarrier('training.run.4850')
+    currentIso = '2026-06-12T11:00:00.000Z'
+    await sealWindow('training.window.4850.b', 'digest.checkpoint.b')
+    expect(await requestGrant()).toMatchObject({
+      outcome: {
+        grant: {
+          checkpointDigestRef: 'digest.checkpoint.b',
+          sealedWindowRef: 'training.window.4850.b',
+        },
+        kind: 'granted',
+      },
     })
   })
 })

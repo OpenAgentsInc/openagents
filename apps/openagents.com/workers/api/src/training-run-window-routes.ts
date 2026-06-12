@@ -42,6 +42,10 @@ import {
   publicScalingSweepProjection,
 } from './training-scaling-sweep'
 import {
+  TrainingWindowBootstrapGrantRequest,
+  decideTrainingWindowBootstrapGrant,
+} from './training-window-bootstrap'
+import {
   Cs336A1RealGradientEvidenceRequest,
   admitCs336A1RealGradientEvidence,
 } from './training-real-gradient-evidence'
@@ -251,15 +255,76 @@ const routeTransitionWindow = <Bindings extends TrainingRunWindowRouteEnv>(
       transitionKind,
       window: current,
     })
-    const stored = yield* Effect.tryPromise({
+    const persistTransition = Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
       try: () =>
         store.transitionWindow(transitioned.window, transitioned.event),
     })
+    // The seal mutation runs inside the run-level merge barrier (Pluralis
+    // roadmap P1.3, issue #4851): the barrier is raised before the seal is
+    // persisted and lowered once the operation finishes, so bootstrap
+    // grants and join transitions queue instead of reading mid-seal state.
+    // transitionWindow persists through one atomic D1 batch, so an
+    // observed failure leaves no partial state and the barrier may clear;
+    // an unobserved crash conservatively leaves the barrier up.
+    const stored = yield* nextState === 'sealed'
+      ? Effect.tryPromise({
+          catch: trainingAuthorityStoreErrorFromUnknown,
+          try: () =>
+            store.beginRunSealBarrier(current.trainingRunRef, nowIso),
+        }).pipe(
+          Effect.andThen(persistTransition),
+          Effect.ensuring(
+            Effect.promise(() =>
+              store
+                .clearRunSealBarrier(current.trainingRunRef)
+                .catch(() => undefined),
+            ),
+          ),
+        )
+      : persistTransition
 
     return noStoreJsonResponse({
       window: publicTrainingWindowProjection(stored, nowIso),
     })
+  })
+
+const routeBootstrapGrant = <Bindings extends TrainingRunWindowRouteEnv>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    const body = yield* decodeBody(request, TrainingWindowBootstrapGrantRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const windows = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.listWindowsForRun(trainingRunRef, 100),
+    })
+    const outcome = decideTrainingWindowBootstrapGrant({
+      joinerReceiptRefs: body.receiptRefs,
+      joinerRef: body.joinerRef,
+      makeId: () => routeMakeId(dependencies),
+      requestedAtIso: nowIso,
+      run,
+      windows,
+    })
+
+    return noStoreJsonResponse({ outcome })
   })
 
 const routeClaimLease = <Bindings extends TrainingRunWindowRouteEnv>(
@@ -1327,6 +1392,22 @@ export const makeTrainingRunWindowRoutes = <
       return routeClaimLease(dependencies, request, env).pipe(
         Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
       )
+    }
+
+    const bootstrapGrantMatch =
+      /^\/api\/training\/runs\/([^/]+)\/bootstrap-grant$/.exec(url.pathname)
+
+    if (bootstrapGrantMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeBootstrapGrant(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(bootstrapGrantMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
     const runEvidenceMatch =
