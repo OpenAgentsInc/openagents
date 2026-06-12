@@ -22,6 +22,7 @@ import {
   type TelemetryPaneState,
   type WalletPaneState,
 } from "../node/state"
+import { emptyPylonContextProjection, type PylonContextProjection } from "../context-projection"
 
 // Runtime-toggleable verbosity (issue #4738's verbose toggle command; the
 // initial value comes from --verbose / PYLON_VERBOSE at startup). Applies to
@@ -200,13 +201,18 @@ export function resetViewState(): void {
   setWalletState(initialWalletPaneState)
   setTelemetryState(initialTelemetryPaneState)
   setOperatorText(initialOperatorPaneState.text)
+  setContextState(emptyPylonContextProjection())
 }
 
 // --- Routes and surfaces (issue #4741) --------------------------------------
 
-export type PylonRoute = "dashboard" | "assignments" | "wallet"
+export type PylonRoute = "dashboard" | "assignments" | "wallet" | "context"
 
 export const [activeRoute, setActiveRoute] = createSignal<PylonRoute>("dashboard")
+
+export const [contextState, setContextState] = createSignal<PylonContextProjection>(
+  emptyPylonContextProjection(),
+)
 
 // Assignments surface state, refreshed via the assignments.refresh command.
 export type AssignmentRow = {

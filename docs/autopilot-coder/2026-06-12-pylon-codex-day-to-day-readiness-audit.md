@@ -78,10 +78,16 @@ check/apply/reload loop exist in source:
   `sandboxMode: "danger-full-access"` with `approvalPolicy: "never"` and is
   visibly labeled `Codex DANGER`. The assignment executor remains deliberately
   bounded to `read-only` / `workspace-write`.
-- `pylon dev doctor --json`, `pylon dev check --json`,
-  `pylon dev apply --json`, and `pylon dev reload --json` now provide the
-  first typed local dev loop around the Codex composer. The TUI command palette
-  exposes matching Dev actions.
+- `pylon dev doctor --json`, `pylon context --json`,
+  `pylon dev check --json`, `pylon dev apply --json`, and
+  `pylon dev reload --json` now provide the first typed local dev loop around
+  the Codex composer. The TUI command palette exposes matching Dev and Context
+  actions.
+- The TUI now has a `Repo & AI Context` pane on wide dashboards and an `f6`
+  context route on narrow terminals. It renders active repo, instruction,
+  config, Codex/OpenAI, Claude/Fable, backend, current-job, and blocker refs
+  from the typed projection without dumping secrets, auth paths, raw
+  instruction text, local absolute paths, or provider account emails.
 - `pylon work submit` now requires a real `--commit <40-char-sha>`, rejects
   all-zero/all-one placeholders, preflights the commit against the public
   GitHub repo before submission, and includes the pinned checkout in command
@@ -104,8 +110,10 @@ Top-priority issues filed from this correction:
 - #4840: P0 local-only dangerous Codex execution mode. Implemented in source
   with SDK `danger-full-access` behind explicit local opt-in.
 - #4841: P0 `pylon dev doctor` repo/instruction/account context projection.
-  Implemented in source as a redacted JSON projection; #4838 still owns the
-  right-side TUI pane.
+  Implemented in source as a redacted JSON projection.
+- #4838: P0 TUI repo/account/instruction context pane. Implemented in source
+  with a wide `Repo & AI Context` pane, narrow `f6` route, and
+  `pylon context --json`.
 - #4842: P0 dev check/apply/reload loop. Implemented in source with typed
   local projections and command-palette actions.
 - #4843: P1 work-order commit pinning and adapter intent. Implemented in
@@ -121,8 +129,9 @@ remaining blockers are productization and proof blockers:
   lane. The fastest daily-driver switch is still the local composer/dev path,
   not a packaged `pylon work submit` flow.
 - "Codex primary, Fable occasionally" is built for work orders as explicit
-  intent. The local Dev Mode surface still needs the retained proof and richer
-  Fable review ergonomics before it should replace the owner's normal loop.
+  intent, and the local context pane shows Codex/Fable readiness. The local Dev
+  Mode surface still needs the retained supervised proof and richer Fable
+  review ergonomics before it should replace the owner's normal loop.
 - Delivery is still evidence-first in the work-order lane, not a normal coding
   handoff. That is acceptable for the local dev path if the first version shows
   the changed files, focused checks, and reload state inside Pylon.
@@ -247,7 +256,7 @@ lane when the local Claude/Fable credential/session is ready.** There is no
 | Start Pylon locally                            | Source-ready                   | v0.3 runs from source; published stable package is not v0.3.                                                                                                   |
 | Type a coding prompt into Pylon and run Codex  | Built in source (#4839)        | Composer routes through `@openai/codex-sdk`, uses the current working directory by default, and reports SDK/auth blockers before starting a thread.             |
 | Run Codex unrestricted while the owner watches | Built in source (#4840)        | `--codex-danger` or `dev.codexExecutionMode` maps the local dashboard composer to SDK `danger-full-access`; assignment/provider paths reject the flag.          |
-| Show active repo/instructions/accounts         | Projection built (#4841)       | `pylon dev doctor --json` emits a redacted typed projection; #4838 still owns the right-side TUI pane.                                                          |
+| Show active repo/instructions/accounts         | Built in source (#4838/#4841)  | `pylon context --json` emits the redacted typed projection; the wide TUI renders `Repo & AI Context`, and narrow terminals can open the `f6` context route.       |
 | Check/apply/reload after a Codex edit          | Built in source (#4842)        | `pylon dev check/apply/reload --json` emits typed local projections; command-palette Dev actions call the same loop. Reload is explicit and currently no-op unless a controlled process exists. |
 | Keep a headless worker online                  | Source-ready                   | `pylon node` and `PYLON_ASSIGNMENT_WORKER=1` exist for no-spend owner assignments, but this is not required for local supervised daily-driver MVP.             |
 | Register / heartbeat / show status             | Built                          | Presence and status commands exist; live worker-loop smoke passed. Not required for the fastest local switch.                                                  |
@@ -356,9 +365,8 @@ substitute Codex for a Fable/Claude request.
 
 ## Open Issue Tail
 
-Current issue tail after the #4839/#4840/#4841/#4842/#4843 implementation pass:
+Current issue tail after the #4838/#4839/#4840/#4841/#4842/#4843 implementation pass:
 
-- #4838: add the TUI repo/account/instruction context pane.
 - #4786 parent epic: Autopilot MVP issue ladder.
 - #4768 M10: overnight unattended proof, both lanes, both surfaces.
 - #4772 M14: MVP exit review / door-open decision.
@@ -370,10 +378,9 @@ Current issue tail after the #4839/#4840/#4841/#4842/#4843 implementation pass:
 
 The issue tail now has two lanes:
 
-1. **Owner supervised daily-driver lane:** #4838 for the visible context pane,
-   plus one retained supervised proof using the source checkout. #4839, #4840,
-   #4841, #4842, and #4843 are implemented in source. This remains the ASAP
-   switch path.
+1. **Owner supervised daily-driver lane:** one retained supervised proof using
+   the source checkout. #4838, #4839, #4840, #4841, #4842, and #4843 are
+   implemented in source. This remains the ASAP switch path.
 2. **Autopilot/public readiness lane:** #4768, #4772, #4777, #4781, #4782, and
    #4783. These are still real, but they are not required for the owner to sit
    at Pylon and supervise Codex.
@@ -511,9 +518,18 @@ workflow while the owner is watching.
      and backend refs.
    - Keeps output typed and redacted: no keys, auth paths, instruction text,
      changed filenames, or local absolute paths.
-   - #4838 still owns rendering this projection in the right-side TUI pane.
 
-4. **Add dev check/apply/reload loop (#4842). Done in source.**
+4. **Render repo/account/instruction context in the TUI (#4838). Done in
+   source.**
+   - Adds `pylon context --json` as the public-safe projection used by the
+     TUI.
+   - Adds a wide-dashboard `Repo & AI Context` pane beside telemetry.
+   - Adds an `f6` context route and `Context: refresh repo & AI` command for
+     narrow terminals.
+   - Shows Codex DANGER, OpenAI/Codex source refs, Claude/Fable readiness,
+     backend refs, current job refs, required capability refs, and blockers.
+
+5. **Add dev check/apply/reload loop (#4842). Done in source.**
    - `pylon dev check --json [--allow-dirty]` shows a dirty-state summary,
      changed file refs, focused check command refs, exit codes, and output
      digest refs.
@@ -523,7 +539,7 @@ workflow while the owner is watching.
      unless a controlled process exists.
    - The TUI command palette exposes the same Dev check/apply/reload actions.
 
-5. **Run one retained supervised daily-driver proof.**
+6. **Run one retained supervised daily-driver proof.**
    - Use a real repo task while the owner watches.
    - Submit from the Pylon composer or `pylon dev fix`, not `pylon work submit`.
    - Codex edits in the active checkout.
@@ -662,17 +678,19 @@ OpenAgents or GitHub must be ref-only and public-safe.
 
 ### Built-In Debug Context
 
-`pylon dev doctor --json` now assembles the core redacted context bundle:
+`pylon dev doctor --json` now assembles the core redacted context bundle, and
+`pylon context --json` projects the same repo/account/job state for the TUI:
 
 - local package version and source commit;
 - active repo provider/name, branch, commit, and dirty count;
 - instruction and config digest refs;
 - adapter readiness for Codex and Claude/Fable;
 - active Codex execution mode and sandbox;
-- backend readiness refs.
+- backend readiness refs;
+- current work/request/workspace/verification refs when available.
 
-Remaining visible-pane work, such as rendering recent command/check refs and
-reload state without opening JSON, belongs to #4838.
+The visible `Repo & AI Context` pane now renders this projection on wide
+dashboards and through `f6` on narrow terminals.
 - environment capability refs, never raw env values.
 
 That bundle is what Codex receives by default for `pylon dev fix`. Raw tokens,

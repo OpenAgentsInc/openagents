@@ -14,6 +14,7 @@ const stubCtx: CommandContext = {
   },
   assignmentActions: null,
   devActions: null,
+  refreshContext: null,
   setRoute: () => {},
   refreshAssignments: async () => {},
   currentAssignments: () => [],
@@ -68,6 +69,74 @@ describe("command registry", () => {
       expect(spec, `${name} missing`).toBeDefined()
       expect(spec?.palette).toBe(true)
     }
+  })
+
+  test("context view and refresh actions are registered", () => {
+    const specs = buildCommandSpecs({
+      ...stubCtx,
+      refreshContext: async () => ({
+        schema: "openagents.pylon.context.v0.3",
+        observedAt: "2026-06-12T12:00:00.000Z",
+        repo: {
+          state: "ready",
+          provider: "github",
+          fullName: "OpenAgentsInc/openagents",
+          branch: "main",
+          commitRef: "commit.abc",
+          dirtyState: "clean",
+          changedCount: 0,
+          blockerRefs: [],
+        },
+        instructions: { refs: [], configRefs: [], blockerRefs: [] },
+        adapters: {
+          mode: "dev",
+          primaryAdapter: "codex",
+          reviewerAdapter: "fable",
+          codex: {
+            state: "ready",
+            enabled: true,
+            cli: "present",
+            credentialSourceRef: "credential.source.codex_agent.codex_cli_login",
+            modelRef: "model.codex.gpt-5-codex",
+            executionMode: "local_supervised_danger",
+            sandboxMode: "danger-full-access",
+            danger: true,
+            capabilityRefs: ["capability.pylon.local_codex"],
+            blockerRefs: [],
+          },
+          openai: { state: "configured", sourceRefs: ["credential.source.codex_agent.codex_cli_login"], blockerRefs: [] },
+          claudeAgent: {
+            state: "ready",
+            enabled: true,
+            credentialSourceRef: "credential.source.claude_agent.local_claude_session",
+            modelRef: "model.claude_agent.claude-fable-5",
+            fableReviewAvailable: true,
+            capabilityRefs: ["capability.pylon.local_claude_agent"],
+            blockerRefs: [],
+          },
+          backends: [],
+          blockerRefs: [],
+        },
+        currentJob: {
+          assignmentRef: null,
+          workRequestRef: null,
+          workOrderRef: null,
+          workspaceRef: null,
+          worktreeRef: null,
+          verificationCommandRef: null,
+          latestVerificationRef: null,
+          primaryAdapter: "codex",
+          reviewerAdapter: "fable",
+          requiredCapabilityRefs: ["capability.pylon.local_codex"],
+          blockerRefs: [],
+        },
+        blockerRefs: [],
+      }),
+    })
+    const refresh = specs.find((candidate) => candidate.name === "context.refresh")
+    const route = specs.find((candidate) => candidate.name === "view.context")
+    expect(refresh?.palette).toBe(true)
+    expect(route?.key).toBe("f6")
   })
 
   test("focus toggle flips based on the focused pane", () => {

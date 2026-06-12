@@ -6,6 +6,8 @@
 
 import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import type { PylonContextProjection } from "../context-projection"
+import type { PylonRoute } from "./store"
 import { filterSelectItems, openAlert, openConfirm, openPrompt, openSelect, showToast } from "./dialogs"
 
 export type PylonKeymap = ReturnType<typeof createDefaultOpenTuiKeymap>
@@ -29,13 +31,19 @@ export interface DevActions {
   reload: () => Promise<unknown>
 }
 
+export interface ContextActions {
+  refresh: () => Promise<PylonContextProjection>
+}
+
 export interface CommandContext {
   walletActions: WalletActions
   // null when no OpenAgents base URL is configured for this node.
   assignmentActions: AssignmentActions | null
   // null when attached to a remote node that does not expose local dev actions.
   devActions: DevActions | null
-  setRoute: (route: "dashboard" | "assignments" | "wallet") => void
+  // null when attached to a remote node or before local context probes are available.
+  refreshContext: (() => Promise<PylonContextProjection>) | null
+  setRoute: (route: PylonRoute) => void
   refreshAssignments: () => Promise<void>
   currentAssignments: () => Array<{ leaseRef: string; goal: string }>
   cycleComposerHistory: (direction: -1 | 1) => void
@@ -84,6 +92,19 @@ function summarizeDevResult(result: unknown): string {
     blockerRefs: Array.isArray(value.blockerRefs) ? value.blockerRefs.slice(0, 5) : [],
   }
   return JSON.stringify(summary)
+}
+
+function summarizeContextResult(result: PylonContextProjection): string {
+  return JSON.stringify({
+    schema: result.schema,
+    repo: result.repo.fullName ?? result.repo.state,
+    branch: result.repo.branch,
+    commitRef: result.repo.commitRef,
+    primaryAdapter: result.adapters.primaryAdapter,
+    reviewerAdapter: result.adapters.reviewerAdapter,
+    mode: result.adapters.mode,
+    blockers: result.blockerRefs.slice(0, 5),
+  })
 }
 
 export function buildCommandSpecs(ctx: CommandContext): CommandSpec[] {
@@ -222,6 +243,27 @@ export function buildCommandSpecs(ctx: CommandContext): CommandSpec[] {
       },
     },
     {
+      name: "context.refresh",
+      title: "Context: refresh repo & AI",
+      category: "Context",
+      palette: true,
+      run: async () => {
+        if (!ctx.refreshContext) {
+          await openAlert({ title: "Context refresh", body: "Local repo and AI context refresh is unavailable in this session." })
+          return
+        }
+        try {
+          const result = await ctx.refreshContext()
+          showToast("context refreshed")
+          ctx.log(`[Context] Refresh ${summarizeContextResult(result)}`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          showToast(`context refresh failed: ${message}`, "error")
+          ctx.log(`[Context] Refresh failed: ${message}`)
+        }
+      },
+    },
+    {
       name: "wallet.send",
       title: "Wallet: send sats",
       category: "Wallet",
@@ -351,6 +393,14 @@ export function buildCommandSpecs(ctx: CommandContext): CommandSpec[] {
       key: "f5",
       palette: true,
       run: () => ctx.setRoute("wallet"),
+    },
+    {
+      name: "view.context",
+      title: "View: repo & AI context",
+      category: "View",
+      key: "f6",
+      palette: true,
+      run: () => ctx.setRoute("context"),
     },
     {
       name: "assignments.refresh",

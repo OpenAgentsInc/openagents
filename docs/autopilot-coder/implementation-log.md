@@ -1937,10 +1937,10 @@ Issue context:
 
 - #4841: add `pylon dev doctor --json` for repo, instruction, account, and
   execution-mode context.
-- #4838 still owns rendering this projection in the right-side TUI pane.
 
 Status: source implementation for the CLI/projection source; pane rendering
-and check/reload loop remain follow-up work.
+and check/reload loop were follow-up work in this entry. The visible pane was
+implemented later under #4838.
 
 Implemented:
 
@@ -2118,3 +2118,36 @@ Known unrelated check result:
 - `bun run --cwd apps/pylon test` currently fails in
   `tests/assignment.test.ts` with `stale NIP-98 event` in the local assignment
   harness. The focused work-requester tests pass.
+
+## Pylon Repo And AI Context Pane
+
+Issue context:
+
+- #4838 asked for the Pylon TUI to show active repository, instruction-layer,
+  AI account/adapter readiness, selected adapter, current-job refs, and
+  blockers without leaving the dashboard.
+
+Status: source implementation for the supervised daily-driver context surface.
+
+Implemented:
+
+- Added `apps/pylon/src/context-projection.ts` with
+  `openagents.pylon.context.v0.3`, built from the existing dev-doctor probes.
+- Added `pylon context --json` as the public-safe status command used by the
+  TUI and scripts.
+- Added TUI context state plus a wide-dashboard `Repo & AI Context` pane beside
+  `Telemetry & Wallet` on terminals wide enough to keep the logs readable.
+- Added an `f6` context route and `Context: refresh repo & AI` command for
+  narrow terminals.
+- Rendered Codex DANGER/local execution posture, OpenAI/Codex source refs,
+  Claude/Fable readiness, backend refs, current-job/workspace/verification
+  refs, required capability refs, and blockers from typed data.
+- Kept output ref-only and redacted: no raw secrets, account emails, auth
+  paths, raw instruction text, changed filenames, or local absolute paths.
+- Updated the Pylon README and daily-driver audit.
+
+Verification:
+
+- `bun test tests/context-projection.test.ts tests/tui-store.test.ts tests/tui-commands.test.ts tests/tui-render-harness.test.ts tests/dev-doctor.test.ts`
+- `bun src/index.ts context --json`
+- `git diff --check`

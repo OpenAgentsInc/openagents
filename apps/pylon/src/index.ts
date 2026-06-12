@@ -56,6 +56,7 @@ import {
 } from "./node/control-server"
 import { runControlClient, sendControlCommand } from "./node/control-client"
 import { loadComposerState, saveComposerState } from "./node/composer-store"
+import { collectPylonContextProjection } from "./context-projection"
 import { collectPylonDevDoctor } from "./dev-doctor"
 import {
   recordPylonDevCodexRun,
@@ -148,6 +149,11 @@ type ComposerBackend = DashboardUiModule["startDashboard"] extends (options: inf
   : never
 type DevActions = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
   ? Options extends { devActions?: infer Actions }
+    ? NonNullable<Actions>
+    : never
+  : never
+type ContextActions = DashboardUiModule["startDashboard"] extends (options: infer Options) => unknown
+  ? Options extends { contextActions?: infer Actions }
     ? NonNullable<Actions>
     : never
   : never
@@ -252,6 +258,19 @@ function makeDevActions(summary: ReturnType<typeof createBootstrapSummary>): Dev
     check: () => runPylonDevCheck({ allowDirty: true, cwd, env: Bun.env, summary }),
     apply: () => runPylonDevApply({ allowDirty: true, cwd, env: Bun.env, summary }),
     reload: () => runPylonDevReload({ cwd, env: Bun.env, summary }),
+  }
+}
+
+function makeContextActions(summary: ReturnType<typeof createBootstrapSummary>): ContextActions {
+  const cwd = codexComposerWorkingDirectory()
+  return {
+    refresh: () =>
+      collectPylonContextProjection({
+        cwd,
+        dangerFlag: Bun.argv.includes("--codex-danger"),
+        env: Bun.env,
+        summary,
+      }),
   }
 }
 
@@ -624,6 +643,13 @@ const runPylonNode = Effect.gen(function* () {
     }),
   )
   const devActions = makeDevActions(bootstrapSummary)
+  const contextActions = makeContextActions(bootstrapSummary)
+  const initialContextProjection = yield* Effect.promise(() =>
+    contextActions.refresh().catch((error) => {
+      logToUi(`[Context] Initial refresh failed: ${error instanceof Error ? error.message : String(error)}`, "info")
+      return null
+    }),
+  )
 
   const dashboard = yield* Effect.tryPromise({
     try: () =>
@@ -635,7 +661,9 @@ const runPylonNode = Effect.gen(function* () {
         assignmentActions: nodeAssignmentActions,
         composerState,
         composerBackend,
+        contextActions,
         devActions,
+        initialContextProjection,
         onComposerPersist: persistComposerState,
         onVerboseChange: (verbose) => {
           verboseMode = verbose
@@ -889,6 +917,7 @@ const runPylonAttach = (baseUrl: string, token: string) =>
           verbose: verboseMode,
           enable3d: Bun.env.PYLON_DISABLE_3D !== "1",
           composerBackend,
+          contextActions: null,
           devActions: null,
           onVerboseChange: (verbose) => {
             verboseMode = verbose
@@ -1202,6 +1231,25 @@ async function main() {
     const inventory = await discoverHostInventory({ env: Bun.env })
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`)
     return
+  }
+
+  if (args[0] === "context") {
+    try {
+      if (!args.includes("--json")) throw new Error("usage: pylon context --json [--codex-danger]")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const projection = await collectPylonContextProjection({
+        cwd: codexComposerWorkingDirectory(),
+        dangerFlag: args.includes("--codex-danger"),
+        env: Bun.env,
+        summary,
+      })
+      process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+      return
+    } catch (error) {
+      process.stderr.write(`Pylon context failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
   }
 
   if (args[0] === "operator" && args[1] === "snapshot" && args.includes("--json")) {

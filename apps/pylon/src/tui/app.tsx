@@ -24,6 +24,7 @@ import {
   assignmentRows,
   assignmentsStatus,
   balanceHistory,
+  contextState,
   estimateMarkdownRows,
   feedLineCount,
   feedScrollOffset,
@@ -33,6 +34,7 @@ import {
   setActiveRoute,
   setAssignmentRows,
   setAssignmentsStatus,
+  setContextState,
   setVerboseMode,
   streamingTails,
   telemetryState,
@@ -48,14 +50,16 @@ import {
   registerComposerFocusLayer,
   registerLogsScrollLayer,
   type AssignmentActions,
+  type ContextActions,
   type DevActions,
   type PylonKeymap,
   type WalletActions,
 } from "./commands"
+import type { PylonContextProjection } from "../context-projection"
 
 export { appendChatFeedItem, setVerboseMode } from "./store"
 export { attachRuntimeToView } from "./bridge"
-export type { AssignmentActions, DevActions, WalletActions } from "./commands"
+export type { AssignmentActions, ContextActions, DevActions, WalletActions } from "./commands"
 
 // --- View-internal plumbing (focus, scroll, terminal modes) ---------------
 
@@ -459,6 +463,118 @@ function Sidebar() {
   )
 }
 
+const contextPaneMinColumns = 132
+
+function trimCell(value: string | null | undefined, width: number) {
+  const text = value && value.length > 0 ? value : "--"
+  return text.length <= width ? text : `${text.slice(0, Math.max(1, width - 3))}...`
+}
+
+function compactContextLines(context: PylonContextProjection): string[] {
+  const codexLabel = context.adapters.codex.danger ? "Codex DANGER" : "Codex"
+  const fable = context.adapters.claudeAgent.fableReviewAvailable ? "yes" : "no"
+  const instructionRefs = context.instructions.refs.slice(0, 4)
+  const backendRefs = context.adapters.backends.slice(0, 5)
+  const blockers = context.blockerRefs.slice(0, 4)
+  return [
+    ` Repo: ${trimCell(context.repo.fullName ?? context.repo.state, 28)}`,
+    ` Branch: ${trimCell(context.repo.branch, 27)}`,
+    ` Commit: ${trimCell(context.repo.commitRef, 27)}`,
+    ` Dirty: ${context.repo.dirtyState} (${context.repo.changedCount})`,
+    ` Work: ${trimCell(context.currentJob.workOrderRef ?? context.currentJob.assignmentRef, 29)}`,
+    ` Workspace: ${trimCell(context.currentJob.workspaceRef ?? context.currentJob.worktreeRef, 24)}`,
+    " ---------------------------------",
+    ` ${codexLabel}: ${trimCell(context.adapters.codex.state, 20)}`,
+    ` Mode: ${trimCell(context.adapters.codex.executionMode, 27)}`,
+    ` Sandbox: ${trimCell(context.adapters.codex.sandboxMode, 24)}`,
+    ` OpenAI: ${context.adapters.openai.state}`,
+    ` Claude: ${trimCell(context.adapters.claudeAgent.state, 22)}`,
+    ` Fable: ${fable}`,
+    " ---------------------------------",
+    " Instructions",
+    ...instructionRefs.map((ref) => ` ${trimCell(ref.sourceRef, 23)} ${ref.state}`),
+    ` Config: ${trimCell(context.instructions.configRefs.join(", ") || null, 27)}`,
+    " Backends",
+    ...backendRefs.map((backend) => ` ${trimCell(backend.backendRef.replace(/^backend\./, ""), 20)} ${backend.state}`),
+    " ---------------------------------",
+    ` Primary: ${context.adapters.primaryAdapter}`,
+    ` Reviewer: ${context.adapters.reviewerAdapter ?? "--"}`,
+    ` Verify: ${trimCell(context.currentJob.verificationCommandRef, 27)}`,
+    ...(blockers.length > 0 ? [" Blockers", ...blockers.map((ref) => ` ${trimCell(ref, 31)}`)] : [" Blockers: none"]),
+  ]
+}
+
+function expandedContextLines(context: PylonContextProjection): string[] {
+  const compact = compactContextLines(context)
+  const jobLines = [
+    " ---------------------------------",
+    " Current job refs",
+    ` Assignment: ${context.currentJob.assignmentRef ?? "--"}`,
+    ` Work request: ${context.currentJob.workRequestRef ?? "--"}`,
+    ` Work order: ${context.currentJob.workOrderRef ?? "--"}`,
+    ` Workspace: ${context.currentJob.workspaceRef ?? "--"}`,
+    ` Worktree: ${context.currentJob.worktreeRef ?? "--"}`,
+    ` Latest verification: ${context.currentJob.latestVerificationRef ?? "--"}`,
+    ` Required capabilities: ${context.currentJob.requiredCapabilityRefs.join(", ") || "--"}`,
+  ]
+  return [...compact, ...jobLines]
+}
+
+function RepoContextText(props: { expanded?: boolean; maxRows?: number }) {
+  const lines = () => {
+    const source = props.expanded ? expandedContextLines(contextState()) : compactContextLines(contextState())
+    return source.slice(0, props.maxRows ?? source.length)
+  }
+  const danger = () => contextState().adapters.codex.danger
+  return (
+    <text fg={danger() ? theme.colors.error : theme.colors.text} width="100%" height={lines().length}>
+      {lines().join("\n")}
+    </text>
+  )
+}
+
+function RepoContextPane() {
+  return (
+    <box
+      border
+      borderStyle="single"
+      borderColor={theme.colors.border}
+      title=" // Repo & AI Context "
+      titleColor={theme.colors.title}
+      width={40}
+      flexBasis={40}
+      flexGrow={0}
+      flexShrink={0}
+      height="100%"
+      flexDirection="column"
+    >
+      <RepoContextText />
+    </box>
+  )
+}
+
+function ContextSurface() {
+  const dimensions = useTerminalDimensions()
+  const maxRows = () => Math.max(6, dimensions().height - 9)
+  return (
+    <box
+      border
+      borderStyle="single"
+      borderColor={theme.colors.border}
+      title=" // Repo & AI Context "
+      titleColor={theme.colors.title}
+      flexGrow={1}
+      height="100%"
+      flexDirection="column"
+    >
+      <text height={1} width="100%" fg={theme.colors.textMuted}>
+        {" ctrl+k -> Context: refresh repo & AI  ·  f3 dashboard"}
+      </text>
+      <RepoContextText expanded maxRows={maxRows()} />
+    </box>
+  )
+}
+
 function Composer() {
   return (
     <box
@@ -584,6 +700,11 @@ export function Dashboard() {
           <Pane name="logs">
             <LogFeed />
           </Pane>
+          <Show when={dimensions().width >= contextPaneMinColumns}>
+            <Pane name="context">
+              <RepoContextPane />
+            </Pane>
+          </Show>
           <Show when={dimensions().width >= 60}>
             <Pane name="telemetry">
               <Sidebar />
@@ -599,6 +720,11 @@ export function Dashboard() {
       <Show when={activeRoute() === "wallet"}>
         <Pane name="wallet">
           <WalletSurface />
+        </Pane>
+      </Show>
+      <Show when={activeRoute() === "context"}>
+        <Pane name="context">
+          <ContextSurface />
         </Pane>
       </Show>
       <Pane name="composer">
@@ -620,7 +746,7 @@ export function installDashboardChrome(
   renderer: CliRenderer,
   options: Pick<
     StartDashboardOptions,
-    "walletActions" | "devActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"
+    "walletActions" | "contextActions" | "devActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"
   >,
   assignmentActions: AssignmentActions | null,
 ): void {
@@ -630,6 +756,14 @@ export function installDashboardChrome(
       walletActions: options.walletActions,
       assignmentActions,
       devActions: options.devActions ?? null,
+      refreshContext: options.contextActions
+        ? async () => {
+            const projection = await options.contextActions?.refresh()
+            if (!projection) throw new Error("context refresh returned no projection")
+            setContextState(projection)
+            return projection
+          }
+        : null,
       setRoute: (route) => setActiveRoute(route),
       refreshAssignments: () => refreshAssignmentsInto(assignmentActions),
       currentAssignments: () => assignmentRows().map((row) => ({ leaseRef: row.leaseRef, goal: row.goal })),
@@ -670,6 +804,8 @@ export interface StartDashboardOptions {
   enable3d?: boolean
   walletActions: WalletActions
   assignmentActions?: AssignmentActions | null
+  contextActions?: ContextActions | null
+  initialContextProjection?: PylonContextProjection | null
   devActions?: DevActions | null
   composerState?: { history: string[]; stash: string }
   onComposerPersist?: (state: { history: string[]; stash: string }) => void
@@ -715,6 +851,9 @@ export async function startDashboard(options: StartDashboardOptions): Promise<Da
   persistComposer = options.onComposerPersist ?? null
   composerBackend = options.composerBackend ?? null
   const assignmentActions = options.assignmentActions ?? null
+  if (options.initialContextProjection) {
+    setContextState(options.initialContextProjection)
+  }
   const restoreScrollLock = installTerminalScrollLock()
   const interceptCtrlC = (sequence: string) => {
     if (sequence.includes("\x03")) {

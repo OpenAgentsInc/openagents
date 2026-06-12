@@ -11,11 +11,12 @@ import { ErrorBoundary } from "solid-js"
 import type { CliRenderer } from "@opentui/core"
 import { Effect, Fiber } from "effect"
 import { makePylonNodeRuntime, type PylonNodeRuntime } from "../node/runtime"
+import type { PylonContextProjection } from "../context-projection"
 import { attachRuntimeToView } from "./bridge"
 import { Dashboard, installDashboardChrome, type StartDashboardOptions } from "./app"
-import { resetCommandRegistry, type AssignmentActions, type WalletActions } from "./commands"
+import { resetCommandRegistry, type AssignmentActions, type ContextActions, type WalletActions } from "./commands"
 import { resetDialogState } from "./dialogs"
-import { resetSurfaceState, resetViewState } from "./store"
+import { resetSurfaceState, resetViewState, setContextState } from "./store"
 
 export interface TuiHarnessOptions {
   width?: number
@@ -23,6 +24,8 @@ export interface TuiHarnessOptions {
   verbose?: boolean
   walletActions?: WalletActions
   assignmentActions?: AssignmentActions | null
+  contextActions?: ContextActions | null
+  contextProjection?: PylonContextProjection
   keybindOverrides?: Record<string, string>
   onRequestShutdown?: () => void
 }
@@ -57,6 +60,9 @@ export async function createTuiHarness(options: TuiHarnessOptions = {}): Promise
   resetSurfaceState()
   resetDialogState()
   resetCommandRegistry()
+  if (options.contextProjection) {
+    setContextState(options.contextProjection)
+  }
 
   const runtime = await Effect.runPromise(makePylonNodeRuntime)
 
@@ -65,10 +71,12 @@ export async function createTuiHarness(options: TuiHarnessOptions = {}): Promise
   // deterministic and CI GPU-free.
   const chromeOptions: Pick<
     StartDashboardOptions,
-    "walletActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"
+    "walletActions" | "contextActions" | "onRequestShutdown" | "onVerboseChange" | "keybindOverrides"
   > = {
     walletActions: options.walletActions ?? noopWalletActions,
+    contextActions: options.contextActions ?? null,
     onRequestShutdown: options.onRequestShutdown ?? (() => {}),
+    onVerboseChange: undefined,
     keybindOverrides: options.keybindOverrides,
   }
 

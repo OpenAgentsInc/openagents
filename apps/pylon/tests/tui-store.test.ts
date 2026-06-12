@@ -6,6 +6,7 @@ import {
   agentRuntimeStatusRows,
   collapseFeedLine,
   computeFeedWindow,
+  contextState,
   feedLineCount,
   maxFeedLineChars,
   maxFeedLines,
@@ -14,6 +15,7 @@ import {
   feedScrollOffset,
   registerFeedViewport,
   setAgentRuntimeSurfaceProjections,
+  setContextState,
   setWalletState,
   streamingTails,
   visibleFeedLines,
@@ -112,6 +114,22 @@ describe("tui view store (virtualized feed)", () => {
   test("wallet signal reflects the latest set", () => {
     setWalletState({ daemonOnline: true, balanceSats: 7, readiness: "receive-ready" })
     expect(walletState().balanceSats).toBe(7)
+  })
+
+  test("context signal resets to a public unknown default", () => {
+    setContextState({
+      ...contextState(),
+      repo: {
+        ...contextState().repo,
+        state: "ready",
+        fullName: "OpenAgentsInc/openagents",
+      },
+    })
+    expect(contextState().repo.fullName).toBe("OpenAgentsInc/openagents")
+    resetViewState()
+    expect(contextState().repo.state).toBe("unknown")
+    expect(contextState().repo.fullName).toBeNull()
+    expect(contextState().blockerRefs).toContain("blocker.context.repo_unknown")
   })
 
   test("agent runtime rows are derived from kernel projections only", () => {

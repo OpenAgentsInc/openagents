@@ -4,8 +4,82 @@ import { createTuiHarness, type TuiHarness } from "../src/tui/harness"
 import { logMessage, setWalletStatus, publishLogEntries } from "../src/node/runtime"
 import { setActiveRoute, setAssignmentRows } from "../src/tui/store"
 import { openConfirm, dialogOpen } from "../src/tui/dialogs"
+import type { PylonContextProjection } from "../src/context-projection"
 
 let harness: TuiHarness | null = null
+
+function contextFixture(): PylonContextProjection {
+  return {
+    schema: "openagents.pylon.context.v0.3",
+    observedAt: "2026-06-12T12:00:00.000Z",
+    repo: {
+      state: "ready",
+      provider: "github",
+      fullName: "OpenAgentsInc/openagents",
+      branch: "main",
+      commitRef: "commit.dbfc091df123",
+      dirtyState: "clean",
+      changedCount: 0,
+      blockerRefs: [],
+    },
+    instructions: {
+      refs: [
+        { sourceRef: "instruction.workspace.agents", state: "present", relativePath: "AGENTS.md", digestRef: "file.digest.workspace" },
+        { sourceRef: "instruction.repo.invariants", state: "present", relativePath: "INVARIANTS.md", digestRef: "file.digest.repo" },
+      ],
+      configRefs: ["config.pylon.local", "config.pylon.dev.local_supervised_danger"],
+      blockerRefs: [],
+    },
+    adapters: {
+      mode: "dev",
+      primaryAdapter: "codex",
+      reviewerAdapter: "fable",
+      codex: {
+        state: "ready",
+        enabled: true,
+        cli: "present",
+        credentialSourceRef: "credential.source.codex_agent.codex_cli_login",
+        modelRef: "model.codex.gpt-5-codex",
+        executionMode: "local_supervised_danger",
+        sandboxMode: "danger-full-access",
+        danger: true,
+        capabilityRefs: ["capability.pylon.local_codex"],
+        blockerRefs: [],
+      },
+      openai: { state: "configured", sourceRefs: ["credential.source.codex_agent.codex_cli_login"], blockerRefs: [] },
+      claudeAgent: {
+        state: "ready",
+        enabled: true,
+        credentialSourceRef: "credential.source.claude_agent.local_claude_session",
+        modelRef: "model.claude_agent.claude-fable-5",
+        fableReviewAvailable: true,
+        capabilityRefs: ["capability.pylon.local_claude_agent"],
+        blockerRefs: [],
+      },
+      backends: [
+        { backendRef: "backend.opencode.cli", state: "ready", modelRef: "model.opencode.default", blockerRefs: [] },
+        { backendRef: "backend.apple_fm", state: "ready", modelRef: "model.apple_foundation_model", blockerRefs: [] },
+        { backendRef: "backend.gemini", state: "missing", modelRef: null, blockerRefs: ["blocker.backend.gemini_auth_missing"] },
+        { backendRef: "backend.psionic.qwen35", state: "missing", modelRef: null, blockerRefs: ["blocker.psionic_qwen35.connector_unconfigured"] },
+      ],
+      blockerRefs: [],
+    },
+    currentJob: {
+      assignmentRef: "assignment.public.fixture",
+      workRequestRef: "work.request.fixture",
+      workOrderRef: "work.order.fixture",
+      workspaceRef: "workspace.public.fixture",
+      worktreeRef: "worktree.public.fixture",
+      verificationCommandRef: "verify.bun-test",
+      latestVerificationRef: "verification.pass.fixture",
+      primaryAdapter: "codex",
+      reviewerAdapter: "fable",
+      requiredCapabilityRefs: ["capability.pylon.local_codex", "capability.pylon.local_claude_agent"],
+      blockerRefs: [],
+    },
+    blockerRefs: [],
+  }
+}
 
 afterEach(async () => {
   await harness?.dispose()
@@ -27,8 +101,30 @@ describe("tui render harness (Pilot model)", () => {
     harness = await createTuiHarness({ width: 50, height: 20 })
     const frame = await harness.frame()
     expect(frame).not.toContain("Telemetry & Wallet")
+    expect(frame).not.toContain("Repo & AI Context")
     expect(frame).toContain("Active Workroom")
     expect(frame).toMatchSnapshot()
+  })
+
+  test("wide dashboard renders repo and AI context without hiding telemetry", async () => {
+    harness = await createTuiHarness({ width: 150, height: 36, contextProjection: contextFixture() })
+    const frame = await harness.frame()
+    expect(frame).toContain("Repo & AI Context")
+    expect(frame).toContain("Telemetry & Wallet")
+    expect(frame).toContain("OpenAgentsInc/openagents")
+    expect(frame).toContain("Codex DANGER")
+    expect(frame).toContain("Fable: yes")
+    expect(frame).toContain("workspace.public.fixture")
+  })
+
+  test("narrow terminal can open the context route", async () => {
+    harness = await createTuiHarness({ width: 50, height: 20, contextProjection: contextFixture() })
+    setActiveRoute("context")
+    const frame = await harness.frame()
+    expect(frame).toContain("Repo & AI Context")
+    expect(frame).toContain("OpenAgentsInc/openagents")
+    expect(frame).toContain("Codex DANGER")
+    expect(frame).toContain("work.order.fixture")
   })
 
   test("fake event stream renders into the feed (protocol test)", async () => {
@@ -70,6 +166,9 @@ describe("tui render harness (Pilot model)", () => {
     setActiveRoute("wallet")
     frame = await harness.frame()
     expect(frame).toContain("Balance history")
+    setActiveRoute("context")
+    frame = await harness.frame()
+    expect(frame).toContain("Repo & AI Context")
     setActiveRoute("dashboard")
     frame = await harness.frame()
     expect(frame).toContain("Active Workroom")

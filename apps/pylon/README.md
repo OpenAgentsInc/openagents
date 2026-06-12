@@ -71,8 +71,9 @@ pylon apple-fm tool-stream-demo
 ## Dashboard (TUI)
 
 Running `pylon` with no subcommand opens the observational dashboard: an
-execution-log feed (left), wallet/telemetry/operator panes (right), a
-composer (bottom), and a one-line key-hint footer.
+execution-log feed (left), wallet/telemetry/operator panes (right), a repo/AI
+context pane on wide terminals, a composer (bottom), and a one-line key-hint
+footer.
 
 - Startup is quiet by default; launch with `--verbose` (or `PYLON_VERBOSE=1`)
   for full service logs, or press `f2` to toggle verbosity at runtime.
@@ -104,6 +105,11 @@ composer (bottom), and a one-line key-hint footer.
   Claude/Fable readiness, active Codex execution mode, and backend refs. It
   never prints raw keys, auth file paths, instruction text, changed filenames,
   or local absolute paths.
+- `pylon context --json` returns the same public-safe repo, instruction,
+  current-job, and AI-account/adaptor projection that drives the TUI's
+  `Repo & AI Context` pane. On wide dashboards it renders beside telemetry;
+  on narrow dashboards use `f6` or the command palette to open the full
+  context view, and `Context: refresh repo & AI` to re-probe local state.
 - `pylon dev check --json`, `pylon dev apply --json`, and
   `pylon dev reload --json` provide the local supervised check/apply/reload
   loop. `check` emits changed file refs, dirty-state counts, command refs, exit
@@ -119,7 +125,8 @@ composer (bottom), and a one-line key-hint footer.
   `PYLON_DISABLE_3D=1` turns it off.
 - Views: `f3` dashboard, `f4` assignments (poll/accept work leases - accept
   always confirms first), `f5` wallet (status, readiness, session balance
-  history). All views are also reachable from the palette.
+  history), `f6` repo and AI context. All views are also reachable from the
+  palette.
 
 ### Headless node and attach
 
@@ -153,6 +160,7 @@ runtime package's renderer tests as well.
 pylon bootstrap --json
 pylon bootstrap --register-openagents --setup-mdk-wallet --pylon-ref <ref> --display-name <name> --resource-mode background_20 --capability-ref <ref> --json
 pylon status --json
+pylon context --json
 ```
 
 `bootstrap` creates the local v0.3 home/cache/release layout and writes a
