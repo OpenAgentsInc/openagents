@@ -8,6 +8,7 @@ import {
   codexAgentCredentialSource,
   detectCodexCliLogin,
   loadCodexAgentConfig,
+  loadCodexDevConfig,
   probeCodexAgentReadiness,
   withCodexAgentCapability,
 } from "../src/codex-agent"
@@ -188,7 +189,7 @@ describe("codex config section", () => {
     }
   })
 
-  test("sandboxMode rejects danger-full-access; it is never configurable", async () => {
+  test("assignment sandboxMode rejects danger-full-access", async () => {
     const home = await mkdtemp(join(tmpdir(), "pylon-codex-agent-test-"))
     try {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
@@ -198,6 +199,32 @@ describe("codex config section", () => {
         summary.paths.config,
         JSON.stringify({ codex: { sandboxMode: "danger-full-access" } }),
       )
+      expect(await loadCodexAgentConfig(summary)).toEqual({})
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("dev config accepts only the local supervised dangerous mode", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-codex-dev-test-"))
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({
+          dev: {
+            codexExecutionMode: "local_supervised_danger",
+            apiKey: "must-be-ignored",
+          },
+          codex: { sandboxMode: "danger-full-access" },
+        }),
+      )
+      expect(await loadCodexDevConfig(summary)).toEqual({
+        codexExecutionMode: "local_supervised_danger",
+      })
+      expect(JSON.stringify(await loadCodexDevConfig(summary))).not.toContain("must-be-ignored")
       expect(await loadCodexAgentConfig(summary)).toEqual({})
     } finally {
       await rm(home, { recursive: true, force: true })

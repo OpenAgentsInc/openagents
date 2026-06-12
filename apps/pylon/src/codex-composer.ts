@@ -6,6 +6,11 @@ import {
 } from "./codex-agent"
 
 export type CodexComposerSandboxMode = CodexAgentSandboxMode | "danger-full-access"
+export type CodexComposerExecutionMode = "local_bounded" | "local_supervised_danger"
+export const CODEX_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF =
+  "blocker.codex.local_supervised_danger_public_path"
+export const CODEX_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF =
+  "blocker.codex.local_supervised_danger_requires_opt_in"
 
 export interface CodexComposerCallbacks {
   onText?: (fullText: string) => void
@@ -17,6 +22,7 @@ export interface CodexComposerOptions {
   cwd: string
   model?: string
   sandboxMode?: CodexComposerSandboxMode
+  executionMode?: CodexComposerExecutionMode
   approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted"
   networkAccessEnabled?: boolean
   timeoutMs?: number
@@ -25,6 +31,21 @@ export interface CodexComposerOptions {
   env?: Record<string, string | undefined>
   platform?: string
   codexCliLoginPresent?: boolean
+}
+
+export function sandboxModeForCodexComposerExecutionMode(
+  mode: CodexComposerExecutionMode,
+  boundedMode: CodexAgentSandboxMode | undefined,
+): CodexComposerSandboxMode {
+  return mode === "local_supervised_danger" ? "danger-full-access" : boundedMode ?? "workspace-write"
+}
+
+export function rejectCodexLocalDangerForPublicPath(
+  args: ReadonlyArray<string>,
+  routeName: string,
+): void {
+  if (!args.includes("--codex-danger")) return
+  throw new Error(`${routeName} rejects local_supervised_danger (${CODEX_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF})`)
 }
 
 export interface CodexComposerResult {
@@ -152,6 +173,13 @@ export async function runCodexComposerStream(
   callbacks: CodexComposerCallbacks = {},
 ): Promise<CodexComposerResult> {
   const config = options.config ?? {}
+  const executionMode = options.executionMode ?? "local_bounded"
+  const sandboxMode = options.sandboxMode ?? sandboxModeForCodexComposerExecutionMode(executionMode, config.sandboxMode)
+  if (sandboxMode === "danger-full-access" && executionMode !== "local_supervised_danger") {
+    throw new Error(
+      `danger-full-access requires local_supervised_danger (${CODEX_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF})`,
+    )
+  }
   const readiness = await probeCodexAgentReadiness({
     config,
     env: options.env,
@@ -182,7 +210,7 @@ export async function runCodexComposerStream(
     const codex = new sdk.Codex()
     const thread = codex.startThread({
       workingDirectory: options.cwd,
-      sandboxMode: options.sandboxMode ?? config.sandboxMode ?? "workspace-write",
+      sandboxMode,
       approvalPolicy: options.approvalPolicy ?? "never",
       skipGitRepoCheck: true,
       networkAccessEnabled: options.networkAccessEnabled ?? false,

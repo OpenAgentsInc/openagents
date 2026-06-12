@@ -199,6 +199,7 @@ export interface ComposerBackendResult {
 
 export interface ComposerBackend {
   label: string
+  statusLine?: string
   submit: (prompt: string, callbacks: ComposerBackendCallbacks) => Promise<ComposerBackendResult>
 }
 
@@ -218,14 +219,18 @@ async function submitPrompt(prompt: string) {
     response.finish()
     return
   }
-  const response = appendChatFeedItem(`**${backend.label}**: ... thinking ...`, { streaming: true })
+  const response = appendChatFeedItem(
+    `**${backend.label}**: ... thinking ...${backend.statusLine ? `\n\n*${backend.statusLine}*` : ""}`,
+    { streaming: true },
+  )
   let lastText = ""
   let lastEvent = "waiting for first event"
   let lastUsage: { label: string; value: string } | null = null
   const render = () => {
     const visibleText = lastText.trim() || `_${lastEvent}_`
     const usage = lastUsage ? ` | ${lastUsage.label}: ${lastUsage.value}` : ""
-    response.update(`**${backend.label}**: ${visibleText}\n\n*[events: ${lastEvent}${usage}]*`)
+    const status = backend.statusLine ? `${backend.statusLine} | ` : ""
+    response.update(`**${backend.label}**: ${visibleText}\n\n*[${status}events: ${lastEvent}${usage}]*`)
   }
   try {
     const result = await backend.submit(prompt, {

@@ -13,6 +13,7 @@ import {
   withClaudeAgentCapability,
 } from "./claude-agent"
 import {
+  loadCodexDevConfig,
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
   withCodexAgentCapability,
@@ -56,8 +57,10 @@ import {
 import { runControlClient, sendControlCommand } from "./node/control-client"
 import { loadComposerState, saveComposerState } from "./node/composer-store"
 import {
+  rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
-  type CodexComposerSandboxMode,
+  sandboxModeForCodexComposerExecutionMode,
+  type CodexComposerExecutionMode,
 } from "./codex-composer"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
@@ -237,23 +240,39 @@ function codexComposerWorkingDirectory() {
 
 async function makeCodexComposerBackend(
   summary: ReturnType<typeof createBootstrapSummary>,
+  options: {
+    allowDangerousLocal?: boolean
+    dangerFlag?: boolean
+    readDevConfig?: boolean
+  } = {},
 ): Promise<ComposerBackend> {
   const config = await loadCodexAgentConfig(summary)
+  const devConfig = options.readDevConfig === false ? {} : await loadCodexDevConfig(summary)
+  const dangerRequested =
+    options.dangerFlag === true || devConfig.codexExecutionMode === "local_supervised_danger"
+  const executionMode: CodexComposerExecutionMode =
+    dangerRequested && options.allowDangerousLocal === true
+      ? "local_supervised_danger"
+      : "local_bounded"
+  const sandboxMode = sandboxModeForCodexComposerExecutionMode(executionMode, config.sandboxMode)
   const timeoutMs =
     typeof config.timeoutSeconds === "number" && Number.isFinite(config.timeoutSeconds) && config.timeoutSeconds > 0
       ? Math.round(config.timeoutSeconds * 1000)
       : undefined
   const cwd = codexComposerWorkingDirectory()
+  const statusLine = `mode: ${executionMode} | sandbox: ${sandboxMode}`
   return {
-    label: "Codex",
+    label: executionMode === "local_supervised_danger" ? "Codex DANGER" : "Codex",
+    statusLine,
     submit: async (prompt, callbacks) => {
       const result = await runCodexComposerStream(
         prompt,
         {
           config,
           cwd,
+          executionMode,
           model: config.model,
-          sandboxMode: (config.sandboxMode ?? "workspace-write") as CodexComposerSandboxMode,
+          sandboxMode,
           approvalPolicy: "never",
           networkAccessEnabled: false,
           timeoutMs,
@@ -265,8 +284,9 @@ async function makeCodexComposerBackend(
         },
       )
       const footerParts = [
+        `mode: ${executionMode}`,
         `cwd: ${cwd}`,
-        `sandbox: ${config.sandboxMode ?? "workspace-write"}`,
+        `sandbox: ${sandboxMode}`,
         `events: ${result.eventCount}`,
         `tokens: ${result.totalTokens}`,
         `commands: ${result.commandCount}`,
@@ -553,7 +573,13 @@ const runPylonNode = Effect.gen(function* () {
   const persistComposerState = (state: { history: string[]; stash: string }) => {
     void saveComposerState(bootstrapSummary.paths.home, state).catch(() => {})
   }
-  const composerBackend = yield* Effect.promise(() => makeCodexComposerBackend(bootstrapSummary))
+  const composerBackend = yield* Effect.promise(() =>
+    makeCodexComposerBackend(bootstrapSummary, {
+      allowDangerousLocal: true,
+      dangerFlag: Bun.argv.includes("--codex-danger"),
+      readDevConfig: true,
+    }),
+  )
 
   const dashboard = yield* Effect.tryPromise({
     try: () =>
@@ -591,6 +617,9 @@ const runPylonNode = Effect.gen(function* () {
   // state, then follow ref changes and batched log events. Services are
   // forked only after this, so the feed replay misses nothing.
   yield* ui.attachRuntimeToView(runtime, { verbose: verboseMode })
+  yield* logMessage(runtime, "info", `[Codex] Composer ${composerBackend.statusLine ?? "mode: unavailable"}.`, {
+    transient: true,
+  })
 
   yield* logMessage(
     runtime,
@@ -800,7 +829,13 @@ const runPylonAttach = (baseUrl: string, token: string) =>
     })
     dashboardUi = ui
     const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-    const composerBackend = yield* Effect.promise(() => makeCodexComposerBackend(bootstrapSummary))
+    const composerBackend = yield* Effect.promise(() =>
+      makeCodexComposerBackend(bootstrapSummary, {
+        allowDangerousLocal: false,
+        dangerFlag: false,
+        readDevConfig: false,
+      }),
+    )
 
     const dashboard = yield* Effect.tryPromise({
       try: () =>
@@ -842,6 +877,9 @@ const runPylonAttach = (baseUrl: string, token: string) =>
     )
 
     yield* ui.attachRuntimeToView(runtime, { verbose: verboseMode })
+    yield* logMessage(runtime, "info", `[Codex] Attach composer ${composerBackend.statusLine ?? "mode: unavailable"}.`, {
+      transient: true,
+    })
     yield* logMessage(runtime, "info", `Attaching to Pylon node at ${baseUrl}...`, { transient: true })
 
     let snapshotSeen = false
@@ -1291,6 +1329,7 @@ async function main() {
 
   if (args[0] === "work") {
     try {
+      rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon work")
       const command = args[1]
       const workArgs = args.slice(2).flatMap((arg) => (arg === "--events" ? ["--events", "true"] : [arg]))
       const options = parseKeyValueOptions(workArgs)
@@ -1524,6 +1563,7 @@ async function main() {
 
   if (args[0] === "assignment") {
     try {
+      rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon assignment")
       const command = args[1]
       const options = parseKeyValueOptions(args.slice(2))
       const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
@@ -1574,6 +1614,7 @@ async function main() {
 
   if (args[0] === "provider") {
     try {
+      rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon provider")
       const command = args[1]
       const options = parseKeyValueOptions(args.slice(2))
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
@@ -1692,6 +1733,13 @@ async function main() {
   }
 
   if (args[0] === "node") {
+    try {
+      rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon node")
+    } catch (error) {
+      process.stderr.write(`Pylon node-core failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
     await Effect.runPromise(
       Effect.scoped(runHeadlessNode).pipe(
         Effect.catch((error) => Console.error(`Pylon node-core crashed: ${error.message}`)),
@@ -1701,6 +1749,13 @@ async function main() {
   }
 
   if (args[0] === "attach") {
+    try {
+      rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon attach")
+    } catch (error) {
+      process.stderr.write(`Pylon attach failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
     const attachArgs = args.slice(1).filter((arg) => !arg.startsWith("--"))
     const options = parseKeyValueOptions(args.slice(1).filter((arg, index, list) => {
       if (arg.startsWith("--")) return true

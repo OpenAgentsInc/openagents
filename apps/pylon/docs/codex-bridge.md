@@ -72,7 +72,10 @@ probe reports.
   `workspace-write`/`approvalPolicy: "never"`, surfaces structured
   progress events in the TUI, and reports SDK/auth blockers before any
   thread starts. This is the daily-driver path (#4839), separate from
-  public assignment execution.
+  public assignment execution. #4840 adds an explicit local-only
+  `local_supervised_danger` mode that maps to SDK
+  `sandboxMode: "danger-full-access"` while keeping assignment execution
+  bounded.
 - `probeCodexAgentReadiness()` (`src/codex-agent.ts`): reports one of
   `ready`, `sdk_missing`, `credentials_missing`, `platform_unsupported`,
   or `disabled_by_config`. The probe checks **presence only** — it
@@ -107,11 +110,29 @@ Optional `codex` section in the Pylon config file
   expand, what an assignment may do. Config is preference, not
   authority.
 - `sandboxMode` accepts only `read-only` or `workspace-write`.
-  `danger-full-access` is never configurable and the executor never
-  uses it.
+  `danger-full-access` is never configurable through the assignment-safe
+  `codex` section and the assignment executor never uses it.
 - Never put credential values in the config file; the bridge reads
   credentials from the environment and the owner's own CLI login state
   only.
+
+Optional local-only dev composer override:
+
+```json
+{
+  "dev": {
+    "codexExecutionMode": "local_supervised_danger"
+  }
+}
+```
+
+This is not a capability, not an assignment preference, and not public
+execution evidence. It affects only the local dashboard composer (the same
+mode is also available through `pylon dev --codex-danger` or
+`pylon --codex-danger`), makes the TUI label the backend `Codex DANGER`, and
+sets the SDK thread to `sandboxMode: "danger-full-access"` with
+`approvalPolicy: "never"`. `pylon work`, `pylon assignment`, `pylon provider`,
+`pylon node`, and `pylon attach` reject `--codex-danger`.
 
 ## Boundaries
 

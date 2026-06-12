@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  CODEX_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
+  CODEX_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF,
+  rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
+  sandboxModeForCodexComposerExecutionMode,
   summarizeCodexThreadEvent,
 } from "../src/codex-composer"
 import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
@@ -144,6 +148,71 @@ describe("Codex composer SDK stream", () => {
         platform: "darwin",
       }),
     ).rejects.toThrow("Codex composer unavailable: credentials_missing")
+  })
+
+  test("danger-full-access requires the local supervised execution mode", async () => {
+    const importer = async (specifier: string) => {
+      if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+      return {
+        Codex: class {
+          startThread() {
+            throw new Error("must not start")
+          }
+        },
+      }
+    }
+
+    await expect(
+      runCodexComposerStream("fix", {
+        codexCliLoginPresent: false,
+        cwd: "/tmp/current-repo",
+        env: { CODEX_API_KEY: "test-key-shape" },
+        importer,
+        platform: "darwin",
+        sandboxMode: "danger-full-access",
+      }),
+    ).rejects.toThrow(CODEX_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF)
+  })
+
+  test("local supervised mode maps to SDK danger-full-access", async () => {
+    let threadOptions: Record<string, unknown> | null = null
+    const importer = async (specifier: string) => {
+      if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+      return {
+        Codex: class {
+          startThread(options: Record<string, unknown>) {
+            threadOptions = options
+            return {
+              runStreamed: async () => ({ events: fakeCodexEvents() }),
+            }
+          }
+        },
+      }
+    }
+
+    await runCodexComposerStream("fix", {
+      approvalPolicy: "never",
+      codexCliLoginPresent: false,
+      cwd: "/tmp/current-repo",
+      env: { CODEX_API_KEY: "test-key-shape" },
+      executionMode: "local_supervised_danger",
+      importer,
+      platform: "darwin",
+      sandboxMode: sandboxModeForCodexComposerExecutionMode("local_supervised_danger", "workspace-write"),
+    })
+
+    expect(threadOptions).toMatchObject({
+      approvalPolicy: "never",
+      sandboxMode: "danger-full-access",
+      workingDirectory: "/tmp/current-repo",
+    })
+  })
+
+  test("public command paths reject the local dangerous flag", () => {
+    expect(() => rejectCodexLocalDangerForPublicPath(["submit", "--codex-danger"], "pylon work")).toThrow(
+      CODEX_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
+    )
+    expect(() => rejectCodexLocalDangerForPublicPath(["submit"], "pylon work")).not.toThrow()
   })
 
   test("summarizes todo and error stream events without raw payload dumps", () => {

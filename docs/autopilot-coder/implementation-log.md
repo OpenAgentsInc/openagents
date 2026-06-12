@@ -1897,6 +1897,40 @@ Verification:
 - `bun test tests/codex-composer.test.ts tests/tui-render-harness.test.ts tests/tui-commands.test.ts tests/codex-agent.test.ts`
 - `git diff --check`
 
+## Pylon Local Supervised Codex Danger Mode
+
+Issue context:
+
+- #4840: add local-only dangerous Codex mode for supervised Pylon dev.
+- Owner decision: keep using the official TypeScript SDK; model the CLI
+  dangerous bypass as SDK `sandboxMode: "danger-full-access"` plus
+  `approvalPolicy: "never"`.
+
+Status: source implementation for the local dashboard composer only;
+assignment/provider/headless paths remain bounded.
+
+Implemented:
+
+- Added a separate local dev config reader for
+  `dev.codexExecutionMode: "local_supervised_danger"` while keeping
+  assignment-safe `codex.sandboxMode` limited to `read-only` /
+  `workspace-write`.
+- Added composer execution-mode enforcement so `danger-full-access` is
+  accepted only with `executionMode: "local_supervised_danger"`.
+- Wired `--codex-danger` and local dev config into the dashboard composer,
+  labeling the backend `Codex DANGER` and showing the active mode/sandbox in
+  the feed status.
+- Rejected `--codex-danger` on `pylon work`, `pylon assignment`,
+  `pylon provider`, `pylon node`, and `pylon attach` with a typed blocker.
+- Updated README, Codex bridge docs, and the daily-driver audit.
+
+Verification:
+
+- `bun test tests/codex-composer.test.ts tests/codex-agent.test.ts tests/codex-agent-executor.test.ts`
+- `bun test tests/codex-composer.test.ts tests/codex-agent.test.ts tests/codex-agent-executor.test.ts tests/tui-render-harness.test.ts tests/tui-commands.test.ts`
+- `bun src/index.ts work --codex-danger` (expected rejection with `blocker.codex.local_supervised_danger_public_path`)
+- `git diff --check`
+
 ## Terminal-Agent Systems Roadmap Historical Status Refresh
 
 Issue context:

@@ -49,6 +49,12 @@ export type CodexAgentConfig = {
   sandboxMode?: CodexAgentSandboxMode
 }
 
+export type CodexLocalExecutionMode = "local_supervised_danger"
+
+export type CodexDevConfig = {
+  codexExecutionMode?: CodexLocalExecutionMode
+}
+
 export type CodexAgentProbeOptions = {
   env?: Record<string, string | undefined>
   platform?: string
@@ -182,9 +188,10 @@ export function withCodexAgentCapability(
 }
 
 /**
- * Reads the codex section of the persisted Pylon config file. Best-effort:
- * a missing or malformed file means no overrides. sandboxMode accepts only
- * the two bounded modes — danger-full-access is never configurable.
+ * Reads the assignment-safe codex section of the persisted Pylon config file.
+ * Best-effort: a missing or malformed file means no overrides. sandboxMode
+ * accepts only the two bounded modes — danger-full-access is deliberately
+ * excluded from this public/assignment config surface.
  */
 export async function loadCodexAgentConfig(
   summary: { paths: { config: string } },
@@ -209,6 +216,31 @@ export async function loadCodexAgentConfig(
         : {}),
       ...(config.sandboxMode === "read-only" || config.sandboxMode === "workspace-write"
         ? { sandboxMode: config.sandboxMode }
+        : {}),
+    }
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Reads the local-only dev section. This is intentionally separate from the
+ * assignment-safe codex config: local_supervised_danger may affect only the
+ * direct composer/dev path, never public assignment placement.
+ */
+export async function loadCodexDevConfig(
+  summary: { paths: { config: string } },
+): Promise<CodexDevConfig> {
+  try {
+    const raw = JSON.parse(
+      await readFile(summary.paths.config, "utf8"),
+    ) as { dev?: unknown }
+    const section = raw.dev
+    if (section === null || typeof section !== "object") return {}
+    const config = section as Record<string, unknown>
+    return {
+      ...(config.codexExecutionMode === "local_supervised_danger"
+        ? { codexExecutionMode: config.codexExecutionMode }
         : {}),
     }
   } catch {
