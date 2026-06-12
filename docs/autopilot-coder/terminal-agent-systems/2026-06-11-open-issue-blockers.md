@@ -36,20 +36,28 @@ Status: open.
 
 Blockers:
 
-- The CI-safe deterministic rotation leg is landed, but the live acceptance leg
-  still requires a deployed target user with at least two healthy connected
-  ChatGPT/Codex accounts.
-- The latest live-readiness probe found only one healthy ChatGPT/Codex account;
-  the rest of the available fleet was unhealthy or required reauth.
-- A real or live-induced provider rate-limit event must be exercised.
-- The live run must attach receipts for fleet readiness, initial lease,
-  failover, resumed lease, failover history, and mission continuity before
-  smart-routing copy can broaden.
+- The CI-safe deterministic rotation leg is landed.
+- Live fleet readiness and live failover route receipts were recorded on
+  2026-06-12 for `chris@openagents.com`: two new ChatGPT/Codex accounts
+  connected and sanity-checked healthy, an initial lease selected
+  `provider-account_ref_2dd6a8b25aad4d93a42947bec62c8465`, and a
+  live-induced `rate_limited` failover produced receipt
+  `provider_account_failover_receipt_c5f60166e739403799b2291c076d9801`
+  with next lease `provider-account-lease_ref_fd9a4982d0d34a54a07bcf72dadc46f0`
+  on `provider-account_ref_7b41e0634ec743b6a4855379b3e0fb18`.
+- The replacement lease was released and active lease count returned to zero.
+- The first account is intentionally on timed cooldown until
+  `2026-06-12T03:25:55.212Z`; until cooldown clears or another account is
+  connected, only one account is currently eligible for selection.
+- The remaining acceptance gap is mission continuity: a real Autopilot run must
+  resume under the rotated lease and attach mission/artifact refs showing
+  post-rotation work builds on pre-rotation state.
 
 Next unblock:
 
-- Reauth another account or choose a target user with two healthy accounts, then
-  run steps 2-6 of `docs/autopilot-coder/rate-limit-rotation-smoke.md`.
+- After cooldown clears or another account is connected, run a real mission
+  through the same failover path and attach the mission continuity evidence
+  from steps 4-6 of `docs/autopilot-coder/rate-limit-rotation-smoke.md`.
 
 ### #4768 M10 overnight unattended proof
 
