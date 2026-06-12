@@ -615,6 +615,17 @@ This is the invariant ledger for `openagents`.
   prompts, transcripts, shell output, private repo data, raw provider responses,
   provider credentials, OAuth material, wallet/payment material, and customer
   data must be rejected before telemetry projection.
+- Pack B provider-account retention policies must declare retention class,
+  deletion behavior, and projection invalidation behavior for credentials,
+  account leases, account-health telemetry, provider-routing decisions, policy
+  snapshots, reconnect state, debug/support records, artifacts, and receipts.
+  Credential revocation or account deletion must invalidate dependent leases,
+  emit typed dependent blockers and cache invalidation refs, and produce
+  reconnect action refs where applicable. Tombstones, deletion receipts,
+  retained audit refs, artifacts, and receipt refs must remain ref-only and
+  must reject raw credentials, OAuth material, raw prompts, transcripts, shell
+  output, private repo data, raw provider responses, wallet/payment material,
+  customer-private data, and local paths before projection.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
   `workers/api/src/provider-account-lease-policy.test.ts`.
@@ -626,6 +637,8 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/provider-account-security-review.test.ts`.
 - Regression coverage for Pack B provider-account telemetry/privacy fixtures
   lives in `workers/api/src/provider-account-telemetry-privacy.test.ts`.
+- Regression coverage for Pack B provider-account retention/deletion policy
+  lives in `workers/api/src/provider-account-retention-policy.test.ts`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 

@@ -131,6 +131,14 @@ Implementation status:
   It defines aggregate, local-only, and opt-out telemetry projections with
   freshness metadata, redaction fixture blockers, and ref-only debug/support
   bundle boundaries.
+- #4829 PB5 is implemented by
+  `apps/openagents.com/workers/api/src/provider-account-retention-policy.ts`,
+  `apps/openagents.com/workers/api/src/provider-account-retention-policy.test.ts`,
+  and
+  `docs/autopilot-coder/2026-06-11-provider-account-retention-deletion-rules.md`.
+  It declares Pack B data-class retention, deletion behavior, projection/cache
+  invalidation, lease blockers, reconnect actions, tombstones, receipts, and
+  retained audit refs.
 
 ## Timing Impact On Other Open Issues
 

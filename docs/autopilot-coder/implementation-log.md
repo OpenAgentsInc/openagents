@@ -1459,3 +1459,37 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-telemetry-privacy.test.ts`
+
+## PB5 / Issue #4829: Provider Account Retention And Deletion Rules
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4829`
+
+Status: implemented for the shared provider-account retention/deletion policy
+projection and fixture contract.
+
+Implemented:
+
+- Added `provider-account-retention-policy.ts` with declared retention class,
+  deletion behavior, and projection invalidation behavior for Pack B
+  credentials, account leases, account-health telemetry, provider-routing
+  decisions, policy snapshots, reconnect state, debug/support records,
+  artifacts, and receipts.
+- Credential revocation, account deletion, team deletion, and user deletion
+  now produce dependent lease invalidation refs, typed dependent blockers,
+  provider-account cache invalidation refs, and reconnect action refs where
+  applicable.
+- Retention expiry invalidates affected projection caches without inventing
+  live lease blockers when the expired class is not active account authority.
+- Tombstones, deletion receipts, retained audit refs, artifact refs, and
+  receipt refs are projected as safe refs only and reject raw credentials, raw
+  prompts, private repo data, raw provider responses, shell output, transcripts,
+  local paths, and other private material.
+- Added
+  `docs/autopilot-coder/2026-06-11-provider-account-retention-deletion-rules.md`
+  to document user, team, account, credential, and retention-expiry behavior.
+- Updated the `apps/openagents.com` invariant ledger with the Pack B
+  retention/deletion policy rule.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-retention-policy.test.ts`
