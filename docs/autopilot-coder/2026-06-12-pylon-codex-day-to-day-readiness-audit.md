@@ -426,6 +426,13 @@ filed yet. The correction is that "missing live evidence" is not one category:
 overnight unattended and market settlement evidence are public/autonomous
 readiness evidence, not local supervised daily-driver evidence.
 
+2026-06-12 follow-up: #4844, #4845, and #4846 subsequently closed. The Claude
+composer backend (#4844), Claude `local_supervised_danger` mode (#4845), and
+Claude dev-doctor/context projection (#4846) are implemented and closed in
+source. #4847 remains open as CL4, the retained supervised Claude/Fable
+daily-driver proof. A Codex twin, #4860, was filed on 2026-06-12 for the same
+retained supervised proof on the Codex lane, matching P0 item 7 of this audit.
+
 ## Minimal Supervised Daily-Driver Path
 
 This is the narrow path to switch ASAP. It is local, owner-supervised, and

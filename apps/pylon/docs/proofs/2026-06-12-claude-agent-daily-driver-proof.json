@@ -1,0 +1,284 @@
+{
+  "schema": "openagents.pylon.dev_proof_run.v0.1",
+  "observedAt": "2026-06-12T21:41:07.251Z",
+  "completedAt": "2026-06-12T21:41:33.743Z",
+  "adapter": "claude_agent",
+  "supervision": {
+    "label": "agent_supervised_owner_directed_session",
+    "ownerDirected": true,
+    "sourceCheckout": true,
+    "executionMode": "local_bounded"
+  },
+  "doctor": {
+    "schema": "openagents.pylon.dev_doctor.v0.3",
+    "observedAt": "2026-06-12T21:41:07.252Z",
+    "package": {
+      "name": "@openagentsinc/pylon",
+      "version": "0.3.0-rc2",
+      "sourceCommit": "63e27e5a4cb27f0a81223fb18c24587d70172ca7"
+    },
+    "repo": {
+      "state": "ready",
+      "provider": "github",
+      "fullName": "OpenAgentsInc/openagents",
+      "branch": "pluralis-proofs",
+      "commit": "63e27e5a4cb27f0a81223fb18c24587d70172ca7",
+      "dirty": {
+        "state": "dirty",
+        "changedCount": 3
+      },
+      "blockerRefs": [
+        "blocker.dev_doctor.repo_dirty"
+      ]
+    },
+    "instructions": {
+      "refs": [
+        {
+          "sourceRef": "instruction.workspace.agents",
+          "state": "missing",
+          "relativePath": "AGENTS.md",
+          "digestRef": null
+        },
+        {
+          "sourceRef": "instruction.repo.agents",
+          "state": "present",
+          "relativePath": "AGENTS.md",
+          "digestRef": "file.digest.d34d629fc4a91546264d9c02"
+        },
+        {
+          "sourceRef": "instruction.workspace.invariants",
+          "state": "missing",
+          "relativePath": "INVARIANTS.md",
+          "digestRef": null
+        },
+        {
+          "sourceRef": "instruction.repo.invariants",
+          "state": "present",
+          "relativePath": "INVARIANTS.md",
+          "digestRef": "file.digest.f491ea7f1f64c89cc0ddb94a"
+        }
+      ],
+      "blockerRefs": [
+        "blocker.dev_doctor.workspace_agents_missing",
+        "blocker.dev_doctor.workspace_invariants_missing"
+      ]
+    },
+    "pylonConfig": {
+      "state": "present",
+      "configRef": "config.pylon.local",
+      "digestRef": "file.digest.248d7ff5fa1e1b18ce5a1bc2",
+      "devOverlayRef": null,
+      "claudeDevOverlayRef": null,
+      "defaultAdapter": "codex"
+    },
+    "codex": {
+      "cli": "present",
+      "sdkReadiness": {
+        "schema": "openagents.pylon.codex_agent_readiness.v0.3",
+        "state": "ready",
+        "enabled": true,
+        "capabilityRefs": [
+          "capability.pylon.local_codex"
+        ],
+        "blockerRefs": [],
+        "credentialSourceRef": "credential.source.codex_agent.codex_cli_login"
+      },
+      "credentialSourceRef": "credential.source.codex_agent.codex_cli_login",
+      "configuredModel": null,
+      "executionMode": "local_bounded",
+      "sandboxMode": "workspace-write",
+      "blockerRefs": []
+    },
+    "claudeAgent": {
+      "readiness": {
+        "schema": "openagents.pylon.claude_agent_readiness.v0.3",
+        "state": "ready",
+        "enabled": true,
+        "capabilityRefs": [
+          "capability.pylon.local_claude_agent"
+        ],
+        "blockerRefs": [],
+        "credentialSourceRef": "credential.source.claude_agent.local_claude_session"
+      },
+      "configuredModel": null,
+      "fableReviewAvailable": false,
+      "executionMode": "local_bounded",
+      "permissionMode": "acceptEdits",
+      "dangerPublicPathBlockerRef": null,
+      "blockerRefs": []
+    },
+    "backends": {
+      "refs": [
+        {
+          "backendRef": "backend.opencode.cli",
+          "state": "ready",
+          "modelRef": "model.opencode.default",
+          "blockerRefs": []
+        },
+        {
+          "backendRef": "backend.codex.future_adapter",
+          "state": "unknown",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.backend.codex_adapter_not_wired"
+          ]
+        },
+        {
+          "backendRef": "backend.apple_fm",
+          "state": "ready",
+          "modelRef": "model.apple_foundation_model",
+          "blockerRefs": []
+        },
+        {
+          "backendRef": "backend.gemini",
+          "state": "missing",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.backend.gemini_auth_missing"
+          ]
+        },
+        {
+          "backendRef": "backend.psionic.qwen35",
+          "state": "missing",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.psionic_qwen35.connector_unconfigured"
+          ]
+        },
+        {
+          "backendRef": "backend.local_model",
+          "state": "unknown",
+          "modelRef": null,
+          "blockerRefs": [
+            "blocker.backend.local_model_inventory_unproven"
+          ]
+        }
+      ],
+      "blockerRefs": []
+    },
+    "blockerRefs": [
+      "blocker.dev_doctor.repo_dirty",
+      "blocker.dev_doctor.workspace_agents_missing",
+      "blocker.dev_doctor.workspace_invariants_missing"
+    ]
+  },
+  "task": {
+    "objective": "Add a dated 2026-06-12 status note to the Pylon Claude/Codex parity audit recording CL1-CL3 closure in source, the Codex successor promise going green receipt-first on 2026-06-12, and the Claude bridge remaining yellow on the packaged-binary repeat (issues 4858 and 4859)",
+    "promptDigestRef": "digest.composer.prompt.87521e2e19f9ca01e5a7000e",
+    "issueRefs": [
+      "issue.openagents.4847"
+    ]
+  },
+  "executor": {
+    "executionPathRef": "composer.run_stream",
+    "executionMode": "local_bounded",
+    "boundary": {
+      "adapter": "claude_agent",
+      "permissionMode": "acceptEdits",
+      "allowedToolsProfile": "composer_default",
+      "settingSourcesExcluded": true
+    },
+    "outcome": "completed",
+    "eventCount": 17,
+    "turnCount": 9,
+    "commandCount": 1,
+    "editedFileCount": 1,
+    "totalTokens": 3180,
+    "sessionRef": "session.pylon.claude_composer.8073d82f264d18349945e649",
+    "responseDigestRef": "digest.composer.response.28a482df5f474d3c6119beb7"
+  },
+  "devCheck": {
+    "schema": "openagents.pylon.dev_check.v0.3",
+    "observedAt": "2026-06-12T21:41:33.697Z",
+    "action": "check",
+    "state": "passed",
+    "changeSummary": {
+      "repo": {
+        "state": "ready",
+        "rootRef": "repo.root.82e055271b08f672f18b5b9b",
+        "branch": "pluralis-proofs",
+        "commit": "63e27e5a4cb27f0a81223fb18c24587d70172ca7"
+      },
+      "dirty": {
+        "state": "dirty",
+        "changedCount": 4,
+        "stagedCount": 0,
+        "unstagedCount": 2,
+        "untrackedCount": 2
+      },
+      "changedFileRefs": [
+        {
+          "fileRef": "file.local_change.c9b90c75c0f3947ba008b320",
+          "status": "modified",
+          "area": "docs",
+          "extension": "md"
+        },
+        {
+          "fileRef": "file.local_change.e363f2ee312b6a2c780fd3bf",
+          "status": "modified",
+          "area": "docs",
+          "extension": "md"
+        },
+        {
+          "fileRef": "file.local_change.726197a1280290d94b5d6665",
+          "status": "untracked",
+          "area": "pylon.docs",
+          "extension": null
+        },
+        {
+          "fileRef": "file.local_change.f96a179c9111a3444be7afc8",
+          "status": "untracked",
+          "area": "source",
+          "extension": "ts"
+        }
+      ],
+      "areaRefs": [
+        "area.docs",
+        "area.pylon.docs",
+        "area.source"
+      ],
+      "blockerRefs": []
+    },
+    "checkPlan": {
+      "state": "ready",
+      "commandRefs": [
+        "command.dev_check.7605d946e0e163e02d4ec9ce"
+      ],
+      "blockerRefs": []
+    },
+    "commandResults": [
+      {
+        "commandRef": "command.dev_check.7605d946e0e163e02d4ec9ce",
+        "reasonRef": "check.pylon.proof_verification",
+        "cwdRef": "command.cwd.82e055271b08f672f18b5b9b",
+        "argvRef": "command.argv.0178b3fa9044395c0f8add31",
+        "exitCode": 0,
+        "status": "passed",
+        "durationMs": 3,
+        "stdoutBytes": 70,
+        "stderrBytes": 0,
+        "stdoutDigestRef": "command.stdout.d6c42258b69f3604d77f8e90",
+        "stderrDigestRef": null
+      }
+    ],
+    "latestRecordRef": "record.pylon_dev.8ade281bcf3c7b7f3983a49f",
+    "branchUntouched": true,
+    "commitUntouched": true,
+    "pushPerformed": false,
+    "blockerRefs": []
+  },
+  "redactionScan": {
+    "state": "clean",
+    "patternRefs": [
+      "redaction.local_user_path",
+      "redaction.local_home_path",
+      "redaction.tmp_path",
+      "redaction.sk_prefix",
+      "redaction.provider_key_name",
+      "redaction.auth_scheme",
+      "redaction.credential_file",
+      "redaction.raw_session_uuid"
+    ]
+  },
+  "deviations": []
+}

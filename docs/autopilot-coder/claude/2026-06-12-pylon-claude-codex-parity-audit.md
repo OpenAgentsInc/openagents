@@ -66,6 +66,11 @@ bounded parity pass on the local dev/composer loop. The first slice (#4844) is
 implemented; the remaining slices are small follow-ups on permissive mode,
 visibility, and proof, not new architecture or a new operationalization pack.
 
+**Status (2026-06-12):** CL1-CL3 (#4844, #4845, #4846) are closed in source.
+The Codex successor promise went green receipt-first on 2026-06-12 (transition
+receipt `promise_transition_c2328369-09d0-4972-9a3b-8d530440cade`). The Claude
+bridge remains yellow on the packaged-binary repeat (#4858/#4859).
+
 ## Current System
 
 ### Shared adapter architecture
