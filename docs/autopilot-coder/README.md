@@ -42,7 +42,9 @@ Forum reporting.
   also carries the Pack B readiness update: #4824 tracks account,
   credential, and policy hardening, with #4825-#4830 covering credentials,
   settings, security review, telemetry/privacy, retention/deletion, and
-  minimal managed policy.
+  minimal managed policy. Pack C is now filed as #4831, with #4832-#4835
+  covering repository/worktree identity, change capture, file/shell/workspace
+  authority, and delivery/PR readiness receipts.
 - `terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`: delegation
   plan for the current open issue set, assigning the MVP ladder, Pack A, Pack
   B, market, and W3 evaluation work across eight named agent worktrees with

@@ -195,6 +195,43 @@ change when broader claims can close, not stop unrelated work.
   cite Pack B only when their proof evidence relies on provider credentials,
   account telemetry, managed policy snapshots, or retention/deletion behavior.
 
+## Pack C Readiness And Tracking Issues
+
+As of the Pack C `gh issue list` check on 2026-06-12, M11 repo/data-scope
+UX (#4769), M12 spend-to-evidence joins (#4770), and P3 writeback symmetry
+(#4779) are closed as backend/contract slices. Their issue closeouts still
+defer live self-serve repo connection UI proof, live real-repo PR draft proof,
+and downstream receipt evidence. The open issue set has narrowed to the Gate
+proof and market/live-evidence lanes: #4768, #4771, #4772, #4777, #4781,
+#4782, #4783, #4786, plus W3 #4749.
+
+That makes Pack C ready to file now. Pack C should not reopen M11/P3 or claim
+live PR writeback by itself. It should harden the repo/delivery evidence layer
+that future writeback, market, and proof issues need: repository/worktree
+identity, bounded change capture, file/shell/workspace authority, and
+delivery/PR readiness receipts.
+
+Pack C is now filed as GitHub issue #4831, with one child issue for each
+subsystem slice that should harden repo scope and delivery evidence:
+
+| Pack issue | Subsystem audit | Primary sprint pressure |
+| --- | --- | --- |
+| #4831 PACK C | Repo Scope, Delivery, And Evidence | Parent tracker for repo/delivery hardening after M11/M12/P3 contracts |
+| #4832 PC1 | Git/GitHub, Worktree, Repository Memory | Repository/worktree identity snapshots for scoped repo work |
+| #4833 PC2 | Diff/Patch Review, Artifact/Receipt, Diagnostics | Change capture and diff review artifacts |
+| #4834 PC3 | File Tool, Shell Execution, Sandbox/Workspace | File/shell/workspace authority boundary for delivery evidence |
+| #4835 PC4 | Git/GitHub Workflow, Artifact/Receipt, Writeback | Delivery authority and PR readiness receipt projections |
+
+Timing rule:
+
+- Pack C should advance #4777, #4781, #4782, and #4783 market evidence and
+  future #4779-style writeback claims.
+- Pack C is not a live PR writeback claim, live labor settlement claim, or
+  #4772 door-open proof by itself.
+- #4768, #4772, and #4786 should cite Pack C only when their proof evidence
+  depends on repo identity, change capture, file/shell/workspace evidence, or
+  delivery/PR readiness receipts.
+
 ## Audit Finding
 
 The terminal-agent folder is a dependency graph, not a flat backlog. The 62
@@ -561,14 +598,12 @@ Operationalize Pack A during the current #4786 sprint. It is the smallest set
 that turns the already-landed runtime kernel and work-order loop into
 unattended, inspectable, MVP-gating proof.
 
-Pack B is now filed as #4824-#4830 and is ready to run in parallel where it
-directly serves M13 and later provider/account/policy claims. It should not
-reopen closed M8/M9 work, and it should not become a blanket blocker for
-Gate-owned #4768/#4772 proof unless that proof relies on provider credentials,
-account telemetry, or managed policy state. Start Pack C design now, but
-implement it with M11/P3 rather than before the M6/M7/M10 proof slice. Hold
-Pack D and Pack E until the product can run, notify, resume, show status, and
-produce public-safe receipts from the same event log.
+Pack B is implemented as #4824-#4830 and should be cited where it directly
+serves M13 and later provider/account/policy claims. Pack C is now filed as
+#4831-#4835 because M11/M12/P3 have landed their backend contract slices and
+their deferred proof needs typed repo/delivery evidence. Hold Pack D and Pack
+E until the product can run, notify, resume, show status, write back or defer
+writeback honestly, and produce public-safe receipts from the same event log.
 
 The audit rule for future work is simple: if a capability changes work state,
 spends money, touches credentials, mutates files, pushes code, asks for
