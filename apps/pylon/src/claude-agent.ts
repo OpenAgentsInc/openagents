@@ -40,6 +40,12 @@ export type ClaudeAgentConfig = {
   timeoutSeconds?: number
 }
 
+export type ClaudeLocalExecutionMode = "local_supervised_danger"
+
+export type ClaudeDevConfig = {
+  claudeExecutionMode?: ClaudeLocalExecutionMode
+}
+
 export type ClaudeAgentProbeOptions = {
   env?: Record<string, string | undefined>
   platform?: string
@@ -213,7 +219,11 @@ export function withClaudeAgentCapability(
 
 /**
  * Reads the claudeAgent section of the persisted Pylon config file.
- * Best-effort: a missing or malformed file means no overrides.
+ * Best-effort: a missing or malformed file means no overrides. This is the
+ * assignment-safe surface: permission/execution-mode keys are deliberately
+ * not read here, so a permissive mode can never reach the delegated
+ * assignment executor through config — only loadClaudeDevConfig() reads the
+ * local-only dev overlay (issue #4845).
  */
 export async function loadClaudeAgentConfig(
   summary: { paths: { config: string } },
@@ -235,6 +245,32 @@ export async function loadClaudeAgentConfig(
         : {}),
       ...(typeof config.timeoutSeconds === "number" && Number.isFinite(config.timeoutSeconds)
         ? { timeoutSeconds: config.timeoutSeconds }
+        : {}),
+    }
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Reads the local-only dev section's Claude execution mode. Intentionally
+ * separate from the assignment-safe claudeAgent config: local_supervised_danger
+ * may affect only the direct composer/dev path, never public assignment
+ * placement (issue #4845, mirroring loadCodexDevConfig).
+ */
+export async function loadClaudeDevConfig(
+  summary: { paths: { config: string } },
+): Promise<ClaudeDevConfig> {
+  try {
+    const raw = JSON.parse(
+      await readFile(summary.paths.config, "utf8"),
+    ) as { dev?: unknown }
+    const section = raw.dev
+    if (section === null || typeof section !== "object") return {}
+    const config = section as Record<string, unknown>
+    return {
+      ...(config.claudeExecutionMode === "local_supervised_danger"
+        ? { claudeExecutionMode: config.claudeExecutionMode }
         : {}),
     }
   } catch {

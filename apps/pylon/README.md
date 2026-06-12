@@ -100,7 +100,14 @@ payout target`) run from the palette and always end in an explicit
 --codex-danger`, `pylon --codex-danger`, or `"dev":
 { "codexExecutionMode": "local_supervised_danger" }` explicitly switches the
   **local dashboard composer only** to SDK `danger-full-access` with
-  `approvalPolicy: "never"` and labels the feed as `Codex DANGER`. Submitted
+  `approvalPolicy: "never"` and labels the feed as `Codex DANGER`. The Claude
+  backend has the same opt-in shape: `pylon --claude-danger` or `"dev":
+{ "claudeExecutionMode": "local_supervised_danger" }` switches the local
+  composer to SDK `permissionMode: "bypassPermissions"` with no tool
+  allowlist and labels the feed as `Claude DANGER`; the default Claude
+  composer mode stays local bounded (tool allowlist + `acceptEdits`). Both
+  danger flags are rejected with typed blockers on every public command path.
+  Submitted
   prompts persist across restarts: cycle them with `ctrl+p` / `ctrl+n`, and an
   unsent draft is stashed on exit and restored on the next launch.
 - `pylon dev doctor --json` returns the redacted local context projection for

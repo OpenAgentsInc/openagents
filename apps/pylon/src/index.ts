@@ -9,6 +9,7 @@ import {
 } from "./tassadar-capability"
 import {
   loadClaudeAgentConfig,
+  loadClaudeDevConfig,
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
 } from "./claude-agent"
@@ -72,7 +73,13 @@ import {
   sandboxModeForCodexComposerExecutionMode,
   type CodexComposerExecutionMode,
 } from "./codex-composer"
-import { claudeComposerLabel, runClaudeComposerStream } from "./claude-composer"
+import {
+  claudeComposerLabel,
+  permissionModeForClaudeComposerExecutionMode,
+  rejectClaudeLocalDangerForPublicPath,
+  runClaudeComposerStream,
+  type ClaudeComposerExecutionMode,
+} from "./claude-composer"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -380,15 +387,28 @@ async function makeCodexComposerBackend(
 
 async function makeClaudeComposerBackend(
   summary: ReturnType<typeof createBootstrapSummary>,
+  options: {
+    allowDangerousLocal?: boolean
+    dangerFlag?: boolean
+    readDevConfig?: boolean
+  } = {},
 ): Promise<ComposerBackend> {
   const config = await loadClaudeAgentConfig(summary)
+  const devConfig = options.readDevConfig === false ? {} : await loadClaudeDevConfig(summary)
+  const dangerRequested =
+    options.dangerFlag === true || devConfig.claudeExecutionMode === "local_supervised_danger"
+  const executionMode: ClaudeComposerExecutionMode =
+    dangerRequested && options.allowDangerousLocal === true
+      ? "local_supervised_danger"
+      : "local_bounded"
+  const permissionMode = permissionModeForClaudeComposerExecutionMode(executionMode)
   const timeoutMs =
     typeof config.timeoutSeconds === "number" && Number.isFinite(config.timeoutSeconds) && config.timeoutSeconds > 0
       ? Math.round(config.timeoutSeconds * 1000)
       : undefined
   const cwd = codexComposerWorkingDirectory()
-  const label = claudeComposerLabel(config.model)
-  const statusLine = `mode: local_bounded | permissions: acceptEdits${config.model ? ` | model: ${config.model}` : ""}`
+  const label = claudeComposerLabel(config.model, executionMode)
+  const statusLine = `mode: ${executionMode} | permissions: ${permissionMode}${config.model ? ` | model: ${config.model}` : ""}`
   let sessionId: string | null = null
   return {
     label,
@@ -399,6 +419,8 @@ async function makeClaudeComposerBackend(
         {
           config,
           cwd,
+          executionMode,
+          permissionMode,
           model: config.model,
           resumeSessionId: sessionId,
           timeoutMs,
@@ -412,8 +434,8 @@ async function makeClaudeComposerBackend(
       sessionId = result.sessionId ?? sessionId
       const footerParts = [
         "adapter: claude_agent",
-        "mode: local_bounded",
-        "permissions: acceptEdits",
+        `mode: ${executionMode}`,
+        `permissions: ${permissionMode}`,
         `cwd: ${cwd}`,
         `events: ${result.eventCount}`,
         `tokens: ${result.totalTokens}`,
@@ -440,7 +462,15 @@ async function makeComposerBackend(
   const devConfig = options.readDevConfig === false ? {} : await loadCodexDevConfig(summary)
   const adapter = parseComposerAdapterOverride(Bun.argv.slice(2)) ?? devConfig.defaultAdapter ?? "codex"
   if (adapter === "claude_agent") {
-    return makeClaudeComposerBackend(summary)
+    // Danger flags are per-lane: --codex-danger never leaks into a Claude
+    // session or vice versa.
+    return makeClaudeComposerBackend(summary, {
+      ...(options.allowDangerousLocal === undefined
+        ? {}
+        : { allowDangerousLocal: options.allowDangerousLocal }),
+      dangerFlag: Bun.argv.includes("--claude-danger"),
+      ...(options.readDevConfig === undefined ? {} : { readDevConfig: options.readDevConfig }),
+    })
   }
   return makeCodexComposerBackend(summary, options)
 }
@@ -1647,6 +1677,7 @@ async function main() {
   if (args[0] === "work") {
     try {
       rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon work")
+      rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon work")
       const command = args[1]
       const workArgs = args.slice(2).flatMap((arg) => (arg === "--events" ? ["--events", "true"] : [arg]))
       const options = parseKeyValueOptions(workArgs)
@@ -1892,6 +1923,7 @@ async function main() {
   if (args[0] === "assignment") {
     try {
       rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon assignment")
+      rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon assignment")
       const command = args[1]
       const options = parseKeyValueOptions(args.slice(2))
       const baseUrl = options["base-url"] ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
@@ -1943,6 +1975,7 @@ async function main() {
   if (args[0] === "provider") {
     try {
       rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon provider")
+      rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon provider")
       const command = args[1]
       const options = parseKeyValueOptions(args.slice(2))
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
@@ -2063,6 +2096,7 @@ async function main() {
   if (args[0] === "node") {
     try {
       rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon node")
+      rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon node")
     } catch (error) {
       process.stderr.write(`Pylon node-core failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
@@ -2079,6 +2113,7 @@ async function main() {
   if (args[0] === "attach") {
     try {
       rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon attach")
+      rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon attach")
     } catch (error) {
       process.stderr.write(`Pylon attach failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1

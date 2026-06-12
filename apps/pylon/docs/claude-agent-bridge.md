@@ -88,6 +88,9 @@ Optional `claudeAgent` section in the Pylon config file
   by the executor gate (#4719) and the local dashboard composer; they cap,
   never expand, what an assignment may do. Config is preference, not
   authority.
+- Permission/execution-mode keys are deliberately not read from this
+  section: the assignment lane is always bounded. Only the local-only
+  `dev` section can change the composer's posture (#4845).
 - Never put credential values in the config file; the bridge reads
   credentials from the environment only.
 
@@ -112,6 +115,41 @@ config file. The composer runs in the active repo (`PYLON_ACTIVE_REPO` or
 `Claude (<model>)`, and keeps the raw SDK session id local so follow-up
 prompts can resume the same conversation. Feed/footer output uses hashed
 session refs, not raw session ids.
+
+## Local-only supervised permissive mode (#4845)
+
+The Claude equivalent of the Codex `danger-full-access` composer mode is a
+permission-system concept, not an OS sandbox:
+
+- `local_bounded` (default): tool allowlist
+  (`Read, Edit, Write, Bash, Glob, Grep`), `permissionMode: "acceptEdits"`,
+  `settingSources: []`.
+- `local_supervised_danger`: SDK `permissionMode: "bypassPermissions"`, no
+  tool allowlist, and `settingSources: ["project"]` — the owner is watching
+  their own checkout and wants their own `CLAUDE.md`/`.claude` instruction
+  layers active. (The bounded lane keeps executor-style isolation; this
+  asymmetry is deliberate and recorded on #4845.)
+
+Explicit opt-in only, mirroring `--codex-danger`:
+
+```json
+{
+  "dev": {
+    "claudeExecutionMode": "local_supervised_danger"
+  }
+}
+```
+
+or `pylon --claude-danger` / `pylon dev --claude-danger`. The TUI labels the
+backend `Claude DANGER` and the status line shows
+`mode: local_supervised_danger | permissions: bypassPermissions`.
+`pylon work`, `pylon assignment`, `pylon provider`, `pylon node`, and
+`pylon attach` reject `--claude-danger` with typed blocker
+`blocker.claude.local_supervised_danger_public_path`. The assignment executor
+stays bounded regardless of dev config: `loadClaudeAgentConfig()` never reads
+a permissive mode, and requesting `bypassPermissions` without the execution
+mode is a typed error
+(`blocker.claude.local_supervised_danger_requires_opt_in`).
 
 ## Boundaries
 

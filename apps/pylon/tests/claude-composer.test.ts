@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 
-import { claudeComposerLabel, runClaudeComposerStream, summarizeClaudeComposerMessage } from "../src/claude-composer"
+import {
+  CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
+  CLAUDE_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF,
+  claudeComposerLabel,
+  permissionModeForClaudeComposerExecutionMode,
+  rejectClaudeLocalDangerForPublicPath,
+  runClaudeComposerStream,
+  summarizeClaudeComposerMessage,
+} from "../src/claude-composer"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
 
 async function* fakeClaudeMessages() {
@@ -49,6 +57,10 @@ describe("Claude composer SDK stream", () => {
   test("labels Claude with the selected model when one is configured", () => {
     expect(claudeComposerLabel("claude-fable-5")).toBe("Claude (claude-fable-5)")
     expect(claudeComposerLabel(null)).toBe("Claude")
+    expect(claudeComposerLabel("claude-fable-5", "local_supervised_danger")).toBe(
+      "Claude DANGER (claude-fable-5)",
+    )
+    expect(claudeComposerLabel(null, "local_supervised_danger")).toBe("Claude DANGER")
   })
 
   test("runs the Claude Agent SDK in the selected cwd and resumes sessions", async () => {
@@ -139,6 +151,67 @@ describe("Claude composer SDK stream", () => {
       }),
     ).rejects.toThrow("Claude composer unavailable: credentials_missing")
     expect(queryStarted).toBe(false)
+  })
+
+  test("local supervised mode maps to bypassPermissions with no tool allowlist", async () => {
+    let queryOptions: Record<string, unknown> | null = null
+    const importer = async (specifier: string) => {
+      if (specifier !== CLAUDE_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+      return {
+        query: (input: { options?: Record<string, unknown> }) => {
+          queryOptions = input.options ?? null
+          return fakeClaudeMessages()
+        },
+      }
+    }
+
+    await runClaudeComposerStream("fix", {
+      cwd: "/tmp/current-repo",
+      env: { ANTHROPIC_API_KEY: "test-key-shape" },
+      executionMode: "local_supervised_danger",
+      importer,
+      platform: "darwin",
+    })
+
+    expect(queryOptions).toMatchObject({
+      permissionMode: "bypassPermissions",
+      settingSources: ["project"],
+    })
+    const danger = queryOptions as unknown as { allowedTools?: unknown }
+    expect(danger.allowedTools).toBeUndefined()
+    expect(permissionModeForClaudeComposerExecutionMode("local_supervised_danger")).toBe(
+      "bypassPermissions",
+    )
+    expect(permissionModeForClaudeComposerExecutionMode("local_bounded")).toBe("acceptEdits")
+  })
+
+  test("bypassPermissions requires the local supervised execution mode", async () => {
+    const importer = async (specifier: string) => {
+      if (specifier !== CLAUDE_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+      return {
+        query: () => {
+          throw new Error("must not start")
+        },
+      }
+    }
+    await expect(
+      runClaudeComposerStream("fix", {
+        cwd: "/tmp/current-repo",
+        env: { ANTHROPIC_API_KEY: "test-key-shape" },
+        importer,
+        permissionMode: "bypassPermissions",
+        platform: "darwin",
+      }),
+    ).rejects.toThrow(CLAUDE_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF)
+  })
+
+  test("public command paths reject the local dangerous flag", () => {
+    for (const route of ["pylon work", "pylon assignment", "pylon provider", "pylon node", "pylon attach"]) {
+      expect(() => rejectClaudeLocalDangerForPublicPath(["submit", "--claude-danger"], route)).toThrow(
+        CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
+      )
+    }
+    expect(() => rejectClaudeLocalDangerForPublicPath(["submit"], "pylon work")).not.toThrow()
   })
 
   test("summarizes messages without dumping raw tool payloads", () => {

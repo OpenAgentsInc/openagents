@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto"
 import { CLAUDE_AGENT_SDK_PACKAGE, probeClaudeAgentReadiness, type ClaudeAgentConfig } from "./claude-agent"
 
+export type ClaudeComposerExecutionMode = "local_bounded" | "local_supervised_danger"
+export type ClaudeComposerPermissionMode = "acceptEdits" | "bypassPermissions"
+export const CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF =
+  "blocker.claude.local_supervised_danger_public_path"
+export const CLAUDE_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF =
+  "blocker.claude.local_supervised_danger_requires_opt_in"
+
 export interface ClaudeComposerCallbacks {
   onText?: (fullText: string) => void
   onEvent?: (summary: string, eventCount: number) => void
@@ -12,12 +19,37 @@ export interface ClaudeComposerOptions {
   model?: string
   maxTurns?: number
   timeoutMs?: number
+  executionMode?: ClaudeComposerExecutionMode
+  permissionMode?: ClaudeComposerPermissionMode
   config?: ClaudeAgentConfig
   importer?: (specifier: string) => Promise<unknown>
   env?: Record<string, string | undefined>
   platform?: string
   localClaudeSessionProbe?: () => Promise<boolean>
   resumeSessionId?: string | null
+}
+
+/**
+ * The Claude equivalent of the Codex composer danger mapping (#4845). The
+ * Claude Agent SDK's unrestricted control is the permission system, not an
+ * OS sandbox: local_supervised_danger maps to permissionMode
+ * "bypassPermissions" with no tool allowlist, the same owner-watching
+ * semantics as Codex danger-full-access + approvalPolicy "never".
+ */
+export function permissionModeForClaudeComposerExecutionMode(
+  mode: ClaudeComposerExecutionMode,
+): ClaudeComposerPermissionMode {
+  return mode === "local_supervised_danger" ? "bypassPermissions" : "acceptEdits"
+}
+
+export function rejectClaudeLocalDangerForPublicPath(
+  args: ReadonlyArray<string>,
+  routeName: string,
+): void {
+  if (!args.includes("--claude-danger")) return
+  throw new Error(
+    `${routeName} rejects local_supervised_danger (${CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF})`,
+  )
 }
 
 export interface ClaudeComposerResult {
@@ -60,8 +92,12 @@ const DEFAULT_ALLOWED_TOOLS = ["Read", "Edit", "Write", "Bash", "Glob", "Grep"]
 const DEFAULT_MAX_TURNS = 16
 const DEFAULT_TIMEOUT_MS = 300_000
 
-export function claudeComposerLabel(model: string | null | undefined): string {
-  return model ? `Claude (${model})` : "Claude"
+export function claudeComposerLabel(
+  model: string | null | undefined,
+  executionMode: ClaudeComposerExecutionMode = "local_bounded",
+): string {
+  const base = executionMode === "local_supervised_danger" ? "Claude DANGER" : "Claude"
+  return model ? `${base} (${model})` : base
 }
 
 function numberOrZero(value: unknown): number {
@@ -126,6 +162,13 @@ export function summarizeClaudeComposerMessage(raw: unknown): string {
 
 export async function runClaudeComposerStream(prompt: string, options: ClaudeComposerOptions, callbacks: ClaudeComposerCallbacks = {}): Promise<ClaudeComposerResult> {
   const config = options.config ?? {}
+  const executionMode = options.executionMode ?? "local_bounded"
+  const permissionMode = options.permissionMode ?? permissionModeForClaudeComposerExecutionMode(executionMode)
+  if (permissionMode === "bypassPermissions" && executionMode !== "local_supervised_danger") {
+    throw new Error(
+      `bypassPermissions requires local_supervised_danger (${CLAUDE_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF})`,
+    )
+  }
   const readiness = await probeClaudeAgentReadiness({
     config,
     env: options.env,
@@ -153,15 +196,21 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
   let sessionId = options.resumeSessionId ?? null
 
   try {
+    // Deliberate settingSources decision (#4845): the bounded lane keeps the
+    // executor-style isolation it shipped with; the supervised danger lane
+    // loads the repo's own project instruction layers (CLAUDE.md / .claude
+    // settings) because the owner is operating their own checkout and wants
+    // their instruction stack active.
     const session = sdk.query({
       prompt,
       options: {
         cwd: options.cwd,
-        allowedTools: DEFAULT_ALLOWED_TOOLS,
         maxTurns: options.maxTurns ?? config.maxTurns ?? DEFAULT_MAX_TURNS,
-        settingSources: [],
         abortController: abort,
-        permissionMode: "acceptEdits",
+        permissionMode,
+        ...(executionMode === "local_supervised_danger"
+          ? { settingSources: ["project"] }
+          : { allowedTools: DEFAULT_ALLOWED_TOOLS, settingSources: [] }),
         ...((options.model ?? config.model) ? { model: options.model ?? config.model } : {}),
         ...(options.resumeSessionId ? { resume: options.resumeSessionId } : {}),
       },

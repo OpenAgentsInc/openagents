@@ -7,6 +7,7 @@ import {
   CLAUDE_AGENT_SDK_PACKAGE,
   claudeAgentCredentialSource,
   loadClaudeAgentConfig,
+  loadClaudeDevConfig,
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
 } from "../src/claude-agent"
@@ -204,6 +205,61 @@ describe("claudeAgent config section", () => {
         PYLON_HOME: home,
       })
       expect(await loadClaudeAgentConfig(summary)).toEqual({})
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("assignment-safe config rejects permissive mode keys in claudeAgent", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-claude-agent-test-"))
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await mkdir(join(home), { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({
+          claudeAgent: {
+            model: "claude-fable-5",
+            permissionMode: "bypassPermissions",
+            claudeExecutionMode: "local_supervised_danger",
+            executionMode: "local_supervised_danger",
+          },
+        }),
+      )
+      expect(await loadClaudeAgentConfig(summary)).toEqual({ model: "claude-fable-5" })
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("local-only dev config section", () => {
+  test("reads dev.claudeExecutionMode opt-in and ignores other values", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-claude-agent-test-"))
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await mkdir(join(home), { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({ dev: { claudeExecutionMode: "local_supervised_danger" } }),
+      )
+      expect(await loadClaudeDevConfig(summary)).toEqual({
+        claudeExecutionMode: "local_supervised_danger",
+      })
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({ dev: { claudeExecutionMode: "anything_else" } }),
+      )
+      expect(await loadClaudeDevConfig(summary)).toEqual({})
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({ claudeAgent: { claudeExecutionMode: "local_supervised_danger" } }),
+      )
+      expect(await loadClaudeDevConfig(summary)).toEqual({})
     } finally {
       await rm(home, { recursive: true, force: true })
     }
