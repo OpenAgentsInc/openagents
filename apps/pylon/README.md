@@ -189,9 +189,18 @@ Assignment worker commands are available for signed fake-server and live API
 smokes:
 
 ```sh
+pylon work submit "fix a public failing test" --commit <40-char-sha> --adapter codex --repo OpenAgentsInc/openagents --verify "bun test"
+pylon work status <autopilot-work-order-ref> --events
+pylon work review <autopilot-work-order-ref> --action request_changes
 pylon assignment poll --base-url https://openagents.com
 pylon assignment run-no-spend --base-url https://openagents.com
 ```
+
+`pylon work submit` is the network Autopilot work-order lane. It requires a
+real pinned commit, rejects placeholder or unresolvable commits before
+submission, and accepts `--adapter codex|claude_agent|fable` to carry explicit
+runner intent into assignment synthesis. Fable is currently a Claude Agent
+profile request, not a separate adapter.
 
 `run-no-spend` polls for a no-spend lease, applies local admission gates,
 accepts idempotently, submits progress with artifact/proof refs, and closes the

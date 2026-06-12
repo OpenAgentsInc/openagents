@@ -51,9 +51,11 @@ Forum reporting.
 - `2026-06-12-pylon-codex-day-to-day-readiness-audit.md`: immediate
   day-to-day readiness audit for switching owner coding to Pylon with Codex as
   the primary workhorse and Fable via the Claude Agent lane. Verdict:
-  controlled source-checkout dogfood is minimally usable, but full daily-driver
-  replacement is blocked by v0.3 packaging, `pylon work submit` commit pinning,
-  explicit adapter preference, delivery ergonomics, and live unattended proof.
+  source-checkout daily-driver dogfood is close enough to prove with one
+  retained owner-watched run; full packaged replacement is still blocked by
+  v0.3 packaging, retained proof, delivery ergonomics, and unattended/public
+  readiness gates. `pylon work submit` commit pinning and explicit
+  Codex/Fable adapter intent are implemented in source.
   It also proposes a local owner-only Pylon Dev Mode for improving Pylon from
   inside Pylon with Codex fixes, optional Fable review, targeted checks, and
   safe reloads.

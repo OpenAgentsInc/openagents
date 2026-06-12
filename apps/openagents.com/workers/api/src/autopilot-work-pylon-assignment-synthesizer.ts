@@ -5,6 +5,7 @@ import {
   adapterCapabilityRefs,
   adapterJobKinds,
   selectCodingAdapter,
+  type AutopilotCodingAdapter,
 } from './autopilot-work-adapter-selection'
 import type { AutopilotWorkTaskRecordProjection } from './autopilot-work-routes'
 import type { PylonApiAssignmentJobKind } from './pylon-api'
@@ -34,28 +35,45 @@ export type AutopilotPylonAssignmentIntentProjection = Readonly<{
 const codingAdapterForPlacement = (
   placementDecision: AutopilotPlacementDecisionProjection,
   pylonRef: string,
-): Readonly<{
-  capabilityRef: string
-  jobKind: PylonApiAssignmentJobKind
-  reasonRef: string
-}> => {
+  requestedAdapter: AutopilotCodingAdapter | null,
+): Readonly<
+  | {
+      selected: true
+      capabilityRef: string
+      jobKind: PylonApiAssignmentJobKind
+      reasonRef: string
+    }
+  | {
+      selected: false
+      blockerRefs: ReadonlyArray<string>
+    }
+> => {
   const candidate = placementDecision.pylonCandidates.find(
     entry => entry.selected && entry.pylonRef === pylonRef,
   )
   const selection = selectCodingAdapter({
     pylonCapabilityRefs: candidate?.capabilityRefs ?? [],
+    requestedAdapter: requestedAdapter ?? undefined,
   })
   if (selection.selected) {
     return {
       capabilityRef: selection.capabilityRef,
       jobKind: selection.jobKind,
       reasonRef: selection.reasonRef,
+      selected: true,
+    }
+  }
+  if (requestedAdapter !== null) {
+    return {
+      blockerRefs: selection.blockerRefs,
+      selected: false,
     }
   }
   return {
     capabilityRef: adapterCapabilityRefs[DEFAULT_CODING_ADAPTER],
     jobKind: adapterJobKinds[DEFAULT_CODING_ADAPTER],
     reasonRef: 'adapter_selection.default_no_candidate_capabilities',
+    selected: true,
   }
 }
 
@@ -75,17 +93,24 @@ export const pylonAssignmentIntentsForAutopilotWork = (
   }
 
   const pylonRef = input.placementDecision.selectedPylonRef
-  const adapter = codingAdapterForPlacement(input.placementDecision, pylonRef)
   const tasksByRef = new Map(input.tasks.map(task => [task.taskRef, task]))
 
   return input.assignmentIntents
     .filter(assignment => assignment.readyForAssignment)
-    .map(assignment => {
+    .flatMap(assignment => {
       const task = tasksByRef.get(assignment.taskRef)
       const assignmentRef =
         `pylon_assignment.${input.workOrderRef}.${assignment.taskRef}`
+      const adapter = codingAdapterForPlacement(
+        input.placementDecision,
+        pylonRef,
+        task?.requestedAdapter ?? null,
+      )
+      if (!adapter.selected) {
+        return []
+      }
 
-      return {
+      return [{
         acceptanceCriteriaRefs: task?.acceptanceCriteriaRefs ?? [],
         assignmentRef,
         closeoutPathRefs: [
@@ -115,11 +140,15 @@ export const pylonAssignmentIntentsForAutopilotWork = (
         selectionPolicyRefs: [
           ...input.placementDecision.reasonRefs,
           adapter.reasonRef,
+          ...(task?.requestedAdapterProfileRef === undefined ||
+          task.requestedAdapterProfileRef === null
+            ? []
+            : [task.requestedAdapterProfileRef]),
         ],
         spendCapRefs: task?.paymentState === 'funded'
           ? ['spend_cap.buyer_funded.autopilot_pylon_assignment']
           : ['spend_cap.no_spend.autopilot_pylon_assignment'],
         taskRef: assignment.taskRef,
-      }
+      }]
     })
 }

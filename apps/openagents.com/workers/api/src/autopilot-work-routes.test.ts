@@ -1715,7 +1715,7 @@ describe('Autopilot work routes', () => {
           workspace: expect.objectContaining({
             kind: 'git_checkout',
             repository: expect.objectContaining({
-              commitSha: '1111111111111111111111111111111111111111',
+              commitSha: '1745cd4b54b8a12a50922f80b5d345314c91d70d',
               fullName: 'OpenAgentsInc/openagents',
               visibility: 'public',
             }),

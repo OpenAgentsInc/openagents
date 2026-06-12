@@ -59,6 +59,7 @@ describe("pylon autopilot work order body", () => {
     const body = buildPylonAutopilotWorkRequestBody({
       branch: "main",
       budgetCents: 2500,
+      commit: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
       objective: "fix the public failing test",
       repository: "https://github.com/OpenAgentsInc/openagents",
       verificationCommand: "bun test sum.test.ts",
@@ -66,7 +67,9 @@ describe("pylon autopilot work order body", () => {
       paymentPolicy: { buyerPaymentMode: string; maxSpendCents: number }
       promiseRef: { promiseId: string }
       tasks: Array<{
-        checkout: { verificationCommand: { args: string[] } }
+        checkout: { commitSha: string; verificationCommand: { args: string[] } }
+        requestedAdapter?: string
+        requestedAdapterProfileRef?: string
         repository: { fullName: string }
       }>
     }
@@ -77,6 +80,7 @@ describe("pylon autopilot work order body", () => {
     })
     expect(body.promiseRef.promiseId).toBe("autopilot.mission_briefing.v1")
     expect(body.tasks[0]?.repository.fullName).toBe("OpenAgentsInc/openagents")
+    expect(body.tasks[0]?.checkout.commitSha).toBe("1745cd4b54b8a12a50922f80b5d345314c91d70d")
     expect(body.tasks[0]?.checkout.verificationCommand.args).toEqual([
       "bun",
       "test",
@@ -88,16 +92,61 @@ describe("pylon autopilot work order body", () => {
     expect(() =>
       buildPylonAutopilotWorkRequestBody({
         budgetCents: 0,
+        commit: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
         objective: "use secret bearer material",
       }),
     ).toThrow(/private, payment/)
     expect(() =>
       buildPylonAutopilotWorkRequestBody({
         budgetCents: 0,
+        commit: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
         objective: "safe public work",
         repository: "ssh://github.com/OpenAgentsInc/private",
       }),
     ).toThrow(/private, payment/)
+  })
+
+  test("requires an explicit real commit for Autopilot work-order submissions", () => {
+    expect(() =>
+      buildPylonAutopilotWorkRequestBody({
+        budgetCents: 0,
+        objective: "safe public work",
+      }),
+    ).toThrow(/--commit/)
+    expect(() =>
+      buildPylonAutopilotWorkRequestBody({
+        budgetCents: 0,
+        commit: "1111111111111111111111111111111111111111",
+        objective: "safe public work",
+      }),
+    ).toThrow(/not a placeholder/)
+    expect(() =>
+      buildPylonAutopilotWorkRequestBody({
+        budgetCents: 0,
+        commit: "main",
+        objective: "safe public work",
+      }),
+    ).toThrow(/40-character/)
+  })
+
+  test("carries Codex and Fable adapter intent through the work-order request body", () => {
+    const codex = buildPylonAutopilotWorkRequestBody({
+      adapter: "codex",
+      budgetCents: 0,
+      commit: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
+      objective: "safe public codex work",
+    }) as { tasks: Array<{ requestedAdapter?: string; requestedAdapterProfileRef?: string }> }
+    const fable = buildPylonAutopilotWorkRequestBody({
+      adapter: "fable",
+      budgetCents: 0,
+      commit: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
+      objective: "safe public fable work",
+    }) as { tasks: Array<{ requestedAdapter?: string; requestedAdapterProfileRef?: string }> }
+
+    expect(codex.tasks[0]?.requestedAdapter).toBe("codex")
+    expect(codex.tasks[0]?.requestedAdapterProfileRef).toBeUndefined()
+    expect(fable.tasks[0]?.requestedAdapter).toBe("claude_agent")
+    expect(fable.tasks[0]?.requestedAdapterProfileRef).toBe("profile.claude_agent.fable")
   })
 })
 
@@ -252,6 +301,9 @@ describe("pylon work requester API", () => {
         method: init?.method ?? "GET",
         path: parsed.pathname,
       })
+      if (parsed.hostname === "api.github.com") {
+        return new Response(JSON.stringify({ sha: "1745cd4b54b8a12a50922f80b5d345314c91d70d" }))
+      }
       if (parsed.pathname.endsWith("/events")) {
         return new Response(JSON.stringify({ events: [], generatedAt: "2026-06-11T00:00:00.000Z" }))
       }
@@ -274,9 +326,16 @@ describe("pylon work requester API", () => {
     }
 
     await expect(submitPylonAutopilotWork(options, {
+      adapter: "codex",
       budgetCents: 2500,
+      commit: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
       objective: "fix public work",
     })).resolves.toMatchObject({
+      pylonSubmission: {
+        pinnedCheckout: {
+          commitSha: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
+        },
+      },
       work: { state: "payment_required" },
     })
     await expect(readPylonAutopilotWorkStatus(options, "autopilot_work_order.test")).resolves.toMatchObject({
@@ -293,14 +352,55 @@ describe("pylon work requester API", () => {
     })
 
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /repos/OpenAgentsInc/openagents/commits/1745cd4b54b8a12a50922f80b5d345314c91d70d",
       "POST /api/autopilot/work",
       "GET /api/autopilot/work/autopilot_work_order.test",
       "GET /api/autopilot/work/autopilot_work_order.test/events",
       "POST /api/autopilot/work/autopilot_work_order.test/review",
     ])
-    expect(calls[3]?.body).toMatchObject({
+    expect(calls[1]?.body).toMatchObject({
+      tasks: [
+        {
+          checkout: {
+            commitSha: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
+          },
+          requestedAdapter: "codex",
+        },
+      ],
+    })
+    expect(calls[4]?.body).toMatchObject({
       action: "accept",
       decisionRefs: ["review.pylon_cli.accept.autopilot_work_order_test"],
     })
+  })
+
+  test("unresolvable Autopilot work-order commits fail before submission", async () => {
+    const calls: Array<{ method: string; path: string }> = []
+    const fetcher = async (url: URL | RequestInfo, init?: RequestInit) => {
+      const parsed = new URL(String(url))
+      calls.push({
+        method: init?.method ?? "GET",
+        path: parsed.pathname,
+      })
+      if (parsed.hostname === "api.github.com") {
+        return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 })
+      }
+      return new Response(JSON.stringify({ work: { state: "created" } }), { status: 201 })
+    }
+
+    await expect(submitPylonAutopilotWork({
+      agentToken: "agent-token-test",
+      baseUrl: "https://openagents.test",
+      fetch: fetcher,
+      now: () => new Date("2026-06-11T00:00:00.000Z"),
+    }, {
+      budgetCents: 0,
+      commit: "1745cd4b54b8a12a50922f80b5d345314c91d70d",
+      objective: "fix public work",
+    })).rejects.toThrow(/was not found/)
+
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /repos/OpenAgentsInc/openagents/commits/1745cd4b54b8a12a50922f80b5d345314c91d70d",
+    ])
   })
 })

@@ -2005,9 +2005,11 @@ Implemented:
 - Recorded the current verdict: Pylon v0.3 source is minimally usable for
   controlled owner dogfood with Codex, but not yet ready as the owner's
   supported full daily-driver coding replacement.
-- Identified the immediate blockers: v0.3 package publication, placeholder
-  commit pinning in `pylon work submit`, missing explicit Codex/Fable adapter
-  preference, delivery/PR ergonomics, and still-open M10/M14 live proof gates.
+- Identified the then-immediate blockers: v0.3 package publication,
+  placeholder commit pinning in `pylon work submit`, missing explicit
+  Codex/Fable adapter preference, delivery/PR ergonomics, and still-open
+  M10/M14 live proof gates. The work-submit commit/adapter blockers are later
+  addressed by #4843.
 - Updated the Autopilot Coder README index with the new audit.
 
 Verification:
@@ -2070,3 +2072,49 @@ Verification:
 - `bun src/index.ts dev reload --json`
 - `bun src/index.ts dev check --json --command "bun --version"` (expected
   dirty-prestate block and exit 1)
+
+## Pylon Work Submit Commit Pinning And Adapter Intent
+
+Issue context:
+
+- #4843 asked for `pylon work submit` to stop emitting placeholder commits and
+  to carry Codex/Fable/Claude requester intent through the Autopilot
+  work-order lane.
+- Owner decision: keep the local daily-driver Codex path SDK-first. This issue
+  hardens the network work-order lane; it does not replace the local
+  supervised `pylon dev` / composer path.
+
+Status: source implementation for the work-order CLI/API path.
+
+Implemented:
+
+- Added required `--commit <40-char-sha>` handling to `pylon work submit`.
+  The CLI rejects missing, non-SHA, all-zero, and all-one placeholder commits.
+- Added a public GitHub commit preflight before posting
+  `/api/autopilot/work`, so unresolvable commits fail before submission.
+- Added `--adapter codex|claude_agent|fable`; Fable maps to the Claude Agent
+  lane with `profile.claude_agent.fable`.
+- Carried requester adapter/profile intent through work request validation,
+  task records, Pylon assignment synthesis, and normalized coding assignment
+  selection.
+- Preserved the platform dual-capability default of Claude for intent-less
+  orders; owner Codex-primary work should use `--adapter codex` or local Dev
+  Mode.
+- Rejected placeholder commit pins at the server work-request boundary and
+  downstream normalized coding-assignment boundary.
+- Updated Pylon README, Codex bridge docs, the daily-driver audit, and the docs
+  index.
+
+Verification:
+
+- `bun test tests/work-requester.test.ts`
+- `bun test apps/openagents.com/workers/api/src/autopilot-work-request.test.ts apps/openagents.com/workers/api/src/autopilot-work-pylon-assignment-synthesizer.test.ts apps/openagents.com/workers/api/src/autopilot-work-adapter-selection.test.ts apps/openagents.com/workers/api/src/autopilot-coding-assignment.test.ts`
+- `bun test apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api typecheck`
+- `git diff --check`
+
+Known unrelated check result:
+
+- `bun run --cwd apps/pylon test` currently fails in
+  `tests/assignment.test.ts` with `stale NIP-98 event` in the local assignment
+  harness. The focused work-requester tests pass.

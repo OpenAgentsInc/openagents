@@ -45,6 +45,13 @@ export const OpenAgentsAutopilotTaskKind = S.Literals([
 export type OpenAgentsAutopilotTaskKind =
   typeof OpenAgentsAutopilotTaskKind.Type
 
+export const OpenAgentsAutopilotRequestedCodingAdapter = S.Literals([
+  'claude_agent',
+  'codex',
+])
+export type OpenAgentsAutopilotRequestedCodingAdapter =
+  typeof OpenAgentsAutopilotRequestedCodingAdapter.Type
+
 export const OpenAgentsAutopilotRepositoryProvider = S.Literals(['github'])
 export type OpenAgentsAutopilotRepositoryProvider =
   typeof OpenAgentsAutopilotRepositoryProvider.Type
@@ -200,6 +207,8 @@ export class OpenAgentsAutopilotTaskRequest extends S.Class<OpenAgentsAutopilotT
   forumReporting: OpenAgentsAutopilotForumReportingPolicy,
   kind: OpenAgentsAutopilotTaskKind,
   objective: S.String,
+  requestedAdapter: S.optionalKey(OpenAgentsAutopilotRequestedCodingAdapter),
+  requestedAdapterProfileRef: S.optionalKey(S.String),
   repository: S.optionalKey(OpenAgentsAutopilotRepositoryRef),
   taskRef: S.String,
 }) {}
@@ -288,6 +297,7 @@ export class OpenAgentsAutopilotWorkRequestUnsafe extends S.TaggedErrorClass<Ope
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const placeholderCommitShaPattern = /^(0{40}|1{40})$/i
 const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
 const unsafeKeyPattern =
   /(access[_-]?token|bearer|callback[_-]?token|checkout[_-]?id|cookie|customer[_-]?(email|name)|email[_-]?(address|body)|invoice|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?key|provider[_-]?(account|grant|payload|token)|raw[_-]?(auth|email|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|tool[_-]?log|webhook)|secret[_-]?(material|value)|source[_-]?archive|token|webhook[_-]?secret)/i
@@ -451,10 +461,13 @@ const assertCheckout = (task: OpenAgentsAutopilotTaskRequest): void => {
     })
   }
 
-  if (!gitCommitShaPattern.test(task.checkout.commitSha)) {
+  if (
+    !gitCommitShaPattern.test(task.checkout.commitSha) ||
+    placeholderCommitShaPattern.test(task.checkout.commitSha)
+  ) {
     throw new OpenAgentsAutopilotWorkRequestUnsafe({
       reason:
-        'git_checkout commitSha must be a pinned 40-character commit SHA.',
+        'git_checkout commitSha must be a real pinned 40-character commit SHA, not a placeholder.',
     })
   }
 
@@ -473,6 +486,18 @@ const assertTask = (task: OpenAgentsAutopilotTaskRequest): void => {
     'forum reporting targetForumRef',
     task.forumReporting.targetForumRef,
   )
+  assertSafeOptionalRef(
+    'requested adapter profile ref',
+    task.requestedAdapterProfileRef,
+  )
+  if (
+    task.requestedAdapterProfileRef !== undefined &&
+    !task.requestedAdapterProfileRef.startsWith('profile.')
+  ) {
+    throw new OpenAgentsAutopilotWorkRequestUnsafe({
+      reason: 'requestedAdapterProfileRef must be a profile.* ref.',
+    })
+  }
 
   if (
     task.objective.trim().length < 8 ||
@@ -752,7 +777,7 @@ export const OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES = [
           },
         ],
         checkout: {
-          commitSha: '1111111111111111111111111111111111111111',
+          commitSha: '1745cd4b54b8a12a50922f80b5d345314c91d70d',
           kind: 'git_checkout',
           verificationCommand: {
             args: ['bun', 'test'],

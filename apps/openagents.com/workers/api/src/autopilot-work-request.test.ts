@@ -98,6 +98,38 @@ describe('OpenAgents Autopilot work request contract', () => {
     )
   })
 
+  test('decodes requested adapter intent on a typed task', () => {
+    const decoded = decodeOpenAgentsAutopilotWorkRequest({
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+      tasks: [
+        {
+          ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+          requestedAdapter: 'codex',
+        },
+      ],
+    })
+
+    expect(decoded.tasks[0]?.requestedAdapter).toBe('codex')
+  })
+
+  test('rejects placeholder git checkout commits', () => {
+    expect(() =>
+      decodeOpenAgentsAutopilotWorkRequest({
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+        tasks: [
+          {
+            ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+            checkout: {
+              ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0]
+                .checkout,
+              commitSha: '1111111111111111111111111111111111111111',
+            },
+          },
+        ],
+      }),
+    ).toThrow(OpenAgentsAutopilotWorkRequestUnsafe)
+  })
+
   test('rejects data scopes that do not cover every task repository', () => {
     expect(() =>
       decodeOpenAgentsAutopilotWorkRequest({

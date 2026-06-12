@@ -235,6 +235,12 @@ Two adapters, one deterministic rule set
    `…pylon.claude_agent_task.…`), and each Pylon gate executes only
    its own work class.
 
+The Pylon work-order CLI now exposes that requester intent directly:
+`pylon work submit "<objective>" --commit <40-char-sha> --adapter
+codex|claude_agent|fable`. The command preflights the public GitHub commit
+before posting the work order, and `fable` is encoded as the Claude Agent lane
+with `profile.claude_agent.fable` until a dedicated Fable adapter exists.
+
 The API path is B2's (#4756) exactly: `POST /api/autopilot/work` with
 a `git_checkout` task → own-Pylon placement → the synthesizer picks
 the work class per the policy above → durable `codex_agent_task`

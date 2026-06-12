@@ -78,6 +78,7 @@ import {
 } from './autopilot-work-pricing-policy'
 import {
   type OpenAgentsAutopilotAccessRequestKind,
+  type OpenAgentsAutopilotRequestedCodingAdapter,
   OpenAgentsAutopilotRunnerKind,
   type OpenAgentsAutopilotRunnerKind as OpenAgentsAutopilotRunnerKindType,
   OpenAgentsAutopilotWorkState,
@@ -295,6 +296,8 @@ export type AutopilotWorkTaskRecordProjection = Readonly<{
   objective: string
   paymentState: AutopilotWorkFundingProjection['buyerFundingState']
   placementState: AutopilotWorkTaskPlacementState
+  requestedAdapter?: OpenAgentsAutopilotRequestedCodingAdapter | null
+  requestedAdapterProfileRef?: string | null
   repository: OpenAgentsAutopilotWorkRequest['tasks'][number]['repository'] | null
   taskRef: string
 }>
@@ -1622,6 +1625,8 @@ const taskRecordsForRecord = (
       objective: task.objective,
       paymentState: funding.buyerFundingState,
       placementState: placementStateForLifecycle(lifecycleState),
+      requestedAdapter: task.requestedAdapter ?? null,
+      requestedAdapterProfileRef: task.requestedAdapterProfileRef ?? null,
       repository: task.repository ?? null,
       taskRef: task.taskRef,
     }

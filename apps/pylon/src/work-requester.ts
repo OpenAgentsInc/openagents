@@ -15,6 +15,8 @@ export type PylonAutopilotWorkInput = {
   budgetCents: number
   repository?: string
   branch?: string
+  commit?: string
+  adapter?: "claude_agent" | "codex" | "fable"
   verificationCommand?: string
 }
 
@@ -41,6 +43,8 @@ const DEFAULT_VERIFY_REF = "command.public.pylon.labor.bun_test"
 const DEFAULT_BRANCH = "main"
 const DEFAULT_VERIFICATION_COMMAND = "bun test"
 const AUTOPILOT_WORK_PROMISE_ID = "autopilot.mission_briefing.v1"
+const commitShaPattern = /^[a-f0-9]{40}$/i
+const placeholderCommitShaPattern = /^(0{40}|1{40})$/i
 
 const unsafeWorkRequestPattern =
   /(\/Users\/|\/home\/|access[_-]?token|bearer\s+|cookie|file:\/\/|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?(key|repo)|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(command|content|invoice|payment|payload|prompt|repo|runner|state)|secret|seed[_-]?phrase|sk-[a-z0-9]|ssh:\/\/|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
@@ -111,6 +115,45 @@ function verificationArgsFromInput(command: string | undefined) {
   return args
 }
 
+function commitShaFromInput(commit: string | undefined) {
+  const value = commit?.trim()
+  if (!value) {
+    throw new Error("work submit --commit <40-char-sha> is required for git checkout tasks")
+  }
+  if (!commitShaPattern.test(value) || placeholderCommitShaPattern.test(value)) {
+    throw new Error("work submit --commit must be a real pinned 40-character commit SHA, not a placeholder")
+  }
+  return value.toLowerCase()
+}
+
+function requestedAdapterFromInput(adapter: PylonAutopilotWorkInput["adapter"]) {
+  if (adapter === undefined) return {}
+  if (adapter === "codex") return { requestedAdapter: "codex" as const }
+  if (adapter === "claude_agent") return { requestedAdapter: "claude_agent" as const }
+  if (adapter === "fable") {
+    return {
+      requestedAdapter: "claude_agent" as const,
+      requestedAdapterProfileRef: "profile.claude_agent.fable",
+    }
+  }
+  throw new Error("work submit --adapter must be codex, claude_agent, or fable")
+}
+
+function firstAutopilotTask(body: Record<string, unknown>) {
+  return Array.isArray(body.tasks)
+    ? body.tasks[0] as Record<string, unknown> | undefined
+    : undefined
+}
+
+function pinnedCheckoutFromBody(body: Record<string, unknown>) {
+  const task = firstAutopilotTask(body)
+  const repository = task?.repository as Record<string, unknown> | undefined
+  const checkout = task?.checkout as Record<string, unknown> | undefined
+  const fullName = typeof repository?.fullName === "string" ? repository.fullName : ""
+  const commitSha = typeof checkout?.commitSha === "string" ? checkout.commitSha : ""
+  return { checkout, commitSha, repository, fullName }
+}
+
 export function buildPylonAutopilotWorkRequestBody(input: PylonAutopilotWorkInput): Record<string, unknown> {
   const objective = cleanObjective(input.objective)
   if (!Number.isInteger(input.budgetCents) || input.budgetCents < 0) {
@@ -120,6 +163,8 @@ export function buildPylonAutopilotWorkRequestBody(input: PylonAutopilotWorkInpu
   const branch = input.branch?.trim() || DEFAULT_BRANCH
   assertPublicSafe(branch, "autopilot work branch")
   const args = verificationArgsFromInput(input.verificationCommand)
+  const commitSha = commitShaFromInput(input.commit)
+  const requestedAdapter = requestedAdapterFromInput(input.adapter)
   const taskRef = `task.autopilot_coder.pylon.${cleanRefSegment(repository)}.${cleanRefSegment(objective)}`
   const paid = input.budgetCents > 0
   const body = {
@@ -149,18 +194,45 @@ export function buildPylonAutopilotWorkRequestBody(input: PylonAutopilotWorkInpu
       acceptanceCriteriaRefs: ["acceptance.pylon_cli.customer_review"],
       accessRequests: [{ kind: "github_repo_read", reasonRef: "access.github.public_read" }],
       checkout: {
-        commitSha: "1111111111111111111111111111111111111111",
+        commitSha,
         kind: "git_checkout",
         verificationCommand: { args, commandRef: `command.${cleanRefSegment(args.join("_"))}` },
       },
       forumReporting: { mode: "operator_approved_only" },
       kind: "code_change",
       objective,
+      ...requestedAdapter,
       repository: { branch, fullName: repository, provider: "github", visibility: "public" },
       taskRef,
     }],
   }
   return body
+}
+
+async function assertResolvablePublicGitHubCommit(
+  options: TipsNetworkOptions,
+  input: Readonly<{ commitSha: string; fullName: string }>,
+): Promise<void> {
+  const [owner, repo] = input.fullName.split("/")
+  if (!owner || !repo) {
+    throw new Error("work submit --repo must resolve to a public GitHub owner/repo before commit preflight")
+  }
+  const url = new URL(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${input.commitSha}`,
+  )
+  const response = await (options.fetch ?? fetch)(url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "openagents-pylon",
+    },
+    method: "GET",
+  })
+  if (response.status === 404) {
+    throw new Error(`work submit --commit ${input.commitSha} was not found in ${input.fullName}`)
+  }
+  if (!response.ok) {
+    throw new Error(`work submit commit preflight failed (${response.status}) for ${input.fullName}@${input.commitSha}`)
+  }
 }
 
 function deadlineRefFromInput(deadline: string | undefined) {
@@ -242,14 +314,30 @@ export async function submitPylonAutopilotWork(
   input: PylonAutopilotWorkInput,
 ): Promise<Record<string, unknown>> {
   const body = buildPylonAutopilotWorkRequestBody(input)
+  const pinnedCheckout = pinnedCheckoutFromBody(body)
+  await assertResolvablePublicGitHubCommit(options, {
+    commitSha: pinnedCheckout.commitSha,
+    fullName: pinnedCheckout.fullName,
+  })
   const now = options.now?.() ?? new Date()
-  return workApiRequest(options, {
+  const result = await workApiRequest(options, {
     body,
     idempotencyKey: `pylon-work-submit:${String(body.clientRequestRef)}:${now.toISOString().slice(0, 16)}`,
     method: "POST",
     okStatuses: [402],
     path: "/api/autopilot/work",
   })
+  return {
+    ...result,
+    pylonSubmission: {
+      adapter: input.adapter ?? null,
+      pinnedCheckout: {
+        branch: pinnedCheckout.repository?.branch ?? null,
+        commitSha: pinnedCheckout.checkout?.commitSha ?? null,
+        repository: pinnedCheckout.repository?.fullName ?? null,
+      },
+    },
+  }
 }
 
 export async function readPylonAutopilotWorkStatus(

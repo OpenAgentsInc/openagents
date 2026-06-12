@@ -14,7 +14,7 @@ const baseTask = {
   accessRequirements: [],
   accessState: 'satisfied',
   checkout: {
-    commitSha: '1111111111111111111111111111111111111111',
+    commitSha: '1745cd4b54b8a12a50922f80b5d345314c91d70d',
     kind: 'git_checkout',
     verificationCommand: {
       args: ['bun', 'test'],
@@ -178,7 +178,7 @@ describe('Autopilot coding assignment contract', () => {
       publicSafe: true,
       repository: {
         branch: 'main',
-        commitSha: '1111111111111111111111111111111111111111',
+        commitSha: '1745cd4b54b8a12a50922f80b5d345314c91d70d',
         fullName: 'OpenAgentsInc/openagents',
         visibility: 'public',
       },
@@ -301,6 +301,32 @@ describe('Autopilot coding assignment contract', () => {
         workOrderRef: 'autopilot_work_order.test_1',
       }),
       /public repo refs/,
+    )
+  })
+
+  test('rejects placeholder repository commit pins', () => {
+    expectUnsafeReason(() =>
+      autopilotCodingAssignmentsForWork({
+        fallbackLeaseIntents: [],
+        funding: baseFunding,
+        paymentChallengeRef: null,
+        pylonAssignmentIntents: [pylonIntent],
+        quote: {
+          maxSpendCents: 0,
+          settlementMode: 'no_worker_payout',
+        },
+        tasks: [
+          {
+            ...baseTask,
+            checkout: {
+              ...baseTask.checkout,
+              commitSha: '1111111111111111111111111111111111111111',
+            },
+          },
+        ],
+        workOrderRef: 'autopilot_work_order.test_1',
+      }),
+      /not a placeholder/,
     )
   })
 })

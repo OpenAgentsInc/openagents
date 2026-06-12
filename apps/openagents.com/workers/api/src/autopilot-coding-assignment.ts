@@ -195,6 +195,7 @@ type CodingAssignmentSourceWork = Readonly<{
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const placeholderCommitShaPattern = /^(0{40}|1{40})$/i
 const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
 const unsafeKeyPattern =
   /(access[_-]?token|bearer|callback[_-]?token|checkout|cookie|customer[_-]?(email|name)|email[_-]?(address|body)|invoice|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?key|provider[_-]?(account|grant|payload|token)|raw[_-]?(auth|email|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|tool[_-]?log|webhook)|secret|source[_-]?archive|token|wallet)/i
@@ -271,9 +272,14 @@ const assertSafeRepository = (
   }
 
   assertSafeRef('repository branch', repository.branch)
-  if (repository.commitSha !== undefined && !gitCommitShaPattern.test(repository.commitSha)) {
+  if (
+    repository.commitSha !== undefined &&
+    (!gitCommitShaPattern.test(repository.commitSha) ||
+      placeholderCommitShaPattern.test(repository.commitSha))
+  ) {
     throw new OpenAgentsAutopilotCodingAssignmentUnsafe({
-      reason: 'Repository commitSha must be a pinned 40-character commit SHA.',
+      reason:
+        'Repository commitSha must be a real pinned 40-character commit SHA, not a placeholder.',
     })
   }
 }

@@ -1531,11 +1531,22 @@ async function main() {
         const objective = args[2]
         const budgetCents = Number(options["budget-cents"] ?? options.budget ?? 0)
         if (!objective || objective.startsWith("--") || !Number.isInteger(budgetCents) || budgetCents < 0) {
-          throw new Error('usage: pylon work submit "<objective>" [--budget-cents <cents>] [--repo owner/repo] [--branch main] [--verify "bun test"]')
+          throw new Error('usage: pylon work submit "<objective>" --commit <40-char-sha> [--adapter codex|claude_agent|fable] [--budget-cents <cents>] [--repo owner/repo] [--branch main] [--verify "bun test"]')
+        }
+        const adapter = options.adapter
+        if (
+          adapter !== undefined &&
+          adapter !== "codex" &&
+          adapter !== "claude_agent" &&
+          adapter !== "fable"
+        ) {
+          throw new Error("work submit --adapter must be codex, claude_agent, or fable")
         }
         const result = await submitPylonAutopilotWork(networkOptions, {
+          ...(adapter === undefined ? {} : { adapter }),
           branch: options.branch,
           budgetCents,
+          commit: options.commit,
           objective,
           repository: options.repo,
           verificationCommand: options.verify,
