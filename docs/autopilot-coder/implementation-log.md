@@ -1523,3 +1523,25 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-managed-policy.test.ts`
+
+## Pack B Parent / Issue #4824: Account, Credential, And Policy Hardening
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4824`
+
+Status: implemented as the parent closeout for #4825-#4830.
+
+Implemented:
+
+- #4825 PB1 credential-boundary projections.
+- #4826 PB2 effective configuration snapshots.
+- #4827 PB3 provider-peer security review gates.
+- #4828 PB4 telemetry/privacy fixtures.
+- #4829 PB5 retention/deletion policy projections.
+- #4830 PB6 managed-policy snapshots.
+- Updated the original terminal-agent-systems operationalization roadmap with
+  final Pack B implementation status and the current timing rule for #4771,
+  #4786, #4768, and #4772.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-managed-policy.test.ts src/provider-account-retention-policy.test.ts src/provider-account-telemetry-privacy.test.ts src/provider-account-security-review.test.ts src/provider-account-effective-config.test.ts src/provider-account-credential-boundary.test.ts`

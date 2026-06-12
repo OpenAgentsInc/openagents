@@ -100,6 +100,17 @@ subsystem audit that should harden the provider/account/policy lane:
 | #4829 PB5 | Data Retention And Deletion | Retention classes, deletion behavior, tombstones, and projection invalidation for Pack B records |
 | #4830 PB6 | Enterprise Managed Policy | Minimal policy snapshots and denial reasons for team, repo, provider, budget, retention, telemetry, and approved-user gates |
 
+Final implementation pass:
+
+- On 2026-06-12, #4825-#4830 were implemented, pushed to `main`, commented,
+  and closed. #4824 can close as the Pack B parent after this roadmap update.
+- Pack B now supplies typed evidence surfaces for credential boundaries,
+  effective configuration, security review, telemetry/privacy,
+  retention/deletion, and managed-policy snapshots.
+- Pack B does not prove live non-Codex provider readiness by itself. #4771
+  still owns the live Anthropic/Gemini credentialed-run proof and must cite the
+  Pack B refs or a scoped exception before making broad provider-peer claims.
+
 Implementation status:
 
 - #4825 PB1 is implemented by
@@ -150,8 +161,8 @@ Implementation status:
 
 ## Timing Impact On Other Open Issues
 
-Pack A is an acceptance overlay, not a replacement ladder. It should change
-when a broader claim can close, not stop all other work.
+Pack A and Pack B are acceptance overlays, not replacement ladders. They should
+change when broader claims can close, not stop unrelated work.
 
 - **Do not pause unrelated open rungs.** M8 account-pool work, M11 repo/scope,
   M12 team budgets, M13 provider review, A2-A4, and the post-MVP P-rungs can
@@ -169,19 +180,20 @@ when a broader claim can close, not stop all other work.
 - **Treat M9 (#4767) as a split proof.** Its CI-safe deterministic leg can stay
   documented, but live smart-routing copy should wait on the live two-account
   proof plus the Pack A smoke/artifact/event/usage receipts (#4818-#4821).
-- **Start Pack B/C design in parallel only where it de-risks active work.**
-  M8/M13 can pull credential/policy decisions forward; M11/P3 can pull
-  repo/delivery design forward. Those should not block the Pack A
-  unattended-proof slice unless they are directly needed by M10 or A1.
 - **Avoid retroactively reopening closed rungs only to hold operational debt.**
   Use the PA issues for that debt, cross-link the original rung, and update
   closeout notes if a claim boundary needs clarification.
-- **Pack B now applies to provider/account/policy claims.** Do not reopen M8
-  or M9 only to hold Pack B debt. Do use #4824-#4830 to gate broad provider
-  peer claims in #4771 and any future work that depends on raw credentials,
-  account telemetry, policy denial reasons, or retention guarantees. M10
-  (#4768) and M14 (#4772) should cite Pack B only if their proof evidence
-  depends on those provider/account/policy surfaces.
+- **Pack B is now implemented and applies to provider/account/policy claims.**
+  Do not reopen M8 or M9 only to hold Pack B debt. Do cite #4825-#4830 for
+  broad provider-peer claims in #4771 and any future work that depends on
+  provider credential refs, account telemetry, policy denial reasons, or
+  retention guarantees.
+- **Do not close #4771 on Pack B alone.** Pack B removes the audit/policy
+  blocker, but #4771 still needs the live non-Codex credentialed-run evidence
+  or a documented scoped exception.
+- **Keep #4786, #4768, and #4772 focused on their proof gates.** They should
+  cite Pack B only when their proof evidence relies on provider credentials,
+  account telemetry, managed policy snapshots, or retention/deletion behavior.
 
 ## Audit Finding
 
