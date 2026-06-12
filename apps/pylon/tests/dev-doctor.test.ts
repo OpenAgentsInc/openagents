@@ -115,6 +115,7 @@ describe("pylon dev doctor projection", () => {
       expect(projection.claudeAgent.configuredModel).toBe("claude-fable-5")
       expect(projection.claudeAgent.fableReviewAvailable).toBe(true)
       expect(projection.pylonConfig.devOverlayRef).toBe("config.pylon.dev.local_supervised_danger")
+      expect(projection.pylonConfig.defaultAdapter).toBe("codex")
       expect(JSON.stringify(projection)).not.toContain(root)
       expect(JSON.stringify(projection)).not.toContain("codex-test-key")
       expect(JSON.stringify(projection)).not.toContain("anthropic-test-key")

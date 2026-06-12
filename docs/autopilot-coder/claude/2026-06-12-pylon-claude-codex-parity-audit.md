@@ -38,9 +38,10 @@ This is a docs-only audit. It does not create or change a product promise.
 ## Verdict
 
 **The Claude lane is already the platform peer of Codex on the
-assignment/work-order spine — and is in fact the dual-capability default — but
-it is missing the entire local supervised daily-driver surface that Codex
-gained in the #4839/#4840/#4841 pass.**
+assignment/work-order spine — and is in fact the dual-capability default. CL1
+now closes the largest local supervised gap by adding a Claude Agent SDK
+composer backend; the remaining parity work is the permissive local mode,
+doctor/context visibility for that mode, and a retained supervised proof.**
 
 Concretely:
 
@@ -51,19 +52,16 @@ Concretely:
   #4788-#4792) was deliberately built as its peer behind the same gate.
 - Server-side adapter selection: `DEFAULT_CODING_ADAPTER = claude_agent`. A
   dual-capability Pylon runs Claude unless requester intent says otherwise.
-- Local supervised surface: **Codex-only.** The TUI composer backend, the
-  `local_supervised_danger` execution mode, the `--codex-danger` flag, the
-  `dev.codexExecutionMode` config key, and the `Codex`/`Codex DANGER` TUI
-  labels all exist only for Codex. There is no Claude composer backend, no
-  Claude dangerous/permissive mode, no `dev.defaultAdapter` honored by the
-  composer, and the dev doctor reports Claude readiness but not a Claude
-  execution mode.
+- Local supervised surface: no longer Codex-only for normal composer use.
+  #4844 adds `claude-composer.ts`, `dev.defaultAdapter`, `--adapter claude`,
+  Claude/Fable model labels, and local session resume. The remaining Codex-only
+  parts are the `local_supervised_danger` execution mode, explicit danger flag,
+  and doctor/context execution-mode projection.
 
 So "add Claude support equivalent to Codex" is not a new bridge build. It is a
-bounded parity pass on the local dev/composer loop, plus carrying the
-already-filed adapter-intent work (#4843) and the context pane (#4838) to
-completion. Estimated shape: four small issues plus two amendments to
-already-open issues, no new architecture, no new pack.
+bounded parity pass on the local dev/composer loop. The first slice (#4844) is
+implemented; the remaining slices are small follow-ups on permissive mode,
+visibility, and proof, not new architecture or a new operationalization pack.
 
 ## Current System
 
@@ -122,16 +120,16 @@ lanes' events through one versioned contract.
 
 ### Where the Codex lane pulled ahead (the gap)
 
-The #4839/#4840/#4841 P0 pass built a local supervised daily-driver surface
-for Codex only:
+The #4839/#4840/#4841 P0 pass initially built a local supervised daily-driver
+surface for Codex only. #4844 now adds the normal Claude/Fable composer path,
+leaving the danger/permission and proof slices open:
 
-1. **Composer backend.** `apps/pylon/src/codex-composer.ts` streams Codex SDK
-   thread events into the TUI feed. `makeCodexComposerBackend()` in
-   `index.ts` is the only composer factory; `tui/app.tsx` takes one
-   `ComposerBackend` with no runtime adapter selection. There is no
-   `claude-composer.ts` and no `dev.defaultAdapter` switch. The first-screen
-   Pylon experience can run Codex against the current repo; it cannot run
-   Claude/Fable at all.
+1. **Composer backend. Closed by #4844.** `apps/pylon/src/claude-composer.ts`
+   streams Claude Agent SDK `query()` messages into the TUI feed.
+   `dev.defaultAdapter` and `--adapter claude` select that backend while Codex
+   remains the default. The backend runs in the active repo cwd, preflights
+   `probeClaudeAgentReadiness()`, labels `Claude` / `Claude (<model>)`, and
+   keeps raw SDK session ids local for resume.
 2. **Supervised dangerous mode.** `CodexComposerExecutionMode` is
    `"local_bounded" | "local_supervised_danger"`; the danger mode maps to SDK
    `sandboxMode: "danger-full-access"` + `approvalPolicy: "never"`, is gated
@@ -154,50 +152,49 @@ for Codex only:
 
 ### The asymmetry table
 
-| Surface                              | Codex                                               | Claude                          |
-| ------------------------------------ | --------------------------------------------------- | ------------------------------- |
-| Assignment executor                  | Built, live-proven                                  | Built, live-proven (first)      |
-| Capability declaration on go-online  | Yes                                                 | Yes                             |
-| TUI composer backend                 | Yes (`codex-composer.ts`)                           | **No**                          |
-| Supervised dangerous/permissive mode | Yes (`local_supervised_danger`)                     | **No**                          |
-| Danger flag / dev config key         | `--codex-danger`, `dev.codexExecutionMode`          | **No**                          |
-| Public-path rejection of danger mode | `blocker.codex.local_supervised_danger_public_path` | n/a (no mode exists)            |
-| Dev doctor readiness                 | Yes + executionMode/sandboxMode                     | Readiness/model/Fable flag only |
-| TUI backend label                    | `Codex` / `Codex DANGER`                            | **None**                        |
-| Dual-capability work-order default   | —                                                   | **Yes (Claude wins)**           |
-| CLI adapter intent on work submit    | Missing (#4843)                                     | Missing (#4843)                 |
-| Credential sources probed            | 3                                                   | 6 (incl. local Claude session)  |
+| Surface                              | Codex                                               | Claude                                                    |
+| ------------------------------------ | --------------------------------------------------- | --------------------------------------------------------- |
+| Assignment executor                  | Built, live-proven                                  | Built, live-proven (first)                                |
+| Capability declaration on go-online  | Yes                                                 | Yes                                                       |
+| TUI composer backend                 | Yes (`codex-composer.ts`)                           | Yes (`claude-composer.ts`, #4844)                         |
+| Supervised dangerous/permissive mode | Yes (`local_supervised_danger`)                     | **No**                                                    |
+| Danger flag / dev config key         | `--codex-danger`, `dev.codexExecutionMode`          | **No**                                                    |
+| Public-path rejection of danger mode | `blocker.codex.local_supervised_danger_public_path` | n/a (no mode exists)                                      |
+| Dev doctor readiness                 | Yes + executionMode/sandboxMode                     | Readiness/model/Fable flag only                           |
+| TUI backend label                    | `Codex` / `Codex DANGER`                            | `Claude` / `Claude (<model>)`; danger label still pending |
+| Dual-capability work-order default   | —                                                   | **Yes (Claude wins)**                                     |
+| CLI adapter intent on work submit    | Missing (#4843)                                     | Missing (#4843)                                           |
+| Credential sources probed            | 3                                                   | 6 (incl. local Claude session)                            |
 
-The punchline: the network lane defaults to Claude while the local lane cannot
-run Claude. Equivalence work is almost entirely on the local lane.
+The punchline after #4844: the network lane defaults to Claude and the local
+lane can now run Claude/Fable, but the local lane still lacks the
+`bypassPermissions` equivalent of Codex danger mode and the retained
+owner-watched proof.
 
 ## What "Equivalent To Codex" Requires
 
-### 1. Claude composer backend behind a shared backend seam
+### 1. Claude composer backend behind a shared backend seam (implemented by #4844)
 
-Generalize the composer factory so the dashboard/attach composer can be backed
-by either lane:
+#4844 generalizes the composer factory so the dashboard/attach composer can be
+backed by either lane:
 
-- Extract the `ComposerBackend` contract that `tui/app.tsx` already consumes
-  into an adapter-neutral seam (it effectively exists; it is just only
-  constructed by `makeCodexComposerBackend`).
-- Add `claude-composer.ts` mirroring `codex-composer.ts`: stream
+- The `ComposerBackend` contract that `tui/app.tsx` already consumes is now
+  selected through `makeComposerBackend()`.
+- `claude-composer.ts` mirrors `codex-composer.ts`: stream
   `query()` SDK messages (assistant text, tool use, results) into the feed,
-  run in the current working directory (`PYLON_CODEX_CWD` should get a
-  neutral sibling such as `PYLON_ACTIVE_REPO`, which the Codex composer
-  already honors), and surface typed SDK/auth readiness blockers from
-  `probeClaudeAgentReadiness()` before any session starts.
-- Select the backend from `dev.defaultAdapter` (`codex` | `claude_agent`,
+  run in the current working directory (`PYLON_CODEX_CWD` or
+  `PYLON_ACTIVE_REPO` can override it), and surface typed SDK/auth readiness
+  blockers from `probeClaudeAgentReadiness()` before any session starts.
+- The backend is selected from `dev.defaultAdapter` (`codex` | `claude_agent`,
   default `codex` per the owner's stated working mode) with a per-launch
   override (`--adapter claude`, or a command-palette/TUI toggle).
-- Label the pane `Claude` — by branding law, never `Claude Code` — and show
+- The pane labels `Claude` — by branding law, never `Claude Code` — and shows
   the configured model so a Fable session visibly reads `Claude (fable-5)` or
   equivalent.
 - Multi-turn: the Claude Agent SDK has a real `resume`/session primitive; the
-  composer should keep the session id locally (ref-only off-device) so
+  composer keeps the session id locally (ref-only off-device) so
   follow-up prompts continue the conversation rather than starting cold. This
-  is something the Codex composer thread model gets implicitly; do not ship a
-  Claude composer that forgets context every prompt.
+  is something the Codex composer thread model gets implicitly.
 
 ### 2. Local-only supervised Claude permissive mode (the #4840 equivalent)
 
@@ -289,7 +286,7 @@ New issues (CL lane, mirroring the CX convention):
 
 | ID  | Priority | Title                                                                                         | Acceptance sketch                                                                                                                                                                                                                                                                                                             |
 | --- | -------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CL1 | P0       | Make the Pylon composer run Claude in the current repo behind an adapter-neutral backend seam | `claude-composer.ts` streams SDK messages into the TUI; `dev.defaultAdapter`/`--adapter` selects backend; readiness blockers pre-session; session continuity across prompts; `Claude` label + model shown; tests mirror `codex-composer.test.ts`                                                                              |
+| CL1 | P0       | Make the Pylon composer run Claude in the current repo behind an adapter-neutral backend seam | Implemented in source by #4844: `claude-composer.ts` streams SDK messages into the TUI; `dev.defaultAdapter`/`--adapter` selects backend; readiness blockers pre-session; session continuity across prompts; `Claude` label + model shown; tests mirror the Codex composer coverage                                           |
 | CL2 | P0       | Add local-only supervised permissive Claude mode                                              | `--claude-danger`/`dev.claudeExecutionMode` maps to `permissionMode: "bypassPermissions"` on the local composer/dev path only; `Claude DANGER` label; public paths reject with `blocker.claude.local_supervised_danger_public_path`; assignment config still rejects permissive modes; tests prove accept-local/reject-public |
 | CL3 | P0       | Dev doctor and context pane show Claude execution mode                                        | `claudeAgent` doctor section gains `executionMode`/permission posture and blocker refs; #4838 pane renders it; redaction tests extended                                                                                                                                                                                       |
 | CL4 | P1       | Retained supervised Claude/Fable daily-driver proof                                           | One real owner-watched repo task through the Claude composer (model `claude-fable-5`), focused checks pass, patch/check/reload state shown in Pylon; local refs retained; copy updated from "built" to "proven"                                                                                                               |
@@ -418,10 +415,9 @@ These are inherited, not new, but every CL issue must carry them:
 ## One-Sentence Truth
 
 Pylon's Claude lane already matches Codex on the delegated work-order spine
-and is the platform's dual-capability default; what "Claude support
-equivalent to Codex" actually requires is a small, bounded parity pass on the
-local supervised surface — a Claude composer backend, an explicit
+and is the platform's dual-capability default; #4844 adds the missing local
+Claude/Fable composer, so the remaining equivalence work is an explicit
 `bypassPermissions` dev mode with the same opt-in/rejection guardrails, dev
-doctor/context-pane visibility, an adapter-agnostic check/reload loop, and
-one retained owner-watched proof — built by citing the already-closed Pack
-A/B/C contracts rather than filing any new operationalization pack.
+doctor/context-pane visibility, adapter-agnostic review ergonomics, and one
+retained owner-watched proof, built by citing the already-closed Pack A/B/C
+contracts rather than filing any new operationalization pack.

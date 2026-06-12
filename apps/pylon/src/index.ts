@@ -16,6 +16,7 @@ import {
   loadCodexDevConfig,
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
+  type PylonComposerAdapter,
   withCodexAgentCapability,
 } from "./codex-agent"
 import { withWorkspaceMaterializerCapability } from "./workspace-materializer"
@@ -71,6 +72,7 @@ import {
   sandboxModeForCodexComposerExecutionMode,
   type CodexComposerExecutionMode,
 } from "./codex-composer"
+import { claudeComposerLabel, runClaudeComposerStream } from "./claude-composer"
 import { runProbeCli } from "../packages/runtime/src/index"
 import {
   createBootstrapSummary,
@@ -279,6 +281,20 @@ function codexComposerWorkingDirectory() {
   return configured && configured.trim().length > 0 ? configured : process.cwd()
 }
 
+function parseComposerAdapterOverride(args: ReadonlyArray<string>): PylonComposerAdapter | null {
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== "--adapter") continue
+    const value = args[index + 1]
+    if (!value || value.startsWith("--")) {
+      throw new Error("--adapter requires codex or claude")
+    }
+    if (value === "codex") return "codex"
+    if (value === "claude" || value === "claude_agent") return "claude_agent"
+    throw new Error("--adapter must be codex or claude")
+  }
+  return null
+}
+
 async function makeCodexComposerBackend(
   summary: ReturnType<typeof createBootstrapSummary>,
   options: {
@@ -360,6 +376,73 @@ async function makeCodexComposerBackend(
       }
     },
   }
+}
+
+async function makeClaudeComposerBackend(
+  summary: ReturnType<typeof createBootstrapSummary>,
+): Promise<ComposerBackend> {
+  const config = await loadClaudeAgentConfig(summary)
+  const timeoutMs =
+    typeof config.timeoutSeconds === "number" && Number.isFinite(config.timeoutSeconds) && config.timeoutSeconds > 0
+      ? Math.round(config.timeoutSeconds * 1000)
+      : undefined
+  const cwd = codexComposerWorkingDirectory()
+  const label = claudeComposerLabel(config.model)
+  const statusLine = `mode: local_bounded | permissions: acceptEdits${config.model ? ` | model: ${config.model}` : ""}`
+  let sessionId: string | null = null
+  return {
+    label,
+    statusLine,
+    submit: async (prompt, callbacks) => {
+      const result = await runClaudeComposerStream(
+        prompt,
+        {
+          config,
+          cwd,
+          model: config.model,
+          resumeSessionId: sessionId,
+          timeoutMs,
+        },
+        {
+          onText: callbacks.onText,
+          onEvent: callbacks.onEvent,
+          onUsage: (usage) => callbacks.onUsage?.({ label: "tokens", value: String(usage.totalTokens) }),
+        },
+      )
+      sessionId = result.sessionId ?? sessionId
+      const footerParts = [
+        "adapter: claude_agent",
+        "mode: local_bounded",
+        "permissions: acceptEdits",
+        `cwd: ${cwd}`,
+        `events: ${result.eventCount}`,
+        `tokens: ${result.totalTokens}`,
+        `commands: ${result.commandCount}`,
+        `files: ${result.editedFileCount}`,
+        ...(result.sessionRef ? [`session: ${result.sessionRef}`] : []),
+      ]
+      return {
+        text: result.text || "(Claude completed without an assistant message.)",
+        footer: footerParts.join(" | "),
+      }
+    },
+  }
+}
+
+async function makeComposerBackend(
+  summary: ReturnType<typeof createBootstrapSummary>,
+  options: {
+    allowDangerousLocal?: boolean
+    dangerFlag?: boolean
+    readDevConfig?: boolean
+  } = {},
+): Promise<ComposerBackend> {
+  const devConfig = options.readDevConfig === false ? {} : await loadCodexDevConfig(summary)
+  const adapter = parseComposerAdapterOverride(Bun.argv.slice(2)) ?? devConfig.defaultAdapter ?? "codex"
+  if (adapter === "claude_agent") {
+    return makeClaudeComposerBackend(summary)
+  }
+  return makeCodexComposerBackend(summary, options)
 }
 
 const assignmentWorkerIntervalMs = () => {
@@ -636,7 +719,7 @@ const runPylonNode = Effect.gen(function* () {
     void saveComposerState(bootstrapSummary.paths.home, state).catch(() => {})
   }
   const composerBackend = yield* Effect.promise(() =>
-    makeCodexComposerBackend(bootstrapSummary, {
+    makeComposerBackend(bootstrapSummary, {
       allowDangerousLocal: true,
       dangerFlag: Bun.argv.includes("--codex-danger"),
       readDevConfig: true,
@@ -903,7 +986,7 @@ const runPylonAttach = (baseUrl: string, token: string) =>
     dashboardUi = ui
     const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
     const composerBackend = yield* Effect.promise(() =>
-      makeCodexComposerBackend(bootstrapSummary, {
+      makeComposerBackend(bootstrapSummary, {
         allowDangerousLocal: false,
         dangerFlag: false,
         readDevConfig: false,

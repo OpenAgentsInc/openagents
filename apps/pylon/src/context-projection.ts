@@ -193,18 +193,30 @@ export function emptyPylonContextProjection(observedAt = "1970-01-01T00:00:00.00
 }
 
 export function contextProjectionFromDevDoctor(dev: PylonDevDoctorProjection): PylonContextProjection {
-  const primaryAdapter: PylonAdapterRef = dev.codex.sdkReadiness.state === "ready" ? "codex" : "unknown"
+  const codexReady = dev.codex.sdkReadiness.state === "ready"
+  const claudeReady = dev.claudeAgent.readiness.state === "ready"
+  const primaryAdapter: PylonAdapterRef =
+    dev.pylonConfig.defaultAdapter === "claude_agent"
+      ? claudeReady ? "claude_agent" : "unknown"
+      : codexReady ? "codex" : "unknown"
   const reviewerAdapter: PylonAdapterRef | null =
-    dev.claudeAgent.fableReviewAvailable
-      ? "fable"
-      : dev.claudeAgent.readiness.state === "ready"
-        ? "claude_agent"
+    primaryAdapter === "codex"
+      ? dev.claudeAgent.fableReviewAvailable
+        ? "fable"
+        : claudeReady
+          ? "claude_agent"
+          : null
+      : primaryAdapter === "claude_agent" && codexReady
+        ? "codex"
         : null
   const codexCapabilityRefs = dev.codex.sdkReadiness.capabilityRefs
   const claudeCapabilityRefs = dev.claudeAgent.readiness.capabilityRefs
   const requiredCapabilityRefs = unique([
     primaryAdapter === "codex" ? CODEX_AGENT_CAPABILITY_REF : null,
-    reviewerAdapter === "fable" || reviewerAdapter === "claude_agent" ? CLAUDE_AGENT_CAPABILITY_REF : null,
+    reviewerAdapter === "codex" ? CODEX_AGENT_CAPABILITY_REF : null,
+    primaryAdapter === "claude_agent" || reviewerAdapter === "fable" || reviewerAdapter === "claude_agent"
+      ? CLAUDE_AGENT_CAPABILITY_REF
+      : null,
   ])
   const openaiSourceRefs = unique(
     dev.codex.credentialSourceRef &&
@@ -227,7 +239,11 @@ export function contextProjectionFromDevDoctor(dev: PylonDevDoctorProjection): P
     },
     instructions: {
       refs: dev.instructions.refs,
-      configRefs: unique([dev.pylonConfig.configRef, dev.pylonConfig.devOverlayRef]),
+      configRefs: unique([
+        dev.pylonConfig.configRef,
+        dev.pylonConfig.devOverlayRef,
+        `config.pylon.dev.default_adapter.${dev.pylonConfig.defaultAdapter}`,
+      ]),
       blockerRefs: [
         ...dev.instructions.blockerRefs,
         ...(dev.pylonConfig.state === "present" ? [] : ["blocker.context.pylon_config_missing"]),

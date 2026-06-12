@@ -27,6 +27,11 @@ that bind the lane.
   reports `ready`, and strips a stale declaration when it does not. The
   capability ref is the only public signal that a local Claude exists;
   no machine details, paths, or account identifiers leave the device.
+- Local dashboard composer: the source TUI can use the Claude Agent SDK as
+  the interactive composer backend when `dev.defaultAdapter` is
+  `claude_agent` or the process is launched with `--adapter claude`. This is
+  the owner-supervised local dev surface, separate from the delegated
+  assignment executor.
 
 ## BYOK setup (bring your own key — always)
 
@@ -80,10 +85,33 @@ Optional `claudeAgent` section in the Pylon config file
 
 - `enabled: false` disables the lane regardless of SDK/key presence.
 - `model`, `maxTurns`, `timeoutSeconds` are runtime preferences consumed
-  by the executor gate (#4719); they cap, never expand, what an
-  assignment may do. Config is preference, not authority.
+  by the executor gate (#4719) and the local dashboard composer; they cap,
+  never expand, what an assignment may do. Config is preference, not
+  authority.
 - Never put credential values in the config file; the bridge reads
   credentials from the environment only.
+
+To make Claude/Fable the local dashboard composer default:
+
+```json
+{
+  "dev": {
+    "defaultAdapter": "claude_agent"
+  },
+  "claudeAgent": {
+    "enabled": true,
+    "model": "claude-fable-5"
+  }
+}
+```
+
+Per launch, `--adapter claude` selects the same backend without changing the
+config file. The composer runs in the active repo (`PYLON_ACTIVE_REPO` or
+`PYLON_CODEX_CWD` override the shell cwd), starts only after
+`probeClaudeAgentReadiness()` reports ready, labels the TUI as `Claude` or
+`Claude (<model>)`, and keeps the raw SDK session id local so follow-up
+prompts can resume the same conversation. Feed/footer output uses hashed
+session refs, not raw session ids.
 
 ## Boundaries
 

@@ -40,6 +40,7 @@ export type CodexAgentReadiness = {
 }
 
 export type CodexAgentSandboxMode = "read-only" | "workspace-write"
+export type PylonComposerAdapter = "codex" | "claude_agent"
 
 export type CodexAgentConfig = {
   enabled?: boolean
@@ -53,6 +54,7 @@ export type CodexLocalExecutionMode = "local_supervised_danger"
 
 export type CodexDevConfig = {
   codexExecutionMode?: CodexLocalExecutionMode
+  defaultAdapter?: PylonComposerAdapter
 }
 
 export type CodexAgentProbeOptions = {
@@ -241,6 +243,9 @@ export async function loadCodexDevConfig(
     return {
       ...(config.codexExecutionMode === "local_supervised_danger"
         ? { codexExecutionMode: config.codexExecutionMode }
+        : {}),
+      ...(config.defaultAdapter === "codex" || config.defaultAdapter === "claude_agent"
+        ? { defaultAdapter: config.defaultAdapter }
         : {}),
     }
   } catch {

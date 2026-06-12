@@ -216,6 +216,7 @@ describe("codex config section", () => {
         JSON.stringify({
           dev: {
             codexExecutionMode: "local_supervised_danger",
+            defaultAdapter: "claude_agent",
             apiKey: "must-be-ignored",
           },
           codex: { sandboxMode: "danger-full-access" },
@@ -223,6 +224,7 @@ describe("codex config section", () => {
       )
       expect(await loadCodexDevConfig(summary)).toEqual({
         codexExecutionMode: "local_supervised_danger",
+        defaultAdapter: "claude_agent",
       })
       expect(JSON.stringify(await loadCodexDevConfig(summary))).not.toContain("must-be-ignored")
       expect(await loadCodexAgentConfig(summary)).toEqual({})

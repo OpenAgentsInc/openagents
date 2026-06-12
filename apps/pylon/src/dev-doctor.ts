@@ -9,6 +9,7 @@ import {
   loadCodexDevConfig,
   probeCodexAgentReadiness,
   type CodexAgentReadiness,
+  type PylonComposerAdapter,
 } from "./codex-agent"
 import {
   sandboxModeForCodexComposerExecutionMode,
@@ -56,6 +57,7 @@ export type PylonDevDoctorProjection = {
     configRef: "config.pylon.local"
     digestRef: string | null
     devOverlayRef: "config.pylon.dev.local_supervised_danger" | null
+    defaultAdapter: PylonComposerAdapter
   }
   codex: {
     cli: "present" | "missing"
@@ -317,6 +319,7 @@ export async function collectPylonDevDoctor(
         codexDevConfig.codexExecutionMode === "local_supervised_danger"
           ? "config.pylon.dev.local_supervised_danger"
           : null,
+      defaultAdapter: codexDevConfig.defaultAdapter ?? "codex",
     },
     codex: {
       cli: codexCliPath ? "present" : "missing",

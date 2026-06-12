@@ -2151,3 +2151,41 @@ Verification:
 - `bun test tests/context-projection.test.ts tests/tui-store.test.ts tests/tui-commands.test.ts tests/tui-render-harness.test.ts tests/dev-doctor.test.ts`
 - `bun src/index.ts context --json`
 - `git diff --check`
+
+## Pylon Claude Composer Backend
+
+Issue context:
+
+- #4844 asked for the Pylon dashboard composer to run Claude/Fable in the
+  current repo behind the same adapter-neutral composer seam as Codex.
+- Owner decision: use the installed TypeScript Claude Agent SDK, not a raw CLI
+  parser.
+
+Status: source implementation for local supervised dashboard composer
+selection. This does not implement Claude `bypassPermissions`; that remains
+the #4845 permissive-mode issue.
+
+Implemented:
+
+- Added `apps/pylon/src/claude-composer.ts`, a local composer backend that
+  streams `@anthropic-ai/claude-agent-sdk` `query()` messages, assistant text,
+  tool-use summaries, usage totals, and result events.
+- Added `dev.defaultAdapter: "codex" | "claude_agent"` parsing plus
+  `--adapter codex|claude|claude_agent` launch override for the local TUI
+  composer.
+- Wired the selected composer backend through the existing TUI seam while
+  keeping Codex as the default.
+- Preflighted `probeClaudeAgentReadiness()` before launching SDK sessions.
+- Ran Claude in the active repo cwd and kept raw SDK session ids local for
+  resume; TUI/footer output uses hashed session refs only.
+- Labeled Claude sessions as `Claude` / `Claude (<model>)`, so a configured
+  Fable model is visible without creating a separate Fable adapter.
+- Updated the context projection to treat configured Claude-primary mode as
+  the selected primary adapter when readiness is green.
+- Updated Pylon README, Claude bridge docs, the daily-driver audit, and tests.
+
+Verification:
+
+- `bun test tests/claude-composer.test.ts tests/codex-composer.test.ts tests/codex-agent.test.ts tests/context-projection.test.ts tests/dev-doctor.test.ts tests/tui-render-harness.test.ts tests/tui-commands.test.ts`
+- `bun src/index.ts context --json`
+- `git diff --check`

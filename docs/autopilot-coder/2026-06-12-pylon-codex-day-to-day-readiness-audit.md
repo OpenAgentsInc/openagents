@@ -95,6 +95,11 @@ check/apply/reload loop exist in source:
 - "Codex primary, Fable occasionally" now has a first-class work-order intent
   surface: `--adapter codex`, `--adapter claude_agent`, or `--adapter fable`.
   Fable maps to the Claude Agent lane with `profile.claude_agent.fable`.
+- The local dashboard composer can now select the Claude Agent SDK as an
+  adapter too: `dev.defaultAdapter: "claude_agent"` or `--adapter claude`
+  streams `query()` messages from the active repo, labels the backend as
+  `Claude` / `Claude (<model>)`, and keeps raw session ids local while showing
+  only hashed refs in the feed.
 
 The practical recommendation is now sharper: **use the source checkout for a
 retained supervised Pylon task, prove the Codex composer plus dev
@@ -118,6 +123,10 @@ Top-priority issues filed from this correction:
   local projections and command-palette actions.
 - #4843: P1 work-order commit pinning and adapter intent. Implemented in
   source with explicit commit preflight and SDK/assignment intent plumbing.
+- #4844: CL1 P0 Claude composer backend. Implemented in source with
+  `@anthropic-ai/claude-agent-sdk` streaming, `dev.defaultAdapter` /
+  `--adapter claude` selection, readiness blockers before launch, and local
+  session resume.
 
 **Not yet a supported Pylon-only replacement from the packaged install.** The
 remaining blockers are productization and proof blockers:
@@ -129,9 +138,10 @@ remaining blockers are productization and proof blockers:
   lane. The fastest daily-driver switch is still the local composer/dev path,
   not a packaged `pylon work submit` flow.
 - "Codex primary, Fable occasionally" is built for work orders as explicit
-  intent, and the local context pane shows Codex/Fable readiness. The local Dev
-  Mode surface still needs the retained supervised proof and richer Fable
-  review ergonomics before it should replace the owner's normal loop.
+  intent and for the local composer as adapter selection. The local context
+  pane shows Codex/Fable readiness. The remaining Fable/Claude gaps are the
+  explicit local permissive Claude mode, richer Fable review ergonomics, and a
+  retained supervised proof before it should replace the owner's normal loop.
 - Delivery is still evidence-first in the work-order lane, not a normal coding
   handoff. That is acceptable for the local dev path if the first version shows
   the changed files, focused checks, and reload state inside Pylon.
@@ -246,32 +256,36 @@ The Claude Agent bridge is built and receipt-backed:
   proof are recorded.
 
 So the honest statement is: **Pylon can pull in Fable through the Claude Agent
-lane when the local Claude/Fable credential/session is ready.** There is no
-`fable_agent_task` work class or Pylon-native "call Fable" adapter.
+lane when the local Claude/Fable credential/session is ready.** In source,
+that now applies to both the work-order lane and the local dashboard composer:
+set `claudeAgent.model` to `claude-fable-5` and select
+`dev.defaultAdapter: "claude_agent"` or `--adapter claude`. There is no
+`fable_agent_task` work class or separate Pylon-native Fable adapter.
 
 ## Current Workflow Fit
 
-| Workflow need                                  | Status                         | Notes                                                                                                                                                          |
-| ---------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Start Pylon locally                            | Source-ready                   | v0.3 runs from source; published stable package is not v0.3.                                                                                                   |
-| Type a coding prompt into Pylon and run Codex  | Built in source (#4839)        | Composer routes through `@openai/codex-sdk`, uses the current working directory by default, and reports SDK/auth blockers before starting a thread.             |
-| Run Codex unrestricted while the owner watches | Built in source (#4840)        | `--codex-danger` or `dev.codexExecutionMode` maps the local dashboard composer to SDK `danger-full-access`; assignment/provider paths reject the flag.          |
-| Show active repo/instructions/accounts         | Built in source (#4838/#4841)  | `pylon context --json` emits the redacted typed projection; the wide TUI renders `Repo & AI Context`, and narrow terminals can open the `f6` context route.       |
-| Check/apply/reload after a Codex edit          | Built in source (#4842)        | `pylon dev check/apply/reload --json` emits typed local projections; command-palette Dev actions call the same loop. Reload is explicit and currently no-op unless a controlled process exists. |
-| Keep a headless worker online                  | Source-ready                   | `pylon node` and `PYLON_ASSIGNMENT_WORKER=1` exist for no-spend owner assignments, but this is not required for local supervised daily-driver MVP.             |
-| Register / heartbeat / show status             | Built                          | Presence and status commands exist; live worker-loop smoke passed. Not required for the fastest local switch.                                                  |
-| Submit work from Pylon work-order lane         | Source-hardened (#4843)        | `pylon work submit` requires `--commit`, rejects placeholder/unresolvable commits before submission, and prints the pinned checkout in output.                 |
-| Read work status/events                        | Built                          | `pylon work status <work-order-ref> [--events]` exists for the work-order lane.                                                                                |
-| Review delivered work                          | Built                          | `pylon work review <work-order-ref> --action ...` exists for the work-order lane.                                                                              |
-| Prefer owner Pylon before paid fallback        | Built as policy                | Own-Pylon/free-lane policy is in the #4786 ladder and code. Not required for local supervised dev mode.                                                        |
-| Codex assignment execution                     | Live-proven                    | Codex SDK task and `git_checkout` parity ran live with receipts.                                                                                               |
-| Fable execution                                | Via Claude Agent               | Use Claude Agent lane with `model: "claude-fable-5"`; live Claude lane is proven, but Fable-specific daily-driver review flow is not recorded.                 |
-| Adapter choice per work-order task             | Source-hardened (#4843)        | `--adapter codex|claude_agent|fable` carries requester intent through validation, task records, assignment synthesis, and local runner selection.              |
-| Codex as default on dual-capability Pylon      | Explicit for work orders       | Intent-less dual-capability work orders still default to Claude by platform policy; owner Codex-primary use should pass `--adapter codex` or use local Dev Mode. |
-| PR draft/writeback                             | Contract-ready, not live claim | Delivery readiness exists; live PR writeback and maintainer merge remain separate authority. Not needed for supervised MVP.                                    |
-| Paid work / settlement                         | Not daily-driver MVP           | Live market/settlement issues remain open, but do not block owner-supervised local use.                                                                        |
-| Overnight unattended run                       | Not daily-driver MVP           | #4768 is still open, but it gates "start at night, review in the morning," not "sit here watching Codex."                                                      |
-| Public or external market capacity             | Not daily-driver MVP           | #4777/#4781/#4782/#4783 remain open for independent provider/settlement receipts.                                                                              |
+| Workflow need                                        | Status                         | Notes                                                                                                                                                                                           |
+| ---------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Start Pylon locally                                  | Source-ready                   | v0.3 runs from source; published stable package is not v0.3.                                                                                                                                    |
+| Type a coding prompt into Pylon and run Codex        | Built in source (#4839)        | Composer routes through `@openai/codex-sdk`, uses the current working directory by default, and reports SDK/auth blockers before starting a thread.                                             |
+| Type a coding prompt into Pylon and run Claude/Fable | Built in source (#4844)        | `dev.defaultAdapter: "claude_agent"` or `--adapter claude` routes through `@anthropic-ai/claude-agent-sdk`, resumes the local SDK session, and labels the model.                                |
+| Run Codex unrestricted while the owner watches       | Built in source (#4840)        | `--codex-danger` or `dev.codexExecutionMode` maps the local dashboard composer to SDK `danger-full-access`; assignment/provider paths reject the flag.                                          |
+| Show active repo/instructions/accounts               | Built in source (#4838/#4841)  | `pylon context --json` emits the redacted typed projection; the wide TUI renders `Repo & AI Context`, and narrow terminals can open the `f6` context route.                                     |
+| Check/apply/reload after a Codex edit                | Built in source (#4842)        | `pylon dev check/apply/reload --json` emits typed local projections; command-palette Dev actions call the same loop. Reload is explicit and currently no-op unless a controlled process exists. |
+| Keep a headless worker online                        | Source-ready                   | `pylon node` and `PYLON_ASSIGNMENT_WORKER=1` exist for no-spend owner assignments, but this is not required for local supervised daily-driver MVP.                                              |
+| Register / heartbeat / show status                   | Built                          | Presence and status commands exist; live worker-loop smoke passed. Not required for the fastest local switch.                                                                                   |
+| Submit work from Pylon work-order lane               | Source-hardened (#4843)        | `pylon work submit` requires `--commit`, rejects placeholder/unresolvable commits before submission, and prints the pinned checkout in output.                                                  |
+| Read work status/events                              | Built                          | `pylon work status <work-order-ref> [--events]` exists for the work-order lane.                                                                                                                 |
+| Review delivered work                                | Built                          | `pylon work review <work-order-ref> --action ...` exists for the work-order lane.                                                                                                               |
+| Prefer owner Pylon before paid fallback              | Built as policy                | Own-Pylon/free-lane policy is in the #4786 ladder and code. Not required for local supervised dev mode.                                                                                         |
+| Codex assignment execution                           | Live-proven                    | Codex SDK task and `git_checkout` parity ran live with receipts.                                                                                                                                |
+| Fable execution                                      | Via Claude Agent               | Use Claude Agent lane with `model: "claude-fable-5"`; local composer selection is built in source, but Fable-specific daily-driver review/proof is not recorded.                                |
+| Adapter choice per work-order task                   | Source-hardened (#4843)        | `--adapter codex                                                                                                                                                                                | claude_agent | fable` carries requester intent through validation, task records, assignment synthesis, and local runner selection. |
+| Codex as default on dual-capability Pylon            | Explicit for work orders       | Intent-less dual-capability work orders still default to Claude by platform policy; owner Codex-primary use should pass `--adapter codex` or use local Dev Mode.                                |
+| PR draft/writeback                                   | Contract-ready, not live claim | Delivery readiness exists; live PR writeback and maintainer merge remain separate authority. Not needed for supervised MVP.                                                                     |
+| Paid work / settlement                               | Not daily-driver MVP           | Live market/settlement issues remain open, but do not block owner-supervised local use.                                                                                                         |
+| Overnight unattended run                             | Not daily-driver MVP           | #4768 is still open, but it gates "start at night, review in the morning," not "sit here watching Codex."                                                                                       |
+| Public or external market capacity                   | Not daily-driver MVP           | #4777/#4781/#4782/#4783 remain open for independent provider/settlement receipts.                                                                                                               |
 
 ## Most Important Implementation Findings
 
@@ -313,7 +327,7 @@ owner is watching.
 #4840 changes that in source:
 
 - `--codex-danger` or `dev.codexExecutionMode:
-  "local_supervised_danger"` explicitly opts the local dashboard composer into
+"local_supervised_danger"` explicitly opts the local dashboard composer into
   the mode.
 - The TUI backend label becomes `Codex DANGER` and the feed status line shows
   `mode: local_supervised_danger | sandbox: danger-full-access`.
@@ -323,7 +337,7 @@ owner is watching.
   `pylon attach` reject `--codex-danger` with
   `blocker.codex.local_supervised_danger_public_path`.
 - `loadCodexAgentConfig()` still rejects assignment `codex.sandboxMode:
-  "danger-full-access"`; only `loadCodexDevConfig()` reads the local dev
+"danger-full-access"`; only `loadCodexDevConfig()` reads the local dev
   override.
 
 ### 3. `pylon work submit` now pins the real repo state in source (#4843)
@@ -363,9 +377,30 @@ Fable remains a profile/model on the Claude Agent lane, not a separate adapter.
 When the placed Pylon lacks Claude Agent capability, synthesis refuses to
 substitute Codex for a Fable/Claude request.
 
+### 5. The local composer can now run Claude/Fable in the active repo (#4844)
+
+The Codex composer remains the default for the owner's daily-driver path, but
+the local TUI is no longer Codex-only. #4844 adds the parallel Claude Agent SDK
+composer:
+
+- `apps/pylon/src/claude-composer.ts` streams `query()` SDK messages and
+  assistant text into the existing composer feed.
+- `dev.defaultAdapter: "claude_agent"` or `--adapter claude` selects the
+  Claude backend; the default remains Codex.
+- The backend runs in the same active repo cwd as Codex and preflights
+  `probeClaudeAgentReadiness()` before starting a session.
+- TUI labels are `Claude` or `Claude (<model>)`, so Fable configuration is
+  visible as the model instead of a separate adapter.
+- Raw Claude SDK session ids stay local for resume; the feed shows only
+  hashed session refs.
+
+This does **not** implement the permissive `bypassPermissions` mode. That is
+the next CL issue (#4845) and should use the same public-path rejection shape
+as Codex dangerous mode.
+
 ## Open Issue Tail
 
-Current issue tail after the #4838/#4839/#4840/#4841/#4842/#4843 implementation pass:
+Current issue tail after the #4838/#4839/#4840/#4841/#4842/#4843/#4844 implementation pass:
 
 - #4786 parent epic: Autopilot MVP issue ladder.
 - #4768 M10: overnight unattended proof, both lanes, both surfaces.
@@ -379,8 +414,8 @@ Current issue tail after the #4838/#4839/#4840/#4841/#4842/#4843 implementation 
 The issue tail now has two lanes:
 
 1. **Owner supervised daily-driver lane:** one retained supervised proof using
-   the source checkout. #4838, #4839, #4840, #4841, #4842, and #4843 are
-   implemented in source. This remains the ASAP switch path.
+   the source checkout. #4838, #4839, #4840, #4841, #4842, #4843, and #4844
+   are implemented in source. This remains the ASAP switch path.
 2. **Autopilot/public readiness lane:** #4768, #4772, #4777, #4781, #4782, and
    #4783. These are still real, but they are not required for the owner to sit
    at Pylon and supervise Codex.
@@ -419,7 +454,7 @@ Prepare local Pylon config with Codex primary:
     "codexExecutionMode": "local_supervised_danger"
   },
   "claudeAgent": {
-    "enabled": false,
+    "enabled": true,
     "model": "claude-fable-5",
     "maxTurns": 12,
     "timeoutSeconds": 600
@@ -447,8 +482,9 @@ bun run --cwd apps/pylon start
 ```
 
 At this exact commit, that starts the TUI with a Codex SDK-backed composer in
-the current working directory. `dev.codexExecutionMode` in the config or
-`--codex-danger` makes the local dashboard composer use
+the current working directory. To switch a session to Claude/Fable without
+changing the default, launch with `--adapter claude`. `dev.codexExecutionMode`
+in the config or `--codex-danger` makes the local dashboard composer use
 `local_supervised_danger`:
 
 ```sh
@@ -539,7 +575,16 @@ workflow while the owner is watching.
      unless a controlled process exists.
    - The TUI command palette exposes the same Dev check/apply/reload actions.
 
-6. **Run one retained supervised daily-driver proof.**
+6. **Add Claude/Fable local composer selection (#4844). Done in source.**
+   - `dev.defaultAdapter: "claude_agent"` or `--adapter claude` runs the
+     Claude Agent SDK in the active repo.
+   - The TUI labels the backend as `Claude` / `Claude (<model>)`, so
+     `claude-fable-5` is visible when configured.
+   - Readiness blockers are reported before SDK session start.
+   - Raw session ids stay local for resume; public/feed output uses hashed
+     refs.
+
+7. **Run one retained supervised daily-driver proof.**
    - Use a real repo task while the owner watches.
    - Submit from the Pylon composer or `pylon dev fix`, not `pylon work submit`.
    - Codex edits in the active checkout.
@@ -547,7 +592,7 @@ workflow while the owner is watching.
    - Pylon shows the patch/check/reload state.
    - Fable review is optional, not blocking.
 
-6. **Install-pin v0.3 for the owner.**
+8. **Install-pin v0.3 for the owner.**
    - Either publish `@openagentsinc/pylon@0.3.0` after release gates and npm
      credential repair, or define an owner-only install pin from the source
      checkout so the daily command does not depend on unpublished package
@@ -556,7 +601,7 @@ workflow while the owner is watching.
 Work-order lane follow-up:
 
 - Use source-built `pylon work submit "<objective>" --commit <sha> --adapter
-  codex|claude_agent|fable` for explicit work-order dogfood only; it is no
+codex|claude_agent|fable` for explicit work-order dogfood only; it is no
   longer the shortest path for the local daily-driver switch.
 - Run M10 (#4768) before relying on "start at night, review in the morning."
 - Complete M14/market/provider issues before calling Pylon broadly/publicly
@@ -619,6 +664,8 @@ This is no longer merely an addendum. It is the ASAP path:
 - #4840 implements the explicit local supervised dangerous Codex mode.
 - #4841 implements the redacted dev doctor/context projection in source.
 - #4842 implements the check/apply/reload loop.
+- #4844 implements local Claude/Fable composer selection through the Claude
+  Agent SDK.
 
 ### Shape
 
@@ -691,6 +738,7 @@ OpenAgents or GitHub must be ref-only and public-safe.
 
 The visible `Repo & AI Context` pane now renders this projection on wide
 dashboards and through `f6` on narrow terminals.
+
 - environment capability refs, never raw env values.
 
 That bundle is what Codex receives by default for `pylon dev fix`. Raw tokens,
@@ -705,6 +753,9 @@ Dev Mode should match the owner's desired operating pattern:
 - Codex is the default implementer.
 - Fable is an optional reviewer, planner, or second-pass debugger through the
   Claude Agent lane.
+- `--adapter claude` or `dev.defaultAdapter: "claude_agent"` now gives the
+  local composer a Claude/Fable implementation path; a dedicated
+  `pylon dev review --adapter fable` command remains follow-up.
 - The UI should say "Fable review" only when the configured Claude Agent model
   is `claude-fable-5` and readiness is green.
 - If Fable is not ready, the command should degrade to a typed blocker, not
@@ -767,9 +818,13 @@ Recommended issue slice:
 3. **DM3: Dev reload. Source no-op landed.** `pylon dev reload --json` is an
    explicit no-op when there is no controlled process; a real restart-and-reattach
    path remains follow-up.
-4. **DM4: Fable review.** Add optional Claude/Fable review of the local patch
+4. **DM4: Claude/Fable composer. Done in source for the composer path.**
+   `dev.defaultAdapter: "claude_agent"` and `--adapter claude` select the
+   Claude Agent SDK backend; dedicated review-command ergonomics remain
+   follow-up.
+5. **DM5: Fable review.** Add optional Claude/Fable review of the local patch
    summary and check refs.
-5. **DM5: Retained proof.** Use Dev Mode to fix one real Pylon bug, retain the
+6. **DM6: Retained proof.** Use Dev Mode to fix one real Pylon bug, retain the
    local refs, checks, patch summary, and reload evidence.
 
 ### Effect On This Audit

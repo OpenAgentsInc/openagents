@@ -3,6 +3,7 @@
 ![Pylon](docs/images/pylon.png)
 
 ## Tech stack
+
 - [Bun](https://bun.sh)
 - [Effect](https://effect.website/)
 - [OpenTUI](https://github.com/anomalyco/opentui)
@@ -81,24 +82,27 @@ footer.
   `f1` shows all keybindings, `tab` switches focus between the log feed and
   the composer, and `ctrl+c` exits cleanly.
 - Wallet operations (`wallet: send sats`, `wallet: receive`, `wallet: admit
-  payout target`) run from the palette and always end in an explicit
+payout target`) run from the palette and always end in an explicit
   confirmation dialog before any money moves.
 - Keybindings are user-configurable via `keybinds.json` in the Pylon home
   directory: `{ "bindings": { "palette.open": "ctrl+p" } }`. Keys are
   command names (see `f1`); values are `@opentui/keymap` key strings.
   Invalid files are reported and ignored.
-- The composer submits with `meta+return` and streams Codex SDK events into
-  the feed, running in the current working directory by default
-  (`PYLON_CODEX_CWD` or `PYLON_ACTIVE_REPO` can override it). Missing Codex
-  SDK/auth readiness is shown as a typed Codex blocker instead of falling
-  back to OpenCode. The default composer mode is local bounded
-  `workspace-write`; `pylon dev --codex-danger`, `pylon --codex-danger`, or
-  `"dev": { "codexExecutionMode": "local_supervised_danger" }` explicitly
-  switches the **local dashboard composer only** to SDK
-  `danger-full-access` with `approvalPolicy: "never"` and labels the feed as
-  `Codex DANGER`. Submitted prompts persist across restarts: cycle them with
-  `ctrl+p` / `ctrl+n`, and an unsent draft is stashed on exit and restored
-  on the next launch.
+- The composer submits with `meta+return` and streams the selected local
+  adapter into the feed, running in the current working directory by default
+  (`PYLON_CODEX_CWD` or `PYLON_ACTIVE_REPO` can override it). Codex is the
+  default backend; set `"dev": { "defaultAdapter": "claude_agent" }` or launch
+  with `--adapter claude` to use the local Claude Agent SDK instead. Missing
+  SDK/auth readiness is shown as a typed adapter blocker before any session
+  starts. Claude sessions keep their SDK session id locally so follow-up
+  prompts can resume; only hashed session refs appear in the feed. The default
+  Codex composer mode is local bounded `workspace-write`; `pylon dev
+--codex-danger`, `pylon --codex-danger`, or `"dev":
+{ "codexExecutionMode": "local_supervised_danger" }` explicitly switches the
+  **local dashboard composer only** to SDK `danger-full-access` with
+  `approvalPolicy: "never"` and labels the feed as `Codex DANGER`. Submitted
+  prompts persist across restarts: cycle them with `ctrl+p` / `ctrl+n`, and an
+  unsent draft is stashed on exit and restored on the next launch.
 - `pylon dev doctor --json` returns the redacted local context projection for
   the dashboard/dev loop: active repo provider/name, branch, commit, dirty
   count, instruction/config digest refs, Codex SDK/CLI/auth readiness,

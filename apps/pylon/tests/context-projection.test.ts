@@ -47,6 +47,7 @@ function devDoctorFixture(): PylonDevDoctorProjection {
       configRef: "config.pylon.local",
       digestRef: "file.digest.config",
       devOverlayRef: "config.pylon.dev.local_supervised_danger",
+      defaultAdapter: "codex",
     },
     codex: {
       cli: "present",
@@ -103,6 +104,7 @@ describe("pylon context projection", () => {
     })
     expect(projection.instructions.refs.map((ref) => ref.sourceRef)).toContain("instruction.workspace.agents")
     expect(projection.instructions.configRefs).toContain("config.pylon.dev.local_supervised_danger")
+    expect(projection.instructions.configRefs).toContain("config.pylon.dev.default_adapter.codex")
     expect(projection.adapters.codex).toMatchObject({
       state: "ready",
       danger: true,
@@ -125,6 +127,19 @@ describe("pylon context projection", () => {
     expect(projection.adapters.primaryAdapter).toBe("unknown")
     expect(projection.blockerRefs).toContain("blocker.context.repo_unknown")
   })
+
+  test("honors Claude as the configured primary adapter", () => {
+    const fixture = devDoctorFixture()
+    fixture.pylonConfig.defaultAdapter = "claude_agent"
+    const projection = contextProjectionFromDevDoctor(fixture)
+    expect(projection.adapters.primaryAdapter).toBe("claude_agent")
+    expect(projection.adapters.reviewerAdapter).toBe("codex")
+    expect(projection.currentJob.requiredCapabilityRefs).toEqual([
+      "capability.pylon.local_codex",
+      "capability.pylon.local_claude_agent",
+    ])
+  })
+
 
   test("rejects emails and local auth paths in status output", () => {
     const fixture = devDoctorFixture()
