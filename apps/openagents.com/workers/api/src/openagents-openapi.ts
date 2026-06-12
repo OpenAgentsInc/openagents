@@ -258,6 +258,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicPylonCapacityFunnelHistory: objectSummary(
     'Public-safe retained Pylon capacity funnel history: hourly and daily count-only snapshots with the same read-only capacity-accounting authority boundary as the live funnel. No device identifiers, owner linkage, wallet detail, assignment authority, payout authority, or settlement authority.',
   ),
+  PublicRelayHealth: objectSummary(
+    'Public-safe canonical market relay health projection: current status (healthy/degraded/unhealthy, or unknown before the first probe), per-leg NIP-11 (HTTP status, latency, relay name) and websocket REQ/EOSE round-trip (outcome, latency) results, bounded retained probe history (7 days), typed status-transition events (30 days), generatedAt, probe cadence, and the declared stored_snapshot staleness contract with a staleExceeded flag. Read-only monitoring evidence; grants no relay-mutation, payout, settlement, or public-claim authority.',
+  ),
   AutopilotWorkPromiseListEnvelope: objectSummary(
     'Public-safe list of owner work-order summaries that carry a promiseRef for the requested promiseId: workOrderRef, state, promiseRef, createdAt, updatedAt. Listing grants no review, settlement, or registry-transition authority.',
   ),
@@ -4727,6 +4730,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Pylon capacity funnel history.',
           '#/components/schemas/PublicPylonCapacityFunnelHistory',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/relay-health': {
+    get: operation({
+      operationId: 'getPublicRelayHealth',
+      summary: 'Read public canonical market relay health',
+      description:
+        'Returns the retained health status of the canonical Scoped Market Relay: current status from the latest scheduled probe (NIP-11 info document fetch plus a websocket REQ/EOSE round-trip, both with latency), bounded probe history retained 7 days, and typed status-transition events retained 30 days, so short relay outages stay publicly citable after recovery. The payload carries generatedAt, the probe cadence, and the declared stored_snapshot staleness contract, and flags itself stale when the newest probe exceeds the declared bound. Read-only monitoring evidence; grants no relay-mutation, payout, settlement, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: [],
+      responses: {
+        '200': okJson(
+          'Public canonical market relay health.',
+          '#/components/schemas/PublicRelayHealth',
         ),
         ...errorResponses(),
       },

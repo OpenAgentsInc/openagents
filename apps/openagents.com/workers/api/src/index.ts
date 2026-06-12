@@ -291,6 +291,12 @@ import {
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
+import {
+  canonicalMarketRelayUrl,
+  makeD1RelayHealthStore,
+  runRelayHealthProbeTick,
+} from './relay-health'
+import { handlePublicRelayHealthApi } from './relay-health-routes'
 import { handleResendWebhook } from './resend-webhooks'
 import {
   OpenAgentsWorkerRequest,
@@ -4912,6 +4918,28 @@ const recordPylonCapacityFunnelSnapshotsScheduled = (
     Effect.catch(() => Effect.void),
   )
 
+// Public relay health probe (#4865): scheduled NIP-11 + websocket
+// REQ/EOSE probe of the canonical market relay. The tick guards its own
+// 5-minute cadence internally because the worker cron fires every minute,
+// and the probe timestamp authority is the scheduled controller time.
+const runRelayHealthProbeScheduled = (
+  env: Env,
+  scheduledTime: number,
+): Effect.Effect<void, never> =>
+  Effect.tryPromise({
+    catch: () => 'relay_health_probe_failed' as const,
+    try: () =>
+      runRelayHealthProbeTick({
+        makeId: randomUuid,
+        relayUrl: canonicalMarketRelayUrl(env),
+        scheduledTimeMs: scheduledTime,
+        store: makeD1RelayHealthStore(openAgentsDatabase(env)),
+      }),
+  }).pipe(
+    Effect.asVoid,
+    Effect.catch(() => Effect.void),
+  )
+
 const readTokenUsageLeaderboardsForUser = (
   env: Env,
   userId: string,
@@ -6522,6 +6550,14 @@ const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       handlePylonCapacityFunnelHistoryApi(request, env),
   },
   {
+    path: '/api/public/relay-health',
+    handler: (request, env) =>
+      handlePublicRelayHealthApi(request, {
+        relayUrl: canonicalMarketRelayUrl(env),
+        store: makeD1RelayHealthStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     path: '/api/public/launch-dashboard',
     handler: (request, env) => handlePublicLaunchDashboardApi(request, env),
   },
@@ -7295,6 +7331,10 @@ export default {
           openAgentsDatabase(env),
           event.scheduledTime,
         ),
+      ),
+      observedEffect(
+        'RelayHealth.probeTick',
+        runRelayHealthProbeScheduled(env, event.scheduledTime),
       ),
       observedEffect(
         'EmailCampaignDispatcher.dispatchDue',

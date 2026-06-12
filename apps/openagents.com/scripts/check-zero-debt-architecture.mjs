@@ -437,6 +437,11 @@ const publicProjectionSurfaces = [
     route: '/api/provider-accounts/pool',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/relay-health-routes.ts',
+    route: '/api/public/relay-health',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
