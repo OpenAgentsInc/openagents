@@ -1,11 +1,8 @@
 import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
 
-import type {
-  CodingAutopilotRepoTrustTier,
-} from './coding-autopilot-repo-placement'
-import type {
-  OpenAgentsAutopilotRepositoryVisibility,
-} from './autopilot-work-request'
+import type { OpenAgentsAutopilotRepositoryVisibility } from './autopilot-work-request'
+import type { CodingAutopilotRepoTrustTier } from './coding-autopilot-repo-placement'
+import { isoTimestampAfterIso } from './runtime-primitives'
 
 export const PACK_C_REPO_WORKTREE_IDENTITY_VERSION =
   'pack-c-repo-worktree-identity:v1' as const
@@ -17,7 +14,8 @@ const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const SAFE_REPOSITORY_PART_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$/
 const SAFE_HOST_PATTERN = /^[A-Za-z0-9][A-Za-z0-9.-]{0,120}$/
 const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_./-]{0,180}$/
-const SHA_REF_PATTERN = /^(?:[A-Fa-f0-9]{7,64}|[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260})$/
+const SHA_REF_PATTERN =
+  /^(?:[A-Fa-f0-9]{7,64}|[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260})$/
 const PACK_C_PRIVATE_MARKERS: ReadonlyArray<RegExp> = [
   /(?:^|\s)(?:git|ssh|https?):\/\//i,
   /git@/i,
@@ -32,6 +30,13 @@ const PACK_C_PRIVATE_MARKERS: ReadonlyArray<RegExp> = [
   /\.git\/config/i,
   /(?:;|&&|\|\||`|\$\(|>|<)/,
 ]
+
+class PackCRepoWorktreeIdentityError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PackCRepoWorktreeIdentityError'
+  }
+}
 
 export type PackCRepositoryIdentityInput = Readonly<{
   caveatRefs?: ReadonlyArray<string> | undefined
@@ -110,7 +115,9 @@ const assertNoPrivateMaterial = (value: unknown, context: string): void => {
   const text = typeof value === 'string' ? value : JSON.stringify(value)
 
   if (PACK_C_PRIVATE_MARKERS.some(marker => marker.test(text))) {
-    throw new Error(`${context} contains private repo, local path, or shell material.`)
+    throw new PackCRepoWorktreeIdentityError(
+      `${context} contains private repo, local path, or shell material.`,
+    )
   }
 }
 
@@ -119,7 +126,9 @@ const safeRef = (field: string, value: string): string => {
   assertNoPrivateMaterial(trimmed, field)
 
   if (!SAFE_REF_PATTERN.test(trimmed)) {
-    throw new Error(`${field} must be a stable Pack C ref.`)
+    throw new PackCRepoWorktreeIdentityError(
+      `${field} must be a stable Pack C ref.`,
+    )
   }
 
   return trimmed
@@ -135,7 +144,9 @@ const safeRepositoryPart = (field: string, value: string): string => {
   assertNoPrivateMaterial(trimmed, field)
 
   if (!SAFE_REPOSITORY_PART_PATTERN.test(trimmed)) {
-    throw new Error(`${field} must be a safe repository identifier part.`)
+    throw new PackCRepoWorktreeIdentityError(
+      `${field} must be a safe repository identifier part.`,
+    )
   }
 
   return trimmed
@@ -146,7 +157,9 @@ const safeHost = (value: string): string => {
   assertNoPrivateMaterial(trimmed, 'pack-c-repo-identity.host')
 
   if (!SAFE_HOST_PATTERN.test(trimmed) || trimmed.includes('..')) {
-    throw new Error('Repository host must be a safe host identifier.')
+    throw new PackCRepoWorktreeIdentityError(
+      'Repository host must be a safe host identifier.',
+    )
   }
 
   return trimmed
@@ -166,7 +179,9 @@ export const normalizePackCBranchRef = (branchRef: string): string => {
     trimmed.endsWith('/') ||
     trimmed.endsWith('.lock')
   ) {
-    throw new Error('Branch refs must be parseable safe Git refs.')
+    throw new PackCRepoWorktreeIdentityError(
+      'Branch refs must be parseable safe Git refs.',
+    )
   }
 
   return trimmed
@@ -180,7 +195,9 @@ const safeShaRef = (field: string, value: string | null): string | null => {
   const trimmed = safeRef(field, value)
 
   if (!SHA_REF_PATTERN.test(trimmed)) {
-    throw new Error(`${field} must be a safe commit or digest ref.`)
+    throw new PackCRepoWorktreeIdentityError(
+      `${field} must be a safe commit or digest ref.`,
+    )
   }
 
   return trimmed
@@ -192,13 +209,19 @@ const blockerRefs = (
   worktree: PackCWorktreeIdentityProjection,
 ): ReadonlyArray<string> => [
   ...(repository.defaultBranch === null
-    ? [`pack-c-identity-blocker:${repository.repositoryRef}:missing-default-branch`]
+    ? [
+        `pack-c-identity-blocker:${repository.repositoryRef}:missing-default-branch`,
+      ]
     : []),
   ...(repository.pinnedCommitRef === null
-    ? [`pack-c-identity-blocker:${repository.repositoryRef}:missing-pinned-commit`]
+    ? [
+        `pack-c-identity-blocker:${repository.repositoryRef}:missing-pinned-commit`,
+      ]
     : []),
   ...(repository.remoteDigestRef === null
-    ? [`pack-c-identity-blocker:${repository.repositoryRef}:missing-remote-digest`]
+    ? [
+        `pack-c-identity-blocker:${repository.repositoryRef}:missing-remote-digest`,
+      ]
     : []),
   ...(repository.dataScopeRefs.length === 0
     ? [`pack-c-identity-blocker:${repository.repositoryRef}:missing-data-scope`]
@@ -210,10 +233,14 @@ const blockerRefs = (
     ? [`pack-c-identity-blocker:${worktree.worktreeRef}:missing-head-commit`]
     : []),
   ...(worktree.sandboxProfileRef === null
-    ? [`pack-c-identity-blocker:${worktree.worktreeRef}:missing-sandbox-profile`]
+    ? [
+        `pack-c-identity-blocker:${worktree.worktreeRef}:missing-sandbox-profile`,
+      ]
     : []),
   ...(worktree.retentionPolicyRef === null
-    ? [`pack-c-identity-blocker:${worktree.worktreeRef}:missing-retention-policy`]
+    ? [
+        `pack-c-identity-blocker:${worktree.worktreeRef}:missing-retention-policy`,
+      ]
     : []),
   ...(worktree.cleanliness === 'unknown'
     ? [`pack-c-identity-blocker:${worktree.worktreeRef}:unknown-cleanliness`]
@@ -224,13 +251,16 @@ const ageMs = (generatedAt: string, observedAt: string): number =>
   Math.max(0, Date.parse(generatedAt) - Date.parse(observedAt))
 
 const staleAt = (observedAt: string, staleAfterMs: number): string =>
-  new Date(Date.parse(observedAt) + staleAfterMs).toISOString()
+  isoTimestampAfterIso(observedAt, staleAfterMs)
 
 export const projectPackCRepoWorktreeIdentity = (
   input: PackCRepoWorktreeIdentityInput,
 ): PackCRepoWorktreeIdentityProjection => {
   const repository: PackCRepositoryIdentityProjection = {
-    caveatRefs: safeRefs('pack-c-repo-identity.caveatRefs', input.repository.caveatRefs),
+    caveatRefs: safeRefs(
+      'pack-c-repo-identity.caveatRefs',
+      input.repository.caveatRefs,
+    ),
     dataScopeRefs: safeRefs(
       'pack-c-repo-identity.dataScopeRefs',
       input.repository.dataScopeRefs,
@@ -240,8 +270,14 @@ export const projectPackCRepoWorktreeIdentity = (
         ? null
         : normalizePackCBranchRef(input.repository.defaultBranch),
     host: safeHost(input.repository.host),
-    name: safeRepositoryPart('pack-c-repo-identity.name', input.repository.name),
-    owner: safeRepositoryPart('pack-c-repo-identity.owner', input.repository.owner),
+    name: safeRepositoryPart(
+      'pack-c-repo-identity.name',
+      input.repository.name,
+    ),
+    owner: safeRepositoryPart(
+      'pack-c-repo-identity.owner',
+      input.repository.owner,
+    ),
     pinnedCommitRef: safeShaRef(
       'pack-c-repo-identity.pinnedCommitRef',
       input.repository.pinnedCommitRef,
@@ -282,8 +318,14 @@ export const projectPackCRepoWorktreeIdentity = (
             'pack-c-worktree-identity.sandboxProfileRef',
             input.worktree.sandboxProfileRef,
           ),
-    worktreeRef: safeRef('pack-c-worktree-identity.worktreeRef', input.worktree.worktreeRef),
-    workspaceRef: safeRef('pack-c-worktree-identity.workspaceRef', input.worktree.workspaceRef),
+    worktreeRef: safeRef(
+      'pack-c-worktree-identity.worktreeRef',
+      input.worktree.worktreeRef,
+    ),
+    workspaceRef: safeRef(
+      'pack-c-worktree-identity.workspaceRef',
+      input.worktree.workspaceRef,
+    ),
   }
   const observedAgeMs = ageMs(input.generatedAt, input.observedAt)
   const freshness =
@@ -301,7 +343,11 @@ export const projectPackCRepoWorktreeIdentity = (
     repository,
     staleAt: staleAt(input.observedAt, input.staleAfterMs),
     status:
-      blockers.length > 0 ? 'blocked' : freshness === 'stale' ? 'stale' : 'ready',
+      blockers.length > 0
+        ? 'blocked'
+        : freshness === 'stale'
+          ? 'stale'
+          : 'ready',
     worktree,
   }
 

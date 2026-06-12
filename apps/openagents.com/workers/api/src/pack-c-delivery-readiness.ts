@@ -1,10 +1,11 @@
 import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
 
+import { isoTimestampAfterIso } from './runtime-primitives'
+
 export const PACK_C_DELIVERY_READINESS_VERSION =
   'pack-c-delivery-readiness:v1' as const
 
-const PACK_C_DELIVERY_READINESS_COLLECTION =
-  'pack_c_delivery_readiness_public'
+const PACK_C_DELIVERY_READINESS_COLLECTION = 'pack_c_delivery_readiness_public'
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const PACK_C_DELIVERY_PRIVATE_MARKERS: ReadonlyArray<RegExp> = [
@@ -29,16 +30,20 @@ const PACK_C_DELIVERY_PRIVATE_MARKERS: ReadonlyArray<RegExp> = [
   /(?:;|&&|\|\||`|\$\(|>|<)/,
 ]
 
+class PackCDeliveryReadinessError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PackCDeliveryReadinessError'
+  }
+}
+
 export type PackCDeliveryReadinessVisibility =
   | 'customer'
   | 'operator'
   | 'public'
   | 'team'
 
-export type PackCDeliveryReadinessIdentityStatus =
-  | 'blocked'
-  | 'ready'
-  | 'stale'
+export type PackCDeliveryReadinessIdentityStatus = 'blocked' | 'ready' | 'stale'
 
 export type PackCDeliveryReadinessChangeStatus =
   | 'blocked'
@@ -121,7 +126,7 @@ const assertNoPrivateDeliveryMaterial = (
   const text = typeof value === 'string' ? value : JSON.stringify(value)
 
   if (PACK_C_DELIVERY_PRIVATE_MARKERS.some(marker => marker.test(text))) {
-    throw new Error(
+    throw new PackCDeliveryReadinessError(
       `${context} contains raw patch, raw shell, private repo, local path, or payment material.`,
     )
   }
@@ -132,7 +137,9 @@ const safeRef = (field: string, value: string): string => {
   assertNoPrivateDeliveryMaterial(trimmed, field)
 
   if (!SAFE_REF_PATTERN.test(trimmed)) {
-    throw new Error(`${field} must be a stable Pack C delivery ref.`)
+    throw new PackCDeliveryReadinessError(
+      `${field} must be a stable Pack C delivery ref.`,
+    )
   }
 
   return trimmed
@@ -146,7 +153,8 @@ const safeRefs = (
 const safeOptionalRef = (
   field: string,
   value: string | null | undefined,
-): string | null => (value === null || value === undefined ? null : safeRef(field, value))
+): string | null =>
+  value === null || value === undefined ? null : safeRef(field, value)
 
 const ageMs = (generatedAt: string, observedAt: string): number => {
   const age = Date.parse(generatedAt) - Date.parse(observedAt)
@@ -155,7 +163,7 @@ const ageMs = (generatedAt: string, observedAt: string): number => {
 }
 
 const staleAt = (observedAt: string, staleAfterMs: number): string =>
-  new Date(Date.parse(observedAt) + Math.max(0, Math.trunc(staleAfterMs))).toISOString()
+  isoTimestampAfterIso(observedAt, Math.max(0, Math.trunc(staleAfterMs)))
 
 const blockers = (
   refs: Readonly<{
@@ -174,43 +182,67 @@ const blockers = (
   }>,
 ): ReadonlyArray<string> => [
   ...(refs.changeCaptureRefs.length === 0
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-change-capture`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-change-capture`,
+      ]
     : []),
   ...(refs.githubWritebackAuthorityRefs.length === 0
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-writeback-authority`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-writeback-authority`,
+      ]
     : []),
   ...(refs.verificationRefs.length === 0
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-verification`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-verification`,
+      ]
     : []),
   ...(refs.reviewRefs.length === 0
     ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-review`]
     : []),
   ...(refs.humanMergeCaveatRefs.length === 0
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-human-merge-caveat`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:missing-human-merge-caveat`,
+      ]
     : []),
   ...(refs.repositoryIdentityStatus === 'stale'
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-repository-identity`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-repository-identity`,
+      ]
     : []),
   ...(refs.repositoryIdentityStatus === 'blocked'
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:blocked-repository-identity`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:blocked-repository-identity`,
+      ]
     : []),
   ...(refs.worktreeIdentityStatus === 'stale'
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-worktree-identity`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-worktree-identity`,
+      ]
     : []),
   ...(refs.worktreeIdentityStatus === 'blocked'
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:blocked-worktree-identity`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:blocked-worktree-identity`,
+      ]
     : []),
   ...(refs.changeCaptureStatus === 'stale'
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-change-capture`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-change-capture`,
+      ]
     : []),
   ...(refs.changeCaptureStatus === 'blocked'
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:blocked-change-capture`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:blocked-change-capture`,
+      ]
     : []),
   ...(refs.freshness === 'stale'
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-delivery-readiness`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:stale-delivery-readiness`,
+      ]
     : []),
   ...(refs.visibility === 'public' && !refs.publicSafe
-    ? [`pack-c-delivery-readiness-blocker:${refs.deliveryRef}:unsafe-public-visibility`]
+    ? [
+        `pack-c-delivery-readiness-blocker:${refs.deliveryRef}:unsafe-public-visibility`,
+      ]
     : []),
 ]
 

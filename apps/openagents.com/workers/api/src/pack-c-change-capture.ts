@@ -1,7 +1,8 @@
 import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
 
-export const PACK_C_CHANGE_CAPTURE_VERSION =
-  'pack-c-change-capture:v1' as const
+import { isoTimestampAfterIso } from './runtime-primitives'
+
+export const PACK_C_CHANGE_CAPTURE_VERSION = 'pack-c-change-capture:v1' as const
 
 const PACK_C_CHANGE_CAPTURE_COLLECTION = 'pack_c_change_capture_public'
 
@@ -23,16 +24,20 @@ const PACK_C_CHANGE_PRIVATE_MARKERS: ReadonlyArray<RegExp> = [
   /(?:;|&&|\|\||`|\$\(|>|<)/,
 ]
 
+class PackCChangeCaptureError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PackCChangeCaptureError'
+  }
+}
+
 export type PackCChangeCaptureVisibility =
   | 'customer'
   | 'operator'
   | 'public'
   | 'team'
 
-export type PackCChangeCaptureIdentityStatus =
-  | 'blocked'
-  | 'ready'
-  | 'stale'
+export type PackCChangeCaptureIdentityStatus = 'blocked' | 'ready' | 'stale'
 
 export type PackCChangeCaptureInput = Readonly<{
   authorityReceiptRefs?: ReadonlyArray<string> | undefined
@@ -94,7 +99,9 @@ const assertNoPrivateChangeMaterial = (
   const text = typeof value === 'string' ? value : JSON.stringify(value)
 
   if (PACK_C_CHANGE_PRIVATE_MARKERS.some(marker => marker.test(text))) {
-    throw new Error(`${context} contains raw patch, private repo, local path, or shell material.`)
+    throw new PackCChangeCaptureError(
+      `${context} contains raw patch, private repo, local path, or shell material.`,
+    )
   }
 }
 
@@ -103,7 +110,7 @@ const safeRef = (field: string, value: string): string => {
   assertNoPrivateChangeMaterial(trimmed, field)
 
   if (!SAFE_REF_PATTERN.test(trimmed)) {
-    throw new Error(`${field} must be a stable Pack C ref.`)
+    throw new PackCChangeCaptureError(`${field} must be a stable Pack C ref.`)
   }
 
   return trimmed
@@ -121,7 +128,7 @@ const ageMs = (generatedAt: string, observedAt: string): number =>
   Math.max(0, Date.parse(generatedAt) - Date.parse(observedAt))
 
 const staleAt = (observedAt: string, staleAfterMs: number): string =>
-  new Date(Date.parse(observedAt) + staleAfterMs).toISOString()
+  isoTimestampAfterIso(observedAt, staleAfterMs)
 
 const blockerRefs = (
   input: PackCChangeCaptureInput,
@@ -137,16 +144,24 @@ const blockerRefs = (
     ? [`pack-c-change-capture-blocker:${input.changeRef}:missing-patch-digest`]
     : []),
   ...(input.writebackRequired && refs.authorityReceiptRefs.length === 0
-    ? [`pack-c-change-capture-blocker:${input.changeRef}:missing-writeback-authority`]
+    ? [
+        `pack-c-change-capture-blocker:${input.changeRef}:missing-writeback-authority`,
+      ]
     : []),
   ...(input.worktreeIdentityStatus === 'stale'
-    ? [`pack-c-change-capture-blocker:${input.changeRef}:stale-worktree-identity`]
+    ? [
+        `pack-c-change-capture-blocker:${input.changeRef}:stale-worktree-identity`,
+      ]
     : []),
   ...(input.worktreeIdentityStatus === 'blocked'
-    ? [`pack-c-change-capture-blocker:${input.changeRef}:blocked-worktree-identity`]
+    ? [
+        `pack-c-change-capture-blocker:${input.changeRef}:blocked-worktree-identity`,
+      ]
     : []),
   ...(input.visibility === 'public' && !input.publicSafe
-    ? [`pack-c-change-capture-blocker:${input.changeRef}:unsafe-public-visibility`]
+    ? [
+        `pack-c-change-capture-blocker:${input.changeRef}:unsafe-public-visibility`,
+      ]
     : []),
 ]
 
@@ -175,7 +190,10 @@ export const projectPackCChangeCapture = (
   const projection: PackCChangeCaptureProjection = {
     ageMs: observedAgeMs,
     authorityReceiptRefs,
-    baseCommitRef: safeRef('pack-c-change-capture.baseCommitRef', input.baseCommitRef),
+    baseCommitRef: safeRef(
+      'pack-c-change-capture.baseCommitRef',
+      input.baseCommitRef,
+    ),
     blockerRefs: blockers,
     changeRef: safeRef('pack-c-change-capture.changeRef', input.changeRef),
     changeVersion: PACK_C_CHANGE_CAPTURE_VERSION,
@@ -190,7 +208,10 @@ export const projectPackCChangeCapture = (
     ),
     freshness,
     generatedAt: input.generatedAt,
-    headCommitRef: safeRef('pack-c-change-capture.headCommitRef', input.headCommitRef),
+    headCommitRef: safeRef(
+      'pack-c-change-capture.headCommitRef',
+      input.headCommitRef,
+    ),
     observedAt: input.observedAt,
     patchDigestRef: safeOptionalRef(
       'pack-c-change-capture.patchDigestRef',
@@ -207,19 +228,23 @@ export const projectPackCChangeCapture = (
     ),
     staleAt: staleAt(input.observedAt, input.staleAfterMs),
     status:
-      blockers.length > 0 ? 'blocked' : freshness === 'stale' ? 'stale' : 'review_ready',
+      blockers.length > 0
+        ? 'blocked'
+        : freshness === 'stale'
+          ? 'stale'
+          : 'review_ready',
     summaryRef: safeRef('pack-c-change-capture.summaryRef', input.summaryRef),
     verificationRefs,
     visibility: input.visibility,
     worktreeIdentityStatus: input.worktreeIdentityStatus,
-    worktreeRef: safeRef('pack-c-change-capture.worktreeRef', input.worktreeRef),
+    worktreeRef: safeRef(
+      'pack-c-change-capture.worktreeRef',
+      input.worktreeRef,
+    ),
     writebackRequired: input.writebackRequired,
   }
 
-  assertNoPrivateChangeMaterial(
-    projection,
-    PACK_C_CHANGE_CAPTURE_COLLECTION,
-  )
+  assertNoPrivateChangeMaterial(projection, PACK_C_CHANGE_CAPTURE_COLLECTION)
 
   return projection
 }

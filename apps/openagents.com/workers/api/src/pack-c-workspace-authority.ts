@@ -21,6 +21,13 @@ const PACK_C_WORKSPACE_PRIVATE_MARKERS: ReadonlyArray<RegExp> = [
   /(?:;|&&|\|\||`|\$\(|>|<)/,
 ]
 
+class PackCWorkspaceAuthorityError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PackCWorkspaceAuthorityError'
+  }
+}
+
 export type PackCWorkspaceOperationKind =
   | 'file_edit'
   | 'file_read'
@@ -85,7 +92,9 @@ const assertNoPrivateWorkspaceMaterial = (
   const text = typeof value === 'string' ? value : JSON.stringify(value)
 
   if (PACK_C_WORKSPACE_PRIVATE_MARKERS.some(marker => marker.test(text))) {
-    throw new Error(`${context} contains raw shell, private repo, local path, or prompt material.`)
+    throw new PackCWorkspaceAuthorityError(
+      `${context} contains raw shell, private repo, local path, or prompt material.`,
+    )
   }
 }
 
@@ -94,7 +103,9 @@ const safeRef = (field: string, value: string): string => {
   assertNoPrivateWorkspaceMaterial(trimmed, field)
 
   if (!SAFE_REF_PATTERN.test(trimmed)) {
-    throw new Error(`${field} must be a stable Pack C workspace ref.`)
+    throw new PackCWorkspaceAuthorityError(
+      `${field} must be a stable Pack C workspace ref.`,
+    )
   }
 
   return trimmed
@@ -108,7 +119,8 @@ const safeRefs = (
 const safeOptionalRef = (
   field: string,
   value: string | null | undefined,
-): string | null => (value === null || value === undefined ? null : safeRef(field, value))
+): string | null =>
+  value === null || value === undefined ? null : safeRef(field, value)
 
 const scopeBlockers = (
   evidenceRef: string,
@@ -119,7 +131,10 @@ const scopeBlockers = (
 
   return touchedPathRefs
     .filter(pathRef => !allowed.has(pathRef))
-    .map(pathRef => `pack-c-workspace-authority-blocker:${evidenceRef}:out-of-scope:${pathRef}`)
+    .map(
+      pathRef =>
+        `pack-c-workspace-authority-blocker:${evidenceRef}:out-of-scope:${pathRef}`,
+    )
 }
 
 const blockers = (
@@ -140,14 +155,20 @@ const blockers = (
     refs.touchedPathRefs,
   ),
   ...(input.requiresApproval && refs.approvalRefs.length === 0
-    ? [`pack-c-workspace-authority-blocker:${refs.evidenceRef}:missing-approval`]
+    ? [
+        `pack-c-workspace-authority-blocker:${refs.evidenceRef}:missing-approval`,
+      ]
     : []),
   ...(refs.allowedCommandIntentRefs.includes(refs.commandIntentRef)
     ? []
-    : [`pack-c-workspace-authority-blocker:${refs.evidenceRef}:command-not-allowed`]),
+    : [
+        `pack-c-workspace-authority-blocker:${refs.evidenceRef}:command-not-allowed`,
+      ]),
   ...(input.expectedSandboxProfileRef !== undefined &&
   input.expectedSandboxProfileRef.trim() !== input.sandboxProfileRef.trim()
-    ? [`pack-c-workspace-authority-blocker:${refs.evidenceRef}:sandbox-mismatch`]
+    ? [
+        `pack-c-workspace-authority-blocker:${refs.evidenceRef}:sandbox-mismatch`,
+      ]
     : []),
   ...(input.timeoutRef === null || input.timeoutRef === undefined
     ? []
@@ -155,8 +176,11 @@ const blockers = (
   ...(input.cancellationRef === null || input.cancellationRef === undefined
     ? []
     : [`pack-c-workspace-authority-blocker:${refs.evidenceRef}:cancelled`]),
-  ...(input.redactionClass === 'public' && refs.redactionReceiptRefs.length === 0
-    ? [`pack-c-workspace-authority-blocker:${refs.evidenceRef}:redaction-required`]
+  ...(input.redactionClass === 'public' &&
+  refs.redactionReceiptRefs.length === 0
+    ? [
+        `pack-c-workspace-authority-blocker:${refs.evidenceRef}:redaction-required`,
+      ]
     : []),
 ]
 
@@ -165,7 +189,10 @@ export const projectPackCWorkspaceAuthority = (
 ): PackCWorkspaceAuthorityProjection => {
   assertNoPrivateWorkspaceMaterial(input, 'pack-c-workspace-authority.input')
 
-  const evidenceRef = safeRef('pack-c-workspace-authority.evidenceRef', input.evidenceRef)
+  const evidenceRef = safeRef(
+    'pack-c-workspace-authority.evidenceRef',
+    input.evidenceRef,
+  )
   const allowedCommandIntentRefs = safeRefs(
     'pack-c-workspace-authority.allowedCommandIntentRefs',
     input.allowedCommandIntentRefs,
@@ -227,10 +254,16 @@ export const projectPackCWorkspaceAuthority = (
       input.sandboxProfileRef,
     ),
     status: blockerRefs.length === 0 ? 'allowed' : 'denied',
-    timeoutRef: safeOptionalRef('pack-c-workspace-authority.timeoutRef', input.timeoutRef),
+    timeoutRef: safeOptionalRef(
+      'pack-c-workspace-authority.timeoutRef',
+      input.timeoutRef,
+    ),
     touchedPathRefs,
     workspaceAuthorityVersion: PACK_C_WORKSPACE_AUTHORITY_VERSION,
-    workspaceRef: safeRef('pack-c-workspace-authority.workspaceRef', input.workspaceRef),
+    workspaceRef: safeRef(
+      'pack-c-workspace-authority.workspaceRef',
+      input.workspaceRef,
+    ),
   }
 
   assertNoPrivateWorkspaceMaterial(
