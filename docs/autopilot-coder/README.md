@@ -57,6 +57,13 @@ Forum reporting.
   It also proposes a local owner-only Pylon Dev Mode for improving Pylon from
   inside Pylon with Codex fixes, optional Fable review, targeted checks, and
   safe reloads.
+- `claude/2026-06-12-pylon-claude-codex-parity-audit.md`: full audit of
+  current Claude support in Pylon measured against the Codex lane — the
+  assignment-spine parity and Claude dual-capability default versus the
+  Codex-only local supervised surface (composer backend, dangerous mode, dev
+  doctor execution mode, TUI labels) — with the CL1-CL4 suggested issue set,
+  amendments to #4838/#4842/#4843, end states, and the decision to cite the
+  closed Pack A/B/C contracts rather than file a new operationalization pack.
 - `terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`: delegation
   plan for the current open issue set, assigning the MVP ladder, Pack A, Pack
   B, market, and W3 evaluation work across eight named agent worktrees with
