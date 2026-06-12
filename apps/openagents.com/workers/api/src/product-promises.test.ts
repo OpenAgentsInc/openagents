@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-11.9')
+    expect(decoded.version).toBe('2026-06-12.2')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -110,9 +110,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
-    expect(decoded.verificationSummary.topBlockedPromises.length).toBeGreaterThan(
-      0,
-    )
+    expect(
+      decoded.verificationSummary.topBlockedPromises.length,
+    ).toBeGreaterThan(0)
     expect(
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)
@@ -183,9 +183,16 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'models.tasadar_percepta_executor.v1',
-          state: 'red',
+          state: 'withdrawn',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.tasadar_tassadar_naming_boundary_missing',
+            'blocker.product_promises.misspelled_promise_id_withdrawn',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'models.tassadar_percepta_executor.v1',
+          state: 'red',
+          evidenceRefs: expect.arrayContaining([
+            'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
           ]),
         }),
         expect.objectContaining({
@@ -284,12 +291,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-11.9', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-12.2', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-11.9',
+      expectedVersion: '2026-06-12.2',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-11.9',
+      servedVersion: '2026-06-12.2',
       status: 'ready',
     })
     expect(
@@ -299,7 +306,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-11.9',
+      servedVersion: '2026-06-12.2',
       status: 'blocked',
     })
   })

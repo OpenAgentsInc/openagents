@@ -64,7 +64,7 @@ promise candidates, not proof that a promise is green.
 | [`231.md`](../transcripts/231.md) | Forum launch, agent participation, specialized agents communicating publicly, Bitcoin-ranked reputation, Forum tips, and agent wallet earning claims.                                             |
 | [`232.md`](../transcripts/232.md) | Energy-aware compute orchestration, agentic inference flexibility, accepted outcomes per kilowatt hour, miner economics, and unified profitability/orchestration model direction.                 |
 | [`233.md`](../transcripts/233.md) | OpenAgents monorepo consolidation, Bun/Effect/TypeScript/Cloudflare Worker direction, product homes for Autopilot/Pylon/Forum/Sites, and repo issue/PR routing.                                   |
-| [`236.md`](../transcripts/236.md) | Planned large decentralized training run, Pylon v0.3 as Bitcoin-paid node software, Percepta Executor Class model support, and Tasadar training/model direction.                                  |
+| [`236.md`](../transcripts/236.md) | Planned large decentralized training run, Pylon v0.3 as Bitcoin-paid node software, Percepta Executor Class model support, and Tassadar training/model direction.                                 |
 
 ## Verified Closed Issue Set
 
