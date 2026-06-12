@@ -1859,3 +1859,33 @@ Verification:
 
 - `git diff --check`
 - `bunx prettier --check docs/autopilot-coder/implementation-log.md docs/autopilot-coder/terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`
+
+## Pylon Codex Day-To-Day Readiness Audit
+
+Issue context:
+
+- Owner asked whether day-to-day coding can switch immediately to Pylon, with
+  Codex as the main workhorse and Fable available occasionally.
+- Re-read the current open issue tail (#4749, #4768, #4772, #4777, #4781,
+  #4782, #4783, #4786), the terminal-agent systems operationalization roadmap,
+  the main Autopilot Coder docs, Pylon Codex/Claude bridge docs, release
+  records, and the current Pylon CLI/work-requester implementation.
+
+Status: docs-only readiness audit; no product promise or runtime invariant
+changed.
+
+Implemented:
+
+- Added
+  `docs/autopilot-coder/2026-06-12-pylon-codex-day-to-day-readiness-audit.md`.
+- Recorded the current verdict: Pylon v0.3 source is minimally usable for
+  controlled owner dogfood with Codex, but not yet ready as the owner's
+  supported full daily-driver coding replacement.
+- Identified the immediate blockers: v0.3 package publication, placeholder
+  commit pinning in `pylon work submit`, missing explicit Codex/Fable adapter
+  preference, delivery/PR ergonomics, and still-open M10/M14 live proof gates.
+- Updated the Autopilot Coder README index with the new audit.
+
+Verification:
+
+- `git diff --check`

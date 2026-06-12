@@ -48,6 +48,12 @@ Forum reporting.
   pair is closed by #4836/#4837; the next pack is intentionally not filed until
   the remaining MVP proof gates (#4768/#4772) have consumed Pack C evidence or
   been explicitly narrowed.
+- `2026-06-12-pylon-codex-day-to-day-readiness-audit.md`: immediate
+  day-to-day readiness audit for switching owner coding to Pylon with Codex as
+  the primary workhorse and Fable via the Claude Agent lane. Verdict:
+  controlled source-checkout dogfood is minimally usable, but full daily-driver
+  replacement is blocked by v0.3 packaging, `pylon work submit` commit pinning,
+  explicit adapter preference, delivery ergonomics, and live unattended proof.
 - `terminal-agent-systems/2026-06-11-open-issue-delegation-plan.md`: delegation
   plan for the current open issue set, assigning the MVP ladder, Pack A, Pack
   B, market, and W3 evaluation work across eight named agent worktrees with
