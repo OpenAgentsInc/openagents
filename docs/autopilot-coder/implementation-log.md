@@ -1696,3 +1696,34 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/pack-c-workspace-authority.test.ts src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`
+
+## PC4 / Issue #4835: Delivery Authority And PR Readiness Receipts
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4835`
+
+Status: implemented for the Pack C delivery readiness and PR draft receipt
+projection contract.
+
+Implemented:
+
+- Added `pack-c-delivery-readiness.ts` with typed delivery readiness
+  projections over repository/worktree identity refs, change capture refs,
+  verification refs, GitHub writeback authority refs, review refs, and
+  human-merge caveat refs.
+- PR draft readiness can be `ready`, `blocked`, or `scoped_exception`, with
+  blockers for missing change capture, missing writeback authority, missing
+  verification, missing review refs, missing human-merge caveats, stale or
+  blocked identity/capture evidence, stale projection freshness, and unsafe
+  public visibility.
+- Market and agent delivery refs remain evidence-only and do not satisfy
+  maintainer merge, acceptance, settlement, payout, or public-claim authority.
+- Added unsafe material rejection for raw patches, raw file contents, raw
+  shell logs, raw commands, raw prompts, private repo data, local paths,
+  provider payloads, credentials, wallet/payment material, and
+  customer-private data.
+- Added `docs/autopilot-coder/2026-06-12-pack-c-delivery-readiness.md` and
+  updated the original terminal-agent-systems roadmap and app invariant ledger.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/pack-c-delivery-readiness.test.ts src/pack-c-workspace-authority.test.ts src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`

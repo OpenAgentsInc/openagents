@@ -90,7 +90,7 @@ export type ProviderAccountRetentionPolicyInput = Readonly<{
 }>
 
 export type ProviderAccountRetentionDataClassProjection =
-  ProviderAccountRetentionDataClassPolicy & Readonly<{
+  Omit<ProviderAccountRetentionDataClassPolicy, 'auditRef'> & Readonly<{
     auditRef: string | null
   }>
 

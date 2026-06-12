@@ -253,6 +253,15 @@ Implementation status:
   and `docs/autopilot-coder/2026-06-12-pack-c-workspace-authority.md`. It
   defines file/shell/workspace authority projections with command, path,
   approval, sandbox, timeout, cancellation, redaction, and typed denial refs.
+- #4835 PC4 is implemented by
+  `apps/openagents.com/workers/api/src/pack-c-delivery-readiness.ts`,
+  `apps/openagents.com/workers/api/src/pack-c-delivery-readiness.test.ts`,
+  and `docs/autopilot-coder/2026-06-12-pack-c-delivery-readiness.md`. It
+  defines delivery readiness and PR draft receipt projections over repository
+  identity, worktree identity, change capture, verification, writeback
+  authority, review, and human-merge caveat refs while keeping market/agent
+  delivery separate from merge, acceptance, settlement, payout, and
+  public-claim authority.
 
 ## Audit Finding
 

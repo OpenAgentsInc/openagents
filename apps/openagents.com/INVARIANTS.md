@@ -216,12 +216,30 @@ This is the invariant ledger for `openagents`.
   raw prompts, local filesystem paths, private repo content, provider payloads,
   credentials, wallet/payment material, and customer-private data before
   projection.
+- Pack C delivery readiness projections may expose delivery refs,
+  repository/worktree identity refs, change capture refs, verification refs,
+  GitHub writeback authority refs, review refs, human-merge caveat refs,
+  delivery receipt refs, market and agent delivery refs, acceptance receipt
+  refs, settlement receipt refs, public-safety state, freshness metadata,
+  caveat refs, and typed blockers only. Missing change capture, missing
+  writeback authority, missing verification, missing review refs, missing
+  human-merge caveats, stale or blocked repository/worktree identity, stale or
+  blocked change captures, stale projection freshness, and unsafe public
+  visibility must become typed blockers. Market and agent delivery refs are
+  evidence only and must not satisfy maintainer merge, acceptance, settlement,
+  payout, or public-claim authority. Public and agent-readable delivery
+  readiness projections must reject raw patches, raw file contents, raw shell
+  logs, raw commands, raw prompts, private repo data, local filesystem paths,
+  provider payloads, credentials, wallet/payment material, and
+  customer-private data before projection.
 - Regression coverage for Pack C repository/worktree identity snapshots lives
   in `workers/api/src/pack-c-repo-worktree-identity.test.ts`.
 - Regression coverage for Pack C change capture and diff review artifacts
   lives in `workers/api/src/pack-c-change-capture.test.ts`.
 - Regression coverage for Pack C workspace/file/shell authority evidence
   lives in `workers/api/src/pack-c-workspace-authority.test.ts`.
+- Regression coverage for Pack C delivery readiness receipts lives in
+  `workers/api/src/pack-c-delivery-readiness.test.ts`.
 
 ## Autopilot Bridge API Parity And Work-Creation Contract
 
