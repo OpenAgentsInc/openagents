@@ -164,7 +164,10 @@ export type PylonJoinLifecycleLadderProjection = Readonly<{
   totalCount: number
 }>
 
-const stateLabelByState: Record<PylonJoinLifecycleState, string> = {
+export const pylonJoinLifecycleStateLabelByState: Record<
+  PylonJoinLifecycleState,
+  string
+> = {
   active: 'Active',
   lagged: 'Lagged',
   qualified: 'Qualified',
@@ -177,7 +180,10 @@ const stateLabelByState: Record<PylonJoinLifecycleState, string> = {
 // Position on the bright ladder. Back-edge states are negative: a
 // lagged device has fallen off the ladder and a sync_reentry device is
 // one re-sync away from rejoining it at state_synced.
-const ladderRankByState: Record<PylonJoinLifecycleState, number> = {
+export const pylonJoinLifecycleLadderRankByState: Record<
+  PylonJoinLifecycleState,
+  number
+> = {
   active: 4,
   lagged: -2,
   qualified: 1,
@@ -265,11 +271,11 @@ export const projectPylonJoinLifecycleRecord = (
 
   const projection: PylonJoinLifecycleProjection = {
     capacityRef: record.capacityRef,
-    ladderRank: ladderRankByState[record.state],
+    ladderRank: pylonJoinLifecycleLadderRankByState[record.state],
     reasonCode: record.reasonCode,
     receiptRefs: uniqueRefs(record.receiptRefs),
     state: record.state,
-    stateLabel: stateLabelByState[record.state],
+    stateLabel: pylonJoinLifecycleStateLabelByState[record.state],
     updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
       record.updatedAtIso,
       nowIso,
@@ -473,9 +479,9 @@ export const pylonJoinLifecycleLadderForFunnel = (
 
       return {
         capacityRef: projection.capacityRef,
-        ladderRank: ladderRankByState[state],
+        ladderRank: pylonJoinLifecycleLadderRankByState[state],
         state,
-        stateLabel: stateLabelByState[state],
+        stateLabel: pylonJoinLifecycleStateLabelByState[state],
       }
     })
 

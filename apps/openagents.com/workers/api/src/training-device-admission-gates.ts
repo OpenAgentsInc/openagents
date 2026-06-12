@@ -30,6 +30,28 @@ export const DeviceAdmissionGateComparisons = ['at_least', 'at_most'] as const
 export type DeviceAdmissionGateComparison =
   (typeof DeviceAdmissionGateComparisons)[number]
 
+// Coding-host probe kinds (openagents issue #4861, tracker #4862).
+// These extend the gate measurement-kind union for coding-agent work
+// classes without touching the CS336 A2 qualification payload: the a2
+// benchmark suite does not measure them, so they never join
+// `Cs336A2QualificationProbeMeasurements` or the benchmark payload.
+// Presence kinds are 0-or-1 measurements gated `at_least 1`. Live
+// values are hardware-gated and arrive only as receipted evidence,
+// exactly like the host-RAM and sustained-vs-burst probe kinds.
+export const PylonCodingHostProbeMeasurements = [
+  'node_or_bun_runtime_present',
+  'workspace_write_sandbox_supported',
+] as const
+export type PylonCodingHostProbeMeasurement =
+  (typeof PylonCodingHostProbeMeasurements)[number]
+
+export const DeviceAdmissionGateMeasurementKinds = [
+  ...Cs336A2QualificationProbeMeasurements,
+  ...PylonCodingHostProbeMeasurements,
+] as const
+export type DeviceAdmissionGateMeasurementKind =
+  (typeof DeviceAdmissionGateMeasurementKinds)[number]
+
 export const DeviceAdmissionDecisions = ['admitted', 'excluded'] as const
 export type DeviceAdmissionDecision = (typeof DeviceAdmissionDecisions)[number]
 
@@ -63,7 +85,7 @@ const StatedReason = NonEmptyTrimmedString.check(
 
 export const DeviceAdmissionGateRequirement = S.Struct({
   comparison: S.Literals(DeviceAdmissionGateComparisons),
-  measurementKind: S.Literals(Cs336A2QualificationProbeMeasurements),
+  measurementKind: S.Literals(DeviceAdmissionGateMeasurementKinds),
   threshold: S.Number,
   unit: PublicSafeRef,
 })
@@ -91,7 +113,7 @@ export const DeviceAdmissionDecisionRecord = S.Struct({
   deviceClassRef: PublicSafeRef,
   gateRef: PublicSafeRef,
   measuredValue: S.Number,
-  measurementKind: S.Literals(Cs336A2QualificationProbeMeasurements),
+  measurementKind: S.Literals(DeviceAdmissionGateMeasurementKinds),
   reasonCode: NonEmptyTrimmedString.check(
     S.isPattern(/^device_admission\.public\.(admitted|excluded)_[a-z0-9_]{1,200}$/),
   ),
