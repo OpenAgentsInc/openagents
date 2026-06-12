@@ -1,0 +1,108 @@
+{
+  "schema": "openagents.pylon.stranger_probe_smoke.v0.1",
+  "mode": "no_spend",
+  "relayUrl": "wss://relay.openagents.com",
+  "baseUrl": "https://openagents.com",
+  "probeStartedAt": "2026-06-12T23:56:14.259Z",
+  "probeCompletedAt": "2026-06-12T23:56:45.262Z",
+  "provenance": {
+    "issueRef": "openagents#4866",
+    "probeShapeSourceRef": "probe.orrery.stranger_buyer.2026_06_12",
+    "forumTopicRef": "forum.topic.499cec6e-c09e-45a7-8c24-4bcee8fc87dc",
+    "forumPostRef": "forum.post.7be6aa0a-c64a-466f-b90e-45e1d24ef93f"
+  },
+  "request": {
+    "eventId": "7328046aef45786add86ffd154bbd4037c7929bcc9e0ea82a0e112d6ba35e3db",
+    "kind": 5050,
+    "bidMsats": 21000,
+    "output": "text/plain",
+    "customerPubkey": "30297c5ee30123a37dd55751758a258786ee6be731f70eb53466cd144ac4ca99",
+    "publishedAt": "2026-06-12T23:56:15.259Z",
+    "acceptedByRelay": true,
+    "relayMessage": ""
+  },
+  "registeredCapacity": {
+    "sourceRoute": "/api/pylons",
+    "providerCount": 3,
+    "skippedWithoutPubkey": 60,
+    "providers": [
+      {
+        "pylonRef": "pylon.raynor.proof.alpha.20260612",
+        "providerNostrPubkey": "3a4cc579d3b2ad4f47af791a1884205ae639e88bb79956d8068acc108a6e1cc9",
+        "providerNostrNpub": "npub18fxv27wnk2k573a00ydp3ppqttnrn6ytk7v4dkqx3txppznwrnys2psdz4",
+        "providerNip90LaneRefs": [
+          "lane.public.nip90.5050.text_generation",
+          "lane.public.nip90.5934.labor_code_task",
+          "lane.public.nip90.5935.labor_review",
+          "lane.public.nip90.5936.labor_document_work"
+        ],
+        "providerMarketRelayRefs": [
+          "wss://relay.openagents.com"
+        ],
+        "latestHeartbeatStatus": "online",
+        "capabilityRefs": [
+          "capability.public.pylon.labor.local_agent.v0.3",
+          "capability.public.pylon.nip90.text_inference.v0.3"
+        ]
+      },
+      {
+        "pylonRef": "pylon.raynor.proof.beta.20260612",
+        "providerNostrPubkey": "dea6fac41fa007b7738e789eeb57fa2e6b8b39ca88ac9f61779bac45e95cef1d",
+        "providerNostrNpub": "npub1m6n043ql5qrmwuuw0z0wk4l69e4ckww23zkf7cthnwkyt62uauwslj9cpm",
+        "providerNip90LaneRefs": [
+          "lane.public.nip90.5050.text_generation",
+          "lane.public.nip90.5934.labor_code_task",
+          "lane.public.nip90.5935.labor_review",
+          "lane.public.nip90.5936.labor_document_work"
+        ],
+        "providerMarketRelayRefs": [
+          "wss://relay.openagents.com"
+        ],
+        "latestHeartbeatStatus": "online",
+        "capabilityRefs": [
+          "capability.public.pylon.labor.local_agent.v0.3",
+          "capability.public.pylon.nip90.text_inference.v0.3"
+        ]
+      },
+      {
+        "pylonRef": "pylon.a1469b9cdf6965a57530",
+        "providerNostrPubkey": "276b2d19590771cf1efa6a9e163e64dd51775b243250d213ca3e3790a8cf7e34",
+        "providerNostrNpub": "npub1ya4j6x2eqacu78h6d20pv0nym4ghwkeyxfgdyy728cmep2x00c6qpr0y4k",
+        "providerNip90LaneRefs": [
+          "lane.public.nip90.5050.text_generation",
+          "lane.public.nip90.5934.labor_code_task",
+          "lane.public.nip90.5935.labor_review",
+          "lane.public.nip90.5936.labor_document_work"
+        ],
+        "providerMarketRelayRefs": [
+          "wss://relay.openagents.com"
+        ],
+        "latestHeartbeatStatus": "online",
+        "capabilityRefs": [
+          "capability.public.pylon.labor.local_agent.v0.3",
+          "capability.public.pylon.nip90.text_inference.v0.3",
+          "capability.tassadar_poc.numeric_model_executor"
+        ]
+      }
+    ]
+  },
+  "collection": {
+    "budgetMs": 30000,
+    "collectedEventCount": 0,
+    "relayClosedEarly": false,
+    "responderCount": 0,
+    "registeredResponderCount": 0,
+    "unregisteredResponderCount": 0,
+    "responses": []
+  },
+  "paidLeg": {
+    "attempted": false,
+    "authorized": false,
+    "reasonRef": "blocker.pylon.stranger_probe.paid_leg_not_requested"
+  },
+  "verdict": {
+    "status": "passed",
+    "zeroRegisteredResponders": true,
+    "blockerRefs": []
+  }
+}
