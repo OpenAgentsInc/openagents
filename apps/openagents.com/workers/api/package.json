@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run",
     "deploy": "cd ../.. && bun run check:deploy && cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote && cd ../.. && bun run build:web && cd workers/api && wrangler deploy",
-    "smoke:cs336-a2:device-capability": "vitest run src/training-device-capability.test.ts src/training-run-window-routes.test.ts",
+    "smoke:cs336-a2:device-capability": "vitest run src/training-device-capability.test.ts src/training-device-admission-gates.test.ts src/training-run-window-routes.test.ts",
     "smoke:cs336-a3:isoflop": "vitest run src/training-scaling-sweep.test.ts src/training-run-window-routes.test.ts",
     "smoke:cs336-a4:data-refinery": "vitest run src/cs336-a4-data-refinery.test.ts src/cs336-a4-refinery-workload.test.ts src/training-data-refinery.test.ts src/training-run-window-routes.test.ts src/training-leaderboards.test.ts src/training-verification.test.ts",
     "smoke:cs336-a5:alignment": "vitest run src/cs336-a5-alignment-homework.test.ts src/cs336-a5-rollout-workload.test.ts src/training-alignment-evals.test.ts src/training-run-window-routes.test.ts src/training-leaderboards.test.ts",

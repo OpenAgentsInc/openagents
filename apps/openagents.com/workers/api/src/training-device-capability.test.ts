@@ -5,7 +5,9 @@ import {
   buildTrainingWindowRecord,
 } from './training-run-window-authority'
 import {
+  Cs336A2BenchmarkMeasurements,
   Cs336A2DeviceBenchmarkJobKind,
+  Cs336A2HostProbeMeasurements,
   admitCs336A2DeviceBenchmarkEvidence,
   buildCs336A2DeviceBenchmarkPayload,
   publicDeviceCapabilityProjection,
@@ -288,6 +290,105 @@ describe('CS336 A2 device capability projection', () => {
         request: {
           measurements: [
             { ...measurement, sourceRefs: ['payment_hash.deadbeef'] },
+          ],
+        },
+        run,
+      }),
+    ).toThrow('device-identifying or private material')
+  })
+
+  it('declares the host-RAM and sustained-vs-burst probe kinds in the qualification payload', () => {
+    const payload = buildCs336A2DeviceBenchmarkPayload({
+      assignmentRef: 'assignment.cs336.a2.device_benchmark.probe',
+    })
+
+    expect(payload.measurementKinds).toEqual([
+      ...Cs336A2BenchmarkMeasurements,
+      ...Cs336A2HostProbeMeasurements,
+    ])
+    expect(payload.measurementKinds).toContain('host_ram_headroom_gb')
+    expect(payload.measurementKinds).toContain(
+      'sustained_vs_burst_throughput_ratio',
+    )
+    expect(Cs336A2HostProbeMeasurements).toEqual([
+      'host_ram_headroom_gb',
+      'sustained_vs_burst_throughput_ratio',
+    ])
+  })
+
+  it('admits host-RAM headroom and sustained-vs-burst evidence through the same admission and projection path', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a2-host-probe',
+      nowIso: '2026-06-12T16:00:00.000Z',
+      request: {
+        promiseRef: 'training.device_capability_dataset.v1',
+        trainingRunRef: 'run.cs336.a2.device_capability.host_probe',
+      },
+    })
+    const hostRamMeasurement = {
+      deviceClassRef: 'device_class.example.rtx_4090_24gb_96gb_host',
+      max: 101,
+      metric: 'host_ram_headroom_gb' as const,
+      min: 88,
+      p50: 94,
+      p90: 99,
+      receiptRefs: ['receipt.cs336.a2.host_ram.1'],
+      sampleCount: 5,
+      unit: 'gigabytes',
+      verificationRefs: ['verdict.training.statistical_cross_check.2'],
+      workClass: 'work_class.example.optimizer_offload_training',
+    }
+    const sustainedMeasurement = {
+      deviceClassRef: 'device_class.example.rtx_4090_24gb_96gb_host',
+      max: 0.97,
+      metric: 'sustained_vs_burst_throughput_ratio' as const,
+      min: 0.84,
+      p50: 0.91,
+      p90: 0.95,
+      receiptRefs: ['receipt.cs336.a2.sustained_ratio.1'],
+      sampleCount: 5,
+      unit: 'ratio',
+      verificationRefs: ['verdict.training.statistical_cross_check.3'],
+      workClass: 'work_class.example.sustained_collective_training',
+    }
+
+    const admitted = admitCs336A2DeviceBenchmarkEvidence({
+      nowIso: '2026-06-12T16:05:00.000Z',
+      request: {
+        measurements: [hostRamMeasurement, sustainedMeasurement],
+        sourceRefs: ['issue.github.openagents.4852'],
+      },
+      run,
+    })
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [],
+      leases: [],
+      run: admitted,
+      windows: [],
+    })
+
+    expect(projection.observedMeasurementCount).toBe(2)
+    expect(projection.classDistributions.map(item => item.metric)).toEqual([
+      'host_ram_headroom_gb',
+      'sustained_vs_burst_throughput_ratio',
+    ])
+    expect(projection.classDistributions[0]).toMatchObject({
+      crossCheckState: 'cross_checked',
+      metric: 'host_ram_headroom_gb',
+      p50: 94,
+      unit: 'gigabytes',
+      verified: true,
+    })
+    expect(JSON.stringify(projection)).not.toMatch(
+      /pylonRef|deviceId|mnemonic|paymentHash/i,
+    )
+
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-12T16:05:00.000Z',
+        request: {
+          measurements: [
+            { ...hostRamMeasurement, receiptRefs: ['wallet_path.leak'] },
           ],
         },
         run,

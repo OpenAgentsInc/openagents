@@ -30,11 +30,34 @@ export const Cs336A2BenchmarkMeasurements = [
 export type Cs336A2BenchmarkMeasurement =
   (typeof Cs336A2BenchmarkMeasurements)[number]
 
+// Host-side qualification probe kinds (openagents issue #4852, Pluralis
+// roadmap P1.4). These join the qualification schema and evidence
+// admission alongside the kernel-executable benchmark kinds, but they
+// are hardware-gated: the bounded workload module cannot synthesize a
+// host-RAM headroom or sustained-vs-burst thermal measurement, so live
+// values arrive only as receipted device evidence. Pluralis's
+// contributor shape (24 GB GPU + 80 GB system RAM, Adam moments
+// offloaded to host RAM) is the reason host RAM is a binding constraint
+// the kernel suite alone does not measure.
+export const Cs336A2HostProbeMeasurements = [
+  'host_ram_headroom_gb',
+  'sustained_vs_burst_throughput_ratio',
+] as const
+export type Cs336A2HostProbeMeasurement =
+  (typeof Cs336A2HostProbeMeasurements)[number]
+
+export const Cs336A2QualificationProbeMeasurements = [
+  ...Cs336A2BenchmarkMeasurements,
+  ...Cs336A2HostProbeMeasurements,
+] as const
+export type Cs336A2QualificationProbeMeasurement =
+  (typeof Cs336A2QualificationProbeMeasurements)[number]
+
 export type Cs336A2DeviceBenchmarkPayload = Readonly<{
   assignmentRef: string
   benchmarkSuiteRef: typeof Cs336A2DeviceBenchmarkSuiteRef
   jobKind: typeof Cs336A2DeviceBenchmarkJobKind
-  measurementKinds: ReadonlyArray<Cs336A2BenchmarkMeasurement>
+  measurementKinds: ReadonlyArray<Cs336A2QualificationProbeMeasurement>
   outputSchemaRef: typeof Cs336A2OutputSchemaRef
   privacyPolicyRefs: ReadonlyArray<string>
   requestSchemaRef: typeof Cs336A2RequestSchemaRef
@@ -60,7 +83,7 @@ export type DeviceCapabilityDistribution = Readonly<{
   earningEstimate: DeviceCapabilityEarningEstimate | null
   max: number
   measurementRef: string
-  metric: Cs336A2BenchmarkMeasurement
+  metric: Cs336A2QualificationProbeMeasurement
   min: number
   p50: number
   p90: number
@@ -110,7 +133,7 @@ export const Cs336A2MeasurementEvidence = S.Struct({
   earningEstimate: S.optionalKey(Cs336A2EarningEstimateEvidence),
   max: S.Number,
   measurementRef: S.optionalKey(PublicSafeRef),
-  metric: S.Literals(Cs336A2BenchmarkMeasurements),
+  metric: S.Literals(Cs336A2QualificationProbeMeasurements),
   min: S.Number,
   p50: S.Number,
   p90: S.Number,
@@ -162,10 +185,10 @@ const optionalNumber = (value: unknown): number | undefined => {
 
 const metricFromUnknown = (
   value: unknown,
-): Cs336A2BenchmarkMeasurement | undefined => {
+): Cs336A2QualificationProbeMeasurement | undefined => {
   const text = optionalString(value)
 
-  return Cs336A2BenchmarkMeasurements.find(metric => metric === text)
+  return Cs336A2QualificationProbeMeasurements.find(metric => metric === text)
 }
 
 const publicSafeJson = (value: unknown): string => {
@@ -336,7 +359,7 @@ export const buildCs336A2DeviceBenchmarkPayload = (
     assignmentRef: input.assignmentRef,
     benchmarkSuiteRef: Cs336A2DeviceBenchmarkSuiteRef,
     jobKind: Cs336A2DeviceBenchmarkJobKind,
-    measurementKinds: Cs336A2BenchmarkMeasurements,
+    measurementKinds: Cs336A2QualificationProbeMeasurements,
     outputSchemaRef: Cs336A2OutputSchemaRef,
     privacyPolicyRefs: [
       'policy.public.device_capability.no_device_identifiers',
