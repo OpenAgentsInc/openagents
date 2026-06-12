@@ -113,7 +113,9 @@ payout target`) run from the palette and always end in an explicit
 - `pylon dev doctor --json` returns the redacted local context projection for
   the dashboard/dev loop: active repo provider/name, branch, commit, dirty
   count, instruction/config digest refs, Codex SDK/CLI/auth readiness,
-  Claude/Fable readiness, active Codex execution mode, and backend refs. It
+  Claude/Fable readiness, the active Codex and Claude execution modes
+  (including the Claude permission posture and danger overlay refs), and
+  backend refs. It
   never prints raw keys, auth file paths, instruction text, changed filenames,
   or local absolute paths.
 - `pylon context --json` returns the same public-safe repo, instruction,

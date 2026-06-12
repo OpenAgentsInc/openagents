@@ -57,6 +57,9 @@ export type PylonContextProjection = {
       credentialSourceRef: string | null
       modelRef: string | null
       fableReviewAvailable: boolean
+      executionMode: string
+      permissionMode: string
+      danger: boolean
       capabilityRefs: string[]
       blockerRefs: string[]
     }
@@ -164,6 +167,9 @@ export function emptyPylonContextProjection(observedAt = "1970-01-01T00:00:00.00
         credentialSourceRef: null,
         modelRef: null,
         fableReviewAvailable: false,
+        executionMode: "unknown",
+        permissionMode: "unknown",
+        danger: false,
         capabilityRefs: [],
         blockerRefs: ["blocker.context.claude_agent_unknown"],
       },
@@ -242,6 +248,7 @@ export function contextProjectionFromDevDoctor(dev: PylonDevDoctorProjection): P
       configRefs: unique([
         dev.pylonConfig.configRef,
         dev.pylonConfig.devOverlayRef,
+        dev.pylonConfig.claudeDevOverlayRef,
         `config.pylon.dev.default_adapter.${dev.pylonConfig.defaultAdapter}`,
       ]),
       blockerRefs: [
@@ -250,7 +257,13 @@ export function contextProjectionFromDevDoctor(dev: PylonDevDoctorProjection): P
       ],
     },
     adapters: {
-      mode: dev.pylonConfig.devOverlayRef || dev.codex.executionMode !== "local_bounded" ? "dev" : "normal",
+      mode:
+        dev.pylonConfig.devOverlayRef ||
+        dev.pylonConfig.claudeDevOverlayRef ||
+        dev.codex.executionMode !== "local_bounded" ||
+        dev.claudeAgent.executionMode !== "local_bounded"
+          ? "dev"
+          : "normal",
       primaryAdapter,
       reviewerAdapter,
       codex: {
@@ -276,6 +289,9 @@ export function contextProjectionFromDevDoctor(dev: PylonDevDoctorProjection): P
         credentialSourceRef: dev.claudeAgent.readiness.credentialSourceRef,
         modelRef: modelRef("claude_agent", dev.claudeAgent.configuredModel),
         fableReviewAvailable: dev.claudeAgent.fableReviewAvailable,
+        executionMode: dev.claudeAgent.executionMode,
+        permissionMode: dev.claudeAgent.permissionMode,
+        danger: dev.claudeAgent.executionMode === "local_supervised_danger",
         capabilityRefs: claudeCapabilityRefs,
         blockerRefs: dev.claudeAgent.blockerRefs,
       },

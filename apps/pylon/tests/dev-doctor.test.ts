@@ -114,7 +114,13 @@ describe("pylon dev doctor projection", () => {
       expect(projection.codex.credentialSourceRef).toBe("credential.source.codex_agent.codex_api_key")
       expect(projection.claudeAgent.configuredModel).toBe("claude-fable-5")
       expect(projection.claudeAgent.fableReviewAvailable).toBe(true)
+      expect(projection.claudeAgent).toMatchObject({
+        executionMode: "local_bounded",
+        permissionMode: "acceptEdits",
+        dangerPublicPathBlockerRef: null,
+      })
       expect(projection.pylonConfig.devOverlayRef).toBe("config.pylon.dev.local_supervised_danger")
+      expect(projection.pylonConfig.claudeDevOverlayRef).toBeNull()
       expect(projection.pylonConfig.defaultAdapter).toBe("codex")
       expect(JSON.stringify(projection)).not.toContain(root)
       expect(JSON.stringify(projection)).not.toContain("codex-test-key")
@@ -176,6 +182,51 @@ describe("pylon dev doctor projection", () => {
       expect(projection.repo.dirty.changedCount).toBeGreaterThan(0)
       expect(projection.repo.blockerRefs).toContain("blocker.dev_doctor.repo_dirty")
       expect(JSON.stringify(projection)).not.toContain("secret-local-file")
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("projects the Claude supervised danger mode from dev config or flag", async () => {
+    const { repo, root } = await createRepoFixture()
+    const home = join(root, "pylon-home")
+    try {
+      await writeConfig(home, {
+        claudeAgent: { enabled: true, model: "claude-fable-5" },
+        dev: { claudeExecutionMode: "local_supervised_danger" },
+      })
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const baseOptions = {
+        claudeImporter: sdkPresent(CLAUDE_AGENT_SDK_PACKAGE),
+        codexCliLoginPresent: false,
+        codexCliPath: "/usr/local/bin/codex",
+        codexImporter: sdkPresent(CODEX_AGENT_SDK_PACKAGE),
+        cwd: repo,
+        env: { ANTHROPIC_API_KEY: "anthropic-test-key", PYLON_HOME: home },
+        inventory: inventoryFixture(),
+        localClaudeSessionProbe: async () => false,
+        summary,
+      }
+      const fromConfig = await collectPylonDevDoctor(baseOptions)
+      expect(fromConfig.claudeAgent).toMatchObject({
+        executionMode: "local_supervised_danger",
+        permissionMode: "bypassPermissions",
+        dangerPublicPathBlockerRef: "blocker.claude.local_supervised_danger_public_path",
+      })
+      expect(fromConfig.pylonConfig.claudeDevOverlayRef).toBe(
+        "config.pylon.dev.claude_local_supervised_danger",
+      )
+      // The Claude overlay must not claim the Codex mode and vice versa.
+      expect(fromConfig.codex.executionMode).toBe("local_bounded")
+      expect(fromConfig.pylonConfig.devOverlayRef).toBeNull()
+
+      await writeConfig(home, { claudeAgent: { enabled: true, model: "claude-fable-5" } })
+      const fromFlag = await collectPylonDevDoctor({ ...baseOptions, claudeDangerFlag: true })
+      expect(fromFlag.claudeAgent.executionMode).toBe("local_supervised_danger")
+      expect(fromFlag.claudeAgent.permissionMode).toBe("bypassPermissions")
+      expect(fromFlag.pylonConfig.claudeDevOverlayRef).toBeNull()
+      expect(JSON.stringify(fromFlag)).not.toContain("anthropic-test-key")
+      assertPublicProjectionSafe(fromFlag)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

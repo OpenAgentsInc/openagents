@@ -3,7 +3,12 @@ import { existsSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadClaudeAgentConfig, probeClaudeAgentReadiness, type ClaudeAgentReadiness } from "./claude-agent"
+import {
+  loadClaudeAgentConfig,
+  loadClaudeDevConfig,
+  probeClaudeAgentReadiness,
+  type ClaudeAgentReadiness,
+} from "./claude-agent"
 import {
   loadCodexAgentConfig,
   loadCodexDevConfig,
@@ -15,6 +20,12 @@ import {
   sandboxModeForCodexComposerExecutionMode,
   type CodexComposerExecutionMode,
 } from "./codex-composer"
+import {
+  CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
+  permissionModeForClaudeComposerExecutionMode,
+  type ClaudeComposerExecutionMode,
+  type ClaudeComposerPermissionMode,
+} from "./claude-composer"
 import { createBootstrapSummary, parseBootstrapArgs, type BootstrapSummary } from "./bootstrap"
 import { discoverHostInventory, type PylonBackendHealth, type PylonHostInventoryProjection } from "./inventory"
 import { assertPublicProjectionSafe } from "./state"
@@ -57,6 +68,7 @@ export type PylonDevDoctorProjection = {
     configRef: "config.pylon.local"
     digestRef: string | null
     devOverlayRef: "config.pylon.dev.local_supervised_danger" | null
+    claudeDevOverlayRef: "config.pylon.dev.claude_local_supervised_danger" | null
     defaultAdapter: PylonComposerAdapter
   }
   codex: {
@@ -72,6 +84,14 @@ export type PylonDevDoctorProjection = {
     readiness: ClaudeAgentReadiness
     configuredModel: string | null
     fableReviewAvailable: boolean
+    executionMode: ClaudeComposerExecutionMode
+    permissionMode: ClaudeComposerPermissionMode
+    /**
+     * Set while the permissive mode is active: the typed blocker every
+     * public path (work/assignment/provider/node/attach) throws if the
+     * danger flag reaches it. The danger mode is local-composer-only.
+     */
+    dangerPublicPathBlockerRef: string | null
     blockerRefs: string[]
   }
   backends: {
@@ -94,6 +114,7 @@ export type PylonDevDoctorOptions = {
   inventory?: PylonHostInventoryProjection
   gitRunner?: (cwd: string, args: string[]) => Promise<string | null>
   dangerFlag?: boolean
+  claudeDangerFlag?: boolean
 }
 
 function stableRef(prefix: string, input: string) {
@@ -261,11 +282,18 @@ export async function collectPylonDevDoctor(
   const codexConfig = await loadCodexAgentConfig(summary)
   const codexDevConfig = await loadCodexDevConfig(summary)
   const claudeConfig = await loadClaudeAgentConfig(summary)
+  const claudeDevConfig = await loadClaudeDevConfig(summary)
   const executionMode: CodexComposerExecutionMode =
     options.dangerFlag === true || codexDevConfig.codexExecutionMode === "local_supervised_danger"
       ? "local_supervised_danger"
       : "local_bounded"
   const codexSandboxMode = sandboxModeForCodexComposerExecutionMode(executionMode, codexConfig.sandboxMode)
+  const claudeExecutionMode: ClaudeComposerExecutionMode =
+    options.claudeDangerFlag === true ||
+    claudeDevConfig.claudeExecutionMode === "local_supervised_danger"
+      ? "local_supervised_danger"
+      : "local_bounded"
+  const claudePermissionMode = permissionModeForClaudeComposerExecutionMode(claudeExecutionMode)
   const codexReadiness = await probeCodexAgentReadiness({
     config: codexConfig,
     codexCliLoginPresent: options.codexCliLoginPresent,
@@ -319,6 +347,10 @@ export async function collectPylonDevDoctor(
         codexDevConfig.codexExecutionMode === "local_supervised_danger"
           ? "config.pylon.dev.local_supervised_danger"
           : null,
+      claudeDevOverlayRef:
+        claudeDevConfig.claudeExecutionMode === "local_supervised_danger"
+          ? "config.pylon.dev.claude_local_supervised_danger"
+          : null,
       defaultAdapter: codexDevConfig.defaultAdapter ?? "codex",
     },
     codex: {
@@ -337,6 +369,12 @@ export async function collectPylonDevDoctor(
       readiness: claudeReadiness,
       configuredModel: claudeConfig.model ?? null,
       fableReviewAvailable: claudeReadiness.state === "ready" && fableModel,
+      executionMode: claudeExecutionMode,
+      permissionMode: claudePermissionMode,
+      dangerPublicPathBlockerRef:
+        claudeExecutionMode === "local_supervised_danger"
+          ? CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF
+          : null,
       blockerRefs: claudeReadiness.blockerRefs,
     },
     backends: {

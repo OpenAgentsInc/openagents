@@ -472,6 +472,7 @@ function trimCell(value: string | null | undefined, width: number) {
 
 function compactContextLines(context: PylonContextProjection): string[] {
   const codexLabel = context.adapters.codex.danger ? "Codex DANGER" : "Codex"
+  const claudeLabel = context.adapters.claudeAgent.danger ? "Claude DANGER" : "Claude"
   const fable = context.adapters.claudeAgent.fableReviewAvailable ? "yes" : "no"
   const instructionRefs = context.instructions.refs.slice(0, 4)
   const backendRefs = context.adapters.backends.slice(0, 5)
@@ -488,7 +489,9 @@ function compactContextLines(context: PylonContextProjection): string[] {
     ` Mode: ${trimCell(context.adapters.codex.executionMode, 27)}`,
     ` Sandbox: ${trimCell(context.adapters.codex.sandboxMode, 24)}`,
     ` OpenAI: ${context.adapters.openai.state}`,
-    ` Claude: ${trimCell(context.adapters.claudeAgent.state, 22)}`,
+    ` ${claudeLabel}: ${trimCell(context.adapters.claudeAgent.state, 22)}`,
+    ` Mode: ${trimCell(context.adapters.claudeAgent.executionMode, 27)}`,
+    ` Permissions: ${trimCell(context.adapters.claudeAgent.permissionMode, 20)}`,
     ` Fable: ${fable}`,
     " ---------------------------------",
     " Instructions",
@@ -525,7 +528,8 @@ function RepoContextText(props: { expanded?: boolean; maxRows?: number }) {
     const source = props.expanded ? expandedContextLines(contextState()) : compactContextLines(contextState())
     return source.slice(0, props.maxRows ?? source.length)
   }
-  const danger = () => contextState().adapters.codex.danger
+  const danger = () =>
+    contextState().adapters.codex.danger || contextState().adapters.claudeAgent.danger
   return (
     <text fg={danger() ? theme.colors.error : theme.colors.text} width="100%" height={lines().length}>
       {lines().join("\n")}

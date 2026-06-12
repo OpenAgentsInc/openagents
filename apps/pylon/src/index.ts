@@ -1614,9 +1614,12 @@ async function main() {
 
   if (args[0] === "dev" && args[1] === "doctor") {
     try {
-      if (!args.includes("--json")) throw new Error("usage: pylon dev doctor --json [--codex-danger]")
+      if (!args.includes("--json")) {
+        throw new Error("usage: pylon dev doctor --json [--codex-danger] [--claude-danger]")
+      }
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const projection = await collectPylonDevDoctor({
+        claudeDangerFlag: args.includes("--claude-danger"),
         cwd: process.cwd(),
         dangerFlag: args.includes("--codex-danger"),
         env: Bun.env,

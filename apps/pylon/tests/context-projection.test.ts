@@ -47,6 +47,7 @@ function devDoctorFixture(): PylonDevDoctorProjection {
       configRef: "config.pylon.local",
       digestRef: "file.digest.config",
       devOverlayRef: "config.pylon.dev.local_supervised_danger",
+      claudeDevOverlayRef: null,
       defaultAdapter: "codex",
     },
     codex: {
@@ -76,6 +77,9 @@ function devDoctorFixture(): PylonDevDoctorProjection {
       },
       configuredModel: "claude-fable-5",
       fableReviewAvailable: true,
+      executionMode: "local_bounded",
+      permissionMode: "acceptEdits",
+      dangerPublicPathBlockerRef: null,
       blockerRefs: [],
     },
     backends: {
@@ -112,7 +116,12 @@ describe("pylon context projection", () => {
       modelRef: "model.codex.gpt-5-codex",
     })
     expect(projection.adapters.openai.sourceRefs).toEqual(["credential.source.codex_agent.codex_cli_login"])
-    expect(projection.adapters.claudeAgent.fableReviewAvailable).toBe(true)
+    expect(projection.adapters.claudeAgent).toMatchObject({
+      fableReviewAvailable: true,
+      executionMode: "local_bounded",
+      permissionMode: "acceptEdits",
+      danger: false,
+    })
     expect(projection.adapters.primaryAdapter).toBe("codex")
     expect(projection.adapters.reviewerAdapter).toBe("fable")
     expect(projection.currentJob.requiredCapabilityRefs).toEqual([
@@ -140,6 +149,29 @@ describe("pylon context projection", () => {
     ])
   })
 
+
+  test("projects the Claude supervised danger mode with dev-mode flag", () => {
+    const fixture = devDoctorFixture()
+    fixture.codex.executionMode = "local_bounded"
+    fixture.codex.sandboxMode = "workspace-write"
+    fixture.pylonConfig.devOverlayRef = null
+    fixture.pylonConfig.claudeDevOverlayRef = "config.pylon.dev.claude_local_supervised_danger"
+    fixture.claudeAgent.executionMode = "local_supervised_danger"
+    fixture.claudeAgent.permissionMode = "bypassPermissions"
+    fixture.claudeAgent.dangerPublicPathBlockerRef =
+      "blocker.claude.local_supervised_danger_public_path"
+    const projection = contextProjectionFromDevDoctor(fixture)
+    expect(projection.adapters.mode).toBe("dev")
+    expect(projection.adapters.claudeAgent).toMatchObject({
+      executionMode: "local_supervised_danger",
+      permissionMode: "bypassPermissions",
+      danger: true,
+    })
+    expect(projection.adapters.codex.danger).toBe(false)
+    expect(projection.instructions.configRefs).toContain(
+      "config.pylon.dev.claude_local_supervised_danger",
+    )
+  })
 
   test("rejects emails and local auth paths in status output", () => {
     const fixture = devDoctorFixture()
