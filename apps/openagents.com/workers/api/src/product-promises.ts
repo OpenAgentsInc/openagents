@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-12.6'
+export const PublicProductPromisesVersion = '2026-06-12.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1695,6 +1695,9 @@ export const publicProductPromisesDocument = () => {
         unsafeCopy:
           'Do not claim Pylon commands Claude today or that any coding assignment has been executed by this lane. Do not call the lane "Claude Code" in product copy; permitted terms are "Claude Agent", "your local Claude", or "Powered by Claude" per Anthropic branding terms. Do not imply OpenAgents supplies Claude access, login, or rate limits - the user brings their own API key or provider configuration. Do not describe local SDK transcripts as shareable artifacts; only public-safe refs leave the device.',
         evidenceRefs: [
+          'apps/pylon/docs/proofs/2026-06-12-claude-agent-packaged-rc-proof.json',
+          'https://github.com/OpenAgentsInc/openagents/issues/4859',
+          'npm:@openagentsinc/pylon@0.3.0-rc2:shasum:9c2511287536cc437f260c78cdb3f3a85614b858',
           'docs/autopilot-coder/2026-06-10-claude-agent-sdk-local-claude-pylon-audit.md',
           'apps/pylon/src/claude-agent.ts',
           'apps/pylon/src/claude-agent-executor.ts',
@@ -1709,11 +1712,9 @@ export const publicProductPromisesDocument = () => {
           'assignment.closeout.2dc83bdc0d8481ebba14621e',
           'docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md',
         ],
-        blockerRefs: [
-          'blocker.product_promises.pylon_claude_agent_packaged_binary_repeat_missing',
-        ],
+        blockerRefs: [],
         verification:
-          'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs. The live-device and API-parity legs ran and are receipt-backed (#4755/#4756). Green now requires repeating the bounded-task run from a published stable packaged binary instead of the source checkout, with the retained projection passing the redaction scan.',
+          'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs. The live-device and API-parity legs ran and are receipt-backed (#4755/#4756). By owner decision 2026-06-12 a published packaged artifact under the rc dist-tag satisfies the packaged-binary requirement (stable 0.3.0 is deliberately untagged). The repeat ran from the registry-installed @openagentsinc/pylon@0.3.0-rc2 (dist.shasum 9c2511287536cc437f260c78cdb3f3a85614b858): real Claude Agent SDK session, bounded workspace, real test-command verification, accepted closeout, retained redaction-clean proof apps/pylon/docs/proofs/2026-06-12-claude-agent-packaged-rc-proof.json. The yellow-to-green flip must be recorded receipt-first once this version serves.',
         authorityBoundary:
           'The bridge acts only with the local user identity, credentials, and machine; allowed tools and the working directory are bounded per assignment; raw SDK messages, prompts, file contents, and provider payloads stay on the device as operator-local evidence; worker closeout grants no accepted-work, settlement, payout, deploy, spend, or Forum publication authority.',
       },
