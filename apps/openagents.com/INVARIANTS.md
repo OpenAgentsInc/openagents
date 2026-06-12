@@ -591,11 +591,21 @@ This is the invariant ledger for `openagents`.
   can claim lease authority. Raw API keys, OAuth material, provider payloads,
   private repo data, raw prompts, and shell logs must be rejected from those
   joins before projection.
+- Pack B settings/configuration decisions must resolve through explicit
+  precedence (`default`, `environment`, `organization`, `team`, `repository`,
+  `user`, `device`, `runtime`) into immutable effective config refs. Provider,
+  budget, approval, telemetry, retention, and routing decisions must fail as
+  typed blockers when required settings are missing or invalid. Projections may
+  expose config refs, caveat refs, source layers, and value tags only; raw
+  environment values, API keys, OAuth material, private repo data, raw prompts,
+  shell logs, and provider payloads must be rejected before projection.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
   `workers/api/src/provider-account-lease-policy.test.ts`.
 - Regression coverage for the Pack B credential-boundary projection lives in
   `workers/api/src/provider-account-credential-boundary.test.ts`.
+- Regression coverage for Pack B effective config snapshots lives in
+  `workers/api/src/provider-account-effective-config.test.ts`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 

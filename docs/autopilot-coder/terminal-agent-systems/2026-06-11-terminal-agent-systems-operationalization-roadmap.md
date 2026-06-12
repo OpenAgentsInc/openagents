@@ -109,6 +109,13 @@ Implementation status:
   It defines the ref-only credential boundary over accounts, grants, active
   leases, artifacts, and receipts, including typed stale/revoked credential
   blockers and cache invalidation refs.
+- #4826 PB2 is implemented by
+  `apps/openagents.com/workers/api/src/provider-account-effective-config.ts`
+  and
+  `apps/openagents.com/workers/api/src/provider-account-effective-config.test.ts`.
+  It resolves provider/account settings through explicit precedence into safe
+  effective config refs, source-layer/value-tag projections, and typed
+  blockers for missing or invalid required settings.
 
 ## Timing Impact On Other Open Issues
 

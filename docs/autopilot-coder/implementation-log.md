@@ -1373,3 +1373,30 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/provider-account-credential-boundary.test.ts src/provider-account-lease-policy.test.ts src/provider-account-api-key.test.ts`
+
+## PB2 / Issue #4826: Provider Account Effective Config Snapshots
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4826`
+
+Status: implemented for the shared provider/account configuration snapshot
+resolver.
+
+Implemented:
+
+- Added `provider-account-effective-config.ts` with explicit config precedence
+  across `default`, `environment`, `organization`, `team`, `repository`,
+  `user`, `device`, and `runtime` layers.
+- Added safe effective config projections for provider, budget, approval,
+  telemetry, retention, and routing decisions. The projection exposes config
+  refs, caveat refs, source layers, value tags, blocker refs, and denial refs;
+  it does not expose raw environment values or secrets.
+- Missing required settings and invalid values now resolve to typed blockers
+  instead of silent fallback.
+- Added redaction tests for raw secret material in config refs, caveats, and
+  values.
+- Updated the `apps/openagents.com` invariant ledger with the Pack B effective
+  config snapshot rule.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-effective-config.test.ts`
