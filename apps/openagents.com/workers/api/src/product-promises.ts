@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-12.3'
+export const PublicProductPromisesVersion = '2026-06-12.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -262,12 +262,11 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/docs/codex-bridge.md',
           'apps/pylon/docs/codex-agent-task-smoke.md',
           'docs/autopilot-coder/2026-06-12-pylon-codex-day-to-day-readiness-audit.md',
+          'assignment.closeout.f264043a9f173b20514521da',
         ],
-        blockerRefs: [
-          'blocker.product_promises.live_probe_pylon_runtime_gates_incomplete',
-        ],
+        blockerRefs: [],
         verification:
-          'The Codex-backed task path evidence, Probe/Pylon runtime smokes, public docs, and live assignment/closeout evidence now exist (CX lane receipts). Green copy still waits on the remaining runtime gates: a published stable Pylon v0.3 package, the supervised dev check/apply/reload loop (#4842), and real commit pinning with adapter intent on pylon work submit (#4843).',
+          'The Codex-backed task path evidence, Probe/Pylon runtime smokes, public docs, and live assignment/closeout evidence this verification names all exist: CX4 ran the live device leg (closeout assignment.closeout.f264043a9f173b20514521da, capability-gated under capability.pylon.local_codex, redaction scan clean), and the API-parity git_checkout leg closed with independent test verification. blocker.product_promises.live_probe_pylon_runtime_gates_incomplete is cleared on that evidence (the maintainer edit the CX4 transition proposal asked for). The yellow-to-green flip is the remaining maintainer action and must be recorded receipt-first per proof.claim_upgrade_receipts.v1 once this registry version serves. Daily-driver gates (stable v0.3 package, #4842, #4843) bind the Pylon release promises, not this successor-direction claim.',
         authorityBoundary:
           'A successor direction does not imply broad provider support, unattended writes, payment settlement, or live marketplace authority.',
       },
@@ -1799,7 +1798,7 @@ export const publicProductPromisesDocument = () => {
       'External-reference absorption 2026-06-10: the QVAC edge-stack analysis (docs/training/2026-06-10-qvac-edge-stack-analysis.md) feeds the training workstreams through psionic issues #1115-#1118 (ternary determinism receipts, Philox seeded-work RNG, instruct SFT lane, derisking-ledger entries) and spec input on #4681. It creates no new promises, and by owner decision local image/video generation via that stack is not pursued at this time.',
       'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
       'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
-      'Claude/Codex parity pass 2026-06-12 (registry 2026-06-12.3): both coding-agent lanes now carry live production task receipts — Claude via #4755/#4756 closeouts, Codex via the CX lane (epic #4793, live device + API-parity receipts). The stale "no live Claude run" copy was corrected; the Claude bridge blocker narrowed to packaged-binary repeatability. The local supervised daily-driver surface exists for Codex in source (#4839-#4841) and is tracked for Claude as issues #4844-#4847; the parity audit is docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md. No state flips were auto-applied in this version: autopilot.codex_probe_pylon_successor.v1 and pylon.local_claude_agent_bridge.v1 stay yellow on the packaged-release/daily-driver gates, and any future green flip should be recorded receipt-first per proof.claim_upgrade_receipts.v1.',
+      'Claude/Codex parity pass 2026-06-12 (registry 2026-06-12.4): both coding-agent lanes now carry live production task receipts — Claude via #4755/#4756 closeouts, Codex via the CX lane (epic #4793, live device closeout assignment.closeout.f264043a9f173b20514521da plus the API-parity git_checkout leg). The stale "no live Claude run" copy was corrected; the Claude bridge blocker narrowed to packaged-binary repeatability; the Codex successor blocker live_probe_pylon_runtime_gates_incomplete was cleared on the CX4 evidence, which is the maintainer edit the receipt-first transition proposal on the Forum asked for. No state flips were auto-applied: both promises stay yellow, and the codex successor green flip should be recorded receipt-first per proof.claim_upgrade_receipts.v1 after this version deploys. The local supervised daily-driver surface exists for Codex in source (#4839-#4841) and is tracked for Claude as issues #4844-#4847; the parity audit is docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
