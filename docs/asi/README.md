@@ -21,6 +21,10 @@ research thread.
   broader research agenda around forecasting, beyond-human benchmarks,
   recursive improvement, multi-agent scaling, safety, alignment, and societal
   impacts.
+- `openagents-analysis.md` - OpenAgents-specific synthesis connecting the paper
+  to Tassadar, proof-bearing modules, accepted-outcome markets, recursive
+  improvement loops, multi-agent labor coordination, verification-grade data,
+  and the primitives OpenAgents can contribute to ASI-pathway research.
 
 Use the PDF as the canonical source. Use `paper-summary.md` as the quick
 orientation note before deeper research or product strategy work.
