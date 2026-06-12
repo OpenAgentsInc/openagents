@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-12.2'
+export const PublicProductPromisesVersion = '2026-06-12.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -247,7 +247,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The useful parts of the historical coding-agent wrapper idea are now represented by the current Codex-oriented Autopilot/Probe/Pylon runtime direction.',
         safeCopy:
-          'OpenAgents coding-agent runtime work is Codex-oriented where applicable, with Probe/Pylon carrying relevant runtime and provider-account ideas under current gates.',
+          'OpenAgents coding-agent runtime work is Codex-oriented where applicable, with Probe/Pylon carrying relevant runtime and provider-account ideas under current gates. The Codex executor lane is now built and live-proven (epic #4793, CX1-CX5 #4788-#4792): a readiness probe over owner-held credentials declares capability.pylon.local_codex, the bounded @openai/codex-sdk executor runs read-only/workspace-write only with network disabled, and the lane carries a live device receipt for a real Codex SDK task plus a live API-parity receipt for an API-submitted git_checkout task on a codex-only Pylon with independent bun test verification and accepted closeout. The local supervised Codex composer/danger/doctor surface shipped in source (#4839/#4840/#4841). Remaining gates: stable v0.3 packaged release, the dev check/apply/reload loop (#4842), and work-submit commit pinning plus adapter intent (#4843).',
         unsafeCopy:
           'Do not claim the old Claude Code-first launch framing is the current implementation, or that the current Codex/Probe/Pylon path is fully green.',
         evidenceRefs: [
@@ -256,12 +256,18 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/README.md',
           'packages/probe',
           'apps/openagents.com/docs/probe/2026-06-07-first-party-probe-runtime-audit.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/4793',
+          'apps/pylon/src/codex-agent.ts',
+          'apps/pylon/src/codex-agent-executor.ts',
+          'apps/pylon/docs/codex-bridge.md',
+          'apps/pylon/docs/codex-agent-task-smoke.md',
+          'docs/autopilot-coder/2026-06-12-pylon-codex-day-to-day-readiness-audit.md',
         ],
         blockerRefs: [
           'blocker.product_promises.live_probe_pylon_runtime_gates_incomplete',
         ],
         verification:
-          'Requires current Codex-backed task path evidence, Probe/Pylon runtime smokes, public docs, and live assignment/closeout evidence before green copy.',
+          'The Codex-backed task path evidence, Probe/Pylon runtime smokes, public docs, and live assignment/closeout evidence now exist (CX lane receipts). Green copy still waits on the remaining runtime gates: a published stable Pylon v0.3 package, the supervised dev check/apply/reload loop (#4842), and real commit pinning with adapter intent on pylon work submit (#4843).',
         authorityBoundary:
           'A successor direction does not imply broad provider support, unattended writes, payment settlement, or live marketplace authority.',
       },
@@ -1667,7 +1673,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylon can talk to your local Claude: the Pylon worker loop hands a coding assignment to the Claude Agent SDK (TypeScript) running on the contributor machine with the user own credentials, drives a bounded read/edit/test session inside a sandboxed working directory with an assignment-derived tool allowlist, and returns public-safe closeout refs - making the user local Claude a real execution lane for delegated coding work.',
         safeCopy:
-          'The Pylon-side bridge is now built and merged: the SDK ships as a lazy optional dependency, go-online declares capability.pylon.local_claude_agent only when the BYOK readiness probe passes, the bounded executor gate runs a sandboxed Claude Agent SDK session with workspace-escape denial and independent test-command verification, and the CI-safe bounded-task smoke (smoke:claude-agent-task) drives the full worker-loop lifecycle with redaction scanning (issues #4718/#4719/#4720, epic #4717). What has NOT happened: no live run on a real device with real credentials has executed a coding assignment through a deployment, so Pylon has not yet commanded a local Claude in production.',
+          'The Pylon-side bridge is built, merged, and live-proven: the SDK ships as a lazy optional dependency, go-online declares capability.pylon.local_claude_agent only when the BYOK readiness probe passes, the bounded executor gate runs a sandboxed Claude Agent SDK session with workspace-escape denial and independent test-command verification, and the CI-safe bounded-task smoke (smoke:claude-agent-task) drives the full worker-loop lifecycle with redaction scanning (issues #4718/#4719/#4720, epic #4717). Live receipts: the #4755 deployed no-spend claude_agent_task ran on an operator-credentialed contributor machine with local-session Claude credentials (closeout assignment.closeout.ae84ca67ada1584130b823d5), and the #4756 production work order carried claude_agent_task plus git_checkout through API submission, own-Pylon placement, local execution, independent bun test verification, and delivered closeout assignment.closeout.2dc83bdc0d8481ebba14621e. What has NOT happened: the run is not yet repeatable from a published stable package (the supported npm package is still 0.2.5 while the lane lives in 0.3.0-rc source), and the local supervised Claude composer/dev surface is not built (tracked as issues #4844-#4847).',
         unsafeCopy:
           'Do not claim Pylon commands Claude today or that any coding assignment has been executed by this lane. Do not call the lane "Claude Code" in product copy; permitted terms are "Claude Agent", "your local Claude", or "Powered by Claude" per Anthropic branding terms. Do not imply OpenAgents supplies Claude access, login, or rate limits - the user brings their own API key or provider configuration. Do not describe local SDK transcripts as shareable artifacts; only public-safe refs leave the device.',
         evidenceRefs: [
@@ -1679,12 +1685,17 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/docs/claude-agent-task-smoke.md',
           'apps/openagents.com/workers/api/scripts/claude-agent-task-dispatch.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/4717',
+          'https://github.com/OpenAgentsInc/openagents/issues/4755',
+          'https://github.com/OpenAgentsInc/openagents/issues/4756',
+          'assignment.closeout.ae84ca67ada1584130b823d5',
+          'assignment.closeout.2dc83bdc0d8481ebba14621e',
+          'docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.pylon_claude_agent_bounded_task_smoke_missing',
+          'blocker.product_promises.pylon_claude_agent_packaged_binary_repeat_missing',
         ],
         verification:
-          'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs; the retained projection passes the redaction scan and the run is repeatable from the packaged binary. Green requires those receipts from a real device.',
+          'On a contributor machine with the user own Anthropic credentials: a Pylon assignment carrying a coding work class is admitted under capability.pylon.local_claude_agent, executed by the Claude Agent SDK in a bounded workspace with a restricted tool allowlist, verified by a real test command, and closed out through the live assignment API with public-safe artifact/build/test refs. The live-device and API-parity legs ran and are receipt-backed (#4755/#4756). Green now requires repeating the bounded-task run from a published stable packaged binary instead of the source checkout, with the retained projection passing the redaction scan.',
         authorityBoundary:
           'The bridge acts only with the local user identity, credentials, and machine; allowed tools and the working directory are bounded per assignment; raw SDK messages, prompts, file contents, and provider payloads stay on the device as operator-local evidence; worker closeout grants no accepted-work, settlement, payout, deploy, spend, or Forum publication authority.',
       },
@@ -1788,6 +1799,7 @@ export const publicProductPromisesDocument = () => {
       'External-reference absorption 2026-06-10: the QVAC edge-stack analysis (docs/training/2026-06-10-qvac-edge-stack-analysis.md) feeds the training workstreams through psionic issues #1115-#1118 (ternary determinism receipts, Philox seeded-work RNG, instruct SFT lane, derisking-ledger entries) and spec input on #4681. It creates no new promises, and by owner decision local image/video generation via that stack is not pursued at this time.',
       'The public code map records where shipped public code lives in the open source repository. Report stale or missing source links in the Product Promises Forum.',
       'Forum direct BOLT 12 tipping uses MDK/provider payment evidence as the source of truth; the public promise stays yellow until strict funded live smokes and webhook callback evidence pass without timeout recovery.',
+      'Claude/Codex parity pass 2026-06-12 (registry 2026-06-12.3): both coding-agent lanes now carry live production task receipts — Claude via #4755/#4756 closeouts, Codex via the CX lane (epic #4793, live device + API-parity receipts). The stale "no live Claude run" copy was corrected; the Claude bridge blocker narrowed to packaged-binary repeatability. The local supervised daily-driver surface exists for Codex in source (#4839-#4841) and is tracked for Claude as issues #4844-#4847; the parity audit is docs/autopilot-coder/claude/2026-06-12-pylon-claude-codex-parity-audit.md. No state flips were auto-applied in this version: autopilot.codex_probe_pylon_successor.v1 and pylon.local_claude_agent_bridge.v1 stay yellow on the packaged-release/daily-driver gates, and any future green flip should be recorded receipt-first per proof.claim_upgrade_receipts.v1.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
