@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/api-worker",
+  "name": "@openagentsinc/api-worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -33,13 +33,13 @@
     "@effect/sql-sqlite-do": "4.0.0-beta.70",
     "@liquid-js/qrcode-generator": "1.1.6",
     "@moneydevkit/api-contract": "0.1.36",
-    "@openagents/nip90": "workspace:*",
-    "@openagents/email-templates": "workspace:*",
-    "@openagents/mullet-schema": "workspace:*",
-    "@openagents/mullet-sim": "workspace:*",
-    "@openagents/provider-account-schema": "workspace:*",
-    "@openagents/sync-schema": "workspace:*",
-    "@openagents/sync-worker": "workspace:*",
+    "@openagentsinc/nip90": "workspace:*",
+    "@openagentsinc/email-templates": "workspace:*",
+    "@openagentsinc/mullet-schema": "workspace:*",
+    "@openagentsinc/mullet-sim": "workspace:*",
+    "@openagentsinc/provider-account-schema": "workspace:*",
+    "@openagentsinc/sync-schema": "workspace:*",
+    "@openagentsinc/sync-worker": "workspace:*",
     "@openauthjs/openauth": "^0.4.3",
     "@orpc/client": "1.14.5",
     "arctic": "^2.2.2",
@@ -48,7 +48,7 @@
     "hono": "^4.12.23",
     "nostr-effect": "github:OpenAgentsInc/nostr-effect#e6582ef",
     "stripe": "^22.2.0",
-    "@openagents/agent-runtime-schema": "workspace:*",
-    "@openagents/tassadar-executor": "workspace:*"
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/tassadar-executor": "workspace:*"
   }
 }

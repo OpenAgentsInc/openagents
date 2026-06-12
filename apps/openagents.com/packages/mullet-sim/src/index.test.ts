@@ -1,4 +1,4 @@
-import { decodeMulletScenario } from '@openagents/mullet-schema'
+import { decodeMulletScenario } from '@openagentsinc/mullet-schema'
 import { describe, expect, test } from 'vitest'
 
 import {

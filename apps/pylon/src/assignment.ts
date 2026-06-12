@@ -8,7 +8,7 @@ import {
   TASSADAR_EXECUTOR_CAPABILITY_REF,
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
-} from "@openagents/tassadar-executor"
+} from "@openagentsinc/tassadar-executor"
 import type { BootstrapSummary } from "./bootstrap"
 import type { ClaudeAgentProbeOptions } from "./claude-agent"
 import {

@@ -1,7 +1,7 @@
 import {
   assertNoProviderSecretMaterial,
   requirePublicSecretReference,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 
 import type {
   ProviderAccountAuthGrantRecord,

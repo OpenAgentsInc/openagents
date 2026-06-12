@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/mullet-sim",
+  "name": "@openagentsinc/mullet-sim",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@openagents/mullet-schema": "workspace:*",
+    "@openagentsinc/mullet-schema": "workspace:*",
     "effect": "4.0.0-beta.70"
   }
 }

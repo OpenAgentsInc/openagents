@@ -3,13 +3,13 @@ import {
   ProviderAccountRef,
   ProviderConnectionAttemptId,
   IsoTimestamp as ProviderIsoTimestamp,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import {
   SyncScope,
   SyncSequence,
   SyncSnapshot,
   TokenUsageAggregateResponse,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 import { Scene } from 'foldkit'
 import { describe, test } from 'vitest'

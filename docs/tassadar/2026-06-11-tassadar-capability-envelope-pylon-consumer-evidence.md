@@ -19,7 +19,7 @@ an unverifiable publication is a typed error, never a declaration):
 1. **Self-test-gated declaration (Pylon).** On `pylon provider
    go-online`, the device executes the pinned digest-known workload
    (`tassadar_poc.loop_sum_v1.numeric_fixture.v1`, 80 steps) through
-   `@openagents/tassadar-executor` and compares the trace digest
+   `@openagentsinc/tassadar-executor` and compares the trace digest
    byte-for-byte against the compile-pinned
    `f2995c4e3c959b42bb1e4afbefffbcf7ba6104099621ccc0ac912862dc932a5b`.
    Only a verified self-test declares

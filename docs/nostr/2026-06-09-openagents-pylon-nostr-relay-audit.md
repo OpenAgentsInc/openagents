@@ -71,7 +71,7 @@ POC for issue <https://github.com/OpenAgentsInc/openagents/issues/4621>.
 Current POC app:
 
 - app path: `apps/nostr-relay`;
-- package: `@openagents/nostr-relay`;
+- package: `@openagentsinc/nostr-relay`;
 - relay library: `nostr-effect@0.0.12`;
 - Worker name: `openagents-nostr-relay-poc`;
 - deployed URL:

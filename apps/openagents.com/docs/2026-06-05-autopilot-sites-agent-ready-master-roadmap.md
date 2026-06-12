@@ -4341,7 +4341,7 @@ one useful agent challenge or contribution prompt.
     next Ben OTEC revision can test the exact customer email through
     `EmailService`, idempotency, and delivery ledger records.
 29. OPENAGENTS-O-005 (#138 closed/completed): add a source-controlled,
-    Resend-compatible `@openagents/email-templates` package with typed
+    Resend-compatible `@openagentsinc/email-templates` package with typed
     order/Sites lifecycle templates, day 0/day 1/day 2 drip placeholders,
     deterministic HTML/text renderers, tests, and a local preview command.
 30. OPENAGENTS-O-006 (#139 closed/completed): add campaign, enrollment, and send

@@ -251,7 +251,7 @@ export class OpenAgentsWorkerConfigError extends S.TaggedErrorClass<OpenAgentsWo
 export class OpenAgentsWorkerConfig extends Context.Service<
   OpenAgentsWorkerConfig,
   OpenAgentsWorkerConfigShape
->()('@openagents/OpenAgentsWorkerConfig') {
+>()('@openagentsinc/OpenAgentsWorkerConfig') {
   static layer = (env: OpenAgentsWorkerConfigEnv) =>
     Layer.effect(OpenAgentsWorkerConfig, decodeOpenAgentsWorkerConfig(env))
 }

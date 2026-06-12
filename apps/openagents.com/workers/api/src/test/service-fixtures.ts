@@ -1,7 +1,7 @@
 import type {
   AgentRunAssignment,
   AppDeployAssignment,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Effect, Layer } from 'effect'
 import { QueueBinding } from 'effect-cf'
 

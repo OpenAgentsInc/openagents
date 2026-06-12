@@ -183,7 +183,7 @@ export class ThreadAccessService extends Context.Service<
       input: ThreadAccessInput,
     ) => Effect.Effect<AgentRunBundle, RouteAccessError>
   }
->()('@openagents/autopilot-omega/ThreadAccessService') {
+>()('@openagentsinc/autopilot-omega/ThreadAccessService') {
   static readonly layer = (env: ThreadAccessEnv) =>
     Layer.succeed(ThreadAccessService, {
       findAuthorizedBundle: Effect.fn(

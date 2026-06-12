@@ -2,7 +2,7 @@ import {
   decodeOpenAiDeviceCodeResponse,
   decodeOpenAiDeviceTokenResponse,
   decodeOpenAiOAuthTokenResponse,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import { Context, Effect, Layer } from 'effect'
 
 import {

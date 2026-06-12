@@ -16,7 +16,7 @@ on live spend by default, does not enable any campaign without an operator
 admin token, and does not move sats unless the operator starts a campaign with
 spend enabled and the Worker has a configured settlement bridge.
 
-The dispatcher uses `@openagents/nip90`, which wraps the shared
+The dispatcher uses `@openagentsinc/nip90`, which wraps the shared
 `nostr-effect` NIP-90 helpers. Do not reimplement the NIP-90 protocol locally
 in this Worker path.
 

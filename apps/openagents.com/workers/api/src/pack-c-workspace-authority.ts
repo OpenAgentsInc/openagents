@@ -1,4 +1,4 @@
-import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { assertNoProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 
 export const PACK_C_WORKSPACE_AUTHORITY_VERSION =
   'pack-c-workspace-authority:v1' as const

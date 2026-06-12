@@ -1,4 +1,4 @@
-import { BlueprintAssignmentScope } from '@openagents/sync-schema'
+import { BlueprintAssignmentScope } from '@openagentsinc/sync-schema'
 import { describe, expect, test } from 'vitest'
 
 import {

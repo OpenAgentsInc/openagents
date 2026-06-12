@@ -23,7 +23,7 @@ be declined.
 Implementation notes:
 
 - NIP-90 labor job helpers live in `nostr-effect` and are exposed through
-  `@openagents/nip90`.
+  `@openagentsinc/nip90`.
 - Labor requests carry input refs, acceptance criteria, expected artifact
   descriptors, bid/amount terms, and the policy ref.
 - Labor results carry public-safe artifact refs and settlement amount evidence

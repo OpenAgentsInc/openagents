@@ -1,4 +1,4 @@
-import { sha256Hex } from '@openagents/nip90'
+import { sha256Hex } from '@openagentsinc/nip90'
 import type { NostrEvent } from 'nostr-effect'
 import {
   BADGE_DEFINITION_KIND,

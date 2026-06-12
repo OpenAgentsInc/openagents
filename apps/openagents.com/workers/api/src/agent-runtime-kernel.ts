@@ -5,7 +5,7 @@ import {
   type AgentRuntimeEvent as AgentRuntimeEventShape,
   type AgentRuntimeRunId,
   type AgentRuntimeSurfaceStatusRow,
-} from '@openagents/agent-runtime-schema'
+} from '@openagentsinc/agent-runtime-schema'
 import { Schema as S } from 'effect'
 
 import {

@@ -1,4 +1,4 @@
-import { ServerMessage, SyncPatch } from '@openagents/sync-schema'
+import { ServerMessage, SyncPatch } from '@openagentsinc/sync-schema'
 import { Duration, Effect, Exit, Queue, Schema as S, Stream } from 'effect'
 import { Subscription } from 'foldkit'
 

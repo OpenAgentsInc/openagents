@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {

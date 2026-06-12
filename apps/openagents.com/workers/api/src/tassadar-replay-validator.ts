@@ -19,7 +19,7 @@ import {
   executeTassadarNumericModel,
   TassadarNumericExecutionError,
   type TassadarAlmNumericModel,
-} from '@openagents/tassadar-executor'
+} from '@openagentsinc/tassadar-executor'
 
 export const TassadarReplayValidatorDeviceRef =
   'device.cloudflare_worker.openagents_api'

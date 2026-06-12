@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -1195,7 +1195,7 @@ export const makeAdjutantEnrichmentLedger = (
 export class AdjutantEnrichmentLedger extends Context.Service<
   AdjutantEnrichmentLedger,
   ReturnType<typeof makeAdjutantEnrichmentLedger>
->()('@openagents/autopilot-omega/AdjutantEnrichmentLedger') {
+>()('@openagentsinc/autopilot-omega/AdjutantEnrichmentLedger') {
   static layer = (
     env: AdjutantEnrichmentLedgerEnv,
     runtime: AdjutantEnrichmentLedgerRuntime =

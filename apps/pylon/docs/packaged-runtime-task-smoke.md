@@ -81,9 +81,9 @@ bun run smoke:packaged-runtime-task
 The wrapper packs both local packages used by the installed smoke:
 
 - `@openagentsinc/pylon`
-- `@openagents/nip90`, which reuses the workspace `nostr-effect` NIP-90
+- `@openagentsinc/nip90`, which reuses the workspace `nostr-effect` NIP-90
   implementation instead of rebuilding protocol helpers inside Pylon
-- `@openagents/tassadar-executor`, which is a workspace dependency of the
+- `@openagentsinc/tassadar-executor`, which is a workspace dependency of the
   executor-trace lane and must be installed from the local package until it is
   published
 

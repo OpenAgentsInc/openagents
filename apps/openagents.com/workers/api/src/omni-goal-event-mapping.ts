@@ -1,4 +1,4 @@
-import { extractAutopilotTokenUsageFromJson } from '@openagents/sync-schema'
+import { extractAutopilotTokenUsageFromJson } from '@openagentsinc/sync-schema'
 
 import {
   AgentGoalRuntimeEvent,

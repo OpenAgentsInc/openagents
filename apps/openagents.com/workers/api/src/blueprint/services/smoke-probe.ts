@@ -85,7 +85,7 @@ export type BlueprintSmokeProbeExecutorShape = Readonly<{
 export class BlueprintSmokeProbeExecutor extends Context.Service<
   BlueprintSmokeProbeExecutor,
   BlueprintSmokeProbeExecutorShape
->()('@openagents/autopilot-omega/BlueprintSmokeProbeExecutor') {}
+>()('@openagentsinc/autopilot-omega/BlueprintSmokeProbeExecutor') {}
 
 export const BLUEPRINT_NO_NETWORK_SMOKE_PLAN: BlueprintSmokeProbePlan = {
   id: 'blueprint_smoke_plan.no_network.v1',

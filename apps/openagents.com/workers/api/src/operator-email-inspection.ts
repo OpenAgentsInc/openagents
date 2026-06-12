@@ -1,7 +1,7 @@
 import {
   containsProviderSecretMaterial,
   redactProviderAccountSecretMaterial,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import { Effect, Schema as S } from 'effect'
 
 export const OperatorEmailInspectionScope = S.Struct({

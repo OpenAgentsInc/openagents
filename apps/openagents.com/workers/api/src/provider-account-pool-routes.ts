@@ -1,4 +1,4 @@
-import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { assertNoProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect } from 'effect'
 
 import type { AgentRegistrationStore } from './agent-registration'

@@ -10,7 +10,7 @@ import {
   lbrAgenticCodingRequestToDraft,
   makeLbrAcceptance,
   makeLbrAgenticCodingRequest,
-} from "@openagents/nip90"
+} from "@openagentsinc/nip90"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { approveLaborFirstRun } from "../src/labor"
 import { CLAUDE_AGENT_CAPABILITY_REF, CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"

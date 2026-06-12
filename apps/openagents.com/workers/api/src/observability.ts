@@ -1,4 +1,4 @@
-import { redactProviderAccountLogValue } from '@openagents/provider-account-schema'
+import { redactProviderAccountLogValue } from '@openagentsinc/provider-account-schema'
 import { Effect } from 'effect'
 
 export type WorkerLogFields = Readonly<Record<string, unknown>>

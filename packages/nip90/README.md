@@ -1,4 +1,4 @@
-# @openagents/nip90
+# @openagentsinc/nip90
 
 Thin OpenAgents workspace surface for NIP-90 Data Vending Machine protocol
 helpers.

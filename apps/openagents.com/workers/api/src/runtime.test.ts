@@ -1,5 +1,5 @@
-import { IsoTimestamp, OmniRunnerEvent } from '@openagents/sync-schema'
-import type { WorkerBindings } from '@openagents/sync-worker'
+import { IsoTimestamp, OmniRunnerEvent } from '@openagentsinc/sync-schema'
+import type { WorkerBindings } from '@openagentsinc/sync-worker'
 import { Effect, Layer } from 'effect'
 import { QueueBinding, WorkerEnvironment } from 'effect-cf'
 import { describe, expect, test } from 'vitest'

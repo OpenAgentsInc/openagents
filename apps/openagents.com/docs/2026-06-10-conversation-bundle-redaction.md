@@ -26,5 +26,5 @@ Outputs:
   projection whose `listingDigest` is the same digest used for the listing `x`
   tag.
 
-The digest is computed with `sha256Hex` from `@openagents/nip90`, which reuses
+The digest is computed with `sha256Hex` from `@openagentsinc/nip90`, which reuses
 the shared `nostr-effect` NIP-DS implementation.

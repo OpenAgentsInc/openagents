@@ -1,4 +1,4 @@
-import { badRequest, notFound } from '@openagents/sync-worker'
+import { badRequest, notFound } from '@openagentsinc/sync-worker'
 import { Effect, Schema as S } from 'effect'
 
 import {

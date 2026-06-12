@@ -26,7 +26,7 @@ status from OpenAgents product surface. The resulting provider account remains i
 ## Runtime Package
 
 The CLI lives in `packages/runtime/src/cli.ts` and is exposed as the `probe`
-bin in `@openagents/probe-runtime`.
+bin in `@openagentsinc/probe-runtime`.
 
 `packages/runtime/src/openagents/account-client.ts` implements the account-client
 boundary used by the CLI:

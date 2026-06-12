@@ -1,4 +1,4 @@
-import type { SyncPatch } from '@openagents/sync-schema'
+import type { SyncPatch } from '@openagentsinc/sync-schema'
 import { Match as M, Option } from 'effect'
 import { evo } from 'foldkit/struct'
 

@@ -5,7 +5,7 @@ import {
   TokenUsageAggregateResponse,
   TokenUsageLeaderboardPreferenceResponse,
   TokenUsageLeaderboardsResponse,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 import { File as FileSchema } from 'foldkit/file'
 import { m } from 'foldkit/message'

@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Context, Effect, Layer, Schema as S } from 'effect'
 
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
@@ -251,12 +251,12 @@ export type AgentGoalAccessServiceShape = Readonly<{
 export class AgentGoalRepository extends Context.Service<
   AgentGoalRepository,
   AgentGoalRepositoryShape
->()('@openagents/AgentGoalRepository') {}
+>()('@openagentsinc/AgentGoalRepository') {}
 
 export class AgentGoalAccessService extends Context.Service<
   AgentGoalAccessService,
   AgentGoalAccessServiceShape
->()('@openagents/AgentGoalAccessService') {}
+>()('@openagentsinc/AgentGoalAccessService') {}
 
 const d1Effect = <A>(
   operation: string,

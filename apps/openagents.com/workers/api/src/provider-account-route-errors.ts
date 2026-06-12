@@ -1,4 +1,4 @@
-import { redactProviderAccountLogValue } from '@openagents/provider-account-schema'
+import { redactProviderAccountLogValue } from '@openagentsinc/provider-account-schema'
 
 import {
   type ProviderAccountError,

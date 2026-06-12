@@ -272,7 +272,7 @@ requests and OpenAgents labor kinds `5934` code task, `5935` review, and
 `6050` or `6934`-`6936`. Text inference executes the local Apple FM runtime.
 Labor jobs execute through the contributor's configured local agent path
 (`codex`, `opencode`, or `claude`) inside a bounded workspace and return
-public-safe artifact refs. It uses the shared `@openagents/nip90` package,
+public-safe artifact refs. It uses the shared `@openagentsinc/nip90` package,
 which re-exports the local `nostr-effect` protocol helpers.
 
 Environment controls:

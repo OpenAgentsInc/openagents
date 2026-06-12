@@ -16,7 +16,7 @@ import {
   Percent,
   Usd,
   UsdPerMWh,
-} from '@openagents/mullet-schema'
+} from '@openagentsinc/mullet-schema'
 
 export type ReasonCode =
   | 'accepted_work_clears_all_gates'

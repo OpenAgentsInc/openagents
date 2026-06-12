@@ -1,4 +1,4 @@
-import { notFound } from '@openagents/sync-worker'
+import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {

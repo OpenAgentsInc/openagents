@@ -10,7 +10,7 @@ Issue: #4662 (stable 0.3.0 release)
   **passed** — unit/runtime tests, bootstrap/status/inventory/operator JSON
   smokes, dashboard startup smoke, `bun pm pack --dry-run`, and the local
   package install smoke (which installs the packed tarball with
-  `@openagents/nip90` and `@openagents/tassadar-executor` tarball overrides).
+  `@openagentsinc/nip90` and `@openagentsinc/tassadar-executor` tarball overrides).
   Output: `release gate passed`.
 - Gate policy: manual, script-based, no hosted CI — owner decision recorded
   2026-06-10 (#4654, `release-install-smokes.md`). Run the gate on macOS and
@@ -29,8 +29,8 @@ returned 401 on `GET /-/whoami` as of 2026-06-11 02:30 UTC.
 1. `npm login` (or place a granular automation token in `~/.npmrc`).
 2. Publish the workspace deps first (consumers of the published package
    otherwise 404 on `workspace:*` resolution):
-   - `packages/nip90` → `@openagents/nip90` (publishConfig public, ready)
-   - `packages/tassadar-executor` → `@openagents/tassadar-executor`
+   - `packages/nip90` → `@openagentsinc/nip90` (publishConfig public, ready)
+   - `packages/tassadar-executor` → `@openagentsinc/tassadar-executor`
      (publishConfig public, ready)
 3. In `apps/pylon/package.json`: version `0.3.0-rc2` → `0.3.0`, and replace
    the `workspace:*` dep specifiers with the published versions at publish

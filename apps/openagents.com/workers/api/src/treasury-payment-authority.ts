@@ -212,7 +212,7 @@ export type TreasuryPaymentAuthorityShape = Readonly<{
 export class TreasuryPaymentAuthority extends Context.Service<
   TreasuryPaymentAuthority,
   TreasuryPaymentAuthorityShape
->()('@openagents/TreasuryPaymentAuthority') {}
+>()('@openagentsinc/TreasuryPaymentAuthority') {}
 
 export type TreasuryPaymentAuthorityDependencies = Readonly<{
   adapters: ReadonlyArray<TreasuryPaymentAuthorityAdapter>

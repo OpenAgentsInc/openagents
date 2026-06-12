@@ -3,7 +3,7 @@ import {
   ProviderAccountRef,
   ProviderConnectionAttemptId,
   IsoTimestamp as ProviderIsoTimestamp,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import {
   CollectionName,
   CursorGap,
@@ -13,7 +13,7 @@ import {
   SyncScope,
   SyncSequence,
   SyncSnapshot,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Option } from 'effect'
 import { describe, expect, test } from 'vitest'
 

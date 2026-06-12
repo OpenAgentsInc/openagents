@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -547,7 +547,7 @@ export const makeAdjutantResearchBriefService = (
 export class AdjutantResearchBriefService extends Context.Service<
   AdjutantResearchBriefService,
   ReturnType<typeof makeAdjutantResearchBriefService>
->()('@openagents/autopilot-omega/AdjutantResearchBriefService') {
+>()('@openagentsinc/autopilot-omega/AdjutantResearchBriefService') {
   static layer = (
     env: AdjutantResearchBriefEnv,
     runtime: AdjutantResearchBriefRuntime =

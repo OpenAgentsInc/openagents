@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Schema as S } from 'effect'
 
 export const PENDING_REFERRAL_COOKIE = 'oa_pending_referral_attribution'

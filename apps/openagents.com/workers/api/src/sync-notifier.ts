@@ -8,7 +8,7 @@ import {
   publicGoalScope,
   threadScope as syncThreadScope,
   teamScope,
-} from '@openagents/sync-worker'
+} from '@openagentsinc/sync-worker'
 import { Effect } from 'effect'
 
 import {

@@ -410,7 +410,7 @@ export class SiteRuntimeService extends Context.Service<
       candidatePaths: ReadonlyArray<string>,
     ) => Effect.Effect<SiteRuntimeTarget | null, SiteRuntimeStorageError>
   }
->()('@openagents/autopilot-omega/SiteRuntimeService') {
+>()('@openagentsinc/autopilot-omega/SiteRuntimeService') {
   static readonly layer = (env: SiteRuntimeEnv) =>
     Layer.succeed(SiteRuntimeService, {
       readArtifactObject: Effect.fn('SiteRuntimeService.readArtifactObject')(

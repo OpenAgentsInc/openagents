@@ -1,4 +1,4 @@
-import type { SyncPatch } from '@openagents/sync-schema'
+import type { SyncPatch } from '@openagentsinc/sync-schema'
 
 export type CollectionRecords = Readonly<Record<string, unknown>>
 

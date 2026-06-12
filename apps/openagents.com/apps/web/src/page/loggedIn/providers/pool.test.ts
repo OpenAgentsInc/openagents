@@ -3,7 +3,7 @@ import {
   ProviderAccountRef,
   ProviderConnectionAttemptId,
   IsoTimestamp as ProviderIsoTimestamp,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import { describe, expect, test } from 'vitest'
 
 import {

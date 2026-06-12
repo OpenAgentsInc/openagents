@@ -1,4 +1,4 @@
-import { SyncSnapshot } from '@openagents/sync-schema'
+import { SyncSnapshot } from '@openagentsinc/sync-schema'
 import { Effect, Schema as S } from 'effect'
 import { Command } from 'foldkit'
 

@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/mdk-sidecar",
+  "name": "@openagentsinc/mdk-sidecar",
   "version": "0.1.0",
   "private": true,
   "type": "module",

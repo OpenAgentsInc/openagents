@@ -1,7 +1,7 @@
 import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagents/tassadar-executor'
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagentsinc/tassadar-executor'
 
 import {
   TASSADAR_DISPATCH_CAPABILITY_UNRECEIPTED_BLOCKER_REF,

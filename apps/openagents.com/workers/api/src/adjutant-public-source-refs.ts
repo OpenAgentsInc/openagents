@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -557,7 +557,7 @@ export const makeAdjutantPublicSourceRefService = (
 export class AdjutantPublicSourceRefService extends Context.Service<
   AdjutantPublicSourceRefService,
   ReturnType<typeof makeAdjutantPublicSourceRefService>
->()('@openagents/autopilot-omega/AdjutantPublicSourceRefService') {
+>()('@openagentsinc/autopilot-omega/AdjutantPublicSourceRefService') {
   static layer = (
     env: AdjutantPublicSourceRefEnv,
     runtime: AdjutantPublicSourceRefRuntime =

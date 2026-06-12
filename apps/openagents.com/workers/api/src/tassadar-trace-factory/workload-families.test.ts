@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   executeTassadarNumericModel,
   type TassadarAlmNumericModel,
-} from '@openagents/tassadar-executor'
+} from '@openagentsinc/tassadar-executor'
 
 import { tassadarPocLoopSumFixture } from '../tassadar-poc-fixture'
 import {

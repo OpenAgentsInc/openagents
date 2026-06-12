@@ -19,7 +19,7 @@ import {
   TASSADAR_TS_REPLAY_CLASS_ID,
   hasReceiptedTassadarExecutorCapability,
   isTassadarExecutorSelfTestReceiptRef,
-} from '@openagents/tassadar-executor'
+} from '@openagentsinc/tassadar-executor'
 
 export const TASSADAR_EXECUTOR_CAPABILITY_UNRECEIPTED_REFUSAL_REF =
   'refusal.public.pylon_capability.tassadar_executor_unreceipted'

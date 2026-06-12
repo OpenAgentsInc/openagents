@@ -11,7 +11,7 @@ import {
   datasetListingToTags,
   makeDatasetListing,
   sha256Hex,
-} from '@openagents/nip90'
+} from '@openagentsinc/nip90'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 

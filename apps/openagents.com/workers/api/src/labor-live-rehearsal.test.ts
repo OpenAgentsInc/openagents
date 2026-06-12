@@ -17,7 +17,7 @@ import {
   makeLbrResult,
   type LbrAcceptance,
   type LbrAgenticCodingRequest,
-} from '@openagents/nip90'
+} from '@openagentsinc/nip90'
 
 import {
   assertLaborEscrowPublicSafe,

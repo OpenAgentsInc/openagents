@@ -3,7 +3,7 @@ import {
   createJobRequestEvent,
   jobInput,
   makeJobRequest,
-} from '@openagents/nip90'
+} from '@openagentsinc/nip90'
 
 export type BuyModeDispatcherState = 'disabled' | 'enabled' | 'halted'
 export type BuyModeJobState =

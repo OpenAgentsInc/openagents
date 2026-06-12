@@ -19,8 +19,8 @@ import {
   stripUnreceiptedTassadarExecutorCapability,
   type TassadarCapabilityDeclaration,
   type TassadarExecutorSelfTestReceipt,
-} from "@openagents/tassadar-executor"
-import { runPinnedTassadarExecutorSelfTest } from "@openagents/tassadar-executor/self-test"
+} from "@openagentsinc/tassadar-executor"
+import { runPinnedTassadarExecutorSelfTest } from "@openagentsinc/tassadar-executor/self-test"
 
 import { assertPublicProjectionSafe } from "./state"
 

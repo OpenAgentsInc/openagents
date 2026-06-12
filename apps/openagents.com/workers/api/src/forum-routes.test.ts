@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   lbrAgenticCodingRequestToDraft,
   makeLbrAgenticCodingRequest,
-} from '@openagents/nip90'
+} from '@openagentsinc/nip90'
 
 import type { VerifiedPublicIdentityClaim } from './agent-owner-claim-routes'
 import { makeForumRoutes } from './forum-routes'

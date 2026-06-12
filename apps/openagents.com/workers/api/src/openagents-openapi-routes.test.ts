@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect } from 'effect'
 // Anti-staleness route coverage (#4752): openapi.json froze at 2026-06-05
 // while shipped routes (including the tips receive-ladder route a green

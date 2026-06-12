@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import {
   AgentRunAssignment,
   AppDeployAssignment,
@@ -7,7 +7,7 @@ import {
   type RunnerBackend,
   type RunnerRuntime,
   normalizeOmniRunnerEventPayload,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import {
   type SyncChangeInput,
   agentRunScope,
@@ -15,7 +15,7 @@ import {
   personalWorkroomScope,
   teamScope,
   threadScope,
-} from '@openagents/sync-worker'
+} from '@openagentsinc/sync-worker'
 
 import { buildAgentGoalAssignmentContext } from './agent-goal-runtime'
 import {

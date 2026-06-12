@@ -2,8 +2,8 @@ import {
   normalizeOmniRunnerEventPayload,
   type OmniRunnerEvent,
   decodeOmniRunnerEvent,
-} from '@openagents/sync-schema'
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+} from '@openagentsinc/sync-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Context, Effect, Layer } from 'effect'
 
 import { nestedUnknown, optionalString, safeJsonRecord } from '../json-boundary'

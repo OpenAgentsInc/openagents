@@ -196,7 +196,7 @@ usage — Codex is built for delegated background work; compliant.
 3. **Redaction law unchanged:** raw keys live only in the auth KV
    under `provider-auth:<providerAccountRef>`; D1 rows, projections,
    events, grants, logs, tests, and fixtures carry secret refs only
-   (`@openagents/provider-account-schema` markers cover `sk-ant-*`
+   (`@openagentsinc/provider-account-schema` markers cover `sk-ant-*`
    via the `sk-` marker, `AIza*`, `ANTHROPIC_API_KEY=`,
    `GEMINI_API_KEY=`).
 4. **Honest copy:** a provider is described as connectable, not

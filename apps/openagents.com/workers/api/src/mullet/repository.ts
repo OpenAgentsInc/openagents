@@ -14,7 +14,7 @@ import {
   decodeMulletSimulationRunJson,
   encodeMulletScenarioJson,
   encodeMulletSimulationRunJson,
-} from '@openagents/mullet-schema'
+} from '@openagentsinc/mullet-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -264,7 +264,7 @@ export type MulletRepositoryShape = Readonly<{
 export class MulletRepository extends Context.Service<
   MulletRepository,
   MulletRepositoryShape
->()('@openagents/MulletRepository') {
+>()('@openagentsinc/MulletRepository') {
   static layer = (
     env: MulletEnv,
     runtime: MulletRepositoryRuntime = systemMulletRepositoryRuntime,

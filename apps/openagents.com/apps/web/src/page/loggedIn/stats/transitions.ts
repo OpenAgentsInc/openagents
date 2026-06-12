@@ -2,7 +2,7 @@ import {
   TokenUsageAggregateResponse,
   TokenUsageLeaderboardPreferenceResponse,
   TokenUsageLeaderboardsResponse,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Effect, Match as M, Option } from 'effect'
 import { Command } from 'foldkit'
 import { evo } from 'foldkit/struct'

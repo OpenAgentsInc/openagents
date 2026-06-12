@@ -56,7 +56,7 @@ or `auth.json` references.
 ## Template Package And Preview
 
 Issue `OPENAGENTS-O-005` moves order/Sites lifecycle templates into the
-source-controlled `@openagents/email-templates` package. The package is
+source-controlled `@openagentsinc/email-templates` package. The package is
 Resend-compatible and Worker-safe: it uses schema-first props, renders
 deterministic HTML and plain text, and avoids a runtime React dependency in the
 Cloudflare Worker.

@@ -2,7 +2,7 @@ import type {
   ShareProjectionV1,
   WorkroomFileItem,
   WorkroomTimelineMessage,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { clsx } from 'clsx'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'

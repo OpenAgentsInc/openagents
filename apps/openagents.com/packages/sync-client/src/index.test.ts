@@ -6,7 +6,7 @@ import {
   SyncPatch,
   SyncScope,
   SyncSequence,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { describe, expect, test } from 'vitest'
 
 import {

@@ -1,4 +1,4 @@
-import type { AutopilotTokenUsage } from '@openagents/sync-schema'
+import type { AutopilotTokenUsage } from '@openagentsinc/sync-schema'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {

@@ -208,7 +208,7 @@ bounded differential harness mints unlimited validated workloads).
 ### Milestone 1 complete; the lane is now Artanis's working substrate
 
 Commit `7bf1f01c4` (2026-06-10): live executor-trace closeout on a real
-Pylon — dispatched, executed via `@openagents/tassadar-executor`, trace
+Pylon — dispatched, executed via `@openagentsinc/tassadar-executor`, trace
 digest byte-identical to the psionic Rust fixture, worker replay-verified as
 a separate validator, one operator-funded 1,000-sat closeout settled.
 `compute.tassadar_executor_poc.v1` green (registry `2026-06-10.12`).

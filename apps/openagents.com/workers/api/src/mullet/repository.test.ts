@@ -2,7 +2,7 @@ import {
   MulletSimulationRunExport,
   decodeMulletScenario,
   decodeMulletSimulationRun,
-} from '@openagents/mullet-schema'
+} from '@openagentsinc/mullet-schema'
 import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 

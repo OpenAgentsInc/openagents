@@ -517,7 +517,7 @@ export class ImageGenerationService extends Context.Service<
       input: GenerateImageRequest,
     ) => Effect.Effect<GenerateImageResponse, ImageGenerationError>
   }
->()('@openagents/autopilot-omega/ImageGenerationService') {
+>()('@openagentsinc/autopilot-omega/ImageGenerationService') {
   static layer = (
     env: ImageGenerationEnv,
     runtime: ImageGenerationRuntime = systemImageGenerationRuntime,

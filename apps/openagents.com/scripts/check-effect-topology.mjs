@@ -98,7 +98,7 @@ const effectSections = effectWhyOutput
 const observedVersions = effectSections.map(section => section.version)
 
 const requiredIsolatedNostrRelayPullers = [
-  '@openagents/nostr-relay@workspace',
+  '@openagentsinc/nostr-relay@workspace',
   'nostr-effect@0.0.12',
 ]
 
@@ -139,7 +139,7 @@ const trackedInstalledVersions = [
   ['@foldkit/devtools-mcp', '0.9.0'],
   ['@foldkit/vite-plugin', '0.7.0'],
   [
-    'isolated @openagents/nostr-relay effect line',
+    'isolated @openagentsinc/nostr-relay effect line',
     `${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} via nostr-effect@0.0.12 only`,
   ],
   [
@@ -152,12 +152,12 @@ const trackedInstalledVersions = [
 ]
 
 const requiredOmegaPullers = [
-  '@openagents/api-worker@workspace',
-  '@openagents/autopilot-web@workspace',
-  '@openagents/provider-account-schema@workspace',
-  '@openagents/sync-client@workspace',
-  '@openagents/sync-schema@workspace',
-  '@openagents/sync-worker@workspace',
+  '@openagentsinc/api-worker@workspace',
+  '@openagentsinc/autopilot-web@workspace',
+  '@openagentsinc/provider-account-schema@workspace',
+  '@openagentsinc/sync-client@workspace',
+  '@openagentsinc/sync-schema@workspace',
+  '@openagentsinc/sync-worker@workspace',
   'effect-cf@0.13.1',
 ]
 
@@ -227,7 +227,7 @@ const problems = [
   ...directVersionProblems,
   ...unexpectedEffectSections.map(
     section =>
-      `Unexpected installed Effect runtime line ${section.version}; allowed lines are ${OMEGA_EFFECT_VERSION}, the temporary Foldkit exception ${FOLDKIT_EFFECT_EXCEPTION_VERSION}, and isolated @openagents/nostr-relay via nostr-effect@0.0.12 on ${ISOLATED_NOSTR_RELAY_EFFECT_VERSION}`,
+      `Unexpected installed Effect runtime line ${section.version}; allowed lines are ${OMEGA_EFFECT_VERSION}, the temporary Foldkit exception ${FOLDKIT_EFFECT_EXCEPTION_VERSION}, and isolated @openagentsinc/nostr-relay via nostr-effect@0.0.12 on ${ISOLATED_NOSTR_RELAY_EFFECT_VERSION}`,
   ),
   ...(omegaSection === undefined
     ? [

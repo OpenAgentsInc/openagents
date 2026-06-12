@@ -1,4 +1,4 @@
-import { ShareProjectionV1 } from '@openagents/sync-schema'
+import { ShareProjectionV1 } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 import { ts } from 'foldkit/schema'
 

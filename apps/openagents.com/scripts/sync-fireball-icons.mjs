@@ -113,7 +113,7 @@ const lines = [
   'export class IconService extends Context.Service<',
   '  IconService,',
   '  IconServiceShape',
-  ">()('@openagents/IconService') {",
+  ">()('@openagentsinc/IconService') {",
   '  static readonly layer = Layer.succeed(IconService, liveIconService)',
   '}',
   '',

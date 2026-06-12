@@ -20,7 +20,7 @@ import {
   parseLaborJobRequestEvent,
   type JobRequest,
   type LaborJobRequest,
-} from "@openagents/nip90"
+} from "@openagentsinc/nip90"
 import { Effect } from "effect"
 import type { BootstrapSummary } from "./bootstrap"
 import { loadOrCreateNostrIdentity, type PylonNostrPrivateIdentity } from "./nostr-identity"

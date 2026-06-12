@@ -1,4 +1,4 @@
-import { TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND } from '@openagents/tassadar-executor'
+import { TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND } from '@openagentsinc/tassadar-executor'
 
 import type { BuyModeDispatchInput } from './buy-mode-dispatcher'
 import type { TrainingVerificationChallengeCreateRequest } from './training-verification'

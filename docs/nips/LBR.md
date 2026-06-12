@@ -25,7 +25,7 @@ acceptance, payment, or settlement authority.
 ## Kind Allocation
 
 The labor/code-work reserve is `5930`-`5939`, with result kinds at `+1000`.
-The current shared `nostr-effect` and `@openagents/nip90` allocation is:
+The current shared `nostr-effect` and `@openagentsinc/nip90` allocation is:
 
 | Request kind | Result kind | Job type |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ hashes, payment preimages, or settlement secrets.
 Raw diffs, logs, run traces, and private work material travel through
 platform-governed artifact lanes. The relay carries refs and lifecycle state.
 
-The `@openagents/nip90` LBR helpers reject unsafe fixture material at decode
+The `@openagentsinc/nip90` LBR helpers reject unsafe fixture material at decode
 time and require these events to be ref-only.
 
 ## Request Event
@@ -182,7 +182,7 @@ request/result events and kind `7000` feedback. OpenAgents adds platform
 receipt refs, ledger escrow, Forum twins, and payout receipts; those refs are
 the public authority for work and settlement state.
 
-The typed OpenAgents wrapper lives in `@openagents/nip90` and builds on the
+The typed OpenAgents wrapper lives in `@openagentsinc/nip90` and builds on the
 shared `nostr-effect/nip90` primitives rather than redefining Nostr event
 validation.
 

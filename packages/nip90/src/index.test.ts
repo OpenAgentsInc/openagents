@@ -38,7 +38,7 @@ import {
 const pubkey = "11".repeat(32)
 const sig = "22".repeat(64)
 
-describe("@openagents/nip90", () => {
+describe("@openagentsinc/nip90", () => {
   test("re-exports shared nostr-effect NIP-90 request helpers", () => {
     const request = makeJobRequest({
       kind: KIND_JOB_TEXT_GENERATION,

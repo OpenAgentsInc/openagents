@@ -39,7 +39,7 @@ Enrollment is skipped before any scheduling work when:
 
 The enrollment function is intentionally separate from the dispatcher. This
 issue creates durable send records; the scheduled dispatcher will claim due
-records, render through `@openagents/email-templates`, send through
+records, render through `@openagentsinc/email-templates`, send through
 `EmailService`, and attach the resulting `email_message_id`.
 
 ## Dispatcher

@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Array as Arr, Schema as S } from 'effect'
 
 export const DataTraceMarketplaceState = S.Literals([

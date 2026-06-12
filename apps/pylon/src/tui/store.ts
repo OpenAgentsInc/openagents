@@ -11,7 +11,7 @@ import {
   projectAgentRuntimeSurfaceStatus,
   type AgentRuntimeSurfaceProjection,
   type AgentRuntimeSurfaceStatusRow,
-} from "@openagents/agent-runtime-schema"
+} from "@openagentsinc/agent-runtime-schema"
 import {
   formatLogTimestamp,
   initialOperatorPaneState,

@@ -1,4 +1,4 @@
-import { MutationId, SyncCommand, SyncScope } from '@openagents/sync-schema'
+import { MutationId, SyncCommand, SyncScope } from '@openagentsinc/sync-schema'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 

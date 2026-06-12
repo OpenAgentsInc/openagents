@@ -11,7 +11,7 @@ import {
   SyncScope,
   SyncSequence,
   SyncSnapshot,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -240,7 +240,7 @@ export type SyncOutboxStoreShape = Readonly<{
 export class SyncOutboxStore extends Context.Service<
   SyncOutboxStore,
   SyncOutboxStoreShape
->()('@openagents/sync-worker/SyncOutboxStore') {
+>()('@openagentsinc/sync-worker/SyncOutboxStore') {
   static layer = (
     db: D1Database,
     runtime: SyncWorkerRuntime = systemSyncWorkerRuntime,

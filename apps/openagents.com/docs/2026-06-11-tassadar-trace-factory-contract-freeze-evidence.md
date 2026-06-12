@@ -114,7 +114,7 @@ each with vitest coverage (45 tests total, all passing).
 
 `corpus.tassadar_trace.v0_1.local_pilot`, generated 2026-06-11 by
 `scripts/tassadar-trace-factory-generate.ts` with the REAL TS executor
-(`@openagents/tassadar-executor`, Rust-digest-parity), master seed
+(`@openagentsinc/tassadar-executor`, Rust-digest-parity), master seed
 `4748c0de20260611`, executor hash
 `d8ebab55e81979862651f41f69ff0bb483824e603f542a28ddaf3432302501fa`.
 

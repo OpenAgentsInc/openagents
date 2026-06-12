@@ -145,7 +145,7 @@ const pack = async () => {
 
 const packNip90 = async () => {
   const packageRoot = join(workspaceRoot, "packages/nip90")
-  const result = await runRequired("bun pm pack @openagents/nip90", ["bun", "pm", "pack"], {
+  const result = await runRequired("bun pm pack @openagentsinc/nip90", ["bun", "pm", "pack"], {
     cwd: packageRoot,
     timeoutMs: 60_000,
   })
@@ -155,7 +155,7 @@ const packNip90 = async () => {
     .find(line => /^openagents-nip90-.*\.tgz$/.test(line))
 
   if (!tarball) {
-    throw new Error(`failed to find packed @openagents/nip90 tarball in bun pm pack output: ${result.stdout}`)
+    throw new Error(`failed to find packed @openagentsinc/nip90 tarball in bun pm pack output: ${result.stdout}`)
   }
 
   return join(packageRoot, tarball)
@@ -163,7 +163,7 @@ const packNip90 = async () => {
 
 const packTassadarExecutor = async () => {
   const packageRoot = join(workspaceRoot, "packages/tassadar-executor")
-  const result = await runRequired("bun pm pack @openagents/tassadar-executor", ["bun", "pm", "pack"], {
+  const result = await runRequired("bun pm pack @openagentsinc/tassadar-executor", ["bun", "pm", "pack"], {
     cwd: packageRoot,
     timeoutMs: 60_000,
   })
@@ -173,7 +173,7 @@ const packTassadarExecutor = async () => {
     .find(line => /^openagents-tassadar-executor-.*\.tgz$/.test(line))
 
   if (!tarball) {
-    throw new Error(`failed to find packed @openagents/tassadar-executor tarball in bun pm pack output: ${result.stdout}`)
+    throw new Error(`failed to find packed @openagentsinc/tassadar-executor tarball in bun pm pack output: ${result.stdout}`)
   }
 
   return join(packageRoot, tarball)
@@ -256,8 +256,8 @@ async function main() {
         },
         name: "pylon-packaged-runtime-task-smoke",
         overrides: {
-          "@openagents/nip90": `file:${nip90Tarball}`,
-          "@openagents/tassadar-executor": `file:${tassadarExecutorTarball}`,
+          "@openagentsinc/nip90": `file:${nip90Tarball}`,
+          "@openagentsinc/tassadar-executor": `file:${tassadarExecutorTarball}`,
         },
         private: true,
         type: "module",

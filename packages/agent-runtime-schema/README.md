@@ -1,6 +1,6 @@
 # Agent Runtime Schema
 
-`@openagents/agent-runtime-schema` is the RK1 schema-only Agent Runtime Kernel
+`@openagentsinc/agent-runtime-schema` is the RK1 schema-only Agent Runtime Kernel
 contract. It defines the durable OpenAgents runtime run and event log shape used
 by native, external, hosted, and fixture loops.
 

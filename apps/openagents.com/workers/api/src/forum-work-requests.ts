@@ -7,7 +7,7 @@ import {
   makeLbrAgenticCodingRequest,
   type LbrAgenticCodingRequest,
   type LbrUnsignedEventDraft,
-} from '@openagents/nip90'
+} from '@openagentsinc/nip90'
 import { Effect, Schema as S } from 'effect'
 
 import { sha256Hex } from './agent-registration'

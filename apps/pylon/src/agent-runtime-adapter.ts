@@ -6,7 +6,7 @@ import {
   type AgentRuntimeEvent,
   type AgentRuntimeEventId,
   type AgentRuntimeRunId,
-} from "@openagents/agent-runtime-schema"
+} from "@openagentsinc/agent-runtime-schema"
 import { Effect, Stream } from "effect"
 
 import {

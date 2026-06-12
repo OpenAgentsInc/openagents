@@ -458,7 +458,7 @@ export const makeAdjutantEnrichmentPlanner =
 export class AdjutantEnrichmentPlanner extends Context.Service<
   AdjutantEnrichmentPlanner,
   AdjutantEnrichmentPlannerShape
->()('@openagents/autopilot-omega/AdjutantEnrichmentPlanner') {
+>()('@openagentsinc/autopilot-omega/AdjutantEnrichmentPlanner') {
   static readonly layer = Layer.succeed(
     AdjutantEnrichmentPlanner,
     makeAdjutantEnrichmentPlanner(),

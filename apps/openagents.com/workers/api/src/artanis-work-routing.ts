@@ -1,6 +1,6 @@
 import { Schema as S } from 'effect'
 
-import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagents/tassadar-executor'
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagentsinc/tassadar-executor'
 
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 

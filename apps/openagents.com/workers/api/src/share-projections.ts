@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import {
   ShareAudience,
   type ShareAudienceRecipient as ShareAudienceRecipientType,
@@ -13,7 +13,7 @@ import {
   type WorkroomFileItem,
   type WorkroomTimelineMessage,
   type WorkroomTimelineToolPart,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Context, Effect, Layer, Match as M, Schema as S } from 'effect'
 
 import {
@@ -200,7 +200,7 @@ export type ShareProjectionRepositoryShape = Readonly<{
 export class ShareProjectionRepository extends Context.Service<
   ShareProjectionRepository,
   ShareProjectionRepositoryShape
->()('@openagents/autopilot-omega/ShareProjectionRepository') {
+>()('@openagentsinc/autopilot-omega/ShareProjectionRepository') {
   static readonly layer = (db: D1Database) =>
     Layer.succeed(
       ShareProjectionRepository,
@@ -215,7 +215,7 @@ export type ShareUrlServiceShape = Readonly<{
 export class ShareUrlService extends Context.Service<
   ShareUrlService,
   ShareUrlServiceShape
->()('@openagents/autopilot-omega/ShareUrlService') {
+>()('@openagentsinc/autopilot-omega/ShareUrlService') {
   static readonly layer = (origin: string) =>
     Layer.succeed(ShareUrlService, {
       canonicalUrlForShareId: (shareId: string) => `${origin}/share/${shareId}`,
@@ -231,7 +231,7 @@ export type ShareReceiptServiceShape = Readonly<{
 export class ShareReceiptService extends Context.Service<
   ShareReceiptService,
   ShareReceiptServiceShape
->()('@openagents/autopilot-omega/ShareReceiptService') {
+>()('@openagentsinc/autopilot-omega/ShareReceiptService') {
   static readonly layer = Layer.succeed(ShareReceiptService, {
     audienceChangedRef: shareId => `receipt_share_audience_changed_${shareId}`,
     createdRef: shareId => `receipt_share_created_${shareId}`,
@@ -270,7 +270,7 @@ export type ShareAccessServiceShape = Readonly<{
 export class ShareAccessService extends Context.Service<
   ShareAccessService,
   ShareAccessServiceShape
->()('@openagents/autopilot-omega/ShareAccessService') {
+>()('@openagentsinc/autopilot-omega/ShareAccessService') {
   static readonly layer = Layer.succeed(ShareAccessService, {
     authorizeCreate: input => authorizeCreate(input),
     authorizeManage: input => authorizeManage(input),
@@ -312,7 +312,7 @@ export type ShareProjectionBuilderShape = Readonly<{
 export class ShareProjectionBuilder extends Context.Service<
   ShareProjectionBuilder,
   ShareProjectionBuilderShape
->()('@openagents/autopilot-omega/ShareProjectionBuilder') {
+>()('@openagentsinc/autopilot-omega/ShareProjectionBuilder') {
   static readonly layer = Layer.succeed(ShareProjectionBuilder, {
     build: input =>
       Effect.succeed(

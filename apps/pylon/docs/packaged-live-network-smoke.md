@@ -24,13 +24,13 @@ Optional inputs:
 The smoke performs these steps through the freshly installed package:
 
 1. `bun pm pack` builds the local release tarball.
-2. `bun pm pack` builds the local `@openagents/nip90` protocol tarball so the
+2. `bun pm pack` builds the local `@openagentsinc/nip90` protocol tarball so the
    smoke uses the same `nostr-effect`-backed NIP-90 package as the workspace.
-3. `bun pm pack` builds the local `@openagents/tassadar-executor` tarball so
+3. `bun pm pack` builds the local `@openagentsinc/tassadar-executor` tarball so
    the installed artifact carries the same exact-replay executor as the
    workspace.
 4. A temporary project installs the Pylon tarball with local
-   `@openagents/nip90` and `@openagents/tassadar-executor` overrides.
+   `@openagentsinc/nip90` and `@openagentsinc/tassadar-executor` overrides.
 5. `bunx pylon bootstrap --json` creates isolated `PYLON_HOME` state.
 6. `bunx pylon presence register` registers the Pylon against OpenAgents.
 7. `bunx pylon presence heartbeat` sends a fresh heartbeat.
@@ -41,7 +41,7 @@ The smoke performs these steps through the freshly installed package:
 10. The wrapper reads `GET /api/public/pylon-stats` and
    `GET /api/public/pylon-capacity-funnel` to capture projection evidence.
 11. The installed package replays
-    `@openagents/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json` and
+    `@openagentsinc/tassadar-executor/fixtures/tassadar-poc-loop-sum-v1.json` and
     requires a verified exact-replay verdict.
 
 Exit codes:

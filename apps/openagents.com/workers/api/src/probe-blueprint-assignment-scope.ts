@@ -1,4 +1,4 @@
-import { BlueprintAssignmentScope } from '@openagents/sync-schema'
+import { BlueprintAssignmentScope } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 
 import {

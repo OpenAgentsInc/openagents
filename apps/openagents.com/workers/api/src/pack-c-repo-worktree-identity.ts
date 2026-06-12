@@ -1,4 +1,4 @@
-import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { assertNoProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 
 import type { OpenAgentsAutopilotRepositoryVisibility } from './autopilot-work-request'
 import type { CodingAutopilotRepoTrustTier } from './coding-autopilot-repo-placement'

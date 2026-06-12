@@ -462,7 +462,7 @@ export class OnboardingStateStore extends Context.Service<
       goal: string,
     ) => Effect.Effect<OnboardingStatus, OnboardingRepositoryError>
   }
->()('@openagents/autopilot-omega/OnboardingStateStore') {
+>()('@openagentsinc/autopilot-omega/OnboardingStateStore') {
   static readonly layer = (
     env: OnboardingEnv,
     runtime: OnboardingRuntime = systemOnboardingRuntime,

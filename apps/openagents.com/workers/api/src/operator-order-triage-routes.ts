@@ -2444,7 +2444,7 @@ export class OrderTriageService extends Context.Service<
       input: UpsertOrderTriageRequest,
     ) => Effect.Effect<OperatorOrderTriageRecord, OrderTriageError>
   }
->()('@openagents/autopilot-omega/OrderTriageService') {
+>()('@openagentsinc/autopilot-omega/OrderTriageService') {
   static readonly layer = (
     env: OperatorOrderTriageEnv,
     runtime: OrderTriageRuntime = systemOrderTriageRuntime,

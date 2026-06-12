@@ -21,7 +21,7 @@ import {
   executeTassadarNumericModel,
   TassadarNumericExecutionError,
   type TassadarAlmNumericModel,
-} from '@openagents/tassadar-executor'
+} from '@openagentsinc/tassadar-executor'
 
 import {
   finalOutputDigestFromTokens,

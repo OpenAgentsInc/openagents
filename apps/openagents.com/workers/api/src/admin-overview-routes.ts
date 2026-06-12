@@ -531,7 +531,7 @@ export class AdminOverviewStore extends Context.Service<
       AdminOverviewStorageError
     >
   }
->()('@openagents/autopilot-omega/AdminOverviewStore') {
+>()('@openagentsinc/autopilot-omega/AdminOverviewStore') {
   static readonly layer = (env: AdminOverviewEnv) =>
     Layer.succeed(AdminOverviewStore, {
       readOverview: readAdminOverview(openAgentsDatabase(env)),

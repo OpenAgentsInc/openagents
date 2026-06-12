@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/nostr-relay",
+  "name": "@openagentsinc/nostr-relay",
   "version": "0.1.0",
   "private": true,
   "type": "module",

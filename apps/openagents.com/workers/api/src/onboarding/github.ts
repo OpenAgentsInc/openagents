@@ -170,7 +170,7 @@ export class GitHubRepositoryService extends Context.Service<
       GitHubRepositoryListFailed | S.SchemaError
     >
   }
->()('@openagents/autopilot-omega/GitHubRepositoryService') {
+>()('@openagentsinc/autopilot-omega/GitHubRepositoryService') {
   static readonly layer = Layer.succeed(GitHubRepositoryService, {
     getRepository: Effect.fn('GitHubRepositoryService.getRepository')(
       getRepository,

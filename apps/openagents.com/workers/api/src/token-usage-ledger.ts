@@ -7,7 +7,7 @@ import {
   TokenUsageLeaderboardPreferenceUpdateBody,
   TokenUsageLeaderboardsResponse,
   type TokenUsageEventRecord as TokenUsageEventRecordType,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -1503,7 +1503,7 @@ const makeD1TokenUsageLedger = (
 export class TokenUsageLedger extends Context.Service<
   TokenUsageLedger,
   TokenUsageLedgerShape
->()('@openagents/TokenUsageLedger') {
+>()('@openagentsinc/TokenUsageLedger') {
   static live = (
     db: D1Database,
     runtime: TokenUsageLedgerRuntime = systemTokenUsageLedgerRuntime,

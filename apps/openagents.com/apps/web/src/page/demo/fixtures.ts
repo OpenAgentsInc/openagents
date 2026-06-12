@@ -1,4 +1,4 @@
-import { SyncPatch, SyncSnapshot } from '@openagents/sync-schema'
+import { SyncPatch, SyncSnapshot } from '@openagentsinc/sync-schema'
 import { Context, Effect, Layer, Schema as S } from 'effect'
 
 import {

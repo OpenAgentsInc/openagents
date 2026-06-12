@@ -1,5 +1,5 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
-import { badRequest, notFound } from '@openagents/sync-worker'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
+import { badRequest, notFound } from '@openagentsinc/sync-worker'
 import { Effect } from 'effect'
 
 import { sha256Hex } from './agent-registration'

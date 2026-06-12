@@ -12,8 +12,8 @@ import {
   MulletScenario,
   MulletScenarioId,
   decodeMulletSimulationRun,
-} from '@openagents/mullet-schema'
-import { simulateScenarioHour } from '@openagents/mullet-sim'
+} from '@openagentsinc/mullet-schema'
+import { simulateScenarioHour } from '@openagentsinc/mullet-sim'
 import { Effect, Layer, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from '../http/responses'

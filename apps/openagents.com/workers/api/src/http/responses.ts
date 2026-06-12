@@ -1,4 +1,4 @@
-import { jsonResponse } from '@openagents/sync-worker'
+import { jsonResponse } from '@openagentsinc/sync-worker'
 
 export const redirectResponse = (
   location: string,

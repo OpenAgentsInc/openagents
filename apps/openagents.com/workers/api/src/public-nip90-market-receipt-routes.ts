@@ -1,4 +1,4 @@
-import { notFound } from '@openagents/sync-worker'
+import { notFound } from '@openagentsinc/sync-worker'
 import { Effect } from 'effect'
 
 import {

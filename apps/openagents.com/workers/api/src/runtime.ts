@@ -2,8 +2,8 @@ import {
   IsoTimestamp,
   OmniRunnerEvent,
   SyncScope,
-} from '@openagents/sync-schema'
-import { SyncOutboxStore, type WorkerBindings } from '@openagents/sync-worker'
+} from '@openagentsinc/sync-schema'
+import { SyncOutboxStore, type WorkerBindings } from '@openagentsinc/sync-worker'
 import { Effect, Layer, Schema as S } from 'effect'
 import { Queue, Worker, WorkerEnvironment } from 'effect-cf'
 import * as Context from 'effect/Context'
@@ -26,7 +26,7 @@ export type OpenAgentsWorkerRequestShape = Readonly<{
 export class OpenAgentsWorkerRequest extends Context.Service<
   OpenAgentsWorkerRequest,
   OpenAgentsWorkerRequestShape
->()('@openagents/OpenAgentsWorkerRequest') {}
+>()('@openagentsinc/OpenAgentsWorkerRequest') {}
 
 export class RunnerEventQueueMessage extends S.Class<RunnerEventQueueMessage>(
   'RunnerEventQueueMessage',
@@ -38,7 +38,7 @@ export class RunnerEventQueueMessage extends S.Class<RunnerEventQueueMessage>(
 }) {}
 
 export class RunnerEventsQueue extends Queue.Tag<RunnerEventsQueue>()(
-  '@openagents/RunnerEventsQueue',
+  '@openagentsinc/RunnerEventsQueue',
   {
     message: RunnerEventQueueMessage,
   },
@@ -67,7 +67,7 @@ export type OpenAgentsSyncRoomNotificationsShape = Readonly<{
 export class OpenAgentsSyncRoomNotifications extends Context.Service<
   OpenAgentsSyncRoomNotifications,
   OpenAgentsSyncRoomNotificationsShape
->()('@openagents/OpenAgentsSyncRoomNotifications') {
+>()('@openagentsinc/OpenAgentsSyncRoomNotifications') {
   static layer = (namespace: DurableObjectNamespace) =>
     Layer.succeed(
       OpenAgentsSyncRoomNotifications,
@@ -82,7 +82,7 @@ export type OpenAgentsWorkerContextShape = Readonly<{
 export class OpenAgentsWorkerContext extends Context.Service<
   OpenAgentsWorkerContext,
   OpenAgentsWorkerContextShape
->()('@openagents/OpenAgentsWorkerContext') {
+>()('@openagentsinc/OpenAgentsWorkerContext') {
   static layer = (ctx: OpenAgentsWorkerExecutionContext) =>
     Layer.succeed(OpenAgentsWorkerContext, makeOpenAgentsWorkerContext(ctx))
 }

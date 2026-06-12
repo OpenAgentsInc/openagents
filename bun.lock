@@ -11,7 +11,7 @@
       },
     },
     "apps/forum": {
-      "name": "@openagents/forum",
+      "name": "@openagentsinc/forum",
       "version": "0.0.0",
       "dependencies": {
         "effect": "catalog:",
@@ -21,7 +21,7 @@
       },
     },
     "apps/nostr-relay": {
-      "name": "@openagents/nostr-relay",
+      "name": "@openagentsinc/nostr-relay",
       "version": "0.1.0",
       "dependencies": {
         "nostr-effect": "0.0.12",
@@ -33,7 +33,7 @@
       },
     },
     "apps/openagents.com": {
-      "name": "@openagents/openagents-com",
+      "name": "@openagentsinc/openagents-com",
       "version": "0.1.0",
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20250601.0",
@@ -51,15 +51,15 @@
       },
     },
     "apps/openagents.com/apps/web": {
-      "name": "@openagents/autopilot-web",
+      "name": "@openagentsinc/autopilot-web",
       "version": "0.1.0",
       "dependencies": {
         "@effect/platform-browser": "4.0.0-beta.70",
-        "@openagents/mullet-schema": "workspace:*",
-        "@openagents/mullet-sim": "workspace:*",
-        "@openagents/provider-account-schema": "workspace:*",
-        "@openagents/sync-client": "workspace:*",
-        "@openagents/sync-schema": "workspace:*",
+        "@openagentsinc/mullet-schema": "workspace:*",
+        "@openagentsinc/mullet-sim": "workspace:*",
+        "@openagentsinc/provider-account-schema": "workspace:*",
+        "@openagentsinc/sync-client": "workspace:*",
+        "@openagentsinc/sync-schema": "workspace:*",
         "@tailwindcss/vite": "^4.2.4",
         "clsx": "^2.1.1",
         "effect": "4.0.0-beta.70",
@@ -74,7 +74,7 @@
       },
     },
     "apps/openagents.com/packages/email-templates": {
-      "name": "@openagents/email-templates",
+      "name": "@openagentsinc/email-templates",
       "version": "0.1.0",
       "dependencies": {
         "effect": "4.0.0-beta.70",
@@ -85,59 +85,59 @@
       },
     },
     "apps/openagents.com/packages/mullet-schema": {
-      "name": "@openagents/mullet-schema",
+      "name": "@openagentsinc/mullet-schema",
       "version": "0.1.0",
       "dependencies": {
         "effect": "4.0.0-beta.70",
       },
     },
     "apps/openagents.com/packages/mullet-sim": {
-      "name": "@openagents/mullet-sim",
+      "name": "@openagentsinc/mullet-sim",
       "version": "0.1.0",
       "dependencies": {
-        "@openagents/mullet-schema": "workspace:*",
+        "@openagentsinc/mullet-schema": "workspace:*",
         "effect": "4.0.0-beta.70",
       },
     },
     "apps/openagents.com/packages/provider-account-schema": {
-      "name": "@openagents/provider-account-schema",
+      "name": "@openagentsinc/provider-account-schema",
       "version": "0.1.0",
       "dependencies": {
         "effect": "4.0.0-beta.70",
       },
     },
     "apps/openagents.com/packages/sync-client": {
-      "name": "@openagents/sync-client",
+      "name": "@openagentsinc/sync-client",
       "version": "0.1.0",
       "dependencies": {
-        "@openagents/sync-schema": "workspace:*",
+        "@openagentsinc/sync-schema": "workspace:*",
         "effect": "4.0.0-beta.70",
       },
     },
     "apps/openagents.com/packages/sync-schema": {
-      "name": "@openagents/sync-schema",
+      "name": "@openagentsinc/sync-schema",
       "version": "0.1.0",
       "dependencies": {
         "effect": "4.0.0-beta.70",
       },
     },
     "apps/openagents.com/packages/sync-worker": {
-      "name": "@openagents/sync-worker",
+      "name": "@openagentsinc/sync-worker",
       "version": "0.1.0",
       "dependencies": {
-        "@openagents/sync-schema": "workspace:*",
+        "@openagentsinc/sync-schema": "workspace:*",
         "effect": "4.0.0-beta.70",
       },
     },
     "apps/openagents.com/services/mdk-sidecar": {
-      "name": "@openagents/mdk-sidecar",
+      "name": "@openagentsinc/mdk-sidecar",
       "version": "0.1.0",
       "dependencies": {
         "@moneydevkit/core": "0.19.0",
       },
     },
     "apps/openagents.com/services/mdk-tips-buffer": {
-      "name": "@openagents/mdk-tips-buffer",
+      "name": "@openagentsinc/mdk-tips-buffer",
       "version": "0.1.0",
       "dependencies": {
         "@moneydevkit/core": "0.19.0",
@@ -145,7 +145,7 @@
       },
     },
     "apps/openagents.com/services/mdk-treasury": {
-      "name": "@openagents/mdk-treasury",
+      "name": "@openagentsinc/mdk-treasury",
       "version": "0.1.0",
       "dependencies": {
         "@moneydevkit/core": "0.19.0",
@@ -153,7 +153,7 @@
       },
     },
     "apps/openagents.com/workers/api": {
-      "name": "@openagents/api-worker",
+      "name": "@openagentsinc/api-worker",
       "version": "0.1.0",
       "dependencies": {
         "@cloudflare/containers": "0.3.7",
@@ -161,15 +161,15 @@
         "@effect/sql-sqlite-do": "4.0.0-beta.70",
         "@liquid-js/qrcode-generator": "1.1.6",
         "@moneydevkit/api-contract": "0.1.36",
-        "@openagents/agent-runtime-schema": "workspace:*",
-        "@openagents/email-templates": "workspace:*",
-        "@openagents/mullet-schema": "workspace:*",
-        "@openagents/mullet-sim": "workspace:*",
-        "@openagents/nip90": "workspace:*",
-        "@openagents/provider-account-schema": "workspace:*",
-        "@openagents/sync-schema": "workspace:*",
-        "@openagents/sync-worker": "workspace:*",
-        "@openagents/tassadar-executor": "workspace:*",
+        "@openagentsinc/agent-runtime-schema": "workspace:*",
+        "@openagentsinc/email-templates": "workspace:*",
+        "@openagentsinc/mullet-schema": "workspace:*",
+        "@openagentsinc/mullet-sim": "workspace:*",
+        "@openagentsinc/nip90": "workspace:*",
+        "@openagentsinc/provider-account-schema": "workspace:*",
+        "@openagentsinc/sync-schema": "workspace:*",
+        "@openagentsinc/sync-worker": "workspace:*",
+        "@openagentsinc/tassadar-executor": "workspace:*",
         "@openauthjs/openauth": "^0.4.3",
         "@orpc/client": "1.14.5",
         "arctic": "^2.2.2",
@@ -189,9 +189,9 @@
       "dependencies": {
         "@noble/curves": "1.8.1",
         "@noble/hashes": "1.7.1",
-        "@openagents/agent-runtime-schema": "workspace:*",
-        "@openagents/nip90": "workspace:*",
-        "@openagents/tassadar-executor": "workspace:*",
+        "@openagentsinc/agent-runtime-schema": "workspace:*",
+        "@openagentsinc/nip90": "workspace:*",
+        "@openagentsinc/tassadar-executor": "workspace:*",
         "@opentui/core": "^0.3.4",
         "@opentui/keymap": "0.3.4",
         "@opentui/solid": "0.3.4",
@@ -227,7 +227,7 @@
       },
     },
     "packages/agent-runtime-schema": {
-      "name": "@openagents/agent-runtime-schema",
+      "name": "@openagentsinc/agent-runtime-schema",
       "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
@@ -238,7 +238,7 @@
       },
     },
     "packages/nip90": {
-      "name": "@openagents/nip90",
+      "name": "@openagentsinc/nip90",
       "version": "0.1.0",
       "dependencies": {
         "nostr-effect": "github:OpenAgentsInc/nostr-effect#e6582ef",
@@ -253,7 +253,7 @@
       "version": "0.0.0",
     },
     "packages/probe/packages/runtime": {
-      "name": "@openagents/probe-runtime",
+      "name": "@openagentsinc/probe-runtime",
       "version": "0.0.0",
       "bin": {
         "probe": "./src/cli.ts",
@@ -266,7 +266,7 @@
       },
     },
     "packages/tassadar-executor": {
-      "name": "@openagents/tassadar-executor",
+      "name": "@openagentsinc/tassadar-executor",
       "version": "0.1.0",
     },
   },
@@ -665,47 +665,47 @@
 
     "@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
 
-    "@openagents/agent-runtime-schema": ["@openagents/agent-runtime-schema@workspace:packages/agent-runtime-schema"],
+    "@openagentsinc/agent-runtime-schema": ["@openagentsinc/agent-runtime-schema@workspace:packages/agent-runtime-schema"],
 
-    "@openagents/api-worker": ["@openagents/api-worker@workspace:apps/openagents.com/workers/api"],
+    "@openagentsinc/api-worker": ["@openagentsinc/api-worker@workspace:apps/openagents.com/workers/api"],
 
-    "@openagents/autopilot-web": ["@openagents/autopilot-web@workspace:apps/openagents.com/apps/web"],
+    "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
 
-    "@openagents/email-templates": ["@openagents/email-templates@workspace:apps/openagents.com/packages/email-templates"],
+    "@openagentsinc/email-templates": ["@openagentsinc/email-templates@workspace:apps/openagents.com/packages/email-templates"],
 
-    "@openagents/forum": ["@openagents/forum@workspace:apps/forum"],
+    "@openagentsinc/forum": ["@openagentsinc/forum@workspace:apps/forum"],
 
-    "@openagents/mdk-sidecar": ["@openagents/mdk-sidecar@workspace:apps/openagents.com/services/mdk-sidecar"],
+    "@openagentsinc/mdk-sidecar": ["@openagentsinc/mdk-sidecar@workspace:apps/openagents.com/services/mdk-sidecar"],
 
-    "@openagents/mdk-tips-buffer": ["@openagents/mdk-tips-buffer@workspace:apps/openagents.com/services/mdk-tips-buffer"],
+    "@openagentsinc/mdk-tips-buffer": ["@openagentsinc/mdk-tips-buffer@workspace:apps/openagents.com/services/mdk-tips-buffer"],
 
-    "@openagents/mdk-treasury": ["@openagents/mdk-treasury@workspace:apps/openagents.com/services/mdk-treasury"],
+    "@openagentsinc/mdk-treasury": ["@openagentsinc/mdk-treasury@workspace:apps/openagents.com/services/mdk-treasury"],
 
-    "@openagents/mullet-schema": ["@openagents/mullet-schema@workspace:apps/openagents.com/packages/mullet-schema"],
+    "@openagentsinc/mullet-schema": ["@openagentsinc/mullet-schema@workspace:apps/openagents.com/packages/mullet-schema"],
 
-    "@openagents/mullet-sim": ["@openagents/mullet-sim@workspace:apps/openagents.com/packages/mullet-sim"],
+    "@openagentsinc/mullet-sim": ["@openagentsinc/mullet-sim@workspace:apps/openagents.com/packages/mullet-sim"],
 
-    "@openagents/nip90": ["@openagents/nip90@workspace:packages/nip90"],
+    "@openagentsinc/nip90": ["@openagentsinc/nip90@workspace:packages/nip90"],
 
-    "@openagents/nostr-relay": ["@openagents/nostr-relay@workspace:apps/nostr-relay"],
+    "@openagentsinc/nostr-relay": ["@openagentsinc/nostr-relay@workspace:apps/nostr-relay"],
 
-    "@openagents/openagents-com": ["@openagents/openagents-com@workspace:apps/openagents.com"],
+    "@openagentsinc/openagents-com": ["@openagentsinc/openagents-com@workspace:apps/openagents.com"],
 
-    "@openagents/probe-runtime": ["@openagents/probe-runtime@workspace:packages/probe/packages/runtime"],
+    "@openagentsinc/probe-runtime": ["@openagentsinc/probe-runtime@workspace:packages/probe/packages/runtime"],
 
-    "@openagents/provider-account-schema": ["@openagents/provider-account-schema@workspace:apps/openagents.com/packages/provider-account-schema"],
-
-    "@openagents/sync-client": ["@openagents/sync-client@workspace:apps/openagents.com/packages/sync-client"],
-
-    "@openagents/sync-schema": ["@openagents/sync-schema@workspace:apps/openagents.com/packages/sync-schema"],
-
-    "@openagents/sync-worker": ["@openagents/sync-worker@workspace:apps/openagents.com/packages/sync-worker"],
-
-    "@openagents/tassadar-executor": ["@openagents/tassadar-executor@workspace:packages/tassadar-executor"],
+    "@openagentsinc/provider-account-schema": ["@openagentsinc/provider-account-schema@workspace:apps/openagents.com/packages/provider-account-schema"],
 
     "@openagentsinc/pylon": ["@openagentsinc/pylon@workspace:apps/pylon"],
 
     "@openagentsinc/pylon-runtime": ["@openagentsinc/pylon-runtime@workspace:apps/pylon/packages/runtime"],
+
+    "@openagentsinc/sync-client": ["@openagentsinc/sync-client@workspace:apps/openagents.com/packages/sync-client"],
+
+    "@openagentsinc/sync-schema": ["@openagentsinc/sync-schema@workspace:apps/openagents.com/packages/sync-schema"],
+
+    "@openagentsinc/sync-worker": ["@openagentsinc/sync-worker@workspace:apps/openagents.com/packages/sync-worker"],
+
+    "@openagentsinc/tassadar-executor": ["@openagentsinc/tassadar-executor@workspace:packages/tassadar-executor"],
 
     "@openai/codex": ["@openai/codex@0.139.0", "", { "optionalDependencies": { "@openai/codex-darwin-arm64": "npm:@openai/codex@0.139.0-darwin-arm64", "@openai/codex-darwin-x64": "npm:@openai/codex@0.139.0-darwin-x64", "@openai/codex-linux-arm64": "npm:@openai/codex@0.139.0-linux-arm64", "@openai/codex-linux-x64": "npm:@openai/codex@0.139.0-linux-x64", "@openai/codex-win32-arm64": "npm:@openai/codex@0.139.0-win32-arm64", "@openai/codex-win32-x64": "npm:@openai/codex@0.139.0-win32-x64" }, "bin": { "codex": "bin/codex.js" } }, "sha512-wr2fRE+fzW0CjEbfFsLh1ftarVEcw0CMLWS7QyA0nyOz5qacQPVq3cq2+/U7oEbwm1TOqoi0Fm1nxniB5FkpmA=="],
 
@@ -1691,7 +1691,7 @@
 
     "@moneydevkit/core/@orpc/client": ["@orpc/client@1.13.6", "", { "dependencies": { "@orpc/shared": "1.13.6", "@orpc/standard-server": "1.13.6", "@orpc/standard-server-fetch": "1.13.6", "@orpc/standard-server-peer": "1.13.6" } }, "sha512-M6lYM6fJUFp9GR+It/qglYTeXwspb6sGj46xXWHqHS6iDVquqju0bdYuLOfHx8CGJcUSzi0aKUcqMXiGJhBG3w=="],
 
-    "@openagents/nostr-relay/nostr-effect": ["nostr-effect@0.0.12", "", { "dependencies": { "@effect/platform": "0.93.5", "@effect/schema": "0.75.5", "@noble/ciphers": "1.2.1", "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/base": "1.2.4", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "effect": "3.19.8", "pako": "2.1.0" } }, "sha512-mrBi/thtI+NvDsZJsPKexkzsqlfnzM4L26klgrwTAyzwoDx486emeQkVFMkB3iuc3sSiwNPoFrVNCxUlV30oMw=="],
+    "@openagentsinc/nostr-relay/nostr-effect": ["nostr-effect@0.0.12", "", { "dependencies": { "@effect/platform": "0.93.5", "@effect/schema": "0.75.5", "@noble/ciphers": "1.2.1", "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/base": "1.2.4", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "effect": "3.19.8", "pako": "2.1.0" } }, "sha512-mrBi/thtI+NvDsZJsPKexkzsqlfnzM4L26klgrwTAyzwoDx486emeQkVFMkB3iuc3sSiwNPoFrVNCxUlV30oMw=="],
 
     "@openauthjs/openauth/@standard-schema/spec": ["@standard-schema/spec@1.0.0-beta.3", "", {}, "sha512-0ifF3BjA1E8SY9C+nUew8RefNOIq0cDlYALPty4rhUm8Rrl6tCM8hBT4bhGhx7I7iXD0uAgt50lgo8dD73ACMw=="],
 
@@ -1779,7 +1779,7 @@
 
     "@moneydevkit/core/@orpc/client/@orpc/standard-server-peer": ["@orpc/standard-server-peer@1.13.6", "", { "dependencies": { "@orpc/shared": "1.13.6", "@orpc/standard-server": "1.13.6" } }, "sha512-WTqjNS6A9sxR4HVxWUb9ZoBHeQiesHeANmVBFdM/QjAaPUZYKn6WACYU6Q2eGmsCUeTQFfMssk0BG2EsgRNEYw=="],
 
-    "@openagents/nostr-relay/nostr-effect/effect": ["effect@3.19.8", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-OmLw8EfH02vdmyU2fO4uY9He/wepwKI5E/JNpE2pseaWWUbaYOK9UlxIiKP20ZEqQr+S/jSqRDGmpiqD/2DeCQ=="],
+    "@openagentsinc/nostr-relay/nostr-effect/effect": ["effect@3.19.8", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-OmLw8EfH02vdmyU2fO4uY9He/wepwKI5E/JNpE2pseaWWUbaYOK9UlxIiKP20ZEqQr+S/jSqRDGmpiqD/2DeCQ=="],
 
     "@orpc/contract/@orpc/client/@orpc/standard-server": ["@orpc/standard-server@1.3.0", "", { "dependencies": { "@orpc/shared": "1.3.0" } }, "sha512-02NjLPsHmME5x7zYcd1FuZW/WTlAgkF6MBhZXHImosAZdGcVddDVhRLtYWud/GFc+u5oyq7i/6u2+2j6QEnpcA=="],
 
@@ -1805,7 +1805,7 @@
 
     "@eslint/config-array/minimatch/brace-expansion/balanced-match": ["balanced-match@4.0.4", "", {}, "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA=="],
 
-    "@openagents/nostr-relay/nostr-effect/effect/fast-check": ["fast-check@3.23.2", "", { "dependencies": { "pure-rand": "^6.1.0" } }, "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A=="],
+    "@openagentsinc/nostr-relay/nostr-effect/effect/fast-check": ["fast-check@3.23.2", "", { "dependencies": { "pure-rand": "^6.1.0" } }, "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A=="],
 
     "@typescript-eslint/typescript-estree/minimatch/brace-expansion/balanced-match": ["balanced-match@4.0.4", "", {}, "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA=="],
 
@@ -1815,7 +1815,7 @@
 
     "pkg-up/find-up/locate-path/path-exists": ["path-exists@3.0.0", "", {}, "sha512-bpC7GYwiDYQ4wYLe+FA8lhRjhQCMcQGuSgGGqDkg/QerRWw9CmGRT0iSOVRSZJ29NMLZgIzqaljJ63oaL4NIJQ=="],
 
-    "@openagents/nostr-relay/nostr-effect/effect/fast-check/pure-rand": ["pure-rand@6.1.0", "", {}, "sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA=="],
+    "@openagentsinc/nostr-relay/nostr-effect/effect/fast-check/pure-rand": ["pure-rand@6.1.0", "", {}, "sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA=="],
 
     "pkg-up/find-up/locate-path/p-locate/p-limit": ["p-limit@2.3.0", "", { "dependencies": { "p-try": "^2.0.0" } }, "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w=="],
   }

@@ -89,7 +89,7 @@ What changed:
 - Allowed repeat `relay` query parameters for public relay hints.
 - Used the shared Nostr primitives instead of a parallel Nostr implementation:
   `nostr-effect/nip58` for badge definition/award event templates and
-  validators, and `@openagents/nip90` for `sha256Hex`.
+  validators, and `@openagentsinc/nip90` for `sha256Hex`.
 - Returned unsigned NIP-58 badge definition and badge award templates.
 - Kept the exported tags public-safe: claim reference, receipt reference,
   amount, and actor reference.
@@ -291,7 +291,7 @@ runbook gap still existed for #4658 when the user asked me to pause.
 
 The user was right to stop me earlier and emphasize `nostr-effect`. The
 continuation work corrected course: the orange-check Nostr export uses
-`nostr-effect/nip58` and `@openagents/nip90`, and AGENTS guidance now tells
+`nostr-effect/nip58` and `@openagentsinc/nip90`, and AGENTS guidance now tells
 future agents not to rebuild parallel Nostr parsing/routing. The lingering risk
 is process discipline, not just code: every future Nostr issue needs to start
 from the shared package.
@@ -351,7 +351,7 @@ What I verified directly:
   `bunx vitest run src/orange-check-nostr-export.test.ts src/forum-routes.test.ts src/agent-owner-claim-routes.test.ts`
   — 3 files, 84 tests, all passing.
 - D2 honors the shared-Nostr rule: `orange-check-nostr-export.ts` imports from
-  `nostr-effect/nip58` and `@openagents/nip90`; no parallel Nostr code. The
+  `nostr-effect/nip58` and `@openagentsinc/nip90`; no parallel Nostr code. The
   private-tier design doc landed as a doc, not shipped behavior, as delegated.
 - D4's leak regression is real: the `should_not_leak` receipt-ref test exists
   in `forum-routes.test.ts`, and the schema carries the public-safe fields

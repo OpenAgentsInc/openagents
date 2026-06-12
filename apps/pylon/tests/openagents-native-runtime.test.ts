@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 
 import { Effect, Stream } from "effect"
 
-import { decodeAgentRuntimeEvent, type AgentRuntimeEvent } from "@openagents/agent-runtime-schema"
+import { decodeAgentRuntimeEvent, type AgentRuntimeEvent } from "@openagentsinc/agent-runtime-schema"
 import { replayAgentRuntimeEventLog, type AgentRuntimeRunRequest } from "../src/agent-runtime-adapter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {

@@ -21,7 +21,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import type { TassadarAlmNumericModel } from '@openagents/tassadar-executor'
+import type { TassadarAlmNumericModel } from '@openagentsinc/tassadar-executor'
 
 import { tassadarPocLoopSumFixture } from '../src/tassadar-poc-fixture'
 import {

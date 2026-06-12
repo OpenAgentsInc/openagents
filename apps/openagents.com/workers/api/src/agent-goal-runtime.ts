@@ -1,11 +1,11 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import {
   AgentGoalAssignmentContext,
   AgentGoalHiddenSteering,
   AgentGoalToolContract,
   AgentGoalToolEndpoint,
   AgentGoalToolSpec,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Context, Effect, Layer, Schema as S } from 'effect'
 
 import {
@@ -127,7 +127,7 @@ export type AgentGoalEventRepositoryShape = Readonly<{
 export class AgentGoalEventRepository extends Context.Service<
   AgentGoalEventRepository,
   AgentGoalEventRepositoryShape
->()('@openagents/AgentGoalEventRepository') {}
+>()('@openagentsinc/AgentGoalEventRepository') {}
 
 export type GetAgentGoalToolInput = Readonly<{
   scope: AgentGoalScope
@@ -171,7 +171,7 @@ export type AgentGoalRuntimeServiceShape = Readonly<{
 export class AgentGoalRuntimeService extends Context.Service<
   AgentGoalRuntimeService,
   AgentGoalRuntimeServiceShape
->()('@openagents/AgentGoalRuntimeService') {}
+>()('@openagentsinc/AgentGoalRuntimeService') {}
 
 export type AgentGoalRuntimeServiceDependencies = Readonly<{
   events: AgentGoalEventRepositoryShape
@@ -236,7 +236,7 @@ export type AgentGoalAccountingServiceShape = Readonly<{
 export class AgentGoalAccountingService extends Context.Service<
   AgentGoalAccountingService,
   AgentGoalAccountingServiceShape
->()('@openagents/AgentGoalAccountingService') {}
+>()('@openagentsinc/AgentGoalAccountingService') {}
 
 export type AgentGoalCapacityPolicyInput = Readonly<{
   accountCapacityAvailable?: boolean | undefined
@@ -257,7 +257,7 @@ export type AgentGoalCapacityPolicyServiceShape = Readonly<{
 export class AgentGoalCapacityPolicyService extends Context.Service<
   AgentGoalCapacityPolicyService,
   AgentGoalCapacityPolicyServiceShape
->()('@openagents/AgentGoalCapacityPolicyService') {}
+>()('@openagentsinc/AgentGoalCapacityPolicyService') {}
 
 export type AgentGoalContinuationEnqueueInput = Readonly<{
   attempt: number
@@ -278,7 +278,7 @@ export type AgentGoalContinuationQueueShape = Readonly<{
 export class AgentGoalContinuationQueue extends Context.Service<
   AgentGoalContinuationQueue,
   AgentGoalContinuationQueueShape
->()('@openagents/AgentGoalContinuationQueue') {}
+>()('@openagentsinc/AgentGoalContinuationQueue') {}
 
 export type AgentGoalContinuationRequest = Readonly<{
   accountCapacityAvailable?: boolean | undefined
@@ -299,7 +299,7 @@ export type AgentGoalContinuationServiceShape = Readonly<{
 export class AgentGoalContinuationService extends Context.Service<
   AgentGoalContinuationService,
   AgentGoalContinuationServiceShape
->()('@openagents/AgentGoalContinuationService') {}
+>()('@openagentsinc/AgentGoalContinuationService') {}
 
 export const DEFAULT_AGENT_GOAL_TOKEN_BUDGET = 100_000
 export const DEFAULT_AGENT_GOAL_MAX_CONTINUATIONS = 8

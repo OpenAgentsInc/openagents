@@ -3,7 +3,7 @@
 Status: implemented for `0.3.0-rc1` as the local GO ONLINE provider lane.
 
 The provider lane restores the March NIP-90 behavior behind the current Pylon
-OpenTUI state model. It uses the shared `@openagents/nip90` package, backed by
+OpenTUI state model. It uses the shared `@openagentsinc/nip90` package, backed by
 the workspace `nostr-effect` protocol helpers, instead of rebuilding NIP-90
 parsing or event construction locally.
 

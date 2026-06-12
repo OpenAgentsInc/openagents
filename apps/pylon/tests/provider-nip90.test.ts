@@ -14,7 +14,7 @@ import {
   parseJobFeedbackEvent,
   parseJobResultEvent,
   parseLaborJobResultEvent,
-} from "@openagents/nip90"
+} from "@openagentsinc/nip90"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { approveLaborFirstRun, laborResultContent } from "../src/labor"
 import { deriveNip06Identity, loadOrCreateNostrIdentity } from "../src/nostr-identity"

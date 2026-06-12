@@ -6,7 +6,7 @@ import {
   jsonResponse,
   makeD1SyncOutboxRepository,
   notFound,
-} from '@openagents/sync-worker'
+} from '@openagentsinc/sync-worker'
 import { issuer } from '@openauthjs/openauth'
 import { type Tokens, createClient } from '@openauthjs/openauth/client'
 import { GithubProvider } from '@openauthjs/openauth/provider/github'

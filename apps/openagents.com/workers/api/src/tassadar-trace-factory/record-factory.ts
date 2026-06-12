@@ -6,7 +6,7 @@
  * and a freshly built record carries no validator receipts — it is
  * quarantined until the tier ladder says otherwise (iron rule 3).
  */
-import { executeTassadarNumericModel } from '@openagents/tassadar-executor'
+import { executeTassadarNumericModel } from '@openagentsinc/tassadar-executor'
 
 import {
   finalOutputDigestFromTokens,
@@ -23,7 +23,7 @@ import type { TassadarFamilyWorkload } from './workload-families'
 
 export const TASSADAR_TS_EXECUTOR_ID = 'tassadar.alm_numeric_executor.ts.v1'
 export const TASSADAR_TS_EXECUTOR_PACKAGE_VERSION =
-  '@openagents/tassadar-executor@0.1.0'
+  '@openagentsinc/tassadar-executor@0.1.0'
 
 let executorHashMemo: string | null = null
 

@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Context, Effect, Layer, Schema as S } from 'effect'
 
 import {
@@ -51,7 +51,7 @@ export type AgentPublicProjectionServiceShape = Readonly<{
 export class AgentPublicProjectionService extends Context.Service<
   AgentPublicProjectionService,
   AgentPublicProjectionServiceShape
->()('@openagents/AgentPublicProjectionService') {}
+>()('@openagentsinc/AgentPublicProjectionService') {}
 
 const eventSummary = (event: AgentGoalEventRecord): string => {
   if (event.eventType === 'GoalCreated') {

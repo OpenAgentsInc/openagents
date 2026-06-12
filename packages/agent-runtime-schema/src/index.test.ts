@@ -55,7 +55,7 @@ const baseEvent = {
   blockerRefs: [],
 }
 
-describe("@openagents/agent-runtime-schema", () => {
+describe("@openagentsinc/agent-runtime-schema", () => {
   test("decodes every adapter kind, loop kind, redaction class, and visibility", () => {
     for (const adapterKind of agentRuntimeAdapterKinds) {
       expect(decodeAgentRuntimeRun({ ...baseRun, adapterKind })).toMatchObject({ adapterKind })

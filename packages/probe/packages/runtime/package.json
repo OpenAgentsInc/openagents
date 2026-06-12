@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/probe-runtime",
+  "name": "@openagentsinc/probe-runtime",
   "version": "0.0.0",
   "private": true,
   "type": "module",

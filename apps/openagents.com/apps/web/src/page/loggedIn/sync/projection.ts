@@ -2,7 +2,7 @@ import {
   SyncPatch,
   SyncSnapshot,
   extractAutopilotTokenUsageFromJson,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 
 import {
   ActiveChatRun,

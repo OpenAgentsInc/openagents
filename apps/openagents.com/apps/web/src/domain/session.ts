@@ -1,7 +1,7 @@
 import {
   PublicProviderAccount,
   PublicProviderConnectionAttempt,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import { Schema as S } from 'effect'
 
 export const Session = S.Struct({

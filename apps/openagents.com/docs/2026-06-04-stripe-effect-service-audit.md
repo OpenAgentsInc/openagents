@@ -227,7 +227,7 @@ class StripeConfig extends Context.Service<
     readonly cancelUrl: string
     readonly packages: ReadonlyMap<BillingCreditPackageId, StripeCreditPackage>
   }
->()('@openagents/StripeConfig') {}
+>()('@openagentsinc/StripeConfig') {}
 ```
 
 Use a restricted API key (`rk_`) in production if Stripe permissions allow the
@@ -248,7 +248,7 @@ class StripeClient extends Context.Service<
   {
     readonly client: Effect.Effect<Stripe>
   }
->()('@openagents/StripeClient') {}
+>()('@openagentsinc/StripeClient') {}
 ```
 
 The live layer should:

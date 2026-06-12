@@ -63,7 +63,7 @@ Coverage:
 - seeded credential material refuses before writing a sellable bundle;
 - written bundle bytes hash to the manifest digest;
 - NIP-DS listing/offer/request/result helpers validate through
-  `@openagents/nip90`;
+  `@openagentsinc/nip90`;
 - delivery descriptor digest verification is green for the fixture bundle.
 
 ## Remaining Blockers

@@ -1,7 +1,7 @@
 import {
   MulletSimulationRunExport,
   type MulletSimulationRunExport as MulletSimulationRunExportType,
-} from '@openagents/mullet-schema'
+} from '@openagentsinc/mullet-schema'
 import { Effect, Schema as S } from 'effect'
 
 import type { MulletSimulationRunRecord } from './repository'

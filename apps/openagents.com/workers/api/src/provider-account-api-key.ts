@@ -1,7 +1,7 @@
 import {
   providerAccountPublicMetadataJson,
   requirePublicSecretReference,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 
 import {
   ANTHROPIC_CLAUDE_PROVIDER,

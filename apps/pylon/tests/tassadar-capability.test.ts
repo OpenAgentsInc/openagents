@@ -9,8 +9,8 @@ import {
   TASSADAR_EXECUTOR_WINDOW_VERSION_REF,
   TASSADAR_TS_REPLAY_CLASS_ID,
   runTassadarExecutorSelfTest,
-} from "@openagents/tassadar-executor"
-import { loadPinnedTassadarSelfTestWorkload } from "@openagents/tassadar-executor/self-test"
+} from "@openagentsinc/tassadar-executor"
+import { loadPinnedTassadarSelfTestWorkload } from "@openagentsinc/tassadar-executor/self-test"
 
 import {
   PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,

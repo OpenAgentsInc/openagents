@@ -62,7 +62,7 @@ boxes, selected by OpenAgents product surface through `RunnerRuntime`, mirrored 
 Sync, and operated as the default coding-agent backend for OpenAgents workrooms
 without binding the product to OpenCode, Codex, or Rust Probe internals.
 
-The immediate OpenAgents product surface implication is concrete: `@openagents/sync-schema` currently
+The immediate OpenAgents product surface implication is concrete: `@openagentsinc/sync-schema` currently
 defines `RunnerRuntime` as `opencode_codex | codex`, and OpenAgents product surface defaults
 `DEFAULT_AGENT_RUNTIME` to `opencode_codex`. The from-scratch Probe path should
 add a first-party runtime discriminator named `probe`, then teach OpenAgents product surface's SHC

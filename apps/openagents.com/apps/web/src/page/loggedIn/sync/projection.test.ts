@@ -7,7 +7,7 @@ import {
   SyncScope,
   SyncSequence,
   SyncSnapshot,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Option } from 'effect'
 import { describe, expect, test } from 'vitest'
 

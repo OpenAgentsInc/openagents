@@ -1,4 +1,4 @@
-import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { assertNoProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 
 export const PROVIDER_ACCOUNT_EFFECTIVE_CONFIG_VERSION =
   'provider-account-effective-config:v1' as const

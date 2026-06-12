@@ -14,7 +14,7 @@
  *   bun apps/openagents.com/scripts/nip-ds.ts smoke \
  *     --relay https://openagents-market-relay.openagents.workers.dev
  *
- * This script builds protocol objects through @openagents/nip90, which reuses
+ * This script builds protocol objects through @openagentsinc/nip90, which reuses
  * the sibling nostr-effect implementation. It does not create invoices, move
  * sats, publish private bundles, or grant settlement authority.
  */
@@ -38,7 +38,7 @@ import {
   makeDatasetOffer,
   sha256Hex,
   verifyDatasetDeliveryDescriptorDigest,
-} from "@openagents/nip90"
+} from "@openagentsinc/nip90"
 import {
   finalizeEvent,
   getPublicKey,

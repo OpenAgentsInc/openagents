@@ -1,4 +1,4 @@
-import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { assertNoProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 
 import type { ProviderAccountProvider } from './provider-account-domain'
 

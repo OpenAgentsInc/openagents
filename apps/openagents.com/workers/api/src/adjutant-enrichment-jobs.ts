@@ -1,4 +1,4 @@
-import { redactProviderAccountSecretMaterial } from '@openagents/provider-account-schema'
+import { redactProviderAccountSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Schema as S } from 'effect'
 
 import type { AdjutantAssignment } from './adjutant-assignments'

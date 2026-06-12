@@ -1,4 +1,4 @@
-import { redactProviderAccountSecretMaterial } from '@openagents/provider-account-schema'
+import { redactProviderAccountSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -205,7 +205,7 @@ export type ExaClientShape = Readonly<{
 }>
 
 export class ExaClient extends Context.Service<ExaClient, ExaClientShape>()(
-  '@openagents/autopilot-omega/ExaClient',
+  '@openagentsinc/autopilot-omega/ExaClient',
 ) {
   static layer = (fetcher: ExaFetch = globalThis.fetch.bind(globalThis)) =>
     Layer.effect(

@@ -4,7 +4,7 @@ import {
   type MulletHourlyDispatchResult,
   type MulletProvenanceLevel,
   type MulletScenarioKind,
-} from '@openagents/mullet-schema'
+} from '@openagentsinc/mullet-schema'
 import {
   calculateAcceptedOutcomeEconomics,
   calculateCapitalReturnSummary,
@@ -12,7 +12,7 @@ import {
   roundUsd,
   safeDivide,
   simulateScenarioHour,
-} from '@openagents/mullet-sim'
+} from '@openagentsinc/mullet-sim'
 
 export const mulletScenarioTemplateIds = [
   'tinybox_shc_power',

@@ -12,7 +12,7 @@ import {
   startBuyModeCampaign,
   stopBuyModeCampaign,
 } from './buy-mode-dispatcher'
-import { badRequest } from '@openagents/sync-worker'
+import { badRequest } from '@openagentsinc/sync-worker'
 import {
   methodNotAllowed,
   noStoreJsonResponse,

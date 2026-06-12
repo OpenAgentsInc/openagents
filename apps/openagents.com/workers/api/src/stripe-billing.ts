@@ -141,7 +141,7 @@ export type StripeConfigShape = Readonly<{
 export class StripeConfig extends Context.Service<
   StripeConfig,
   StripeConfigShape
->()('@openagents/StripeConfig') {
+>()('@openagentsinc/StripeConfig') {
   static layer = (env: StripeBillingEnv) =>
     Layer.effect(StripeConfig, decodeStripeConfig(env))
 }
@@ -154,7 +154,7 @@ export type StripeClientShape = Readonly<{
 export class StripeClient extends Context.Service<
   StripeClient,
   StripeClientShape
->()('@openagents/StripeClient') {
+>()('@openagentsinc/StripeClient') {
   static Live = Layer.effect(
     StripeClient,
     Effect.gen(function* () {
@@ -205,7 +205,7 @@ export type StripeCustomerServiceShape = Readonly<{
 export class StripeCustomerService extends Context.Service<
   StripeCustomerService,
   StripeCustomerServiceShape
->()('@openagents/StripeCustomerService') {}
+>()('@openagentsinc/StripeCustomerService') {}
 
 export const StripeCustomerServiceLive = Layer.effect(
   StripeCustomerService,
@@ -265,7 +265,7 @@ export type StripeCheckoutServiceShape = Readonly<{
 export class StripeCheckoutService extends Context.Service<
   StripeCheckoutService,
   StripeCheckoutServiceShape
->()('@openagents/StripeCheckoutService') {}
+>()('@openagentsinc/StripeCheckoutService') {}
 
 export const StripeCheckoutServiceLive = Layer.effect(
   StripeCheckoutService,
@@ -317,7 +317,7 @@ export type StripeWebhookServiceShape = Readonly<{
 export class StripeWebhookService extends Context.Service<
   StripeWebhookService,
   StripeWebhookServiceShape
->()('@openagents/StripeWebhookService') {}
+>()('@openagentsinc/StripeWebhookService') {}
 
 export const StripeWebhookServiceLive = Layer.effect(
   StripeWebhookService,
@@ -348,7 +348,7 @@ export class BillingCreditService extends Context.Service<
       userId: string
     }) => Effect.Effect<BillingSummary, StripeCheckoutError>
   }>
->()('@openagents/BillingCreditService') {
+>()('@openagentsinc/BillingCreditService') {
   static Live = Layer.succeed(BillingCreditService, {
     applyStripeCheckoutCredit: input =>
       Effect.tryPromise({

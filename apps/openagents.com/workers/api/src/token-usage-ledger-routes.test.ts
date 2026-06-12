@@ -3,7 +3,7 @@ import {
   TokenUsageEventRecord,
   TokenUsageLeaderboardPreferenceResponse,
   TokenUsageLeaderboardsResponse,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Effect, Layer } from 'effect'
 import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'

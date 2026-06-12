@@ -68,7 +68,12 @@ function fakeAssignmentServer(input: { leases?: PylonAssignmentLease[]; rejectAc
           method: request.method,
           url: request.url,
           body: text,
-          maxSkewSeconds: 300_000,
+          // Verify against the same fixed epoch the tests inject into the
+          // client (`now: () => new Date("2026-06-09T...")`). A wall-clock
+          // `now` with a wide maxSkewSeconds was a date bomb: it expired
+          // 300,000s after the fixed epoch and failed every NIP-98 test.
+          now: new Date("2026-06-09T00:00:30.000Z"),
+          maxSkewSeconds: 300,
         })
         expect(request.headers.get("x-nip98-body-sha256")).toBeNull()
         expect(request.headers.get("x-nip98-signature")).toBeNull()
@@ -685,7 +690,10 @@ describe("Pylon assignment lease flow", () => {
       } as const
 
       assertPublicProjectionSafe(closeout)
-      const result = await submitAssignmentCloseout(summary, closeout, { baseUrl: fake.baseUrl })
+      const result = await submitAssignmentCloseout(summary, closeout, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
       expect(result.closeoutRef).toBe("assignment.closeout.lease.public.timeout")
     })
   })

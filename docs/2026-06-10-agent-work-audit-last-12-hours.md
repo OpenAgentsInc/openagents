@@ -96,7 +96,7 @@ Concrete outcomes:
 - Added NIP-DS listing and offer flow work for dataset listings.
 
 The repo guidance was also updated so future agents know to use the shared
-`nostr-effect` / `@openagents/nip90` primitives and not hand-roll Nostr logic in
+`nostr-effect` / `@openagentsinc/nip90` primitives and not hand-roll Nostr logic in
 new surfaces.
 
 One important caveat: the broader `nostr-effect` Effect v4 migration was handled
@@ -304,7 +304,7 @@ surface could be complete while the issue still had to remain open.
 
 The user correctly stopped me to reinforce that OpenAgents already has Effect
 Nostr code and that new work must use it. The correction was made by emphasizing
-shared `nostr-effect` and `@openagents/nip90` usage and avoiding a parallel
+shared `nostr-effect` and `@openagentsinc/nip90` usage and avoiding a parallel
 Nostr rebuild. Future Nostr work should begin from that shared package and the
 workspace instructions.
 
@@ -432,7 +432,7 @@ and expected receipt rows, so the operator action is one sitting.
 
 `identity.orange_check_forum_signal.v1` has exactly one blocker:
 `orange_check_nostr_export_missing`. Implement the Nostr export path using
-the shared `nostr-effect` / `@openagents/nip90` primitives — no parallel
+the shared `nostr-effect` / `@openagentsinc/nip90` primitives — no parallel
 Nostr code. Separately, write the deferred private-forum-tier (clubhouse)
 design doc with the privacy review questions answered, as a doc PR, not as
 shipped behavior.
@@ -480,7 +480,7 @@ promise-registry liabilities; fix or date-stamp them.
 
 Continue compute-stream work on the shared NIP-90 package and the scoped
 market relay. The standing rule from this pass holds: start from
-`nostr-effect` and `@openagents/nip90`; any new parallel Nostr parser/router
+`nostr-effect` and `@openagentsinc/nip90`; any new parallel Nostr parser/router
 is a review-blocking defect. Keep the draft NIP specs (DS, SKL, SA, AC, TRN)
 in sync with shipped behavior.
 

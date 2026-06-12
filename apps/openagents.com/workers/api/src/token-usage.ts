@@ -2,7 +2,7 @@ import {
   type AutopilotTokenUsage,
   extractAutopilotTokenUsage,
   extractAutopilotTokenUsageFromJson,
-} from '@openagents/sync-schema'
+} from '@openagentsinc/sync-schema'
 import { Effect, Layer } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -350,7 +350,7 @@ export type TokenUsageLeaderboardsShape = Readonly<{
 export class TokenUsageLeaderboards extends Context.Service<
   TokenUsageLeaderboards,
   TokenUsageLeaderboardsShape
->()('@openagents/TokenUsageLeaderboards') {
+>()('@openagentsinc/TokenUsageLeaderboards') {
   static live = (db: D1Database) =>
     Layer.succeed(TokenUsageLeaderboards, {
       readForUser: (

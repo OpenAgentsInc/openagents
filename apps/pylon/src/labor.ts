@@ -6,7 +6,7 @@ import {
   PROVIDER_COMPLIANT_USAGE_LABOR_POLICY_REF,
   type LaborJobRequest,
   type LaborJobType,
-} from "@openagents/nip90"
+} from "@openagentsinc/nip90"
 import { assertPublicProjectionSafe, ensureStateDirectories, type PylonPaths } from "./state"
 
 export const PYLON_LABOR_CAPABILITY_REF = "capability.public.pylon.labor.local_agent.v0.3"

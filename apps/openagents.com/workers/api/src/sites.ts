@@ -1,7 +1,7 @@
 import {
   containsProviderSecretMaterial,
   redactProviderAccountSecretMaterial,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -2554,7 +2554,7 @@ export type AutopilotSitesOperations = Readonly<{
 export class AutopilotSitesService extends Context.Service<
   AutopilotSitesService,
   AutopilotSitesOperations
->()('@openagents/autopilot-omega/AutopilotSitesService') {
+>()('@openagentsinc/autopilot-omega/AutopilotSitesService') {
   static readonly fromBindings = (
     db: D1Database,
     artifacts: R2Bucket | undefined,

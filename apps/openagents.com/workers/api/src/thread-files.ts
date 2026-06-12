@@ -576,7 +576,7 @@ export type ThreadFileRepositoryShape = Readonly<{
 export class ThreadFileRepository extends Context.Service<
   ThreadFileRepository,
   ThreadFileRepositoryShape
->()('@openagents/ThreadFileRepository') {
+>()('@openagentsinc/ThreadFileRepository') {
   static layer = (
     db: D1Database,
     options: Readonly<{ runtime?: ThreadFileRuntime }> = {},

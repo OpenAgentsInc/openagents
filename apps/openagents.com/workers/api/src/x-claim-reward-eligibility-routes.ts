@@ -11,8 +11,8 @@
 // promise's own four-state lifecycle separation, and redacts every
 // identity field to a digest ref so no X handle, owner id, or agent
 // user id leaves the ledger.
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
-import { notFound } from '@openagents/sync-worker'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
+import { notFound } from '@openagentsinc/sync-worker'
 
 import type {
   AgentOwnerClaimStore,

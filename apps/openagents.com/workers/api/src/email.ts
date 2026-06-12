@@ -7,11 +7,11 @@ import {
   renderAutopilotDecisionEmail,
   renderDripEmail,
   renderOrderSitesLifecycleEmail,
-} from '@openagents/email-templates'
+} from '@openagentsinc/email-templates'
 import {
   containsProviderSecretMaterial,
   redactProviderAccountSecretMaterial,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 import { Context, Effect, Layer, Redacted, Schema as S } from 'effect'
 
 import {
@@ -448,7 +448,7 @@ export type EmailServiceShape = Readonly<{
 export class EmailService extends Context.Service<
   EmailService,
   EmailServiceShape
->()('@openagents/autopilot-omega/EmailService') {}
+>()('@openagentsinc/autopilot-omega/EmailService') {}
 
 const ResendSendResponse = S.Struct({
   id: S.optionalKey(S.Unknown),

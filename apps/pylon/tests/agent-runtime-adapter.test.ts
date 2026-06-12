@@ -9,7 +9,7 @@ import {
   assertAgentRuntimePublicEventSafe,
   decodeAgentRuntimeEvent,
   type AgentRuntimeEvent,
-} from "@openagents/agent-runtime-schema"
+} from "@openagentsinc/agent-runtime-schema"
 import {
   agentRuntimeToolDeniedEvent,
   createClaudeCodeAgentRuntimeAdapter,

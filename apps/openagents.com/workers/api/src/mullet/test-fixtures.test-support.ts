@@ -2,7 +2,7 @@ import {
   MulletSimulationRunExport,
   decodeMulletScenario,
   decodeMulletSimulationRun,
-} from '@openagents/mullet-schema'
+} from '@openagentsinc/mullet-schema'
 import { Schema as S } from 'effect'
 
 export const mulletFixtureTimestamp = '2026-06-08T00:00:00.000Z'

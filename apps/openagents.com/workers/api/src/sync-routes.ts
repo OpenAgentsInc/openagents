@@ -1,4 +1,4 @@
-import { decodeSyncCommand } from '@openagents/sync-schema'
+import { decodeSyncCommand } from '@openagentsinc/sync-schema'
 import {
   SyncOutboxStore,
   SyncOutboxError as SyncOutboxStoreError,
@@ -13,7 +13,7 @@ import {
   publicGoalScope,
   threadScope as syncThreadScope,
   teamScope,
-} from '@openagents/sync-worker'
+} from '@openagentsinc/sync-worker'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { routeAccessResponse } from './http/route-access-response'

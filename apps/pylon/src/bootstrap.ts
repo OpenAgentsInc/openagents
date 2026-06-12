@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir, platform } from "node:os"
-import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagents/tassadar-executor"
+import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagentsinc/tassadar-executor"
 
 export type SupportedPlatform = "darwin" | "linux"
 export type BootstrapOptions = {

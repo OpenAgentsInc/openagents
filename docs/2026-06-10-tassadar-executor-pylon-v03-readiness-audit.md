@@ -14,7 +14,7 @@ Short answer: **yes, it is poised — the execution code already lives in
 the v0.3 release-candidate source and the v0.3 release gate passes with
 it as of this audit** (after one packaging fix made during the audit,
 recorded below). Inclusion needs five concrete items, none of them
-architectural: the npm publish story it shares with `@openagents/nip90`,
+architectural: the npm publish story it shares with `@openagentsinc/nip90`,
 a default capability declaration, packaged-network smoke coverage, one
 admission-hardening nit, and a copy-discipline line in the launch gates.
 
@@ -26,12 +26,12 @@ lane touches the package in exactly two ways:
 
 - `src/assignment.ts` carries the executor-trace gate
   (`executeTassadarAssignment`): recognize the dispatched workload,
-  execute it through `@openagents/tassadar-executor`, carry the trace
+  execute it through `@openagentsinc/tassadar-executor`, carry the trace
   digest into closeout refs, reject digest mismatches with a typed
   blocker, surface typed execution refusals. This file ships in the
   published `files` list today — **the lane is in the RC source by
   default, not by addition.**
-- `package.json` depends on `@openagents/tassadar-executor:
+- `package.json` depends on `@openagentsinc/tassadar-executor:
   workspace:*` — the shared TypeScript executor whose load-bearing test
   reproduces the psionic Rust executor's trace digest byte-for-byte on
   the committed fixture.
@@ -69,8 +69,8 @@ typed refusal, transit-shape restoration).
 The decisive readiness check was running the v0.3 release gate
 (`bun run release:gate`) on current `main`. **It failed** at the local
 package install smoke: the packed Pylon could not resolve
-`@openagents/tassadar-executor` (404 — not on npm, and the smoke's
-override table only covered `@openagents/nip90`). This was a real
+`@openagentsinc/tassadar-executor` (404 — not on npm, and the smoke's
+override table only covered `@openagentsinc/nip90`). This was a real
 release blocker introduced by the PoC dependency.
 
 Fixed during this audit, following the established nip90 pattern:
@@ -90,7 +90,7 @@ dry-run, and the local package install smoke.
 Resolution note (2026-06-10, #4696): items 2-5 below landed after this audit.
 Pylon bootstrap/runtime defaults now auto-declare
 `capability.tassadar_poc.numeric_model_executor`, the packaged-network smoke
-packs and replays `@openagents/tassadar-executor`, the PoC dispatch script
+packs and replays `@openagentsinc/tassadar-executor`, the PoC dispatch script
 mirrors the capability ref into the embedded coding assignment, and
 `apps/pylon/docs/launch-gates-no-overclaim.md` carries the only allowed scoped
 executor copy. Item 1 remains the external publish mechanism tracked by #4654.
@@ -99,8 +99,8 @@ In order of hardness:
 
 1. **The npm publish story (shared with nip90; blocking the actual
    publish, not the gate).** The published v0.3 package declares
-   `workspace:*` dependencies on `@openagents/nip90` and now
-   `@openagents/tassadar-executor`; neither is on npm. A consumer
+   `workspace:*` dependencies on `@openagentsinc/nip90` and now
+   `@openagentsinc/tassadar-executor`; neither is on npm. A consumer
    installing from the registry would hit the same 404 the gate caught.
    The release must either (a) publish both packages to npm first —
    both now carry public publishConfig — or (b) rewrite/vendor the

@@ -27,7 +27,7 @@ The projection computed from the live ref bundle returned:
 ## Run shape
 
 1. Fresh install: `bun pm pack` of `@openagentsinc/pylon@0.3.0-rc2` (with
-   `@openagents/nip90` and `@openagents/tassadar-executor` tarball
+   `@openagentsinc/nip90` and `@openagentsinc/tassadar-executor` tarball
    overrides), installed into a clean temp prefix with a brand-new
    dedicated `PYLON_HOME`. `pylon bootstrap --json` passed platform and
    bin checks.

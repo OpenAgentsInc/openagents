@@ -4,7 +4,7 @@ import {
   containsProviderSecretMaterial,
   providerAccountPublicMetadataJson,
   sanitizeProviderAccountText,
-} from '@openagents/provider-account-schema'
+} from '@openagentsinc/provider-account-schema'
 
 import { parseBase64UrlJsonRecord } from './json-boundary'
 import {

@@ -16,7 +16,7 @@
  * digests are computed FROM execution and never ship in a generation
  * assignment.
  */
-import type { TassadarAlmNumericModel } from '@openagents/tassadar-executor'
+import type { TassadarAlmNumericModel } from '@openagentsinc/tassadar-executor'
 
 import { canonicalJson, sha256HexOfText } from './trace-record'
 

@@ -1,4 +1,4 @@
-import type { DripEmailKind } from '@openagents/email-templates'
+import type { DripEmailKind } from '@openagentsinc/email-templates'
 import { Effect } from 'effect'
 
 import type { ResendEmailConfig } from './config'

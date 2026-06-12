@@ -1,4 +1,4 @@
-# @openagents/tassadar-executor
+# @openagentsinc/tassadar-executor
 
 TypeScript executor and exact-replay verdicts for the psionic Tassadar
 ALM numeric-model format (`TassadarAlmNumericModel` v1) — the portable,

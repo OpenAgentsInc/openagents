@@ -1,4 +1,4 @@
-import { IsoTimestamp, OmniRunnerEvent } from '@openagents/sync-schema'
+import { IsoTimestamp, OmniRunnerEvent } from '@openagentsinc/sync-schema'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 

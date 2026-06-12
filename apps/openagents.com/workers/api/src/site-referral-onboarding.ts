@@ -1,4 +1,4 @@
-import { containsProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 
 import type { ResendEmailConfig } from './config'
 import type { EmailCampaignRuntime } from './email-campaigns'

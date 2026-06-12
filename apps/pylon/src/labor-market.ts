@@ -13,7 +13,7 @@ import {
   makeLbrResult,
   type LbrAcceptance,
   type LbrAgenticCodingRequest,
-} from "@openagents/nip90"
+} from "@openagentsinc/nip90"
 import {
   CLAUDE_AGENT_CAPABILITY_REF,
   probeClaudeAgentReadiness,

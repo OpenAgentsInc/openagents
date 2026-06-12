@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import {
   agentRuntimeSurfaceStatusHasUnsafeMaterial,
   type AgentRuntimeEvent,
-} from "@openagents/agent-runtime-schema"
+} from "@openagentsinc/agent-runtime-schema"
 import { Effect, Layer, Stream } from "effect"
 
 import {

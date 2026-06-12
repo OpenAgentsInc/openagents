@@ -1,4 +1,4 @@
-import { assertNoProviderSecretMaterial } from '@openagents/provider-account-schema'
+import { assertNoProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 
 export const PROVIDER_ACCOUNT_RETENTION_POLICY_VERSION =
   'provider-account-retention-policy:v1' as const

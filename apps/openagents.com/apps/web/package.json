@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/autopilot-web",
+  "name": "@openagentsinc/autopilot-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@effect/platform-browser": "4.0.0-beta.70",
-    "@openagents/mullet-schema": "workspace:*",
-    "@openagents/mullet-sim": "workspace:*",
-    "@openagents/provider-account-schema": "workspace:*",
-    "@openagents/sync-client": "workspace:*",
-    "@openagents/sync-schema": "workspace:*",
+    "@openagentsinc/mullet-schema": "workspace:*",
+    "@openagentsinc/mullet-sim": "workspace:*",
+    "@openagentsinc/provider-account-schema": "workspace:*",
+    "@openagentsinc/sync-client": "workspace:*",
+    "@openagentsinc/sync-schema": "workspace:*",
     "@tailwindcss/vite": "^4.2.4",
     "clsx": "^2.1.1",
     "effect": "4.0.0-beta.70",

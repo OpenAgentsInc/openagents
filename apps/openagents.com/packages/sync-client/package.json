@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/sync-client",
+  "name": "@openagentsinc/sync-client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openagents/sync-schema": "workspace:*",
+    "@openagentsinc/sync-schema": "workspace:*",
     "effect": "4.0.0-beta.70"
   }
 }
