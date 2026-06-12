@@ -583,9 +583,19 @@ This is the invariant ledger for `openagents`.
   accounts and never pools credentials across customers. Raw key material
   lives only in the auth KV under `provider-auth:<providerAccountRef>`;
   durable rows, events, grants, and projections carry secret refs only.
+- Pack B credential-boundary projections may join provider accounts, auth
+  grants, active lease refs, artifact refs, and receipt refs only as refs.
+  Revoked grants, expired grants, disconnected accounts, reauth-required
+  health, deleted accounts, and missing credential refs must produce typed
+  blocker refs plus credential-cache invalidation refs before dependent work
+  can claim lease authority. Raw API keys, OAuth material, provider payloads,
+  private repo data, raw prompts, and shell logs must be rejected from those
+  joins before projection.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
   `workers/api/src/provider-account-lease-policy.test.ts`.
+- Regression coverage for the Pack B credential-boundary projection lives in
+  `workers/api/src/provider-account-credential-boundary.test.ts`.
 - Regression coverage for this policy lives in
   `workers/api/src/provider-capacity-marketplace-gate.test.ts`.
 

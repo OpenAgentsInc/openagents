@@ -1,4 +1,5 @@
 export * from './provider-account-client'
+export * from './provider-account-credential-boundary'
 export * from './provider-account-domain'
 export * from './provider-account-errors'
 export * from './provider-account-repository'

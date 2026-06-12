@@ -100,6 +100,16 @@ subsystem audit that should harden the provider/account/policy lane:
 | #4829 PB5 | Data Retention And Deletion | Retention classes, deletion behavior, tombstones, and projection invalidation for Pack B records |
 | #4830 PB6 | Enterprise Managed Policy | Minimal policy snapshots and denial reasons for team, repo, provider, budget, retention, telemetry, and approved-user gates |
 
+Implementation status:
+
+- #4825 PB1 is implemented by
+  `apps/openagents.com/workers/api/src/provider-account-credential-boundary.ts`
+  and
+  `apps/openagents.com/workers/api/src/provider-account-credential-boundary.test.ts`.
+  It defines the ref-only credential boundary over accounts, grants, active
+  leases, artifacts, and receipts, including typed stale/revoked credential
+  blockers and cache invalidation refs.
+
 ## Timing Impact On Other Open Issues
 
 Pack A is an acceptance overlay, not a replacement ladder. It should change

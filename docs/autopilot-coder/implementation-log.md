@@ -1345,3 +1345,31 @@ Timing rule:
   retention guarantees, or provider security review.
 - #4768 and #4772 should cite Pack B only if their proof evidence depends on
   those provider/account/policy surfaces.
+
+## PB1 / Issue #4825: Provider Account Credential Boundary
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4825`
+
+Status: implemented for the shared provider-account credential-boundary
+projection contract.
+
+Implemented:
+
+- Added `provider-account-credential-boundary.ts` with a Pack B credential
+  boundary projection over provider accounts, credential refs, auth grants,
+  active lease refs, artifact refs, and receipt refs.
+- The projection exposes `accountRef`, `credentialRef`, lease authority,
+  typed blocker refs, reconnect action refs, cache invalidation refs, and
+  safe joined evidence refs without exposing `providerSecretRef` or raw
+  credential material.
+- Revoked grants, expired grants, disconnected accounts, reauth-required
+  health, deleted accounts, and missing credential refs now reduce to typed
+  blockers before dependent work can claim lease authority.
+- Added redaction tests for account/grant/lease/artifact/receipt joins and raw
+  credential-shaped refs.
+- Updated the `apps/openagents.com` invariant ledger with the Pack B
+  credential-boundary projection rule.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/provider-account-credential-boundary.test.ts src/provider-account-lease-policy.test.ts src/provider-account-api-key.test.ts`
