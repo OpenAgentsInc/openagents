@@ -247,6 +247,12 @@ Implementation status:
   `docs/autopilot-coder/2026-06-12-pack-c-change-capture.md`. It defines
   digest-and-summary-only change capture projections with verification,
   diagnostic, caveat, authority, freshness, and typed blocker refs.
+- #4834 PC3 is implemented by
+  `apps/openagents.com/workers/api/src/pack-c-workspace-authority.ts`,
+  `apps/openagents.com/workers/api/src/pack-c-workspace-authority.test.ts`,
+  and `docs/autopilot-coder/2026-06-12-pack-c-workspace-authority.md`. It
+  defines file/shell/workspace authority projections with command, path,
+  approval, sandbox, timeout, cancellation, redaction, and typed denial refs.
 
 ## Audit Finding
 

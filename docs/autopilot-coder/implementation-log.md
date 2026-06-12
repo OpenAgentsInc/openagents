@@ -1633,3 +1633,31 @@ Implemented:
 Verification:
 
 - `bun run --cwd apps/openagents.com/workers/api test src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`
+
+## PC3 / Issue #4834: File, Shell, And Workspace Authority Boundary
+
+Issue: `https://github.com/OpenAgentsInc/openagents/issues/4834`
+
+Status: implemented for the Pack C workspace/file/shell delivery-evidence
+authority contract.
+
+Implemented:
+
+- Added `pack-c-workspace-authority.ts` with typed evidence projections for
+  file, shell, verification, and workspace-bound operations.
+- Workspace evidence now carries workspace refs, sandbox refs, operation kind,
+  command intent refs, allowed command refs, allowed path refs, touched path
+  refs, approval refs, timeout refs, cancellation refs, redaction class,
+  redaction receipt refs, and typed blockers.
+- Unsafe operations produce typed blockers for out-of-scope paths, missing
+  approval, disallowed command intent, sandbox mismatch, timeout,
+  cancellation, and missing public redaction.
+- Added unsafe material rejection for raw shell logs, raw commands, raw
+  prompts, local filesystem paths, private repo content, provider payloads,
+  credentials, wallet/payment material, and customer-private data.
+- Added `docs/autopilot-coder/2026-06-12-pack-c-workspace-authority.md` and
+  updated the original terminal-agent-systems roadmap and app invariant ledger.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/pack-c-workspace-authority.test.ts src/pack-c-change-capture.test.ts src/pack-c-repo-worktree-identity.test.ts`

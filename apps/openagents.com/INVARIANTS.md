@@ -205,10 +205,23 @@ This is the invariant ledger for `openagents`.
   verification, missing patch digest, missing writeback authority, stale or
   blocked worktree identity, and unsafe public visibility must become typed
   blockers before a change capture can be treated as review-ready.
+- Pack C workspace/file/shell evidence projections may expose workspace refs,
+  sandbox profile refs, expected sandbox refs, operation kind, command intent
+  refs, allowed command refs, allowed path refs, touched path refs, approval
+  refs, timeout refs, cancellation refs, redaction class, redaction receipt
+  refs, and typed blockers only. Out-of-scope paths, missing approval,
+  disallowed command intent, sandbox mismatch, timeout, cancellation, and
+  missing public redaction must become typed blockers. Public and
+  agent-readable workspace evidence must reject raw shell logs, raw commands,
+  raw prompts, local filesystem paths, private repo content, provider payloads,
+  credentials, wallet/payment material, and customer-private data before
+  projection.
 - Regression coverage for Pack C repository/worktree identity snapshots lives
   in `workers/api/src/pack-c-repo-worktree-identity.test.ts`.
 - Regression coverage for Pack C change capture and diff review artifacts
   lives in `workers/api/src/pack-c-change-capture.test.ts`.
+- Regression coverage for Pack C workspace/file/shell authority evidence
+  lives in `workers/api/src/pack-c-workspace-authority.test.ts`.
 
 ## Autopilot Bridge API Parity And Work-Creation Contract
 
