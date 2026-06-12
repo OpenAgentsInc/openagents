@@ -56,6 +56,7 @@ import {
 } from "./node/control-server"
 import { runControlClient, sendControlCommand } from "./node/control-client"
 import { loadComposerState, saveComposerState } from "./node/composer-store"
+import { collectPylonDevDoctor } from "./dev-doctor"
 import {
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
@@ -1322,6 +1323,25 @@ async function main() {
       return
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "dev" && args[1] === "doctor") {
+    try {
+      if (!args.includes("--json")) throw new Error("usage: pylon dev doctor --json [--codex-danger]")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const projection = await collectPylonDevDoctor({
+        cwd: process.cwd(),
+        dangerFlag: args.includes("--codex-danger"),
+        env: Bun.env,
+        summary,
+      })
+      process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+      return
+    } catch (error) {
+      process.stderr.write(`Pylon dev doctor failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
       return
     }

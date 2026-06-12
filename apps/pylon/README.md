@@ -98,6 +98,12 @@ composer (bottom), and a one-line key-hint footer.
   `Codex DANGER`. Submitted prompts persist across restarts: cycle them with
   `ctrl+p` / `ctrl+n`, and an unsent draft is stashed on exit and restored
   on the next launch.
+- `pylon dev doctor --json` returns the redacted local context projection for
+  the dashboard/dev loop: active repo provider/name, branch, commit, dirty
+  count, instruction/config digest refs, Codex SDK/CLI/auth readiness,
+  Claude/Fable readiness, active Codex execution mode, and backend refs. It
+  never prints raw keys, auth file paths, instruction text, changed filenames,
+  or local absolute paths.
 - The sidebar renders a live 3D network view (`@opentui/three` on a native
   WebGPU device, quantized to terminal glyphs): satellites orbit the market
   core, wallet status drives color and speed, new feed activity pulses

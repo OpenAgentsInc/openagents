@@ -134,6 +134,11 @@ sets the SDK thread to `sandboxMode: "danger-full-access"` with
 `approvalPolicy: "never"`. `pylon work`, `pylon assignment`, `pylon provider`,
 `pylon node`, and `pylon attach` reject `--codex-danger`.
 
+`pylon dev doctor --json` projects the same local execution mode alongside
+repo, instruction, Codex, Claude/Fable, and backend readiness refs. It emits
+digest refs and bounded states only; raw credential values, auth file paths,
+instruction text, changed filenames, and local absolute paths are omitted.
+
 ## Boundaries
 
 - **Your identity, your credentials, your machine.** The lane acts only

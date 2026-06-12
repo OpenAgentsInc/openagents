@@ -1931,6 +1931,35 @@ Verification:
 - `bun src/index.ts work --codex-danger` (expected rejection with `blocker.codex.local_supervised_danger_public_path`)
 - `git diff --check`
 
+## Pylon Dev Doctor Context Projection
+
+Issue context:
+
+- #4841: add `pylon dev doctor --json` for repo, instruction, account, and
+  execution-mode context.
+- #4838 still owns rendering this projection in the right-side TUI pane.
+
+Status: source implementation for the CLI/projection source; pane rendering
+and check/reload loop remain follow-up work.
+
+Implemented:
+
+- Added `apps/pylon/src/dev-doctor.ts`, a typed redacted projection collector
+  for active repo provider/name, branch, commit, dirty count, instruction and
+  config digest refs, Codex SDK/CLI/auth readiness, Claude/Fable readiness,
+  active Codex execution mode/sandbox, and backend refs.
+- Added `pylon dev doctor --json [--codex-danger]` to the CLI.
+- Kept the projection public-safe: no raw keys, auth file paths, instruction
+  text, changed filenames, or local absolute paths.
+- Updated README, Codex bridge docs, and the daily-driver audit.
+
+Verification:
+
+- `bun test tests/dev-doctor.test.ts`
+- `bun src/index.ts dev doctor --json`
+- `bun src/index.ts dev doctor --json --codex-danger`
+- `git diff --check`
+
 ## Terminal-Agent Systems Roadmap Historical Status Refresh
 
 Issue context:
