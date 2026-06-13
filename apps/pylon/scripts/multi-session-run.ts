@@ -27,6 +27,7 @@ import {
 } from "../src/account-registry"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import type { PylonComposerAdapter } from "../src/codex-agent"
+import { classifySessionError } from "../src/session-error-class"
 import { assertPublicProjectionSafe } from "../src/state"
 import { scanProofSerialization } from "../src/proof-redaction"
 import {
@@ -370,27 +371,6 @@ async function workspaceForSession(input: {
   }
 }
 
-export function classifyError(error: unknown): { errorClass: string; errorDigestRef: string } {
-  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-  const lowered = message.toLowerCase()
-  // Order matters. A verification/dev-check failure is detected before
-  // redaction because a *successful* proof's stdout carries the field name
-  // "redactionScan", which would otherwise collide with a bare "redaction"
-  // match and mislabel a blocked/failed check as a redaction gate. The genuine
-  // redaction failures all say "redaction scan" (with a space), so match that
-  // exact phrase instead of the lone token.
-  const errorClass = lowered.includes("account")
-    ? "account_selection"
-    : lowered.includes("worktree") || lowered.includes("workspace")
-      ? "workspace_materialization"
-      : lowered.includes("verify") || lowered.includes("dev check")
-        ? "verification_failed"
-        : lowered.includes("redaction scan")
-          ? "redaction_gate"
-          : "execution_error"
-  return { errorClass, errorDigestRef: stableRef("digest.pylon.multi_session.error", message) }
-}
-
 async function defaultProofChildRunner(input: ProofChildInput): Promise<ProofChildResult> {
   const script = resolve(dirname(fileURLToPath(import.meta.url)), "dev-proof-run.ts")
   const args = [
@@ -610,7 +590,7 @@ async function runOneSession(input: {
         continue
       }
 
-      const failure = classifyError(combined)
+      const failure = classifySessionError(combined)
       attempts.push({ accountHash, reason: "failed", retryAtIso: null })
       await emitAttempt("failed", accountHash, null)
       const completedAt = nowIso()
@@ -649,7 +629,7 @@ async function runOneSession(input: {
 
     // Pool exhausted with no success: every member was quota-blocked or skipped.
     const completedAt = nowIso()
-    const failure = lastFailure ?? classifyError("all accounts exhausted")
+    const failure = lastFailure ?? classifySessionError("all accounts exhausted")
     await writeFailure(join(input.args.proofsDir, failureFile), {
       schema: MULTI_SESSION_FAILURE_SCHEMA,
       sessionRef,
@@ -684,7 +664,7 @@ async function runOneSession(input: {
     }
   } catch (error) {
     const completedAt = nowIso()
-    const failure = classifyError(error)
+    const failure = classifySessionError(error)
     await writeFailure(join(input.args.proofsDir, failureFile), {
       schema: MULTI_SESSION_FAILURE_SCHEMA,
       sessionRef,

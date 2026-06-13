@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
-  classifyError,
   MULTI_SESSION_SUMMARY_SCHEMA,
   parsePlanJson,
   runMultiSessionPlan,
   type ProofChildInput,
 } from "../scripts/multi-session-run"
+import { classifySessionError } from "../src/session-error-class"
 import { assertPublicProjectionSafe } from "../src/state"
 import { hashPylonAccountRef } from "../src/account-registry"
 import { loadQuotaRecord, recordQuotaBlock } from "../src/account-quota-ledger"
@@ -232,18 +232,18 @@ describe("multi-session error classification", () => {
     // field name "redactionScan" plus the dev-check failure on stderr.
     const childOutput =
       'dev check did not pass: blocked\n{"adapter":"codex","devCheckState":"blocked","redactionScan":"clean"}'
-    expect(classifyError(childOutput).errorClass).toBe("verification_failed")
+    expect(classifySessionError(childOutput).errorClass).toBe("verification_failed")
   })
 
   test("a genuine redaction-scan failure is still redaction_gate", () => {
-    expect(classifyError(new Error("retained proof failed redaction scan: pattern.local_path")).errorClass).toBe(
+    expect(classifySessionError(new Error("retained proof failed redaction scan: pattern.local_path")).errorClass).toBe(
       "redaction_gate",
     )
   })
 
   test("workspace and account failures keep their classes", () => {
-    expect(classifyError(new Error("worktree_path_missing")).errorClass).toBe("workspace_materialization")
-    expect(classifyError(new Error("account home not found")).errorClass).toBe("account_selection")
+    expect(classifySessionError(new Error("worktree_path_missing")).errorClass).toBe("workspace_materialization")
+    expect(classifySessionError(new Error("account home not found")).errorClass).toBe("account_selection")
   })
 })
 

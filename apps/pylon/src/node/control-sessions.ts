@@ -23,6 +23,7 @@ import {
   PROOF_REDACTION_PATTERN_REFS,
   scanProofSerialization,
 } from "../proof-redaction"
+import { classifySessionError } from "../session-error-class"
 import { assertPublicProjectionSafe } from "../state"
 import {
   materializeGitCheckoutWorkspaceWithLease,
@@ -280,23 +281,6 @@ function projectionFor(record: SessionRecord): ControlSessionProjection {
     completedAt: record.completedAt,
     eventCount: record.events.length,
   }
-}
-
-function classifyError(error: unknown): { errorClass: string; errorDigestRef: string } {
-  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-  const lowered = message.toLowerCase()
-  const errorClass = lowered.includes("cancel")
-    ? "cancelled"
-    : lowered.includes("account")
-      ? "account_selection"
-      : lowered.includes("worktree") || lowered.includes("workspace")
-        ? "workspace_materialization"
-        : lowered.includes("verify") || lowered.includes("dev check")
-          ? "verification_failed"
-          : lowered.includes("redaction scan")
-            ? "redaction_gate"
-            : "execution_error"
-  return { errorClass, errorDigestRef: stableRef("digest.pylon.control_session.error", message) }
 }
 
 async function workspaceForCommand(input: {
@@ -659,7 +643,7 @@ export function createControlSessionActions(options: {
         record.resultRef = stableRef("result.pylon.control_session", record.sessionRef)
         emit(record, { phase: "completed", artifactRef: record.artifactRef, resultRef: record.resultRef })
       } else {
-        const failure = classifyError("dev check did not pass")
+        const failure = classifySessionError("dev check did not pass")
         record.state = "failed"
         record.errorClass = "verification_failed"
         record.errorDigestRef = failure.errorDigestRef
@@ -677,7 +661,7 @@ export function createControlSessionActions(options: {
       }
       record.state = "failed"
       record.completedAt = nowIso()
-      const failure = classifyError(error)
+      const failure = classifySessionError(error)
       record.errorClass = failure.errorClass
       record.errorDigestRef = failure.errorDigestRef
       try {
