@@ -1,100 +1,102 @@
 import { describe, expect, test } from "bun:test"
-import { sessionEventStreamFixture } from "@openagentsinc/autopilot-control-protocol/fixtures"
 import {
   projectNotification,
-  shouldDeliver,
-  type NotificationPayload,
-  type QuietHours,
-} from "../src/notifications/notification-projection"
+  shouldNotify,
+} from "../src/node/notification-projection"
 
-const quietHours: QuietHours = {
-  enabled: true,
-  startHour: 22,
-  endHour: 7,
-}
-
-describe("notification projection", () => {
-  test("projects notable session events to refs-only notification payloads", () => {
-    const decisionRequested = projectNotification(sessionEventStreamFixture[2]!)
-    const decisionResolved = projectNotification(sessionEventStreamFixture[3]!)
-    const completed = projectNotification(sessionEventStreamFixture[4]!)
-    const failed = projectNotification({
-      ...sessionEventStreamFixture[4]!,
-      eventId: "evt.failed",
-      phase: "failed",
-      detailRef: "failure.fixture.0001",
-    })
-
-    expect(decisionRequested).toEqual({
-      kind: "decision_requested",
-      title: "Decision requested",
-      sessionRef: "session.pylon.codex_composer.fixture0001",
-      detailRef: "decision.fixture.req01",
-      decisionRef: "decision.fixture.req01",
-    })
-    expect(decisionResolved.kind).toBe("decision_resolved")
-    expect(decisionResolved.decisionRef).toBe("decision.fixture.req01")
-    expect(completed).toEqual({
-      kind: "completed",
-      title: "Session completed",
-      sessionRef: "session.pylon.codex_composer.fixture0001",
-    })
-    expect(failed).toEqual({
-      kind: "failed",
-      title: "Session failed",
-      sessionRef: "session.pylon.codex_composer.fixture0001",
-      detailRef: "failure.fixture.0001",
-    })
-  })
-
-  test("projects a decision request without carrying raw private content", () => {
-    const rawPrompt = "delete the private branch at /Users/example/worktree"
+describe("node notification projection", () => {
+  test("projects decision requests as high-priority decision notifications", () => {
     const payload = projectNotification({
-      sessionRef: "session.pylon.codex.fixture0002",
-      requestId: "decision.fixture.req02",
-      actionRef: "action.fixture.approve_release",
-      rawPrompt,
-    } as Parameters<typeof projectNotification>[0])
+      type: "decision_required",
+      observedAt: "2026-06-13T14:00:00.000Z",
+      sessionRef: "session.fixture.decision",
+      decisionRef: "decision.fixture.approve",
+    })
 
     expect(payload).toEqual({
-      kind: "decision_requested",
-      title: "Decision requested",
-      sessionRef: "session.pylon.codex.fixture0002",
-      detailRef: "action.fixture.approve_release",
-      decisionRef: "decision.fixture.req02",
+      kind: "decision_required",
+      title: "Decision required",
+      body: "decision.fixture.approve",
+      sessionRef: "session.fixture.decision",
+      observedAt: "2026-06-13T14:00:00.000Z",
+      priority: "high",
     })
-    expect(JSON.stringify(payload)).not.toContain(rawPrompt)
-    expect(Object.keys(payload).sort()).toEqual([
-      "decisionRef",
-      "detailRef",
-      "kind",
-      "sessionRef",
-      "title",
-    ])
+    expect(shouldNotify({
+      type: "decision_required",
+      observedAt: "2026-06-13T14:00:00.000Z",
+    })).toBe(true)
   })
-})
 
-describe("quiet-hours delivery", () => {
-  test("suppresses non-urgent notifications during quiet hours", () => {
-    const payload: NotificationPayload = {
-      kind: "completed",
+  test("projects failed sessions as high-priority failure notifications", () => {
+    const payload = projectNotification({
+      type: "session.failed",
+      observedAt: "2026-06-13T14:01:00.000Z",
+      sessionRef: "session.fixture.failed",
+      reason: "agent exited with code 1",
+    })
+
+    expect(payload).toEqual({
+      kind: "session_failed",
+      title: "Session failed",
+      body: "agent exited with code 1",
+      sessionRef: "session.fixture.failed",
+      observedAt: "2026-06-13T14:01:00.000Z",
+      priority: "high",
+    })
+  })
+
+  test("projects completed sessions as normal-priority completion notifications", () => {
+    const payload = projectNotification({
+      type: "completed",
+      observedAt: "2026-06-13T14:02:00.000Z",
+      sessionRef: "session.fixture.completed",
+    })
+
+    expect(payload).toEqual({
+      kind: "session_completed",
       title: "Session completed",
-      sessionRef: "session.fixture",
-    }
-
-    expect(shouldDeliver(payload, new Date("2026-06-13T23:30:00"), quietHours)).toBe(false)
-    expect(shouldDeliver(payload, new Date("2026-06-13T03:30:00"), quietHours)).toBe(false)
-    expect(shouldDeliver(payload, new Date("2026-06-13T12:30:00"), quietHours)).toBe(true)
+      body: "The session completed successfully.",
+      sessionRef: "session.fixture.completed",
+      observedAt: "2026-06-13T14:02:00.000Z",
+      priority: "normal",
+    })
   })
 
-  test("always delivers decision requests during quiet hours", () => {
-    const payload: NotificationPayload = {
-      kind: "decision_requested",
-      title: "Decision requested",
-      sessionRef: "session.fixture",
-      decisionRef: "decision.fixture.req03",
+  test("projects generic attention events with caller-provided copy", () => {
+    const payload = projectNotification({
+      type: "attention.required",
+      observedAt: "2026-06-13T14:03:00.000Z",
+      title: "Quota needs review",
+      body: "The node needs a quota decision before dispatching more work.",
+    })
+
+    expect(payload).toEqual({
+      kind: "attention",
+      title: "Quota needs review",
+      body: "The node needs a quota decision before dispatching more work.",
+      observedAt: "2026-06-13T14:03:00.000Z",
+      priority: "normal",
+    })
+  })
+
+  test("filters non-notification node events", () => {
+    const event = {
+      type: "wallet",
+      observedAt: "2026-06-13T14:04:00.000Z",
+      message: "wallet balance changed",
     }
 
-    expect(shouldDeliver(payload, new Date("2026-06-13T23:30:00"), quietHours)).toBe(true)
+    expect(shouldNotify(event)).toBe(false)
+    expect(() => projectNotification(event)).toThrow("unsupported notification event: wallet")
+  })
+
+  test("passes observedAt through from input without reading the clock", () => {
+    const payload = projectNotification({
+      type: "session_completed",
+      observedAt: "1999-12-31T23:59:59.000Z",
+      sessionRef: "session.fixture.clock",
+    })
+
+    expect(payload.observedAt).toBe("1999-12-31T23:59:59.000Z")
   })
 })
