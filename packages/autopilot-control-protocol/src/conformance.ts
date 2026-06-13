@@ -8,6 +8,7 @@
 
 import { isReadOnlyCapabilitySet, type Capability, type PairingCredentialClaims } from "./bridge"
 import { acceptEvent, initialCursor, needsResnapshot } from "./cursor"
+import { pendingDecision, resolveDecision } from "./decision"
 import { sessionEventStreamFixture } from "./fixtures"
 import { projectionLevelOf } from "./pairing-client"
 
@@ -21,6 +22,9 @@ export const CONFORMANCE_CASE_NAMES = [
   "resnapshot-lagged",
   "read-only-gating",
   "projection-levels",
+  "decision-exactly-once",
+  "decision-already-resolved",
+  "decision-expired",
 ] as const
 
 function claimsAt(level: PairingCredentialClaims["projectionLevel"]): PairingCredentialClaims {
@@ -97,6 +101,31 @@ export function runConformanceMatrix(): ConformanceResult[] {
       projectionLevelOf(claimsAt("team")) === "team" &&
       projectionLevelOf(claimsAt("private")) === "private",
   )
+
+  // Decision exactly-once (CL-29): a pending decision resolves once; an
+  // identical repeat is a duplicate (no re-resolution).
+  check("decision-exactly-once", () => {
+    const pending = pendingDecision({ requestId: "req.1", actionRef: "action.1", expiresAtMs: 10_000 })
+    const first = resolveDecision(pending, { requestId: "req.1", verb: "approve" }, 1_000)
+    if (first.outcome !== "accepted" || first.record.state !== "resolved") return false
+    const repeat = resolveDecision(first.record, { requestId: "req.1", verb: "approve" }, 2_000)
+    return repeat.outcome === "duplicate" && repeat.record.resolvedVerb === "approve"
+  })
+
+  // A different verb after resolution is rejected as already-resolved.
+  check("decision-already-resolved", () => {
+    const pending = pendingDecision({ requestId: "req.2", actionRef: "action.2", expiresAtMs: 10_000 })
+    const resolved = resolveDecision(pending, { requestId: "req.2", verb: "approve" }, 1_000).record
+    const conflicting = resolveDecision(resolved, { requestId: "req.2", verb: "deny" }, 2_000)
+    return conflicting.outcome === "already_resolved" && conflicting.record.resolvedVerb === "approve"
+  })
+
+  // An expired decision cannot be resolved.
+  check("decision-expired", () => {
+    const pending = pendingDecision({ requestId: "req.3", actionRef: "action.3", expiresAtMs: 1_000 })
+    const late = resolveDecision(pending, { requestId: "req.3", verb: "approve" }, 5_000)
+    return late.outcome === "expired" && late.record.state === "expired"
+  })
 
   return results
 }
