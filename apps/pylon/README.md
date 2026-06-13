@@ -379,7 +379,8 @@ material, requests outside the bounded workspace, or a policy ref other than
 `provider.compliant_usage_labor.v1`. The contributor's own local provider
 accounts or API budgets stay on the contributor machine; OpenAgents pays for
 accepted work output only and never resells, proxies, brokers, or transfers
-provider credentials, sessions, account access, or subscription/API capacity.
+provider credentials, sessions, account access, or consumer subscription
+capacity.
 
 The runtime includes:
 

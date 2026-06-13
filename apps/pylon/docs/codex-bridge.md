@@ -46,8 +46,9 @@ sources, all owner-held, checked by presence only and in this order:
 accounts, leased credentials on contributor devices, login brokering,
 or any credential the device owner does not personally hold. OpenAgents
 never resells, rents, proxies, or brokers provider accounts,
-subscription seats, sessions, or API access — it pays for accepted work
-output only.
+consumer subscription seats or sessions — it pays for accepted work output
+only. API-key inference resale belongs to the Provider Capacity Marketplace
+Gate, not this subscription-account prohibition.
 
 **Scope boundary flagged for future review:** this lane is owner-jobs,
 no-spend first (your machine, your credentials, your job). Serving
