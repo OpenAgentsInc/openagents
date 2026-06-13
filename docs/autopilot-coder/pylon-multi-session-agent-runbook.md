@@ -155,6 +155,14 @@ Each session must use exactly one workspace selector:
 - `repoRef`: a public GitHub repository and pinned 40-character commit SHA;
   Pylon materializes an isolated detached worktree from the shared cache.
 
+The workspace may be on a named branch or in detached HEAD. The bounded proof
+verification runs over isolated worktrees, so it tolerates a detached HEAD (the
+`repoRef` path materializes one); the detached state is still reported honestly
+in the retained proof's change summary. The run never touches the branch or
+commit. Earlier builds blocked verification on a detached HEAD with
+`blocker.dev_loop.branch_unknown_or_detached`, which silently failed every
+`repoRef` session; that is fixed (openagents #4873).
+
 Each session may use exactly one account selector:
 
 - `accountRef`: a named ref from `dev.accounts`.

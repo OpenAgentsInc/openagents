@@ -138,6 +138,15 @@ export type PylonDevLoopOptions = {
   now?: Date
   summary?: BootstrapSummary
   allowDirty?: boolean
+  /**
+   * When true, a detached HEAD (or otherwise unknown branch) no longer blocks
+   * command execution. The detached state is still reported honestly inside
+   * `changeSummary.blockerRefs`. The bounded proof path opts in because it runs
+   * over isolated worktrees that are legitimately detached (e.g. worktrees
+   * materialized from a pinned commit). Default stays false so the normal dev
+   * loop keeps refusing to operate on a detached checkout.
+   */
+  allowDetached?: boolean
   gitRunner?: (cwd: string, args: string[]) => Promise<string | null>
   commandRunner?: (command: PylonDevCommandSpec) => Promise<PylonDevCommandResult>
   commands?: PylonDevCommandSpec[]
@@ -410,7 +419,11 @@ export async function runPylonDevCheck(options: PylonDevLoopOptions = {}): Promi
   const inferredCommands = options.commands ?? inferCheckCommands(changeSummary)
   const checkPlanBlockers =
     inferredCommands.length > 0 ? [] : ["blocker.dev_check.no_focused_check_ladder"]
-  const preflightBlockers = mergeBlockerRefs(changeSummary.blockerRefs, dirtyBlockers)
+  const gatingSummaryBlockers =
+    options.allowDetached === true
+      ? changeSummary.blockerRefs.filter((ref) => ref !== "blocker.dev_loop.branch_unknown_or_detached")
+      : changeSummary.blockerRefs
+  const preflightBlockers = mergeBlockerRefs(gatingSummaryBlockers, dirtyBlockers)
   const commandResults: PylonDevCommandResult[] = []
 
   if (preflightBlockers.length === 0) {

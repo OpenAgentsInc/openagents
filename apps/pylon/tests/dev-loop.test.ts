@@ -135,6 +135,56 @@ describe("pylon dev loop", () => {
     }
   })
 
+  test("dev check blocks a detached HEAD by default but runs when allowDetached is set", async () => {
+    const { repo, root, summary } = await createRepoFixture()
+    try {
+      // Detach HEAD the way a worktree materialized from a pinned commit is.
+      const head = await run(["git", "rev-parse", "HEAD"], repo)
+      await run(["git", "checkout", "--detach", head], repo)
+
+      let blockedRan = false
+      const blocked = await runPylonDevCheck({
+        allowDirty: true,
+        commands: [{ argv: ["bun", "--version"], cwd: repo, reasonRef: "check.test" }],
+        commandRunner: async (command) => {
+          blockedRan = true
+          return commandResult(command, "passed", 0)
+        },
+        cwd: repo,
+        persist: false,
+        summary,
+      })
+      expect(blocked.state).toBe("blocked")
+      expect(blocked.blockerRefs).toContain("blocker.dev_loop.branch_unknown_or_detached")
+      expect(blocked.commandResults).toHaveLength(0)
+      expect(blockedRan).toBe(false)
+
+      let allowedRan = false
+      const allowed = await runPylonDevCheck({
+        allowDirty: true,
+        allowDetached: true,
+        commands: [{ argv: ["bun", "--version"], cwd: repo, reasonRef: "check.test" }],
+        commandRunner: async (command) => {
+          allowedRan = true
+          return commandResult(command, "passed", 0)
+        },
+        cwd: repo,
+        persist: false,
+        summary,
+      })
+      expect(allowed.state).toBe("passed")
+      expect(allowedRan).toBe(true)
+      expect(allowed.commandResults).toHaveLength(1)
+      // The detached state stays honestly visible in the change summary even
+      // though it no longer gates command execution.
+      expect(allowed.changeSummary.repo.branch).toBeNull()
+      expect(allowed.changeSummary.blockerRefs).toContain("blocker.dev_loop.branch_unknown_or_detached")
+      assertPublicProjectionSafe(allowed)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("dev reload is explicit and no-op when no controlled process exists", async () => {
     const { repo, root, summary } = await createRepoFixture()
     try {

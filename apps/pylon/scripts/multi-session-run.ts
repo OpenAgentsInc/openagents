@@ -299,17 +299,23 @@ async function workspaceForSession(input: {
   }
 }
 
-function classifyError(error: unknown): { errorClass: string; errorDigestRef: string } {
+export function classifyError(error: unknown): { errorClass: string; errorDigestRef: string } {
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
   const lowered = message.toLowerCase()
+  // Order matters. A verification/dev-check failure is detected before
+  // redaction because a *successful* proof's stdout carries the field name
+  // "redactionScan", which would otherwise collide with a bare "redaction"
+  // match and mislabel a blocked/failed check as a redaction gate. The genuine
+  // redaction failures all say "redaction scan" (with a space), so match that
+  // exact phrase instead of the lone token.
   const errorClass = lowered.includes("account")
     ? "account_selection"
     : lowered.includes("worktree") || lowered.includes("workspace")
       ? "workspace_materialization"
-      : lowered.includes("redaction")
-        ? "redaction_gate"
-        : lowered.includes("verify") || lowered.includes("dev check")
-          ? "verification_failed"
+      : lowered.includes("verify") || lowered.includes("dev check")
+        ? "verification_failed"
+        : lowered.includes("redaction scan")
+          ? "redaction_gate"
           : "execution_error"
   return { errorClass, errorDigestRef: stableRef("digest.pylon.multi_session.error", message) }
 }

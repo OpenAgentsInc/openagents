@@ -330,6 +330,10 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
   // 3. Focused dev check over the agent's change (real loop, allow dirty).
   const devCheck = await runPylonDevCheck({
     allowDirty: true,
+    // Proof runs verify isolated worktrees that are legitimately detached
+    // (e.g. materialized from a pinned commit). The run never touches the
+    // branch/commit, so a detached HEAD must not block verification.
+    allowDetached: true,
     commands: [
       { argv: args.verificationArgv, cwd, reasonRef: "check.pylon.proof_verification" },
     ],
