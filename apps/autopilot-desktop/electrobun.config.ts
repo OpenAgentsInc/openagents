@@ -13,6 +13,8 @@ export default {
         entrypoint: "src/ui/main.ts"
       }
     },
-    copy: {}
+    copy: {
+      "src/ui/index.html": "views/autopilot-desktop/index.html"
+    }
   }
 };

@@ -10,7 +10,7 @@
   "dependencies": {
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "effect": "catalog:",
-    "electrobun": "^1.0.0",
+    "electrobun": "1.18.1",
     "foldkit": "^0.102.1"
   },
   "devDependencies": {

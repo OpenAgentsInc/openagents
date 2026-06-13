@@ -11,6 +11,7 @@
       "apps/openagents.com/packages/*",
       "apps/openagents.com/services/*",
       "apps/openagents.com/workers/*",
+      "apps/autopilot-desktop",
       "apps/forum",
       "apps/nostr-relay",
       "apps/pylon",
@@ -47,5 +48,8 @@
     "@effect/language-service": "^0.86.2",
     "bun-types": "^1.0.0",
     "typescript": "catalog:"
-  }
+  },
+  "trustedDependencies": [
+    "electrobun"
+  ]
 }
