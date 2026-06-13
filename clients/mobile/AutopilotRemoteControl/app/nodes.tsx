@@ -52,6 +52,7 @@ export default function NodesScreen() {
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [events, setEvents] = useState<ControlSessionEventRow[]>([])
+  const [expanded, setExpanded] = useState<number | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -164,17 +165,28 @@ export default function NodesScreen() {
                 <Text style={styles.cardBody}>No events yet.</Text>
               </View>
             ) : (
-              events.map((e) => (
-                <View key={e.eventIndex} style={styles.eventRow}>
-                  <View style={[styles.dot, { backgroundColor: stateTone(e.state) }]} />
-                  <View style={styles.rowText}>
-                    <Text style={styles.rowLabel}>{e.detail || e.phase}</Text>
-                    <Text style={styles.rowStatus}>
-                      {e.detail ? `${e.phase} · ` : ""}#{e.eventIndex} · {e.observedAt.slice(11, 19) || e.state}
-                    </Text>
-                  </View>
-                </View>
-              ))
+              events.map((e) => {
+                const isOpen = expanded === e.eventIndex
+                const hasDetail = e.detail.length > 0
+                return (
+                  <Pressable
+                    key={e.eventIndex}
+                    style={styles.eventRow}
+                    onPress={() => hasDetail && setExpanded(isOpen ? null : e.eventIndex)}
+                  >
+                    <View style={[styles.dot, { backgroundColor: stateTone(e.state) }]} />
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowLabel} numberOfLines={isOpen ? undefined : 2}>
+                        {e.detail || e.phase}
+                      </Text>
+                      <Text style={styles.rowStatus}>
+                        {e.detail ? `${e.phase} · ` : ""}#{e.eventIndex} · {e.observedAt.slice(11, 19) || e.state}
+                        {hasDetail ? (isOpen ? " · tap to collapse" : " · tap to expand") : ""}
+                      </Text>
+                    </View>
+                  </Pressable>
+                )
+              })
             )}
           </>
         ) : status === "discovering" ? (

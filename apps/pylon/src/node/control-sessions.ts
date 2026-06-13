@@ -637,7 +637,7 @@ export function createControlSessionActions(options: {
           emit(record, {
             phase: event.phase,
             ...(messageRef === undefined ? {} : { messageRef }),
-            ...(event.message === undefined ? {} : { messageText: event.message.slice(0, 280) }),
+            ...(event.message === undefined ? {} : { messageText: event.message.slice(0, 2000) }),
             ...(event.composerEventIndex === undefined ? {} : { composerEventIndex: event.composerEventIndex }),
           })
         },
