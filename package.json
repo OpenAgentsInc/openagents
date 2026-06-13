@@ -13,6 +13,7 @@
       "apps/openagents.com/workers/*",
       "apps/autopilot-desktop",
       "apps/forum",
+      "apps/oa-updates",
       "apps/nostr-relay",
       "apps/pylon",
       "apps/pylon/packages/*",

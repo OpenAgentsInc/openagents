@@ -46,6 +46,10 @@
         "wrangler": "^4.51.0",
       },
     },
+    "apps/oa-updates": {
+      "name": "@openagentsinc/oa-updates",
+      "version": "0.1.0",
+    },
     "apps/openagents.com": {
       "name": "@openagentsinc/openagents-com",
       "version": "0.1.0",
@@ -971,6 +975,8 @@
     "@openagentsinc/nip90": ["@openagentsinc/nip90@workspace:packages/nip90"],
 
     "@openagentsinc/nostr-relay": ["@openagentsinc/nostr-relay@workspace:apps/nostr-relay"],
+
+    "@openagentsinc/oa-updates": ["@openagentsinc/oa-updates@workspace:apps/oa-updates"],
 
     "@openagentsinc/openagents-com": ["@openagentsinc/openagents-com@workspace:apps/openagents.com"],
 
