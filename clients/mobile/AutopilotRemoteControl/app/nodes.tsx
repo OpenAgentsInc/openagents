@@ -3,8 +3,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 
 import {
   type ConnectInfo,
+  type ControlSessionEventRow,
   type ControlSessionRow,
   decodeConnectCode,
+  fetchSessionEvents,
   fetchSessions,
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
@@ -47,7 +49,10 @@ export default function NodesScreen() {
   const [sessions, setSessions] = useState<ControlSessionRow[]>([])
   const [status, setStatus] = useState<Status>("discovering")
   const [error, setError] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [events, setEvents] = useState<ControlSessionEventRow[]>([])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const poll = useCallback(async (c: ConnectInfo) => {
     try {
@@ -94,6 +99,27 @@ export default function NodesScreen() {
     }
   }, [conn, poll])
 
+  // Live session-detail timeline: poll the selected session's recent events.
+  const pollEvents = useCallback(
+    async (c: ConnectInfo, sessionRef: string) => {
+      try {
+        setEvents(await fetchSessionEvents(c, sessionRef))
+      } catch {
+        // transient; keep the last good timeline
+      }
+    },
+    [],
+  )
+  useEffect(() => {
+    if (conn === null || selected === null) return
+    setEvents([])
+    void pollEvents(conn, selected)
+    eventsTimer.current = setInterval(() => void pollEvents(conn, selected), POLL_MS)
+    return () => {
+      if (eventsTimer.current) clearInterval(eventsTimer.current)
+    }
+  }, [conn, selected, pollEvents])
+
   const connectManual = useCallback(() => {
     const info = decodeConnectCode(code)
     if (info === null) {
@@ -111,7 +137,31 @@ export default function NodesScreen() {
         <Text style={styles.h1}>Autopilot</Text>
         <Text style={styles.subtitle}>Nodes</Text>
 
-        {status === "discovering" ? (
+        {selected !== null ? (
+          <>
+            <Pressable style={styles.back} onPress={() => setSelected(null)}>
+              <Text style={styles.backText}>‹ sessions</Text>
+            </Pressable>
+            <Text style={styles.detailRef}>{selected}</Text>
+            {events.length === 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.cardBody}>No events yet.</Text>
+              </View>
+            ) : (
+              events.map((e) => (
+                <View key={e.eventIndex} style={styles.eventRow}>
+                  <View style={[styles.dot, { backgroundColor: stateTone(e.state) }]} />
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowLabel}>{e.phase}</Text>
+                    <Text style={styles.rowStatus}>
+                      #{e.eventIndex} · {e.observedAt.slice(11, 19) || e.state}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </>
+        ) : status === "discovering" ? (
           <View style={styles.statusRow}>
             <ActivityIndicator color={C.info} />
             <Text style={styles.statusText}>finding your node…</Text>
@@ -155,7 +205,11 @@ export default function NodesScreen() {
               </View>
             ) : (
               sessions.map((s) => (
-                <View key={s.sessionRef} style={styles.row}>
+                <Pressable
+                  key={s.sessionRef}
+                  style={styles.row}
+                  onPress={() => setSelected(s.sessionRef)}
+                >
                   <View style={[styles.dot, { backgroundColor: stateTone(s.state) }]} />
                   <View style={styles.rowText}>
                     <Text style={styles.rowLabel}>{s.sessionRef}</Text>
@@ -163,7 +217,8 @@ export default function NodesScreen() {
                       {s.adapter} · {s.state}
                     </Text>
                   </View>
-                </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
               ))
             )}
           </>
@@ -192,4 +247,9 @@ const styles = StyleSheet.create({
   rowText: { flex: 1 },
   rowLabel: { color: C.text, fontFamily: "Courier", fontSize: 13 },
   rowStatus: { color: C.textSecondary, fontSize: 12, marginTop: 2 },
+  chevron: { color: C.textSecondary, fontSize: 20, marginLeft: 8 },
+  back: { marginTop: 20 },
+  backText: { color: C.info, fontSize: 15 },
+  detailRef: { color: C.text, fontFamily: "Courier", fontSize: 13, marginTop: 10 },
+  eventRow: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 6, borderWidth: 1, flexDirection: "row", marginTop: 8, padding: 12 },
 })

@@ -62,3 +62,31 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
     lastProgressRef: String(s.lastProgressRef ?? s.resultRef ?? "none"),
   }))
 }
+
+export type ControlSessionEventRow = {
+  eventIndex: number
+  observedAt: string
+  phase: string
+  state: string
+}
+
+// Live session-detail timeline (dev transport). Uses the inline recentEvents
+// tail from the node's in-memory event log — RN fetch can't consume the SSE
+// stream cleanly, so we poll the non-streaming POST /command path.
+export async function fetchSessionEvents(
+  conn: ConnectInfo,
+  sessionRef: string,
+): Promise<ControlSessionEventRow[]> {
+  const json = (await command(conn, { type: "session.events", sessionRef })) as {
+    ok?: boolean
+    result?: { recentEvents?: unknown }
+  }
+  const events = json.ok === true ? json.result?.recentEvents : undefined
+  if (!Array.isArray(events)) throw new Error("bad session.events response")
+  return events.map((e: any) => ({
+    eventIndex: Number(e.eventIndex ?? 0),
+    observedAt: String(e.observedAt ?? ""),
+    phase: String(e.phase ?? "?"),
+    state: String(e.state ?? "?"),
+  }))
+}

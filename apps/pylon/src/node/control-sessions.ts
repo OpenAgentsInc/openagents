@@ -113,7 +113,15 @@ export type ControlSessionActions = {
   spawn: (command: ControlSessionSpawnCommand) => Promise<{ sessionRef: string; state: ControlSessionState }>
   list: () => Promise<ControlSessionProjection[]>
   cancel: (sessionRef: string) => Promise<ControlSessionProjection>
-  events: (sessionRef: string) => Promise<{ sessionRef: string; eventsPath: string; state: ControlSessionState }>
+  events: (sessionRef: string) => Promise<{
+    sessionRef: string
+    eventsPath: string
+    state: ControlSessionState
+    // Bounded inline tail of the in-memory event log, so non-streaming clients
+    // (RN fetch can't consume the SSE stream cleanly) can render a live
+    // session-detail timeline by polling POST /command { session.events }.
+    recentEvents: ControlSessionEvent[]
+  }>
   eventStream: (sessionRef: string) => ReadableStream<Uint8Array>
 }
 
@@ -743,6 +751,7 @@ export function createControlSessionActions(options: {
         sessionRef,
         eventsPath: `/sessions/${encodeURIComponent(sessionRef)}/events`,
         state: record.state,
+        recentEvents: record.events.slice(-100),
       }
     },
     eventStream: (sessionRef) => {
