@@ -23,6 +23,17 @@ export const defaultControlPort = 4716
 export const controlTokenFileName = "control-token"
 export const snapshotLogTail = 300
 
+export function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1"
+}
+
+export function assertControlBindSafe(options: { hostname?: string; token?: string }): void {
+  const hostname = options.hostname ?? "127.0.0.1"
+  if (!isLoopbackHostname(hostname) && !options.token?.trim()) {
+    throw new Error(`refusing to expose Pylon control server on ${hostname} without a bearer token`)
+  }
+}
+
 // Serializable snapshot sent to every new attach connection before the live
 // event tail begins.
 export type PylonSnapshot = {
@@ -177,8 +188,9 @@ export const startControlServer = (
     }
 
     const server = yield* Effect.try({
-      try: () =>
-        Bun.serve({
+      try: () => {
+        assertControlBindSafe(options)
+        return Bun.serve({
           hostname: options.hostname ?? "127.0.0.1",
           port: options.port ?? defaultControlPort,
           idleTimeout: 0,
@@ -262,7 +274,8 @@ export const startControlServer = (
 
             return Response.json({ error: "not found" }, { status: 404 })
           },
-        }),
+        })
+      },
       catch: (error) => new Error(`control server failed to start: ${String(error)}`),
     })
 

@@ -6,8 +6,10 @@ import { join } from "node:path"
 import { Effect, Deferred } from "effect"
 import { logMessage, makePylonNodeRuntime, setWalletStatus } from "../src/node/runtime"
 import {
+  assertControlBindSafe,
   captureNodeSnapshot,
   ensureControlToken,
+  isLoopbackHostname,
   startControlServer,
   type PylonSnapshot,
 } from "../src/node/control-server"
@@ -98,6 +100,20 @@ async function withControlSessionFixture<T>(fn: (fixture: {
 }
 
 describe("control protocol", () => {
+  test("loopback hostname classifier treats wildcard binds as external", () => {
+    expect(isLoopbackHostname("127.0.0.1")).toBe(true)
+    expect(isLoopbackHostname("localhost")).toBe(true)
+    expect(isLoopbackHostname("::1")).toBe(true)
+    expect(isLoopbackHostname("203.0.113.10")).toBe(false)
+    expect(isLoopbackHostname("0.0.0.0")).toBe(false)
+  })
+
+  test("control bind safety requires a token for non-loopback hosts", () => {
+    expect(() => assertControlBindSafe({ hostname: "127.0.0.1" })).not.toThrow()
+    expect(() => assertControlBindSafe({ hostname: "0.0.0.0", token: "test-token" })).not.toThrow()
+    expect(() => assertControlBindSafe({ hostname: "0.0.0.0" })).toThrow(/without a bearer token/)
+  })
+
   test("token file is created once with stable content", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pylon-token-"))
     const first = await ensureControlToken(dir)
