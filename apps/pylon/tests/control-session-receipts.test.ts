@@ -112,7 +112,7 @@ describe("control session receipts", () => {
         }),
       )
       expect(list[0]?.artifactRef).toStartWith("artifact.pylon.control_session.failure.")
-      expect(list[0]?.errorDigestRef).toStartWith("digest.pylon.control_session.error.")
+      expect(list[0]?.errorDigestRef).toStartWith("digest.pylon.session.error.")
 
       const serialized = await readFile(join(proofDir, `${spawned.sessionRef}-failure.json`), "utf8")
       expect(serialized).not.toContain(rawErrorSentence)
@@ -123,7 +123,7 @@ describe("control session receipts", () => {
       expect(failure.sessionRef).toBe(spawned.sessionRef)
       expect(failure.workspaceRef).toStartWith("workspace.pylon.control_session.injected.")
       expect(failure.errorClass).toBe("execution_error")
-      expect(failure.errorDigestRef).toStartWith("digest.pylon.control_session.error.")
+      expect(failure.errorDigestRef).toStartWith("digest.pylon.session.error.")
       expect(Object.keys(failure).sort()).toEqual([
         "account",
         "adapter",
