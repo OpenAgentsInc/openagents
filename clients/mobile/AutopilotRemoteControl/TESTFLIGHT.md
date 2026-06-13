@@ -6,24 +6,28 @@ Xcode archive needed); EAS Submit uploads it to App Store Connect → TestFlight
 
 ## What's already wired (in this repo)
 - `app.config.ts` — iOS `bundleIdentifier: com.openagents.autopilot-mobile`,
-  `ITSAppUsesNonExemptEncryption: false` (skips the export-compliance prompt).
+  `ITSAppUsesNonExemptEncryption: false` (skips the export-compliance prompt),
+  EAS `owner: openagents` + `extra.eas.projectId` (linked via `eas init`).
 - `eas.json` — `production` build profile + `submit.production.ios` with
-  `appleTeamId: HQWSG26L43` (OpenAgents, Inc.) and an `ascAppId` placeholder.
+  `appleTeamId: HQWSG26L43` (OpenAgents, Inc.). No `ascAppId` is pinned: EAS
+  Submit looks up / creates the App Store Connect app record automatically.
 - Expo SDK 55 app that builds (boots on simulator + web today).
+- iOS distribution certificate + provisioning profile were created on EAS by
+  the first `eas build` (the credential prompts answered "yes" once).
 
 Known identifiers:
 - iOS bundle id: `com.openagents.autopilot-mobile`
 - Apple Team: OpenAgents, Inc. — `HQWSG26L43`
-- `ascAppId`: create the App Store Connect record, then paste its numeric
-  Apple ID into `eas.json`.
+- EAS project: `@openagents/autopilot-remote-control`
+  (`33dc1fb6-1b11-486d-baa0-7946302fdc68`)
 
 ## Owner prerequisites (one-time, can't be automated for you)
 1. **Apple Developer Program** membership ($99/yr) — https://developer.apple.com/account
 2. **Expo/EAS account** — `eas login` (free tier is fine for builds).
-3. An **App Store Connect app record** for `com.openagents.autopilot-mobile`
-   under the OpenAgents, Inc. team (`HQWSG26L43`) — create via App Store Connect
-   → Apps → + → New App, then copy its **Apple ID** (the numeric `ascAppId`)
-   into `eas.json` (`submit.production.ios.ascAppId`).
+
+The App Store Connect app record no longer needs to be created by hand:
+`eas submit` creates/links it on first submit. If you'd rather pin it, add the
+numeric Apple ID back as `submit.production.ios.ascAppId` in `eas.json`.
 
 ## Steps (run from clients/mobile/AutopilotRemoteControl)
 ```sh
@@ -39,11 +43,11 @@ eas init
 #    provisioning profile (just log in with your Apple account when prompted).
 eas build --platform ios --profile production
 
-# 3) submit the build to App Store Connect → TestFlight
+# 3) submit the latest finished build to App Store Connect → TestFlight
+#    (creates the ASC app record on first run if it doesn't exist yet)
 eas submit --platform ios --latest
-#    (fill ascAppId in eas.json first, or let it prompt)
 
-# …or do 2+3 in one shot:
+# …or do 2+3 in one shot (once an ASC app record exists):
 eas build --platform ios --profile production --auto-submit
 ```
 Processing on Apple's side takes ~10–15 min; then the build appears in

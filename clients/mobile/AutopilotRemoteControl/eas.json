@@ -19,8 +19,7 @@
   "submit": {
     "production": {
       "ios": {
-        "appleTeamId": "HQWSG26L43",
-        "ascAppId": "REPLACE_WITH_ASC_APP_ID"
+        "appleTeamId": "HQWSG26L43"
       }
     }
   }
