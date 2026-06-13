@@ -23,7 +23,7 @@ is quota-blocked is replaced instantly by another available account within the
 same run (no second pass).
 
 Next wave (this update): the now-unblocked rungs **C-9, C-10, C-12, C-13, C-14,
-C-15** are ready to parallelize. **C-11 remains blocked on C-10.**
+C-15** are ready to parallelize. **C-11 is now done** (#4897): the API-inference-resale authorizing policy + invariant + tests landed.
 
 ## Goal
 
@@ -242,7 +242,7 @@ per the routing rule (most land in `cloud/`; the client boundary in
 | C-8 | Required-artifact gates for `dev-proof-run.ts` / control sessions | openagents/apps/pylon | ✅ done |
 | C-9 | Phase-0 static-SSH remote-verify prototype (composer local, verify remote) end-to-end | openagents/apps/pylon | ✅ ready (deps done) |
 | C-10 | Inference gateway — Model 2: OpenAgents API keys in control-plane broker, egress-locked gateway, per-request metering → credit ledger | cloud | ✅ ready (dep done) |
-| C-11 | Provider Capacity Marketplace Gate authorization for base-inference resale: policy + metering/pricing/ToS/settlement refs + tests | openagents.com | ⏳ blocked by C-10 |
+| C-11 | Provider Capacity Marketplace Gate authorization for base-inference resale: policy + metering/pricing/ToS/settlement refs + tests | openagents.com | ✅ done |
 | C-12 | Tenant identity + per-tenant spend caps + acceptable-use/egress/abuse controls + kill switch | cloud (+ openagents.com) | ✅ ready (dep done) |
 | C-13 | Settlement: private metering/usage receipts in cloud → public-monorepo credit/invoice ledger (compute markup; credits + fee). No treasury repo. | cloud + openagents.com | ✅ ready (dep done) |
 | C-14 | `openagents-cloud` provider backend in Pylon client wired to the `cloud/` coordinator | openagents/apps/pylon (+ cloud) | ✅ ready (deps done) |

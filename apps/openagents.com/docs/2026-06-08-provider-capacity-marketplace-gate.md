@@ -8,6 +8,18 @@
 > 2026-06-10.3). See
 > `2026-06-10-five-bitcoin-revenue-streams-promise-audit.md`. This document
 > is retained as history only; the matching worker gate module was removed.
+>
+> **Reconciled (2026-06-13).** The blanket "no API provider capacity resale"
+> line above is scoped to *subscription* resale, which remains the non-waivable
+> prohibition. Reselling **API inference bought on OpenAgents' own commercial /
+> API-key accounts** (the OpenRouter-style gateway, "Model 2" of the cloud
+> remote-execution commercial plan) is a normal, allowed business and is now an
+> authorized, ref-gated path: see
+> `workers/api/src/inference-resale-authorization.ts` and the gate clause in
+> `apps/openagents.com/INVARIANTS.md`. This authorizes the mechanism only;
+> public marketplace/monetization copy stays gated until the full
+> grant→settlement-receipt chain exists. See
+> `docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md`.
 
 Implemented: 2026-06-08
 

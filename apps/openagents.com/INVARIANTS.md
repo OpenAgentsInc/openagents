@@ -619,6 +619,17 @@ This is the invariant ledger for `openagents`.
   gateway resale. Converting a consumer subscription login into resale remains
   blocked; API-inference gateway resale is allowed only through an explicit
   policy path such as this gate, with tests.
+- The authorizing policy required by the previous clause is
+  `workers/api/src/inference-resale-authorization.ts`
+  (`authorizeInferenceMonetization`, tests in
+  `workers/api/src/inference-resale-authorization.test.ts`). API-inference
+  gateway resale (Model 2, the cost-plus-10% gateway on OpenAgents' OWN
+  API-key/commercial accounts) is authorized only when the full ref chain is
+  present — provider grant, route policy, metering receipt, pricing policy,
+  ToS boundary, dispatch, assignment receipt, and settlement receipt — and is
+  refused on a subscription-auth account. `subscription_capacity_resale` is
+  blocked unconditionally (non-waivable). This authorizes the mechanism only;
+  it does not relax the public-copy gate in the clauses below.
 - Assignment dispatch, assignment receipt, and Bitcoin settlement are separate
   states. Assignment evidence does not imply paid settlement.
 - Public capacity marketplace or Bitcoin monetization copy remains blocked
