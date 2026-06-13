@@ -294,6 +294,7 @@ import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
 import {
   canonicalMarketRelayUrl,
   makeD1RelayHealthStore,
+  type RelayHealthFetch,
   runRelayHealthProbeTick,
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
@@ -4930,6 +4931,13 @@ const runRelayHealthProbeScheduled = (
     catch: () => 'relay_health_probe_failed' as const,
     try: () =>
       runRelayHealthProbeTick({
+        // Service binding preferred for the NIP-11 leg: same-zone plain-GET
+        // subrequests to the relay's custom domain fail from inside this
+        // worker; the binding invokes the relay worker directly (#4865).
+        fetchFn: env.MARKET_RELAY_SERVICE
+          ? ((url, init) =>
+              (env.MARKET_RELAY_SERVICE as Fetcher).fetch(url, init)) as RelayHealthFetch
+          : undefined,
         makeId: randomUuid,
         relayUrl: canonicalMarketRelayUrl(env),
         scheduledTimeMs: scheduledTime,
