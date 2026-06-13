@@ -23,13 +23,17 @@ const BROKER = "https://oa-updates-ezxz4mgdsq-uc.a.run.app"
 const OWNER = "chris"
 const POLL_MS = 4000
 
+// CL-31: this palette mirrors @openagentsinc/autopilot-ui `darkTokens` (the
+// shared dark palette desktop + web use) exactly. Kept inline because wiring
+// autopilot-ui into the Metro/RN bundle needs a dep + bundler work; the values
+// are the single source of truth's values. See the `./tokens` export.
 const C = {
-  bg: "#000000",
+  bg: "#000",
   bgSecondary: "#151515",
   text: "#d7d8e5",
   textSecondary: "#8a8c93",
   outline: "#525458",
-  primary: "#ffffff",
+  primary: "#fff",
   success: "#00c853",
   warning: "#ffb400",
   danger: "#d32f2f",
