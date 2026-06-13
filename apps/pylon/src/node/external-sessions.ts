@@ -15,6 +15,8 @@ export type ExternalEvent = {
   observedAt: string
   phase: string
   messageText: string
+  // Full untruncated content for tap-to-expand (agent text, tool input, result).
+  messageFull?: string
 }
 
 export type ExternalSession = {
@@ -92,31 +94,39 @@ export function normalizeClaudeLine(raw: unknown): ExternalEvent | { title: stri
   if (type === "user" || type === "assistant") {
     const message = o.message ?? {}
     const role = type === "user" ? "you" : "agent"
+    const phase = type === "user" ? "user" : "agent_message"
     const content = message.content
+    const full = (v: string) => (v.length > 8000 ? v.slice(0, 8000) : v)
     if (typeof content === "string") {
       if (content.trim().length === 0) return null
-      return { observedAt, phase: type === "user" ? "user" : "agent_message", messageText: `${role}: ${clip(content)}` }
+      return { observedAt, phase, messageText: `${role}: ${clip(content)}`, messageFull: full(content) }
     }
     if (Array.isArray(content)) {
-      // One event per block would be noisy; collapse to the most salient block.
+      // One event per block would be noisy; collapse to the most salient block,
+      // but carry the FULL content on messageFull for tap-to-expand.
       for (const block of content) {
         if (block?.type === "tool_use" && typeof block.name === "string") {
-          return { observedAt, phase: "tool_use", messageText: summarizeToolUse(block.name, block.input) }
+          return {
+            observedAt,
+            phase: "tool_use",
+            messageText: summarizeToolUse(block.name, block.input),
+            messageFull: full(`${block.name}\n${JSON.stringify(block.input ?? {}, null, 2)}`),
+          }
         }
       }
       for (const block of content) {
         if (block?.type === "tool_result") {
           const c = block.content
           const text = typeof c === "string" ? c : Array.isArray(c) ? (c.find((b: any) => b?.type === "text")?.text ?? "") : ""
-          return { observedAt, phase: "tool_result", messageText: `result: ${clip(String(text), 160)}` }
+          return { observedAt, phase: "tool_result", messageText: `result: ${clip(String(text), 160)}`, messageFull: full(String(text)) }
         }
       }
       const textBlock = content.find((b: any) => b?.type === "text" && typeof b.text === "string")
       if (textBlock && textBlock.text.trim().length > 0) {
-        return { observedAt, phase: type === "user" ? "user" : "agent_message", messageText: `${role}: ${clip(textBlock.text)}` }
+        return { observedAt, phase, messageText: `${role}: ${clip(textBlock.text)}`, messageFull: full(textBlock.text) }
       }
-      const thinking = content.find((b: any) => b?.type === "thinking")
-      if (thinking) return { observedAt, phase: "reasoning", messageText: "thinking…" }
+      const thinking = content.find((b: any) => b?.type === "thinking" && typeof b.thinking === "string")
+      if (thinking) return { observedAt, phase: "reasoning", messageText: "thinking…", messageFull: full(thinking.thinking) }
     }
     return null
   }
@@ -273,6 +283,7 @@ export function toEventRows(s: ExternalSession): Array<{
   phase: string
   state: string
   messageText: string
+  messageFull?: string
 }> {
   const state = s.state === "running" ? "running" : "completed"
   return s.events.map((e, i) => ({
@@ -281,5 +292,6 @@ export function toEventRows(s: ExternalSession): Array<{
     phase: e.phase,
     state,
     messageText: e.messageText,
+    ...(e.messageFull ? { messageFull: e.messageFull } : {}),
   }))
 }

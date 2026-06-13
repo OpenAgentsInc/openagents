@@ -236,21 +236,21 @@ export default function NodesScreen() {
             ) : (
               events.map((e) => {
                 const isOpen = expanded === e.eventIndex
-                const hasDetail = e.detail.length > 0
+                const expandable = e.full.length > 0 || e.detail.length > 30
                 return (
                   <Pressable
                     key={e.eventIndex}
                     style={styles.eventRow}
-                    onPress={() => hasDetail && setExpanded(isOpen ? null : e.eventIndex)}
+                    onPress={() => expandable && setExpanded(isOpen ? null : e.eventIndex)}
                   >
                     <View style={[styles.dot, { backgroundColor: stateTone(e.state) }]} />
                     <View style={styles.rowText}>
                       <Text style={styles.rowLabel} numberOfLines={isOpen ? undefined : 2}>
-                        {e.detail || e.phase}
+                        {isOpen ? e.full || e.detail || e.phase : e.detail || e.phase}
                       </Text>
                       <Text style={styles.rowStatus}>
                         {e.detail ? `${e.phase} · ` : ""}#{e.eventIndex} · {e.observedAt.slice(11, 19) || e.state}
-                        {hasDetail ? (isOpen ? " · tap to collapse" : " · tap to expand") : ""}
+                        {expandable ? (isOpen ? " · tap to collapse" : " · tap to expand") : ""}
                       </Text>
                     </View>
                   </Pressable>

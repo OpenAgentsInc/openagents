@@ -153,6 +153,8 @@ export type ControlSessionEventRow = {
   state: string
   // What the agent is actually doing (agent text / tool call / file change).
   detail: string
+  // Full untruncated content, revealed on tap-to-expand (#4951).
+  full: string
 }
 
 // Live session-detail timeline (dev transport). Uses the inline recentEvents
@@ -174,5 +176,6 @@ export async function fetchSessionEvents(
     phase: String(e.phase ?? "?"),
     state: String(e.state ?? "?"),
     detail: typeof e.messageText === "string" && e.messageText.length > 0 ? e.messageText : "",
+    full: typeof e.messageFull === "string" ? e.messageFull : "",
   }))
 }
