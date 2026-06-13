@@ -237,6 +237,56 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     }
   })
 
+  test("serializes parallel bare-cache materialization for the same repository", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const [first, second] = await Promise.all([
+        materializeGitCheckoutWorkspaceWithLease(
+          leaseInput(root, {
+            checkout: checkoutFor(origin.commitSha),
+            checkoutRunner: undefined,
+            leaseRef: "lease.public.worktree.parallel.first",
+            remoteUrlFor: () => origin.url,
+          }) as never,
+        ),
+        materializeGitCheckoutWorkspaceWithLease(
+          leaseInput(root, {
+            checkout: checkoutFor(origin.commitSha),
+            checkoutRunner: undefined,
+            leaseRef: "lease.public.worktree.parallel.second",
+            remoteUrlFor: () => origin.url,
+          }) as never,
+        ),
+      ])
+
+      expect(first.workspaceRef).not.toBe(second.workspaceRef)
+      expect(first.workingDirectory).not.toBe(second.workingDirectory)
+      expect(existsSync(join(first.workingDirectory, "sum.ts"))).toBe(true)
+      expect(existsSync(join(second.workingDirectory, "sum.ts"))).toBe(true)
+      const bareDirectory = join(
+        root,
+        "git-cache",
+        `${repositoryCacheKeyFor("OpenAgentsInc/worktree-fixture")}.git`,
+      )
+      expect(existsSync(join(bareDirectory, "HEAD"))).toBe(true)
+      expect(
+        await workspaceLeaseRecordFor({
+          workspaceStateRoot: join(root, "workspace-leases"),
+          workspaceRef: first.workspaceRef,
+        }),
+      ).toMatchObject({ strategy: "git_worktree", state: "materialized" })
+      expect(
+        await workspaceLeaseRecordFor({
+          workspaceStateRoot: join(root, "workspace-leases"),
+          workspaceRef: second.workspaceRef,
+        }),
+      ).toMatchObject({ strategy: "git_worktree", state: "materialized" })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("TTL expiry produces a cleanup receipt and removes only the expired workspace", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
     try {

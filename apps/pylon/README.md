@@ -248,6 +248,39 @@ assignment with `settlementState: not_applicable` and
 `payoutClaimAllowed: false`. Paid leases are blocked unless wallet send
 readiness is explicitly proven.
 
+### Local multi-session proof runs
+
+For owner-directed local orchestration, `scripts/multi-session-run.ts` runs a
+bounded JSON plan across multiple Codex/Claude composer sessions. Each entry
+selects exactly one workspace (`repoRef` or `worktreePath`) and may select an
+account by `accountRef` from `dev.accounts` in the Pylon config or by a direct
+credential home. The runner launches `dev-proof-run.ts` for each session and
+retains per-session proof/failure artifacts, `heartbeats.jsonl`, and a
+path-safe `multi-session-summary.json`.
+
+```json
+{
+  "sessions": [
+    {
+      "id": "codex-a",
+      "adapter": "codex",
+      "accountRef": "codex-a",
+      "worktreePath": "../task-worktrees/codex-a",
+      "objective": "Fix the focused failing test and keep edits scoped.",
+      "verify": ["bun", "test", "apps/pylon/tests/multi-session-run.test.ts"]
+    }
+  ]
+}
+```
+
+```sh
+bun apps/pylon/scripts/multi-session-run.ts \
+  --plan multi-session-plan.json \
+  --proofs-dir .pylon-proofs/multi-session \
+  --pylon-home .pylon \
+  --concurrency 2
+```
+
 ## NIP-90 Provider Loop
 
 GO ONLINE for the NIP-90 provider lane is persisted through the provider

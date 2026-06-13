@@ -143,6 +143,7 @@ export type ProofRunArgs = {
   accountRef: string | null
   codexHome: string | null
   claudeConfigDir: string | null
+  proofOutput: string | null
   timeoutSeconds: number
   verificationArgv: string[]
   /** Task repo for the composer run; defaults to process.cwd(). */
@@ -151,13 +152,14 @@ export type ProofRunArgs = {
 
 function parseProofRunArgs(argv: string[]): ProofRunArgs {
   const usage =
-    'usage: dev-proof-run.ts --adapter codex|claude_agent --objective "<text>" [--prompt-file <path>] [--issue <ref>]... [--account-ref <ref>] [--codex-home <dir>|--claude-config-dir <dir>] [--timeout-seconds <n>] -- <verification argv...>'
+    'usage: dev-proof-run.ts --adapter codex|claude_agent --objective "<text>" [--prompt-file <path>] [--issue <ref>]... [--account-ref <ref>] [--codex-home <dir>|--claude-config-dir <dir>] [--proof-output <path>] [--timeout-seconds <n>] -- <verification argv...>'
   let adapter: PylonComposerAdapter | null = null
   let objective: string | null = null
   let promptFile: string | null = null
   let accountRef: string | null = null
   let codexHome: string | null = null
   let claudeConfigDir: string | null = null
+  let proofOutput: string | null = null
   const issueRefs: string[] = []
   let timeoutSeconds = 600
   let verificationArgv: string[] = []
@@ -189,6 +191,9 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
     } else if (arg === "--claude-config-dir" && typeof value === "string") {
       claudeConfigDir = value
       index += 1
+    } else if (arg === "--proof-output" && typeof value === "string") {
+      proofOutput = value
+      index += 1
     } else if (arg === "--timeout-seconds" && typeof value === "string") {
       const parsed = Number(value)
       if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1200) throw new Error(usage)
@@ -211,6 +216,7 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
     accountRef,
     codexHome,
     claudeConfigDir,
+    proofOutput,
     timeoutSeconds,
     verificationArgv,
   }
@@ -389,9 +395,9 @@ async function main() {
   const args = parseProofRunArgs(Bun.argv.slice(2))
   const proof = await runProof(args)
   const proofsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "proofs")
-  await mkdir(proofsDir, { recursive: true })
+  await mkdir(args.proofOutput === null ? proofsDir : dirname(resolve(args.proofOutput)), { recursive: true })
   const fileName = `${proof.observedAt.slice(0, 10)}-${args.adapter.replace("_", "-")}-daily-driver-proof.json`
-  const proofPath = join(proofsDir, fileName)
+  const proofPath = args.proofOutput === null ? join(proofsDir, fileName) : resolve(args.proofOutput)
   await writeFile(proofPath, `${JSON.stringify(proof, null, 2)}\n`, "utf8")
   process.stdout.write(
     `${JSON.stringify(
@@ -399,7 +405,7 @@ async function main() {
         adapter: proof.adapter,
         devCheckState: proof.devCheck.state,
         editedFileCount: proof.executor.editedFileCount,
-        proofFile: `apps/pylon/docs/proofs/${fileName}`,
+        proofFile: args.proofOutput === null ? `apps/pylon/docs/proofs/${fileName}` : proofPath,
         redactionScan: proof.redactionScan.state,
         sessionRef: proof.executor.sessionRef,
       },

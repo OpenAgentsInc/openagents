@@ -6,8 +6,10 @@
 > driving MULTIPLE parallel Codex sessions, each in its own worktree, each
 > on a DIFFERENT account; and (b) a Pylon CLI command reporting usage for
 > one or all connected accounts (Codex subscriptions, Claude, etc.)?
-> Verdict up front: **(a) is one missing seam away — every primitive
-> exists; (b) does not exist and has an honest API-reality boundary.**
+> Verdict up front, updated after #4868/#4869: **(a) now has a local
+> first-class script surface for N bounded sessions over worktrees × accounts;
+> the remaining gap is the long-lived control-server/daemon surface. (b) still
+> does not exist and has an honest API-reality boundary.**
 
 ## 1. Version truth first
 
@@ -38,6 +40,14 @@
   — but it proves the spawn/drive/verify/retain loop end to end. A live
   run is executing as this audit is written
   (`run.m10.overnight.fe89b989a4adfdde61631a79`).
+- **Concurrent multi-session spawner**: `apps/pylon/scripts/multi-session-run.ts`
+  (#4869) reads a JSON plan, resolves each `accountRef`/direct credential
+  home, materializes or accepts one workspace per session, launches
+  `dev-proof-run.ts` with bounded concurrency, and writes M10-style
+  per-session proof/failure artifacts, heartbeats, and a path-safe
+  `multi-session-summary.json`. The focused tests cover bounded parallelism,
+  failure continuation, redaction-safe summaries, and parallel shared
+  bare-cache materialization under the lease path.
 - **Local HTTP control plane**: `apps/pylon/src/node/control-server.ts`
   (`startControlServer`) — loopback, bearer-token, SSE events + commands
   (wallet ops, `assignments.poll`, `assignments.accept`). An external
@@ -109,13 +119,12 @@
    Claude composer/executor paths, and retained proofs record only hashed
    account refs. The public assignment/provider lanes remain unchanged.
    The remaining goal-(a) work starts at the concurrent spawner.
-2. **A parallel multi-session spawner** — `overnight-proof-run.ts` is
-   sequential; the orchestration loop for N concurrent (worktree,
-   account, objective) triples with per-session artifacts does not
-   exist. Composition is straightforward: workspace-materializer per
-   worktree + dev-proof-run per (cwd, CODEX_HOME) + the M10 retention
-   format. Concurrency caution: Codex/Claude session stores and the
-   shared bare-repo cache need per-session isolation checks.
+2. **A parallel multi-session spawner** — **implemented in source main for
+   #4869 after this audit was written.** `multi-session-run.ts` is the
+   scriptable local orchestration seam for N concurrent (workspace,
+   account, objective, verify) sessions. It still shells out to the
+   retained single-session proof runner rather than exposing a daemon API;
+   that is now gap 3.
 3. **Control-server verbs** — `session.spawn { adapter, accountRef,
    worktreeRef, objective }`, `session.list`, `session.events` would
    make a RUNNING Pylon the orchestrator surface (today the chat-side
@@ -162,16 +171,13 @@
 
 Goal (a) — N parallel Codex sessions, distinct accounts, distinct
 worktrees, driven from a chat orchestrator:
-- **Available tonight, zero new code (degraded mode):** per child
-  process — materialize a worktree (`git worktree add`), `export
-  CODEX_HOME=~/.codex-acct-N` (each pre-logged-in via `codex login`),
-  run `bun scripts/dev-proof-run.ts --adapter codex --objective ...`
-  with `cwd` pointed at the worktree. Sessions are isolated by process
-  env; artifacts retained per the existing format.
-- **One PR to make it first-class:** thread `--codex-home`/`--claude-config-dir`
-  through dev-proof-run + composer options + a small N-way concurrent
-  spawner script; record the account ref (hashed) in the proof artifact.
-- **One more PR for the daemon path:** the three control-server verbs.
+- **First-class local script path is now present (#4868/#4869):** write a
+  JSON plan for `multi-session-run.ts` with each session's adapter,
+  `accountRef` or direct credential home, `repoRef` or `worktreePath`,
+  objective, and verification argv. The script handles bounded
+  concurrency, per-session proof output, failure artifacts, and a
+  redaction-scanned run summary.
+- **Remaining PR for the daemon path:** the three control-server verbs.
 
 Goal (b) — usage command:
 - One PR: `pylon accounts list|usage --json` with the three-tier truth
@@ -184,7 +190,7 @@ Goal (b) — usage command:
 ## 5. Recommended issue set (not yet filed)
 
 1. `pylon: per-session account selection (--codex-home/--account-ref) through composer + dev-proof-run` (gap 1) — filed as #4868 and implemented in source main.
-2. `pylon: concurrent multi-session spawner over worktrees × accounts (M10-grade artifacts)` (gap 2)
+2. `pylon: concurrent multi-session spawner over worktrees × accounts (M10-grade artifacts)` (gap 2) — filed as #4869 and implemented in source main.
 3. `pylon: control-server session.spawn/list/events verbs` (gap 3)
 4. `pylon: accounts list/usage CLI with three-tier truth (platform/local/provider-unavailable)` (gap 4)
 5. `worker: per-account usage attribution + budget surfaces in the token ledger` (gap 5)

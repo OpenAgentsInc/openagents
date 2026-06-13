@@ -305,6 +305,7 @@ async function runComposerTask(input: {
     accountRef: null,
     codexHome: null,
     claudeConfigDir: null,
+    proofOutput: null,
     cwd: input.args.taskRepo,
     issueRefs: ["OpenAgentsInc/openagents#4768"],
     objective: template.objective(dir),
