@@ -1,5 +1,17 @@
 # Autopilot Clients Roadmap — Web, Desktop, Mobile
 
+> **⚠️ BUILD/SHIP POLICY — UPDATED 2026-06-13 (supersedes EAS mentions below).**
+> **We have switched OFF Expo/EAS.** Native iOS `.ipa` is compiled **locally on
+> our own Mac** (`expo prebuild` → `xcodebuild`/`fastlane`) and uploaded to
+> TestFlight **Apple-native via `xcrun altool`** (ASC API key in
+> `.secrets/appstoreconnect.env`). JS-only changes ship **OTA over our own
+> server** `updates.openagents.com` (`apps/oa-updates/scripts/publish-ota.sh`),
+> never `eas update`/u.expo.dev. **Do not use `eas build`, `eas submit`, `eas
+> update`, or any Expo cloud service.** The `expo` CLI itself (`expo install`,
+> `expo export`, `expo prebuild`) stays. Canonical runbook:
+> `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`. Any "EAS …" phrasing
+> below is historical and superseded by this banner.
+
 Date: 2026-06-13
 Status: implementation roadmap. Sequences the buildout of the three Autopilot
 Coder client surfaces and the shared spine that unifies them, from first

@@ -78,6 +78,15 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   Foldkit where `apps/openagents.com` already uses it.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
   explicit historical compatibility work.
+- **Mobile build/ship policy (owner mandate): NO Expo/EAS cloud.** For
+  `clients/mobile/AutopilotRemoteControl`, native iOS `.ipa` compiles **locally
+  on this Mac** (`expo prebuild` → `xcodebuild`/`fastlane`) and TestFlight upload
+  is **Apple-native `xcrun altool`** (ASC key in `.secrets/appstoreconnect.env`).
+  JS-only changes ship **OTA via our own `updates.openagents.com`**
+  (`apps/oa-updates/scripts/publish-ota.sh`), never `eas update`/u.expo.dev.
+  Never run `eas build` / `eas submit` / `eas update`. The `expo` CLI itself
+  (`expo install`/`export`/`prebuild`) stays. Runbook:
+  `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
 - Keep Claim Your Agent public identity flows tweet-first where possible:

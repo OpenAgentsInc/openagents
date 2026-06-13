@@ -1,5 +1,11 @@
 # Autopilot Remote Control — Mobile App Audit
 
+> **⚠️ BUILD/SHIP POLICY (2026-06-13): EAS is OUT.** Native builds compile
+> locally on our Mac (`expo prebuild`→`xcodebuild`/`fastlane`), TestFlight upload
+> is Apple-native (`xcrun altool`), JS ships OTA via our own
+> `updates.openagents.com`. Any "EAS/Expo cloud" phrasing below is historical.
+> Canonical runbook: `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
+
 Date: 2026-06-13 (framework decision revised 2026-06-13: React Native/Expo,
 superseding the earlier Swift direction — see "Framework Decision" below).
 Status: planning/architecture audit. Defines a React Native (Expo) mobile app

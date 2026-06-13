@@ -11,6 +11,16 @@ iteration (so it survives context compaction). Append progress to §6.
 > rule (§1 step 6) is the owner's top operating mandate: **never sit idle, never
 > sleep on a minutes-long timer; be in constant motion.**
 
+> **BUILD/SHIP POLICY (owner mandate, 2026-06-13) — NO EXPO/EAS CLOUD.**
+> Mobile native builds compile **locally on this Mac** (`expo prebuild` →
+> `xcodebuild`/`fastlane`); TestFlight upload is **Apple-native `xcrun altool`**
+> (ASC key in `.secrets/appstoreconnect.env`, `AuthKey_WT3SNZ8RCD.p8`); JS
+> changes ship **OTA via our own `updates.openagents.com`** (not u.expo.dev).
+> **Never run `eas build` / `eas submit` / `eas update`.** Decide OTA-vs-rebuild
+> with the `fingerprint-classify` / `ship-mode` protocol cores (native dep change
+> ⇒ rebuild). Runbook: `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
+> Proven 2026-06-13: built build 12 locally + uploaded via altool (drawer #4954).
+
 ## 0. The end-to-end goal + the long work queue (≥6h of runway)
 
 The machine-economy loop, all on **our own machine + Cloud**, no Expo cloud:
