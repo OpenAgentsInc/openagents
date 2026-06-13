@@ -142,8 +142,15 @@ Rungs:
 Replace the dev-only loopback/host-network access with the real, secure
 transport so mobile (and remote desktop) work off the local machine.
 
-- **CL-8** (#4910) Pylon Tailnet-reachable control binding with explicit refusal of
-  unauthenticated non-loopback traffic. Repo: openagents/apps/pylon. *Parallel.*
+- **CL-8** (#4910) Pylon control/bridge binding reachable over **both transports**
+  (same handshake, only the address differs): **(a) same-LAN** — bind the LAN
+  interface so a device on the same Wi-Fi reaches `http://<lan-ip>:4716`; **(b)
+  Tailnet** — reachable at `http://<tailnet-ip>:4716` across networks
+  (**prioritize Tailnet**, both required ASAP). Loopback still default; explicit
+  refusal of **unauthenticated** non-loopback traffic (pairing credential
+  required off-loopback). The reachable address(es) are what the QR/bootstrap
+  payload carries (CL-13); the client resolves them tailnet-first, LAN fallback.
+  Repo: openagents/apps/pylon. *Parallel.*
 - **CL-9** (#4911) Bridge pairing + scoped credentials: short-lived one-time QR/bootstrap
   secret exchanged for a capability-scoped credential (issuer/audience/expiry/
   client id/device class/pairing id/`jti`/projection level); node stores hash +
@@ -159,8 +166,12 @@ transport so mobile (and remote desktop) work off the local machine.
 - **CL-12** (#4914) Action receipts + typed failures for every remote verb (duplicate,
   expired, cancelled, revoked, stale, unauthorized, unsupported, overloaded).
   Repo: openagents/apps/pylon. *After CL-11.*
-- **CL-13** (#4915) Pairing UX in the Pylon TUI/CLI (render the QR + copyable bootstrap).
-  Repo: openagents/apps/pylon. *After CL-9.*
+- **CL-13** (#4915) Pairing UX (render a **QR + copyable bootstrap**). The QR
+  payload encodes the **reachable address(es)** (tailnet first, then LAN) +
+  bootstrapId + secret + projectionLevel/capabilities, so a phone scan works on
+  same-Wi-Fi (no Tailnet) OR over Tailnet with the identical handshake. Node side
+  in the Pylon TUI/CLI; the mobile client gets a QR-scan + paste pairing screen.
+  Repo: openagents/apps/pylon (+ clients/mobile). *After CL-9.*
 - **CL-14** (#4916) Wire desktop + mobile clients onto the bridge transport (replacing
   the M1 dev transport), behind the same client interface. Repo: openagents.
   *After CL-9..CL-12, CL-5, CL-6.*
