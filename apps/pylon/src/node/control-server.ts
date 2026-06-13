@@ -51,6 +51,9 @@ export type ControlCommand =
   | { type: "wallet.send"; destinationRef: string; amountSats?: number }
   | { type: "wallet.receive"; amountSats: number }
   | { type: "wallet.admit-payout-target"; kind: string; ref: string }
+  // CL-23 read-only balance/earnings: clients fetch the live MDK wallet status
+  // (balance + readiness). No spend authority — strictly a projection.
+  | { type: "wallet.status" }
   | { type: "assignments.poll" }
   | { type: "assignments.accept"; leaseRef: string }
   | ControlSessionSpawnCommand
@@ -69,6 +72,9 @@ export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
   walletReceive: (amountSats: number) => Promise<unknown>
   walletAdmitPayoutTarget: (kind: string, ref: string) => Promise<unknown>
+  // CL-23: read-only live wallet status (balance + readiness). Optional so
+  // nodes without a wallet runner simply report it as unavailable.
+  walletStatus?: () => Promise<unknown>
   assignmentsPoll?: () => Promise<unknown>
   assignmentsAccept?: (leaseRef: string) => Promise<unknown>
   sessions?: ControlSessionActions
@@ -185,6 +191,9 @@ export const startControlServer = (
           return options.actions.walletReceive(command.amountSats)
         case "wallet.admit-payout-target":
           return options.actions.walletAdmitPayoutTarget(command.kind, command.ref)
+        case "wallet.status":
+          if (!options.actions.walletStatus) throw new Error("wallet status unavailable on this node")
+          return options.actions.walletStatus()
         case "assignments.poll":
           if (!options.actions.assignmentsPoll) throw new Error("assignments unavailable on this node")
           return options.actions.assignmentsPoll()

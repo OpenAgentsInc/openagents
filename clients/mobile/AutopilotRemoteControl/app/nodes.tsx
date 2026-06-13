@@ -7,9 +7,11 @@ import {
   type ControlSessionRow,
   type AccountRow,
   type SessionArtifact,
+  type WalletStatus,
   cancelSession,
   decodeConnectCode,
   fetchAccounts,
+  fetchWalletStatus,
   fetchSessionArtifact,
   fetchSessionEvents,
   fetchSessions,
@@ -55,6 +57,7 @@ export default function NodesScreen() {
   const [askStatus, setAskStatus] = useState<string | null>(null)
   const [nodeName, setNodeName] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [wallet, setWallet] = useState<WalletStatus | null>(null)
   const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -125,8 +128,16 @@ export default function NodesScreen() {
         if (!cancelled) setAccounts(rows)
       })
       .catch(() => {})
+    // Live MDK wallet balance (CL-23), refreshed periodically.
+    const loadWallet = () =>
+      void fetchWalletStatus(conn).then((w) => {
+        if (!cancelled) setWallet(w)
+      })
+    loadWallet()
+    const walletTimer = setInterval(loadWallet, 15000)
     return () => {
       cancelled = true
+      clearInterval(walletTimer)
     }
   }, [conn])
 
@@ -324,6 +335,18 @@ export default function NodesScreen() {
               </Pressable>
               {askStatus ? <Text style={styles.askStatus}>{askStatus}</Text> : null}
             </View>
+            {wallet ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Balance</Text>
+                <Text style={styles.balanceValue}>
+                  {wallet.balanceSats !== null ? `${wallet.balanceSats.toLocaleString()} sats` : "—"}
+                </Text>
+                <Text style={styles.acctSummary}>
+                  {wallet.daemonOnline ? "wallet online" : "wallet offline"} · {wallet.readiness}
+                  {wallet.receiveReady ? " · receive ✓" : ""}
+                </Text>
+              </View>
+            ) : null}
             {accounts.length > 0 ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Accounts</Text>
@@ -411,6 +434,7 @@ const styles = StyleSheet.create({
   acctRow: { alignItems: "center", flexDirection: "row", marginTop: 10 },
   acctText: { color: C.text, fontFamily: "Courier", fontSize: 13 },
   acctSummary: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 6 },
+  balanceValue: { color: C.text, fontFamily: "Courier", fontSize: 22, fontWeight: "600", marginTop: 4 },
   row: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, flexDirection: "row", marginTop: 12, padding: 14 },
   childRow: { marginLeft: 22, marginTop: 6, backgroundColor: C.bg },
   dot: { borderRadius: 6, height: 12, marginRight: 12, width: 12 },

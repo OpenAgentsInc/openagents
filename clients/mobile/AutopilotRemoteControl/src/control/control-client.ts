@@ -120,6 +120,35 @@ export async function fetchAccounts(conn: ConnectInfo): Promise<AccountRow[]> {
   }))
 }
 
+export type WalletStatus = {
+  configured: boolean
+  daemonOnline: boolean
+  balanceSats: number | null
+  receiveReady: boolean
+  sendReady: boolean
+  readiness: string
+}
+
+// Read-only live MDK wallet status (CL-23): balance + readiness, no spend
+// authority. Same balance the Pylon TUI shows. Returns null if unavailable.
+export async function fetchWalletStatus(conn: ConnectInfo): Promise<WalletStatus | null> {
+  try {
+    const json = (await command(conn, { type: "wallet.status" })) as { ok?: boolean; result?: any }
+    const r = json.ok === true ? json.result : undefined
+    if (!r || typeof r !== "object") return null
+    return {
+      configured: r.configured === true,
+      daemonOnline: r.daemonOnline === true,
+      balanceSats: typeof r.balanceSats === "number" ? r.balanceSats : null,
+      receiveReady: r.receiveReady === true,
+      sendReady: r.sendReady === true,
+      readiness: typeof r.readiness === "string" ? r.readiness : "unknown",
+    }
+  } catch {
+    return null
+  }
+}
+
 // Submit a composed "ask" to the node (CL-34). The node enqueues it as a work
 // intent for the coordinator to plan + fan out. Returns the intent status.
 export async function submitIntent(

@@ -295,6 +295,20 @@ const nodeWalletActions: ControlCommandActions = {
   walletReceive: (amountSats) => receiveWithMdk(amountSats),
   walletAdmitPayoutTarget: (kind, ref) =>
     Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
+  // CL-23 read-only balance/earnings: project the live MDK wallet status into a
+  // projection-safe subset (no offers/invoices/seed — just balance + readiness).
+  walletStatus: async () => {
+    const w = await classifyMdkWallet()
+    return {
+      configured: w.configured,
+      daemonOnline: w.daemonOnline,
+      balanceSats: w.balanceSats,
+      receiveReady: w.receiveReady,
+      sendReady: w.sendReady,
+      readiness: w.readiness,
+      blockerRefs: w.blockerRefs,
+    }
+  },
 }
 
 // CL-34/CL-35 work-intent intake: the phone composes an "ask" and submits it;
