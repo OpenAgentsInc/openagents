@@ -7,7 +7,13 @@ const config: ExpoConfig = {
   owner: "openagents",
   scheme: "autopilot-remote-control",
   version: "0.1.0",
+  // EAS Update: fingerprint runtime + the project's update server. JS-only
+  // changes ship OTA to matching builds via `eas update`; a changed fingerprint
+  // (native/config) requires a new build. See src/updates/README.md.
   runtimeVersion: { policy: "fingerprint" },
+  updates: {
+    url: "https://u.expo.dev/33dc1fb6-1b11-486d-baa0-7946302fdc68",
+  },
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   // App icon: the Control power-symbol mark (white glyph on black), sourced

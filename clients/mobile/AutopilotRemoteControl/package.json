@@ -8,11 +8,12 @@
     "android": "expo start --android"
   },
   "dependencies": {
-    "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@expo/metro-runtime": "~55.0.11",
+    "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@react-navigation/native": "^7.0.0",
     "@react-navigation/native-stack": "^7.0.0",
     "expo": "^55.0.0",
+    "expo-updates": "~55.0.24",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.6",
