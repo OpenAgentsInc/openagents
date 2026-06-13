@@ -36,8 +36,9 @@ of building against them.
 | **M3** | Actions + TUI parity | Each client does what the TUI does today: spawn, approve, steer, cancel, accounts/quota, artifacts |
 | **M4** | Cloud integration | Clients deploy/observe OpenAgents Cloud sessions (BYO-key / credits, quota/failover) |
 | **M5** | Cross-client polish | Perfect interop: dedup across clients, notifications, theming parity, distribution, conformance suite |
+| **M6** | **The Self-Driving Loop** ◀ **ASAP** | A message composed on the **phone** is heard by **Pylon**, a **coordinator agent fans it out** to coding agents, and at the right moment it **auto-ships back to the phone** — an **EAS Update (OTA)** for JS/mobile changes, or a **fully automated EAS build** (via the Expo EAS MCP) for native changes |
 
-> **Issue tracker:** M0–M2 are filed as GitHub issues **#4902–#4916** (CL-0…CL-14). M3–M5 (CL-15…CL-33) are filed after M2 lands.
+> **Issue tracker:** the full roadmap is now filed. M0–M2 = **#4902–#4916** (CL-0…CL-14); M3 = **#4921–#4930** (CL-15…CL-24); M4 = **#4931–#4934** (CL-25…CL-28); M5 = **#4935–#4939** (CL-29…CL-33); **M6 (self-driving loop) = #4940–#4947 (CL-34…CL-41)**; theming fast-track CL-42 = **#4948**. Plus fast-track #4919 (TestFlight) and #4920 (EAS Update).
 
 > **Fast-track (out of milestone order, owner request):** ship the mobile
 > **shell to TestFlight ASAP** so it's on a personal device now — EAS Build +
@@ -50,6 +51,24 @@ of building against them.
 > **Fast-track follow-on:** once on TestFlight, adopt **EAS Update
 > (`expo-updates`)** so JS-only fixes ship OTA without a rebuild — #4920.
 > Formal home is M5 (CL-32); pulled forward with TestFlight, also non-blocking.
+
+> **★ ASAP critical path (owner priority) — M6, the Self-Driving Loop.** The
+> headline goal, prioritized ahead of finishing M2–M5: **I compose a message in
+> the mobile app → Pylon hears it → a coordinator agent (the productized version
+> of the loop a human coordinator runs today) fans it out to coding agents
+> across the account pool → and at the appropriate time it ships the result back
+> to my phone automatically** — an **EAS Update (OTA)** when the change is
+> JS/mobile-only, or a **fully automated `eas build` + submit via the Expo EAS
+> MCP** when there are native/config changes. The MVP runs on the **M1 dev
+> transport + the already-connected Expo EAS MCP + #4920 fingerprinting** — it
+> does **not** wait for the full M2 bridge (it hardens onto the bridge after).
+> Rungs **CL-34…CL-41 (#4940–#4947)**; see **M6** below. Theming the three
+> clients off the website's dark mode is pulled forward as **CL-42 (#4948)**.
+
+> **Dark-mode theming (owner request):** the website's dark theme is the single
+> source of truth for look-and-feel across **all three** clients. Desktop already
+> shares the Foldkit components; mobile (RN) maps the same tokens. Tracked as the
+> fast-tracked **CL-42 (#4948)** (pulls the full CL-31 parity work forward).
 
 ---
 
@@ -148,23 +167,23 @@ does today. Parity dimensions (map of TUI capability → client work):
 
 | TUI capability today | Client target |
 | -------------------- | ------------- |
-| session spawn/list/events/cancel | CL-15 spawn/cancel + list/detail (all clients) |
-| approvals / decision queue | CL-16 approve/deny/answer, exactly-once, read-only enforced |
-| steer / interrupt / pause / resume | CL-17 bounded steering + interrupt + pause/resume as separate verbs |
-| accounts list/usage, quota | CL-18 account/quota panel (incl. quota-block/failover state from #4884) |
-| dev-loop check / verify status | CL-19 verify/dev-check status + required-artifact view |
-| node status / go-online/offline / heartbeat | CL-20 node + provider online/offline status surface |
-| artifacts / closeout / receipts | CL-21 artifact + receipt review (refs/projection-gated) |
-| assignments poll/accept/progress | CL-22 work/assignment view (read-first) |
-| wallet/balance/earnings (read) | CL-23 earnings/balance read-only panel (no spend authority) |
+| session spawn/list/events/cancel | CL-15 (#4921) spawn/cancel + list/detail (all clients) |
+| approvals / decision queue | CL-16 (#4922) approve/deny/answer, exactly-once, read-only enforced |
+| steer / interrupt / pause / resume | CL-17 (#4923) bounded steering + interrupt + pause/resume as separate verbs |
+| accounts list/usage, quota | CL-18 (#4924) account/quota panel (incl. quota-block/failover state from #4884) |
+| dev-loop check / verify status | CL-19 (#4925) verify/dev-check status + required-artifact view |
+| node status / go-online/offline / heartbeat | CL-20 (#4926) node + provider online/offline status surface |
+| artifacts / closeout / receipts | CL-21 (#4927) artifact + receipt review (refs/projection-gated) |
+| assignments poll/accept/progress | CL-22 (#4928) work/assignment view (read-first) |
+| wallet/balance/earnings (read) | CL-23 (#4929) earnings/balance read-only panel (no spend authority) |
 
 - Each rung implements its capability across the **shared protocol** first, then
   web/desktop/mobile UI. Read surfaces (CL-18..CL-23) are largely parallel; the
   effectful ones (CL-15..CL-17) depend on M2 (CL-11/CL-12) and honor read-only
   capability gating. Repo: openagents.
-- **CL-24** Parity conformance checklist: a doc + test asserting each client can
-  do (or explicitly, honestly cannot yet do) each TUI capability — the gate for
-  claiming "parity with the TUI."
+- **CL-24** (#4930) Parity conformance checklist: a doc + test asserting each
+  client can do (or explicitly, honestly cannot yet do) each TUI capability — the
+  gate for claiming "parity with the TUI."
 
 ## M4 — Cloud integration
 
@@ -172,32 +191,91 @@ Per the cloud commercial plan
 (`2026-06-13-cloud-remote-execution-commercial-plan.md`): clients become the
 operator console for OpenAgents Cloud.
 
-- **CL-25** Cloud coordinator client in the shared package (deploy/list/observe
-  cloud sessions). Repo: openagents (+ cloud contracts). *After cloud C-5/C-14.*
-- **CL-26** "Deploy to Cloud" from desktop + mobile (BYO-key vs OpenAgents
+- **CL-25** (#4931) Cloud coordinator client in the shared package (deploy/list/
+  observe cloud sessions). Repo: openagents (+ cloud contracts). *After cloud C-5/C-14.*
+- **CL-26** (#4932) "Deploy to Cloud" from desktop + mobile (BYO-key vs OpenAgents
   credits selection), reusing the M3 spawn surface. Repo: openagents.
-- **CL-27** Cloud quota/cost/failover view: surface compute metering, credit
+- **CL-27** (#4933) Cloud quota/cost/failover view: surface compute metering, credit
   balance, and account-quota failover (#4884) across clients. Repo: openagents.
-- **CL-28** Unified multi-origin session list: local + remote(bridge) + cloud in
-  one view, with origin badges and per-origin authority. Repo: openagents.
+- **CL-28** (#4934) Unified multi-origin session list: local + remote(bridge) + cloud
+  in one view, with origin badges and per-origin authority. Repo: openagents.
 
 ## M5 — Cross-client polish ("all three working perfectly together")
 
-- **CL-29** Cross-client decision consistency: if two clients answer the same
-  prompt, exactly-once wins and the others show "resolved elsewhere"; cancellation
-  propagates. Repo: openagents (+ pylon).
-- **CL-30** Notifications: `expo-notifications` (mobile) + desktop OS
+- **CL-29** (#4935) Cross-client decision consistency: if two clients answer the
+  same prompt, exactly-once wins and the others show "resolved elsewhere";
+  cancellation propagates. Repo: openagents (+ pylon).
+- **CL-30** (#4936) Notifications: `expo-notifications` (mobile) + desktop OS
   notifications + web, all projections of the #4765 spine, refs-only payloads,
   quiet hours; notification-open routes to the right node/session/decision.
-- **CL-31** Theming/UX parity: shared design tokens so web/desktop (Foldkit) and
-  mobile (RN) feel consistent; status/staleness/lag chips identical in meaning.
-- **CL-32** Distribution: desktop code-sign/notarize + BSDIFF auto-update feed;
-  mobile EAS build + App Store submission ($4.99); mobile OTA JS updates via
+- **CL-31** (#4937) Theming/UX parity (full): shared design tokens so web/desktop
+  (Foldkit) and mobile (RN) feel consistent; status/staleness/lag chips identical
+  in meaning. Builds on the fast-tracked dark-mode tokens **CL-42 (#4948)**.
+- **CL-32** (#4938) Distribution: desktop code-sign/notarize + BSDIFF auto-update
+  feed; mobile EAS build + App Store submission ($4.99); mobile OTA JS updates via
   EAS Update / `expo-updates` (#4920, fast-tracked after #4919). Repo: openagents.
-- **CL-33** **Cross-client conformance suite**: one fixture-driven test matrix
-  (the CL-1 fixtures) every client runs, proving identical protocol behavior —
-  cursor resume, dedup, exactly-once decisions, read-only gating, projection
-  levels. The objective definition of "working perfectly with each other."
+- **CL-33** (#4939) **Cross-client conformance suite**: one fixture-driven test
+  matrix (the CL-1 fixtures) every client runs, proving identical protocol
+  behavior — cursor resume, dedup, exactly-once decisions, read-only gating,
+  projection levels. The objective definition of "working perfectly together."
+
+## M6 — The Self-Driving Loop (★ ASAP critical path)
+
+The headline outcome, prioritized ahead of finishing M2–M5: **the phone commands
+the factory, and the factory ships itself back to the phone.** Concretely — I
+compose a message in Autopilot Remote Control; Pylon hears it; a coordinator
+agent (the productized version of the loop a human coordinator runs today) fans
+it out to coding agents across the account pool; and at the appropriate time the
+result is shipped back to my device automatically.
+
+**MVP runs now, no full bridge required:** it builds on the **M1 dev transport**,
+the **already-connected Expo EAS MCP**, the **#4918 campaign scheduler**, and the
+**#4920 EAS-Update fingerprinting** — then hardens onto the **M2 bridge**
+(CL-9..CL-12) for off-LAN/secure use.
+
+- **CL-34** (#4940) **Mobile intent capture** — a compose surface in the mobile
+  app to submit a natural-language work request ("build X / fix Y") to Pylon,
+  with live status. Dev transport now, bridge later. Repo: openagents.
+- **CL-35** (#4941) **Pylon intent intake** — an `intent.submit` control verb +
+  durable intent queue + status projection (received → planning → fanning_out →
+  shipping → shipped/failed), refs-only, exactly-once, cursor-resumable. The
+  thing the phone's "ask" is heard by. Repo: openagents/apps/pylon.
+- **CL-36** (#4942) **Coordinator agent runtime** — consume an intent, plan
+  rungs, and drive the campaign scheduler (#4918) / `multi-session-run` to fan
+  out coding agents across the account pool — exactly today's manual loop, made
+  autonomous, with escalation hooks (CL-41). Repo: openagents/apps/pylon (+ forge).
+- **CL-37** (#4943) **Ship-mode classifier (Expo fingerprint)** — after the
+  fan-out merges, compute the EAS Update runtime fingerprint of `clients/mobile`
+  vs the deployed build: unchanged ⇒ **OTA-eligible** (JS only), changed ⇒
+  **rebuild required** (native/config). Pure, testable; decides CL-38 vs CL-39.
+  Depends on #4920. Repo: openagents.
+- **CL-38** (#4944) **Auto OTA publish** — when OTA-eligible, the coordinator
+  publishes an EAS Update to the build's channel so the JS change reaches the
+  phone with no rebuild, via an EAS Workflow triggered through the Expo EAS MCP
+  (`workflow_run`) or CLI; emits an update-id receipt. Repo: openagents (+ `.eas/workflows`).
+- **CL-39** (#4945) **Auto EAS build + submit** — when a rebuild is required, the
+  coordinator triggers a full `eas build` + `eas submit` to TestFlight fully
+  automatically via the Expo EAS MCP (`build_run`/`build_submit`) or a Workflow,
+  reporting build id/status. Repo: openagents (+ `.eas/workflows`).
+- **CL-40** (#4946) **Ship-status round-trip** — the originating mobile client
+  sees live coordinator progress + the final ship outcome ("OTA published / build
+  N on its way to TestFlight"), as a projection of the intent status. Closes the
+  loop visibly on the phone. Repo: openagents.
+- **CL-41** (#4947) **Loop safety** — authority/spend gating for autonomous,
+  cost-bearing EAS builds and for OTA pushes to a live device; escalation for
+  native builds; per-intent receipts (what changed, ship mode, artifact/update/
+  build id), honoring the default-yes-with-escalation autonomy model. Repo:
+  openagents (+ pylon).
+
+## Theming fast-track
+
+- **CL-42** (#4948) **Shared website dark-mode tokens across desktop + mobile** —
+  the openagents.com web app's dark theme is the single source of truth; extract
+  its tokens (the `--bg`/`--text`/`--outline`/`--primary` palette the
+  `autopilot-ui` components already reference) into one shared source, ensure
+  desktop (Foldkit) sets those CSS vars, and map them into the React Native theme
+  so all three clients match. Pulls the full CL-31 (#4937) parity work forward.
+  Repo: openagents.
 
 ## Dependency spine (critical path)
 
@@ -213,11 +291,20 @@ CL-0 ─┬─ CL-1/CL-2 (parallel)
                  M4 cloud (CL-25..CL-28, after cloud C-5/C-14)
                                           │
                  M5 polish (CL-29..CL-33)
+
+★ M6 — Self-Driving Loop (ASAP; runs on the M1 dev transport + Expo EAS MCP, not gated on M2):
+   CL-34 (phone intent) ─ CL-35 (Pylon intake) ─ CL-36 (coordinator fan-out, uses #4918)
+        └─ on merge ─ CL-37 (fingerprint classify) ─┬─ OTA-eligible ─ CL-38 (eas update) ─┐
+                                                     └─ rebuild ───── CL-39 (eas build/submit) ┘
+        └─ CL-40 (status back to phone)   CL-41 (spend/authority gating) wraps CL-36/38/39
+   CL-42 (shared dark-mode tokens) — fast-track, parallel
 ```
 
 Parallelizable now (fan-out friendly): CL-0 first, then CL-1/CL-2/CL-3/CL-4 and
 the M2 pylon rungs CL-8/CL-9/CL-10 can run concurrently; M3 read surfaces
-(CL-18..CL-23) are broadly parallel once M2 lands.
+(CL-18..CL-23) are broadly parallel once M2 lands. **M6's MVP can start
+immediately** — CL-34/CL-35/CL-36 on the dev transport, with CL-37/CL-38/CL-39
+on the Expo EAS MCP — and CL-42 is independent.
 
 ## How this connects to the existing plans
 
@@ -235,9 +322,10 @@ the M2 pylon rungs CL-8/CL-9/CL-10 can run concurrently; M3 read surfaces
 1. **First-demo session content for CL-7** — simplest compelling demo is a
    bounded `session.spawn` whose live timeline + a single approval prompt render
    on both clients. (Recommended.)
-2. **Workspace integration of `clients/mobile`** — path/workspace dependency on
-   `packages/autopilot-control-protocol` vs a locally published package; keep Metro
-   scoped to `clients/mobile`.
+2. **Workspace integration of `clients/mobile`** — RESOLVED: `clients/mobile` is a
+   bun workspace member with a `workspace:*` dep on
+   `packages/autopilot-control-protocol`; Metro is monorepo-aware (CL-6 follow-on:
+   `watchFolders`/`nodeModulesPaths` to the repo root). Standalone publish not used.
 3. **When to claim "TUI parity"** — gate on CL-24's conformance checklist, not
    vibes.
 4. **Desktop pricing/channel** — still open (mobile is $4.99 App Store; desktop
