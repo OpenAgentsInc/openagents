@@ -248,3 +248,4 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   production (was unlinked — the missing piece). Build #4 now pulls the OTA on
   next cold start. LESSON: wire screens + push OTA, don't just build libraries.
 - 2026-06-13 iter 15 — OWNER: OTA auto-updater (5s poll→download→reload + overlay) + white navbar removed, OTA 019ec15d to build #4; in-app name Autopilot. Home-screen name deferred to next build (keeps build #4 OTA-able). Merged p13 3/4 (prompt-layering/skill/plugin; 128 TAS tests, mprov cancelled→requeued). Launched p14: model-provider(retry), telemetry, resume-rewind, migration.
+- 2026-06-13 — BUILD 5 shipped: name=Autopilot, built LOCALLY (eas build --local, 8.8MB .ipa, no Expo cloud) + submitted to TestFlight (submission b7e4705c, ASC app 6779949704). New runtime (name change); future OTAs from main target build 5. Merged p14 (143 TAS tests, 35 files).
