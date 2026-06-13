@@ -35,6 +35,10 @@ export const SessionSummary = S.Struct({
   lastProgressRef: S.optional(S.String),
   // One-line latest action (what the agent is doing now) for the session list.
   latestActivity: S.optional(S.String),
+  // #4951 external/host agent sessions: nest children under their parent + badge.
+  parentRef: S.optional(S.String),
+  agentKind: S.optional(S.String),
+  pylonManaged: S.optional(S.Boolean),
   updatedAt: S.String,
 })
 export type SessionSummary = typeof SessionSummary.Type

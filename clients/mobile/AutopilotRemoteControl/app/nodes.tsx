@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
 import {
@@ -349,24 +349,37 @@ export default function NodesScreen() {
                 <Text style={styles.cardBody}>No sessions yet. Spawn one on the node.</Text>
               </View>
             ) : (
-              sessions.map((s) => (
-                <Pressable
-                  key={s.sessionRef}
-                  style={styles.row}
-                  onPress={() => setSelected(s.sessionRef)}
-                >
-                  <View style={[styles.dot, { backgroundColor: stateTone(s.state) }]} />
-                  <View style={styles.rowText}>
-                    <Text style={styles.rowLabel} numberOfLines={2}>
-                      {s.latestActivity || s.state}
-                    </Text>
-                    <Text style={styles.rowStatus}>
-                      {s.state} · {s.adapter} · {s.sessionRef.slice(-6)}
-                    </Text>
-                  </View>
-                  <Text style={styles.chevron}>›</Text>
-                </Pressable>
-              ))
+              (() => {
+                const childrenOf = (ref: string) => sessions.filter((c) => c.parentRef === ref)
+                const isTop = (s: ControlSessionRow) =>
+                  !s.parentRef || !sessions.some((p) => p.sessionRef === s.parentRef)
+                const renderRow = (s: ControlSessionRow, child: boolean) => (
+                  <Pressable
+                    key={s.sessionRef}
+                    style={[styles.row, child ? styles.childRow : null]}
+                    onPress={() => setSelected(s.sessionRef)}
+                  >
+                    <View style={[styles.dot, { backgroundColor: stateTone(s.state) }]} />
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowLabel} numberOfLines={2}>
+                        {child ? "↳ " : ""}
+                        {s.latestActivity || s.state}
+                      </Text>
+                      <Text style={styles.rowStatus}>
+                        {s.agentKind ? `${s.agentKind} · ` : ""}
+                        {s.state} · {s.sessionRef.slice(-6)}
+                      </Text>
+                    </View>
+                    <Text style={styles.chevron}>›</Text>
+                  </Pressable>
+                )
+                const rows: ReactNode[] = []
+                for (const s of sessions.filter(isTop)) {
+                  rows.push(renderRow(s, false))
+                  for (const c of childrenOf(s.sessionRef)) rows.push(renderRow(c, true))
+                }
+                return rows
+              })()
             )}
           </>
         )}
@@ -395,6 +408,7 @@ const styles = StyleSheet.create({
   acctRow: { alignItems: "center", flexDirection: "row", marginTop: 10 },
   acctText: { color: C.text, fontFamily: "Courier", fontSize: 13 },
   row: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, flexDirection: "row", marginTop: 12, padding: 14 },
+  childRow: { marginLeft: 22, marginTop: 6, backgroundColor: C.bg },
   dot: { borderRadius: 6, height: 12, marginRight: 12, width: 12 },
   rowText: { flex: 1 },
   rowLabel: { color: C.text, fontFamily: "Courier", fontSize: 13 },

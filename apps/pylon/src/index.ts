@@ -57,6 +57,13 @@ import {
 import { createIntentQueue } from "./node/intent-intake"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
 import {
+  scanClaudeSessions,
+  toEventRows,
+  toSessionListEntry,
+  type ExternalSession,
+} from "./node/external-sessions"
+import { homedir } from "node:os"
+import {
   defaultControlPort,
   ensureControlToken,
   controlTokenPath,
@@ -308,6 +315,55 @@ function makeIntentActions(intentQueue: ReturnType<typeof createIntentQueue>) {
       })
     },
     list: async (sinceCursor?: string) => intentQueue.listSince(sinceCursor),
+  }
+}
+
+// #4951 external agent sessions: poll the host Claude Code logs and expose them
+// as read-only sessions, merged into session.list / session.events so the MAIN
+// conversation (Pylon-managed or not) + its sub-agents show in Autopilot.
+function startExternalSessionTailer(): { list: () => ExternalSession[]; find: (ref: string) => ExternalSession | undefined } {
+  let sessions: ExternalSession[] = []
+  const projectsRoot = `${homedir()}/.claude/projects`
+  const poll = (): void => {
+    try {
+      sessions = scanClaudeSessions({ projectsRoot, nowMs: Date.now(), maxAgeMs: 900_000, maxSessions: 12 })
+    } catch {
+      // best-effort
+    }
+  }
+  poll()
+  const timer = setInterval(poll, 5000)
+  timer.unref?.()
+  return { list: () => sessions, find: (ref) => sessions.find((s) => s.sessionRef === ref) }
+}
+
+// Wrap the Pylon session actions so the control API also serves external
+// sessions (read-only). spawn/cancel/artifact/eventStream stay Pylon-only.
+function wrapSessionsWithExternal<T extends { list: () => Promise<any[]>; events: (ref: string) => Promise<any> }>(
+  raw: T,
+  store: ReturnType<typeof startExternalSessionTailer>,
+): T {
+  return {
+    ...raw,
+    list: async () => {
+      const nowIso = new Date().toISOString()
+      const pylon = await raw.list()
+      const external = store.list().map((s) => toSessionListEntry(s, nowIso))
+      return [...pylon, ...external]
+    },
+    events: async (ref: string) => {
+      if (ref.startsWith("claude:") || ref.startsWith("codex:")) {
+        const s = store.find(ref)
+        if (s === undefined) throw new Error("external session not found")
+        return {
+          sessionRef: ref,
+          eventsPath: "",
+          state: s.state === "running" ? "running" : "completed",
+          recentEvents: toEventRows(s),
+        }
+      }
+      return raw.events(ref)
+    },
   }
 }
 
@@ -880,6 +936,8 @@ const runPylonNode = Effect.gen(function* () {
 
   const nodeAssignmentActions = makeAssignmentActions()
   const nodeSessionActions = makeSessionActions(bootstrapSummary)
+  const externalTailer = startExternalSessionTailer()
+  const sessionsWithExternal = wrapSessionsWithExternal(nodeSessionActions, externalTailer)
   const intentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
 
   // Control server (issue #4740): a second terminal can attach to this
@@ -897,7 +955,7 @@ const runPylonNode = Effect.gen(function* () {
             assignmentsAccept: (leaseRef: string) => nodeAssignmentActions.accept(leaseRef),
           }
         : {}),
-      sessions: nodeSessionActions,
+      sessions: sessionsWithExternal,
       intents: makeIntentActions(intentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
     },
@@ -1109,6 +1167,8 @@ const runHeadlessNode = Effect.gen(function* () {
   const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const headlessAssignmentActions = makeAssignmentActions()
   const headlessSessionActions = makeSessionActions(bootstrapSummary)
+  const headlessExternalTailer = startExternalSessionTailer()
+  const headlessSessionsWithExternal = wrapSessionsWithExternal(headlessSessionActions, headlessExternalTailer)
   const headlessIntentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
@@ -1120,7 +1180,7 @@ const runHeadlessNode = Effect.gen(function* () {
             assignmentsAccept: (leaseRef: string) => headlessAssignmentActions.accept(leaseRef),
           }
         : {}),
-      sessions: headlessSessionActions,
+      sessions: headlessSessionsWithExternal,
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
     },

@@ -32,6 +32,8 @@ export type ControlSessionRow = {
   resultRef: string | null
   errorClass: string | null
   latestActivity: string
+  parentRef: string | null
+  agentKind: string | null
 }
 
 async function command(conn: ConnectInfo, body: unknown): Promise<any> {
@@ -68,6 +70,8 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
     resultRef: typeof s.resultRef === "string" ? s.resultRef : null,
     errorClass: typeof s.errorClass === "string" ? s.errorClass : null,
     latestActivity: typeof s.latestActivity === "string" ? s.latestActivity : "",
+    parentRef: typeof s.parentRef === "string" ? s.parentRef : null,
+    agentKind: typeof s.agentKind === "string" ? s.agentKind : null,
   }))
 }
 
