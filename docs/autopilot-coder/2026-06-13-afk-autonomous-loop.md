@@ -100,7 +100,9 @@ valid Expo-Updates manifest from a real `expo export`, and (b) `eas build
 - expo-updates wired on `main` (updates.url currently → `u.expo.dev`; switch to
   ours is #4949).
 - OTA pure-core fanout RUNNING (run-id `run.local.ota`, watcher active).
-- Local build: blocked on cocoapods (installing); fastlane installed.
+- Local build: **WORKING** — `eas build --local` produced an 8.7 MB `.ipa` on
+  this Mac (`/tmp/autopilot-local.ipa`), no Expo cloud. Prereqs: fastlane +
+  cocoapods (both installed via brew). The "no Expo cloud build" half is proven.
 - Merged so far: protocol (CL-0/1), autopilot-ui (CL-2) + web wiring, desktop
   P0 + RPC (CL-5), mobile control core + metro + token-store (CL-6), expo-updates
   config + policy (#4920), M6 cores (CL-34/35/36/37/41) + tokens (CL-42),
@@ -110,3 +112,9 @@ valid Expo-Updates manifest from a real `expo export`, and (b) `eas build
 
 - 2026-06-13: loop initialized; OTA pure-core fanout launched; cocoapods
   installing for local build; build #4 → TestFlight.
+- 2026-06-13 iter 1: merged OTA pure cores CND-OTA-1..4 (`917e2bd16`, 14 tests),
+  commented cloud #78–81; registered `apps/oa-updates` package (`8936bd4d2`);
+  launched OTA server+CLI fanout (`run.local.ota2`); **LOCAL BUILD WORKS** —
+  8.7 MB `.ipa` built on-machine (fastlane+cocoapods), no Expo cloud. Next:
+  merge server/CLI, wire end-to-end manifest test, then a build with
+  updates.url→ours.
