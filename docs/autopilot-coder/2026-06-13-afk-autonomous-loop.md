@@ -48,9 +48,18 @@ idle.** Keep a fanout running whenever fannable work exists.
    exists, review each session's diff, **run its verify from `main` yourself**
    (a session marked `failed` is often a transient runner/redaction hiccup — the
    code may be fine; trust the direct verify), then commit + merge the clean
-   ones into `main`, run the touched tests on `main`, push, comment/close the
-   issue, and remove the worktree + branch + `.pylon-*`/`/tmp` artifacts.
-   **Never merge a red verify.**
+   ones into `main`, run the touched tests on `main`, push, and remove the
+   worktree + branch + `.pylon-*`/`/tmp` artifacts. **Never merge a red verify.**
+   **CLOSE the issue (with a commit-citing comment) the moment the merged work
+   fully satisfies its stated acceptance — do NOT leave completed issues open.**
+   If only a core/partial landed, comment what merged + what remains and keep it
+   open. Don't just comment-and-leave-open on done work; that is how stale
+   open-issue piles form.
+1b. **Issue-close sweep (every few iterations).** Run `gh issue list --state
+   open` and, for any issue whose acceptance is now met by merged main, close it
+   with a citing comment. Be honest: close only when the deliverable's acceptance
+   is genuinely met on `main`; partial cores stay open. Keep the open list a true
+   reflection of remaining work.
 2. **Monitor builds.** For any EAS/local build in flight: poll status. On
    `FINISHED`, proceed (e.g. it auto-submits). On `ERRORED`, fetch the build log
    (`mcp__expo__build_logs` or the local log), grep the bundle/error phase,
@@ -89,6 +98,8 @@ idle.** Keep a fanout running whenever fannable work exists.
   `NEEDS-OWNER:` line in §6, and keep working the other threads. Never idle.
 - Never print raw tokens/secrets/credentials/mnemonics into files, commits,
   issues, or logs. Keep proof artifacts refs-only.
+- **Close issues on completion** (commit-citing comment) — never accumulate
+  done-but-open issues; the open list must reflect only real remaining work.
 - Verify before merge; bounded fanout; clean up worktrees; don't create
   duplicate issues or re-do merged work.
 - Don't change user-facing marketing copy.
@@ -258,3 +269,4 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   Launched dual-transport cores: bootstrap-payload codec, address-resolution
   (tailnet-first/LAN-fallback), Pylon bind-config. NEXT integration (mine/operator):
   CL-8 socket bind + node QR render + live handshake → real paired session on phone.
+- 2026-06-13 iter 17 — OWNER: close issues on completion (not just comment). Added close-on-complete mandate + an issue-close sweep step to §1/§2. Closed the 4 fully-done: #4919 (TestFlight), #4920 (OTA), #4948 (dark tokens), #4950 (local build). Open 44→40 (remaining = live-wiring partials + M4/not-started + ~8 older-program issues #4749-4786).
