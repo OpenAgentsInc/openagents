@@ -8,6 +8,7 @@ import {
   runMultiSessionPlan,
   type ProofChildInput,
 } from "../scripts/multi-session-run"
+import { parseProofRunArgs } from "../scripts/dev-proof-run"
 import { classifySessionError } from "../src/session-error-class"
 import { assertPublicProjectionSafe } from "../src/state"
 import { hashPylonAccountRef } from "../src/account-registry"
@@ -50,6 +51,41 @@ describe("multi-session plan parsing", () => {
         },
       ]),
     ).toThrow("must use only one workspace selector")
+  })
+
+  test("accepts noNetwork at top level and per entry", () => {
+    const entry = {
+      adapter: "codex",
+      objective: "run a retained local coding proof",
+      verify: ["bun", "--version"],
+      worktreePath: ".",
+    }
+
+    expect(parsePlanJson([{ ...entry, noNetwork: true }])[0]?.noNetwork).toBe(true)
+    expect(parsePlanJson({ noNetwork: true, sessions: [entry] })[0]?.noNetwork).toBe(true)
+    expect(parsePlanJson({ noNetwork: true, sessions: [{ ...entry, noNetwork: false }] })[0]?.noNetwork).toBe(
+      false,
+    )
+  })
+})
+
+describe("dev proof args parsing", () => {
+  test("enables network by default and lets --no-network opt out", () => {
+    const base = ["--adapter", "codex", "--objective", "prove fanout", "--", "bun", "--version"]
+
+    expect(parseProofRunArgs(base).networkAccessEnabled).toBe(true)
+    expect(
+      parseProofRunArgs([
+        "--adapter",
+        "codex",
+        "--objective",
+        "prove fanout",
+        "--no-network",
+        "--",
+        "bun",
+        "--version",
+      ]).networkAccessEnabled,
+    ).toBe(false)
   })
 })
 
@@ -97,6 +133,7 @@ describe("runMultiSessionPlan", () => {
               worktreePath: worktreeOne,
               objective: "registry-account",
               verify: ["bun", "--version"],
+              noNetwork: true,
             },
             {
               id: "claude-direct",
@@ -157,8 +194,10 @@ describe("runMultiSessionPlan", () => {
       const byObjective = new Map(calls.map(call => [call.objective, call]))
       expect(byObjective.get("registry-account")?.accountRef).toBe("codex-a")
       expect(byObjective.get("registry-account")?.accountHome).toBeNull()
+      expect(byObjective.get("registry-account")?.noNetwork).toBe(true)
       expect(byObjective.get("direct-account")?.accountRef).toBeNull()
       expect(byObjective.get("direct-account")?.accountHome).toBe(claudeHome)
+      expect(byObjective.get("direct-account")?.noNetwork).toBeUndefined()
       expect(byObjective.get("default-account")?.account).toBeNull()
 
       const retainedSummary = await readFile(join(proofsDir, "multi-session-summary.json"), "utf8")
