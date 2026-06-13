@@ -7,9 +7,12 @@ import {
   resolveManifest,
   type Update,
 } from "./manifest-resolver.ts"
+import { buildSignedManifestResponse } from "./signed-response.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
+  signingKeyPem?: string
+  keyid?: string
 }
 
 type UpdatesServer = {
@@ -80,6 +83,21 @@ export function createUpdatesServer(
           })
 
           if (result.kind === "manifest") {
+            if (options.signingKeyPem !== undefined) {
+              const signedResponse = buildSignedManifestResponse({
+                manifest: result.manifest,
+                privateKeyPem: options.signingKeyPem,
+                keyid: options.keyid,
+              })
+
+              return new Response(signedResponse.body, {
+                headers: {
+                  ...result.responseHeaders,
+                  ...signedResponse.headers,
+                },
+              })
+            }
+
             return jsonResponse(result.manifest, result.responseHeaders)
           }
 
