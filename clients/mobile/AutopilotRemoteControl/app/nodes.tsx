@@ -11,11 +11,13 @@ import {
   type SessionArtifact,
   type WalletStatus,
   type AssignmentRow,
+  type IntentRow,
   cancelSession,
   decodeConnectCode,
   fetchAccounts,
   fetchAccountsRaw,
   fetchAssignments,
+  fetchIntents,
   fetchWalletStatus,
   fetchSessionArtifact,
   fetchSessionEvents,
@@ -32,6 +34,20 @@ import {
   projectFailover,
   validateIntentDraft,
 } from "@openagentsinc/autopilot-control-protocol"
+
+// Map an intent status to a short round-trip ship line for the originating
+// client (CL-40). Terminal = shipped/failed.
+function shipStatusLine(status: string): { text: string; terminal: boolean; tone: string } {
+  switch (status) {
+    case "received": return { text: "received", terminal: false, tone: CANONICAL_DARK.textSecondary }
+    case "planning": return { text: "planning…", terminal: false, tone: CANONICAL_DARK.info }
+    case "fanning_out": return { text: "agents working…", terminal: false, tone: CANONICAL_DARK.info }
+    case "shipping": return { text: "shipping…", terminal: false, tone: CANONICAL_DARK.warning }
+    case "shipped": return { text: "✓ shipped", terminal: true, tone: CANONICAL_DARK.success }
+    case "failed": return { text: "✗ failed", terminal: true, tone: CANONICAL_DARK.danger }
+    default: return { text: status, terminal: false, tone: CANONICAL_DARK.textSecondary }
+  }
+}
 
 // Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
 // Owner is single-tenant for now ("fine for now security-wise").
@@ -76,6 +92,7 @@ export default function NodesScreen() {
   const [accountsExpanded, setAccountsExpanded] = useState(false)
   const [wallet, setWallet] = useState<WalletStatus | null>(null)
   const [assignments, setAssignments] = useState<AssignmentRow[]>([])
+  const [intents, setIntents] = useState<IntentRow[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigation = useNavigation<{ navigate: (route: string) => void }>()
   const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
@@ -158,13 +175,18 @@ export default function NodesScreen() {
         if (!cancelled) setAssignments(rows)
       })
       .catch(() => {})
-    // Live MDK wallet balance (CL-23), refreshed periodically.
-    const loadWallet = () =>
+    // Live MDK wallet balance (CL-23) + ship-status round-trip (CL-40),
+    // refreshed periodically.
+    const loadWallet = () => {
       void fetchWalletStatus(conn).then((w) => {
         if (!cancelled) setWallet(w)
       })
+      void fetchIntents(conn).then((rows) => {
+        if (!cancelled) setIntents(rows)
+      })
+    }
     loadWallet()
-    const walletTimer = setInterval(loadWallet, 15000)
+    const walletTimer = setInterval(loadWallet, 8000)
     return () => {
       cancelled = true
       clearInterval(walletTimer)
@@ -384,6 +406,22 @@ export default function NodesScreen() {
               </Pressable>
               {askStatus ? <Text style={styles.askStatus}>{askStatus}</Text> : null}
             </View>
+            {intents.length > 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Your asks</Text>
+                {intents.slice(0, 5).map((it) => {
+                  const s = shipStatusLine(it.status)
+                  return (
+                    <View key={it.intentId} style={styles.acctRow}>
+                      <View style={[styles.dot, { backgroundColor: s.tone }]} />
+                      <Text style={styles.acctText} numberOfLines={1}>
+                        {it.title || it.intentId.slice(-8)} · {s.text}
+                      </Text>
+                    </View>
+                  )
+                })}
+              </View>
+            ) : null}
             {wallet ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Balance</Text>

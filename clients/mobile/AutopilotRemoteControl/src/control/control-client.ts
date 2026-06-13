@@ -132,6 +132,31 @@ export async function fetchAccountsRaw(conn: ConnectInfo): Promise<unknown[]> {
   return Array.isArray(accounts) ? accounts : []
 }
 
+export type IntentRow = {
+  intentId: string
+  title: string
+  status: string
+  submittedByClientRef: string
+}
+
+// Ship-status round-trip (CL-40): the phone polls the status of the asks it
+// submitted, watching them advance received → planning → fanning_out →
+// shipping → shipped/failed on the originating client.
+export async function fetchIntents(conn: ConnectInfo): Promise<IntentRow[]> {
+  const json = (await command(conn, { type: "intent.list" })) as {
+    ok?: boolean
+    result?: { intents?: unknown }
+  }
+  const intents = json.ok === true ? json.result?.intents : undefined
+  if (!Array.isArray(intents)) return []
+  return intents.map((i: any) => ({
+    intentId: String(i.intentId ?? "?"),
+    title: String(i.title ?? ""),
+    status: String(i.status ?? "received"),
+    submittedByClientRef: String(i.submittedByClientRef ?? ""),
+  }))
+}
+
 export type AssignmentRow = {
   assignmentRef: string
   leaseRef: string
