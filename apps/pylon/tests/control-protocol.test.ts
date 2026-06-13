@@ -393,6 +393,30 @@ describe("control protocol", () => {
     })
   })
 
+  test("session failure classifies dev check before redaction scan field text", async () => {
+    await withControlSessionFixture(async ({ proofDir, summary, worktree }) => {
+      const executor: ControlSessionExecutor = async () => {
+        throw new Error("dev check did not pass; proof stdout included redactionScan")
+      }
+      const actions = createControlSessionActions({ executor, proofsDir: proofDir, summary })
+      await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        worktreePath: worktree,
+        objective: "fail this bounded session",
+        verify: ["bun", "--version"],
+      })
+      let list = [] as Array<{ state: string; errorClass: string | null }>
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        list = await actions.list()
+        if (list[0]?.state === "failed") break
+        await Bun.sleep(10)
+      }
+      expect(list[0]?.state).toBe("failed")
+      expect(list[0]?.errorClass).toBe("verification_failed")
+    })
+  })
+
   test("backoff doubles to a 30s ceiling", () => {
     expect(nextBackoffMs(0)).toBe(1000)
     expect(nextBackoffMs(1000)).toBe(2000)
