@@ -110,6 +110,21 @@ valid Expo-Updates manifest from a real `expo export`, and (b) `eas build
 
 ## 6. Progress log (append one line per iteration; newest at bottom)
 
+> **NEEDS-OWNER (on-device OTA test) — non-blocking; lots of other work continues.**
+> The whole OTA server pipeline is built + proven on our own infra (real
+> `expo export` 2.1 MB Hermes bundle served as a manifest over HTTP, fingerprint
+> gate + content-addressed assets + signing helper all green). To see an update
+> land **on your phone**, two steps need you:
+> 1. **A public host for the OpenAgents Updates server** — either a cloud deploy
+>    target/domain (e.g. `updates.openagents.com`), or your OK to expose the
+>    local server via a temporary tunnel (cloudflared/ngrok) for a throwaway
+>    test. (I won't open a public tunnel without your say-so.)
+> 2. **Installing the resulting local build** on your device (the build that
+>    points `updates.url` at that endpoint).
+> Everything else is ready: local `.ipa` builds work; the `updates.url` switch
+> (#4949) is a one-line flip once the endpoint exists; `oa-update` publish works.
+
+
 - 2026-06-13: loop initialized; OTA pure-core fanout launched; cocoapods
   installing for local build; build #4 → TestFlight.
 - 2026-06-13 iter 1: merged OTA pure cores CND-OTA-1..4 (`917e2bd16`, 14 tests),
