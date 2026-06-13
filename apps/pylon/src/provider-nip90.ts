@@ -60,6 +60,7 @@ export const DEFAULT_PROVIDER_REQUEST_TTL_SECONDS = 365 * 24 * 60 * 60
 export const DEFAULT_PROVIDER_MAX_INFLIGHT = 1
 export const DEFAULT_PROVIDER_PER_BUYER_MAX_INFLIGHT = 1
 export const DEFAULT_PROVIDER_LOOP_IDLE_MS = 250
+export const DEFAULT_PROVIDER_RECONNECT_DELAY_MS = 5_000
 
 export type NostrEvent = {
   id: string
@@ -218,6 +219,11 @@ export type ProviderLoopOptions = {
   now?: () => Date
   idleMs?: number
   once?: boolean
+  // #4866 persistence knobs: delay between resubscribe attempts after a
+  // relay failure, and an optional attempt cap (tests use a small cap; the
+  // production loop resubscribes indefinitely).
+  reconnectDelayMs?: number
+  maxSubscribeAttempts?: number
   log?: (message: string) => void
 }
 
@@ -1080,31 +1086,57 @@ export async function startNip90ProviderLoop(summary: BootstrapSummary, options:
       loopOptions.log?.(`[NIP-90] Published handler info to ${transport.relayUrl}.`)
     }
 
-    const since = Math.max(0, nowSeconds(loopOptions.now()) - 30)
-    const filters = buildProviderReqFilters({ providerPubkey: identity.publicKey, since })
     let handled = 0
     for (const transport of transports) {
-      for await (const event of transport.subscribe(filters, { subscriptionId: `pylon-provider-${state.identity.nodeId}` })) {
-        const result = await runProviderJobOnce({
-          state,
-          event,
-          identity,
-          relay: transport,
-          policy,
-          runtime,
-          walletRunner,
-          laborRuntime,
-          laborWorkspaceRoot,
-          laborAgentKind,
-          ...(options.laborMarket === undefined ? {} : { laborMarket: options.laborMarket }),
-          now: loopOptions.now,
-          online: true,
-        })
-        handled += result.status === "completed" ? 1 : 0
-        loopOptions.log?.(`[NIP-90] ${result.status} ${event.id}${result.reasonRef ? ` (${result.reasonRef})` : ""}.`)
-        if (options.once) {
-          return { started: true as const, handled }
+      // #4866 root-cause fix: any relay hiccup (idle "relay message timed
+      // out", a dropped socket, a transient publish/runtime failure)
+      // previously escaped this loop and permanently killed the supervised
+      // NIP-90 service ("Service stopped with error"), so registered
+      // providers went dark within about a minute of going online. Outside
+      // bounded `once` runs, each failure logs and resubscribes after a
+      // short delay instead of propagating.
+      let attempts = 0
+      while (true) {
+        attempts += 1
+        const since = Math.max(0, nowSeconds(loopOptions.now()) - 30)
+        const filters = buildProviderReqFilters({ providerPubkey: identity.publicKey, since })
+        try {
+          for await (const event of transport.subscribe(filters, {
+            subscriptionId: `pylon-provider-${state.identity.nodeId}`,
+            keepAliveOnIdle: !options.once,
+          })) {
+            const result = await runProviderJobOnce({
+              state,
+              event,
+              identity,
+              relay: transport,
+              policy,
+              runtime,
+              walletRunner,
+              laborRuntime,
+              laborWorkspaceRoot,
+              laborAgentKind,
+              ...(options.laborMarket === undefined ? {} : { laborMarket: options.laborMarket }),
+              now: loopOptions.now,
+              online: true,
+            })
+            handled += result.status === "completed" ? 1 : 0
+            loopOptions.log?.(`[NIP-90] ${result.status} ${event.id}${result.reasonRef ? ` (${result.reasonRef})` : ""}.`)
+            if (options.once) {
+              return { started: true as const, handled }
+            }
+          }
+        } catch (error) {
+          if (options.once) throw error
+          loopOptions.log?.(
+            `[NIP-90] Relay subscription to ${transport.relayUrl} interrupted: ${
+              error instanceof Error ? error.message : String(error)
+            }; resubscribing.`,
+          )
         }
+        if (options.once) break
+        if (options.maxSubscribeAttempts !== undefined && attempts >= options.maxSubscribeAttempts) break
+        await sleep(options.reconnectDelayMs ?? DEFAULT_PROVIDER_RECONNECT_DELAY_MS)
       }
       if (options.once) break
     }
@@ -1144,13 +1176,40 @@ export class WebSocketRelayTransport implements ProviderRelayTransport {
     }
   }
 
-  async *subscribe(filters: ReadonlyArray<Record<string, unknown>>, options: { subscriptionId?: string } = {}) {
+  async *subscribe(
+    filters: ReadonlyArray<Record<string, unknown>>,
+    options: { subscriptionId?: string; keepAliveOnIdle?: boolean; idleTimeoutMs?: number } = {},
+  ) {
     const ws = await openRelaySocket(this.relayUrl)
     const subscriptionId = options.subscriptionId ?? `pylon-provider-${Date.now()}`
+    const idleTimeoutMs = options.idleTimeoutMs ?? 60_000
     try {
       ws.send(JSON.stringify(["REQ", subscriptionId, ...filters]))
       while (true) {
-        const message = await waitForRelayMessage(ws, (parsed) => Array.isArray(parsed) ? parsed : null, 60_000)
+        // A socket that died while a job was being processed (no listener
+        // attached) fires no late close event; detect it here instead of
+        // hanging until the idle timeout.
+        if (ws.readyState !== WebSocket.OPEN) {
+          throw new Error("relay websocket closed")
+        }
+        let message: unknown[]
+        try {
+          message = await waitForRelayMessage(ws, (parsed) => Array.isArray(parsed) ? parsed : null, idleTimeoutMs)
+        } catch (error) {
+          // #4866: a quiet relay is not a dead relay. Between jobs the
+          // subscription legitimately sees no frames for minutes; with
+          // keepAliveOnIdle the idle timeout keeps waiting on the open
+          // socket instead of tearing the provider subscription down.
+          if (
+            options.keepAliveOnIdle === true &&
+            ws.readyState === WebSocket.OPEN &&
+            error instanceof Error &&
+            error.message === "relay message timed out"
+          ) {
+            continue
+          }
+          throw error
+        }
         if (message[0] === "EVENT" && message[1] === subscriptionId && isNostrEvent(message[2])) {
           yield message[2]
         }

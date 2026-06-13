@@ -14,6 +14,7 @@ pylon provider go-online
 pylon provider once
 pylon provider go-offline
 bun run smoke:nip90-provider
+bun run provider:serve
 ```
 
 `go-online` persists lifecycle `online` and adds
@@ -24,6 +25,14 @@ runtime lifecycle is `online` or `assignment-ready`.
 `provider once` is the headless smoke entrypoint. It publishes NIP-89 handler
 info and subscribes once to the configured relays. If the persisted lifecycle is
 offline, it exits with a public-safe `provider_not_online` reason.
+
+`bun run provider:serve` (`scripts/nip90-provider-serve.ts`) is the
+long-running headless serve entrypoint: it runs the persistent loop against
+the configured relays with the real Pylon home, the default local Apple FM
+runtime, and the MDK agent wallet for payment-required quotes
+(`PYLON_MDK_WALLET_HOME` points the wallet subprocess at a wallet home that
+can actually create invoices). It only ever issues receive invoices; it
+never pays.
 
 `bun run smoke:nip90-provider` uses a temporary Pylon home and the scoped market
 relay to prove subscribe, NIP-89 advertise, targeted kind `5050` intake, local
@@ -42,6 +51,11 @@ wss://relay.openagents.com
 The loop:
 
 - publishes NIP-89 handler info for kind `5050`;
+- stays subscribed through quiet periods: an idle relay (no frames for the
+  60s message window) is treated as keep-waiting, not an error, and any
+  dropped socket or transient relay/runtime failure logs and resubscribes
+  after a short delay instead of stopping the service (#4866 root-cause fix
+  for `[NIP-90] Service stopped with error: ... relay message timed out`);
 - subscribes to targeted and broad kind `5050` text-inference requests;
 - rejects malformed, encrypted, wrong-target, stale, missing-bid, underbid,
   duplicate, and over-capacity requests before local execution;

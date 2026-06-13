@@ -28,10 +28,12 @@ import {
   loadProviderAdmissionStore,
   runProviderJobOnce,
   signNostrEvent,
+  startNip90ProviderLoop,
+  WebSocketRelayTransport,
   type NostrEvent,
   type ProviderRelayTransport,
 } from "../src/provider-nip90"
-import { ensurePylonLocalState, type PylonLocalState } from "../src/state"
+import { ensurePylonLocalState, writeRuntimeState, type PylonLocalState } from "../src/state"
 import type { WalletCommandRunner } from "../src/wallet"
 
 const buyer = deriveNip06Identity(
@@ -599,6 +601,164 @@ describe("Pylon NIP-90 provider loop", () => {
       expect(serialized).toContain("receipt.public.pylon.nip90.result")
       expect(serialized).not.toContain("lnbc10n1providerinvoice")
       expect(serialized).not.toContain(home)
+    })
+  })
+})
+
+// #4866 root-cause regression coverage: registered providers went dark
+// because the relay subscription died on the 60s idle timeout ("[NIP-90]
+// Service stopped with error: ... relay message timed out") and the loop
+// never resubscribed after any relay hiccup.
+describe("Pylon NIP-90 provider loop persistence", () => {
+  type MiniRelayOptions = {
+    onReq: (input: { ws: Bun.ServerWebSocket<unknown>; subscriptionId: string; reqCount: number }) => void
+  }
+
+  function startMiniRelay(options: MiniRelayOptions) {
+    let reqCount = 0
+    const server = Bun.serve({
+      port: 0,
+      fetch(request, server) {
+        if (server.upgrade(request)) return undefined as unknown as Response
+        return new Response("expected websocket", { status: 400 })
+      },
+      websocket: {
+        message(ws, raw) {
+          const frame = JSON.parse(String(raw)) as unknown[]
+          if (frame[0] === "EVENT") {
+            const event = frame[1] as NostrEvent
+            ws.send(JSON.stringify(["OK", event.id, true, ""]))
+            return
+          }
+          if (frame[0] === "REQ") {
+            reqCount += 1
+            options.onReq({ ws, subscriptionId: String(frame[1]), reqCount })
+          }
+        },
+      },
+    })
+    return { server, url: `ws://127.0.0.1:${server.port}` }
+  }
+
+  test("keepAliveOnIdle waits through idle gaps longer than the idle timeout", async () => {
+    const timers: ReturnType<typeof setInterval>[] = []
+    const { server, url } = startMiniRelay({
+      onReq: ({ ws, subscriptionId }) => {
+        ws.send(JSON.stringify(["EOSE", subscriptionId]))
+        // Deliver the event repeatedly, but only after several idle-timeout
+        // windows have already elapsed.
+        const timer = setInterval(() => {
+          try {
+            ws.send(JSON.stringify(["EVENT", subscriptionId, requestEvent({ bid: 1_000, output: "text/plain" })]))
+          } catch {
+            clearInterval(timer)
+          }
+        }, 100)
+        timers.push(timer)
+      },
+    })
+    try {
+      const transport = new WebSocketRelayTransport(url)
+      const iterator = transport
+        .subscribe([{ kinds: [KIND_JOB_TEXT_GENERATION] }], { keepAliveOnIdle: true, idleTimeoutMs: 25 })
+        [Symbol.asyncIterator]()
+      const first = await iterator.next()
+      expect(first.done).toBe(false)
+      expect((first.value as NostrEvent).kind).toBe(KIND_JOB_TEXT_GENERATION)
+      await iterator.return?.(undefined)
+    } finally {
+      for (const timer of timers) clearInterval(timer)
+      server.stop(true)
+    }
+  })
+
+  test("without keepAliveOnIdle the idle timeout still fails the subscription", async () => {
+    const { server, url } = startMiniRelay({
+      onReq: ({ ws, subscriptionId }) => {
+        ws.send(JSON.stringify(["EOSE", subscriptionId]))
+      },
+    })
+    try {
+      const transport = new WebSocketRelayTransport(url)
+      const iterator = transport
+        .subscribe([{ kinds: [KIND_JOB_TEXT_GENERATION] }], { idleTimeoutMs: 25 })
+        [Symbol.asyncIterator]()
+      await expect(iterator.next()).rejects.toThrow("relay message timed out")
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test("resubscribes after a relay drop instead of stopping the provider loop", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs([
+          "--display-name",
+          "Reconnect Test",
+          "--capability-ref",
+          "capability.public.pylon.nip90.text_inference.v0.3",
+        ]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const state = await ensurePylonLocalState(summary)
+      await writeRuntimeState(state.paths, {
+        ...state.runtime,
+        lifecycle: "online",
+        capabilityRefs: [...new Set([...state.runtime.capabilityRefs, "capability.public.pylon.nip90.text_inference.v0.3"])],
+        blockerRefs: [],
+      })
+      const identity = await loadOrCreateNostrIdentity(summary.paths)
+
+      const { server, url } = startMiniRelay({
+        onReq: ({ ws, subscriptionId, reqCount }) => {
+          if (reqCount === 1) {
+            // First subscription dies immediately: previously this killed
+            // the whole provider loop.
+            ws.close()
+            return
+          }
+          ws.send(
+            JSON.stringify([
+              "EVENT",
+              subscriptionId,
+              requestEvent({ providerPubkey: identity.publicKey, bid: 1_000, output: "text/plain" }),
+            ]),
+          )
+          // Close right after delivery so the resubscribed loop exits via
+          // the closed-socket fast path once the job has been handled.
+          setTimeout(() => ws.close(), 50)
+        },
+      })
+      const logs: string[] = []
+      try {
+        const result = await startNip90ProviderLoop(summary, {
+          relays: [url],
+          maxSubscribeAttempts: 2,
+          reconnectDelayMs: 25,
+          runtime: {
+            async complete(prompt: string) {
+              return {
+                text: `reconnect test result: ${prompt.slice(0, 16)}`,
+                model: "reconnect-test-runtime",
+                receiptRefs: ["receipt.public.pylon.nip90_provider_test.runtime"],
+              }
+            },
+          },
+          walletRunner: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify({ invoice: "lnbc10n1providerinvoice" }),
+            stderr: "",
+          }),
+          log: (message) => logs.push(message),
+        })
+        expect(result.started).toBe(true)
+        expect(result.started && result.handled).toBe(1)
+        expect(logs.some((line) => line.includes("interrupted") && line.includes("resubscribing"))).toBe(true)
+        expect(logs.some((line) => line.includes("completed"))).toBe(true)
+      } finally {
+        server.stop(true)
+      }
     })
   })
 })

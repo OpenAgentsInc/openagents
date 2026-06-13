@@ -48,6 +48,7 @@
     "smoke:dashboard": "bun src/index.ts --smoke-dashboard",
     "smoke:live-worker-loop": "bun scripts/live-worker-loop-smoke.ts",
     "smoke:nip90-provider": "bun scripts/nip90-provider-loop-smoke.ts",
+    "provider:serve": "bun scripts/nip90-provider-serve.ts",
     "smoke:stranger-probe": "bun scripts/stranger-probe-smoke.ts",
     "smoke:psionic-qwen": "bun scripts/psionic-qwen-live-smoke.ts",
     "smoke:wallet": "npx --yes @moneydevkit/agent-wallet@latest balance | bun -e 'const input = await new Response(Bun.stdin.stream()).text(); const json = JSON.parse(input); if (typeof json.balance_sats !== \"number\") { console.error(input.trim()); process.exit(1); } console.log(`wallet balance: ${json.balance_sats} sats`);'",
