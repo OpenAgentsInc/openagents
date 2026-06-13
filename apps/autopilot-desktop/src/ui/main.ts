@@ -1,7 +1,23 @@
-// Boot shell for Autopilot Desktop. Plain DOM hello-world; the Foldkit/Effect
-// runtime + live Pylon control client (over loopback) land in CL-5.
 // The view script loads in <head>, so render after the DOM is ready.
 import { CONTROL_SCHEMA_TAG } from "@openagentsinc/autopilot-control-protocol"
+import { Electroview } from "electrobun/view"
+import type { DesktopRPCSchema, NodeStateMessage } from "../shared/rpc"
+import { renderSessions } from "./session-render"
+
+let latestNodeState: NodeStateMessage | null = null
+
+const rpc = Electroview.defineRPC<DesktopRPCSchema>({
+  handlers: {
+    requests: {},
+    messages: {
+      nodeState(message) {
+        latestNodeState = message
+        const sessions = document.querySelector<HTMLElement>("#sessions")
+        if (sessions !== null) renderSessions(sessions, message)
+      },
+    },
+  },
+})
 
 function render(): void {
   const root = document.createElement("main")
@@ -19,10 +35,12 @@ function render(): void {
   root.append(c)
   const sessions = document.createElement("section")
   sessions.id = "sessions"
-  // TODO: Bun main will push live Pylon node state into this placeholder via RPC.
+  if (latestNodeState !== null) renderSessions(sessions, latestNodeState)
   root.append(sessions)
   document.body.append(root)
 }
+
+new Electroview({ rpc })
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", render)
