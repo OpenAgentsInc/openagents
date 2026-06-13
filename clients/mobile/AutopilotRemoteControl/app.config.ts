@@ -26,6 +26,17 @@ const config: ExpoConfig = {
       // No non-exempt encryption (HTTPS/standard crypto only) — skips the
       // App Store Connect export-compliance prompt for TestFlight.
       ITSAppUsesNonExemptEncryption: false,
+      // Allow cleartext HTTP to a Pylon node over tailnet/LAN (e.g.
+      // http://100.x.x.x:4716). iOS ATS blocks plain HTTP by default in release
+      // builds, which is why connecting "saw nothing". Dev/internal app → allow
+      // arbitrary loads; tighten to a scoped exception once the node is HTTPS.
+      NSAppTransportSecurity: {
+        NSAllowsArbitraryLoads: true,
+        NSAllowsLocalNetworking: true,
+      },
+      // iOS prompts for local-network access on first LAN/bonjour reach.
+      NSLocalNetworkUsageDescription:
+        "Autopilot connects to your Pylon node over your local network or tailnet.",
     },
   },
   android: {
