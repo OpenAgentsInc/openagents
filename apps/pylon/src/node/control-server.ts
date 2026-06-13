@@ -55,7 +55,7 @@ export type ControlCommand =
   | ControlSessionEventsCommand
   | ControlSessionCancelCommand
   | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
-  | { type: "intent.list" }
+  | { type: "intent.list"; sinceCursor?: string }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -68,7 +68,7 @@ export interface ControlCommandActions {
   // enqueues it as a work intent for the coordinator to plan + fan out.
   intents?: {
     submit: (input: { title: string; body: string; scopeHint?: string; submittedByClientRef?: string }) => Promise<unknown>
-    list: () => Promise<unknown>
+    list: (sinceCursor?: string) => Promise<unknown>
   }
 }
 
@@ -200,7 +200,7 @@ export const startControlServer = (
           })
         case "intent.list":
           if (!options.actions.intents) throw new Error("intents unavailable on this node")
-          return options.actions.intents.list()
+          return options.actions.intents.list(command.sinceCursor)
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }

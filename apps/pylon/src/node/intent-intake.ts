@@ -50,10 +50,19 @@ type IntentRecord = {
   projection: IntentProjection
 }
 
+export type IntentListPage = {
+  intents: IntentProjection[]
+  // Resume token = the latest updatedAt across ALL intents (null when empty).
+  // A client passes its last cursor back as sinceCursor to get only intents
+  // changed since, then advances to the returned cursor — cursor-resumable.
+  cursor: string | null
+}
+
 export type IntentQueue = {
   enqueue: (intent: SubmittedWorkIntent) => IntentProjection
   get: (intentId: string) => IntentProjection | null
   list: () => IntentProjection[]
+  listSince: (sinceCursor?: string) => IntentListPage
   advanceStatus: (intentId: string, status: IntentStatus, observedAt?: string) => IntentProjection
 }
 
@@ -157,6 +166,15 @@ export function createIntentQueue(options: { persistPath?: string } = {}): Inten
 
     list() {
       return [...records.values()].map((record) => cloneProjection(record.projection))
+    },
+
+    listSince(sinceCursor) {
+      const all = [...records.values()]
+        .map((record) => cloneProjection(record.projection))
+        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+      const intents = sinceCursor === undefined ? all : all.filter((p) => p.updatedAt > sinceCursor)
+      const cursor = all.length > 0 ? all[all.length - 1].updatedAt : null
+      return { intents, cursor }
     },
 
     advanceStatus(intentId, status, observedAt = nowIso()) {

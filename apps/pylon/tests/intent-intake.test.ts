@@ -107,6 +107,25 @@ describe("intent queue", () => {
     }
   })
 
+  test("listSince is cursor-resumable", () => {
+    const queue = createIntentQueue()
+    queue.enqueue({ ...baseIntent, intentId: "i1", createdAt: "2026-06-13T00:00:00.000Z" })
+    queue.enqueue({ ...baseIntent, intentId: "i2", createdAt: "2026-06-13T00:00:05.000Z" })
+
+    const first = queue.listSince()
+    expect(first.intents.map((p) => p.intentId)).toEqual(["i1", "i2"])
+    expect(first.cursor).toBe("2026-06-13T00:00:05.000Z")
+
+    // Resuming from the cursor returns nothing new...
+    expect(queue.listSince(first.cursor ?? undefined).intents).toHaveLength(0)
+
+    // ...until something changes, which advances the cursor.
+    queue.advanceStatus("i1", "planning", "2026-06-13T00:01:00.000Z")
+    const next = queue.listSince(first.cursor ?? undefined)
+    expect(next.intents.map((p) => p.intentId)).toEqual(["i1"])
+    expect(next.cursor).toBe("2026-06-13T00:01:00.000Z")
+  })
+
   test("derived projections are refs-only", () => {
     const queue = createIntentQueue()
     const projection = queue.enqueue(baseIntent)

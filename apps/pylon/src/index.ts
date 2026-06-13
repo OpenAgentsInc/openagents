@@ -307,7 +307,7 @@ function makeIntentActions(persistPath: string) {
         createdAt: new Date().toISOString(),
       })
     },
-    list: async () => intentQueue.list(),
+    list: async (sinceCursor?: string) => intentQueue.listSince(sinceCursor),
   }
 }
 
