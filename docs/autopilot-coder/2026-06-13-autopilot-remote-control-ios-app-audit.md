@@ -19,6 +19,15 @@ repo. `control` is a Tailnet-first operator console for *our* fleet; this app is
 a shippable, paid, single-user companion for *any* Pylon user, open source in
 the `openagents` monorepo.
 
+It also has a **same-machine sibling**: Autopilot Desktop
+(`2026-06-13-autopilot-desktop-app-audit.md`), a Bun/Electrobun + Foldkit GUI
+that talks to the *local* Pylon node over loopback. The two share the projection
+and control vocabulary through a planned shared `packages/pylon-control-protocol`
+(Effect Schema): the desktop's Bun main process and the web companion import it,
+and this Swift app mirrors it. One contract, consistent behavior across surfaces;
+the difference is transport (mobile = remote bridge; desktop = loopback) and UI
+(mobile = native Swift; desktop = Foldkit).
+
 Key product constraints (owner direction, 2026-06-13):
 
 - **Swift, native UI only** — SwiftUI, no embedded web views / no React Native.

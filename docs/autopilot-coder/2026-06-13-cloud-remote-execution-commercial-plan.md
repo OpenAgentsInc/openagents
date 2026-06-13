@@ -104,6 +104,12 @@ Map onto the crabbox control-plane/data-plane split (see
   existing L402/Lightning + card-on-file rails.
 - **`autopilot-omega` / `openagents.com` = tenant-facing product/billing UX**
   and the public capacity-marketplace projection authority.
+- **Autopilot Desktop (`apps/autopilot-desktop`, Bun/Electrobun + Foldkit) =
+  the operator console** for deploying and supervising sessions — local, remote
+  (bridge), and OpenAgents Cloud — in one window. It consumes the cloud
+  coordinator client and the shared `packages/pylon-control-protocol`, and is the
+  primary GUI for BYO-key vs credits sessions and quota/failover state. See
+  `2026-06-13-autopilot-desktop-app-audit.md`.
 - **`alpha/` = private strategy/roadmap** for the business framing.
 
 **Do not route new work to the `treasury/` repo.** Verified 2026-06-13 it is a
