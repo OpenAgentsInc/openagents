@@ -57,6 +57,7 @@ export default function NodesScreen() {
   const [askTitle, setAskTitle] = useState("")
   const [askBody, setAskBody] = useState("")
   const [askStatus, setAskStatus] = useState<string | null>(null)
+  const [nodeName, setNodeName] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -82,6 +83,7 @@ export default function NodesScreen() {
         if (cancelled) return
         if (nodes.length > 0) {
           const info = pickConnect(nodes[0])
+          setNodeName(nodes[0].name ?? nodes[0].id ?? "node")
           setConn(info)
           setStatus("connecting")
           void poll(info)
@@ -234,15 +236,28 @@ export default function NodesScreen() {
         ) : (
           <>
             <View style={styles.statusRow}>
-              {status === "connecting" ? <ActivityIndicator color={C.info} /> : null}
+              <View style={[styles.dot, { backgroundColor: status === "connected" ? C.success : status === "error" ? C.danger : C.warning }]} />
               <Text style={styles.statusText}>
+                {nodeName ? `${nodeName} · ` : ""}
                 {status === "connected"
-                  ? `connected · ${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`
+                  ? `online · ${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`
                   : status === "error"
                     ? `error: ${error ?? "unknown"}`
                     : "connecting…"}
               </Text>
             </View>
+            {status === "connected" && sessions.length > 0 ? (
+              <Text style={styles.breakdown}>
+                {(() => {
+                  const by: Record<string, number> = {}
+                  for (const s of sessions) by[s.state] = (by[s.state] ?? 0) + 1
+                  return ["running", "queued", "completed", "failed", "cancelled"]
+                    .filter((k) => by[k])
+                    .map((k) => `${by[k]} ${k}`)
+                    .join(" · ")
+                })()}
+              </Text>
+            ) : null}
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Ask Autopilot</Text>
               <TextInput
@@ -310,6 +325,7 @@ const styles = StyleSheet.create({
   error: { color: C.danger, fontSize: 13, marginTop: 10 },
   statusRow: { alignItems: "center", flexDirection: "row", gap: 10, marginTop: 24 },
   statusText: { color: C.text, fontFamily: "Courier", fontSize: 14 },
+  breakdown: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 6 },
   row: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, flexDirection: "row", marginTop: 12, padding: 14 },
   dot: { borderRadius: 6, height: 12, marginRight: 12, width: 12 },
   rowText: { flex: 1 },
