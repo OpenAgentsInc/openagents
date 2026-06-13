@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname } from "node:path"
 import { Schema as S } from "effect"
 
 export const INTENT_INTAKE_SCHEMA = "openagents.pylon.intent_intake.v0.1" as const
@@ -87,8 +89,37 @@ export function transitionIntentStatus(current: IntentStatus, next: IntentStatus
   throw new Error(`illegal intent status transition: ${current} -> ${next}`)
 }
 
-export function createIntentQueue(): IntentQueue {
+// Optional durable persistence: when a persistPath is given, the queue loads
+// its records on start and rewrites them on every mutation, so submitted intents
+// survive a node restart (the in-memory map alone loses them). The file is local
+// node state (like the control token) and holds the raw intents; the PROJECTION
+// stays refs-only regardless.
+export function createIntentQueue(options: { persistPath?: string } = {}): IntentQueue {
   const records = new Map<string, IntentRecord>()
+  const persistPath = options.persistPath
+
+  if (persistPath !== undefined && existsSync(persistPath)) {
+    try {
+      const loaded = JSON.parse(readFileSync(persistPath, "utf8")) as IntentRecord[]
+      if (Array.isArray(loaded)) {
+        for (const record of loaded) {
+          if (record?.intent?.intentId) records.set(record.intent.intentId, record)
+        }
+      }
+    } catch {
+      // corrupt/unreadable persistence -> start empty rather than crash the node
+    }
+  }
+
+  const persist = (): void => {
+    if (persistPath === undefined) return
+    try {
+      mkdirSync(dirname(persistPath), { recursive: true })
+      writeFileSync(persistPath, JSON.stringify([...records.values()]))
+    } catch {
+      // best-effort: persistence failure must never break intake
+    }
+  }
 
   function projectionFor(intent: SubmittedWorkIntent): IntentProjection {
     const received: IntentStatusEvent = { status: "received", observedAt: intent.createdAt }
@@ -115,6 +146,7 @@ export function createIntentQueue(): IntentQueue {
 
       const projection = projectionFor(intent)
       records.set(intent.intentId, { intent, projection })
+      persist()
       return cloneProjection(projection)
     },
 
@@ -141,6 +173,7 @@ export function createIntentQueue(): IntentQueue {
         statusHistory: [...record.projection.statusHistory, { status: next, observedAt }],
       }
       records.set(intentId, { ...record, projection })
+      persist()
       return cloneProjection(projection)
     },
   }

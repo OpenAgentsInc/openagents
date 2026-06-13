@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   createIntentQueue,
   decodeSubmittedWorkIntent,
@@ -82,6 +85,26 @@ describe("intent queue", () => {
       "shipping",
       "shipped",
     ])
+  })
+
+  test("persists across restart when given a persistPath", () => {
+    const dir = mkdtempSync(join(tmpdir(), "oa-intent-"))
+    const path = join(dir, "nested", "intents.json")
+    try {
+      const q1 = createIntentQueue({ persistPath: path })
+      q1.enqueue(baseIntent)
+      q1.advanceStatus("intent-1", "planning", "2026-06-13T00:01:00.000Z")
+
+      // A fresh queue over the same file recovers the records + status.
+      const q2 = createIntentQueue({ persistPath: path })
+      const recovered = q2.get("intent-1")
+      expect(recovered?.status).toBe("planning")
+      expect(q2.list()).toHaveLength(1)
+      // Still refs-only after a persistence round-trip.
+      expect(JSON.stringify(recovered)).not.toContain(baseIntent.body)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test("derived projections are refs-only", () => {
