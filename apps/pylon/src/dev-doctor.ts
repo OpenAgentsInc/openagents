@@ -28,6 +28,7 @@ import {
 } from "./claude-composer"
 import { createBootstrapSummary, parseBootstrapArgs, type BootstrapSummary } from "./bootstrap"
 import { discoverHostInventory, type PylonBackendHealth, type PylonHostInventoryProjection } from "./inventory"
+import { collectPylonAccountUsageSummary, type PylonAccountUsageSummary } from "./account-usage"
 import { assertPublicProjectionSafe } from "./state"
 
 export const PYLON_DEV_DOCTOR_SCHEMA = "openagents.pylon.dev_doctor.v0.3"
@@ -98,6 +99,7 @@ export type PylonDevDoctorProjection = {
     refs: Pick<PylonBackendHealth, "backendRef" | "state" | "modelRef" | "blockerRefs">[]
     blockerRefs: string[]
   }
+  usage?: PylonAccountUsageSummary | null
   blockerRefs: string[]
 }
 
@@ -381,6 +383,7 @@ export async function collectPylonDevDoctor(
       refs: backendRefs,
       blockerRefs: inventory.blockerRefs,
     },
+    usage: await collectPylonAccountUsageSummary(summary, { now: options.now }),
     blockerRefs: [
       ...repoBlockers,
       ...instructionBlockers,

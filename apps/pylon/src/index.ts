@@ -62,6 +62,13 @@ import { loadComposerState, saveComposerState } from "./node/composer-store"
 import { collectPylonContextProjection } from "./context-projection"
 import { collectPylonDevDoctor } from "./dev-doctor"
 import {
+  collectPylonAccountsList,
+  collectPylonAccountsUsage,
+  parsePylonAccountsUsageArgs,
+  resolvePylonAccountUsageRefreshTargets,
+  type PylonAccountsUsageArgs,
+} from "./account-usage"
+import {
   recordPylonDevCodexRun,
   runPylonDevApply,
   runPylonDevCheck,
@@ -345,6 +352,7 @@ async function makeCodexComposerBackend(
           approvalPolicy: "never",
           networkAccessEnabled: false,
           timeoutMs,
+          usageStateSummary: summary,
         },
         {
           onText: callbacks.onText,
@@ -429,6 +437,7 @@ async function makeClaudeComposerBackend(
           model: config.model,
           resumeSessionId: sessionId,
           timeoutMs,
+          usageStateSummary: summary,
         },
         {
           onText: callbacks.onText,
@@ -478,6 +487,57 @@ async function makeComposerBackend(
     })
   }
   return makeCodexComposerBackend(summary, options)
+}
+
+async function runAccountsUsageRefresh(
+  summary: ReturnType<typeof createBootstrapSummary>,
+  options: PylonAccountsUsageArgs,
+) {
+  const targets = await resolvePylonAccountUsageRefreshTargets(summary, options, { env: Bun.env })
+  const prompt = "Reply with exactly: ok."
+  for (const target of targets) {
+    try {
+      if (target.provider === "codex") {
+        const config = await loadCodexAgentConfig(summary)
+        await runCodexComposerStream(
+          prompt,
+          {
+            account: target.account,
+            approvalPolicy: "never",
+            config,
+            cwd: codexComposerWorkingDirectory(),
+            env: Bun.env,
+            executionMode: "local_bounded",
+            ...(config.model === undefined ? {} : { model: config.model }),
+            networkAccessEnabled: false,
+            sandboxMode: "read-only",
+            timeoutMs: 60_000,
+            usageStateSummary: summary,
+          },
+        )
+      } else {
+        const config = await loadClaudeAgentConfig(summary)
+        await runClaudeComposerStream(
+          prompt,
+          {
+            account: target.account,
+            config,
+            cwd: codexComposerWorkingDirectory(),
+            env: Bun.env,
+            executionMode: "local_bounded",
+            maxTurns: 1,
+            ...(config.model === undefined ? {} : { model: config.model }),
+            permissionMode: "acceptEdits",
+            timeoutMs: 60_000,
+            usageStateSummary: summary,
+          },
+        )
+      }
+    } catch {
+      // Readiness and missing provider snapshots are reported in the final
+      // JSON truth tiers; refresh failure must not leak raw provider errors.
+    }
+  }
 }
 
 const assignmentWorkerIntervalMs = () => {
@@ -1353,6 +1413,47 @@ async function main() {
     const inventory = await discoverHostInventory({ env: Bun.env })
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`)
     return
+  }
+
+  if (args[0] === "accounts") {
+    try {
+      const command = args[1]
+      if (command === "list") {
+        if (!args.includes("--json")) throw new Error("usage: pylon accounts list --json")
+        const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+        const projection = await collectPylonAccountsList(summary, { env: Bun.env })
+        process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+        return
+      }
+      if (command === "usage") {
+        const options = parsePylonAccountsUsageArgs(args.slice(2))
+        if (!options.json) {
+          throw new Error("usage: pylon accounts usage [--account <ref>|--all] [--refresh] --json")
+        }
+        const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+        if (options.refresh) {
+          // The expensive refresh contract is intentionally opt-in. The
+          // current SDK stream exposes local session usage and captures
+          // provider snapshots when the underlying event stream includes
+          // Codex/Claude rate-limit payloads.
+          await runAccountsUsageRefresh(summary, options)
+        }
+        const projection = await collectPylonAccountsUsage(summary, options, { env: Bun.env })
+        process.stdout.write(`${JSON.stringify({
+          ...projection,
+          refresh: {
+            ...projection.refresh,
+            performed: options.refresh,
+          },
+        }, null, 2)}\n`)
+        return
+      }
+      throw new Error("usage: pylon accounts list|usage ...")
+    } catch (error) {
+      process.stderr.write(`Pylon accounts failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
   }
 
   if (args[0] === "context") {

@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto"
 import { CLAUDE_AGENT_SDK_PACKAGE, probeClaudeAgentReadiness, type ClaudeAgentConfig } from "./claude-agent"
 import {
+  hashPylonAccountRef,
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "./account-registry"
+import type { BootstrapSummary } from "./bootstrap"
+import {
+  providerRateLimitSnapshotsFromEvent,
+  recordPylonAccountUsageObservation,
+} from "./account-usage"
 
 export type ClaudeComposerExecutionMode = "local_bounded" | "local_supervised_danger"
 export type ClaudeComposerPermissionMode = "acceptEdits" | "bypassPermissions"
@@ -27,6 +33,7 @@ export interface ClaudeComposerOptions {
   maxTurns?: number
   timeoutMs?: number
   abortSignal?: AbortSignal
+  usageStateSummary?: Pick<BootstrapSummary, "paths">
   executionMode?: ClaudeComposerExecutionMode
   permissionMode?: ClaudeComposerPermissionMode
   config?: ClaudeAgentConfig
@@ -177,7 +184,7 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
           provider: "claude_agent" as const,
           selector: "direct_home" as const,
           accountRef: options.accountRef ?? null,
-          accountRefHash: "",
+          accountRefHash: hashPylonAccountRef("claude_agent", options.accountRef ?? options.accountHome),
           home: options.accountHome,
         }
       : null)
@@ -245,6 +252,14 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
     for await (const raw of session) {
       eventCount += 1
       const message = raw as ClaudeSdkMessage
+      const providerSnapshots = providerRateLimitSnapshotsFromEvent("claude_agent", raw)
+      if (options.usageStateSummary && providerSnapshots.length > 0) {
+        await recordPylonAccountUsageObservation(options.usageStateSummary, {
+          provider: "claude_agent",
+          account,
+          providerSnapshots,
+        })
+      }
       callbacks.onEvent?.(summarizeClaudeComposerMessage(raw), eventCount)
 
       if (typeof message.session_id === "string") {
@@ -268,6 +283,20 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
         outputTokens = usage.outputTokens
         totalCostUsd = numberOrZero(message.total_cost_usd)
         callbacks.onUsage?.({ ...usage, totalCostUsd })
+        if (options.usageStateSummary) {
+          await recordPylonAccountUsageObservation(options.usageStateSummary, {
+            provider: "claude_agent",
+            account,
+            localSessionUsage: {
+              provider: "claude_agent",
+              sessionRef: sessionId === null ? null : stableRef("session.pylon.claude_composer", sessionId),
+              inputTokens,
+              outputTokens,
+              totalTokens: inputTokens + outputTokens,
+              totalCostUsd,
+            },
+          })
+        }
         if (message.is_error === true) {
           const errors = Array.isArray(message.errors) ? message.errors.filter((entry) => typeof entry === "string") : []
           throw new Error(`Claude composer ${message.subtype ?? "error"}${errors.length > 0 ? `: ${errors[0]}` : ""}`)

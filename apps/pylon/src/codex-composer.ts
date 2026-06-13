@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import {
   CODEX_AGENT_SDK_PACKAGE,
   probeCodexAgentReadiness,
@@ -5,9 +6,15 @@ import {
   type CodexAgentSandboxMode,
 } from "./codex-agent"
 import {
+  hashPylonAccountRef,
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "./account-registry"
+import type { BootstrapSummary } from "./bootstrap"
+import {
+  providerRateLimitSnapshotsFromEvent,
+  recordPylonAccountUsageObservation,
+} from "./account-usage"
 
 export type CodexComposerSandboxMode = CodexAgentSandboxMode | "danger-full-access"
 export type CodexComposerExecutionMode = "local_bounded" | "local_supervised_danger"
@@ -34,6 +41,7 @@ export interface CodexComposerOptions {
   networkAccessEnabled?: boolean
   timeoutMs?: number
   abortSignal?: AbortSignal
+  usageStateSummary?: Pick<BootstrapSummary, "paths">
   config?: CodexAgentConfig
   importer?: (specifier: string) => Promise<unknown>
   env?: Record<string, string | undefined>
@@ -105,6 +113,10 @@ type CodexThreadEvent = {
 
 function numberOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+function stableRef(prefix: string, value: string) {
+  return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
 function summarizeChanges(changes: unknown): string {
@@ -188,7 +200,7 @@ export async function runCodexComposerStream(
           provider: "codex" as const,
           selector: "direct_home" as const,
           accountRef: options.accountRef ?? null,
-          accountRefHash: "",
+          accountRefHash: hashPylonAccountRef("codex", options.accountRef ?? options.accountHome),
           home: options.accountHome,
         }
       : null)
@@ -246,6 +258,14 @@ export async function runCodexComposerStream(
     for await (const raw of events) {
       eventCount += 1
       const event = raw as CodexThreadEvent
+      const providerSnapshots = providerRateLimitSnapshotsFromEvent("codex", raw)
+      if (options.usageStateSummary && providerSnapshots.length > 0) {
+        await recordPylonAccountUsageObservation(options.usageStateSummary, {
+          provider: "codex",
+          account,
+          providerSnapshots,
+        })
+      }
       callbacks.onEvent?.(summarizeCodexThreadEvent(raw), eventCount)
       if (event.type === "thread.started" && typeof event.thread_id === "string") {
         threadId = event.thread_id
@@ -254,6 +274,19 @@ export async function runCodexComposerStream(
         inputTokens = numberOrZero(event.usage?.input_tokens)
         outputTokens = numberOrZero(event.usage?.output_tokens)
         callbacks.onUsage?.({ inputTokens, outputTokens, totalTokens: inputTokens + outputTokens })
+        if (options.usageStateSummary) {
+          await recordPylonAccountUsageObservation(options.usageStateSummary, {
+            provider: "codex",
+            account,
+            localSessionUsage: {
+              provider: "codex",
+              sessionRef: threadId === null ? null : stableRef("session.pylon.codex_composer", threadId),
+              inputTokens,
+              outputTokens,
+              totalTokens: inputTokens + outputTokens,
+            },
+          })
+        }
       }
       if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string") {
         textResult = event.item.text

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 
 import {
   CODEX_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
@@ -9,6 +12,8 @@ import {
   summarizeCodexThreadEvent,
 } from "../src/codex-composer"
 import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
+import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import { collectPylonAccountsUsage, parsePylonAccountsUsageArgs } from "../src/account-usage"
 
 async function* fakeCodexEvents() {
   yield { type: "thread.started", thread_id: "thread.test.codex" }
@@ -51,6 +56,13 @@ async function* fakeCodexEvents() {
       cached_input_tokens: 0,
       output_tokens: 5,
       reasoning_output_tokens: 2,
+    },
+    rate_limits: {
+      primary: {
+        used_percent: 9,
+        window_minutes: 10080,
+        reset_at: 1_780_000_000,
+      },
     },
   }
 }
@@ -244,6 +256,49 @@ describe("Codex composer SDK stream", () => {
     expect(result.threadId).toBe("thread.test.codex")
     expect(clientEnv).toMatchObject({ PATH: "/bin", CODEX_HOME: "/tmp/codex-home-a" })
     expect(Bun.env.CODEX_HOME).toBe(original)
+  })
+
+  test("persists streamed usage snapshots when a Pylon home is provided", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-codex-usage-"))
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const importer = async (specifier: string) => {
+        if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+        return {
+          Codex: class {
+            startThread() {
+              return {
+                runStreamed: async () => ({ events: fakeCodexEvents() }),
+              }
+            }
+          },
+        }
+      }
+
+      await runCodexComposerStream("fix", {
+        codexCliLoginPresent: false,
+        cwd: "/tmp/current-repo",
+        env: { CODEX_API_KEY: "test-key-shape", PYLON_HOME: home },
+        importer,
+        platform: "darwin",
+        usageStateSummary: summary,
+      })
+
+      const usage = await collectPylonAccountsUsage(
+        summary,
+        parsePylonAccountsUsageArgs(["--json"]),
+        {
+          env: { CODEX_API_KEY: "test-key-shape", PYLON_HOME: home },
+        },
+      )
+      const codex = usage.accounts.find((account) => account.provider === "codex")
+      expect(codex?.truth.provider.state).toBe("available")
+      expect(codex?.truth.provider.snapshots[0]?.primary?.label).toBe("weekly")
+      expect(codex?.truth.localSession.usage?.totalTokens).toBe(15)
+      expect(JSON.stringify(usage)).not.toContain("test-key-shape")
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
   })
 
   test("public command paths reject the local dangerous flag", () => {

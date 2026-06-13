@@ -1,5 +1,6 @@
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent"
+import type { PylonAccountUsageSummary } from "./account-usage"
 import { collectPylonDevDoctor, type PylonDevDoctorOptions, type PylonDevDoctorProjection } from "./dev-doctor"
 import { assertPublicProjectionSafe } from "./state"
 
@@ -79,6 +80,7 @@ export type PylonContextProjection = {
     requiredCapabilityRefs: string[]
     blockerRefs: string[]
   }
+  usage?: PylonAccountUsageSummary | null
   blockerRefs: string[]
 }
 
@@ -311,6 +313,7 @@ export function contextProjectionFromDevDoctor(dev: PylonDevDoctorProjection): P
       requiredCapabilityRefs,
       blockerRefs: primaryAdapter === "unknown" ? ["blocker.context.primary_adapter_unavailable"] : [],
     },
+    usage: dev.usage ?? null,
     blockerRefs: unique([
       ...dev.blockerRefs,
       primaryAdapter === "unknown" ? "blocker.context.primary_adapter_unavailable" : null,

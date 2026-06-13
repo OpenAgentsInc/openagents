@@ -126,6 +126,11 @@ payout target`) run from the palette and always end in an explicit
   allowlist and labels the feed as `Claude DANGER`; the default Claude
   composer mode stays local bounded (tool allowlist + `acceptEdits`). Both
   danger flags are rejected with typed blockers on every public command path.
+  Composer streams persist public-safe per-account usage truth under the
+  Pylon home: local session token/cost totals are recorded for Codex and
+  Claude, and provider rate-limit snapshots are captured when the underlying
+  stream exposes Codex/Claude `rate_limits` / `rateLimits` payloads. Account
+  state is keyed by hashed account refs, never by raw credential paths.
   Submitted
   prompts persist across restarts: cycle them with `ctrl+p` / `ctrl+n`, and an
   unsent draft is stashed on exit and restored on the next launch.
@@ -134,14 +139,24 @@ payout target`) run from the palette and always end in an explicit
   count, instruction/config digest refs, Codex SDK/CLI/auth readiness,
   Claude/Fable readiness, the active Codex and Claude execution modes
   (including the Claude permission posture and danger overlay refs), and
-  backend refs. It
+  backend refs. When local usage observations exist, it includes an optional
+  account usage summary with provider-truth/local-session state only. It
   never prints raw keys, auth file paths, instruction text, changed filenames,
   or local absolute paths.
 - `pylon context --json` returns the same public-safe repo, instruction,
   current-job, and AI-account/adaptor projection that drives the TUI's
-  `Repo & AI Context` pane. On wide dashboards it renders beside telemetry;
-  on narrow dashboards use `f6` or the command palette to open the full
-  context view, and `Context: refresh repo & AI` to re-probe local state.
+  `Repo & AI Context` pane, including the optional account usage summary when
+  one has been observed. On wide dashboards it renders beside telemetry; on
+  narrow dashboards use `f6` or the command palette to open the full context
+  view, and `Context: refresh repo & AI` to re-probe local state.
+- `pylon accounts list --json` reports configured credential homes by
+  provider, readiness state, and hashed home/account refs without raw paths.
+  `pylon accounts usage [--account <ref>|--all] [--refresh] --json` reports
+  three labeled truth tiers: provider truth (last observed rate-limit
+  snapshot and age/staleness), local session truth (last token/cost totals),
+  and platform truth (currently unavailable unless the future provider-pool
+  proxy is reachable). `--refresh` is explicit because it runs one minimal
+  bounded inference per selected account and may consume paid provider tokens.
 - `pylon dev check --json`, `pylon dev apply --json`, and
   `pylon dev reload --json` provide the local supervised check/apply/reload
   loop. `check` emits changed file refs, dirty-state counts, command refs, exit
@@ -200,6 +215,9 @@ pylon bootstrap --json
 pylon bootstrap --register-openagents --setup-mdk-wallet --pylon-ref <ref> --display-name <name> --resource-mode background_20 --capability-ref <ref> --json
 pylon status --json
 pylon context --json
+pylon accounts list --json
+pylon accounts usage --json
+pylon accounts usage --all --refresh --json
 ```
 
 `bootstrap` creates the local v0.3 home/cache/release layout and writes a

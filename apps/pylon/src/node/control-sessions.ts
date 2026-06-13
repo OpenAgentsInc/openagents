@@ -374,6 +374,7 @@ async function defaultControlSessionExecutor(
         networkAccessEnabled: false,
         sandboxMode,
         timeoutMs: input.timeoutMs,
+        usageStateSummary: input.summary,
       },
       {
         onEvent: emitComposerEvent,
@@ -413,6 +414,7 @@ async function defaultControlSessionExecutor(
         ...(config.model === undefined ? {} : { model: config.model }),
         permissionMode: "acceptEdits",
         timeoutMs: input.timeoutMs,
+        usageStateSummary: input.summary,
       },
       {
         onEvent: emitComposerEvent,
