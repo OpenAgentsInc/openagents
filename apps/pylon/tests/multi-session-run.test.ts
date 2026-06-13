@@ -10,6 +10,9 @@ import {
   type ProofChildInput,
 } from "../scripts/multi-session-run"
 import { assertPublicProjectionSafe } from "../src/state"
+import { hashPylonAccountRef } from "../src/account-registry"
+import { loadQuotaRecord, recordQuotaBlock } from "../src/account-quota-ledger"
+import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 
 async function withTempRoot<T>(fn: (root: string) => Promise<T>) {
   const root = await mkdtemp(join(tmpdir(), "pylon-multi-session-"))
@@ -241,5 +244,165 @@ describe("multi-session error classification", () => {
   test("workspace and account failures keep their classes", () => {
     expect(classifyError(new Error("worktree_path_missing")).errorClass).toBe("workspace_materialization")
     expect(classifyError(new Error("account home not found")).errorClass).toBe("account_selection")
+  })
+})
+
+const QUOTA_OUTPUT =
+  "Codex turn failed: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Jun 14th, 2026 9:58 PM."
+
+describe("multi-session quota-aware routing", () => {
+  test("routes around a quota-blocked account to the next pool member", async () => {
+    await withTempRoot(async (root) => {
+      const pylonHome = join(root, "pylon-home")
+      const proofsDir = join(root, "proofs")
+      const worktree = join(root, "worktree")
+      const homeA = join(root, "codex-a")
+      const homeB = join(root, "codex-b")
+      for (const d of [pylonHome, worktree, homeA, homeB]) await mkdir(d, { recursive: true })
+
+      const summary = await runMultiSessionPlan(
+        {
+          concurrency: 1,
+          proofsDir,
+          pylonHome,
+          runId: "run.multi-session.quota-route",
+          plan: parsePlanJson([
+            {
+              id: "pool-session",
+              adapter: "codex",
+              worktreePath: worktree,
+              accountPool: [{ codexHome: homeA }, { codexHome: homeB }],
+              objective: "route around quota",
+              verify: ["bun", "--version"],
+            },
+          ]),
+        },
+        {
+          proofRunner: async (child) => {
+            if (child.accountHome === homeA) {
+              return { exitCode: 1, stdout: "", stderr: QUOTA_OUTPUT }
+            }
+            await writeFile(
+              child.proofOutput,
+              `${JSON.stringify({ schema: "test.proof", executor: { totalTokens: 50 } })}\n`,
+            )
+            return { exitCode: 0, stdout: "ok", stderr: "" }
+          },
+        },
+      )
+
+      expect(summary.completedCount).toBe(1)
+      expect(summary.failedCount).toBe(0)
+      expect(summary.deviations).toEqual([])
+      const outcome = summary.outcomes[0]!
+      expect(outcome.state).toBe("completed")
+      expect(outcome.routingReason).toBe("succeeded")
+      expect(outcome.attempts.map((attempt) => attempt.reason)).toEqual(["quota_block", "succeeded"])
+      expect(outcome.attempts[0]?.retryAtIso).not.toBeNull()
+
+      const recordA = await loadQuotaRecord(
+        createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome }),
+        hashPylonAccountRef("codex", homeA),
+      )
+      expect(recordA).not.toBeNull()
+      expect(JSON.stringify(summary)).not.toContain(root)
+      expect(JSON.stringify(summary)).not.toContain(QUOTA_OUTPUT)
+      assertPublicProjectionSafe(summary)
+    })
+  })
+
+  test("fails with all_accounts_exhausted when the whole pool is quota-blocked", async () => {
+    await withTempRoot(async (root) => {
+      const pylonHome = join(root, "pylon-home")
+      const proofsDir = join(root, "proofs")
+      const worktree = join(root, "worktree")
+      const homeA = join(root, "codex-a")
+      const homeB = join(root, "codex-b")
+      for (const d of [pylonHome, worktree, homeA, homeB]) await mkdir(d, { recursive: true })
+
+      const summary = await runMultiSessionPlan(
+        {
+          concurrency: 1,
+          proofsDir,
+          pylonHome,
+          runId: "run.multi-session.quota-exhausted",
+          plan: parsePlanJson([
+            {
+              id: "pool-session",
+              adapter: "codex",
+              worktreePath: worktree,
+              accountPool: [{ codexHome: homeA }, { codexHome: homeB }],
+              objective: "exhaust the pool",
+              verify: ["bun", "--version"],
+            },
+          ]),
+        },
+        { proofRunner: async () => ({ exitCode: 1, stdout: "", stderr: QUOTA_OUTPUT }) },
+      )
+
+      expect(summary.completedCount).toBe(0)
+      expect(summary.failedCount).toBe(1)
+      expect(summary.deviations).toContain("deviation.pylon.multi_session.some_sessions_failed")
+      expect(summary.deviations).toContain("deviation.pylon.multi_session.all_accounts_exhausted")
+      const outcome = summary.outcomes[0]!
+      expect(outcome.state).toBe("failed")
+      expect(outcome.routingReason).toBe("quota_block")
+      expect(outcome.retryAtIso).not.toBeNull()
+      expect(outcome.attempts.map((attempt) => attempt.reason)).toEqual(["quota_block", "quota_block"])
+      expect(JSON.stringify(summary)).not.toContain(QUOTA_OUTPUT)
+      assertPublicProjectionSafe(summary)
+    })
+  })
+
+  test("skips an account the ledger marks unavailable and uses the next", async () => {
+    await withTempRoot(async (root) => {
+      const pylonHome = join(root, "pylon-home")
+      const proofsDir = join(root, "proofs")
+      const worktree = join(root, "worktree")
+      const homeA = join(root, "codex-a")
+      const homeB = join(root, "codex-b")
+      for (const d of [pylonHome, worktree, homeA, homeB]) await mkdir(d, { recursive: true })
+
+      const ledgerSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome })
+      const futureIso = new Date(Date.now() + 3600_000).toISOString()
+      await recordQuotaBlock(ledgerSummary, {
+        accountRefHash: hashPylonAccountRef("codex", homeA),
+        provider: "codex",
+        retryAtIso: futureIso,
+        sourceDigestRef: "digest.pylon.account_quota.testseed",
+        now: new Date(),
+      })
+
+      const summary = await runMultiSessionPlan(
+        {
+          concurrency: 1,
+          proofsDir,
+          pylonHome,
+          runId: "run.multi-session.quota-skip",
+          plan: parsePlanJson([
+            {
+              id: "pool-session",
+              adapter: "codex",
+              worktreePath: worktree,
+              accountPool: [{ codexHome: homeA }, { codexHome: homeB }],
+              objective: "skip unavailable",
+              verify: ["bun", "--version"],
+            },
+          ]),
+        },
+        {
+          proofRunner: async (child) => {
+            if (child.accountHome === homeA) throw new Error("account A should have been skipped")
+            await writeFile(child.proofOutput, `${JSON.stringify({ schema: "test.proof" })}\n`)
+            return { exitCode: 0, stdout: "ok", stderr: "" }
+          },
+        },
+      )
+
+      const outcome = summary.outcomes[0]!
+      expect(outcome.state).toBe("completed")
+      expect(outcome.attempts.map((attempt) => attempt.reason)).toEqual(["skipped_unavailable", "succeeded"])
+      expect(outcome.attempts[0]?.retryAtIso).toBe(futureIso)
+    })
   })
 })

@@ -33,6 +33,12 @@ import {
   materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
 } from "../src/workspace-materializer"
+import { classifyQuotaSignal } from "../src/account-quota"
+import {
+  isAccountAvailable,
+  loadQuotaRecord,
+  recordQuotaBlock,
+} from "../src/account-quota-ledger"
 
 export const MULTI_SESSION_PLAN_SCHEMA = "openagents.pylon.multi_session_plan.v0.1"
 export const MULTI_SESSION_HEARTBEAT_SCHEMA = "openagents.pylon.multi_session_heartbeat.v0.1"
@@ -41,6 +47,20 @@ export const MULTI_SESSION_FAILURE_SCHEMA = "openagents.pylon.multi_session_fail
 
 type MultiSessionRepositoryRef = GitCheckoutWorkspace["repository"]
 
+export const MULTI_SESSION_ALL_ACCOUNTS_EXHAUSTED_DEVIATION =
+  "deviation.pylon.multi_session.all_accounts_exhausted"
+
+/**
+ * One account selector in a session's ordered failover pool. Each member uses
+ * the same selector vocabulary as a single-account session entry.
+ */
+export type MultiSessionAccountSelector = {
+  accountRef?: string
+  accountHome?: string
+  codexHome?: string
+  claudeConfigDir?: string
+}
+
 export type MultiSessionPlanEntry = {
   id?: string
   adapter: PylonComposerAdapter
@@ -48,11 +68,28 @@ export type MultiSessionPlanEntry = {
   accountHome?: string
   codexHome?: string
   claudeConfigDir?: string
+  /**
+   * Ordered failover pool (#4884). When present and non-empty, the runner tries
+   * each available account in order; on a detected quota block it records the
+   * block and advances to the next available account. When absent, the entry's
+   * own single selector (accountRef/accountHome/codexHome/claudeConfigDir) is
+   * used, preserving the prior single-account behavior.
+   */
+  accountPool?: MultiSessionAccountSelector[]
   repoRef?: MultiSessionRepositoryRef
   worktreePath?: string
   objective: string
   verify: string[]
   timeoutSeconds?: number
+}
+
+export type PylonRoutingReason = "succeeded" | "quota_block" | "skipped_unavailable" | "failed"
+
+/** One account attempt within a session, recorded refs-only. */
+export type PylonRoutingAttempt = {
+  accountHash: string | null
+  reason: PylonRoutingReason
+  retryAtIso: string | null
 }
 
 export type MultiSessionArgs = {
@@ -97,6 +134,9 @@ export type MultiSessionOutcome = {
   startedAt: string
   completedAt: string
   durationMs: number
+  routingReason: PylonRoutingReason
+  attempts: PylonRoutingAttempt[]
+  retryAtIso: string | null
 }
 
 export type MultiSessionSummary = {
@@ -127,6 +167,12 @@ function stableRef(prefix: string, value: string) {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+function earliestIso(a: string | null, b: string | null): string | null {
+  if (a === null) return b
+  if (b === null) return a
+  return Date.parse(a) <= Date.parse(b) ? a : b
 }
 
 function boundedInt(value: string, min: number, max: number, usage: string): number {
@@ -201,6 +247,25 @@ function repositoryRefFrom(value: unknown): MultiSessionRepositoryRef | null {
   }
 }
 
+function accountPoolFrom(value: unknown, index: number): MultiSessionAccountSelector[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`multi-session plan entry ${index} accountPool must be a non-empty array`)
+  }
+  return value.map((member, memberIndex) => {
+    if (member === null || typeof member !== "object") {
+      throw new Error(`multi-session plan entry ${index} accountPool member ${memberIndex} is not an object`)
+    }
+    const record = member as Record<string, unknown>
+    const selector: MultiSessionAccountSelector = {
+      ...(typeof record.accountRef === "string" ? { accountRef: record.accountRef } : {}),
+      ...(typeof record.accountHome === "string" ? { accountHome: record.accountHome } : {}),
+      ...(typeof record.codexHome === "string" ? { codexHome: record.codexHome } : {}),
+      ...(typeof record.claudeConfigDir === "string" ? { claudeConfigDir: record.claudeConfigDir } : {}),
+    }
+    return selector
+  })
+}
+
 export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
   const entries = Array.isArray(raw)
     ? raw
@@ -233,6 +298,8 @@ export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
     if (repoRef !== undefined && worktreePath !== undefined) {
       throw new Error(`multi-session plan entry ${index} must use only one workspace selector`)
     }
+    const accountPool =
+      record.accountPool === undefined ? undefined : accountPoolFrom(record.accountPool, index)
     return {
       adapter,
       ...(typeof record.id === "string" ? { id: record.id } : {}),
@@ -240,6 +307,7 @@ export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
       ...(typeof record.accountHome === "string" ? { accountHome: record.accountHome } : {}),
       ...(typeof record.codexHome === "string" ? { codexHome: record.codexHome } : {}),
       ...(typeof record.claudeConfigDir === "string" ? { claudeConfigDir: record.claudeConfigDir } : {}),
+      ...(accountPool === undefined ? {} : { accountPool }),
       ...(repoRef === undefined ? {} : { repoRef }),
       ...(worktreePath === undefined ? {} : { worktreePath }),
       objective: record.objective,
@@ -397,68 +465,172 @@ async function runOneSession(input: {
   proofRunner: (child: ProofChildInput) => Promise<ProofChildResult>
 }): Promise<MultiSessionOutcome> {
   const startedAt = nowIso()
+  const runRef = stableRef("run.pylon.multi_session", input.args.runId)
   const sessionRef = stableRef(
     "session.pylon.multi_session",
     `${input.args.runId}:${input.index}:${input.entry.adapter}:${input.entry.objective}`,
   )
+  const adapter = input.entry.adapter
+  const provider = providerForAdapter(adapter)
+  const artifactFile = `${safeId(input.entry.id, `session-${input.index}`)}-${adapter}-proof.json`
+  const failureFile = `${safeId(input.entry.id, `session-${input.index}`)}-failure.json`
+  const attempts: PylonRoutingAttempt[] = []
+
+  const emitAttempt = (reason: PylonRoutingReason, accountHash: string | null, retryAtIso: string | null) =>
+    appendHeartbeat(input.heartbeatPath, {
+      schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
+      runRef,
+      sessionRef,
+      observedAt: nowIso(),
+      phase: "attempt",
+      sessionIndex: input.index,
+      routingReason: reason,
+      accountHash,
+      retryAtIso,
+    })
+
   await appendHeartbeat(input.heartbeatPath, {
     schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
-    runRef: stableRef("run.pylon.multi_session", input.args.runId),
+    runRef,
     sessionRef,
     observedAt: startedAt,
     phase: "started",
     sessionIndex: input.index,
   })
+
+  // The ordered pool is the explicit accountPool when present; otherwise a
+  // single member derived from the entry's own selector (prior behavior).
+  const pool: MultiSessionAccountSelector[] =
+    input.entry.accountPool && input.entry.accountPool.length > 0
+      ? input.entry.accountPool
+      : [
+          {
+            ...(input.entry.accountRef === undefined ? {} : { accountRef: input.entry.accountRef }),
+            ...(input.entry.accountHome === undefined ? {} : { accountHome: input.entry.accountHome }),
+            ...(input.entry.codexHome === undefined ? {} : { codexHome: input.entry.codexHome }),
+            ...(input.entry.claudeConfigDir === undefined
+              ? {}
+              : { claudeConfigDir: input.entry.claudeConfigDir }),
+          },
+        ]
+
   try {
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
       ...Bun.env,
       PYLON_HOME: input.args.pylonHome,
     })
-    const provider = providerForAdapter(input.entry.adapter)
-    const accountHome =
-      input.entry.accountHome ??
-      (input.entry.adapter === "codex" ? input.entry.codexHome : input.entry.claudeConfigDir) ??
-      undefined
-    const account = await resolvePylonAccountSelection(summary, {
-      provider,
-      ...(input.entry.accountRef === undefined ? {} : { accountRef: input.entry.accountRef }),
-      ...(accountHome === undefined ? {} : { accountHome }),
-    })
     const workspace = await workspaceForSession(input)
-    const artifactFile = `${safeId(input.entry.id, `session-${input.index}`)}-${input.entry.adapter}-proof.json`
     const proofOutput = join(input.args.proofsDir, artifactFile)
-    const child = await input.proofRunner({
-      adapter: input.entry.adapter,
-      account,
-      accountHome: account?.accountRef === null ? account.home : null,
-      accountRef: account?.accountRef ?? null,
-      cwd: workspace.workingDirectory,
-      env: { ...Bun.env, PYLON_HOME: input.args.pylonHome },
-      issueRefs: ["OpenAgentsInc/openagents#4869"],
-      objective: input.entry.objective,
-      proofOutput,
-      timeoutSeconds: input.entry.timeoutSeconds ?? 600,
-      verify: input.entry.verify,
-    })
-    const completedAt = nowIso()
-    if (child.exitCode !== 0) {
-      const failure = classifyError(`${child.stderr}\n${child.stdout}`)
-      const failureFile = `${safeId(input.entry.id, `session-${input.index}`)}-failure.json`
+
+    let earliestRetryAtIso: string | null = null
+    let lastAccount: ResolvedPylonAccountSelection | null = null
+    let lastFailure: { errorClass: string; errorDigestRef: string } | null = null
+
+    for (const member of pool) {
+      const accountHome =
+        member.accountHome ??
+        (adapter === "codex" ? member.codexHome : member.claudeConfigDir) ??
+        undefined
+      const account = await resolvePylonAccountSelection(summary, {
+        provider,
+        ...(member.accountRef === undefined ? {} : { accountRef: member.accountRef }),
+        ...(accountHome === undefined ? {} : { accountHome }),
+      })
+      lastAccount = account
+      const accountHash = account?.accountRefHash ?? null
+
+      // Skip an account the ledger still marks unavailable (cooldown / known limit).
+      if (accountHash !== null) {
+        const record = await loadQuotaRecord(summary, accountHash)
+        if (!isAccountAvailable(record, new Date())) {
+          const retryAtIso = record?.retryAtIso ?? null
+          earliestRetryAtIso = earliestIso(earliestRetryAtIso, retryAtIso)
+          attempts.push({ accountHash, reason: "skipped_unavailable", retryAtIso })
+          await emitAttempt("skipped_unavailable", accountHash, retryAtIso)
+          continue
+        }
+      }
+
+      const child = await input.proofRunner({
+        adapter,
+        account,
+        accountHome: account?.accountRef === null ? account.home : null,
+        accountRef: account?.accountRef ?? null,
+        cwd: workspace.workingDirectory,
+        env: { ...Bun.env, PYLON_HOME: input.args.pylonHome },
+        issueRefs: ["OpenAgentsInc/openagents#4884"],
+        objective: input.entry.objective,
+        proofOutput,
+        timeoutSeconds: input.entry.timeoutSeconds ?? 600,
+        verify: input.entry.verify,
+      })
+
+      if (child.exitCode === 0) {
+        attempts.push({ accountHash, reason: "succeeded", retryAtIso: null })
+        await emitAttempt("succeeded", accountHash, null)
+        const completedAt = nowIso()
+        return {
+          sessionIndex: input.index,
+          sessionRef,
+          adapter,
+          account: publicPylonAccountSelection(account),
+          workspaceRef: workspace.workspaceRef,
+          state: "completed",
+          artifactFile,
+          resultRef: stableRef("proof.pylon.multi_session", `${sessionRef}:${artifactFile}`),
+          errorClass: null,
+          errorDigestRef: null,
+          startedAt,
+          completedAt,
+          durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
+          routingReason: "succeeded",
+          attempts,
+          retryAtIso: null,
+        }
+      }
+
+      // A quota block records the reset and routes on to the next account; any
+      // other failure is terminal so we do not burn the rest of the pool.
+      const combined = `${child.stderr}\n${child.stdout}`
+      const quota = classifyQuotaSignal(combined, adapter)
+      if (quota.exhausted) {
+        if (accountHash !== null) {
+          await recordQuotaBlock(summary, {
+            accountRefHash: accountHash,
+            provider,
+            retryAtIso: quota.retryAtIso,
+            sourceDigestRef: quota.sourceDigestRef,
+            now: new Date(),
+          })
+        }
+        earliestRetryAtIso = earliestIso(earliestRetryAtIso, quota.retryAtIso)
+        attempts.push({ accountHash, reason: "quota_block", retryAtIso: quota.retryAtIso })
+        await emitAttempt("quota_block", accountHash, quota.retryAtIso)
+        lastFailure = { errorClass: "account_quota_exhausted", errorDigestRef: quota.sourceDigestRef }
+        continue
+      }
+
+      const failure = classifyError(combined)
+      attempts.push({ accountHash, reason: "failed", retryAtIso: null })
+      await emitAttempt("failed", accountHash, null)
+      const completedAt = nowIso()
       await writeFailure(join(input.args.proofsDir, failureFile), {
         schema: MULTI_SESSION_FAILURE_SCHEMA,
         sessionRef,
         sessionIndex: input.index,
-        adapter: input.entry.adapter,
+        adapter,
         account: publicPylonAccountSelection(account),
         workspaceRef: workspace.workspaceRef,
         generatedAt: completedAt,
         errorClass: failure.errorClass,
         errorDigestRef: failure.errorDigestRef,
+        routingReason: "failed",
+        attempts,
       })
       return {
         sessionIndex: input.index,
         sessionRef,
-        adapter: input.entry.adapter,
+        adapter,
         account: publicPylonAccountSelection(account),
         workspaceRef: workspace.workspaceRef,
         state: "failed",
@@ -469,40 +641,65 @@ async function runOneSession(input: {
         startedAt,
         completedAt,
         durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
+        routingReason: "failed",
+        attempts,
+        retryAtIso: null,
       }
     }
-    return {
-      sessionIndex: input.index,
-      sessionRef,
-      adapter: input.entry.adapter,
-      account: publicPylonAccountSelection(account),
-      workspaceRef: workspace.workspaceRef,
-      state: "completed",
-      artifactFile,
-      resultRef: stableRef("proof.pylon.multi_session", `${sessionRef}:${artifactFile}`),
-      errorClass: null,
-      errorDigestRef: null,
-      startedAt,
-      completedAt,
-      durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
-    }
-  } catch (error) {
+
+    // Pool exhausted with no success: every member was quota-blocked or skipped.
     const completedAt = nowIso()
-    const failure = classifyError(error)
-    const failureFile = `${safeId(input.entry.id, `session-${input.index}`)}-failure.json`
+    const failure = lastFailure ?? classifyError("all accounts exhausted")
     await writeFailure(join(input.args.proofsDir, failureFile), {
       schema: MULTI_SESSION_FAILURE_SCHEMA,
       sessionRef,
       sessionIndex: input.index,
-      adapter: input.entry.adapter,
+      adapter,
+      account: publicPylonAccountSelection(lastAccount),
+      workspaceRef: workspace.workspaceRef,
       generatedAt: completedAt,
       errorClass: failure.errorClass,
       errorDigestRef: failure.errorDigestRef,
+      routingReason: "quota_block",
+      attempts,
+      retryAtIso: earliestRetryAtIso,
     })
     return {
       sessionIndex: input.index,
       sessionRef,
-      adapter: input.entry.adapter,
+      adapter,
+      account: publicPylonAccountSelection(lastAccount),
+      workspaceRef: workspace.workspaceRef,
+      state: "failed",
+      artifactFile: failureFile,
+      resultRef: null,
+      errorClass: failure.errorClass,
+      errorDigestRef: failure.errorDigestRef,
+      startedAt,
+      completedAt,
+      durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
+      routingReason: "quota_block",
+      attempts,
+      retryAtIso: earliestRetryAtIso,
+    }
+  } catch (error) {
+    const completedAt = nowIso()
+    const failure = classifyError(error)
+    await writeFailure(join(input.args.proofsDir, failureFile), {
+      schema: MULTI_SESSION_FAILURE_SCHEMA,
+      sessionRef,
+      sessionIndex: input.index,
+      adapter,
+      generatedAt: completedAt,
+      errorClass: failure.errorClass,
+      errorDigestRef: failure.errorDigestRef,
+      routingReason: "failed",
+      attempts,
+    })
+    return {
+      sessionIndex: input.index,
+      sessionRef,
+      adapter,
       account: null,
       workspaceRef: stableRef("workspace.pylon.multi_session.failed", sessionRef),
       state: "failed",
@@ -513,11 +710,14 @@ async function runOneSession(input: {
       startedAt,
       completedAt,
       durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
+      routingReason: "failed",
+      attempts,
+      retryAtIso: null,
     }
   } finally {
     await appendHeartbeat(input.heartbeatPath, {
       schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
-      runRef: stableRef("run.pylon.multi_session", input.args.runId),
+      runRef,
       sessionRef,
       observedAt: nowIso(),
       phase: "completed",
@@ -609,7 +809,12 @@ export async function runMultiSessionPlan(
       .map(file => stableRef("artifact.pylon.multi_session.file", file)),
     heartbeatRef: stableRef("artifact.pylon.multi_session.heartbeats", `${runRef}:heartbeats.jsonl`),
     outcomes,
-    deviations: failedCount === 0 ? [] : ["deviation.pylon.multi_session.some_sessions_failed"],
+    deviations: [
+      ...(failedCount === 0 ? [] : ["deviation.pylon.multi_session.some_sessions_failed"]),
+      ...(outcomes.some(outcome => outcome.state === "failed" && outcome.routingReason === "quota_block")
+        ? [MULTI_SESSION_ALL_ACCOUNTS_EXHAUSTED_DEVIATION]
+        : []),
+    ],
   }
   assertPublicProjectionSafe(summary)
   const serialized = JSON.stringify(summary, null, 2)
