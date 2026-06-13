@@ -133,12 +133,28 @@
      session events when requests are made (the M9 rotation detects
      exactly this); a lightweight probe can report
      last-observed-rate-limit per account. Claude: local credential
-     presence + last-session metadata only. (iii) **provider truth** —
-     ChatGPT subscription quota has NO public API, and Anthropic plan
-     usage requires an org admin key; the command must say
-     `provider_quota: unavailable (no public API)` rather than invent
-     numbers. This boundary is real and should ship in the command's
-     output schema, not be discovered by users.
+     presence + last-session metadata only. (iii) **provider truth** — CORRECTED
+     after reading the Codex source (owner was right): both CLIs get
+     usage from the provider, piggybacked on inference responses. Codex:
+     every ChatGPT-backend response carries rate-limit headers —
+     `x-codex-primary-used-percent` / `-window-minutes` / `-reset-at`
+     (the 5-hour window), `x-codex-secondary-primary-used-percent` etc.
+     (weekly), `x-codex-credits-has-credits`/`-unlimited`/`-balance`,
+     `x-codex-active-limit`, `x-codex-rate-limit-reached-type` — parsed
+     in `projects/repos/codex/codex-rs/codex-api/src/rate_limits.rs`
+     into `RateLimitSnapshot { primary/secondary: RateLimitWindow {
+     used_percent, window_minutes, resets_at }, credits }` (protocol.rs
+     ~:2021) and held in session state (`state/session.rs
+     set_rate_limits`). Claude Code surfaces usage the analogous way
+     (rate-limit/usage data on OAuth-session API responses). So the
+     design is: CAPTURE the snapshot from every session our executors
+     run (the Codex SDK stream and exec output carry it), STORE it
+     per-account with an observedAt, and when stale allow an explicit
+     `--refresh` that runs one minimal inference to pull fresh headers.
+     There is still no standalone quota endpoint we call without an
+     inference — the truth tier is "last-observed from provider, aged
+     N minutes," labeled as such in the schema — but the numbers are
+     real provider numbers, not platform inference.
 5. **Per-account usage attribution in the ledger** — token-usage rows
    keyed to provider-account refs (the filter exists; the attribution
    discipline and per-account budget surfaces do not).
@@ -160,8 +176,11 @@ worktrees, driven from a chat orchestrator:
 
 Goal (b) — usage command:
 - One PR: `pylon accounts list|usage --json` with the three-tier truth
-  model above and the no-public-API boundary stated in-schema. The
-  worker pool route is the richest existing source; surface it first.
+  model above: provider truth captured from session rate-limit
+  headers/events (the Codex `RateLimitSnapshot` mechanism, stored
+  per-account with observedAt + an optional `--refresh` minimal-
+  inference ping), local session truth, and the worker M8 pool route
+  as platform truth.
 
 ## 5. Recommended issue set (not yet filed)
 
