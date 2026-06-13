@@ -28,6 +28,9 @@ export type ControlSessionRow = {
   adapter: string
   state: string
   lastProgressRef: string
+  artifactRef: string | null
+  resultRef: string | null
+  errorClass: string | null
 }
 
 async function command(conn: ConnectInfo, body: unknown): Promise<any> {
@@ -60,6 +63,9 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
     adapter: String(s.adapter ?? "?"),
     state: String(s.state ?? "?"),
     lastProgressRef: String(s.lastProgressRef ?? s.resultRef ?? "none"),
+    artifactRef: typeof s.artifactRef === "string" ? s.artifactRef : null,
+    resultRef: typeof s.resultRef === "string" ? s.resultRef : null,
+    errorClass: typeof s.errorClass === "string" ? s.errorClass : null,
   }))
 }
 

@@ -165,6 +165,21 @@ export default function NodesScreen() {
             <Text style={styles.detailRef}>{selected}</Text>
             {(() => {
               const s = sessions.find((x) => x.sessionRef === selected)
+              if (!s) return null
+              const verify =
+                s.state === "completed"
+                  ? `✓ verify passed${s.artifactRef ? ` · artifact ${s.artifactRef.slice(-12)}` : ""}`
+                  : s.state === "failed"
+                    ? `✗ verify failed${s.errorClass ? ` · ${s.errorClass}` : ""}`
+                    : s.state === "cancelled"
+                      ? "cancelled"
+                      : `${s.state}…`
+              const tone =
+                s.state === "completed" ? C.success : s.state === "failed" ? C.danger : C.textSecondary
+              return <Text style={[styles.verifyLine, { color: tone }]}>{verify}</Text>
+            })()}
+            {(() => {
+              const s = sessions.find((x) => x.sessionRef === selected)
               const cancellable = s && (s.state === "running" || s.state === "queued" || s.state === "started")
               if (!cancellable || conn === null) return null
               return (
@@ -335,6 +350,7 @@ const styles = StyleSheet.create({
   back: { marginTop: 20 },
   backText: { color: C.info, fontSize: 15 },
   detailRef: { color: C.text, fontFamily: "Courier", fontSize: 13, marginTop: 10 },
+  verifyLine: { fontFamily: "Courier", fontSize: 13, marginTop: 8 },
   cancelBtn: { alignItems: "center", borderColor: C.danger, borderRadius: 6, borderWidth: 1, marginTop: 12, padding: 10 },
   cancelText: { color: C.danger, fontSize: 14, fontWeight: "600" },
   eventRow: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 6, borderWidth: 1, flexDirection: "row", marginTop: 8, padding: 12 },
