@@ -118,3 +118,10 @@ valid Expo-Updates manifest from a real `expo export`, and (b) `eas build
   8.7 MB `.ipa` built on-machine (fastlane+cocoapods), no Expo cloud. Next:
   merge server/CLI, wire end-to-end manifest test, then a build with
   updates.url→ours.
+- 2026-06-13 iter 2: merged OTA HTTP server + publishExport (`331e70563`, 18
+  tests); registered `apps/oa-updates`; **E2E PASS** (`3ae455ee4`) —
+  `scripts/e2e-local.ts` serves a real Expo-Updates manifest + asset over HTTP on
+  our own infra (fingerprint gate works). OTA protocol proven, no Expo cloud.
+  Remaining for on-device: sign manifests, deploy server publicly, switch
+  updates.url (#4949), rebuild (local build works). Launching next OTA fanout:
+  real-export CLI + signed manifest response.
