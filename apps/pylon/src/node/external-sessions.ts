@@ -8,6 +8,7 @@
 
 import { openSync, readSync, closeSync, fstatSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { expandClaudeMessage } from "./claude-blocks"
 
 export type ExternalAgentKind = "claude" | "codex"
 
@@ -146,18 +147,20 @@ export function buildClaudeSession(input: {
   const events: ExternalEvent[] = []
   let title = ""
   for (const line of input.lines) {
-    let parsed: ReturnType<typeof normalizeClaudeLine>
+    let raw: unknown
     try {
-      parsed = normalizeClaudeLine(JSON.parse(line))
+      raw = JSON.parse(line)
     } catch {
-      parsed = null
-    }
-    if (parsed === null) continue
-    if ("title" in parsed) {
-      title = parsed.title
       continue
     }
-    events.push(parsed)
+    // Titles via the line normalizer; message bodies via expandClaudeMessage so
+    // EVERY content block becomes a discrete event (#4951 "all data").
+    const titled = normalizeClaudeLine(raw)
+    if (titled !== null && "title" in titled) {
+      title = titled.title
+      continue
+    }
+    events.push(...expandClaudeMessage(raw))
   }
   const tail = events.slice(-(input.maxEvents ?? 100))
   // Recent write ⇒ running; otherwise idle.
