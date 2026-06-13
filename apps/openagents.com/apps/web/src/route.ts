@@ -41,6 +41,7 @@ export const SiteCheckoutDemoRoute = r('SiteCheckoutDemo')
 export const SiteCheckoutDemoReturnRoute = r('SiteCheckoutDemoReturn', {
   returnAction: S.String,
 })
+export const ClientsPreviewRoute = r('ClientsPreview')
 export const BlogRoute = r('Blog')
 export const BlogPostRoute = r('BlogPost', { slug: S.String })
 export const PublicAgentRoute = r('PublicAgent', { agentRef: S.String })
@@ -96,6 +97,7 @@ export type ForumReceiptRoute = typeof ForumReceiptRoute.Type
 export type SiteCheckoutDemoRoute = typeof SiteCheckoutDemoRoute.Type
 export type SiteCheckoutDemoReturnRoute =
   typeof SiteCheckoutDemoReturnRoute.Type
+export type ClientsPreviewRoute = typeof ClientsPreviewRoute.Type
 export type BlogRoute = typeof BlogRoute.Type
 export type BlogPostRoute = typeof BlogPostRoute.Type
 export type PublicAgentRoute = typeof PublicAgentRoute.Type
@@ -133,6 +135,7 @@ export const LoggedOutRoute = S.Union([
   ForumReceiptRoute,
   SiteCheckoutDemoRoute,
   SiteCheckoutDemoReturnRoute,
+  ClientsPreviewRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -164,6 +167,7 @@ export const LoggedInRoute = S.Union([
   ForumReceiptRoute,
   SiteCheckoutDemoRoute,
   SiteCheckoutDemoReturnRoute,
+  ClientsPreviewRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -205,6 +209,7 @@ export const AppRoute = S.Union([
   ForumReceiptRoute,
   SiteCheckoutDemoRoute,
   SiteCheckoutDemoReturnRoute,
+  ClientsPreviewRoute,
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
@@ -347,6 +352,10 @@ export const siteCheckoutDemoReturnRouter = pipe(
   slash(string('returnAction')),
   Route.mapTo(SiteCheckoutDemoReturnRoute),
 )
+export const clientsPreviewRouter = pipe(
+  literal('clients-preview'),
+  Route.mapTo(ClientsPreviewRoute),
+)
 export const blogRouter = pipe(literal('blog'), Route.mapTo(BlogRoute))
 export const blogPostRouter = pipe(
   literal('blog'),
@@ -428,6 +437,7 @@ const routeParser = Route.oneOf(
   docsPageRouter,
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,
+  clientsPreviewRouter,
   forumReceiptRouter,
   forumTopicRouter,
   forumForumRouter,

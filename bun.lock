@@ -69,6 +69,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@effect/platform-browser": "4.0.0-beta.70",
+        "@openagentsinc/autopilot-control-protocol": "workspace:*",
+        "@openagentsinc/autopilot-ui": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
@@ -278,6 +280,19 @@
       "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/autopilot-ui": {
+      "name": "@openagentsinc/autopilot-ui",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/autopilot-control-protocol": "workspace:*",
+        "effect": "catalog:",
+        "foldkit": "^0.102.1",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
@@ -932,6 +947,8 @@
     "@openagentsinc/autopilot-control-protocol": ["@openagentsinc/autopilot-control-protocol@workspace:packages/autopilot-control-protocol"],
 
     "@openagentsinc/autopilot-desktop": ["@openagentsinc/autopilot-desktop@workspace:apps/autopilot-desktop"],
+
+    "@openagentsinc/autopilot-ui": ["@openagentsinc/autopilot-ui@workspace:packages/autopilot-ui"],
 
     "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
 
