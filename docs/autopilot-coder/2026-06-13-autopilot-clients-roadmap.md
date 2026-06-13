@@ -37,23 +37,25 @@ of building against them.
 | **M4** | Cloud integration | Clients deploy/observe OpenAgents Cloud sessions (BYO-key / credits, quota/failover) |
 | **M5** | Cross-client polish | Perfect interop: dedup across clients, notifications, theming parity, distribution, conformance suite |
 
+> **Issue tracker:** M0–M2 are filed as GitHub issues **#4902–#4916** (CL-0…CL-14). M3–M5 (CL-15…CL-33) are filed after M2 lands.
+
 ---
 
 ## M0 — Shared spine (foundation, do first)
 
 Everything else imports this. Build and test it once.
 
-- **CL-0** Extract `packages/autopilot-control-protocol`: Effect Schema for the
+- **CL-0** (#4902) Extract `packages/autopilot-control-protocol`: Effect Schema for the
   control surface (`openagents.pylon.control.v0.3`: `session.spawn/list/events/
   cancel`, node snapshot, event frames) plus the planned bridge verbs/events
   (`bridge.pair/revoke/clients.list`, `session.subscribe/snapshot/history`,
   `turn.steer/interrupt`, `decision.resolve`, `artifact.read`, and the event
   names). Include the typed client, the cursor/sequence/dedup logic, and the
   decision exactly-once state. Repo: openagents. **Foundational.**
-- **CL-1** Shared node-fixture set (health, `/command` results,
+- **CL-1** (#4903) Shared node-fixture set (health, `/command` results,
   `/sessions/:ref/events` frames, decision request/resolve/cancel) used by
   vitest across web/desktop/mobile. Repo: openagents. *Parallel after CL-0 shape.*
-- **CL-2** `packages/autopilot-ui`: shared Foldkit components (session rows,
+- **CL-2** (#4904) `packages/autopilot-ui`: shared Foldkit components (session rows,
   decision cards, event timeline, status/staleness/lag chips) for web + desktop.
   Repo: openagents. *Parallel after CL-0.*
 
@@ -78,22 +80,22 @@ How the local handshake works (no bridge required for the demo):
 
 Rungs:
 
-- **CL-3** Desktop scaffold: `apps/autopilot-desktop` Electrobun app
+- **CL-3** (#4905) Desktop scaffold: `apps/autopilot-desktop` Electrobun app
   (`electrobun.config.ts`, Bun main wiring the Pylon control client over
   loopback, Foldkit webview via Vite → `views://`), added to workspace globs.
   Repo: openagents. *Parallel.*
-- **CL-4** Mobile scaffold: `clients/mobile` vanilla Expo app (SDK 55 / RN 0.81 /
+- **CL-4** (#4906) Mobile scaffold: `clients/mobile` vanilla Expo app (SDK 55 / RN 0.81 /
   React 19 / React Navigation v7; MMKV, edge-to-edge, EAS, Maestro patterns
   borrowed from Ignite) consuming `packages/autopilot-control-protocol`. Repo:
   openagents. *Parallel.*
-- **CL-5** Desktop P0: connect to local node, render session list + live
+- **CL-5** (#4907) Desktop P0: connect to local node, render session list + live
   session-detail timeline from the shared protocol. Repo: openagents. *After
   CL-0, CL-3.*
-- **CL-6** Mobile P0 (dev transport): connect from the simulator to the host
+- **CL-6** (#4908) Mobile P0 (dev transport): connect from the simulator to the host
   control server (localhost / `10.0.2.2`, dev token in `expo-secure-store`),
   render session list + live timeline. Explicitly dev-only; real transport is
   M2. Repo: openagents. *After CL-0, CL-4.*
-- **CL-7** **Handshake demo + doc:** a scripted local demo — start a bounded
+- **CL-7** (#4909) **Handshake demo + doc:** a scripted local demo — start a bounded
   Autopilot Coder session; show it live in desktop and the mobile emulator
   simultaneously (same session ref, same event timeline; bonus: a decision
   request appears on both). Capture a short runbook + screenshots. Repo:
@@ -104,26 +106,26 @@ Rungs:
 Replace the dev-only loopback/host-network access with the real, secure
 transport so mobile (and remote desktop) work off the local machine.
 
-- **CL-8** Pylon Tailnet-reachable control binding with explicit refusal of
+- **CL-8** (#4910) Pylon Tailnet-reachable control binding with explicit refusal of
   unauthenticated non-loopback traffic. Repo: openagents/apps/pylon. *Parallel.*
-- **CL-9** Bridge pairing + scoped credentials: short-lived one-time QR/bootstrap
+- **CL-9** (#4911) Bridge pairing + scoped credentials: short-lived one-time QR/bootstrap
   secret exchanged for a capability-scoped credential (issuer/audience/expiry/
   client id/device class/pairing id/`jti`/projection level); node stores hash +
   revocation, client stores the credential. + `bridge.clients.list`/`revoke`.
   Repo: openagents/apps/pylon. *After CL-0.*
-- **CL-10** Cursor-resumable streams: event ids + sequences, lossless/best-effort
+- **CL-10** (#4912) Cursor-resumable streams: event ids + sequences, lossless/best-effort
   tiers, duplicate-safe replay, lag caveats, bounded backpressure; atomic
   subscribe that replays pending decisions first. Repo: openagents/apps/pylon.
   *After CL-0.*
-- **CL-11** Decision relay: server-originated decision requests, single-use
+- **CL-11** (#4913) Decision relay: server-originated decision requests, single-use
   exactly-once binding, cancellation/resolution broadcast (reuses the
   decision-queue spine #4765). Repo: openagents/apps/pylon. *After CL-10.*
-- **CL-12** Action receipts + typed failures for every remote verb (duplicate,
+- **CL-12** (#4914) Action receipts + typed failures for every remote verb (duplicate,
   expired, cancelled, revoked, stale, unauthorized, unsupported, overloaded).
   Repo: openagents/apps/pylon. *After CL-11.*
-- **CL-13** Pairing UX in the Pylon TUI/CLI (render the QR + copyable bootstrap).
+- **CL-13** (#4915) Pairing UX in the Pylon TUI/CLI (render the QR + copyable bootstrap).
   Repo: openagents/apps/pylon. *After CL-9.*
-- **CL-14** Wire desktop + mobile clients onto the bridge transport (replacing
+- **CL-14** (#4916) Wire desktop + mobile clients onto the bridge transport (replacing
   the M1 dev transport), behind the same client interface. Repo: openagents.
   *After CL-9..CL-12, CL-5, CL-6.*
 
