@@ -786,6 +786,7 @@ const runPylonNode = Effect.gen(function* () {
       sessions: nodeSessionActions,
     },
     port: controlPort,
+    hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
   }).pipe(
     Effect.catch((error) =>
       Effect.gen(function* () {
@@ -998,6 +999,7 @@ const runHeadlessNode = Effect.gen(function* () {
       sessions: headlessSessionActions,
     },
     port: controlPort,
+    hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
   })
   yield* logMessage(
     runtime,
