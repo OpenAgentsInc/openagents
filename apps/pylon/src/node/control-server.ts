@@ -11,6 +11,8 @@ import { join } from "node:path"
 import { Effect, PubSub, SubscriptionRef, type Scope } from "effect"
 import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } from "./state"
 import type { PylonNodeRuntime } from "./runtime"
+import { createBridgePairingService } from "./bridge-pairing-service"
+import type { Capability } from "@openagentsinc/autopilot-control-protocol"
 import type {
   ControlSessionActions,
   ControlSessionArtifactCommand,
@@ -59,6 +61,9 @@ export type ControlCommand =
   | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
   | { type: "intent.list"; sinceCursor?: string }
   | { type: "accounts.list" }
+  // CL-14 bridge transport: operator (dev-token authed) mints a single-use
+  // bootstrap that a client exchanges at /bridge/pair for a scoped credential.
+  | { type: "bridge.issueBootstrap" }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -141,6 +146,9 @@ export const startControlServer = (
   Effect.gen(function* () {
     const clients = new Set<ReadableStreamDefaultController<Uint8Array>>()
     const encoder = new TextEncoder()
+    // CL-14 bridge transport pairing service (in-memory; additive to the
+    // dev-token transport, which is unchanged).
+    const bridgePairing = createBridgePairingService()
 
     const broadcast = (event: PylonEvent) => {
       const frame = encoder.encode(sseFrame(event))
@@ -212,6 +220,11 @@ export const startControlServer = (
         case "accounts.list":
           if (!options.actions.accountsList) throw new Error("accounts unavailable on this node")
           return options.actions.accountsList()
+        case "bridge.issueBootstrap":
+          // Returns { bootstrapId, secret } for the operator to hand to a client
+          // (QR/connect payload). Single-use; the secret is exchanged at
+          // /bridge/pair. Authed by the dev token (this runs via /command).
+          return bridgePairing.issueBootstrap()
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }
@@ -229,6 +242,49 @@ export const startControlServer = (
             if (url.pathname === "/health") {
               return Response.json({ ok: true, schema: "openagents.pylon.control.v0.3" })
             }
+
+            // CL-14 bridge pairing exchange: pre-bearer (the single-use
+            // bootstrap secret IS the credential). Returns scoped pairing claims.
+            if (url.pathname === "/bridge/pair" && request.method === "POST") {
+              try {
+                const body = (await request.json()) as {
+                  bootstrapId?: unknown
+                  secret?: unknown
+                  clientId?: unknown
+                  deviceClass?: unknown
+                  capabilities?: unknown
+                  projectionLevel?: unknown
+                  ttlSeconds?: unknown
+                }
+                if (typeof body.bootstrapId !== "string" || typeof body.secret !== "string") {
+                  return Response.json({ error: "bootstrapId and secret are required" }, { status: 400 })
+                }
+                const result = bridgePairing.exchange({
+                  bootstrapId: body.bootstrapId,
+                  secret: body.secret,
+                  now: new Date(),
+                  ttlSeconds: typeof body.ttlSeconds === "number" ? body.ttlSeconds : 86_400,
+                  clientId: typeof body.clientId === "string" ? body.clientId : "client",
+                  deviceClass: typeof body.deviceClass === "string" ? body.deviceClass : "unknown",
+                  capabilities: Array.isArray(body.capabilities)
+                    ? (body.capabilities.filter((c) => typeof c === "string") as Capability[])
+                    : (["observe_public"] as Capability[]),
+                  projectionLevel:
+                    body.projectionLevel === "team" || body.projectionLevel === "private"
+                      ? body.projectionLevel
+                      : "public_safe",
+                  issuer: "pylon.node",
+                  audience: typeof body.clientId === "string" ? body.clientId : "client",
+                  jti: randomBytes(16).toString("hex"),
+                })
+                return result.ok
+                  ? Response.json({ ok: true, claims: result.claims })
+                  : Response.json({ ok: false, reason: result.reason }, { status: 401 })
+              } catch {
+                return Response.json({ error: "malformed pairing request" }, { status: 400 })
+              }
+            }
+
             if (!authorized(request)) return unauthorized()
 
             const sessionEventsMatch = /^\/sessions\/([^/]+)\/events$/.exec(url.pathname)
