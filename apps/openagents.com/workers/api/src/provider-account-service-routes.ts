@@ -273,7 +273,10 @@ const insertGeminiTokenUsageEvent = async <
       'omega_provider_broker',
       input.actor.user.id,
       null,
-      null,
+      // Attribution: the omega Gemini broker always serves the worker-secret
+      // Gemini provider account, so this ledger row carries that account ref
+      // (the same ref the broker hands out in googleGeminiGrantJson).
+      GOOGLE_GEMINI_PROVIDER_ACCOUNT_REF,
       `omega-gemini:${eventHash.slice(0, 24)}`,
       optionalSafeRefHeader(input.request, 'x-openagents-run-ref') ?? null,
       optionalSafeRefHeader(input.request, 'x-openagents-session-ref') ?? null,

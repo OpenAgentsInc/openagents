@@ -269,6 +269,7 @@ import {
 import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
+import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 import {
@@ -5563,6 +5564,12 @@ const providerAccountPoolRoutes = makeProviderAccountPoolRoutes({
   requireBrowserSession,
 })
 
+const providerAccountUsageRoutes = makeProviderAccountUsageRoutes({
+  appendRefreshedSessionCookies,
+  isOpenAgentsAdminEmail,
+  requireBrowserSession,
+})
+
 const operatorProviderAccountRoutes = makeOperatorProviderAccountRoutes({
   deleteStartedCodexDeviceLogin,
   readConnectedCodexAuthMaterial,
@@ -5657,6 +5664,8 @@ const providerAccountRoutes = makeProviderAccountRoutes({
     ),
   handleProviderAccountPoolApi: (request, env, ctx) =>
     providerAccountPoolRoutes.handleProviderAccountPoolApi(request, env, ctx),
+  handleProviderAccountUsageApi: (request, env, ctx) =>
+    providerAccountUsageRoutes.handleProviderAccountUsageApi(request, env, ctx),
   handleProviderAccountsListApi: (request, env, ctx) =>
     routeEffect('handle_provider_accounts_list_api', () =>
       providerAccountBrowserHandlers.handleProviderAccountsListApi(

@@ -427,6 +427,7 @@ describe('provider api key connect route dispatch', () => {
         return Effect.succeed(new Response(null, { status: 204 }))
       },
       handleProviderAccountPoolApi: stub('pool', calls),
+      handleProviderAccountUsageApi: stub('usage', calls),
       handleProviderAccountsListApi: stub('list', calls),
       handleProviderDeviceLoginConnectedApi: stub('deviceConnected', calls),
       handleProviderDeviceLoginFailedApi: stub('deviceFailed', calls),

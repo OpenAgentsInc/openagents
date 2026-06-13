@@ -120,6 +120,36 @@ export const tokenUsageFromEvent = (
 export const sourceRefForTokenUsageEvent = (event: OmniEventRecord): string =>
   event.externalEventId ?? `${event.parentId}:${event.sequence}`
 
+// Typed sentinel for token-usage rows whose write path genuinely cannot know
+// the originating provider-account lease ref. Recording this value keeps the
+// attribution discipline honest: it distinguishes "we looked and there was no
+// account-leased work" from a faked or silently dropped attribution. Account
+// aggregates expose these rows under the 'unattributed' bucket and never fold
+// them into a real provider-account total.
+export const TOKEN_USAGE_UNATTRIBUTED_ACCOUNT_REF =
+  'provider-account://unattributed' as const
+
+export type TokenUsageAccountAttribution = Readonly<{
+  accountRef: string
+  attributed: boolean
+}>
+
+// Resolve the provider-account attribution for a leaderboard usage row from the
+// run's lease-carried provider_account_ref. A run that was launched against an
+// M8/M9 provider-account lease carries that lease's ref on `agent_runs`, so the
+// usage row is attributed to it. A run with no lease ref (worker-secret or
+// BYO-credential launches that never touch the account pool) is recorded as the
+// typed unattributed sentinel rather than guessing an account.
+export const resolveTokenUsageAccountAttribution = (
+  runProviderAccountRef: string | null | undefined,
+): TokenUsageAccountAttribution => {
+  const trimmed = runProviderAccountRef?.trim()
+
+  return trimmed === undefined || trimmed === ''
+    ? { accountRef: TOKEN_USAGE_UNATTRIBUTED_ACCOUNT_REF, attributed: false }
+    : { accountRef: trimmed, attributed: true }
+}
+
 const totalsFromRow = (
   row: TokenUsageRow | null | undefined,
 ): TokenUsageTotals => ({

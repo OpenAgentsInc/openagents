@@ -814,6 +814,7 @@ const srcRoot = import.meta.dirname
 const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Owner/admin and operator consoles (admin session or admin bearer only):
   '/api/admin/overview',
+  '/api/admin/provider-accounts/usage',
   '/api/admin/sync/notify',
   '/api/operator/adjutant/assignments/{param}/current-run/clear',
   '/api/operator/adjutant/assignments/{param}/enrichment',

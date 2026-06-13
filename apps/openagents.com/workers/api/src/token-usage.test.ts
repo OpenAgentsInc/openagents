@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  TOKEN_USAGE_UNATTRIBUTED_ACCOUNT_REF,
   extractAutopilotTokenUsage,
+  resolveTokenUsageAccountAttribution,
   sourceRefForTokenUsageEvent,
 } from './token-usage'
 
@@ -216,5 +218,25 @@ describe('Autopilot token usage extraction', () => {
         type: 'runner.usage',
       }),
     ).toBe('agent_run_1:9')
+  })
+})
+
+describe('resolveTokenUsageAccountAttribution', () => {
+  test('attributes usage to a run-carried provider-account lease ref', () => {
+    expect(
+      resolveTokenUsageAccountAttribution('provider-account_chatgpt_codex_a'),
+    ).toEqual({
+      accountRef: 'provider-account_chatgpt_codex_a',
+      attributed: true,
+    })
+  })
+
+  test('records the typed unattributed sentinel when no lease ref is present', () => {
+    for (const value of [null, undefined, '', '   ']) {
+      expect(resolveTokenUsageAccountAttribution(value)).toEqual({
+        accountRef: TOKEN_USAGE_UNATTRIBUTED_ACCOUNT_REF,
+        attributed: false,
+      })
+    }
   })
 })

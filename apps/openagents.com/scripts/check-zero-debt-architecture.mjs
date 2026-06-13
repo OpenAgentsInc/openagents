@@ -438,6 +438,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/provider-account-usage-routes.ts',
+    route: '/api/admin/provider-accounts/usage',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/relay-health-routes.ts',
     route: '/api/public/relay-health',
     status: 'staleness_declared',

@@ -44,7 +44,11 @@ import {
   currentIsoTimestamp,
   randomUuid,
 } from './runtime-primitives'
-import { sourceRefForTokenUsageEvent, tokenUsageFromEvent } from './token-usage'
+import {
+  resolveTokenUsageAccountAttribution,
+  sourceRefForTokenUsageEvent,
+  tokenUsageFromEvent,
+} from './token-usage'
 
 export type AgentRunStatus =
   | 'queued'
@@ -1154,6 +1158,7 @@ const tokenUsageInsert = (
   db: D1Database,
   input: Readonly<{
     event: OmniEventRecord
+    providerAccountRef: string | null
     teamId: string | null
     userId: string
   }>,
@@ -1164,14 +1169,22 @@ const tokenUsageInsert = (
     return undefined
   }
 
+  // Attribution: a run launched against an M8/M9 provider-account lease carries
+  // that lease's provider_account_ref on `agent_runs`, so the leaderboard usage
+  // row is attributed to it. Runs with no lease ref are recorded under the typed
+  // 'unattributed' sentinel rather than faking a provider-account total.
+  const attribution = resolveTokenUsageAccountAttribution(
+    input.providerAccountRef,
+  )
+
   return db
     .prepare(
       `INSERT OR IGNORE INTO autopilot_token_usage
-        (id, run_id, event_id, user_id, team_id, provider, model, input_tokens,
-         output_tokens, reasoning_tokens, cache_read_tokens,
+        (id, run_id, event_id, user_id, team_id, account_ref, provider, model,
+         input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
          cache_write_5m_tokens, cache_write_1h_tokens, total_tokens, source,
          source_ref, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       systemOmniRunRuntime.randomId('token_usage'),
@@ -1179,6 +1192,7 @@ const tokenUsageInsert = (
       input.event.id,
       input.userId,
       input.teamId,
+      attribution.accountRef,
       usage.provider,
       usage.model,
       usage.inputTokens,
@@ -1244,9 +1258,17 @@ export const makeD1OmniRunStore = (
       usageEvents.length === 0
         ? undefined
         : await db
-            .prepare(`SELECT user_id, team_id FROM agent_runs WHERE id = ?`)
+            .prepare(
+              `SELECT user_id, team_id, provider_account_ref FROM agent_runs WHERE id = ?`,
+            )
             .bind(runId)
-            .first<Readonly<{ team_id: string | null; user_id: string }>>()
+            .first<
+              Readonly<{
+                provider_account_ref: string | null
+                team_id: string | null
+                user_id: string
+              }>
+            >()
     const tokenUsageInserts =
       runRow === null || runRow === undefined
         ? []
@@ -1254,6 +1276,7 @@ export const makeD1OmniRunStore = (
             .map(event =>
               tokenUsageInsert(db, {
                 event,
+                providerAccountRef: runRow.provider_account_ref,
                 teamId: runRow.team_id,
                 userId: runRow.user_id,
               }),

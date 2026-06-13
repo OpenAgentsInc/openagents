@@ -327,6 +327,7 @@ describe('google gemini provider account routes', () => {
 
       expect(store.rows).toHaveLength(1)
       expect(store.rows[0]).toMatchObject({
+        account_ref: 'provider-account_google_gemini_worker_secret',
         actor_user_id: 'agent:test',
         backend_profile: 'worker_secret_gemini_api_key',
         cache_read_tokens: 20,
@@ -395,6 +396,7 @@ describe('google gemini provider account routes', () => {
       await Promise.all(promises)
       expect(store.rows).toHaveLength(1)
       expect(store.rows[0]).toMatchObject({
+        account_ref: 'provider-account_google_gemini_worker_secret',
         input_tokens: 12,
         model: 'gemini-2.5-pro',
         output_tokens: 0,
