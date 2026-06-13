@@ -60,4 +60,64 @@ describe("coordinator runtime (CL-36)", () => {
     await rt.tick()
     expect(q.get("i2")?.status).toBe("failed")
   })
+
+  test("ship step classifies mode + gates spend + records a receipt (CL-37/CL-41)", async () => {
+    const q = createIntentQueue()
+    q.enqueue({ intentId: "i3", title: "ship it", body: "do the thing", submittedByClientRef: "m", createdAt: "2026-06-13T12:00:00.000Z" })
+    const states = new Map<string, string>()
+    let n = 0
+    const recorded: any[] = []
+    const rt = createCoordinatorRuntime({
+      intentQueue: q,
+      spawnSession: async () => { const ref = `s${n++}`; states.set(ref, "running"); return { sessionRef: ref } },
+      sessionState: async (ref) => states.get(ref) ?? null,
+      createWorktree: async () => "/tmp/wt/x",
+      // JS-only change (fingerprint unchanged) + spend allowed -> ota, eligible.
+      shipContext: async () => ({
+        previousRuntimeFingerprint: "fp1",
+        nextRuntimeFingerprint: "fp1",
+        changedPaths: ["app/nodes.tsx"],
+        spendGate: { decision: "allow" },
+      }),
+      recordShip: (intentId, decision) => recorded.push({ intentId, ...decision }),
+    })
+    await rt.tick()
+    for (const ref of rt.view()[0].sessionRefs) states.set(ref, "completed")
+    await rt.tick()
+    expect(q.get("i3")?.status).toBe("shipped")
+    expect(recorded.length).toBe(1)
+    expect(recorded[0].intentId).toBe("i3")
+    expect(recorded[0].shipMode).toBe("ota")
+    expect(recorded[0].eligible).toBe(true)
+    expect(recorded[0].decision).toBe("auto")
+  })
+
+  test("ship step escalates when spend is denied (CL-41)", async () => {
+    const q = createIntentQueue()
+    q.enqueue({ intentId: "i4", title: "ship it", body: "do the thing", submittedByClientRef: "m", createdAt: "2026-06-13T12:00:00.000Z" })
+    const states = new Map<string, string>()
+    let n = 0
+    const recorded: any[] = []
+    const rt = createCoordinatorRuntime({
+      intentQueue: q,
+      spawnSession: async () => { const ref = `s${n++}`; states.set(ref, "running"); return { sessionRef: ref } },
+      sessionState: async (ref) => states.get(ref) ?? null,
+      createWorktree: async () => "/tmp/wt/x",
+      // native fingerprint change + spend denied -> rebuild, not eligible, escalate.
+      shipContext: async () => ({
+        previousRuntimeFingerprint: "fp1",
+        nextRuntimeFingerprint: "fp2",
+        changedPaths: ["ios/Podfile"],
+        spendGate: { decision: "deny" },
+      }),
+      recordShip: (intentId, decision) => recorded.push({ intentId, ...decision }),
+    })
+    await rt.tick()
+    for (const ref of rt.view()[0].sessionRefs) states.set(ref, "completed")
+    await rt.tick()
+    expect(q.get("i4")?.status).toBe("shipped")
+    expect(recorded[0].shipMode).toBe("rebuild")
+    expect(recorded[0].eligible).toBe(false)
+    expect(recorded[0].decision).toBe("escalate")
+  })
 })

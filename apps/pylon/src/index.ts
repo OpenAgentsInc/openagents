@@ -56,6 +56,7 @@ import {
 } from "./node/discovery-register"
 import { createIntentQueue } from "./node/intent-intake"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
+import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate"
 import {
   scanClaudeSessions,
   toEventRows,
@@ -428,6 +429,42 @@ function startCoordinator(
       if (code !== 0) throw new Error(`git worktree add failed (${code}) for ${dir}`)
       return dir
     },
+    // CL-37/CL-41: supply the ship-step context. Fingerprints + changed paths
+    // come from env (publish pipeline sets them); the spend gate is fail-safe —
+    // with no configured budget (default 0) it DENIES, so an autonomous ship
+    // escalates to the owner rather than spending without an explicit budget.
+    shipContext: async () => {
+      const env = Bun.env
+      const num = (v: string | undefined, d: number) => {
+        const n = Number(v)
+        return Number.isFinite(n) ? n : d
+      }
+      const gate = evaluateShipSpendGate({
+        action: "autonomous_ship",
+        budget: {
+          spentSats: num(env.OA_SHIP_SPENT_SATS, 0),
+          budgetSats: num(env.OA_SHIP_BUDGET_SATS, 0),
+          dailyCapSats: num(env.OA_SHIP_DAILY_CAP_SATS, 0),
+          perShipCapSats: num(env.OA_SHIP_PER_SHIP_CAP_SATS, 0),
+          shipCostSats: num(env.OA_SHIP_COST_SATS, 0),
+          decidedAt: new Date().toISOString(),
+        },
+      })
+      return {
+        previousRuntimeFingerprint: (env.OA_SHIP_PREV_FINGERPRINT ?? "").trim(),
+        nextRuntimeFingerprint: (env.OA_SHIP_NEXT_FINGERPRINT ?? "").trim(),
+        changedPaths: (env.OA_SHIP_CHANGED_PATHS ?? "")
+          .split(",")
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0),
+        spendGate: { decision: gate.decision },
+      }
+    },
+    recordShip: (intentId, decision) =>
+      logToUi(
+        `[ship] ${intentId} mode=${decision.shipMode} decision=${decision.decision} eligible=${decision.eligible} (${decision.reason})`,
+        "info",
+      ),
     log: (message) => logToUi(message, "info"),
   })
   runtime.start(5000)

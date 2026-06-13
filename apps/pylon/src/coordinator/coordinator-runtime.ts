@@ -8,6 +8,23 @@
 
 import type { SubmittedWorkIntent, IntentQueue, IntentStatus } from "../node/intent-intake"
 import { planIntent } from "./planner"
+import { classifyShipModeFromFingerprint } from "./ship-mode-classify"
+import { decideShipEligibility } from "./ship-eligibility"
+import { buildShipReceipt, type ShipReceipt } from "./ship-receipt"
+
+// CL-37/CL-41: at the ship step, classify OTA-vs-rebuild from the Expo runtime
+// fingerprint and gate the autonomous ship on the spend decision, recording a
+// ship receipt. The runtime stays side-effect-free: a node supplies the
+// fingerprint + spend context, and the actual publish/build is an opt-in
+// callback (recordShip) so this can be unit-tested and never auto-ships unless
+// the node explicitly wires execution.
+export type ShipContext = {
+  previousRuntimeFingerprint: string
+  nextRuntimeFingerprint: string
+  changedPaths: string[]
+  spendGate: { decision: "allow" | "deny" }
+}
+export type CoordinatorShipDecision = ShipReceipt & { eligible: boolean; reason: string }
 
 type SpawnInput = { adapter: "codex" | "claude_agent"; objective: string; verify: string[]; worktreePath: string }
 type TerminalState = "completed" | "failed" | "cancelled"
@@ -20,6 +37,12 @@ export type CoordinatorRuntimeDeps = {
   sessionState: (sessionRef: string) => Promise<string | null>
   // Materialize a fresh isolated workspace for one fan-out part.
   createWorktree: (intentId: string, index: number) => Promise<string>
+  // CL-37/CL-41: at the ship step, the node supplies the Expo runtime
+  // fingerprint diff + spend-gate decision; the runtime classifies OTA-vs-rebuild
+  // and gates the autonomous ship, recording a receipt via recordShip. Both are
+  // optional — without them the loop still advances shipped/failed as before.
+  shipContext?: (intentId: string) => Promise<ShipContext | null>
+  recordShip?: (intentId: string, decision: CoordinatorShipDecision) => void
   log?: (message: string) => void
   maxFanout?: number
 }
@@ -95,9 +118,42 @@ export function createCoordinatorRuntime(deps: CoordinatorRuntimeDeps): Coordina
     if (known.length < refs.length) return // some sessions not yet observable
     if (!known.every((s) => TERMINAL.has(s))) return // still running
     const allPassed = known.every((s) => s === "completed")
+    if (!allPassed) {
+      deps.intentQueue.advanceStatus(intentId, "failed")
+      log(`[coordinator] intent ${intentId} failed (${refs.length} agents)`)
+      return
+    }
     deps.intentQueue.advanceStatus(intentId, "shipping")
-    deps.intentQueue.advanceStatus(intentId, allPassed ? "shipped" : "failed")
-    log(`[coordinator] intent ${intentId} ${allPassed ? "shipped" : "failed"} (${refs.length} agents)`)
+    // CL-37/CL-41 ship step: classify OTA-vs-rebuild from the fingerprint and
+    // gate the autonomous ship on spend, recording a receipt. Side-effect-free:
+    // the actual publish/build is the node's job via recordShip.
+    if (deps.shipContext !== undefined) {
+      try {
+        const ctx = await deps.shipContext(intentId)
+        if (ctx !== null) {
+          const mode = classifyShipModeFromFingerprint({
+            previousRuntimeFingerprint: ctx.previousRuntimeFingerprint,
+            nextRuntimeFingerprint: ctx.nextRuntimeFingerprint,
+            changedPaths: ctx.changedPaths,
+          })
+          const eligibility = decideShipEligibility({ mode: mode.mode, spendGate: ctx.spendGate })
+          const receipt = buildShipReceipt({
+            intentId,
+            shipMode: mode.mode,
+            decision: eligibility.eligible ? "auto" : "escalate",
+            summary: `${mode.mode}: ${mode.reason} | ${eligibility.reason}`,
+          })
+          deps.recordShip?.(intentId, { ...receipt, eligible: eligibility.eligible, reason: eligibility.reason })
+          log(
+            `[coordinator] intent ${intentId} ship decision: mode=${mode.mode} eligible=${eligibility.eligible} (${eligibility.reason})`,
+          )
+        }
+      } catch (error) {
+        log(`[coordinator] ship decision failed for ${intentId}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    deps.intentQueue.advanceStatus(intentId, "shipped")
+    log(`[coordinator] intent ${intentId} shipped (${refs.length} agents)`)
   }
 
   const tick = async (): Promise<void> => {
