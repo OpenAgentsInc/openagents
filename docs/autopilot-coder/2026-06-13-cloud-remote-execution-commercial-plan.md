@@ -70,17 +70,36 @@ Map onto the crabbox control-plane/data-plane split (see
   workroom orchestration," with `oa-node` (managed daemon), `oa-workroomd`
   (per-session sidecar), and an `openagents-cloud-contract` crate. Remote
   GCE-backed sessions are a new capacity class under this fleet.
-- **`treasury/` = settlement.** Metering → usage ledger → invoice/settlement
-  (compute markup; inference credits + service fee for Model 2). Uses the
+- **`cloud/` = private billing logic.** Verified 2026-06-13, `cloud/` already
+  has the private-billing primitives: `oa-node settlement` modes (`no-wallet`,
+  `internal-accounting`) and the `openagents.resource_usage_receipt.v1` contract
+  (run_ref, node_ref, micro-USD amounts, provider token usage, nullable costs),
+  deliberately kept separate from public contributor wallet UX. Compute
+  metering, pricing/markup, capacity cost, and Model-2 inference cost accounting
+  live here.
+- **`openagents.com` (public monorepo Worker/D1) = customer-facing money.**
+  Already owns credits (`0018_billing_out_of_credits`), commerce catalog,
+  reward/referral/payout ledgers, the payment→payout bridge, and the live
+  `treasury_transactions` / `nexus_treasury_payout_authority` tables. Customer
+  payment acceptance, credit purchase/balance, and invoices belong here, on the
   existing L402/Lightning + card-on-file rails.
 - **`autopilot-omega` / `openagents.com` = tenant-facing product/billing UX**
   and the public capacity-marketplace projection authority.
 - **`alpha/` = private strategy/roadmap** for the business framing.
 
-Routing rule (per workspace `CLAUDE.md`): the multi-tenant control plane,
-credential brokering, fleet policy, and settlement adapters live in `cloud/`;
-the open-source client boundary lives in `openagents/apps/pylon`. Do not put
-private fleet/billing policy in the public tree.
+**Do not route new work to the `treasury/` repo.** Verified 2026-06-13 it is a
+dormant stub (`planned_no_dispatch`, no invoices/payouts/custody today); it only
+becomes relevant at a future Treasury v0.3 LDK-custody cutover extracted from
+Nexus. The live settlement surfaces today are `cloud/` (private metering /
+`resource_usage_receipt.v1`) + the public-monorepo ledgers/credits + the
+Nexus/MDK bridge.
+
+Routing rule: **all private billing logic → `cloud/`; everything else →
+the public monorepo (`openagents`/`openagents.com`).** The multi-tenant control
+plane, credential brokering, fleet policy, compute metering, and pricing/markup
+live in `cloud/`; the open-source client boundary, customer payment acceptance,
+credit ledger, and invoice UX live in the public tree. This supersedes the
+`CLAUDE.md` line that routed settlement to the `treasury/` repo.
 
 ## Credential Handling
 
@@ -116,9 +135,12 @@ Applied to the two models:
   (`worker/src/usage.ts`, active-lease caps, reserved-USD caps).
 - **Inference + service fee** (Model 2 only): per-request provider cost + margin,
   drawn down from prepaid OpenAgents credits.
-- **Settlement** via `treasury`, with the invariant-required refs: metering
-  receipt, pricing policy, ToS boundary, dispatch, assignment receipt,
-  settlement receipt.
+- **Settlement** is split: private metering/usage receipts in `cloud/`
+  (`resource_usage_receipt.v1`, `oa-node settlement internal-accounting`) →
+  customer-facing credit/invoice ledgers in the public monorepo
+  (`openagents.com` D1), with the invariant-required refs: metering receipt,
+  pricing policy, ToS boundary, dispatch, assignment receipt, settlement
+  receipt. No work in the dormant `treasury/` repo.
 
 ## Isolation and Abuse
 
@@ -146,11 +168,12 @@ for exactly this).
   brokered `auth.json`/API key. Metering on; billed internally. Repos: `cloud/`,
   `openagents/apps/pylon`.
 - **Phase 2 — Commercial multi-tenant.** Tenant identity (WorkOS), per-tenant
-  isolation + spend caps, acceptable-use/egress/abuse controls, usage ledger →
-  `treasury` settlement, billing UX. Launch **Model 1 (BYOK)** first. Land
-  **Model 2 (credits)** by writing the authorizing policy + tests required by
-  the Provider Capacity Marketplace Gate. Repos: `cloud/`, `treasury/`,
-  `autopilot-omega`/`openagents.com`.
+  isolation + spend caps, acceptable-use/egress/abuse controls, private metering
+  in `cloud/` → customer credit/invoice ledger in the public monorepo, billing
+  UX. Launch **Model 1 (BYOK)** first. Land **Model 2 (credits)** by writing the
+  authorizing policy + tests required by the Provider Capacity Marketplace Gate.
+  Repos: `cloud/`, `openagents.com` (D1 ledger/credits),
+  `autopilot-omega`/`openagents.com` (UX).
 - **Phase 3 — Density and differentiation.** microVM/confidential isolation,
   warm pools, GPU classes, crabbox-style "pond" grouped multi-agent
   environments.
@@ -197,7 +220,7 @@ per the routing rule (most land in `cloud/`; the client boundary in
 | C-10 | Inference gateway — Model 2: OpenAgents API keys in control-plane broker, egress-locked gateway, per-request metering → credit ledger | cloud | blocked by C-7 |
 | C-11 | Provider Capacity Marketplace Gate authorization for base-inference resale: policy + metering/pricing/ToS/settlement refs + tests | openagents.com | blocked by C-0,C-10 |
 | C-12 | Tenant identity + per-tenant spend caps + acceptable-use/egress/abuse controls + kill switch | cloud (+ openagents.com) | blocked by C-5 |
-| C-13 | Treasury settlement adapter: usage ledger → invoice/settlement (compute markup; credits + fee) | treasury (+ cloud) | blocked by C-7 |
+| C-13 | Settlement: private metering/usage receipts in cloud → public-monorepo credit/invoice ledger (compute markup; credits + fee). No treasury repo. | cloud + openagents.com | blocked by C-7 |
 | C-14 | `openagents-cloud` provider backend in Pylon client wired to the `cloud/` coordinator | openagents/apps/pylon (+ cloud) | blocked by C-5,C-6 |
 
 ## Open Decisions / Escalations
