@@ -32,27 +32,7 @@ const toneColor = (tone: NodeStatusRowTone): string =>
           ? C.info
           : C.outline
 
-// expo-updates is only present in release/dev-client builds; guard so web/Expo Go
-// don't crash. Shows whether this screen is running an embedded build or an OTA.
-function useUpdateBadge(): string {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const Updates = require("expo-updates") as {
-      isEmbeddedLaunch: boolean
-      updateId: string | null
-      channel: string | null
-    }
-    if (Updates.isEmbeddedLaunch) return "embedded build (no OTA yet)"
-    const id = Updates.updateId ? Updates.updateId.slice(0, 8) : "unknown"
-    return `OTA update ${id}${Updates.channel ? ` · ${Updates.channel}` : ""}`
-  } catch {
-    return "dev"
-  }
-}
-
 export default function NodesScreen() {
-  const updateBadge = useMemo(useUpdateBadge, [])
-
   // No bridge/pairing yet, so there is no live node to show. Honest empty state.
   // (When a node pairs, feed real NodeStatus[] here and the list renders.)
   const nodes: NodeStatus[] = []
@@ -84,10 +64,6 @@ export default function NodesScreen() {
           ))
         )}
       </ScrollView>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>{updateBadge}</Text>
-      </View>
     </View>
   )
 }
@@ -127,16 +103,4 @@ const styles = StyleSheet.create({
   rowText: { flex: 1 },
   rowLabel: { color: C.text, fontFamily: "Courier", fontSize: 14 },
   rowStatus: { color: C.textSecondary, fontSize: 12, marginTop: 2 },
-  footer: {
-    borderTopColor: C.outline,
-    borderTopWidth: 1,
-    padding: 14,
-    paddingBottom: 28,
-  },
-  footerText: {
-    color: C.textSecondary,
-    fontFamily: "Courier",
-    fontSize: 12,
-    textAlign: "center",
-  },
 })
