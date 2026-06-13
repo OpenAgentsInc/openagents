@@ -170,6 +170,7 @@ describe("pylon account usage", () => {
   test("parses refresh gates explicitly", () => {
     expect(parsePylonAccountsUsageArgs(["--json"])).toMatchObject({
       all: false,
+      provider: null,
       refresh: false,
       json: true,
     })
@@ -178,8 +179,48 @@ describe("pylon account usage", () => {
       refresh: true,
       json: true,
     })
+    expect(parsePylonAccountsUsageArgs(["--provider", "chatgpt", "--json"])).toMatchObject({
+      provider: "codex",
+      all: false,
+      json: true,
+    })
+    expect(parsePylonAccountsUsageArgs(["--provider", "claude", "--json"])).toMatchObject({
+      provider: "claude_agent",
+      all: false,
+      json: true,
+    })
     expect(() => parsePylonAccountsUsageArgs(["--all", "--account", "codex-a", "--json"])).toThrow(
-      /either --account or --all/,
+      /only one of --account, --provider, or --all/,
     )
+    expect(() => parsePylonAccountsUsageArgs(["--provider", "codex", "--account", "codex-a", "--json"])).toThrow(
+      /only one of --account, --provider, or --all/,
+    )
+  })
+
+  test("targets default provider accounts with human-friendly account aliases", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const projection = await collectPylonAccountsUsage(
+        summary,
+        parsePylonAccountsUsageArgs(["--account", "codex", "--json"]),
+        {
+          env: {
+            CODEX_HOME: join(home, "codex-default"),
+            CLAUDE_CONFIG_DIR: join(home, "claude-default"),
+            PYLON_HOME: home,
+          },
+          now: new Date("2026-06-12T12:00:00.000Z"),
+        },
+      )
+
+      expect(projection.accounts).toHaveLength(1)
+      expect(projection.accounts[0]).toMatchObject({
+        provider: "codex",
+        accountRef: null,
+        accountRefHash: hashPylonAccountRef("codex", "default"),
+      })
+      expect(JSON.stringify(projection)).not.toContain(home)
+      assertPublicProjectionSafe(projection)
+    })
   })
 })

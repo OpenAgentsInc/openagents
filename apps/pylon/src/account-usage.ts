@@ -107,6 +107,7 @@ export type PylonAccountsListProjection = {
 
 export type PylonAccountsUsageArgs = {
   accountRef: string | null
+  provider: PylonAccountProvider | null
   all: boolean
   refresh: boolean
   json: boolean
@@ -205,6 +206,13 @@ type AccountUsageObservation = {
 const ACCOUNT_USAGE_STALE_SECONDS = 15 * 60
 const costStatement =
   "pylon accounts usage --refresh runs one minimal bounded provider inference per selected account and may consume paid provider tokens."
+
+function providerSelectorFrom(value: string): PylonAccountProvider | null {
+  const normalized = value.trim().toLowerCase().replaceAll("-", "_")
+  if (normalized === "codex" || normalized === "chatgpt" || normalized === "openai") return "codex"
+  if (normalized === "claude" || normalized === "claude_agent" || normalized === "anthropic") return "claude_agent"
+  return null
+}
 
 function accountUsagePath(summary: Pick<BootstrapSummary, "paths">) {
   return join(summary.paths.home, "account-usage.json")
@@ -487,6 +495,7 @@ export async function recordPylonAccountUsageObservation(
 export function parsePylonAccountsUsageArgs(args: string[]): PylonAccountsUsageArgs {
   const parsed: PylonAccountsUsageArgs = {
     accountRef: null,
+    provider: null,
     all: false,
     refresh: false,
     json: false,
@@ -501,14 +510,22 @@ export function parsePylonAccountsUsageArgs(args: string[]): PylonAccountsUsageA
       parsed.all = true
     } else if (arg === "--account") {
       const value = args[index + 1]
-      if (!value || value.startsWith("--")) throw new Error("--account requires a registered account ref")
+      if (!value || value.startsWith("--")) throw new Error("--account requires an account ref or provider selector")
       parsed.accountRef = value
+      index += 1
+    } else if (arg === "--provider") {
+      const value = args[index + 1]
+      if (!value || value.startsWith("--")) throw new Error("--provider requires codex or claude_agent")
+      const provider = providerSelectorFrom(value)
+      if (!provider) throw new Error("--provider must be codex or claude_agent")
+      parsed.provider = provider
       index += 1
     } else {
       throw new Error(`Unknown accounts usage option: ${arg}`)
     }
   }
-  if (parsed.accountRef && parsed.all) throw new Error("Use either --account or --all, not both")
+  const selectorCount = [parsed.accountRef, parsed.provider, parsed.all ? "all" : null].filter(Boolean).length
+  if (selectorCount > 1) throw new Error("Use only one of --account, --provider, or --all")
   return parsed
 }
 
@@ -589,7 +606,7 @@ async function discoverAccountTargets(
 
 export async function resolvePylonAccountUsageRefreshTargets(
   summary: Pick<BootstrapSummary, "paths">,
-  args: Pick<PylonAccountsUsageArgs, "accountRef" | "all">,
+  args: Pick<PylonAccountsUsageArgs, "accountRef" | "provider" | "all">,
   options: { env?: Record<string, string | undefined> } = {},
 ): Promise<PylonAccountUsageRefreshTarget[]> {
   const env = options.env ?? (Bun.env as Record<string, string | undefined>)
@@ -605,16 +622,23 @@ export async function resolvePylonAccountUsageRefreshTargets(
 
 async function selectAccountUsageTargets(
   summary: Pick<BootstrapSummary, "paths">,
-  args: Pick<PylonAccountsUsageArgs, "accountRef" | "all">,
+  args: Pick<PylonAccountsUsageArgs, "accountRef" | "provider" | "all">,
   env: Record<string, string | undefined>,
 ): Promise<AccountDiscoveryTarget[]> {
   const targets = (await discoverAccountTargets(summary, env)).filter((target) => {
     if (args.accountRef) return target.accountRef === args.accountRef
+    if (args.provider) return target.provider === args.provider && target.selector === "default_home"
     if (args.all) return true
     return target.selector === "default_home"
   })
   if (args.accountRef && targets.length === 0) {
-    throw new Error(`unknown registered account ref: ${args.accountRef}`)
+    const provider = providerSelectorFrom(args.accountRef)
+    if (provider) {
+      return (await discoverAccountTargets(summary, env)).filter(
+        (target) => target.provider === provider && target.selector === "default_home",
+      )
+    }
+    throw new Error(`unknown account ref or provider selector: ${args.accountRef}`)
   }
   return targets
 }

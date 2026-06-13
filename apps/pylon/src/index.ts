@@ -1428,7 +1428,7 @@ async function main() {
       if (command === "usage") {
         const options = parsePylonAccountsUsageArgs(args.slice(2))
         if (!options.json) {
-          throw new Error("usage: pylon accounts usage [--account <ref>|--all] [--refresh] --json")
+          throw new Error("usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] --json")
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         if (options.refresh) {

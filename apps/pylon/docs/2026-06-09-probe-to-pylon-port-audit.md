@@ -95,3 +95,8 @@ credentials or live provider availability.
   token-usage rows can now carry provider-account refs, admin/owner usage
   aggregates are exposed without credential material, and per-account budget
   signals remain advisory events rather than enforcement authority.
+- The local dogfood run exposed a targeting papercut: unnamed default homes
+  were listed but could not be selected by a human-friendly ref. The CLI now
+  accepts provider/default selectors such as `--account codex`, `--account
+  chatgpt`, `--provider codex`, and `--provider claude` while preserving
+  registered account refs.

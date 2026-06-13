@@ -151,12 +151,15 @@ payout target`) run from the palette and always end in an explicit
   view, and `Context: refresh repo & AI` to re-probe local state.
 - `pylon accounts list --json` reports configured credential homes by
   provider, readiness state, and hashed home/account refs without raw paths.
-  `pylon accounts usage [--account <ref>|--all] [--refresh] --json` reports
-  three labeled truth tiers: provider truth (last observed rate-limit
+  `pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] --json`
+  reports three labeled truth tiers: provider truth (last observed rate-limit
   snapshot and age/staleness), local session truth (last token/cost totals),
   and platform truth (currently unavailable unless the future provider-pool
-  proxy is reachable). `--refresh` is explicit because it runs one minimal
-  bounded inference per selected account and may consume paid provider tokens.
+  proxy is reachable). `--account codex`, `--account chatgpt`,
+  `--provider codex`, and `--provider claude` target the matching unnamed
+  default provider home; registered account refs still target their configured
+  homes. `--refresh` is explicit because it runs one minimal bounded
+  inference per selected account and may consume paid provider tokens.
 - `pylon dev check --json`, `pylon dev apply --json`, and
   `pylon dev reload --json` provide the local supervised check/apply/reload
   loop. `check` emits changed file refs, dirty-state counts, command refs, exit
@@ -217,6 +220,8 @@ pylon status --json
 pylon context --json
 pylon accounts list --json
 pylon accounts usage --json
+pylon accounts usage --account codex --json
+pylon accounts usage --provider codex --refresh --json
 pylon accounts usage --all --refresh --json
 ```
 
