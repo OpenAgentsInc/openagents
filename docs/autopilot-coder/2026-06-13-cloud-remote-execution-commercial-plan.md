@@ -1,0 +1,213 @@
+# OpenAgents Cloud Remote Execution — Commercial Plan
+
+Date: 2026-06-13
+Status: planning document. Changes no runtime invariant and makes no public
+claim by itself. Any invariant amendment or public-copy change called for here
+is tracked as its own issue with the tests the relevant invariant ledger
+requires.
+
+## Goal
+
+Let **any Pylon user** deploy coding/agent workloads onto **OpenAgents-operated
+Google Cloud infrastructure** and pay OpenAgents for that service. Dogfood it
+ourselves first (single tenant, our own GCP project), then turn it into a
+commercial multi-tenant service.
+
+Two ways a customer brings model access:
+
+1. **BYO-API-key (BYOK).** The customer supplies their own OpenAI/Anthropic (or
+   other) API key. OpenAgents bills only for **compute** (the VM/runtime), never
+   for model tokens.
+2. **OpenAgents Inference Credits.** The customer prepays OpenAgents credits;
+   OpenAgents routes inference through **its own commercial API accounts** and
+   charges inference cost + a service fee, plus compute. This is a standard
+   metered-inference gateway (the OpenRouter model).
+
+## Resale Policy Clarification (canonical — read first)
+
+This is the load-bearing distinction and prior wording across the repo has
+sometimes blurred it. Authoritative as of 2026-06-13:
+
+- **Forbidden, non-waivable: reselling/renting/proxying/pooling *subscription*
+  accounts.** Consumer subscription logins (ChatGPT Plus/Max, Claude Max OAuth
+  sessions) must never be resold, rented, proxied, brokered, or pooled across
+  customers. A subscription connection is **never** resale authorization. Our
+  pooled subscription accounts (the local Codex/Claude OAuth homes) are an
+  **internal dogfooding tool only** and never a customer-facing capacity source.
+- **Allowed, normal business: reselling *API inference*.** Selling inference
+  bought on OpenAgents' *own* commercial API accounts — "buy credits, we route
+  via our API keys for a fee" — is a standard product (OpenRouter and many
+  others do exactly this). It is **not** the thing the no-resale rule forbids.
+- **Governing invariant:** `apps/openagents.com/INVARIANTS.md` → *Provider
+  Capacity Marketplace Gate*. It already encodes this: subscription connection
+  is not resale authorization, and *"base inference resale remains blocked
+  unless a future policy explicitly authorizes it with tests."* That clause is
+  the **authorization path** for Model 2, not a permanent ban. Shipping Model 2
+  means writing that authorizing policy plus the enumerated refs/tests
+  (metering receipt, pricing policy, ToS boundary, dispatch, assignment receipt,
+  settlement receipt), not bypassing the gate.
+
+Surfaces whose "no-resale" language should be reconciled to say *subscription*
+explicitly (tracked as issue C-0 below; do not silently rewrite invariant
+ledgers or public copy without the required tests/gates):
+
+- `apps/openagents.com/INVARIANTS.md` Provider Capacity Marketplace Gate
+- `apps/pylon/README.md` and `apps/pylon/docs/codex-bridge.md` ("no-resale law")
+- `docs/autopilot-coder/2026-06-11-provider-peer-tos-compliance-review.md`
+- the live public product-promise copy / promise registry
+
+## Product Shape: Client, Control Plane, Settlement
+
+Map onto the crabbox control-plane/data-plane split (see
+`docs/autopilot-coder/2026-06-13-crabbox-pylon-audit.md`):
+
+- **Pylon (open source, `openagents/apps/pylon`) = the client.** Gains an
+  execution-provider abstraction with an `openagents-cloud` backend. Users keep
+  the Pylon they already run and gain a "deploy to OpenAgents Cloud" target.
+- **`cloud/` (private, Rust) = the control plane / coordinator.** This is the
+  commercial service. Its scope doc already commits to "managed cloud nodes,
+  capacity-pool placement, capability brokers, internal accounting hooks,
+  workroom orchestration," with `oa-node` (managed daemon), `oa-workroomd`
+  (per-session sidecar), and an `openagents-cloud-contract` crate. Remote
+  GCE-backed sessions are a new capacity class under this fleet.
+- **`treasury/` = settlement.** Metering → usage ledger → invoice/settlement
+  (compute markup; inference credits + service fee for Model 2). Uses the
+  existing L402/Lightning + card-on-file rails.
+- **`autopilot-omega` / `openagents.com` = tenant-facing product/billing UX**
+  and the public capacity-marketplace projection authority.
+- **`alpha/` = private strategy/roadmap** for the business framing.
+
+Routing rule (per workspace `CLAUDE.md`): the multi-tenant control plane,
+credential brokering, fleet policy, and settlement adapters live in `cloud/`;
+the open-source client boundary lives in `openagents/apps/pylon`. Do not put
+private fleet/billing policy in the public tree.
+
+## Credential Handling
+
+`cloud/INVARIANTS.md` already dictates the safe design and we follow it exactly:
+
+- Workrooms consume capabilities **through brokers/local gateways, not raw
+  provider secrets on disk**; secret access produces **redacted evidence**
+  auditable without leaking material; `danger_full_access` only as an
+  **externally isolated VM/container profile** with **session-scoped provider
+  auth, no broad host/cloud credentials, and cleanup receipts**.
+
+Applied to the two models:
+
+- **Model 1 (BYO key):** the customer's key travels **point-to-point from the
+  Pylon client to the customer's own isolated session VM** (encrypted in
+  transit, injected as env at exec, wiped on release). The control plane brokers
+  *compute* and **never custodies the customer's model key** — only refs/metering
+  cross the control plane. This keeps us out of the "honeypot of everyone's
+  provider keys" liability.
+- **Model 2 (OpenAgents credits):** OpenAgents' **own** API keys live in the
+  control-plane secret broker, **never on the workload host**. Inference flows
+  through an OpenAgents-operated gateway (egress-restricted); the session VM
+  talks to the gateway, not to the provider directly, so the key is never
+  exposed to the (customer-controlled) workload. Per-request metering feeds the
+  credit ledger.
+- **Subscription accounts:** never enter either customer path. Internal
+  dogfooding only.
+
+## What We Sell and How We Bill
+
+- **Compute** (both models): VM-seconds × class (vCPU/RAM/GPU), egress, storage,
+  marked up over GCP cost. Metering shapes ported from crabbox
+  (`worker/src/usage.ts`, active-lease caps, reserved-USD caps).
+- **Inference + service fee** (Model 2 only): per-request provider cost + margin,
+  drawn down from prepaid OpenAgents credits.
+- **Settlement** via `treasury`, with the invariant-required refs: metering
+  receipt, pricing policy, ToS boundary, dispatch, assignment receipt,
+  settlement receipt.
+
+## Isolation and Abuse
+
+Arbitrary customer workloads on our GCP project is a real abuse surface (mining,
+attacks, illegal content, key-exfiltration attempts in Model 2). Required before
+external launch: per-tenant ephemeral VM isolation (v1), egress policy, resource
++ spend caps, acceptable-use policy, per-tenant quotas, audit, and a kill
+switch. Density/security upgrades later: Firecracker/gVisor microVMs, and
+confidential compute (the seeded `firecracker` and `sek8s`/TDX references exist
+for exactly this).
+
+## Phased Plan
+
+- **Phase 0 — Dogfood, single-tenant (now).** One GCE VM in our own project.
+  Pylon session with composer **local**, `verify`/build **remote** (no model
+  creds on the box). Prove sync → run → evidence → release. Either via a static-
+  SSH Pylon prototype or by shelling out to `crabbox run --provider gcp` (direct
+  GCE via ADC, no coordinator) to observe the full lifecycle. Repo:
+  `openagents/apps/pylon`.
+- **Phase 1 — Managed control plane, internal multi-user.** Coordinator in
+  `cloud/` holds our GCP creds, provisions ephemeral per-session VMs via
+  `oa-workroomd`, tracks lease/expiry/cleanup/usage. Pylon targets
+  `provider: openagents-cloud`. Whole-session-remote works **without Vertex**:
+  Claude via OAuth-token env (internal/dogfood) or BYO/our API key, Codex via
+  brokered `auth.json`/API key. Metering on; billed internally. Repos: `cloud/`,
+  `openagents/apps/pylon`.
+- **Phase 2 — Commercial multi-tenant.** Tenant identity (WorkOS), per-tenant
+  isolation + spend caps, acceptable-use/egress/abuse controls, usage ledger →
+  `treasury` settlement, billing UX. Launch **Model 1 (BYOK)** first. Land
+  **Model 2 (credits)** by writing the authorizing policy + tests required by
+  the Provider Capacity Marketplace Gate. Repos: `cloud/`, `treasury/`,
+  `autopilot-omega`/`openagents.com`.
+- **Phase 3 — Density and differentiation.** microVM/confidential isolation,
+  warm pools, GPU classes, crabbox-style "pond" grouped multi-agent
+  environments.
+
+## What to Pull from Crabbox
+
+Reference architecture and (optionally) the Phase 0–1 dogfood engine; the
+commercial control plane is `cloud/`-native (Rust). Port **contracts and
+control-flow**, not Go:
+
+- SSH target + readiness model (`internal/cli/ssh.go`).
+- Dirty-checkout sync: git-manifest, excludes, fingerprint-skip, **mass-deletion
+  / huge-transfer guardrails** (`internal/cli/repo.go`).
+- Lease records + idempotent release + cleanup receipts.
+- Run recorder + bounded event retention (`run_recorder.go`,
+  `run_output_events.go`).
+- Provider-spec boundary (`provider_backend.go`: `Acquire/Resolve/Touch/Run/
+  Release` + feature flags).
+- Usage/spend-cap shapes (`worker/src/usage.ts`); brokered artifact upload
+  grants (`worker/src/artifacts.ts`).
+- **Compute-quota routing** ≈ the account-quota ledger we already shipped
+  (#4884): active-session caps, TTL/idle, owner attribution, refs-only
+  "couldn't acquire compute" receipt.
+
+## Parallelizable Issue Breakdown (for local fanout)
+
+Designed so the independent rows can run concurrently through the
+multi-session/account-pool runner; blocked rows are sequenced. Final repo split
+per the routing rule (most land in `cloud/`; the client boundary in
+`openagents`).
+
+| ID | Title | Repo | Parallel? |
+| --- | --- | --- | --- |
+| C-0 | Resale-policy wording reconciliation: scope "no-resale" to *subscription* across INVARIANTS/promise/pylon docs, with copy-gate + promise tests | openagents (+ openagents.com) | parallel (doc/policy; needs tests) |
+| C-1 | `PylonExecutionProviderSpec` + Effect/typed services: local-process, static-SSH, openagents-cloud backends | openagents/apps/pylon | parallel |
+| C-2 | Remote workspace sync design: git-manifest, `.pylonignore`, fingerprint-skip, remote git seeding, mass-deletion/large-sync guardrails | openagents/apps/pylon | parallel |
+| C-3 | SSH target + readiness model (TCP/auth/ready distinctions, fallback ports, proxy) | openagents/apps/pylon | parallel |
+| C-4 | Durable session/run records: sessionRef, ordered events, retained log refs, artifact refs, cleanup receipts (local backend; coordinator iface) | openagents/apps/pylon (+ cloud iface) | parallel |
+| C-5 | `cloud/` GCE capacity class: provision ephemeral VM, SSH metadata, firewall, labels, lease lifecycle, cleanup (ADC, our project) | cloud | parallel |
+| C-6 | Credential broker — Model 1: point-to-point BYO key to isolated VM, env-inject at exec, wipe on release, refs-only evidence | cloud | parallel |
+| C-7 | Compute metering + quota routing: VM-seconds, active-session/TTL/idle caps, refs-only "no compute" receipt | cloud | parallel |
+| C-8 | Required-artifact gates for `dev-proof-run.ts` / control sessions | openagents/apps/pylon | parallel |
+| C-9 | Phase-0 static-SSH remote-verify prototype (composer local, verify remote) end-to-end | openagents/apps/pylon | blocked by C-1,C-2,C-3 |
+| C-10 | Inference gateway — Model 2: OpenAgents API keys in control-plane broker, egress-locked gateway, per-request metering → credit ledger | cloud | blocked by C-7 |
+| C-11 | Provider Capacity Marketplace Gate authorization for base-inference resale: policy + metering/pricing/ToS/settlement refs + tests | openagents.com | blocked by C-0,C-10 |
+| C-12 | Tenant identity + per-tenant spend caps + acceptable-use/egress/abuse controls + kill switch | cloud (+ openagents.com) | blocked by C-5 |
+| C-13 | Treasury settlement adapter: usage ledger → invoice/settlement (compute markup; credits + fee) | treasury (+ cloud) | blocked by C-7 |
+| C-14 | `openagents-cloud` provider backend in Pylon client wired to the `cloud/` coordinator | openagents/apps/pylon (+ cloud) | blocked by C-5,C-6 |
+
+## Open Decisions / Escalations
+
+1. **Pricing/markup** for compute and the Model-2 service fee — owner decision.
+2. **Provider ToS for Model 2** — confirm OpenAI/Anthropic terms permit OpenAgents
+   acting as a metered-inference reseller on its own commercial accounts
+   (standard, but confirm account-type/agreement). Distinct from the subscription
+   prohibition, which is settled.
+3. **Public-copy reconciliation** (C-0/C-11) touches the served promise registry
+   and copy gates — execute as a tested change, not an ad-hoc edit.
+4. **Isolation tier for external launch** — ephemeral full VM (v1) vs microVM —
+   cost/security tradeoff.
