@@ -73,6 +73,11 @@ export async function localClaudeSessionPresent(
   platform: string = process.platform,
   env: Record<string, string | undefined> = Bun.env as Record<string, string | undefined>,
 ): Promise<boolean> {
+  // A per-account OAuth token (CLAUDE_CODE_OAUTH_TOKEN) outranks the macOS
+  // Keychain credential and is how Pylon pools multiple Claude accounts. When
+  // it is present, the session is authenticated regardless of any config-dir
+  // credential file.
+  if ((env.CLAUDE_CODE_OAUTH_TOKEN ?? "").trim().length > 0) return true
   const configured = (env.CLAUDE_CONFIG_DIR ?? "").trim()
   if (configured.length > 0) {
     try {

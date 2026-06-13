@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
 import { homedir } from "node:os"
-import { resolve } from "node:path"
+import { join, resolve } from "node:path"
 
 export type PylonAccountProvider = "codex" | "claude_agent"
 export type PylonAccountSelectorKind = "registry_ref" | "direct_home"
@@ -157,6 +158,24 @@ export async function resolvePylonAccountSelection(
   return null
 }
 
+/**
+ * Local, untracked token file inside a pooled Claude account home. It carries a
+ * long-lived `claude setup-token` OAuth token (one line, raw). It is the Claude
+ * analogue of a Codex home's `auth.json`: on macOS the Keychain holds only one
+ * `/login` credential, so a per-account token is how multiple Claude accounts
+ * coexist. Read only when building a child session env; never projected.
+ */
+export const PYLON_CLAUDE_OAUTH_TOKEN_FILE = "claude-oauth-token"
+
+function readClaudeOauthToken(home: string): string | null {
+  try {
+    const token = readFileSync(join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE), "utf8").trim()
+    return token.length > 0 ? token : null
+  } catch {
+    return null
+  }
+}
+
 export function pylonAccountEnvironment(
   baseEnv: Record<string, string | undefined>,
   account: ResolvedPylonAccountSelection | null | undefined,
@@ -165,7 +184,17 @@ export function pylonAccountEnvironment(
   if (account.provider === "codex") {
     return { ...baseEnv, CODEX_HOME: account.home }
   }
-  return { ...baseEnv, CLAUDE_CONFIG_DIR: account.home }
+  // claude_agent: isolate the SDK config per account home, and when that home
+  // carries a pooled OAuth token, authenticate as that account through
+  // CLAUDE_CODE_OAUTH_TOKEN (which outranks the macOS Keychain credential). The
+  // token only ever enters this per-session env, not any resolved/projected
+  // account object.
+  const token = readClaudeOauthToken(account.home)
+  return {
+    ...baseEnv,
+    CLAUDE_CONFIG_DIR: account.home,
+    ...(token === null ? {} : { CLAUDE_CODE_OAUTH_TOKEN: token }),
+  }
 }
 
 export function publicPylonAccountSelection(

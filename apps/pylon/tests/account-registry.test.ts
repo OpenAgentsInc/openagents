@@ -95,6 +95,33 @@ describe("pylon account registry", () => {
     })
   })
 
+  test("injects a pooled Claude account's OAuth token without projecting it", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const resolved = await resolvePylonAccountSelection(summary, {
+        provider: "claude_agent",
+        accountHome: home,
+      })
+
+      // No token file: only CLAUDE_CONFIG_DIR is set (prior behavior).
+      const baseline = pylonAccountEnvironment({ PATH: "/bin" }, resolved)
+      expect(baseline.CLAUDE_CONFIG_DIR).toBe(home)
+      expect(baseline.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
+
+      // With a token file: CLAUDE_CODE_OAUTH_TOKEN is injected into the env only.
+      await writeFile(join(home, "claude-oauth-token"), "sk-ant-oat-test-token-value\n")
+      const env = pylonAccountEnvironment({ PATH: "/bin" }, resolved)
+      expect(env.CLAUDE_CONFIG_DIR).toBe(home)
+      expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-test-token-value")
+
+      // The token never reaches the resolved or public projection of the account.
+      expect(JSON.stringify(resolved)).not.toContain("sk-ant-oat-test-token-value")
+      const publicSelection = publicPylonAccountSelection(resolved)
+      expect(JSON.stringify(publicSelection)).not.toContain("sk-ant-oat-test-token-value")
+      assertPublicProjectionSafe(publicSelection)
+    })
+  })
+
   test("refuses unknown refs, ambiguous selectors, and missing homes", async () => {
     await withHome(async (home) => {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })

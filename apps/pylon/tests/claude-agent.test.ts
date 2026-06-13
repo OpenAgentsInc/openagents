@@ -87,6 +87,23 @@ describe("claude agent readiness probe", () => {
     }
   })
 
+  test("a per-account OAuth token counts as a present session regardless of config dir", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-claude-oauth-token-"))
+    try {
+      // Empty config dir + no token: not present.
+      expect(await localClaudeSessionPresent("darwin", { CLAUDE_CONFIG_DIR: home })).toBe(false)
+      // Token present (even with an empty config dir and no .credentials.json): present.
+      expect(
+        await localClaudeSessionPresent("darwin", {
+          CLAUDE_CONFIG_DIR: home,
+          CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-test-token-value",
+        }),
+      ).toBe(true)
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
   test("env API key wins over the local session source", async () => {
     let detectorCalled = false
     const probed = await probeClaudeAgentReadiness({
