@@ -1,65 +1,66 @@
-# Ship Autopilot Remote Control to TestFlight (fast-track)
+# Ship Autopilot Remote Control — local build (our infra)
 
-Goal: get the current Expo app (the shell) onto a personal device via TestFlight,
-ASAP, then iterate. EAS Build compiles a signed `.ipa` in the cloud (no local
-Xcode archive needed); EAS Submit uploads it to App Store Connect → TestFlight.
+**We have switched off Expo/EAS.** Builds compile **locally on our own Mac**
+and JS updates ship over **our own OTA server** (`updates.openagents.com`).
+EAS Build / EAS Submit / `eas update` (u.expo.dev) are **no longer used** — do
+not reintroduce them.
 
-## What's already wired (in this repo)
-- `app.config.ts` — iOS `bundleIdentifier: com.openagents.autopilot-mobile`,
-  `ITSAppUsesNonExemptEncryption: false` (skips the export-compliance prompt),
-  EAS `owner: openagents` + `extra.eas.projectId` (linked via `eas init`).
-- `eas.json` — `production` build profile + `submit.production.ios` with
-  `appleTeamId: HQWSG26L43` (OpenAgents, Inc.). No `ascAppId` is pinned: EAS
-  Submit looks up / creates the App Store Connect app record automatically.
-- Expo SDK 55 app that builds (boots on simulator + web today).
-- iOS distribution certificate + provisioning profile were created on EAS by
-  the first `eas build` (the credential prompts answered "yes" once).
+## The two delivery paths
 
-Known identifiers:
+1. **OTA (JS-only changes)** → our update server. No build, no Apple, no Expo.
+   - The app's `app.config.ts` `updates.url` points at `updates.openagents.com`.
+   - Publish with our pipeline: `apps/oa-updates/scripts/publish-ota.sh`
+     (fingerprint → `expo export` → bake → deploy to our Cloud Run server).
+   - The on-device `expo-updates` runtime pulls the new JS bundle on next launch
+     **only when the native fingerprint matches** the installed binary.
+
+2. **Native build (anything that changes native code/modules)** → local Xcode
+   archive on this Mac, uploaded to TestFlight via Apple. Required when native
+   deps change (e.g. adding `react-native-reanimated` / `react-native-gesture-handler`
+   for the drawer) — those can't ship OTA.
+
+TestFlight distribution itself is **Apple's App Store Connect** — that is the
+only external dependency and is unavoidable for any iOS app. It is not Expo.
+
+## Known identifiers
 - iOS bundle id: `com.openagents.autopilot-mobile`
 - Apple Team: OpenAgents, Inc. — `HQWSG26L43`
-- EAS project: `@openagents/autopilot-remote-control`
-  (`33dc1fb6-1b11-486d-baa0-7946302fdc68`)
+- App Store Connect app id (`ascAppId`): `6779949704`
 
-## Owner prerequisites (one-time, can't be automated for you)
-1. **Apple Developer Program** membership ($99/yr) — https://developer.apple.com/account
-2. **Expo/EAS account** — `eas login` (free tier is fine for builds).
+## One-time local setup
+- **Xcode** (Xcode 26.5 confirmed on this Mac) + command-line tools.
+- **CocoaPods** (`pod`, confirmed) and **fastlane** (`fastlane`, confirmed).
+- iOS **distribution certificate** + **provisioning profile** for the bundle id
+  installed in the login keychain.
+- An **App Store Connect API key** (`.p8` + key id + issuer id) for non-interactive
+  TestFlight upload, stored under `.secrets/` (git-ignored), never committed.
 
-The App Store Connect app record no longer needs to be created by hand:
-`eas submit` creates/links it on first submit. If you'd rather pin it, add the
-numeric Apple ID back as `submit.production.ios.ascAppId` in `eas.json`.
-
-## Steps (run from clients/mobile/AutopilotRemoteControl)
+## Local build → TestFlight (run from clients/mobile/AutopilotRemoteControl)
 ```sh
-# 0) install the CLI + log in (once)
-bun add --global eas-cli            # or: npm i -g eas-cli
-eas login
+# 1) generate the native iOS project from the Expo config (managed → bare, local)
+npx expo prebuild --platform ios --clean
 
-# 1) link the project (writes extra.eas.projectId + owner to app config; once)
-eas init
+# 2) install pods
+cd ios && pod install && cd ..
 
-# 2) build a signed production .ipa in the cloud
-#    EAS will interactively create/manage your iOS distribution cert +
-#    provisioning profile (just log in with your Apple account when prompted).
-eas build --platform ios --profile production
+# 3) archive + export a signed .ipa locally (fastlane gym, or raw xcodebuild)
+fastlane gym --scheme AutopilotRemoteControl --export_method app-store \
+  --output_directory build --output_name AutopilotRemoteControl.ipa
 
-# 3) submit the latest finished build to App Store Connect → TestFlight
-#    (creates the ASC app record on first run if it doesn't exist yet)
-eas submit --platform ios --latest
-
-# …or do 2+3 in one shot (once an ASC app record exists):
-eas build --platform ios --profile production --auto-submit
+# 4) upload to App Store Connect → TestFlight via Apple (fastlane pilot, or
+#    Apple Transporter / `xcrun altool`), using the ASC API key:
+fastlane pilot upload --ipa build/AutopilotRemoteControl.ipa \
+  --api_key_path .secrets/asc_api_key.json
 ```
-Processing on Apple's side takes ~10–15 min; then the build appears in
-**TestFlight**. Add yourself as an internal tester (App Store Connect →
-TestFlight → Internal Testing) and install via the TestFlight app on your device.
-No App Review needed for internal TestFlight.
+Apple processing takes ~10–15 min; the build then appears in **TestFlight**
+(Internal Testing → install via the TestFlight app). No App Review for internal.
 
-## Notes
-- This ships the **shell** (nav screens). The live Pylon-connect functionality
-  (CL-5/CL-6 P0) lands later; getting the shell on-device first is intentional.
-- The app currently omits the native-only deps (mmkv/secure-store) that were
-  placeholders; they're re-added in full CL-6. A production EAS Build still
-  works without them.
-- If you want CI later, EAS Workflows (`.eas/workflows/submit-ios.yml`) or
-  `EXPO_TOKEN` in GitHub Actions can automate build+submit.
+Bump the build number per native build (CFBundleVersion) before archiving.
+
+## What goes OTA vs. native (decide before shipping)
+- JS / React / styles / assets only → **OTA** (our server), no build.
+- New/updated native module, native config, app icon, entitlements, SDK bump
+  → **native build** (local, above), then OTA resumes against the new binary.
+
+Use the `ship-mode` / `fingerprint-classify` protocol cores to classify a change
+(OTA vs rebuild) from the Expo fingerprint before shipping.

@@ -2,7 +2,7 @@
 
 Autopilot Remote Control is the Expo mobile client for observing and steering a paired Pylon Autopilot Coder node. It is the open-source, single-operator companion app described by roadmap CL-4 / issue #4906.
 
-This is a vanilla Expo scaffold, not an Ignite app. Future work can mine Ignite for selected pieces such as MMKV persistence, EAS conventions, Maestro flows, and theming structure, while keeping the protocol and streaming layers centered on `@openagentsinc/autopilot-control-protocol`.
+This is a vanilla Expo scaffold, not an Ignite app. Future work can mine Ignite for selected pieces such as MMKV persistence, Maestro flows, and theming structure (the drawer/nav was already harvested), while keeping the protocol and streaming layers centered on `@openagentsinc/autopilot-control-protocol`. Builds are **local (our infra)** and JS updates ship over **our own OTA server** — EAS / Expo cloud is not used (see `TESTFLIGHT.md`).
 
 The App Store convenience binary is intended to be a $4.99 paid download. The source remains available in this repository.
 

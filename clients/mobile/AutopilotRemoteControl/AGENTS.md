@@ -12,7 +12,11 @@ file adds the Expo-specific context for work scoped to this app.
 - React Native + React 19, React Navigation v7, `react-native-web` for the web
   target.
 - TypeScript, dynamic app config in `app.config.ts` (not a static `app.json`).
-- EAS Build + EAS Submit for device builds / TestFlight (see `TESTFLIGHT.md`).
+- **Local builds on our own infra** for device builds / TestFlight (see
+  `TESTFLIGHT.md`). **EAS Build / EAS Submit / `eas update` are removed — do not
+  use them.** Native `.ipa` is compiled locally on this Mac (Xcode / fastlane);
+  JS updates ship over our own OTA server (`updates.openagents.com`); only the
+  TestFlight upload itself touches Apple's App Store Connect.
 
 ## Expo conventions
 
@@ -20,22 +24,22 @@ file adds the Expo-specific context for work scoped to this app.
   enabled via `.claude/settings.json` — it teaches known-good Expo/RN patterns
   (Expo Skills). If you see "Plugin 'expo' is enabled but isn't installed here",
   run `claude plugin install expo@claude-plugins-official` and restart.
-- The remote Expo MCP Server (`https://mcp.expo.dev/mcp`, HTTP transport) gives
-  live access to Expo docs + EAS (build logs, TestFlight feedback, submissions).
-  Run `/mcp` once to complete the OAuth login before relying on it.
-- For SDK version specifics, prefer the Expo MCP Server / Expo Skills over
-  guessing. Use `npx expo install <pkg>` (not bare `npm/bun add`) so native
-  module versions stay aligned to the SDK.
+- For SDK version specifics, prefer the Expo docs / Expo Skills over guessing.
+  Use `npx expo install <pkg>` (not bare `npm/bun add`) so native module
+  versions stay aligned to the SDK. (The Expo build *cloud*/EAS is out; the
+  `expo` CLI itself — `expo install`, `expo export`, `expo prebuild` — stays.)
 - Treat `app.config.ts` as the single source for app identity:
   - iOS bundle id: `com.openagents.autopilot-mobile`
   - Android package: `com.openagents.autopilotmobile`
-  - EAS owner: `openagents`, project id `33dc1fb6-1b11-486d-baa0-7946302fdc68`
 
-## EAS / TestFlight
+## Builds / TestFlight (local, our infra — EAS removed)
 
-- `eas.json` holds build profiles + `submit.production.ios` (team `HQWSG26L43`).
-- The full ship runbook is `TESTFLIGHT.md`. Owner-only steps (`eas login`,
-  Apple Developer + App Store Connect record, `ascAppId`) can't be automated.
+- Native `.ipa` is compiled **locally on this Mac** (`expo prebuild` →
+  `xcodebuild`/`fastlane`), uploaded to TestFlight via Apple App Store Connect.
+- JS-only changes ship **OTA over our own server** (`updates.openagents.com`)
+  via `apps/oa-updates/scripts/publish-ota.sh` — no build, no Apple, no Expo.
+- The full ship runbook is `TESTFLIGHT.md`. The build runs locally and is fully
+  automatable here; only Apple's TestFlight processing is external.
 
 ## Boundaries
 
