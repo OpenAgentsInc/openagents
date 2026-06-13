@@ -63,6 +63,22 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
   }))
 }
 
+// Submit a composed "ask" to the node (CL-34). The node enqueues it as a work
+// intent for the coordinator to plan + fan out. Returns the intent status.
+export async function submitIntent(
+  conn: ConnectInfo,
+  draft: { title: string; body: string },
+): Promise<string> {
+  const json = (await command(conn, {
+    type: "intent.submit",
+    title: draft.title,
+    body: draft.body,
+    submittedByClientRef: "mobile",
+  })) as { ok?: boolean; result?: { status?: unknown } }
+  if (json.ok !== true) throw new Error("submit failed")
+  return String(json.result?.status ?? "received")
+}
+
 // Cancel a running/queued session (CL-15). Best-effort: returns the new state.
 export async function cancelSession(conn: ConnectInfo, sessionRef: string): Promise<string> {
   const json = (await command(conn, { type: "session.cancel", sessionRef })) as {

@@ -9,6 +9,7 @@ import {
   decodeConnectCode,
   fetchSessionEvents,
   fetchSessions,
+  submitIntent,
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
 
@@ -53,6 +54,9 @@ export default function NodesScreen() {
   const [selected, setSelected] = useState<string | null>(null)
   const [events, setEvents] = useState<ControlSessionEventRow[]>([])
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [askTitle, setAskTitle] = useState("")
+  const [askBody, setAskBody] = useState("")
+  const [askStatus, setAskStatus] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -121,6 +125,18 @@ export default function NodesScreen() {
       if (eventsTimer.current) clearInterval(eventsTimer.current)
     }
   }, [conn, selected, pollEvents])
+
+  const submitAsk = useCallback(() => {
+    if (conn === null || askTitle.trim().length === 0) return
+    setAskStatus("sending…")
+    void submitIntent(conn, { title: askTitle, body: askBody })
+      .then((s) => {
+        setAskStatus(`sent · ${s}`)
+        setAskTitle("")
+        setAskBody("")
+      })
+      .catch((e) => setAskStatus(`error: ${e instanceof Error ? e.message : String(e)}`))
+  }, [conn, askTitle, askBody])
 
   const connectManual = useCallback(() => {
     const info = decodeConnectCode(code)
@@ -227,6 +243,28 @@ export default function NodesScreen() {
                     : "connecting…"}
               </Text>
             </View>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Ask Autopilot</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="title — what do you want done?"
+                placeholderTextColor={C.textSecondary}
+                value={askTitle}
+                onChangeText={setAskTitle}
+              />
+              <TextInput
+                style={[styles.input, styles.inputMultiline]}
+                placeholder="details (optional)"
+                placeholderTextColor={C.textSecondary}
+                value={askBody}
+                onChangeText={setAskBody}
+                multiline
+              />
+              <Pressable style={styles.button} onPress={submitAsk}>
+                <Text style={styles.buttonText}>Send to node</Text>
+              </Pressable>
+              {askStatus ? <Text style={styles.askStatus}>{askStatus}</Text> : null}
+            </View>
             {sessions.length === 0 && status === "connected" ? (
               <View style={styles.card}>
                 <Text style={styles.cardBody}>No sessions yet. Spawn one on the node.</Text>
@@ -265,6 +303,8 @@ const styles = StyleSheet.create({
   cardTitle: { color: C.primary, fontSize: 16, fontWeight: "600" },
   cardBody: { color: C.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 8 },
   input: { backgroundColor: C.bg, borderColor: C.outline, borderRadius: 6, borderWidth: 1, color: C.text, fontFamily: "Courier", fontSize: 13, marginTop: 14, padding: 12 },
+  inputMultiline: { minHeight: 64, textAlignVertical: "top" },
+  askStatus: { color: C.textSecondary, fontSize: 12, marginTop: 10 },
   button: { alignItems: "center", backgroundColor: C.primary, borderRadius: 6, marginTop: 12, padding: 12 },
   buttonText: { color: C.bg, fontSize: 15, fontWeight: "700" },
   error: { color: C.danger, fontSize: 13, marginTop: 10 },
