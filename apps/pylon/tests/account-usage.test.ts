@@ -208,6 +208,8 @@ describe("pylon account usage", () => {
             CODEX_HOME: join(home, "codex-default"),
             CLAUDE_CONFIG_DIR: join(home, "claude-default"),
             PYLON_HOME: home,
+            // Isolate the sibling-home scan (#4953) from the real home dir.
+            PYLON_ACCOUNT_HOME_ROOT: join(home, "no-siblings"),
           },
           now: new Date("2026-06-12T12:00:00.000Z"),
         },
@@ -220,6 +222,39 @@ describe("pylon account usage", () => {
         accountRefHash: hashPylonAccountRef("codex", "default"),
       })
       expect(JSON.stringify(projection)).not.toContain(home)
+      assertPublicProjectionSafe(projection)
+    })
+  })
+
+  test("discovers sibling account homes on the machine (#4953)", async () => {
+    await withHome(async (home) => {
+      // A scan root holding several account homes beyond the two defaults.
+      const root = join(home, "scan-root")
+      await mkdir(join(root, ".codex"), { recursive: true })
+      await mkdir(join(root, ".codex-pylon-b"), { recursive: true })
+      await mkdir(join(root, ".claude"), { recursive: true })
+      await mkdir(join(root, ".claude-work"), { recursive: true })
+      await mkdir(join(root, ".unrelated"), { recursive: true })
+      await writeFile(join(root, ".codex-not-a-dir"), "x")
+
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const projection = await collectPylonAccountsList(summary, {
+        env: {
+          PYLON_HOME: home,
+          CODEX_HOME: join(root, ".codex"),
+          CLAUDE_CONFIG_DIR: join(root, ".claude"),
+          PYLON_ACCOUNT_HOME_ROOT: root,
+        },
+        now: new Date("2026-06-12T12:00:00.000Z"),
+      })
+
+      const codexHomes = projection.accounts.filter((a) => a.provider === "codex").length
+      const claudeHomes = projection.accounts.filter((a) => a.provider === "claude_agent").length
+      // Both default homes + the extra sibling homes, deduped (not just 1 each).
+      expect(codexHomes).toBeGreaterThanOrEqual(2)
+      expect(claudeHomes).toBeGreaterThanOrEqual(2)
+      // The non-account dir and the regular file are ignored.
+      expect(projection.accounts.some((a) => String(a.accountRef ?? "").includes("unrelated"))).toBe(false)
       assertPublicProjectionSafe(projection)
     })
   })

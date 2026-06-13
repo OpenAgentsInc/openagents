@@ -13,6 +13,7 @@ import {
   cancelSession,
   decodeConnectCode,
   fetchAccounts,
+  fetchAccountsRaw,
   fetchWalletStatus,
   fetchSessionArtifact,
   fetchSessionEvents,
@@ -22,7 +23,13 @@ import {
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
 import { fixedRowLabelHeight } from "../src/ui/row-metrics"
 import { DrawerIconButton } from "../src/ui/DrawerIconButton"
-import { CANONICAL_DARK, projectFailover, validateIntentDraft } from "@openagentsinc/autopilot-control-protocol"
+import {
+  CANONICAL_DARK,
+  capacityBar,
+  projectAccountRegistryDetail,
+  projectFailover,
+  validateIntentDraft,
+} from "@openagentsinc/autopilot-control-protocol"
 
 // Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
 // Owner is single-tenant for now ("fine for now security-wise").
@@ -63,6 +70,8 @@ export default function NodesScreen() {
   const [askStatus, setAskStatus] = useState<string | null>(null)
   const [nodeName, setNodeName] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [accountsRaw, setAccountsRaw] = useState<unknown[]>([])
+  const [accountsExpanded, setAccountsExpanded] = useState(false)
   const [wallet, setWallet] = useState<WalletStatus | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigation = useNavigation<{ navigate: (route: string) => void }>()
@@ -134,6 +143,11 @@ export default function NodesScreen() {
     void fetchAccounts(conn)
       .then((rows) => {
         if (!cancelled) setAccounts(rows)
+      })
+      .catch(() => {})
+    void fetchAccountsRaw(conn)
+      .then((rows) => {
+        if (!cancelled) setAccountsRaw(rows)
       })
       .catch(() => {})
     // Live MDK wallet balance (CL-23), refreshed periodically.
@@ -376,25 +390,60 @@ export default function NodesScreen() {
             ) : null}
             {accounts.length > 0 ? (
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>Accounts</Text>
                 {(() => {
+                  const detail = projectAccountRegistryDetail(accountsRaw)
                   const f = projectFailover(accounts.map((a) => ({ provider: a.provider, ready: a.ready })))
                   return (
-                    <Text style={styles.acctSummary}>
-                      {f.active ? `active: ${f.active}` : "no ready provider"}
-                      {f.standby.length > 0 ? ` · standby: ${f.standby.join(", ")}` : ""}
-                      {f.failedOver ? " · ⚠ failed over" : ""}
-                    </Text>
+                    <>
+                      <Pressable
+                        style={styles.acctHeader}
+                        onPress={() => setAccountsExpanded((v) => !v)}
+                      >
+                        <Text style={styles.cardTitle}>
+                          Accounts ({detail.total})
+                        </Text>
+                        <Text style={styles.chevron}>{accountsExpanded ? "⌄" : "›"}</Text>
+                      </Pressable>
+                      <Text style={styles.acctSummary}>
+                        {detail.readyCount} ready · {detail.exhaustedCount} exhausted
+                        {f.failedOver ? " · ⚠ failed over" : ""}
+                      </Text>
+                      {!accountsExpanded
+                        ? accounts.map((a, i) => (
+                            <View key={`${a.provider}-${i}`} style={styles.acctRow}>
+                              <View style={[styles.dot, { backgroundColor: a.ready ? C.success : C.warning }]} />
+                              <Text style={styles.acctText}>
+                                {a.provider} · {a.homeState} · {a.ready ? "ready" : "blocked"}
+                              </Text>
+                            </View>
+                          ))
+                        : detail.accounts.map((a, i) => {
+                            const bar = capacityBar({
+                              usedPct: a.capacity?.usedPct ?? null,
+                              exhausted: a.exhausted,
+                            })
+                            const tone = a.exhausted ? C.danger : a.ready ? C.success : C.warning
+                            return (
+                              <View key={`${a.identityLabel}-${i}`} style={styles.acctDetailRow}>
+                                <View style={styles.acctDetailTop}>
+                                  <View style={[styles.dot, { backgroundColor: tone }]} />
+                                  <Text style={styles.acctText}>{a.identityLabel}</Text>
+                                </View>
+                                <Text style={styles.acctMeta}>
+                                  {a.provider} · {a.homeState} ·{" "}
+                                  {a.exhausted ? "exhausted" : a.ready ? "ready" : "blocked"} · {bar.label}
+                                </Text>
+                                {a.blockerRefs.length > 0 ? (
+                                  <Text style={styles.acctBlockers} numberOfLines={2}>
+                                    {a.blockerRefs.join(", ")}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            )
+                          })}
+                    </>
                   )
                 })()}
-                {accounts.map((a, i) => (
-                  <View key={`${a.provider}-${i}`} style={styles.acctRow}>
-                    <View style={[styles.dot, { backgroundColor: a.ready ? C.success : C.warning }]} />
-                    <Text style={styles.acctText}>
-                      {a.provider} · {a.homeState} · {a.ready ? "ready" : "blocked"}
-                    </Text>
-                  </View>
-                ))}
               </View>
             ) : null}
             {sessions.length === 0 && status === "connected" ? (
@@ -511,6 +560,16 @@ const styles = StyleSheet.create({
   acctRow: { alignItems: "center", flexDirection: "row", marginTop: 10 },
   acctText: { color: C.text, fontFamily: "Courier", fontSize: 13 },
   acctSummary: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 6 },
+  acctHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  acctDetailRow: {
+    borderTopColor: C.outline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 10,
+    paddingTop: 10,
+  },
+  acctDetailTop: { alignItems: "center", flexDirection: "row" },
+  acctMeta: { color: C.textSecondary, fontFamily: "Courier", fontSize: 11, marginTop: 4 },
+  acctBlockers: { color: C.warning, fontFamily: "Courier", fontSize: 10, marginTop: 3 },
   balanceValue: { color: C.text, fontFamily: "Courier", fontSize: 22, fontWeight: "600", marginTop: 4 },
   row: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, flexDirection: "row", marginTop: 12, padding: 14 },
   childRow: { marginLeft: 22, marginTop: 6, backgroundColor: C.bg },

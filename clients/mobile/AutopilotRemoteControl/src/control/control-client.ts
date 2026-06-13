@@ -120,6 +120,18 @@ export async function fetchAccounts(conn: ConnectInfo): Promise<AccountRow[]> {
   }))
 }
 
+// Raw accounts.list rows for the registry-detail card (#4953). Returned as-is
+// (public-projection-safe on the node side) so the client can run the shared
+// projectAccountRegistryDetail() view-model over them.
+export async function fetchAccountsRaw(conn: ConnectInfo): Promise<unknown[]> {
+  const json = (await command(conn, { type: "accounts.list" })) as {
+    ok?: boolean
+    result?: { accounts?: unknown }
+  }
+  const accounts = json.ok === true ? json.result?.accounts : undefined
+  return Array.isArray(accounts) ? accounts : []
+}
+
 export type WalletStatus = {
   configured: boolean
   daemonOnline: boolean
