@@ -55,6 +55,7 @@ import {
   type BrokerRegistrationHosts,
 } from "./node/discovery-register"
 import { createIntentQueue } from "./node/intent-intake"
+import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
 import {
   defaultControlPort,
   ensureControlToken,
@@ -291,8 +292,7 @@ const nodeWalletActions: ControlCommandActions = {
 // CL-34/CL-35 work-intent intake: the phone composes an "ask" and submits it;
 // the node enqueues it (server-generates the id + timestamp) for the coordinator
 // to plan and fan out. Persisted to the Pylon home so intents survive restart.
-function makeIntentActions(persistPath: string) {
-  const intentQueue = createIntentQueue({ persistPath })
+function makeIntentActions(intentQueue: ReturnType<typeof createIntentQueue>) {
   return {
     submit: async (input: { title: string; body: string; scopeHint?: string; submittedByClientRef?: string }) => {
       const title = input.title.trim()
@@ -309,6 +309,48 @@ function makeIntentActions(persistPath: string) {
     },
     list: async (sinceCursor?: string) => intentQueue.listSince(sinceCursor),
   }
+}
+
+// CL-36 coordinator: wire the intent queue to the session executor so a
+// submitted ask is planned + fanned out into coding sessions automatically.
+// Each fan-out part runs in a fresh detached worktree off HEAD. Enabled unless
+// OA_COORDINATOR=0. Spend note: this auto-runs coding agents on owner-composed
+// asks (owner-authorized: the whole point of the loop).
+function startCoordinator(
+  intentQueue: ReturnType<typeof createIntentQueue>,
+  sessions: { spawn: (cmd: any) => Promise<{ sessionRef: string }>; list: () => Promise<Array<{ sessionRef: string; state: string }>> },
+): CoordinatorRuntime | null {
+  if (Bun.env.OA_COORDINATOR === "0") return null
+  const repoRoot = process.cwd()
+  const runtime = createCoordinatorRuntime({
+    intentQueue,
+    spawnSession: async (input) => {
+      const result = await sessions.spawn({
+        type: "session.spawn",
+        adapter: input.adapter,
+        objective: input.objective,
+        verify: input.verify,
+        worktreePath: input.worktreePath,
+      })
+      return { sessionRef: result.sessionRef }
+    },
+    sessionState: async (ref) => {
+      const list = await sessions.list()
+      return list.find((s) => s.sessionRef === ref)?.state ?? null
+    },
+    createWorktree: async (intentId, index) => {
+      const safe = intentId.replace(/[^a-zA-Z0-9._-]/g, "-")
+      const dir = `/tmp/oa-coord/${safe}-${index}`
+      await Bun.spawn(["git", "worktree", "remove", "--force", dir], { cwd: repoRoot, stderr: "ignore", stdout: "ignore" }).exited
+      const proc = Bun.spawn(["git", "worktree", "add", "--detach", "--force", dir, "HEAD"], { cwd: repoRoot, stderr: "pipe", stdout: "ignore" })
+      const code = await proc.exited
+      if (code !== 0) throw new Error(`git worktree add failed (${code}) for ${dir}`)
+      return dir
+    },
+    log: (message) => logToUi(message, "info"),
+  })
+  runtime.start(5000)
+  return runtime
 }
 
 // Node-side assignment actions (issue #4741). Available only when an
@@ -838,6 +880,7 @@ const runPylonNode = Effect.gen(function* () {
 
   const nodeAssignmentActions = makeAssignmentActions()
   const nodeSessionActions = makeSessionActions(bootstrapSummary)
+  const intentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
 
   // Control server (issue #4740): a second terminal can attach to this
   // running node. Port conflicts (another node already serving) are reported
@@ -855,7 +898,7 @@ const runPylonNode = Effect.gen(function* () {
           }
         : {}),
       sessions: nodeSessionActions,
-      intents: makeIntentActions(`${bootstrapSummary.paths.home}/intents.json`),
+      intents: makeIntentActions(intentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
     },
     port: controlPort,
@@ -880,6 +923,8 @@ const runPylonNode = Effect.gen(function* () {
       boundHost: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
     })
   }
+  // CL-36: close the self-driving loop — submitted asks auto-plan + fan out.
+  startCoordinator(intentQueue, nodeSessionActions)
 
   // User keybind overrides (apps/pylon home keybinds.json, Effect-Schema
   // validated). Invalid files are reported and ignored.
@@ -1064,6 +1109,7 @@ const runHeadlessNode = Effect.gen(function* () {
   const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const headlessAssignmentActions = makeAssignmentActions()
   const headlessSessionActions = makeSessionActions(bootstrapSummary)
+  const headlessIntentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -1075,7 +1121,7 @@ const runHeadlessNode = Effect.gen(function* () {
           }
         : {}),
       sessions: headlessSessionActions,
-      intents: makeIntentActions(`${bootstrapSummary.paths.home}/intents.json`),
+      intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
     },
     port: controlPort,
@@ -1092,6 +1138,8 @@ const runHeadlessNode = Effect.gen(function* () {
     controlToken,
     boundHost: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
   })
+  // CL-36: close the self-driving loop on the headless node (the launchd path).
+  startCoordinator(headlessIntentQueue, headlessSessionActions)
 
   const localState = yield* Effect.tryPromise({
     try: () => ensurePylonLocalState(bootstrapSummary),

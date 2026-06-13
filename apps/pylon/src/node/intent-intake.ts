@@ -61,6 +61,10 @@ export type IntentListPage = {
 export type IntentQueue = {
   enqueue: (intent: SubmittedWorkIntent) => IntentProjection
   get: (intentId: string) => IntentProjection | null
+  // Internal: full intent (title/body plaintext) for the coordinator runtime to
+  // build session objectives. NOT exposed over the control API (projections
+  // stay refs-only).
+  getIntent: (intentId: string) => SubmittedWorkIntent | null
   list: () => IntentProjection[]
   listSince: (sinceCursor?: string) => IntentListPage
   advanceStatus: (intentId: string, status: IntentStatus, observedAt?: string) => IntentProjection
@@ -162,6 +166,11 @@ export function createIntentQueue(options: { persistPath?: string } = {}): Inten
     get(intentId) {
       const record = records.get(intentId)
       return record ? cloneProjection(record.projection) : null
+    },
+
+    getIntent(intentId) {
+      const record = records.get(intentId)
+      return record ? { ...record.intent } : null
     },
 
     list() {
