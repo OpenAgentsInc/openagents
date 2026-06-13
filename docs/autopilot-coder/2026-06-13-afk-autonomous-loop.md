@@ -231,3 +231,4 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   PA7 structured-event-log (#4820), PA1 task-supervision (#4814), PA2
   schedule-receipts (#4815) — each reads its audit + builds a pure schema/
   projection core in apps/pylon/src/tas/.
+- 2026-06-13 iter 8 — merged TAS Pack A PA6/PA7/PA1/PA2 cores (16 tests, apps/pylon/src/tas/). Launched p7: PA9 approval-contract (#4822), PA8 budget (#4821), PA5 smoke-proof (#4818), PA10 non-interactive (#4823) — Pack A nearly complete (PA3 notifications done earlier as CL-30; PA4 mobile companion = the parity work).
