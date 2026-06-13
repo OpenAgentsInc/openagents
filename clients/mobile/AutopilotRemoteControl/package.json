@@ -1,0 +1,26 @@
+{
+  "name": "autopilot-remote-control",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android"
+  },
+  "dependencies": {
+    "@openagentsinc/autopilot-control-protocol": "workspace:*",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/native-stack": "^7.0.0",
+    "expo": "^55.0.0",
+    "expo-notifications": "^0.33.0",
+    "expo-secure-store": "^15.0.0",
+    "react": "19.0.0",
+    "react-native": "0.81.0",
+    "react-native-mmkv": "^3.3.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.0.10",
+    "typescript": "^6.0.3"
+  }
+}
