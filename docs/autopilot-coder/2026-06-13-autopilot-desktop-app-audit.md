@@ -15,7 +15,7 @@ timelines, decision/approval cards, spawn/cancel, artifacts, account/quota and
 cloud state — plus the ability to launch and supervise the local Pylon node.
 
 It is the **same-machine sibling** of the mobile app (Autopilot Remote Control,
-`2026-06-13-autopilot-remote-control-ios-app-audit.md`): same projection and
+`2026-06-13-autopilot-remote-control-mobile-app-audit.md`): same projection and
 control vocabulary, but the desktop talks to the local node directly over the
 loopback control API instead of over a remote bridge, and reuses our existing
 web UI stack instead of native Swift.
@@ -110,7 +110,7 @@ Three layers, all TypeScript:
 ## Repo Placement And Structure
 
 Electrobun apps are Bun packages, so this fits the Bun workspace (unlike the
-native Swift mobile app, which lives in `clients/ios/`). Place it as a workspace
+React Native/Expo mobile app, which lives in `clients/mobile/`). Place it as a workspace
 app that reuses shared packages and the same Effect v4 / Foldkit line — so the
 deploy-topology guard needs no exception (it stays on the tracked line):
 
@@ -284,7 +284,7 @@ Mostly shared with the mobile plan; desktop needs less because it is local:
 
 ## Anticipatory Plan Updates (made alongside this audit)
 
-- The mobile audit (`2026-06-13-autopilot-remote-control-ios-app-audit.md`) is
+- The mobile audit (`2026-06-13-autopilot-remote-control-mobile-app-audit.md`) is
   cross-referenced to Autopilot Desktop as the same-machine sibling and to the
   shared `packages/pylon-control-protocol`.
 - The cloud commercial plan
