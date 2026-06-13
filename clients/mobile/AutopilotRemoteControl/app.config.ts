@@ -7,6 +7,7 @@ const config: ExpoConfig = {
   owner: "openagents",
   scheme: "autopilot-remote-control",
   version: "0.1.0",
+  runtimeVersion: { policy: "fingerprint" },
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   ios: {
