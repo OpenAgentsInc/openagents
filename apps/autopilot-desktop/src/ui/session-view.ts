@@ -43,7 +43,6 @@ export function sessionRows(
 ): string {
   return sessions
     .map((session) => {
-      const lastProgressRef = session.lastProgressRef ?? "none"
       const verify =
         session.state === "completed"
           ? "✓ verify passed"
@@ -52,12 +51,13 @@ export function sessionRows(
             : session.state === "cancelled"
               ? "cancelled"
               : ""
+      const activity = session.latestActivity && session.latestActivity.length > 0 ? session.latestActivity : session.state
+      const shortRef = session.sessionRef.slice(-6)
       return [
         '<div class="session-row">',
-        `<code>${escapeHtml(session.sessionRef)}</code>`,
-        `<span>${escapeHtml(session.adapter)}</span>`,
         `<span class="state-chip state-${escapeHtml(session.state)}">${escapeHtml(session.state)}</span>`,
-        `<code>${escapeHtml(lastProgressRef)}</code>`,
+        `<span class="session-activity">${escapeHtml(activity)}</span>`,
+        `<code class="session-short">${escapeHtml(session.adapter)}·${escapeHtml(shortRef)}</code>`,
         "</div>",
         verify.length > 0 ? `<p class="verify-line verify-${escapeHtml(session.state)}">${escapeHtml(verify)}</p>` : "",
         artifactLine(artifacts[session.sessionRef]),

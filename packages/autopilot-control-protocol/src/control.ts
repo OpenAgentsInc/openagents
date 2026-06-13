@@ -33,6 +33,8 @@ export const SessionSummary = S.Struct({
   workspaceRef: S.optional(S.String),
   accountRefHash: S.NullOr(S.String),
   lastProgressRef: S.optional(S.String),
+  // One-line latest action (what the agent is doing now) for the session list.
+  latestActivity: S.optional(S.String),
   updatedAt: S.String,
 })
 export type SessionSummary = typeof SessionSummary.Type

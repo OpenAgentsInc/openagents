@@ -357,9 +357,11 @@ export default function NodesScreen() {
                 >
                   <View style={[styles.dot, { backgroundColor: stateTone(s.state) }]} />
                   <View style={styles.rowText}>
-                    <Text style={styles.rowLabel}>{s.sessionRef}</Text>
+                    <Text style={styles.rowLabel} numberOfLines={2}>
+                      {s.latestActivity || s.state}
+                    </Text>
                     <Text style={styles.rowStatus}>
-                      {s.adapter} · {s.state}
+                      {s.state} · {s.adapter} · {s.sessionRef.slice(-6)}
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>

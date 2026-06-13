@@ -31,6 +31,7 @@ export type ControlSessionRow = {
   artifactRef: string | null
   resultRef: string | null
   errorClass: string | null
+  latestActivity: string
 }
 
 async function command(conn: ConnectInfo, body: unknown): Promise<any> {
@@ -66,6 +67,7 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
     artifactRef: typeof s.artifactRef === "string" ? s.artifactRef : null,
     resultRef: typeof s.resultRef === "string" ? s.resultRef : null,
     errorClass: typeof s.errorClass === "string" ? s.errorClass : null,
+    latestActivity: typeof s.latestActivity === "string" ? s.latestActivity : "",
   }))
 }
 

@@ -113,6 +113,8 @@ export type ControlSessionProjection = {
   startedAt: string | null
   completedAt: string | null
   eventCount: number
+  // Latest human-readable action (for the session list — what it's doing now).
+  latestActivity: string
 }
 
 export type ControlSessionActions = {
@@ -301,7 +303,20 @@ function projectionFor(record: SessionRecord): ControlSessionProjection {
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     eventCount: record.events.length,
+    latestActivity: latestActivityOf(record.events),
   }
+}
+
+// A one-line "what is it doing right now" for the session list: the most recent
+// event that carries a human-readable action (agent text / tool call / file
+// change), falling back to the latest phase.
+function latestActivityOf(events: ControlSessionEvent[]): string {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const text = events[i].messageText
+    if (typeof text === "string" && text.length > 0) return text.slice(0, 160)
+  }
+  const last = events[events.length - 1]
+  return last ? last.phase : ""
 }
 
 async function workspaceForCommand(input: {

@@ -16,7 +16,7 @@ describe("session rendering", () => {
 
     expect(html).toContain("connected · 2 sessions")
     for (const session of sessionListFixture) {
-      expect(html).toContain(session.sessionRef)
+      expect(html).toContain(session.sessionRef.slice(-6))
       expect(html).toContain(session.adapter)
       expect(html).toContain(session.state)
     }
@@ -79,6 +79,6 @@ describe("session rendering", () => {
     })
 
     expect(container.innerHTML).toContain("connected · 2 sessions")
-    expect(container.innerHTML).toContain(sessionListFixture[0].sessionRef)
+    expect(container.innerHTML).toContain(sessionListFixture[0].sessionRef.slice(-6))
   })
 })

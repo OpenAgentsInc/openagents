@@ -39,7 +39,7 @@ describe("Pylon control client", () => {
   test("renders session rows without leaking bearer tokens", () => {
     const rows = sessionRows(sessionListFixture)
 
-    for (const session of sessionListFixture) expect(rows).toContain(session.sessionRef)
+    for (const session of sessionListFixture) expect(rows).toContain(session.sessionRef.slice(-6))
     expect(rows).not.toContain(bearerToken)
   })
 
