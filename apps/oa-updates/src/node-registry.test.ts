@@ -59,6 +59,32 @@ describe("node registry", () => {
     ])
   })
 
+  test("handles ISO-string timestamps for dedup and prune", () => {
+    const registry = createNodeRegistry()
+    // Nodes register with Date#toISOString — earlier code did numeric math on
+    // the string (NaN), so dedup-by-newer and prune both silently failed.
+    registry.register("owner_alpha", {
+      nodeRef: "n",
+      updatedAt: "2026-06-13T12:00:00.000Z",
+      controlToken: "old",
+    })
+    registry.register("owner_alpha", {
+      nodeRef: "n",
+      updatedAt: "2026-06-13T12:00:30.000Z",
+      controlToken: "new",
+    })
+    expect(registry.listForOwner("owner_alpha")[0].controlToken).toBe("new")
+
+    // Stale (older than maxAge) and unparseable timestamps are both pruned.
+    registry.register("owner_alpha", {
+      nodeRef: "bad",
+      updatedAt: "not-a-date",
+      controlToken: "x",
+    })
+    registry.pruneStale(Date.parse("2026-06-13T12:05:00.000Z"), 120_000)
+    expect(registry.listForOwner("owner_alpha")).toEqual([])
+  })
+
   test("isolates owners from each other", () => {
     const registry = createNodeRegistry()
     const ownerARegistration = registration("shared_node", 1000, {

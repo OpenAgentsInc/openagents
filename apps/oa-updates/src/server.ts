@@ -128,6 +128,10 @@ export function createUpdatesServer(
         // to the tailnet-first reachable one — no QR/paste).
         const nodesGet = url.pathname.match(/^\/([^/]+)\/nodes$/)
         if (nodesGet !== null) {
+          // Prune before listing so a stale/dead node (no heartbeat within
+          // ~6× the 20s interval) never gets handed to the phone, which picks
+          // the first reachable node. Keeps the in-memory list self-cleaning.
+          nodeRegistry.pruneStale(Date.now(), 120_000)
           return jsonResponse({ nodes: nodeRegistry.listForOwner(nodesGet[1]) })
         }
       }
