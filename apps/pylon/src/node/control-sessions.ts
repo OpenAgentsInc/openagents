@@ -291,10 +291,10 @@ function classifyError(error: unknown): { errorClass: string; errorDigestRef: st
       ? "account_selection"
       : lowered.includes("worktree") || lowered.includes("workspace")
         ? "workspace_materialization"
-        : lowered.includes("redaction")
-          ? "redaction_gate"
-          : lowered.includes("verify") || lowered.includes("dev check")
-            ? "verification_failed"
+        : lowered.includes("verify") || lowered.includes("dev check")
+          ? "verification_failed"
+          : lowered.includes("redaction scan")
+            ? "redaction_gate"
             : "execution_error"
   return { errorClass, errorDigestRef: stableRef("digest.pylon.control_session.error", message) }
 }
@@ -432,6 +432,7 @@ async function defaultControlSessionExecutor(
   input.emit({ phase: "dev_check_started" })
   if (input.abortSignal.aborted) throw new Error("control session cancelled")
   const devCheck = await runPylonDevCheck({
+    allowDetached: true,
     allowDirty: true,
     commands: [
       { argv: input.verify, cwd: input.cwd, reasonRef: "check.pylon.control_session_verification" },
