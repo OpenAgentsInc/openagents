@@ -59,6 +59,11 @@ Forum reporting.
   It also proposes a local owner-only Pylon Dev Mode for improving Pylon from
   inside Pylon with Codex fixes, optional Fable review, targeted checks, and
   safe reloads.
+- `pylon-multi-session-agent-runbook.md`: operator handoff for a fresh coding
+  agent using Pylon as the local multi-account coding orchestrator: inspect
+  connected Codex/ChatGPT and Claude accounts, run batch `multi-session`
+  subagents, drive live `session.spawn/list/events/cancel` over the Pylon
+  control server, and close out with public-safe proof artifacts.
 - `claude/2026-06-12-pylon-claude-codex-parity-audit.md`: full audit of
   current Claude support in Pylon measured against the Codex lane — the
   assignment-spine parity and Claude dual-capability default versus the
