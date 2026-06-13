@@ -1,7 +1,7 @@
 import type { ExpoConfig } from "expo/config"
 
 const config: ExpoConfig = {
-  name: "Autopilot Remote Control",
+  name: "Autopilot",
   slug: "autopilot-remote-control",
   // EAS account that owns this project (from `eas init`).
   owner: "openagents",
