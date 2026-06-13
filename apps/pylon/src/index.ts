@@ -56,6 +56,7 @@ import {
   startControlServer,
   type ControlCommandActions,
 } from "./node/control-server"
+import { createControlSessionActions } from "./node/control-sessions"
 import { runControlClient, sendControlCommand } from "./node/control-client"
 import { loadComposerState, saveComposerState } from "./node/composer-store"
 import { collectPylonContextProjection } from "./context-projection"
@@ -281,6 +282,10 @@ function makeContextActions(summary: ReturnType<typeof createBootstrapSummary>):
         summary,
       }),
   }
+}
+
+function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) {
+  return createControlSessionActions({ summary })
 }
 
 function codexComposerWorkingDirectory() {
@@ -701,6 +706,7 @@ const runPylonNode = Effect.gen(function* () {
   yield* forkLogPersistence(runtime, feedWriter)
 
   const nodeAssignmentActions = makeAssignmentActions()
+  const nodeSessionActions = makeSessionActions(bootstrapSummary)
 
   // Control server (issue #4740): a second terminal can attach to this
   // running node. Port conflicts (another node already serving) are reported
@@ -717,6 +723,7 @@ const runPylonNode = Effect.gen(function* () {
             assignmentsAccept: (leaseRef: string) => nodeAssignmentActions.accept(leaseRef),
           }
         : {}),
+      sessions: nodeSessionActions,
     },
     port: controlPort,
   }).pipe(
@@ -917,6 +924,7 @@ const runHeadlessNode = Effect.gen(function* () {
   const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
   const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const headlessAssignmentActions = makeAssignmentActions()
+  const headlessSessionActions = makeSessionActions(bootstrapSummary)
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -927,6 +935,7 @@ const runHeadlessNode = Effect.gen(function* () {
             assignmentsAccept: (leaseRef: string) => headlessAssignmentActions.accept(leaseRef),
           }
         : {}),
+      sessions: headlessSessionActions,
     },
     port: controlPort,
   })

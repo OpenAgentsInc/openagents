@@ -41,6 +41,10 @@ import {
   runPylonDevCheck,
   type PylonDevCheckProjection,
 } from "../src/dev-loop"
+import {
+  PROOF_REDACTION_PATTERN_REFS,
+  scanProofSerialization,
+} from "../src/proof-redaction"
 import { assertPublicProjectionSafe } from "../src/state"
 
 export const PYLON_DEV_PROOF_SCHEMA = "openagents.pylon.dev_proof_run.v0.1"
@@ -100,22 +104,6 @@ export type RetainedDailyDriverProof = {
   deviations: string[]
 }
 
-const REDACTION_PATTERNS: Array<{ ref: string; pattern: RegExp }> = [
-  { ref: "redaction.local_user_path", pattern: /\/Users\// },
-  { ref: "redaction.local_home_path", pattern: /\/home\// },
-  { ref: "redaction.tmp_path", pattern: /\/(?:private\/)?tmp\// },
-  // Pattern ref names deliberately avoid containing the matched text, so the
-  // retained artifact's own patternRefs list can never trip the scan.
-  { ref: "redaction.sk_prefix", pattern: /\bsk-[A-Za-z0-9_-]{8,}/ },
-  { ref: "redaction.provider_key_name", pattern: /api[_-]?key/i },
-  { ref: "redaction.auth_scheme", pattern: /\bbearer\b/i },
-  { ref: "redaction.credential_file", pattern: /auth\.json|\.credentials/i },
-  {
-    ref: "redaction.raw_session_uuid",
-    pattern: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
-  },
-]
-
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
@@ -125,11 +113,7 @@ function stableRef(prefix: string, value: string) {
  * patterns. Exported so sibling proof harnesses (e.g. the M10 overnight
  * runner) reuse the exact same gate instead of reinventing it.
  */
-export function scanProofSerialization(serialized: string): string[] {
-  return REDACTION_PATTERNS.filter(({ pattern }) => pattern.test(serialized)).map(
-    ({ ref }) => ref,
-  )
-}
+export { scanProofSerialization }
 
 function scanRetainedProof(proof: RetainedDailyDriverProof): string[] {
   return scanProofSerialization(JSON.stringify(proof))
@@ -376,7 +360,7 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
     devCheck,
     redactionScan: {
       state: "clean",
-      patternRefs: REDACTION_PATTERNS.map(({ ref }) => ref),
+      patternRefs: PROOF_REDACTION_PATTERN_REFS,
     },
     deviations: [],
   }

@@ -6,10 +6,10 @@
 > driving MULTIPLE parallel Codex sessions, each in its own worktree, each
 > on a DIFFERENT account; and (b) a Pylon CLI command reporting usage for
 > one or all connected accounts (Codex subscriptions, Claude, etc.)?
-> Verdict up front, updated after #4868/#4869: **(a) now has a local
-> first-class script surface for N bounded sessions over worktrees × accounts;
-> the remaining gap is the long-lived control-server/daemon surface. (b) still
-> does not exist and has an honest API-reality boundary.**
+> Verdict up front, updated after #4868-#4870: **(a) now has both a local
+> first-class script surface and a running-Pylon control-server surface for N
+> bounded sessions over worktrees × accounts. (b) still does not exist and has
+> an honest API-reality boundary.**
 
 ## 1. Version truth first
 
@@ -51,8 +51,12 @@
 - **Local HTTP control plane**: `apps/pylon/src/node/control-server.ts`
   (`startControlServer`) — loopback, bearer-token, SSE events + commands
   (wallet ops, `assignments.poll`, `assignments.accept`). An external
-  orchestrator can already talk to a running Pylon — but the command set
-  has **no session-spawn and no account-selection** verbs.
+  orchestrator can talk to a running Pylon. Updated in #4870: the command
+  set now includes `session.spawn`, `session.list`, `session.events`, and
+  `session.cancel`, backed by `control-sessions.ts`. Sessions reject local
+  danger modes, resolve per-session account/workspace selectors, retain
+  path-safe proof/failure artifacts under the Pylon home, and expose a
+  redaction-scanned per-session SSE stream.
 - **Work-order surface**: `pylon work submit --adapter
   codex|claude_agent|fable --commit <sha> --repo --branch --verify`
   (#4843) — programmatic, but routed through the platform work-order
@@ -125,10 +129,13 @@
    account, objective, verify) sessions. It still shells out to the
    retained single-session proof runner rather than exposing a daemon API;
    that is now gap 3.
-3. **Control-server verbs** — `session.spawn { adapter, accountRef,
-   worktreeRef, objective }`, `session.list`, `session.events` would
-   make a RUNNING Pylon the orchestrator surface (today the chat-side
-   orchestrator must shell out to scripts instead).
+3. **Control-server verbs** — **implemented in source main for #4870 after
+   this audit was written.** A running Pylon now exposes
+   `session.spawn { adapter, accountRef|accountHome, repoRef|worktreePath,
+   objective, verify }`, `session.list`, `session.events`, and
+   `session.cancel` over the loopback bearer-token control plane. The script
+   path remains useful for batch proofs; the daemon path is now available for
+   an external orchestrator already attached to a Pylon node.
 4. **`pylon accounts` CLI (goal b)** — does not exist. Honest layering:
    - `pylon accounts list --json`: enumerate locally connected
      credential homes (default + any registered alternates) per provider
@@ -177,7 +184,10 @@ worktrees, driven from a chat orchestrator:
   objective, and verification argv. The script handles bounded
   concurrency, per-session proof output, failure artifacts, and a
   redaction-scanned run summary.
-- **Remaining PR for the daemon path:** the three control-server verbs.
+- **Daemon path is now present (#4870):** an external orchestrator with the
+  node bearer token can call `session.spawn`, inspect `session.list`, open
+  the returned `/sessions/<sessionRef>/events` SSE stream, and cancel with
+  `session.cancel`.
 
 Goal (b) — usage command:
 - One PR: `pylon accounts list|usage --json` with the three-tier truth
@@ -191,7 +201,7 @@ Goal (b) — usage command:
 
 1. `pylon: per-session account selection (--codex-home/--account-ref) through composer + dev-proof-run` (gap 1) — filed as #4868 and implemented in source main.
 2. `pylon: concurrent multi-session spawner over worktrees × accounts (M10-grade artifacts)` (gap 2) — filed as #4869 and implemented in source main.
-3. `pylon: control-server session.spawn/list/events verbs` (gap 3)
+3. `pylon: control-server session.spawn/list/events verbs` (gap 3) — filed as #4870 and implemented in source main.
 4. `pylon: accounts list/usage CLI with three-tier truth (platform/local/provider-unavailable)` (gap 4)
 5. `worker: per-account usage attribution + budget surfaces in the token ledger` (gap 5)
 

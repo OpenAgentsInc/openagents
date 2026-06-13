@@ -176,6 +176,13 @@ payout target`) run from the palette and always end in an explicit
   dialogs. Detaching (`ctrl+c`) never interrupts the node.
 - The interactive `pylon` dashboard also serves the control API, so a
   second terminal can attach to it.
+- The same loopback bearer-token control API exposes local session
+  orchestration for external tools: `session.spawn`, `session.list`,
+  `session.events`, and `session.cancel` on `/command`, plus per-session SSE
+  at `/sessions/<sessionRef>/events`. Spawned sessions use bounded
+  Codex/Claude composer execution only, reject local danger modes, accept
+  per-session account/workspace selectors, and retain path-safe artifacts
+  under the Pylon home.
 
 ### TUI test harness
 

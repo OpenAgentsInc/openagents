@@ -28,11 +28,11 @@ import {
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import type { PylonComposerAdapter } from "../src/codex-agent"
 import { assertPublicProjectionSafe } from "../src/state"
+import { scanProofSerialization } from "../src/proof-redaction"
 import {
   materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
 } from "../src/workspace-materializer"
-import { scanProofSerialization } from "./dev-proof-run"
 
 export const MULTI_SESSION_PLAN_SCHEMA = "openagents.pylon.multi_session_plan.v0.1"
 export const MULTI_SESSION_HEARTBEAT_SCHEMA = "openagents.pylon.multi_session_heartbeat.v0.1"

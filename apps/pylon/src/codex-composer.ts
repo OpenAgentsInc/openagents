@@ -33,6 +33,7 @@ export interface CodexComposerOptions {
   approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted"
   networkAccessEnabled?: boolean
   timeoutMs?: number
+  abortSignal?: AbortSignal
   config?: CodexAgentConfig
   importer?: (specifier: string) => Promise<unknown>
   env?: Record<string, string | undefined>
@@ -217,6 +218,9 @@ export async function runCodexComposerStream(
   const importer = options.importer ?? ((specifier: string) => import(specifier))
   const sdk = (await importer(CODEX_AGENT_SDK_PACKAGE)) as CodexSdkModule
   const abort = new AbortController()
+  const abortFromCaller = () => abort.abort()
+  if (options.abortSignal?.aborted) abort.abort()
+  else options.abortSignal?.addEventListener("abort", abortFromCaller, { once: true })
   const timer = options.timeoutMs === undefined
     ? null
     : setTimeout(() => abort.abort(), options.timeoutMs)
@@ -272,11 +276,12 @@ export async function runCodexComposerStream(
     }
   } catch (error) {
     if (abort.signal.aborted) {
-      throw new Error("Codex composer timed out")
+      throw new Error(options.abortSignal?.aborted ? "Codex composer cancelled" : "Codex composer timed out")
     }
     throw error
   } finally {
     if (timer !== null) clearTimeout(timer)
+    options.abortSignal?.removeEventListener("abort", abortFromCaller)
   }
 
   return {

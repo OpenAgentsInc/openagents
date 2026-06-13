@@ -26,6 +26,7 @@ export interface ClaudeComposerOptions {
   model?: string
   maxTurns?: number
   timeoutMs?: number
+  abortSignal?: AbortSignal
   executionMode?: ClaudeComposerExecutionMode
   permissionMode?: ClaudeComposerPermissionMode
   config?: ClaudeAgentConfig
@@ -206,6 +207,9 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
   const importer = options.importer ?? ((specifier: string) => import(specifier))
   const sdk = (await importer(CLAUDE_AGENT_SDK_PACKAGE)) as ClaudeSdkModule
   const abort = new AbortController()
+  const abortFromCaller = () => abort.abort()
+  if (options.abortSignal?.aborted) abort.abort()
+  else options.abortSignal?.addEventListener("abort", abortFromCaller, { once: true })
   const timer = setTimeout(() => abort.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
   let textResult = ""
   let eventCount = 0
@@ -272,11 +276,12 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
     }
   } catch (error) {
     if (abort.signal.aborted) {
-      throw new Error("Claude composer timed out")
+      throw new Error(options.abortSignal?.aborted ? "Claude composer cancelled" : "Claude composer timed out")
     }
     throw error
   } finally {
     clearTimeout(timer)
+    options.abortSignal?.removeEventListener("abort", abortFromCaller)
   }
 
   return {

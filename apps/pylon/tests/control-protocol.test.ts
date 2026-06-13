@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Deferred } from "effect"
@@ -16,7 +17,10 @@ import {
   runControlClient,
   sendControlCommand,
 } from "../src/node/control-client"
+import { createControlSessionActions, type ControlSessionExecutor } from "../src/node/control-sessions"
 import type { PylonEvent } from "../src/node/state"
+import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import { PYLON_DEV_CHECK_SCHEMA, type PylonDevCheckProjection } from "../src/dev-loop"
 
 const stubActions = (calls: Array<Record<string, unknown>>) => ({
   walletSend: async (destinationRef: string, amountSats?: number) => {
@@ -32,6 +36,66 @@ const stubActions = (calls: Array<Record<string, unknown>>) => ({
     return { admitted: true }
   },
 })
+
+function fakeDevCheck(state: PylonDevCheckProjection["state"] = "passed"): PylonDevCheckProjection {
+  return {
+    schema: PYLON_DEV_CHECK_SCHEMA,
+    observedAt: "2026-06-13T00:00:00.000Z",
+    action: "check",
+    state,
+    changeSummary: {
+      repo: { state: "not_git", rootRef: null, branch: null, commit: null },
+      dirty: {
+        state: "clean",
+        changedCount: 0,
+        stagedCount: 0,
+        unstagedCount: 0,
+        untrackedCount: 0,
+      },
+      changedFileRefs: [],
+      areaRefs: [],
+      blockerRefs: [],
+    },
+    checkPlan: {
+      state: "ready",
+      commandRefs: ["command.pylon.control_session.test"],
+      blockerRefs: [],
+    },
+    commandResults: [],
+    latestRecordRef: null,
+    branchUntouched: true,
+    commitUntouched: true,
+    pushPerformed: false,
+    blockerRefs: [],
+  }
+}
+
+async function withControlSessionFixture<T>(fn: (fixture: {
+  accountHome: string
+  proofDir: string
+  pylonHome: string
+  summary: ReturnType<typeof createBootstrapSummary>
+  worktree: string
+}) => Promise<T>) {
+  const root = mkdtempSync(join(tmpdir(), "pylon-control-session-"))
+  try {
+    const pylonHome = join(root, "pylon-home")
+    const accountHome = join(root, "codex-home")
+    const worktree = join(root, "worktree")
+    const proofDir = join(root, "proofs")
+    await mkdir(pylonHome, { recursive: true })
+    await mkdir(accountHome, { recursive: true })
+    await mkdir(worktree, { recursive: true })
+    await writeFile(
+      join(pylonHome, "config.json"),
+      `${JSON.stringify({ dev: { accounts: [{ ref: "codex-a", provider: "codex", home: accountHome }] } })}\n`,
+    )
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome })
+    return await fn({ accountHome, proofDir, pylonHome, summary, worktree })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
 
 describe("control protocol", () => {
   test("token file is created once with stable content", async () => {
@@ -165,6 +229,168 @@ describe("control protocol", () => {
         }),
       ),
     )
+  })
+
+  test("session commands spawn, list, retain artifacts, and replay per-session events", async () => {
+    await withControlSessionFixture(async ({ accountHome, proofDir, summary, worktree }) => {
+      const calls: Array<Record<string, unknown>> = []
+      const executor: ControlSessionExecutor = async (input) => {
+        calls.push({
+          adapter: input.adapter,
+          accountRefHash: input.account?.accountRefHash,
+          cwd: input.cwd,
+        })
+        input.emit({ phase: "composer_event", message: "fake composer event", composerEventIndex: 1 })
+        input.emit({ phase: "dev_check_started" })
+        return {
+          commandCount: 1,
+          devCheck: fakeDevCheck("passed"),
+          editedFileCount: 1,
+          eventCount: 2,
+          externalSessionRef: "session.pylon.fake.external",
+          responseDigestRef: "digest.pylon.fake.response",
+          totalTokens: 3,
+        }
+      }
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const runtime = yield* makePylonNodeRuntime
+            const server = yield* startControlServer(runtime, {
+              token: "test-token-0123456789abcdef",
+              actions: {
+                ...stubActions(calls),
+                sessions: createControlSessionActions({
+                  executor,
+                  proofsDir: proofDir,
+                  summary,
+                }),
+              },
+              port: 0,
+            })
+
+            const spawned = (yield* Effect.promise(() =>
+              sendControlCommand(server.url, "test-token-0123456789abcdef", {
+                type: "session.spawn",
+                adapter: "codex",
+                accountRef: "codex-a",
+                worktreePath: worktree,
+                objective: "run a bounded fake control session",
+                verify: ["bun", "--version"],
+              }),
+            )) as { sessionRef: string; state: string }
+            expect(spawned.sessionRef).toStartWith("session.pylon.control.")
+
+            let list = [] as Array<{ sessionRef: string; state: string; artifactRef: string | null }>
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+              list = (yield* Effect.promise(() =>
+                sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "session.list" }),
+              )) as typeof list
+              if (list[0]?.state === "completed") break
+              yield* Effect.sleep("10 millis")
+            }
+            expect(list[0]?.state).toBe("completed")
+            expect(list[0]?.artifactRef).toStartWith("artifact.pylon.control_session.proof.")
+            expect(JSON.stringify(list)).not.toContain(accountHome)
+            expect(JSON.stringify(list)).not.toContain(worktree)
+            expect(calls).toContainEqual(expect.objectContaining({ adapter: "codex", cwd: worktree }))
+
+            const eventsInfo = (yield* Effect.promise(() =>
+              sendControlCommand(server.url, "test-token-0123456789abcdef", {
+                type: "session.events",
+                sessionRef: spawned.sessionRef,
+              }),
+            )) as { eventsPath: string; sessionRef: string; state: string }
+            expect(eventsInfo.eventsPath).toContain(encodeURIComponent(spawned.sessionRef))
+
+            const eventsResponse = yield* Effect.promise(() =>
+              fetch(`${server.url}${eventsInfo.eventsPath}`, {
+                headers: { authorization: "Bearer test-token-0123456789abcdef" },
+              }),
+            )
+            expect(eventsResponse.ok).toBe(true)
+            const eventFrames: string[] = []
+            const eventText = yield* Effect.promise(() => eventsResponse.text())
+            consumeSseBuffer(eventText, payload => eventFrames.push(payload))
+            const phases = eventFrames.map(frame => (JSON.parse(frame) as { phase: string }).phase)
+            expect(phases).toContain("queued")
+            expect(phases).toContain("started")
+            expect(phases).toContain("composer_event")
+            expect(phases).toContain("completed")
+            expect(eventFrames.join("\n")).not.toContain(worktree)
+            expect(eventFrames.join("\n")).not.toContain(accountHome)
+
+            const artifact = yield* Effect.promise(() =>
+              readFile(join(proofDir, `${spawned.sessionRef}-proof.json`), "utf8"),
+            )
+            expect(artifact).toContain('"schema": "openagents.pylon.control_session_artifact.v0.1"')
+            expect(artifact).not.toContain(worktree)
+            expect(artifact).not.toContain(accountHome)
+          }),
+        ),
+      )
+    })
+  })
+
+  test("session.cancel aborts a running fake executor and records cancelled state", async () => {
+    await withControlSessionFixture(async ({ proofDir, summary, worktree }) => {
+      let started!: () => void
+      const startedPromise = new Promise<void>(resolve => {
+        started = resolve
+      })
+      const executor: ControlSessionExecutor = async (input) => {
+        started()
+        await new Promise((_resolve, reject) => {
+          input.abortSignal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })
+        })
+        return {
+          commandCount: 0,
+          devCheck: fakeDevCheck("skipped"),
+          editedFileCount: 0,
+          eventCount: 0,
+          externalSessionRef: null,
+          responseDigestRef: null,
+          totalTokens: 0,
+        }
+      }
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const runtime = yield* makePylonNodeRuntime
+            const server = yield* startControlServer(runtime, {
+              token: "test-token-0123456789abcdef",
+              actions: {
+                ...stubActions([]),
+                sessions: createControlSessionActions({ executor, proofsDir: proofDir, summary }),
+              },
+              port: 0,
+            })
+            const spawned = (yield* Effect.promise(() =>
+              sendControlCommand(server.url, "test-token-0123456789abcdef", {
+                type: "session.spawn",
+                adapter: "codex",
+                worktreePath: worktree,
+                objective: "cancel this bounded session",
+                verify: ["bun", "--version"],
+              }),
+            )) as { sessionRef: string }
+            yield* Effect.promise(() => startedPromise)
+            const cancelled = (yield* Effect.promise(() =>
+              sendControlCommand(server.url, "test-token-0123456789abcdef", {
+                type: "session.cancel",
+                sessionRef: spawned.sessionRef,
+              }),
+            )) as { state: string; errorClass: string | null }
+            expect(cancelled.state).toBe("cancelled")
+            expect(cancelled.errorClass).toBe("cancelled")
+            const list = (yield* Effect.promise(() =>
+              sendControlCommand(server.url, "test-token-0123456789abcdef", { type: "session.list" }),
+            )) as Array<{ state: string }>
+            expect(list[0]?.state).toBe("cancelled")
+          }),
+        ),
+      )
+    })
   })
 
   test("backoff doubles to a 30s ceiling", () => {
