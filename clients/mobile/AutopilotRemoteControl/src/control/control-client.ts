@@ -132,6 +132,29 @@ export async function fetchAccountsRaw(conn: ConnectInfo): Promise<unknown[]> {
   return Array.isArray(accounts) ? accounts : []
 }
 
+export type AssignmentRow = {
+  assignmentRef: string
+  leaseRef: string
+  goal: string
+  paymentMode: string
+  expiresAt: string
+}
+
+// Read-first work/assignment view (CL-22). Polls the node's open assignment
+// leases. Read-only — accepting a lease is a separate, gated action.
+export async function fetchAssignments(conn: ConnectInfo): Promise<AssignmentRow[]> {
+  const json = (await command(conn, { type: "assignments.poll" })) as { ok?: boolean; result?: unknown }
+  const rows = json.ok === true ? json.result : undefined
+  if (!Array.isArray(rows)) return []
+  return rows.map((a: any) => ({
+    assignmentRef: String(a.assignmentRef ?? "?"),
+    leaseRef: String(a.leaseRef ?? "?"),
+    goal: String(a.goal ?? ""),
+    paymentMode: String(a.paymentMode ?? "unknown"),
+    expiresAt: String(a.expiresAt ?? ""),
+  }))
+}
+
 export type WalletStatus = {
   configured: boolean
   daemonOnline: boolean

@@ -10,10 +10,12 @@ import {
   type AccountRow,
   type SessionArtifact,
   type WalletStatus,
+  type AssignmentRow,
   cancelSession,
   decodeConnectCode,
   fetchAccounts,
   fetchAccountsRaw,
+  fetchAssignments,
   fetchWalletStatus,
   fetchSessionArtifact,
   fetchSessionEvents,
@@ -73,6 +75,7 @@ export default function NodesScreen() {
   const [accountsRaw, setAccountsRaw] = useState<unknown[]>([])
   const [accountsExpanded, setAccountsExpanded] = useState(false)
   const [wallet, setWallet] = useState<WalletStatus | null>(null)
+  const [assignments, setAssignments] = useState<AssignmentRow[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigation = useNavigation<{ navigate: (route: string) => void }>()
   const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
@@ -148,6 +151,11 @@ export default function NodesScreen() {
     void fetchAccountsRaw(conn)
       .then((rows) => {
         if (!cancelled) setAccountsRaw(rows)
+      })
+      .catch(() => {})
+    void fetchAssignments(conn)
+      .then((rows) => {
+        if (!cancelled) setAssignments(rows)
       })
       .catch(() => {})
     // Live MDK wallet balance (CL-23), refreshed periodically.
@@ -444,6 +452,23 @@ export default function NodesScreen() {
                     </>
                   )
                 })()}
+              </View>
+            ) : null}
+            {assignments.length > 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Assignments ({assignments.length})</Text>
+                <Text style={styles.acctSummary}>open work leases · read-only</Text>
+                {assignments.map((a) => (
+                  <View key={a.leaseRef} style={styles.acctDetailRow}>
+                    <Text style={styles.acctText} numberOfLines={2}>
+                      {a.goal || a.assignmentRef.slice(-8)}
+                    </Text>
+                    <Text style={styles.acctMeta}>
+                      {a.paymentMode}
+                      {a.expiresAt ? ` · expires ${a.expiresAt.slice(0, 10)}` : ""} · {a.assignmentRef.slice(-6)}
+                    </Text>
+                  </View>
+                ))}
               </View>
             ) : null}
             {sessions.length === 0 && status === "connected" ? (
