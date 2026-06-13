@@ -17,6 +17,10 @@ function render(): void {
   const c = document.createElement("p")
   c.textContent = "Next (CL-5): connect to the local Pylon node over loopback and render live sessions."
   root.append(c)
+  const sessions = document.createElement("section")
+  sessions.id = "sessions"
+  // TODO: Bun main will push live Pylon node state into this placeholder via RPC.
+  root.append(sessions)
   document.body.append(root)
 }
 
