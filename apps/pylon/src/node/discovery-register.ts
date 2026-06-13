@@ -119,11 +119,17 @@ export function buildBrokerRegistrationBody(input: {
   port: number
   controlToken: string
   updatedAt: string
+  // An explicit, externally-reachable base URL (e.g. a `tailscale serve` HTTPS
+  // MagicDNS endpoint: https://host.tailnet.ts.net). When set it is registered
+  // verbatim as the tailnet address — used as-is by the phone — bypassing the
+  // host+port builder. HTTPS here also satisfies iOS ATS (no cleartext).
+  publicUrl?: string
 }): BrokerRegistrationBody {
   const addresses: NodeRegistrationAddresses = {}
   if (input.hosts.loopback) addresses.loopback = toBaseUrl(input.hosts.loopback, input.port)
   if (input.hosts.lan) addresses.lan = toBaseUrl(input.hosts.lan, input.port)
   if (input.hosts.tailnet) addresses.tailnet = toBaseUrl(input.hosts.tailnet, input.port)
+  if (input.publicUrl) addresses.tailnet = input.publicUrl.replace(/\/+$/, "")
 
   const body: BrokerRegistrationBody = {
     nodeRef: input.nodeRef,

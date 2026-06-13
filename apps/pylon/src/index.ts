@@ -196,6 +196,9 @@ function startDiscoveryHeartbeat(opts: {
   if (!broker) return
   const owner = Bun.env.OA_DISCOVERY_OWNER ?? "chris"
   const nodeRef = Bun.env.PYLON_NODE_REF ?? hostname()
+  // An externally-reachable HTTPS endpoint (e.g. `tailscale serve`): advertised
+  // verbatim, reachable on any network the phone's tailnet covers, and ATS-safe.
+  const publicUrl = Bun.env.OA_DISCOVERY_PUBLIC_URL
   const hosts: BrokerRegistrationHosts = {}
   if (opts.boundHost.startsWith("127.")) hosts.loopback = opts.boundHost
   else if (opts.boundHost.startsWith("100.")) hosts.tailnet = opts.boundHost
@@ -211,6 +214,7 @@ function startDiscoveryHeartbeat(opts: {
         port: opts.controlPort,
         controlToken: opts.controlToken,
         updatedAt: new Date().toISOString(),
+        ...(publicUrl ? { publicUrl } : {}),
       }),
     })
   }
