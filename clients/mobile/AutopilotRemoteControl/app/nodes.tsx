@@ -16,7 +16,7 @@ import {
   submitIntent,
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
-import { CANONICAL_DARK } from "@openagentsinc/autopilot-control-protocol"
+import { CANONICAL_DARK, projectFailover } from "@openagentsinc/autopilot-control-protocol"
 
 // Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
 // Owner is single-tenant for now ("fine for now security-wise").
@@ -322,6 +322,16 @@ export default function NodesScreen() {
             {accounts.length > 0 ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Accounts</Text>
+                {(() => {
+                  const f = projectFailover(accounts.map((a) => ({ provider: a.provider, ready: a.ready })))
+                  return (
+                    <Text style={styles.acctSummary}>
+                      {f.active ? `active: ${f.active}` : "no ready provider"}
+                      {f.standby.length > 0 ? ` · standby: ${f.standby.join(", ")}` : ""}
+                      {f.failedOver ? " · ⚠ failed over" : ""}
+                    </Text>
+                  )
+                })()}
                 {accounts.map((a, i) => (
                   <View key={`${a.provider}-${i}`} style={styles.acctRow}>
                     <View style={[styles.dot, { backgroundColor: a.ready ? C.success : C.warning }]} />
@@ -395,6 +405,7 @@ const styles = StyleSheet.create({
   breakdown: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 6 },
   acctRow: { alignItems: "center", flexDirection: "row", marginTop: 10 },
   acctText: { color: C.text, fontFamily: "Courier", fontSize: 13 },
+  acctSummary: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 6 },
   row: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, flexDirection: "row", marginTop: 12, padding: 14 },
   childRow: { marginLeft: 22, marginTop: 6, backgroundColor: C.bg },
   dot: { borderRadius: 6, height: 12, marginRight: 12, width: 12 },
