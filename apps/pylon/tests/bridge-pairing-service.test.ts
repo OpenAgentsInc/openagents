@@ -66,4 +66,19 @@ describe("bridge pairing service (CL-14)", () => {
     }
     expect(svc.validate(fake, new Date("2026-06-13T12:30:00.000Z"))).toBe(false)
   })
+
+  test("authorize returns stored claims; rejects mismatched jti / unknown / revoked", () => {
+    const svc2 = createBridgePairingService({ rand: () => `k${seq++}` })
+    const { bootstrapId, secret } = svc2.issueBootstrap()
+    const ok = svc2.exchange(baseExchange(bootstrapId, secret, { capabilities: ["observe_public"], jti: "jti.auth" }))
+    if (!ok.ok) throw new Error("exchange failed")
+    const ref = ok.claims.pairingRef
+    const now = new Date("2026-06-13T12:30:00.000Z")
+
+    expect(svc2.authorize(ref, "jti.auth", now)?.capabilities).toEqual(["observe_public"])
+    expect(svc2.authorize(ref, "wrong-jti", now)).toBeNull()
+    expect(svc2.authorize("unknown", "jti.auth", now)).toBeNull()
+    svc2.revoke(ref)
+    expect(svc2.authorize(ref, "jti.auth", now)).toBeNull()
+  })
 })

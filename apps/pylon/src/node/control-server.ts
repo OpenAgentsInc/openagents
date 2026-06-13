@@ -12,7 +12,7 @@ import { Effect, PubSub, SubscriptionRef, type Scope } from "effect"
 import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } from "./state"
 import type { PylonNodeRuntime } from "./runtime"
 import { createBridgePairingService } from "./bridge-pairing-service"
-import type { Capability } from "@openagentsinc/autopilot-control-protocol"
+import { verbAllowedByCapabilities, type BridgeRequestVerb, type Capability } from "@openagentsinc/autopilot-control-protocol"
 import type {
   ControlSessionActions,
   ControlSessionArtifactCommand,
@@ -282,6 +282,44 @@ export const startControlServer = (
                   : Response.json({ ok: false, reason: result.reason }, { status: 401 })
               } catch {
                 return Response.json({ error: "malformed pairing request" }, { status: 400 })
+              }
+            }
+
+            // CL-14 bridge read endpoint: credential + capability enforced.
+            // Auth: `Authorization: Bridge <pairingRef>:<jti>`. Authorization
+            // uses the STORED claims (client-sent capabilities are never
+            // trusted). Pre-bearer (the bridge credential, not the dev token).
+            if (url.pathname === "/bridge" && request.method === "POST") {
+              const header = request.headers.get("authorization") ?? ""
+              const match = /^Bridge\s+([^:]+):(.+)$/.exec(header)
+              if (match === null) {
+                return Response.json({ error: "bridge credential required" }, { status: 401 })
+              }
+              const claims = bridgePairing.authorize(match[1] ?? "", match[2] ?? "", new Date())
+              if (claims === null) {
+                return Response.json({ error: "invalid or expired pairing" }, { status: 401 })
+              }
+              try {
+                const envelope = (await request.json()) as { verb?: unknown; sessionRef?: unknown }
+                const verb = typeof envelope.verb === "string" ? envelope.verb : ""
+                if (!verbAllowedByCapabilities(verb as BridgeRequestVerb, claims.capabilities)) {
+                  return Response.json({ error: "capability not granted", verb }, { status: 403 })
+                }
+                if (!options.actions.sessions) {
+                  return Response.json({ error: "sessions unavailable on this node" }, { status: 404 })
+                }
+                if (verb === "session.list") {
+                  return Response.json({ ok: true, result: await options.actions.sessions.list() })
+                }
+                if (verb === "session.snapshot" || verb === "session.history") {
+                  if (typeof envelope.sessionRef !== "string") {
+                    return Response.json({ error: "sessionRef required" }, { status: 400 })
+                  }
+                  return Response.json({ ok: true, result: await options.actions.sessions.events(envelope.sessionRef) })
+                }
+                return Response.json({ error: "unsupported bridge verb", verb }, { status: 501 })
+              } catch {
+                return Response.json({ error: "malformed bridge request" }, { status: 400 })
               }
             }
 
