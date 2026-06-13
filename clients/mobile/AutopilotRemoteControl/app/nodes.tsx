@@ -152,9 +152,9 @@ export default function NodesScreen() {
                 <View key={e.eventIndex} style={styles.eventRow}>
                   <View style={[styles.dot, { backgroundColor: stateTone(e.state) }]} />
                   <View style={styles.rowText}>
-                    <Text style={styles.rowLabel}>{e.phase}</Text>
+                    <Text style={styles.rowLabel}>{e.detail || e.phase}</Text>
                     <Text style={styles.rowStatus}>
-                      #{e.eventIndex} · {e.observedAt.slice(11, 19) || e.state}
+                      {e.detail ? `${e.phase} · ` : ""}#{e.eventIndex} · {e.observedAt.slice(11, 19) || e.state}
                     </Text>
                   </View>
                 </View>

@@ -157,8 +157,15 @@ export function summarizeCodexThreadEvent(raw: unknown): string {
 
   const item = event.item
   if (!item || typeof item.type !== "string") return type
-  if (item.type === "agent_message") return "agent message"
-  if (item.type === "reasoning") return "reasoning"
+  // Surface the actual text so a remote viewer (the phone timeline) sees WHAT
+  // the agent is doing, not just an opaque "agent message" label. Bounded +
+  // whitespace-collapsed; the proof-serialization scanner still redacts secrets.
+  const itemText = (() => {
+    const t = (item as Record<string, unknown>).text
+    return typeof t === "string" ? t.replace(/\s+/g, " ").trim() : ""
+  })()
+  if (item.type === "agent_message") return itemText ? `agent: ${itemText.slice(0, 200)}` : "agent message"
+  if (item.type === "reasoning") return itemText ? `thinking: ${itemText.slice(0, 160)}` : "reasoning"
   if (item.type === "command_execution") {
     const command = typeof item.command === "string" ? item.command : "command"
     const status = typeof item.status === "string" ? item.status : "running"

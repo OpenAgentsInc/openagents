@@ -83,6 +83,10 @@ export type ControlSessionEvent = {
   account: PublicPylonAccountSelection | null
   workspaceRef: string
   messageRef?: string
+  // Bounded, human-readable description of the composer event (the agent's
+  // text / tool call / file change) so remote viewers can see live activity.
+  // Passes the proof-serialization redaction scanner like every other field.
+  messageText?: string
   composerEventIndex?: number
   artifactRef?: string
   resultRef?: string
@@ -633,6 +637,7 @@ export function createControlSessionActions(options: {
           emit(record, {
             phase: event.phase,
             ...(messageRef === undefined ? {} : { messageRef }),
+            ...(event.message === undefined ? {} : { messageText: event.message.slice(0, 280) }),
             ...(event.composerEventIndex === undefined ? {} : { composerEventIndex: event.composerEventIndex }),
           })
         },

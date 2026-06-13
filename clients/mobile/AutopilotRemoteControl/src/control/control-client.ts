@@ -68,6 +68,8 @@ export type ControlSessionEventRow = {
   observedAt: string
   phase: string
   state: string
+  // What the agent is actually doing (agent text / tool call / file change).
+  detail: string
 }
 
 // Live session-detail timeline (dev transport). Uses the inline recentEvents
@@ -88,5 +90,6 @@ export async function fetchSessionEvents(
     observedAt: String(e.observedAt ?? ""),
     phase: String(e.phase ?? "?"),
     state: String(e.state ?? "?"),
+    detail: typeof e.messageText === "string" && e.messageText.length > 0 ? e.messageText : "",
   }))
 }
