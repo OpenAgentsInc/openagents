@@ -177,12 +177,14 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
 > API tunnel). **Plan (autonomous):** containerize `apps/oa-updates` (seed a real
 > `expo export` update at startup) → `gcloud run deploy` → use the stable
 > `*.run.app` URL as `updates.url` for the initial on-device test (no DNS
-> needed). **NEEDS-OWNER:** (1) to use `updates.openagents.com`, either drop a
-> Cloudflare token with `Zone:DNS:Edit` on openagents.com into that secret file,
-> or add the CNAME → the Cloud Run URL yourself; (2) confirm the right GCP
+> needed). **NEEDS-OWNER:** (1) **OWNER WILL ADD THE CNAME to Cloud Run** — so my
+> deliverable is: deploy `oa-updates` to Cloud Run, create the domain mapping
+> (`gcloud run domain-mappings create --domain updates.openagents.com --service
+> oa-updates --region <r>`), and POST the **CNAME target + the `*.run.app` URL**
+> right here in §6 for the owner to point DNS at; (2) confirm the right GCP
 > project/billing if `gcloud run deploy` to `openagentsgemini` hits perms; (3)
-> install the resulting build on your phone. I'll proceed with the Cloud Run
-> deploy and log the URL here.
+> install the resulting build on your phone. Proceeding with the Cloud Run deploy
+> after the containerize batch (p3) merges; URL/CNAME will be logged here.
 
 
 - 2026-06-13: loop initialized; OTA pure-core fanout launched; cocoapods
