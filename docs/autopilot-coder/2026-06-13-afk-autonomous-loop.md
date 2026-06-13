@@ -224,3 +224,10 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   conformance gate + mobile parity view-models. **On-device remaining (owner):**
   add the CNAME, then I build the app with updates.url→our endpoint (local
   build) and you install it. Next loop: Phase C (terminal-agent-systems roadmap).
+
+- 2026-06-13 iter 7 — Phase B parity layer COMPLETE: merged CL-24 conformance
+  gate + mobile parity view-models (47 tests). Starting **Phase C** (terminal-
+  agent-systems roadmap): launched p6 = Pack A PA6 evidence-receipt (#4819),
+  PA7 structured-event-log (#4820), PA1 task-supervision (#4814), PA2
+  schedule-receipts (#4815) — each reads its audit + builds a pure schema/
+  projection core in apps/pylon/src/tas/.
