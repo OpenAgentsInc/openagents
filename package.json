@@ -16,6 +16,7 @@
       "apps/nostr-relay",
       "apps/pylon",
       "apps/pylon/packages/*",
+      "clients/mobile/*",
       "packages/*",
       "packages/probe",
       "packages/probe/packages/*"
