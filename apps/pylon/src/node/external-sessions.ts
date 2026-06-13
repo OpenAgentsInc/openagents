@@ -223,6 +223,10 @@ export function scanClaudeSessions(opts: {
         const subPath = join(subDir, sub)
         try {
           const sst = statSync(subPath)
+          // Only nest RECENTLY-active sub-agents — a parent chat stays "recent"
+          // for its whole life, but long-finished Task sub-agents are stale and
+          // shouldn't keep showing under it.
+          if (opts.nowMs - sst.mtimeMs > opts.maxAgeMs) continue
           candidates.push({
             sessionId: `${sessionId}.${sub.replace(/\.jsonl$/, "")}`,
             path: subPath,
