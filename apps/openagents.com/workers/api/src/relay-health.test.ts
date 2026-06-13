@@ -24,7 +24,7 @@ import {
   type RelayHealthTransitionEvent,
 } from './relay-health'
 
-const RELAY_URL = 'wss://openagents-market-relay.openagents.workers.dev'
+const RELAY_URL = 'wss://relay.openagents.com'
 
 const tickingClock = (startMs = 1000, stepMs = 25) => {
   let now = startMs
@@ -297,7 +297,7 @@ describe('probeRelayNip11', () => {
     expect(leg.relayName).toBe('Scoped Market Relay')
     expect(leg.latencyMs).toBeGreaterThan(0)
     expect(requested[0]?.url).toBe(
-      'https://openagents-market-relay.openagents.workers.dev',
+      'https://relay.openagents.com',
     )
     expect(requested[0]?.headers).toEqual({
       Accept: 'application/nostr+json',

@@ -181,7 +181,7 @@ const unsafePublicMaterialPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|bearer\s+|cookie|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?key|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(invoice|payment|payload|prompt|runner|state)|secret|seed[_-]?phrase|sk-[a-z0-9]|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
 
 export const DefaultBuyModeRelayUrl =
-  'wss://openagents-market-relay.openagents.workers.dev'
+  'wss://relay.openagents.com'
 
 export const buyModeDayKey = (iso: string): string => iso.slice(0, 10)
 

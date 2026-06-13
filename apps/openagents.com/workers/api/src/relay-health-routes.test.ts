@@ -10,7 +10,7 @@ import {
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
 
-const RELAY_URL = 'wss://openagents-market-relay.openagents.workers.dev'
+const RELAY_URL = 'wss://relay.openagents.com'
 const NOW_ISO = '2026-06-12T20:40:00.000Z'
 
 const probeRecord = (

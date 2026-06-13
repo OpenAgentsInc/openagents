@@ -28,7 +28,7 @@ const publishInput = (): ForumWorkRequestRelayPublishInput => ({
   },
   idempotencyKey: 'p1-live-publisher-test',
   lbrRequest: {} as ForumWorkRequestRelayPublishInput['lbrRequest'],
-  relayUrl: 'wss://openagents-market-relay.openagents.workers.dev',
+  relayUrl: 'wss://relay.openagents.com',
   topicId: 'topic-p1',
   workRequestId: 'work-request-p1',
 })

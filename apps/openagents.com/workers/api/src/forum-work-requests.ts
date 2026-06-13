@@ -25,7 +25,7 @@ import {
 
 export const ForumWorkRequestsForumSlug = 'work-requests'
 export const DefaultForumWorkRequestRelayUrl =
-  'wss://openagents-market-relay.openagents.workers.dev'
+  'wss://relay.openagents.com'
 export const DefaultForumWorkRequestBridgeActorRef =
   'agent:openagents_market_bridge'
 export const DefaultForumWorkRequestRepositoryRef = 'repo.public.openagents'

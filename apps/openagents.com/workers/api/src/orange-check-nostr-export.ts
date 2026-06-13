@@ -10,7 +10,7 @@ import {
 
 import type { OrangeCheckEntitlement } from './orange-check-entitlements'
 
-const DEFAULT_ORANGE_CHECK_RELAY = 'wss://openagents-market-relay.openagents.workers.dev'
+const DEFAULT_ORANGE_CHECK_RELAY = 'wss://relay.openagents.com'
 const OPENAGENTS_ORANGE_CHECK_BADGE_D = 'openagents-orange-check'
 const hexPubkeyPattern = /^[a-f0-9]{64}$/i
 const unsafePublicMaterialPattern =

@@ -846,8 +846,8 @@ describe('Pylon API routes', () => {
     const providerNostrNpub =
       'npub1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3jn54khce'
     const providerMarketRelayRefs = [
-      'wss://openagents-market-relay.openagents.workers.dev',
       'wss://relay.openagents.com',
+      'wss://relay.damus.io',
     ]
     const providerNip90LaneRefs = [
       'lane.public.nip90.5050.text_generation',
