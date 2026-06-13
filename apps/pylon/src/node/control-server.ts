@@ -54,6 +54,8 @@ export type ControlCommand =
   | ControlSessionListCommand
   | ControlSessionEventsCommand
   | ControlSessionCancelCommand
+  | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
+  | { type: "intent.list" }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -62,6 +64,12 @@ export interface ControlCommandActions {
   assignmentsPoll?: () => Promise<unknown>
   assignmentsAccept?: (leaseRef: string) => Promise<unknown>
   sessions?: ControlSessionActions
+  // CL-34: the phone composes an "ask" and submits it to the node, which
+  // enqueues it as a work intent for the coordinator to plan + fan out.
+  intents?: {
+    submit: (input: { title: string; body: string; scopeHint?: string; submittedByClientRef?: string }) => Promise<unknown>
+    list: () => Promise<unknown>
+  }
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -182,6 +190,17 @@ export const startControlServer = (
         case "session.cancel":
           if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
           return options.actions.sessions.cancel(command.sessionRef)
+        case "intent.submit":
+          if (!options.actions.intents) throw new Error("intents unavailable on this node")
+          return options.actions.intents.submit({
+            title: command.title,
+            body: command.body,
+            ...(command.scopeHint === undefined ? {} : { scopeHint: command.scopeHint }),
+            ...(command.submittedByClientRef === undefined ? {} : { submittedByClientRef: command.submittedByClientRef }),
+          })
+        case "intent.list":
+          if (!options.actions.intents) throw new Error("intents unavailable on this node")
+          return options.actions.intents.list()
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }

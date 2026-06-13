@@ -54,6 +54,7 @@ import {
   postNodeRegistration,
   type BrokerRegistrationHosts,
 } from "./node/discovery-register"
+import { createIntentQueue } from "./node/intent-intake"
 import {
   defaultControlPort,
   ensureControlToken,
@@ -285,6 +286,27 @@ const nodeWalletActions: ControlCommandActions = {
   walletReceive: (amountSats) => receiveWithMdk(amountSats),
   walletAdmitPayoutTarget: (kind, ref) =>
     Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
+}
+
+// CL-34 work-intent intake: the phone composes an "ask" and submits it; the
+// node enqueues it (server-generates the id + timestamp) for the coordinator to
+// plan and fan out. In-memory queue, shared across this node process.
+const intentQueue = createIntentQueue()
+const nodeIntentActions = {
+  submit: async (input: { title: string; body: string; scopeHint?: string; submittedByClientRef?: string }) => {
+    const title = input.title.trim()
+    const body = input.body.trim()
+    if (title.length === 0) throw new Error("intent.submit requires a non-empty title")
+    return intentQueue.enqueue({
+      intentId: `intent.${crypto.randomUUID()}`,
+      title,
+      body,
+      ...(input.scopeHint && input.scopeHint.trim().length > 0 ? { scopeHint: input.scopeHint.trim() } : {}),
+      submittedByClientRef: input.submittedByClientRef?.trim() || "mobile",
+      createdAt: new Date().toISOString(),
+    })
+  },
+  list: async () => intentQueue.list(),
 }
 
 // Node-side assignment actions (issue #4741). Available only when an
@@ -831,6 +853,7 @@ const runPylonNode = Effect.gen(function* () {
           }
         : {}),
       sessions: nodeSessionActions,
+      intents: nodeIntentActions,
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
@@ -1049,6 +1072,7 @@ const runHeadlessNode = Effect.gen(function* () {
           }
         : {}),
       sessions: headlessSessionActions,
+      intents: nodeIntentActions,
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
