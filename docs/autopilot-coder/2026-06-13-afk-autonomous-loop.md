@@ -83,6 +83,14 @@ idle.** Keep a fanout running whenever fannable work exists.
    end a turn with zero fanouts running. There is always more backlog
    (Phase A→B→C; the deep TAS well) — if one phase is owner-gated, pull the next.
    Chain it every iteration: merge → **launch next** → arm watcher → yield.
+   **EVERY batch must map to ≥1 OPEN issue it will CLOSE on merge.** Before
+   launching, name the open issue(s) each session completes. Do NOT fan cores for
+   already-closed or out-of-scope issues — that produces zero closes and looks
+   like spinning (the owner WILL notice). If an open issue's only remainder is
+   **live integration** (not a fannable bounded core), do that integration
+   yourself as coordinator and CLOSE the issue — completing+closing issues is the
+   goal, not accumulating orphan cores. Each iteration should visibly drop the
+   open-issue count or honestly explain why it can't yet.
 6. **Pacing = the fanout watcher, not a timer.** Arm a background watcher on each
    launched fanout; its completion re-invokes you immediately — that IS the
    heartbeat, no fixed delay. ScheduleWakeup is ONLY a long safety net (~1800s)
@@ -277,3 +285,4 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
 - 2026-06-13 iter 17 — OWNER: close issues on completion (not just comment). Added close-on-complete mandate + an issue-close sweep step to §1/§2. Closed the 4 fully-done: #4919 (TestFlight), #4920 (OTA), #4948 (dark tokens), #4950 (local build). Open 44→40 (remaining = live-wiring partials + M4/not-started + ~8 older-program issues #4749-4786).
 - 2026-06-13 iter 17b — merged dual-transport pairing cores (bootstrap-payload, address-resolution tailnet-first, pylon bind-config; 35 tests). Pairing PROTOCOL+CLIENT layer now built (p15+p16). Remaining for live pairing = INTEGRATION (mine): CL-8 socket bind to LAN/tailnet, node QR render, live handshake, mobile pairing screen + subscription render. Open issues 40 (close-on-completion now mandated).
 - 2026-06-13 iter 18 — merged p17 pairing live-path cores (pairing-offer/QR, session-subscription, pairing-flow; 23 tests). Pairing pure-core layer COMPLETE; live integration is coordinator work. NO-IDLE: launched p18 same turn — TAS team-memory, repo-memory, eval-regression, performance.
+- 2026-06-13 iter 18b — OWNER: no issue closes visible. Root cause: merging partial CORES (feed already-closed CL-9/10/13 or not-yet-live CL-6/14), not COMPLETING issues. Fix: runbook now requires every batch map to an OPEN issue it CLOSES; live integration done by coordinator. Closed CL-24 #4930 (conformance gate met) → 39 open. PIVOT: next focus = live bridge/pairing integration to actually close CL-14/#4908/#4909 + render the new autopilot-ui components in web/desktop to close the M3 component issues.
