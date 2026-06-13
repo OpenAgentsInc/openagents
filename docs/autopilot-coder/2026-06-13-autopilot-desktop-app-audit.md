@@ -192,7 +192,7 @@ can live inside the desktop window when a user wants the raw terminal.
 
 ## Relationship To Mobile And Cloud (shared contract)
 
-- **Shared protocol package.** Extract a `packages/pylon-control-protocol`
+- **Shared protocol package.** Extract a `packages/autopilot-control-protocol`
   (Effect Schema) holding the control + bridge request/event vocabulary
   (`openagents.pylon.control.v0.3` + the system-#39 bridge verbs/events). Pylon's
   node, the desktop Bun main, and the web companion all import it; the Swift
@@ -252,7 +252,7 @@ Mostly shared with the mobile plan; desktop needs less because it is local:
   endpoint/token).
 - **Bridge (system #39)** for remote nodes — shared with mobile, not yet built.
 - **Cloud coordinator client** — from the cloud commercial plan, not yet built.
-- **Shared `packages/pylon-control-protocol`** — extraction to unify all
+- **Shared `packages/autopilot-control-protocol`** — extraction to unify all
   surfaces.
 
 ## Testing
@@ -286,14 +286,14 @@ Mostly shared with the mobile plan; desktop needs less because it is local:
 
 - The mobile audit (`2026-06-13-autopilot-remote-control-mobile-app-audit.md`) is
   cross-referenced to Autopilot Desktop as the same-machine sibling and to the
-  shared `packages/pylon-control-protocol`.
+  shared `packages/autopilot-control-protocol`.
 - The cloud commercial plan
   (`2026-06-13-cloud-remote-execution-commercial-plan.md`) is updated to name
   Autopilot Desktop as the operator console for cloud sessions.
 
 ## Recommended Issues
 
-1. Extract `packages/pylon-control-protocol` (Effect Schema): control
+1. Extract `packages/autopilot-control-protocol` (Effect Schema): control
    (`openagents.pylon.control.v0.3`) + bridge (#39) request/event vocabulary;
    consumed by pylon, desktop, web; mirrored by Swift. (openagents)
 2. `apps/autopilot-desktop` scaffold: Electrobun app + `electrobun.config.ts` +

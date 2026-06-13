@@ -25,7 +25,7 @@ It also has a **same-machine sibling**: Autopilot Desktop
 (`2026-06-13-autopilot-desktop-app-audit.md`), a Bun/Electrobun + Foldkit GUI
 that talks to the *local* Pylon node over loopback. Because this mobile app is
 now React Native/TypeScript, it **imports the shared
-`packages/pylon-control-protocol` (Effect Schema) directly** — the same package
+`packages/autopilot-control-protocol` (Effect Schema) directly** — the same package
 the desktop Bun main process and the web companion use. One contract, one
 implementation, tested once. The only differences across surfaces are transport
 (mobile = remote bridge; desktop = loopback) and UI (mobile = React Native;
@@ -47,7 +47,7 @@ build cost held equal:
 - **The crux is one protocol implementation, not two.** The hard, evolving,
   correctness-critical part of this app is the bridge/control protocol (cursor
   resume, dedup, exactly-once decisions, capability gating, backpressure). In
-  React Native it is the shared `packages/pylon-control-protocol` Effect
+  React Native it is the shared `packages/autopilot-control-protocol` Effect
   package, imported and run on-device, tested once with the same vitest fixtures
   as web/desktop. In Swift it would be a hand-mirrored Codable + client kept in
   sync by hand against a versioned protocol — the highest ongoing drift/bug
@@ -125,7 +125,7 @@ openagents/
         app/                          # screens (React Navigation v7)
           nodes/ sessions/ session-detail/ decisions/ spawn/ settings/
         src/
-          control/                    # adapters over @openagents/pylon-control-protocol
+          control/                    # adapters over @openagents/autopilot-control-protocol
           stream/                     # WS/SSE client, cursor resume, dedup
           stores/                     # node/event/decision stores (MMKV-backed)
           pairing/                    # QR parse + bootstrap exchange
@@ -136,7 +136,7 @@ openagents/
 
 - `clients/` is the area for client apps that are not part of the Bun/Effect
   Worker build (it already houses the desktop-adjacent and mobile clients).
-- **It imports `packages/pylon-control-protocol`** (Effect Schema + client). To
+- **It imports `packages/autopilot-control-protocol`** (Effect Schema + client). To
   consume the workspace package without dragging Metro into the root install,
   reference it via a path/workspace dependency or a thin build step that
   publishes the package locally; keep the RN/Metro install scoped to
@@ -275,7 +275,7 @@ React Native (React Navigation v7); status-oriented, not a terminal emulator.
 
 ## Client Architecture
 
-The protocol/client layer is **the shared `packages/pylon-control-protocol`
+The protocol/client layer is **the shared `packages/autopilot-control-protocol`
 Effect package** (schemas, request builders, the cursor/decision state logic),
 imported by this app, the desktop, and the web companion. On top of it the RN
 app adds device-specific TypeScript modules:
@@ -404,7 +404,7 @@ projection test (per the system #39 decision).
 
 ## Testing
 
-- Protocol/client: tested **once** in `packages/pylon-control-protocol` with
+- Protocol/client: tested **once** in `packages/autopilot-control-protocol` with
   vitest (schema round-trips against `openagents.pylon.control.v0.3`, frame
   parsing, cursor/dedup) — shared with web/desktop, not re-tested per platform.
 - App: RN component/store tests for pairing, session list/detail, and the
@@ -446,12 +446,12 @@ projection test (per the system #39 decision).
 
 ## Recommended Issues
 
-0. Extract `packages/pylon-control-protocol` (Effect Schema + client +
+0. Extract `packages/autopilot-control-protocol` (Effect Schema + client +
    cursor/decision logic) shared by web, desktop, and this app — the foundation
    the RN decision depends on. (openagents) *[shared with the desktop audit]*
 1. `clients/mobile` scaffold: vanilla **Expo** app (Expo SDK 55 / RN 0.81 /
    React 19 / React Navigation v7), MMKV + edge-to-edge + EAS + Maestro patterns
-   borrowed from Ignite, consuming `packages/pylon-control-protocol`. (openagents)
+   borrowed from Ignite, consuming `packages/autopilot-control-protocol`. (openagents)
 2. P0 read-only companion: pairing (QR/URL/token in `expo-secure-store`), node
    health, session list, WS/SSE session-detail timeline. (openagents)
 3. Pylon: documented Tailnet-bind path for the control server + a TUI/CLI

@@ -107,7 +107,7 @@ Map onto the crabbox control-plane/data-plane split (see
 - **Autopilot Desktop (`apps/autopilot-desktop`, Bun/Electrobun + Foldkit) =
   the operator console** for deploying and supervising sessions — local, remote
   (bridge), and OpenAgents Cloud — in one window. It consumes the cloud
-  coordinator client and the shared `packages/pylon-control-protocol`, and is the
+  coordinator client and the shared `packages/autopilot-control-protocol`, and is the
   primary GUI for BYO-key vs credits sessions and quota/failover state. See
   `2026-06-13-autopilot-desktop-app-audit.md`.
 - **`alpha/` = private strategy/roadmap** for the business framing.

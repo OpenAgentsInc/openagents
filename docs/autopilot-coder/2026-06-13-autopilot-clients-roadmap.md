@@ -15,7 +15,7 @@ milestone's rungs are tracked as issues. No runtime invariant changes here.
 - **Mobile** — Autopilot Remote Control, React Native/Expo (`clients/mobile`);
   audit `2026-06-13-autopilot-remote-control-mobile-app-audit.md`.
 
-**Spine:** `packages/pylon-control-protocol` (Effect Schema + typed client +
+**Spine:** `packages/autopilot-control-protocol` (Effect Schema + typed client +
 cursor/dedup/decision logic). All three clients speak the same control + bridge
 vocabulary (`openagents.pylon.control.v0.3` today; the system-#39 bridge verbs
 next). Desktop reaches the local node over loopback; mobile reaches it over the
@@ -30,7 +30,7 @@ of building against them.
 
 | Milestone | Theme | Headline outcome |
 | --------- | ----- | ---------------- |
-| **M0** | Shared spine | `packages/pylon-control-protocol` + shared fixtures, tested once |
+| **M0** | Shared spine | `packages/autopilot-control-protocol` + shared fixtures, tested once |
 | **M1** | Scaffolds + first handshake | Desktop *and* mobile-in-emulator both show the **same live Autopilot Coder session** running on this Mac |
 | **M2** | The bridge (#39) | Proper pairing/scoped-credential/cursor-resumable transport for mobile + remote desktop |
 | **M3** | Actions + TUI parity | Each client does what the TUI does today: spawn, approve, steer, cancel, accounts/quota, artifacts |
@@ -43,7 +43,7 @@ of building against them.
 
 Everything else imports this. Build and test it once.
 
-- **CL-0** Extract `packages/pylon-control-protocol`: Effect Schema for the
+- **CL-0** Extract `packages/autopilot-control-protocol`: Effect Schema for the
   control surface (`openagents.pylon.control.v0.3`: `session.spawn/list/events/
   cancel`, node snapshot, event frames) plus the planned bridge verbs/events
   (`bridge.pair/revoke/clients.list`, `session.subscribe/snapshot/history`,
@@ -84,7 +84,7 @@ Rungs:
   Repo: openagents. *Parallel.*
 - **CL-4** Mobile scaffold: `clients/mobile` vanilla Expo app (SDK 55 / RN 0.81 /
   React 19 / React Navigation v7; MMKV, edge-to-edge, EAS, Maestro patterns
-  borrowed from Ignite) consuming `packages/pylon-control-protocol`. Repo:
+  borrowed from Ignite) consuming `packages/autopilot-control-protocol`. Repo:
   openagents. *Parallel.*
 - **CL-5** Desktop P0: connect to local node, render session list + live
   session-detail timeline from the shared protocol. Repo: openagents. *After
@@ -211,7 +211,7 @@ the M2 pylon rungs CL-8/CL-9/CL-10 can run concurrently; M3 read surfaces
 - M2 here is the same "remote session bridge (system #39)" the audits depend on.
 - M4 consumes the cloud commercial plan's coordinator + the quota-aware routing
   (#4884) already shipped.
-- M0's `packages/pylon-control-protocol` is the single most important rung — it
+- M0's `packages/autopilot-control-protocol` is the single most important rung — it
   is what makes "one implementation, three clients" real and is why the mobile
   app is React Native rather than Swift.
 
@@ -221,7 +221,7 @@ the M2 pylon rungs CL-8/CL-9/CL-10 can run concurrently; M3 read surfaces
    bounded `session.spawn` whose live timeline + a single approval prompt render
    on both clients. (Recommended.)
 2. **Workspace integration of `clients/mobile`** — path/workspace dependency on
-   `packages/pylon-control-protocol` vs a locally published package; keep Metro
+   `packages/autopilot-control-protocol` vs a locally published package; keep Metro
    scoped to `clients/mobile`.
 3. **When to claim "TUI parity"** — gate on CL-24's conformance checklist, not
    vibes.
