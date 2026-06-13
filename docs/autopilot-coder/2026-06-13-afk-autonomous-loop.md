@@ -166,6 +166,23 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
 >    points `updates.url` at that endpoint).
 > Everything else is ready: local `.ipa` builds work; the `updates.url` switch
 > (#4949) is a one-line flip once the endpoint exists; `oa-update` publish works.
+>
+> **Deploy findings (2026-06-13) + plan:** owner wants `updates.openagents.com`
+> on **GCloud** prod (cloudflare tunnel locally OK for the very first test).
+> Access probe: `gcloud` authed (chris@openagents.com, project
+> `openagentsgemini`) ✓; `cloudflared`+`docker` present ✓; the Cloudflare token
+> in `.secrets/cloudflare-openagents.env` is **zone-READ only** — it can see the
+> `openagents.com` zone (id `bd33d951ee951a7c18fa4ab2ddcbe3a7`) but **DNS write
+> returns Authentication error**, and it has no account scope (so no cloudflared
+> API tunnel). **Plan (autonomous):** containerize `apps/oa-updates` (seed a real
+> `expo export` update at startup) → `gcloud run deploy` → use the stable
+> `*.run.app` URL as `updates.url` for the initial on-device test (no DNS
+> needed). **NEEDS-OWNER:** (1) to use `updates.openagents.com`, either drop a
+> Cloudflare token with `Zone:DNS:Edit` on openagents.com into that secret file,
+> or add the CNAME → the Cloud Run URL yourself; (2) confirm the right GCP
+> project/billing if `gcloud run deploy` to `openagentsgemini` hits perms; (3)
+> install the resulting build on your phone. I'll proceed with the Cloud Run
+> deploy and log the URL here.
 
 
 - 2026-06-13: loop initialized; OTA pure-core fanout launched; cocoapods
