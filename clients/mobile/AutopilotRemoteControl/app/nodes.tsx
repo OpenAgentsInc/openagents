@@ -61,7 +61,7 @@ export default function NodesScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>Autopilot Remote Control</Text>
+        <Text style={styles.h1}>Autopilot</Text>
         <Text style={styles.subtitle}>Nodes</Text>
 
         {rows.length === 0 ? (
