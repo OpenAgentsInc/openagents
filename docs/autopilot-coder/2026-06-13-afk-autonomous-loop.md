@@ -203,3 +203,14 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   updates.url (#4949), rebuild (local build works). Launching next OTA fanout:
   real-export CLI + signed manifest response.
 - 2026-06-13 iter 3-4: merged OTA export-reader + signed-response + signing-in-server (real-export e2e PASS, 2.1MB Hermes bundle served over HTTP); merged CL-18 accounts + CL-20 node-status UI components (Phase B start). Deploy access probed (gcloud OK, CF token zone-read-only → DNS owner step). Launching: oa-updates containerize (Cloud Run) + CL-15/19/21/23 UI.
+
+- 2026-06-13 iter 5 — **OTA SERVER DEPLOYED TO GCLOUD CLOUD RUN.**
+  Live: `https://oa-updates-ezxz4mgdsq-uc.a.run.app` (also
+  `https://oa-updates-157437760789.us-central1.run.app`), responds with
+  expo-protocol-version:1 / noUpdateAvailable (empty registry; not seeded yet).
+  Domain mapping created → **OWNER: add DNS `updates.openagents.com CNAME
+  ghs.googlehosted.com`** (cert provisions once DNS is set). Merged Cloud Run
+  containerize + CL-15/19/21/23 UI (39 tests). Next: bake a real expo-export
+  update into the image + redeploy (OA_SEED_DIST/OA_SEED_RUNTIME) so the live
+  server serves an actual update; then a build with updates.url→our endpoint.
+  Launching p4: CL-16/17/22 parity components.
