@@ -62,6 +62,7 @@ import {
   toSessionListEntry,
   type ExternalSession,
 } from "./node/external-sessions"
+import { scanCodexSessions } from "./node/codex-sessions"
 import { homedir } from "node:os"
 import {
   defaultControlPort,
@@ -324,12 +325,22 @@ function makeIntentActions(intentQueue: ReturnType<typeof createIntentQueue>) {
 function startExternalSessionTailer(): { list: () => ExternalSession[]; find: (ref: string) => ExternalSession | undefined } {
   let sessions: ExternalSession[] = []
   const projectsRoot = `${homedir()}/.claude/projects`
+  const codexRoot = `${homedir()}/.codex/sessions`
   const poll = (): void => {
+    const now = Date.now()
+    let claude: ExternalSession[] = []
+    let codex: ExternalSession[] = []
     try {
-      sessions = scanClaudeSessions({ projectsRoot, nowMs: Date.now(), maxAgeMs: 900_000, maxSessions: 12 })
+      claude = scanClaudeSessions({ projectsRoot, nowMs: now, maxAgeMs: 900_000, maxSessions: 12 })
     } catch {
       // best-effort
     }
+    try {
+      codex = scanCodexSessions({ sessionsRoot: codexRoot, nowMs: now, maxAgeMs: 900_000, maxSessions: 12 })
+    } catch {
+      // best-effort
+    }
+    sessions = [...claude, ...codex]
   }
   poll()
   const timer = setInterval(poll, 5000)
