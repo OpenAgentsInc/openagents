@@ -335,3 +335,5 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   - CL-30 notifications / CL-32 distribution — need expo deps / a build (owner installs).
   - #4749-4786 — older training/labor-market program (different scope).
   Stopping the 110s self-wakeup: the owner is present (manual /loop) and the next valuable steps need their decision/device. Re-fire /loop or name a lever and I go deep immediately. Node stays up (launchd KeepAlive) + registered.
+
+- 2026-06-13 iter 36 — **FULL CODING LOOP CLOSED (CL-36 #4942 CLOSED), owner-authorized auto-spawn.** Coordinator runtime: submitted ask -> planIntent fanout -> session per part in fresh worktree -> status received->planning->fanning_out->shipping->shipped/failed. Verified LIVE: checklist ask fanned out -> 6 coding agents running, doing REAL work (rg/sed/edits/reasoning), visible in session.list + live timelines (phone+desktop). Enabled by default. Next: get off Expo (flip updates.url to our oa-updates server; CNAME updates.openagents.com->ghs is live).
