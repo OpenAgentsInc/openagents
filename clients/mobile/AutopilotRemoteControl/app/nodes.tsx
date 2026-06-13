@@ -5,8 +5,10 @@ import {
   type ConnectInfo,
   type ControlSessionEventRow,
   type ControlSessionRow,
+  type AccountRow,
   cancelSession,
   decodeConnectCode,
+  fetchAccounts,
   fetchSessionEvents,
   fetchSessions,
   submitIntent,
@@ -58,6 +60,7 @@ export default function NodesScreen() {
   const [askBody, setAskBody] = useState("")
   const [askStatus, setAskStatus] = useState<string | null>(null)
   const [nodeName, setNodeName] = useState<string | null>(null)
+  const [accounts, setAccounts] = useState<AccountRow[]>([])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -118,6 +121,20 @@ export default function NodesScreen() {
     },
     [],
   )
+  // Accounts change rarely — fetch once per connection (CL-18).
+  useEffect(() => {
+    if (conn === null) return
+    let cancelled = false
+    void fetchAccounts(conn)
+      .then((rows) => {
+        if (!cancelled) setAccounts(rows)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [conn])
+
   useEffect(() => {
     if (conn === null || selected === null) return
     setEvents([])
@@ -295,6 +312,19 @@ export default function NodesScreen() {
               </Pressable>
               {askStatus ? <Text style={styles.askStatus}>{askStatus}</Text> : null}
             </View>
+            {accounts.length > 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Accounts</Text>
+                {accounts.map((a, i) => (
+                  <View key={`${a.provider}-${i}`} style={styles.acctRow}>
+                    <View style={[styles.dot, { backgroundColor: a.ready ? C.success : C.warning }]} />
+                    <Text style={styles.acctText}>
+                      {a.provider} · {a.homeState} · {a.ready ? "ready" : "blocked"}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {sessions.length === 0 && status === "connected" ? (
               <View style={styles.card}>
                 <Text style={styles.cardBody}>No sessions yet. Spawn one on the node.</Text>
@@ -341,6 +371,8 @@ const styles = StyleSheet.create({
   statusRow: { alignItems: "center", flexDirection: "row", gap: 10, marginTop: 24 },
   statusText: { color: C.text, fontFamily: "Courier", fontSize: 14 },
   breakdown: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 6 },
+  acctRow: { alignItems: "center", flexDirection: "row", marginTop: 10 },
+  acctText: { color: C.text, fontFamily: "Courier", fontSize: 13 },
   row: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, flexDirection: "row", marginTop: 12, padding: 14 },
   dot: { borderRadius: 6, height: 12, marginRight: 12, width: 12 },
   rowText: { flex: 1 },

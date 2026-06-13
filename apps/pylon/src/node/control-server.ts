@@ -56,6 +56,7 @@ export type ControlCommand =
   | ControlSessionCancelCommand
   | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
   | { type: "intent.list"; sinceCursor?: string }
+  | { type: "accounts.list" }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -70,6 +71,8 @@ export interface ControlCommandActions {
     submit: (input: { title: string; body: string; scopeHint?: string; submittedByClientRef?: string }) => Promise<unknown>
     list: (sinceCursor?: string) => Promise<unknown>
   }
+  // CL-18: read-only accounts + readiness panel (public-projection-safe).
+  accountsList?: () => Promise<unknown>
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -201,6 +204,9 @@ export const startControlServer = (
         case "intent.list":
           if (!options.actions.intents) throw new Error("intents unavailable on this node")
           return options.actions.intents.list(command.sinceCursor)
+        case "accounts.list":
+          if (!options.actions.accountsList) throw new Error("accounts unavailable on this node")
+          return options.actions.accountsList()
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }

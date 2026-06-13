@@ -69,6 +69,24 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
   }))
 }
 
+export type AccountRow = { provider: string; homeState: string; ready: boolean }
+
+// Read-only accounts + readiness panel (CL-18). Public-projection-safe on the
+// node side (refs only); we render provider + home presence + ready/blocked.
+export async function fetchAccounts(conn: ConnectInfo): Promise<AccountRow[]> {
+  const json = (await command(conn, { type: "accounts.list" })) as {
+    ok?: boolean
+    result?: { accounts?: unknown }
+  }
+  const accounts = json.ok === true ? json.result?.accounts : undefined
+  if (!Array.isArray(accounts)) return []
+  return accounts.map((a: any) => ({
+    provider: String(a.provider ?? "?"),
+    homeState: String(a.homeState ?? "?"),
+    ready: Array.isArray(a.blockerRefs) ? a.blockerRefs.length === 0 : false,
+  }))
+}
+
 // Submit a composed "ask" to the node (CL-34). The node enqueues it as a work
 // intent for the coordinator to plan + fan out. Returns the intent status.
 export async function submitIntent(
