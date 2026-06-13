@@ -16,7 +16,7 @@ import {
   submitIntent,
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
-import { CANONICAL_DARK, projectFailover } from "@openagentsinc/autopilot-control-protocol"
+import { CANONICAL_DARK, projectFailover, validateIntentDraft } from "@openagentsinc/autopilot-control-protocol"
 
 // Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
 // Owner is single-tenant for now ("fine for now security-wise").
@@ -145,9 +145,14 @@ export default function NodesScreen() {
   }, [conn, selected, pollEvents])
 
   const submitAsk = useCallback(() => {
-    if (conn === null || askTitle.trim().length === 0) return
+    if (conn === null) return
+    const v = validateIntentDraft({ title: askTitle, body: askBody })
+    if (!v.ok) {
+      setAskStatus(`error: ${v.errors[0] ?? "invalid"}`)
+      return
+    }
     setAskStatus("sending…")
-    void submitIntent(conn, { title: askTitle, body: askBody })
+    void submitIntent(conn, { title: v.title, body: v.body })
       .then((s) => {
         setAskStatus(`sent · ${s}`)
         setAskTitle("")
