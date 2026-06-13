@@ -46,6 +46,10 @@ of building against them.
 > `com.openagents.autopilot-mobile`, Apple team OpenAgents, Inc. `HQWSG26L43`;
 > runbook `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`. The desktop
 > equivalent (sign/notarize + BSDIFF feed) remains M5.
+>
+> **Fast-track follow-on:** once on TestFlight, adopt **EAS Update
+> (`expo-updates`)** so JS-only fixes ship OTA without a rebuild — #4920.
+> Formal home is M5 (CL-32); pulled forward with TestFlight, also non-blocking.
 
 ---
 
@@ -188,7 +192,8 @@ operator console for OpenAgents Cloud.
 - **CL-31** Theming/UX parity: shared design tokens so web/desktop (Foldkit) and
   mobile (RN) feel consistent; status/staleness/lag chips identical in meaning.
 - **CL-32** Distribution: desktop code-sign/notarize + BSDIFF auto-update feed;
-  mobile EAS build + App Store submission ($4.99). Repo: openagents.
+  mobile EAS build + App Store submission ($4.99); mobile OTA JS updates via
+  EAS Update / `expo-updates` (#4920, fast-tracked after #4919). Repo: openagents.
 - **CL-33** **Cross-client conformance suite**: one fixture-driven test matrix
   (the CL-1 fixtures) every client runs, proving identical protocol behavior —
   cursor resume, dedup, exactly-once decisions, read-only gating, projection
