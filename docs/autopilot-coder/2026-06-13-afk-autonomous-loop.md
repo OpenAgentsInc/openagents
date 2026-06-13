@@ -75,15 +75,20 @@ idle.** Keep a fanout running whenever fannable work exists.
    production --local` to produce an `.ipa`. Known prereqs installed this
    session: fastlane ✓. cocoapods (installing). Install any further missing
    local toolchain via `brew`. Run a local `expo export` pre-check before builds.
-5. **Keep fanning out.** If no fanout is running and there is unblocked,
-   bounded, file-disjoint work on the roadmap/CND backlog, launch the next batch
-   (≤6 sessions, codex pool below, pre-provisioned worktrees off `main`,
-   `noNetwork:false`, exact test-file verify, "keep edits to these files",
-   "don't touch src/index.ts / root package.json"). Always pre-provision each
-   worktree with `bun install`. This keeps the machine producing while AFK.
-6. **Pace yourself.** Use ScheduleWakeup to re-enter: ~270s while actively
-   watching a build/fanout, ~1200s when idle/waiting. When a tracked background
-   watcher will re-invoke you on completion, prefer the long fallback.
+5. **NEVER IDLE — always have a fanout in flight.** The instant you finish
+   merging a batch, **launch the next batch in the SAME turn** (≤6 sessions,
+   codex pool below, pre-provisioned worktrees off `main`, `noNetwork:false`,
+   exact test-file verify, "keep edits to these files", "don't touch
+   src/index.ts / root package.json"; `bun install` each worktree first). Do NOT
+   end a turn with zero fanouts running. There is always more backlog
+   (Phase A→B→C; the deep TAS well) — if one phase is owner-gated, pull the next.
+   Chain it every iteration: merge → **launch next** → arm watcher → yield.
+6. **Pacing = the fanout watcher, not a timer.** Arm a background watcher on each
+   launched fanout; its completion re-invokes you immediately — that IS the
+   heartbeat, no fixed delay. ScheduleWakeup is ONLY a long safety net (~1800s)
+   in case a watcher dies; it is NEVER the primary cadence, and you must never
+   set a short wakeup and sit idle. While a fanout runs + its watcher is armed,
+   work is continuous.
 
 ## 2. Guardrails (hard)
 
