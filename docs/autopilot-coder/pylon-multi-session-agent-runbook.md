@@ -175,6 +175,51 @@ The `--account codex` and `--provider codex` shortcuts are for the
 `pylon accounts usage` CLI. Multi-session plans and control-session commands
 use `accountRef`, direct homes, or the default-by-omission rule.
 
+### Workspace provisioning and verify commands
+
+The `verify` argv runs inside the session worktree. A fresh Git worktree or a
+`repoRef`-materialized checkout has no `node_modules`, so a verify command
+such as `bun test ...` fails unless the worktree is already provisioned.
+Provision it by installing dependencies in that worktree, or by symlinking
+`node_modules` from a sibling checkout of the same repository. If provisioning
+is not part of the run, use a dependency-free verify command instead, such as a
+doc existence check or another plain shell check that does not rely on project
+dependencies.
+
+Detached-HEAD worktrees are supported for proof verification. This includes the
+isolated detached worktrees materialized from `repoRef`. Earlier builds
+silently failed those runs with `blocker.dev_loop.branch_unknown_or_detached`;
+that failure mode was fixed in openagents issue #4873.
+
+Worked examples:
+
+```json
+{
+  "sessions": [
+    {
+      "id": "docs-check",
+      "adapter": "codex",
+      "accountRef": "codex-a",
+      "worktreePath": "../task-worktrees/docs-check",
+      "objective": "Update the runbook and keep edits scoped.",
+      "verify": ["test", "-f", "docs/autopilot-coder/pylon-multi-session-agent-runbook.md"]
+    },
+    {
+      "id": "preprovisioned-bun-test",
+      "adapter": "codex",
+      "accountRef": "codex-b",
+      "worktreePath": "../task-worktrees/preprovisioned-bun-test",
+      "objective": "Repair the focused failing test without unrelated refactors.",
+      "verify": ["bun", "test", "apps/pylon/tests/account-usage.test.ts"]
+    }
+  ]
+}
+```
+
+For the `bun test` example, provision
+`../task-worktrees/preprovisioned-bun-test` first; one local shortcut is
+symlinking its `node_modules` to a sibling checkout of the same repo.
+
 Example plan for two Codex accounts and one Claude account:
 
 ```json
