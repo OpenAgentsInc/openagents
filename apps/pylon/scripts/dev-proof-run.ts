@@ -113,20 +113,30 @@ function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
-function scanRetainedProof(proof: RetainedDailyDriverProof): string[] {
-  const serialized = JSON.stringify(proof)
+/**
+ * Scans any serialized retained projection against the house redaction
+ * patterns. Exported so sibling proof harnesses (e.g. the M10 overnight
+ * runner) reuse the exact same gate instead of reinventing it.
+ */
+export function scanProofSerialization(serialized: string): string[] {
   return REDACTION_PATTERNS.filter(({ pattern }) => pattern.test(serialized)).map(
     ({ ref }) => ref,
   )
 }
 
-type ProofRunArgs = {
+function scanRetainedProof(proof: RetainedDailyDriverProof): string[] {
+  return scanProofSerialization(JSON.stringify(proof))
+}
+
+export type ProofRunArgs = {
   adapter: PylonComposerAdapter
   objective: string
   promptFile: string | null
   issueRefs: string[]
   timeoutSeconds: number
   verificationArgv: string[]
+  /** Task repo for the composer run; defaults to process.cwd(). */
+  cwd?: string
 }
 
 function parseProofRunArgs(argv: string[]): ProofRunArgs {
@@ -172,9 +182,9 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
   return { adapter, objective, promptFile, issueRefs, timeoutSeconds, verificationArgv }
 }
 
-async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverProof> {
+export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverProof> {
   const env = Bun.env as Record<string, string | undefined>
-  const cwd = process.cwd()
+  const cwd = args.cwd ?? process.cwd()
   const observedAt = new Date().toISOString()
   const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
 

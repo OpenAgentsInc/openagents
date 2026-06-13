@@ -101,7 +101,13 @@ const ciFixingRunner: CodexAgentRunner = async (input) => {
   return { outcome: "completed", turnCount: 1, editedFileCount: 1, commandCount: 1, sessionRef: null }
 }
 
-function ciHarness(lease: PylonAssignmentLease) {
+/**
+ * Local in-process assignment-API harness (poll/accept/progress/artifacts/
+ * closeout/heartbeat). Exported so other no-spend proof harnesses (e.g. the
+ * M10 overnight runner) can drive the same work-order lifecycle against a
+ * lease-agnostic local server instead of the live API.
+ */
+export function ciHarness(lease: PylonAssignmentLease) {
   const retained: string[] = []
   const server = Bun.serve({
     port: 0,
