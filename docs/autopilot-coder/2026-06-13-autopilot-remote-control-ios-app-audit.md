@@ -84,7 +84,7 @@ Pylon's control server (`apps/pylon/src/node/control-server.ts`) binds
 **loopback** (`127.0.0.1:4716`) by default and authenticates with a bearer token
 written to `<pylon-home>/control-token`. The schema tag is
 `openagents.pylon.control.v0.3`. A phone cannot reach loopback, so connectivity
-mirrors the `control` repo's proven path:
+uses a private-network-first path:
 
 - **Tailnet-first.** The user runs Pylon with the control server bound to a
   Tailnet-reachable interface and connects the app to `http://<tailnet-ip>:4716`
@@ -95,6 +95,12 @@ mirrors the `control` repo's proven path:
   the token in the iOS Keychain, never in plists or logs.
 - **Multiple nodes.** The app keeps a list of paired nodes (label + base URL +
   Keychain-backed token ref) and shows per-node reachability.
+- **Scoped credential exchange.** The app-ready bridge should replace direct
+  long-lived operator-token storage with a short-lived QR/bootstrap secret that
+  is exchanged for a capability-scoped pairing credential.
+- **Active-client receipts.** The node should expose connected client id,
+  device class, projection level, last heartbeat, expiry, and revocation state
+  so the local operator can audit and revoke phone access.
 
 The app must surface, honestly, when a node is unreachable, when a projection is
 stale (`last update` + staleness, per the companion audit), and what authority
@@ -117,6 +123,44 @@ From the live control server today:
 
 The app is a typed client over exactly these; it introduces no new authority the
 server does not already expose.
+
+For P0, the app can consume the current endpoints in read-only mode while all
+effectful controls stay disabled. For P1 and later, effectful controls should
+flow through the remote session bridge rather than exposing the node's
+all-purpose bearer token to a mobile client. The app should therefore isolate
+the live endpoint bindings behind a `PylonControlClient` protocol so the read
+models can ship before the scoped action protocol is complete.
+
+## Bridge Protocol Contract For Actions
+
+The app-ready bridge should present a smaller remote-control contract on top of
+the node runtime:
+
+- `bridge.pair.exchange` — exchange QR/bootstrap material for a scoped pairing
+  credential.
+- `bridge.revoke` and `bridge.clients.list` — revoke or inspect paired clients.
+- `session.list`, `session.subscribe`, `session.snapshot`, and
+  `session.history` — read the current projection.
+- `turn.steer` — send a bounded instruction when the active turn accepts
+  steering.
+- `turn.interrupt` — request interruption of a specific active turn.
+- `session.cancel`, `session.pause`, and `session.resume` — separate lifecycle
+  controls.
+- `decision.resolve` — approve, deny, or answer one pending decision request.
+- `artifact.read` — fetch an artifact by ref and projection level.
+
+Every action request should include a client request id, idempotency key,
+pairing ref, session/run ref where applicable, capability ref, and current
+stream cursor. Every action response should include a receipt ref and a typed
+result so the app can distinguish success, duplicate, expired, cancelled,
+revoked, stale, and overloaded states.
+
+The app should treat server-originated decision requests as first-class objects,
+not timeline text. A decision request needs a request id, action ref, effect
+summary, expiry, allowed verbs, capability ref, and public-safe evidence refs.
+Responses bind to that request id exactly once. Free-form user text is a
+bounded instruction only when sent through `turn.steer`; it is never an
+approval.
 
 ## Authority / Capability Model
 
@@ -158,6 +202,61 @@ Rules the app must honor:
 
 All native SwiftUI; status-oriented, not a terminal emulator.
 
+## Client Architecture
+
+Suggested Swift modules:
+
+- `NodeStore`: persisted node labels, base URLs, Keychain token refs, last
+  reachability, and per-node display preferences.
+- `PairingClient`: QR parsing, bootstrap exchange, capability display,
+  revocation, and active-client refresh.
+- `PylonControlClient`: typed request layer for health, session list/history,
+  subscribe, actions, and artifact reads.
+- `EventStreamClient`: `URLSession` SSE reader with incremental frame parsing,
+  heartbeat/liveness timers, cursor resume, duplicate filtering, and backoff.
+- `EventStore`: normalized snapshots, event timelines, stream cursor, lag
+  caveats, and staleness state.
+- `DecisionStore`: pending decision requests, expiry timers, exactly-once
+  response state, and externally resolved/cancelled prompt handling.
+- `ReachabilityMonitor`: network-path changes, foreground/background refresh,
+  and reconnect scheduling.
+- `NotificationRegistrar`: APNs/local notification registration, device token
+  sync, quiet hours, and notification-open routing.
+
+Keep the UI state derived from stores and capability refs. Buttons should be
+disabled because the pairing lacks a capability or the request is stale, not
+because a view made an independent authority guess.
+
+## Event Stream And Offline Behavior
+
+P0 should prefer SSE for read streams and typed POST for writes. Each stream
+stores the last accepted event id and sequence. On reconnect, the app sends the
+cursor; the server either replays missing lossless events or sends a fresh
+snapshot with a lag caveat. The app deduplicates by event id and treats
+out-of-order or duplicate action receipts as already handled.
+
+The app should maintain a small local cache per node:
+
+- Latest node snapshot.
+- Session list projection.
+- Per-session timeline window.
+- Pending decisions.
+- Last stream cursor and last successful refresh time.
+- Current capability and revocation status.
+
+Foreground behavior: reconnect streams, refresh snapshots, replay pending
+receipt checks, and mark any stale views with exact timestamps. Background
+behavior: close long-lived streams when iOS requires it, rely on APNs/local
+notifications for attention, and refresh the relevant node/session when the
+notification opens the app.
+
+Offline action handling should be strict. Decision responses should send only
+while the request is still fresh; otherwise the app should discard the queued
+response and show an expired state. Bounded instructions may be queued only when
+the session still accepts steering and the capability remains fresh. Spawn,
+cancel, interrupt, and private artifact reads should not be silently queued
+across long offline windows.
+
 ## Notifications
 
 - APNs for "waiting on decision" and "session finished/failed" when the app is
@@ -182,11 +281,19 @@ All native SwiftUI; status-oriented, not a terminal emulator.
 
 - Bearer token stored in the iOS Keychain; never logged, never in plists, never
   in analytics.
+- For scoped pairing, the QR/bootstrap secret should be short-lived and
+  one-time-use. The exchanged credential should include node ref, pairing ref,
+  client id, device class, capability refs, projection level, issuer/audience,
+  expiry, and nonce or `jti`.
+- Non-loopback node listeners must reject unauthenticated control traffic.
 - TLS where the transport offers it; Tailnet provides the private network.
 - The app honors the control server's loopback/danger-mode refusals; it cannot
   request danger-full-access.
 - No raw shell/prompt/secret/path rendering; only public-safe projections unless
   a private-channel grant exists for that run.
+- Read-only mode is a real authority mode. A read-only pairing must be unable
+  to approve, interrupt, cancel, spawn, steer, or fetch private artifacts even
+  if the UI has stale controls.
 - No telemetry by default. Any future telemetry must be refs/aggregates only.
 
 ## Pylon-Side Dependencies (what this app needs that may not exist yet)
@@ -194,14 +301,24 @@ All native SwiftUI; status-oriented, not a terminal emulator.
 The app is a thin client; several capabilities live on the Pylon/bridge side:
 
 1. **Remote-reachable control binding.** Today the control server binds loopback
-   by default. A documented Tailnet-bind path (host + token + QR) is needed.
+   by default. A documented Tailnet-bind path is needed, with explicit refusal
+   for unauthenticated non-loopback control traffic.
 2. **Pairing + revocation + capability scoping (system #39).** The control
    server today is single bearer-token, all-or-nothing. The remote session
    bridge layer (pairing receipt, per-capability policy refs, revocation
-   receipt, public/private projection levels) is **not yet implemented**.
+   receipt, public/private projection levels, active-client list) is **not yet
+   implemented**.
 3. **Approval/decision relay over the control API.** Remote approval must reuse
-   the decision-queue spine (#4765) and bind single-use answers.
-4. **Push fan-out.** A notification path the app can register against.
+   the decision-queue spine (#4765), bind single-use answers, replay pending
+   prompts on subscribe, and broadcast cancellation/resolution events.
+4. **Cursor-resumable event streams.** Node and per-session streams need event
+   ids, sequences, lossless/best-effort tiers, duplicate-safe replay, lag
+   caveats, and bounded backpressure behavior.
+5. **Action receipts and typed failures.** Every remote action needs an
+   idempotent receipt and typed failure states for duplicate, expired,
+   cancelled, revoked, stale, unauthorized, unsupported, and overloaded cases.
+6. **Push fan-out.** A notification path the app can register against, with
+   refs-only payloads and quiet-hours policy.
 
 No public claim should say "remote terminal control shipped" until there is a
 pairing receipt, revocation receipt, remote-approval test, and public/private
@@ -216,16 +333,32 @@ projection test (per the system #39 decision).
   `/sessions/:ref/events` frames so the client is tested without a live node.
 - Negative: expired/revoked pairing rejected; danger-mode spawn rejected by the
   server surfaced as a clear error; stale projection shown as a caveat.
+- Stream: reconnect from last event id/sequence, replay missing events,
+  deduplicate repeats, show lag caveats after retention gaps, and preserve
+  lossless decision/completion events under best-effort drops.
+- Actions: approval exactly once, duplicate approval ignored with typed result,
+  late approval rejected after expiry, externally resolved prompt disabled, and
+  read-only pairing blocked from all effectful verbs.
+- Offline: queued bounded instruction sent only while capability and session
+  freshness remain valid; queued decision response discarded after expiry.
+- Security: QR/bootstrap one-time use, Keychain-only credential storage,
+  unauthenticated non-loopback requests rejected, and refs-only notification
+  payloads.
+- UI: stale/offline/read-only banners, disabled controls with reasons,
+  notification-open routing to the correct node/session/decision, and mobile
+  layout for long objectives and effect summaries.
 
 ## Phased Plan
 
 - **P0 — Read-only companion.** Pair (URL+token+QR), node reachability, session
-  list + live detail timeline (SSE). No actions yet. Ships against the control
-  API as it exists today.
+  list + live detail timeline (SSE). No actions yet; read-only mode may ship
+  against the control API as it exists today while presenting stale/offline and
+  authority state honestly.
 - **P1 — Scoped actions.** Approve/deny decisions, cancel, send bounded
-  instruction — gated on the bridge capability/pairing work (system #39).
+  instruction — gated on the bridge capability/pairing work, action receipts,
+  and cursor-resumable decision replay (system #39).
 - **P2 — Spawn + notifications.** Bounded `session.spawn` from the app; APNs for
-  waiting/finished.
+  waiting/finished; no spawn across stale or read-only pairings.
 - **P3 — Multi-node + polish.** Multiple paired nodes, per-node authority
   display, theming, App Store submission at $4.99.
 
@@ -241,10 +374,13 @@ projection test (per the system #39 decision).
 4. Pylon remote session bridge (system #39): pairing receipt, per-capability
    policy refs, revocation receipt, public/private projection levels, remote
    approval single-use binding + tests. (openagents/apps/pylon)
-5. App P1 scoped actions wired to #4 (approve/deny/cancel/instruct).
-6. App P2 spawn + APNs notifications against the decision/notification spine
+5. Pylon streams: event ids, stream sequences, cursor resume, duplicate-safe
+   replay, lag caveats, and lossless/best-effort delivery tiers.
+6. App P1 scoped actions wired to #4 and #5
+   (approve/deny/cancel/interrupt/instruct).
+7. App P2 spawn + APNs notifications against the decision/notification spine
    (#4765).
-7. App README + App Store metadata: open-source provenance, $4.99 pricing note,
+8. App README + App Store metadata: open-source provenance, $4.99 pricing note,
    privacy (on-device token only), review notes.
 
 ## Open Decisions

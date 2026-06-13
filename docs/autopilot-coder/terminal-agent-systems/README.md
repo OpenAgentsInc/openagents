@@ -128,10 +128,12 @@ map. The audits below are the currently imported subsystem records.
   capability checks, and typed media context refs.
 - `2026-06-11-remote-session-bridge-audit.md`: Defines paired companion
   sessions, scoped remote observation/control, approval forwarding, connection
-  records, revocation, and reconnect behavior.
+  records, revocation, typed bridge protocol, cursor resume, and backpressure
+  behavior.
 - `2026-06-11-mobile-web-companion-system-audit.md`: Defines mobile and web
   companion surfaces for status, approvals, artifact review, bounded
-  instructions, cancellation, and notification delivery.
+  instructions, cancellation, notification delivery, offline action rules, and
+  read-only authority modes.
 - `2026-06-11-team-shared-memory-system-audit.md`: Defines scoped shared
   memory records for teams, repositories, missions, provenance, retrieval
   policy, redaction, correction, and removal.
