@@ -200,3 +200,4 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   Remaining for on-device: sign manifests, deploy server publicly, switch
   updates.url (#4949), rebuild (local build works). Launching next OTA fanout:
   real-export CLI + signed manifest response.
+- 2026-06-13 iter 3-4: merged OTA export-reader + signed-response + signing-in-server (real-export e2e PASS, 2.1MB Hermes bundle served over HTTP); merged CL-18 accounts + CL-20 node-status UI components (Phase B start). Deploy access probed (gcloud OK, CF token zone-read-only → DNS owner step). Launching: oa-updates containerize (Cloud Run) + CL-15/19/21/23 UI.
