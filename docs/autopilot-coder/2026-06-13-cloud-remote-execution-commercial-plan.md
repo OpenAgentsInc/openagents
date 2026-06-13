@@ -130,11 +130,16 @@ Applied to the two models:
 
 ## What We Sell and How We Bill
 
+- **Pricing principle (owner decision 2026-06-13): cost-plus 10%.** We charge a
+  **10% fee over what we pay** — for Model-2 inference this is 10% over our API
+  cost whether routed through a gateway (e.g. OpenRouter) or direct to the model
+  provider. Compute is billed cost-plus on the same principle; the exact compute
+  markup is finalized from Phase-0/microVM benchmarks.
 - **Compute** (both models): VM-seconds × class (vCPU/RAM/GPU), egress, storage,
-  marked up over GCP cost. Metering shapes ported from crabbox
+  billed cost-plus over GCP cost. Metering shapes ported from crabbox
   (`worker/src/usage.ts`, active-lease caps, reserved-USD caps).
-- **Inference + service fee** (Model 2 only): per-request provider cost + margin,
-  drawn down from prepaid OpenAgents credits.
+- **Inference + service fee** (Model 2 only): per-request provider/gateway cost
+  **+ 10%**, drawn down from prepaid OpenAgents credits.
 - **Settlement** is split: private metering/usage receipts in `cloud/`
   (`resource_usage_receipt.v1`, `oa-node settlement internal-accounting`) →
   customer-facing credit/invoice ledgers in the public monorepo
@@ -222,15 +227,21 @@ per the routing rule (most land in `cloud/`; the client boundary in
 | C-12 | Tenant identity + per-tenant spend caps + acceptable-use/egress/abuse controls + kill switch | cloud (+ openagents.com) | blocked by C-5 |
 | C-13 | Settlement: private metering/usage receipts in cloud → public-monorepo credit/invoice ledger (compute markup; credits + fee). No treasury repo. | cloud + openagents.com | blocked by C-7 |
 | C-14 | `openagents-cloud` provider backend in Pylon client wired to the `cloud/` coordinator | openagents/apps/pylon (+ cloud) | blocked by C-5,C-6 |
+| C-15 | Compute-cost + isolation benchmarks: full-VM baseline cost/latency, then microVM (Firecracker/gVisor) comparison to set compute markup and the microVM cutover | cloud | blocked by C-5 |
 
-## Open Decisions / Escalations
+## Decisions (resolved 2026-06-13 by owner)
 
-1. **Pricing/markup** for compute and the Model-2 service fee — owner decision.
-2. **Provider ToS for Model 2** — confirm OpenAI/Anthropic terms permit OpenAgents
-   acting as a metered-inference reseller on its own commercial accounts
-   (standard, but confirm account-type/agreement). Distinct from the subscription
-   prohibition, which is settled.
-3. **Public-copy reconciliation** (C-0/C-11) touches the served promise registry
-   and copy gates — execute as a tested change, not an ad-hoc edit.
-4. **Isolation tier for external launch** — ephemeral full VM (v1) vs microVM —
-   cost/security tradeoff.
+1. **Pricing/markup — RESOLVED: cost-plus 10%.** 10% fee over what we pay for
+   API usage (gateway like OpenRouter or direct model usage); compute billed
+   cost-plus on the same principle, exact compute markup pending Phase-0/microVM
+   benchmarks (C-15).
+2. **Provider ToS for Model 2 — RESOLVED: confirmed, proceed.** OpenAgents acting
+   as a metered-inference reseller on its own commercial API accounts is
+   approved. (Subscription resale remains the separate, non-waivable
+   prohibition.)
+3. **Public-copy reconciliation — RESOLVED: implementer's discretion.** Handle
+   via C-0/C-11; still execute promise-registry/copy-gate edits as tested
+   changes, not ad-hoc.
+4. **Isolation tier — RESOLVED: full ephemeral VM now; microVM in the near
+   future.** Launch on full per-session VMs; move to microVM (Firecracker/gVisor)
+   once benchmarks justify it. Benchmark work tracked as C-15.
