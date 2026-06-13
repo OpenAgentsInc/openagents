@@ -9,10 +9,12 @@
       "distribution": "internal"
     },
     "preview": {
+      "channel": "preview",
       "distribution": "internal",
       "ios": { "simulator": true }
     },
     "production": {
+      "channel": "production",
       "autoIncrement": true
     }
   },
