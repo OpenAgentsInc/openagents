@@ -91,3 +91,7 @@ credentials or live provider availability.
   `account/rateLimits/read` paths. Pylon therefore captures provider
   snapshots whenever those structured payloads appear, and labels missing
   provider truth honestly rather than deriving it from token totals.
+- Issue #4872 completed the worker-side companion leg in `openagents.com`:
+  token-usage rows can now carry provider-account refs, admin/owner usage
+  aggregates are exposed without credential material, and per-account budget
+  signals remain advisory events rather than enforcement authority.
