@@ -5,16 +5,41 @@ clients + self-driving-loop + OTA buildout autonomously for hours while the owne
 is AFK, via `/loop`. This doc is the **source of truth** the loop re-reads each
 iteration (so it survives context compaction). Append progress to §6.
 
-## 0. The end-to-end goal ("works end to end")
+## 0. The end-to-end goal + the long work queue (≥6h of runway)
 
 The machine-economy loop, all on **our own machine + Cloud**, no Expo cloud:
 phone-composed intent → Pylon hears it → coordinator fans out coding agents →
 on merge, classify ship-mode (OTA vs rebuild) → ship back to the phone (OTA via
 our own **OpenAgents Updates** server; native via a **local** build → App Store
-Connect). "Done for now" = (a) the OTA MVP server runs locally and serves a
-valid Expo-Updates manifest from a real `expo export`, and (b) `eas build
---local` produces an `.ipa` on this Mac. Full on-device OTA needs a build whose
-`updates.url` → our server (gated on a working local build).
+Connect).
+
+**Work through these PHASES in order. When a phase's fannable work is exhausted
+or the only remainder is owner-gated, log it and MOVE TO THE NEXT PHASE — never
+idle.** Keep a fanout running whenever fannable work exists.
+
+- **Phase A — Mobile handshake + OTA (mostly done).** OTA server proven on our
+  infra (real `expo export` served over HTTP) ✓; local `.ipa` build works ✓.
+  Remainder: server signing-in-response + runnable `oa-update` CLI (fannable);
+  the on-device update + a public host are **NEEDS-OWNER** (see §6). Also CL-7
+  handshake demo (desktop+mobile show the same live session) is partly
+  owner-gated (live boot).
+- **Phase B — Desktop ↔ Mobile ↔ TUI parity.** Bring the new desktop app
+  (`apps/autopilot-desktop`) AND mobile to **full functional parity with the
+  current Pylon TUI** — this is **M3, issues #4921–#4930 (CL-15…CL-24)**:
+  spawn/cancel, approvals (approve/deny/answer, exactly-once, read-only),
+  steer/interrupt/pause/resume, accounts+quota, verify/dev-check status, node+
+  provider status, artifacts+receipts, assignments, earnings (read-only), and
+  the CL-24 parity conformance checklist. Build each across the shared protocol
+  → `packages/autopilot-ui` components → desktop + mobile. Fan out the pure
+  cores (protocol projections, view-models, components) the same way as CL-2;
+  reconcile the live wiring as coordinator.
+- **Phase C — Terminal-agent-systems roadmap to 100% parity.** Then work through
+  `docs/autopilot-coder/terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`
+  (Packs A–E / R0–R6, tracking issues **#4814–#4835**). Read it + the per-system
+  audits in that folder; fan out the fannable pure cores (evidence/receipt
+  schemas, event-log projections, permission/approval contracts, budget stops,
+  scheduling/notification/task supervision projections, etc.), filing GitHub
+  issues as needed, until parity. This is the deep well — plenty for hours.
 
 ## 1. Each loop iteration — do this, in order
 
@@ -80,17 +105,35 @@ valid Expo-Updates manifest from a real `expo export`, and (b) `eas build
 - A fresh worktree has no `node_modules` → `bun install` it before the run so
   `bun test` verifies pass.
 
-## 4. Live backlog (fannable when unblocked)
+## 4. Prioritized backlog (Phase A → B → C; fan out the pure cores)
 
-- **OTA server (cloud `OpenAgentsInc/cloud` #78–85):** pure cores fanned out now
-  (manifest-resolver/asset-store/publish-builder/code-signing → `apps/oa-updates`);
-  then HTTP wiring (coordinator-side), then port to Cloud Rust.
-- **M6 integration (openagents #4940–4947):** CL-34 RN compose screen, CL-36
-  coordinator dispatch wiring, CL-38 publish via our server, CL-39 local build,
-  CL-40 status round-trip, CL-41 gating wiring.
-- **M3 read surfaces (#4921–4930), M5 polish (#4935–4939):** mostly need M2
-  transport for live data; pure view-models/components are fannable.
-- **Client (#4949 updates.url→ours + cert, #4950 local build pipeline).**
+**Phase A (finish):**
+- OTA server: signing-in-response integration (server.ts uses
+  `buildSignedManifestResponse`), runnable `oa-update` CLI bin. Cloud Rust port
+  + CDN/multipart (cloud #82/#83/#85). On-device + public host = NEEDS-OWNER.
+- M6 integration (#4940–4947): CL-34 RN compose screen, CL-36 coordinator
+  dispatch wiring, CL-38 publish via our server, CL-39 local build, CL-40 status
+  round-trip, CL-41 gating wiring.
+
+**Phase B — TUI parity (#4921–#4930, M3):** for EACH, build protocol projection
++ `autopilot-ui` component (+ desktop render + mobile view-model) as fannable
+pure cores, then wire:
+- CL-15 spawn/cancel + list/detail · CL-16 approvals · CL-17 steer/interrupt/
+  pause/resume · CL-18 accounts+quota · CL-19 verify/dev-check · CL-20 node+
+  provider status · CL-21 artifacts+receipts · CL-22 assignments · CL-23
+  earnings (read-only) · CL-24 parity conformance checklist (the gate).
+- Cross-check against the real Pylon TUI surface in `apps/pylon` so "parity"
+  means the desktop/mobile clients do what the TUI does today.
+
+**Phase C — Terminal-agent-systems roadmap → 100%:** read
+`terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`
++ `…-index.md` + the per-system audits; work the packs/issues #4814–#4835
+(Pack A supervision/evidence, Pack B account/policy hardening, Pack C repo/
+delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
+(schemas, projections, contracts, fixtures), filing issues as needed.
+
+**Also:** #4949 (updates.url→ours + cert) once a public host exists; #4950
+(local build pipeline — `eas build --local` works; prebuild+fastlane next).
 
 ## 5. Current state snapshot (update as it changes)
 
