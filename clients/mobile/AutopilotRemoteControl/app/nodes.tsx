@@ -16,6 +16,7 @@ import {
   submitIntent,
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
+import { CANONICAL_DARK } from "@openagentsinc/autopilot-control-protocol"
 
 // Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
 // Owner is single-tenant for now ("fine for now security-wise").
@@ -23,22 +24,9 @@ const BROKER = "https://oa-updates-ezxz4mgdsq-uc.a.run.app"
 const OWNER = "chris"
 const POLL_MS = 4000
 
-// CL-31: this palette mirrors @openagentsinc/autopilot-ui `darkTokens` (the
-// shared dark palette desktop + web use) exactly. Kept inline because wiring
-// autopilot-ui into the Metro/RN bundle needs a dep + bundler work; the values
-// are the single source of truth's values. See the `./tokens` export.
-const C = {
-  bg: "#000",
-  bgSecondary: "#151515",
-  text: "#d7d8e5",
-  textSecondary: "#8a8c93",
-  outline: "#525458",
-  primary: "#fff",
-  success: "#00c853",
-  warning: "#ffb400",
-  danger: "#d32f2f",
-  info: "#2979ff",
-} as const
+// CL-31: the shared canonical dark palette, sourced from the protocol package
+// (RN-safe) so mobile, desktop, and web stay in theming parity from one source.
+const C = CANONICAL_DARK
 
 const stateTone = (state: string): string =>
   state === "completed"
