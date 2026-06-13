@@ -8,11 +8,17 @@ const config: ExpoConfig = {
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   ios: {
-    bundleIdentifier: "com.openagents.autopilot.remote",
+    bundleIdentifier: "com.openagents.autopilot-mobile",
     supportsTablet: false,
+    infoPlist: {
+      // No non-exempt encryption (HTTPS/standard crypto only) — skips the
+      // App Store Connect export-compliance prompt for TestFlight.
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
-    package: "com.openagents.autopilot.remote",
+    // Android package segments can't contain hyphens; mirror without it.
+    package: "com.openagents.autopilotmobile",
   },
 }
 

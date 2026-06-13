@@ -39,6 +39,14 @@ of building against them.
 
 > **Issue tracker:** M0–M2 are filed as GitHub issues **#4902–#4916** (CL-0…CL-14). M3–M5 (CL-15…CL-33) are filed after M2 lands.
 
+> **Fast-track (out of milestone order, owner request):** ship the mobile
+> **shell to TestFlight ASAP** so it's on a personal device now — EAS Build +
+> Submit (#4919). Distribution normally lives in M5 (CL-32), but TestFlight for
+> the shell is pulled forward and does not block the M1–M4 sequence. iOS bundle
+> `com.openagents.autopilot-mobile`, Apple team OpenAgents, Inc. `HQWSG26L43`;
+> runbook `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`. The desktop
+> equivalent (sign/notarize + BSDIFF feed) remains M5.
+
 ---
 
 ## M0 — Shared spine (foundation, do first)
