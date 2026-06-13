@@ -214,3 +214,13 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   update into the image + redeploy (OA_SEED_DIST/OA_SEED_RUNTIME) so the live
   server serves an actual update; then a build with updates.url→our endpoint.
   Launching p4: CL-16/17/22 parity components.
+
+- 2026-06-13 iter 6 — **LIVE CLOUD RUN SERVER SERVES A REAL UPDATE.** Redeployed
+  with a baked `expo export` seed (OA_SEED_DIST + OA_SEED_RUNTIME=d36a2a5b…);
+  `https://oa-updates-ezxz4mgdsq-uc.a.run.app/autopilot/manifest` returns a real
+  manifest (id seed-ios-…, 16 assets, content-addressed to our server). Full
+  server-side OTA is operational in prod, no Expo cloud. Merged CL-16/17/22
+  (M3 parity component set COMPLETE, CL-15..CL-23). Launching p5: CL-24
+  conformance gate + mobile parity view-models. **On-device remaining (owner):**
+  add the CNAME, then I build the app with updates.url→our endpoint (local
+  build) and you install it. Next loop: Phase C (terminal-agent-systems roadmap).
