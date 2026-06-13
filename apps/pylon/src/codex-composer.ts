@@ -4,6 +4,10 @@ import {
   type CodexAgentConfig,
   type CodexAgentSandboxMode,
 } from "./codex-agent"
+import {
+  pylonAccountEnvironment,
+  type ResolvedPylonAccountSelection,
+} from "./account-registry"
 
 export type CodexComposerSandboxMode = CodexAgentSandboxMode | "danger-full-access"
 export type CodexComposerExecutionMode = "local_bounded" | "local_supervised_danger"
@@ -20,6 +24,9 @@ export interface CodexComposerCallbacks {
 
 export interface CodexComposerOptions {
   cwd: string
+  account?: ResolvedPylonAccountSelection | null
+  accountHome?: string
+  accountRef?: string
   model?: string
   sandboxMode?: CodexComposerSandboxMode
   executionMode?: CodexComposerExecutionMode
@@ -60,7 +67,7 @@ export interface CodexComposerResult {
 }
 
 type CodexSdkModule = {
-  Codex: new () => {
+  Codex: new (options?: { env?: Record<string, string | undefined> }) => {
     startThread: (options: Record<string, unknown>) => {
       runStreamed: (
         prompt: string,
@@ -173,6 +180,21 @@ export async function runCodexComposerStream(
   callbacks: CodexComposerCallbacks = {},
 ): Promise<CodexComposerResult> {
   const config = options.config ?? {}
+  const account =
+    options.account ??
+    (options.accountHome
+      ? {
+          provider: "codex" as const,
+          selector: "direct_home" as const,
+          accountRef: options.accountRef ?? null,
+          accountRefHash: "",
+          home: options.accountHome,
+        }
+      : null)
+  const env = pylonAccountEnvironment(
+    options.env ?? (Bun.env as Record<string, string | undefined>),
+    account,
+  )
   const executionMode = options.executionMode ?? "local_bounded"
   const sandboxMode = options.sandboxMode ?? sandboxModeForCodexComposerExecutionMode(executionMode, config.sandboxMode)
   if (sandboxMode === "danger-full-access" && executionMode !== "local_supervised_danger") {
@@ -182,7 +204,7 @@ export async function runCodexComposerStream(
   }
   const readiness = await probeCodexAgentReadiness({
     config,
-    env: options.env,
+    env,
     importer: options.importer,
     platform: options.platform,
     codexCliLoginPresent: options.codexCliLoginPresent,
@@ -207,7 +229,7 @@ export async function runCodexComposerStream(
   let threadId: string | null = null
 
   try {
-    const codex = new sdk.Codex()
+    const codex = new sdk.Codex({ env })
     const thread = codex.startThread({
       workingDirectory: options.cwd,
       sandboxMode,

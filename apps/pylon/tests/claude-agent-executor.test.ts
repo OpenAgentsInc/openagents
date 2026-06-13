@@ -302,6 +302,31 @@ describe("claude agent task recognition", () => {
       expect(fixed).toContain("left + right")
     })
   })
+
+  test("the runner receives the selected Claude account env", async () => {
+    await withState(async (state) => {
+      let seenClaudeConfigDir: string | undefined
+      const account = {
+        provider: "claude_agent" as const,
+        selector: "direct_home" as const,
+        accountRef: null,
+        accountRefHash: "account.pylon.claude_agent.test",
+        home: "/tmp/pylon-claude-account",
+      }
+      const observingRunner: ClaudeAgentRunner = async (input) => {
+        seenClaudeConfigDir = input.env?.CLAUDE_CONFIG_DIR
+        expect(input.account).toBe(account)
+        return fixingRunner(input)
+      }
+      const record = await executeClaudeAgentAssignment(state, lease, now, {
+        account,
+        claudeAgentRunner: observingRunner,
+        claudeAgentProbe: readyProbe,
+      })
+      expect(record?.status).toBe("accepted")
+      expect(seenClaudeConfigDir).toBe("/tmp/pylon-claude-account")
+    })
+  })
 })
 
 describe("workspace boundary checks", () => {

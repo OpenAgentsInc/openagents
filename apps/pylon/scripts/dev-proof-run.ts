@@ -25,6 +25,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import {
+  publicPylonAccountSelection,
+  pylonAccountEnvironment,
+  resolvePylonAccountSelection,
+  type PublicPylonAccountSelection,
+} from "../src/account-registry"
 import { loadClaudeAgentConfig } from "../src/claude-agent"
 import { runClaudeComposerStream } from "../src/claude-composer"
 import { loadCodexAgentConfig, type PylonComposerAdapter } from "../src/codex-agent"
@@ -84,6 +90,7 @@ export type RetainedDailyDriverProof = {
     promptDigestRef: string
     issueRefs: string[]
   }
+  account: PublicPylonAccountSelection | null
   executor: ProofExecutorSummary
   devCheck: PylonDevCheckProjection
   redactionScan: {
@@ -133,6 +140,9 @@ export type ProofRunArgs = {
   objective: string
   promptFile: string | null
   issueRefs: string[]
+  accountRef: string | null
+  codexHome: string | null
+  claudeConfigDir: string | null
   timeoutSeconds: number
   verificationArgv: string[]
   /** Task repo for the composer run; defaults to process.cwd(). */
@@ -141,10 +151,13 @@ export type ProofRunArgs = {
 
 function parseProofRunArgs(argv: string[]): ProofRunArgs {
   const usage =
-    'usage: dev-proof-run.ts --adapter codex|claude_agent --objective "<text>" [--prompt-file <path>] [--issue <ref>]... [--timeout-seconds <n>] -- <verification argv...>'
+    'usage: dev-proof-run.ts --adapter codex|claude_agent --objective "<text>" [--prompt-file <path>] [--issue <ref>]... [--account-ref <ref>] [--codex-home <dir>|--claude-config-dir <dir>] [--timeout-seconds <n>] -- <verification argv...>'
   let adapter: PylonComposerAdapter | null = null
   let objective: string | null = null
   let promptFile: string | null = null
+  let accountRef: string | null = null
+  let codexHome: string | null = null
+  let claudeConfigDir: string | null = null
   const issueRefs: string[] = []
   let timeoutSeconds = 600
   let verificationArgv: string[] = []
@@ -167,6 +180,15 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
     } else if (arg === "--issue" && typeof value === "string") {
       issueRefs.push(value)
       index += 1
+    } else if (arg === "--account-ref" && typeof value === "string") {
+      accountRef = value
+      index += 1
+    } else if (arg === "--codex-home" && typeof value === "string") {
+      codexHome = value
+      index += 1
+    } else if (arg === "--claude-config-dir" && typeof value === "string") {
+      claudeConfigDir = value
+      index += 1
     } else if (arg === "--timeout-seconds" && typeof value === "string") {
       const parsed = Number(value)
       if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1200) throw new Error(usage)
@@ -179,14 +201,37 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
   if (adapter === null || objective === null || verificationArgv.length === 0) {
     throw new Error(usage)
   }
-  return { adapter, objective, promptFile, issueRefs, timeoutSeconds, verificationArgv }
+  if (adapter === "codex" && claudeConfigDir !== null) throw new Error(usage)
+  if (adapter === "claude_agent" && codexHome !== null) throw new Error(usage)
+  return {
+    adapter,
+    objective,
+    promptFile,
+    issueRefs,
+    accountRef,
+    codexHome,
+    claudeConfigDir,
+    timeoutSeconds,
+    verificationArgv,
+  }
 }
 
 export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverProof> {
-  const env = Bun.env as Record<string, string | undefined>
+  const baseEnv = Bun.env as Record<string, string | undefined>
   const cwd = args.cwd ?? process.cwd()
   const observedAt = new Date().toISOString()
   const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+  const account = await resolvePylonAccountSelection(summary, {
+    provider: args.adapter === "codex" ? "codex" : "claude_agent",
+    ...(args.accountRef === null ? {} : { accountRef: args.accountRef }),
+    ...(args.adapter === "codex" && args.codexHome !== null
+      ? { accountHome: args.codexHome }
+      : {}),
+    ...(args.adapter === "claude_agent" && args.claudeConfigDir !== null
+      ? { accountHome: args.claudeConfigDir }
+      : {}),
+  })
+  const env = pylonAccountEnvironment(baseEnv, account)
 
   // 1. Doctor context: typed, public-safe repo/readiness projection.
   const doctor = await collectPylonDevDoctor({ cwd, env, summary })
@@ -216,6 +261,8 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
       approvalPolicy: "never",
       config,
       cwd,
+      account,
+      env,
       executionMode: "local_bounded",
       ...(config.model === undefined ? {} : { model: config.model }),
       networkAccessEnabled: false,
@@ -262,6 +309,8 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
     const result = await runClaudeComposerStream(prompt, {
       config,
       cwd,
+      account,
+      env,
       executionMode: "local_bounded",
       ...(config.model === undefined ? {} : { model: config.model }),
       permissionMode: "acceptEdits",
@@ -316,6 +365,7 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
       promptDigestRef: stableRef("digest.composer.prompt", prompt),
       issueRefs: args.issueRefs,
     },
+    account: publicPylonAccountSelection(account),
     executor,
     devCheck,
     redactionScan: {

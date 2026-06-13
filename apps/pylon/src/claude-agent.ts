@@ -73,6 +73,15 @@ export async function localClaudeSessionPresent(
   platform: string = process.platform,
   env: Record<string, string | undefined> = Bun.env as Record<string, string | undefined>,
 ): Promise<boolean> {
+  const configured = (env.CLAUDE_CONFIG_DIR ?? "").trim()
+  if (configured.length > 0) {
+    try {
+      await access(join(configured, ".credentials.json"))
+      return true
+    } catch {
+      return false
+    }
+  }
   const home = (env.HOME ?? "").trim().length > 0 ? (env.HOME as string) : homedir()
   try {
     await access(join(home, ".claude", ".credentials.json"))

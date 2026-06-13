@@ -14,6 +14,10 @@ import {
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
 } from "./workspace-materializer"
+import {
+  pylonAccountEnvironment,
+  type ResolvedPylonAccountSelection,
+} from "./account-registry"
 import type { PylonLocalState } from "./state"
 
 /**
@@ -59,6 +63,8 @@ export type CodexAgentTaskPayload = {
 export type CodexAgentRunInput = {
   cwd: string
   instructions: string
+  account?: ResolvedPylonAccountSelection | null
+  env?: Record<string, string | undefined>
   sandboxMode: CodexAgentSandboxMode
   timeoutMs: number
   model?: string
@@ -81,6 +87,7 @@ export type CodexAgentRunResult = {
 export type CodexAgentRunner = (input: CodexAgentRunInput) => Promise<CodexAgentRunResult>
 
 export type CodexAgentExecutionOptions = {
+  account?: ResolvedPylonAccountSelection | null
   checkoutRunner?: CodexAgentCheckoutRunner
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
@@ -214,8 +221,12 @@ type CodexThreadEvent = {
  * Lazy-imports the optional SDK dependency.
  */
 export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexAgentRunResult> {
+  const env = pylonAccountEnvironment(
+    input.env ?? (Bun.env as Record<string, string | undefined>),
+    input.account,
+  )
   const sdk = (await import(CODEX_AGENT_SDK_PACKAGE)) as {
-    Codex: new () => {
+    Codex: new (options?: { env?: Record<string, string | undefined> }) => {
       startThread: (options: Record<string, unknown>) => {
         runStreamed: (
           prompt: string,
@@ -234,7 +245,7 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   let failed = false
 
   try {
-    const codex = new sdk.Codex()
+    const codex = new sdk.Codex({ env })
     const thread = codex.startThread({
       workingDirectory: input.cwd,
       sandboxMode: input.sandboxMode,
@@ -394,7 +405,8 @@ export async function executeCodexAgentAssignment(
   )
 
   const config = await loadCodexAgentConfig({ paths: { config: state.paths.config } })
-  const probed = await probeCodexAgentReadiness({ ...options.codexAgentProbe, config })
+  const env = pylonAccountEnvironment(options.codexAgentProbe?.env ?? Bun.env, options.account)
+  const probed = await probeCodexAgentReadiness({ ...options.codexAgentProbe, config, env })
   if (probed.state !== "ready") {
     return refusalRecord({
       lease,
@@ -430,6 +442,8 @@ export async function executeCodexAgentAssignment(
   try {
     run = await runner({
       cwd: materialized.workspace,
+      account: options.account,
+      env,
       instructions: materialized.instructions,
       sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs:

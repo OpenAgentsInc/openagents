@@ -6,6 +6,7 @@ import {
   CLAUDE_AGENT_CAPABILITY_REF,
   CLAUDE_AGENT_SDK_PACKAGE,
   claudeAgentCredentialSource,
+  localClaudeSessionPresent,
   loadClaudeAgentConfig,
   loadClaudeDevConfig,
   probeClaudeAgentReadiness,
@@ -73,6 +74,17 @@ describe("claude agent readiness probe", () => {
     expect(probed.credentialSourceRef).toBe(
       "credential.source.claude_agent.local_claude_session",
     )
+  })
+
+  test("local session detection honors CLAUDE_CONFIG_DIR without falling back globally", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-claude-config-dir-"))
+    try {
+      expect(await localClaudeSessionPresent("linux", { CLAUDE_CONFIG_DIR: home })).toBe(false)
+      await writeFile(join(home, ".credentials.json"), "{}\n")
+      expect(await localClaudeSessionPresent("linux", { CLAUDE_CONFIG_DIR: home })).toBe(true)
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
   })
 
   test("env API key wins over the local session source", async () => {

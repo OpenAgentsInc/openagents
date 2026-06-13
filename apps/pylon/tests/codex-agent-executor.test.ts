@@ -236,15 +236,27 @@ describe("codex agent task recognition", () => {
   test("the runner receives the bounded sandbox mode, never full access", async () => {
     await withState(async (state) => {
       let seenMode: string | null = null
+      let seenCodeHome: string | undefined
+      const account = {
+        provider: "codex" as const,
+        selector: "direct_home" as const,
+        accountRef: null,
+        accountRefHash: "account.pylon.codex.test",
+        home: "/tmp/pylon-codex-account",
+      }
       const observingRunner: CodexAgentRunner = async (input) => {
         seenMode = input.sandboxMode
+        seenCodeHome = input.env?.CODEX_HOME
+        expect(input.account).toBe(account)
         return fixingRunner(input)
       }
       await executeCodexAgentAssignment(state, lease, now, {
+        account,
         codexAgentRunner: observingRunner,
         codexAgentProbe: readyProbe,
       })
       expect(seenMode).toBe("workspace-write")
+      expect(seenCodeHome).toBe("/tmp/pylon-codex-account")
     })
   })
 })

@@ -101,6 +101,7 @@ describe("Claude composer SDK stream", () => {
     expect(queryOptions).toMatchObject({
       allowedTools: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
       cwd: "/tmp/current-repo",
+      env: { ANTHROPIC_API_KEY: "test-key-shape" },
       maxTurns: 7,
       model: "claude-fable-5",
       permissionMode: "acceptEdits",
@@ -183,6 +184,35 @@ describe("Claude composer SDK stream", () => {
       "bypassPermissions",
     )
     expect(permissionModeForClaudeComposerExecutionMode("local_bounded")).toBe("acceptEdits")
+  })
+
+  test("injects per-session CLAUDE_CONFIG_DIR into the SDK session env", async () => {
+    let queryOptions: Record<string, unknown> | null = null
+    const original = Bun.env.CLAUDE_CONFIG_DIR
+    const importer = async (specifier: string) => {
+      if (specifier !== CLAUDE_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+      return {
+        query: (input: { options?: Record<string, unknown> }) => {
+          queryOptions = input.options ?? null
+          return fakeClaudeMessages()
+        },
+      }
+    }
+
+    await runClaudeComposerStream("fix", {
+      accountHome: "/tmp/claude-config-a",
+      cwd: "/tmp/current-repo",
+      env: { PATH: "/bin" },
+      importer,
+      localClaudeSessionProbe: async () => true,
+      platform: "darwin",
+    })
+
+    expect(queryOptions).toMatchObject({
+      cwd: "/tmp/current-repo",
+      env: { PATH: "/bin", CLAUDE_CONFIG_DIR: "/tmp/claude-config-a" },
+    })
+    expect(Bun.env.CLAUDE_CONFIG_DIR).toBe(original)
   })
 
   test("bypassPermissions requires the local supervised execution mode", async () => {

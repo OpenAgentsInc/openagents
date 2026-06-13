@@ -58,6 +58,7 @@ async function* fakeCodexEvents() {
 describe("Codex composer SDK stream", () => {
   test("runs the TypeScript SDK in the selected cwd and surfaces typed events", async () => {
     let threadOptions: Record<string, unknown> | null = null
+    let clientEnv: Record<string, string | undefined> | null = null
     let promptSeen = ""
     let signalSeen = false
     const eventSummaries: string[] = []
@@ -67,6 +68,9 @@ describe("Codex composer SDK stream", () => {
       if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
       return {
         Codex: class {
+          constructor(options?: { env?: Record<string, string | undefined> }) {
+            clientEnv = options?.env ?? null
+          }
           startThread(options: Record<string, unknown>) {
             threadOptions = options
             return {
@@ -111,6 +115,7 @@ describe("Codex composer SDK stream", () => {
       skipGitRepoCheck: true,
       workingDirectory: "/tmp/current-repo",
     })
+    expect(clientEnv).toMatchObject({ CODEX_API_KEY: "test-key-shape" })
     expect(textUpdates).toEqual(["Patched the composer."])
     expect(usageUpdates).toEqual([15])
     expect(eventSummaries).toContain("completed: bun test exit 0")
@@ -206,6 +211,39 @@ describe("Codex composer SDK stream", () => {
       sandboxMode: "danger-full-access",
       workingDirectory: "/tmp/current-repo",
     })
+  })
+
+  test("injects per-session CODEX_HOME without mutating the process env", async () => {
+    let clientEnv: Record<string, string | undefined> | null = null
+    const original = Bun.env.CODEX_HOME
+    const importer = async (specifier: string) => {
+      if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+      return {
+        Codex: class {
+          constructor(options?: { env?: Record<string, string | undefined> }) {
+            clientEnv = options?.env ?? null
+          }
+          startThread() {
+            return {
+              runStreamed: async () => ({ events: fakeCodexEvents() }),
+            }
+          }
+        },
+      }
+    }
+
+    const result = await runCodexComposerStream("fix", {
+      accountHome: "/tmp/codex-home-a",
+      codexCliLoginPresent: true,
+      cwd: "/tmp/current-repo",
+      env: { PATH: "/bin" },
+      importer,
+      platform: "darwin",
+    })
+
+    expect(result.threadId).toBe("thread.test.codex")
+    expect(clientEnv).toMatchObject({ PATH: "/bin", CODEX_HOME: "/tmp/codex-home-a" })
+    expect(Bun.env.CODEX_HOME).toBe(original)
   })
 
   test("public command paths reject the local dangerous flag", () => {

@@ -15,6 +15,10 @@ import {
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
 } from "./workspace-materializer"
+import {
+  pylonAccountEnvironment,
+  type ResolvedPylonAccountSelection,
+} from "./account-registry"
 import type { PylonLocalState } from "./state"
 
 /**
@@ -56,6 +60,8 @@ export type ClaudeAgentTaskPayload = {
 export type ClaudeAgentRunInput = {
   cwd: string
   instructions: string
+  account?: ResolvedPylonAccountSelection | null
+  env?: Record<string, string | undefined>
   allowedTools: string[]
   maxTurns: number
   timeoutMs: number
@@ -79,6 +85,7 @@ export type ClaudeAgentRunResult = {
 export type ClaudeAgentRunner = (input: ClaudeAgentRunInput) => Promise<ClaudeAgentRunResult>
 
 export type ClaudeAgentExecutionOptions = {
+  account?: ResolvedPylonAccountSelection | null
   checkoutRunner?: WorkspaceCheckoutRunner
   claudeAgentRunner?: ClaudeAgentRunner
   claudeAgentProbe?: ClaudeAgentProbeOptions
@@ -306,6 +313,10 @@ async function materializeClaudeAgentWorkspace(input: {
 export async function runWithClaudeAgentSdk(
   input: ClaudeAgentRunInput,
 ): Promise<ClaudeAgentRunResult> {
+  const env = pylonAccountEnvironment(
+    input.env ?? (Bun.env as Record<string, string | undefined>),
+    input.account,
+  )
   const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as {
     query: (options: { prompt: string; options: Record<string, unknown> }) => AsyncIterable<unknown>
   }
@@ -347,6 +358,7 @@ export async function runWithClaudeAgentSdk(
       prompt: input.instructions,
       options: {
         cwd: input.cwd,
+        env,
         allowedTools: input.allowedTools,
         maxTurns: input.maxTurns,
         settingSources: [],
@@ -449,7 +461,8 @@ export async function executeClaudeAgentAssignment(
   )
 
   const config = await loadClaudeAgentConfig({ paths: { config: state.paths.config } })
-  const probed = await probeClaudeAgentReadiness({ ...options.claudeAgentProbe, config })
+  const env = pylonAccountEnvironment(options.claudeAgentProbe?.env ?? Bun.env, options.account)
+  const probed = await probeClaudeAgentReadiness({ ...options.claudeAgentProbe, config, env })
   if (probed.state !== "ready") {
     return refusalRecord({
       lease,
@@ -485,6 +498,8 @@ export async function executeClaudeAgentAssignment(
   try {
     run = await runner({
       cwd: materialized.workspace,
+      account: options.account,
+      env,
       instructions: materialized.instructions,
       allowedTools: allowedToolsFrom(task),
       maxTurns: boundedNumber(task.maxTurns ?? config.maxTurns, DEFAULT_MAX_TURNS, MAX_MAX_TURNS),

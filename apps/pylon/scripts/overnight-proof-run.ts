@@ -302,6 +302,9 @@ async function runComposerTask(input: {
   const dir = `tasks/c${input.cycle}/${laneDir}`
   const proof = await runProof({
     adapter: input.lane,
+    accountRef: null,
+    codexHome: null,
+    claudeConfigDir: null,
     cwd: input.args.taskRepo,
     issueRefs: ["OpenAgentsInc/openagents#4768"],
     objective: template.objective(dir),

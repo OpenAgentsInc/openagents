@@ -101,15 +101,14 @@
 
 ## 3. The GAPS, ranked (what is NOT done)
 
-1. **Per-session account selection on the Pylon side** — the one missing
-   seam for goal (a). Needed: an `accountRef`/`codexHome` (and
-   Claude-equivalent `CLAUDE_CONFIG_DIR`-style) parameter threaded
-   through: composer options → `dev-proof-run.ts` flag (`--codex-home` /
-   `--account-ref`) → executor env construction, so each spawned session
-   process gets its own credential home. The primitive
-   (`env.CODEX_HOME`) already works; today an orchestrator can fake it
-   by exporting `CODEX_HOME` per child process around `dev-proof-run.ts`
-   — workable immediately, but unplumbed and unreceipted.
+1. **Per-session account selection on the Pylon side** — **implemented
+   in source main for #4868 after this audit was written.** Pylon now has
+   a minimal `dev.accounts` registry, `--account-ref`, `--codex-home`,
+   and `--claude-config-dir` support in `dev-proof-run.ts`, per-session
+   `CODEX_HOME` / `CLAUDE_CONFIG_DIR` child environments in the Codex and
+   Claude composer/executor paths, and retained proofs record only hashed
+   account refs. The public assignment/provider lanes remain unchanged.
+   The remaining goal-(a) work starts at the concurrent spawner.
 2. **A parallel multi-session spawner** — `overnight-proof-run.ts` is
    sequential; the orchestration loop for N concurrent (worktree,
    account, objective) triples with per-session artifacts does not
@@ -184,7 +183,7 @@ Goal (b) — usage command:
 
 ## 5. Recommended issue set (not yet filed)
 
-1. `pylon: per-session account selection (--codex-home/--account-ref) through composer + dev-proof-run` (gap 1)
+1. `pylon: per-session account selection (--codex-home/--account-ref) through composer + dev-proof-run` (gap 1) — filed as #4868 and implemented in source main.
 2. `pylon: concurrent multi-session spawner over worktrees × accounts (M10-grade artifacts)` (gap 2)
 3. `pylon: control-server session.spawn/list/events verbs` (gap 3)
 4. `pylon: accounts list/usage CLI with three-tier truth (platform/local/provider-unavailable)` (gap 4)
