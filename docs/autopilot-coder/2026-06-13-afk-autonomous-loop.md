@@ -55,11 +55,11 @@ idle.** Keep a fanout running whenever fannable work exists.
    If only a core/partial landed, comment what merged + what remains and keep it
    open. Don't just comment-and-leave-open on done work; that is how stale
    open-issue piles form.
-1b. **Issue-close sweep (every few iterations).** Run `gh issue list --state
-   open` and, for any issue whose acceptance is now met by merged main, close it
-   with a citing comment. Be honest: close only when the deliverable's acceptance
-   is genuinely met on `main`; partial cores stay open. Keep the open list a true
-   reflection of remaining work.
+1b. **Clarity sweep (every few iterations).** Run `gh issue list --state open`
+   and for each: close any whose acceptance is now genuinely met (citing comment);
+   for partials, make sure the latest status comment is CURRENT (what's merged +
+   what remains) so nothing is stale or forgotten. Partials are fine — staleness
+   isn't. Keep the open list a true reflection of remaining work.
 2. **Monitor builds.** For any EAS/local build in flight: poll status. On
    `FINISHED`, proceed (e.g. it auto-submits). On `ERRORED`, fetch the build log
    (`mcp__expo__build_logs` or the local log), grep the bundle/error phase,
@@ -83,14 +83,17 @@ idle.** Keep a fanout running whenever fannable work exists.
    end a turn with zero fanouts running. There is always more backlog
    (Phase A→B→C; the deep TAS well) — if one phase is owner-gated, pull the next.
    Chain it every iteration: merge → **launch next** → arm watcher → yield.
-   **EVERY batch must map to ≥1 OPEN issue it will CLOSE on merge.** Before
-   launching, name the open issue(s) each session completes. Do NOT fan cores for
-   already-closed or out-of-scope issues — that produces zero closes and looks
-   like spinning (the owner WILL notice). If an open issue's only remainder is
-   **live integration** (not a fannable bounded core), do that integration
-   yourself as coordinator and CLOSE the issue — completing+closing issues is the
-   goal, not accumulating orphan cores. Each iteration should visibly drop the
-   open-issue count or honestly explain why it can't yet.
+   **Partials are fine — the bar is CLARITY + nothing stale/forgotten:**
+   (a) every batch maps to ≥1 **OPEN** issue it advances (don't build cores for
+   already-closed or out-of-scope issues — that's wasted motion);
+   (b) every issue a batch touches gets a **current status comment** ("merged X
+   on `<sha>`; remains Y") so its true state is always visible and never goes
+   stale;
+   (c) **close** when the acceptance is genuinely met; partials stay open with the
+   up-to-date comment;
+   (d) when an issue's only remainder is **live integration** (not a fannable
+   core), do that integration yourself as coordinator.
+   Keep the open list honest: each issue reflects exactly what's done vs left.
 6. **Pacing = the fanout watcher, not a timer.** Arm a background watcher on each
    launched fanout; its completion re-invokes you immediately — that IS the
    heartbeat, no fixed delay. ScheduleWakeup is ONLY a long safety net (~1800s)
