@@ -6,6 +6,25 @@ claim by itself. Any invariant amendment or public-copy change called for here
 is tracked as its own issue with the tests the relevant invariant ledger
 requires.
 
+## Implementation Status (updated 2026-06-13)
+
+Foundation wave **C-0 … C-8 is complete** — issues #4886–#4894, all merged and
+closed. C-0/C-1/C-2/C-3/C-4/C-8 landed in `openagents` (`apps/pylon` + docs);
+C-5/C-6/C-7 landed as contracts in the private `cloud` repo. These were
+delivered via a 9-worker Pylon multi-session fanout (7 Codex + 2 Claude
+accounts) across both repos in one run.
+
+Decisions are locked (see "Decisions" below): cost-plus 10%, Model-2 ToS
+confirmed, full-VM isolation now / microVM next.
+
+Related runtime work shipped alongside: quota-aware account routing (#4884) and
+**instant run-level/ambient account failover** — a session whose primary account
+is quota-blocked is replaced instantly by another available account within the
+same run (no second pass).
+
+Next wave (this update): the now-unblocked rungs **C-9, C-10, C-12, C-13, C-14,
+C-15** are ready to parallelize. **C-11 remains blocked on C-10.**
+
 ## Goal
 
 Let **any Pylon user** deploy coding/agent workloads onto **OpenAgents-operated
@@ -212,22 +231,22 @@ per the routing rule (most land in `cloud/`; the client boundary in
 
 | ID | Title | Repo | Parallel? |
 | --- | --- | --- | --- |
-| C-0 | Resale-policy wording reconciliation: scope "no-resale" to *subscription* across INVARIANTS/promise/pylon docs, with copy-gate + promise tests | openagents (+ openagents.com) | parallel (doc/policy; needs tests) |
-| C-1 | `PylonExecutionProviderSpec` + Effect/typed services: local-process, static-SSH, openagents-cloud backends | openagents/apps/pylon | parallel |
-| C-2 | Remote workspace sync design: git-manifest, `.pylonignore`, fingerprint-skip, remote git seeding, mass-deletion/large-sync guardrails | openagents/apps/pylon | parallel |
-| C-3 | SSH target + readiness model (TCP/auth/ready distinctions, fallback ports, proxy) | openagents/apps/pylon | parallel |
-| C-4 | Durable session/run records: sessionRef, ordered events, retained log refs, artifact refs, cleanup receipts (local backend; coordinator iface) | openagents/apps/pylon (+ cloud iface) | parallel |
-| C-5 | `cloud/` GCE capacity class: provision ephemeral VM, SSH metadata, firewall, labels, lease lifecycle, cleanup (ADC, our project) | cloud | parallel |
-| C-6 | Credential broker — Model 1: point-to-point BYO key to isolated VM, env-inject at exec, wipe on release, refs-only evidence | cloud | parallel |
-| C-7 | Compute metering + quota routing: VM-seconds, active-session/TTL/idle caps, refs-only "no compute" receipt | cloud | parallel |
-| C-8 | Required-artifact gates for `dev-proof-run.ts` / control sessions | openagents/apps/pylon | parallel |
-| C-9 | Phase-0 static-SSH remote-verify prototype (composer local, verify remote) end-to-end | openagents/apps/pylon | blocked by C-1,C-2,C-3 |
-| C-10 | Inference gateway — Model 2: OpenAgents API keys in control-plane broker, egress-locked gateway, per-request metering → credit ledger | cloud | blocked by C-7 |
-| C-11 | Provider Capacity Marketplace Gate authorization for base-inference resale: policy + metering/pricing/ToS/settlement refs + tests | openagents.com | blocked by C-0,C-10 |
-| C-12 | Tenant identity + per-tenant spend caps + acceptable-use/egress/abuse controls + kill switch | cloud (+ openagents.com) | blocked by C-5 |
-| C-13 | Settlement: private metering/usage receipts in cloud → public-monorepo credit/invoice ledger (compute markup; credits + fee). No treasury repo. | cloud + openagents.com | blocked by C-7 |
-| C-14 | `openagents-cloud` provider backend in Pylon client wired to the `cloud/` coordinator | openagents/apps/pylon (+ cloud) | blocked by C-5,C-6 |
-| C-15 | Compute-cost + isolation benchmarks: full-VM baseline cost/latency, then microVM (Firecracker/gVisor) comparison to set compute markup and the microVM cutover | cloud | blocked by C-5 |
+| C-0 | Resale-policy wording reconciliation: scope "no-resale" to *subscription* across INVARIANTS/promise/pylon docs, with copy-gate + promise tests | openagents (+ openagents.com) | ✅ done |
+| C-1 | `PylonExecutionProviderSpec` + Effect/typed services: local-process, static-SSH, openagents-cloud backends | openagents/apps/pylon | ✅ done |
+| C-2 | Remote workspace sync design: git-manifest, `.pylonignore`, fingerprint-skip, remote git seeding, mass-deletion/large-sync guardrails | openagents/apps/pylon | ✅ done |
+| C-3 | SSH target + readiness model (TCP/auth/ready distinctions, fallback ports, proxy) | openagents/apps/pylon | ✅ done |
+| C-4 | Durable session/run records: sessionRef, ordered events, retained log refs, artifact refs, cleanup receipts (local backend; coordinator iface) | openagents/apps/pylon (+ cloud iface) | ✅ done |
+| C-5 | `cloud/` GCE capacity class: provision ephemeral VM, SSH metadata, firewall, labels, lease lifecycle, cleanup (ADC, our project) | cloud | ✅ done |
+| C-6 | Credential broker — Model 1: point-to-point BYO key to isolated VM, env-inject at exec, wipe on release, refs-only evidence | cloud | ✅ done |
+| C-7 | Compute metering + quota routing: VM-seconds, active-session/TTL/idle caps, refs-only "no compute" receipt | cloud | ✅ done |
+| C-8 | Required-artifact gates for `dev-proof-run.ts` / control sessions | openagents/apps/pylon | ✅ done |
+| C-9 | Phase-0 static-SSH remote-verify prototype (composer local, verify remote) end-to-end | openagents/apps/pylon | ✅ ready (deps done) |
+| C-10 | Inference gateway — Model 2: OpenAgents API keys in control-plane broker, egress-locked gateway, per-request metering → credit ledger | cloud | ✅ ready (dep done) |
+| C-11 | Provider Capacity Marketplace Gate authorization for base-inference resale: policy + metering/pricing/ToS/settlement refs + tests | openagents.com | ⏳ blocked by C-10 |
+| C-12 | Tenant identity + per-tenant spend caps + acceptable-use/egress/abuse controls + kill switch | cloud (+ openagents.com) | ✅ ready (dep done) |
+| C-13 | Settlement: private metering/usage receipts in cloud → public-monorepo credit/invoice ledger (compute markup; credits + fee). No treasury repo. | cloud + openagents.com | ✅ ready (dep done) |
+| C-14 | `openagents-cloud` provider backend in Pylon client wired to the `cloud/` coordinator | openagents/apps/pylon (+ cloud) | ✅ ready (deps done) |
+| C-15 | Compute-cost + isolation benchmarks: full-VM baseline cost/latency, then microVM (Firecracker/gVisor) comparison to set compute markup and the microVM cutover | cloud | ✅ ready (dep done) |
 
 ## Decisions (resolved 2026-06-13 by owner)
 
