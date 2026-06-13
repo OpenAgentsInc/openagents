@@ -99,6 +99,15 @@ export type MultiSessionArgs = {
   pylonHome: string
   concurrency: number
   runId: string
+  /**
+   * Optional run-level failover pool (#4884 follow-up). Every session falls back
+   * through these accounts the instant its primary is quota-blocked or
+   * ledger-unavailable, with no per-session accountPool and no second pass. The
+   * runner additionally folds in every account selector used anywhere in the
+   * plan, so a multi-account fanout fails over across its own workers
+   * automatically.
+   */
+  accountPool?: MultiSessionAccountSelector[]
 }
 
 export type ProofChildInput = {
@@ -203,13 +212,28 @@ function parseCliArgs(argv: string[]): MultiSessionArgs {
     else throw new Error(usage)
   }
   if (planPath === null || proofsDir === null || pylonHome === null) throw new Error(usage)
+  const rawPlan = JSON.parse(readFileSyncText(planPath))
+  const runLevelPool = parsePlanAccountPool(rawPlan)
   return {
-    plan: parsePlanJson(JSON.parse(readFileSyncText(planPath))),
+    plan: parsePlanJson(rawPlan),
     proofsDir,
     pylonHome,
     concurrency,
     runId,
+    ...(runLevelPool === undefined ? {} : { accountPool: runLevelPool }),
   }
+}
+
+/**
+ * Reads an optional run-level `accountPool` from an object-shaped plan
+ * (`{ sessions, accountPool }`). Returns undefined for array-shaped plans or
+ * when absent.
+ */
+export function parsePlanAccountPool(raw: unknown): MultiSessionAccountSelector[] | undefined {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined
+  const value = (raw as { accountPool?: unknown }).accountPool
+  if (value === undefined) return undefined
+  return accountPoolFrom(value, -1)
 }
 
 function readFileSyncText(path: string): string {
@@ -249,12 +273,13 @@ function repositoryRefFrom(value: unknown): MultiSessionRepositoryRef | null {
 }
 
 function accountPoolFrom(value: unknown, index: number): MultiSessionAccountSelector[] {
+  const label = index < 0 ? "run-level" : `entry ${index}`
   if (!Array.isArray(value) || value.length === 0) {
-    throw new Error(`multi-session plan entry ${index} accountPool must be a non-empty array`)
+    throw new Error(`multi-session ${label} accountPool must be a non-empty array`)
   }
   return value.map((member, memberIndex) => {
     if (member === null || typeof member !== "object") {
-      throw new Error(`multi-session plan entry ${index} accountPool member ${memberIndex} is not an object`)
+      throw new Error(`multi-session ${label} accountPool member ${memberIndex} is not an object`)
     }
     const record = member as Record<string, unknown>
     const selector: MultiSessionAccountSelector = {
@@ -265,6 +290,53 @@ function accountPoolFrom(value: unknown, index: number): MultiSessionAccountSele
     }
     return selector
   })
+}
+
+/** The single account selector implied by a plan entry's own fields. */
+function entrySelector(entry: MultiSessionPlanEntry): MultiSessionAccountSelector {
+  return {
+    ...(entry.accountRef === undefined ? {} : { accountRef: entry.accountRef }),
+    ...(entry.accountHome === undefined ? {} : { accountHome: entry.accountHome }),
+    ...(entry.codexHome === undefined ? {} : { codexHome: entry.codexHome }),
+    ...(entry.claudeConfigDir === undefined ? {} : { claudeConfigDir: entry.claudeConfigDir }),
+  }
+}
+
+/** Whether a selector can serve a session of the given adapter. */
+function selectorApplicable(sel: MultiSessionAccountSelector, adapter: PylonComposerAdapter): boolean {
+  if (sel.accountRef !== undefined || sel.accountHome !== undefined) return true
+  return adapter === "codex" ? sel.codexHome !== undefined : sel.claudeConfigDir !== undefined
+}
+
+/** Stable identity for a selector under one adapter, for dedup. */
+function selectorKey(sel: MultiSessionAccountSelector, adapter: PylonComposerAdapter): string {
+  if (sel.accountRef !== undefined) return `ref:${sel.accountRef}`
+  const home = sel.accountHome ?? (adapter === "codex" ? sel.codexHome : sel.claudeConfigDir)
+  return home === undefined ? "default" : `home:${home}`
+}
+
+/**
+ * Ordered failover pool for a session: its own primary pool first, then every
+ * other applicable account known to the run (run-level accountPool plus every
+ * selector used anywhere in the plan), deduped. This is what makes a
+ * quota-blocked account get replaced instantly within the same pass.
+ */
+function effectiveSessionPool(
+  entry: MultiSessionPlanEntry,
+  ambient: MultiSessionAccountSelector[],
+): MultiSessionAccountSelector[] {
+  const primary =
+    entry.accountPool && entry.accountPool.length > 0 ? entry.accountPool : [entrySelector(entry)]
+  const ordered: MultiSessionAccountSelector[] = []
+  const seen = new Set<string>()
+  for (const sel of [...primary, ...ambient]) {
+    if (!selectorApplicable(sel, entry.adapter) && selectorKey(sel, entry.adapter) !== "default") continue
+    const key = selectorKey(sel, entry.adapter)
+    if (seen.has(key)) continue
+    seen.add(key)
+    ordered.push(sel)
+  }
+  return ordered
 }
 
 export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
@@ -442,6 +514,7 @@ async function runOneSession(input: {
   entry: MultiSessionPlanEntry
   index: number
   heartbeatPath: string
+  ambientPool: MultiSessionAccountSelector[]
   proofRunner: (child: ProofChildInput) => Promise<ProofChildResult>
 }): Promise<MultiSessionOutcome> {
   const startedAt = nowIso()
@@ -478,21 +551,11 @@ async function runOneSession(input: {
     sessionIndex: input.index,
   })
 
-  // The ordered pool is the explicit accountPool when present; otherwise a
-  // single member derived from the entry's own selector (prior behavior).
-  const pool: MultiSessionAccountSelector[] =
-    input.entry.accountPool && input.entry.accountPool.length > 0
-      ? input.entry.accountPool
-      : [
-          {
-            ...(input.entry.accountRef === undefined ? {} : { accountRef: input.entry.accountRef }),
-            ...(input.entry.accountHome === undefined ? {} : { accountHome: input.entry.accountHome }),
-            ...(input.entry.codexHome === undefined ? {} : { codexHome: input.entry.codexHome }),
-            ...(input.entry.claudeConfigDir === undefined
-              ? {}
-              : { claudeConfigDir: input.entry.claudeConfigDir }),
-          },
-        ]
+  // Ordered failover pool: the session's own primary account(s) first, then
+  // every other applicable account known to the run. A quota-blocked or
+  // ledger-unavailable primary is therefore replaced instantly within this same
+  // pass — no per-session accountPool and no second run required.
+  const pool: MultiSessionAccountSelector[] = effectiveSessionPool(input.entry, input.ambientPool)
 
   try {
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
@@ -511,11 +574,21 @@ async function runOneSession(input: {
         member.accountHome ??
         (adapter === "codex" ? member.codexHome : member.claudeConfigDir) ??
         undefined
-      const account = await resolvePylonAccountSelection(summary, {
-        provider,
-        ...(member.accountRef === undefined ? {} : { accountRef: member.accountRef }),
-        ...(accountHome === undefined ? {} : { accountHome }),
-      })
+      // A fallback member that fails to resolve (unknown ref, missing home,
+      // wrong provider) is skipped rather than aborting the session, so one bad
+      // pool entry never blocks failover to the next working account.
+      let account: ResolvedPylonAccountSelection | null
+      try {
+        account = await resolvePylonAccountSelection(summary, {
+          provider,
+          ...(member.accountRef === undefined ? {} : { accountRef: member.accountRef }),
+          ...(accountHome === undefined ? {} : { accountHome }),
+        })
+      } catch {
+        attempts.push({ accountHash: null, reason: "skipped_unavailable", retryAtIso: null })
+        await emitAttempt("skipped_unavailable", null, null)
+        continue
+      }
       lastAccount = account
       const accountHash = account?.accountRefHash ?? null
 
@@ -735,6 +808,31 @@ export async function runMultiSessionPlan(
   const runRef = stableRef("run.pylon.multi_session", args.runId)
   const heartbeatPath = join(args.proofsDir, "heartbeats.jsonl")
   const proofRunner = options.proofRunner ?? defaultProofChildRunner
+
+  // Ambient failover pool = the run-level accountPool plus every addressed
+  // account selector used anywhere in the plan (each entry's own selector and
+  // any per-entry accountPool members). Empty/default selectors are excluded so
+  // we never silently add the default home as everyone's fallback. Each session
+  // fails over through this set the instant its primary is unavailable.
+  const ambientPool: MultiSessionAccountSelector[] = []
+  const ambientSeen = new Set<string>()
+  const addAmbient = (sel: MultiSessionAccountSelector) => {
+    const addressed =
+      sel.accountRef !== undefined ||
+      sel.accountHome !== undefined ||
+      sel.codexHome !== undefined ||
+      sel.claudeConfigDir !== undefined
+    if (!addressed) return
+    const key = JSON.stringify([sel.accountRef, sel.accountHome, sel.codexHome, sel.claudeConfigDir])
+    if (ambientSeen.has(key)) return
+    ambientSeen.add(key)
+    ambientPool.push(sel)
+  }
+  for (const sel of args.accountPool ?? []) addAmbient(sel)
+  for (const entry of args.plan) {
+    if (entry.accountPool && entry.accountPool.length > 0) entry.accountPool.forEach(addAmbient)
+    else addAmbient(entrySelector(entry))
+  }
   await appendHeartbeat(heartbeatPath, {
     schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
     runRef,
@@ -748,6 +846,7 @@ export async function runMultiSessionPlan(
       entry: args.plan[index]!,
       heartbeatPath,
       index,
+      ambientPool,
       proofRunner,
     }),
   )

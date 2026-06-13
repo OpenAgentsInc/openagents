@@ -406,3 +406,113 @@ describe("multi-session quota-aware routing", () => {
     })
   })
 })
+
+describe("multi-session instant failover (run-level pool, no per-session accountPool)", () => {
+  test("a single-account session whose primary is unavailable routes to a run-level pool account in one pass", async () => {
+    await withTempRoot(async (root) => {
+      const pylonHome = join(root, "pylon-home")
+      const proofsDir = join(root, "proofs")
+      const worktree = join(root, "worktree")
+      const homeA = join(root, "codex-a")
+      const homeB = join(root, "codex-b")
+      for (const d of [pylonHome, worktree, homeA, homeB]) await mkdir(d, { recursive: true })
+
+      // Pre-mark the primary account A unavailable in the quota ledger.
+      const ledgerSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome })
+      await recordQuotaBlock(ledgerSummary, {
+        accountRefHash: hashPylonAccountRef("codex", homeA),
+        provider: "codex",
+        retryAtIso: new Date(Date.now() + 3600_000).toISOString(),
+        sourceDigestRef: "digest.pylon.account_quota.testseed",
+        now: new Date(),
+      })
+
+      const calls: ProofChildInput[] = []
+      const summary = await runMultiSessionPlan(
+        {
+          concurrency: 1,
+          proofsDir,
+          pylonHome,
+          runId: "run.multi-session.runlevel-failover",
+          // Run-level failover pool — the session itself declares NO accountPool.
+          accountPool: [{ codexHome: homeB }],
+          plan: parsePlanJson([
+            {
+              id: "single",
+              adapter: "codex",
+              codexHome: homeA,
+              worktreePath: worktree,
+              objective: "instant failover",
+              verify: ["bun", "--version"],
+            },
+          ]),
+        },
+        {
+          proofRunner: async (child) => {
+            calls.push(child)
+            await writeFile(child.proofOutput, `${JSON.stringify({ schema: "test.proof" })}\n`)
+            return { exitCode: 0, stdout: "ok", stderr: "" }
+          },
+        },
+      )
+
+      const outcome = summary.outcomes[0]!
+      expect(outcome.state).toBe("completed")
+      expect(outcome.routingReason).toBe("succeeded")
+      // Primary A skipped, then B succeeded — all within this single run.
+      expect(outcome.attempts.map((attempt) => attempt.reason)).toEqual([
+        "skipped_unavailable",
+        "succeeded",
+      ])
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.accountHome).toBe(homeB)
+      assertPublicProjectionSafe(summary)
+    })
+  })
+
+  test("ambient pool is drawn from sibling sessions' accounts too", async () => {
+    await withTempRoot(async (root) => {
+      const pylonHome = join(root, "pylon-home")
+      const proofsDir = join(root, "proofs")
+      const worktree = join(root, "worktree")
+      const homeA = join(root, "codex-a")
+      const homeB = join(root, "codex-b")
+      for (const d of [pylonHome, worktree, homeA, homeB]) await mkdir(d, { recursive: true })
+
+      const ledgerSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome })
+      await recordQuotaBlock(ledgerSummary, {
+        accountRefHash: hashPylonAccountRef("codex", homeA),
+        provider: "codex",
+        retryAtIso: new Date(Date.now() + 3600_000).toISOString(),
+        sourceDigestRef: "digest.pylon.account_quota.testseed",
+        now: new Date(),
+      })
+
+      // No run-level accountPool; session 0's only listed account (A) is blocked,
+      // but sibling session 1 uses account B, which becomes session 0's fallback.
+      const summary = await runMultiSessionPlan(
+        {
+          concurrency: 1,
+          proofsDir,
+          pylonHome,
+          runId: "run.multi-session.sibling-failover",
+          plan: parsePlanJson([
+            { id: "s0", adapter: "codex", codexHome: homeA, worktreePath: worktree, objective: "blocked primary", verify: ["bun", "--version"] },
+            { id: "s1", adapter: "codex", codexHome: homeB, worktreePath: worktree, objective: "sibling on B", verify: ["bun", "--version"] },
+          ]),
+        },
+        {
+          proofRunner: async (child) => {
+            await writeFile(child.proofOutput, `${JSON.stringify({ schema: "test.proof" })}\n`)
+            return { exitCode: 0, stdout: "ok", stderr: "" }
+          },
+        },
+      )
+
+      expect(summary.completedCount).toBe(2)
+      const s0 = summary.outcomes.find((o) => o.sessionIndex === 0)!
+      expect(s0.state).toBe("completed")
+      expect(s0.attempts.map((a) => a.reason)).toEqual(["skipped_unavailable", "succeeded"])
+    })
+  })
+})

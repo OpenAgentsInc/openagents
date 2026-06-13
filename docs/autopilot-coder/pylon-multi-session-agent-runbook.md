@@ -175,6 +175,27 @@ The `--account codex` and `--provider codex` shortcuts are for the
 `pylon accounts usage` CLI. Multi-session plans and control-session commands
 use `accountRef`, direct homes, or the default-by-omission rule.
 
+### Automatic account failover
+
+A session whose primary account is quota-blocked or ledger-unavailable is
+replaced instantly, within the same run, by another available account — no
+second pass required. The fallback pool is:
+
+- the optional run-level `accountPool` (a top-level array on an object-shaped
+  plan, `{ "sessions": [...], "accountPool": [ { "codexHome": "..." }, ... ] }`);
+  plus
+- every other account selector used anywhere in the plan's own sessions.
+
+Each session tries its primary account first, then routes through that pool,
+skipping accounts the quota ledger marks unavailable and recording a quota block
+on any account that returns a provider usage-limit signal. Fallback members are
+filtered to the session's adapter (a codex session never fails over to a Claude
+account), deduped, and an unresolvable member is skipped rather than failing the
+session. A session only ends in `all_accounts_exhausted` when the entire pool is
+unavailable. To pin a session to exactly one account with no failover, give it
+its own single selector and run a plan with no other accounts and no run-level
+`accountPool`.
+
 ### Workspace provisioning and verify commands
 
 The `verify` argv runs inside the session worktree. A fresh Git worktree or a
