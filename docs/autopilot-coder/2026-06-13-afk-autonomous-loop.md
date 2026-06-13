@@ -5,6 +5,12 @@ clients + self-driving-loop + OTA buildout autonomously for hours while the owne
 is AFK, via `/loop`. This doc is the **source of truth** the loop re-reads each
 iteration (so it survives context compaction). Append progress to §6.
 
+> **REQUIRED at the start of EVERY iteration:** read the repo `AGENTS.md`
+> (root `AGENTS.md`, symlinked as `CLAUDE.md`) — especially its **Autonomous
+> Loop: Constant Motion** section — in addition to this doc. The constant-motion
+> rule (§1 step 6) is the owner's top operating mandate: **never sit idle, never
+> sleep on a minutes-long timer; be in constant motion.**
+
 ## 0. The end-to-end goal + the long work queue (≥6h of runway)
 
 The machine-economy loop, all on **our own machine + Cloud**, no Expo cloud:
@@ -94,12 +100,26 @@ idle.** Keep a fanout running whenever fannable work exists.
    (d) when an issue's only remainder is **live integration** (not a fannable
    core), do that integration yourself as coordinator.
    Keep the open list honest: each issue reflects exactly what's done vs left.
-6. **Pacing = the fanout watcher, not a timer.** Arm a background watcher on each
-   launched fanout; its completion re-invokes you immediately — that IS the
-   heartbeat, no fixed delay. ScheduleWakeup is ONLY a long safety net (~1800s)
-   in case a watcher dies; it is NEVER the primary cadence, and you must never
-   set a short wakeup and sit idle. While a fanout runs + its watcher is armed,
-   work is continuous.
+6. **CONSTANT MOTION — never wait, never sleep on a timer.** This is a HARD
+   rule (owner-mandated, 2026-06-13). You must be doing real work every moment
+   the loop is active. There is ALWAYS more work — Phase A→B→C, live integration,
+   features, the deep TAS well, the clarity sweep. "Nothing to do" is never true.
+   - **Do not end a turn with a long ScheduleWakeup.** The old "~1800s safety
+     net" is BANNED. Minutes-long idle waits are the failure this rule exists to
+     kill.
+   - **Preferred: keep working in the same turn.** Finish a unit → immediately
+     start the next unit (next feature, next integration, next fanout) in the
+     SAME turn. Don't yield just to yield.
+   - **When you must yield** (e.g. you launched a fanout and want its watcher to
+     re-invoke you): arm the watcher — its completion re-invokes you instantly,
+     that IS the heartbeat. If you have no watcher and still must yield, use a
+     SHORT ScheduleWakeup of **≤120s** (never minutes) and only because you
+     literally cannot proceed this instant.
+   - **Blocked on the owner? Do OTHER work.** An owner-gated item NEVER stops the
+     loop — write the NEEDS-OWNER line and immediately pull the next non-blocked
+     item. Sitting idle waiting for the owner is forbidden.
+   - The owner reply always interrupts and takes priority, but you do not wait
+     for it — you keep producing until it arrives.
 
 ## 2. Guardrails (hard)
 

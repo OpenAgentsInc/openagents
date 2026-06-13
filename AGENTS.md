@@ -7,6 +7,25 @@ This repository is the new OpenAgents Bun and Effect monorepo.
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
 
+## Autonomous Loop: Constant Motion (owner mandate)
+
+When running the autonomous AFK loop (`/loop`, see
+`docs/autopilot-coder/2026-06-13-afk-autonomous-loop.md` — read it every
+iteration), the **top operating rule is CONSTANT MOTION**:
+
+- **Never sit idle. Never sleep on a minutes-long timer.** Do real work every
+  moment the loop is active. There is always more work (active product
+  integration, the issue backlog, the terminal-agent-systems well, the clarity
+  sweep) — "nothing to do" is never true.
+- **Long `ScheduleWakeup` idle waits are banned.** Keep working in the SAME turn:
+  finish a unit → immediately start the next. If you must yield, prefer a fanout
+  whose watcher re-invokes you instantly; only if truly unable to proceed this
+  instant, use a SHORT wakeup (≤120s), never minutes.
+- **Blocked on the owner? Pull other work.** Write a clear `NEEDS-OWNER:` note
+  and immediately continue on a non-blocked item. An owner-gated step never
+  stalls the loop. The owner's reply interrupts and takes priority, but you do
+  not wait for it.
+
 ## Repo Layout
 
 - `apps/openagents.com/` owns the `openagents.com` product surface, including
