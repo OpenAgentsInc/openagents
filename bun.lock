@@ -237,6 +237,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/autopilot-control-protocol": {
+      "name": "@openagentsinc/autopilot-control-protocol",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/nip90": {
       "name": "@openagentsinc/nip90",
       "version": "0.1.0",
@@ -668,6 +679,8 @@
     "@openagentsinc/agent-runtime-schema": ["@openagentsinc/agent-runtime-schema@workspace:packages/agent-runtime-schema"],
 
     "@openagentsinc/api-worker": ["@openagentsinc/api-worker@workspace:apps/openagents.com/workers/api"],
+
+    "@openagentsinc/autopilot-control-protocol": ["@openagentsinc/autopilot-control-protocol@workspace:packages/autopilot-control-protocol"],
 
     "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
 
