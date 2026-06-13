@@ -136,6 +136,24 @@ export async function submitIntent(
   return String(json.result?.status ?? "received")
 }
 
+// Directly spawn a session on the node (CL-15). The compose/intent path is the
+// primary UX; this is the explicit single-session spawn for advanced control.
+// Returns the new session ref. Validation is the caller's responsibility
+// (see validateSpawnRequest in the shared protocol).
+export async function spawnSession(
+  conn: ConnectInfo,
+  draft: { adapter: "codex" | "claude_agent"; objective: string; verify?: string[] },
+): Promise<string> {
+  const json = (await command(conn, {
+    type: "session.spawn",
+    adapter: draft.adapter,
+    objective: draft.objective,
+    verify: draft.verify ?? [],
+  })) as { ok?: boolean; result?: { sessionRef?: unknown } }
+  if (json.ok !== true) throw new Error("spawn failed")
+  return String(json.result?.sessionRef ?? "spawned")
+}
+
 // Cancel a running/queued session (CL-15). Best-effort: returns the new state.
 export async function cancelSession(conn: ConnectInfo, sessionRef: string): Promise<string> {
   const json = (await command(conn, { type: "session.cancel", sessionRef })) as {
