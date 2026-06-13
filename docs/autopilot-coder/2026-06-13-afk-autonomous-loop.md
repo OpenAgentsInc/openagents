@@ -235,3 +235,4 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
 - 2026-06-13 iter 9 — TAS **Pack A COMPLETE** (PA1/2/5/6/7/8/9/10 + PA3=CL-30; 31 TAS tests). Launched Pack B: PB1 credential-store (#4825), PB2 effective-config (#4826), PB5 retention (#4829), PB6 managed-policy (#4830).
 - 2026-06-13 iter 10 — TAS **Pack B COMPLETE** (PB1/2/5/6; 52 TAS tests). Launched Pack C: PC1 repo-identity (#4832), PC2 diff-review (#4833), PC3 workspace-boundary (#4834), PC4 delivery-receipt (#4835).
 - 2026-06-13 iter 11 — TAS **Pack C COMPLETE** (PC1/2/3/4; 67 TAS tests, 16 files). Launched Pack D + cross-cutting: work-intake, error-taxonomy, tool-registry, multi-agent coordination.
+- 2026-06-13 iter 12 — merged Pack D + cross-cutting (work-intake, error-taxonomy, tool-registry, coordination; 85 TAS tests, 20 files). Launched memory/context family: context-assembly, compaction, session-memory, semantic-retrieval (cosine).
