@@ -460,11 +460,36 @@ function startCoordinator(
         spendGate: { decision: gate.decision },
       }
     },
-    recordShip: (intentId, decision) =>
+    recordShip: (intentId, decision) => {
       logToUi(
         `[ship] ${intentId} mode=${decision.shipMode} decision=${decision.decision} eligible=${decision.eligible} (${decision.reason})`,
         "info",
-      ),
+      )
+      // CL-38/CL-39: auto-execute the ship via OUR pipeline (no Expo/EAS cloud).
+      // Triple-gated: eligible (spend-gate allowed) AND decision auto AND the
+      // explicit opt-in OA_SHIP_AUTO_EXECUTE=1. Dormant by default — with no
+      // budget the spend gate denies, so this never fires unexpectedly.
+      if (!decision.eligible || decision.decision !== "auto") return
+      if (Bun.env.OA_SHIP_AUTO_EXECUTE !== "1") {
+        logToUi(`[ship] ${intentId} eligible for ${decision.shipMode} — auto-execute disabled (set OA_SHIP_AUTO_EXECUTE=1)`, "info")
+        return
+      }
+      const repoRoot = process.cwd()
+      if (decision.shipMode === "ota") {
+        // CL-38: auto OTA publish to our updates server when OTA-eligible.
+        logToUi(`[ship] ${intentId} auto OTA publish -> publish-ota.sh`, "info")
+        Bun.spawn(["bash", "apps/oa-updates/scripts/publish-ota.sh"], { cwd: repoRoot, stdout: "ignore", stderr: "ignore" })
+      } else if (decision.shipMode === "rebuild") {
+        // CL-39: auto local build + Apple altool submit when a rebuild is needed
+        // (no EAS). Requires the extra OA_SHIP_REBUILD_AUTO=1 since builds are heavy.
+        if (Bun.env.OA_SHIP_REBUILD_AUTO !== "1") {
+          logToUi(`[ship] ${intentId} rebuild needed — escalating (set OA_SHIP_REBUILD_AUTO=1 to auto-build locally)`, "info")
+          return
+        }
+        logToUi(`[ship] ${intentId} auto local rebuild -> build-and-submit.sh`, "info")
+        Bun.spawn(["bash", "clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"], { cwd: repoRoot, stdout: "ignore", stderr: "ignore" })
+      }
+    },
     log: (message) => logToUi(message, "info"),
   })
   runtime.start(5000)
