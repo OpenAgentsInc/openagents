@@ -604,8 +604,9 @@ This is the invariant ledger for `openagents`.
 
 ## Provider Capacity Marketplace Gate
 
-- ChatGPT/Codex account connection is not resale authorization and must not be
-  described as a live subscription-capacity marketplace by itself.
+- ChatGPT/Codex account connection is not subscription-account resale
+  authorization and must not be described as a live subscription-capacity
+  marketplace by itself.
 - Provider capacity monetization claims are provider-specific. ChatGPT/Codex is
   the first modeled provider; unsupported prepaid providers must remain planned or blocked
   until provider schemas, secret handling, route policy, metering, pricing, ToS
@@ -614,9 +615,10 @@ This is the invariant ledger for `openagents`.
 - Provider tokens, raw quota payloads, subscription cookies, provider-account
   grants, raw metering, raw pricing, payment material, wallet material, customer
   data, and timestamps must not enter public refs.
-- Pricing must distinguish agentic work or accepted outcomes from base
-  inference resale. Base inference resale remains blocked unless a future
-  policy explicitly authorizes it with tests.
+- Pricing must distinguish agentic work or accepted outcomes from API-inference
+  gateway resale. Converting a consumer subscription login into resale remains
+  blocked; API-inference gateway resale is allowed only through an explicit
+  policy path such as this gate, with tests.
 - Assignment dispatch, assignment receipt, and Bitcoin settlement are separate
   states. Assignment evidence does not imply paid settlement.
 - Public capacity marketplace or Bitcoin monetization copy remains blocked
