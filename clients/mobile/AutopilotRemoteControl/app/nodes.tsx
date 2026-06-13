@@ -1,5 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { Drawer } from "react-native-drawer-layout"
+import { useNavigation } from "@react-navigation/native"
 
 import {
   type ConnectInfo,
@@ -19,6 +21,7 @@ import {
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
 import { fixedRowLabelHeight } from "../src/ui/row-metrics"
+import { DrawerIconButton } from "../src/ui/DrawerIconButton"
 import { CANONICAL_DARK, projectFailover, validateIntentDraft } from "@openagentsinc/autopilot-control-protocol"
 
 // Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
@@ -61,6 +64,8 @@ export default function NodesScreen() {
   const [nodeName, setNodeName] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<AccountRow[]>([])
   const [wallet, setWallet] = useState<WalletStatus | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const navigation = useNavigation<{ navigate: (route: string) => void }>()
   const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -187,10 +192,29 @@ export default function NodesScreen() {
   }, [code, poll])
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>Autopilot</Text>
-        <Text style={styles.subtitle}>Nodes</Text>
+    <Drawer
+      open={drawerOpen}
+      onOpen={() => setDrawerOpen(true)}
+      onClose={() => setDrawerOpen(false)}
+      drawerType="front"
+      drawerStyle={styles.drawer}
+      renderDrawerContent={() => (
+        <DrawerNav
+          nodeName={nodeName}
+          onNavigate={(route) => {
+            setDrawerOpen(false)
+            navigation.navigate(route)
+          }}
+        />
+      )}
+    >
+      <View style={styles.container}>
+        <View style={styles.headerBar}>
+          <DrawerIconButton onPress={() => setDrawerOpen((o) => !o)} />
+        </View>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.h1}>Autopilot</Text>
+          <Text style={styles.subtitle}>Nodes</Text>
 
         {selected !== null ? (
           <>
@@ -412,14 +436,64 @@ export default function NodesScreen() {
             )}
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+      </View>
+    </Drawer>
+  )
+}
+
+// Drawer panel — ignite DemoShowroomScreen layout: header at top, then a
+// vertical list of nav destinations that route the stack and close the drawer.
+function DrawerNav({
+  nodeName,
+  onNavigate,
+}: {
+  nodeName: string | null
+  onNavigate: (route: string) => void
+}) {
+  const items: { label: string; route: string }[] = [
+    { label: "Nodes", route: "Nodes" },
+    { label: "Sessions", route: "Sessions" },
+    { label: "Decisions", route: "Decisions" },
+    { label: "Spawn", route: "Spawn" },
+    { label: "Settings", route: "Settings" },
+  ]
+  return (
+    <View style={styles.drawerContent}>
+      <View style={styles.drawerHeader}>
+        <Text style={styles.drawerTitle}>Autopilot</Text>
+        <Text style={styles.drawerSubtitle}>{nodeName ?? "not connected"}</Text>
+      </View>
+      {items.map((item) => (
+        <Pressable key={item.route} style={styles.drawerItem} onPress={() => onNavigate(item.route)}>
+          <Text style={styles.drawerItemText}>{item.label}</Text>
+        </Pressable>
+      ))}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: { backgroundColor: C.bg, flex: 1 },
-  content: { padding: 24, paddingTop: 64 },
+  content: { padding: 24, paddingTop: 12 },
+  headerBar: { backgroundColor: C.bg, paddingBottom: 4, paddingHorizontal: 16, paddingTop: 50 },
+  drawer: { backgroundColor: C.bgSecondary, width: 300 },
+  drawerContent: { backgroundColor: C.bgSecondary, flex: 1, paddingTop: 60 },
+  drawerHeader: {
+    borderBottomColor: C.outline,
+    borderBottomWidth: 1,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+  },
+  drawerTitle: { color: C.primary, fontSize: 20, fontWeight: "700" },
+  drawerSubtitle: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 4 },
+  drawerItem: {
+    borderBottomColor: C.outline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  drawerItemText: { color: C.text, fontSize: 16 },
   h1: { color: C.primary, fontSize: 22, fontWeight: "700" },
   subtitle: { color: C.textSecondary, fontSize: 13, letterSpacing: 1, marginTop: 4, textTransform: "uppercase" },
   card: { backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, marginTop: 24, padding: 18 },

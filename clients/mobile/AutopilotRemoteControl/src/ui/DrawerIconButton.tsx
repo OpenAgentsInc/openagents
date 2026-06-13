@@ -1,91 +1,69 @@
-import { Pressable, type PressableProps, StyleSheet, View } from "react-native"
+import { Pressable, type PressableProps, type ViewStyle } from "react-native"
 import { useDrawerProgress } from "react-native-drawer-layout"
+import Animated, { interpolate, interpolateColor, useAnimatedStyle } from "react-native-reanimated"
 
-import { drawerButtonBars } from "./drawer-interp"
+import { CANONICAL_DARK } from "@openagentsinc/autopilot-control-protocol"
 
-export type DrawerIconButtonProps = PressableProps & {
-  textColor?: string
-  tintColor?: string
-}
+// Faithful port of infinitered/ignite's DrawerIconButton — three bars that
+// morph from a hamburger into an arrow as the drawer opens, animated on the UI
+// thread via reanimated `useDrawerProgress`. Adapted to our dark palette and
+// LTR-only (ignite's RTL branch dropped). The interpolation constants match
+// ignite's exactly.
+export type DrawerIconButtonProps = PressableProps
 
-const textColorDefault = "#111827"
-const tintColorDefault = "#2563eb"
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
-const colorForStop = (colorStop: number, textColor: string, tintColor: string): string => {
-  return colorStop >= 0.5 ? tintColor : textColor
-}
+const C = CANONICAL_DARK
 
-export function DrawerIconButton({
-  textColor = textColorDefault,
-  tintColor = tintColorDefault,
-  style,
-  ...pressableProps
-}: DrawerIconButtonProps) {
+export function DrawerIconButton(props: DrawerIconButtonProps) {
+  const { ...pressableProps } = props
   const progress = useDrawerProgress()
-  const progressValue = typeof progress === "number" ? progress : progress.value
-  const bars = drawerButtonBars(progressValue)
-  const topBarColor = colorForStop(bars.topBar.colorStop, textColor, tintColor)
-  const middleBarColor = colorForStop(bars.middleBar.colorStop, textColor, tintColor)
-  const bottomBarColor = colorForStop(bars.bottomBar.colorStop, textColor, tintColor)
+
+  const animatedContainerStyles = useAnimatedStyle(() => {
+    const translateX = interpolate(progress.value, [0, 1], [0, -60])
+    return { transform: [{ translateX }] }
+  })
+
+  const animatedTopBarStyles = useAnimatedStyle(() => {
+    const backgroundColor = interpolateColor(progress.value, [0, 1], [C.text, C.primary])
+    const marginStart = interpolate(progress.value, [0, 1], [0, -11.5])
+    const rotate = interpolate(progress.value, [0, 1], [0, -45])
+    const marginBottom = interpolate(progress.value, [0, 1], [0, -2])
+    const width = interpolate(progress.value, [0, 1], [18, 12])
+    return { backgroundColor, marginBottom, marginLeft: marginStart, width, transform: [{ rotate: `${rotate}deg` }] }
+  })
+
+  const animatedMiddleBarStyles = useAnimatedStyle(() => {
+    const backgroundColor = interpolateColor(progress.value, [0, 1], [C.text, C.primary])
+    const width = interpolate(progress.value, [0, 1], [18, 16])
+    return { backgroundColor, width }
+  })
+
+  const animatedBottomBarStyles = useAnimatedStyle(() => {
+    const marginTop = interpolate(progress.value, [0, 1], [4, 2])
+    const backgroundColor = interpolateColor(progress.value, [0, 1], [C.text, C.primary])
+    const marginStart = interpolate(progress.value, [0, 1], [0, -11.5])
+    const rotate = interpolate(progress.value, [0, 1], [0, 45])
+    const width = interpolate(progress.value, [0, 1], [18, 12])
+    return { backgroundColor, marginLeft: marginStart, marginTop, width, transform: [{ rotate: `${rotate}deg` }] }
+  })
 
   return (
-    <Pressable
-      {...pressableProps}
-      style={[
-        styles.container,
-        {
-          transform: [{ translateX: bars.container.translateX }],
-        },
-        style,
-      ]}
-    >
-      <View
-        style={[
-          styles.bar,
-          {
-            backgroundColor: topBarColor,
-            marginBottom: bars.topBar.marginBottom,
-            transform: [{ translateX: bars.topBar.translateX }, { rotate: `${bars.topBar.rotateDeg}deg` }],
-            width: bars.topBar.width,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.bar,
-          styles.middleBar,
-          {
-            backgroundColor: middleBarColor,
-            width: bars.middleBar.width,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.bar,
-          {
-            backgroundColor: bottomBarColor,
-            marginTop: bars.bottomBar.marginTop,
-            transform: [{ translateX: bars.bottomBar.translateX }, { rotate: `${bars.bottomBar.rotateDeg}deg` }],
-            width: bars.bottomBar.width,
-          },
-        ]}
-      />
-    </Pressable>
+    <AnimatedPressable {...pressableProps} style={[$container, animatedContainerStyles]}>
+      <Animated.View style={[$bar, animatedTopBarStyles]} />
+      <Animated.View style={[$bar, animatedMiddleBarStyles]} />
+      <Animated.View style={[$bar, animatedBottomBarStyles]} />
+    </AnimatedPressable>
   )
 }
 
-const styles = StyleSheet.create({
-  bar: {
-    height: 2,
-  },
-  container: {
-    alignItems: "center",
-    height: 56,
-    justifyContent: "center",
-    width: 56,
-  },
-  middleBar: {
-    marginTop: 4,
-  },
-})
+const $container: ViewStyle = {
+  alignItems: "center",
+  height: 56,
+  justifyContent: "center",
+  width: 56,
+}
+
+const $bar: ViewStyle = {
+  height: 2,
+}

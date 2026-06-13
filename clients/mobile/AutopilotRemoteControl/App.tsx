@@ -1,6 +1,8 @@
+import "react-native-gesture-handler"
 import { NavigationContainer } from "@react-navigation/native"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
-import { StatusBar, View } from "react-native"
+import { StatusBar } from "react-native"
+import { GestureHandlerRootView } from "react-native-gesture-handler"
 
 import DecisionsScreen from "./app/decisions"
 import NodesScreen from "./app/nodes"
@@ -23,7 +25,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>()
 
 export default function App() {
   return (
-    <View style={{ flex: 1, backgroundColor: "#000000" }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#000000" }}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <NavigationContainer>
         <Stack.Navigator initialRouteName="Nodes" screenOptions={{ headerShown: false }}>
@@ -36,6 +38,6 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
       <UpdateGate />
-    </View>
+    </GestureHandlerRootView>
   )
 }
