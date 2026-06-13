@@ -8,12 +8,20 @@ export type SessionEventRow = {
   readonly detail: string
 }
 
+export type AccountRow = {
+  readonly provider: string
+  readonly homeState: string
+  readonly ready: boolean
+}
+
 export type NodeStateMessage = {
   readonly ok: boolean
   readonly schema: string
   readonly sessions: SessionSummary[]
   // CL-5: bounded recent-events tail per session for the live detail timeline.
   readonly events?: Record<string, SessionEventRow[]>
+  // CL-18/CL-20: read-only provider/account readiness.
+  readonly accounts?: AccountRow[]
 }
 
 export type DesktopRPCSchema = {

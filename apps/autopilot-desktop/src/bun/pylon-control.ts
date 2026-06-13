@@ -4,7 +4,7 @@ import {
   decodeSessionSummary,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
-import type { SessionEventRow } from "../shared/rpc"
+import type { AccountRow, SessionEventRow } from "../shared/rpc"
 
 type NodeHealth = {
   ok?: unknown
@@ -52,11 +52,36 @@ async function fetchSessionEventRows(input: {
   }
 }
 
+async function fetchAccountRows(input: {
+  baseUrl: string
+  token: string
+  fetchFn: typeof fetch
+}): Promise<AccountRow[]> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "accounts.list" }),
+    })
+    if (!res.ok) return []
+    const json = (await res.json()) as { ok?: unknown; result?: { accounts?: unknown } }
+    const accounts = json.ok === true ? json.result?.accounts : undefined
+    if (!Array.isArray(accounts)) return []
+    return accounts.map((a: any) => ({
+      provider: String(a.provider ?? "?"),
+      homeState: String(a.homeState ?? "?"),
+      ready: Array.isArray(a.blockerRefs) ? a.blockerRefs.length === 0 : false,
+    }))
+  } catch {
+    return []
+  }
+}
+
 export async function fetchNodeState(input: {
   baseUrl: string
   token: string
   fetchFn?: typeof fetch
-}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]> }> {
+}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]>; accounts: AccountRow[] }> {
   const fetchFn = input.fetchFn ?? fetch
   const baseUrl = input.baseUrl.replace(/\/+$/, "")
 
@@ -105,10 +130,13 @@ export async function fetchNodeState(input: {
     })
   }
 
+  const accounts = await fetchAccountRows({ baseUrl, token: input.token, fetchFn })
+
   return {
     ok: health.ok,
     schema: health.schema,
     sessions,
     events,
+    accounts,
   }
 }

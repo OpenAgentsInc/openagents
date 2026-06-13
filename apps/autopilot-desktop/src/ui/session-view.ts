@@ -34,6 +34,14 @@ export function sessionRows(
   return sessions
     .map((session) => {
       const lastProgressRef = session.lastProgressRef ?? "none"
+      const verify =
+        session.state === "completed"
+          ? "✓ verify passed"
+          : session.state === "failed"
+            ? "✗ verify failed"
+            : session.state === "cancelled"
+              ? "cancelled"
+              : ""
       return [
         '<div class="session-row">',
         `<code>${escapeHtml(session.sessionRef)}</code>`,
@@ -41,6 +49,7 @@ export function sessionRows(
         `<span class="state-chip state-${escapeHtml(session.state)}">${escapeHtml(session.state)}</span>`,
         `<code>${escapeHtml(lastProgressRef)}</code>`,
         "</div>",
+        verify.length > 0 ? `<p class="verify-line verify-${escapeHtml(session.state)}">${escapeHtml(verify)}</p>` : "",
         timelineHtml(events[session.sessionRef] ?? []),
       ].join("")
     })
@@ -51,5 +60,11 @@ export function nodeStatusLine(state: { ok: boolean; sessions: SessionSummary[] 
   const status = state.ok ? "connected" : "offline"
   const count = state.sessions.length
   const noun = count === 1 ? "session" : "sessions"
-  return `${status} · ${count} ${noun}`
+  const by: Record<string, number> = {}
+  for (const session of state.sessions) by[session.state] = (by[session.state] ?? 0) + 1
+  const breakdown = ["running", "queued", "completed", "failed", "cancelled"]
+    .filter((k) => by[k])
+    .map((k) => `${by[k]} ${k}`)
+    .join(" · ")
+  return breakdown.length > 0 ? `${status} · ${count} ${noun} · ${breakdown}` : `${status} · ${count} ${noun}`
 }

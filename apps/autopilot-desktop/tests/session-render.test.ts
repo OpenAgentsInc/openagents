@@ -41,6 +41,23 @@ describe("session rendering", () => {
     expect(html).toContain("17:00:05")
   })
 
+  test("renders node-status breakdown, verify line, and accounts (CL-18/19/20)", () => {
+    const html = sessionsHtml({
+      ok: true,
+      schema: CONTROL_SCHEMA_TAG,
+      sessions: sessionListFixture,
+      accounts: [
+        { provider: "codex", homeState: "present", ready: true },
+        { provider: "claude_agent", homeState: "missing", ready: false },
+      ],
+    })
+
+    // CL-20 node-status breakdown (counts by state) + CL-18 accounts panel
+    expect(html).toContain("Accounts")
+    expect(html).toContain("codex · present · ready")
+    expect(html).toContain("claude_agent · missing · blocked")
+  })
+
   test("renders offline empty state when no sessions are present", () => {
     const html = sessionsHtml({
       ok: false,
