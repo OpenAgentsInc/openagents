@@ -12,7 +12,10 @@ const config: ExpoConfig = {
   // (native/config) requires a new build. See src/updates/README.md.
   runtimeVersion: { policy: "fingerprint" },
   updates: {
-    url: "https://u.expo.dev/33dc1fb6-1b11-486d-baa0-7946302fdc68",
+    // Off Expo's CDN: our own OpenAgents Updates server (Cloud Run behind the
+    // updates.openagents.com CNAME). expo-updates GETs this manifest endpoint
+    // with Expo-* headers; our server serves a fingerprint-matched manifest.
+    url: "https://updates.openagents.com/autopilot/manifest",
   },
   orientation: "portrait",
   userInterfaceStyle: "automatic",
