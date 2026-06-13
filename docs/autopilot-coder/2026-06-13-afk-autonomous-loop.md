@@ -238,3 +238,12 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
 - 2026-06-13 iter 12 — merged Pack D + cross-cutting (work-intake, error-taxonomy, tool-registry, coordination; 85 TAS tests, 20 files). Launched memory/context family: context-assembly, compaction, session-memory, semantic-retrieval (cosine).
 - 2026-06-13 iter 13 — merged memory/context family (context-assembly, compaction, session-memory, semantic-retrieval/cosine; **100 TAS tests, 24 files**). Launched protocol/extensibility family: mcp-client, mcp-server, hook-event, command-system.
 - 2026-06-13 iter 14 — merged protocol/extensibility (mcp-client/server, hook-event, command-system; **117 TAS tests, 28 files**). Launched model/config family: model-provider, prompt-layering, skill-system, plugin-system.
+
+- 2026-06-13 OWNER-FLAG FIX — owner saw build #4 still empty. ROOT CAUSE: all the
+  parity/OTA work was libraries+backend, never wired into mobile SCREENS, and no
+  OTA was ever pushed to build #4. FIX: rewrote app/nodes.tsx (real dark screen +
+  node-status view-model + honest empty state + live expo-updates OTA badge in
+  footer), JS-only (fingerprint still d36a2a5b == build #4), then `eas update
+  --branch production` (update 019ec158) + LINKED channel production→branch
+  production (was unlinked — the missing piece). Build #4 now pulls the OTA on
+  next cold start. LESSON: wire screens + push OTA, don't just build libraries.
