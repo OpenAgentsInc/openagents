@@ -8,6 +8,7 @@ import {
   type Update,
 } from "./manifest-resolver.ts"
 import { buildSignedManifestResponse } from "./signed-response.ts"
+import { createNodeRegistry, type NodeRegistration } from "./node-registry.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
@@ -65,6 +66,7 @@ export function createUpdatesServer(
   const assetStore: AssetStore = createInMemoryAssetStore(
     `http://localhost:${port}`,
   )
+  const nodeRegistry = createNodeRegistry()
 
   return {
     async fetch(request) {
@@ -120,6 +122,23 @@ export function createUpdatesServer(
               "content-type": assetContentType(updates.values(), hash),
             },
           })
+        }
+
+        // Discovery: list this owner's registered nodes (the app auto-connects
+        // to the tailnet-first reachable one — no QR/paste).
+        const nodesGet = url.pathname.match(/^\/([^/]+)\/nodes$/)
+        if (nodesGet !== null) {
+          return jsonResponse({ nodes: nodeRegistry.listForOwner(nodesGet[1]) })
+        }
+      }
+
+      if (request.method === "POST") {
+        // Discovery: a node self-registers its reachable address(es) + token.
+        const nodesPost = url.pathname.match(/^\/([^/]+)\/nodes$/)
+        if (nodesPost !== null) {
+          const reg = (await request.json()) as NodeRegistration
+          nodeRegistry.register(nodesPost[1], reg)
+          return jsonResponse({ ok: true })
         }
       }
 
