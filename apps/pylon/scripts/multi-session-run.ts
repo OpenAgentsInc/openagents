@@ -82,6 +82,7 @@ export type MultiSessionPlanEntry = {
   objective: string
   verify: string[]
   timeoutSeconds?: number
+  noNetwork?: boolean
 }
 
 export type PylonRoutingReason = "succeeded" | "quota_block" | "skipped_unavailable" | "failed"
@@ -122,6 +123,7 @@ export type ProofChildInput = {
   proofOutput: string
   timeoutSeconds: number
   verify: string[]
+  noNetwork?: boolean
 }
 
 export type ProofChildResult = {
@@ -346,6 +348,13 @@ export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
       ? (raw as { sessions: unknown[] }).sessions
       : null
   if (entries === null) throw new Error("multi-session plan must be an array or { sessions }")
+  const topLevelNoNetwork =
+    !Array.isArray(raw) && raw !== null && typeof raw === "object"
+      ? (raw as { noNetwork?: unknown }).noNetwork
+      : undefined
+  if (topLevelNoNetwork !== undefined && typeof topLevelNoNetwork !== "boolean") {
+    throw new Error("multi-session plan top-level noNetwork must be a boolean")
+  }
   return entries.map((entry, index) => {
     if (entry === null || typeof entry !== "object") {
       throw new Error(`multi-session plan entry ${index} is not an object`)
@@ -373,6 +382,10 @@ export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
     }
     const accountPool =
       record.accountPool === undefined ? undefined : accountPoolFrom(record.accountPool, index)
+    if (record.noNetwork !== undefined && typeof record.noNetwork !== "boolean") {
+      throw new Error(`multi-session plan entry ${index} has invalid noNetwork`)
+    }
+    const noNetwork = record.noNetwork ?? topLevelNoNetwork
     return {
       adapter,
       ...(typeof record.id === "string" ? { id: record.id } : {}),
@@ -385,6 +398,7 @@ export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
       ...(worktreePath === undefined ? {} : { worktreePath }),
       objective: record.objective,
       verify,
+      ...(noNetwork === undefined ? {} : { noNetwork }),
       ...(typeof record.timeoutSeconds === "number" && Number.isFinite(record.timeoutSeconds)
         ? { timeoutSeconds: Math.max(1, Math.min(1200, Math.floor(record.timeoutSeconds))) }
         : {}),
@@ -462,6 +476,7 @@ async function defaultProofChildRunner(input: ProofChildInput): Promise<ProofChi
     ...(input.adapter === "claude_agent" && input.accountHome !== null
       ? ["--claude-config-dir", input.accountHome]
       : []),
+    ...(input.noNetwork === true ? ["--no-network"] : []),
     "--",
     ...input.verify,
   ]
@@ -616,6 +631,7 @@ async function runOneSession(input: {
         proofOutput,
         timeoutSeconds: input.entry.timeoutSeconds ?? 600,
         verify: input.entry.verify,
+        ...(input.entry.noNetwork === undefined ? {} : { noNetwork: input.entry.noNetwork }),
       })
 
       if (child.exitCode === 0) {

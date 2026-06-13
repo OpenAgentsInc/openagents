@@ -18,7 +18,7 @@
  *     --adapter codex|claude_agent \
  *     --objective "<public objective summary>" \
  *     [--prompt-file <path>] [--issue <ref>]... [--timeout-seconds <n>] \
- *     -- <verification argv...>
+ *     [--no-network] -- <verification argv...>
  */
 import { createHash } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
@@ -54,7 +54,7 @@ type ProofBoundary =
       adapter: "codex"
       sandboxMode: "read-only" | "workspace-write"
       approvalPolicy: "never"
-      networkAccessEnabled: false
+      networkAccessEnabled: boolean
     }
   | {
       adapter: "claude_agent"
@@ -130,13 +130,14 @@ export type ProofRunArgs = {
   proofOutput: string | null
   timeoutSeconds: number
   verificationArgv: string[]
+  networkAccessEnabled?: boolean
   /** Task repo for the composer run; defaults to process.cwd(). */
   cwd?: string
 }
 
-function parseProofRunArgs(argv: string[]): ProofRunArgs {
+export function parseProofRunArgs(argv: string[]): ProofRunArgs {
   const usage =
-    'usage: dev-proof-run.ts --adapter codex|claude_agent --objective "<text>" [--prompt-file <path>] [--issue <ref>]... [--account-ref <ref>] [--codex-home <dir>|--claude-config-dir <dir>] [--proof-output <path>] [--timeout-seconds <n>] -- <verification argv...>'
+    'usage: dev-proof-run.ts --adapter codex|claude_agent --objective "<text>" [--prompt-file <path>] [--issue <ref>]... [--account-ref <ref>] [--codex-home <dir>|--claude-config-dir <dir>] [--proof-output <path>] [--timeout-seconds <n>] [--no-network] -- <verification argv...>'
   let adapter: PylonComposerAdapter | null = null
   let objective: string | null = null
   let promptFile: string | null = null
@@ -147,6 +148,7 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
   const issueRefs: string[] = []
   let timeoutSeconds = 600
   let verificationArgv: string[] = []
+  let networkAccessEnabled = true
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === "--") {
@@ -183,6 +185,8 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
       if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1200) throw new Error(usage)
       timeoutSeconds = Math.floor(parsed)
       index += 1
+    } else if (arg === "--no-network") {
+      networkAccessEnabled = false
     } else {
       throw new Error(usage)
     }
@@ -203,6 +207,7 @@ function parseProofRunArgs(argv: string[]): ProofRunArgs {
     proofOutput,
     timeoutSeconds,
     verificationArgv,
+    networkAccessEnabled,
   }
 }
 
@@ -240,6 +245,7 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
   const prompt =
     args.promptFile === null ? args.objective : await readFile(resolve(args.promptFile), "utf8")
   const timeoutMs = args.timeoutSeconds * 1000
+  const networkAccessEnabled = args.networkAccessEnabled ?? true
   let executor: ProofExecutorSummary
   if (args.adapter === "codex") {
     const config = await loadCodexAgentConfig(summary)
@@ -255,7 +261,7 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
       env,
       executionMode: "local_bounded",
       ...(config.model === undefined ? {} : { model: config.model }),
-      networkAccessEnabled: false,
+      networkAccessEnabled,
       sandboxMode,
       timeoutMs,
     })
@@ -278,7 +284,7 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
         adapter: "codex",
         sandboxMode,
         approvalPolicy: "never",
-        networkAccessEnabled: false,
+        networkAccessEnabled,
       },
       outcome: "completed",
       eventCount: result.eventCount,
