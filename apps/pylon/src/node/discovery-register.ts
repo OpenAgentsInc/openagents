@@ -86,3 +86,73 @@ function classifyAddresses(
 
   return addresses
 }
+
+// The discovery broker stores whatever the node POSTs; the mobile app feeds the
+// stored `addresses` straight into resolveBaseUrls(), which returns each value
+// VERBATIM as the fetch base URL. So the wire addresses must be full
+// `http://host:port` URLs (not bare IPs) for the phone to actually connect.
+function toBaseUrl(host: string, port: number): string {
+  return `http://${host}:${port}`
+}
+
+export type BrokerRegistrationHosts = {
+  loopback?: string
+  lan?: string
+  tailnet?: string
+}
+
+export type BrokerRegistrationBody = {
+  nodeRef: string
+  name?: string
+  addresses: NodeRegistrationAddresses
+  controlToken: string
+  updatedAt: string
+}
+
+// Builds the exact JSON the node POSTs to the broker. Unlike NodeRegistration's
+// redacting toJSON(), this carries the REAL control token — it is the wire
+// credential the phone needs. Never log this object directly.
+export function buildBrokerRegistrationBody(input: {
+  nodeRef: string
+  name?: string
+  hosts: BrokerRegistrationHosts
+  port: number
+  controlToken: string
+  updatedAt: string
+}): BrokerRegistrationBody {
+  const addresses: NodeRegistrationAddresses = {}
+  if (input.hosts.loopback) addresses.loopback = toBaseUrl(input.hosts.loopback, input.port)
+  if (input.hosts.lan) addresses.lan = toBaseUrl(input.hosts.lan, input.port)
+  if (input.hosts.tailnet) addresses.tailnet = toBaseUrl(input.hosts.tailnet, input.port)
+
+  const body: BrokerRegistrationBody = {
+    nodeRef: input.nodeRef,
+    addresses,
+    controlToken: input.controlToken,
+    updatedAt: input.updatedAt,
+  }
+  if (input.name) body.name = input.name
+  return body
+}
+
+// POST the registration to `${brokerUrl}/${ownerRef}/nodes`. Returns true on a
+// 2xx. Best-effort: discovery is a convenience, never load-bearing for the node.
+export async function postNodeRegistration(args: {
+  brokerUrl: string
+  ownerRef: string
+  body: BrokerRegistrationBody
+  fetchImpl?: typeof fetch
+}): Promise<boolean> {
+  const doFetch = args.fetchImpl ?? fetch
+  const base = args.brokerUrl.replace(/\/+$/, "")
+  try {
+    const res = await doFetch(`${base}/${encodeURIComponent(args.ownerRef)}/nodes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(args.body),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}

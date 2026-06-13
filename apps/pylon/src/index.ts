@@ -50,6 +50,11 @@ import { runOpencodeStream } from "./opencode-run"
 import { loadKeybindOverrides } from "./node/keybinds"
 import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist"
 import {
+  buildBrokerRegistrationBody,
+  postNodeRegistration,
+  type BrokerRegistrationHosts,
+} from "./node/discovery-register"
+import {
   defaultControlPort,
   ensureControlToken,
   controlTokenPath,
@@ -147,6 +152,7 @@ import {
   workAcceptanceMemoryEntry,
   workRequestMemoryEntry,
 } from "./work-requester"
+import { hostname } from "node:os"
 
 // Bridge for legacy call sites (OpenCode helpers) that log from plain
 // async code. Set once at dashboard boot, before any service starts.
@@ -175,6 +181,43 @@ type ContextActions = DashboardUiModule["startDashboard"] extends (options: infe
     : never
   : never
 let dashboardUi: DashboardUiModule | null = null
+
+// Discovery heartbeat: opt-in (OA_DISCOVERY_BROKER), the node POSTs its
+// reachable control address(es) + token to the discovery broker so the mobile
+// app can auto-connect with no QR/paste ("shouldn't it auto detect"). The broker
+// registry is in-memory, so we re-register on an interval to survive cold
+// starts. Best-effort and unref'd — never blocks or holds the process open.
+function startDiscoveryHeartbeat(opts: {
+  controlPort: number
+  controlToken: string
+  boundHost: string
+}): void {
+  const broker = Bun.env.OA_DISCOVERY_BROKER
+  if (!broker) return
+  const owner = Bun.env.OA_DISCOVERY_OWNER ?? "chris"
+  const nodeRef = Bun.env.PYLON_NODE_REF ?? hostname()
+  const hosts: BrokerRegistrationHosts = {}
+  if (opts.boundHost.startsWith("127.")) hosts.loopback = opts.boundHost
+  else if (opts.boundHost.startsWith("100.")) hosts.tailnet = opts.boundHost
+  else hosts.lan = opts.boundHost
+  const beat = (): void => {
+    void postNodeRegistration({
+      brokerUrl: broker,
+      ownerRef: owner,
+      body: buildBrokerRegistrationBody({
+        nodeRef,
+        name: nodeRef,
+        hosts,
+        port: opts.controlPort,
+        controlToken: opts.controlToken,
+        updatedAt: new Date().toISOString(),
+      }),
+    })
+  }
+  beat()
+  const timer = setInterval(beat, 20_000)
+  timer.unref?.()
+}
 
 // Routes a log message into the node runtime (which owns the feed and the
 // event stream). Pre-boot or in plain CLI paths it falls back to stdout.
@@ -801,6 +844,11 @@ const runPylonNode = Effect.gen(function* () {
       "verbose",
       `[Control] Attach API on ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
     )
+    startDiscoveryHeartbeat({
+      controlPort,
+      controlToken,
+      boundHost: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
+    })
   }
 
   // User keybind overrides (apps/pylon home keybinds.json, Effect-Schema
@@ -1007,6 +1055,11 @@ const runHeadlessNode = Effect.gen(function* () {
     `Pylon node-core running headless. Attach with: pylon attach ${controlServer.url} (token: ${controlTokenPath(bootstrapSummary.paths.home)})`,
     { transient: true },
   )
+  startDiscoveryHeartbeat({
+    controlPort,
+    controlToken,
+    boundHost: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
+  })
 
   const localState = yield* Effect.tryPromise({
     try: () => ensurePylonLocalState(bootstrapSummary),
