@@ -22,6 +22,25 @@ describe("session rendering", () => {
     }
   })
 
+  test("renders a live session-detail timeline from recentEvents (CL-5)", () => {
+    const ref = sessionListFixture[0].sessionRef
+    const html = sessionsHtml({
+      ok: true,
+      schema: CONTROL_SCHEMA_TAG,
+      sessions: sessionListFixture,
+      events: {
+        [ref]: [
+          { eventIndex: 0, phase: "started", state: "running", observedAt: "2026-06-13T17:00:00.000Z", detail: "" },
+          { eventIndex: 1, phase: "composer_event", state: "running", observedAt: "2026-06-13T17:00:05.000Z", detail: "agent: hello world" },
+        ],
+      },
+    })
+
+    expect(html).toContain("session-timeline")
+    expect(html).toContain("agent: hello world")
+    expect(html).toContain("17:00:05")
+  })
+
   test("renders offline empty state when no sessions are present", () => {
     const html = sessionsHtml({
       ok: false,

@@ -12,6 +12,15 @@
       h1 { font-size:1.7rem; margin:0 0 .6rem; }
       p { color:#8b93a7; margin:.3rem 0; line-height:1.5; }
       code { color:#7dd3fc; }
+      .session-list { text-align:left; margin-top:1rem; }
+      .session-row { display:flex; gap:.6rem; align-items:center; padding:.5rem 0; border-top:1px solid #1c2230; }
+      .state-chip { font-size:.75rem; padding:.1rem .4rem; border-radius:.3rem; background:#1c2230; }
+      .session-timeline { list-style:none; margin:.2rem 0 .8rem; padding:0 0 0 1rem; border-left:2px solid #1c2230; }
+      .event-row { display:flex; justify-content:space-between; gap:1rem; padding:.2rem 0; font-size:.82rem; }
+      .event-detail { color:#cdd3e0; font-family:ui-monospace,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:420px; }
+      .event-meta { color:#6b7488; font-size:.72rem; white-space:nowrap; }
+      .event-completed .event-detail { color:#5ee08a; }
+      .event-failed .event-detail { color:#ff6b6b; }
     </style>
     <script src="views://autopilot-desktop/main.js"></script>
   </head>

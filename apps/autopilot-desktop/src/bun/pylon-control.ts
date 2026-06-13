@@ -4,6 +4,7 @@ import {
   decodeSessionSummary,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
+import type { SessionEventRow } from "../shared/rpc"
 
 type NodeHealth = {
   ok?: unknown
@@ -23,11 +24,39 @@ export function readControlToken(pylonHome: string): string | null {
   return token.length > 0 ? token : null
 }
 
+async function fetchSessionEventRows(input: {
+  baseUrl: string
+  token: string
+  sessionRef: string
+  fetchFn: typeof fetch
+}): Promise<SessionEventRow[]> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "session.events", sessionRef: input.sessionRef }),
+    })
+    if (!res.ok) return []
+    const json = (await res.json()) as { ok?: unknown; result?: { recentEvents?: unknown } }
+    const events = json.ok === true ? json.result?.recentEvents : undefined
+    if (!Array.isArray(events)) return []
+    return events.slice(-12).map((e: any) => ({
+      eventIndex: Number(e.eventIndex ?? 0),
+      phase: String(e.phase ?? "?"),
+      state: String(e.state ?? "?"),
+      observedAt: String(e.observedAt ?? ""),
+      detail: typeof e.messageText === "string" ? e.messageText : "",
+    }))
+  } catch {
+    return []
+  }
+}
+
 export async function fetchNodeState(input: {
   baseUrl: string
   token: string
   fetchFn?: typeof fetch
-}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[] }> {
+}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]> }> {
   const fetchFn = input.fetchFn ?? fetch
   const baseUrl = input.baseUrl.replace(/\/+$/, "")
 
@@ -61,9 +90,25 @@ export async function fetchNodeState(input: {
     throw new Error("Pylon session list command did not return an array")
   }
 
+  const sessions = command.result.map((row) => decodeSessionSummary(row))
+
+  // Live detail timeline: fetch the inline recentEvents tail per session (RN/web
+  // can't consume the SSE stream cleanly; the bounded tail over POST /command is
+  // the portable path). Bounded to keep per-poll cost sane.
+  const events: Record<string, SessionEventRow[]> = {}
+  for (const session of sessions.slice(0, 25)) {
+    events[session.sessionRef] = await fetchSessionEventRows({
+      baseUrl,
+      token: input.token,
+      sessionRef: session.sessionRef,
+      fetchFn,
+    })
+  }
+
   return {
     ok: health.ok,
     schema: health.schema,
-    sessions: command.result.map((row) => decodeSessionSummary(row)),
+    sessions,
+    events,
   }
 }
