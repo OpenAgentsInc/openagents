@@ -14,6 +14,14 @@ export type AccountRow = {
   readonly ready: boolean
 }
 
+export type SessionArtifactStats = {
+  readonly kind: string
+  readonly outcome: string | null
+  readonly editedFileCount: number | null
+  readonly commandCount: number | null
+  readonly totalTokens: number | null
+}
+
 export type NodeStateMessage = {
   readonly ok: boolean
   readonly schema: string
@@ -22,6 +30,8 @@ export type NodeStateMessage = {
   readonly events?: Record<string, SessionEventRow[]>
   // CL-18/CL-20: read-only provider/account readiness.
   readonly accounts?: AccountRow[]
+  // CL-19: retained artifact stats per terminal session.
+  readonly artifacts?: Record<string, SessionArtifactStats>
 }
 
 export type DesktopRPCSchema = {

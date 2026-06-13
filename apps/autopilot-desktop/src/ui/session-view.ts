@@ -1,5 +1,14 @@
 import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
-import type { SessionEventRow } from "../shared/rpc"
+import type { SessionArtifactStats, SessionEventRow } from "../shared/rpc"
+
+function artifactLine(stats: SessionArtifactStats | undefined): string {
+  if (!stats) return ""
+  const parts = [`artifact: ${stats.outcome ?? stats.kind}`]
+  if (stats.editedFileCount !== null) parts.push(`${stats.editedFileCount} files`)
+  if (stats.commandCount !== null) parts.push(`${stats.commandCount} cmds`)
+  if (stats.totalTokens !== null) parts.push(`${stats.totalTokens} tok`)
+  return `<p class="artifact-line">${parts.join(" · ")}</p>`
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -30,6 +39,7 @@ function timelineHtml(events: SessionEventRow[]): string {
 export function sessionRows(
   sessions: SessionSummary[],
   events: Record<string, SessionEventRow[]> = {},
+  artifacts: Record<string, SessionArtifactStats> = {},
 ): string {
   return sessions
     .map((session) => {
@@ -50,6 +60,7 @@ export function sessionRows(
         `<code>${escapeHtml(lastProgressRef)}</code>`,
         "</div>",
         verify.length > 0 ? `<p class="verify-line verify-${escapeHtml(session.state)}">${escapeHtml(verify)}</p>` : "",
+        artifactLine(artifacts[session.sessionRef]),
         timelineHtml(events[session.sessionRef] ?? []),
       ].join("")
     })

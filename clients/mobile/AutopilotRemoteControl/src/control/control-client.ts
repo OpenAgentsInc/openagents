@@ -69,6 +69,33 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
   }))
 }
 
+export type SessionArtifact = {
+  kind: "proof" | "failure" | "none"
+  outcome: string | null
+  editedFileCount: number | null
+  commandCount: number | null
+  totalTokens: number | null
+}
+
+// Fetch the retained artifact a completed session produced (CL-19). Returns key
+// executor stats from the projection-safe proof/failure JSON.
+export async function fetchSessionArtifact(conn: ConnectInfo, sessionRef: string): Promise<SessionArtifact> {
+  const json = (await command(conn, { type: "session.artifact", sessionRef })) as {
+    ok?: boolean
+    result?: { kind?: unknown; artifact?: any }
+  }
+  const result = json.ok === true ? json.result : undefined
+  const a = result?.artifact
+  const ex = a && typeof a === "object" ? a.executor : undefined
+  return {
+    kind: (result?.kind as SessionArtifact["kind"]) ?? "none",
+    outcome: ex && typeof ex.outcome === "string" ? ex.outcome : null,
+    editedFileCount: ex && typeof ex.editedFileCount === "number" ? ex.editedFileCount : null,
+    commandCount: ex && typeof ex.commandCount === "number" ? ex.commandCount : null,
+    totalTokens: ex && typeof ex.totalTokens === "number" ? ex.totalTokens : null,
+  }
+}
+
 export type AccountRow = { provider: string; homeState: string; ready: boolean }
 
 // Read-only accounts + readiness panel (CL-18). Public-projection-safe on the

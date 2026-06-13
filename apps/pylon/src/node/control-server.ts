@@ -13,6 +13,7 @@ import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } f
 import type { PylonNodeRuntime } from "./runtime"
 import type {
   ControlSessionActions,
+  ControlSessionArtifactCommand,
   ControlSessionCancelCommand,
   ControlSessionEventsCommand,
   ControlSessionListCommand,
@@ -54,6 +55,7 @@ export type ControlCommand =
   | ControlSessionListCommand
   | ControlSessionEventsCommand
   | ControlSessionCancelCommand
+  | ControlSessionArtifactCommand
   | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
   | { type: "intent.list"; sinceCursor?: string }
   | { type: "accounts.list" }
@@ -193,6 +195,9 @@ export const startControlServer = (
         case "session.cancel":
           if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
           return options.actions.sessions.cancel(command.sessionRef)
+        case "session.artifact":
+          if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
+          return options.actions.sessions.artifact(command.sessionRef)
         case "intent.submit":
           if (!options.actions.intents) throw new Error("intents unavailable on this node")
           return options.actions.intents.submit({

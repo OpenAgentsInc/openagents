@@ -23,7 +23,7 @@ function accountsHtml(message: NodeStateMessage): string {
 }
 
 export function sessionsHtml(message: NodeStateMessage): string {
-  const rows = sessionRows(message.sessions, message.events ?? {})
+  const rows = sessionRows(message.sessions, message.events ?? {}, message.artifacts ?? {})
   const body =
     message.sessions.length === 0
       ? '<p class="empty-state">No sessions yet.</p>'

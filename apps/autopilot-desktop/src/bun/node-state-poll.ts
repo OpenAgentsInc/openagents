@@ -26,6 +26,7 @@ export async function pollNodeStateOnce(input: {
       sessions: [...state.sessions],
       ...(state.events ? { events: state.events } : {}),
       ...(state.accounts ? { accounts: state.accounts } : {}),
+      ...(state.artifacts ? { artifacts: state.artifacts } : {}),
     }
   } catch {
     return offlineNodeState(input.fallbackSchema)

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto"
-import { mkdir, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import {
   publicPylonAccountSelection,
@@ -54,12 +54,14 @@ export type ControlSessionSpawnCommand = {
 export type ControlSessionListCommand = { type: "session.list" }
 export type ControlSessionEventsCommand = { type: "session.events"; sessionRef: string }
 export type ControlSessionCancelCommand = { type: "session.cancel"; sessionRef: string }
+export type ControlSessionArtifactCommand = { type: "session.artifact"; sessionRef: string }
 
 export type ControlSessionCommand =
   | ControlSessionSpawnCommand
   | ControlSessionListCommand
   | ControlSessionEventsCommand
   | ControlSessionCancelCommand
+  | ControlSessionArtifactCommand
 
 export type ControlSessionState = "queued" | "running" | "completed" | "failed" | "cancelled"
 export type ControlSessionEventPhase =
@@ -125,6 +127,13 @@ export type ControlSessionActions = {
     // (RN fetch can't consume the SSE stream cleanly) can render a live
     // session-detail timeline by polling POST /command { session.events }.
     recentEvents: ControlSessionEvent[]
+  }>
+  // CL-19: the retained artifact (proof/failure) a completed session produced —
+  // projection-safe + redaction-scanned at write time, so safe to return inline.
+  artifact: (sessionRef: string) => Promise<{
+    sessionRef: string
+    kind: "proof" | "failure" | "none"
+    artifact: unknown | null
   }>
   eventStream: (sessionRef: string) => ReadableStream<Uint8Array>
 }
@@ -758,6 +767,19 @@ export function createControlSessionActions(options: {
         state: record.state,
         recentEvents: record.events.slice(-100),
       }
+    },
+    artifact: async (sessionRef) => {
+      const record = records.get(sessionRef)
+      if (!record) throw new Error("session not found")
+      for (const kind of ["proof", "failure"] as const) {
+        try {
+          const raw = await readFile(artifactPathFor(record, kind), "utf8")
+          return { sessionRef, kind, artifact: JSON.parse(raw) }
+        } catch {
+          // not this kind / not yet written
+        }
+      }
+      return { sessionRef, kind: "none", artifact: null }
     },
     eventStream: (sessionRef) => {
       const record = records.get(sessionRef)

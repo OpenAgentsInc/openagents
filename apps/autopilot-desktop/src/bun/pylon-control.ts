@@ -4,7 +4,7 @@ import {
   decodeSessionSummary,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
-import type { AccountRow, SessionEventRow } from "../shared/rpc"
+import type { AccountRow, SessionArtifactStats, SessionEventRow } from "../shared/rpc"
 
 type NodeHealth = {
   ok?: unknown
@@ -77,11 +77,40 @@ async function fetchAccountRows(input: {
   }
 }
 
+async function fetchArtifactStats(input: {
+  baseUrl: string
+  token: string
+  sessionRef: string
+  fetchFn: typeof fetch
+}): Promise<SessionArtifactStats | null> {
+  try {
+    const res = await input.fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "session.artifact", sessionRef: input.sessionRef }),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { ok?: unknown; result?: { kind?: unknown; artifact?: any } }
+    const result = json.ok === true ? json.result : undefined
+    if (!result || result.kind === "none") return null
+    const ex = result.artifact && typeof result.artifact === "object" ? result.artifact.executor : undefined
+    return {
+      kind: String(result.kind ?? "none"),
+      outcome: ex && typeof ex.outcome === "string" ? ex.outcome : null,
+      editedFileCount: ex && typeof ex.editedFileCount === "number" ? ex.editedFileCount : null,
+      commandCount: ex && typeof ex.commandCount === "number" ? ex.commandCount : null,
+      totalTokens: ex && typeof ex.totalTokens === "number" ? ex.totalTokens : null,
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function fetchNodeState(input: {
   baseUrl: string
   token: string
   fetchFn?: typeof fetch
-}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]>; accounts: AccountRow[] }> {
+}): Promise<{ ok: boolean; schema: string; sessions: SessionSummary[]; events: Record<string, SessionEventRow[]>; accounts: AccountRow[]; artifacts: Record<string, SessionArtifactStats> }> {
   const fetchFn = input.fetchFn ?? fetch
   const baseUrl = input.baseUrl.replace(/\/+$/, "")
 
@@ -121,6 +150,7 @@ export async function fetchNodeState(input: {
   // can't consume the SSE stream cleanly; the bounded tail over POST /command is
   // the portable path). Bounded to keep per-poll cost sane.
   const events: Record<string, SessionEventRow[]> = {}
+  const artifacts: Record<string, SessionArtifactStats> = {}
   for (const session of sessions.slice(0, 25)) {
     events[session.sessionRef] = await fetchSessionEventRows({
       baseUrl,
@@ -128,6 +158,15 @@ export async function fetchNodeState(input: {
       sessionRef: session.sessionRef,
       fetchFn,
     })
+    if (session.state === "completed" || session.state === "failed") {
+      const stats = await fetchArtifactStats({
+        baseUrl,
+        token: input.token,
+        sessionRef: session.sessionRef,
+        fetchFn,
+      })
+      if (stats) artifacts[session.sessionRef] = stats
+    }
   }
 
   const accounts = await fetchAccountRows({ baseUrl, token: input.token, fetchFn })
@@ -138,5 +177,6 @@ export async function fetchNodeState(input: {
     sessions,
     events,
     accounts,
+    artifacts,
   }
 }

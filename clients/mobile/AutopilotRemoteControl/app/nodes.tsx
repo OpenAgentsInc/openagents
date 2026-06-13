@@ -6,9 +6,11 @@ import {
   type ControlSessionEventRow,
   type ControlSessionRow,
   type AccountRow,
+  type SessionArtifact,
   cancelSession,
   decodeConnectCode,
   fetchAccounts,
+  fetchSessionArtifact,
   fetchSessionEvents,
   fetchSessions,
   submitIntent,
@@ -61,6 +63,7 @@ export default function NodesScreen() {
   const [askStatus, setAskStatus] = useState<string | null>(null)
   const [nodeName, setNodeName] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [artifact, setArtifact] = useState<SessionArtifact | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -138,7 +141,11 @@ export default function NodesScreen() {
   useEffect(() => {
     if (conn === null || selected === null) return
     setEvents([])
+    setArtifact(null)
     void pollEvents(conn, selected)
+    void fetchSessionArtifact(conn, selected)
+      .then((a) => setArtifact(a.kind === "none" ? null : a))
+      .catch(() => {})
     eventsTimer.current = setInterval(() => void pollEvents(conn, selected), POLL_MS)
     return () => {
       if (eventsTimer.current) clearInterval(eventsTimer.current)
@@ -195,6 +202,14 @@ export default function NodesScreen() {
                 s.state === "completed" ? C.success : s.state === "failed" ? C.danger : C.textSecondary
               return <Text style={[styles.verifyLine, { color: tone }]}>{verify}</Text>
             })()}
+            {artifact ? (
+              <Text style={styles.artifactLine}>
+                artifact: {artifact.outcome ?? artifact.kind}
+                {artifact.editedFileCount !== null ? ` · ${artifact.editedFileCount} files` : ""}
+                {artifact.commandCount !== null ? ` · ${artifact.commandCount} cmds` : ""}
+                {artifact.totalTokens !== null ? ` · ${artifact.totalTokens} tok` : ""}
+              </Text>
+            ) : null}
             {(() => {
               const s = sessions.find((x) => x.sessionRef === selected)
               const cancellable = s && (s.state === "running" || s.state === "queued" || s.state === "started")
@@ -383,6 +398,7 @@ const styles = StyleSheet.create({
   backText: { color: C.info, fontSize: 15 },
   detailRef: { color: C.text, fontFamily: "Courier", fontSize: 13, marginTop: 10 },
   verifyLine: { fontFamily: "Courier", fontSize: 13, marginTop: 8 },
+  artifactLine: { color: C.textSecondary, fontFamily: "Courier", fontSize: 12, marginTop: 4 },
   cancelBtn: { alignItems: "center", borderColor: C.danger, borderRadius: 6, borderWidth: 1, marginTop: 12, padding: 10 },
   cancelText: { color: C.danger, fontSize: 14, fontWeight: "600" },
   eventRow: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 6, borderWidth: 1, flexDirection: "row", marginTop: 8, padding: 12 },
