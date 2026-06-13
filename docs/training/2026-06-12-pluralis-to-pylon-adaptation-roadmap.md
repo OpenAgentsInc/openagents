@@ -323,6 +323,17 @@ timeouts, ban-for-round, partial preservation, standby-gated abort),
 #1127 (`a48843a8` SPARTA canary harness: standing order enforced in
 code, pre-registration digest-pins the grid, toy artifacts cannot
 decide the canary by typed rule). All 12 child issues closed same day.
+**Tracker closure (2026-06-13):** master issue #4855 closed on its own
+done-condition (every child closed, roadmap updated). The remaining
+hardware/settlement-gated evidence is NOT lost by that closure — it is
+owned where it belongs: the `training.*` registry promises carry the
+R1/R2 rung gates (`training.model_ladder.v1` blockers
+r1_full_rehearsal_missing / rung_economics_gate_format_missing,
+`training.marathon_operations.v1` blockers, and the seal/staleness/
+overhead fields' first real values), and each child issue's closing
+comment records its specific unclaimed bullet. When R1 runs on operator
+devices, those receipts flip registry blockers — no tracking issue
+needed in between.
 Every hardware/settlement-gated
 acceptance bullet (live R1/R2 receipts, real devices, settled payments)
 remains open and is recorded per-issue — none are claimed. Side finding:
