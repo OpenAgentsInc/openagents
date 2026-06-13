@@ -63,6 +63,16 @@ export async function fetchSessions(conn: ConnectInfo): Promise<ControlSessionRo
   }))
 }
 
+// Cancel a running/queued session (CL-15). Best-effort: returns the new state.
+export async function cancelSession(conn: ConnectInfo, sessionRef: string): Promise<string> {
+  const json = (await command(conn, { type: "session.cancel", sessionRef })) as {
+    ok?: boolean
+    result?: { state?: unknown }
+  }
+  if (json.ok !== true) throw new Error("cancel failed")
+  return String(json.result?.state ?? "cancelled")
+}
+
 export type ControlSessionEventRow = {
   eventIndex: number
   observedAt: string

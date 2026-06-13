@@ -5,6 +5,7 @@ import {
   type ConnectInfo,
   type ControlSessionEventRow,
   type ControlSessionRow,
+  cancelSession,
   decodeConnectCode,
   fetchSessionEvents,
   fetchSessions,
@@ -143,6 +144,21 @@ export default function NodesScreen() {
               <Text style={styles.backText}>‹ sessions</Text>
             </Pressable>
             <Text style={styles.detailRef}>{selected}</Text>
+            {(() => {
+              const s = sessions.find((x) => x.sessionRef === selected)
+              const cancellable = s && (s.state === "running" || s.state === "queued" || s.state === "started")
+              if (!cancellable || conn === null) return null
+              return (
+                <Pressable
+                  style={styles.cancelBtn}
+                  onPress={() => {
+                    void cancelSession(conn, selected).then(() => poll(conn))
+                  }}
+                >
+                  <Text style={styles.cancelText}>Cancel session</Text>
+                </Pressable>
+              )
+            })()}
             {events.length === 0 ? (
               <View style={styles.card}>
                 <Text style={styles.cardBody}>No events yet.</Text>
@@ -251,5 +267,7 @@ const styles = StyleSheet.create({
   back: { marginTop: 20 },
   backText: { color: C.info, fontSize: 15 },
   detailRef: { color: C.text, fontFamily: "Courier", fontSize: 13, marginTop: 10 },
+  cancelBtn: { alignItems: "center", borderColor: C.danger, borderRadius: 6, borderWidth: 1, marginTop: 12, padding: 10 },
+  cancelText: { color: C.danger, fontSize: 14, fontWeight: "600" },
   eventRow: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 6, borderWidth: 1, flexDirection: "row", marginTop: 8, padding: 12 },
 })
