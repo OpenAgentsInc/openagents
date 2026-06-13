@@ -40,6 +40,10 @@ file adds the Expo-specific context for work scoped to this app.
   via `apps/oa-updates/scripts/publish-ota.sh` — no build, no Apple, no Expo.
 - The full ship runbook is `TESTFLIGHT.md`. The build runs locally and is fully
   automatable here; only Apple's TestFlight processing is external.
+- **Pulling crash logs:** when a TestFlight build crashes, pull the symbolicated
+  log yourself via the App Store Connect API — see `CRASH_LOGS.md` and
+  `scripts/testflight-crashes.mjs` (no Expo/EAS; uses the ASC API key in
+  `.secrets/appstoreconnect.env`).
 
 ## Boundaries
 
