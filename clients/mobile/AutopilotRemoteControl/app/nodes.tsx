@@ -7,8 +7,14 @@ import {
   decodeConnectCode,
   fetchSessions,
 } from "../src/control/control-client"
+import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
 
-// Dark-mode tokens mirrored from the openagents.com website.
+// Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
+// Owner is single-tenant for now ("fine for now security-wise").
+const BROKER = "https://oa-updates-ezxz4mgdsq-uc.a.run.app"
+const OWNER = "chris"
+const POLL_MS = 4000
+
 const C = {
   bg: "#000000",
   bgSecondary: "#151515",
@@ -22,28 +28,30 @@ const C = {
   info: "#2979ff",
 } as const
 
-const stateTone = (state: string): string => {
-  if (state === "completed") return C.success
-  if (state === "running" || state === "started") return C.info
-  if (state === "queued") return C.warning
-  if (state === "failed" || state === "cancelled") return C.danger
-  return C.outline
-}
+const stateTone = (state: string): string =>
+  state === "completed"
+    ? C.success
+    : state === "running" || state === "started"
+      ? C.info
+      : state === "queued"
+        ? C.warning
+        : state === "failed" || state === "cancelled"
+          ? C.danger
+          : C.outline
 
-const POLL_MS = 4000
+type Status = "discovering" | "manual" | "connecting" | "connected" | "error"
 
 export default function NodesScreen() {
   const [code, setCode] = useState("")
   const [conn, setConn] = useState<ConnectInfo | null>(null)
   const [sessions, setSessions] = useState<ControlSessionRow[]>([])
-  const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle")
+  const [status, setStatus] = useState<Status>("discovering")
   const [error, setError] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const poll = useCallback(async (c: ConnectInfo) => {
     try {
-      const rows = await fetchSessions(c)
-      setSessions(rows)
+      setSessions(await fetchSessions(c))
       setStatus("connected")
       setError(null)
     } catch (e) {
@@ -52,17 +60,31 @@ export default function NodesScreen() {
     }
   }, [])
 
-  const connect = useCallback(() => {
-    const info = decodeConnectCode(code)
-    if (info === null) {
-      setStatus("error")
-      setError("Invalid connect code")
-      return
+  // Auto-detect: on launch, ask the broker for this owner's nodes and connect to
+  // the first reachable one (tailnet-first). Falls back to manual paste.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`${BROKER}/${OWNER}/nodes`)
+        const nodes = parseNodesResponse(await res.json())
+        if (cancelled) return
+        if (nodes.length > 0) {
+          const info = pickConnect(nodes[0])
+          setConn(info)
+          setStatus("connecting")
+          void poll(info)
+          return
+        }
+        setStatus("manual")
+      } catch {
+        if (!cancelled) setStatus("manual")
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-    setConn(info)
-    setStatus("connecting")
-    void poll(info)
-  }, [code, poll])
+  }, [poll])
 
   useEffect(() => {
     if (conn === null) return
@@ -72,18 +94,34 @@ export default function NodesScreen() {
     }
   }, [conn, poll])
 
+  const connectManual = useCallback(() => {
+    const info = decodeConnectCode(code)
+    if (info === null) {
+      setError("Invalid connect code")
+      return
+    }
+    setConn(info)
+    setStatus("connecting")
+    void poll(info)
+  }, [code, poll])
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.h1}>Autopilot</Text>
         <Text style={styles.subtitle}>Nodes</Text>
 
-        {conn === null ? (
+        {status === "discovering" ? (
+          <View style={styles.statusRow}>
+            <ActivityIndicator color={C.info} />
+            <Text style={styles.statusText}>finding your node…</Text>
+          </View>
+        ) : conn === null ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Connect to a Pylon node</Text>
             <Text style={styles.cardBody}>
-              Paste the connect code from your node (it carries the tailnet/LAN
-              address + token).
+              No node found automatically. Paste a connect code (tailnet/LAN
+              address + token) to connect manually.
             </Text>
             <TextInput
               style={styles.input}
@@ -94,7 +132,7 @@ export default function NodesScreen() {
               value={code}
               onChangeText={setCode}
             />
-            <Pressable style={styles.button} onPress={connect}>
+            <Pressable style={styles.button} onPress={connectManual}>
               <Text style={styles.buttonText}>Connect</Text>
             </Pressable>
             {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -139,55 +177,17 @@ const styles = StyleSheet.create({
   container: { backgroundColor: C.bg, flex: 1 },
   content: { padding: 24, paddingTop: 64 },
   h1: { color: C.primary, fontSize: 22, fontWeight: "700" },
-  subtitle: {
-    color: C.textSecondary,
-    fontSize: 13,
-    letterSpacing: 1,
-    marginTop: 4,
-    textTransform: "uppercase",
-  },
-  card: {
-    backgroundColor: C.bgSecondary,
-    borderColor: C.outline,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 24,
-    padding: 18,
-  },
+  subtitle: { color: C.textSecondary, fontSize: 13, letterSpacing: 1, marginTop: 4, textTransform: "uppercase" },
+  card: { backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, marginTop: 24, padding: 18 },
   cardTitle: { color: C.primary, fontSize: 16, fontWeight: "600" },
   cardBody: { color: C.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 8 },
-  input: {
-    backgroundColor: C.bg,
-    borderColor: C.outline,
-    borderRadius: 6,
-    borderWidth: 1,
-    color: C.text,
-    fontFamily: "Courier",
-    fontSize: 13,
-    marginTop: 14,
-    padding: 12,
-  },
-  button: {
-    alignItems: "center",
-    backgroundColor: C.primary,
-    borderRadius: 6,
-    marginTop: 12,
-    padding: 12,
-  },
+  input: { backgroundColor: C.bg, borderColor: C.outline, borderRadius: 6, borderWidth: 1, color: C.text, fontFamily: "Courier", fontSize: 13, marginTop: 14, padding: 12 },
+  button: { alignItems: "center", backgroundColor: C.primary, borderRadius: 6, marginTop: 12, padding: 12 },
   buttonText: { color: C.bg, fontSize: 15, fontWeight: "700" },
   error: { color: C.danger, fontSize: 13, marginTop: 10 },
   statusRow: { alignItems: "center", flexDirection: "row", gap: 10, marginTop: 24 },
   statusText: { color: C.text, fontFamily: "Courier", fontSize: 14 },
-  row: {
-    alignItems: "center",
-    backgroundColor: C.bgSecondary,
-    borderColor: C.outline,
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: "row",
-    marginTop: 12,
-    padding: 14,
-  },
+  row: { alignItems: "center", backgroundColor: C.bgSecondary, borderColor: C.outline, borderRadius: 8, borderWidth: 1, flexDirection: "row", marginTop: 12, padding: 14 },
   dot: { borderRadius: 6, height: 12, marginRight: 12, width: 12 },
   rowText: { flex: 1 },
   rowLabel: { color: C.text, fontFamily: "Courier", fontSize: 13 },
