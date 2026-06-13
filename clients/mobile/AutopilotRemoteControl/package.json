@@ -8,19 +8,20 @@
     "android": "expo start --android"
   },
   "dependencies": {
-    "@openagentsinc/autopilot-control-protocol": "workspace:*",
+    "@expo/metro-runtime": "~55.0.11",
     "@react-navigation/native": "^7.0.0",
     "@react-navigation/native-stack": "^7.0.0",
     "expo": "^55.0.0",
-    "expo-notifications": "^0.33.0",
-    "expo-secure-store": "^15.0.0",
-    "react": "19.0.0",
-    "react-native": "0.81.0",
-    "react-native-mmkv": "^3.3.0"
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-web": "^0.21.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@types/react": "~19.0.10",
-    "typescript": "^6.0.3"
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
   }
 }
