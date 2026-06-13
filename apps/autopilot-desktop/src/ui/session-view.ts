@@ -41,29 +41,35 @@ export function sessionRows(
   events: Record<string, SessionEventRow[]> = {},
   artifacts: Record<string, SessionArtifactStats> = {},
 ): string {
+  const renderOne = (session: SessionSummary, child: boolean): string => {
+    const verify =
+      session.state === "completed"
+        ? "✓ verify passed"
+        : session.state === "failed"
+          ? "✗ verify failed"
+          : session.state === "cancelled"
+            ? "cancelled"
+            : ""
+    const activity = session.latestActivity && session.latestActivity.length > 0 ? session.latestActivity : session.state
+    const shortRef = session.sessionRef.slice(-6)
+    return [
+      `<div class="session-row${child ? " session-child" : ""}">`,
+      `<span class="state-chip state-${escapeHtml(session.state)}">${escapeHtml(session.state)}</span>`,
+      `<span class="session-activity">${child ? "↳ " : ""}${escapeHtml(activity)}</span>`,
+      `<code class="session-short">${escapeHtml(session.adapter)}·${escapeHtml(shortRef)}</code>`,
+      "</div>",
+      verify.length > 0 ? `<p class="verify-line verify-${escapeHtml(session.state)}">${escapeHtml(verify)}</p>` : "",
+      artifactLine(artifacts[session.sessionRef]),
+      timelineHtml(events[session.sessionRef] ?? []),
+    ].join("")
+  }
+
+  // Nest sub-agents (parentRef) under their parent (#4951).
+  const childrenOf = (ref: string) => sessions.filter((s) => s.parentRef === ref)
+  const isTop = (s: SessionSummary) => !s.parentRef || !sessions.some((p) => p.sessionRef === s.parentRef)
   return sessions
-    .map((session) => {
-      const verify =
-        session.state === "completed"
-          ? "✓ verify passed"
-          : session.state === "failed"
-            ? "✗ verify failed"
-            : session.state === "cancelled"
-              ? "cancelled"
-              : ""
-      const activity = session.latestActivity && session.latestActivity.length > 0 ? session.latestActivity : session.state
-      const shortRef = session.sessionRef.slice(-6)
-      return [
-        '<div class="session-row">',
-        `<span class="state-chip state-${escapeHtml(session.state)}">${escapeHtml(session.state)}</span>`,
-        `<span class="session-activity">${escapeHtml(activity)}</span>`,
-        `<code class="session-short">${escapeHtml(session.adapter)}·${escapeHtml(shortRef)}</code>`,
-        "</div>",
-        verify.length > 0 ? `<p class="verify-line verify-${escapeHtml(session.state)}">${escapeHtml(verify)}</p>` : "",
-        artifactLine(artifacts[session.sessionRef]),
-        timelineHtml(events[session.sessionRef] ?? []),
-      ].join("")
-    })
+    .filter(isTop)
+    .map((s) => renderOne(s, false) + childrenOf(s.sessionRef).map((c) => renderOne(c, true)).join(""))
     .join("")
 }
 
