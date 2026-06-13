@@ -15,7 +15,7 @@ type CreateUpdatesServerOptions = {
   keyid?: string
 }
 
-type UpdatesServer = {
+export type UpdatesServer = {
   fetch: (request: Request) => Promise<Response>
   registerUpdate: (update: Update) => void
   putAsset: (bytes: Uint8Array) => Promise<{ hash: string; url: string }>
