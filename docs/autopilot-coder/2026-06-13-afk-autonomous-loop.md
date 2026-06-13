@@ -247,3 +247,4 @@ delivery, Pack D intake/market, Pack E polish) — fan out fannable pure cores
   --branch production` (update 019ec158) + LINKED channel production→branch
   production (was unlinked — the missing piece). Build #4 now pulls the OTA on
   next cold start. LESSON: wire screens + push OTA, don't just build libraries.
+- 2026-06-13 iter 15 — OWNER: OTA auto-updater (5s poll→download→reload + overlay) + white navbar removed, OTA 019ec15d to build #4; in-app name Autopilot. Home-screen name deferred to next build (keeps build #4 OTA-able). Merged p13 3/4 (prompt-layering/skill/plugin; 128 TAS tests, mprov cancelled→requeued). Launched p14: model-provider(retry), telemetry, resume-rewind, migration.
