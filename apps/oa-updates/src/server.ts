@@ -38,6 +38,37 @@ const jsonResponse = (
     },
   })
 
+// Expo Updates Protocol requires manifest/directive responses as multipart/mixed
+// with a part named "manifest" or "directive". A bare application/json body is
+// parsed by expo-updates as a manifest and crashes on the missing required `id`
+// (Manifest.swift requiredValue) — this is what crashed build 13 on launch.
+const OTA_BOUNDARY = "oa-updates-boundary"
+
+const multipartMixedResponse = (
+  parts: { name: string; body: string; partHeaders?: Record<string, string> }[],
+  responseHeaders: Record<string, string> = {},
+): Response => {
+  const crlf = "\r\n"
+  let body = ""
+  for (const part of parts) {
+    body += `--${OTA_BOUNDARY}${crlf}`
+    body += `content-disposition: form-data; name="${part.name}"${crlf}`
+    body += `content-type: application/json${crlf}`
+    for (const [k, v] of Object.entries(part.partHeaders ?? {})) {
+      body += `${k}: ${v}${crlf}`
+    }
+    body += crlf
+    body += part.body + crlf
+  }
+  body += `--${OTA_BOUNDARY}--${crlf}`
+  return new Response(body, {
+    headers: {
+      ...responseHeaders,
+      "content-type": `multipart/mixed; boundary=${OTA_BOUNDARY}`,
+    },
+  })
+}
+
 const assetContentType = (
   updates: Iterable<Update>,
   hash: string,
@@ -92,18 +123,29 @@ export function createUpdatesServer(
                 keyid: options.keyid,
               })
 
-              return new Response(signedResponse.body, {
-                headers: {
-                  ...result.responseHeaders,
-                  ...signedResponse.headers,
-                },
-              })
+              // Signature travels as a part header on the manifest part.
+              return multipartMixedResponse(
+                [
+                  {
+                    name: "manifest",
+                    body: signedResponse.body,
+                    partHeaders: { "expo-signature": signedResponse.headers["expo-signature"] },
+                  },
+                ],
+                result.responseHeaders,
+              )
             }
 
-            return jsonResponse(result.manifest, result.responseHeaders)
+            return multipartMixedResponse(
+              [{ name: "manifest", body: JSON.stringify(result.manifest) }],
+              result.responseHeaders,
+            )
           }
 
-          return jsonResponse(result.directive, result.responseHeaders)
+          return multipartMixedResponse(
+            [{ name: "directive", body: JSON.stringify(result.directive) }],
+            result.responseHeaders,
+          )
         }
 
         const assetMatch = url.pathname.match(/^\/assets\/([^/]+)$/)

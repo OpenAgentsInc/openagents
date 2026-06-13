@@ -68,9 +68,18 @@ describe("seedFromDist", () => {
     })
 
     const manifestResponse = await server.fetch(manifestRequest(runtimeVersion))
-    const manifest = (await manifestResponse.json()) as Record<string, any>
+    // Expo Updates Protocol: manifest is a part of a multipart/mixed body.
+    const ct = manifestResponse.headers.get("content-type") ?? ""
+    const boundary = (ct.match(/boundary=([^;]+)/) ?? [])[1] ?? ""
+    const bodyText = await manifestResponse.text()
+    const manifestSeg = bodyText
+      .split(`--${boundary}`)
+      .map((s) => s.replace(/^\r\n/, "").replace(/\r\n$/, ""))
+      .find((s) => s.includes('name="manifest"')) ?? ""
+    const manifest = JSON.parse(manifestSeg.slice(manifestSeg.indexOf("\r\n\r\n") + 4)) as Record<string, any>
 
     expect(manifestResponse.status).toBe(200)
+    expect(ct).toContain("multipart/mixed")
     expect(manifest.runtimeVersion).toBe(runtimeVersion)
     expect(manifest.branch).toBe("production")
     expect(manifest.launchAsset.hash).toBe(expectedLaunch.hash)
