@@ -18,6 +18,7 @@ import {
   submitIntent,
 } from "../src/control/control-client"
 import { parseNodesResponse, pickConnect } from "../src/control/discovery-client"
+import { fixedRowLabelHeight } from "../src/ui/row-metrics"
 import { CANONICAL_DARK, projectFailover, validateIntentDraft } from "@openagentsinc/autopilot-control-protocol"
 
 // Discovery broker (Cloud Run today; updates.openagents.com once DNS lands).
@@ -29,6 +30,8 @@ const POLL_MS = 4000
 // CL-31: the shared canonical dark palette, sourced from the protocol package
 // (RN-safe) so mobile, desktop, and web stay in theming parity from one source.
 const C = CANONICAL_DARK
+const ROW_LABEL_FONT_SIZE = 13
+const ROW_LABEL_LINE_HEIGHT = 18
 
 const stateTone = (state: string): string =>
   state === "completed"
@@ -249,7 +252,7 @@ export default function NodesScreen() {
                   >
                     <View style={[styles.dot, { backgroundColor: stateTone(e.state) }]} />
                     <View style={styles.rowText}>
-                      <Text style={styles.rowLabel} numberOfLines={isOpen ? undefined : 2}>
+                      <Text style={[styles.rowLabel, isOpen ? styles.expandedRowLabel : null]} numberOfLines={isOpen ? undefined : 2}>
                         {isOpen ? e.full || e.detail || e.phase : e.detail || e.phase}
                       </Text>
                       <Text style={styles.rowStatus}>
@@ -439,7 +442,14 @@ const styles = StyleSheet.create({
   childRow: { marginLeft: 22, marginTop: 6, backgroundColor: C.bg },
   dot: { borderRadius: 6, height: 12, marginRight: 12, width: 12 },
   rowText: { flex: 1 },
-  rowLabel: { color: C.text, fontFamily: "Courier", fontSize: 13 },
+  rowLabel: {
+    color: C.text,
+    fontFamily: "Courier",
+    fontSize: ROW_LABEL_FONT_SIZE,
+    height: fixedRowLabelHeight(ROW_LABEL_LINE_HEIGHT),
+    lineHeight: ROW_LABEL_LINE_HEIGHT,
+  },
+  expandedRowLabel: { height: undefined },
   rowStatus: { color: C.textSecondary, fontSize: 12, marginTop: 2 },
   chevron: { color: C.textSecondary, fontSize: 20, marginLeft: 8 },
   back: { marginTop: 20 },
