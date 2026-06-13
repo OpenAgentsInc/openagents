@@ -119,7 +119,11 @@ describe("runMultiSessionPlan", () => {
             calls.push(child)
             await writeFile(
               child.proofOutput,
-              `${JSON.stringify({ schema: "test.proof", objective: child.objective })}\n`,
+              `${JSON.stringify({
+                schema: "test.proof",
+                objective: child.objective,
+                executor: { totalTokens: 100 },
+              })}\n`,
             )
             await delay(10)
             active -= 1
@@ -135,6 +139,12 @@ describe("runMultiSessionPlan", () => {
       expect(summary.failedCount).toBe(0)
       expect(summary.deviations).toEqual([])
       expect(summary.artifactRefs).toHaveLength(3)
+      expect(typeof summary.totalDurationMs).toBe("number")
+      expect(typeof summary.totalTokens).toBe("number")
+      expect(summary.totalTokens).toBe(300)
+      for (const outcome of summary.outcomes) {
+        expect(typeof outcome.durationMs).toBe("number")
+      }
       assertPublicProjectionSafe(summary)
       const serialized = JSON.stringify(summary)
       expect(serialized).not.toContain(root)

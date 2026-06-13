@@ -96,6 +96,7 @@ export type MultiSessionOutcome = {
   errorDigestRef: string | null
   startedAt: string
   completedAt: string
+  durationMs: number
 }
 
 export type MultiSessionSummary = {
@@ -107,6 +108,8 @@ export type MultiSessionSummary = {
   totalSessions: number
   completedCount: number
   failedCount: number
+  totalDurationMs: number
+  totalTokens: number
   artifactRefs: string[]
   heartbeatRef: string
   outcomes: MultiSessionOutcome[]
@@ -465,6 +468,7 @@ async function runOneSession(input: {
         errorDigestRef: failure.errorDigestRef,
         startedAt,
         completedAt,
+        durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
       }
     }
     return {
@@ -480,6 +484,7 @@ async function runOneSession(input: {
       errorDigestRef: null,
       startedAt,
       completedAt,
+      durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
     }
   } catch (error) {
     const completedAt = nowIso()
@@ -507,6 +512,7 @@ async function runOneSession(input: {
       errorDigestRef: failure.errorDigestRef,
       startedAt,
       completedAt,
+      durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
     }
   } finally {
     await appendHeartbeat(input.heartbeatPath, {
@@ -574,6 +580,18 @@ export async function runMultiSessionPlan(
   })
   const completedCount = outcomes.filter(outcome => outcome.state === "completed").length
   const failedCount = outcomes.length - completedCount
+  const totalDurationMs = outcomes.reduce((sum, outcome) => sum + outcome.durationMs, 0)
+  let totalTokens = 0
+  for (const outcome of outcomes) {
+    if (outcome.state !== "completed" || outcome.artifactFile === null) continue
+    try {
+      const proof = JSON.parse(readFileSyncText(join(args.proofsDir, outcome.artifactFile)))
+      const tokens = proof?.executor?.totalTokens
+      if (typeof tokens === "number" && Number.isFinite(tokens)) totalTokens += tokens
+    } catch {
+      // Missing or unparseable artifact contributes 0 tokens.
+    }
+  }
   const summary: MultiSessionSummary = {
     schema: MULTI_SESSION_SUMMARY_SCHEMA,
     runRef,
@@ -583,6 +601,8 @@ export async function runMultiSessionPlan(
     totalSessions: outcomes.length,
     completedCount,
     failedCount,
+    totalDurationMs,
+    totalTokens,
     artifactRefs: outcomes
       .map(outcome => outcome.artifactFile)
       .filter((file): file is string => file !== null)
