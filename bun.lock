@@ -16,7 +16,7 @@
       "dependencies": {
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
         "@openagentsinc/autopilot-ui": "workspace:*",
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#210d67cd76cb26bfafba7c121671242228b79e6e",
+        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#2d3979ad6461fc56178068596ec97b281b08d923",
         "effect": "catalog:",
         "electrobun": "1.18.1",
         "foldkit": "^0.102.1",
@@ -1009,7 +1009,7 @@
 
     "@openagentsinc/tassadar-executor": ["@openagentsinc/tassadar-executor@workspace:packages/tassadar-executor"],
 
-    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#210d67c", { "dependencies": { "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-210d67c", "sha512-ggw5zQv+Q/g79s43zur9ZNsxvzU0vVbDbA9TnmU6g+jmFhtleEFNBrlwxTZiqm51mKBjX6hGOHhJC408M5eomQ=="],
+    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#2d3979a", { "dependencies": { "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-2d3979a", "sha512-yFtnStXFQkaV6t+7H89pFrK0ly/z0c/TL3GXU1Sbf3vPFZtmZ4UVodCC+SyuYyl1R9I39W29igzlGh5gzIhKWw=="],
 
     "@openai/codex": ["@openai/codex@0.139.0", "", { "optionalDependencies": { "@openai/codex-darwin-arm64": "npm:@openai/codex@0.139.0-darwin-arm64", "@openai/codex-darwin-x64": "npm:@openai/codex@0.139.0-darwin-x64", "@openai/codex-linux-arm64": "npm:@openai/codex@0.139.0-linux-arm64", "@openai/codex-linux-x64": "npm:@openai/codex@0.139.0-linux-x64", "@openai/codex-win32-arm64": "npm:@openai/codex@0.139.0-win32-arm64", "@openai/codex-win32-x64": "npm:@openai/codex@0.139.0-win32-x64" }, "bin": { "codex": "bin/codex.js" } }, "sha512-wr2fRE+fzW0CjEbfFsLh1ftarVEcw0CMLWS7QyA0nyOz5qacQPVq3cq2+/U7oEbwm1TOqoi0Fm1nxniB5FkpmA=="],
 

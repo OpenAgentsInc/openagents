@@ -275,6 +275,7 @@ type PixelSmokeResult = {
   readonly ok: boolean
   readonly brightPixels: number
   readonly canvasHeight: number
+  readonly canvasStableAfterEquivalentUpdate: boolean
   readonly canvasWidth: number
   readonly distinctLumaBuckets: number
   readonly message: string
@@ -283,6 +284,7 @@ type PixelSmokeResult = {
 
 type CanvasProbeResult = {
   readonly canvasHeight: number
+  readonly canvasStableAfterEquivalentUpdate: boolean
   readonly canvasWidth: number
   readonly message: string
   readonly ok: boolean
@@ -425,6 +427,7 @@ const screenshotPixelSmoke = (
     probe.ok &&
     probe.canvasWidth >= 480 &&
     probe.canvasHeight >= 270 &&
+    probe.canvasStableAfterEquivalentUpdate &&
     brightPixels > 350 &&
     buckets.size >= 4
 
@@ -435,6 +438,7 @@ const screenshotPixelSmoke = (
       : `training scene screenshot appears blank or undersized: ${probe.message}`,
     canvasWidth: probe.canvasWidth,
     canvasHeight: probe.canvasHeight,
+    canvasStableAfterEquivalentUpdate: probe.canvasStableAfterEquivalentUpdate,
     sampledPixels,
     brightPixels,
     distinctLumaBuckets: buckets.size,
@@ -457,13 +461,28 @@ const canvasProbeExpression = `
       message: "missing oa-training-run shadow canvas",
       canvasWidth: 0,
       canvasHeight: 0,
+      canvasStableAfterEquivalentUpdate: false,
     }
   }
+  host.visualization = structuredClone(host.visualization)
+  await new Promise(resolve => requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      setTimeout(resolve, 120)
+    })
+  }))
+  const canvasAfterEquivalentUpdate = host.shadowRoot?.querySelector("canvas")
+  const canvasStableAfterEquivalentUpdate = canvasAfterEquivalentUpdate === canvas
   return {
-    ok: canvas.width >= 480 && canvas.height >= 270,
-    message: "oa-training-run shadow canvas mounted",
+    ok:
+      canvas.width >= 480 &&
+      canvas.height >= 270 &&
+      canvasStableAfterEquivalentUpdate,
+    message: canvasStableAfterEquivalentUpdate
+      ? "oa-training-run shadow canvas mounted and stable after equivalent update"
+      : "oa-training-run shadow canvas remounted after equivalent update",
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,
+    canvasStableAfterEquivalentUpdate,
   }
 })()
 `
