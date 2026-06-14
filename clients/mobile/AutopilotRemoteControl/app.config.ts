@@ -19,6 +19,12 @@ const config: ExpoConfig = {
     // updates.openagents.com CNAME). expo-updates GETs this manifest endpoint
     // with Expo-* headers; our server serves a fingerprint-matched manifest.
     url: "https://updates.openagents.com/autopilot/manifest",
+    // #4949 code signing: the client verifies every manifest is signed by our
+    // server's private key (the matching public cert is embedded here). The
+    // server signs with OA_SIGNING_KEY, keyid "main", alg rsa-v1_5-sha256.
+    // Takes effect on the next native build (a config change).
+    codeSigningCertificate: "./certs/codesign.pem",
+    codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
   },
   orientation: "portrait",
   userInterfaceStyle: "automatic",

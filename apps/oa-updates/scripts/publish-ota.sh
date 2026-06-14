@@ -26,6 +26,13 @@ export OA_PUBLIC_URL="${OA_PUBLIC_URL:-https://oa-updates-ezxz4mgdsq-uc.a.run.ap
 export OA_SEED_DIST="/app/dist"
 export OA_SEED_RUNTIME="$RUNTIME"
 export OA_SEED_PLATFORM="ios"
+# #4949 code signing: sign every manifest with our private key (keyid "main",
+# rsa-v1_5-sha256) so the client's embedded codeSigningCertificate verifies it.
+SIGN_KEY="$REPO/.secrets/oa-updates-codesign-private.pem"
+if [[ -z "${OA_SIGNING_KEY:-}" && -f "$SIGN_KEY" ]]; then
+  export OA_SIGNING_KEY="$(cat "$SIGN_KEY")"
+  echo "    code signing: enabled (keyid main)"
+fi
 bash "$REPO/apps/oa-updates/scripts/deploy-cloudrun.sh"
 
 echo "==> published. Verify:"
